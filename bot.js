@@ -1,5 +1,5 @@
 require('dotenv').config(); 
-
+const http = require('http'); // New import for the health check
 const TelegramBot = require('node-telegram-bot-api');
 const fetch = require('node-fetch');
 
@@ -8,13 +8,12 @@ const TOKEN = '8245365754:AAHqhtzDzyE-NWdYpBmff_L-mGq1SprnuWo';
 const PANTRY_ID = '42f7bc17-4c7d-4314-9a0d-19f876d39db6'; 
 const PANTRY_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/driver_data`;
 
-// 🔒 HARDCODED ADMIN ID (Your Group)
+// 🔒 HARDCODED ADMIN ID
 const ADMIN_GROUP_ID = -5275569828; 
 
 const bot = new TelegramBot(TOKEN, { polling: true });
 
 const userSessions = {};
-// Added 'history' to our cache
 let cachedData = { questions: [], groups: [], history: [] };
 
 // 2. LOAD DATA
@@ -23,12 +22,10 @@ async function loadData() {
         const res = await fetch(PANTRY_URL);
         if (res.ok) {
             cachedData = await res.json();
-            // Ensure all arrays exist
             if (!cachedData.questions) cachedData.questions = [];
             if (!cachedData.groups) cachedData.groups = [];
-            if (!cachedData.history) cachedData.history = []; // New History Array
+            if (!cachedData.history) cachedData.history = [];
             
-            // Check for pending broadcasts
             if (cachedData.broadcast_queue) {
                 sendBroadcast(cachedData.broadcast_queue);
             }
@@ -43,7 +40,7 @@ async function sendBroadcast(message) {
     console.log("Starting broadcast:", message);
     
     for (const group of cachedData.groups) {
-        if (group.id === ADMIN_GROUP_ID) continue; // Skip Admin
+        if (group.id === ADMIN_GROUP_ID) continue; 
 
         if (group.enabled) {
             try {
@@ -58,7 +55,7 @@ async function sendBroadcast(message) {
     await saveToPantry();
 }
 
-// Helper to save data safely
+// Helper to save data
 async function saveToPantry() {
     await fetch(PANTRY_URL, {
         method: "POST",
@@ -82,33 +79,26 @@ bot.on('message', async (msg) => {
     }
 });
 
-// 5. START SURVEY (With Welcome Message & Username Logic)
+// 5. START SURVEY
 bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
-    
-    // Ignore commands inside the Admin Group
     if (chatId === ADMIN_GROUP_ID) return;
 
-    // Refresh data
     await loadData();
 
     if (cachedData.questions.length === 0) {
         return bot.sendMessage(chatId, "No questions are currently set up by the admin.");
     }
 
-    // 👤 GET USERNAME
-    // If they have a @username, use it. Otherwise use First Name + Last Name
     let identifier = msg.from.username ? `@${msg.from.username}` : `${msg.from.first_name} ${msg.from.last_name || ''}`;
     identifier = identifier.trim();
 
-    // Start session with userInfo
     userSessions[chatId] = { 
         step: 0, 
         answers: [], 
         userInfo: identifier 
     };
 
-    // 👋 WELCOME MESSAGE
     await bot.sendMessage(chatId, `👋 <b>Hello, ${msg.from.first_name}!</b>\n\nI have a few quick questions for you. Let's get started!`, { parse_mode: "HTML" });
 
     askQuestion(chatId);
@@ -139,7 +129,7 @@ function askQuestion(chatId) {
     bot.sendMessage(chatId, `📝 <b>Question ${session.step + 1}:</b>\n${question.text}`, { parse_mode: "HTML", ...options });
 }
 
-// HANDLE ANSWERS (With Validation)
+// HANDLE ANSWERS
 bot.on('message', (msg) => {
     const chatId = msg.chat.id;
     if (msg.text === '/start') return;
@@ -150,15 +140,12 @@ bot.on('message', (msg) => {
 
     const currentQ = cachedData.questions[session.step];
 
-    // 🛡️ INPUT VALIDATION
-    // If it is a Multiple Choice question, user MUST pick a valid option.
     if (currentQ.type === 'choice' && currentQ.options) {
         if (!currentQ.options.includes(msg.text)) {
             return bot.sendMessage(chatId, "❌ <b>Please select one of the buttons below.</b>", { parse_mode: "HTML" });
         }
     }
 
-    // Save answer
     session.answers.push({
         question: currentQ.text,
         answer: msg.text
@@ -168,29 +155,26 @@ bot.on('message', (msg) => {
     askQuestion(chatId);
 });
 
-// 6. FINISH SURVEY (Save History & Report Username)
+// 6. FINISH SURVEY
 async function finishSurvey(chatId) {
     const session = userSessions[chatId];
     
     bot.sendMessage(chatId, "✅ <b>Thank you!</b> Your feedback has been sent.", { parse_mode: "HTML", reply_markup: { remove_keyboard: true } });
 
-    // Format the report for Admin
     let report = `📝 <b>New Feedback Received</b>\n`;
-    report += `👤 <b>Driver:</b> ${session.userInfo}\n`; // Shows Username now!
+    report += `👤 <b>Driver:</b> ${session.userInfo}\n`;
     report += `🆔 <b>ID:</b> ${chatId}\n\n`;
     
     session.answers.forEach(a => {
         report += `<b>Q: ${a.question}</b>\n${a.answer}\n\n`;
     });
 
-    // Send to Admin Group
     try {
         await bot.sendMessage(ADMIN_GROUP_ID, report, { parse_mode: "HTML" });
     } catch (e) {
         console.error("FAILED to send report to Admin Group.", e);
     }
 
-    // 💾 SAVE TO HISTORY
     const historyItem = {
         date: new Date().toISOString(),
         user: session.userInfo,
@@ -208,6 +192,17 @@ async function finishSurvey(chatId) {
 setInterval(() => {
     loadData();
 }, 60000); 
+
+// 8. 🏥 HEALTH CHECK SERVER (This fixes the Koyeb Error)
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot is running!');
+});
+
+const port = process.env.PORT || 8000;
+server.listen(port, () => {
+    console.log(`Health check server listening on port ${port}`);
+});
 
 // Initial Load
 loadData();
