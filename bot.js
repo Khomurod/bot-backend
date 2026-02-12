@@ -9,22 +9,26 @@ const PANTRY_ID = process.env.PANTRY_ID || '42f7bc17-4c7d-4314-9a0d-19f876d39db6
 const PANTRY_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/driver_data`;
 const ADMIN_GROUP_ID = -5275569828; 
 
+// CONFIG: Weekly Survey Time (0 = Sunday, 10 = 10 AM UTC)
+const WEEKLY_DAY = 0; 
+const WEEKLY_HOUR = 10; 
+
 const bot = new TelegramBot(TOKEN, { polling: true });
 const userSessions = {};
-let cachedData = { questions: [], groups: [], history: [] };
 
-// --- 🛡️ STABILITY & SHUTDOWN FIXES ---
+// DATA STORE
+let cachedData = { 
+    questions: [], 
+    groups: [], 
+    history: [], 
+    scheduled_queue: [], // New: For one-off scheduled msgs
+    last_weekly_run: ""  // New: To prevent duplicate Sunday sends
+};
 
-// 1. Polling Error "Airbag" (Prevents crashes on internet blips)
+// --- 🛡️ STABILITY FIXES ---
 bot.on('polling_error', (error) => {
-    // EFATAL errors are just connection resets. We ignore them.
-    if (error.code !== 'EFATAL') {
-        console.log(`[Polling Error] ${error.code}: ${error.message}`);
-    }
+    if (error.code !== 'EFATAL') console.log(`[Polling Error] ${error.code}: ${error.message}`);
 });
-
-// 2. GRACEFUL SHUTDOWN (The Zombie Killer 🧟‍♂️)
-// When Koyeb restarts the app, this stops the old bot immediately.
 const stopBot = () => {
     console.log("Stopping bot...");
     bot.stopPolling();
@@ -33,38 +37,30 @@ const stopBot = () => {
 process.on('SIGINT', stopBot);
 process.on('SIGTERM', stopBot);
 
-// --- END FIXES ---
-
-// 2. LOAD DATA
+// --- 2. DATA LOADING & SAVING ---
 async function loadData() {
     try {
         const res = await fetch(PANTRY_URL);
         if (res.ok) {
-            cachedData = await res.json();
-            if (!cachedData.questions) cachedData.questions = [];
-            if (!cachedData.groups) cachedData.groups = [];
-            if (!cachedData.history) cachedData.history = [];
-            if (cachedData.broadcast_queue) sendBroadcast(cachedData.broadcast_queue);
+            const data = await res.json();
+            // Merge defaults to prevent crashes
+            cachedData = {
+                questions: data.questions || [],
+                groups: data.groups || [],
+                history: data.history || [],
+                scheduled_queue: data.scheduled_queue || [],
+                last_weekly_run: data.last_weekly_run || ""
+            };
+            
+            // Immediate Broadcast (Immediate Queue)
+            if (data.broadcast_queue) sendBroadcast(data.broadcast_queue);
+            
+            // Check Schedules
+            checkSchedules();
         }
     } catch (e) {
         console.error("Error fetching from Pantry:", e);
     }
-}
-
-// 3. BROADCAST LOGIC
-async function sendBroadcast(message) {
-    for (const group of cachedData.groups) {
-        if (group.id === ADMIN_GROUP_ID) continue; 
-        if (group.enabled) {
-            try {
-                await bot.sendMessage(group.id, `📢 ANNOUNCEMENT:\n\n${message}`);
-            } catch (err) {
-                console.error(`Failed to send to group ${group.name}:`, err.message);
-            }
-        }
-    }
-    cachedData.broadcast_queue = null;
-    saveToPantry();
 }
 
 async function saveToPantry() {
@@ -77,26 +73,106 @@ async function saveToPantry() {
     } catch (e) { console.error("Error saving:", e); }
 }
 
-// 4. GROUP REGISTRATION
+// --- 3. BROADCASTING & SCHEDULING ---
+
+// Send to ALL Driver Groups
+async function sendBroadcast(message) {
+    console.log("Sending Broadcast:", message);
+    for (const group of cachedData.groups) {
+        if (group.id === ADMIN_GROUP_ID) continue; 
+        if (group.enabled) {
+            try {
+                await bot.sendMessage(group.id, `📢 ANNOUNCEMENT:\n\n${message}`);
+            } catch (err) {
+                console.error(`Failed to send to ${group.name}:`, err.message);
+            }
+        }
+    }
+    // Clear immediate queue if it exists
+    if (cachedData.broadcast_queue) {
+        cachedData.broadcast_queue = null;
+        saveToPantry();
+    }
+}
+
+// THE NEW SCHEDULER FUNCTION (Runs every minute)
+async function checkSchedules() {
+    const now = new Date();
+    let dataChanged = false;
+
+    // A. Weekly Sunday Survey
+    const todayStr = now.toISOString().split('T')[0]; // "2023-10-27"
+    const isSunday =now.getDay() === WEEKLY_DAY;
+    const isTime = now.getHours() >= WEEKLY_HOUR;
+    const alreadySent = cachedData.last_weekly_run === todayStr;
+
+    if (isSunday && isTime && !alreadySent) {
+        console.log("🚀 Triggering Weekly Survey!");
+        const botUser = await bot.getMe();
+        const surveyMsg = `📋 <b>Weekly Feedback Time!</b>\n\nPlease verify your truck status and share your feedback for the week.\n\n👉 <a href="https://t.me/${botUser.username}?start=weekly">Click here to Start Survey</a>`;
+        
+        // Send to all groups
+        for (const group of cachedData.groups) {
+            if (group.id === ADMIN_GROUP_ID) continue;
+            if (group.enabled) {
+                try {
+                    await bot.sendMessage(group.id, surveyMsg, { parse_mode: "HTML" });
+                } catch (e) {}
+            }
+        }
+        
+        cachedData.last_weekly_run = todayStr;
+        dataChanged = true;
+    }
+
+    // B. Scheduled Messages
+    if (cachedData.scheduled_queue.length > 0) {
+        const remainingQueue = [];
+        for (const item of cachedData.scheduled_queue) {
+            const scheduledTime = new Date(item.time);
+            if (now >= scheduledTime) {
+                // Time to send!
+                await sendBroadcast(item.text);
+                dataChanged = true; // Queue changed
+            } else {
+                // Keep for later
+                remainingQueue.push(item);
+            }
+        }
+        
+        // Update local queue only if items were removed
+        if (remainingQueue.length !== cachedData.scheduled_queue.length) {
+            cachedData.scheduled_queue = remainingQueue;
+            dataChanged = true;
+        }
+    }
+
+    if (dataChanged) await saveToPantry();
+}
+
+// --- 4. CORE BOT FUNCTIONS ---
+
 bot.on('message', async (msg) => {
-    if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
-        const groupId = msg.chat.id;
-        const groupName = msg.chat.title;
-        const exists = cachedData.groups.find(g => g.id === groupId);
+    // Group Registration
+    if (['group', 'supergroup'].includes(msg.chat.type)) {
+        const exists = cachedData.groups.find(g => g.id === msg.chat.id);
         if (!exists) {
-            cachedData.groups.push({ id: groupId, name: groupName, enabled: true });
-            console.log(`New Group Registered: ${groupName}`);
+            cachedData.groups.push({ id: msg.chat.id, name: msg.chat.title, enabled: true });
+            console.log(`New Group: ${msg.chat.title}`);
             await saveToPantry();
         }
     }
+    // Handle Answers
+    if (msg.chat.type === 'private' && userSessions[msg.chat.id]) {
+        if (msg.text === '/start') return;
+        handleAnswer(msg);
+    }
 });
 
-// 5. START SURVEY
 bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
     if (chatId === ADMIN_GROUP_ID) return;
     await loadData();
-
     if (cachedData.questions.length === 0) return bot.sendMessage(chatId, "No questions setup.");
 
     let identifier = msg.from.username ? `@${msg.from.username}` : msg.from.first_name;
@@ -111,31 +187,25 @@ function askQuestion(chatId) {
     const question = cachedData.questions[session.step];
     if (!question) { finishSurvey(chatId); return; }
 
-    let options = {};
+    let options = { reply_markup: { remove_keyboard: true } };
     if (question.type === 'choice' && question.options) {
         options = { reply_markup: { keyboard: question.options.map(o => ([o])), one_time_keyboard: true, resize_keyboard: true } };
-    } else {
-        options = { reply_markup: { remove_keyboard: true } };
     }
     bot.sendMessage(chatId, `📝 ${question.text}`, options);
 }
 
-// HANDLE ANSWERS
-bot.on('message', (msg) => {
+function handleAnswer(msg) {
     const chatId = msg.chat.id;
-    if (msg.text === '/start' || msg.chat.type !== 'private') return;
     const session = userSessions[chatId];
-    if (!session) return;
-
     const currentQ = cachedData.questions[session.step];
+    
     if (currentQ.type === 'choice' && currentQ.options && !currentQ.options.includes(msg.text)) {
         return bot.sendMessage(chatId, "❌ Please select a button.");
     }
-
     session.answers.push({ question: currentQ.text, answer: msg.text });
     session.step++;
     askQuestion(chatId);
-});
+}
 
 async function finishSurvey(chatId) {
     const session = userSessions[chatId];
@@ -151,13 +221,10 @@ async function finishSurvey(chatId) {
     delete userSessions[chatId];
 }
 
-setInterval(loadData, 60000); 
+// 7. HEARTBEAT & SERVER
+setInterval(loadData, 60000); // Checks Pantry & Schedule every 60s
 
-// 6. HEALTH CHECK (Keep Alive)
-const server = http.createServer((req, res) => {
-    res.writeHead(200);
-    res.end('Bot is running!');
-});
+const server = http.createServer((req, res) => { res.writeHead(200); res.end('Bot is running!'); });
 const port = process.env.PORT || 8000;
 server.listen(port, () => console.log(`Health check running on ${port}`));
 
