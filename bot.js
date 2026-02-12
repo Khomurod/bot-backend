@@ -21,8 +21,8 @@ let cachedData = {
     questions: [], 
     groups: [], 
     history: [], 
-    scheduled_queue: [], // New: For one-off scheduled msgs
-    last_weekly_run: ""  // New: To prevent duplicate Sunday sends
+    scheduled_queue: [], 
+    last_weekly_run: ""  
 };
 
 // --- 🛡️ STABILITY FIXES ---
@@ -43,7 +43,6 @@ async function loadData() {
         const res = await fetch(PANTRY_URL);
         if (res.ok) {
             const data = await res.json();
-            // Merge defaults to prevent crashes
             cachedData = {
                 questions: data.questions || [],
                 groups: data.groups || [],
@@ -52,10 +51,7 @@ async function loadData() {
                 last_weekly_run: data.last_weekly_run || ""
             };
             
-            // Immediate Broadcast (Immediate Queue)
             if (data.broadcast_queue) sendBroadcast(data.broadcast_queue);
-            
-            // Check Schedules
             checkSchedules();
         }
     } catch (e) {
@@ -74,8 +70,6 @@ async function saveToPantry() {
 }
 
 // --- 3. BROADCASTING & SCHEDULING ---
-
-// Send to ALL Driver Groups
 async function sendBroadcast(message) {
     console.log("Sending Broadcast:", message);
     for (const group of cachedData.groups) {
@@ -88,20 +82,18 @@ async function sendBroadcast(message) {
             }
         }
     }
-    // Clear immediate queue if it exists
     if (cachedData.broadcast_queue) {
         cachedData.broadcast_queue = null;
         saveToPantry();
     }
 }
 
-// THE NEW SCHEDULER FUNCTION (Runs every minute)
 async function checkSchedules() {
     const now = new Date();
     let dataChanged = false;
 
     // A. Weekly Sunday Survey
-    const todayStr = now.toISOString().split('T')[0]; // "2023-10-27"
+    const todayStr = now.toISOString().split('T')[0]; 
     const isSunday =now.getDay() === WEEKLY_DAY;
     const isTime = now.getHours() >= WEEKLY_HOUR;
     const alreadySent = cachedData.last_weekly_run === todayStr;
@@ -111,7 +103,6 @@ async function checkSchedules() {
         const botUser = await bot.getMe();
         const surveyMsg = `📋 <b>Weekly Feedback Time!</b>\n\nPlease verify your truck status and share your feedback for the week.\n\n👉 <a href="https://t.me/${botUser.username}?start=weekly">Click here to Start Survey</a>`;
         
-        // Send to all groups
         for (const group of cachedData.groups) {
             if (group.id === ADMIN_GROUP_ID) continue;
             if (group.enabled) {
@@ -131,16 +122,12 @@ async function checkSchedules() {
         for (const item of cachedData.scheduled_queue) {
             const scheduledTime = new Date(item.time);
             if (now >= scheduledTime) {
-                // Time to send!
                 await sendBroadcast(item.text);
-                dataChanged = true; // Queue changed
+                dataChanged = true; 
             } else {
-                // Keep for later
                 remainingQueue.push(item);
             }
         }
-        
-        // Update local queue only if items were removed
         if (remainingQueue.length !== cachedData.scheduled_queue.length) {
             cachedData.scheduled_queue = remainingQueue;
             dataChanged = true;
@@ -178,7 +165,9 @@ bot.onText(/\/start/, async (msg) => {
     let identifier = msg.from.username ? `@${msg.from.username}` : msg.from.first_name;
     userSessions[chatId] = { step: 0, answers: [], userInfo: identifier };
     
-    bot.sendMessage(chatId, `👋 Hello ${msg.from.first_name}! Let's start.`);
+    // RESTORED: The nice HTML Welcome Message
+    await bot.sendMessage(chatId, `👋 <b>Hello, ${msg.from.first_name}!</b>\n\nI have a few quick questions for you. Let's get started!`, { parse_mode: "HTML" });
+    
     askQuestion(chatId);
 });
 
@@ -187,11 +176,24 @@ function askQuestion(chatId) {
     const question = cachedData.questions[session.step];
     if (!question) { finishSurvey(chatId); return; }
 
-    let options = { reply_markup: { remove_keyboard: true } };
+    let options = {}; // Reset options object
     if (question.type === 'choice' && question.options) {
-        options = { reply_markup: { keyboard: question.options.map(o => ([o])), one_time_keyboard: true, resize_keyboard: true } };
+        options = { 
+            reply_markup: { 
+                keyboard: question.options.map(o => ([o])), 
+                one_time_keyboard: true, 
+                resize_keyboard: true 
+            } 
+        };
+    } else {
+        options = { reply_markup: { remove_keyboard: true } };
     }
-    bot.sendMessage(chatId, `📝 ${question.text}`, options);
+    
+    // RESTORED: The "Question X:" prefix and Bold text
+    // Merging parse_mode into the options object
+    const finalOptions = { ...options, parse_mode: "HTML" };
+    
+    bot.sendMessage(chatId, `📝 <b>Question ${session.step + 1}:</b>\n${question.text}`, finalOptions);
 }
 
 function handleAnswer(msg) {
@@ -200,7 +202,7 @@ function handleAnswer(msg) {
     const currentQ = cachedData.questions[session.step];
     
     if (currentQ.type === 'choice' && currentQ.options && !currentQ.options.includes(msg.text)) {
-        return bot.sendMessage(chatId, "❌ Please select a button.");
+        return bot.sendMessage(chatId, "❌ <b>Please select one of the buttons below.</b>", { parse_mode: "HTML" });
     }
     session.answers.push({ question: currentQ.text, answer: msg.text });
     session.step++;
@@ -209,10 +211,13 @@ function handleAnswer(msg) {
 
 async function finishSurvey(chatId) {
     const session = userSessions[chatId];
-    bot.sendMessage(chatId, "✅ Feedback sent!", { reply_markup: { remove_keyboard: true } });
+    bot.sendMessage(chatId, "✅ <b>Thank you!</b> Your feedback has been sent.", { parse_mode: "HTML", reply_markup: { remove_keyboard: true } });
 
-    let report = `📝 <b>Feedback:</b> ${session.userInfo}\n\n`;
-    session.answers.forEach(a => report += `<b>${a.question}</b>\n${a.answer}\n\n`);
+    let report = `📝 <b>New Feedback Received</b>\n`;
+    report += `👤 <b>Driver:</b> ${session.userInfo}\n`;
+    report += `🆔 <b>ID:</b> ${chatId}\n\n`;
+    
+    session.answers.forEach(a => report += `<b>Q: ${a.question}</b>\n${a.answer}\n\n`);
     
     try { await bot.sendMessage(ADMIN_GROUP_ID, report, { parse_mode: "HTML" }); } catch (e) {}
 
@@ -221,8 +226,7 @@ async function finishSurvey(chatId) {
     delete userSessions[chatId];
 }
 
-// 7. HEARTBEAT & SERVER
-setInterval(loadData, 60000); // Checks Pantry & Schedule every 60s
+setInterval(loadData, 60000); 
 
 const server = http.createServer((req, res) => { res.writeHead(200); res.end('Bot is running!'); });
 const port = process.env.PORT || 8000;
