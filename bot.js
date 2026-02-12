@@ -22,7 +22,8 @@ let cachedData = {
     groups: [], 
     history: [], 
     scheduled_queue: [], 
-    last_weekly_run: ""  
+    last_weekly_run: "",
+    broadcast_queue: null 
 };
 
 // --- 🛡️ STABILITY FIXES ---
@@ -48,10 +49,15 @@ async function loadData() {
                 groups: data.groups || [],
                 history: data.history || [],
                 scheduled_queue: data.scheduled_queue || [],
-                last_weekly_run: data.last_weekly_run || ""
+                last_weekly_run: data.last_weekly_run || "",
+                broadcast_queue: data.broadcast_queue || null // <--- THE FIX: Now we remember it!
             };
             
-            if (data.broadcast_queue) sendBroadcast(data.broadcast_queue);
+            // Immediate Broadcast
+            if (cachedData.broadcast_queue) {
+                await sendBroadcast(cachedData.broadcast_queue);
+            }
+            
             checkSchedules();
         }
     } catch (e) {
@@ -82,10 +88,11 @@ async function sendBroadcast(message) {
             }
         }
     }
-    if (cachedData.broadcast_queue) {
-        cachedData.broadcast_queue = null;
-        saveToPantry();
-    }
+    
+    // THE FIX: Explicitly clear and save immediately
+    cachedData.broadcast_queue = null;
+    await saveToPantry();
+    console.log("Broadcast queue cleared.");
 }
 
 async function checkSchedules() {
@@ -165,7 +172,6 @@ bot.onText(/\/start/, async (msg) => {
     let identifier = msg.from.username ? `@${msg.from.username}` : msg.from.first_name;
     userSessions[chatId] = { step: 0, answers: [], userInfo: identifier };
     
-    // RESTORED: The nice HTML Welcome Message
     await bot.sendMessage(chatId, `👋 <b>Hello, ${msg.from.first_name}!</b>\n\nI have a few quick questions for you. Let's get started!`, { parse_mode: "HTML" });
     
     askQuestion(chatId);
@@ -176,7 +182,7 @@ function askQuestion(chatId) {
     const question = cachedData.questions[session.step];
     if (!question) { finishSurvey(chatId); return; }
 
-    let options = {}; // Reset options object
+    let options = {}; 
     if (question.type === 'choice' && question.options) {
         options = { 
             reply_markup: { 
@@ -189,10 +195,7 @@ function askQuestion(chatId) {
         options = { reply_markup: { remove_keyboard: true } };
     }
     
-    // RESTORED: The "Question X:" prefix and Bold text
-    // Merging parse_mode into the options object
     const finalOptions = { ...options, parse_mode: "HTML" };
-    
     bot.sendMessage(chatId, `📝 <b>Question ${session.step + 1}:</b>\n${question.text}`, finalOptions);
 }
 
