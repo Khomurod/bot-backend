@@ -1,11 +1,12 @@
 require('dotenv').config(); 
-const http = require('http'); // New import for the health check
+const http = require('http'); 
 const TelegramBot = require('node-telegram-bot-api');
 const fetch = require('node-fetch');
 
 // 1. CONFIGURATION
-const TOKEN = '8245365754:AAHqhtzDzyE-NWdYpBmff_L-mGq1SprnuWo'; 
-const PANTRY_ID = '42f7bc17-4c7d-4314-9a0d-19f876d39db6'; 
+// Use Environment Variables for safety, or fallback to hardcoded (for now)
+const TOKEN = process.env.BOT_TOKEN || '8245365754:AAHqhtzDzyE-NWdYpBmff_L-mGq1SprnuWo'; 
+const PANTRY_ID = process.env.PANTRY_ID || '42f7bc17-4c7d-4314-9a0d-19f876d39db6'; 
 const PANTRY_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/driver_data`;
 
 // 🔒 HARDCODED ADMIN ID
@@ -15,6 +16,27 @@ const bot = new TelegramBot(TOKEN, { polling: true });
 
 const userSessions = {};
 let cachedData = { questions: [], groups: [], history: [] };
+
+// --- 🛡️ CRITICAL STABILITY FIXES (THE AIRBAGS) ---
+
+// 1. Handle Polling Errors (Prevents crashing on internet blips)
+bot.on('polling_error', (error) => {
+    console.log(`[Polling Error] ${error.code}: ${error.message}`);
+    // Do NOT crash. Just log it.
+});
+
+// 2. Handle Global Errors (Prevents crashing on unexpected bugs)
+process.on('uncaughtException', (err) => {
+    console.error('UNCAUGHT EXCEPTION:', err);
+    // Keep running
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('UNHANDLED REJECTION:', reason);
+    // Keep running
+});
+
+// --- END STABILITY FIXES ---
 
 // 2. LOAD DATA
 async function loadData() {
@@ -55,13 +77,16 @@ async function sendBroadcast(message) {
     await saveToPantry();
 }
 
-// Helper to save data
 async function saveToPantry() {
-    await fetch(PANTRY_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(cachedData)
-    });
+    try {
+        await fetch(PANTRY_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(cachedData)
+        });
+    } catch (e) {
+        console.error("Error saving to Pantry:", e);
+    }
 }
 
 // 4. GROUP REGISTRATION
@@ -193,7 +218,7 @@ setInterval(() => {
     loadData();
 }, 60000); 
 
-// 8. 🏥 HEALTH CHECK SERVER (This fixes the Koyeb Error)
+// 8. 🏥 HEALTH CHECK SERVER
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Bot is running!');
