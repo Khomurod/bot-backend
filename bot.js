@@ -60,8 +60,7 @@ function scrubDuplicates() {
     }
 }
 
-// --- NEW: MUTEX LOCK ---
-// This acts as a shield to prevent the bot from running duplicate commands at the exact same time
+// --- MUTEX LOCK ---
 let isChecking = false;
 
 // --- 2. CLOUD DATA LOADING & SAVING ---
@@ -79,14 +78,17 @@ async function loadData() {
             
             scrubDuplicates(); 
 
-            // THE FIX: Extract and clear the broadcast queue BEFORE sending to prevent double-sends
             if (cachedData.broadcast_queue) {
                 const msgToSend = cachedData.broadcast_queue;
                 cachedData.broadcast_queue = null;
                 await saveToDatabase();
                 await sendBroadcast(msgToSend, false);
             }
-            await checkSchedules();
+            
+            // 🛑 THE FIX: Delay the first schedule check by 15 seconds to let Koyeb's old deployment shut down!
+            setTimeout(() => {
+                checkSchedules();
+            }, 15000);
         }
     } catch (e) {
         console.error("Error reading from Pantry cloud database:", e);
@@ -144,7 +146,6 @@ async function sendBroadcast(message, includeSurvey = false) {
 }
 
 async function checkSchedules() {
-    // THE FIX: The Mutex Lock! If it's already checking, stop immediately!
     if (isChecking) return;
     isChecking = true;
 
@@ -181,7 +182,6 @@ async function checkSchedules() {
             console.log("🚀 Triggering Weekly Survey (Central Time)!");
             const surveyText = "Hey, hope your week is going well. Please take the small survey clicking on the button below, that'd help us improve our services. Thank you";
             
-            // Update and save the lock immediately before sending!
             cachedData.last_weekly_run = todayStr;
             await saveToDatabase();
             
@@ -205,12 +205,11 @@ async function checkSchedules() {
                 }
             }
             
-            // THE FIX: Extract the messages, clear them from the queue, and save to the database BEFORE sending!
             if (toSend.length > 0) {
+                // Instantly remove from queue and lock database to prevent double-firing
                 cachedData.scheduled_queue = remainingQueue;
                 await saveToDatabase();
                 
-                // Now safely take our time sending to Telegram
                 for (const item of toSend) {
                     await sendBroadcast(item.text, item.includeSurvey);
                 }
@@ -223,7 +222,7 @@ async function checkSchedules() {
     } catch (err) {
         console.error("Schedule check failed:", err);
     } finally {
-        isChecking = false; // Always unlock the shield when finished
+        isChecking = false; 
     }
 }
 
@@ -340,19 +339,20 @@ app.post('/api/data', async (req, res) => {
         cachedData = { ...cachedData, ...req.body };
         scrubDuplicates(); 
 
-        // THE FIX: Immediately extract, clear, and save the broadcast queue BEFORE sending
         const immediateMsg = cachedData.broadcast_queue;
         cachedData.broadcast_queue = null;
+        
+        // 🛑 THE FIX: Force the server to entirely process the schedules and empty the queue BEFORE it replies to the dashboard!
+        await checkSchedules();
         await saveToDatabase();
         
-        // Reply to the admin dashboard instantly!
+        // Dashboard is now allowed to reload cleanly
         res.json({ success: true, message: "Data saved securely" });
         
-        // Now safely process the sends in the background
+        // Background handle simple immediate messages
         if (immediateMsg) {
             await sendBroadcast(immediateMsg, false);
         }
-        checkSchedules();
         
     } catch (error) {
         res.status(500).json({ success: false, error: "Failed to save data" });
