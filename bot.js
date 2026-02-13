@@ -18,7 +18,7 @@ let cachedData = {
     last_weekly_run: "",
     broadcast_queue: null,
     sessions: {},
-    weekly_schedule: { day: 5, hour: 16 }
+    weekly_schedule: { day: 5, hour: 16, minute: 0 }
 };
 
 // --- STABILITY FIXES ---
@@ -42,7 +42,7 @@ async function loadData() {
             
             cachedData = { ...cachedData, ...data };
             if (!cachedData.sessions) cachedData.sessions = {};
-            if (!cachedData.weekly_schedule) cachedData.weekly_schedule = { day: 5, hour: 16 };
+            if (!cachedData.weekly_schedule) cachedData.weekly_schedule = { day: 5, hour: 16, minute: 0 };
             if (!cachedData.scheduled_queue) cachedData.scheduled_queue = [];
             
             if (cachedData.broadcast_queue) {
@@ -58,7 +58,7 @@ async function loadData() {
 async function saveToDatabase() {
     try {
         await fetch(PANTRY_URL, {
-            method: 'PUT', // <--- THE FIX: PUT completely replaces the data, erasing old schedules
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(cachedData)
         });
@@ -108,17 +108,29 @@ async function checkSchedules() {
     const now = new Date();
     let dataChanged = false;
 
-    // A. Dynamic Weekly Target
-    const todayStr = now.toISOString().split('T')[0]; 
+    // A. Weekly Target configured for CENTRAL TIME (CT)
+    const ctDateStr = now.toLocaleString("en-US", { timeZone: "America/Chicago" });
+    const ctDate = new Date(ctDateStr);
+    
+    const currentDay = ctDate.getDay();
+    const currentHour = ctDate.getHours();
+    const currentMinute = ctDate.getMinutes();
+    
+    // Create a strict date string for CT so it doesn't run twice if midnight rolls over elsewhere
+    const todayStr = `${ctDate.getFullYear()}-${ctDate.getMonth() + 1}-${ctDate.getDate()}`;
+    
     const targetDay = cachedData.weekly_schedule.day;
     const targetHour = cachedData.weekly_schedule.hour;
+    const targetMinute = cachedData.weekly_schedule.minute || 0;
     
-    const isTargetDay = now.getDay() === targetDay;
-    const isTime = now.getHours() >= targetHour;
+    const isTargetDay = (currentDay === targetDay);
+    
+    // It's time if the current hour has passed the target, OR if it's the exact hour and the minute has reached the target
+    const isTime = (currentHour > targetHour) || (currentHour === targetHour && currentMinute >= targetMinute);
     const alreadySent = cachedData.last_weekly_run === todayStr;
 
     if (isTargetDay && isTime && !alreadySent) {
-        console.log("🚀 Triggering Weekly Survey!");
+        console.log("🚀 Triggering Weekly Survey (Central Time)!");
         const surveyText = "Hey, hope your week is going well. Please take the small survey clicking on the button below, that'd help us improve our services. Thank you";
         
         await sendBroadcast(surveyText, true);
