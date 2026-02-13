@@ -13,17 +13,18 @@ const WEEKLY_DAY = 5;
 const WEEKLY_HOUR = 16; 
 
 const bot = new TelegramBot(TOKEN, { polling: true });
-const userSessions = {};
 const DB_FILE = path.join(__dirname, 'database.json');
 
 // --- DATA STORE ---
+// NEW: "sessions" is now saved in the database!
 let cachedData = { 
     questions: [], 
     groups: [], 
     history: [], 
     scheduled_queue: [], 
     last_weekly_run: "",
-    broadcast_queue: null 
+    broadcast_queue: null,
+    sessions: {} 
 };
 
 // --- STABILITY FIXES ---
@@ -43,6 +44,9 @@ async function loadData() {
     try {
         const data = await fs.readFile(DB_FILE, 'utf8');
         cachedData = JSON.parse(data);
+        
+        // Ensure sessions object exists if loading an older database file
+        if (!cachedData.sessions) cachedData.sessions = {};
         
         if (cachedData.broadcast_queue) {
             await sendBroadcast(cachedData.broadcast_queue);
@@ -75,7 +79,7 @@ function getAdminGroupIds() {
 async function sendBroadcast(message) {
     console.log("Sending Broadcast:", message);
     for (const group of cachedData.groups) {
-        if (group.is_admin) continue; // Skip admin groups
+        if (group.is_admin) continue; 
         if (group.enabled) {
             try {
                 await bot.sendMessage(group.id, `📢 ANNOUNCEMENT:\n\n${message}`);
@@ -115,7 +119,7 @@ async function checkSchedules() {
         };
         
         for (const group of cachedData.groups) {
-            if (group.is_admin) continue; // Skip admin groups
+            if (group.is_admin) continue; 
             if (group.enabled) {
                 try {
                     await bot.sendMessage(group.id, surveyText, options);
@@ -155,14 +159,13 @@ bot.on('message', async (msg) => {
     if (['group', 'supergroup'].includes(msg.chat.type)) {
         const exists = cachedData.groups.find(g => g.id === msg.chat.id);
         if (!exists) {
-            // New groups default to Drivers (is_admin: false)
             cachedData.groups.push({ id: msg.chat.id, name: msg.chat.title, enabled: true, is_admin: false });
             console.log(`New Group: ${msg.chat.title}`);
             await saveToDatabase();
         }
     }
-    // Handle Answers
-    if (msg.chat.type === 'private' && userSessions[msg.chat.id]) {
+    // Handle Answers (Now checks the database for active sessions)
+    if (msg.chat.type === 'private' && cachedData.sessions && cachedData.sessions[msg.chat.id]) {
         if (msg.text === '/start') return;
         handleAnswer(msg);
     }
@@ -172,14 +175,17 @@ bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
     const adminIds = getAdminGroupIds();
     
-    // Ignore if an admin group somehow triggers /start
     if (adminIds.includes(chatId)) return;
     
     await loadData();
     if (cachedData.questions.length === 0) return bot.sendMessage(chatId, "No questions setup.");
 
     let identifier = msg.from.username ? `@${msg.from.username}` : msg.from.first_name;
-    userSessions[chatId] = { step: 0, answers: [], userInfo: identifier };
+    
+    // Save the new session into the database
+    if (!cachedData.sessions) cachedData.sessions = {};
+    cachedData.sessions[chatId] = { step: 0, answers: [], userInfo: identifier };
+    await saveToDatabase();
     
     await bot.sendMessage(chatId, `👋 Hello, ${msg.from.first_name}!\n\nI have a few quick questions for you. Let's get started!`);
     
@@ -187,7 +193,7 @@ bot.onText(/\/start/, async (msg) => {
 });
 
 function askQuestion(chatId) {
-    const session = userSessions[chatId];
+    const session = cachedData.sessions[chatId];
     const question = cachedData.questions[session.step];
     if (!question) { finishSurvey(chatId); return; }
 
@@ -207,9 +213,9 @@ function askQuestion(chatId) {
     bot.sendMessage(chatId, `📝 Question ${session.step + 1}:\n${question.text}`, options);
 }
 
-function handleAnswer(msg) {
+async function handleAnswer(msg) {
     const chatId = msg.chat.id;
-    const session = userSessions[chatId];
+    const session = cachedData.sessions[chatId];
     const currentQ = cachedData.questions[session.step];
     
     if (currentQ.type === 'choice' && currentQ.options && !currentQ.options.includes(msg.text)) {
@@ -217,11 +223,14 @@ function handleAnswer(msg) {
     }
     session.answers.push({ question: currentQ.text, answer: msg.text });
     session.step++;
+    
+    // Save their progress to the database
+    await saveToDatabase(); 
     askQuestion(chatId);
 }
 
 async function finishSurvey(chatId) {
-    const session = userSessions[chatId];
+    const session = cachedData.sessions[chatId];
     bot.sendMessage(chatId, "✅ Thank you! Your feedback has been sent.", { reply_markup: { remove_keyboard: true } });
 
     let report = `📝 New Feedback Received\n`;
@@ -230,7 +239,6 @@ async function finishSurvey(chatId) {
     
     session.answers.forEach(a => report += `Q: ${a.question}\n${a.answer}\n\n`);
     
-    // Send report to ALL groups marked as Admin
     const adminIds = getAdminGroupIds();
     if (adminIds.length === 0) {
         console.log("Warning: No Admin groups are set up to receive this report!");
@@ -241,8 +249,10 @@ async function finishSurvey(chatId) {
     }
 
     cachedData.history.push({ date: new Date().toISOString(), user: session.userInfo, answers: session.answers });
+    
+    // Remove the finished session and save
+    delete cachedData.sessions[chatId];
     await saveToDatabase();
-    delete userSessions[chatId];
 }
 
 // --- 5. SECURE API SERVER ---
