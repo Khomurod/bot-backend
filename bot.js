@@ -60,6 +60,10 @@ function scrubDuplicates() {
     }
 }
 
+// --- NEW: MUTEX LOCK ---
+// This acts as a shield to prevent the bot from running duplicate commands at the exact same time
+let isChecking = false;
+
 // --- 2. CLOUD DATA LOADING & SAVING ---
 async function loadData() {
     try {
@@ -75,8 +79,12 @@ async function loadData() {
             
             scrubDuplicates(); 
 
+            // THE FIX: Extract and clear the broadcast queue BEFORE sending to prevent double-sends
             if (cachedData.broadcast_queue) {
-                await sendBroadcast(cachedData.broadcast_queue, false);
+                const msgToSend = cachedData.broadcast_queue;
+                cachedData.broadcast_queue = null;
+                await saveToDatabase();
+                await sendBroadcast(msgToSend, false);
             }
             await checkSchedules();
         }
@@ -105,7 +113,7 @@ function getAdminGroupIds() {
 async function sendBroadcast(message, includeSurvey = false) {
     console.log("Sending Broadcast:", message);
     
-    let options = null; // Default to null for safety
+    let options = null; 
     if (includeSurvey) {
         const botUser = await bot.getMe();
         const botLink = `https://t.me/${botUser.username}?start=weekly`;
@@ -122,7 +130,6 @@ async function sendBroadcast(message, includeSurvey = false) {
         if (group.is_admin) continue; 
         if (group.enabled) {
             try {
-                // THE FIX: Only pass the options object if it actually exists to prevent Telegram API errors
                 if (options) {
                     await bot.sendMessage(group.id, `📢 ANNOUNCEMENT:\n\n${message}`, options);
                 } else {
@@ -133,25 +140,24 @@ async function sendBroadcast(message, includeSurvey = false) {
             }
         }
     }
-    
-    cachedData.broadcast_queue = null;
-    await saveToDatabase();
-    console.log("Broadcast sent.");
+    console.log("Broadcast completed gracefully.");
 }
 
 async function checkSchedules() {
-    const now = new Date();
-    let dataChanged = false;
+    // THE FIX: The Mutex Lock! If it's already checking, stop immediately!
+    if (isChecking) return;
+    isChecking = true;
 
-    // A. Weekly Target configured for CENTRAL TIME (CT)
     try {
+        const now = new Date();
+        let dataChanged = false;
+
+        // A. Weekly Target configured for CENTRAL TIME (CT)
         let ctDate;
         try {
-            // Attempt strict Central Time conversion
             const ctDateStr = now.toLocaleString("en-US", { timeZone: "America/Chicago" });
             ctDate = new Date(ctDateStr);
         } catch(e) {
-            // Fallback: If tzdata fails, manually offset 6 hours so it never crashes!
             console.log("Server lacking tzdata, falling back to manual CT offset.");
             ctDate = new Date(now.getTime() - (6 * 60 * 60 * 1000));
         }
@@ -175,42 +181,50 @@ async function checkSchedules() {
             console.log("🚀 Triggering Weekly Survey (Central Time)!");
             const surveyText = "Hey, hope your week is going well. Please take the small survey clicking on the button below, that'd help us improve our services. Thank you";
             
-            await sendBroadcast(surveyText, true);
-            
+            // Update and save the lock immediately before sending!
             cachedData.last_weekly_run = todayStr;
+            await saveToDatabase();
+            
+            await sendBroadcast(surveyText, true);
             dataChanged = true;
         }
-    } catch (err) {
-        console.error("Weekly schedule check failed:", err);
-    }
 
-    // B. Custom Scheduled Queue
-    try {
+        // B. Custom Scheduled Queue
         if (cachedData.scheduled_queue && cachedData.scheduled_queue.length > 0) {
+            const toSend = [];
             const remainingQueue = [];
+            
             for (const item of cachedData.scheduled_queue) {
                 const scheduledTime = new Date(item.time);
-                
-                // THE FIX: Add a 1-minute buffer. This guarantees "Send Now" fires immediately even if your laptop clock is slightly faster than Koyeb's server clock!
                 const bufferedTime = new Date(scheduledTime.getTime() - 60000); 
                 
                 if (now >= bufferedTime) {
-                    await sendBroadcast(item.text, item.includeSurvey);
-                    dataChanged = true; 
+                    toSend.push(item);
                 } else {
                     remainingQueue.push(item);
                 }
             }
-            if (remainingQueue.length !== cachedData.scheduled_queue.length) {
+            
+            // THE FIX: Extract the messages, clear them from the queue, and save to the database BEFORE sending!
+            if (toSend.length > 0) {
                 cachedData.scheduled_queue = remainingQueue;
+                await saveToDatabase();
+                
+                // Now safely take our time sending to Telegram
+                for (const item of toSend) {
+                    await sendBroadcast(item.text, item.includeSurvey);
+                }
                 dataChanged = true;
             }
         }
-    } catch (err) {
-        console.error("Custom schedule check failed:", err);
-    }
 
-    if (dataChanged) await saveToDatabase();
+        if (dataChanged) await saveToDatabase();
+        
+    } catch (err) {
+        console.error("Schedule check failed:", err);
+    } finally {
+        isChecking = false; // Always unlock the shield when finished
+    }
 }
 
 // --- 4. CORE BOT FUNCTIONS ---
@@ -324,16 +338,21 @@ app.get('/api/data', (req, res) => {
 app.post('/api/data', async (req, res) => {
     try {
         cachedData = { ...cachedData, ...req.body };
-        
         scrubDuplicates(); 
 
-        if (cachedData.broadcast_queue) {
-            await sendBroadcast(cachedData.broadcast_queue, false);
-        }
-        await checkSchedules();
-        
+        // THE FIX: Immediately extract, clear, and save the broadcast queue BEFORE sending
+        const immediateMsg = cachedData.broadcast_queue;
+        cachedData.broadcast_queue = null;
         await saveToDatabase();
+        
+        // Reply to the admin dashboard instantly!
         res.json({ success: true, message: "Data saved securely" });
+        
+        // Now safely process the sends in the background
+        if (immediateMsg) {
+            await sendBroadcast(immediateMsg, false);
+        }
+        checkSchedules();
         
     } catch (error) {
         res.status(500).json({ success: false, error: "Failed to save data" });
