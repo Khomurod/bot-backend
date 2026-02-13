@@ -5,13 +5,7 @@ const cors = require('cors');
 
 // --- 1. CONFIGURATION ---
 const TOKEN = process.env.BOT_TOKEN || '8245365754:AAHqhtzDzyE-NWdYpBmff_L-mGq1SprnuWo'; 
-
-// We placed your original Pantry ID here on the safe backend!
 const PANTRY_URL = `https://getpantry.cloud/apiv1/pantry/42f7bc17-4c7d-4314-9a0d-19f876d39db6/basket/driver_data`;
-
-// CONFIG: Weekly Survey Time (5 = Friday, 16 = 4:00 PM UTC)
-const WEEKLY_DAY = 5; 
-const WEEKLY_HOUR = 16; 
 
 const bot = new TelegramBot(TOKEN, { polling: true });
 
@@ -23,7 +17,9 @@ let cachedData = {
     scheduled_queue: [], 
     last_weekly_run: "",
     broadcast_queue: null,
-    sessions: {} 
+    sessions: {},
+    // NEW: The weekly schedule is now stored and managed here! Default is Friday (5) at 16:00
+    weekly_schedule: { day: 5, hour: 16 }
 };
 
 // --- STABILITY FIXES ---
@@ -38,19 +34,20 @@ const stopBot = () => {
 process.on('SIGINT', stopBot);
 process.on('SIGTERM', stopBot);
 
-// --- 2. CLOUD DATA LOADING & SAVING (Rescues old data!) ---
+// --- 2. CLOUD DATA LOADING & SAVING ---
 async function loadData() {
     try {
         const res = await fetch(PANTRY_URL);
         if (res.ok) {
             const data = await res.json();
             
-            // Merge the rescued data into our server memory
             cachedData = { ...cachedData, ...data };
             if (!cachedData.sessions) cachedData.sessions = {};
+            if (!cachedData.weekly_schedule) cachedData.weekly_schedule = { day: 5, hour: 16 };
             
             if (cachedData.broadcast_queue) {
-                await sendBroadcast(cachedData.broadcast_queue);
+                // If the immediate broadcast was triggered, we assume it's just text
+                await sendBroadcast(cachedData.broadcast_queue, false);
             }
             checkSchedules();
         }
@@ -71,19 +68,34 @@ async function saveToDatabase() {
     }
 }
 
-// --- HELPER: GET ADMIN GROUPS ---
 function getAdminGroupIds() {
     return cachedData.groups.filter(g => g.is_admin === true).map(g => g.id);
 }
 
 // --- 3. BROADCASTING & SCHEDULING ---
-async function sendBroadcast(message) {
+
+// NEW: Supports attaching the survey button if includeSurvey is true
+async function sendBroadcast(message, includeSurvey = false) {
     console.log("Sending Broadcast:", message);
+    
+    let options = {};
+    if (includeSurvey) {
+        const botUser = await bot.getMe();
+        const botLink = `https://t.me/${botUser.username}?start=weekly`;
+        options = {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "📝 Take the Survey", url: botLink }]
+                ]
+            }
+        };
+    }
+
     for (const group of cachedData.groups) {
         if (group.is_admin) continue; 
         if (group.enabled) {
             try {
-                await bot.sendMessage(group.id, `📢 ANNOUNCEMENT:\n\n${message}`);
+                await bot.sendMessage(group.id, `📢 ANNOUNCEMENT:\n\n${message}`, options);
             } catch (err) {
                 console.error(`Failed to send to ${group.name}:`, err.message);
             }
@@ -92,54 +104,40 @@ async function sendBroadcast(message) {
     
     cachedData.broadcast_queue = null;
     await saveToDatabase();
-    console.log("Broadcast queue cleared.");
+    console.log("Broadcast sent.");
 }
 
 async function checkSchedules() {
     const now = new Date();
     let dataChanged = false;
 
+    // A. Dynamic Weekly Target
     const todayStr = now.toISOString().split('T')[0]; 
-    const isTargetDay = now.getDay() === WEEKLY_DAY;
-    const isTime = now.getHours() >= WEEKLY_HOUR;
+    const targetDay = cachedData.weekly_schedule.day;
+    const targetHour = cachedData.weekly_schedule.hour;
+    
+    const isTargetDay = now.getDay() === targetDay;
+    const isTime = now.getHours() >= targetHour;
     const alreadySent = cachedData.last_weekly_run === todayStr;
 
     if (isTargetDay && isTime && !alreadySent) {
         console.log("🚀 Triggering Weekly Survey!");
-        const botUser = await bot.getMe();
-        const botLink = `https://t.me/${botUser.username}?start=weekly`;
-
         const surveyText = "Hey, hope your week is going well. Please take the small survey clicking on the button below, that'd help us improve our services. Thank you";
-
-        const options = {
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: "📝 Take the Survey", url: botLink }]
-                ]
-            }
-        };
         
-        for (const group of cachedData.groups) {
-            if (group.is_admin) continue; 
-            if (group.enabled) {
-                try {
-                    await bot.sendMessage(group.id, surveyText, options);
-                } catch (e) {
-                    console.error(`Failed to send to group ${group.id}`);
-                }
-            }
-        }
+        await sendBroadcast(surveyText, true);
         
         cachedData.last_weekly_run = todayStr;
         dataChanged = true;
     }
 
+    // B. Custom Scheduled Queue
     if (cachedData.scheduled_queue && cachedData.scheduled_queue.length > 0) {
         const remainingQueue = [];
         for (const item of cachedData.scheduled_queue) {
             const scheduledTime = new Date(item.time);
             if (now >= scheduledTime) {
-                await sendBroadcast(item.text);
+                // Attach the survey button if the admin checked the box!
+                await sendBroadcast(item.text, item.includeSurvey);
                 dataChanged = true; 
             } else {
                 remainingQueue.push(item);
@@ -156,7 +154,6 @@ async function checkSchedules() {
 
 // --- 4. CORE BOT FUNCTIONS ---
 bot.on('message', async (msg) => {
-    // Group Registration
     if (['group', 'supergroup'].includes(msg.chat.type)) {
         const exists = cachedData.groups.find(g => g.id === msg.chat.id);
         if (!exists) {
@@ -165,7 +162,6 @@ bot.on('message', async (msg) => {
             await saveToDatabase();
         }
     }
-    // Handle Answers 
     if (msg.chat.type === 'private' && cachedData.sessions && cachedData.sessions[msg.chat.id]) {
         if (msg.text === '/start') return;
         handleAnswer(msg);
