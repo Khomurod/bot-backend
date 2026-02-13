@@ -85,7 +85,6 @@ async function loadData() {
                 await sendBroadcast(msgToSend, false);
             }
             
-            // 🛑 THE FIX: Delay the first schedule check by 15 seconds to let Koyeb's old deployment shut down!
             setTimeout(() => {
                 checkSchedules();
             }, 15000);
@@ -206,7 +205,6 @@ async function checkSchedules() {
             }
             
             if (toSend.length > 0) {
-                // Instantly remove from queue and lock database to prevent double-firing
                 cachedData.scheduled_queue = remainingQueue;
                 await saveToDatabase();
                 
@@ -342,14 +340,11 @@ app.post('/api/data', async (req, res) => {
         const immediateMsg = cachedData.broadcast_queue;
         cachedData.broadcast_queue = null;
         
-        // 🛑 THE FIX: Force the server to entirely process the schedules and empty the queue BEFORE it replies to the dashboard!
         await checkSchedules();
         await saveToDatabase();
         
-        // Dashboard is now allowed to reload cleanly
         res.json({ success: true, message: "Data saved securely" });
         
-        // Background handle simple immediate messages
         if (immediateMsg) {
             await sendBroadcast(immediateMsg, false);
         }
@@ -362,5 +357,6 @@ app.post('/api/data', async (req, res) => {
 const port = process.env.PORT || 8000;
 app.listen(port, () => console.log(`Secure API and Bot running on port ${port}`));
 
+// 🛑 THE FIX: This strictly checks schedules. It no longer wipes active memory!
 setInterval(checkSchedules, 60000); 
-loadData();
+loadData(); // Only pull from Pantry ONCE at startup
