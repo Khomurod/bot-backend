@@ -48,7 +48,7 @@ async function loadData() {
             if (cachedData.broadcast_queue) {
                 await sendBroadcast(cachedData.broadcast_queue, false);
             }
-            checkSchedules();
+            await checkSchedules();
         }
     } catch (e) {
         console.error("Error reading from Pantry cloud database:", e);
@@ -116,7 +116,6 @@ async function checkSchedules() {
     const currentHour = ctDate.getHours();
     const currentMinute = ctDate.getMinutes();
     
-    // Create a strict date string for CT so it doesn't run twice if midnight rolls over elsewhere
     const todayStr = `${ctDate.getFullYear()}-${ctDate.getMonth() + 1}-${ctDate.getDate()}`;
     
     const targetDay = cachedData.weekly_schedule.day;
@@ -125,7 +124,6 @@ async function checkSchedules() {
     
     const isTargetDay = (currentDay === targetDay);
     
-    // It's time if the current hour has passed the target, OR if it's the exact hour and the minute has reached the target
     const isTime = (currentHour > targetHour) || (currentHour === targetHour && currentMinute >= targetMinute);
     const alreadySent = cachedData.last_weekly_run === todayStr;
 
@@ -182,7 +180,10 @@ bot.onText(/\/start/, async (msg) => {
     
     if (adminIds.includes(chatId)) return;
     
-    await loadData();
+    // Only force a hard reload if the server just woke up and has 0 data
+    if (cachedData.questions.length === 0) {
+        await loadData();
+    }
     if (cachedData.questions.length === 0) return bot.sendMessage(chatId, "No questions setup.");
 
     let identifier = msg.from.username ? `@${msg.from.username}` : msg.from.first_name;
@@ -269,13 +270,15 @@ app.get('/api/data', (req, res) => {
 app.post('/api/data', async (req, res) => {
     try {
         cachedData = { ...cachedData, ...req.body };
-        await saveToDatabase();
-        res.json({ success: true, message: "Data saved securely" });
         
+        // 🛑 CRITICAL FIX: The server MUST finish sending the messages and cleaning the queue BEFORE replying!
         if (cachedData.broadcast_queue) {
             await sendBroadcast(cachedData.broadcast_queue, false);
         }
-        checkSchedules();
+        await checkSchedules();
+        
+        await saveToDatabase();
+        res.json({ success: true, message: "Data saved securely" });
         
     } catch (error) {
         res.status(500).json({ success: false, error: "Failed to save data" });
@@ -285,5 +288,6 @@ app.post('/api/data', async (req, res) => {
 const port = process.env.PORT || 8000;
 app.listen(port, () => console.log(`Secure API and Bot running on port ${port}`));
 
-setInterval(loadData, 60000); 
+// 🛑 CRITICAL FIX: Only check the schedules every 60 seconds. Do NOT erase live memory with Pantry data!
+setInterval(checkSchedules, 60000); 
 loadData();
