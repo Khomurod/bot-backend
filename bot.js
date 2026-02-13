@@ -33,6 +33,37 @@ const stopBot = () => {
 process.on('SIGINT', stopBot);
 process.on('SIGTERM', stopBot);
 
+
+// --- NEW: THE AUTO-SCRUBBER ---
+// This permanently deletes historical duplicates from your database
+function scrubDuplicates() {
+    if (cachedData.questions) {
+        const uniqueQs = [];
+        const qTexts = new Set();
+        for (const q of cachedData.questions) {
+            if (!qTexts.has(q.text)) {
+                qTexts.add(q.text);
+                uniqueQs.push(q);
+            }
+        }
+        cachedData.questions = uniqueQs;
+    }
+
+    if (cachedData.groups) {
+        const uniqueGs = [];
+        const gIds = new Set();
+        for (const g of cachedData.groups) {
+            if (!gIds.has(g.id)) {
+                gIds.add(g.id);
+                uniqueGs.push(g);
+            }
+        }
+        cachedData.groups = uniqueGs;
+    }
+}
+// ------------------------------
+
+
 // --- 2. CLOUD DATA LOADING & SAVING ---
 async function loadData() {
     try {
@@ -45,6 +76,8 @@ async function loadData() {
             if (!cachedData.weekly_schedule) cachedData.weekly_schedule = { day: 5, hour: 16, minute: 0 };
             if (!cachedData.scheduled_queue) cachedData.scheduled_queue = [];
             
+            scrubDuplicates(); // Run the scrubber on startup!
+
             if (cachedData.broadcast_queue) {
                 await sendBroadcast(cachedData.broadcast_queue, false);
             }
@@ -180,7 +213,6 @@ bot.onText(/\/start/, async (msg) => {
     
     if (adminIds.includes(chatId)) return;
     
-    // Only force a hard reload if the server just woke up and has 0 data
     if (cachedData.questions.length === 0) {
         await loadData();
     }
@@ -271,7 +303,8 @@ app.post('/api/data', async (req, res) => {
     try {
         cachedData = { ...cachedData, ...req.body };
         
-        // 🛑 CRITICAL FIX: The server MUST finish sending the messages and cleaning the queue BEFORE replying!
+        scrubDuplicates(); // Run the scrubber whenever data is saved from the dashboard!
+
         if (cachedData.broadcast_queue) {
             await sendBroadcast(cachedData.broadcast_queue, false);
         }
@@ -288,6 +321,5 @@ app.post('/api/data', async (req, res) => {
 const port = process.env.PORT || 8000;
 app.listen(port, () => console.log(`Secure API and Bot running on port ${port}`));
 
-// 🛑 CRITICAL FIX: Only check the schedules every 60 seconds. Do NOT erase live memory with Pantry data!
 setInterval(checkSchedules, 60000); 
 loadData();
