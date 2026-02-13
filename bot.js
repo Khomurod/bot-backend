@@ -18,7 +18,6 @@ let cachedData = {
     last_weekly_run: "",
     broadcast_queue: null,
     sessions: {},
-    // NEW: The weekly schedule is now stored and managed here! Default is Friday (5) at 16:00
     weekly_schedule: { day: 5, hour: 16 }
 };
 
@@ -46,7 +45,6 @@ async function loadData() {
             if (!cachedData.weekly_schedule) cachedData.weekly_schedule = { day: 5, hour: 16 };
             
             if (cachedData.broadcast_queue) {
-                // If the immediate broadcast was triggered, we assume it's just text
                 await sendBroadcast(cachedData.broadcast_queue, false);
             }
             checkSchedules();
@@ -73,8 +71,6 @@ function getAdminGroupIds() {
 }
 
 // --- 3. BROADCASTING & SCHEDULING ---
-
-// NEW: Supports attaching the survey button if includeSurvey is true
 async function sendBroadcast(message, includeSurvey = false) {
     console.log("Sending Broadcast:", message);
     
@@ -130,13 +126,12 @@ async function checkSchedules() {
         dataChanged = true;
     }
 
-    // B. Custom Scheduled Queue
+    // B. Custom Scheduled Queue (Also handles immediate "Send Now" commands)
     if (cachedData.scheduled_queue && cachedData.scheduled_queue.length > 0) {
         const remainingQueue = [];
         for (const item of cachedData.scheduled_queue) {
             const scheduledTime = new Date(item.time);
             if (now >= scheduledTime) {
-                // Attach the survey button if the admin checked the box!
                 await sendBroadcast(item.text, item.includeSurvey);
                 dataChanged = true; 
             } else {
@@ -263,6 +258,13 @@ app.post('/api/data', async (req, res) => {
         cachedData = { ...cachedData, ...req.body };
         await saveToDatabase();
         res.json({ success: true, message: "Data saved securely" });
+        
+        // NEW: Instantly trigger the survey/broadcast without waiting for the 60-second polling loop
+        if (cachedData.broadcast_queue) {
+            await sendBroadcast(cachedData.broadcast_queue, false);
+        }
+        checkSchedules();
+        
     } catch (error) {
         res.status(500).json({ success: false, error: "Failed to save data" });
     }
