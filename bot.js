@@ -43,6 +43,7 @@ async function loadData() {
             cachedData = { ...cachedData, ...data };
             if (!cachedData.sessions) cachedData.sessions = {};
             if (!cachedData.weekly_schedule) cachedData.weekly_schedule = { day: 5, hour: 16 };
+            if (!cachedData.scheduled_queue) cachedData.scheduled_queue = [];
             
             if (cachedData.broadcast_queue) {
                 await sendBroadcast(cachedData.broadcast_queue, false);
@@ -57,7 +58,7 @@ async function loadData() {
 async function saveToDatabase() {
     try {
         await fetch(PANTRY_URL, {
-            method: 'POST',
+            method: 'PUT', // <--- THE FIX: PUT completely replaces the data, erasing old schedules
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(cachedData)
         });
@@ -126,7 +127,7 @@ async function checkSchedules() {
         dataChanged = true;
     }
 
-    // B. Custom Scheduled Queue (Also handles immediate "Send Now" commands)
+    // B. Custom Scheduled Queue
     if (cachedData.scheduled_queue && cachedData.scheduled_queue.length > 0) {
         const remainingQueue = [];
         for (const item of cachedData.scheduled_queue) {
@@ -259,7 +260,6 @@ app.post('/api/data', async (req, res) => {
         await saveToDatabase();
         res.json({ success: true, message: "Data saved securely" });
         
-        // NEW: Instantly trigger the survey/broadcast without waiting for the 60-second polling loop
         if (cachedData.broadcast_queue) {
             await sendBroadcast(cachedData.broadcast_queue, false);
         }
