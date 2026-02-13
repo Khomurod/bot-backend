@@ -7,7 +7,6 @@ const path = require('path');
 
 // --- 1. CONFIGURATION ---
 const TOKEN = process.env.BOT_TOKEN || '8245365754:AAHqhtzDzyE-NWdYpBmff_L-mGq1SprnuWo'; 
-const ADMIN_GROUP_ID = -5275569828; 
 
 // CONFIG: Weekly Survey Time (5 = Friday, 16 = 4:00 PM UTC)
 const WEEKLY_DAY = 5; 
@@ -45,11 +44,9 @@ async function loadData() {
         const data = await fs.readFile(DB_FILE, 'utf8');
         cachedData = JSON.parse(data);
         
-        // Immediate Broadcast
         if (cachedData.broadcast_queue) {
             await sendBroadcast(cachedData.broadcast_queue);
         }
-        
         checkSchedules();
     } catch (e) {
         if (e.code === 'ENOENT') {
@@ -69,11 +66,16 @@ async function saveToDatabase() {
     }
 }
 
+// --- HELPER: GET ADMIN GROUPS ---
+function getAdminGroupIds() {
+    return cachedData.groups.filter(g => g.is_admin === true).map(g => g.id);
+}
+
 // --- 3. BROADCASTING & SCHEDULING ---
 async function sendBroadcast(message) {
     console.log("Sending Broadcast:", message);
     for (const group of cachedData.groups) {
-        if (group.id === ADMIN_GROUP_ID) continue; 
+        if (group.is_admin) continue; // Skip admin groups
         if (group.enabled) {
             try {
                 await bot.sendMessage(group.id, `📢 ANNOUNCEMENT:\n\n${message}`);
@@ -92,7 +94,6 @@ async function checkSchedules() {
     const now = new Date();
     let dataChanged = false;
 
-    // A. Weekly Friday Survey
     const todayStr = now.toISOString().split('T')[0]; 
     const isTargetDay = now.getDay() === WEEKLY_DAY;
     const isTime = now.getHours() >= WEEKLY_HOUR;
@@ -114,7 +115,7 @@ async function checkSchedules() {
         };
         
         for (const group of cachedData.groups) {
-            if (group.id === ADMIN_GROUP_ID) continue;
+            if (group.is_admin) continue; // Skip admin groups
             if (group.enabled) {
                 try {
                     await bot.sendMessage(group.id, surveyText, options);
@@ -128,7 +129,6 @@ async function checkSchedules() {
         dataChanged = true;
     }
 
-    // B. Scheduled Messages
     if (cachedData.scheduled_queue && cachedData.scheduled_queue.length > 0) {
         const remainingQueue = [];
         for (const item of cachedData.scheduled_queue) {
@@ -155,7 +155,8 @@ bot.on('message', async (msg) => {
     if (['group', 'supergroup'].includes(msg.chat.type)) {
         const exists = cachedData.groups.find(g => g.id === msg.chat.id);
         if (!exists) {
-            cachedData.groups.push({ id: msg.chat.id, name: msg.chat.title, enabled: true });
+            // New groups default to Drivers (is_admin: false)
+            cachedData.groups.push({ id: msg.chat.id, name: msg.chat.title, enabled: true, is_admin: false });
             console.log(`New Group: ${msg.chat.title}`);
             await saveToDatabase();
         }
@@ -169,7 +170,11 @@ bot.on('message', async (msg) => {
 
 bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
-    if (chatId === ADMIN_GROUP_ID) return;
+    const adminIds = getAdminGroupIds();
+    
+    // Ignore if an admin group somehow triggers /start
+    if (adminIds.includes(chatId)) return;
+    
     await loadData();
     if (cachedData.questions.length === 0) return bot.sendMessage(chatId, "No questions setup.");
 
@@ -225,24 +230,30 @@ async function finishSurvey(chatId) {
     
     session.answers.forEach(a => report += `Q: ${a.question}\n${a.answer}\n\n`);
     
-    try { await bot.sendMessage(ADMIN_GROUP_ID, report); } catch (e) {}
+    // Send report to ALL groups marked as Admin
+    const adminIds = getAdminGroupIds();
+    if (adminIds.length === 0) {
+        console.log("Warning: No Admin groups are set up to receive this report!");
+    } else {
+        for (const adminId of adminIds) {
+            try { await bot.sendMessage(adminId, report); } catch (e) {}
+        }
+    }
 
     cachedData.history.push({ date: new Date().toISOString(), user: session.userInfo, answers: session.answers });
     await saveToDatabase();
     delete userSessions[chatId];
 }
 
-// --- 5. SECURE API SERVER (Replaces Pantry) ---
+// --- 5. SECURE API SERVER ---
 const app = express();
 app.use(cors()); 
 app.use(express.json());
 
-// Admin Panel reads data from here
 app.get('/api/data', (req, res) => {
     res.json(cachedData);
 });
 
-// Admin Panel saves data to here
 app.post('/api/data', async (req, res) => {
     try {
         cachedData = { ...cachedData, ...req.body };
@@ -256,6 +267,5 @@ app.post('/api/data', async (req, res) => {
 const port = process.env.PORT || 8000;
 app.listen(port, () => console.log(`Secure API and Bot running on port ${port}`));
 
-// Start the database loop
 setInterval(loadData, 60000); 
 loadData();
