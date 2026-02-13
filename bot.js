@@ -2,21 +2,20 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs').promises;
-const path = require('path');
 
 // --- 1. CONFIGURATION ---
 const TOKEN = process.env.BOT_TOKEN || '8245365754:AAHqhtzDzyE-NWdYpBmff_L-mGq1SprnuWo'; 
+
+// We placed your original Pantry ID here on the safe backend!
+const PANTRY_URL = `https://getpantry.cloud/apiv1/pantry/42f7bc17-4c7d-4314-9a0d-19f876d39db6/basket/driver_data`;
 
 // CONFIG: Weekly Survey Time (5 = Friday, 16 = 4:00 PM UTC)
 const WEEKLY_DAY = 5; 
 const WEEKLY_HOUR = 16; 
 
 const bot = new TelegramBot(TOKEN, { polling: true });
-const DB_FILE = path.join(__dirname, 'database.json');
 
 // --- DATA STORE ---
-// NEW: "sessions" is now saved in the database!
 let cachedData = { 
     questions: [], 
     groups: [], 
@@ -39,34 +38,36 @@ const stopBot = () => {
 process.on('SIGINT', stopBot);
 process.on('SIGTERM', stopBot);
 
-// --- 2. LOCAL DATA LOADING & SAVING ---
+// --- 2. CLOUD DATA LOADING & SAVING (Rescues old data!) ---
 async function loadData() {
     try {
-        const data = await fs.readFile(DB_FILE, 'utf8');
-        cachedData = JSON.parse(data);
-        
-        // Ensure sessions object exists if loading an older database file
-        if (!cachedData.sessions) cachedData.sessions = {};
-        
-        if (cachedData.broadcast_queue) {
-            await sendBroadcast(cachedData.broadcast_queue);
+        const res = await fetch(PANTRY_URL);
+        if (res.ok) {
+            const data = await res.json();
+            
+            // Merge the rescued data into our server memory
+            cachedData = { ...cachedData, ...data };
+            if (!cachedData.sessions) cachedData.sessions = {};
+            
+            if (cachedData.broadcast_queue) {
+                await sendBroadcast(cachedData.broadcast_queue);
+            }
+            checkSchedules();
         }
-        checkSchedules();
     } catch (e) {
-        if (e.code === 'ENOENT') {
-            console.log("No database file found, creating a new one...");
-            await saveToDatabase();
-        } else {
-            console.error("Error reading database:", e);
-        }
+        console.error("Error reading from Pantry cloud database:", e);
     }
 }
 
 async function saveToDatabase() {
     try {
-        await fs.writeFile(DB_FILE, JSON.stringify(cachedData, null, 2));
+        await fetch(PANTRY_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cachedData)
+        });
     } catch (e) { 
-        console.error("Error saving to database:", e); 
+        console.error("Error saving to Pantry cloud database:", e); 
     }
 }
 
@@ -164,7 +165,7 @@ bot.on('message', async (msg) => {
             await saveToDatabase();
         }
     }
-    // Handle Answers (Now checks the database for active sessions)
+    // Handle Answers 
     if (msg.chat.type === 'private' && cachedData.sessions && cachedData.sessions[msg.chat.id]) {
         if (msg.text === '/start') return;
         handleAnswer(msg);
@@ -182,7 +183,6 @@ bot.onText(/\/start/, async (msg) => {
 
     let identifier = msg.from.username ? `@${msg.from.username}` : msg.from.first_name;
     
-    // Save the new session into the database
     if (!cachedData.sessions) cachedData.sessions = {};
     cachedData.sessions[chatId] = { step: 0, answers: [], userInfo: identifier };
     await saveToDatabase();
@@ -224,7 +224,6 @@ async function handleAnswer(msg) {
     session.answers.push({ question: currentQ.text, answer: msg.text });
     session.step++;
     
-    // Save their progress to the database
     await saveToDatabase(); 
     askQuestion(chatId);
 }
@@ -250,7 +249,6 @@ async function finishSurvey(chatId) {
 
     cachedData.history.push({ date: new Date().toISOString(), user: session.userInfo, answers: session.answers });
     
-    // Remove the finished session and save
     delete cachedData.sessions[chatId];
     await saveToDatabase();
 }
