@@ -18,7 +18,8 @@ let cachedData = {
     last_weekly_run: "",
     broadcast_queue: null,
     sessions: {},
-    weekly_schedule: { day: 5, hour: 16, minute: 0 }
+    // NEW: The weekly schedule now has an 'enabled' flag natively built in.
+    weekly_schedule: { day: 5, hour: 16, minute: 0, enabled: true }
 };
 
 // --- STABILITY FIXES ---
@@ -33,9 +34,7 @@ const stopBot = () => {
 process.on('SIGINT', stopBot);
 process.on('SIGTERM', stopBot);
 
-
-// --- NEW: THE AUTO-SCRUBBER ---
-// This permanently deletes historical duplicates from your database
+// --- THE AUTO-SCRUBBER ---
 function scrubDuplicates() {
     if (cachedData.questions) {
         const uniqueQs = [];
@@ -61,8 +60,6 @@ function scrubDuplicates() {
         cachedData.groups = uniqueGs;
     }
 }
-// ------------------------------
-
 
 // --- 2. CLOUD DATA LOADING & SAVING ---
 async function loadData() {
@@ -73,10 +70,11 @@ async function loadData() {
             
             cachedData = { ...cachedData, ...data };
             if (!cachedData.sessions) cachedData.sessions = {};
-            if (!cachedData.weekly_schedule) cachedData.weekly_schedule = { day: 5, hour: 16, minute: 0 };
+            if (!cachedData.weekly_schedule) cachedData.weekly_schedule = { day: 5, hour: 16, minute: 0, enabled: true };
+            if (cachedData.weekly_schedule.enabled === undefined) cachedData.weekly_schedule.enabled = true;
             if (!cachedData.scheduled_queue) cachedData.scheduled_queue = [];
             
-            scrubDuplicates(); // Run the scrubber on startup!
+            scrubDuplicates(); 
 
             if (cachedData.broadcast_queue) {
                 await sendBroadcast(cachedData.broadcast_queue, false);
@@ -155,12 +153,15 @@ async function checkSchedules() {
     const targetHour = cachedData.weekly_schedule.hour;
     const targetMinute = cachedData.weekly_schedule.minute || 0;
     
-    const isTargetDay = (currentDay === targetDay);
+    // NEW: We check the enabled flag!
+    const isEnabled = cachedData.weekly_schedule.enabled !== false; 
     
+    const isTargetDay = (currentDay === targetDay);
     const isTime = (currentHour > targetHour) || (currentHour === targetHour && currentMinute >= targetMinute);
     const alreadySent = cachedData.last_weekly_run === todayStr;
 
-    if (isTargetDay && isTime && !alreadySent) {
+    // ONLY trigger if the toggle is ON!
+    if (isEnabled && isTargetDay && isTime && !alreadySent) {
         console.log("🚀 Triggering Weekly Survey (Central Time)!");
         const surveyText = "Hey, hope your week is going well. Please take the small survey clicking on the button below, that'd help us improve our services. Thank you";
         
@@ -303,7 +304,7 @@ app.post('/api/data', async (req, res) => {
     try {
         cachedData = { ...cachedData, ...req.body };
         
-        scrubDuplicates(); // Run the scrubber whenever data is saved from the dashboard!
+        scrubDuplicates(); 
 
         if (cachedData.broadcast_queue) {
             await sendBroadcast(cachedData.broadcast_queue, false);
