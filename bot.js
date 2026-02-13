@@ -1,22 +1,23 @@
 require('dotenv').config(); 
-const http = require('http'); 
 const TelegramBot = require('node-telegram-bot-api');
-const fetch = require('node-fetch');
+const express = require('express');
+const cors = require('cors');
+const fs = require('fs').promises;
+const path = require('path');
 
-// 1. CONFIGURATION
+// --- 1. CONFIGURATION ---
 const TOKEN = process.env.BOT_TOKEN || '8245365754:AAHqhtzDzyE-NWdYpBmff_L-mGq1SprnuWo'; 
-const PANTRY_ID = process.env.PANTRY_ID || '42f7bc17-4c7d-4314-9a0d-19f876d39db6'; 
-const PANTRY_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/driver_data`;
 const ADMIN_GROUP_ID = -5275569828; 
 
-// CONFIG: Weekly Survey Time (0 = Sunday, 10 = 10 AM UTC)
-const WEEKLY_DAY = 0; 
-const WEEKLY_HOUR = 10; 
+// CONFIG: Weekly Survey Time (5 = Friday, 16 = 4:00 PM UTC)
+const WEEKLY_DAY = 5; 
+const WEEKLY_HOUR = 16; 
 
 const bot = new TelegramBot(TOKEN, { polling: true });
 const userSessions = {};
+const DB_FILE = path.join(__dirname, 'database.json');
 
-// DATA STORE
+// --- DATA STORE ---
 let cachedData = { 
     questions: [], 
     groups: [], 
@@ -26,7 +27,7 @@ let cachedData = {
     broadcast_queue: null 
 };
 
-// --- 🛡️ STABILITY FIXES ---
+// --- STABILITY FIXES ---
 bot.on('polling_error', (error) => {
     if (error.code !== 'EFATAL') console.log(`[Polling Error] ${error.code}: ${error.message}`);
 });
@@ -38,41 +39,34 @@ const stopBot = () => {
 process.on('SIGINT', stopBot);
 process.on('SIGTERM', stopBot);
 
-// --- 2. DATA LOADING & SAVING ---
+// --- 2. LOCAL DATA LOADING & SAVING ---
 async function loadData() {
     try {
-        const res = await fetch(PANTRY_URL);
-        if (res.ok) {
-            const data = await res.json();
-            cachedData = {
-                questions: data.questions || [],
-                groups: data.groups || [],
-                history: data.history || [],
-                scheduled_queue: data.scheduled_queue || [],
-                last_weekly_run: data.last_weekly_run || "",
-                broadcast_queue: data.broadcast_queue || null // <--- THE FIX: Now we remember it!
-            };
-            
-            // Immediate Broadcast
-            if (cachedData.broadcast_queue) {
-                await sendBroadcast(cachedData.broadcast_queue);
-            }
-            
-            checkSchedules();
+        const data = await fs.readFile(DB_FILE, 'utf8');
+        cachedData = JSON.parse(data);
+        
+        // Immediate Broadcast
+        if (cachedData.broadcast_queue) {
+            await sendBroadcast(cachedData.broadcast_queue);
         }
+        
+        checkSchedules();
     } catch (e) {
-        console.error("Error fetching from Pantry:", e);
+        if (e.code === 'ENOENT') {
+            console.log("No database file found, creating a new one...");
+            await saveToDatabase();
+        } else {
+            console.error("Error reading database:", e);
+        }
     }
 }
 
-async function saveToPantry() {
+async function saveToDatabase() {
     try {
-        await fetch(PANTRY_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(cachedData)
-        });
-    } catch (e) { console.error("Error saving:", e); }
+        await fs.writeFile(DB_FILE, JSON.stringify(cachedData, null, 2));
+    } catch (e) { 
+        console.error("Error saving to database:", e); 
+    }
 }
 
 // --- 3. BROADCASTING & SCHEDULING ---
@@ -89,9 +83,8 @@ async function sendBroadcast(message) {
         }
     }
     
-    // THE FIX: Explicitly clear and save immediately
     cachedData.broadcast_queue = null;
-    await saveToPantry();
+    await saveToDatabase();
     console.log("Broadcast queue cleared.");
 }
 
@@ -99,23 +92,35 @@ async function checkSchedules() {
     const now = new Date();
     let dataChanged = false;
 
-    // A. Weekly Sunday Survey
+    // A. Weekly Friday Survey
     const todayStr = now.toISOString().split('T')[0]; 
-    const isSunday =now.getDay() === WEEKLY_DAY;
+    const isTargetDay = now.getDay() === WEEKLY_DAY;
     const isTime = now.getHours() >= WEEKLY_HOUR;
     const alreadySent = cachedData.last_weekly_run === todayStr;
 
-    if (isSunday && isTime && !alreadySent) {
+    if (isTargetDay && isTime && !alreadySent) {
         console.log("🚀 Triggering Weekly Survey!");
         const botUser = await bot.getMe();
-        const surveyMsg = `📋 <b>Weekly Feedback Time!</b>\n\nPlease verify your truck status and share your feedback for the week.\n\n👉 <a href="https://t.me/${botUser.username}?start=weekly">Click here to Start Survey</a>`;
+        const botLink = `https://t.me/${botUser.username}?start=weekly`;
+
+        const surveyText = "Hey, hope your week is going well. Please take the small survey clicking on the button below, that'd help us improve our services. Thank you";
+
+        const options = {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: "📝 Take the Survey", url: botLink }]
+                ]
+            }
+        };
         
         for (const group of cachedData.groups) {
             if (group.id === ADMIN_GROUP_ID) continue;
             if (group.enabled) {
                 try {
-                    await bot.sendMessage(group.id, surveyMsg, { parse_mode: "HTML" });
-                } catch (e) {}
+                    await bot.sendMessage(group.id, surveyText, options);
+                } catch (e) {
+                    console.error(`Failed to send to group ${group.id}`);
+                }
             }
         }
         
@@ -124,7 +129,7 @@ async function checkSchedules() {
     }
 
     // B. Scheduled Messages
-    if (cachedData.scheduled_queue.length > 0) {
+    if (cachedData.scheduled_queue && cachedData.scheduled_queue.length > 0) {
         const remainingQueue = [];
         for (const item of cachedData.scheduled_queue) {
             const scheduledTime = new Date(item.time);
@@ -141,11 +146,10 @@ async function checkSchedules() {
         }
     }
 
-    if (dataChanged) await saveToPantry();
+    if (dataChanged) await saveToDatabase();
 }
 
 // --- 4. CORE BOT FUNCTIONS ---
-
 bot.on('message', async (msg) => {
     // Group Registration
     if (['group', 'supergroup'].includes(msg.chat.type)) {
@@ -153,7 +157,7 @@ bot.on('message', async (msg) => {
         if (!exists) {
             cachedData.groups.push({ id: msg.chat.id, name: msg.chat.title, enabled: true });
             console.log(`New Group: ${msg.chat.title}`);
-            await saveToPantry();
+            await saveToDatabase();
         }
     }
     // Handle Answers
@@ -172,7 +176,7 @@ bot.onText(/\/start/, async (msg) => {
     let identifier = msg.from.username ? `@${msg.from.username}` : msg.from.first_name;
     userSessions[chatId] = { step: 0, answers: [], userInfo: identifier };
     
-    await bot.sendMessage(chatId, `👋 <b>Hello, ${msg.from.first_name}!</b>\n\nI have a few quick questions for you. Let's get started!`, { parse_mode: "HTML" });
+    await bot.sendMessage(chatId, `👋 Hello, ${msg.from.first_name}!\n\nI have a few quick questions for you. Let's get started!`);
     
     askQuestion(chatId);
 });
@@ -195,8 +199,7 @@ function askQuestion(chatId) {
         options = { reply_markup: { remove_keyboard: true } };
     }
     
-    const finalOptions = { ...options, parse_mode: "HTML" };
-    bot.sendMessage(chatId, `📝 <b>Question ${session.step + 1}:</b>\n${question.text}`, finalOptions);
+    bot.sendMessage(chatId, `📝 Question ${session.step + 1}:\n${question.text}`, options);
 }
 
 function handleAnswer(msg) {
@@ -205,7 +208,7 @@ function handleAnswer(msg) {
     const currentQ = cachedData.questions[session.step];
     
     if (currentQ.type === 'choice' && currentQ.options && !currentQ.options.includes(msg.text)) {
-        return bot.sendMessage(chatId, "❌ <b>Please select one of the buttons below.</b>", { parse_mode: "HTML" });
+        return bot.sendMessage(chatId, "❌ Please select one of the buttons below.");
     }
     session.answers.push({ question: currentQ.text, answer: msg.text });
     session.step++;
@@ -214,25 +217,45 @@ function handleAnswer(msg) {
 
 async function finishSurvey(chatId) {
     const session = userSessions[chatId];
-    bot.sendMessage(chatId, "✅ <b>Thank you!</b> Your feedback has been sent.", { parse_mode: "HTML", reply_markup: { remove_keyboard: true } });
+    bot.sendMessage(chatId, "✅ Thank you! Your feedback has been sent.", { reply_markup: { remove_keyboard: true } });
 
-    let report = `📝 <b>New Feedback Received</b>\n`;
-    report += `👤 <b>Driver:</b> ${session.userInfo}\n`;
-    report += `🆔 <b>ID:</b> ${chatId}\n\n`;
+    let report = `📝 New Feedback Received\n`;
+    report += `👤 Driver: ${session.userInfo}\n`;
+    report += `🆔 ID: ${chatId}\n\n`;
     
-    session.answers.forEach(a => report += `<b>Q: ${a.question}</b>\n${a.answer}\n\n`);
+    session.answers.forEach(a => report += `Q: ${a.question}\n${a.answer}\n\n`);
     
-    try { await bot.sendMessage(ADMIN_GROUP_ID, report, { parse_mode: "HTML" }); } catch (e) {}
+    try { await bot.sendMessage(ADMIN_GROUP_ID, report); } catch (e) {}
 
     cachedData.history.push({ date: new Date().toISOString(), user: session.userInfo, answers: session.answers });
-    await saveToPantry();
+    await saveToDatabase();
     delete userSessions[chatId];
 }
 
-setInterval(loadData, 60000); 
+// --- 5. SECURE API SERVER (Replaces Pantry) ---
+const app = express();
+app.use(cors()); 
+app.use(express.json());
 
-const server = http.createServer((req, res) => { res.writeHead(200); res.end('Bot is running!'); });
+// Admin Panel reads data from here
+app.get('/api/data', (req, res) => {
+    res.json(cachedData);
+});
+
+// Admin Panel saves data to here
+app.post('/api/data', async (req, res) => {
+    try {
+        cachedData = { ...cachedData, ...req.body };
+        await saveToDatabase();
+        res.json({ success: true, message: "Data saved securely" });
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Failed to save data" });
+    }
+});
+
 const port = process.env.PORT || 8000;
-server.listen(port, () => console.log(`Health check running on ${port}`));
+app.listen(port, () => console.log(`Secure API and Bot running on port ${port}`));
 
+// Start the database loop
+setInterval(loadData, 60000); 
 loadData();
