@@ -18,7 +18,6 @@ let cachedData = {
     last_weekly_run: "",
     broadcast_queue: null,
     sessions: {},
-    // NEW: The weekly schedule now has an 'enabled' flag natively built in.
     weekly_schedule: { day: 5, hour: 16, minute: 0, enabled: true }
 };
 
@@ -106,7 +105,7 @@ function getAdminGroupIds() {
 async function sendBroadcast(message, includeSurvey = false) {
     console.log("Sending Broadcast:", message);
     
-    let options = {};
+    let options = null; // Default to null for safety
     if (includeSurvey) {
         const botUser = await bot.getMe();
         const botLink = `https://t.me/${botUser.username}?start=weekly`;
@@ -123,7 +122,12 @@ async function sendBroadcast(message, includeSurvey = false) {
         if (group.is_admin) continue; 
         if (group.enabled) {
             try {
-                await bot.sendMessage(group.id, `📢 ANNOUNCEMENT:\n\n${message}`, options);
+                // THE FIX: Only pass the options object if it actually exists to prevent Telegram API errors
+                if (options) {
+                    await bot.sendMessage(group.id, `📢 ANNOUNCEMENT:\n\n${message}`, options);
+                } else {
+                    await bot.sendMessage(group.id, `📢 ANNOUNCEMENT:\n\n${message}`);
+                }
             } catch (err) {
                 console.error(`Failed to send to ${group.name}:`, err.message);
             }
@@ -140,53 +144,70 @@ async function checkSchedules() {
     let dataChanged = false;
 
     // A. Weekly Target configured for CENTRAL TIME (CT)
-    const ctDateStr = now.toLocaleString("en-US", { timeZone: "America/Chicago" });
-    const ctDate = new Date(ctDateStr);
-    
-    const currentDay = ctDate.getDay();
-    const currentHour = ctDate.getHours();
-    const currentMinute = ctDate.getMinutes();
-    
-    const todayStr = `${ctDate.getFullYear()}-${ctDate.getMonth() + 1}-${ctDate.getDate()}`;
-    
-    const targetDay = cachedData.weekly_schedule.day;
-    const targetHour = cachedData.weekly_schedule.hour;
-    const targetMinute = cachedData.weekly_schedule.minute || 0;
-    
-    // NEW: We check the enabled flag!
-    const isEnabled = cachedData.weekly_schedule.enabled !== false; 
-    
-    const isTargetDay = (currentDay === targetDay);
-    const isTime = (currentHour > targetHour) || (currentHour === targetHour && currentMinute >= targetMinute);
-    const alreadySent = cachedData.last_weekly_run === todayStr;
+    try {
+        let ctDate;
+        try {
+            // Attempt strict Central Time conversion
+            const ctDateStr = now.toLocaleString("en-US", { timeZone: "America/Chicago" });
+            ctDate = new Date(ctDateStr);
+        } catch(e) {
+            // Fallback: If tzdata fails, manually offset 6 hours so it never crashes!
+            console.log("Server lacking tzdata, falling back to manual CT offset.");
+            ctDate = new Date(now.getTime() - (6 * 60 * 60 * 1000));
+        }
+        
+        const currentDay = ctDate.getDay();
+        const currentHour = ctDate.getHours();
+        const currentMinute = ctDate.getMinutes();
+        
+        const todayStr = `${ctDate.getFullYear()}-${ctDate.getMonth() + 1}-${ctDate.getDate()}`;
+        
+        const targetDay = cachedData.weekly_schedule.day;
+        const targetHour = cachedData.weekly_schedule.hour;
+        const targetMinute = cachedData.weekly_schedule.minute || 0;
+        
+        const isEnabled = cachedData.weekly_schedule.enabled !== false; 
+        const isTargetDay = (currentDay === targetDay);
+        const isTime = (currentHour > targetHour) || (currentHour === targetHour && currentMinute >= targetMinute);
+        const alreadySent = cachedData.last_weekly_run === todayStr;
 
-    // ONLY trigger if the toggle is ON!
-    if (isEnabled && isTargetDay && isTime && !alreadySent) {
-        console.log("🚀 Triggering Weekly Survey (Central Time)!");
-        const surveyText = "Hey, hope your week is going well. Please take the small survey clicking on the button below, that'd help us improve our services. Thank you";
-        
-        await sendBroadcast(surveyText, true);
-        
-        cachedData.last_weekly_run = todayStr;
-        dataChanged = true;
+        if (isEnabled && isTargetDay && isTime && !alreadySent) {
+            console.log("🚀 Triggering Weekly Survey (Central Time)!");
+            const surveyText = "Hey, hope your week is going well. Please take the small survey clicking on the button below, that'd help us improve our services. Thank you";
+            
+            await sendBroadcast(surveyText, true);
+            
+            cachedData.last_weekly_run = todayStr;
+            dataChanged = true;
+        }
+    } catch (err) {
+        console.error("Weekly schedule check failed:", err);
     }
 
     // B. Custom Scheduled Queue
-    if (cachedData.scheduled_queue && cachedData.scheduled_queue.length > 0) {
-        const remainingQueue = [];
-        for (const item of cachedData.scheduled_queue) {
-            const scheduledTime = new Date(item.time);
-            if (now >= scheduledTime) {
-                await sendBroadcast(item.text, item.includeSurvey);
-                dataChanged = true; 
-            } else {
-                remainingQueue.push(item);
+    try {
+        if (cachedData.scheduled_queue && cachedData.scheduled_queue.length > 0) {
+            const remainingQueue = [];
+            for (const item of cachedData.scheduled_queue) {
+                const scheduledTime = new Date(item.time);
+                
+                // THE FIX: Add a 1-minute buffer. This guarantees "Send Now" fires immediately even if your laptop clock is slightly faster than Koyeb's server clock!
+                const bufferedTime = new Date(scheduledTime.getTime() - 60000); 
+                
+                if (now >= bufferedTime) {
+                    await sendBroadcast(item.text, item.includeSurvey);
+                    dataChanged = true; 
+                } else {
+                    remainingQueue.push(item);
+                }
+            }
+            if (remainingQueue.length !== cachedData.scheduled_queue.length) {
+                cachedData.scheduled_queue = remainingQueue;
+                dataChanged = true;
             }
         }
-        if (remainingQueue.length !== cachedData.scheduled_queue.length) {
-            cachedData.scheduled_queue = remainingQueue;
-            dataChanged = true;
-        }
+    } catch (err) {
+        console.error("Custom schedule check failed:", err);
     }
 
     if (dataChanged) await saveToDatabase();
