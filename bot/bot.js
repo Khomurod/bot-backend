@@ -300,15 +300,22 @@ async function sendTestQuestion(questionEn, optionsEn) {
 }
 
 // ─── Send broadcast message to all groups ───
-async function sendBroadcast(messageText, parseMode) {
+async function sendBroadcast(messageText, parseMode, messages) {
   const groups = await db.getAllGroups();
   const results = { sent: 0, failed: 0, errors: [] };
 
   for (const group of groups) {
     try {
+      // If per-language messages provided, use the matching language
+      let text = messageText;
+      if (messages) {
+        const lang = group.language || 'en';
+        text = messages[lang] || messages.en || messageText;
+      }
+
       await bot.telegram.sendMessage(
         group.telegram_group_id,
-        messageText,
+        text,
         { parse_mode: parseMode }
       );
       results.sent++;

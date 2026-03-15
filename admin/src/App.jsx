@@ -2,18 +2,44 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as api from './api';
 
 // ─────────────── Telegram Message Preview ───────────────
-function TelegramPreview({ text, buttons, label }) {
+function TelegramPreview({ text, buttons, label, langTabs }) {
   const now = new Date();
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const [activeLang, setActiveLang] = React.useState('en');
+
+  // If langTabs provided, use the selected language's content
+  const displayText = langTabs && langTabs[activeLang]?.text !== undefined ? langTabs[activeLang].text : text;
+  const displayButtons = langTabs && langTabs[activeLang]?.buttons !== undefined ? langTabs[activeLang].buttons : buttons;
 
   return (
     <div style={{ padding: 16 }}>
       {label && <p style={{ fontSize: 12, color: '#64748b', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</p>}
+      {langTabs && (
+        <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+          {['en', 'ru', 'uz'].map(lang => (
+            <button
+              key={lang}
+              type="button"
+              onClick={() => setActiveLang(lang)}
+              style={{
+                padding: '4px 14px', fontSize: 12, fontWeight: 600,
+                border: activeLang === lang ? '2px solid var(--primary)' : '1px solid var(--border)',
+                borderRadius: 6,
+                background: activeLang === lang ? 'var(--primary)' : 'transparent',
+                color: activeLang === lang ? '#fff' : 'var(--text-muted)',
+                cursor: 'pointer', textTransform: 'uppercase',
+              }}
+            >
+              {{ en: '🇺🇸 EN', ru: '🇷🇺 RU', uz: '🇺🇿 UZ' }[lang]}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="telegram-preview">
-        <div className="tg-text" dangerouslySetInnerHTML={{ __html: (text || '<span style="color:#6b7d8e">Type a message to see preview...</span>').replace(/\n/g, '<br/>') }} />
-        {buttons && buttons.length > 0 && (
+        <div className="tg-text" dangerouslySetInnerHTML={{ __html: (displayText || '<span style="color:#6b7d8e">Type a message to see preview...</span>').replace(/\n/g, '<br/>') }} />
+        {displayButtons && displayButtons.length > 0 && (
           <div className="tg-buttons">
-            {buttons.map((btn, i) => (
+            {displayButtons.map((btn, i) => (
               <div className="tg-btn" key={i}>{btn}</div>
             ))}
           </div>
@@ -431,12 +457,26 @@ function QuestionsPage() {
               </div>
               {previewId === q.id && previewData && (
                 <TelegramPreview
-                  label="Telegram Preview (English)"
+                  label="Telegram Preview"
                   text={`📋 ${(previewData.translations?.find(t => t.language === 'en')?.question_text) || 'Question'}`}
                   buttons={previewData.options?.map(o => {
                     const en = o.translations?.find(t => t.language === 'en');
                     return en ? en.option_text : `Option ${o.option_order}`;
                   }) || []}
+                  langTabs={{
+                    en: {
+                      text: `📋 ${(previewData.translations?.find(t => t.language === 'en')?.question_text) || 'Question'}`,
+                      buttons: previewData.options?.map(o => o.translations?.find(t => t.language === 'en')?.option_text || `Option ${o.option_order}`) || [],
+                    },
+                    ru: {
+                      text: `📋 ${(previewData.translations?.find(t => t.language === 'ru')?.question_text) || ''}`,
+                      buttons: previewData.options?.map(o => o.translations?.find(t => t.language === 'ru')?.option_text || '') || [],
+                    },
+                    uz: {
+                      text: `📋 ${(previewData.translations?.find(t => t.language === 'uz')?.question_text) || ''}`,
+                      buttons: previewData.options?.map(o => o.translations?.find(t => t.language === 'uz')?.option_text || '') || [],
+                    },
+                  }}
                 />
               )}
             </div>
@@ -459,6 +499,8 @@ function CreateQuestionForm({ onCreated, onError }) {
   ]);
   const [submitting, setSubmitting] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [translateError, setTranslateError] = useState(null);
 
   const enRef = useRef(null);
   const ruRef = useRef(null);
@@ -536,6 +578,38 @@ function CreateQuestionForm({ onCreated, onError }) {
     }
   };
 
+  const handleAutoTranslate = async () => {
+    if (!questionEn.trim()) {
+      setTranslateError('Please type the English question first.');
+      return;
+    }
+    setTranslating(true);
+    setTranslateError(null);
+    try {
+      const textBlocks = [questionEn, ...options.map(o => o.en).filter(Boolean)];
+      const result = await api.translateTexts(textBlocks);
+      // First item is question text, rest are options
+      if (result.ru && result.ru[0]) setQuestionRu(result.ru[0]);
+      if (result.uz && result.uz[0]) setQuestionUz(result.uz[0]);
+      // Populate option translations
+      const enOptionTexts = options.map(o => o.en).filter(Boolean);
+      const updated = [...options];
+      let idx = 1; // skip question text at index 0
+      for (let i = 0; i < updated.length; i++) {
+        if (updated[i].en.trim()) {
+          if (result.ru && result.ru[idx]) updated[i].ru = result.ru[idx];
+          if (result.uz && result.uz[idx]) updated[i].uz = result.uz[idx];
+          idx++;
+        }
+      }
+      setOptions(updated);
+    } catch (err) {
+      setTranslateError(err.message || 'Translation failed. Please try again.');
+    } finally {
+      setTranslating(false);
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} style={{ marginBottom: 32 }}>
       <div className="card" style={{ marginBottom: 16 }}>
@@ -581,14 +655,33 @@ function CreateQuestionForm({ onCreated, onError }) {
             />
           </div>
         </div>
+
+        {translateError && (
+          <div className="alert alert-error" style={{ marginTop: 12 }}>⚠️ {translateError}</div>
+        )}
+
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={handleAutoTranslate}
+          disabled={translating || !questionEn.trim()}
+          style={{ marginTop: 12, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 6 }}
+        >
+          {translating ? '⏳ Translating...' : '🌐 Auto Translate'}
+        </button>
       </div>
 
       {questionEn.trim() && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>📱 Live Preview (English)</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>📱 Live Preview</h3>
           <TelegramPreview
             text={`📋 ${questionEn}`}
             buttons={options.map(o => o.en).filter(Boolean)}
+            langTabs={{
+              en: { text: `📋 ${questionEn}`, buttons: options.map(o => o.en).filter(Boolean) },
+              ru: { text: questionRu ? `📋 ${questionRu}` : '', buttons: options.map(o => o.ru).filter(Boolean) },
+              uz: { text: questionUz ? `📋 ${questionUz}` : '', buttons: options.map(o => o.uz).filter(Boolean) },
+            }}
           />
         </div>
       )}
@@ -780,11 +873,36 @@ function ResponsesView({ questionId, onBack }) {
 // ─────────────── Broadcast Page ───────────────
 function BroadcastPage() {
   const [message, setMessage] = useState('');
+  const [messageRu, setMessageRu] = useState('');
+  const [messageUz, setMessageUz] = useState('');
   const [status, setStatus] = useState(null);
   const [sending, setSending] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [translating, setTranslating] = useState(false);
   const textareaRef = useRef(null);
+  const ruBroadRef = useRef(null);
+  const uzBroadRef = useRef(null);
   const { handleKeyDown, toolbar } = FormattingToolbar({ textareaRef, value: message, onChange: setMessage });
+  const fmtRuBroad = FormattingToolbar({ textareaRef: ruBroadRef, value: messageRu, onChange: setMessageRu });
+  const fmtUzBroad = FormattingToolbar({ textareaRef: uzBroadRef, value: messageUz, onChange: setMessageUz });
+
+  const handleAutoTranslate = async () => {
+    if (!message.trim()) {
+      setStatus({ type: 'error', text: 'Please type the English message first.' });
+      return;
+    }
+    setTranslating(true);
+    setStatus(null);
+    try {
+      const result = await api.translateTexts([message]);
+      if (result.ru && result.ru[0]) setMessageRu(result.ru[0]);
+      if (result.uz && result.uz[0]) setMessageUz(result.uz[0]);
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message || 'Translation failed. Please try again.' });
+    } finally {
+      setTranslating(false);
+    }
+  };
 
   const handleSend = async () => {
     if (!message.trim()) {
@@ -797,7 +915,14 @@ function BroadcastPage() {
     }
     setSending(true);
     try {
-      const result = await api.sendBroadcast(message, 'HTML');
+      const payload = { parse_mode: 'HTML' };
+      if (messageRu.trim() || messageUz.trim()) {
+        payload.messages = { en: message, ru: messageRu || message, uz: messageUz || message };
+        payload.message_text = message;
+      } else {
+        payload.message_text = message;
+      }
+      const result = await api.sendBroadcast(payload.message_text, 'HTML', payload.messages);
       setStatus({ type: 'success', text: `Broadcast sent! ${result.sent} group(s) received, ${result.failed} failed.` });
       setTimeout(() => setStatus(null), 5000);
     } catch (err) {
@@ -842,6 +967,8 @@ function BroadcastPage() {
           <div className="card">
             <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>✍️ Compose Message</h3>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>Use the toolbar to format text with Telegram-compatible HTML tags.</p>
+
+            <h4 style={{ marginBottom: 6 }}><span className="badge badge-en">EN</span> English</h4>
             {toolbar}
             <textarea
               ref={textareaRef}
@@ -849,12 +976,46 @@ function BroadcastPage() {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type your broadcast message here...\n\nUse the toolbar above for <b>bold</b>, <i>italic</i>, and other formatting."
-              style={{ minHeight: 200, resize: 'vertical' }}
+              placeholder="Type your broadcast message here..."
+              style={{ minHeight: 140, resize: 'vertical' }}
             />
             <div className={`char-count ${message.length > 4096 ? 'over-limit' : ''}`}>
               {message.length} / 4096
             </div>
+
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={handleAutoTranslate}
+              disabled={translating || !message.trim()}
+              style={{ marginTop: 12, marginBottom: 16, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              {translating ? '⏳ Translating...' : '🌐 Auto Translate'}
+            </button>
+
+            <h4 style={{ marginBottom: 6 }}><span className="badge badge-ru">RU</span> Russian</h4>
+            {fmtRuBroad.toolbar}
+            <textarea
+              ref={ruBroadRef}
+              className="form-textarea toolbar-textarea"
+              value={messageRu}
+              onChange={(e) => setMessageRu(e.target.value)}
+              onKeyDown={fmtRuBroad.handleKeyDown}
+              placeholder="Сообщение на русском (авто-перевод или ручной ввод)"
+              style={{ minHeight: 100, resize: 'vertical', marginBottom: 12 }}
+            />
+
+            <h4 style={{ marginBottom: 6 }}><span className="badge badge-uz">UZ</span> Uzbek</h4>
+            {fmtUzBroad.toolbar}
+            <textarea
+              ref={uzBroadRef}
+              className="form-textarea toolbar-textarea"
+              value={messageUz}
+              onChange={(e) => setMessageUz(e.target.value)}
+              onKeyDown={fmtUzBroad.handleKeyDown}
+              placeholder="O'zbek tilidagi xabar (avto-tarjima yoki qo'lda kiritish)"
+              style={{ minHeight: 100, resize: 'vertical' }}
+            />
 
             <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
               <button
@@ -882,6 +1043,11 @@ function BroadcastPage() {
             <TelegramPreview
               label="How it will look in Telegram"
               text={message}
+              langTabs={{
+                en: { text: message },
+                ru: { text: messageRu },
+                uz: { text: messageUz },
+              }}
             />
           </div>
         </div>

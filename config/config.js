@@ -8,4 +8,5 @@ module.exports = {
   managementGroupId: process.env.MANAGEMENT_GROUP_ID,
   jwtSecret: process.env.JWT_SECRET || 'driver-feedback-jwt-secret-key',
   port: process.env.PORT || 3001,
+  openaiApiKey: process.env.OPENAI_API_KEY,
 };

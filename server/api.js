@@ -6,6 +6,7 @@ const path = require('path');
 const config = require('../config/config');
 const db = require('../database/db');
 const { sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest } = require('../bot/bot');
+const { translateBatch } = require('../services/translationService');
 
 const app = express();
 app.use(cors());
@@ -216,24 +217,68 @@ app.post('/api/questions/send-test', authMiddleware, async (req, res) => {
   }
 });
 
+// ─── Translation Routes ───
+
+// POST /api/translate
+app.post('/api/translate', authMiddleware, async (req, res) => {
+  try {
+    const { source_language, target_languages, text_blocks } = req.body;
+
+    // Validate input
+    if (!text_blocks || !Array.isArray(text_blocks) || text_blocks.length === 0) {
+      return res.status(400).json({ error: 'text_blocks array is required' });
+    }
+
+    if (text_blocks.length > 20) {
+      return res.status(400).json({ error: 'Maximum 20 text blocks allowed per request' });
+    }
+
+    const totalLength = text_blocks.reduce((sum, t) => sum + (t?.length || 0), 0);
+    if (totalLength > 4096) {
+      return res.status(400).json({ error: 'Total text exceeds 4096 character limit' });
+    }
+
+    const targets = target_languages || ['ru', 'uz'];
+    const validLangs = ['ru', 'uz'];
+    for (const lang of targets) {
+      if (!validLangs.includes(lang)) {
+        return res.status(400).json({ error: `Invalid target language: ${lang}` });
+      }
+    }
+
+    const result = {};
+    for (const lang of targets) {
+      result[lang] = await translateBatch(text_blocks, lang);
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error('[API] Translation error:', err.message);
+    res.status(500).json({ error: 'Translation failed. Please try again.' });
+  }
+});
+
 // ─── Broadcast Routes ───
 
 // POST /api/broadcast/send
 app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
   try {
-    const { message_text, parse_mode } = req.body;
+    const { message_text, parse_mode, messages } = req.body;
 
-    if (!message_text || !message_text.trim()) {
+    // Backward compatible: accept either messages object or message_text
+    const primaryText = (messages && messages.en) || message_text;
+
+    if (!primaryText || !primaryText.trim()) {
       return res.status(400).json({ error: 'Message text is required' });
     }
 
-    if (message_text.length > 4096) {
+    if (primaryText.length > 4096) {
       return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
     }
 
     const mode = ['HTML', 'MarkdownV2'].includes(parse_mode) ? parse_mode : 'HTML';
 
-    const results = await sendBroadcast(message_text.trim(), mode);
+    const results = await sendBroadcast(primaryText.trim(), mode, messages || null);
     res.json(results);
   } catch (err) {
     console.error('[API] Error sending broadcast:', err.message);
@@ -244,19 +289,21 @@ app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
 // POST /api/broadcast/test
 app.post('/api/broadcast/test', authMiddleware, async (req, res) => {
   try {
-    const { message_text, parse_mode } = req.body;
+    const { message_text, parse_mode, messages } = req.body;
 
-    if (!message_text || !message_text.trim()) {
+    const primaryText = (messages && messages.en) || message_text;
+
+    if (!primaryText || !primaryText.trim()) {
       return res.status(400).json({ error: 'Message text is required' });
     }
 
-    if (message_text.length > 4096) {
+    if (primaryText.length > 4096) {
       return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
     }
 
     const mode = ['HTML', 'MarkdownV2'].includes(parse_mode) ? parse_mode : 'HTML';
 
-    await sendBroadcastTest(message_text.trim(), mode);
+    await sendBroadcastTest(primaryText.trim(), mode);
     res.json({ success: true });
   } catch (err) {
     console.error('[API] Error sending broadcast test:', err.message);

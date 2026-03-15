@@ -109,11 +109,13 @@ export async function sendTestQuestion(questionEn, optionsEn) {
   return res.json();
 }
 
-export async function sendBroadcast(messageText, parseMode) {
+export async function sendBroadcast(messageText, parseMode, messages) {
+  const body = { message_text: messageText, parse_mode: parseMode };
+  if (messages) body.messages = messages;
   const res = await fetch(`${API_BASE}/broadcast/send`, {
     method: 'POST',
     headers: getHeaders(),
-    body: JSON.stringify({ message_text: messageText, parse_mode: parseMode }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json();
@@ -138,5 +140,22 @@ export async function sendBroadcastTest(messageText, parseMode) {
 export async function getResponses(questionId) {
   const res = await fetch(`${API_BASE}/responses/${questionId}`, { headers: getHeaders() });
   if (!res.ok) throw new Error('Failed to fetch responses');
+  return res.json();
+}
+
+export async function translateTexts(textBlocks) {
+  const res = await fetch(`${API_BASE}/translate`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({
+      source_language: 'en',
+      target_languages: ['ru', 'uz'],
+      text_blocks: textBlocks,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Translation failed. Please try again.');
+  }
   return res.json();
 }
