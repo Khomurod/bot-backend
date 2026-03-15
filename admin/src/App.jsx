@@ -324,6 +324,7 @@ function CreateQuestionForm({ onCreated, onError }) {
     { en: '', ru: '', uz: '' },
   ]);
   const [submitting, setSubmitting] = useState(false);
+  const [sendingTest, setSendingTest] = useState(false);
 
   const updateOption = (index, lang, value) => {
     const updated = [...options];
@@ -366,6 +367,30 @@ function CreateQuestionForm({ onCreated, onError }) {
       onError(err.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSendTest = async () => {
+    if (!questionEn.trim()) {
+      onError('English question text is required for test');
+      return;
+    }
+    const enOptions = options.map((o) => o.en.trim()).filter(Boolean);
+    if (enOptions.length < 2) {
+      onError('At least 2 English options are required for test');
+      return;
+    }
+    setSendingTest(true);
+    try {
+      await api.sendTestQuestion(questionEn.trim(), enOptions);
+      onError(null);
+      // Show success via parent
+      onCreated.__testSuccess?.() ||
+        alert('✅ Test question sent to management group!');
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setSendingTest(false);
     }
   };
 
@@ -464,9 +489,20 @@ function CreateQuestionForm({ onCreated, onError }) {
         ))}
       </div>
 
-      <button className="btn btn-primary" type="submit" disabled={submitting}>
-        {submitting ? '⏳ Creating...' : '✅ Create Question'}
-      </button>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <button className="btn btn-primary" type="submit" disabled={submitting}>
+          {submitting ? '⏳ Creating...' : '✅ Create Question'}
+        </button>
+        <button
+          className="btn btn-ghost"
+          type="button"
+          onClick={handleSendTest}
+          disabled={sendingTest}
+          style={{ border: '1px solid var(--border)' }}
+        >
+          {sendingTest ? '⏳ Sending...' : '🧪 Send Test'}
+        </button>
+      </div>
     </form>
   );
 }

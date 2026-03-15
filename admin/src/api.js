@@ -96,6 +96,19 @@ export async function deactivateQuestion(questionId) {
   return res.json();
 }
 
+export async function sendTestQuestion(questionEn, optionsEn) {
+  const res = await fetch(`${API_BASE}/questions/send-test`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ question_en: questionEn, options_en: optionsEn }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to send test question');
+  }
+  return res.json();
+}
+
 export async function getResponses(questionId) {
   const res = await fetch(`${API_BASE}/responses/${questionId}`, { headers: getHeaders() });
   if (!res.ok) throw new Error('Failed to fetch responses');

@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const path = require('path');
 const config = require('../config/config');
 const db = require('../database/db');
-const { sendQuestionToGroups } = require('../bot/bot');
+const { sendQuestionToGroups, sendTestQuestion } = require('../bot/bot');
 
 const app = express();
 app.use(cors());
@@ -182,6 +182,32 @@ app.post('/api/questions/:id/send', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[API] Error sending question:', err.message);
     res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+// POST /api/questions/send-test
+app.post('/api/questions/send-test', authMiddleware, async (req, res) => {
+  try {
+    const { question_en, options_en } = req.body;
+
+    if (!question_en || !question_en.trim()) {
+      return res.status(400).json({ error: 'English question text is required' });
+    }
+
+    if (!options_en || !Array.isArray(options_en) || options_en.length < 2) {
+      return res.status(400).json({ error: 'At least 2 English options are required' });
+    }
+
+    const emptyOpt = options_en.find((o) => !o || !o.trim());
+    if (emptyOpt !== undefined) {
+      return res.status(400).json({ error: 'All options must have non-empty English text' });
+    }
+
+    await sendTestQuestion(question_en.trim(), options_en.map((o) => o.trim()));
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[API] Error sending test question:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to send test question' });
   }
 });
 

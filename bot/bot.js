@@ -7,6 +7,16 @@ if (!config.botToken) {
   process.exit(1);
 }
 
+if (!config.databaseUrl) {
+  console.error('[BOT] FATAL: DATABASE_URL environment variable is not set!');
+  process.exit(1);
+}
+
+if (!config.managementGroupId) {
+  console.error('[BOT] FATAL: MANAGEMENT_GROUP_ID environment variable is not set!');
+  process.exit(1);
+}
+
 const bot = new Telegraf(config.botToken);
 const MANAGEMENT_GROUP_ID = config.managementGroupId;
 
@@ -68,10 +78,17 @@ async function startBot() {
       return next();
     });
 
-    // ── 3. Handle callback queries (answer buttons) ──
+    // ── 3. Handle TEST callback queries (test preview buttons) ──
     bot.on('callback_query', async (ctx) => {
       try {
         const data = ctx.callbackQuery.data;
+
+        // Handle test preview buttons
+        if (data && data.startsWith('test_answer_')) {
+          await ctx.answerCbQuery('This is a test preview. Responses are not recorded.');
+          return;
+        }
+
         if (!data || !data.startsWith('answer_')) return;
 
         const parts = data.split('_');
@@ -262,4 +279,24 @@ async function sendQuestionToGroups(questionId) {
   return results;
 }
 
-module.exports = { bot, startBot, sendQuestionToGroups };
+// ─── Send test question to management group ───
+async function sendTestQuestion(questionEn, optionsEn) {
+  const buttons = optionsEn.map((text, i) => [
+    Markup.button.callback(text, `test_answer_${i + 1}`),
+  ]);
+
+  const message = `🧪 <b>TEST QUESTION PREVIEW</b>\n\n${escapeHtml(questionEn)}\n\n<i>Choose an option:</i>`;
+
+  await bot.telegram.sendMessage(
+    MANAGEMENT_GROUP_ID,
+    message,
+    {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard(buttons),
+    }
+  );
+
+  console.log('[BOT] Test question sent to management group.');
+}
+
+module.exports = { bot, startBot, sendQuestionToGroups, sendTestQuestion };

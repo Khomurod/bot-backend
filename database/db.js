@@ -110,40 +110,52 @@ async function createQuestion(translations, options) {
   // translations: [{ language, question_text }]
   // options: [{ option_order, translations: [{ language, option_text }] }]
 
-  const qRes = await query(
-    'INSERT INTO questions DEFAULT VALUES RETURNING *'
-  );
-  const question = qRes.rows[0];
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  // Insert question translations
-  for (const t of translations) {
-    await query(
-      `INSERT INTO question_translations (question_id, language, question_text)
-       VALUES ($1, $2, $3)`,
-      [question.id, t.language, t.question_text]
+    const qRes = await client.query(
+      'INSERT INTO questions DEFAULT VALUES RETURNING *'
     );
-  }
+    const question = qRes.rows[0];
 
-  // Insert options and their translations
-  for (const opt of options) {
-    const oRes = await query(
-      `INSERT INTO options (question_id, option_order)
-       VALUES ($1, $2) RETURNING *`,
-      [question.id, opt.option_order]
-    );
-    const option = oRes.rows[0];
-
-    for (const t of opt.translations) {
-      await query(
-        `INSERT INTO option_translations (option_id, language, option_text)
+    // Insert question translations
+    for (const t of translations) {
+      await client.query(
+        `INSERT INTO question_translations (question_id, language, question_text)
          VALUES ($1, $2, $3)`,
-        [option.id, t.language, t.option_text]
+        [question.id, t.language, t.question_text]
       );
     }
-  }
 
-  console.log(`[DB] Question created: id=${question.id}`);
-  return question;
+    // Insert options and their translations
+    for (const opt of options) {
+      const oRes = await client.query(
+        `INSERT INTO options (question_id, option_order)
+         VALUES ($1, $2) RETURNING *`,
+        [question.id, opt.option_order]
+      );
+      const option = oRes.rows[0];
+
+      for (const t of opt.translations) {
+        await client.query(
+          `INSERT INTO option_translations (option_id, language, option_text)
+           VALUES ($1, $2, $3)`,
+          [option.id, t.language, t.option_text]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    console.log(`[DB] Question created: id=${question.id}`);
+    return question;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('[DB] Error creating question (rolled back):', err.message);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 async function getActiveQuestions() {
