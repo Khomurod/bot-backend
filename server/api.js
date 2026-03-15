@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const path = require('path');
 const config = require('../config/config');
 const db = require('../database/db');
-const { sendQuestionToGroups, sendTestQuestion } = require('../bot/bot');
+const { sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest } = require('../bot/bot');
 
 const app = express();
 app.use(cors());
@@ -213,6 +213,54 @@ app.post('/api/questions/send-test', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[API] Error sending test question:', err.message);
     res.status(500).json({ error: err.message || 'Failed to send test question' });
+  }
+});
+
+// ─── Broadcast Routes ───
+
+// POST /api/broadcast/send
+app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
+  try {
+    const { message_text, parse_mode } = req.body;
+
+    if (!message_text || !message_text.trim()) {
+      return res.status(400).json({ error: 'Message text is required' });
+    }
+
+    if (message_text.length > 4096) {
+      return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
+    }
+
+    const mode = ['HTML', 'MarkdownV2'].includes(parse_mode) ? parse_mode : 'HTML';
+
+    const results = await sendBroadcast(message_text.trim(), mode);
+    res.json(results);
+  } catch (err) {
+    console.error('[API] Error sending broadcast:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to send broadcast' });
+  }
+});
+
+// POST /api/broadcast/test
+app.post('/api/broadcast/test', authMiddleware, async (req, res) => {
+  try {
+    const { message_text, parse_mode } = req.body;
+
+    if (!message_text || !message_text.trim()) {
+      return res.status(400).json({ error: 'Message text is required' });
+    }
+
+    if (message_text.length > 4096) {
+      return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
+    }
+
+    const mode = ['HTML', 'MarkdownV2'].includes(parse_mode) ? parse_mode : 'HTML';
+
+    await sendBroadcastTest(message_text.trim(), mode);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[API] Error sending broadcast test:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to send broadcast test' });
   }
 });
 

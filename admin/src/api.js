@@ -109,6 +109,32 @@ export async function sendTestQuestion(questionEn, optionsEn) {
   return res.json();
 }
 
+export async function sendBroadcast(messageText, parseMode) {
+  const res = await fetch(`${API_BASE}/broadcast/send`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ message_text: messageText, parse_mode: parseMode }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to send broadcast');
+  }
+  return res.json();
+}
+
+export async function sendBroadcastTest(messageText, parseMode) {
+  const res = await fetch(`${API_BASE}/broadcast/test`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ message_text: messageText, parse_mode: parseMode }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to send broadcast test');
+  }
+  return res.json();
+}
+
 export async function getResponses(questionId) {
   const res = await fetch(`${API_BASE}/responses/${questionId}`, { headers: getHeaders() });
   if (!res.ok) throw new Error('Failed to fetch responses');

@@ -615,3 +615,174 @@ tr:hover td {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* ─── Telegram Preview ─── */
+.telegram-preview {
+  background: #1b2836;
+  border-radius: 12px 12px 12px 4px;
+  padding: 12px 16px;
+  max-width: 420px;
+  font-size: 14px;
+  color: #e4e6eb;
+  line-height: 1.5;
+  position: relative;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  word-wrap: break-word;
+}
+
+.telegram-preview .tg-text {
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+}
+
+.telegram-preview .tg-text b { font-weight: 700; }
+.telegram-preview .tg-text i { font-style: italic; }
+.telegram-preview .tg-text u { text-decoration: underline; }
+.telegram-preview .tg-text s { text-decoration: line-through; }
+.telegram-preview .tg-text code {
+  font-family: 'Courier New', monospace;
+  background: rgba(255,255,255,0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.telegram-preview .tg-text a {
+  color: #6ab2f2;
+  text-decoration: none;
+}
+.telegram-preview .tg-text blockquote {
+  border-left: 3px solid #6ab2f2;
+  padding-left: 10px;
+  margin: 6px 0;
+  color: #a8b3c0;
+}
+
+.telegram-preview .tg-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.telegram-preview .tg-btn {
+  background: rgba(58,130,195,0.25);
+  color: #6ab2f2;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: default;
+  text-align: center;
+  transition: background 0.15s;
+}
+
+.telegram-preview .tg-time {
+  text-align: right;
+  font-size: 11px;
+  color: #6b7d8e;
+  margin-top: 4px;
+}
+
+/* ─── Formatting Toolbar ─── */
+.formatting-toolbar {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  flex-wrap: wrap;
+}
+
+.fmt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
+  position: relative;
+}
+
+.fmt-btn:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+
+.fmt-btn .fmt-shortcut {
+  display: none;
+  position: absolute;
+  bottom: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 10;
+  border: 1px solid var(--border);
+}
+
+.fmt-btn:hover .fmt-shortcut {
+  display: block;
+}
+
+.fmt-sep {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+  margin: 4px 4px;
+  align-self: center;
+}
+
+.toolbar-textarea {
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+}
+
+/* ─── Broadcast Editor ─── */
+.broadcast-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.broadcast-editor-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.broadcast-preview-section {
+  position: sticky;
+  top: 32px;
+}
+
+.char-count {
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.char-count.over-limit {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+@media (max-width: 1024px) {
+  .broadcast-layout {
+    grid-template-columns: 1fr;
+  }
+}

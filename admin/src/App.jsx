@@ -1,5 +1,106 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as api from './api';
+
+// ─────────────── Telegram Message Preview ───────────────
+function TelegramPreview({ text, buttons, label }) {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <div style={{ padding: 16 }}>
+      {label && <p style={{ fontSize: 12, color: '#64748b', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</p>}
+      <div className="telegram-preview">
+        <div className="tg-text" dangerouslySetInnerHTML={{ __html: (text || '<span style="color:#6b7d8e">Type a message to see preview...</span>').replace(/\n/g, '<br/>') }} />
+        {buttons && buttons.length > 0 && (
+          <div className="tg-buttons">
+            {buttons.map((btn, i) => (
+              <div className="tg-btn" key={i}>{btn}</div>
+            ))}
+          </div>
+        )}
+        <div className="tg-time">{timeStr}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────── Formatting Toolbar ───────────────
+function FormattingToolbar({ textareaRef, value, onChange }) {
+  const wrapSelection = (openTag, closeTag) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const selected = value.substring(start, end);
+    const before = value.substring(0, start);
+    const after = value.substring(end);
+    const newText = before + openTag + selected + closeTag + after;
+    onChange(newText);
+    setTimeout(() => {
+      ta.focus();
+      ta.selectionStart = start + openTag.length;
+      ta.selectionEnd = start + openTag.length + selected.length;
+    }, 0);
+  };
+
+  const insertLink = () => {
+    const url = prompt('Enter URL:');
+    if (!url) return;
+    const ta = textareaRef.current;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const selected = value.substring(start, end) || 'link text';
+    const before = value.substring(0, start);
+    const after = value.substring(end);
+    const newText = before + `<a href="${url}">${selected}</a>` + after;
+    onChange(newText);
+    setTimeout(() => ta.focus(), 0);
+  };
+
+  const handleKeyDown = (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+      switch (e.key.toLowerCase()) {
+        case 'b': e.preventDefault(); wrapSelection('<b>', '</b>'); break;
+        case 'i': e.preventDefault(); wrapSelection('<i>', '</i>'); break;
+        case 'u': e.preventDefault(); wrapSelection('<u>', '</u>'); break;
+        case 'k': e.preventDefault(); insertLink(); break;
+        default: break;
+      }
+    }
+  };
+
+  const buttons = [
+    { label: 'B', title: 'Bold', fn: () => wrapSelection('<b>', '</b>'), shortcut: 'Ctrl+B', style: { fontWeight: 700 } },
+    { label: 'I', title: 'Italic', fn: () => wrapSelection('<i>', '</i>'), shortcut: 'Ctrl+I', style: { fontStyle: 'italic' } },
+    { label: 'U', title: 'Underline', fn: () => wrapSelection('<u>', '</u>'), shortcut: 'Ctrl+U', style: { textDecoration: 'underline' } },
+    { label: 'S', title: 'Strikethrough', fn: () => wrapSelection('<s>', '</s>'), style: { textDecoration: 'line-through' } },
+    'sep',
+    { label: '</>', title: 'Monospace', fn: () => wrapSelection('<code>', '</code>'), style: { fontFamily: 'monospace', fontSize: 12 } },
+    { label: '🔗', title: 'Link', fn: insertLink, shortcut: 'Ctrl+K' },
+    { label: '👁', title: 'Spoiler', fn: () => wrapSelection('<tg-spoiler>', '</tg-spoiler>') },
+    { label: '❝', title: 'Quote', fn: () => wrapSelection('<blockquote>', '</blockquote>') },
+  ];
+
+  return { handleKeyDown, toolbar: (
+    <div className="formatting-toolbar">
+      {buttons.map((btn, i) =>
+        btn === 'sep' ? <div className="fmt-sep" key={i} /> : (
+          <button
+            key={i}
+            type="button"
+            className="fmt-btn"
+            title={btn.title}
+            onClick={btn.fn}
+            style={btn.style}
+          >
+            {btn.label}
+            {btn.shortcut && <span className="fmt-shortcut">{btn.shortcut}</span>}
+          </button>
+        )
+      )}
+    </div>
+  )};
+}
 
 // ─────────────── Login Page ───────────────
 function LoginPage({ onLogin }) {
@@ -163,6 +264,23 @@ function QuestionsPage() {
   const [message, setMessage] = useState(null);
   const [sending, setSending] = useState(null);
   const [viewResponses, setViewResponses] = useState(null);
+  const [previewId, setPreviewId] = useState(null);
+  const [previewData, setPreviewData] = useState(null);
+
+  const handlePreview = async (questionId) => {
+    if (previewId === questionId) {
+      setPreviewId(null);
+      setPreviewData(null);
+      return;
+    }
+    try {
+      const q = await api.getQuestion(questionId);
+      setPreviewData(q);
+      setPreviewId(questionId);
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    }
+  };
 
   const fetchQuestions = useCallback(async () => {
     setLoading(true);
@@ -282,6 +400,12 @@ function QuestionsPage() {
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   <button
                     className="btn btn-ghost btn-sm"
+                    onClick={() => handlePreview(q.id)}
+                  >
+                    {previewId === q.id ? '✕ Close' : '👁 Preview'}
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
                     onClick={() => setViewResponses(q.id)}
                   >
                     📊 Responses
@@ -305,6 +429,16 @@ function QuestionsPage() {
                   )}
                 </div>
               </div>
+              {previewId === q.id && previewData && (
+                <TelegramPreview
+                  label="Telegram Preview (English)"
+                  text={`📋 ${(previewData.translations?.find(t => t.language === 'en')?.question_text) || 'Question'}`}
+                  buttons={previewData.options?.map(o => {
+                    const en = o.translations?.find(t => t.language === 'en');
+                    return en ? en.option_text : `Option ${o.option_order}`;
+                  }) || []}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -325,6 +459,14 @@ function CreateQuestionForm({ onCreated, onError }) {
   ]);
   const [submitting, setSubmitting] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
+
+  const enRef = useRef(null);
+  const ruRef = useRef(null);
+  const uzRef = useRef(null);
+
+  const fmtEn = FormattingToolbar({ textareaRef: enRef, value: questionEn, onChange: setQuestionEn });
+  const fmtRu = FormattingToolbar({ textareaRef: ruRef, value: questionRu, onChange: setQuestionRu });
+  const fmtUz = FormattingToolbar({ textareaRef: uzRef, value: questionUz, onChange: setQuestionUz });
 
   const updateOption = (index, lang, value) => {
     const updated = [...options];
@@ -401,36 +543,55 @@ function CreateQuestionForm({ onCreated, onError }) {
         <div className="translations-grid">
           <div className="lang-section">
             <h4><span className="badge badge-en">EN</span> English</h4>
+            {fmtEn.toolbar}
             <textarea
-              className="form-textarea"
+              ref={enRef}
+              className="form-textarea toolbar-textarea"
               value={questionEn}
               onChange={(e) => setQuestionEn(e.target.value)}
+              onKeyDown={fmtEn.handleKeyDown}
               placeholder="Question in English"
               required
             />
           </div>
           <div className="lang-section">
             <h4><span className="badge badge-ru">RU</span> Russian</h4>
+            {fmtRu.toolbar}
             <textarea
-              className="form-textarea"
+              ref={ruRef}
+              className="form-textarea toolbar-textarea"
               value={questionRu}
               onChange={(e) => setQuestionRu(e.target.value)}
+              onKeyDown={fmtRu.handleKeyDown}
               placeholder="Вопрос на русском"
               required
             />
           </div>
           <div className="lang-section">
             <h4><span className="badge badge-uz">UZ</span> Uzbek</h4>
+            {fmtUz.toolbar}
             <textarea
-              className="form-textarea"
+              ref={uzRef}
+              className="form-textarea toolbar-textarea"
               value={questionUz}
               onChange={(e) => setQuestionUz(e.target.value)}
+              onKeyDown={fmtUz.handleKeyDown}
               placeholder="Savol o'zbek tilida"
               required
             />
           </div>
         </div>
       </div>
+
+      {questionEn.trim() && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>📱 Live Preview (English)</h3>
+          <TelegramPreview
+            text={`📋 ${questionEn}`}
+            buttons={options.map(o => o.en).filter(Boolean)}
+          />
+        </div>
+      )}
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -616,6 +777,119 @@ function ResponsesView({ questionId, onBack }) {
   );
 }
 
+// ─────────────── Broadcast Page ───────────────
+function BroadcastPage() {
+  const [message, setMessage] = useState('');
+  const [status, setStatus] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const textareaRef = useRef(null);
+  const { handleKeyDown, toolbar } = FormattingToolbar({ textareaRef, value: message, onChange: setMessage });
+
+  const handleSend = async () => {
+    if (!message.trim()) {
+      setStatus({ type: 'error', text: 'Message text is required' });
+      return;
+    }
+    if (message.length > 4096) {
+      setStatus({ type: 'error', text: 'Message exceeds 4096 character limit' });
+      return;
+    }
+    setSending(true);
+    try {
+      const result = await api.sendBroadcast(message, 'HTML');
+      setStatus({ type: 'success', text: `Broadcast sent! ${result.sent} group(s) received, ${result.failed} failed.` });
+      setTimeout(() => setStatus(null), 5000);
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleTest = async () => {
+    if (!message.trim()) {
+      setStatus({ type: 'error', text: 'Message text is required' });
+      return;
+    }
+    setTesting(true);
+    try {
+      await api.sendBroadcastTest(message, 'HTML');
+      setStatus({ type: 'success', text: 'Test message sent to management group!' });
+      setTimeout(() => setStatus(null), 3000);
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="page-header">
+        <h2>Broadcast Message</h2>
+        <p>Send announcements and messages to all driver groups</p>
+      </div>
+
+      {status && (
+        <div className={`alert alert-${status.type}`}>
+          {status.type === 'success' ? '✅' : '⚠️'} {status.text}
+        </div>
+      )}
+
+      <div className="broadcast-layout">
+        <div className="broadcast-editor-section">
+          <div className="card">
+            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>✍️ Compose Message</h3>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>Use the toolbar to format text with Telegram-compatible HTML tags.</p>
+            {toolbar}
+            <textarea
+              ref={textareaRef}
+              className="form-textarea toolbar-textarea"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Type your broadcast message here...\n\nUse the toolbar above for <b>bold</b>, <i>italic</i>, and other formatting."
+              style={{ minHeight: 200, resize: 'vertical' }}
+            />
+            <div className={`char-count ${message.length > 4096 ? 'over-limit' : ''}`}>
+              {message.length} / 4096
+            </div>
+
+            <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleSend}
+                disabled={sending || !message.trim() || message.length > 4096}
+              >
+                {sending ? '⏳ Sending...' : '📤 Send to All Groups'}
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={handleTest}
+                disabled={testing || !message.trim()}
+                style={{ border: '1px solid var(--border)' }}
+              >
+                {testing ? '⏳ Testing...' : '🧪 Test'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="broadcast-preview-section">
+          <div className="card">
+            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>📱 Live Preview</h3>
+            <TelegramPreview
+              label="How it will look in Telegram"
+              text={message}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────── Main App ───────────────
 export default function App() {
   const [authed, setAuthed] = useState(false);
@@ -653,6 +927,7 @@ export default function App() {
   const pages = {
     groups: <GroupsPage />,
     questions: <QuestionsPage />,
+    broadcast: <BroadcastPage />,
   };
 
   return (
@@ -676,6 +951,13 @@ export default function App() {
           >
             <span className="nav-icon">📝</span>
             Questions
+          </button>
+          <button
+            className={`nav-item ${page === 'broadcast' ? 'active' : ''}`}
+            onClick={() => setPage('broadcast')}
+          >
+            <span className="nav-icon">📢</span>
+            Broadcast
           </button>
         </nav>
         <div className="sidebar-footer">

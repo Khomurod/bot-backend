@@ -299,4 +299,39 @@ async function sendTestQuestion(questionEn, optionsEn) {
   console.log('[BOT] Test question sent to management group.');
 }
 
-module.exports = { bot, startBot, sendQuestionToGroups, sendTestQuestion };
+// ─── Send broadcast message to all groups ───
+async function sendBroadcast(messageText, parseMode) {
+  const groups = await db.getAllGroups();
+  const results = { sent: 0, failed: 0, errors: [] };
+
+  for (const group of groups) {
+    try {
+      await bot.telegram.sendMessage(
+        group.telegram_group_id,
+        messageText,
+        { parse_mode: parseMode }
+      );
+      results.sent++;
+      console.log(`[BOT] Broadcast sent to: ${group.group_name} (${group.telegram_group_id})`);
+    } catch (err) {
+      results.failed++;
+      results.errors.push({ group: group.group_name, error: err.message });
+      console.error(`[BOT] Broadcast failed for ${group.group_name}:`, err.message);
+    }
+  }
+
+  console.log(`[BOT] Broadcast complete: ${results.sent} sent, ${results.failed} failed`);
+  return results;
+}
+
+// ─── Send broadcast test to management group ───
+async function sendBroadcastTest(messageText, parseMode) {
+  await bot.telegram.sendMessage(
+    MANAGEMENT_GROUP_ID,
+    messageText,
+    { parse_mode: parseMode }
+  );
+  console.log('[BOT] Broadcast test sent to management group.');
+}
+
+module.exports = { bot, startBot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest };
