@@ -68,6 +68,11 @@ app.get('/api/auth/verify', authMiddleware, (req, res) => {
   res.json({ valid: true, username: req.admin.username });
 });
 
+// ─── Health Check (public, for cron keep-alive) ───
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime() });
+});
+
 // ─── Groups Routes ───
 
 // GET /api/groups
