@@ -84,6 +84,37 @@ CREATE TABLE IF NOT EXISTS admins (
 );
 
 -- ─── Auto-migrations (safe to run every startup) ───
--- These handle existing databases where CREATE TABLE IF NOT EXISTS
--- won't add new columns to already-existing tables.
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS media_position TEXT DEFAULT 'above';
+
+-- ─── Employee Voting System (isolated) ───
+
+CREATE TABLE IF NOT EXISTS employee_votes_polls (
+  id SERIAL PRIMARY KEY,
+  question TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  telegram_message_id BIGINT,
+  telegram_chat_id BIGINT,
+  status TEXT DEFAULT 'active'
+);
+
+CREATE TABLE IF NOT EXISTS employee_votes_options (
+  id SERIAL PRIMARY KEY,
+  poll_id INTEGER REFERENCES employee_votes_polls(id) ON DELETE CASCADE,
+  unit_number TEXT NOT NULL,
+  driver_name TEXT,
+  company_name TEXT,
+  driver_type TEXT,
+  group_id INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS employee_votes (
+  id SERIAL PRIMARY KEY,
+  poll_id INTEGER REFERENCES employee_votes_polls(id) ON DELETE CASCADE,
+  option_id INTEGER REFERENCES employee_votes_options(id) ON DELETE CASCADE,
+  telegram_user_id BIGINT NOT NULL,
+  telegram_username TEXT,
+  telegram_first_name TEXT,
+  unit_number TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(poll_id, telegram_user_id)
+);

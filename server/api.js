@@ -8,6 +8,7 @@ const config = require('../config/config');
 const db = require('../database/db');
 const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest } = require('../bot/bot');
 const { translateBatch } = require('../services/translationService');
+const employeeVotingRoutes = require('./employeeVotingApi');
 
 // ─── Multer: memory storage for media uploads ───
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime'];
@@ -31,6 +32,9 @@ app.use(express.json({ limit: '1mb' }));
 
 // Serve admin panel static files (production build)
 app.use('/admin', express.static(path.join(__dirname, '..', 'admin', 'build')));
+
+// ─── Employee Voting Routes (isolated) ───
+app.use(employeeVotingRoutes);
 
 // ─── Auth Middleware ───
 function authMiddleware(req, res, next) {

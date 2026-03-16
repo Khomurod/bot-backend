@@ -198,3 +198,60 @@ export async function uploadMedia(file) {
   }
   return res.json();
 }
+
+// ─── Employee Voting API ───
+
+export async function getDriverUnits() {
+  const res = await fetch(`${API_BASE}/voting/units`, { headers: getHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch driver units');
+  return res.json();
+}
+
+export async function getVotingPolls() {
+  const res = await fetch(`${API_BASE}/voting/polls`, { headers: getHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch polls');
+  return res.json();
+}
+
+export async function createVotingPoll() {
+  const res = await fetch(`${API_BASE}/voting/polls`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to create poll');
+  }
+  return res.json();
+}
+
+export async function getPollResults(pollId) {
+  const res = await fetch(`${API_BASE}/voting/polls/${pollId}/results`, { headers: getHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch poll results');
+  return res.json();
+}
+
+export async function getPollVoters(pollId) {
+  const res = await fetch(`${API_BASE}/voting/polls/${pollId}/voters`, { headers: getHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch poll voters');
+  return res.json();
+}
+
+export async function closePoll(pollId) {
+  const res = await fetch(`${API_BASE}/voting/polls/${pollId}/close`, {
+    method: 'PUT',
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to close poll');
+  return res.json();
+}
+
+export async function resetPoll(pollId) {
+  const res = await fetch(`${API_BASE}/voting/polls/${pollId}/reset`, {
+    method: 'PUT',
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to reset poll');
+  return res.json();
+}

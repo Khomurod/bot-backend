@@ -9,4 +9,5 @@ module.exports = {
   jwtSecret: process.env.JWT_SECRET || 'driver-feedback-jwt-secret-key',
   port: process.env.PORT || 3001,
   openaiApiKey: process.env.OPENAI_API_KEY,
+  employeeGroupId: process.env.EMPLOYEE_GROUP_ID,
 };

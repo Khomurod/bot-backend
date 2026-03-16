@@ -151,6 +151,10 @@ async function startBot() {
       }
     });
 
+    // Register employee voting handlers (isolated module)
+    const { registerVotingHandlers } = require('./employeeVoting');
+    registerVotingHandlers(bot);
+
     // Launch bot
     bot.launch();
     console.log('[BOT] Telegram bot started.');

@@ -1271,7 +1271,283 @@ function BroadcastPage() {
   );
 }
 
-// ─────────────── Main App ───────────────
+// ─────────────── Employee Voting Page ───────────────
+function EmployeeVotingPage() {
+  const [polls, setPolls] = useState([]);
+  const [selectedPoll, setSelectedPoll] = useState(null);
+  const [results, setResults] = useState([]);
+  const [voters, setVoters] = useState([]);
+  const [units, setUnits] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [status, setStatus] = useState(null);
+  const [activeTab, setActiveTab] = useState('results');
+
+  const loadPolls = async () => {
+    try {
+      const [p, u] = await Promise.all([api.getVotingPolls(), api.getDriverUnits()]);
+      setPolls(p);
+      setUnits(u);
+      if (p.length > 0 && !selectedPoll) {
+        setSelectedPoll(p[0]);
+      }
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadPolls(); }, []);
+
+  useEffect(() => {
+    if (!selectedPoll) return;
+    (async () => {
+      try {
+        const [r, v] = await Promise.all([
+          api.getPollResults(selectedPoll.id),
+          api.getPollVoters(selectedPoll.id),
+        ]);
+        setResults(r);
+        setVoters(v);
+      } catch (err) {
+        setStatus({ type: 'error', text: err.message });
+      }
+    })();
+  }, [selectedPoll]);
+
+  const handleCreate = async () => {
+    setCreating(true);
+    setStatus(null);
+    try {
+      await api.createVotingPoll();
+      setStatus({ type: 'success', text: '✅ Poll created and sent to employee group!' });
+      setSelectedPoll(null);
+      await loadPolls();
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleClose = async () => {
+    if (!selectedPoll) return;
+    setClosing(true);
+    try {
+      await api.closePoll(selectedPoll.id);
+      setStatus({ type: 'success', text: 'Poll closed. No more votes accepted.' });
+      await loadPolls();
+      setSelectedPoll(prev => prev ? { ...prev, status: 'closed' } : prev);
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setClosing(false);
+    }
+  };
+
+  const handleReset = async () => {
+    if (!selectedPoll || !window.confirm('Reset ALL votes for this poll? This cannot be undone.')) return;
+    setResetting(true);
+    try {
+      await api.resetPoll(selectedPoll.id);
+      setStatus({ type: 'success', text: 'All votes reset.' });
+      setResults([]);
+      setVoters([]);
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  if (loading) return <div className="loading"><div className="spinner" /> Loading...</div>;
+
+  const activePoll = polls.find(p => p.status === 'active');
+
+  return (
+    <div>
+      <div className="page-header">
+        <h2>🏆 Employee Voting</h2>
+        <p>Driver of the Week — create polls and track votes</p>
+      </div>
+
+      {status && (
+        <div className={`alert alert-${status.type}`} style={{ marginBottom: 16 }}>
+          {status.text}
+          <button onClick={() => setStatus(null)} style={{ float: 'right', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button>
+        </div>
+      )}
+
+      {/* Poll creation panel */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Create Driver of the Week Poll</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+              Extracts {units.length} unit(s) from groups table and sends inline keyboard to the employee group.
+            </p>
+            {units.length > 0 && (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+                Units: {units.slice(0, 8).map(u => `#${u.unit_number}`).join(', ')}{units.length > 8 ? ` +${units.length - 8} more` : ''}
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            {activePoll && (
+              <span style={{ fontSize: 12, background: '#16a34a22', color: '#4ade80', border: '1px solid #16a34a44', borderRadius: 6, padding: '4px 10px', alignSelf: 'center' }}>🟢 Active poll</span>
+            )}
+            <button
+              className="btn btn-primary"
+              onClick={handleCreate}
+              disabled={creating || !!activePoll}
+              title={activePoll ? 'Close the current active poll first' : ''}
+            >
+              {creating ? '⏳ Creating...' : '🗳️ Create New Poll'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Poll selector */}
+      {polls.length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <label style={{ fontWeight: 600, fontSize: 14 }}>Poll:</label>
+              <select
+                value={selectedPoll?.id || ''}
+                onChange={e => {
+                  const p = polls.find(x => x.id === parseInt(e.target.value, 10));
+                  setSelectedPoll(p || null);
+                }}
+                style={{ padding: '6px 12px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 13 }}
+              >
+                {polls.map(p => (
+                  <option key={p.id} value={p.id}>
+                    #{p.id} — {new Date(p.created_at).toLocaleDateString()} — {p.status.toUpperCase()} — {p.total_votes} votes
+                  </option>
+                ))}
+              </select>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{selectedPoll?.option_count} options</span>
+            </div>
+            {selectedPoll && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                {selectedPoll.status === 'active' && (
+                  <button className="btn btn-ghost btn-sm" onClick={handleClose} disabled={closing} style={{ border: '1px solid var(--border)' }}>
+                    {closing ? '⏳' : '🔒 Close Poll'}
+                  </button>
+                )}
+                <button className="btn btn-danger btn-sm" onClick={handleReset} disabled={resetting}>
+                  {resetting ? '⏳' : '🔄 Reset Votes'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Tabs */}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+            {['results', 'voters'].map(tab => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                style={{
+                  padding: '6px 16px', fontSize: 13, fontWeight: 600, borderRadius: 6,
+                  border: activeTab === tab ? '2px solid var(--primary)' : '1px solid var(--border)',
+                  background: activeTab === tab ? 'var(--primary)' : 'transparent',
+                  color: activeTab === tab ? '#fff' : 'var(--text-muted)',
+                  cursor: 'pointer', textTransform: 'capitalize',
+                }}
+              >{tab === 'results' ? '📊 Results' : '👤 Voters'}</button>
+            ))}
+          </div>
+
+          {/* Results table */}
+          {activeTab === 'results' && (
+            results.length === 0
+              ? <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No votes yet.</p>
+              : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="responses-table" style={{ width: '100%' }}>
+                    <thead>
+                      <tr>
+                        <th>Unit</th>
+                        <th>Driver</th>
+                        <th>Company</th>
+                        <th>Type</th>
+                        <th>Votes</th>
+                        <th>%</th>
+                        <th style={{ width: 160 }}>Bar</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {results.map((r, i) => (
+                        <tr key={r.id}>
+                          <td><strong>#{r.unit_number}</strong>{i === 0 && r.vote_count > 0 && ' 🥇'}</td>
+                          <td>{r.driver_name || '—'}</td>
+                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{r.company_name || '—'}</td>
+                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{r.driver_type || '—'}</td>
+                          <td style={{ fontWeight: 700 }}>{r.vote_count}</td>
+                          <td style={{ color: r.percentage > 0 ? 'var(--primary)' : 'var(--text-muted)' }}>{r.percentage}%</td>
+                          <td>
+                            <div style={{ background: 'var(--bg-secondary)', borderRadius: 4, overflow: 'hidden', height: 8 }}>
+                              <div style={{ background: 'var(--primary)', width: `${r.percentage}%`, height: '100%', transition: 'width 0.3s' }} />
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+          )}
+
+          {/* Voters table */}
+          {activeTab === 'voters' && (
+            voters.length === 0
+              ? <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No voters yet.</p>
+              : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="responses-table" style={{ width: '100%' }}>
+                    <thead>
+                      <tr>
+                        <th>Voter</th>
+                        <th>Telegram ID</th>
+                        <th>Chosen Unit</th>
+                        <th>Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {voters.map((v, i) => (
+                        <tr key={i}>
+                          <td>{v.telegram_first_name || ''}{v.telegram_username ? ` @${v.telegram_username}` : ''}</td>
+                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{v.telegram_user_id}</td>
+                          <td><strong>#{v.unit_number}</strong></td>
+                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(v.created_at).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+          )}
+        </div>
+      )}
+
+      {polls.length === 0 && !loading && (
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🗳️</div>
+          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>No polls yet</div>
+          <div style={{ fontSize: 13 }}>Click "Create New Poll" to start the first Driver of the Week vote.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [authed, setAuthed] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -1309,6 +1585,7 @@ export default function App() {
     groups: <GroupsPage />,
     questions: <QuestionsPage />,
     broadcast: <BroadcastPage />,
+    voting: <EmployeeVotingPage />,
   };
 
   return (
@@ -1339,6 +1616,13 @@ export default function App() {
           >
             <span className="nav-icon">📢</span>
             Broadcast
+          </button>
+          <button
+            className={`nav-item ${page === 'voting' ? 'active' : ''}`}
+            onClick={() => setPage('voting')}
+          >
+            <span className="nav-icon">🏆</span>
+            Employee Voting
           </button>
         </nav>
         <div className="sidebar-footer">
