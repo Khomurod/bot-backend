@@ -23,7 +23,10 @@ CREATE TABLE IF NOT EXISTS drivers (
 CREATE TABLE IF NOT EXISTS questions (
   id SERIAL PRIMARY KEY,
   created_at TIMESTAMP DEFAULT NOW(),
-  active BOOLEAN DEFAULT TRUE
+  active BOOLEAN DEFAULT TRUE,
+  media_file_id TEXT,
+  media_type TEXT,
+  media_position TEXT DEFAULT 'above'
 );
 
 -- TABLE: question_translations

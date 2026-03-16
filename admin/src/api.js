@@ -8,6 +8,11 @@ function getHeaders() {
   };
 }
 
+function getAuthHeader() {
+  const token = localStorage.getItem('token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export async function login(username, password) {
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
@@ -96,11 +101,17 @@ export async function deactivateQuestion(questionId) {
   return res.json();
 }
 
-export async function sendTestQuestion(questionEn, optionsEn) {
+export async function sendTestQuestion(questionEn, optionsEn, media) {
+  const body = { question_en: questionEn, options_en: optionsEn };
+  if (media) {
+    body.media_file_id = media.file_id;
+    body.media_type = media.type;
+    body.media_position = media.position;
+  }
   const res = await fetch(`${API_BASE}/questions/send-test`, {
     method: 'POST',
     headers: getHeaders(),
-    body: JSON.stringify({ question_en: questionEn, options_en: optionsEn }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json();
@@ -109,9 +120,14 @@ export async function sendTestQuestion(questionEn, optionsEn) {
   return res.json();
 }
 
-export async function sendBroadcast(messageText, parseMode, messages) {
+export async function sendBroadcast(messageText, parseMode, messages, media) {
   const body = { message_text: messageText, parse_mode: parseMode };
   if (messages) body.messages = messages;
+  if (media) {
+    body.media_file_id = media.file_id;
+    body.media_type = media.type;
+    body.media_position = media.position;
+  }
   const res = await fetch(`${API_BASE}/broadcast/send`, {
     method: 'POST',
     headers: getHeaders(),
@@ -124,11 +140,17 @@ export async function sendBroadcast(messageText, parseMode, messages) {
   return res.json();
 }
 
-export async function sendBroadcastTest(messageText, parseMode) {
+export async function sendBroadcastTest(messageText, parseMode, media) {
+  const body = { message_text: messageText, parse_mode: parseMode };
+  if (media) {
+    body.media_file_id = media.file_id;
+    body.media_type = media.type;
+    body.media_position = media.position;
+  }
   const res = await fetch(`${API_BASE}/broadcast/test`, {
     method: 'POST',
     headers: getHeaders(),
-    body: JSON.stringify({ message_text: messageText, parse_mode: parseMode }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json();
@@ -156,6 +178,26 @@ export async function translateTexts(textBlocks) {
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.error || 'Translation failed. Please try again.');
+  }
+  return res.json();
+}
+
+/**
+ * Upload a media file (photo or video) to Telegram via the server.
+ * Returns { file_id, media_type } from Telegram.
+ * Note: No Content-Type header — browser sets it with boundary for FormData.
+ */
+export async function uploadMedia(file) {
+  const formData = new FormData();
+  formData.append('media', file);
+  const res = await fetch(`${API_BASE}/upload-media`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to upload media');
   }
   return res.json();
 }

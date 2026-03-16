@@ -786,3 +786,65 @@ tr:hover td {
     grid-template-columns: 1fr;
   }
 }
+
+/* ─── Media Uploader ─── */
+.media-upload-section {
+  padding-top: 4px;
+}
+
+.media-dropzone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-sm);
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: var(--transition);
+  background: var(--bg-secondary);
+}
+
+.media-dropzone:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+
+.media-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.media-preview-icon {
+  font-size: 15px;
+  color: var(--text-secondary);
+  padding: 8px 0;
+}
+
+/* ─── Media Position Selector ─── */
+.media-position-selector {
+  padding: 12px 0 0;
+}
+
+/* ─── Telegram Preview: Media Block ─── */
+.telegram-preview .tg-media-placeholder {
+  background: rgba(107, 114, 128, 0.15);
+  border: 1px dashed rgba(107, 114, 128, 0.4);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  color: #8a9bb0;
+  font-size: 13px;
+  text-align: center;
+  overflow: hidden;
+}
+
+.telegram-preview .tg-media-placeholder:last-of-type {
+  margin-bottom: 0;
+  margin-top: 10px;
+}

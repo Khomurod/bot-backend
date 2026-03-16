@@ -3,10 +3,27 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
+const multer = require('multer');
 const config = require('../config/config');
 const db = require('../database/db');
-const { sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest } = require('../bot/bot');
+const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest } = require('../bot/bot');
 const { translateBatch } = require('../services/translationService');
+
+// ─── Multer: memory storage for media uploads ───
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime'];
+const MAX_FILE_SIZE_MB = 20;
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_SIZE_MB * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Invalid file type: ${file.mimetype}. Allowed: jpg, png, webp, mp4, mov`));
+    }
+  },
+});
 
 const app = express();
 app.use(cors());
@@ -74,6 +91,68 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
 });
 
+// ─── Media Upload ───
+
+// POST /api/upload-media
+app.post('/api/upload-media', authMiddleware, (req, res) => {
+  upload.single('media')(req, res, async (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: `File too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.` });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    try {
+      const isVideo = req.file.mimetype.startsWith('video/');
+      const mediaType = isVideo ? 'video' : 'photo';
+      const fileSource = { source: req.file.buffer, filename: req.file.originalname };
+      const managementGroupId = config.managementGroupId;
+
+      let sentMessage;
+      if (isVideo) {
+        sentMessage = await bot.telegram.sendVideo(managementGroupId, fileSource, {
+          caption: '📎 [Upload to get file_id — will be deleted]',
+        });
+      } else {
+        sentMessage = await bot.telegram.sendPhoto(managementGroupId, fileSource, {
+          caption: '📎 [Upload to get file_id — will be deleted]',
+        });
+      }
+
+      // Extract file_id
+      let fileId;
+      if (isVideo) {
+        fileId = sentMessage.video?.file_id;
+      } else {
+        const photos = sentMessage.photo;
+        // Use highest resolution
+        fileId = photos && photos.length > 0 ? photos[photos.length - 1].file_id : null;
+      }
+
+      // Delete the temp message from management group
+      try {
+        await bot.telegram.deleteMessage(managementGroupId, sentMessage.message_id);
+      } catch (_) {
+        // Non-critical: ignore if delete fails
+      }
+
+      if (!fileId) {
+        return res.status(500).json({ error: 'Failed to retrieve file_id from Telegram' });
+      }
+
+      console.log(`[API] Media uploaded: type=${mediaType}, file_id=${fileId}`);
+      res.json({ file_id: fileId, media_type: mediaType });
+    } catch (uploadErr) {
+      console.error('[API] Media upload error:', uploadErr.message);
+      res.status(500).json({ error: 'Failed to upload media to Telegram. Check bot permissions.' });
+    }
+  });
+});
+
 // ─── Groups Routes ───
 
 // GET /api/groups
@@ -135,7 +214,7 @@ app.get('/api/questions/:id', authMiddleware, async (req, res) => {
 // POST /api/questions
 app.post('/api/questions', authMiddleware, async (req, res) => {
   try {
-    const { translations, options } = req.body;
+    const { translations, options, media_file_id, media_type, media_position } = req.body;
 
     // Validate translations
     if (!translations || !Array.isArray(translations) || translations.length === 0) {
@@ -159,7 +238,19 @@ app.post('/api/questions', authMiddleware, async (req, res) => {
       }
     }
 
-    const question = await db.createQuestion(translations, options);
+    // Optional media — validate if provided
+    let media = null;
+    if (media_file_id) {
+      if (media_type && !['photo', 'video'].includes(media_type)) {
+        return res.status(400).json({ error: 'media_type must be photo or video' });
+      }
+      if (media_position && !['above', 'below'].includes(media_position)) {
+        return res.status(400).json({ error: 'media_position must be above or below' });
+      }
+      media = { file_id: media_file_id, type: media_type || 'photo', position: media_position || 'above' };
+    }
+
+    const question = await db.createQuestion(translations, options, media);
     const full = await db.getQuestionWithOptions(question.id);
     res.status(201).json(full);
   } catch (err) {
@@ -194,7 +285,7 @@ app.post('/api/questions/:id/send', authMiddleware, async (req, res) => {
 // POST /api/questions/send-test
 app.post('/api/questions/send-test', authMiddleware, async (req, res) => {
   try {
-    const { question_en, options_en } = req.body;
+    const { question_en, options_en, media_file_id, media_type, media_position } = req.body;
 
     if (!question_en || !question_en.trim()) {
       return res.status(400).json({ error: 'English question text is required' });
@@ -209,7 +300,8 @@ app.post('/api/questions/send-test', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'All options must have non-empty English text' });
     }
 
-    await sendTestQuestion(question_en.trim(), options_en.map((o) => o.trim()));
+    const media = media_file_id ? { file_id: media_file_id, type: media_type || 'photo', position: media_position || 'above' } : null;
+    await sendTestQuestion(question_en.trim(), options_en.map((o) => o.trim()), media);
     res.json({ success: true });
   } catch (err) {
     console.error('[API] Error sending test question:', err.message);
@@ -263,7 +355,7 @@ app.post('/api/translate', authMiddleware, async (req, res) => {
 // POST /api/broadcast/send
 app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
   try {
-    const { message_text, parse_mode, messages } = req.body;
+    const { message_text, parse_mode, messages, media_file_id, media_type, media_position } = req.body;
 
     // Backward compatible: accept either messages object or message_text
     const primaryText = (messages && messages.en) || message_text;
@@ -277,8 +369,9 @@ app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
     }
 
     const mode = ['HTML', 'MarkdownV2'].includes(parse_mode) ? parse_mode : 'HTML';
+    const media = media_file_id ? { file_id: media_file_id, type: media_type || 'photo', position: media_position || 'above' } : null;
 
-    const results = await sendBroadcast(primaryText.trim(), mode, messages || null);
+    const results = await sendBroadcast(primaryText.trim(), mode, messages || null, media);
     res.json(results);
   } catch (err) {
     console.error('[API] Error sending broadcast:', err.message);
@@ -289,7 +382,7 @@ app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
 // POST /api/broadcast/test
 app.post('/api/broadcast/test', authMiddleware, async (req, res) => {
   try {
-    const { message_text, parse_mode, messages } = req.body;
+    const { message_text, parse_mode, messages, media_file_id, media_type, media_position } = req.body;
 
     const primaryText = (messages && messages.en) || message_text;
 
@@ -302,8 +395,9 @@ app.post('/api/broadcast/test', authMiddleware, async (req, res) => {
     }
 
     const mode = ['HTML', 'MarkdownV2'].includes(parse_mode) ? parse_mode : 'HTML';
+    const media = media_file_id ? { file_id: media_file_id, type: media_type || 'photo', position: media_position || 'above' } : null;
 
-    await sendBroadcastTest(primaryText.trim(), mode);
+    await sendBroadcastTest(primaryText.trim(), mode, media);
     res.json({ success: true });
   } catch (err) {
     console.error('[API] Error sending broadcast test:', err.message);

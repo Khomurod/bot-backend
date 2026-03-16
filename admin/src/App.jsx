@@ -2,14 +2,24 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as api from './api';
 
 // ─────────────── Telegram Message Preview ───────────────
-function TelegramPreview({ text, buttons, label, langTabs }) {
+function TelegramPreview({ text, buttons, label, langTabs, mediaType, mediaPosition, mediaPreviewUrl }) {
   const now = new Date();
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const [activeLang, setActiveLang] = React.useState('en');
 
-  // If langTabs provided, use the selected language's content
   const displayText = langTabs && langTabs[activeLang]?.text !== undefined ? langTabs[activeLang].text : text;
   const displayButtons = langTabs && langTabs[activeLang]?.buttons !== undefined ? langTabs[activeLang].buttons : buttons;
+  const effectivePosition = mediaPosition || 'above';
+
+  const MediaBlock = mediaType ? (
+    <div className="tg-media-placeholder">
+      {mediaPreviewUrl && mediaType === 'photo' ? (
+        <img src={mediaPreviewUrl} alt="media preview" style={{ maxWidth: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 8 }} />
+      ) : (
+        <span>{mediaType === 'video' ? '🎬 Video' : '📷 Photo'}</span>
+      )}
+    </div>
+  ) : null;
 
   return (
     <div style={{ padding: 16 }}>
@@ -36,6 +46,7 @@ function TelegramPreview({ text, buttons, label, langTabs }) {
         </div>
       )}
       <div className="telegram-preview">
+        {MediaBlock && effectivePosition === 'above' && MediaBlock}
         <div className="tg-text" dangerouslySetInnerHTML={{ __html: (displayText || '<span style="color:#6b7d8e">Type a message to see preview...</span>').replace(/\n/g, '<br/>') }} />
         {displayButtons && displayButtons.length > 0 && (
           <div className="tg-buttons">
@@ -44,7 +55,103 @@ function TelegramPreview({ text, buttons, label, langTabs }) {
             ))}
           </div>
         )}
+        {MediaBlock && effectivePosition === 'below' && MediaBlock}
         <div className="tg-time">{timeStr}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────── Media Uploader ───────────────
+function MediaUploader({ onUploaded, onRemove, currentMedia }) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const ACCEPTED = '.jpg,.jpeg,.png,.webp,.mp4,.mov';
+  const MAX_MB = 20;
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!fileInputRef.current) return;
+    fileInputRef.current.value = '';
+    if (!file) return;
+
+    if (file.size > MAX_MB * 1024 * 1024) {
+      setUploadError(`File too large. Maximum size is ${MAX_MB}MB.`);
+      return;
+    }
+
+    setUploadError(null);
+    setUploading(true);
+    try {
+      const result = await api.uploadMedia(file);
+      const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
+      onUploaded({ file_id: result.file_id, type: result.media_type, previewUrl });
+    } catch (err) {
+      setUploadError(err.message || 'Upload failed.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="media-upload-section">
+      <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>📎 Media Attachment <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></h3>
+      {currentMedia ? (
+        <div className="media-preview">
+          {currentMedia.previewUrl ? (
+            <img src={currentMedia.previewUrl} alt="preview" style={{ maxHeight: 100, maxWidth: '100%', borderRadius: 8, objectFit: 'cover' }} />
+          ) : (
+            <div className="media-preview-icon">{currentMedia.type === 'video' ? '🎬' : '📷'} {currentMedia.type === 'video' ? 'Video ready' : 'Photo ready'}</div>
+          )}
+          <button type="button" className="btn btn-danger btn-sm" onClick={onRemove} style={{ marginTop: 8 }}>✕ Remove</button>
+        </div>
+      ) : (
+        <div className="media-dropzone" onClick={() => !uploading && fileInputRef.current?.click()}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ACCEPTED}
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
+          {uploading ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><div className="spinner" style={{ margin: 0 }} />Uploading to Telegram...</div>
+          ) : (
+            <div>
+              <div style={{ fontSize: 28, marginBottom: 6 }}>📤</div>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>Upload Photo or Video</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>JPG, PNG, WEBP, MP4, MOV · Max {MAX_MB}MB</div>
+            </div>
+          )}
+        </div>
+      )}
+      {uploadError && <div className="alert alert-error" style={{ marginTop: 8, marginBottom: 0 }}>⚠️ {uploadError}</div>}
+    </div>
+  );
+}
+
+// ─────────────── Media Position Selector ───────────────
+function MediaPositionSelector({ position, onChange, name }) {
+  const radioName = name || 'media-position';
+  return (
+    <div className="media-position-selector">
+      <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: 'var(--text-secondary)' }}>📍 Media Position</h4>
+      <div style={{ display: 'flex', gap: 16 }}>
+        {['above', 'below'].map(pos => (
+          <label key={pos} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 }}>
+            <input
+              type="radio"
+              name={radioName}
+              value={pos}
+              checked={position === pos}
+              onChange={() => onChange(pos)}
+              style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+            />
+            {pos === 'above' ? '⬆️ Above text' : '⬇️ Below text'}
+          </label>
+        ))}
       </div>
     </div>
   );
@@ -477,6 +584,8 @@ function QuestionsPage() {
                       buttons: previewData.options?.map(o => o.translations?.find(t => t.language === 'uz')?.option_text || '') || [],
                     },
                   }}
+                  mediaType={previewData.media_type}
+                  mediaPosition={previewData.media_position}
                 />
               )}
             </div>
@@ -501,6 +610,10 @@ function CreateQuestionForm({ onCreated, onError }) {
   const [sendingTest, setSendingTest] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [translateError, setTranslateError] = useState(null);
+  const [testSuccess, setTestSuccess] = useState(false);
+  // Media state
+  const [mediaAttachment, setMediaAttachment] = useState(null); // { file_id, type, previewUrl }
+  const [mediaPosition, setMediaPosition] = useState('above');
 
   const enRef = useRef(null);
   const ruRef = useRef(null);
@@ -545,7 +658,13 @@ function CreateQuestionForm({ onCreated, onError }) {
         ],
       }));
 
-      await api.createQuestion({ translations, options: opts });
+      const payload = { translations, options: opts };
+      if (mediaAttachment) {
+        payload.media_file_id = mediaAttachment.file_id;
+        payload.media_type = mediaAttachment.type;
+        payload.media_position = mediaPosition;
+      }
+      await api.createQuestion(payload);
       onCreated();
     } catch (err) {
       onError(err.message);
@@ -566,11 +685,10 @@ function CreateQuestionForm({ onCreated, onError }) {
     }
     setSendingTest(true);
     try {
-      await api.sendTestQuestion(questionEn.trim(), enOptions);
-      onError(null);
-      // Show success via parent
-      onCreated.__testSuccess?.() ||
-        alert('✅ Test question sent to management group!');
+      const media = mediaAttachment ? { file_id: mediaAttachment.file_id, type: mediaAttachment.type, position: mediaPosition } : null;
+      await api.sendTestQuestion(questionEn.trim(), enOptions, media);
+      setTestSuccess(true);
+      setTimeout(() => setTestSuccess(false), 4000);
     } catch (err) {
       onError(err.message);
     } finally {
@@ -682,9 +800,25 @@ function CreateQuestionForm({ onCreated, onError }) {
               ru: { text: questionRu ? `📋 ${questionRu}` : '', buttons: options.map(o => o.ru).filter(Boolean) },
               uz: { text: questionUz ? `📋 ${questionUz}` : '', buttons: options.map(o => o.uz).filter(Boolean) },
             }}
+            mediaType={mediaAttachment?.type}
+            mediaPosition={mediaPosition}
+            mediaPreviewUrl={mediaAttachment?.previewUrl}
           />
         </div>
       )}
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <MediaUploader
+          currentMedia={mediaAttachment}
+          onUploaded={(m) => setMediaAttachment(m)}
+          onRemove={() => setMediaAttachment(null)}
+        />
+        {mediaAttachment && (
+          <div style={{ marginTop: 16 }}>
+            <MediaPositionSelector name="question-media-position" position={mediaPosition} onChange={setMediaPosition} />
+          </div>
+        )}
+      </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -743,6 +877,9 @@ function CreateQuestionForm({ onCreated, onError }) {
         ))}
       </div>
 
+      {testSuccess && (
+        <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ Test question sent to management group!</div>
+      )}
       <div style={{ display: 'flex', gap: 12 }}>
         <button className="btn btn-primary" type="submit" disabled={submitting}>
           {submitting ? '⏳ Creating...' : '✅ Create Question'}
@@ -879,6 +1016,9 @@ function BroadcastPage() {
   const [sending, setSending] = useState(false);
   const [testing, setTesting] = useState(false);
   const [translating, setTranslating] = useState(false);
+  // Media state
+  const [broadcastMedia, setBroadcastMedia] = useState(null); // { file_id, type, previewUrl }
+  const [broadcastMediaPosition, setBroadcastMediaPosition] = useState('above');
   const textareaRef = useRef(null);
   const ruBroadRef = useRef(null);
   const uzBroadRef = useRef(null);
@@ -915,14 +1055,11 @@ function BroadcastPage() {
     }
     setSending(true);
     try {
-      const payload = { parse_mode: 'HTML' };
-      if (messageRu.trim() || messageUz.trim()) {
-        payload.messages = { en: message, ru: messageRu || message, uz: messageUz || message };
-        payload.message_text = message;
-      } else {
-        payload.message_text = message;
-      }
-      const result = await api.sendBroadcast(payload.message_text, 'HTML', payload.messages);
+      const messages = (messageRu.trim() || messageUz.trim())
+        ? { en: message, ru: messageRu || message, uz: messageUz || message }
+        : null;
+      const media = broadcastMedia ? { file_id: broadcastMedia.file_id, type: broadcastMedia.type, position: broadcastMediaPosition } : null;
+      const result = await api.sendBroadcast(message, 'HTML', messages, media);
       setStatus({ type: 'success', text: `Broadcast sent! ${result.sent} group(s) received, ${result.failed} failed.` });
       setTimeout(() => setStatus(null), 5000);
     } catch (err) {
@@ -939,7 +1076,8 @@ function BroadcastPage() {
     }
     setTesting(true);
     try {
-      await api.sendBroadcastTest(message, 'HTML');
+      const media = broadcastMedia ? { file_id: broadcastMedia.file_id, type: broadcastMedia.type, position: broadcastMediaPosition } : null;
+      await api.sendBroadcastTest(message, 'HTML', media);
       setStatus({ type: 'success', text: 'Test message sent to management group!' });
       setTimeout(() => setStatus(null), 3000);
     } catch (err) {
@@ -1017,6 +1155,19 @@ function BroadcastPage() {
               style={{ minHeight: 100, resize: 'vertical' }}
             />
 
+            <div style={{ marginTop: 16 }}>
+              <MediaUploader
+                currentMedia={broadcastMedia}
+                onUploaded={(m) => setBroadcastMedia(m)}
+                onRemove={() => setBroadcastMedia(null)}
+              />
+              {broadcastMedia && (
+                <div style={{ marginTop: 16 }}>
+                  <MediaPositionSelector name="broadcast-media-position" position={broadcastMediaPosition} onChange={setBroadcastMediaPosition} />
+                </div>
+              )}
+            </div>
+
             <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
               <button
                 className="btn btn-primary"
@@ -1048,6 +1199,9 @@ function BroadcastPage() {
                 ru: { text: messageRu },
                 uz: { text: messageUz },
               }}
+              mediaType={broadcastMedia?.type}
+              mediaPosition={broadcastMediaPosition}
+              mediaPreviewUrl={broadcastMedia?.previewUrl}
             />
           </div>
         </div>

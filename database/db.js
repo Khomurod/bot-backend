@@ -106,17 +106,26 @@ async function getDriverByTelegramId(telegramUserId) {
 
 // ─── Questions ───
 
-async function createQuestion(translations, options) {
+async function createQuestion(translations, options, media) {
   // translations: [{ language, question_text }]
   // options: [{ option_order, translations: [{ language, option_text }] }]
+  // media: { file_id, type, position } (optional)
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const qRes = await client.query(
-      'INSERT INTO questions DEFAULT VALUES RETURNING *'
-    );
+    let qRes;
+    if (media && media.file_id) {
+      qRes = await client.query(
+        'INSERT INTO questions (media_file_id, media_type, media_position) VALUES ($1, $2, $3) RETURNING *',
+        [media.file_id, media.type || 'photo', media.position || 'above']
+      );
+    } else {
+      qRes = await client.query(
+        'INSERT INTO questions DEFAULT VALUES RETURNING *'
+      );
+    }
     const question = qRes.rows[0];
 
     // Insert question translations
@@ -177,6 +186,7 @@ async function getActiveQuestions() {
 async function getAllQuestions() {
   const res = await query(
     `SELECT q.id, q.created_at, q.active,
+            q.media_file_id, q.media_type, q.media_position,
             json_agg(DISTINCT jsonb_build_object(
               'language', qt.language,
               'question_text', qt.question_text
