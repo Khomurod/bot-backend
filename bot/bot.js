@@ -365,7 +365,6 @@ async function sendBroadcast(messageText, parseMode, messages, mediaItems, media
 
   const hasMedia = !!(mediaItems && mediaItems.length > 0);
   const position = mediaPosition || 'above';
-  const isAlbum = hasMedia && mediaItems.length > 1;
 
   for (const group of groups) {
     try {
