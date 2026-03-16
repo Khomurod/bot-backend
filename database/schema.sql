@@ -82,3 +82,8 @@ CREATE TABLE IF NOT EXISTS admins (
   password_hash TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- ─── Auto-migrations (safe to run every startup) ───
+-- These handle existing databases where CREATE TABLE IF NOT EXISTS
+-- won't add new columns to already-existing tables.
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS media_position TEXT DEFAULT 'above';
