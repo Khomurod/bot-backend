@@ -106,26 +106,20 @@ async function getDriverByTelegramId(telegramUserId) {
 
 // ─── Questions ───
 
-async function createQuestion(translations, options, media) {
+async function createQuestion(translations, options, mediaItems, mediaPosition) {
   // translations: [{ language, question_text }]
   // options: [{ option_order, translations: [{ language, option_text }] }]
-  // media: { file_id, type, position } (optional)
+  // mediaItems: [{ file_id, media_type }] (optional array, up to 10)
+  // mediaPosition: 'above' | 'below' (optional, defaults to 'above')
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    let qRes;
-    if (media && media.file_id) {
-      qRes = await client.query(
-        'INSERT INTO questions (media_file_id, media_type, media_position) VALUES ($1, $2, $3) RETURNING *',
-        [media.file_id, media.type || 'photo', media.position || 'above']
-      );
-    } else {
-      qRes = await client.query(
-        'INSERT INTO questions DEFAULT VALUES RETURNING *'
-      );
-    }
+    const qRes = await client.query(
+      `INSERT INTO questions (media_position) VALUES ($1) RETURNING *`,
+      [mediaPosition || 'above']
+    );
     const question = qRes.rows[0];
 
     // Insert question translations
@@ -155,8 +149,20 @@ async function createQuestion(translations, options, media) {
       }
     }
 
+    // Insert media items (if any)
+    if (mediaItems && mediaItems.length > 0) {
+      for (let i = 0; i < mediaItems.length; i++) {
+        const m = mediaItems[i];
+        await client.query(
+          `INSERT INTO question_media (question_id, file_id, media_type, sort_order)
+           VALUES ($1, $2, $3, $4)`,
+          [question.id, m.file_id, m.media_type || 'photo', i]
+        );
+      }
+    }
+
     await client.query('COMMIT');
-    console.log(`[DB] Question created: id=${question.id}`);
+    console.log(`[DB] Question created: id=${question.id}, media=${mediaItems?.length || 0} file(s)`);
     return question;
   } catch (err) {
     await client.query('ROLLBACK');
@@ -185,8 +191,8 @@ async function getActiveQuestions() {
 
 async function getAllQuestions() {
   const res = await query(
-    `SELECT q.id, q.created_at, q.active,
-            q.media_file_id, q.media_type, q.media_position,
+    `SELECT q.id, q.created_at, q.active, q.media_position,
+            (SELECT COUNT(*) FROM question_media qm WHERE qm.question_id = q.id)::int AS media_count,
             json_agg(DISTINCT jsonb_build_object(
               'language', qt.language,
               'question_text', qt.question_text
@@ -229,7 +235,17 @@ async function getQuestionWithOptions(questionId) {
     [questionId]
   );
 
+  // Fetch media items ordered by sort_order
+  const mRes = await query(
+    `SELECT file_id, media_type, sort_order
+     FROM question_media
+     WHERE question_id = $1
+     ORDER BY sort_order ASC`,
+    [questionId]
+  );
+
   question.options = oRes.rows;
+  question.media_items = mRes.rows; // [{ file_id, media_type, sort_order }]
   return question;
 }
 

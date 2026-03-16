@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as api from './api';
 
 // ─────────────── Telegram Message Preview ───────────────
-function TelegramPreview({ text, buttons, label, langTabs, mediaType, mediaPosition, mediaPreviewUrl }) {
+function TelegramPreview({ text, buttons, label, langTabs, mediaItems, mediaPosition }) {
   const now = new Date();
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const [activeLang, setActiveLang] = React.useState('en');
@@ -10,14 +10,33 @@ function TelegramPreview({ text, buttons, label, langTabs, mediaType, mediaPosit
   const displayText = langTabs && langTabs[activeLang]?.text !== undefined ? langTabs[activeLang].text : text;
   const displayButtons = langTabs && langTabs[activeLang]?.buttons !== undefined ? langTabs[activeLang].buttons : buttons;
   const effectivePosition = mediaPosition || 'above';
+  const items = mediaItems || [];
+  const hasMedia = items.length > 0;
+  const multi = items.length > 1;
 
-  const MediaBlock = mediaType ? (
+  const MediaBlock = hasMedia ? (
     <div className="tg-media-placeholder">
-      {mediaPreviewUrl && mediaType === 'photo' ? (
-        <img src={mediaPreviewUrl} alt="media preview" style={{ maxWidth: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 8 }} />
+      {multi ? (
+        // Album grid
+        <div style={{ display: 'grid', gridTemplateColumns: items.length === 2 ? '1fr 1fr' : '1fr 1fr 1fr', gap: 4 }}>
+          {items.map((m, i) => (
+            <div key={i} style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: 10, textAlign: 'center', fontSize: 18 }}>
+              {m.previewUrl && m.type === 'photo'
+                ? <img src={m.previewUrl} alt="" style={{ width: '100%', height: 60, objectFit: 'cover', borderRadius: 4 }} />
+                : (m.type === 'video' ? '🎬' : '📷')
+              }
+            </div>
+          ))}
+        </div>
       ) : (
-        <span>{mediaType === 'video' ? '🎬 Video' : '📷 Photo'}</span>
+        // Single item
+        items[0].previewUrl && items[0].type === 'photo' ? (
+          <img src={items[0].previewUrl} alt="media preview" style={{ maxWidth: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 8 }} />
+        ) : (
+          <span>{items[0].type === 'video' ? '🎬 Video' : '📷 Photo'}</span>
+        )
       )}
+      {multi && <div style={{ fontSize: 11, color: '#8a9bb0', marginTop: 6 }}>🖼️ Album · {items.length} items</div>}
     </div>
   ) : null;
 
@@ -62,12 +81,15 @@ function TelegramPreview({ text, buttons, label, langTabs, mediaType, mediaPosit
   );
 }
 
-// ─────────────── Media Uploader ───────────────
-function MediaUploader({ onUploaded, onRemove, currentMedia }) {
+// ─────────────── Media Uploader (multi-file) ───────────────
+// onAdd(item): item = { file_id, type, previewUrl }  — called when a file is uploaded
+// onRemove(index): remove item at index
+// items: [{ file_id, type, previewUrl }]
+function MediaUploader({ onAdd, onRemove, items }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const fileInputRef = useRef(null);
-
+  const MAX_ITEMS = 10;
   const ACCEPTED = '.jpg,.jpeg,.png,.webp,.mp4,.mov';
   const MAX_MB = 20;
 
@@ -87,7 +109,7 @@ function MediaUploader({ onUploaded, onRemove, currentMedia }) {
     try {
       const result = await api.uploadMedia(file);
       const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
-      onUploaded({ file_id: result.file_id, type: result.media_type, previewUrl });
+      onAdd({ file_id: result.file_id, type: result.media_type, previewUrl });
     } catch (err) {
       setUploadError(err.message || 'Upload failed.');
     } finally {
@@ -95,20 +117,55 @@ function MediaUploader({ onUploaded, onRemove, currentMedia }) {
     }
   };
 
+  const canAddMore = !uploading && (!items || items.length < MAX_ITEMS);
+
   return (
     <div className="media-upload-section">
-      <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>📎 Media Attachment <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></h3>
-      {currentMedia ? (
-        <div className="media-preview">
-          {currentMedia.previewUrl ? (
-            <img src={currentMedia.previewUrl} alt="preview" style={{ maxHeight: 100, maxWidth: '100%', borderRadius: 8, objectFit: 'cover' }} />
-          ) : (
-            <div className="media-preview-icon">{currentMedia.type === 'video' ? '🎬' : '📷'} {currentMedia.type === 'video' ? 'Video ready' : 'Photo ready'}</div>
-          )}
-          <button type="button" className="btn btn-danger btn-sm" onClick={onRemove} style={{ marginTop: 8 }}>✕ Remove</button>
+      <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>
+        📎 Media Attachments{' '}
+        <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>(optional · up to {MAX_ITEMS})</span>
+      </h3>
+
+      {/* Uploaded items list */}
+      {items && items.length > 0 && (
+        <div className="media-item-list">
+          {items.map((item, index) => (
+            <div className="media-item-row" key={index}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                {item.previewUrl ? (
+                  <img src={item.previewUrl} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: 48, height: 48, background: 'var(--bg-secondary)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>
+                    {item.type === 'video' ? '🎬' : '📷'}
+                  </div>
+                )}
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, textTransform: 'capitalize' }}>{item.type}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    #{index + 1} of {items.length}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-danger btn-sm"
+                onClick={() => onRemove(index)}
+                style={{ flexShrink: 0 }}
+              >
+                ✕ Remove
+              </button>
+            </div>
+          ))}
         </div>
-      ) : (
-        <div className="media-dropzone" onClick={() => !uploading && fileInputRef.current?.click()}>
+      )}
+
+      {/* Add button / dropzone */}
+      {canAddMore && (
+        <div
+          className="media-dropzone"
+          style={items && items.length > 0 ? { marginTop: 10, padding: '14px 20px' } : {}}
+          onClick={() => fileInputRef.current?.click()}
+        >
           <input
             ref={fileInputRef}
             type="file"
@@ -118,15 +175,25 @@ function MediaUploader({ onUploaded, onRemove, currentMedia }) {
           />
           {uploading ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><div className="spinner" style={{ margin: 0 }} />Uploading to Telegram...</div>
+          ) : items && items.length > 0 ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 20 }}>➕</span>
+              <span style={{ fontWeight: 600 }}>Add Another ({items.length}/{MAX_ITEMS})</span>
+            </div>
           ) : (
             <div>
               <div style={{ fontSize: 28, marginBottom: 6 }}>📤</div>
               <div style={{ fontWeight: 600, marginBottom: 4 }}>Upload Photo or Video</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>JPG, PNG, WEBP, MP4, MOV · Max {MAX_MB}MB</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>JPG, PNG, WEBP, MP4, MOV · Max {MAX_MB}MB · Up to {MAX_ITEMS} files</div>
             </div>
           )}
         </div>
       )}
+
+      {!canAddMore && !uploading && items.length >= MAX_ITEMS && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>Maximum {MAX_ITEMS} media items reached.</div>
+      )}
+
       {uploadError && <div className="alert alert-error" style={{ marginTop: 8, marginBottom: 0 }}>⚠️ {uploadError}</div>}
     </div>
   );
@@ -584,7 +651,7 @@ function QuestionsPage() {
                       buttons: previewData.options?.map(o => o.translations?.find(t => t.language === 'uz')?.option_text || '') || [],
                     },
                   }}
-                  mediaType={previewData.media_type}
+                  mediaItems={previewData.media_items || []}
                   mediaPosition={previewData.media_position}
                 />
               )}
@@ -611,8 +678,8 @@ function CreateQuestionForm({ onCreated, onError }) {
   const [translating, setTranslating] = useState(false);
   const [translateError, setTranslateError] = useState(null);
   const [testSuccess, setTestSuccess] = useState(false);
-  // Media state
-  const [mediaAttachment, setMediaAttachment] = useState(null); // { file_id, type, previewUrl }
+  // Media state: array of { file_id, type, previewUrl }
+  const [mediaItems, setMediaItems] = useState([]);
   const [mediaPosition, setMediaPosition] = useState('above');
 
   const enRef = useRef(null);
@@ -659,9 +726,8 @@ function CreateQuestionForm({ onCreated, onError }) {
       }));
 
       const payload = { translations, options: opts };
-      if (mediaAttachment) {
-        payload.media_file_id = mediaAttachment.file_id;
-        payload.media_type = mediaAttachment.type;
+      if (mediaItems.length > 0) {
+        payload.media_items = mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type }));
         payload.media_position = mediaPosition;
       }
       await api.createQuestion(payload);
@@ -685,8 +751,7 @@ function CreateQuestionForm({ onCreated, onError }) {
     }
     setSendingTest(true);
     try {
-      const media = mediaAttachment ? { file_id: mediaAttachment.file_id, type: mediaAttachment.type, position: mediaPosition } : null;
-      await api.sendTestQuestion(questionEn.trim(), enOptions, media);
+      await api.sendTestQuestion(questionEn.trim(), enOptions, mediaItems, mediaPosition);
       setTestSuccess(true);
       setTimeout(() => setTestSuccess(false), 4000);
     } catch (err) {
@@ -800,20 +865,19 @@ function CreateQuestionForm({ onCreated, onError }) {
               ru: { text: questionRu ? `📋 ${questionRu}` : '', buttons: options.map(o => o.ru).filter(Boolean) },
               uz: { text: questionUz ? `📋 ${questionUz}` : '', buttons: options.map(o => o.uz).filter(Boolean) },
             }}
-            mediaType={mediaAttachment?.type}
+            mediaItems={mediaItems}
             mediaPosition={mediaPosition}
-            mediaPreviewUrl={mediaAttachment?.previewUrl}
           />
         </div>
       )}
 
       <div className="card" style={{ marginBottom: 16 }}>
         <MediaUploader
-          currentMedia={mediaAttachment}
-          onUploaded={(m) => setMediaAttachment(m)}
-          onRemove={() => setMediaAttachment(null)}
+          items={mediaItems}
+          onAdd={(m) => setMediaItems(prev => [...prev, m])}
+          onRemove={(index) => setMediaItems(prev => prev.filter((_, i) => i !== index))}
         />
-        {mediaAttachment && (
+        {mediaItems.length > 0 && (
           <div style={{ marginTop: 16 }}>
             <MediaPositionSelector name="question-media-position" position={mediaPosition} onChange={setMediaPosition} />
           </div>
@@ -1016,8 +1080,8 @@ function BroadcastPage() {
   const [sending, setSending] = useState(false);
   const [testing, setTesting] = useState(false);
   const [translating, setTranslating] = useState(false);
-  // Media state
-  const [broadcastMedia, setBroadcastMedia] = useState(null); // { file_id, type, previewUrl }
+  // Media state: array of { file_id, type, previewUrl }
+  const [broadcastMediaItems, setBroadcastMediaItems] = useState([]);
   const [broadcastMediaPosition, setBroadcastMediaPosition] = useState('above');
   const textareaRef = useRef(null);
   const ruBroadRef = useRef(null);
@@ -1058,8 +1122,7 @@ function BroadcastPage() {
       const messages = (messageRu.trim() || messageUz.trim())
         ? { en: message, ru: messageRu || message, uz: messageUz || message }
         : null;
-      const media = broadcastMedia ? { file_id: broadcastMedia.file_id, type: broadcastMedia.type, position: broadcastMediaPosition } : null;
-      const result = await api.sendBroadcast(message, 'HTML', messages, media);
+      const result = await api.sendBroadcast(message, 'HTML', messages, broadcastMediaItems, broadcastMediaPosition);
       setStatus({ type: 'success', text: `Broadcast sent! ${result.sent} group(s) received, ${result.failed} failed.` });
       setTimeout(() => setStatus(null), 5000);
     } catch (err) {
@@ -1076,8 +1139,7 @@ function BroadcastPage() {
     }
     setTesting(true);
     try {
-      const media = broadcastMedia ? { file_id: broadcastMedia.file_id, type: broadcastMedia.type, position: broadcastMediaPosition } : null;
-      await api.sendBroadcastTest(message, 'HTML', media);
+      await api.sendBroadcastTest(message, 'HTML', broadcastMediaItems, broadcastMediaPosition);
       setStatus({ type: 'success', text: 'Test message sent to management group!' });
       setTimeout(() => setStatus(null), 3000);
     } catch (err) {
@@ -1157,11 +1219,11 @@ function BroadcastPage() {
 
             <div style={{ marginTop: 16 }}>
               <MediaUploader
-                currentMedia={broadcastMedia}
-                onUploaded={(m) => setBroadcastMedia(m)}
-                onRemove={() => setBroadcastMedia(null)}
+                items={broadcastMediaItems}
+                onAdd={(m) => setBroadcastMediaItems(prev => [...prev, m])}
+                onRemove={(index) => setBroadcastMediaItems(prev => prev.filter((_, i) => i !== index))}
               />
-              {broadcastMedia && (
+              {broadcastMediaItems.length > 0 && (
                 <div style={{ marginTop: 16 }}>
                   <MediaPositionSelector name="broadcast-media-position" position={broadcastMediaPosition} onChange={setBroadcastMediaPosition} />
                 </div>
@@ -1199,9 +1261,8 @@ function BroadcastPage() {
                 ru: { text: messageRu },
                 uz: { text: messageUz },
               }}
-              mediaType={broadcastMedia?.type}
+              mediaItems={broadcastMediaItems}
               mediaPosition={broadcastMediaPosition}
-              mediaPreviewUrl={broadcastMedia?.previewUrl}
             />
           </div>
         </div>

@@ -101,12 +101,11 @@ export async function deactivateQuestion(questionId) {
   return res.json();
 }
 
-export async function sendTestQuestion(questionEn, optionsEn, media) {
+export async function sendTestQuestion(questionEn, optionsEn, mediaItems, mediaPosition) {
   const body = { question_en: questionEn, options_en: optionsEn };
-  if (media) {
-    body.media_file_id = media.file_id;
-    body.media_type = media.type;
-    body.media_position = media.position;
+  if (mediaItems && mediaItems.length > 0) {
+    body.media_items = mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type }));
+    body.media_position = mediaPosition || 'above';
   }
   const res = await fetch(`${API_BASE}/questions/send-test`, {
     method: 'POST',
@@ -120,13 +119,12 @@ export async function sendTestQuestion(questionEn, optionsEn, media) {
   return res.json();
 }
 
-export async function sendBroadcast(messageText, parseMode, messages, media) {
+export async function sendBroadcast(messageText, parseMode, messages, mediaItems, mediaPosition) {
   const body = { message_text: messageText, parse_mode: parseMode };
   if (messages) body.messages = messages;
-  if (media) {
-    body.media_file_id = media.file_id;
-    body.media_type = media.type;
-    body.media_position = media.position;
+  if (mediaItems && mediaItems.length > 0) {
+    body.media_items = mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type }));
+    body.media_position = mediaPosition || 'above';
   }
   const res = await fetch(`${API_BASE}/broadcast/send`, {
     method: 'POST',
@@ -140,12 +138,11 @@ export async function sendBroadcast(messageText, parseMode, messages, media) {
   return res.json();
 }
 
-export async function sendBroadcastTest(messageText, parseMode, media) {
+export async function sendBroadcastTest(messageText, parseMode, mediaItems, mediaPosition) {
   const body = { message_text: messageText, parse_mode: parseMode };
-  if (media) {
-    body.media_file_id = media.file_id;
-    body.media_type = media.type;
-    body.media_position = media.position;
+  if (mediaItems && mediaItems.length > 0) {
+    body.media_items = mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type }));
+    body.media_position = mediaPosition || 'above';
   }
   const res = await fetch(`${API_BASE}/broadcast/test`, {
     method: 'POST',

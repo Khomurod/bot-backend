@@ -229,48 +229,70 @@ async function reportToManagement(driver, group, questionId, optionId) {
   }
 }
 
-// ─── Helper: send media (photo or video) to a chat ───
-async function sendMediaToChat(chatId, mediaFileId, mediaType, caption, extraOpts) {
-  const opts = { ...(extraOpts || {}) };
-  if (caption) opts.caption = caption;
-  if (mediaType === 'video') {
-    await bot.telegram.sendVideo(chatId, mediaFileId, opts);
+/**
+ * Send media to a chat.
+ * - 1 item: sendPhoto/sendVideo (supports caption + inline keyboard buttons)
+ * - 2-10 items: sendMediaGroup album (caption on first item only; no buttons on album)
+ *
+ * @param {string|number} chatId
+ * @param {Array<{file_id, media_type}>} mediaItems
+ * @param {string|null} caption
+ * @param {string|null} parseMode  e.g. 'HTML'
+ * @param {object|null} keyboard   Markup.inlineKeyboard(...) — only used for single-file
+ */
+async function sendMedia(chatId, mediaItems, caption, parseMode, keyboard) {
+  if (!mediaItems || mediaItems.length === 0) return;
+
+  if (mediaItems.length === 1) {
+    // ── Single file: sendPhoto/sendVideo — supports caption + buttons ──
+    const { file_id, media_type } = mediaItems[0];
+    const opts = { ...(keyboard || {}) };
+    if (caption) {
+      opts.caption = caption;
+      if (parseMode) opts.parse_mode = parseMode;
+    }
+    if (media_type === 'video') {
+      await bot.telegram.sendVideo(chatId, file_id, opts);
+    } else {
+      await bot.telegram.sendPhoto(chatId, file_id, opts);
+    }
   } else {
-    await bot.telegram.sendPhoto(chatId, mediaFileId, opts);
+    // ── Multiple files: sendMediaGroup album ──
+    // Telegram: caption goes on first item only; inline keyboard NOT supported on albums
+    const group = mediaItems.map((m, i) => ({
+      type: m.media_type === 'video' ? 'video' : 'photo',
+      media: m.file_id,
+      ...(i === 0 && caption ? { caption, parse_mode: parseMode } : {}),
+    }));
+    await bot.telegram.sendMediaGroup(chatId, group);
   }
 }
 
 // ─── Send question to all groups ───
 async function sendQuestionToGroups(questionId) {
   const question = await db.getQuestionWithOptions(questionId);
-  if (!question) {
-    throw new Error(`Question not found: ${questionId}`);
-  }
+  if (!question) throw new Error(`Question not found: ${questionId}`);
 
   const groups = await db.getAllGroups();
   const results = { sent: 0, failed: 0, errors: [] };
 
-  const hasMedia = !!(question.media_file_id);
+  const mediaItems = question.media_items || [];
+  const hasMedia = mediaItems.length > 0;
   const mediaPosition = question.media_position || 'above';
-  const mediaType = question.media_type || 'photo';
+  const isAlbum = mediaItems.length > 1;
 
   for (const group of groups) {
     try {
       const lang = group.language || 'en';
-
-      // Get question text in group's language
       const qTranslation = getTranslation(question.translations, lang);
       const questionText = qTranslation ? qTranslation.question_text : 'Question';
 
-      // Build inline keyboard
       const buttons = [];
       if (question.options) {
         for (const opt of question.options) {
           const oTranslation = getTranslation(opt.translations, lang);
           const optionText = oTranslation ? oTranslation.option_text : `Option ${opt.option_order}`;
-          buttons.push([
-            Markup.button.callback(optionText, `answer_${questionId}_${opt.id}`),
-          ]);
+          buttons.push([Markup.button.callback(optionText, `answer_${questionId}_${opt.id}`)]);
         }
       }
 
@@ -278,21 +300,21 @@ async function sendQuestionToGroups(questionId) {
       const keyboard = Markup.inlineKeyboard(buttons);
 
       if (!hasMedia) {
-        // ── No media: original behavior ──
+        // ── No media ──
         await bot.telegram.sendMessage(group.telegram_group_id, messageText, keyboard);
       } else if (mediaPosition === 'above') {
-        // ── Media above: send photo/video with caption + buttons ──
-        await sendMediaToChat(
-          group.telegram_group_id,
-          question.media_file_id,
-          mediaType,
-          messageText,
-          keyboard
-        );
+        if (isAlbum) {
+          // ── Album above: send album (caption on first), then text + buttons ──
+          await sendMedia(group.telegram_group_id, mediaItems, messageText, 'HTML', null);
+          await bot.telegram.sendMessage(group.telegram_group_id, messageText, keyboard);
+        } else {
+          // ── Single media above: send with caption + buttons ──
+          await sendMedia(group.telegram_group_id, mediaItems, messageText, 'HTML', keyboard);
+        }
       } else {
-        // ── Media below: send text+buttons first, then media ──
+        // ── Media below: text + buttons first, then media ──
         await bot.telegram.sendMessage(group.telegram_group_id, messageText, keyboard);
-        await sendMediaToChat(group.telegram_group_id, question.media_file_id, mediaType, null, {});
+        await sendMedia(group.telegram_group_id, mediaItems, null, null, null);
       }
 
       results.sent++;
@@ -308,40 +330,45 @@ async function sendQuestionToGroups(questionId) {
 }
 
 // ─── Send test question to management group ───
-async function sendTestQuestion(questionEn, optionsEn, media) {
+async function sendTestQuestion(questionEn, optionsEn, mediaItems, mediaPosition) {
   const buttons = optionsEn.map((text, i) => [
     Markup.button.callback(text, `test_answer_${i + 1}`),
   ]);
 
   const message = `🧪 <b>TEST QUESTION PREVIEW</b>\n\n${escapeHtml(questionEn)}\n\n<i>Choose an option:</i>`;
   const keyboard = Markup.inlineKeyboard(buttons);
+  const hasMedia = mediaItems && mediaItems.length > 0;
+  const isAlbum = hasMedia && mediaItems.length > 1;
+  const position = mediaPosition || 'above';
 
-  if (!media || !media.file_id) {
-    // No media: original behavior
+  if (!hasMedia) {
     await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, message, { parse_mode: 'HTML', ...keyboard });
-  } else if (media.position === 'below') {
-    await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, message, { parse_mode: 'HTML', ...keyboard });
-    await sendMediaToChat(MANAGEMENT_GROUP_ID, media.file_id, media.type || 'photo', null, {});
+  } else if (position === 'above') {
+    if (isAlbum) {
+      await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, message, 'HTML', null);
+      await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, message, { parse_mode: 'HTML', ...keyboard });
+    } else {
+      await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, message, 'HTML', keyboard);
+    }
   } else {
-    // above (default)
-    await sendMediaToChat(MANAGEMENT_GROUP_ID, media.file_id, media.type || 'photo', message, { parse_mode: 'HTML', ...keyboard });
+    await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, message, { parse_mode: 'HTML', ...keyboard });
+    await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, null, null, null);
   }
 
   console.log('[BOT] Test question sent to management group.');
 }
 
 // ─── Send broadcast message to all groups ───
-async function sendBroadcast(messageText, parseMode, messages, media) {
+async function sendBroadcast(messageText, parseMode, messages, mediaItems, mediaPosition) {
   const groups = await db.getAllGroups();
   const results = { sent: 0, failed: 0, errors: [] };
 
-  const hasMedia = !!(media && media.file_id);
-  const mediaPosition = (media && media.position) || 'above';
-  const mediaType = (media && media.type) || 'photo';
+  const hasMedia = !!(mediaItems && mediaItems.length > 0);
+  const position = mediaPosition || 'above';
+  const isAlbum = hasMedia && mediaItems.length > 1;
 
   for (const group of groups) {
     try {
-      // If per-language messages provided, use the matching language
       let text = messageText;
       if (messages) {
         const lang = group.language || 'en';
@@ -349,15 +376,13 @@ async function sendBroadcast(messageText, parseMode, messages, media) {
       }
 
       if (!hasMedia) {
-        // ── No media: original behavior ──
         await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode });
-      } else if (mediaPosition === 'above') {
-        // ── Media above: send photo/video with caption ──
-        await sendMediaToChat(group.telegram_group_id, media.file_id, mediaType, text, { parse_mode: parseMode });
+      } else if (position === 'above') {
+        // Single or album: send media with caption (album puts caption on first item)
+        await sendMedia(group.telegram_group_id, mediaItems, text, parseMode, null);
       } else {
-        // ── Media below: send text first, then media ──
         await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode });
-        await sendMediaToChat(group.telegram_group_id, media.file_id, mediaType, null, {});
+        await sendMedia(group.telegram_group_id, mediaItems, null, null, null);
       }
 
       results.sent++;
@@ -374,18 +399,17 @@ async function sendBroadcast(messageText, parseMode, messages, media) {
 }
 
 // ─── Send broadcast test to management group ───
-async function sendBroadcastTest(messageText, parseMode, media) {
-  const hasMedia = !!(media && media.file_id);
-  const mediaPosition = (media && media.position) || 'above';
-  const mediaType = (media && media.type) || 'photo';
+async function sendBroadcastTest(messageText, parseMode, mediaItems, mediaPosition) {
+  const hasMedia = !!(mediaItems && mediaItems.length > 0);
+  const position = mediaPosition || 'above';
 
   if (!hasMedia) {
     await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, messageText, { parse_mode: parseMode });
-  } else if (mediaPosition === 'above') {
-    await sendMediaToChat(MANAGEMENT_GROUP_ID, media.file_id, mediaType, messageText, { parse_mode: parseMode });
+  } else if (position === 'above') {
+    await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, messageText, parseMode, null);
   } else {
     await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, messageText, { parse_mode: parseMode });
-    await sendMediaToChat(MANAGEMENT_GROUP_ID, media.file_id, mediaType, null, {});
+    await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, null, null, null);
   }
   console.log('[BOT] Broadcast test sent to management group.');
 }

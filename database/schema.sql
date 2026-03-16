@@ -24,9 +24,16 @@ CREATE TABLE IF NOT EXISTS questions (
   id SERIAL PRIMARY KEY,
   created_at TIMESTAMP DEFAULT NOW(),
   active BOOLEAN DEFAULT TRUE,
-  media_file_id TEXT,
-  media_type TEXT,
   media_position TEXT DEFAULT 'above'
+);
+
+-- TABLE: question_media (one row per uploaded file, per question)
+CREATE TABLE IF NOT EXISTS question_media (
+  id SERIAL PRIMARY KEY,
+  question_id INTEGER REFERENCES questions(id) ON DELETE CASCADE,
+  file_id TEXT NOT NULL,
+  media_type TEXT NOT NULL,  -- 'photo' | 'video'
+  sort_order INTEGER DEFAULT 0
 );
 
 -- TABLE: question_translations

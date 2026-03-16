@@ -848,3 +848,26 @@ tr:hover td {
   margin-bottom: 0;
   margin-top: 10px;
 }
+
+/* ─── Multi-file upload list ─── */
+.media-item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.media-item-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: var(--transition);
+}
+
+.media-item-row:hover {
+  border-color: var(--accent);
+}

@@ -214,7 +214,7 @@ app.get('/api/questions/:id', authMiddleware, async (req, res) => {
 // POST /api/questions
 app.post('/api/questions', authMiddleware, async (req, res) => {
   try {
-    const { translations, options, media_file_id, media_type, media_position } = req.body;
+    const { translations, options } = req.body;
 
     // Validate translations
     if (!translations || !Array.isArray(translations) || translations.length === 0) {
@@ -238,19 +238,27 @@ app.post('/api/questions', authMiddleware, async (req, res) => {
       }
     }
 
-    // Optional media — validate if provided
-    let media = null;
-    if (media_file_id) {
-      if (media_type && !['photo', 'video'].includes(media_type)) {
-        return res.status(400).json({ error: 'media_type must be photo or video' });
+    // Optional media items — validate if provided
+    let mediaItems = null;
+    if (Array.isArray(req.body.media_items) && req.body.media_items.length > 0) {
+      if (req.body.media_items.length > 10) {
+        return res.status(400).json({ error: 'Maximum 10 media items allowed per message' });
       }
-      if (media_position && !['above', 'below'].includes(media_position)) {
-        return res.status(400).json({ error: 'media_position must be above or below' });
+      for (const item of req.body.media_items) {
+        if (!item.file_id) return res.status(400).json({ error: 'Each media item must have a file_id' });
+        if (!['photo', 'video'].includes(item.media_type)) {
+          return res.status(400).json({ error: 'Each media item must have media_type of photo or video' });
+        }
       }
-      media = { file_id: media_file_id, type: media_type || 'photo', position: media_position || 'above' };
+      mediaItems = req.body.media_items;
     }
 
-    const question = await db.createQuestion(translations, options, media);
+    const mediaPosition = req.body.media_position;
+    if (mediaPosition && !['above', 'below'].includes(mediaPosition)) {
+      return res.status(400).json({ error: 'media_position must be above or below' });
+    }
+
+    const question = await db.createQuestion(translations, options, mediaItems, mediaPosition || 'above');
     const full = await db.getQuestionWithOptions(question.id);
     res.status(201).json(full);
   } catch (err) {
@@ -285,7 +293,7 @@ app.post('/api/questions/:id/send', authMiddleware, async (req, res) => {
 // POST /api/questions/send-test
 app.post('/api/questions/send-test', authMiddleware, async (req, res) => {
   try {
-    const { question_en, options_en, media_file_id, media_type, media_position } = req.body;
+    const { question_en, options_en } = req.body;
 
     if (!question_en || !question_en.trim()) {
       return res.status(400).json({ error: 'English question text is required' });
@@ -300,8 +308,13 @@ app.post('/api/questions/send-test', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'All options must have non-empty English text' });
     }
 
-    const media = media_file_id ? { file_id: media_file_id, type: media_type || 'photo', position: media_position || 'above' } : null;
-    await sendTestQuestion(question_en.trim(), options_en.map((o) => o.trim()), media);
+    let mediaItems = null;
+    const mediaPosition = req.body.media_position || 'above';
+    if (Array.isArray(req.body.media_items) && req.body.media_items.length > 0) {
+      mediaItems = req.body.media_items;
+    }
+
+    await sendTestQuestion(question_en.trim(), options_en.map((o) => o.trim()), mediaItems, mediaPosition);
     res.json({ success: true });
   } catch (err) {
     console.error('[API] Error sending test question:', err.message);
@@ -355,23 +368,28 @@ app.post('/api/translate', authMiddleware, async (req, res) => {
 // POST /api/broadcast/send
 app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
   try {
-    const { message_text, parse_mode, messages, media_file_id, media_type, media_position } = req.body;
+    const { message_text, parse_mode, messages } = req.body;
 
-    // Backward compatible: accept either messages object or message_text
     const primaryText = (messages && messages.en) || message_text;
-
     if (!primaryText || !primaryText.trim()) {
       return res.status(400).json({ error: 'Message text is required' });
     }
-
     if (primaryText.length > 4096) {
       return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
     }
 
     const mode = ['HTML', 'MarkdownV2'].includes(parse_mode) ? parse_mode : 'HTML';
-    const media = media_file_id ? { file_id: media_file_id, type: media_type || 'photo', position: media_position || 'above' } : null;
 
-    const results = await sendBroadcast(primaryText.trim(), mode, messages || null, media);
+    let mediaItems = null;
+    const mediaPosition = req.body.media_position || 'above';
+    if (Array.isArray(req.body.media_items) && req.body.media_items.length > 0) {
+      if (req.body.media_items.length > 10) {
+        return res.status(400).json({ error: 'Maximum 10 media items allowed' });
+      }
+      mediaItems = req.body.media_items;
+    }
+
+    const results = await sendBroadcast(primaryText.trim(), mode, messages || null, mediaItems, mediaPosition);
     res.json(results);
   } catch (err) {
     console.error('[API] Error sending broadcast:', err.message);
@@ -382,22 +400,25 @@ app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
 // POST /api/broadcast/test
 app.post('/api/broadcast/test', authMiddleware, async (req, res) => {
   try {
-    const { message_text, parse_mode, messages, media_file_id, media_type, media_position } = req.body;
+    const { message_text, parse_mode, messages } = req.body;
 
     const primaryText = (messages && messages.en) || message_text;
-
     if (!primaryText || !primaryText.trim()) {
       return res.status(400).json({ error: 'Message text is required' });
     }
-
     if (primaryText.length > 4096) {
       return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
     }
 
     const mode = ['HTML', 'MarkdownV2'].includes(parse_mode) ? parse_mode : 'HTML';
-    const media = media_file_id ? { file_id: media_file_id, type: media_type || 'photo', position: media_position || 'above' } : null;
 
-    await sendBroadcastTest(primaryText.trim(), mode, media);
+    let mediaItems = null;
+    const mediaPosition = req.body.media_position || 'above';
+    if (Array.isArray(req.body.media_items) && req.body.media_items.length > 0) {
+      mediaItems = req.body.media_items;
+    }
+
+    await sendBroadcastTest(primaryText.trim(), mode, mediaItems, mediaPosition);
     res.json({ success: true });
   } catch (err) {
     console.error('[API] Error sending broadcast test:', err.message);
