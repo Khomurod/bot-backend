@@ -18,7 +18,11 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
     await client.query('BEGIN');
 
-    // 1. Create question_media table
+    // 1. Ensure media_position column exists on questions table
+    await client.query(`ALTER TABLE questions ADD COLUMN IF NOT EXISTS media_position TEXT DEFAULT 'above'`);
+    console.log('[MIGRATE] media_position column ensured on questions table.');
+
+    // 2. Create question_media table
     await client.query(`
       CREATE TABLE IF NOT EXISTS question_media (
         id SERIAL PRIMARY KEY,
