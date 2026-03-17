@@ -78,6 +78,11 @@ async function startBot() {
       return next();
     });
 
+    // Register employee voting handlers BEFORE generic callback_query handler
+    // so bot.action(/vote_unit_/) fires first for voting callbacks
+    const { registerVotingHandlers } = require('./employeeVoting');
+    registerVotingHandlers(bot);
+
     // ── 3. Handle TEST callback queries (test preview buttons) ──
     bot.on('callback_query', async (ctx) => {
       try {
@@ -150,10 +155,6 @@ async function startBot() {
         } catch (_) {}
       }
     });
-
-    // Register employee voting handlers (isolated module)
-    const { registerVotingHandlers } = require('./employeeVoting');
-    registerVotingHandlers(bot);
 
     // Launch bot
     bot.launch();
