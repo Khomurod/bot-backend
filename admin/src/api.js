@@ -213,11 +213,11 @@ export async function getVotingPolls() {
   return res.json();
 }
 
-export async function createVotingPoll() {
+export async function createVotingPoll(question) {
   const res = await fetch(`${API_BASE}/voting/polls`, {
     method: 'POST',
     headers: getHeaders(),
-    body: JSON.stringify({}),
+    body: JSON.stringify({ question }),
   });
   if (!res.ok) {
     const err = await res.json();

@@ -46,7 +46,7 @@ function parseGroupName(name) {
  * Returns [{ unit_number, driver_name, company_name, driver_type, group_id, telegram_group_id }]
  */
 async function getDriverUnitsFromGroups() {
-  const res = await query('SELECT id, group_name, telegram_group_id FROM groups ORDER BY id');
+  const res = await query("SELECT id, group_name, telegram_group_id FROM groups WHERE group_type = 'driver' ORDER BY id");
   const units = [];
 
   for (const row of res.rows) {

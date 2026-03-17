@@ -74,10 +74,10 @@ function registerVotingHandlers(bot) {
  * Send a voting poll to the employee group.
  * Returns the sent message for storing telegram_message_id.
  */
-async function sendVotingPoll(bot, pollId, options) {
+async function sendVotingPoll(bot, pollId, options, question) {
   if (!EMPLOYEE_GROUP_ID) throw new Error('EMPLOYEE_GROUP_ID not configured');
 
-  const question = 'Choose the best driver of the week in your opinion.';
+  const pollQuestion = question || 'Choose the best driver of the week in your opinion.';
 
   // Build inline keyboard — 1 button per row
   const buttons = options.map(opt => [
@@ -86,7 +86,7 @@ async function sendVotingPoll(bot, pollId, options) {
 
   const keyboard = Markup.inlineKeyboard(buttons);
 
-  const message = `🏆 <b>Driver of the Week</b>\n\n${question}\n\n<i>Tap a unit number below to cast your vote:</i>`;
+  const message = `🏆 <b>Driver of the Week</b>\n\n${pollQuestion}\n\n<i>Tap a unit number below to cast your vote:</i>`;
 
   const sent = await bot.telegram.sendMessage(EMPLOYEE_GROUP_ID, message, {
     parse_mode: 'HTML',

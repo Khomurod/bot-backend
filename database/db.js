@@ -25,6 +25,14 @@ async function initializeDatabase() {
   try {
     await pool.query(schema);
     console.log('[DB] Database tables verified/created.');
+
+    // Auto-tag employee group if EMPLOYEE_GROUP_ID is set
+    if (config.employeeGroupId) {
+      await pool.query(
+        `UPDATE groups SET group_type = 'employee' WHERE telegram_group_id = $1 AND group_type != 'employee'`,
+        [config.employeeGroupId]
+      );
+    }
   } catch (err) {
     console.error('[DB] Error initializing database:', err.message);
     throw err;
@@ -60,7 +68,7 @@ async function upsertGroup(telegramGroupId, groupName) {
 }
 
 async function getAllGroups() {
-  const res = await query('SELECT * FROM groups ORDER BY id');
+  const res = await query("SELECT * FROM groups WHERE group_type = 'driver' ORDER BY id");
   return res.rows;
 }
 

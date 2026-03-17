@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS groups (
   telegram_group_id BIGINT UNIQUE NOT NULL,
   group_name TEXT,
   language VARCHAR(5) DEFAULT 'en',
+  group_type TEXT DEFAULT 'driver',
   created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -85,6 +86,7 @@ CREATE TABLE IF NOT EXISTS admins (
 
 -- ─── Auto-migrations (safe to run every startup) ───
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS media_position TEXT DEFAULT 'above';
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS group_type TEXT DEFAULT 'driver';
 
 -- ─── Employee Voting System (isolated) ───
 

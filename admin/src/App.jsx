@@ -1284,6 +1284,7 @@ function EmployeeVotingPage() {
   const [resetting, setResetting] = useState(false);
   const [status, setStatus] = useState(null);
   const [activeTab, setActiveTab] = useState('results');
+  const [pollQuestion, setPollQuestion] = useState('Choose the best driver of the week in your opinion.');
 
   const loadPolls = async () => {
     try {
@@ -1319,10 +1320,18 @@ function EmployeeVotingPage() {
   }, [selectedPoll]);
 
   const handleCreate = async () => {
+    if (!pollQuestion.trim()) {
+      setStatus({ type: 'error', text: 'Poll question cannot be empty.' });
+      return;
+    }
+    if (units.length < 2) {
+      setStatus({ type: 'error', text: 'At least 2 driver units are required to create a poll.' });
+      return;
+    }
     setCreating(true);
     setStatus(null);
     try {
-      await api.createVotingPoll();
+      await api.createVotingPoll(pollQuestion.trim());
       setStatus({ type: 'success', text: '✅ Poll created and sent to employee group!' });
       setSelectedPoll(null);
       await loadPolls();
@@ -1366,6 +1375,7 @@ function EmployeeVotingPage() {
   if (loading) return <div className="loading"><div className="spinner" /> Loading...</div>;
 
   const activePoll = polls.find(p => p.status === 'active');
+  const canCreate = !creating && !activePoll && units.length >= 2 && pollQuestion.trim().length > 0;
 
   return (
     <div>
@@ -1383,32 +1393,48 @@ function EmployeeVotingPage() {
 
       {/* Poll creation panel */}
       <div className="card" style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Create Driver of the Week Poll</h3>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              Extracts {units.length} unit(s) from groups table and sends inline keyboard to the employee group.
-            </p>
-            {units.length > 0 && (
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
-                Units: {units.slice(0, 8).map(u => `#${u.unit_number}`).join(', ')}{units.length > 8 ? ` +${units.length - 8} more` : ''}
-              </div>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            {activePoll && (
-              <span style={{ fontSize: 12, background: '#16a34a22', color: '#4ade80', border: '1px solid #16a34a44', borderRadius: 6, padding: '4px 10px', alignSelf: 'center' }}>🟢 Active poll</span>
-            )}
-            <button
-              className="btn btn-primary"
-              onClick={handleCreate}
-              disabled={creating || !!activePoll}
-              title={activePoll ? 'Close the current active poll first' : ''}
-            >
-              {creating ? '⏳ Creating...' : '🗳️ Create New Poll'}
-            </button>
-          </div>
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Create Driver of the Week Poll</h3>
+
+        {/* Question input */}
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Poll Question</label>
+          <input
+            type="text"
+            className="form-input"
+            value={pollQuestion}
+            onChange={e => setPollQuestion(e.target.value)}
+            placeholder="Enter the poll question..."
+            style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 14 }}
+          />
         </div>
+
+        {/* Driver count and units preview */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: units.length >= 2 ? 'var(--text-primary)' : '#ef4444' }}>
+            Total drivers available: {units.length}
+          </span>
+          {units.length < 2 && (
+            <span style={{ fontSize: 12, color: '#ef4444' }}>⚠ Need at least 2 drivers</span>
+          )}
+          {activePoll && (
+            <span style={{ fontSize: 12, background: '#16a34a22', color: '#4ade80', border: '1px solid #16a34a44', borderRadius: 6, padding: '4px 10px' }}>🟢 Active poll</span>
+          )}
+        </div>
+
+        {units.length > 0 && (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.6 }}>
+            {units.map(u => `#${u.unit_number}`).join(', ')}
+          </div>
+        )}
+
+        <button
+          className="btn btn-primary"
+          onClick={handleCreate}
+          disabled={!canCreate}
+          title={activePoll ? 'Close the current active poll first' : units.length < 2 ? 'Need at least 2 drivers' : ''}
+        >
+          {creating ? '⏳ Creating...' : '🗳️ Create New Poll'}
+        </button>
       </div>
 
       {/* Poll selector */}

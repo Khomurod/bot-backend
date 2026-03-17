@@ -59,11 +59,12 @@ router.post('/api/voting/polls', authMiddleware, async (req, res) => {
 
     // Get driver units from groups
     const units = await votingDb.getDriverUnitsFromGroups();
-    if (units.length === 0) {
-      return res.status(400).json({ error: 'No driver units found in groups. Make sure groups have names like "COMPANY UNIT #123 DRIVER NAME".' });
+    if (units.length < 2) {
+      return res.status(400).json({ error: 'At least 2 driver units are required to create a poll.' });
     }
 
-    const question = 'Choose the best driver of the week in your opinion.';
+    const question = (req.body.question && req.body.question.trim())
+      || 'Choose the best driver of the week in your opinion.';
 
     // Create poll in DB
     const poll = await votingDb.createPoll(question, units);
@@ -73,10 +74,9 @@ router.post('/api/voting/polls', authMiddleware, async (req, res) => {
 
     // Send to Telegram employee group
     try {
-      await sendVotingPoll(bot, poll.id, options);
+      await sendVotingPoll(bot, poll.id, options, question);
     } catch (tgErr) {
       console.error('[VOTING API] Failed to send poll to Telegram:', tgErr.message);
-      // Poll is created in DB but Telegram send failed — don't fail the whole request
       return res.status(201).json({
         ...poll,
         warning: 'Poll created but failed to send to Telegram. Check EMPLOYEE_GROUP_ID and bot permissions.',
