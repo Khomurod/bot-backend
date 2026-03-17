@@ -1422,8 +1422,29 @@ function EmployeeVotingPage() {
         </div>
 
         {units.length > 0 && (
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.6 }}>
-            {units.map(u => `#${u.unit_number}`).join(', ')}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>📱 Telegram Preview</label>
+            <div style={{ background: '#1a1a2e', borderRadius: 12, padding: 16, maxWidth: 420, border: '1px solid var(--border)' }}>
+              {/* Message bubble */}
+              <div style={{ background: '#2a2a4a', borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>🏆 Driver of the Week</div>
+                <div style={{ fontSize: 13, marginBottom: 6, color: '#e0e0e0' }}>{pollQuestion || '...'}</div>
+                <div style={{ fontSize: 12, fontStyle: 'italic', color: '#999' }}>Tap a unit number below to cast your vote:</div>
+              </div>
+              {/* Inline buttons preview — 6 per row */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {units.map(u => (
+                  <div key={u.unit_number} style={{
+                    background: '#3b82f6', color: '#fff', fontSize: 12, fontWeight: 600,
+                    borderRadius: 6, padding: '5px 10px', textAlign: 'center',
+                    flex: `0 0 calc(${100 / Math.min(units.length, 6)}% - 4px)`,
+                    minWidth: 50, maxWidth: 'calc(16.66% - 4px)',
+                  }}>
+                    #{u.unit_number}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 

@@ -79,12 +79,16 @@ async function sendVotingPoll(bot, pollId, options, question) {
 
   const pollQuestion = question || 'Choose the best driver of the week in your opinion.';
 
-  // Build inline keyboard — 1 button per row
-  const buttons = options.map(opt => [
-    Markup.button.callback(`Unit #${opt.unit_number}`, `vote_unit_${opt.unit_number}`),
-  ]);
+  // Build inline keyboard — up to 6 buttons per row
+  const allButtons = options.map(opt =>
+    Markup.button.callback(`#${opt.unit_number}`, `vote_unit_${opt.unit_number}`)
+  );
+  const rows = [];
+  for (let i = 0; i < allButtons.length; i += 6) {
+    rows.push(allButtons.slice(i, i + 6));
+  }
 
-  const keyboard = Markup.inlineKeyboard(buttons);
+  const keyboard = Markup.inlineKeyboard(rows);
 
   const message = `🏆 <b>Driver of the Week</b>\n\n${pollQuestion}\n\n<i>Tap a unit number below to cast your vote:</i>`;
 

@@ -11,7 +11,7 @@ const { pool, query } = require('./db');
  */
 function extractUnitFromGroupName(name) {
   if (!name) return null;
-  const match = name.match(/UNIT\s*#(\d+)/i);
+  const match = name.match(/UNIT\s*#\s*(\d+)/i);
   return match ? match[1] : null;
 }
 
@@ -33,7 +33,7 @@ function parseGroupName(name) {
   }
 
   // Pattern: COMPANY UNIT #NNN DRIVER NAME
-  const parts = cleaned.match(/^(.+?)\s+UNIT\s*#\d+\s+(.+)$/i);
+  const parts = cleaned.match(/^(.+?)\s+UNIT\s*#\s*\d+\s+(.+)$/i);
   if (parts) {
     return { company: parts[1].trim(), driver: parts[2].trim(), type };
   }
