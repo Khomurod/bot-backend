@@ -28,6 +28,44 @@ const upload = multer({
 
 const app = express();
 app.use(cors());
+
+// ─── Leads-Bot Proxy (Python/FastAPI on internal port) ───
+// These routes MUST be before express.json() so the raw body is preserved
+// for Facebook's X-Hub-Signature-256 verification in webhook_server.py.
+const http = require('http');
+const LEADS_BOT_PORT = process.env.LEADS_BOT_PORT || 8000;
+
+function proxyToLeadsBot(req, res) {
+  const options = {
+    hostname: 'localhost',
+    port: LEADS_BOT_PORT,
+    path: req.url,
+    method: req.method,
+    headers: { ...req.headers, host: `localhost:${LEADS_BOT_PORT}` },
+  };
+
+  const proxyReq = http.request(options, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    proxyRes.pipe(res);
+  });
+
+  proxyReq.on('error', (err) => {
+    console.error('[PROXY] Leads-Bot proxy error:', err.message);
+    if (!res.headersSent) {
+      res.status(502).json({ error: 'Leads-Bot unavailable', detail: err.message });
+    }
+  });
+
+  req.pipe(proxyReq);
+}
+
+app.all('/webhook', proxyToLeadsBot);
+app.all('/rc-webhook', proxyToLeadsBot);
+app.get('/retry/:id', (req, res) => {
+  req.url = `/retry/${req.params.id}`;
+  proxyToLeadsBot(req, res);
+});
+
 app.use(express.json({ limit: '1mb' }));
 
 // Serve admin panel static files (production build)
