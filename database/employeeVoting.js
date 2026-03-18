@@ -7,18 +7,35 @@ const { pool, query } = require('./db');
 
 /**
  * Extract unit number from group name.
- * e.g. "WENZE UNIT #800 DILSHOD URINOV" → "800"
+ * Tries multiple patterns in priority order:
+ *   1. "UNIT #800"  / "UNIT # 800"  / "UNIT#800"   (standard)
+ *   2. "#800"       / "# 800"                       (hash without UNIT prefix)
+ *   3. "UNIT 800"                                   (UNIT without hash)
  */
 function extractUnitFromGroupName(name) {
   if (!name) return null;
-  const match = name.match(/UNIT\s*#\s*(\d+)/i);
-  return match ? match[1] : null;
+
+  // 1. Standard: UNIT #NNN
+  const m1 = name.match(/UNIT\s*#\s*(\d+)/i);
+  if (m1) return m1[1];
+
+  // 2. Fallback: #NNN anywhere in the name
+  const m2 = name.match(/#\s*(\d+)/);
+  if (m2) return m2[1];
+
+  // 3. Fallback: UNIT followed by a number (no #)
+  const m3 = name.match(/UNIT\s+(\d+)/i);
+  if (m3) return m3[1];
+
+  return null;
 }
 
 /**
  * Parse driver details from group name.
- * e.g. "WENZE UNIT #800 DILSHOD URINOV" → { company: "WENZE", driver: "DILSHOD URINOV", type: null }
- * e.g. "WENZE UNIT #2614 EMANUEL ENNIS (COMPANY DRIVERS)" → { company: "WENZE", driver: "EMANUEL ENNIS", type: "COMPANY DRIVERS" }
+ * Handles variations:
+ *   "WENZE UNIT #800 DILSHOD URINOV"                       → { company: "WENZE", driver: "DILSHOD URINOV", type: null }
+ *   "WENZE UNIT #2614 EMANUEL ENNIS (COMPANY DRIVERS)"     → { company: "WENZE", driver: "EMANUEL ENNIS", type: "COMPANY DRIVERS" }
+ *   "WENZE #800 DILSHOD URINOV"                            → { company: "WENZE", driver: "DILSHOD URINOV", type: null }
  */
 function parseGroupName(name) {
   if (!name) return { company: null, driver: null, type: null };
@@ -32,11 +49,17 @@ function parseGroupName(name) {
     cleaned = name.replace(/\([^)]+\)\s*$/, '').trim();
   }
 
-  // Pattern: COMPANY UNIT #NNN DRIVER NAME
-  const parts = cleaned.match(/^(.+?)\s+UNIT\s*#\s*\d+\s+(.+)$/i);
-  if (parts) {
-    return { company: parts[1].trim(), driver: parts[2].trim(), type };
-  }
+  // Pattern 1: COMPANY UNIT #NNN DRIVER NAME
+  const p1 = cleaned.match(/^(.+?)\s+UNIT\s*#\s*\d+\s+(.+)$/i);
+  if (p1) return { company: p1[1].trim(), driver: p1[2].trim(), type };
+
+  // Pattern 2: COMPANY #NNN DRIVER NAME
+  const p2 = cleaned.match(/^(.+?)\s+#\s*\d+\s+(.+)$/i);
+  if (p2) return { company: p2[1].trim(), driver: p2[2].trim(), type };
+
+  // Pattern 3: COMPANY UNIT NNN DRIVER NAME (no #)
+  const p3 = cleaned.match(/^(.+?)\s+UNIT\s+\d+\s+(.+)$/i);
+  if (p3) return { company: p3[1].trim(), driver: p3[2].trim(), type };
 
   return { company: null, driver: null, type };
 }
