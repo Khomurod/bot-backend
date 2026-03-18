@@ -94,26 +94,18 @@ async function getDriverUnitsFromGroups() {
     countByUnit[u.unit_number] = (countByUnit[u.unit_number] || 0) + 1;
   });
 
-  const usedUnits = new Set();
+  const seen = new Set();
   return units.map(u => {
     const isDuplicate = countByUnit[u.unit_number] > 1;
     const isCompanyDriver = u.driver_type && /company/i.test(u.driver_type);
-    let finalUnit = u.unit_number;
 
-    if (isDuplicate && isCompanyDriver && !usedUnits.has(u.unit_number)) {
-      // First occurrence is company driver — let the non-company one take the plain number
-      // Mark this one with (C) suffix
-      finalUnit = `${u.unit_number}(C)`;
-    } else if (isDuplicate && !isCompanyDriver && usedUnits.has(u.unit_number)) {
-      // Non-company driver but unit already used — skip (shouldn't happen with data pattern)
-      return null;
-    } else if (isDuplicate && isCompanyDriver && usedUnits.has(u.unit_number)) {
-      finalUnit = `${u.unit_number}(C)`;
-    }
+    // Company drivers in duplicate pairs get "(C)" suffix
+    const finalUnit = (isDuplicate && isCompanyDriver)
+      ? `${u.unit_number}(C)`
+      : u.unit_number;
 
-    if (usedUnits.has(finalUnit)) return null; // true duplicate, skip
-    usedUnits.add(finalUnit);
-    usedUnits.add(u.unit_number); // mark base unit as seen too
+    if (seen.has(finalUnit)) return null; // true duplicate, skip
+    seen.add(finalUnit);
 
     return { ...u, unit_number: finalUnit };
   }).filter(Boolean);
