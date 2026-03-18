@@ -398,7 +398,7 @@ function GroupsPage() {
     <div>
       <div className="page-header">
         <h2>Groups</h2>
-        <p>Manage Telegram driver groups and their languages</p>
+        <p>Manage Telegram driver groups and their languages — <strong>{groups.length}</strong> group{groups.length !== 1 ? 's' : ''} registered</p>
       </div>
 
       {message && (
@@ -1331,8 +1331,12 @@ function EmployeeVotingPage() {
     setCreating(true);
     setStatus(null);
     try {
-      await api.createVotingPoll(pollQuestion.trim());
-      setStatus({ type: 'success', text: '✅ Poll created and sent to employee group!' });
+      const result = await api.createVotingPoll(pollQuestion.trim());
+      if (result.warning) {
+        setStatus({ type: 'error', text: `⚠️ Poll created but NOT sent: ${result.warning}` });
+      } else {
+        setStatus({ type: 'success', text: '✅ Poll created and sent to employee group!' });
+      }
       setSelectedPoll(null);
       await loadPolls();
     } catch (err) {
