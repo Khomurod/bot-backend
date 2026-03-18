@@ -79,13 +79,13 @@ async function sendVotingPoll(bot, pollId, options, question) {
 
   const pollQuestion = question || 'Choose the best driver of the week in your opinion.';
 
-  // Build inline keyboard — up to 6 buttons per row
+  // Build inline keyboard — up to 4 buttons per row
   const allButtons = options.map(opt =>
     Markup.button.callback(`#${opt.unit_number}`, `vote_unit_${opt.unit_number}`)
   );
   const rows = [];
-  for (let i = 0; i < allButtons.length; i += 6) {
-    rows.push(allButtons.slice(i, i + 6));
+  for (let i = 0; i < allButtons.length; i += 4) {
+    rows.push(allButtons.slice(i, i + 4));
   }
 
   const keyboard = Markup.inlineKeyboard(rows);

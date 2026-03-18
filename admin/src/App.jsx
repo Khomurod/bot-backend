@@ -1431,14 +1431,14 @@ function EmployeeVotingPage() {
                 <div style={{ fontSize: 13, marginBottom: 6, color: '#e0e0e0' }}>{pollQuestion || '...'}</div>
                 <div style={{ fontSize: 12, fontStyle: 'italic', color: '#999' }}>Tap a unit number below to cast your vote:</div>
               </div>
-              {/* Inline buttons preview — 6 per row */}
+              {/* Inline buttons preview — 4 per row */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {units.map(u => (
                   <div key={u.unit_number} style={{
                     background: '#3b82f6', color: '#fff', fontSize: 12, fontWeight: 600,
                     borderRadius: 6, padding: '5px 10px', textAlign: 'center',
-                    flex: `0 0 calc(${100 / Math.min(units.length, 6)}% - 4px)`,
-                    minWidth: 50, maxWidth: 'calc(16.66% - 4px)',
+                    flex: `0 0 calc(${100 / Math.min(units.length, 4)}% - 4px)`,
+                    minWidth: 50, maxWidth: 'calc(25% - 4px)',
                   }}>
                     #{u.unit_number}
                   </div>
