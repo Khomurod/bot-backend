@@ -87,13 +87,36 @@ async function getDriverUnitsFromGroups() {
     });
   }
 
-  // De-duplicate by unit number (keep first occurrence)
-  const seen = new Set();
-  return units.filter(u => {
-    if (seen.has(u.unit_number)) return false;
-    seen.add(u.unit_number);
-    return true;
+  // Handle duplicate unit numbers: if a unit has both a regular and company driver,
+  // append "(C)" to the company driver's unit_number so both appear in voting.
+  const countByUnit = {};
+  units.forEach(u => {
+    countByUnit[u.unit_number] = (countByUnit[u.unit_number] || 0) + 1;
   });
+
+  const usedUnits = new Set();
+  return units.map(u => {
+    const isDuplicate = countByUnit[u.unit_number] > 1;
+    const isCompanyDriver = u.driver_type && /company/i.test(u.driver_type);
+    let finalUnit = u.unit_number;
+
+    if (isDuplicate && isCompanyDriver && !usedUnits.has(u.unit_number)) {
+      // First occurrence is company driver — let the non-company one take the plain number
+      // Mark this one with (C) suffix
+      finalUnit = `${u.unit_number}(C)`;
+    } else if (isDuplicate && !isCompanyDriver && usedUnits.has(u.unit_number)) {
+      // Non-company driver but unit already used — skip (shouldn't happen with data pattern)
+      return null;
+    } else if (isDuplicate && isCompanyDriver && usedUnits.has(u.unit_number)) {
+      finalUnit = `${u.unit_number}(C)`;
+    }
+
+    if (usedUnits.has(finalUnit)) return null; // true duplicate, skip
+    usedUnits.add(finalUnit);
+    usedUnits.add(u.unit_number); // mark base unit as seen too
+
+    return { ...u, unit_number: finalUnit };
+  }).filter(Boolean);
 }
 
 // ─── Polls ───
