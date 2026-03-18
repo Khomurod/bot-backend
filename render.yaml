@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: driver-feedback-bot
+    runtime: node
+    buildCommand: pip install -r leads-bot/requirements.txt && npm install && cd admin && npm install && npm run build
+    startCommand: node index.js
+    healthCheckPath: /api/health
+    envVars:
+      # ─── bot-backend (Node.js) ───
+      - key: BOT_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: MANAGEMENT_GROUP_ID
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: PORT
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: EMPLOYEE_GROUP_ID
+        sync: false
+      # ─── Leads-Bot (Python) ───
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: WEBHOOK_VERIFY_TOKEN
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_PAGE_ACCESS_TOKEN
+        sync: false
+      - key: LEADS_BOT_PORT
+        sync: false
+      - key: RENDER_EXTERNAL_URL
+        sync: false
+      - key: RC_CLIENT_ID
+        sync: false
+      - key: RC_CLIENT_SECRET
+        sync: false
+      - key: RC_JWT_TOKEN
+        sync: false
+      - key: RC_FROM_NUMBER
+        sync: false

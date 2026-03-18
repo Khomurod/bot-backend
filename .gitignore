@@ -4,3 +4,6 @@ dist/
 admin/node_modules/
 admin/dist/
 admin/build/
+__pycache__/
+*.pyc
+*.pyo
