@@ -61,6 +61,7 @@ function proxyToLeadsBot(req, res) {
 
 app.all('/webhook', proxyToLeadsBot);
 app.all('/rc-webhook', proxyToLeadsBot);
+app.get('/leads-log', proxyToLeadsBot);
 app.get('/retry/:id', (req, res) => {
   req.url = `/retry/${req.params.id}`;
   proxyToLeadsBot(req, res);
