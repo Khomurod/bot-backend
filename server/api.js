@@ -6,8 +6,9 @@ const path = require('path');
 const multer = require('multer');
 const config = require('../config/config');
 const db = require('../database/db');
-const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest } = require('../bot/bot');
+const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest, sendBroadcastToGroups } = require('../bot/bot');
 const { translateBatch } = require('../services/translationService');
+const { DateTime } = require('luxon');
 const employeeVotingRoutes = require('./employeeVotingApi');
 
 // ─── Multer: memory storage for media uploads ───
@@ -478,6 +479,179 @@ app.get('/api/responses/:questionId', authMiddleware, async (req, res) => {
     res.json(responses);
   } catch (err) {
     console.error('[API] Error fetching responses:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ─── Scheduled Messages Routes ───
+
+// GET /api/groups/driver-list — all driver groups for targeting UI
+app.get('/api/groups/driver-list', authMiddleware, async (req, res) => {
+  try {
+    const groups = await db.getAllDriverGroups();
+    res.json(groups);
+  } catch (err) {
+    console.error('[API] Error fetching driver groups:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/scheduled-messages — create a scheduled message
+app.post('/api/scheduled-messages', authMiddleware, async (req, res) => {
+  try {
+    const {
+      message_text_en, message_text_ru, message_text_uz,
+      media_file_id, media_type, media_position,
+      target_type, target_driver_ids, target_languages,
+      force_language, scheduled_at_chicago,
+    } = req.body;
+
+    // Validation
+    if (!message_text_en || !message_text_en.trim()) {
+      return res.status(400).json({ error: 'English message text is required' });
+    }
+    if (message_text_en.length > 4096) {
+      return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
+    }
+    if (!scheduled_at_chicago) {
+      return res.status(400).json({ error: 'Schedule date/time is required' });
+    }
+
+    // Convert Chicago time → UTC
+    const chicagoTime = DateTime.fromISO(scheduled_at_chicago, { zone: 'America/Chicago' });
+    if (!chicagoTime.isValid) {
+      return res.status(400).json({ error: 'Invalid date/time format' });
+    }
+    if (chicagoTime <= DateTime.now()) {
+      return res.status(400).json({ error: 'Scheduled time must be in the future' });
+    }
+    const scheduledAtUtc = chicagoTime.toUTC().toISO();
+
+    // Validate target_type
+    const validTargetTypes = ['all', 'specific_drivers', 'language_groups'];
+    const tt = target_type || 'all';
+    if (!validTargetTypes.includes(tt)) {
+      return res.status(400).json({ error: 'Invalid target_type' });
+    }
+    if (tt === 'specific_drivers' && (!target_driver_ids || target_driver_ids.length === 0)) {
+      return res.status(400).json({ error: 'At least one driver must be selected' });
+    }
+    if (tt === 'language_groups' && (!target_languages || target_languages.length === 0)) {
+      return res.status(400).json({ error: 'At least one language must be selected' });
+    }
+
+    // Validate force_language
+    if (force_language && !['en', 'ru', 'uz'].includes(force_language)) {
+      return res.status(400).json({ error: 'Invalid force_language' });
+    }
+
+    const msg = await db.createScheduledMessage({
+      message_text_en: message_text_en.trim(),
+      message_text_ru: message_text_ru?.trim() || null,
+      message_text_uz: message_text_uz?.trim() || null,
+      media_file_id: media_file_id || null,
+      media_type: media_type || null,
+      media_position: media_position || 'above',
+      target_type: tt,
+      target_driver_ids: target_driver_ids || null,
+      target_languages: target_languages || null,
+      force_language: force_language || null,
+      scheduled_at: scheduledAtUtc,
+    });
+
+    console.log(`[API] Scheduled message created: id=${msg.id}, scheduled_at_utc=${scheduledAtUtc}`);
+    res.status(201).json(msg);
+  } catch (err) {
+    console.error('[API] Error creating scheduled message:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/scheduled-messages — list all scheduled messages
+app.get('/api/scheduled-messages', authMiddleware, async (req, res) => {
+  try {
+    const messages = await db.getAllScheduledMessages();
+    // Convert UTC → Chicago for display
+    const enriched = messages.map(m => ({
+      ...m,
+      scheduled_at_chicago: DateTime.fromJSDate(new Date(m.scheduled_at))
+        .setZone('America/Chicago')
+        .toFormat('yyyy-MM-dd HH:mm'),
+    }));
+    res.json(enriched);
+  } catch (err) {
+    console.error('[API] Error fetching scheduled messages:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PUT /api/scheduled-messages/:id/cancel — cancel a pending message
+app.put('/api/scheduled-messages/:id/cancel', authMiddleware, async (req, res) => {
+  try {
+    const msg = await db.getScheduledMessageById(req.params.id);
+    if (!msg) return res.status(404).json({ error: 'Message not found' });
+    if (msg.status !== 'pending') {
+      return res.status(400).json({ error: 'Only pending messages can be cancelled' });
+    }
+    await db.updateScheduledMessageStatus(req.params.id, 'cancelled');
+    console.log(`[API] Scheduled message cancelled: id=${req.params.id}`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[API] Error cancelling scheduled message:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PUT /api/scheduled-messages/:id/send-now — send a pending message immediately
+app.put('/api/scheduled-messages/:id/send-now', authMiddleware, async (req, res) => {
+  try {
+    const msg = await db.getScheduledMessageById(req.params.id);
+    if (!msg) return res.status(404).json({ error: 'Message not found' });
+    if (msg.status !== 'pending') {
+      return res.status(400).json({ error: 'Only pending messages can be sent' });
+    }
+
+    // Resolve target groups
+    let groups;
+    switch (msg.target_type) {
+      case 'specific_drivers':
+        groups = await db.getGroupsByIds(msg.target_driver_ids);
+        break;
+      case 'language_groups':
+        groups = await db.getGroupsByLanguages(msg.target_languages);
+        break;
+      default:
+        groups = await db.getAllDriverGroups();
+    }
+
+    if (groups.length === 0) {
+      await db.updateScheduledMessageStatus(req.params.id, 'failed');
+      return res.status(400).json({ error: 'No target groups found' });
+    }
+
+    // Build messages
+    const en = msg.message_text_en || '';
+    const ru = msg.message_text_ru || en;
+    const uz = msg.message_text_uz || en;
+    let messages;
+    if (msg.force_language) {
+      const forced = msg.force_language === 'ru' ? ru : msg.force_language === 'uz' ? uz : en;
+      messages = { en: forced, ru: forced, uz: forced };
+    } else {
+      messages = { en, ru, uz };
+    }
+
+    const mediaItems = msg.media_file_id
+      ? [{ file_id: msg.media_file_id, media_type: msg.media_type || 'photo' }]
+      : null;
+
+    const results = await sendBroadcastToGroups(groups, en, 'HTML', messages, mediaItems, msg.media_position);
+    await db.updateScheduledMessageStatus(req.params.id, 'sent');
+
+    console.log(`[API] Scheduled message sent now: id=${req.params.id}`);
+    res.json({ success: true, sent: results.sent, failed: results.failed });
+  } catch (err) {
+    console.error('[API] Error sending scheduled message now:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });

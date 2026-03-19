@@ -418,4 +418,41 @@ async function sendBroadcastTest(messageText, parseMode, mediaItems, mediaPositi
   console.log('[BOT] Broadcast test sent to management group.');
 }
 
-module.exports = { bot, startBot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest };
+// ─── Send broadcast to specific groups (used by scheduler) ───
+async function sendBroadcastToGroups(groups, messageText, parseMode, messages, mediaItems, mediaPosition) {
+  const results = { sent: 0, failed: 0, errors: [] };
+
+  const hasMedia = !!(mediaItems && mediaItems.length > 0);
+  const position = mediaPosition || 'above';
+
+  for (const group of groups) {
+    try {
+      let text = messageText;
+      if (messages) {
+        const lang = group.language || 'en';
+        text = messages[lang] || messages.en || messageText;
+      }
+
+      if (!hasMedia) {
+        await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode });
+      } else if (position === 'above') {
+        await sendMedia(group.telegram_group_id, mediaItems, text, parseMode, null);
+      } else {
+        await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode });
+        await sendMedia(group.telegram_group_id, mediaItems, null, null, null);
+      }
+
+      results.sent++;
+      console.log(`[BOT] Broadcast sent to: ${group.group_name} (${group.telegram_group_id})`);
+    } catch (err) {
+      results.failed++;
+      results.errors.push({ group: group.group_name, error: err.message });
+      console.error(`[BOT] Broadcast failed for ${group.group_name}:`, err.message);
+    }
+  }
+
+  console.log(`[BOT] Targeted broadcast complete: ${results.sent} sent, ${results.failed} failed`);
+  return results;
+}
+
+module.exports = { bot, startBot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest, sendBroadcastToGroups };

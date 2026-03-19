@@ -255,3 +255,54 @@ export async function resetPoll(pollId) {
   if (!res.ok) throw new Error('Failed to reset poll');
   return res.json();
 }
+
+// ─── Scheduled Messages API ───
+
+export async function getDriverGroups() {
+  const res = await fetch(`${API_BASE}/groups/driver-list`, { headers: getHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch driver groups');
+  return res.json();
+}
+
+export async function createScheduledMessage(data) {
+  const res = await fetch(`${API_BASE}/scheduled-messages`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to create scheduled message');
+  }
+  return res.json();
+}
+
+export async function getScheduledMessages() {
+  const res = await fetch(`${API_BASE}/scheduled-messages`, { headers: getHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch scheduled messages');
+  return res.json();
+}
+
+export async function cancelScheduledMessage(id) {
+  const res = await fetch(`${API_BASE}/scheduled-messages/${id}/cancel`, {
+    method: 'PUT',
+    headers: getHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to cancel message');
+  }
+  return res.json();
+}
+
+export async function sendScheduledMessageNow(id) {
+  const res = await fetch(`${API_BASE}/scheduled-messages/${id}/send-now`, {
+    method: 'PUT',
+    headers: getHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to send message');
+  }
+  return res.json();
+}

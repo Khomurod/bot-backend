@@ -4,6 +4,7 @@
  */
 const { startBot } = require('./bot/bot');
 const { startServer } = require('./server/api');
+const { startScheduler } = require('./services/schedulerService');
 const { spawn } = require('child_process');
 const path = require('path');
 
@@ -85,6 +86,9 @@ process.on('SIGTERM', shutdownAll);
 
   // Start the Express API server
   startServer();
+
+  // Start the scheduled message processor
+  startScheduler();
 
   // Start the Leads-Bot (Python/FastAPI) as a child process
   startLeadsBot();

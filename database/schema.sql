@@ -120,3 +120,22 @@ CREATE TABLE IF NOT EXISTS employee_votes (
   created_at TIMESTAMP DEFAULT NOW(),
   UNIQUE(poll_id, telegram_user_id)
 );
+
+-- ─── Scheduled Messaging System ───
+
+CREATE TABLE IF NOT EXISTS scheduled_messages (
+  id SERIAL PRIMARY KEY,
+  message_text_en TEXT,
+  message_text_ru TEXT,
+  message_text_uz TEXT,
+  media_file_id TEXT,
+  media_type TEXT,
+  media_position TEXT DEFAULT 'above',
+  target_type TEXT DEFAULT 'all',
+  target_driver_ids INTEGER[],
+  target_languages TEXT[],
+  force_language TEXT,
+  scheduled_at TIMESTAMP NOT NULL,
+  status TEXT DEFAULT 'pending',
+  created_at TIMESTAMP DEFAULT NOW()
+);

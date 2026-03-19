@@ -1090,6 +1090,33 @@ function BroadcastPage() {
   const fmtRuBroad = FormattingToolbar({ textareaRef: ruBroadRef, value: messageRu, onChange: setMessageRu });
   const fmtUzBroad = FormattingToolbar({ textareaRef: uzBroadRef, value: messageUz, onChange: setMessageUz });
 
+  // ─── Scheduling state ───
+  const [sendMode, setSendMode] = useState('now'); // 'now' | 'schedule'
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('09:00');
+  const [targetType, setTargetType] = useState('all'); // 'all' | 'specific_drivers' | 'language_groups'
+  const [selectedDriverIds, setSelectedDriverIds] = useState([]);
+  const [selectedLanguages, setSelectedLanguages] = useState([]);
+  const [forceLanguage, setForceLanguage] = useState(''); // '' = auto
+  const [driverGroups, setDriverGroups] = useState([]);
+  const [scheduling, setScheduling] = useState(false);
+
+  useEffect(() => {
+    api.getDriverGroups().then(setDriverGroups).catch(() => {});
+  }, []);
+
+  const toggleDriverId = (id) => {
+    setSelectedDriverIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleLanguage = (lang) => {
+    setSelectedLanguages(prev =>
+      prev.includes(lang) ? prev.filter(x => x !== lang) : [...prev, lang]
+    );
+  };
+
   const handleAutoTranslate = async () => {
     if (!message.trim()) {
       setStatus({ type: 'error', text: 'Please type the English message first.' });
@@ -1149,11 +1176,65 @@ function BroadcastPage() {
     }
   };
 
+  const handleSchedule = async () => {
+    if (!message.trim()) {
+      setStatus({ type: 'error', text: 'English message text is required' });
+      return;
+    }
+    if (!scheduleDate || !scheduleTime) {
+      setStatus({ type: 'error', text: 'Please select a date and time' });
+      return;
+    }
+    if (targetType === 'specific_drivers' && selectedDriverIds.length === 0) {
+      setStatus({ type: 'error', text: 'Please select at least one driver' });
+      return;
+    }
+    if (targetType === 'language_groups' && selectedLanguages.length === 0) {
+      setStatus({ type: 'error', text: 'Please select at least one language' });
+      return;
+    }
+
+    setScheduling(true);
+    try {
+      const scheduled_at_chicago = `${scheduleDate}T${scheduleTime}`;
+      const data = {
+        message_text_en: message.trim(),
+        message_text_ru: messageRu.trim() || null,
+        message_text_uz: messageUz.trim() || null,
+        scheduled_at_chicago,
+        target_type: targetType,
+        force_language: forceLanguage || null,
+      };
+
+      if (targetType === 'specific_drivers') data.target_driver_ids = selectedDriverIds;
+      if (targetType === 'language_groups') data.target_languages = selectedLanguages;
+
+      if (broadcastMediaItems.length > 0) {
+        data.media_file_id = broadcastMediaItems[0].file_id;
+        data.media_type = broadcastMediaItems[0].type;
+        data.media_position = broadcastMediaPosition;
+      }
+
+      await api.createScheduledMessage(data);
+      setStatus({ type: 'success', text: `✅ Message scheduled for ${scheduleDate} ${scheduleTime} (Chicago time)` });
+      // Reset form
+      setMessage(''); setMessageRu(''); setMessageUz('');
+      setScheduleDate(''); setScheduleTime('09:00');
+      setTargetType('all'); setSelectedDriverIds([]); setSelectedLanguages([]);
+      setForceLanguage(''); setBroadcastMediaItems([]);
+      setTimeout(() => setStatus(null), 5000);
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setScheduling(false);
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
         <h2>Broadcast Message</h2>
-        <p>Send announcements and messages to all driver groups</p>
+        <p>Send announcements and messages to driver groups</p>
       </div>
 
       {status && (
@@ -1230,22 +1311,166 @@ function BroadcastPage() {
               )}
             </div>
 
+            {/* ─── Send Mode Toggle ─── */}
+            <div className="card" style={{ marginTop: 20, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+              <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>⏱️ Delivery</h3>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                {[{ val: 'now', label: '📤 Send Now' }, { val: 'schedule', label: '🕐 Schedule for Later' }].map(opt => (
+                  <button
+                    key={opt.val}
+                    type="button"
+                    onClick={() => setSendMode(opt.val)}
+                    style={{
+                      padding: '8px 20px', fontSize: 13, fontWeight: 600, borderRadius: 8, cursor: 'pointer',
+                      border: sendMode === opt.val ? '2px solid var(--primary)' : '1px solid var(--border)',
+                      background: sendMode === opt.val ? 'var(--primary)' : 'transparent',
+                      color: sendMode === opt.val ? '#fff' : 'var(--text-muted)',
+                    }}
+                  >{opt.label}</button>
+                ))}
+              </div>
+
+              {sendMode === 'schedule' && (
+                <>
+                  {/* Date/Time Picker */}
+                  <div style={{ marginBottom: 16 }}>
+                    <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>📅 Schedule Date & Time <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Chicago / Central Time)</span></h4>
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                      <input
+                        type="date"
+                        value={scheduleDate}
+                        onChange={(e) => setScheduleDate(e.target.value)}
+                        style={{ padding: '8px 12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 14 }}
+                      />
+                      <input
+                        type="time"
+                        value={scheduleTime}
+                        onChange={(e) => setScheduleTime(e.target.value)}
+                        style={{ padding: '8px 12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 14 }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Target Audience */}
+                  <div style={{ marginBottom: 16 }}>
+                    <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>🎯 Target Audience</h4>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                      {[
+                        { val: 'all', label: '👥 All Drivers' },
+                        { val: 'specific_drivers', label: '🚛 Specific Drivers' },
+                        { val: 'language_groups', label: '🌐 By Language' },
+                      ].map(opt => (
+                        <button
+                          key={opt.val}
+                          type="button"
+                          onClick={() => setTargetType(opt.val)}
+                          style={{
+                            padding: '6px 16px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
+                            border: targetType === opt.val ? '2px solid var(--accent)' : '1px solid var(--border)',
+                            background: targetType === opt.val ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
+                            color: targetType === opt.val ? 'var(--accent)' : 'var(--text-muted)',
+                          }}
+                        >{opt.label}</button>
+                      ))}
+                    </div>
+
+                    {targetType === 'specific_drivers' && (
+                      <div style={{ maxHeight: 200, overflowY: 'auto', background: 'var(--bg-primary)', borderRadius: 8, border: '1px solid var(--border)', padding: 8 }}>
+                        {driverGroups.length === 0 ? (
+                          <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: 8 }}>No driver groups found.</p>
+                        ) : driverGroups.map(g => (
+                          <label key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', cursor: 'pointer', borderRadius: 6, fontSize: 13 }}>
+                            <input
+                              type="checkbox"
+                              checked={selectedDriverIds.includes(g.id)}
+                              onChange={() => toggleDriverId(g.id)}
+                              style={{ accentColor: 'var(--accent)' }}
+                            />
+                            <span style={{ fontWeight: 600 }}>{g.group_name || 'Unknown'}</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>({g.language?.toUpperCase()})</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+
+                    {targetType === 'language_groups' && (
+                      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                        {[
+                          { val: 'en', label: '🇺🇸 English groups' },
+                          { val: 'ru', label: '🇷🇺 Russian groups' },
+                          { val: 'uz', label: '🇺🇿 Uzbek groups' },
+                        ].map(opt => (
+                          <label key={opt.val} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+                            <input
+                              type="checkbox"
+                              checked={selectedLanguages.includes(opt.val)}
+                              onChange={() => toggleLanguage(opt.val)}
+                              style={{ accentColor: 'var(--accent)' }}
+                            />
+                            {opt.label}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Language Override */}
+                  <div>
+                    <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>💬 Message Language</h4>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {[
+                        { val: '', label: '🔄 Auto (default)' },
+                        { val: 'en', label: '🇺🇸 English only' },
+                        { val: 'ru', label: '🇷🇺 Russian only' },
+                        { val: 'uz', label: '🇺🇿 Uzbek only' },
+                      ].map(opt => (
+                        <button
+                          key={opt.val}
+                          type="button"
+                          onClick={() => setForceLanguage(opt.val)}
+                          style={{
+                            padding: '5px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
+                            border: forceLanguage === opt.val ? '2px solid var(--primary)' : '1px solid var(--border)',
+                            background: forceLanguage === opt.val ? 'var(--primary)' : 'transparent',
+                            color: forceLanguage === opt.val ? '#fff' : 'var(--text-muted)',
+                          }}
+                        >{opt.label}</button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
             <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-              <button
-                className="btn btn-primary"
-                onClick={handleSend}
-                disabled={sending || !message.trim() || message.length > 4096}
-              >
-                {sending ? '⏳ Sending...' : '📤 Send to All Groups'}
-              </button>
-              <button
-                className="btn btn-ghost"
-                onClick={handleTest}
-                disabled={testing || !message.trim()}
-                style={{ border: '1px solid var(--border)' }}
-              >
-                {testing ? '⏳ Testing...' : '🧪 Test'}
-              </button>
+              {sendMode === 'now' ? (
+                <>
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleSend}
+                    disabled={sending || !message.trim() || message.length > 4096}
+                  >
+                    {sending ? '⏳ Sending...' : '📤 Send to All Groups'}
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={handleTest}
+                    disabled={testing || !message.trim()}
+                    style={{ border: '1px solid var(--border)' }}
+                  >
+                    {testing ? '⏳ Testing...' : '🧪 Test'}
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="btn btn-primary"
+                  onClick={handleSchedule}
+                  disabled={scheduling || !message.trim() || !scheduleDate || !scheduleTime}
+                  style={{ background: 'linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%)' }}
+                >
+                  {scheduling ? '⏳ Scheduling...' : '🕐 Schedule Message'}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1599,6 +1824,153 @@ function EmployeeVotingPage() {
   );
 }
 
+// ─────────────── Scheduled Messages Page ───────────────
+function ScheduledMessagesPage() {
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState(null);
+
+  const loadMessages = useCallback(async () => {
+    try {
+      const data = await api.getScheduledMessages();
+      setMessages(data);
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMessages();
+    const interval = setInterval(loadMessages, 30000);
+    return () => clearInterval(interval);
+  }, [loadMessages]);
+
+  const handleCancel = async (id) => {
+    if (!window.confirm('Cancel this scheduled message?')) return;
+    try {
+      await api.cancelScheduledMessage(id);
+      setStatus({ type: 'success', text: 'Message cancelled.' });
+      loadMessages();
+      setTimeout(() => setStatus(null), 3000);
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    }
+  };
+
+  const handleSendNow = async (id) => {
+    if (!window.confirm('Send this message immediately?')) return;
+    try {
+      const result = await api.sendScheduledMessageNow(id);
+      setStatus({ type: 'success', text: `Message sent! ${result.sent} group(s) received, ${result.failed} failed.` });
+      loadMessages();
+      setTimeout(() => setStatus(null), 5000);
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    }
+  };
+
+  const statusBadge = (s) => {
+    const styles = {
+      pending: { bg: '#f59e0b22', color: '#f59e0b', border: '#f59e0b44', label: '⏳ Pending' },
+      sent: { bg: '#16a34a22', color: '#4ade80', border: '#16a34a44', label: '✅ Sent' },
+      failed: { bg: '#ef444422', color: '#ef4444', border: '#ef444444', label: '❌ Failed' },
+      cancelled: { bg: '#64748b22', color: '#94a3b8', border: '#64748b44', label: '🚫 Cancelled' },
+    };
+    const st = styles[s] || styles.pending;
+    return (
+      <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>
+        {st.label}
+      </span>
+    );
+  };
+
+  const targetLabel = (msg) => {
+    if (msg.target_type === 'specific_drivers') return `🚛 ${msg.target_driver_ids?.length || 0} driver(s)`;
+    if (msg.target_type === 'language_groups') return `🌐 ${(msg.target_languages || []).map(l => l.toUpperCase()).join(', ')}`;
+    return '👥 All Drivers';
+  };
+
+  const langLabel = (msg) => {
+    if (!msg.force_language) return '🔄 Auto';
+    return { en: '🇺🇸 EN', ru: '🇷🇺 RU', uz: '🇺🇿 UZ' }[msg.force_language] || msg.force_language;
+  };
+
+  return (
+    <div>
+      <div className="page-header">
+        <h2>📅 Scheduled Messages</h2>
+        <p>View and manage scheduled broadcast messages</p>
+      </div>
+
+      {status && (
+        <div className={`alert alert-${status.type}`}>
+          {status.type === 'success' ? '✅' : '⚠️'} {status.text}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="loading"><div className="spinner"></div> Loading scheduled messages...</div>
+      ) : messages.length === 0 ? (
+        <div className="empty-state">
+          <div className="icon">📅</div>
+          <h3>No scheduled messages</h3>
+          <p>Schedule a message from the Broadcast page to see it here.</p>
+        </div>
+      ) : (
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Message</th>
+                <th>Targets</th>
+                <th>Language</th>
+                <th>Time (Chicago)</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {messages.map(msg => (
+                <tr key={msg.id}>
+                  <td style={{ maxWidth: 300 }}>
+                    <div style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {msg.message_text_en?.substring(0, 80) || '(no text)'}
+                      {msg.message_text_en?.length > 80 ? '...' : ''}
+                    </div>
+                    {msg.media_file_id && (
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        📎 {msg.media_type === 'video' ? 'Video' : 'Photo'} attached
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ fontSize: 12 }}>{targetLabel(msg)}</td>
+                  <td style={{ fontSize: 12 }}>{langLabel(msg)}</td>
+                  <td style={{ fontSize: 13, fontFamily: 'monospace' }}>{msg.scheduled_at_chicago}</td>
+                  <td>{statusBadge(msg.status)}</td>
+                  <td>
+                    {msg.status === 'pending' && (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => handleSendNow(msg.id)} style={{ fontSize: 11, padding: '4px 10px' }}>
+                          📤 Send Now
+                        </button>
+                        <button className="btn btn-danger btn-sm" onClick={() => handleCancel(msg.id)} style={{ fontSize: 11, padding: '4px 10px' }}>
+                          ✕ Cancel
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [authed, setAuthed] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -1636,6 +2008,7 @@ export default function App() {
     groups: <GroupsPage />,
     questions: <QuestionsPage />,
     broadcast: <BroadcastPage />,
+    scheduled: <ScheduledMessagesPage />,
     voting: <EmployeeVotingPage />,
   };
 
@@ -1667,6 +2040,13 @@ export default function App() {
           >
             <span className="nav-icon">📢</span>
             Broadcast
+          </button>
+          <button
+            className={`nav-item ${page === 'scheduled' ? 'active' : ''}`}
+            onClick={() => setPage('scheduled')}
+          >
+            <span className="nav-icon">📅</span>
+            Scheduled
           </button>
           <button
             className={`nav-item ${page === 'voting' ? 'active' : ''}`}
