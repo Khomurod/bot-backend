@@ -141,7 +141,7 @@ app.get('/api/health', (req, res) => {
 app.post('/api/upload-media', authMiddleware, (req, res) => {
   upload.single('media')(req, res, async (err) => {
     if (err) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({ error: `File too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.` });
       }
       return res.status(400).json({ error: err.message });
