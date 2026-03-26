@@ -4,6 +4,10 @@ if (!process.env.JWT_SECRET) {
   console.warn('[CONFIG] WARNING: JWT_SECRET is not set. Using an insecure default. Set JWT_SECRET in production!');
 }
 
+if (!process.env.ADMIN_PASSWORD) {
+  console.warn('[CONFIG] WARNING: ADMIN_PASSWORD is not set. Using an insecure default. Set ADMIN_PASSWORD in production!');
+}
+
 module.exports = {
   botToken: process.env.BOT_TOKEN,
   databaseUrl: process.env.DATABASE_URL,
