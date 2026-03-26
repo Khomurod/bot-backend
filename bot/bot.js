@@ -20,6 +20,9 @@ if (!config.managementGroupId) {
 const bot = new Telegraf(config.botToken);
 const MANAGEMENT_GROUP_ID = config.managementGroupId;
 
+// ─── Rate-limit sleep helper ───
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // HTML escape helper to prevent injection in Telegram messages
 function escapeHtml(text) {
   if (!text) return '';
@@ -82,6 +85,44 @@ async function startBot() {
     // so bot.action(/vote_unit_/) fires first for voting callbacks
     const { registerVotingHandlers } = require('./employeeVoting');
     registerVotingHandlers(bot);
+
+    // ── Handler: confirmation broadcast button clicks ──
+    bot.action(/^bcast_(\d+)_(\d+)$/, async (ctx) => {
+      try {
+        const match = ctx.match;
+        const broadcastId = parseInt(match[1], 10);
+        const buttonIndex = parseInt(match[2], 10);
+        const from = ctx.from;
+        const chat = ctx.callbackQuery?.message?.chat;
+
+        const result = await db.saveBroadcastButtonClick({
+          broadcast_id: broadcastId,
+          button_index: buttonIndex,
+          button_label: null, // label not stored in callback data
+          driver_telegram_id: from.id,
+          driver_username: from.username || null,
+          driver_first_name: from.first_name || null,
+          driver_last_name: from.last_name || null,
+          group_telegram_id: chat?.id || null,
+          group_name: chat?.title || null,
+        });
+
+        if (!result) {
+          await ctx.answerCbQuery('You have already responded.');
+        } else {
+          await ctx.answerCbQuery('✅ Response recorded!');
+          console.log(`[BOT] Broadcast button click: broadcast=${broadcastId}, button=${buttonIndex}, driver=${from.id}`);
+        }
+      } catch (err) {
+        console.error('[BOT] Error handling bcast callback:', err.message);
+        try { await ctx.answerCbQuery('An error occurred.'); } catch (_) {}
+      }
+    });
+
+    // ── Handler: test broadcast button clicks (no tracking) ──
+    bot.action(/^test_bcast_/, async (ctx) => {
+      await ctx.answerCbQuery('This is a test preview. Responses are not recorded.');
+    });
 
     // ── 3. Handle TEST callback queries (test preview buttons) ──
     bot.on('callback_query', async (ctx) => {
@@ -325,10 +366,52 @@ async function sendQuestionToGroups(questionId) {
       results.sent++;
       console.log(`[BOT] Question sent to group: ${group.group_name} (${group.telegram_group_id}) in ${lang}`);
     } catch (err) {
-      results.failed++;
-      results.errors.push({ group: group.group_name, error: err.message });
-      console.error(`[BOT] Failed to send to group ${group.group_name}:`, err.message);
+      // Retry once on rate-limit (429)
+      if (err.response && err.response.error_code === 429) {
+        const retryAfter = (err.response.parameters && err.response.parameters.retry_after) || 5;
+        console.warn(`[BOT] Rate limited on ${group.group_name}, retrying after ${retryAfter}s`);
+        await sleep(retryAfter * 1000);
+        try {
+          const lang = group.language || 'en';
+          const qTranslation = getTranslation(question.translations, lang);
+          const questionText = qTranslation ? qTranslation.question_text : 'Question';
+          const btns = [];
+          if (question.options) {
+            for (const opt of question.options) {
+              const oTranslation = getTranslation(opt.translations, lang);
+              const optionText = oTranslation ? oTranslation.option_text : `Option ${opt.option_order}`;
+              btns.push([Markup.button.callback(optionText, `answer_${questionId}_${opt.id}`)]);
+            }
+          }
+          const messageText = `📋 ${questionText}`;
+          const keyboard = Markup.inlineKeyboard(btns);
+          if (!hasMedia) {
+            await bot.telegram.sendMessage(group.telegram_group_id, messageText, keyboard);
+          } else if (mediaPosition === 'above') {
+            if (isAlbum) {
+              await sendMedia(group.telegram_group_id, mediaItems, messageText, 'HTML', null);
+              await bot.telegram.sendMessage(group.telegram_group_id, messageText, keyboard);
+            } else {
+              await sendMedia(group.telegram_group_id, mediaItems, messageText, 'HTML', keyboard);
+            }
+          } else {
+            await bot.telegram.sendMessage(group.telegram_group_id, messageText, keyboard);
+            await sendMedia(group.telegram_group_id, mediaItems, null, null, null);
+          }
+          results.sent++;
+          console.log(`[BOT] Question sent (retry) to group: ${group.group_name}`);
+        } catch (retryErr) {
+          results.failed++;
+          results.errors.push({ group: group.group_name, error: retryErr.message });
+          console.error(`[BOT] Retry failed for ${group.group_name}:`, retryErr.message);
+        }
+      } else {
+        results.failed++;
+        results.errors.push({ group: group.group_name, error: err.message });
+        console.error(`[BOT] Failed to send to group ${group.group_name}:`, err.message);
+      }
     }
+    await sleep(50);
   }
 
   return results;
@@ -364,7 +447,7 @@ async function sendTestQuestion(questionEn, optionsEn, mediaItems, mediaPosition
 }
 
 // ─── Send broadcast message to all groups ───
-async function sendBroadcast(messageText, parseMode, messages, mediaItems, mediaPosition) {
+async function sendBroadcast(messageText, parseMode, messages, mediaItems, mediaPosition, broadcastId) {
   const groups = await db.getAllGroups();
   const results = { sent: 0, failed: 0, errors: [] };
 
@@ -372,6 +455,8 @@ async function sendBroadcast(messageText, parseMode, messages, mediaItems, media
   const position = mediaPosition || 'above';
 
   for (const group of groups) {
+    let success = false;
+    let errorMsg = null;
     try {
       let text = messageText;
       if (messages) {
@@ -390,12 +475,62 @@ async function sendBroadcast(messageText, parseMode, messages, mediaItems, media
       }
 
       results.sent++;
+      success = true;
       console.log(`[BOT] Broadcast sent to: ${group.group_name} (${group.telegram_group_id})`);
     } catch (err) {
-      results.failed++;
-      results.errors.push({ group: group.group_name, error: err.message });
-      console.error(`[BOT] Broadcast failed for ${group.group_name}:`, err.message);
+      // Retry once on rate-limit (429)
+      if (err.response && err.response.error_code === 429) {
+        const retryAfter = (err.response.parameters && err.response.parameters.retry_after) || 5;
+        console.warn(`[BOT] Rate limited on ${group.group_name}, retrying after ${retryAfter}s`);
+        await sleep(retryAfter * 1000);
+        try {
+          let text = messageText;
+          if (messages) {
+            const lang = group.language || 'en';
+            text = messages[lang] || messages.en || messageText;
+          }
+          if (!hasMedia) {
+            await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode });
+          } else if (position === 'above') {
+            await sendMedia(group.telegram_group_id, mediaItems, text, parseMode, null);
+          } else {
+            await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode });
+            await sendMedia(group.telegram_group_id, mediaItems, null, null, null);
+          }
+          results.sent++;
+          success = true;
+          console.log(`[BOT] Broadcast sent (retry) to: ${group.group_name}`);
+        } catch (retryErr) {
+          results.failed++;
+          errorMsg = retryErr.message;
+          results.errors.push({ group: group.group_name, error: retryErr.message });
+          console.error(`[BOT] Broadcast retry failed for ${group.group_name}:`, retryErr.message);
+        }
+      } else {
+        results.failed++;
+        errorMsg = err.message;
+        results.errors.push({ group: group.group_name, error: err.message });
+        console.error(`[BOT] Broadcast failed for ${group.group_name}:`, err.message);
+      }
     }
+
+    // Record delivery if broadcastId provided
+    if (broadcastId) {
+      try {
+        await db.createBroadcastDelivery({
+          broadcast_id: broadcastId,
+          group_id: group.id,
+          telegram_group_id: group.telegram_group_id,
+          group_name: group.group_name,
+          status: success ? 'sent' : 'failed',
+          error_message: errorMsg,
+        });
+      } catch (dbErr) {
+        console.error('[BOT] Failed to record delivery:', dbErr.message);
+      }
+    }
+
+    await sleep(50);
   }
 
   console.log(`[BOT] Broadcast complete: ${results.sent} sent, ${results.failed} failed`);
@@ -445,14 +580,182 @@ async function sendBroadcastToGroups(groups, messageText, parseMode, messages, m
       results.sent++;
       console.log(`[BOT] Broadcast sent to: ${group.group_name} (${group.telegram_group_id})`);
     } catch (err) {
-      results.failed++;
-      results.errors.push({ group: group.group_name, error: err.message });
-      console.error(`[BOT] Broadcast failed for ${group.group_name}:`, err.message);
+      // Retry once on rate-limit (429)
+      if (err.response && err.response.error_code === 429) {
+        const retryAfter = (err.response.parameters && err.response.parameters.retry_after) || 5;
+        console.warn(`[BOT] Rate limited on ${group.group_name}, retrying after ${retryAfter}s`);
+        await sleep(retryAfter * 1000);
+        try {
+          let text = messageText;
+          if (messages) {
+            const lang = group.language || 'en';
+            text = messages[lang] || messages.en || messageText;
+          }
+          if (!hasMedia) {
+            await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode });
+          } else if (position === 'above') {
+            await sendMedia(group.telegram_group_id, mediaItems, text, parseMode, null);
+          } else {
+            await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode });
+            await sendMedia(group.telegram_group_id, mediaItems, null, null, null);
+          }
+          results.sent++;
+          console.log(`[BOT] Broadcast sent (retry) to: ${group.group_name}`);
+        } catch (retryErr) {
+          results.failed++;
+          results.errors.push({ group: group.group_name, error: retryErr.message });
+          console.error(`[BOT] Broadcast retry failed for ${group.group_name}:`, retryErr.message);
+        }
+      } else {
+        results.failed++;
+        results.errors.push({ group: group.group_name, error: err.message });
+        console.error(`[BOT] Broadcast failed for ${group.group_name}:`, err.message);
+      }
     }
+    await sleep(50);
   }
 
   console.log(`[BOT] Targeted broadcast complete: ${results.sent} sent, ${results.failed} failed`);
   return results;
 }
 
-module.exports = { bot, startBot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest, sendBroadcastToGroups };
+// ─── Send confirmation broadcast with inline buttons to all groups ───
+async function sendConfirmationBroadcast(messageText, parseMode, messages, mediaItems, mediaPosition, buttons, broadcastId) {
+  const groups = await db.getAllGroups();
+  const results = { sent: 0, failed: 0, errors: [] };
+
+  const hasMedia = !!(mediaItems && mediaItems.length > 0);
+  const position = mediaPosition || 'above';
+
+  for (const group of groups) {
+    let success = false;
+    let errorMsg = null;
+    try {
+      const lang = group.language || 'en';
+      let text = messageText;
+      if (messages) {
+        text = messages[lang] || messages.en || messageText;
+      }
+
+      // Build per-language inline keyboard
+      const keyboardRows = (buttons || []).map((btn, i) => {
+        const label = btn[`label_${lang}`] || btn.label_en || btn.label_ru || btn.label_uz || `Button ${i + 1}`;
+        return [Markup.button.callback(label, `bcast_${broadcastId}_${i}`)];
+      });
+      const keyboard = Markup.inlineKeyboard(keyboardRows);
+
+      if (!hasMedia) {
+        await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode, ...keyboard });
+      } else if (position === 'above') {
+        if (mediaItems.length === 1) {
+          await sendMedia(group.telegram_group_id, mediaItems, text, parseMode, keyboard);
+        } else {
+          // Album: send album first (no buttons on album), then text+buttons
+          await sendMedia(group.telegram_group_id, mediaItems, text, parseMode, null);
+          await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode, ...keyboard });
+        }
+      } else {
+        await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode, ...keyboard });
+        await sendMedia(group.telegram_group_id, mediaItems, null, null, null);
+      }
+
+      results.sent++;
+      success = true;
+      console.log(`[BOT] Confirmation broadcast sent to: ${group.group_name} (${group.telegram_group_id})`);
+    } catch (err) {
+      // Retry once on rate-limit (429)
+      if (err.response && err.response.error_code === 429) {
+        const retryAfter = (err.response.parameters && err.response.parameters.retry_after) || 5;
+        console.warn(`[BOT] Rate limited on ${group.group_name}, retrying after ${retryAfter}s`);
+        await sleep(retryAfter * 1000);
+        try {
+          const lang = group.language || 'en';
+          let text = messageText;
+          if (messages) {
+            text = messages[lang] || messages.en || messageText;
+          }
+          const keyboardRows = (buttons || []).map((btn, i) => {
+            const label = btn[`label_${lang}`] || btn.label_en || btn.label_ru || btn.label_uz || `Button ${i + 1}`;
+            return [Markup.button.callback(label, `bcast_${broadcastId}_${i}`)];
+          });
+          const keyboard = Markup.inlineKeyboard(keyboardRows);
+          if (!hasMedia) {
+            await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode, ...keyboard });
+          } else if (position === 'above') {
+            if (mediaItems.length === 1) {
+              await sendMedia(group.telegram_group_id, mediaItems, text, parseMode, keyboard);
+            } else {
+              await sendMedia(group.telegram_group_id, mediaItems, text, parseMode, null);
+              await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode, ...keyboard });
+            }
+          } else {
+            await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode, ...keyboard });
+            await sendMedia(group.telegram_group_id, mediaItems, null, null, null);
+          }
+          results.sent++;
+          success = true;
+          console.log(`[BOT] Confirmation broadcast sent (retry) to: ${group.group_name}`);
+        } catch (retryErr) {
+          results.failed++;
+          errorMsg = retryErr.message;
+          results.errors.push({ group: group.group_name, error: retryErr.message });
+          console.error(`[BOT] Confirmation broadcast retry failed for ${group.group_name}:`, retryErr.message);
+        }
+      } else {
+        results.failed++;
+        errorMsg = err.message;
+        results.errors.push({ group: group.group_name, error: err.message });
+        console.error(`[BOT] Confirmation broadcast failed for ${group.group_name}:`, err.message);
+      }
+    }
+
+    // Record delivery if broadcastId provided
+    if (broadcastId) {
+      try {
+        await db.createBroadcastDelivery({
+          broadcast_id: broadcastId,
+          group_id: group.id,
+          telegram_group_id: group.telegram_group_id,
+          group_name: group.group_name,
+          status: success ? 'sent' : 'failed',
+          error_message: errorMsg,
+        });
+      } catch (dbErr) {
+        console.error('[BOT] Failed to record delivery:', dbErr.message);
+      }
+    }
+
+    await sleep(50);
+  }
+
+  console.log(`[BOT] Confirmation broadcast complete: ${results.sent} sent, ${results.failed} failed`);
+  return results;
+}
+
+// ─── Send confirmation broadcast test to management group ───
+async function sendConfirmationBroadcastTest(messageText, parseMode, mediaItems, mediaPosition, buttons) {
+  const hasMedia = !!(mediaItems && mediaItems.length > 0);
+  const position = mediaPosition || 'above';
+
+  const keyboardRows = (buttons || []).map((btn, i) => [
+    Markup.button.callback(btn.label_en || `Button ${i + 1}`, `test_bcast_${i}`),
+  ]);
+  const keyboard = Markup.inlineKeyboard(keyboardRows);
+
+  if (!hasMedia) {
+    await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, messageText, { parse_mode: parseMode, ...keyboard });
+  } else if (position === 'above') {
+    if (mediaItems.length === 1) {
+      await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, messageText, parseMode, keyboard);
+    } else {
+      await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, messageText, parseMode, null);
+      await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, messageText, { parse_mode: parseMode, ...keyboard });
+    }
+  } else {
+    await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, messageText, { parse_mode: parseMode, ...keyboard });
+    await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, null, null, null);
+  }
+  console.log('[BOT] Confirmation broadcast test sent to management group.');
+}
+
+module.exports = { bot, startBot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest, sendBroadcastToGroups, sendConfirmationBroadcast, sendConfirmationBroadcastTest };

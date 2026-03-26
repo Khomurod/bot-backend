@@ -121,6 +121,53 @@ CREATE TABLE IF NOT EXISTS employee_votes (
   UNIQUE(poll_id, telegram_user_id)
 );
 
+-- ─── Broadcast Tracking System ───
+
+CREATE TABLE IF NOT EXISTS broadcasts (
+  id SERIAL PRIMARY KEY,
+  type TEXT NOT NULL DEFAULT 'regular',
+  message_text_en TEXT,
+  message_text_ru TEXT,
+  message_text_uz TEXT,
+  media_items JSONB,
+  media_position TEXT DEFAULT 'above',
+  parse_mode TEXT DEFAULT 'HTML',
+  buttons JSONB,
+  target_type TEXT DEFAULT 'all',
+  target_driver_ids INTEGER[],
+  target_languages TEXT[],
+  force_language TEXT,
+  status TEXT DEFAULT 'sent',
+  sent_at TIMESTAMP DEFAULT NOW(),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS broadcast_deliveries (
+  id SERIAL PRIMARY KEY,
+  broadcast_id INTEGER REFERENCES broadcasts(id) ON DELETE CASCADE,
+  group_id INTEGER,
+  telegram_group_id BIGINT,
+  group_name TEXT,
+  status TEXT DEFAULT 'sent',
+  error_message TEXT,
+  sent_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS broadcast_button_clicks (
+  id SERIAL PRIMARY KEY,
+  broadcast_id INTEGER REFERENCES broadcasts(id) ON DELETE CASCADE,
+  button_index INTEGER NOT NULL,
+  button_label TEXT,
+  driver_telegram_id BIGINT NOT NULL,
+  driver_username TEXT,
+  driver_first_name TEXT,
+  driver_last_name TEXT,
+  group_telegram_id BIGINT,
+  group_name TEXT,
+  clicked_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(broadcast_id, button_index, driver_telegram_id)
+);
+
 -- ─── Scheduled Messaging System ───
 
 CREATE TABLE IF NOT EXISTS scheduled_messages (
