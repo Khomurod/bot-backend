@@ -28,7 +28,9 @@ const upload = multer({
 });
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || true,
+}));
 
 // ─── Leads-Bot Proxy (Python/FastAPI on internal port) ───
 // These routes MUST be before express.json() so the raw body is preserved
@@ -217,7 +219,9 @@ app.put('/api/groups/:id/language', authMiddleware, async (req, res) => {
     if (!['en', 'ru', 'uz'].includes(language)) {
       return res.status(400).json({ error: 'Invalid language. Must be en, ru, or uz.' });
     }
-    const group = await db.setGroupLanguage(req.params.id, language);
+    const groupId = parseInt(req.params.id, 10);
+    if (isNaN(groupId)) return res.status(400).json({ error: 'Invalid group ID' });
+    const group = await db.setGroupLanguage(groupId, language);
     if (!group) {
       return res.status(404).json({ error: 'Group not found' });
     }
@@ -244,7 +248,9 @@ app.get('/api/questions', authMiddleware, async (req, res) => {
 // GET /api/questions/:id
 app.get('/api/questions/:id', authMiddleware, async (req, res) => {
   try {
-    const question = await db.getQuestionWithOptions(req.params.id);
+    const questionId = parseInt(req.params.id, 10);
+    if (isNaN(questionId)) return res.status(400).json({ error: 'Invalid question ID' });
+    const question = await db.getQuestionWithOptions(questionId);
     if (!question) {
       return res.status(404).json({ error: 'Question not found' });
     }
@@ -314,7 +320,9 @@ app.post('/api/questions', authMiddleware, async (req, res) => {
 // PUT /api/questions/:id/deactivate
 app.put('/api/questions/:id/deactivate', authMiddleware, async (req, res) => {
   try {
-    await db.deactivateQuestion(req.params.id);
+    const questionId = parseInt(req.params.id, 10);
+    if (isNaN(questionId)) return res.status(400).json({ error: 'Invalid question ID' });
+    await db.deactivateQuestion(questionId);
     res.json({ success: true });
   } catch (err) {
     console.error('[API] Error deactivating question:', err.message);
@@ -573,7 +581,9 @@ app.get('/api/broadcasts', authMiddleware, async (req, res) => {
 // GET /api/broadcasts/:id/deliveries
 app.get('/api/broadcasts/:id/deliveries', authMiddleware, async (req, res) => {
   try {
-    const deliveries = await db.getBroadcastDeliveries(req.params.id);
+    const broadcastId = parseInt(req.params.id, 10);
+    if (isNaN(broadcastId)) return res.status(400).json({ error: 'Invalid broadcast ID' });
+    const deliveries = await db.getBroadcastDeliveries(broadcastId);
     res.json(deliveries);
   } catch (err) {
     console.error('[API] Error fetching deliveries:', err.message);
@@ -584,7 +594,9 @@ app.get('/api/broadcasts/:id/deliveries', authMiddleware, async (req, res) => {
 // GET /api/broadcasts/:id/clicks
 app.get('/api/broadcasts/:id/clicks', authMiddleware, async (req, res) => {
   try {
-    const clicks = await db.getBroadcastButtonClicks(req.params.id);
+    const broadcastId = parseInt(req.params.id, 10);
+    if (isNaN(broadcastId)) return res.status(400).json({ error: 'Invalid broadcast ID' });
+    const clicks = await db.getBroadcastButtonClicks(broadcastId);
     res.json(clicks);
   } catch (err) {
     console.error('[API] Error fetching button clicks:', err.message);
@@ -597,7 +609,9 @@ app.get('/api/broadcasts/:id/clicks', authMiddleware, async (req, res) => {
 // GET /api/responses/:questionId
 app.get('/api/responses/:questionId', authMiddleware, async (req, res) => {
   try {
-    const responses = await db.getQuestionResponses(req.params.questionId);
+    const questionId = parseInt(req.params.questionId, 10);
+    if (isNaN(questionId)) return res.status(400).json({ error: 'Invalid question ID' });
+    const responses = await db.getQuestionResponses(questionId);
     res.json(responses);
   } catch (err) {
     console.error('[API] Error fetching responses:', err.message);
@@ -710,13 +724,15 @@ app.get('/api/scheduled-messages', authMiddleware, async (req, res) => {
 // PUT /api/scheduled-messages/:id/cancel — cancel a pending message
 app.put('/api/scheduled-messages/:id/cancel', authMiddleware, async (req, res) => {
   try {
-    const msg = await db.getScheduledMessageById(req.params.id);
+    const msgId = parseInt(req.params.id, 10);
+    if (isNaN(msgId)) return res.status(400).json({ error: 'Invalid message ID' });
+    const msg = await db.getScheduledMessageById(msgId);
     if (!msg) return res.status(404).json({ error: 'Message not found' });
     if (msg.status !== 'pending') {
       return res.status(400).json({ error: 'Only pending messages can be cancelled' });
     }
-    await db.updateScheduledMessageStatus(req.params.id, 'cancelled');
-    console.log(`[API] Scheduled message cancelled: id=${req.params.id}`);
+    await db.updateScheduledMessageStatus(msgId, 'cancelled');
+    console.log(`[API] Scheduled message cancelled: id=${msgId}`);
     res.json({ success: true });
   } catch (err) {
     console.error('[API] Error cancelling scheduled message:', err.message);
@@ -727,7 +743,9 @@ app.put('/api/scheduled-messages/:id/cancel', authMiddleware, async (req, res) =
 // PUT /api/scheduled-messages/:id/send-now — send a pending message immediately
 app.put('/api/scheduled-messages/:id/send-now', authMiddleware, async (req, res) => {
   try {
-    const msg = await db.getScheduledMessageById(req.params.id);
+    const msgId = parseInt(req.params.id, 10);
+    if (isNaN(msgId)) return res.status(400).json({ error: 'Invalid message ID' });
+    const msg = await db.getScheduledMessageById(msgId);
     if (!msg) return res.status(404).json({ error: 'Message not found' });
     if (msg.status !== 'pending') {
       return res.status(400).json({ error: 'Only pending messages can be sent' });
@@ -747,7 +765,7 @@ app.put('/api/scheduled-messages/:id/send-now', authMiddleware, async (req, res)
     }
 
     if (groups.length === 0) {
-      await db.updateScheduledMessageStatus(req.params.id, 'failed');
+      await db.updateScheduledMessageStatus(msgId, 'failed');
       return res.status(400).json({ error: 'No target groups found' });
     }
 
@@ -768,9 +786,9 @@ app.put('/api/scheduled-messages/:id/send-now', authMiddleware, async (req, res)
       : null;
 
     const results = await sendBroadcastToGroups(groups, en, 'HTML', messages, mediaItems, msg.media_position);
-    await db.updateScheduledMessageStatus(req.params.id, 'sent');
+    await db.updateScheduledMessageStatus(msgId, 'sent');
 
-    console.log(`[API] Scheduled message sent now: id=${req.params.id}`);
+    console.log(`[API] Scheduled message sent now: id=${msgId}`);
     res.json({ success: true, sent: results.sent, failed: results.failed });
   } catch (err) {
     console.error('[API] Error sending scheduled message now:', err.message);

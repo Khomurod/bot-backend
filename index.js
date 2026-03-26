@@ -12,6 +12,7 @@ const path = require('path');
 process.on('uncaughtException', (err) => {
   console.error('[FATAL] Uncaught Exception:', err.message);
   console.error(err.stack);
+  process.exit(1);
 });
 
 process.on('unhandledRejection', (reason) => {
