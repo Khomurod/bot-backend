@@ -306,3 +306,66 @@ export async function sendScheduledMessageNow(id) {
   }
   return res.json();
 }
+
+// ─── Confirmation Broadcast API ───
+
+export async function sendConfirmationBroadcast(messageText, parseMode, messages, mediaItems, mediaPosition, buttons) {
+  const body = { message_text: messageText, parse_mode: parseMode, buttons };
+  if (messages) body.messages = messages;
+  if (mediaItems && mediaItems.length > 0) {
+    body.media_items = mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type }));
+    body.media_position = mediaPosition || 'above';
+  }
+  const res = await fetch(`${API_BASE}/broadcast/confirmation/send`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to send confirmation broadcast');
+  }
+  return res.json();
+}
+
+export async function sendConfirmationBroadcastTest(messageText, parseMode, mediaItems, mediaPosition, buttons) {
+  const body = { message_text: messageText, parse_mode: parseMode, buttons };
+  if (mediaItems && mediaItems.length > 0) {
+    body.media_items = mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type }));
+    body.media_position = mediaPosition || 'above';
+  }
+  const res = await fetch(`${API_BASE}/broadcast/confirmation/test`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to send confirmation broadcast test');
+  }
+  return res.json();
+}
+
+export async function getBroadcasts(type) {
+  const res = await fetch(`${API_BASE}/broadcasts?type=${encodeURIComponent(type || 'regular')}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch broadcasts');
+  return res.json();
+}
+
+export async function getBroadcastDeliveries(broadcastId) {
+  const res = await fetch(`${API_BASE}/broadcasts/${broadcastId}/deliveries`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch deliveries');
+  return res.json();
+}
+
+export async function getBroadcastButtonClicks(broadcastId) {
+  const res = await fetch(`${API_BASE}/broadcasts/${broadcastId}/clicks`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch button clicks');
+  return res.json();
+}

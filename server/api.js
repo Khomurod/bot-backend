@@ -6,7 +6,7 @@ const path = require('path');
 const multer = require('multer');
 const config = require('../config/config');
 const db = require('../database/db');
-const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest, sendBroadcastToGroups } = require('../bot/bot');
+const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest, sendBroadcastToGroups, sendConfirmationBroadcast, sendConfirmationBroadcastTest } = require('../bot/bot');
 const { translateBatch } = require('../services/translationService');
 const { DateTime } = require('luxon');
 const employeeVotingRoutes = require('./employeeVotingApi');
@@ -141,7 +141,7 @@ app.get('/api/health', (req, res) => {
 app.post('/api/upload-media', authMiddleware, (req, res) => {
   upload.single('media')(req, res, async (err) => {
     if (err) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({ error: `File too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.` });
       }
       return res.status(400).json({ error: err.message });
@@ -433,8 +433,19 @@ app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
       mediaItems = req.body.media_items;
     }
 
-    const results = await sendBroadcast(primaryText.trim(), mode, messages || null, mediaItems, mediaPosition);
-    res.json(results);
+    // Create a broadcast record first, then pass the broadcastId to sendBroadcast
+    const broadcast = await db.createBroadcast({
+      type: 'regular',
+      message_text_en: messages ? messages.en : primaryText.trim(),
+      message_text_ru: messages ? messages.ru : null,
+      message_text_uz: messages ? messages.uz : null,
+      media_items: mediaItems,
+      media_position: mediaPosition,
+      parse_mode: mode,
+    });
+
+    const results = await sendBroadcast(primaryText.trim(), mode, messages || null, mediaItems, mediaPosition, broadcast.id);
+    res.json({ ...results, broadcast_id: broadcast.id });
   } catch (err) {
     console.error('[API] Error sending broadcast:', err.message);
     res.status(500).json({ error: err.message || 'Failed to send broadcast' });
@@ -467,6 +478,117 @@ app.post('/api/broadcast/test', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[API] Error sending broadcast test:', err.message);
     res.status(500).json({ error: err.message || 'Failed to send broadcast test' });
+  }
+});
+
+// POST /api/broadcast/confirmation/send
+app.post('/api/broadcast/confirmation/send', authMiddleware, async (req, res) => {
+  try {
+    const { message_text, parse_mode, messages, buttons } = req.body;
+
+    const primaryText = (messages && messages.en) || message_text;
+    if (!primaryText || !primaryText.trim()) {
+      return res.status(400).json({ error: 'Message text is required' });
+    }
+    if (primaryText.length > 4096) {
+      return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
+    }
+    if (!buttons || !Array.isArray(buttons) || buttons.length === 0) {
+      return res.status(400).json({ error: 'At least one button is required' });
+    }
+
+    const mode = ['HTML', 'MarkdownV2'].includes(parse_mode) ? parse_mode : 'HTML';
+
+    let mediaItems = null;
+    const mediaPosition = req.body.media_position || 'above';
+    if (Array.isArray(req.body.media_items) && req.body.media_items.length > 0) {
+      if (req.body.media_items.length > 10) {
+        return res.status(400).json({ error: 'Maximum 10 media items allowed' });
+      }
+      mediaItems = req.body.media_items;
+    }
+
+    const broadcast = await db.createBroadcast({
+      type: 'confirmation',
+      message_text_en: messages ? messages.en : primaryText.trim(),
+      message_text_ru: messages ? messages.ru : null,
+      message_text_uz: messages ? messages.uz : null,
+      media_items: mediaItems,
+      media_position: mediaPosition,
+      parse_mode: mode,
+      buttons: buttons,
+    });
+
+    const results = await sendConfirmationBroadcast(
+      primaryText.trim(), mode, messages || null, mediaItems, mediaPosition, buttons, broadcast.id
+    );
+    res.json({ ...results, broadcast_id: broadcast.id });
+  } catch (err) {
+    console.error('[API] Error sending confirmation broadcast:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to send confirmation broadcast' });
+  }
+});
+
+// POST /api/broadcast/confirmation/test
+app.post('/api/broadcast/confirmation/test', authMiddleware, async (req, res) => {
+  try {
+    const { message_text, parse_mode, messages, buttons } = req.body;
+
+    const primaryText = (messages && messages.en) || message_text;
+    if (!primaryText || !primaryText.trim()) {
+      return res.status(400).json({ error: 'Message text is required' });
+    }
+    if (primaryText.length > 4096) {
+      return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
+    }
+
+    const mode = ['HTML', 'MarkdownV2'].includes(parse_mode) ? parse_mode : 'HTML';
+
+    let mediaItems = null;
+    const mediaPosition = req.body.media_position || 'above';
+    if (Array.isArray(req.body.media_items) && req.body.media_items.length > 0) {
+      mediaItems = req.body.media_items;
+    }
+
+    await sendConfirmationBroadcastTest(primaryText.trim(), mode, mediaItems, mediaPosition, buttons || []);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[API] Error sending confirmation broadcast test:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to send confirmation broadcast test' });
+  }
+});
+
+// GET /api/broadcasts
+app.get('/api/broadcasts', authMiddleware, async (req, res) => {
+  try {
+    const type = req.query.type || 'regular';
+    const broadcasts = await db.getBroadcasts(type);
+    res.json(broadcasts);
+  } catch (err) {
+    console.error('[API] Error fetching broadcasts:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/broadcasts/:id/deliveries
+app.get('/api/broadcasts/:id/deliveries', authMiddleware, async (req, res) => {
+  try {
+    const deliveries = await db.getBroadcastDeliveries(req.params.id);
+    res.json(deliveries);
+  } catch (err) {
+    console.error('[API] Error fetching deliveries:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/broadcasts/:id/clicks
+app.get('/api/broadcasts/:id/clicks', authMiddleware, async (req, res) => {
+  try {
+    const clicks = await db.getBroadcastButtonClicks(req.params.id);
+    res.json(clicks);
+  } catch (err) {
+    console.error('[API] Error fetching button clicks:', err.message);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 

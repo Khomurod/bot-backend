@@ -1073,6 +1073,10 @@ function ResponsesView({ questionId, onBack }) {
 
 // ─────────────── Broadcast Page ───────────────
 function BroadcastPage() {
+  // ─── Tab state ───
+  const [broadcastTab, setBroadcastTab] = React.useState('regular');
+
+  // ─── Regular tab state ───
   const [message, setMessage] = useState('');
   const [messageRu, setMessageRu] = useState('');
   const [messageUz, setMessageUz] = useState('');
@@ -1080,7 +1084,6 @@ function BroadcastPage() {
   const [sending, setSending] = useState(false);
   const [testing, setTesting] = useState(false);
   const [translating, setTranslating] = useState(false);
-  // Media state: array of { file_id, type, previewUrl }
   const [broadcastMediaItems, setBroadcastMediaItems] = useState([]);
   const [broadcastMediaPosition, setBroadcastMediaPosition] = useState('above');
   const textareaRef = useRef(null);
@@ -1090,110 +1093,151 @@ function BroadcastPage() {
   const fmtRuBroad = FormattingToolbar({ textareaRef: ruBroadRef, value: messageRu, onChange: setMessageRu });
   const fmtUzBroad = FormattingToolbar({ textareaRef: uzBroadRef, value: messageUz, onChange: setMessageUz });
 
-  // ─── Scheduling state ───
-  const [sendMode, setSendMode] = useState('now'); // 'now' | 'schedule'
+  // ─── Regular tab scheduling state ───
+  const [sendMode, setSendMode] = useState('now');
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('09:00');
-  const [targetType, setTargetType] = useState('all'); // 'all' | 'specific_drivers' | 'language_groups'
+  const [targetType, setTargetType] = useState('all');
   const [selectedDriverIds, setSelectedDriverIds] = useState([]);
   const [selectedLanguages, setSelectedLanguages] = useState([]);
-  const [forceLanguage, setForceLanguage] = useState(''); // '' = auto
+  const [forceLanguage, setForceLanguage] = useState('');
   const [driverGroups, setDriverGroups] = useState([]);
   const [scheduling, setScheduling] = useState(false);
+
+  // ─── Regular broadcast history ───
+  const [regularHistory, setRegularHistory] = useState([]);
+  const [regularHistoryLoading, setRegularHistoryLoading] = useState(false);
+  const [expandedRegularBroadcast, setExpandedRegularBroadcast] = useState(null);
+  const [regularDeliveries, setRegularDeliveries] = useState({});
+
+  // ─── Confirmation tab state ───
+  const [confMessage, setConfMessage] = useState('');
+  const [confMessageRu, setConfMessageRu] = useState('');
+  const [confMessageUz, setConfMessageUz] = useState('');
+  const [confStatus, setConfStatus] = useState(null);
+  const [confSending, setConfSending] = useState(false);
+  const [confTesting, setConfTesting] = useState(false);
+  const [confTranslating, setConfTranslating] = useState(false);
+  const [confMediaItems, setConfMediaItems] = useState([]);
+  const [confMediaPosition, setConfMediaPosition] = useState('above');
+  const confTextareaRef = useRef(null);
+  const confRuRef = useRef(null);
+  const confUzRef = useRef(null);
+  const confFmt = FormattingToolbar({ textareaRef: confTextareaRef, value: confMessage, onChange: setConfMessage });
+  const confFmtRu = FormattingToolbar({ textareaRef: confRuRef, value: confMessageRu, onChange: setConfMessageRu });
+  const confFmtUz = FormattingToolbar({ textareaRef: confUzRef, value: confMessageUz, onChange: setConfMessageUz });
+
+  // ─── Confirmation buttons state ───
+  const [confirmationButtons, setConfirmationButtons] = useState([{ label_en: '', label_ru: '', label_uz: '' }]);
+  const [confBtnTranslating, setConfBtnTranslating] = useState(false);
+
+  // ─── Confirmation broadcast history ───
+  const [confHistory, setConfHistory] = useState([]);
+  const [confHistoryLoading, setConfHistoryLoading] = useState(false);
+  const [expandedConfBroadcast, setExpandedConfBroadcast] = useState(null);
+  const [confDeliveries, setConfDeliveries] = useState({});
+  const [confClicks, setConfClicks] = useState({});
+  const [expandedClicks, setExpandedClicks] = useState(null);
 
   useEffect(() => {
     api.getDriverGroups().then(setDriverGroups).catch(() => {});
   }, []);
 
-  const toggleDriverId = (id) => {
-    setSelectedDriverIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
+  useEffect(() => {
+    if (broadcastTab === 'regular') {
+      loadRegularHistory();
+    } else {
+      loadConfHistory();
+    }
+  }, [broadcastTab]);
+
+  const loadRegularHistory = async () => {
+    setRegularHistoryLoading(true);
+    try {
+      const data = await api.getBroadcasts('regular');
+      setRegularHistory(data);
+    } catch (_) {}
+    setRegularHistoryLoading(false);
   };
 
-  const toggleLanguage = (lang) => {
-    setSelectedLanguages(prev =>
-      prev.includes(lang) ? prev.filter(x => x !== lang) : [...prev, lang]
-    );
+  const loadConfHistory = async () => {
+    setConfHistoryLoading(true);
+    try {
+      const data = await api.getBroadcasts('confirmation');
+      setConfHistory(data);
+    } catch (_) {}
+    setConfHistoryLoading(false);
   };
+
+  const toggleRegularDeliveries = async (broadcastId) => {
+    if (expandedRegularBroadcast === broadcastId) { setExpandedRegularBroadcast(null); return; }
+    setExpandedRegularBroadcast(broadcastId);
+    if (!regularDeliveries[broadcastId]) {
+      try { const data = await api.getBroadcastDeliveries(broadcastId); setRegularDeliveries(prev => ({ ...prev, [broadcastId]: data })); } catch (_) {}
+    }
+  };
+
+  const toggleConfDeliveries = async (broadcastId) => {
+    if (expandedConfBroadcast === broadcastId) { setExpandedConfBroadcast(null); return; }
+    setExpandedConfBroadcast(broadcastId);
+    if (!confDeliveries[broadcastId]) {
+      try { const data = await api.getBroadcastDeliveries(broadcastId); setConfDeliveries(prev => ({ ...prev, [broadcastId]: data })); } catch (_) {}
+    }
+  };
+
+  const toggleConfClicks = async (broadcastId) => {
+    if (expandedClicks === broadcastId) { setExpandedClicks(null); return; }
+    setExpandedClicks(broadcastId);
+    if (!confClicks[broadcastId]) {
+      try { const data = await api.getBroadcastButtonClicks(broadcastId); setConfClicks(prev => ({ ...prev, [broadcastId]: data })); } catch (_) {}
+    }
+  };
+
+  // ─── Regular tab handlers ───
+  const toggleDriverId = (id) => setSelectedDriverIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleLanguage = (lang) => setSelectedLanguages(prev => prev.includes(lang) ? prev.filter(x => x !== lang) : [...prev, lang]);
 
   const handleAutoTranslate = async () => {
-    if (!message.trim()) {
-      setStatus({ type: 'error', text: 'Please type the English message first.' });
-      return;
-    }
-    setTranslating(true);
-    setStatus(null);
+    if (!message.trim()) { setStatus({ type: 'error', text: 'Please type the English message first.' }); return; }
+    setTranslating(true); setStatus(null);
     try {
       const result = await api.translateTexts([message]);
       if (result.ru && result.ru[0]) setMessageRu(result.ru[0]);
       if (result.uz && result.uz[0]) setMessageUz(result.uz[0]);
-    } catch (err) {
-      setStatus({ type: 'error', text: err.message || 'Translation failed. Please try again.' });
-    } finally {
-      setTranslating(false);
-    }
+    } catch (err) { setStatus({ type: 'error', text: err.message || 'Translation failed. Please try again.' }); }
+    finally { setTranslating(false); }
   };
 
   const handleSend = async () => {
-    if (!message.trim()) {
-      setStatus({ type: 'error', text: 'Message text is required' });
-      return;
-    }
-    if (message.length > 4096) {
-      setStatus({ type: 'error', text: 'Message exceeds 4096 character limit' });
-      return;
-    }
+    if (!message.trim()) { setStatus({ type: 'error', text: 'Message text is required' }); return; }
+    if (message.length > 4096) { setStatus({ type: 'error', text: 'Message exceeds 4096 character limit' }); return; }
     setSending(true);
     try {
-      const messages = (messageRu.trim() || messageUz.trim())
-        ? { en: message, ru: messageRu || message, uz: messageUz || message }
-        : null;
+      const messages = (messageRu.trim() || messageUz.trim()) ? { en: message, ru: messageRu || message, uz: messageUz || message } : null;
       const result = await api.sendBroadcast(message, 'HTML', messages, broadcastMediaItems, broadcastMediaPosition);
       setStatus({ type: 'success', text: `Broadcast sent! ${result.sent} group(s) received, ${result.failed} failed.` });
       setTimeout(() => setStatus(null), 5000);
-    } catch (err) {
-      setStatus({ type: 'error', text: err.message });
-    } finally {
-      setSending(false);
-    }
+      loadRegularHistory();
+    } catch (err) { setStatus({ type: 'error', text: err.message }); }
+    finally { setSending(false); }
   };
 
   const handleTest = async () => {
-    if (!message.trim()) {
-      setStatus({ type: 'error', text: 'Message text is required' });
-      return;
-    }
+    if (!message.trim()) { setStatus({ type: 'error', text: 'Message text is required' }); return; }
     setTesting(true);
     try {
       await api.sendBroadcastTest(message, 'HTML', broadcastMediaItems, broadcastMediaPosition);
       setStatus({ type: 'success', text: 'Test message sent to management group!' });
       setTimeout(() => setStatus(null), 3000);
-    } catch (err) {
-      setStatus({ type: 'error', text: err.message });
-    } finally {
-      setTesting(false);
-    }
+    } catch (err) { setStatus({ type: 'error', text: err.message }); }
+    finally { setTesting(false); }
   };
 
   const handleSchedule = async () => {
-    if (!message.trim()) {
-      setStatus({ type: 'error', text: 'English message text is required' });
-      return;
-    }
-    if (!scheduleDate || !scheduleTime) {
-      setStatus({ type: 'error', text: 'Please select a date and time' });
-      return;
-    }
-    if (targetType === 'specific_drivers' && selectedDriverIds.length === 0) {
-      setStatus({ type: 'error', text: 'Please select at least one driver' });
-      return;
-    }
-    if (targetType === 'language_groups' && selectedLanguages.length === 0) {
-      setStatus({ type: 'error', text: 'Please select at least one language' });
-      return;
-    }
-
+    if (!message.trim()) { setStatus({ type: 'error', text: 'English message text is required' }); return; }
+    if (!scheduleDate || !scheduleTime) { setStatus({ type: 'error', text: 'Please select a date and time' }); return; }
+    if (targetType === 'specific_drivers' && selectedDriverIds.length === 0) { setStatus({ type: 'error', text: 'Please select at least one driver' }); return; }
+    if (targetType === 'language_groups' && selectedLanguages.length === 0) { setStatus({ type: 'error', text: 'Please select at least one language' }); return; }
     setScheduling(true);
     try {
       const scheduled_at_chicago = `${scheduleDate}T${scheduleTime}`;
@@ -1201,33 +1245,91 @@ function BroadcastPage() {
         message_text_en: message.trim(),
         message_text_ru: messageRu.trim() || null,
         message_text_uz: messageUz.trim() || null,
-        scheduled_at_chicago,
-        target_type: targetType,
-        force_language: forceLanguage || null,
+        scheduled_at_chicago, target_type: targetType, force_language: forceLanguage || null,
       };
-
       if (targetType === 'specific_drivers') data.target_driver_ids = selectedDriverIds;
       if (targetType === 'language_groups') data.target_languages = selectedLanguages;
-
       if (broadcastMediaItems.length > 0) {
         data.media_file_id = broadcastMediaItems[0].file_id;
         data.media_type = broadcastMediaItems[0].type;
         data.media_position = broadcastMediaPosition;
       }
-
       await api.createScheduledMessage(data);
-      setStatus({ type: 'success', text: `✅ Message scheduled for ${scheduleDate} ${scheduleTime} (Chicago time)` });
-      // Reset form
+      setStatus({ type: 'success', text: `\u2705 Message scheduled for ${scheduleDate} ${scheduleTime} (Chicago time)` });
       setMessage(''); setMessageRu(''); setMessageUz('');
       setScheduleDate(''); setScheduleTime('09:00');
       setTargetType('all'); setSelectedDriverIds([]); setSelectedLanguages([]);
       setForceLanguage(''); setBroadcastMediaItems([]);
       setTimeout(() => setStatus(null), 5000);
-    } catch (err) {
-      setStatus({ type: 'error', text: err.message });
-    } finally {
-      setScheduling(false);
-    }
+    } catch (err) { setStatus({ type: 'error', text: err.message }); }
+    finally { setScheduling(false); }
+  };
+
+  // ─── Confirmation tab handlers ───
+  const handleConfAutoTranslate = async () => {
+    if (!confMessage.trim()) { setConfStatus({ type: 'error', text: 'Please type the English message first.' }); return; }
+    setConfTranslating(true); setConfStatus(null);
+    try {
+      const result = await api.translateTexts([confMessage]);
+      if (result.ru && result.ru[0]) setConfMessageRu(result.ru[0]);
+      if (result.uz && result.uz[0]) setConfMessageUz(result.uz[0]);
+    } catch (err) { setConfStatus({ type: 'error', text: err.message || 'Translation failed. Please try again.' }); }
+    finally { setConfTranslating(false); }
+  };
+
+  const handleConfAutoTranslateButtons = async () => {
+    const enLabels = confirmationButtons.map(b => b.label_en);
+    if (enLabels.every(l => !l.trim())) { setConfStatus({ type: 'error', text: 'Please fill in English button labels first.' }); return; }
+    setConfBtnTranslating(true); setConfStatus(null);
+    try {
+      const result = await api.translateTexts(enLabels);
+      setConfirmationButtons(prev => prev.map((btn, i) => ({
+        ...btn,
+        label_ru: (result.ru && result.ru[i]) || btn.label_ru,
+        label_uz: (result.uz && result.uz[i]) || btn.label_uz,
+      })));
+    } catch (err) { setConfStatus({ type: 'error', text: err.message || 'Translation failed.' }); }
+    finally { setConfBtnTranslating(false); }
+  };
+
+  const handleConfSend = async () => {
+    if (!confMessage.trim()) { setConfStatus({ type: 'error', text: 'Message text is required' }); return; }
+    if (confMessage.length > 4096) { setConfStatus({ type: 'error', text: 'Message exceeds 4096 character limit' }); return; }
+    const validButtons = confirmationButtons.filter(b => b.label_en.trim());
+    if (validButtons.length === 0) { setConfStatus({ type: 'error', text: 'At least one button with an English label is required' }); return; }
+    setConfSending(true);
+    try {
+      const messages = (confMessageRu.trim() || confMessageUz.trim()) ? { en: confMessage, ru: confMessageRu || confMessage, uz: confMessageUz || confMessage } : null;
+      const result = await api.sendConfirmationBroadcast(confMessage, 'HTML', messages, confMediaItems, confMediaPosition, validButtons);
+      setConfStatus({ type: 'success', text: `Confirmation broadcast sent! ${result.sent} group(s) received, ${result.failed} failed.` });
+      setTimeout(() => setConfStatus(null), 5000);
+      loadConfHistory();
+    } catch (err) { setConfStatus({ type: 'error', text: err.message }); }
+    finally { setConfSending(false); }
+  };
+
+  const handleConfTest = async () => {
+    if (!confMessage.trim()) { setConfStatus({ type: 'error', text: 'Message text is required' }); return; }
+    setConfTesting(true);
+    try {
+      const validButtons = confirmationButtons.filter(b => b.label_en.trim());
+      await api.sendConfirmationBroadcastTest(confMessage, 'HTML', confMediaItems, confMediaPosition, validButtons);
+      setConfStatus({ type: 'success', text: 'Test message sent to management group!' });
+      setTimeout(() => setConfStatus(null), 3000);
+    } catch (err) { setConfStatus({ type: 'error', text: err.message }); }
+    finally { setConfTesting(false); }
+  };
+
+  const addConfButton = () => setConfirmationButtons(prev => [...prev, { label_en: '', label_ru: '', label_uz: '' }]);
+  const removeConfButton = (index) => setConfirmationButtons(prev => prev.filter((_, i) => i !== index));
+  const updateConfButton = (index, field, value) => setConfirmationButtons(prev => prev.map((btn, i) => i === index ? { ...btn, [field]: value } : btn));
+
+  const formatDate = (ts) => { try { return new Date(ts).toLocaleString(); } catch (_) { return ts || ''; } };
+  const truncate = (text, max) => !text ? '' : text.length > max ? text.slice(0, max) + '...' : text;
+  const getClickSummary = (clicks) => {
+    const summary = {};
+    (clicks || []).forEach(c => { const k = `Button ${c.button_index + 1}`; summary[k] = (summary[k] || 0) + 1; });
+    return Object.entries(summary);
   };
 
   return (
@@ -1237,261 +1339,371 @@ function BroadcastPage() {
         <p>Send announcements and messages to driver groups</p>
       </div>
 
-      {status && (
-        <div className={`alert alert-${status.type}`}>
-          {status.type === 'success' ? '✅' : '⚠️'} {status.text}
+      {/* ─── Tab Bar ─── */}
+      <div className="broadcast-tabs">
+        {[
+          { val: 'regular', label: '\ud83d\udce2 Regular Broadcasting' },
+          { val: 'confirmation', label: '\u2705 Driver Confirmation' },
+        ].map(tab => (
+          <button
+            key={tab.val}
+            type="button"
+            className={'broadcast-tab-btn' + (broadcastTab === tab.val ? ' active' : '')}
+            onClick={() => setBroadcastTab(tab.val)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ════════ TAB 1: REGULAR ════════ */}
+      {broadcastTab === 'regular' && (
+        <div>
+          {status && <div className={`alert alert-${status.type}`}>{status.type === 'success' ? '\u2705' : '\u26a0\ufe0f'} {status.text}</div>}
+
+          <div className="broadcast-layout">
+            <div className="broadcast-editor-section">
+              <div className="card">
+                <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>\u270d\ufe0f Compose Message</h3>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>Use the toolbar to format text with Telegram-compatible HTML tags.</p>
+
+                <h4 style={{ marginBottom: 6 }}><span className="badge badge-en">EN</span> English</h4>
+                {toolbar}
+                <textarea
+                  ref={textareaRef}
+                  className="form-textarea toolbar-textarea"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Type your broadcast message here..."
+                  style={{ minHeight: 140, resize: 'vertical' }}
+                />
+                <div className={`char-count ${message.length > 4096 ? 'over-limit' : ''}`}>{message.length} / 4096</div>
+
+                <button type="button" className="btn btn-ghost" onClick={handleAutoTranslate} disabled={translating || !message.trim()}
+                  style={{ marginTop: 12, marginBottom: 16, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {translating ? '\u23f3 Translating...' : '\ud83c\udf10 Auto Translate'}
+                </button>
+
+                <h4 style={{ marginBottom: 6 }}><span className="badge badge-ru">RU</span> Russian</h4>
+                {fmtRuBroad.toolbar}
+                <textarea ref={ruBroadRef} className="form-textarea toolbar-textarea" value={messageRu} onChange={(e) => setMessageRu(e.target.value)} onKeyDown={fmtRuBroad.handleKeyDown}
+                  placeholder="\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u043d\u0430 \u0440\u0443\u0441\u0441\u043a\u043e\u043c (\u0430\u0432\u0442\u043e-\u043f\u0435\u0440\u0435\u0432\u043e\u0434 \u0438\u043b\u0438 \u0440\u0443\u0447\u043d\u043e\u0439 \u0432\u0432\u043e\u0434)" style={{ minHeight: 100, resize: 'vertical', marginBottom: 12 }} />
+
+                <h4 style={{ marginBottom: 6 }}><span className="badge badge-uz">UZ</span> Uzbek</h4>
+                {fmtUzBroad.toolbar}
+                <textarea ref={uzBroadRef} className="form-textarea toolbar-textarea" value={messageUz} onChange={(e) => setMessageUz(e.target.value)} onKeyDown={fmtUzBroad.handleKeyDown}
+                  placeholder="O'zbek tilidagi xabar (avto-tarjima yoki qo'lda kiritish)" style={{ minHeight: 100, resize: 'vertical' }} />
+
+                <div style={{ marginTop: 16 }}>
+                  <MediaUploader items={broadcastMediaItems} onAdd={(m) => setBroadcastMediaItems(prev => [...prev, m])} onRemove={(index) => setBroadcastMediaItems(prev => prev.filter((_, i) => i !== index))} />
+                  {broadcastMediaItems.length > 0 && <div style={{ marginTop: 16 }}><MediaPositionSelector name="broadcast-media-position" position={broadcastMediaPosition} onChange={setBroadcastMediaPosition} /></div>}
+                </div>
+
+                <div className="card" style={{ marginTop: 20, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>\u23f1\ufe0f Delivery</h3>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                    {[{ val: 'now', label: '\ud83d\udce4 Send Now' }, { val: 'schedule', label: '\ud83d\udd50 Schedule for Later' }].map(opt => (
+                      <button key={opt.val} type="button" onClick={() => setSendMode(opt.val)} style={{ padding: '8px 20px', fontSize: 13, fontWeight: 600, borderRadius: 8, cursor: 'pointer', border: sendMode === opt.val ? '2px solid var(--primary)' : '1px solid var(--border)', background: sendMode === opt.val ? 'var(--primary)' : 'transparent', color: sendMode === opt.val ? '#fff' : 'var(--text-muted)' }}>{opt.label}</button>
+                    ))}
+                  </div>
+                  {sendMode === 'schedule' && (
+                    <>
+                      <div style={{ marginBottom: 16 }}>
+                        <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>\ud83d\udcc5 Schedule Date &amp; Time <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Chicago / Central Time)</span></h4>
+                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                          <input type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} style={{ padding: '8px 12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 14 }} />
+                          <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} style={{ padding: '8px 12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 14 }} />
+                        </div>
+                      </div>
+                      <div style={{ marginBottom: 16 }}>
+                        <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>\ud83c\udfaf Target Audience</h4>
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                          {[{ val: 'all', label: '\ud83d\udc65 All Drivers' }, { val: 'specific_drivers', label: '\ud83d\ude9b Specific Drivers' }, { val: 'language_groups', label: '\ud83c\udf10 By Language' }].map(opt => (
+                            <button key={opt.val} type="button" onClick={() => setTargetType(opt.val)} style={{ padding: '6px 16px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', border: targetType === opt.val ? '2px solid var(--accent)' : '1px solid var(--border)', background: targetType === opt.val ? 'rgba(139, 92, 246, 0.15)' : 'transparent', color: targetType === opt.val ? 'var(--accent)' : 'var(--text-muted)' }}>{opt.label}</button>
+                          ))}
+                        </div>
+                        {targetType === 'specific_drivers' && (
+                          <div style={{ maxHeight: 200, overflowY: 'auto', background: 'var(--bg-primary)', borderRadius: 8, border: '1px solid var(--border)', padding: 8 }}>
+                            {driverGroups.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: 8 }}>No driver groups found.</p>
+                              : driverGroups.map(g => (
+                                <label key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', cursor: 'pointer', borderRadius: 6, fontSize: 13 }}>
+                                  <input type="checkbox" checked={selectedDriverIds.includes(g.id)} onChange={() => toggleDriverId(g.id)} style={{ accentColor: 'var(--accent)' }} />
+                                  <span style={{ fontWeight: 600 }}>{g.group_name || 'Unknown'}</span>
+                                  <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>({g.language?.toUpperCase()})</span>
+                                </label>
+                              ))}
+                          </div>
+                        )}
+                        {targetType === 'language_groups' && (
+                          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                            {[{ val: 'en', label: '\ud83c\uddfa\ud83c\uddf8 English groups' }, { val: 'ru', label: '\ud83c\uddf7\ud83c\uddfa Russian groups' }, { val: 'uz', label: '\ud83c\uddfa\ud83c\uddff Uzbek groups' }].map(opt => (
+                              <label key={opt.val} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+                                <input type="checkbox" checked={selectedLanguages.includes(opt.val)} onChange={() => toggleLanguage(opt.val)} style={{ accentColor: 'var(--accent)' }} />
+                                {opt.label}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>\ud83d\udcac Message Language</h4>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {[{ val: '', label: '\ud83d\udd04 Auto (default)' }, { val: 'en', label: '\ud83c\uddfa\ud83c\uddf8 English only' }, { val: 'ru', label: '\ud83c\uddf7\ud83c\uddfa Russian only' }, { val: 'uz', label: '\ud83c\uddfa\ud83c\uddff Uzbek only' }].map(opt => (
+                            <button key={opt.val} type="button" onClick={() => setForceLanguage(opt.val)} style={{ padding: '5px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', border: forceLanguage === opt.val ? '2px solid var(--primary)' : '1px solid var(--border)', background: forceLanguage === opt.val ? 'var(--primary)' : 'transparent', color: forceLanguage === opt.val ? '#fff' : 'var(--text-muted)' }}>{opt.label}</button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+                  {sendMode === 'now' ? (
+                    <>
+                      <button className="btn btn-primary" onClick={handleSend} disabled={sending || !message.trim() || message.length > 4096}>
+                        {sending ? '\u23f3 Sending...' : '\ud83d\udce4 Send to All Groups'}
+                      </button>
+                      <button className="btn btn-ghost" onClick={handleTest} disabled={testing || !message.trim()} style={{ border: '1px solid var(--border)' }}>
+                        {testing ? '\u23f3 Testing...' : '\ud83e\uddea Test'}
+                      </button>
+                    </>
+                  ) : (
+                    <button className="btn btn-primary" onClick={handleSchedule} disabled={scheduling || !message.trim() || !scheduleDate || !scheduleTime} style={{ background: 'linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%)' }}>
+                      {scheduling ? '\u23f3 Scheduling...' : '\ud83d\udd50 Schedule Message'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="broadcast-preview-section">
+              <div className="card">
+                <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>\ud83d\udcf1 Live Preview</h3>
+                <TelegramPreview label="How it will look in Telegram" text={message}
+                  langTabs={{ en: { text: message }, ru: { text: messageRu }, uz: { text: messageUz } }}
+                  mediaItems={broadcastMediaItems} mediaPosition={broadcastMediaPosition} />
+              </div>
+            </div>
+          </div>
+
+          {/* ─── Regular Broadcast History ─── */}
+          <div className="card broadcast-history" style={{ marginTop: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 600 }}>\ud83d\udccb Broadcast History</h3>
+              <button type="button" className="btn btn-ghost" onClick={loadRegularHistory} style={{ fontSize: 12, padding: '4px 12px', border: '1px solid var(--border)' }}>\ud83d\udd04 Refresh</button>
+            </div>
+            {regularHistoryLoading ? <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading...</div>
+              : regularHistory.length === 0 ? <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No broadcasts sent yet.</div>
+              : regularHistory.map(b => (
+                <div key={b.id} className="broadcast-history-item">
+                  <div className="broadcast-history-header" onClick={() => toggleRegularDeliveries(b.id)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{formatDate(b.created_at)}</span>
+                      <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-muted)' }}>{truncate(b.message_text_en, 60)}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span className="badge" style={{ background: 'var(--success-soft)', color: 'var(--success)' }}>\u2705 {b.sent_count || 0}</span>
+                      {Number(b.failed_count) > 0 && <span className="badge" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>\u274c {b.failed_count}</span>}
+                      <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{expandedRegularBroadcast === b.id ? '\u25b2' : '\u25bc'}</span>
+                    </div>
+                  </div>
+                  {expandedRegularBroadcast === b.id && (
+                    <div className="delivery-list">
+                      {(regularDeliveries[b.id] || []).length === 0
+                        ? <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: 8 }}>No delivery data.</div>
+                        : (regularDeliveries[b.id] || []).map(d => (
+                          <div key={d.id} className="delivery-row">
+                            <span style={{ fontSize: 13 }}>{d.group_name || `Group ${d.telegram_group_id}`}</span>
+                            <span className={`delivery-badge ${d.status === 'sent' ? 'sent' : 'failed'}`}>{d.status === 'sent' ? '\u2705 Sent' : '\u274c Failed'}</span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+          </div>
         </div>
       )}
 
-      <div className="broadcast-layout">
-        <div className="broadcast-editor-section">
-          <div className="card">
-            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>✍️ Compose Message</h3>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>Use the toolbar to format text with Telegram-compatible HTML tags.</p>
+      {/* ════════ TAB 2: CONFIRMATION ════════ */}
+      {broadcastTab === 'confirmation' && (
+        <div>
+          {confStatus && <div className={`alert alert-${confStatus.type}`}>{confStatus.type === 'success' ? '\u2705' : '\u26a0\ufe0f'} {confStatus.text}</div>}
 
-            <h4 style={{ marginBottom: 6 }}><span className="badge badge-en">EN</span> English</h4>
-            {toolbar}
-            <textarea
-              ref={textareaRef}
-              className="form-textarea toolbar-textarea"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Type your broadcast message here..."
-              style={{ minHeight: 140, resize: 'vertical' }}
-            />
-            <div className={`char-count ${message.length > 4096 ? 'over-limit' : ''}`}>
-              {message.length} / 4096
-            </div>
+          <div className="broadcast-layout">
+            <div className="broadcast-editor-section">
+              <div className="card">
+                <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>\u270d\ufe0f Compose Message</h3>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>Use the toolbar to format text with Telegram-compatible HTML tags.</p>
 
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={handleAutoTranslate}
-              disabled={translating || !message.trim()}
-              style={{ marginTop: 12, marginBottom: 16, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 6 }}
-            >
-              {translating ? '⏳ Translating...' : '🌐 Auto Translate'}
-            </button>
+                <h4 style={{ marginBottom: 6 }}><span className="badge badge-en">EN</span> English</h4>
+                {confFmt.toolbar}
+                <textarea ref={confTextareaRef} className="form-textarea toolbar-textarea" value={confMessage} onChange={(e) => setConfMessage(e.target.value)} onKeyDown={confFmt.handleKeyDown}
+                  placeholder="Type your confirmation message here..." style={{ minHeight: 140, resize: 'vertical' }} />
+                <div className={`char-count ${confMessage.length > 4096 ? 'over-limit' : ''}`}>{confMessage.length} / 4096</div>
 
-            <h4 style={{ marginBottom: 6 }}><span className="badge badge-ru">RU</span> Russian</h4>
-            {fmtRuBroad.toolbar}
-            <textarea
-              ref={ruBroadRef}
-              className="form-textarea toolbar-textarea"
-              value={messageRu}
-              onChange={(e) => setMessageRu(e.target.value)}
-              onKeyDown={fmtRuBroad.handleKeyDown}
-              placeholder="Сообщение на русском (авто-перевод или ручной ввод)"
-              style={{ minHeight: 100, resize: 'vertical', marginBottom: 12 }}
-            />
-
-            <h4 style={{ marginBottom: 6 }}><span className="badge badge-uz">UZ</span> Uzbek</h4>
-            {fmtUzBroad.toolbar}
-            <textarea
-              ref={uzBroadRef}
-              className="form-textarea toolbar-textarea"
-              value={messageUz}
-              onChange={(e) => setMessageUz(e.target.value)}
-              onKeyDown={fmtUzBroad.handleKeyDown}
-              placeholder="O'zbek tilidagi xabar (avto-tarjima yoki qo'lda kiritish)"
-              style={{ minHeight: 100, resize: 'vertical' }}
-            />
-
-            <div style={{ marginTop: 16 }}>
-              <MediaUploader
-                items={broadcastMediaItems}
-                onAdd={(m) => setBroadcastMediaItems(prev => [...prev, m])}
-                onRemove={(index) => setBroadcastMediaItems(prev => prev.filter((_, i) => i !== index))}
-              />
-              {broadcastMediaItems.length > 0 && (
-                <div style={{ marginTop: 16 }}>
-                  <MediaPositionSelector name="broadcast-media-position" position={broadcastMediaPosition} onChange={setBroadcastMediaPosition} />
-                </div>
-              )}
-            </div>
-
-            {/* ─── Send Mode Toggle ─── */}
-            <div className="card" style={{ marginTop: 20, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-              <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>⏱️ Delivery</h3>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                {[{ val: 'now', label: '📤 Send Now' }, { val: 'schedule', label: '🕐 Schedule for Later' }].map(opt => (
-                  <button
-                    key={opt.val}
-                    type="button"
-                    onClick={() => setSendMode(opt.val)}
-                    style={{
-                      padding: '8px 20px', fontSize: 13, fontWeight: 600, borderRadius: 8, cursor: 'pointer',
-                      border: sendMode === opt.val ? '2px solid var(--primary)' : '1px solid var(--border)',
-                      background: sendMode === opt.val ? 'var(--primary)' : 'transparent',
-                      color: sendMode === opt.val ? '#fff' : 'var(--text-muted)',
-                    }}
-                  >{opt.label}</button>
-                ))}
-              </div>
-
-              {sendMode === 'schedule' && (
-                <>
-                  {/* Date/Time Picker */}
-                  <div style={{ marginBottom: 16 }}>
-                    <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>📅 Schedule Date & Time <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Chicago / Central Time)</span></h4>
-                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                      <input
-                        type="date"
-                        value={scheduleDate}
-                        onChange={(e) => setScheduleDate(e.target.value)}
-                        style={{ padding: '8px 12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 14 }}
-                      />
-                      <input
-                        type="time"
-                        value={scheduleTime}
-                        onChange={(e) => setScheduleTime(e.target.value)}
-                        style={{ padding: '8px 12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 14 }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Target Audience */}
-                  <div style={{ marginBottom: 16 }}>
-                    <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>🎯 Target Audience</h4>
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                      {[
-                        { val: 'all', label: '👥 All Drivers' },
-                        { val: 'specific_drivers', label: '🚛 Specific Drivers' },
-                        { val: 'language_groups', label: '🌐 By Language' },
-                      ].map(opt => (
-                        <button
-                          key={opt.val}
-                          type="button"
-                          onClick={() => setTargetType(opt.val)}
-                          style={{
-                            padding: '6px 16px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
-                            border: targetType === opt.val ? '2px solid var(--accent)' : '1px solid var(--border)',
-                            background: targetType === opt.val ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
-                            color: targetType === opt.val ? 'var(--accent)' : 'var(--text-muted)',
-                          }}
-                        >{opt.label}</button>
-                      ))}
-                    </div>
-
-                    {targetType === 'specific_drivers' && (
-                      <div style={{ maxHeight: 200, overflowY: 'auto', background: 'var(--bg-primary)', borderRadius: 8, border: '1px solid var(--border)', padding: 8 }}>
-                        {driverGroups.length === 0 ? (
-                          <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: 8 }}>No driver groups found.</p>
-                        ) : driverGroups.map(g => (
-                          <label key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', cursor: 'pointer', borderRadius: 6, fontSize: 13 }}>
-                            <input
-                              type="checkbox"
-                              checked={selectedDriverIds.includes(g.id)}
-                              onChange={() => toggleDriverId(g.id)}
-                              style={{ accentColor: 'var(--accent)' }}
-                            />
-                            <span style={{ fontWeight: 600 }}>{g.group_name || 'Unknown'}</span>
-                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>({g.language?.toUpperCase()})</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-
-                    {targetType === 'language_groups' && (
-                      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                        {[
-                          { val: 'en', label: '🇺🇸 English groups' },
-                          { val: 'ru', label: '🇷🇺 Russian groups' },
-                          { val: 'uz', label: '🇺🇿 Uzbek groups' },
-                        ].map(opt => (
-                          <label key={opt.val} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
-                            <input
-                              type="checkbox"
-                              checked={selectedLanguages.includes(opt.val)}
-                              onChange={() => toggleLanguage(opt.val)}
-                              style={{ accentColor: 'var(--accent)' }}
-                            />
-                            {opt.label}
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Language Override */}
-                  <div>
-                    <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>💬 Message Language</h4>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {[
-                        { val: '', label: '🔄 Auto (default)' },
-                        { val: 'en', label: '🇺🇸 English only' },
-                        { val: 'ru', label: '🇷🇺 Russian only' },
-                        { val: 'uz', label: '🇺🇿 Uzbek only' },
-                      ].map(opt => (
-                        <button
-                          key={opt.val}
-                          type="button"
-                          onClick={() => setForceLanguage(opt.val)}
-                          style={{
-                            padding: '5px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
-                            border: forceLanguage === opt.val ? '2px solid var(--primary)' : '1px solid var(--border)',
-                            background: forceLanguage === opt.val ? 'var(--primary)' : 'transparent',
-                            color: forceLanguage === opt.val ? '#fff' : 'var(--text-muted)',
-                          }}
-                        >{opt.label}</button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-              {sendMode === 'now' ? (
-                <>
-                  <button
-                    className="btn btn-primary"
-                    onClick={handleSend}
-                    disabled={sending || !message.trim() || message.length > 4096}
-                  >
-                    {sending ? '⏳ Sending...' : '📤 Send to All Groups'}
-                  </button>
-                  <button
-                    className="btn btn-ghost"
-                    onClick={handleTest}
-                    disabled={testing || !message.trim()}
-                    style={{ border: '1px solid var(--border)' }}
-                  >
-                    {testing ? '⏳ Testing...' : '🧪 Test'}
-                  </button>
-                </>
-              ) : (
-                <button
-                  className="btn btn-primary"
-                  onClick={handleSchedule}
-                  disabled={scheduling || !message.trim() || !scheduleDate || !scheduleTime}
-                  style={{ background: 'linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%)' }}
-                >
-                  {scheduling ? '⏳ Scheduling...' : '🕐 Schedule Message'}
+                <button type="button" className="btn btn-ghost" onClick={handleConfAutoTranslate} disabled={confTranslating || !confMessage.trim()}
+                  style={{ marginTop: 12, marginBottom: 16, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {confTranslating ? '\u23f3 Translating...' : '\ud83c\udf10 Auto Translate'}
                 </button>
-              )}
+
+                <h4 style={{ marginBottom: 6 }}><span className="badge badge-ru">RU</span> Russian</h4>
+                {confFmtRu.toolbar}
+                <textarea ref={confRuRef} className="form-textarea toolbar-textarea" value={confMessageRu} onChange={(e) => setConfMessageRu(e.target.value)} onKeyDown={confFmtRu.handleKeyDown}
+                  placeholder="\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435 \u043d\u0430 \u0440\u0443\u0441\u0441\u043a\u043e\u043c (\u0430\u0432\u0442\u043e-\u043f\u0435\u0440\u0435\u0432\u043e\u0434 \u0438\u043b\u0438 \u0440\u0443\u0447\u043d\u043e\u0439 \u0432\u0432\u043e\u0434)" style={{ minHeight: 100, resize: 'vertical', marginBottom: 12 }} />
+
+                <h4 style={{ marginBottom: 6 }}><span className="badge badge-uz">UZ</span> Uzbek</h4>
+                {confFmtUz.toolbar}
+                <textarea ref={confUzRef} className="form-textarea toolbar-textarea" value={confMessageUz} onChange={(e) => setConfMessageUz(e.target.value)} onKeyDown={confFmtUz.handleKeyDown}
+                  placeholder="O'zbek tilidagi xabar (avto-tarjima yoki qo'lda kiritish)" style={{ minHeight: 100, resize: 'vertical' }} />
+
+                <div style={{ marginTop: 16 }}>
+                  <MediaUploader items={confMediaItems} onAdd={(m) => setConfMediaItems(prev => [...prev, m])} onRemove={(index) => setConfMediaItems(prev => prev.filter((_, i) => i !== index))} />
+                  {confMediaItems.length > 0 && <div style={{ marginTop: 16 }}><MediaPositionSelector name="conf-media-position" position={confMediaPosition} onChange={setConfMediaPosition} /></div>}
+                </div>
+
+                {/* ─── Inline Buttons Builder ─── */}
+                <div className="card button-builder" style={{ marginTop: 20, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 600 }}>\ud83d\udd18 Inline Buttons</h3>
+                    <button type="button" className="btn btn-ghost" onClick={handleConfAutoTranslateButtons} disabled={confBtnTranslating} style={{ fontSize: 12, padding: '4px 12px', border: '1px solid var(--border)' }}>
+                      {confBtnTranslating ? '\u23f3' : '\ud83c\udf10'} Auto-translate Labels
+                    </button>
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>Add buttons drivers can click. At least 1 button required to send.</p>
+                  {confirmationButtons.map((btn, i) => (
+                    <div key={i} className="button-builder-row">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', minWidth: 60 }}>Button {i + 1}</span>
+                        {confirmationButtons.length > 1 && <button type="button" className="btn btn-danger btn-sm" onClick={() => removeConfButton(i)} style={{ marginLeft: 'auto' }}>\u2715</button>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <div style={{ flex: 1, minWidth: 120 }}>
+                          <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 3 }}>\ud83c\uddfa\ud83c\uddf8 EN</label>
+                          <input className="form-input" style={{ width: '100%', fontSize: 13 }} value={btn.label_en} onChange={(e) => updateConfButton(i, 'label_en', e.target.value)} placeholder="Yes / Confirm" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 120 }}>
+                          <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 3 }}>\ud83c\uddf7\ud83c\uddfa RU</label>
+                          <input className="form-input" style={{ width: '100%', fontSize: 13 }} value={btn.label_ru} onChange={(e) => updateConfButton(i, 'label_ru', e.target.value)} placeholder="\u0414\u0430 / \u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 120 }}>
+                          <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 3 }}>\ud83c\uddfa\ud83c\uddff UZ</label>
+                          <input className="form-input" style={{ width: '100%', fontSize: 13 }} value={btn.label_uz} onChange={(e) => updateConfButton(i, 'label_uz', e.target.value)} placeholder="Ha / Tasdiqlash" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <button type="button" className="btn btn-ghost" onClick={addConfButton} style={{ marginTop: 8, fontSize: 13, border: '1px dashed var(--border)' }}>
+                    \u2795 Add Button
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+                  <button className="btn btn-primary" onClick={handleConfSend} disabled={confSending || !confMessage.trim() || confMessage.length > 4096}>
+                    {confSending ? '\u23f3 Sending...' : '\ud83d\udce4 Send to All Groups'}
+                  </button>
+                  <button className="btn btn-ghost" onClick={handleConfTest} disabled={confTesting || !confMessage.trim()} style={{ border: '1px solid var(--border)' }}>
+                    {confTesting ? '\u23f3 Testing...' : '\ud83e\uddea Test'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="broadcast-preview-section">
+              <div className="card">
+                <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>\ud83d\udcf1 Live Preview</h3>
+                <TelegramPreview label="How it will look in Telegram" text={confMessage}
+                  langTabs={{
+                    en: { text: confMessage, buttons: confirmationButtons.map(b => b.label_en).filter(Boolean) },
+                    ru: { text: confMessageRu, buttons: confirmationButtons.map(b => b.label_ru || b.label_en).filter(Boolean) },
+                    uz: { text: confMessageUz, buttons: confirmationButtons.map(b => b.label_uz || b.label_en).filter(Boolean) },
+                  }}
+                  mediaItems={confMediaItems} mediaPosition={confMediaPosition} />
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="broadcast-preview-section">
-          <div className="card">
-            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>📱 Live Preview</h3>
-            <TelegramPreview
-              label="How it will look in Telegram"
-              text={message}
-              langTabs={{
-                en: { text: message },
-                ru: { text: messageRu },
-                uz: { text: messageUz },
-              }}
-              mediaItems={broadcastMediaItems}
-              mediaPosition={broadcastMediaPosition}
-            />
+          {/* ─── Confirmation Broadcast History ─── */}
+          <div className="card broadcast-history" style={{ marginTop: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 600 }}>\ud83d\udccb Broadcast History</h3>
+              <button type="button" className="btn btn-ghost" onClick={loadConfHistory} style={{ fontSize: 12, padding: '4px 12px', border: '1px solid var(--border)' }}>\ud83d\udd04 Refresh</button>
+            </div>
+            {confHistoryLoading ? <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading...</div>
+              : confHistory.length === 0 ? <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No confirmation broadcasts sent yet.</div>
+              : confHistory.map(b => (
+                <div key={b.id} className="broadcast-history-item">
+                  <div className="broadcast-history-header" style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => toggleConfDeliveries(b.id)}>
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{formatDate(b.created_at)}</span>
+                      <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-muted)' }}>{truncate(b.message_text_en, 60)}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span className="badge" style={{ background: 'var(--success-soft)', color: 'var(--success)' }}>\u2705 {b.sent_count || 0}</span>
+                      {Number(b.failed_count) > 0 && <span className="badge" style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}>\u274c {b.failed_count}</span>}
+                      <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{expandedConfBroadcast === b.id ? '\u25b2' : '\u25bc'}</span>
+                    </div>
+                  </div>
+                  {expandedConfBroadcast === b.id && (
+                    <div>
+                      <div className="delivery-list">
+                        {(confDeliveries[b.id] || []).length === 0
+                          ? <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: 8 }}>No delivery data.</div>
+                          : (confDeliveries[b.id] || []).map(d => (
+                            <div key={d.id} className="delivery-row">
+                              <span style={{ fontSize: 13 }}>{d.group_name || `Group ${d.telegram_group_id}`}</span>
+                              <span className={`delivery-badge ${d.status === 'sent' ? 'sent' : 'failed'}`}>{d.status === 'sent' ? '\u2705 Sent' : '\u274c Failed'}</span>
+                            </div>
+                          ))}
+                      </div>
+                      <div style={{ marginTop: 12 }}>
+                        <button type="button" className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); toggleConfClicks(b.id); }} style={{ fontSize: 12, padding: '4px 12px', border: '1px solid var(--border)' }}>
+                          {expandedClicks === b.id ? '\u25b2 Hide' : '\ud83d\udcca Show'} Click Tracking
+                        </button>
+                        {expandedClicks === b.id && (
+                          <div className="click-tracking-table" style={{ marginTop: 10 }}>
+                            {(confClicks[b.id] || []).length === 0
+                              ? <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: 8 }}>No clicks recorded yet.</div>
+                              : (
+                                <>
+                                  <div style={{ marginBottom: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                    {getClickSummary(confClicks[b.id]).map(([k, v]) => (
+                                      <span key={k} className="badge" style={{ background: 'var(--accent-soft)', color: 'var(--accent-hover)' }}>{k}: {v} click{v !== 1 ? 's' : ''}</span>
+                                    ))}
+                                  </div>
+                                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                    <thead>
+                                      <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                                        <th style={{ textAlign: 'left', padding: '6px 8px' }}>Driver</th>
+                                        <th style={{ textAlign: 'left', padding: '6px 8px' }}>Group</th>
+                                        <th style={{ textAlign: 'left', padding: '6px 8px' }}>Button</th>
+                                        <th style={{ textAlign: 'left', padding: '6px 8px' }}>Time</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {(confClicks[b.id] || []).map(c => (
+                                        <tr key={c.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                                          <td style={{ padding: '6px 8px' }}>{c.driver_username ? `@${c.driver_username}` : `${c.driver_first_name || ''} ${c.driver_last_name || ''}`.trim() || c.driver_telegram_id}</td>
+                                          <td style={{ padding: '6px 8px', color: 'var(--text-muted)' }}>{c.group_name || '-'}</td>
+                                          <td style={{ padding: '6px 8px' }}><span className="badge" style={{ background: 'var(--accent-soft)', color: 'var(--accent-hover)' }}>Button {c.button_index + 1}</span></td>
+                                          <td style={{ padding: '6px 8px', color: 'var(--text-muted)' }}>{formatDate(c.clicked_at)}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </>
+                              )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -871,3 +871,127 @@ tr:hover td {
 .media-item-row:hover {
   border-color: var(--accent);
 }
+
+/* ─── Broadcast Tabs ─── */
+.broadcast-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+
+.broadcast-tab-btn {
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  transition: var(--transition);
+  margin-bottom: -1px;
+}
+
+.broadcast-tab-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-card-hover);
+}
+
+.broadcast-tab-btn.active {
+  color: var(--accent-hover);
+  border-bottom-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ─── Broadcast History ─── */
+.broadcast-history {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.broadcast-history-item {
+  border-bottom: 1px solid var(--border);
+  padding: 12px 0;
+}
+
+.broadcast-history-item:last-child {
+  border-bottom: none;
+}
+
+.broadcast-history-header {
+  padding: 4px 0;
+  border-radius: var(--radius-sm);
+  transition: var(--transition);
+}
+
+.broadcast-history-header:hover {
+  background: var(--bg-card-hover);
+  padding: 4px 8px;
+}
+
+/* ─── Delivery List ─── */
+.delivery-list {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.delivery-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.delivery-row:last-child {
+  border-bottom: none;
+}
+
+.delivery-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.delivery-badge.sent {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.delivery-badge.failed {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ─── Click Tracking Table ─── */
+.click-tracking-table {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+/* ─── Button Builder ─── */
+.button-builder {
+  padding: 16px;
+}
+
+.button-builder-row {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.button-builder-row:last-of-type {
+  margin-bottom: 0;
+}
