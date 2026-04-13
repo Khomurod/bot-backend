@@ -591,13 +591,15 @@ async function sendBroadcastTest(messageText, parseMode, mediaItems, mediaPositi
 }
 
 // ─── Send broadcast to specific groups (used by scheduler) ───
-async function sendBroadcastToGroups(groups, messageText, parseMode, messages, mediaItems, mediaPosition) {
+async function sendBroadcastToGroups(groups, messageText, parseMode, messages, mediaItems, mediaPosition, broadcastId) {
   const results = { sent: 0, failed: 0, errors: [] };
 
   const hasMedia = !!(mediaItems && mediaItems.length > 0);
   const position = mediaPosition || 'above';
 
   for (const group of groups) {
+    let success = false;
+    let errorMsg = null;
     try {
       let text = messageText;
       if (messages) {
@@ -615,6 +617,7 @@ async function sendBroadcastToGroups(groups, messageText, parseMode, messages, m
       }
 
       results.sent++;
+      success = true;
       console.log(`[BOT] Broadcast sent to: ${group.group_name} (${group.telegram_group_id})`);
     } catch (err) {
       // Retry once on rate-limit (429)
@@ -637,14 +640,17 @@ async function sendBroadcastToGroups(groups, messageText, parseMode, messages, m
             await sendMedia(group.telegram_group_id, mediaItems, null, null, null);
           }
           results.sent++;
+          success = true;
           console.log(`[BOT] Broadcast sent (retry) to: ${group.group_name}`);
         } catch (retryErr) {
           results.failed++;
+          errorMsg = retryErr.message;
           results.errors.push({ group: group.group_name, error: retryErr.message });
           console.error(`[BOT] Broadcast retry failed for ${group.group_name}:`, retryErr.message);
         }
       } else {
         results.failed++;
+        errorMsg = err.message;
         results.errors.push({ group: group.group_name, error: err.message });
         console.error(`[BOT] Broadcast failed for ${group.group_name}:`, err.message);
         if (isPermanentSendError(err)) {
@@ -653,6 +659,23 @@ async function sendBroadcastToGroups(groups, messageText, parseMode, messages, m
         }
       }
     }
+
+    // Record delivery if broadcastId provided
+    if (broadcastId) {
+      try {
+        await db.createBroadcastDelivery({
+          broadcast_id: broadcastId,
+          group_id: group.id,
+          telegram_group_id: group.telegram_group_id,
+          group_name: group.group_name,
+          status: success ? 'sent' : 'failed',
+          error_message: errorMsg,
+        });
+      } catch (dbErr) {
+        console.error('[BOT] Failed to record delivery:', dbErr.message);
+      }
+    }
+
     await sleep(50);
   }
 

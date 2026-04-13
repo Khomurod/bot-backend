@@ -1211,10 +1211,25 @@ function BroadcastPage() {
   const handleSend = async () => {
     if (!message.trim()) { setStatus({ type: 'error', text: 'Message text is required' }); return; }
     if (message.length > 4096) { setStatus({ type: 'error', text: 'Message exceeds 4096 character limit' }); return; }
+    if (targetType === 'specific_drivers' && selectedDriverIds.length === 0) { setStatus({ type: 'error', text: 'Please select at least one driver group' }); return; }
+    if (targetType === 'language_groups' && selectedLanguages.length === 0) { setStatus({ type: 'error', text: 'Please select at least one language' }); return; }
+    
     setSending(true);
     try {
       const messages = (messageRu.trim() || messageUz.trim()) ? { en: message, ru: messageRu || message, uz: messageUz || message } : null;
-      const result = await api.sendBroadcast(message, 'HTML', messages, broadcastMediaItems, broadcastMediaPosition);
+      
+      let groupIds = [];
+      if (targetType === 'specific_drivers') {
+        groupIds = selectedDriverIds;
+      } else if (targetType === 'language_groups') {
+        groupIds = driverGroups.filter(g => selectedLanguages.includes(g.language)).map(g => g.id);
+        if (groupIds.length === 0) throw new Error('No groups found for the selected languages');
+      } else if (targetType === 'company_drivers') {
+        groupIds = driverGroups.filter(g => g.group_name && g.group_name.includes('(COMPANY DRIVER)')).map(g => g.id);
+        if (groupIds.length === 0) throw new Error('No company driver groups found');
+      }
+
+      const result = await api.sendBroadcast(message, 'HTML', messages, broadcastMediaItems, broadcastMediaPosition, groupIds);
       setStatus({ type: 'success', text: `Broadcast sent! ${result.sent} group(s) received, ${result.failed} failed.` });
       setTimeout(() => setStatus(null), 5000);
       loadRegularHistory();
@@ -1401,6 +1416,44 @@ function BroadcastPage() {
                 </div>
 
                 <div className="card" style={{ marginTop: 20, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>🎯 Target Audience</h3>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                    {[{ val: 'all', label: '👥 All Drivers' }, { val: 'company_drivers', label: '🏢 Company Drivers' }, { val: 'specific_drivers', label: '🚛 Specific Drivers' }, { val: 'language_groups', label: '🌐 By Language' }].map(opt => (
+                      <button key={opt.val} type="button" onClick={() => setTargetType(opt.val)} style={{ padding: '6px 16px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', border: targetType === opt.val ? '2px solid var(--accent)' : '1px solid var(--border)', background: targetType === opt.val ? 'rgba(139, 92, 246, 0.15)' : 'transparent', color: targetType === opt.val ? 'var(--accent)' : 'var(--text-muted)' }}>{opt.label}</button>
+                    ))}
+                  </div>
+                  {targetType === 'specific_drivers' && (
+                    <div style={{ maxHeight: 200, overflowY: 'auto', background: 'var(--bg-primary)', borderRadius: 8, border: '1px solid var(--border)', padding: 8, marginBottom: 16 }}>
+                      {driverGroups.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: 8 }}>No driver groups found.</p>
+                        : driverGroups.map(g => (
+                          <label key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', cursor: 'pointer', borderRadius: 6, fontSize: 13 }}>
+                            <input type="checkbox" checked={selectedDriverIds.includes(g.id)} onChange={() => toggleDriverId(g.id)} style={{ accentColor: 'var(--accent)' }} />
+                            <span style={{ fontWeight: 600 }}>{g.group_name || 'Unknown'}</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>({g.language?.toUpperCase()})</span>
+                          </label>
+                        ))}
+                    </div>
+                  )}
+                  {targetType === 'language_groups' && (
+                    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
+                      {[{ val: 'en', label: '🇺🇸 English groups' }, { val: 'ru', label: '🇷🇺 Russian groups' }, { val: 'uz', label: '🇺🇿 Uzbek groups' }].map(opt => (
+                        <label key={opt.val} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+                          <input type="checkbox" checked={selectedLanguages.includes(opt.val)} onChange={() => toggleLanguage(opt.val)} style={{ accentColor: 'var(--accent)' }} />
+                          {opt.label}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  
+                  <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, marginTop: 16 }}>💬 Message Language</h4>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {[{ val: '', label: '🔄 Auto (default)' }, { val: 'en', label: '🇺🇸 English only' }, { val: 'ru', label: '🇷🇺 Russian only' }, { val: 'uz', label: '🇺🇿 Uzbek only' }].map(opt => (
+                      <button key={opt.val} type="button" onClick={() => setForceLanguage(opt.val)} style={{ padding: '5px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', border: forceLanguage === opt.val ? '2px solid var(--primary)' : '1px solid var(--border)', background: forceLanguage === opt.val ? 'var(--primary)' : 'transparent', color: forceLanguage === opt.val ? '#fff' : 'var(--text-muted)' }}>{opt.label}</button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="card" style={{ marginTop: 20, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
                   <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>⏱️ Delivery</h3>
                   <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                     {[{ val: 'now', label: '📤 Send Now' }, { val: 'schedule', label: '🕐 Schedule for Later' }].map(opt => (
@@ -1408,53 +1461,13 @@ function BroadcastPage() {
                     ))}
                   </div>
                   {sendMode === 'schedule' && (
-                    <>
-                      <div style={{ marginBottom: 16 }}>
-                        <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>📅 Schedule Date &amp; Time <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Chicago / Central Time)</span></h4>
-                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                          <input type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} style={{ padding: '8px 12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 14 }} />
-                          <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} style={{ padding: '8px 12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 14 }} />
-                        </div>
+                    <div style={{ marginBottom: 16 }}>
+                      <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>📅 Schedule Date &amp; Time <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(Chicago / Central Time)</span></h4>
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        <input type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} style={{ padding: '8px 12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 14 }} />
+                        <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} style={{ padding: '8px 12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: 14 }} />
                       </div>
-                      <div style={{ marginBottom: 16 }}>
-                        <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>🎯 Target Audience</h4>
-                        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                          {[{ val: 'all', label: '👥 All Drivers' }, { val: 'specific_drivers', label: '🚛 Specific Drivers' }, { val: 'language_groups', label: '🌐 By Language' }].map(opt => (
-                            <button key={opt.val} type="button" onClick={() => setTargetType(opt.val)} style={{ padding: '6px 16px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', border: targetType === opt.val ? '2px solid var(--accent)' : '1px solid var(--border)', background: targetType === opt.val ? 'rgba(139, 92, 246, 0.15)' : 'transparent', color: targetType === opt.val ? 'var(--accent)' : 'var(--text-muted)' }}>{opt.label}</button>
-                          ))}
-                        </div>
-                        {targetType === 'specific_drivers' && (
-                          <div style={{ maxHeight: 200, overflowY: 'auto', background: 'var(--bg-primary)', borderRadius: 8, border: '1px solid var(--border)', padding: 8 }}>
-                            {driverGroups.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: 8 }}>No driver groups found.</p>
-                              : driverGroups.map(g => (
-                                <label key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', cursor: 'pointer', borderRadius: 6, fontSize: 13 }}>
-                                  <input type="checkbox" checked={selectedDriverIds.includes(g.id)} onChange={() => toggleDriverId(g.id)} style={{ accentColor: 'var(--accent)' }} />
-                                  <span style={{ fontWeight: 600 }}>{g.group_name || 'Unknown'}</span>
-                                  <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>({g.language?.toUpperCase()})</span>
-                                </label>
-                              ))}
-                          </div>
-                        )}
-                        {targetType === 'language_groups' && (
-                          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                            {[{ val: 'en', label: '🇺🇸 English groups' }, { val: 'ru', label: '🇷🇺 Russian groups' }, { val: 'uz', label: '🇺🇿 Uzbek groups' }].map(opt => (
-                              <label key={opt.val} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
-                                <input type="checkbox" checked={selectedLanguages.includes(opt.val)} onChange={() => toggleLanguage(opt.val)} style={{ accentColor: 'var(--accent)' }} />
-                                {opt.label}
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>💬 Message Language</h4>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {[{ val: '', label: '🔄 Auto (default)' }, { val: 'en', label: '🇺🇸 English only' }, { val: 'ru', label: '🇷🇺 Russian only' }, { val: 'uz', label: '🇺🇿 Uzbek only' }].map(opt => (
-                            <button key={opt.val} type="button" onClick={() => setForceLanguage(opt.val)} style={{ padding: '5px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', border: forceLanguage === opt.val ? '2px solid var(--primary)' : '1px solid var(--border)', background: forceLanguage === opt.val ? 'var(--primary)' : 'transparent', color: forceLanguage === opt.val ? '#fff' : 'var(--text-muted)' }}>{opt.label}</button>
-                          ))}
-                        </div>
-                      </div>
-                    </>
+                    </div>
                   )}
                 </div>
 

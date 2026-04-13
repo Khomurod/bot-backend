@@ -412,7 +412,7 @@ app.post('/api/translate', authMiddleware, async (req, res) => {
 // POST /api/broadcast/send
 app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
   try {
-    const { message_text, parse_mode, messages } = req.body;
+    const { message_text, parse_mode, messages, group_ids } = req.body;
 
     const primaryText = (messages && messages.en) || message_text;
     if (!primaryText || !primaryText.trim()) {
@@ -444,7 +444,14 @@ app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
       parse_mode: mode,
     });
 
-    const results = await sendBroadcast(primaryText.trim(), mode, messages || null, mediaItems, mediaPosition, broadcast.id);
+    // If specific group_ids provided, send only to those groups; otherwise send to all
+    let results;
+    if (Array.isArray(group_ids) && group_ids.length > 0) {
+      const targetGroups = await db.getGroupsByIds(group_ids);
+      results = await sendBroadcastToGroups(targetGroups, primaryText.trim(), mode, messages || null, mediaItems, mediaPosition, broadcast.id);
+    } else {
+      results = await sendBroadcast(primaryText.trim(), mode, messages || null, mediaItems, mediaPosition, broadcast.id);
+    }
     res.json({ ...results, broadcast_id: broadcast.id });
   } catch (err) {
     console.error('[API] Error sending broadcast:', err.message);

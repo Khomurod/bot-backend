@@ -119,9 +119,10 @@ export async function sendTestQuestion(questionEn, optionsEn, mediaItems, mediaP
   return res.json();
 }
 
-export async function sendBroadcast(messageText, parseMode, messages, mediaItems, mediaPosition) {
+export async function sendBroadcast(messageText, parseMode, messages, mediaItems, mediaPosition, groupIds) {
   const body = { message_text: messageText, parse_mode: parseMode };
   if (messages) body.messages = messages;
+  if (groupIds && groupIds.length > 0) body.group_ids = groupIds;
   if (mediaItems && mediaItems.length > 0) {
     body.media_items = mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type }));
     body.media_position = mediaPosition || 'above';

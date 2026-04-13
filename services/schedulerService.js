@@ -18,6 +18,10 @@ async function resolveTargetGroups(msg) {
       return db.getGroupsByIds(msg.target_driver_ids);
     case 'language_groups':
       return db.getGroupsByLanguages(msg.target_languages);
+    case 'company_drivers': {
+      const allGroups = await db.getAllDriverGroups();
+      return allGroups.filter(g => g.group_name && g.group_name.includes('(COMPANY DRIVER)'));
+    }
     case 'all':
     default:
       return db.getAllDriverGroups();
