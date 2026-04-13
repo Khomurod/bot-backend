@@ -83,9 +83,14 @@ async function startBot() {
       }
     });
 
-    // ── 2. Register drivers on any interaction ──
+    // ── 2. Register drivers AND groups on any interaction ──
     bot.use(async (ctx, next) => {
       try {
+        // Auto-register the group if not already in DB
+        if (ctx.chat && (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup')) {
+          await db.upsertGroup(ctx.chat.id, ctx.chat.title || 'Unknown');
+        }
+        // Register the driver
         if (ctx.from && ctx.from.id && !ctx.from.is_bot) {
           await db.upsertDriver(
             ctx.from.id,
@@ -95,7 +100,7 @@ async function startBot() {
           );
         }
       } catch (err) {
-        console.error('[BOT] Error registering driver:', err.message);
+        console.error('[BOT] Error registering driver/group:', err.message);
       }
       return next();
     });
