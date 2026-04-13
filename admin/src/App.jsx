@@ -2193,6 +2193,7 @@ export default function App() {
       const token = localStorage.getItem('token');
       if (token) {
         const valid = await api.verifyAuth();
+        if (!valid) localStorage.removeItem('token');
         setAuthed(valid);
       }
       setChecking(false);

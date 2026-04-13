@@ -784,10 +784,18 @@ app.get('/admin/*', (req, res) => {
 });
 
 // ─── Start server function ───
+let httpServer = null;
+
 function startServer() {
-  app.listen(config.port, () => {
+  httpServer = app.listen(config.port, () => {
     console.log(`[API] Server running on port ${config.port}`);
   });
 }
 
-module.exports = { app, startServer };
+function stopServer() {
+  if (httpServer) {
+    httpServer.close(() => console.log('[API] HTTP server closed.'));
+  }
+}
+
+module.exports = { app, startServer, stopServer };

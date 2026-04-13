@@ -3,8 +3,9 @@
  * and spawns the Leads-Bot (Python/FastAPI) as a child process.
  */
 const { startBot } = require('./bot/bot');
-const { startServer } = require('./server/api');
-const { startScheduler } = require('./services/schedulerService');
+const { startServer, stopServer } = require('./server/api');
+const { startScheduler, stopScheduler } = require('./services/schedulerService');
+const db = require('./database/db');
 const { spawn } = require('child_process');
 const path = require('path');
 
@@ -12,6 +13,8 @@ const path = require('path');
 process.on('uncaughtException', (err) => {
   console.error('[FATAL] Uncaught Exception:', err.message);
   console.error(err.stack);
+  // Allow logs to flush, then exit — let process manager restart us
+  setTimeout(() => process.exit(1), 1000);
 });
 
 process.on('unhandledRejection', (reason) => {
@@ -21,6 +24,8 @@ process.on('unhandledRejection', (reason) => {
 // ─── Leads-Bot (Python) child process ───
 let leadsProcess = null;
 let leadsStopping = false;
+let restartDelay = 5000;
+const MAX_RESTART_DELAY = 60000;
 
 function startLeadsBot() {
   if (leadsStopping) return;
@@ -50,26 +55,59 @@ function startLeadsBot() {
       console.log('[LEADS-BOT] Process stopped.');
       return;
     }
-    console.error(`[LEADS-BOT] Process exited with code ${code}. Restarting in 5s...`);
-    setTimeout(startLeadsBot, 5000);
+    console.error(`[LEADS-BOT] Process exited with code ${code}. Restarting in ${restartDelay / 1000}s...`);
+    setTimeout(startLeadsBot, restartDelay);
+    // Exponential backoff: 5s → 10s → 20s → 40s → 60s (cap)
+    restartDelay = Math.min(restartDelay * 2, MAX_RESTART_DELAY);
   });
 
   leadsProcess.on('error', (err) => {
     console.error(`[LEADS-BOT] Failed to start: ${err.message}`);
     if (!leadsStopping) {
-      console.log('[LEADS-BOT] Retrying in 5s...');
-      setTimeout(startLeadsBot, 5000);
+      console.log(`[LEADS-BOT] Retrying in ${restartDelay / 1000}s...`);
+      setTimeout(startLeadsBot, restartDelay);
+      restartDelay = Math.min(restartDelay * 2, MAX_RESTART_DELAY);
     }
   });
+
+  // Reset backoff on successful startup (stays alive > 10s)
+  setTimeout(() => {
+    if (leadsProcess && !leadsProcess.killed) {
+      restartDelay = 5000;
+    }
+  }, 10000);
 }
 
 // ─── Graceful shutdown ───
-function shutdownAll() {
+let isShuttingDown = false;
+
+async function shutdownAll() {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log('[SHUTDOWN] Graceful shutdown initiated...');
+
+  // 1. Stop the scheduler so no new ticks fire
+  stopScheduler();
+
+  // 2. Stop accepting new HTTP requests
+  stopServer();
+
+  // 3. Kill the Python child process
   leadsStopping = true;
   if (leadsProcess && !leadsProcess.killed) {
-    console.log('[LEADS-BOT] Stopping Python process...');
+    console.log('[SHUTDOWN] Stopping Python process...');
     leadsProcess.kill('SIGTERM');
   }
+
+  // 4. Drain the PostgreSQL pool (waits for in-flight queries)
+  try {
+    await db.pool.end();
+    console.log('[SHUTDOWN] Database pool drained.');
+  } catch (err) {
+    console.error('[SHUTDOWN] Error draining pool:', err.message);
+  }
+
+  process.exit(0);
 }
 
 process.on('SIGINT', shutdownAll);

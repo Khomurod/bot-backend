@@ -23,6 +23,17 @@ const MANAGEMENT_GROUP_ID = config.managementGroupId;
 // ─── Rate-limit sleep helper ───
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// ─── Detect permanent Telegram send errors (stale/dead groups) ───
+function isPermanentSendError(err) {
+  const code = err.response?.error_code;
+  const desc = (err.response?.description || '').toLowerCase();
+  if (code === 403) return true; // bot kicked/banned
+  if (code === 400 && desc.includes('chat not found')) return true;
+  if (code === 400 && desc.includes('group chat was deactivated')) return true;
+  if (code === 400 && desc.includes('chat was upgraded')) return true;
+  return false;
+}
+
 // HTML escape helper to prevent injection in Telegram messages
 function escapeHtml(text) {
   if (!text) return '';
@@ -56,8 +67,16 @@ async function startBot() {
           (chat.type === 'group' || chat.type === 'supergroup') &&
           (newStatus === 'member' || newStatus === 'administrator')
         ) {
+          // Bot added (or re-added) — upsert also reactivates if previously deactivated
           await db.upsertGroup(chat.id, chat.title);
           console.log(`[BOT] Added to group: ${chat.title} (${chat.id})`);
+        } else if (
+          (chat.type === 'group' || chat.type === 'supergroup') &&
+          (newStatus === 'left' || newStatus === 'kicked')
+        ) {
+          // Bot removed — deactivate so broadcasts skip this group
+          await db.deactivateGroup(chat.id);
+          console.log(`[BOT] Removed from group: ${chat.title} (${chat.id}) — deactivated`);
         }
       } catch (err) {
         console.error('[BOT] Error handling my_chat_member:', err.message);
@@ -135,7 +154,11 @@ async function startBot() {
           return;
         }
 
-        if (!data || !data.startsWith('answer_')) return;
+        if (!data || !data.startsWith('answer_')) {
+          // Unknown callback data — acknowledge to clear Telegram UI spinner
+          try { await ctx.answerCbQuery(); } catch (_) {}
+          return;
+        }
 
         const parts = data.split('_');
         // format: answer_{questionId}_{optionId}
@@ -409,6 +432,11 @@ async function sendQuestionToGroups(questionId) {
         results.failed++;
         results.errors.push({ group: group.group_name, error: err.message });
         console.error(`[BOT] Failed to send to group ${group.group_name}:`, err.message);
+        // Auto-deactivate groups where the bot was kicked/group deleted
+        if (isPermanentSendError(err)) {
+          try { await db.deactivateGroup(group.telegram_group_id); } catch (_) {}
+          console.warn(`[BOT] Auto-deactivated stale group: ${group.group_name} (${group.telegram_group_id})`);
+        }
       }
     }
     await sleep(50);
@@ -511,6 +539,10 @@ async function sendBroadcast(messageText, parseMode, messages, mediaItems, media
         errorMsg = err.message;
         results.errors.push({ group: group.group_name, error: err.message });
         console.error(`[BOT] Broadcast failed for ${group.group_name}:`, err.message);
+        if (isPermanentSendError(err)) {
+          try { await db.deactivateGroup(group.telegram_group_id); } catch (_) {}
+          console.warn(`[BOT] Auto-deactivated stale group: ${group.group_name} (${group.telegram_group_id})`);
+        }
       }
     }
 
@@ -610,6 +642,10 @@ async function sendBroadcastToGroups(groups, messageText, parseMode, messages, m
         results.failed++;
         results.errors.push({ group: group.group_name, error: err.message });
         console.error(`[BOT] Broadcast failed for ${group.group_name}:`, err.message);
+        if (isPermanentSendError(err)) {
+          try { await db.deactivateGroup(group.telegram_group_id); } catch (_) {}
+          console.warn(`[BOT] Auto-deactivated stale group: ${group.group_name} (${group.telegram_group_id})`);
+        }
       }
     }
     await sleep(50);
@@ -706,6 +742,10 @@ async function sendConfirmationBroadcast(messageText, parseMode, messages, media
         errorMsg = err.message;
         results.errors.push({ group: group.group_name, error: err.message });
         console.error(`[BOT] Confirmation broadcast failed for ${group.group_name}:`, err.message);
+        if (isPermanentSendError(err)) {
+          try { await db.deactivateGroup(group.telegram_group_id); } catch (_) {}
+          console.warn(`[BOT] Auto-deactivated stale group: ${group.group_name} (${group.telegram_group_id})`);
+        }
       }
     }
 

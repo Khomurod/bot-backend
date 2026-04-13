@@ -56,10 +56,10 @@ async function query(text, params) {
 
 async function upsertGroup(telegramGroupId, groupName) {
   const res = await query(
-    `INSERT INTO groups (telegram_group_id, group_name)
-     VALUES ($1, $2)
+    `INSERT INTO groups (telegram_group_id, group_name, active)
+     VALUES ($1, $2, TRUE)
      ON CONFLICT (telegram_group_id)
-     DO UPDATE SET group_name = EXCLUDED.group_name
+     DO UPDATE SET group_name = EXCLUDED.group_name, active = TRUE
      RETURNING *`,
     [telegramGroupId, groupName]
   );
@@ -68,8 +68,16 @@ async function upsertGroup(telegramGroupId, groupName) {
 }
 
 async function getAllGroups() {
-  const res = await query("SELECT * FROM groups WHERE group_type = 'driver' ORDER BY id");
+  const res = await query("SELECT * FROM groups WHERE group_type = 'driver' AND active = TRUE ORDER BY id");
   return res.rows;
+}
+
+async function deactivateGroup(telegramGroupId) {
+  await query(
+    'UPDATE groups SET active = FALSE WHERE telegram_group_id = $1',
+    [telegramGroupId]
+  );
+  console.log(`[DB] Group deactivated: ${telegramGroupId}`);
 }
 
 async function getGroupByTelegramId(telegramGroupId) {
@@ -318,7 +326,7 @@ async function createAdmin(username, passwordHash) {
 // ─── Scheduled Messages ───
 
 async function getAllDriverGroups() {
-  const res = await query("SELECT * FROM groups WHERE group_type = 'driver' ORDER BY id");
+  const res = await query("SELECT * FROM groups WHERE group_type = 'driver' AND active = TRUE ORDER BY id");
   return res.rows;
 }
 
@@ -378,7 +386,7 @@ async function deleteScheduledMessage(id) {
 async function getGroupsByIds(ids) {
   if (!ids || ids.length === 0) return [];
   const res = await query(
-    `SELECT * FROM groups WHERE id = ANY($1) AND group_type = 'driver' ORDER BY id`,
+    `SELECT * FROM groups WHERE id = ANY($1) AND group_type = 'driver' AND active = TRUE ORDER BY id`,
     [ids]
   );
   return res.rows;
@@ -387,7 +395,7 @@ async function getGroupsByIds(ids) {
 async function getGroupsByLanguages(languages) {
   if (!languages || languages.length === 0) return [];
   const res = await query(
-    `SELECT * FROM groups WHERE language = ANY($1) AND group_type = 'driver' ORDER BY id`,
+    `SELECT * FROM groups WHERE language = ANY($1) AND group_type = 'driver' AND active = TRUE ORDER BY id`,
     [languages]
   );
   return res.rows;
@@ -509,6 +517,7 @@ module.exports = {
   setGroupLanguage,
   getGroupsByIds,
   getGroupsByLanguages,
+  deactivateGroup,
   // Drivers
   upsertDriver,
   getDriverByTelegramId,
