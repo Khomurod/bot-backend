@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as api from './api';
 
-// âââââââââââââââ Telegram Message Preview âââââââââââââââ
+// ─────────────── Telegram Message Preview ───────────────
 function TelegramPreview({ text, buttons, label, langTabs, mediaItems, mediaPosition }) {
   const now = new Date();
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -23,7 +23,7 @@ function TelegramPreview({ text, buttons, label, langTabs, mediaItems, mediaPosi
             <div key={i} style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: 10, textAlign: 'center', fontSize: 18 }}>
               {m.previewUrl && m.type === 'photo'
                 ? <img src={m.previewUrl} alt="" style={{ width: '100%', height: 60, objectFit: 'cover', borderRadius: 4 }} />
-                : (m.type === 'video' ? 'ð¬' : 'ð·')
+                : (m.type === 'video' ? '🎬' : '📷')
               }
             </div>
           ))}
@@ -33,10 +33,10 @@ function TelegramPreview({ text, buttons, label, langTabs, mediaItems, mediaPosi
         items[0].previewUrl && items[0].type === 'photo' ? (
           <img src={items[0].previewUrl} alt="media preview" style={{ maxWidth: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 8 }} />
         ) : (
-          <span>{items[0].type === 'video' ? 'ð¬ Video' : 'ð· Photo'}</span>
+          <span>{items[0].type === 'video' ? '🎬 Video' : '📷 Photo'}</span>
         )
       )}
-      {multi && <div style={{ fontSize: 11, color: '#8a9bb0', marginTop: 6 }}>ð¼ï¸ Album Â· {items.length} items</div>}
+      {multi && <div style={{ fontSize: 11, color: '#8a9bb0', marginTop: 6 }}>🖼️ Album · {items.length} items</div>}
     </div>
   ) : null;
 
@@ -59,7 +59,7 @@ function TelegramPreview({ text, buttons, label, langTabs, mediaItems, mediaPosi
                 cursor: 'pointer', textTransform: 'uppercase',
               }}
             >
-              {{ en: 'ðºð¸ EN', ru: 'ð·ðº RU', uz: 'ðºð¿ UZ' }[lang]}
+              {{ en: '🇺🇸 EN', ru: '🇷🇺 RU', uz: '🇺🇿 UZ' }[lang]}
             </button>
           ))}
         </div>
@@ -81,8 +81,8 @@ function TelegramPreview({ text, buttons, label, langTabs, mediaItems, mediaPosi
   );
 }
 
-// âââââââââââââââ Media Uploader (multi-file) âââââââââââââââ
-// onAdd(item): item = { file_id, type, previewUrl }  â called when a file is uploaded
+// ─────────────── Media Uploader (multi-file) ───────────────
+// onAdd(item): item = { file_id, type, previewUrl }  — called when a file is uploaded
 // onRemove(index): remove item at index
 // items: [{ file_id, type, previewUrl }]
 function MediaUploader({ onAdd, onRemove, items }) {
@@ -122,8 +122,8 @@ function MediaUploader({ onAdd, onRemove, items }) {
   return (
     <div className="media-upload-section">
       <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>
-        ð Media Attachments{' '}
-        <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>(optional Â· up to {MAX_ITEMS})</span>
+        📎 Media Attachments{' '}
+        <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>(optional · up to {MAX_ITEMS})</span>
       </h3>
 
       {/* Uploaded items list */}
@@ -136,7 +136,7 @@ function MediaUploader({ onAdd, onRemove, items }) {
                   <img src={item.previewUrl} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />
                 ) : (
                   <div style={{ width: 48, height: 48, background: 'var(--bg-secondary)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>
-                    {item.type === 'video' ? 'ð¬' : 'ð·'}
+                    {item.type === 'video' ? '🎬' : '📷'}
                   </div>
                 )}
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)', minWidth: 0 }}>
@@ -152,7 +152,7 @@ function MediaUploader({ onAdd, onRemove, items }) {
                 onClick={() => onRemove(index)}
                 style={{ flexShrink: 0 }}
               >
-                â Remove
+                ✕ Remove
               </button>
             </div>
           ))}
@@ -177,14 +177,14 @@ function MediaUploader({ onAdd, onRemove, items }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><div className="spinner" style={{ margin: 0 }} />Uploading to Telegram...</div>
           ) : items && items.length > 0 ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 20 }}>â</span>
+              <span style={{ fontSize: 20 }}>➕</span>
               <span style={{ fontWeight: 600 }}>Add Another ({items.length}/{MAX_ITEMS})</span>
             </div>
           ) : (
             <div>
-              <div style={{ fontSize: 28, marginBottom: 6 }}>ð¤</div>
+              <div style={{ fontSize: 28, marginBottom: 6 }}>📤</div>
               <div style={{ fontWeight: 600, marginBottom: 4 }}>Upload Photo or Video</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>JPG, PNG, WEBP, MP4, MOV Â· Max {MAX_MB}MB Â· Up to {MAX_ITEMS} files</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>JPG, PNG, WEBP, MP4, MOV · Max {MAX_MB}MB · Up to {MAX_ITEMS} files</div>
             </div>
           )}
         </div>
@@ -194,17 +194,17 @@ function MediaUploader({ onAdd, onRemove, items }) {
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>Maximum {MAX_ITEMS} media items reached.</div>
       )}
 
-      {uploadError && <div className="alert alert-error" style={{ marginTop: 8, marginBottom: 0 }}>â ï¸ {uploadError}</div>}
+      {uploadError && <div className="alert alert-error" style={{ marginTop: 8, marginBottom: 0 }}>⚠️ {uploadError}</div>}
     </div>
   );
 }
 
-// âââââââââââââââ Media Position Selector âââââââââââââââ
+// ─────────────── Media Position Selector ───────────────
 function MediaPositionSelector({ position, onChange, name }) {
   const radioName = name || 'media-position';
   return (
     <div className="media-position-selector">
-      <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: 'var(--text-secondary)' }}>ð Media Position</h4>
+      <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: 'var(--text-secondary)' }}>📍 Media Position</h4>
       <div style={{ display: 'flex', gap: 16 }}>
         {['above', 'below'].map(pos => (
           <label key={pos} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 }}>
@@ -216,7 +216,7 @@ function MediaPositionSelector({ position, onChange, name }) {
               onChange={() => onChange(pos)}
               style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
             />
-            {pos === 'above' ? 'â¬ï¸ Above text' : 'â¬ï¸ Below text'}
+            {pos === 'above' ? '⬆️ Above text' : '⬇️ Below text'}
           </label>
         ))}
       </div>
@@ -224,7 +224,7 @@ function MediaPositionSelector({ position, onChange, name }) {
   );
 }
 
-// âââââââââââââââ Formatting Toolbar âââââââââââââââ
+// ─────────────── Formatting Toolbar ───────────────
 function FormattingToolbar({ textareaRef, value, onChange }) {
   const wrapSelection = (openTag, closeTag) => {
     const ta = textareaRef.current;
@@ -276,9 +276,9 @@ function FormattingToolbar({ textareaRef, value, onChange }) {
     { label: 'S', title: 'Strikethrough', fn: () => wrapSelection('<s>', '</s>'), style: { textDecoration: 'line-through' } },
     'sep',
     { label: '</>', title: 'Monospace', fn: () => wrapSelection('<code>', '</code>'), style: { fontFamily: 'monospace', fontSize: 12 } },
-    { label: 'ð', title: 'Link', fn: insertLink, shortcut: 'Ctrl+K' },
-    { label: 'ð', title: 'Spoiler', fn: () => wrapSelection('<tg-spoiler>', '</tg-spoiler>') },
-    { label: 'â', title: 'Quote', fn: () => wrapSelection('<blockquote>', '</blockquote>') },
+    { label: '🔗', title: 'Link', fn: insertLink, shortcut: 'Ctrl+K' },
+    { label: '👁', title: 'Spoiler', fn: () => wrapSelection('<tg-spoiler>', '</tg-spoiler>') },
+    { label: '❝', title: 'Quote', fn: () => wrapSelection('<blockquote>', '</blockquote>') },
   ];
 
   return { handleKeyDown, toolbar: (
@@ -302,7 +302,7 @@ function FormattingToolbar({ textareaRef, value, onChange }) {
   )};
 }
 
-// âââââââââââââââ Login Page âââââââââââââââ
+// ─────────────── Login Page ───────────────
 function LoginPage({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -326,9 +326,9 @@ function LoginPage({ onLogin }) {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h1>ð Driver Feedback</h1>
+        <h1>🚛 Driver Feedback</h1>
         <p className="subtitle">Admin Panel</p>
-        {error && <div className="alert alert-error">â ï¸ {error}</div>}
+        {error && <div className="alert alert-error">⚠️ {error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Username</label>
@@ -361,7 +361,7 @@ function LoginPage({ onLogin }) {
   );
 }
 
-// âââââââââââââââ Groups Page âââââââââââââââ
+// ─────────────── Groups Page ───────────────
 function GroupsPage() {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -392,18 +392,18 @@ function GroupsPage() {
     }
   };
 
-  const langLabel = { en: 'ðºð¸ English', ru: 'ð·ðº Russian', uz: 'ðºð¿ Uzbek' };
+  const langLabel = { en: '🇺🇸 English', ru: '🇷🇺 Russian', uz: '🇺🇿 Uzbek' };
 
   return (
     <div>
       <div className="page-header">
         <h2>Groups</h2>
-        <p>Manage Telegram driver groups and their languages â <strong>{groups.length}</strong> group{groups.length !== 1 ? 's' : ''} registered</p>
+        <p>Manage Telegram driver groups and their languages — <strong>{groups.length}</strong> group{groups.length !== 1 ? 's' : ''} registered</p>
       </div>
 
       {message && (
         <div className={`alert alert-${message.type}`}>
-          {message.type === 'success' ? 'â' : 'â ï¸'} {message.text}
+          {message.type === 'success' ? '✅' : '⚠️'} {message.text}
         </div>
       )}
 
@@ -411,7 +411,7 @@ function GroupsPage() {
         <div className="loading"><div className="spinner"></div> Loading groups...</div>
       ) : groups.length === 0 ? (
         <div className="empty-state">
-          <div className="icon">ð­</div>
+          <div className="icon">📭</div>
           <h3>No groups yet</h3>
           <p>Add the bot to a Telegram group to see it here.</p>
         </div>
@@ -438,13 +438,13 @@ function GroupsPage() {
                       onChange={(e) => handleLanguageChange(g.id, e.target.value)}
                       style={{ width: 160, padding: '8px 12px' }}
                     >
-                      <option value="en">ðºð¸ English</option>
-                      <option value="ru">ð·ðº Russian</option>
-                      <option value="uz">ðºð¿ Uzbek</option>
+                      <option value="en">🇺🇸 English</option>
+                      <option value="ru">🇷🇺 Russian</option>
+                      <option value="uz">🇺🇿 Uzbek</option>
                     </select>
                   </td>
                   <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-                    {g.created_at ? new Date(g.created_at).toLocaleDateString() : 'â'}
+                    {g.created_at ? new Date(g.created_at).toLocaleDateString() : '—'}
                   </td>
                 </tr>
               ))}
@@ -456,7 +456,7 @@ function GroupsPage() {
   );
 }
 
-// âââââââââââââââ Questions Page âââââââââââââââ
+// ─────────────── Questions Page ───────────────
 function QuestionsPage() {
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -547,14 +547,14 @@ function QuestionsPage() {
 
       {message && (
         <div className={`alert alert-${message.type}`}>
-          {message.type === 'success' ? 'â' : 'â ï¸'} {message.text}
+          {message.type === 'success' ? '✅' : '⚠️'} {message.text}
         </div>
       )}
 
       <div className="action-bar">
         <div></div>
         <button className="btn btn-primary" onClick={() => setShowCreate(!showCreate)}>
-          {showCreate ? 'â Cancel' : 'ï¼ New Question'}
+          {showCreate ? '✕ Cancel' : '＋ New Question'}
         </button>
       </div>
 
@@ -574,7 +574,7 @@ function QuestionsPage() {
         <div className="loading"><div className="spinner"></div> Loading questions...</div>
       ) : questions.length === 0 ? (
         <div className="empty-state">
-          <div className="icon">ð</div>
+          <div className="icon">📝</div>
           <h3>No questions yet</h3>
           <p>Create your first question to get started.</p>
         </div>
@@ -594,7 +594,7 @@ function QuestionsPage() {
                     {getEnglishText(q.translations)}
                   </p>
                   <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    Created {q.created_at ? new Date(q.created_at).toLocaleString() : 'â'}
+                    Created {q.created_at ? new Date(q.created_at).toLocaleString() : '—'}
                   </p>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -602,13 +602,13 @@ function QuestionsPage() {
                     className="btn btn-ghost btn-sm"
                     onClick={() => handlePreview(q.id)}
                   >
-                    {previewId === q.id ? 'â Close' : 'ð Preview'}
+                    {previewId === q.id ? '✕ Close' : '👁 Preview'}
                   </button>
                   <button
                     className="btn btn-ghost btn-sm"
                     onClick={() => setViewResponses(q.id)}
                   >
-                    ð Responses
+                    📊 Responses
                   </button>
                   {q.active && (
                     <>
@@ -617,7 +617,7 @@ function QuestionsPage() {
                         onClick={() => handleSend(q.id)}
                         disabled={sending === q.id}
                       >
-                        {sending === q.id ? 'â³ Sending...' : 'ð¤ Send'}
+                        {sending === q.id ? '⏳ Sending...' : '📤 Send'}
                       </button>
                       <button
                         className="btn btn-danger btn-sm"
@@ -632,22 +632,22 @@ function QuestionsPage() {
               {previewId === q.id && previewData && (
                 <TelegramPreview
                   label="Telegram Preview"
-                  text={`ð ${(previewData.translations?.find(t => t.language === 'en')?.question_text) || 'Question'}`}
+                  text={`📋 ${(previewData.translations?.find(t => t.language === 'en')?.question_text) || 'Question'}`}
                   buttons={previewData.options?.map(o => {
                     const en = o.translations?.find(t => t.language === 'en');
                     return en ? en.option_text : `Option ${o.option_order}`;
                   }) || []}
                   langTabs={{
                     en: {
-                      text: `ð ${(previewData.translations?.find(t => t.language === 'en')?.question_text) || 'Question'}`,
+                      text: `📋 ${(previewData.translations?.find(t => t.language === 'en')?.question_text) || 'Question'}`,
                       buttons: previewData.options?.map(o => o.translations?.find(t => t.language === 'en')?.option_text || `Option ${o.option_order}`) || [],
                     },
                     ru: {
-                      text: `ð ${(previewData.translations?.find(t => t.language === 'ru')?.question_text) || ''}`,
+                      text: `📋 ${(previewData.translations?.find(t => t.language === 'ru')?.question_text) || ''}`,
                       buttons: previewData.options?.map(o => o.translations?.find(t => t.language === 'ru')?.option_text || '') || [],
                     },
                     uz: {
-                      text: `ð ${(previewData.translations?.find(t => t.language === 'uz')?.question_text) || ''}`,
+                      text: `📋 ${(previewData.translations?.find(t => t.language === 'uz')?.question_text) || ''}`,
                       buttons: previewData.options?.map(o => o.translations?.find(t => t.language === 'uz')?.option_text || '') || [],
                     },
                   }}
@@ -663,7 +663,7 @@ function QuestionsPage() {
   );
 }
 
-// âââââââââââââââ Create Question Form âââââââââââââââ
+// ─────────────── Create Question Form ───────────────
 function CreateQuestionForm({ onCreated, onError }) {
   const [questionEn, setQuestionEn] = useState('');
   const [questionRu, setQuestionRu] = useState('');
@@ -796,7 +796,7 @@ function CreateQuestionForm({ onCreated, onError }) {
   return (
     <form onSubmit={handleSubmit} style={{ marginBottom: 32 }}>
       <div className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>ð Question Translations</h3>
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>📝 Question Translations</h3>
         <div className="translations-grid">
           <div className="lang-section">
             <h4><span className="badge badge-en">EN</span> English</h4>
@@ -820,7 +820,7 @@ function CreateQuestionForm({ onCreated, onError }) {
               value={questionRu}
               onChange={(e) => setQuestionRu(e.target.value)}
               onKeyDown={fmtRu.handleKeyDown}
-              placeholder="ÐÐ¾Ð¿ÑÐ¾Ñ Ð½Ð° ÑÑÑÑÐºÐ¾Ð¼"
+              placeholder="Вопрос на русском"
               required
             />
           </div>
@@ -840,7 +840,7 @@ function CreateQuestionForm({ onCreated, onError }) {
         </div>
 
         {translateError && (
-          <div className="alert alert-error" style={{ marginTop: 12 }}>â ï¸ {translateError}</div>
+          <div className="alert alert-error" style={{ marginTop: 12 }}>⚠️ {translateError}</div>
         )}
 
         <button
@@ -850,20 +850,20 @@ function CreateQuestionForm({ onCreated, onError }) {
           disabled={translating || !questionEn.trim()}
           style={{ marginTop: 12, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 6 }}
         >
-          {translating ? 'â³ Translating...' : 'ð Auto Translate'}
+          {translating ? '⏳ Translating...' : '🌐 Auto Translate'}
         </button>
       </div>
 
       {questionEn.trim() && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>ð± Live Preview</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>📱 Live Preview</h3>
           <TelegramPreview
-            text={`ð ${questionEn}`}
+            text={`📋 ${questionEn}`}
             buttons={options.map(o => o.en).filter(Boolean)}
             langTabs={{
-              en: { text: `ð ${questionEn}`, buttons: options.map(o => o.en).filter(Boolean) },
-              ru: { text: questionRu ? `ð ${questionRu}` : '', buttons: options.map(o => o.ru).filter(Boolean) },
-              uz: { text: questionUz ? `ð ${questionUz}` : '', buttons: options.map(o => o.uz).filter(Boolean) },
+              en: { text: `📋 ${questionEn}`, buttons: options.map(o => o.en).filter(Boolean) },
+              ru: { text: questionRu ? `📋 ${questionRu}` : '', buttons: options.map(o => o.ru).filter(Boolean) },
+              uz: { text: questionUz ? `📋 ${questionUz}` : '', buttons: options.map(o => o.uz).filter(Boolean) },
             }}
             mediaItems={mediaItems}
             mediaPosition={mediaPosition}
@@ -886,9 +886,9 @@ function CreateQuestionForm({ onCreated, onError }) {
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600 }}>ð Answer Options</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 600 }}>🔘 Answer Options</h3>
           <button type="button" className="btn btn-ghost btn-sm" onClick={addOption}>
-            ï¼ Add Option
+            ＋ Add Option
           </button>
         </div>
 
@@ -903,12 +903,12 @@ function CreateQuestionForm({ onCreated, onError }) {
                   onClick={() => removeOption(i)}
                   style={{ padding: '4px 12px', fontSize: 12 }}
                 >
-                  â Remove
+                  ✕ Remove
                 </button>
               )}
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label>ðºð¸ English</label>
+              <label>🇺🇸 English</label>
               <input
                 className="form-input"
                 value={opt.en}
@@ -918,17 +918,17 @@ function CreateQuestionForm({ onCreated, onError }) {
               />
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label>ð·ðº Russian</label>
+              <label>🇷🇺 Russian</label>
               <input
                 className="form-input"
                 value={opt.ru}
                 onChange={(e) => updateOption(i, 'ru', e.target.value)}
-                placeholder="ÐÐ°ÑÐ¸Ð°Ð½Ñ Ð½Ð° ÑÑÑÑÐºÐ¾Ð¼"
+                placeholder="Вариант на русском"
                 required
               />
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label>ðºð¿ Uzbek</label>
+              <label>🇺🇿 Uzbek</label>
               <input
                 className="form-input"
                 value={opt.uz}
@@ -942,11 +942,11 @@ function CreateQuestionForm({ onCreated, onError }) {
       </div>
 
       {testSuccess && (
-        <div className="alert alert-success" style={{ marginBottom: 12 }}>â Test question sent to management group!</div>
+        <div className="alert alert-success" style={{ marginBottom: 12 }}>✅ Test question sent to management group!</div>
       )}
       <div style={{ display: 'flex', gap: 12 }}>
         <button className="btn btn-primary" type="submit" disabled={submitting}>
-          {submitting ? 'â³ Creating...' : 'â Create Question'}
+          {submitting ? '⏳ Creating...' : '✅ Create Question'}
         </button>
         <button
           className="btn btn-ghost"
@@ -955,14 +955,14 @@ function CreateQuestionForm({ onCreated, onError }) {
           disabled={sendingTest}
           style={{ border: '1px solid var(--border)' }}
         >
-          {sendingTest ? 'â³ Sending...' : 'ð§ª Send Test'}
+          {sendingTest ? '⏳ Sending...' : '🧪 Send Test'}
         </button>
       </div>
     </form>
   );
 }
 
-// âââââââââââââââ Responses View âââââââââââââââ
+// ─────────────── Responses View ───────────────
 function ResponsesView({ questionId, onBack }) {
   const [responses, setResponses] = useState([]);
   const [question, setQuestion] = useState(null);
@@ -1002,7 +1002,7 @@ function ResponsesView({ questionId, onBack }) {
     <div>
       <div className="page-header">
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{ marginBottom: 12 }}>
-          â Back to Questions
+          ← Back to Questions
         </button>
         <h2>Responses for Question #{questionId}</h2>
         {question && (
@@ -1029,7 +1029,7 @@ function ResponsesView({ questionId, onBack }) {
 
           {responses.length === 0 ? (
             <div className="empty-state">
-              <div className="icon">ð­</div>
+              <div className="icon">📭</div>
               <h3>No responses yet</h3>
               <p>Drivers haven't answered this question yet.</p>
             </div>
@@ -1057,7 +1057,7 @@ function ResponsesView({ questionId, onBack }) {
                         <span className="badge badge-active">{r.english_option || 'N/A'}</span>
                       </td>
                       <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-                        {r.answered_at ? new Date(r.answered_at).toLocaleString() : 'â'}
+                        {r.answered_at ? new Date(r.answered_at).toLocaleString() : '—'}
                       </td>
                     </tr>
                   ))}
@@ -1071,12 +1071,12 @@ function ResponsesView({ questionId, onBack }) {
   );
 }
 
-// âââââââââââââââ Broadcast Page âââââââââââââââ
+// ─────────────── Broadcast Page ───────────────
 function BroadcastPage() {
-  // âââ Tab state âââ
+  // ─── Tab state ───
   const [broadcastTab, setBroadcastTab] = React.useState('regular');
 
-  // âââ Regular tab state âââ
+  // ─── Regular tab state ───
   const [message, setMessage] = useState('');
   const [messageRu, setMessageRu] = useState('');
   const [messageUz, setMessageUz] = useState('');
@@ -1093,7 +1093,7 @@ function BroadcastPage() {
   const fmtRuBroad = FormattingToolbar({ textareaRef: ruBroadRef, value: messageRu, onChange: setMessageRu });
   const fmtUzBroad = FormattingToolbar({ textareaRef: uzBroadRef, value: messageUz, onChange: setMessageUz });
 
-  // âââ Regular tab scheduling state âââ
+  // ─── Regular tab scheduling state ───
   const [sendMode, setSendMode] = useState('now');
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('09:00');
@@ -1104,13 +1104,13 @@ function BroadcastPage() {
   const [driverGroups, setDriverGroups] = useState([]);
   const [scheduling, setScheduling] = useState(false);
 
-  // âââ Regular broadcast history âââ
+  // ─── Regular broadcast history ───
   const [regularHistory, setRegularHistory] = useState([]);
   const [regularHistoryLoading, setRegularHistoryLoading] = useState(false);
   const [expandedRegularBroadcast, setExpandedRegularBroadcast] = useState(null);
   const [regularDeliveries, setRegularDeliveries] = useState({});
 
-  // âââ Confirmation tab state âââ
+  // ─── Confirmation tab state ───
   const [confMessage, setConfMessage] = useState('');
   const [confMessageRu, setConfMessageRu] = useState('');
   const [confMessageUz, setConfMessageUz] = useState('');
@@ -1127,11 +1127,11 @@ function BroadcastPage() {
   const confFmtRu = FormattingToolbar({ textareaRef: confRuRef, value: confMessageRu, onChange: setConfMessageRu });
   const confFmtUz = FormattingToolbar({ textareaRef: confUzRef, value: confMessageUz, onChange: setConfMessageUz });
 
-  // âââ Confirmation buttons state âââ
+  // ─── Confirmation buttons state ───
   const [confirmationButtons, setConfirmationButtons] = useState([{ label_en: '', label_ru: '', label_uz: '' }]);
   const [confBtnTranslating, setConfBtnTranslating] = useState(false);
 
-  // âââ Confirmation broadcast history âââ
+  // ─── Confirmation broadcast history ───
   const [confHistory, setConfHistory] = useState([]);
   const [confHistoryLoading, setConfHistoryLoading] = useState(false);
   const [expandedConfBroadcast, setExpandedConfBroadcast] = useState(null);
@@ -1193,7 +1193,7 @@ function BroadcastPage() {
     }
   };
 
-  // âââ Regular tab handlers âââ
+  // ─── Regular tab handlers ───
   const toggleDriverId = (id) => setSelectedDriverIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const toggleLanguage = (lang) => setSelectedLanguages(prev => prev.includes(lang) ? prev.filter(x => x !== lang) : [...prev, lang]);
 
@@ -1265,7 +1265,7 @@ function BroadcastPage() {
     finally { setScheduling(false); }
   };
 
-  // âââ Confirmation tab handlers âââ
+  // ─── Confirmation tab handlers ───
   const handleConfAutoTranslate = async () => {
     if (!confMessage.trim()) { setConfStatus({ type: 'error', text: 'Please type the English message first.' }); return; }
     setConfTranslating(true); setConfStatus(null);
@@ -1339,7 +1339,7 @@ function BroadcastPage() {
         <p>Send announcements and messages to driver groups</p>
       </div>
 
-      {/* âââ Tab Bar âââ */}
+      {/* ─── Tab Bar ─── */}
       <div className="broadcast-tabs">
         {[
           { val: 'regular', label: '📢 Regular Broadcasting' },
@@ -1356,7 +1356,7 @@ function BroadcastPage() {
         ))}
       </div>
 
-      {/* ââââââââ TAB 1: REGULAR ââââââââ */}
+      {/* ════════ TAB 1: REGULAR ════════ */}
       {broadcastTab === 'regular' && (
         <div>
           {status && <div className={`alert alert-${status.type}`}>{status.type === 'success' ? '✅' : '⚠️'} {status.text}</div>}
@@ -1487,7 +1487,7 @@ function BroadcastPage() {
             </div>
           </div>
 
-          {/* âââ Regular Broadcast History âââ */}
+          {/* ─── Regular Broadcast History ─── */}
           <div className="card broadcast-history" style={{ marginTop: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h3 style={{ fontSize: 15, fontWeight: 600 }}>📋 Broadcast History</h3>
@@ -1526,7 +1526,7 @@ function BroadcastPage() {
         </div>
       )}
 
-      {/* ââââââââ TAB 2: CONFIRMATION ââââââââ */}
+      {/* ════════ TAB 2: CONFIRMATION ════════ */}
       {broadcastTab === 'confirmation' && (
         <div>
           {confStatus && <div className={`alert alert-${confStatus.type}`}>{confStatus.type === 'success' ? '✅' : '⚠️'} {confStatus.text}</div>}
@@ -1563,7 +1563,7 @@ function BroadcastPage() {
                   {confMediaItems.length > 0 && <div style={{ marginTop: 16 }}><MediaPositionSelector name="conf-media-position" position={confMediaPosition} onChange={setConfMediaPosition} /></div>}
                 </div>
 
-                {/* âââ Inline Buttons Builder âââ */}
+                {/* ─── Inline Buttons Builder ─── */}
                 <div className="card button-builder" style={{ marginTop: 20, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                     <h3 style={{ fontSize: 15, fontWeight: 600 }}>🔘 Inline Buttons</h3>
@@ -1624,7 +1624,7 @@ function BroadcastPage() {
             </div>
           </div>
 
-          {/* âââ Confirmation Broadcast History âââ */}
+          {/* ─── Confirmation Broadcast History ─── */}
           <div className="card broadcast-history" style={{ marginTop: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h3 style={{ fontSize: 15, fontWeight: 600 }}>📋 Broadcast History</h3>
@@ -1708,7 +1708,7 @@ function BroadcastPage() {
   );
 }
 
-// âââââââââââââââ Employee Voting Page âââââââââââââââ
+// ─────────────── Employee Voting Page ───────────────
 function EmployeeVotingPage() {
   const [polls, setPolls] = useState([]);
   const [selectedPoll, setSelectedPoll] = useState(null);
@@ -1770,9 +1770,9 @@ function EmployeeVotingPage() {
     try {
       const result = await api.createVotingPoll(pollQuestion.trim());
       if (result.warning) {
-        setStatus({ type: 'error', text: `â ï¸ Poll created but NOT sent: ${result.warning}` });
+        setStatus({ type: 'error', text: `⚠️ Poll created but NOT sent: ${result.warning}` });
       } else {
-        setStatus({ type: 'success', text: 'â Poll created and sent to employee group!' });
+        setStatus({ type: 'success', text: '✅ Poll created and sent to employee group!' });
       }
       setSelectedPoll(null);
       await loadPolls();
@@ -1821,14 +1821,14 @@ function EmployeeVotingPage() {
   return (
     <div>
       <div className="page-header">
-        <h2>ð Employee Voting</h2>
-        <p>Driver of the Week â create polls and track votes</p>
+        <h2>🏆 Employee Voting</h2>
+        <p>Driver of the Week — create polls and track votes</p>
       </div>
 
       {status && (
         <div className={`alert alert-${status.type}`} style={{ marginBottom: 16 }}>
           {status.text}
-          <button onClick={() => setStatus(null)} style={{ float: 'right', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>â</button>
+          <button onClick={() => setStatus(null)} style={{ float: 'right', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button>
         </div>
       )}
 
@@ -1855,24 +1855,24 @@ function EmployeeVotingPage() {
             Total drivers available: {units.length}
           </span>
           {units.length < 2 && (
-            <span style={{ fontSize: 12, color: '#ef4444' }}>â  Need at least 2 drivers</span>
+            <span style={{ fontSize: 12, color: '#ef4444' }}>⚠ Need at least 2 drivers</span>
           )}
           {activePoll && (
-            <span style={{ fontSize: 12, background: '#16a34a22', color: '#4ade80', border: '1px solid #16a34a44', borderRadius: 6, padding: '4px 10px' }}>ð¢ Active poll</span>
+            <span style={{ fontSize: 12, background: '#16a34a22', color: '#4ade80', border: '1px solid #16a34a44', borderRadius: 6, padding: '4px 10px' }}>🟢 Active poll</span>
           )}
         </div>
 
         {units.length > 0 && (
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>ð± Telegram Preview</label>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>📱 Telegram Preview</label>
             <div style={{ background: '#1a1a2e', borderRadius: 12, padding: 16, maxWidth: 420, border: '1px solid var(--border)' }}>
               {/* Message bubble */}
               <div style={{ background: '#2a2a4a', borderRadius: 10, padding: 12, marginBottom: 8 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>ð Driver of the Week</div>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>🏆 Driver of the Week</div>
                 <div style={{ fontSize: 13, marginBottom: 6, color: '#e0e0e0' }}>{pollQuestion || '...'}</div>
                 <div style={{ fontSize: 12, fontStyle: 'italic', color: '#999' }}>Tap a unit number below to cast your vote:</div>
               </div>
-              {/* Inline buttons preview â 4 per row */}
+              {/* Inline buttons preview — 4 per row */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {units.map(u => (
                   <div key={u.unit_number} style={{
@@ -1895,7 +1895,7 @@ function EmployeeVotingPage() {
           disabled={!canCreate}
           title={activePoll ? 'Close the current active poll first' : units.length < 2 ? 'Need at least 2 drivers' : ''}
         >
-          {creating ? 'â³ Creating...' : 'ð³ï¸ Create New Poll'}
+          {creating ? '⏳ Creating...' : '🗳️ Create New Poll'}
         </button>
       </div>
 
@@ -1915,7 +1915,7 @@ function EmployeeVotingPage() {
               >
                 {polls.map(p => (
                   <option key={p.id} value={p.id}>
-                    #{p.id} â {new Date(p.created_at).toLocaleDateString()} â {p.status.toUpperCase()} â {p.total_votes} votes
+                    #{p.id} — {new Date(p.created_at).toLocaleDateString()} — {p.status.toUpperCase()} — {p.total_votes} votes
                   </option>
                 ))}
               </select>
@@ -1925,11 +1925,11 @@ function EmployeeVotingPage() {
               <div style={{ display: 'flex', gap: 8 }}>
                 {selectedPoll.status === 'active' && (
                   <button className="btn btn-ghost btn-sm" onClick={handleClose} disabled={closing} style={{ border: '1px solid var(--border)' }}>
-                    {closing ? 'â³' : 'ð Close Poll'}
+                    {closing ? '⏳' : '🔒 Close Poll'}
                   </button>
                 )}
                 <button className="btn btn-danger btn-sm" onClick={handleReset} disabled={resetting}>
-                  {resetting ? 'â³' : 'ð Reset Votes'}
+                  {resetting ? '⏳' : '🔄 Reset Votes'}
                 </button>
               </div>
             )}
@@ -1949,7 +1949,7 @@ function EmployeeVotingPage() {
                   color: activeTab === tab ? '#fff' : 'var(--text-muted)',
                   cursor: 'pointer', textTransform: 'capitalize',
                 }}
-              >{tab === 'results' ? 'ð Results' : 'ð¤ Voters'}</button>
+              >{tab === 'results' ? '📊 Results' : '👤 Voters'}</button>
             ))}
           </div>
 
@@ -1974,10 +1974,10 @@ function EmployeeVotingPage() {
                     <tbody>
                       {results.map((r, i) => (
                         <tr key={r.id}>
-                          <td><strong>#{r.unit_number}</strong>{i === 0 && r.vote_count > 0 && ' ð¥'}</td>
-                          <td>{r.driver_name || 'â'}</td>
-                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{r.company_name || 'â'}</td>
-                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{r.driver_type || 'â'}</td>
+                          <td><strong>#{r.unit_number}</strong>{i === 0 && r.vote_count > 0 && ' 🥇'}</td>
+                          <td>{r.driver_name || '—'}</td>
+                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{r.company_name || '—'}</td>
+                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{r.driver_type || '—'}</td>
                           <td style={{ fontWeight: 700 }}>{r.vote_count}</td>
                           <td style={{ color: r.percentage > 0 ? 'var(--primary)' : 'var(--text-muted)' }}>{r.percentage}%</td>
                           <td>
@@ -2027,7 +2027,7 @@ function EmployeeVotingPage() {
 
       {polls.length === 0 && !loading && (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>ð³ï¸</div>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🗳️</div>
           <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>No polls yet</div>
           <div style={{ fontSize: 13 }}>Click "Create New Poll" to start the first Driver of the Week vote.</div>
         </div>
@@ -2036,7 +2036,7 @@ function EmployeeVotingPage() {
   );
 }
 
-// âââââââââââââââ Scheduled Messages Page âââââââââââââââ
+// ─────────────── Scheduled Messages Page ───────────────
 function ScheduledMessagesPage() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -2085,10 +2085,10 @@ function ScheduledMessagesPage() {
 
   const statusBadge = (s) => {
     const styles = {
-      pending: { bg: '#f59e0b22', color: '#f59e0b', border: '#f59e0b44', label: 'â³ Pending' },
-      sent: { bg: '#16a34a22', color: '#4ade80', border: '#16a34a44', label: 'â Sent' },
-      failed: { bg: '#ef444422', color: '#ef4444', border: '#ef444444', label: 'â Failed' },
-      cancelled: { bg: '#64748b22', color: '#94a3b8', border: '#64748b44', label: 'ð« Cancelled' },
+      pending: { bg: '#f59e0b22', color: '#f59e0b', border: '#f59e0b44', label: '⏳ Pending' },
+      sent: { bg: '#16a34a22', color: '#4ade80', border: '#16a34a44', label: '✅ Sent' },
+      failed: { bg: '#ef444422', color: '#ef4444', border: '#ef444444', label: '❌ Failed' },
+      cancelled: { bg: '#64748b22', color: '#94a3b8', border: '#64748b44', label: '🚫 Cancelled' },
     };
     const st = styles[s] || styles.pending;
     return (
@@ -2099,26 +2099,26 @@ function ScheduledMessagesPage() {
   };
 
   const targetLabel = (msg) => {
-    if (msg.target_type === 'specific_drivers') return `ð ${msg.target_driver_ids?.length || 0} driver(s)`;
-    if (msg.target_type === 'language_groups') return `ð ${(msg.target_languages || []).map(l => l.toUpperCase()).join(', ')}`;
-    return 'ð¥ All Drivers';
+    if (msg.target_type === 'specific_drivers') return `🚛 ${msg.target_driver_ids?.length || 0} driver(s)`;
+    if (msg.target_type === 'language_groups') return `🌐 ${(msg.target_languages || []).map(l => l.toUpperCase()).join(', ')}`;
+    return '👥 All Drivers';
   };
 
   const langLabel = (msg) => {
-    if (!msg.force_language) return 'ð Auto';
-    return { en: 'ðºð¸ EN', ru: 'ð·ðº RU', uz: 'ðºð¿ UZ' }[msg.force_language] || msg.force_language;
+    if (!msg.force_language) return '🔄 Auto';
+    return { en: '🇺🇸 EN', ru: '🇷🇺 RU', uz: '🇺🇿 UZ' }[msg.force_language] || msg.force_language;
   };
 
   return (
     <div>
       <div className="page-header">
-        <h2>ð Scheduled Messages</h2>
+        <h2>📅 Scheduled Messages</h2>
         <p>View and manage scheduled broadcast messages</p>
       </div>
 
       {status && (
         <div className={`alert alert-${status.type}`}>
-          {status.type === 'success' ? 'â' : 'â ï¸'} {status.text}
+          {status.type === 'success' ? '✅' : '⚠️'} {status.text}
         </div>
       )}
 
@@ -2126,7 +2126,7 @@ function ScheduledMessagesPage() {
         <div className="loading"><div className="spinner"></div> Loading scheduled messages...</div>
       ) : messages.length === 0 ? (
         <div className="empty-state">
-          <div className="icon">ð</div>
+          <div className="icon">📅</div>
           <h3>No scheduled messages</h3>
           <p>Schedule a message from the Broadcast page to see it here.</p>
         </div>
@@ -2153,7 +2153,7 @@ function ScheduledMessagesPage() {
                     </div>
                     {msg.media_file_id && (
                       <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        ð {msg.media_type === 'video' ? 'Video' : 'Photo'} attached
+                        📎 {msg.media_type === 'video' ? 'Video' : 'Photo'} attached
                       </span>
                     )}
                   </td>
@@ -2165,10 +2165,10 @@ function ScheduledMessagesPage() {
                     {msg.status === 'pending' && (
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button className="btn btn-ghost btn-sm" onClick={() => handleSendNow(msg.id)} style={{ fontSize: 11, padding: '4px 10px' }}>
-                          ð¤ Send Now
+                          📤 Send Now
                         </button>
                         <button className="btn btn-danger btn-sm" onClick={() => handleCancel(msg.id)} style={{ fontSize: 11, padding: '4px 10px' }}>
-                          â Cancel
+                          ✕ Cancel
                         </button>
                       </div>
                     )}
@@ -2229,7 +2229,7 @@ export default function App() {
     <div className="app-layout">
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <h1>ð Driver Feedback</h1>
+          <h1>🚛 Driver Feedback</h1>
           <p>Admin Panel</p>
         </div>
         <nav className="sidebar-nav">
@@ -2237,41 +2237,41 @@ export default function App() {
             className={`nav-item ${page === 'groups' ? 'active' : ''}`}
             onClick={() => setPage('groups')}
           >
-            <span className="nav-icon">ð¥</span>
+            <span className="nav-icon">👥</span>
             Groups
           </button>
           <button
             className={`nav-item ${page === 'questions' ? 'active' : ''}`}
             onClick={() => setPage('questions')}
           >
-            <span className="nav-icon">ð</span>
+            <span className="nav-icon">📝</span>
             Questions
           </button>
           <button
             className={`nav-item ${page === 'broadcast' ? 'active' : ''}`}
             onClick={() => setPage('broadcast')}
           >
-            <span className="nav-icon">ð¢</span>
+            <span className="nav-icon">📢</span>
             Broadcast
           </button>
           <button
             className={`nav-item ${page === 'scheduled' ? 'active' : ''}`}
             onClick={() => setPage('scheduled')}
           >
-            <span className="nav-icon">ð</span>
+            <span className="nav-icon">📅</span>
             Scheduled
           </button>
           <button
             className={`nav-item ${page === 'voting' ? 'active' : ''}`}
             onClick={() => setPage('voting')}
           >
-            <span className="nav-icon">ð</span>
+            <span className="nav-icon">🏆</span>
             Employee Voting
           </button>
         </nav>
         <div className="sidebar-footer">
           <button className="logout-btn" onClick={handleLogout}>
-            <span className="nav-icon">ðª</span>
+            <span className="nav-icon">🚪</span>
             Sign Out
           </button>
         </div>
