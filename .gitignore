@@ -7,3 +7,6 @@ admin/build/
 __pycache__/
 *.pyc
 *.pyo
+samsara-integration/node_modules/
+samsara-integration/data/
+samsara-integration/.env

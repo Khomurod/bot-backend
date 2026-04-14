@@ -13,7 +13,6 @@ const TelegramBot = require('node-telegram-bot-api');
 
 const poller = require('./src/poller');
 const store = require('./src/store');
-const cursorDb = require('./src/db');
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const PORT = parseInt(process.env.PORT || process.env.WEBHOOK_PORT || '3000', 10);
@@ -202,7 +201,6 @@ bot.onText(/\/help/, (msg) => {
 
 // ── Start Server ──────────────────────────────────────────────────────────────
 async function start() {
-    await cursorDb.init();
     await store.init();
     await new Promise((resolve) => app.listen(PORT, resolve));
 
@@ -253,15 +251,8 @@ start().catch((err) => {
     process.exit(1);
 });
 
-// ── Graceful shutdown \u0026 error handling ────────────────────────────────────────
 process.on('SIGINT', () => {
     console.log('\n[App] Shutting down...');
-    poller.stop();
-    if (!USE_WEBHOOK) bot.stopPolling();
-    process.exit(0);
-});
-process.on('SIGTERM', () => {
-    console.log('\n[App] Shutting down (SIGTERM)...');
     poller.stop();
     if (!USE_WEBHOOK) bot.stopPolling();
     process.exit(0);
@@ -269,12 +260,10 @@ process.on('SIGTERM', () => {
 process.on('uncaughtException', (err) => console.error('[App] Uncaught:', err.message));
 process.on('unhandledRejection', (reason) => console.error('[App] Rejection:', reason));
 
-// Suppress 409 Conflict errors that happen transiently during redeploys
-// when old and new instances briefly overlap on the same bot token.
-if (!USE_WEBHOOK) {
-    bot.on('polling_error', (err) => {
-        if (err?.message?.includes('409 Conflict')) return; // Expected during deploy overlap
-        console.error('[Bot] Polling error:', err.message);
-    });
-}
-
+process.on('SIGINT', () => {
+    console.log('\n[App] Shutting down...');
+    if (!USE_WEBHOOK) bot.stopPolling();
+    process.exit(0);
+});
+process.on('uncaughtException', (err) => console.error('[App] Uncaught:', err.message));
+process.on('unhandledRejection', (reason) => console.error('[App] Rejection:', reason));

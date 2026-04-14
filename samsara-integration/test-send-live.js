@@ -83,15 +83,8 @@ function transformApiEventToWebhookShape(event) {
 
 async function fetchRealEvents() {
     const startTime = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(); 
-    const params = new URLSearchParams({
-        startTime,
-        endTime: new Date().toISOString(),
-        queryByTimeField: 'createdAtTime',
-        includeAsset: 'true',
-        includeDriver: 'true',
-        includeVgOnlyEvents: 'true',
-    });
-    const url = `https://api.samsara.com/safety-events/stream?${params}`;
+    const params = new URLSearchParams({ startTime, endTime: new Date().toISOString(), includeDriver: 'true' });
+    const url = `https://api.samsara.com/fleet/safety-events?${params}`;
     
     const apiRes = await fetch(url, {
         headers: { 'Authorization': `Bearer ${SAMSARA_API_KEY}`, 'Accept': 'application/json' }
