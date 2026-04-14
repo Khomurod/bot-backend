@@ -78,6 +78,66 @@ function startLeadsBot() {
   }, 10000);
 }
 
+// ─── Samsara-Bot (Node.js) child process ───
+let samsaraProcess = null;
+let samsaraStopping = false;
+let samsaraRestartDelay = 5000;
+
+function startSamsaraBot() {
+  if (samsaraStopping) return;
+
+  console.log('[SAMSARA-BOT] Starting Node process...');
+  samsaraProcess = spawn('node', ['index.js'], {
+    cwd: path.join(__dirname, 'samsara-integration'),
+    env: {
+      ...process.env,
+      // Use dedicated token so it runs as a separate bot
+      TELEGRAM_BOT_TOKEN: process.env.SAMSARA_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN,
+      SAMSARA_API_KEY: process.env.SAMSARA_API_KEY,
+      // Separate port so it doesn't collide with the main Express server
+      PORT: process.env.SAMSARA_PORT || '3002',
+      WEBHOOK_PORT: process.env.SAMSARA_PORT || '3002',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  samsaraProcess.stdout.on('data', (data) => {
+    const lines = data.toString().trim().split('\n');
+    lines.forEach((line) => console.log(`[SAMSARA-BOT] ${line}`));
+  });
+
+  samsaraProcess.stderr.on('data', (data) => {
+    const lines = data.toString().trim().split('\n');
+    lines.forEach((line) => console.error(`[SAMSARA-BOT] ${line}`));
+  });
+
+  samsaraProcess.on('exit', (code) => {
+    if (samsaraStopping) {
+      console.log('[SAMSARA-BOT] Process stopped.');
+      return;
+    }
+    console.error(`[SAMSARA-BOT] Process exited with code ${code}. Restarting in ${samsaraRestartDelay / 1000}s...`);
+    setTimeout(startSamsaraBot, samsaraRestartDelay);
+    samsaraRestartDelay = Math.min(samsaraRestartDelay * 2, MAX_RESTART_DELAY);
+  });
+
+  samsaraProcess.on('error', (err) => {
+    console.error(`[SAMSARA-BOT] Failed to start: ${err.message}`);
+    if (!samsaraStopping) {
+      console.log(`[SAMSARA-BOT] Retrying in ${samsaraRestartDelay / 1000}s...`);
+      setTimeout(startSamsaraBot, samsaraRestartDelay);
+      samsaraRestartDelay = Math.min(samsaraRestartDelay * 2, MAX_RESTART_DELAY);
+    }
+  });
+
+  // Reset backoff on successful startup (stays alive > 10s)
+  setTimeout(() => {
+    if (samsaraProcess && !samsaraProcess.killed) {
+      samsaraRestartDelay = 5000;
+    }
+  }, 10000);
+}
+
 // ─── Graceful shutdown ───
 let isShuttingDown = false;
 
@@ -99,7 +159,14 @@ async function shutdownAll() {
     leadsProcess.kill('SIGTERM');
   }
 
-  // 4. Drain the PostgreSQL pool (waits for in-flight queries)
+  // 4. Kill the Samsara bot child process
+  samsaraStopping = true;
+  if (samsaraProcess && !samsaraProcess.killed) {
+    console.log('[SHUTDOWN] Stopping Samsara bot process...');
+    samsaraProcess.kill('SIGTERM');
+  }
+
+  // 5. Drain the PostgreSQL pool (waits for in-flight queries)
   try {
     await db.pool.end();
     console.log('[SHUTDOWN] Database pool drained.');
@@ -130,4 +197,7 @@ process.on('SIGTERM', shutdownAll);
 
   // Start the Leads-Bot (Python/FastAPI) as a child process
   startLeadsBot();
+
+  // Start the Samsara Alert Bot as a child process
+  startSamsaraBot();
 })();

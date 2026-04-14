@@ -2,7 +2,7 @@ services:
   - type: web
     name: driver-feedback-bot
     runtime: node
-    buildCommand: pip install -r leads-bot/requirements.txt && npm install && cd admin && npm install && npm run build
+    buildCommand: pip install -r leads-bot/requirements.txt && npm install && cd admin && npm install && npm run build && cd .. && cd samsara-integration && npm install
     startCommand: node index.js
     healthCheckPath: /api/health
     envVars:
@@ -47,4 +47,15 @@ services:
       - key: RC_JWT_TOKEN
         sync: false
       - key: RC_FROM_NUMBER
+        sync: false
+      # ─── Samsara Alert Bot ───
+      - key: SAMSARA_BOT_TOKEN
+        sync: false
+      - key: SAMSARA_API_KEY
+        sync: false
+      - key: SAMSARA_PORT
+        value: "3002"
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
