@@ -23,8 +23,10 @@ async function main() {
 
     console.log('\n[Test] --- Fetch test ---');
     const startTime = new Date(Date.now() - 3600000).toISOString(); // 1 hour ago
+    const endTime = new Date(Date.now()).toISOString();
     const params = new URLSearchParams({
         startTime,
+        endTime,
         includeDriver: 'true',
         limit: '1',
     });
