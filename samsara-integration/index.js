@@ -13,6 +13,7 @@ const TelegramBot = require('node-telegram-bot-api');
 
 const poller = require('./src/poller');
 const store = require('./src/store');
+const cursorDb = require('./src/db');
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const PORT = parseInt(process.env.PORT || process.env.WEBHOOK_PORT || '3000', 10);
@@ -201,6 +202,7 @@ bot.onText(/\/help/, (msg) => {
 
 // ── Start Server ──────────────────────────────────────────────────────────────
 async function start() {
+    await cursorDb.init();
     await store.init();
     await new Promise((resolve) => app.listen(PORT, resolve));
 

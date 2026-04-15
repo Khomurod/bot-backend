@@ -17,6 +17,7 @@ if (!API_KEY) {
 
 async function main() {
     console.log('[Test] --- Database test ---');
+    await require('./src/db').init();
     let cursor = getCursor();
     console.log('[Test] Current cursor in DB:', cursor);
 
@@ -52,7 +53,7 @@ async function main() {
     console.log(`[Test] Received endCursor: ${nextCursor}`);
 
     if (nextCursor) {
-        saveCursor(nextCursor);
+        await saveCursor(nextCursor);
         const savedCursor = getCursor();
         console.log(`[Test] Read cursor back from DB: ${savedCursor}`);
         if (savedCursor === nextCursor) {

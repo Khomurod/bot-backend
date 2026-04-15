@@ -26,11 +26,14 @@ async function main() {
     const params = new URLSearchParams({
         startTime,
         endTime,
+        queryByTimeField: 'createdAtTime',
+        includeAsset: 'true',
         includeDriver: 'true',
+        includeVgOnlyEvents: 'true',
         limit: '1',
     });
 
-    const url = `https://api.samsara.com/safety/events/v2?${params}`;
+    const url = `https://api.samsara.com/safety-events/stream?${params}`;
     console.log(`\n[Test] Fetching latest safety event from:\n  ${url}\n`);
 
     const apiRes = await fetch(url, {
