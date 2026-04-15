@@ -157,7 +157,7 @@ async function broadcast(alertData) {
                 await driverBot.sendMediaGroup(DRIVER_GROUP_ID, [
                     { type: 'video', media: 'attach://forward', caption: text, parse_mode: 'HTML' },
                     { type: 'video', media: 'attach://inward' },
-                ], {
+                ], {}, {
                     forward: { value: forwardBuf, options: { filename: 'forward.mp4', contentType: 'video/mp4' } },
                     inward:  { value: inwardBuf,  options: { filename: 'inward.mp4',  contentType: 'video/mp4' } },
                 });

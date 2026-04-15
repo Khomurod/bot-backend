@@ -66,6 +66,12 @@ async function transformApiEventToWebhookShape(event) {
         webhookPayload._enrichedVideoUrl = forwardUrl;
     }
 
+    const inwardUrl = mediaItems.find(m => m.input === 'MEDIA_INPUT_SECONDARY' || m.input === 'dashcamDriverFacing')?.url 
+        || event.downloadInwardVideoUrl || null;
+    if (inwardUrl) {
+        webhookPayload._enrichedVideoUrlInward = inwardUrl;
+    }
+
     const loc = event.location || null;
     if (loc?.latitude != null) {
         const addr = loc.address;
@@ -127,8 +133,21 @@ async function runTest() {
         const mappedPayload = await transformApiEventToWebhookShape(event);
         const result = formatAlert(mappedPayload);
 
-        if (result.videoUrl) {
-            console.log("[Test] Downloading and sending video...");
+        if (result.videoUrl && result.inwardVideoUrl) {
+            console.log("[Test] Dual camera detected — sending media group to Samsara Group...");
+            const [fBuf, iBuf] = await Promise.all([
+                downloadVideo(result.videoUrl),
+                downloadVideo(result.inwardVideoUrl),
+            ]);
+            await bot.sendMediaGroup(chatId, [
+                { type: 'video', media: 'attach://forward', caption: result.text, parse_mode: 'HTML' },
+                { type: 'video', media: 'attach://inward' },
+            ], {}, {
+                forward: { value: fBuf, options: { filename: 'forward.mp4', contentType: 'video/mp4' } },
+                inward:  { value: iBuf,  options: { filename: 'inward.mp4',  contentType: 'video/mp4' } },
+            });
+        } else if (result.videoUrl) {
+            console.log("[Test] Downloading and sending single video to Samsara Group...");
             const videoBuffer = await downloadVideo(result.videoUrl);
             await bot.sendVideo(chatId, videoBuffer, {
                 caption: result.text,
@@ -150,7 +169,19 @@ async function runTest() {
         // --- Driver Group Test ---
         if (DRIVER_GROUP_ID) {
             console.log(`[Test] Forwarding to Driver Group (${DRIVER_GROUP_ID}) via main bot...`);
-            if (result.videoUrl) {
+            if (result.videoUrl && result.inwardVideoUrl) {
+                const [fBuf, iBuf] = await Promise.all([
+                    downloadVideo(result.videoUrl),
+                    downloadVideo(result.inwardVideoUrl),
+                ]);
+                await driverBot.sendMediaGroup(DRIVER_GROUP_ID, [
+                    { type: 'video', media: 'attach://forward', caption: result.text, parse_mode: 'HTML' },
+                    { type: 'video', media: 'attach://inward' },
+                ], {}, {
+                    forward: { value: fBuf, options: { filename: 'forward.mp4', contentType: 'video/mp4' } },
+                    inward:  { value: iBuf,  options: { filename: 'inward.mp4',  contentType: 'video/mp4' } },
+                });
+            } else if (result.videoUrl) {
                 const videoBuffer = await downloadVideo(result.videoUrl);
                 await driverBot.sendVideo(DRIVER_GROUP_ID, videoBuffer, {
                     caption: result.text,

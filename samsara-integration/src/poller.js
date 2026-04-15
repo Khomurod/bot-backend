@@ -196,24 +196,25 @@ async function executePoll() {
         return;
     }
 
-    const cursor = getCursor();
+    const cursor = (getCursor() || '').trim();
     const params = new URLSearchParams({
         includeDriver: 'true',
     });
 
-    if (cursor) {
-        params.set('after', cursor);
-        // console.log(`[Poller] Requesting events since cursor: ${cursor}`);
-    } else {
-        // Cold start. Fetch the last 30 minutes to be safe.
-        const startTime = new Date(Date.now() - 1800000).toISOString();
-        params.set('startTime', startTime);
-        console.log(`[Poller] No cursor found! Fetching events from: ${startTime}`);
-    }
-
-    // Samsara v2 API REQUIRES endTime even when using cursor/startTime
+    // Mandatory: Samsara Safety Events endpoint REQUIRES startTime/endTime
+    // Fetch last 30 mins as a fallback/window, even if using a cursor.
+    const startTime = new Date(Date.now() - 1800000).toISOString();
     const endTime = new Date().toISOString();
+    
+    params.set('startTime', startTime);
     params.set('endTime', endTime);
+
+    if (cursor && cursor !== 'null' && cursor !== 'undefined') {
+        params.set('after', cursor);
+        console.log(`[Poller] Requesting events since cursor: ${cursor}`);
+    } else {
+        console.log(`[Poller] No valid cursor found. Fetching fresh window from: ${startTime}`);
+    }
 
     const url = `https://api.samsara.com/fleet/safety-events?${params.toString()}`;
 
