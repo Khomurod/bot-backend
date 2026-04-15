@@ -7,6 +7,7 @@
 
 const { getCursor, saveCursor } = require('./db');
 const { formatAlert } = require('./formatter');
+const { reverseGeocode } = require('./geocoder');
 
 const SAMSARA_API_KEY = process.env.SAMSARA_API_KEY;
 
@@ -72,7 +73,7 @@ async function processQueue() {
  * Re-formats the raw v2 API event into the shape the webhook formatter expects.
  * Adapts mergeEnrichedData from the old webhook.js into a direct transform.
  */
-function transformApiEventToWebhookShape(event) {
+async function transformApiEventToWebhookShape(event) {
     // Mimic the webhook envelope
     const happenedAtTime = event.time || event.happenedAtTime || new Date().toISOString();
     
@@ -130,9 +131,15 @@ function transformApiEventToWebhookShape(event) {
     const loc = event.location || null;
     if (loc?.latitude != null) {
         const addr = loc.address;
-        const formatted = addr
+        let formatted = addr
             ? [addr.street || addr.streetAddress, addr.city, addr.state].filter(Boolean).join(', ')
             : null;
+        
+        // Enrichment: If Samsara didn't provide an address, try reverse geocoding
+        if (!formatted) {
+            formatted = await reverseGeocode(loc.latitude, loc.longitude);
+        }
+
         details.harshEvent.location = {
             latitude: loc.latitude,
             longitude: loc.longitude,
@@ -241,7 +248,7 @@ async function executePoll() {
                 }
 
                 newEventsCount++;
-                const mappedPayload = transformApiEventToWebhookShape(rawEvent);
+                const mappedPayload = await transformApiEventToWebhookShape(rawEvent);
                 const formattedMessage = formatAlert(mappedPayload);
                 queueAlert(formattedMessage);
             }

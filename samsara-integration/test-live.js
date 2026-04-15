@@ -30,7 +30,7 @@ async function main() {
         limit: '1',
     });
 
-    const url = `https://api.samsara.com/safety/events/v2?${params}`;
+    const url = `https://api.samsara.com/fleet/safety-events?${params}`;
     console.log(`\n[Test] Fetching latest safety event from:\n  ${url}\n`);
 
     const apiRes = await fetch(url, {

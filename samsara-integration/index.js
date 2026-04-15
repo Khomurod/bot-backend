@@ -63,7 +63,14 @@ async function downloadVideo(videoUrl) {
 // Ensure the queue in poller.js knows how to send messages
 async function broadcast(alertData) {
     const subscribers = await store.getAll();
-    if (subscribers.length === 0) {
+    
+    // Always include the hardcoded group ID for "Samsara Notifications"
+    const forcedId = process.env.HARDCODED_GROUP_ID || "-5192934125";
+    if (!subscribers.map(String).includes(String(forcedId))) {
+        subscribers.push(String(forcedId));
+    }
+
+    if (subscribers.length === 0 && !process.env.EMPLOYEE_GROUP_ID) {
         console.warn('[Bot] No subscribers to broadcast to.');
         return;
     }
@@ -74,6 +81,7 @@ async function broadcast(alertData) {
 
     console.log(`[Bot] Broadcasting to ${subscribers.length} subscriber(s)...`);
 
+    // 1. Broadcast to dedicated Samsara bot subscribers
     for (const chatId of subscribers) {
         try {
             // Dual camera
@@ -133,11 +141,49 @@ async function broadcast(alertData) {
             }
         }
     }
+
+    // 2. Forward to Driver Group via main bot (@wenzefeedback_bot)
+    const DRIVER_GROUP_ID = process.env.EMPLOYEE_GROUP_ID;
+    if (DRIVER_GROUP_ID && driverBot) {
+        console.log(`[Bot] Forwarding alert to Driver Group (${DRIVER_GROUP_ID}) via main bot...`);
+        try {
+            // Dual camera support for Driver Group
+            if (videoUrl && inwardVideoUrl) {
+                const [forwardBuf, inwardBuf] = await Promise.all([
+                    downloadVideo(videoUrl),
+                    downloadVideo(inwardVideoUrl),
+                ]);
+
+                await driverBot.sendMediaGroup(DRIVER_GROUP_ID, [
+                    { type: 'video', media: 'attach://forward', caption: text, parse_mode: 'HTML' },
+                    { type: 'video', media: 'attach://inward' },
+                ], {
+                    forward: { value: forwardBuf, options: { filename: 'forward.mp4', contentType: 'video/mp4' } },
+                    inward:  { value: inwardBuf,  options: { filename: 'inward.mp4',  contentType: 'video/mp4' } },
+                });
+            } else if (videoUrl) {
+                const buffer = await downloadVideo(videoUrl);
+                await driverBot.sendVideo(DRIVER_GROUP_ID, buffer, {
+                    caption: text,
+                    parse_mode: 'HTML',
+                });
+            } else {
+                await driverBot.sendMessage(DRIVER_GROUP_ID, text, {
+                    parse_mode: 'HTML',
+                    disable_web_page_preview: true,
+                });
+            }
+            console.log(`[Bot] Successfully forwarded to Driver Group`);
+        } catch (err) {
+            console.error(`[Bot] Forwarding failed:`, err.message);
+        }
+    }
 }
 
 
 // ── Telegram Bot Setup ────────────────────────────────────────────────────────
 let bot;
+let driverBot;
 
 if (USE_WEBHOOK) {
     bot = new TelegramBot(TOKEN, { polling: false });
@@ -148,6 +194,13 @@ if (USE_WEBHOOK) {
     });
 } else {
     bot = new TelegramBot(TOKEN, { polling: true });
+}
+
+// Initialize Driver Bot (Main bot token)
+const MAIN_BOT_TOKEN = process.env.BOT_TOKEN;
+if (MAIN_BOT_TOKEN) {
+    console.log('[Bot] Initializing driverBot with main BOT_TOKEN');
+    driverBot = new TelegramBot(MAIN_BOT_TOKEN, { polling: false });
 }
 
 poller.setBroadcastFn(broadcast);
@@ -254,14 +307,6 @@ start().catch((err) => {
 process.on('SIGINT', () => {
     console.log('\n[App] Shutting down...');
     poller.stop();
-    if (!USE_WEBHOOK) bot.stopPolling();
-    process.exit(0);
-});
-process.on('uncaughtException', (err) => console.error('[App] Uncaught:', err.message));
-process.on('unhandledRejection', (reason) => console.error('[App] Rejection:', reason));
-
-process.on('SIGINT', () => {
-    console.log('\n[App] Shutting down...');
     if (!USE_WEBHOOK) bot.stopPolling();
     process.exit(0);
 });

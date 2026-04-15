@@ -24,6 +24,7 @@ async function main() {
     const startTime = new Date(Date.now() - 3600000).toISOString(); // 1 hour ago
     const params = new URLSearchParams({
         startTime,
+        endTime: new Date().toISOString(),
         includeDriver: 'true',
         limit: '1',
     });

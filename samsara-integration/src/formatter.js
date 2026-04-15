@@ -398,7 +398,7 @@ function formatAlert(payload) {
             if (locationStr !== 'Unknown Location') {
                 const mapsUrl = locationStr.match(/https:.*?(?=\))/)?.[0] || '#';
                 const addressText = locationStr.split(' (http')[0];
-                text += `<b>Location:</b> ${addressText} (${mapsUrl})\n`;
+                text += `<b>Location:</b> ${addressText} (<a href="${mapsUrl}">Google Maps</a>)\n`;
             }
             
             // Add a dashboard link if provided in payload so user can get the missing real-time data

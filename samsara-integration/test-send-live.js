@@ -4,14 +4,21 @@
  * AS ACTUAL VIDEO ATTACHMENTS (not links).
  */
 
+require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const { formatAlert } = require('./src/formatter');
+const { reverseGeocode } = require('./src/geocoder');
 
 // Credentials
 const SAMSARA_API_KEY = 'samsara_api_vpdJovy2R4npF71d7hN4upXdtErSIY';
 const TELEGRAM_BOT_TOKEN = '7955098141:AAHf1AX-McadL2qRr4sKlVrnkdliEnmbzGo';
 
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
+
+// Driver Bot (Optional for testing if environment variables missing)
+const DRIVER_BOT_TOKEN = process.env.BOT_TOKEN || TELEGRAM_BOT_TOKEN;
+const driverBot = new TelegramBot(DRIVER_BOT_TOKEN, { polling: false });
+const DRIVER_GROUP_ID = process.env.EMPLOYEE_GROUP_ID || null;
 
 async function downloadVideo(videoUrl) {
     const response = await fetch(videoUrl, { 
@@ -22,7 +29,7 @@ async function downloadVideo(videoUrl) {
     return Buffer.from(ab);
 }
 
-function transformApiEventToWebhookShape(event) {
+async function transformApiEventToWebhookShape(event) {
     const happenedAtTime = event.time || new Date().toISOString();
     const vehicleObj = event.asset || event.vehicle || {};
     const vehicleName = vehicleObj.name || 'Unknown Unit';
@@ -62,7 +69,13 @@ function transformApiEventToWebhookShape(event) {
     const loc = event.location || null;
     if (loc?.latitude != null) {
         const addr = loc.address;
-        const formatted = addr ? [addr.streetAddress || addr.street, addr.city, addr.state].filter(Boolean).join(', ') : null;
+        let formatted = addr ? [addr.streetAddress || addr.street, addr.city, addr.state].filter(Boolean).join(', ') : null;
+        
+        // Enrichment: If Samsara didn't provide an address, try reverse geocoding
+        if (!formatted) {
+            formatted = await reverseGeocode(loc.latitude, loc.longitude);
+        }
+        
         details.harshEvent.location = { latitude: loc.latitude, longitude: loc.longitude, formattedLocation: formatted };
     }
 
@@ -97,40 +110,71 @@ async function fetchRealEvents() {
 console.log("Connecting to Telegram...");
 bot.deleteWebHook();
 
-bot.onText(/\/(start|test|ping)/, async (msg) => {
-    const chatId = msg.chat.id;
+async function runTest() {
+    const chatId = "-5192934125";
+    console.log(`[Test] Sending live Samsara event to hardcoded group ID: ${chatId}`);
     try {
         const events = await fetchRealEvents();
         if (events.length === 0) {
-            bot.sendMessage(chatId, "❌ No real events found in last 4 hours.");
-            return;
+            console.log("❌ No real events found in last 4 hours.");
+            process.exit(0);
         }
 
-        bot.sendMessage(chatId, `Found ${events.length} events. Attaching videos now...`);
+        console.log(`[Test] Found ${events.length} event(s). Attaching video for the most recent one...`);
 
-        for (const event of events) {
-            const mappedPayload = transformApiEventToWebhookShape(event);
-            const result = formatAlert(mappedPayload);
+        // Just send the most recent one to keep the test clean
+        const event = events[0];
+        const mappedPayload = await transformApiEventToWebhookShape(event);
+        const result = formatAlert(mappedPayload);
 
+        if (result.videoUrl) {
+            console.log("[Test] Downloading and sending video...");
+            const videoBuffer = await downloadVideo(result.videoUrl);
+            await bot.sendVideo(chatId, videoBuffer, {
+                caption: result.text,
+                parse_mode: 'HTML'
+            }, {
+                filename: 'event.mp4',
+                contentType: 'video/mp4'
+            });
+        } else {
+            console.log("[Test] No video available. Sending text only...");
+            await bot.sendMessage(chatId, result.text, { 
+                parse_mode: 'HTML', 
+                disable_web_page_preview: true 
+            });
+        }
+        
+        console.log("\n✅ LIVE TEST MESSAGE SENT TO SAMSARA GROUP!");
+
+        // --- Driver Group Test ---
+        if (DRIVER_GROUP_ID) {
+            console.log(`[Test] Forwarding to Driver Group (${DRIVER_GROUP_ID}) via main bot...`);
             if (result.videoUrl) {
-                console.log("Downloading video...");
                 const videoBuffer = await downloadVideo(result.videoUrl);
-                await bot.sendVideo(chatId, videoBuffer, {
+                await driverBot.sendVideo(DRIVER_GROUP_ID, videoBuffer, {
                     caption: result.text,
                     parse_mode: 'HTML'
-                }, {
-                    filename: 'event.mp4',
-                    contentType: 'video/mp4'
                 });
             } else {
-                await bot.sendMessage(chatId, result.text, { parse_mode: 'HTML', disable_web_page_preview: true });
+                await driverBot.sendMessage(DRIVER_GROUP_ID, result.text, { 
+                    parse_mode: 'HTML', 
+                    disable_web_page_preview: true 
+                });
             }
-            await new Promise(r => setTimeout(r, 2000));
+            console.log("✅ LIVE TEST MESSAGE SENT TO DRIVER GROUP!");
+        } else {
+            console.log("⚠️ Skipping Driver Group test: EMPLOYEE_GROUP_ID not set in environment.");
         }
-        console.log("Done.");
+        
         process.exit(0);
     } catch (err) {
-        console.error(err);
+        console.error("❌ Test failed:", err.message);
         process.exit(1);
     }
+}
+
+console.log("Starting test-send-live execution...");
+bot.deleteWebHook().then(() => {
+    runTest();
 });

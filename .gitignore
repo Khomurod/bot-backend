@@ -1,5 +1,4 @@
 node_modules/
-.env
 dist/
 admin/node_modules/
 admin/dist/
@@ -9,4 +8,3 @@ __pycache__/
 *.pyo
 samsara-integration/node_modules/
 samsara-integration/data/
-samsara-integration/.env
