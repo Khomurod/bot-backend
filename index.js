@@ -79,6 +79,7 @@ function startLeadsBot() {
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 // ─── Samsara-Bot (Node.js) child process ───
 let samsaraProcess = null;
 let samsaraStopping = false;
@@ -152,6 +153,8 @@ function startSamsaraBot() {
   }, 10000);
 }
 
+=======
+>>>>>>> parent of 63e81c6 (changes)
 =======
 >>>>>>> parent of 63e81c6 (changes)
 // ─── Graceful shutdown ───
