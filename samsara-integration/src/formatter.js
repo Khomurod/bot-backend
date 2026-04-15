@@ -312,6 +312,10 @@ function formatAlert(payload) {
                 speedMph = 'N/A';
             }
 
+            let intensity = '0';
+            if (details.harshEvent?.gForce != null) intensity = details.harshEvent.gForce;
+            else if (isCrash) intensity = '0'; // Default for crash if missing
+
             let severity = 'N/A';
             if (details.safetyEvent?.severity) {
                 severity = details.safetyEvent.severity;
@@ -322,11 +326,17 @@ function formatAlert(payload) {
                 if (typeLabel.includes('severe') || typeLabel.includes('critical')) severity = 'critical';
                 else if (typeLabel.includes('moderate')) severity = 'moderate';
                 else if (typeLabel.includes('minor') || typeLabel.includes('low')) severity = 'minor';
+                else if (intensity !== '0' && intensity !== 'N/A') {
+                    // Fallback to custom G-Force mapping
+                    const gForceVal = parseFloat(intensity);
+                    if (!isNaN(gForceVal)) {
+                        const absGForce = Math.abs(gForceVal);
+                        if (absGForce < 0.4) severity = 'minor';
+                        else if (absGForce < 0.6) severity = 'moderate';
+                        else severity = 'critical';
+                    }
+                }
             }
-
-            let intensity = '0';
-            if (details.harshEvent?.gForce != null) intensity = details.harshEvent.gForce;
-            else if (isCrash) intensity = '0'; // Default for crash if missing
 
             // Location
             let locationStr = "Unknown Location";

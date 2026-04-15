@@ -192,13 +192,56 @@ async function transformApiEventToWebhookShape(event) {
     }
 
     // Speed — try multiple field locations across Samsara API versions
-    const speedKph = event.speedingMetadata?.maxSpeedKilometersPerHour
+    let speedKph = event.speedingMetadata?.maxSpeedKilometersPerHour
         ?? event.speedKilometersPerHour
         ?? event.behaviorLabels?.[0]?.speedKilometersPerHour
         ?? null;
-    const limitKph = event.speedingMetadata?.postedSpeedLimitKilometersPerHour
+    let limitKph = event.speedingMetadata?.postedSpeedLimitKilometersPerHour
         ?? event.speedLimitKilometersPerHour
         ?? null;
+
+    // If speed is not present, perform secondary lookup
+    if (speedKph == null && vehicleId && happenedAtTime && SAMSARA_API_KEY) {
+        try {
+            const eventTimeMs = new Date(happenedAtTime).getTime();
+            if (!isNaN(eventTimeMs)) {
+                // Fetch window: +/- 10 seconds around the event
+                const startTime = new Date(eventTimeMs - 10000).toISOString();
+                const endTime = new Date(eventTimeMs + 10000).toISOString();
+
+                const statsUrl = `https://api.samsara.com/fleet/vehicles/stats/history?startTime=${startTime}&endTime=${endTime}&vehicleIds=${vehicleId}&types=gps`;
+                const statsResponse = await fetchWithTimeout(statsUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${SAMSARA_API_KEY}`,
+                        'Accept': 'application/json'
+                    }
+                }, 5000);
+
+                if (statsResponse.ok) {
+                    const statsJson = await statsResponse.json();
+                    const gpsData = statsJson.data?.[0]?.gps;
+                    if (gpsData && gpsData.length > 0) {
+                        // Find the closest GPS reading to the event time
+                        let closest = gpsData[0];
+                        let minDiff = Math.abs(new Date(closest.time).getTime() - eventTimeMs);
+                        for (let i = 1; i < gpsData.length; i++) {
+                            const diff = Math.abs(new Date(gpsData[i].time).getTime() - eventTimeMs);
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                closest = gpsData[i];
+                            }
+                        }
+                        if (closest.speedMilesPerHour != null) {
+                            speedKph = closest.speedMilesPerHour * 1.60934;
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.error(`[Poller] Secondary speed lookup failed for vehicle ${vehicleId}:`, err.message);
+        }
+    }
+
     if (speedKph != null) {
         details.speed = {
             currentSpeedKilometersPerHour:   speedKph,
@@ -374,7 +417,7 @@ function scheduleNextTick() {
     }, delay);
 }
 
-module.exports = {
+module.exports = { transformApiEventToWebhookShape,
     /**
      * Set the function that actually sends the message via the Telegram Bot.
      * @param {Function} fn 
