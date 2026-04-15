@@ -19,20 +19,6 @@ async function main() {
     console.log('[Test] --- Database test ---');
     await require('./src/db').init();
     let cursor = getCursor();
-    console.log('[Test] Current cursor in DB:', cursor);
-
-    console.log('\n[Test] --- Fetch test ---');
-    const startTime = new Date(Date.now() - 3600000).toISOString(); // 1 hour ago
-    const params = new URLSearchParams({
-        startTime,
-        includeDriver: 'true',
-        limit: '1',
-    });
-
-    const url = `https://api.samsara.com/fleet/safety-events?${params}`;
-    console.log(`[Test] Fetching safety events from: ${url}`);
-
-    const apiRes = await fetch(url, {
         headers: {
             'Authorization': `Bearer ${API_KEY}`,
             'Accept': 'application/json',
