@@ -64,6 +64,29 @@ async function processQueue() {
 }
 
 
+// ── Reverse Geocoding (free, no API key) ──────────────────────────────────────
+// When Samsara doesn't provide an address object, resolve lat/lon to "City, State"
+// using OpenStreetMap's Nominatim service.
+async function reverseGeocode(lat, lon) {
+    try {
+        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`;
+        const response = await fetch(url, {
+            headers: { 'User-Agent': 'SamsaraTelegramBot/1.0' },
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        const city = data.address?.city || data.address?.town || data.address?.village || data.address?.county || '';
+        const state = data.address?.state || '';
+        if (city || state) {
+            return [city, state].filter(Boolean).join(', ');
+        }
+        return null;
+    } catch (err) {
+        console.warn('[Poller] Reverse geocode failed:', err.message);
+        return null;
+    }
+}
+
 // ── Transformation / Formatting ───────────────────────────────────────────────
 // Move the formatting logic previously locked inside the webhook express route
 // directly into the poller.
@@ -72,7 +95,7 @@ async function processQueue() {
  * Re-formats the raw v2 API event into the shape the webhook formatter expects.
  * Adapts mergeEnrichedData from the old webhook.js into a direct transform.
  */
-function transformApiEventToWebhookShape(event) {
+async function transformApiEventToWebhookShape(event) {
     // Mimic the webhook envelope
     const happenedAtTime = event.time || event.happenedAtTime || new Date().toISOString();
     
@@ -130,9 +153,13 @@ function transformApiEventToWebhookShape(event) {
     const loc = event.location || null;
     if (loc?.latitude != null) {
         const addr = loc.address;
-        const formatted = addr
+        let formatted = addr
             ? [addr.street || addr.streetAddress, addr.city, addr.state].filter(Boolean).join(', ')
             : null;
+        // If Samsara didn't provide an address, reverse-geocode to get "City, State"
+        if (!formatted) {
+            formatted = await reverseGeocode(loc.latitude, loc.longitude);
+        }
         details.harshEvent.location = {
             latitude: loc.latitude,
             longitude: loc.longitude,
@@ -241,7 +268,7 @@ async function executePoll() {
                 }
 
                 newEventsCount++;
-                const mappedPayload = transformApiEventToWebhookShape(rawEvent);
+                const mappedPayload = await transformApiEventToWebhookShape(rawEvent);
                 const formattedMessage = formatAlert(mappedPayload);
                 queueAlert(formattedMessage);
             }
