@@ -86,13 +86,26 @@ let samsaraRestartDelay = 5000;
 function startSamsaraBot() {
   if (samsaraStopping) return;
 
+  const samsaraBotToken = process.env.SAMSARA_BOT_TOKEN;
+  const mainBotToken = process.env.BOT_TOKEN;
+
+  if (!samsaraBotToken) {
+    console.warn('[SAMSARA-BOT] SAMSARA_BOT_TOKEN is not configured. Skipping Samsara bot startup.');
+    return;
+  }
+
+  if (mainBotToken && samsaraBotToken === mainBotToken) {
+    console.error('[SAMSARA-BOT] SAMSARA_BOT_TOKEN matches BOT_TOKEN. Refusing to start to avoid Telegram polling conflicts.');
+    return;
+  }
+
   console.log('[SAMSARA-BOT] Starting Node process...');
   samsaraProcess = spawn('node', ['index.js'], {
     cwd: path.join(__dirname, 'samsara-integration'),
     env: {
       ...process.env,
-      // Use dedicated token so it runs as a separate bot
-      TELEGRAM_BOT_TOKEN: process.env.SAMSARA_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN,
+      // Use a dedicated token so it runs as a separate bot.
+      TELEGRAM_BOT_TOKEN: samsaraBotToken,
       SAMSARA_API_KEY: process.env.SAMSARA_API_KEY,
       // Separate port so it doesn't collide with the main Express server
       PORT: process.env.SAMSARA_PORT || '3002',

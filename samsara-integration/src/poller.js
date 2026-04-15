@@ -5,10 +5,11 @@
  * Sends raw events to the formatter and pushes them to a local queue.
  */
 
-const { getCursor, saveCursor } = require('./db');
+const { getCursor, saveCursor, resetCursorCache } = require('./db');
 const { formatAlert } = require('./formatter');
 
 const SAMSARA_API_KEY = process.env.SAMSARA_API_KEY;
+const FETCH_TIMEOUT_MS = 12000;
 
 // ── Rate-Limited Telegram Queue ─────────────────────────────────────────────
 // Telegram has limits (usually ~30 msgs/sec globally, and ~20 msgs/min per group).
@@ -22,6 +23,24 @@ let broadcastFn = null;
 // hasn't updated yet or if we fall back to time-based polling.
 const SEEN_IDS = new Set();
 const MAX_SEEN_IDS = 1000;
+let isPolling = false;
+let intervalId = null;
+let configuredIntervalMs = 15000;
+let nextScheduledAt = null;
+
+function isIsoTimestamp(value) {
+    return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value);
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timeout);
+    }
+}
 
 /**
  * Push formatted alerts into the queue to be sent.
@@ -216,40 +235,47 @@ async function executePoll() {
         return;
     }
 
-    const cursor = getCursor();
-    const params = new URLSearchParams({
-        includeDriver: 'true',
-    });
-
-    if (cursor) {
-        // Detect whether the saved cursor is an ISO timestamp (our fallback)
-        // or a real Samsara pagination token.
-        const isTimestamp = /^\d{4}-\d{2}-\d{2}T/.test(cursor);
-        if (isTimestamp) {
-            params.set('startTime', cursor);
-        } else {
-            params.set('after', cursor);
-        }
-    } else {
-        // Cold start. Fetch the last 30 minutes to be safe.
-        const startTime = new Date(Date.now() - 1800000).toISOString();
-        params.set('startTime', startTime);
-        console.log(`[Poller] No cursor found! Fetching events from: ${startTime}`);
+    if (isPolling) {
+        console.warn('[Poller] Previous poll still in flight; skipping this tick.');
+        return;
     }
 
-    // Samsara v2 API REQUIRES endTime even when using cursor/startTime
-    const endTime = new Date().toISOString();
-    params.set('endTime', endTime);
-
-    const url = `https://api.samsara.com/fleet/safety-events?${params.toString()}`;
+    isPolling = true;
 
     try {
-        const response = await fetch(url, {
+        const cursor = getCursor();
+        const params = new URLSearchParams({
+            includeDriver: 'true',
+        });
+
+        if (cursor) {
+            // Detect whether the saved cursor is an ISO timestamp (our fallback)
+            // or a real Samsara pagination token.
+            if (isIsoTimestamp(cursor)) {
+                params.set('startTime', cursor);
+                console.log(`[Poller] Resuming from saved startTime cursor: ${cursor}`);
+            } else {
+                params.set('after', cursor);
+                console.log('[Poller] Resuming from saved pagination cursor.');
+            }
+        } else {
+            // Cold start. Fetch the last 30 minutes to be safe.
+            const startTime = new Date(Date.now() - 1800000).toISOString();
+            params.set('startTime', startTime);
+            console.log(`[Poller] No cursor found; bootstrapping from ${startTime}`);
+        }
+
+        // Samsara v2 API REQUIRES endTime even when using cursor/startTime
+        const endTime = new Date().toISOString();
+        params.set('endTime', endTime);
+
+        const url = `https://api.samsara.com/fleet/safety-events?${params.toString()}`;
+        const response = await fetchWithTimeout(url, {
             headers: {
                 'Authorization': `Bearer ${SAMSARA_API_KEY}`,
                 'Accept': 'application/json',
             },
-        });
+        }, FETCH_TIMEOUT_MS);
 
         if (!response.ok) {
             const body = await response.text();
@@ -282,25 +308,61 @@ async function executePoll() {
             if (newEventsCount > 0) {
                 console.log(`[Poller] Picked up ${newEventsCount} new event(s).`);
             }
+        } else {
+            console.log('[Poller] No new events returned by Samsara.');
         }
 
         // Save cursor for next run. Prefer the real API cursor; fall back to
         // saving endTime so the polling window slides forward even when the
         // API returns no events and no endCursor.
+        const cursorToSave = nextCursor || endTime;
+        const previousCursor = cursor;
         if (nextCursor) {
             saveCursor(nextCursor);
+            console.log('[Poller] Saved pagination cursor from Samsara response.');
         } else {
             saveCursor(endTime);
+            console.log(`[Poller] No pagination cursor returned; saved fallback time cursor ${endTime}`);
         }
 
+        const savedCursor = getCursor();
+        if (savedCursor !== cursorToSave) {
+            console.error('[Poller] Cursor verification failed after save; resetting cache so the next poll reloads from disk.');
+            resetCursorCache();
+        } else if (!previousCursor && savedCursor) {
+            console.log('[Poller] Cursor bootstrap completed successfully.');
+        }
     } catch (err) {
-        console.error('[Poller] Fetch error:', err.message);
+        if (err.name === 'AbortError') {
+            console.error(`[Poller] Fetch timed out after ${FETCH_TIMEOUT_MS}ms`);
+        } else {
+            console.error('[Poller] Fetch error:', err.message);
+        }
+    } finally {
+        isPolling = false;
     }
 }
 
 // ── Exported API ──────────────────────────────────────────────────────────────
 
-let intervalId = null;
+function scheduleNextTick() {
+    if (intervalId || nextScheduledAt == null) return;
+
+    const delay = Math.max(0, nextScheduledAt - Date.now());
+    intervalId = setTimeout(async () => {
+        intervalId = null;
+        await executePoll();
+
+        if (nextScheduledAt == null) return;
+
+        // Preserve the intended cadence instead of drifting by poll duration.
+        nextScheduledAt += configuredIntervalMs;
+        while (nextScheduledAt <= Date.now()) {
+            nextScheduledAt += configuredIntervalMs;
+        }
+        scheduleNextTick();
+    }, delay);
+}
 
 module.exports = {
     /**
@@ -316,13 +378,18 @@ module.exports = {
      * @param {number} intervalMs - Milliseconds between API polls (default 15000).
      */
     start(intervalMs = 15000) {
-        if (intervalId) return; // Already running
-        
+        if (intervalId || nextScheduledAt != null) return; // Already running
+        configuredIntervalMs = intervalMs;
+
         console.log(`[Poller] Started API polling loop (every ${intervalMs}ms)`);
-        
-        // Execute immediately, then set interval
-        executePoll();
-        intervalId = setInterval(executePoll, intervalMs);
+
+        // Execute immediately, then keep future polls aligned to the requested cadence.
+        nextScheduledAt = Date.now() + configuredIntervalMs;
+        executePoll().finally(() => {
+            if (nextScheduledAt != null) {
+                scheduleNextTick();
+            }
+        });
     },
 
     /**
@@ -330,9 +397,10 @@ module.exports = {
      */
     stop() {
         if (intervalId) {
-            clearInterval(intervalId);
+            clearTimeout(intervalId);
             intervalId = null;
-            console.log('[Poller] Stopped API polling loop.');
         }
+        nextScheduledAt = null;
+        console.log('[Poller] Stopped API polling loop.');
     }
 };

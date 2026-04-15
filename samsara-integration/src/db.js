@@ -115,5 +115,13 @@ module.exports = {
         } catch (err) {
             console.error(`[DB] Error saving cursor (${cursor}):`, err.message);
         }
+    },
+
+    /**
+     * Clear the in-memory cursor cache so the next read comes from storage.
+     * Useful after persistence errors or for explicit diagnostics.
+     */
+    resetCursorCache() {
+        cachedCursor = null;
     }
 };
