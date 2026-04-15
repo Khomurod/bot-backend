@@ -142,10 +142,24 @@ async function broadcast(alertData) {
         }
     }
 
-    // 2. Forward to Driver Group via main bot (@wenzefeedback_bot)
-    const DRIVER_GROUP_ID = process.env.EMPLOYEE_GROUP_ID;
-    if (DRIVER_GROUP_ID && driverBot) {
-        console.log(`[Bot] Forwarding alert to Driver Group (${DRIVER_GROUP_ID}) via main bot...`);
+    // 2. Forward to the specific Driver Group via main bot (@wenzefeedback_bot)
+    // We dynamically resolve the group ID based on the Unit # in the vehicle name
+    let targetDriverGroupId = process.env.EMPLOYEE_GROUP_ID; // default fallback
+    
+    // Extract unit number from vehicle name (e.g. "88 SHERZOD" or "Unit #88")
+    const vehicleName = typeof alertData === 'string' ? '' : (alertData.vehicleName || '');
+    const unitMatch = vehicleName.match(/#\s*(\d+)/) || vehicleName.match(/^(\d+)/);
+    const unitNumber = unitMatch ? unitMatch[1] : null;
+
+    if (unitNumber) {
+        const resolvedId = await store.findGroupByUnit(unitNumber);
+        if (resolvedId) {
+            targetDriverGroupId = resolvedId;
+        }
+    }
+
+    if (targetDriverGroupId && driverBot) {
+        console.log(`[Bot] Forwarding alert for Unit #${unitNumber || 'unknown'} to group ${targetDriverGroupId}...`);
         try {
             // Dual camera support for Driver Group
             if (videoUrl && inwardVideoUrl) {
@@ -154,7 +168,7 @@ async function broadcast(alertData) {
                     downloadVideo(inwardVideoUrl),
                 ]);
 
-                await driverBot.sendMediaGroup(DRIVER_GROUP_ID, [
+                await driverBot.sendMediaGroup(targetDriverGroupId, [
                     { type: 'video', media: 'attach://forward', caption: text, parse_mode: 'HTML' },
                     { type: 'video', media: 'attach://inward' },
                 ], {}, {
@@ -163,19 +177,19 @@ async function broadcast(alertData) {
                 });
             } else if (videoUrl) {
                 const buffer = await downloadVideo(videoUrl);
-                await driverBot.sendVideo(DRIVER_GROUP_ID, buffer, {
+                await driverBot.sendVideo(targetDriverGroupId, buffer, {
                     caption: text,
                     parse_mode: 'HTML',
                 });
             } else {
-                await driverBot.sendMessage(DRIVER_GROUP_ID, text, {
+                await driverBot.sendMessage(targetDriverGroupId, text, {
                     parse_mode: 'HTML',
                     disable_web_page_preview: true,
                 });
             }
-            console.log(`[Bot] Successfully forwarded to Driver Group`);
+            console.log(`[Bot] Successfully forwarded to Driver Group ${targetDriverGroupId}`);
         } catch (err) {
-            console.error(`[Bot] Forwarding failed:`, err.message);
+            console.error(`[Bot] Forwarding failed to ${targetDriverGroupId}:`, err.message);
         }
     }
 }

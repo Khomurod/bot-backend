@@ -115,5 +115,50 @@ module.exports = {
         } catch (err) {
             console.error(`[DB] Error saving cursor (${cursor}):`, err.message);
         }
+    },
+
+    /**
+     * EXTENSION: Postgres Group Lookup
+     */
+    async findGroupByUnit(unitNumber) {
+        if (!unitNumber) return null;
+        const DATABASE_URL = process.env.DATABASE_URL;
+        if (!DATABASE_URL) {
+            console.warn('[DB] DATABASE_URL not set — cannot perform dynamic group lookup.');
+            return null;
+        }
+
+        const { Pool } = require('pg');
+        const pool = new Pool({
+            connectionString: DATABASE_URL,
+            ssl: { rejectUnauthorized: false }
+        });
+
+        try {
+            // Search for "#NNN" or "UNIT #NNN" in the group name
+            // The % pattern ensures we catch "# 800", "#800", etc.
+            const query = `
+                SELECT telegram_group_id, group_name 
+                FROM groups 
+                WHERE group_type = 'driver' 
+                AND (group_name ILIKE $1 OR group_name ILIKE $2)
+                ORDER BY id DESC LIMIT 1
+            `;
+            const cleanUnit = unitNumber.replace(/\D/g, ''); // Ensure only digits
+            const res = await pool.query(query, [`%# ${cleanUnit}%`, `%#${cleanUnit}%`]);
+            
+            if (res.rows.length > 0) {
+                console.log(`[DB] Resolved Unit #${cleanUnit} to group: ${res.rows[0].group_name} (${res.rows[0].telegram_group_id})`);
+                return res.rows[0].telegram_group_id;
+            }
+            
+            console.log(`[DB] No specific group found for Unit #${cleanUnit}`);
+            return null;
+        } catch (err) {
+            console.error('[DB] Postgres lookup error:', err.message);
+            return null;
+        } finally {
+            await pool.end();
+        }
     }
 };
