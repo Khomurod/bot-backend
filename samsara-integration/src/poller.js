@@ -10,6 +10,11 @@ const { formatAlert } = require('./formatter');
 
 const SAMSARA_API_KEY = process.env.SAMSARA_API_KEY;
 const FETCH_TIMEOUT_MS = 12000;
+const SAFETY_EVENTS_STREAM_URL = 'https://api.samsara.com/safety-events/stream';
+const BOOTSTRAP_LOOKBACK_MS = Math.max(
+    15 * 60 * 1000,
+    parseInt(process.env.SAMSARA_BOOTSTRAP_LOOKBACK_MS || `${24 * 60 * 60 * 1000}`, 10)
+);
 
 // ── Rate-Limited Telegram Queue ─────────────────────────────────────────────
 // Telegram has limits (usually ~30 msgs/sec globally, and ~20 msgs/min per group).
@@ -245,7 +250,10 @@ async function executePoll() {
     try {
         const cursor = getCursor();
         const params = new URLSearchParams({
+            queryByTimeField: 'createdAtTime',
+            includeAsset: 'true',
             includeDriver: 'true',
+            includeVgOnlyEvents: 'true',
         });
 
         if (cursor) {
@@ -259,17 +267,19 @@ async function executePoll() {
                 console.log('[Poller] Resuming from saved pagination cursor.');
             }
         } else {
-            // Cold start. Fetch the last 30 minutes to be safe.
-            const startTime = new Date(Date.now() - 1800000).toISOString();
+            // Cold start. Use a configurable backfill window so deploys or restarts
+            // don't miss older events when durable cursor storage is unavailable.
+            const startTime = new Date(Date.now() - BOOTSTRAP_LOOKBACK_MS).toISOString();
             params.set('startTime', startTime);
             console.log(`[Poller] No cursor found; bootstrapping from ${startTime}`);
         }
 
-        // Samsara v2 API REQUIRES endTime even when using cursor/startTime
+        // Bound each poll window explicitly so the request returns promptly
+        // and we keep full control over the 15-second cadence.
         const endTime = new Date().toISOString();
         params.set('endTime', endTime);
 
-        const url = `https://api.samsara.com/fleet/safety-events?${params.toString()}`;
+        const url = `${SAFETY_EVENTS_STREAM_URL}?${params.toString()}`;
         const response = await fetchWithTimeout(url, {
             headers: {
                 'Authorization': `Bearer ${SAMSARA_API_KEY}`,
@@ -318,10 +328,10 @@ async function executePoll() {
         const cursorToSave = nextCursor || endTime;
         const previousCursor = cursor;
         if (nextCursor) {
-            saveCursor(nextCursor);
+            await saveCursor(nextCursor);
             console.log('[Poller] Saved pagination cursor from Samsara response.');
         } else {
-            saveCursor(endTime);
+            await saveCursor(endTime);
             console.log(`[Poller] No pagination cursor returned; saved fallback time cursor ${endTime}`);
         }
 
