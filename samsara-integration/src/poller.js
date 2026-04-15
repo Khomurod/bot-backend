@@ -222,8 +222,14 @@ async function executePoll() {
     });
 
     if (cursor) {
-        params.set('after', cursor);
-        // console.log(`[Poller] Requesting events since cursor: ${cursor}`);
+        // Detect whether the saved cursor is an ISO timestamp (our fallback)
+        // or a real Samsara pagination token.
+        const isTimestamp = /^\d{4}-\d{2}-\d{2}T/.test(cursor);
+        if (isTimestamp) {
+            params.set('startTime', cursor);
+        } else {
+            params.set('after', cursor);
+        }
     } else {
         // Cold start. Fetch the last 30 minutes to be safe.
         const startTime = new Date(Date.now() - 1800000).toISOString();
@@ -276,15 +282,15 @@ async function executePoll() {
             if (newEventsCount > 0) {
                 console.log(`[Poller] Picked up ${newEventsCount} new event(s).`);
             }
-        } else {
-            // Uncomment if you want noisy logs
-            // console.log(`[Poller] No new events.`);
         }
 
-        // Save the cursor for the next run, even if no events were found
-        // Samsara provides a new timestamp cursor to prevent querying the same window.
+        // Save cursor for next run. Prefer the real API cursor; fall back to
+        // saving endTime so the polling window slides forward even when the
+        // API returns no events and no endCursor.
         if (nextCursor) {
             saveCursor(nextCursor);
+        } else {
+            saveCursor(endTime);
         }
 
     } catch (err) {

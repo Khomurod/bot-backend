@@ -251,8 +251,15 @@ start().catch((err) => {
     process.exit(1);
 });
 
+// ── Graceful shutdown \u0026 error handling ────────────────────────────────────────
 process.on('SIGINT', () => {
     console.log('\n[App] Shutting down...');
+    poller.stop();
+    if (!USE_WEBHOOK) bot.stopPolling();
+    process.exit(0);
+});
+process.on('SIGTERM', () => {
+    console.log('\n[App] Shutting down (SIGTERM)...');
     poller.stop();
     if (!USE_WEBHOOK) bot.stopPolling();
     process.exit(0);
@@ -260,10 +267,12 @@ process.on('SIGINT', () => {
 process.on('uncaughtException', (err) => console.error('[App] Uncaught:', err.message));
 process.on('unhandledRejection', (reason) => console.error('[App] Rejection:', reason));
 
-process.on('SIGINT', () => {
-    console.log('\n[App] Shutting down...');
-    if (!USE_WEBHOOK) bot.stopPolling();
-    process.exit(0);
-});
-process.on('uncaughtException', (err) => console.error('[App] Uncaught:', err.message));
-process.on('unhandledRejection', (reason) => console.error('[App] Rejection:', reason));
+// Suppress 409 Conflict errors that happen transiently during redeploys
+// when old and new instances briefly overlap on the same bot token.
+if (!USE_WEBHOOK) {
+    bot.on('polling_error', (err) => {
+        if (err?.message?.includes('409 Conflict')) return; // Expected during deploy overlap
+        console.error('[Bot] Polling error:', err.message);
+    });
+}
+
