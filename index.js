@@ -78,6 +78,7 @@ function startLeadsBot() {
   }, 10000);
 }
 
+<<<<<<< HEAD
 // ─── Samsara-Bot (Node.js) child process ───
 let samsaraProcess = null;
 let samsaraStopping = false;
@@ -151,6 +152,8 @@ function startSamsaraBot() {
   }, 10000);
 }
 
+=======
+>>>>>>> parent of 63e81c6 (changes)
 // ─── Graceful shutdown ───
 let isShuttingDown = false;
 
@@ -172,14 +175,7 @@ async function shutdownAll() {
     leadsProcess.kill('SIGTERM');
   }
 
-  // 4. Kill the Samsara bot child process
-  samsaraStopping = true;
-  if (samsaraProcess && !samsaraProcess.killed) {
-    console.log('[SHUTDOWN] Stopping Samsara bot process...');
-    samsaraProcess.kill('SIGTERM');
-  }
-
-  // 5. Drain the PostgreSQL pool (waits for in-flight queries)
+  // 4. Drain the PostgreSQL pool (waits for in-flight queries)
   try {
     await db.pool.end();
     console.log('[SHUTDOWN] Database pool drained.');
@@ -210,7 +206,4 @@ process.on('SIGTERM', shutdownAll);
 
   // Start the Leads-Bot (Python/FastAPI) as a child process
   startLeadsBot();
-
-  // Start the Samsara Alert Bot as a child process
-  startSamsaraBot();
 })();
