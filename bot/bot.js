@@ -229,9 +229,20 @@ async function startBot() {
     bot.launch();
     console.log('[BOT] Telegram bot started.');
 
-    // Graceful stop
-    process.once('SIGINT', () => bot.stop('SIGINT'));
-    process.once('SIGTERM', () => bot.stop('SIGTERM'));
+    // Graceful stop (idempotent-safe: Telegraf can throw if already stopped)
+    const safeStop = (signal) => {
+      try {
+        bot.stop(signal);
+      } catch (stopErr) {
+        if (stopErr.message && stopErr.message.includes('Bot is not running')) {
+          console.warn(`[BOT] stop(${signal}) skipped: bot already stopped.`);
+          return;
+        }
+        throw stopErr;
+      }
+    };
+    process.once('SIGINT', () => safeStop('SIGINT'));
+    process.once('SIGTERM', () => safeStop('SIGTERM'));
   } catch (err) {
     console.error('[BOT] Fatal error starting bot:', err.message);
     process.exit(1);
