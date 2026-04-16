@@ -5,6 +5,7 @@
 const { startBot } = require('./bot/bot');
 const { startServer, stopServer } = require('./server/api');
 const { startScheduler, stopScheduler } = require('./services/schedulerService');
+const { startWeeklyReporter } = require('./services/weeklyReportService');
 const db = require('./database/db');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -205,6 +206,9 @@ process.on('SIGTERM', shutdownAll);
 
   // Start the scheduled message processor
   startScheduler();
+
+  // Start the weekly AI report service
+  startWeeklyReporter();
 
   // Start the Leads-Bot (Python/FastAPI) as a child process
   // startLeadsBot();

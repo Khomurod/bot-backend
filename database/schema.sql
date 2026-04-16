@@ -187,3 +187,13 @@ CREATE TABLE IF NOT EXISTS scheduled_messages (
   status TEXT DEFAULT 'pending',
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- TABLE: chat_logs
+CREATE TABLE IF NOT EXISTS chat_logs (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
+  telegram_user_id BIGINT,
+  sender_name TEXT,
+  message_text TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);

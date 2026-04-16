@@ -505,6 +505,33 @@ async function getBroadcastButtonClicks(broadcastId) {
   return res.rows;
 }
 
+// ─── Chat Logs ───
+
+async function logChatMessage(groupId, telegramUserId, senderName, messageText) {
+  await query(
+    `INSERT INTO chat_logs (group_id, telegram_user_id, sender_name, message_text)
+     VALUES ($1, $2, $3, $4)`,
+    [groupId, telegramUserId, senderName, messageText]
+  );
+}
+
+async function getChatLogsForGroup(groupId, daysBack) {
+  const res = await query(
+    `SELECT * FROM chat_logs
+     WHERE group_id = $1 AND created_at >= NOW() - ($2 || ' days')::INTERVAL
+     ORDER BY created_at ASC`,
+    [groupId, daysBack]
+  );
+  return res.rows;
+}
+
+async function deleteOldChatLogs(daysOld) {
+  await query(
+    `DELETE FROM chat_logs WHERE created_at < NOW() - ($1 || ' days')::INTERVAL`,
+    [daysOld]
+  );
+}
+
 module.exports = {
   pool,
   query,
@@ -547,4 +574,8 @@ module.exports = {
   getBroadcastDeliveries,
   saveBroadcastButtonClick,
   getBroadcastButtonClicks,
+  // Chat Logs
+  logChatMessage,
+  getChatLogsForGroup,
+  deleteOldChatLogs,
 };

@@ -193,6 +193,27 @@ async function startBot() {
       return next();
     });
 
+    // ── Generic message listener for chat logging ──
+    bot.on('message', async (ctx, next) => {
+      try {
+        const chat = ctx.chat;
+        // Only log if it's a group
+        if (chat && (chat.type === 'group' || chat.type === 'supergroup')) {
+          const text = ctx.message.text || ctx.message.caption;
+          if (text) {
+            const group = await db.getGroupByTelegramId(chat.id);
+            if (group) {
+              const senderName = ctx.from.first_name || ctx.from.username || 'Unknown';
+              await db.logChatMessage(group.id, ctx.from.id, senderName, text);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[BOT] Error logging chat message:', err.message);
+      }
+      return next();
+    });
+
     // Register employee voting handlers BEFORE generic callback_query handler
     // so bot.action(/vote_unit_/) fires first for voting callbacks
     const { registerVotingHandlers } = require('./employeeVoting');
