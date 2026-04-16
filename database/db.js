@@ -590,6 +590,20 @@ async function getEmployeesWithBirthdayToday(month, day) {
   return res.rows;
 }
 
+async function updateEmployeeBirthday(id, firstName, lastName, birthday) {
+  const res = await query(
+    `UPDATE employee_birthdays 
+     SET first_name = $1, last_name = $2, birthday = $3 
+     WHERE id = $4 RETURNING *`,
+    [firstName, lastName, birthday, id]
+  );
+  return res.rows[0];
+}
+
+async function deleteEmployeeBirthday(id) {
+  await query('DELETE FROM employee_birthdays WHERE id = $1', [id]);
+}
+
 module.exports = {
   pool,
   query,
@@ -643,4 +657,6 @@ module.exports = {
   upsertEmployeeBirthday,
   getAllEmployeeBirthdays,
   getEmployeesWithBirthdayToday,
+  updateEmployeeBirthday,
+  deleteEmployeeBirthday,
 };

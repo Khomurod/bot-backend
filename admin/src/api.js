@@ -432,3 +432,29 @@ export async function sendEmployeeBirthdayRequest() {
   }
   return res.json();
 }
+
+export async function createEmployeeBirthday(data) {
+  const res = await fetch(`${API_BASE}/submit-employee-birthday`, {
+    method: 'POST', headers: getHeaders(),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to add employee');
+  return res.json();
+}
+
+export async function updateEmployeeBirthday(id, data) {
+  const res = await fetch(`${API_BASE}/employee-birthdays/${id}`, {
+    method: 'PUT', headers: getHeaders(),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Failed to update employee');
+  return res.json();
+}
+
+export async function deleteEmployeeBirthday(id) {
+  const res = await fetch(`${API_BASE}/employee-birthdays/${id}`, {
+    method: 'DELETE', headers: getHeaders()
+  });
+  if (!res.ok) throw new Error('Failed to delete employee');
+  return res.json();
+}

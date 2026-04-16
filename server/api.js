@@ -985,6 +985,30 @@ app.post('/api/employee-birthdays/request', authMiddleware, async (req, res) => 
   }
 });
 
+// 5. Update Employee (Protected Admin)
+app.put('/api/employee-birthdays/:id', authMiddleware, async (req, res) => {
+  try {
+    const { firstName, lastName, birthday } = req.body;
+    if (!firstName || !lastName || !birthday) return res.status(400).json({ error: 'Missing fields' });
+    const updated = await db.updateEmployeeBirthday(req.params.id, firstName, lastName, birthday);
+    res.json(updated);
+  } catch (err) {
+    console.error('[API] Error updating employee birthday:', err.message);
+    res.status(500).json({ error: 'Failed to update employee' });
+  }
+});
+
+// 6. Delete Employee (Protected Admin)
+app.delete('/api/employee-birthdays/:id', authMiddleware, async (req, res) => {
+  try {
+    await db.deleteEmployeeBirthday(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[API] Error deleting employee birthday:', err.message);
+    res.status(500).json({ error: 'Failed to delete employee' });
+  }
+});
+
 // ─── Catch-all for admin SPA ───
 app.get('/admin/*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'admin', 'build', 'index.html'));
