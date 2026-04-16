@@ -205,11 +205,12 @@ module.exports = {
                 SELECT telegram_group_id, group_name 
                 FROM groups 
                 WHERE group_type = 'driver' 
-                AND (group_name ILIKE $1 OR group_name ILIKE $2)
+                AND group_name ~* $1
                 ORDER BY id DESC LIMIT 1
             `;
             const cleanUnit = unitNumber.replace(/\D/g, ''); // Ensure only digits
-            const res = await pool.query(query, [`%# ${cleanUnit}%`, `%#${cleanUnit}%`]);
+            const regexPattern = `#\\s*${cleanUnit}\\y`;
+            const res = await pool.query(query, [regexPattern]);
             
             if (res.rows.length > 0) {
                 console.log(`[DB] Resolved Unit #${cleanUnit} to group: ${res.rows[0].group_name} (${res.rows[0].telegram_group_id})`);

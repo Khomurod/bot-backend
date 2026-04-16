@@ -564,6 +564,32 @@ async function getRecentChatLogs(limit = 50) {
   return res.rows;
 }
 
+
+async function upsertEmployeeBirthday(firstName, lastName, birthday) {
+  const res = await query(
+    `INSERT INTO employee_birthdays (first_name, last_name, birthday)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (first_name, last_name) DO UPDATE SET birthday = EXCLUDED.birthday
+     RETURNING *`,
+    [firstName, lastName, birthday]
+  );
+  return res.rows[0];
+}
+
+async function getAllEmployeeBirthdays() {
+  const res = await query('SELECT * FROM employee_birthdays ORDER BY created_at DESC');
+  return res.rows;
+}
+
+async function getEmployeesWithBirthdayToday(month, day) {
+  const res = await query(
+    `SELECT * FROM employee_birthdays 
+     WHERE EXTRACT(MONTH FROM birthday) = $1 AND EXTRACT(DAY FROM birthday) = $2`,
+    [month, day]
+  );
+  return res.rows;
+}
+
 module.exports = {
   pool,
   query,
@@ -613,4 +639,8 @@ module.exports = {
   getChatLogsForGroup,
   deleteOldChatLogs,
   getRecentChatLogs,
+  // Employee Birthdays
+  upsertEmployeeBirthday,
+  getAllEmployeeBirthdays,
+  getEmployeesWithBirthdayToday,
 };

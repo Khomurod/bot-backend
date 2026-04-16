@@ -415,3 +415,20 @@ export async function deleteTelegramMessage(url) {
   }
   return res.json();
 }
+
+export async function getEmployeeBirthdays() {
+  const res = await fetch(`${API_BASE}/employee-birthdays`, { headers: getHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch employee birthdays');
+  return res.json();
+}
+
+export async function sendEmployeeBirthdayRequest() {
+  const res = await fetch(`${API_BASE}/employee-birthdays/request`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to send request');
+  }
+  return res.json();
+}

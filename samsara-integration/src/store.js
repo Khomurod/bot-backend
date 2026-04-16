@@ -181,11 +181,13 @@ module.exports = {
           FROM groups
           WHERE group_type = 'driver'
             AND active = TRUE
-            AND (group_name ILIKE $1 OR group_name ILIKE $2)
+            AND group_name ~* $1
           ORDER BY id DESC
           LIMIT 1
         `;
-        const res = await pool.query(query, [`%# ${cleanUnit}%`, `%#${cleanUnit}%`]);
+        // \y is a Postgres word boundary ensuring "27" doesn't match "2771"
+        const regexPattern = `#\\s*${cleanUnit}\\y`;
+        const res = await pool.query(query, [regexPattern]);
         if (res.rows.length > 0 && res.rows[0].telegram_group_id) {
           return String(res.rows[0].telegram_group_id);
         }

@@ -2390,6 +2390,93 @@ function MessageManagerPage() {
   );
 }
 
+function CompanyBirthdaysPage() {
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState(null);
+  const [requesting, setRequesting] = useState(false);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const data = await api.getEmployeeBirthdays();
+      setEmployees(data);
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadData(); }, []);
+
+  const handleSendRequest = async () => {
+    if (!window.confirm('Send a message to the Employee Group asking for their birthdays?')) return;
+    setRequesting(true);
+    setStatus(null);
+    try {
+      await api.sendEmployeeBirthdayRequest();
+      setStatus({ type: 'success', text: '✅ Request message sent to Employee Group!' });
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h2>🏢 Company Employee Birthdays</h2>
+          <p>Manage office staff birthdays. Bot congratulates them automatically at 9 AM CT.</p>
+        </div>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button className="btn btn-ghost" onClick={loadData}>🔄 Refresh</button>
+          <button className="btn btn-primary" onClick={handleSendRequest} disabled={requesting}>
+            {requesting ? '⏳ Sending...' : '💬 Send Telegram Request'}
+          </button>
+        </div>
+      </div>
+
+      {status && <div className={`alert alert-${status.type}`}>{status.text}</div>}
+
+      {loading ? (
+        <div className="loading"><div className="spinner"></div> Loading...</div>
+      ) : employees.length === 0 ? (
+        <div className="empty-state">
+          <div className="icon">🎂</div>
+          <h3>No employee birthdays yet</h3>
+          <p>Click "Send Telegram Request" so employees can fill out their dates.</p>
+        </div>
+      ) : (
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>First Name</th>
+                <th>Last Name</th>
+                <th>Birthday</th>
+                <th>Added On</th>
+              </tr>
+            </thead>
+            <tbody>
+              {employees.map(emp => (
+                <tr key={emp.id}>
+                  <td><strong>{emp.first_name}</strong></td>
+                  <td>{emp.last_name}</td>
+                  <td><span className="badge badge-active">{new Date(emp.birthday).toLocaleDateString(undefined, { timeZone: 'UTC' })}</span></td>
+                  <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>{new Date(emp.created_at).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [authed, setAuthed] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -2432,6 +2519,7 @@ export default function App() {
     voting: <EmployeeVotingPage />,
     logs: <ChatLogsPage />,
     manager: <MessageManagerPage />,
+    company_birthdays: <CompanyBirthdaysPage />,
   };
 
   return (
@@ -2490,6 +2578,13 @@ export default function App() {
           >
             <span className="nav-icon">🛠️</span>
             Message Manager
+          </button>
+          <button
+            className={`nav-item ${page === 'company_birthdays' ? 'active' : ''}`}
+            onClick={() => setPage('company_birthdays')}
+          >
+            <span className="nav-icon">🏢</span>
+            Employee Birthdays
           </button>
         </nav>
         <div className="sidebar-footer">
