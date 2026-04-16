@@ -96,6 +96,26 @@ async function setGroupLanguage(groupId, language) {
   return res.rows[0];
 }
 
+async function setGroupBirthday(groupId, birthday) {
+  const res = await query(
+    'UPDATE groups SET driver_birthday = $1 WHERE id = $2 RETURNING *',
+    [birthday || null, groupId]
+  );
+  return res.rows[0];
+}
+
+async function getGroupsWithBirthdayToday(month, day) {
+  const res = await query(
+    `SELECT * FROM groups 
+     WHERE group_type = 'driver' AND active = TRUE AND driver_birthday IS NOT NULL
+     AND EXTRACT(MONTH FROM driver_birthday) = $1 
+     AND EXTRACT(DAY FROM driver_birthday) = $2`,
+    [month, day]
+  );
+  return res.rows;
+}
+
+
 // ─── Drivers ───
 
 async function upsertDriver(telegramUserId, username, firstName, lastName) {
@@ -554,6 +574,8 @@ module.exports = {
   getAllDriverGroups,
   getGroupByTelegramId,
   setGroupLanguage,
+  setGroupBirthday,
+  getGroupsWithBirthdayToday,
   getGroupsByIds,
   getGroupsByLanguages,
   deactivateGroup,

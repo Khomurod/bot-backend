@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS admins (
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS media_position TEXT DEFAULT 'above';
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS group_type TEXT DEFAULT 'driver';
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE;
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS driver_birthday DATE;
 
 -- ─── Employee Voting System (isolated) ───
 

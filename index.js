@@ -6,6 +6,7 @@ const { startBot } = require('./bot/bot');
 const { startServer, stopServer } = require('./server/api');
 const { startScheduler, stopScheduler } = require('./services/schedulerService');
 const { startWeeklyReporter } = require('./services/weeklyReportService');
+const { startBirthdayService } = require('./services/birthdayService');
 const db = require('./database/db');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -206,6 +207,9 @@ process.on('SIGTERM', shutdownAll);
 
   // Start the scheduled message processor
   startScheduler();
+
+  // Start the birthday automated service
+  startBirthdayService();
 
   // Start the weekly AI report service
   startWeeklyReporter();

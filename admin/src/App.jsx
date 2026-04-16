@@ -392,6 +392,18 @@ function GroupsPage() {
     }
   };
 
+  const handleBirthdayChange = async (groupId, birthday) => {
+    try {
+      await api.setGroupBirthday(groupId, birthday);
+      setMessage({ type: 'success', text: 'Birthday updated successfully!' });
+      fetchGroups();
+      setTimeout(() => setMessage(null), 3000);
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    }
+  };
+
+
   const langLabel = { en: '🇺🇸 English', ru: '🇷🇺 Russian', uz: '🇺🇿 Uzbek' };
 
   return (
@@ -406,6 +418,7 @@ function GroupsPage() {
           {message.type === 'success' ? '✅' : '⚠️'} {message.text}
         </div>
       )}
+
 
       {loading ? (
         <div className="loading"><div className="spinner"></div> Loading groups...</div>
@@ -423,6 +436,7 @@ function GroupsPage() {
                 <th>Group Name</th>
                 <th>Telegram ID</th>
                 <th>Language</th>
+                <th>Birthday</th>
                 <th>Joined</th>
               </tr>
             </thead>
@@ -442,6 +456,15 @@ function GroupsPage() {
                       <option value="ru">🇷🇺 Russian</option>
                       <option value="uz">🇺🇿 Uzbek</option>
                     </select>
+                  </td>
+                  <td>
+                    <input 
+                      type="date" 
+                      className="form-input" 
+                      value={g.driver_birthday ? g.driver_birthday.split('T')[0] : ''} 
+                      onChange={(e) => handleBirthdayChange(g.id, e.target.value)} 
+                      style={{ width: 140, padding: '7px 12px', fontSize: 13 }}
+                    />
                   </td>
                   <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>
                     {g.created_at ? new Date(g.created_at).toLocaleDateString() : '—'}

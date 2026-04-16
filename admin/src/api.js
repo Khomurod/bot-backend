@@ -55,6 +55,17 @@ export async function setGroupLanguage(groupId, language) {
   return res.json();
 }
 
+export async function setGroupBirthday(groupId, birthday) {
+  const res = await fetch(`${API_BASE}/groups/${groupId}/birthday`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify({ birthday: birthday || null }),
+  });
+  if (!res.ok) throw new Error('Failed to update birthday');
+  return res.json();
+}
+
+
 export async function getQuestions() {
   const res = await fetch(`${API_BASE}/questions`, { headers: getHeaders() });
   if (!res.ok) throw new Error('Failed to fetch questions');

@@ -228,6 +228,22 @@ app.put('/api/groups/:id/language', authMiddleware, async (req, res) => {
   }
 });
 
+// PUT /api/groups/:id/birthday
+app.put('/api/groups/:id/birthday', authMiddleware, async (req, res) => {
+  try {
+    const { birthday } = req.body;
+    const group = await db.setGroupBirthday(req.params.id, birthday);
+    if (!group) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+    res.json(group);
+  } catch (err) {
+    console.error('[API] Error updating group birthday:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
 // ─── Questions Routes ───
 
 // GET /api/questions
