@@ -19,6 +19,14 @@ if (!config.managementGroupId) {
 
 const bot = new Telegraf(config.botToken);
 const MANAGEMENT_GROUP_ID = config.managementGroupId;
+const BOT_LAUNCH_RETRY_MS = 5000;
+const BOT_LAUNCH_MAX_RETRY_MS = 30000;
+
+let botRunning = false;
+let botLaunchInProgress = false;
+let botLaunchRetryTimer = null;
+let botStopRequested = false;
+let shutdownHooksRegistered = false;
 
 // ─── Rate-limit sleep helper ───
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -49,6 +57,73 @@ function getTranslation(translations, lang, fallback = 'en') {
   const found = translations.find((t) => t.language === lang);
   if (found) return found;
   return translations.find((t) => t.language === fallback) || translations[0];
+}
+
+function isPollingConflict(err) {
+  const description = err?.response?.description || err?.message || '';
+  return err?.response?.error_code === 409
+    || description.includes('terminated by other getUpdates request');
+}
+
+function scheduleBotLaunchRetry(delayMs) {
+  if (botStopRequested || botRunning || botLaunchRetryTimer) return;
+
+  const retryInMs = Math.min(delayMs, BOT_LAUNCH_MAX_RETRY_MS);
+  console.warn(`[BOT] Another instance is still polling this token. Retrying launch in ${retryInMs / 1000}s...`);
+
+  botLaunchRetryTimer = setTimeout(() => {
+    botLaunchRetryTimer = null;
+    launchBotWithRetry(Math.min(retryInMs * 2, BOT_LAUNCH_MAX_RETRY_MS)).catch((err) => {
+      console.error('[BOT] Fatal error starting bot:', err.message);
+      process.exit(1);
+    });
+  }, retryInMs);
+}
+
+async function launchBotWithRetry(delayMs = BOT_LAUNCH_RETRY_MS) {
+  if (botStopRequested || botRunning || botLaunchInProgress) return;
+
+  botLaunchInProgress = true;
+
+  try {
+    await bot.launch();
+    botRunning = true;
+    console.log('[BOT] Telegram bot started.');
+  } catch (err) {
+    if (isPollingConflict(err)) {
+      scheduleBotLaunchRetry(delayMs);
+      return;
+    }
+    throw err;
+  } finally {
+    botLaunchInProgress = false;
+  }
+}
+
+function safeStop(signal) {
+  botStopRequested = true;
+
+  if (botLaunchRetryTimer) {
+    clearTimeout(botLaunchRetryTimer);
+    botLaunchRetryTimer = null;
+  }
+
+  if (!botRunning) {
+    console.warn(`[BOT] stop(${signal}) skipped: bot is not running.`);
+    return;
+  }
+
+  try {
+    bot.stop(signal);
+  } catch (stopErr) {
+    if (stopErr.message && stopErr.message.includes('Bot is not running')) {
+      console.warn(`[BOT] stop(${signal}) skipped: bot already stopped.`);
+      return;
+    }
+    throw stopErr;
+  } finally {
+    botRunning = false;
+  }
 }
 
 // ─── Bot Startup ───
@@ -225,24 +300,13 @@ async function startBot() {
       }
     });
 
-    // Launch bot
-    bot.launch();
-    console.log('[BOT] Telegram bot started.');
+    if (!shutdownHooksRegistered) {
+      process.once('SIGINT', () => safeStop('SIGINT'));
+      process.once('SIGTERM', () => safeStop('SIGTERM'));
+      shutdownHooksRegistered = true;
+    }
 
-    // Graceful stop (idempotent-safe: Telegraf can throw if already stopped)
-    const safeStop = (signal) => {
-      try {
-        bot.stop(signal);
-      } catch (stopErr) {
-        if (stopErr.message && stopErr.message.includes('Bot is not running')) {
-          console.warn(`[BOT] stop(${signal}) skipped: bot already stopped.`);
-          return;
-        }
-        throw stopErr;
-      }
-    };
-    process.once('SIGINT', () => safeStop('SIGINT'));
-    process.once('SIGTERM', () => safeStop('SIGTERM'));
+    await launchBotWithRetry();
   } catch (err) {
     console.error('[BOT] Fatal error starting bot:', err.message);
     process.exit(1);
