@@ -5,7 +5,7 @@
  * Sends raw events to the formatter and pushes them to a local queue.
  */
 
-const { getCursor, saveCursor, clearCursor } = require('./db');
+const { getCursor, saveCursor, clearCursor, isEventProcessed, markEventProcessed } = require('./db');
 const { formatAlert } = require('./formatter');
 const { reverseGeocode } = require('./geocoder');
 
@@ -256,14 +256,17 @@ async function executePoll() {
         if (events.length > 0) {
             let newEventsCount = 0;
             for (const rawEvent of events) {
-                // Deduplication check
+                // In-memory Deduplication check
                 if (SEEN_IDS.has(rawEvent.id)) continue;
                 
-                SEEN_IDS.add(rawEvent.id);
-                if (SEEN_IDS.size > MAX_SEEN_IDS) {
-                    const firstId = SEEN_IDS.values().next().value;
-                    SEEN_IDS.delete(firstId);
+                // Permanent PostgreSQL Deduplication check
+                if (await isEventProcessed(rawEvent.id)) {
+                    SEEN_IDS.add(rawEvent.id); // Add to memory to save DB calls next time
+                    continue;
                 }
+                
+                SEEN_IDS.add(rawEvent.id);
+                await markEventProcessed(rawEvent.id);
 
                 newEventsCount++;
                 const mappedPayload = await transformApiEventToWebhookShape(rawEvent);

@@ -269,6 +269,8 @@ bot.onText(/\/help/, (msg) => {
 // ── Start Server ──────────────────────────────────────────────────────────────
 async function start() {
     await store.init();
+    const samsaraDb = require('./src/db');
+    await samsaraDb.initPgDb();
     await new Promise((resolve) => app.listen(PORT, resolve));
 
     console.log('');

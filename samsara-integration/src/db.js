@@ -6,6 +6,15 @@
 
 const fs = require('fs');
 const path = require('path');
+const { Pool } = require('pg');
+
+let pgPool = null;
+if (process.env.DATABASE_URL) {
+    pgPool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false }
+    });
+}
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const DB_FILE = path.join(DATA_DIR, 'cursor.db');
@@ -215,5 +224,39 @@ module.exports = {
         } finally {
             await pool.end();
         }
-    }
+    },
+
+    async initPgDb() {
+        if (pgPool) {
+            try {
+                await pgPool.query(`CREATE TABLE IF NOT EXISTS samsara_processed_events (
+                    id VARCHAR(255) PRIMARY KEY,
+                    processed_at TIMESTAMP DEFAULT NOW()
+                )`);
+                console.log('[DB] PostgreSQL deduplication table ready.');
+            } catch (err) {
+                console.error('[DB] Failed to init pg table:', err.message);
+            }
+        }
+    },
+
+    async isEventProcessed(eventId) {
+        if (!pgPool) return false;
+        try {
+            const res = await pgPool.query('SELECT id FROM samsara_processed_events WHERE id = $1', [eventId]);
+            return res.rows.length > 0;
+        } catch (err) {
+            console.error('[DB] isEventProcessed error:', err.message);
+            return false;
+        }
+    },
+
+    async markEventProcessed(eventId) {
+        if (!pgPool) return;
+        try {
+            await pgPool.query('INSERT INTO samsara_processed_events (id) VALUES ($1) ON CONFLICT DO NOTHING', [eventId]);
+        } catch (err) {
+            console.error('[DB] markEventProcessed error:', err.message);
+        }
+    },
 };
