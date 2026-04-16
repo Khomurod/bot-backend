@@ -211,8 +211,8 @@ process.on('SIGTERM', shutdownAll);
   startWeeklyReporter();
 
   // Start the Leads-Bot (Python/FastAPI) as a child process
-  // startLeadsBot();
+  startLeadsBot();
 
   // Start the Samsara Alert Bot as a child process
-  // startSamsaraBot();
+  startSamsaraBot();
 })();
