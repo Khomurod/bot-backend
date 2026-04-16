@@ -154,4 +154,68 @@ module.exports = {
       }
     }
   },
+
+  /**
+   * Resolve Driver Group by unit number from Postgres groups table.
+   * Returns telegram_group_id as string or null when not found.
+   */
+  async findGroupByUnit(unitNumber, vehicleName) {
+    if (!unitNumber && !vehicleName) return null;
+    const DATABASE_URL = process.env.DATABASE_URL;
+    if (!DATABASE_URL) {
+      console.warn('[Store] DATABASE_URL not set — cannot resolve unit group.');
+      return null;
+    }
+
+    const { Pool } = require('pg');
+    const pool = new Pool({
+      connectionString: DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+    });
+
+    try {
+      const cleanUnit = String(unitNumber || '').replace(/\D/g, '');
+      if (cleanUnit) {
+        const query = `
+          SELECT telegram_group_id, group_name
+          FROM groups
+          WHERE group_type = 'driver'
+            AND active = TRUE
+            AND (group_name ILIKE $1 OR group_name ILIKE $2)
+          ORDER BY id DESC
+          LIMIT 1
+        `;
+        const res = await pool.query(query, [`%# ${cleanUnit}%`, `%#${cleanUnit}%`]);
+        if (res.rows.length > 0 && res.rows[0].telegram_group_id) {
+          return String(res.rows[0].telegram_group_id);
+        }
+      }
+
+      // Fallback: if unit labels differ between systems, match by driver name
+      // from vehicleName pattern like "02429 JEAN DATOS".
+      const normalizedVehicleName = String(vehicleName || '').trim();
+      const possibleDriverName = normalizedVehicleName.replace(/^\s*#?\s*\d+\s*/, '').trim();
+      if (possibleDriverName && possibleDriverName.length >= 4) {
+        const byNameQuery = `
+          SELECT telegram_group_id, group_name
+          FROM groups
+          WHERE group_type = 'driver'
+            AND active = TRUE
+            AND group_name ILIKE $1
+          ORDER BY id DESC
+          LIMIT 1
+        `;
+        const byName = await pool.query(byNameQuery, [`%${possibleDriverName}%`]);
+        if (byName.rows.length > 0 && byName.rows[0].telegram_group_id) {
+          return String(byName.rows[0].telegram_group_id);
+        }
+      }
+      return null;
+    } catch (err) {
+      console.error('[Store] findGroupByUnit query failed:', err.message);
+      return null;
+    } finally {
+      await pool.end();
+    }
+  },
 };

@@ -5,7 +5,7 @@
  * Sends raw events to the formatter and pushes them to a local queue.
  */
 
-const { getCursor, saveCursor } = require('./db');
+const { getCursor, saveCursor, clearCursor } = require('./db');
 const { formatAlert } = require('./formatter');
 const { reverseGeocode } = require('./geocoder');
 
@@ -23,6 +23,11 @@ let broadcastFn = null;
 // hasn't updated yet or if we fall back to time-based polling.
 const SEEN_IDS = new Set();
 const MAX_SEEN_IDS = 1000;
+
+function isIsoTimestamp(value) {
+    return typeof value === 'string'
+        && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(value);
+}
 
 /**
  * Push formatted alerts into the queue to be sent.
@@ -196,7 +201,8 @@ async function executePoll() {
         return;
     }
 
-    const cursor = (getCursor() || '').trim();
+    const rawCursor = (getCursor() || '').trim();
+    const cursor = isIsoTimestamp(rawCursor) ? '' : rawCursor;
     const params = new URLSearchParams({
         includeDriver: 'true',
     });
@@ -208,6 +214,13 @@ async function executePoll() {
     
     params.set('startTime', startTime);
     params.set('endTime', endTime);
+
+    if (rawCursor && isIsoTimestamp(rawCursor)) {
+        // Older builds accidentally persisted timestamp values instead of cursors.
+        // Samsara rejects these as an invalid "after" pagination token.
+        console.warn(`[Poller] Ignoring invalid timestamp cursor: ${rawCursor}`);
+        clearCursor();
+    }
 
     if (cursor && cursor !== 'null' && cursor !== 'undefined') {
         params.set('after', cursor);
@@ -229,6 +242,10 @@ async function executePoll() {
         if (!response.ok) {
             const body = await response.text();
             console.error(`[Poller] HTTP ${response.status}: ${body}`);
+            if (response.status === 400 && body.includes(`invalid pagination 'after' parameter`)) {
+                console.warn('[Poller] Clearing invalid cursor so next poll uses time window only.');
+                clearCursor();
+            }
             return;
         }
 

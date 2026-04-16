@@ -152,7 +152,7 @@ async function broadcast(alertData) {
     const unitNumber = unitMatch ? unitMatch[1] : null;
 
     if (unitNumber) {
-        const resolvedId = await store.findGroupByUnit(unitNumber);
+        const resolvedId = await store.findGroupByUnit(unitNumber, vehicleName);
         if (resolvedId) {
             targetDriverGroupId = resolvedId;
         }

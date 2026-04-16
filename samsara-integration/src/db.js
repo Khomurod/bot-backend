@@ -118,6 +118,35 @@ module.exports = {
     },
 
     /**
+     * Clear the persisted cursor (used when Samsara rejects a stale/invalid cursor).
+     */
+    clearCursor() {
+        cachedCursor = null;
+
+        if (useJsonFallback) {
+            try {
+                if (fs.existsSync(JSON_FILE)) {
+                    fs.unlinkSync(JSON_FILE);
+                }
+            } catch (e) {
+                console.error('[DB] JSON Clear Error:', e.message);
+            }
+            return;
+        }
+
+        if (!db) return;
+        try {
+            db.prepare(`
+                UPDATE sync_state
+                SET next_cursor = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE id = 1
+            `).run();
+        } catch (err) {
+            console.error('[DB] Error clearing cursor:', err.message);
+        }
+    },
+
+    /**
      * EXTENSION: Postgres Group Lookup
      */
     async findGroupByUnit(unitNumber) {
