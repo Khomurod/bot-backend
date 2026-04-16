@@ -785,6 +785,17 @@ app.put('/api/scheduled-messages/:id/send-now', authMiddleware, async (req, res)
   }
 });
 
+// ─── Chat Logs Route ───
+app.get('/api/chat-logs', authMiddleware, async (req, res) => {
+  try {
+    const logs = await db.getRecentChatLogs(50);
+    res.json(logs);
+  } catch (err) {
+    console.error('[API] Error fetching chat logs:', err.message);
+    res.status(500).json({ error: 'Failed to fetch chat logs' });
+  }
+});
+
 // ─── Catch-all for admin SPA ───
 app.get('/admin/*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'admin', 'build', 'index.html'));

@@ -370,3 +370,12 @@ export async function getBroadcastButtonClicks(broadcastId) {
   if (!res.ok) throw new Error('Failed to fetch button clicks');
   return res.json();
 }
+
+/** Fetch recent chat logs for the admin panel */
+export async function getChatLogs() {
+  const res = await fetch(`${API_BASE}/chat-logs`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch chat logs');
+  return res.json();
+}

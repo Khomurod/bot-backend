@@ -532,6 +532,18 @@ async function deleteOldChatLogs(daysOld) {
   );
 }
 
+async function getRecentChatLogs(limit = 50) {
+  const res = await query(
+    `SELECT c.id, c.sender_name, c.message_text, c.created_at, g.group_name
+     FROM chat_logs c
+     JOIN groups g ON c.group_id = g.id
+     ORDER BY c.created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+  return res.rows;
+}
+
 module.exports = {
   pool,
   query,
@@ -578,4 +590,5 @@ module.exports = {
   logChatMessage,
   getChatLogsForGroup,
   deleteOldChatLogs,
+  getRecentChatLogs,
 };

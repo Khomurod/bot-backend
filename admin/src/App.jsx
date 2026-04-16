@@ -456,6 +456,82 @@ function GroupsPage() {
   );
 }
 
+// ─────────────── Chat Logs Page ───────────────
+function ChatLogsPage() {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await api.getChatLogs();
+      setLogs(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
+
+  return (
+    <div>
+      <div className="page-header">
+        <h2>💬 Live Chat Logs</h2>
+        <p>Most recent messages from driver groups.</p>
+      </div>
+
+      <div className="action-bar">
+        <div></div>
+        <button className="btn btn-ghost" onClick={fetchLogs} disabled={loading}>
+          {loading ? '⏳ Refreshing...' : '🔄 Refresh Logs'}
+        </button>
+      </div>
+
+      {error && <div className="alert alert-error">⚠️ {error}</div>}
+
+      {loading && logs.length === 0 ? (
+        <div className="loading"><div className="spinner" /> Loading logs...</div>
+      ) : logs.length === 0 ? (
+        <div className="empty-state">
+          <div className="icon">📭</div>
+          <h3>No logs yet</h3>
+          <p>Messages will appear here once the bot starts logging activity.</p>
+        </div>
+      ) : (
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Time (Local)</th>
+                <th>Group</th>
+                <th>Sender</th>
+                <th>Message</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map((log) => (
+                <tr key={log.id}>
+                  <td style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                    {new Date(log.created_at).toLocaleString()}
+                  </td>
+                  <td><strong>{log.group_name || '—'}</strong></td>
+                  <td style={{ fontWeight: 500 }}>{log.sender_name || '—'}</td>
+                  <td style={{ fontSize: 13, lineHeight: '1.4' }}>{log.message_text}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─────────────── Questions Page ───────────────
 function QuestionsPage() {
   const [questions, setQuestions] = useState([]);
@@ -2236,6 +2312,7 @@ export default function App() {
     broadcast: <BroadcastPage />,
     scheduled: <ScheduledMessagesPage />,
     voting: <EmployeeVotingPage />,
+    logs: <ChatLogsPage />,
   };
 
   return (
@@ -2266,6 +2343,13 @@ export default function App() {
           >
             <span className="nav-icon">📢</span>
             Broadcast
+          </button>
+          <button
+            className={`nav-item ${page === 'logs' ? 'active' : ''}`}
+            onClick={() => setPage('logs')}
+          >
+            <span className="nav-icon">💬</span>
+            Live Chat Logs
           </button>
           <button
             className={`nav-item ${page === 'scheduled' ? 'active' : ''}`}
