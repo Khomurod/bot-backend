@@ -2272,6 +2272,101 @@ function ScheduledMessagesPage() {
   );
 }
 
+function MessageManagerPage() {
+  const [url, setUrl] = useState('');
+  const [newText, setNewText] = useState('');
+  const [status, setStatus] = useState(null);
+  const [processing, setProcessing] = useState(false);
+  const textareaRef = useRef(null);
+  const { handleKeyDown, toolbar } = FormattingToolbar({ textareaRef, value: newText, onChange: setNewText });
+
+  const handleDelete = async () => {
+    if (!url.trim()) return setStatus({ type: 'error', text: 'Please enter a message URL.' });
+    if (!window.confirm('Are you sure you want to permanently delete this message from Telegram?')) return;
+    setProcessing(true);
+    setStatus(null);
+    try {
+      await api.deleteTelegramMessage(url.trim());
+      setStatus({ type: 'success', text: 'Message deleted successfully.' });
+      setUrl('');
+      setNewText('');
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleEdit = async () => {
+    if (!url.trim()) return setStatus({ type: 'error', text: 'Please enter a message URL.' });
+    if (!newText.trim()) return setStatus({ type: 'error', text: 'Please enter the new text.' });
+    setProcessing(true);
+    setStatus(null);
+    try {
+      await api.editTelegramMessage(url.trim(), newText);
+      setStatus({ type: 'success', text: 'Message edited successfully.' });
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="page-header">
+        <h2>🛠️ Message Manager</h2>
+        <p>Edit or delete previously sent Telegram messages using their link.</p>
+      </div>
+
+      {status && (
+        <div className={`alert alert-${status.type}`}>
+          {status.type === 'success' ? '✅' : '⚠️'} {status.text}
+        </div>
+      )}
+
+      <div className="card">
+        <div className="form-group">
+          <label>Message Link (URL)</label>
+          <input
+            className="form-input"
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="e.g. [https://t.me/c/3833033968/5044](https://t.me/c/3833033968/5044)"
+          />
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+            Right-click a message in Telegram and select "Copy Message Link".
+          </p>
+        </div>
+
+        <div className="form-group" style={{ marginTop: 24 }}>
+          <label>New Text (for editing)</label>
+          {toolbar}
+          <textarea
+            ref={textareaRef}
+            className="form-textarea toolbar-textarea"
+            value={newText}
+            onChange={(e) => setNewText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Leave blank if you just want to delete it. Enter new text to edit..."
+            style={{ minHeight: 120 }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+          <button className="btn btn-primary" onClick={handleEdit} disabled={processing || !url || !newText}>
+            ✏️ Edit Message
+          </button>
+          <button className="btn btn-danger" onClick={handleDelete} disabled={processing || !url}>
+            🗑️ Delete Message
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [authed, setAuthed] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -2313,6 +2408,7 @@ export default function App() {
     scheduled: <ScheduledMessagesPage />,
     voting: <EmployeeVotingPage />,
     logs: <ChatLogsPage />,
+    manager: <MessageManagerPage />,
   };
 
   return (
@@ -2364,6 +2460,13 @@ export default function App() {
           >
             <span className="nav-icon">🏆</span>
             Employee Voting
+          </button>
+          <button
+            className={`nav-item ${page === 'manager' ? 'active' : ''}`}
+            onClick={() => setPage('manager')}
+          >
+            <span className="nav-icon">🛠️</span>
+            Message Manager
           </button>
         </nav>
         <div className="sidebar-footer">
