@@ -9,6 +9,12 @@ const db = require('./database/db');
 const { spawn } = require('child_process');
 const path = require('path');
 
+function isTelegramPollingConflict(err) {
+  const description = err?.response?.description || err?.message || '';
+  return err?.response?.error_code === 409
+    || description.includes('terminated by other getUpdates request');
+}
+
 // ─── Process-level error handlers ───
 process.on('uncaughtException', (err) => {
   console.error('[FATAL] Uncaught Exception:', err.message);
@@ -18,6 +24,11 @@ process.on('uncaughtException', (err) => {
 });
 
 process.on('unhandledRejection', (reason) => {
+  if (isTelegramPollingConflict(reason)) {
+    console.warn('[BOT] Polling conflict detected. Waiting for the retry loop to reclaim the token.');
+    return;
+  }
+
   console.error('[FATAL] Unhandled Rejection:', reason);
 });
 
@@ -186,11 +197,11 @@ process.on('SIGTERM', shutdownAll);
   console.log('  Telegram Driver Feedback System');
   console.log('═══════════════════════════════════════════');
 
-  // Start the Telegram bot
-  await startBot();
-
   // Start the Express API server
   startServer();
+
+  // Initialize the Telegram bot in the background so Render sees the HTTP port immediately
+  await startBot();
 
   // Start the scheduled message processor
   startScheduler();

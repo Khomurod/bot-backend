@@ -23,10 +23,11 @@ const BOT_LAUNCH_RETRY_MS = 5000;
 const BOT_LAUNCH_MAX_RETRY_MS = 30000;
 
 let botRunning = false;
-let botLaunchInProgress = false;
+let botLaunchPromise = null;
 let botLaunchRetryTimer = null;
 let botStopRequested = false;
 let shutdownHooksRegistered = false;
+let botInitialized = false;
 
 // ─── Rate-limit sleep helper ───
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -81,23 +82,32 @@ function scheduleBotLaunchRetry(delayMs) {
 }
 
 async function launchBotWithRetry(delayMs = BOT_LAUNCH_RETRY_MS) {
-  if (botStopRequested || botRunning || botLaunchInProgress) return;
+  if (botStopRequested || botRunning || botLaunchPromise) return;
 
-  botLaunchInProgress = true;
+  console.log('[BOT] Launching Telegram bot...');
+  botRunning = true;
+  botLaunchPromise = bot.launch()
+    .then(() => {
+      botRunning = false;
+      botLaunchPromise = null;
 
-  try {
-    await bot.launch();
-    botRunning = true;
-    console.log('[BOT] Telegram bot started.');
-  } catch (err) {
-    if (isPollingConflict(err)) {
-      scheduleBotLaunchRetry(delayMs);
-      return;
-    }
-    throw err;
-  } finally {
-    botLaunchInProgress = false;
-  }
+      if (!botStopRequested) {
+        console.warn('[BOT] Polling loop exited. Retrying launch...');
+        scheduleBotLaunchRetry(delayMs);
+      }
+    })
+    .catch((err) => {
+      botRunning = false;
+      botLaunchPromise = null;
+
+      if (isPollingConflict(err)) {
+        scheduleBotLaunchRetry(delayMs);
+        return;
+      }
+
+      console.error('[BOT] Fatal error starting bot:', err.message);
+      process.exit(1);
+    });
 }
 
 function safeStop(signal) {
@@ -129,6 +139,9 @@ function safeStop(signal) {
 // ─── Bot Startup ───
 async function startBot() {
   try {
+    if (botInitialized) return;
+    botInitialized = true;
+
     await db.initializeDatabase();
     console.log('[BOT] Database initialized.');
 
@@ -306,7 +319,7 @@ async function startBot() {
       shutdownHooksRegistered = true;
     }
 
-    await launchBotWithRetry();
+    launchBotWithRetry();
   } catch (err) {
     console.error('[BOT] Fatal error starting bot:', err.message);
     process.exit(1);
