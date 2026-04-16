@@ -7,6 +7,7 @@
  * Usage:
  *   node test-send-live.js
  *   node test-send-live.js --dry-run
+ *   node test-send-live.js --offset=1 --dry-run
  */
 
 require('dotenv').config();
@@ -23,6 +24,8 @@ const FALLBACK_DRIVER_GROUP_ID = process.env.EMPLOYEE_GROUP_ID || null;
 const DRY_RUN = process.argv.includes('--dry-run');
 const deleteAfterArg = process.argv.find((arg) => arg.startsWith('--delete-after-sec='));
 const DELETE_AFTER_SEC = deleteAfterArg ? parseInt(deleteAfterArg.split('=')[1], 10) : 0;
+const offsetArg = process.argv.find((arg) => arg.startsWith('--offset='));
+const EVENT_OFFSET = offsetArg ? Math.max(0, parseInt(offsetArg.split('=')[1], 10) || 0) : 0;
 
 if (!SAMSARA_API_KEY) throw new Error('SAMSARA_API_KEY is not set');
 if (!TELEGRAM_BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is not set');
@@ -136,12 +139,13 @@ async function transformApiEventToWebhookShape(event) {
   return webhookPayload;
 }
 
-async function fetchLatestEvent() {
+async function fetchEventByOffset(offset = 0) {
+  const limit = String(Math.max(1, offset + 1));
   const params = new URLSearchParams({
     includeDriver: 'true',
     startTime: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
     endTime: new Date().toISOString(),
-    limit: '1',
+    limit,
   });
 
   const url = `https://api.samsara.com/fleet/safety-events?${params.toString()}`;
@@ -158,7 +162,7 @@ async function fetchLatestEvent() {
   }
 
   const json = await response.json();
-  const event = (json.data || [])[0];
+  const event = (json.data || [])[offset];
   if (!event) return null;
   return event;
 }
@@ -241,12 +245,13 @@ async function main() {
   if (!DRY_RUN && DELETE_AFTER_SEC > 0) {
     console.log(`[Test] Auto-delete enabled (${DELETE_AFTER_SEC}s after send).`);
   }
+  console.log(`[Test] Event offset: ${EVENT_OFFSET}`);
 
   await store.init();
 
-  const event = await fetchLatestEvent();
+  const event = await fetchEventByOffset(EVENT_OFFSET);
   if (!event) {
-    console.log('[Test] No events found in the last 7 days.');
+    console.log('[Test] No event found for requested offset in the last 7 days.');
     return;
   }
 

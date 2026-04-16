@@ -52,19 +52,62 @@ try {
 
 let cachedCursor = null;
 
+function isIsoTimestamp(value) {
+    return typeof value === 'string'
+        && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(value);
+}
+
+function clearCursorInternal() {
+    cachedCursor = null;
+
+    if (useJsonFallback) {
+        try {
+            if (fs.existsSync(JSON_FILE)) {
+                fs.unlinkSync(JSON_FILE);
+            }
+        } catch (e) {
+            console.error('[DB] JSON Clear Error:', e.message);
+        }
+        return;
+    }
+
+    if (!db) return;
+    try {
+        db.prepare(`
+            UPDATE sync_state
+            SET next_cursor = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE id = 1
+        `).run();
+    } catch (err) {
+        console.error('[DB] Error clearing cursor:', err.message);
+    }
+}
+
 module.exports = {
     /**
      * Get the last saved cursor.
      * @returns {string|null} The cursor string, or null if none saved.
      */
     getCursor() {
-        if (cachedCursor) return cachedCursor;
+        if (cachedCursor) {
+            if (isIsoTimestamp(cachedCursor)) {
+                console.warn(`[DB] Found legacy timestamp cursor in cache (${cachedCursor}). Clearing.`);
+                clearCursorInternal();
+                return null;
+            }
+            return cachedCursor;
+        }
 
         if (useJsonFallback) {
             try {
                 if (fs.existsSync(JSON_FILE)) {
                     const data = JSON.parse(fs.readFileSync(JSON_FILE, 'utf8'));
                     cachedCursor = data.next_cursor || null;
+                    if (isIsoTimestamp(cachedCursor)) {
+                        console.warn(`[DB] Found legacy timestamp cursor in JSON (${cachedCursor}). Clearing.`);
+                        clearCursorInternal();
+                        return null;
+                    }
                     return cachedCursor;
                 }
             } catch (e) {
@@ -77,6 +120,11 @@ module.exports = {
         try {
             const row = db.prepare('SELECT next_cursor FROM sync_state WHERE id = 1').get();
             cachedCursor = row ? row.next_cursor : null;
+            if (isIsoTimestamp(cachedCursor)) {
+                console.warn(`[DB] Found legacy timestamp cursor in SQLite (${cachedCursor}). Clearing.`);
+                clearCursorInternal();
+                return null;
+            }
             return cachedCursor;
         } catch (err) {
             console.error('[DB] Error reading cursor:', err.message);
@@ -121,29 +169,7 @@ module.exports = {
      * Clear the persisted cursor (used when Samsara rejects a stale/invalid cursor).
      */
     clearCursor() {
-        cachedCursor = null;
-
-        if (useJsonFallback) {
-            try {
-                if (fs.existsSync(JSON_FILE)) {
-                    fs.unlinkSync(JSON_FILE);
-                }
-            } catch (e) {
-                console.error('[DB] JSON Clear Error:', e.message);
-            }
-            return;
-        }
-
-        if (!db) return;
-        try {
-            db.prepare(`
-                UPDATE sync_state
-                SET next_cursor = NULL, updated_at = CURRENT_TIMESTAMP
-                WHERE id = 1
-            `).run();
-        } catch (err) {
-            console.error('[DB] Error clearing cursor:', err.message);
-        }
+        clearCursorInternal();
     },
 
     /**
