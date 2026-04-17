@@ -130,14 +130,31 @@ export async function sendTestQuestion(questionEn, optionsEn, mediaItems, mediaP
   return res.json();
 }
 
-export async function sendBroadcast(messageText, parseMode, messages, mediaItems, mediaPosition, groupIds) {
-  const body = { message_text: messageText, parse_mode: parseMode };
-  if (messages) body.messages = messages;
-  if (groupIds && groupIds.length > 0) body.group_ids = groupIds;
-  if (mediaItems && mediaItems.length > 0) {
-    body.media_items = mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type }));
-    body.media_position = mediaPosition || 'above';
+// Support both object and positional arguments for compatibility
+export async function sendBroadcast(dataOrText, parseMode, messages, mediaItems, mediaPosition, groupIds) {
+  let body;
+  if (typeof dataOrText === 'object') {
+    if (dataOrText.type === 'confirmation') {
+      return sendConfirmationBroadcast(dataOrText);
+    }
+    const { messageEn, messageRu, messageUz, type, targetType, selectedDriverIds, selectedLanguages, mediaItems: items, mediaPosition: pos } = dataOrText;
+    body = {
+      message_text: messageEn,
+      messages: { en: messageEn, ru: messageRu, uz: messageUz },
+      group_ids: targetType === 'specific_drivers' ? selectedDriverIds : null,
+      media_items: items ? items.map(m => ({ file_id: m.file_id, media_type: m.type })) : null,
+      media_position: pos || 'above'
+    };
+  } else {
+    body = { message_text: dataOrText, parse_mode: parseMode };
+    if (messages) body.messages = messages;
+    if (groupIds && groupIds.length > 0) body.group_ids = groupIds;
+    if (mediaItems && mediaItems.length > 0) {
+      body.media_items = mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type }));
+      body.media_position = mediaPosition || 'above';
+    }
   }
+  
   const res = await fetch(`${API_BASE}/broadcast/send`, {
     method: 'POST',
     headers: getHeaders(),
@@ -150,12 +167,17 @@ export async function sendBroadcast(messageText, parseMode, messages, mediaItems
   return res.json();
 }
 
-export async function sendBroadcastTest(messageText, parseMode, mediaItems, mediaPosition) {
-  const body = { message_text: messageText, parse_mode: parseMode };
-  if (mediaItems && mediaItems.length > 0) {
-    body.media_items = mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type }));
-    body.media_position = mediaPosition || 'above';
+export async function testBroadcast(data) {
+  if (data.type === 'confirmation') {
+    return sendConfirmationBroadcastTest(data);
   }
+  const { messageEn, messageRu, messageUz, mediaItems, mediaPosition } = data;
+  const body = {
+    message_text: messageEn,
+    messages: { en: messageEn, ru: messageRu, uz: messageUz },
+    media_items: mediaItems ? mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type })) : null,
+    media_position: mediaPosition || 'above'
+  };
   const res = await fetch(`${API_BASE}/broadcast/test`, {
     method: 'POST',
     headers: getHeaders(),
@@ -166,6 +188,11 @@ export async function sendBroadcastTest(messageText, parseMode, mediaItems, medi
     throw new Error(err.error || 'Failed to send broadcast test');
   }
   return res.json();
+}
+
+// Positional version for compatibility
+export async function sendBroadcastTest(messageText, parseMode, mediaItems, mediaPosition) {
+    return testBroadcast({ messageEn: messageText, mediaItems, mediaPosition });
 }
 
 export async function getResponses(questionId) {
@@ -189,6 +216,12 @@ export async function translateTexts(textBlocks) {
     throw new Error(err.error || 'Translation failed. Please try again.');
   }
   return res.json();
+}
+
+// Alias for App.jsx compatibility
+export async function translateBroadcast(text) {
+  const data = await translateTexts([text]);
+  return data[0];
 }
 
 /**
@@ -321,13 +354,15 @@ export async function sendScheduledMessageNow(id) {
 
 // ─── Confirmation Broadcast API ───
 
-export async function sendConfirmationBroadcast(messageText, parseMode, messages, mediaItems, mediaPosition, buttons) {
-  const body = { message_text: messageText, parse_mode: parseMode, buttons };
-  if (messages) body.messages = messages;
-  if (mediaItems && mediaItems.length > 0) {
-    body.media_items = mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type }));
-    body.media_position = mediaPosition || 'above';
-  }
+export async function sendConfirmationBroadcast(data) {
+  const { messageEn, messageRu, messageUz, buttons, mediaItems, mediaPosition } = data;
+  const body = {
+    message_text: messageEn,
+    messages: { en: messageEn, ru: messageRu, uz: messageUz },
+    buttons,
+    media_items: mediaItems ? mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type })) : null,
+    media_position: mediaPosition || 'above'
+  };
   const res = await fetch(`${API_BASE}/broadcast/confirmation/send`, {
     method: 'POST',
     headers: getHeaders(),
@@ -340,12 +375,15 @@ export async function sendConfirmationBroadcast(messageText, parseMode, messages
   return res.json();
 }
 
-export async function sendConfirmationBroadcastTest(messageText, parseMode, mediaItems, mediaPosition, buttons) {
-  const body = { message_text: messageText, parse_mode: parseMode, buttons };
-  if (mediaItems && mediaItems.length > 0) {
-    body.media_items = mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type }));
-    body.media_position = mediaPosition || 'above';
-  }
+export async function sendConfirmationBroadcastTest(data) {
+  const { messageEn, messageRu, messageUz, buttons, mediaItems, mediaPosition } = data;
+  const body = {
+    message_text: messageEn,
+    messages: { en: messageEn, ru: messageRu, uz: messageUz },
+    buttons,
+    media_items: mediaItems ? mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type })) : null,
+    media_position: mediaPosition || 'above'
+  };
   const res = await fetch(`${API_BASE}/broadcast/confirmation/test`, {
     method: 'POST',
     headers: getHeaders(),
@@ -366,6 +404,9 @@ export async function getBroadcasts(type) {
   return res.json();
 }
 
+// Alias for App.jsx compatibility
+export const getBroadcastHistory = getBroadcasts;
+
 export async function getBroadcastDeliveries(broadcastId) {
   const res = await fetch(`${API_BASE}/broadcasts/${broadcastId}/deliveries`, {
     headers: getHeaders(),
@@ -381,6 +422,9 @@ export async function getBroadcastButtonClicks(broadcastId) {
   if (!res.ok) throw new Error('Failed to fetch button clicks');
   return res.json();
 }
+
+// Alias for App.jsx compatibility
+export const getConfirmationClicks = getBroadcastButtonClicks;
 
 export async function getChatLogs() {
   const res = await fetch(`${API_BASE}/chat-logs?t=${Date.now()}`, {

@@ -183,11 +183,11 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
           managementGroupId, 
           sentMessage.message_id, 
           undefined, 
-          '🔒 *Media stored securely for upcoming broadcast.*', 
-          { parse_mode: 'Markdown' }
+          '🔒 <b>Media stored securely for upcoming broadcast.</b>', 
+          { parse_mode: 'HTML' }
         );
-      } catch (_) {
-        // Non-critical: ignore if edit fails
+      } catch (editErr) {
+        console.warn('[API] Failed to edit caption:', editErr.message);
       }
 
       if (!fileId) {

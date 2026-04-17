@@ -249,8 +249,8 @@ function MediaPositionSelector({ name, position, onChange }) {
   );
 }
 
-function FormattingToolbar({ textareaRef, value, onChange }) {
-  const insertTag = (tag) => {
+function useFormattingToolbar(textareaRef, value, onChange) {
+  const insertTag = useCallback((tag) => {
     const el = textareaRef.current;
     if (!el) return;
     const start = el.selectionStart;
@@ -266,15 +266,15 @@ function FormattingToolbar({ textareaRef, value, onChange }) {
       el.focus();
       el.setSelectionRange(start + open.length, start + open.length + selected.length);
     }, 10);
-  };
+  }, [textareaRef, value, onChange]);
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = useCallback((e) => {
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
       if (e.key === 'b') { e.preventDefault(); insertTag('b'); }
       if (e.key === 'i') { e.preventDefault(); insertTag('i'); }
       if (e.key === 'u') { e.preventDefault(); insertTag('u'); }
     }
-  };
+  }, [insertTag]);
 
   const toolbar = (
     <div className="formatting-toolbar">
@@ -675,12 +675,12 @@ function BroadcastPage() {
   const confUzRef = useRef(null);
 
   // Toolbar setup
-  const regFmt = FormattingToolbar({ textareaRef: regTextareaRef, value: message, onChange: setMessage });
-  const regFmtRu = FormattingToolbar({ textareaRef: regRuRef, value: messageRu, onChange: setMessageRu });
-  const regFmtUz = FormattingToolbar({ textareaRef: regUzRef, value: messageUz, onChange: setMessageUz });
-  const confFmt = FormattingToolbar({ textareaRef: confTextareaRef, value: confMessage, onChange: setConfMessage });
-  const confFmtRu = FormattingToolbar({ textareaRef: confRuRef, value: confMessageRu, onChange: setConfMessageRu });
-  const confFmtUz = FormattingToolbar({ textareaRef: confUzRef, value: confMessageUz, onChange: setConfMessageUz });
+  const regFmt = useFormattingToolbar(regTextareaRef, message, setMessage);
+  const regFmtRu = useFormattingToolbar(regRuRef, messageRu, setMessageRu);
+  const regFmtUz = useFormattingToolbar(regUzRef, messageUz, setMessageUz);
+  const confFmt = useFormattingToolbar(confTextareaRef, confMessage, setConfMessage);
+  const confFmtRu = useFormattingToolbar(confRuRef, confMessageRu, setConfMessageRu);
+  const confFmtUz = useFormattingToolbar(confUzRef, confMessageUz, setConfMessageUz);
 
   useEffect(() => {
     (async () => {
@@ -1772,7 +1772,7 @@ function MessageManagerPage() {
   const [status, setStatus] = useState(null);
   const [processing, setProcessing] = useState(false);
   const textareaRef = useRef(null);
-  const { handleKeyDown, toolbar } = FormattingToolbar({ textareaRef, value: newText, onChange: setNewText });
+  const { handleKeyDown, toolbar } = useFormattingToolbar(textareaRef, newText, setNewText);
 
   const handleDelete = async () => {
     if (!url.trim()) return setStatus({ type: 'error', text: 'Please enter a message URL.' });
