@@ -262,7 +262,7 @@ async function startBot() {
         }
       } catch (err) {
         console.error('[BOT] Error handling bcast callback:', err.message);
-        try { await ctx.answerCbQuery('An error occurred.'); } catch (_) {}
+        try { await ctx.answerCbQuery('An error occurred.'); } catch (err) { console.warn('[BOT] Failed to answer callback query:', err.message); }
       }
     });
 
@@ -284,7 +284,7 @@ async function startBot() {
 
         if (!data || !data.startsWith('answer_')) {
           // Unknown callback data — acknowledge to clear Telegram UI spinner
-          try { await ctx.answerCbQuery(); } catch (_) {}
+          try { await ctx.answerCbQuery(); } catch (err) { console.warn('[BOT] Failed to answer callback query:', err.message); }
           return;
         }
 

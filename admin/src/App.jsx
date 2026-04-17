@@ -282,9 +282,9 @@ function useFormattingToolbar(textareaRef, value, onChange) {
       <button type="button" onClick={() => insertTag('i')} title="Italic (Ctrl+I)"><i>I</i></button>
       <button type="button" onClick={() => insertTag('u')} title="Underline (Ctrl+U)"><u>U</u></button>
       <button type="button" onClick={() => insertTag('code')} title="Monospace"><code>&lt;/&gt;</code></button>
-      <button type="button" onClick={() => insertTag('pre')} title="Code Block" style={{ fontSize: 10 }}>PRE</button>
+      <button type="button" onClick={() => insertTag('pre')} title="Code Block" style={{ fontSize: 13 }}>PRE</button>
       <div style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 4px' }} />
-      <button type="button" onClick={() => onChange(value + '<a href="URL">link</a>')} title="Link" style={{ fontSize: 10 }}>LINK</button>
+      <button type="button" onClick={() => onChange(value + '<a href="URL">link</a>')} title="Link" style={{ fontSize: 13 }}>LINK</button>
     </div>
   );
 
@@ -358,20 +358,24 @@ function GroupsPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
 
-  const fetchGroups = useCallback(async () => {
+  const fetchGroups = useCallback(async (isMounted = true) => {
     setLoading(true);
     try {
       const data = await api.getGroups();
       const sorted = data.sort((a, b) => getDaysUntilBirthday(a.driver_birthday) - getDaysUntilBirthday(b.driver_birthday));
-      setGroups(sorted);
+      if (isMounted) setGroups(sorted);
     } catch (err) {
-      setMessage({ type: 'error', text: err.message });
+      if (isMounted) setMessage({ type: 'error', text: err.message });
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchGroups(); }, [fetchGroups]);
+  useEffect(() => {
+    let isMounted = true;
+    fetchGroups(isMounted);
+    return () => { isMounted = false; };
+  }, [fetchGroups]);
 
   const handleLanguageChange = async (groupId, language) => {
     try {
@@ -454,18 +458,22 @@ function QuestionsPage() {
   const [expanded, setExpanded] = useState(null);
   const [responses, setResponses] = useState({});
 
-  const fetchQuestions = useCallback(async () => {
+  const fetchQuestions = useCallback(async (isMounted = true) => {
     try {
       const data = await api.getQuestions();
-      setQuestions(data);
+      if (isMounted) setQuestions(data);
     } catch (err) {
-      setError(err.message);
+      if (isMounted) setError(err.message);
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchQuestions(); }, [fetchQuestions]);
+  useEffect(() => {
+    let isMounted = true;
+    fetchQuestions(isMounted);
+    return () => { isMounted = false; };
+  }, [fetchQuestions]);
 
   const toggleQuestion = async (id) => {
     if (expanded === id) {
@@ -558,21 +566,26 @@ function ChatLogsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchLogs = useCallback(async () => {
+  const fetchLogs = useCallback(async (isMounted = true) => {
     try {
       const data = await api.getChatLogs();
-      setLogs(data);
+      if (isMounted) setLogs(data);
     } catch (err) {
-      setError(err.message);
+      if (isMounted) setError(err.message);
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 10000);
-    return () => clearInterval(interval);
+    let isMounted = true;
+    const tick = () => fetchLogs(isMounted);
+    tick();
+    const interval = setInterval(tick, 10000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [fetchLogs]);
 
   const formatDate = (date) => new Date(date).toLocaleString();
@@ -1475,10 +1488,10 @@ function EmployeeVotingPage() {
         <button
           className="btn btn-primary"
           onClick={handleCreate}
-          disabled={!canCreate}
+          disabled={!canCreate || creating}
           title={activePoll ? 'Close the current active poll first' : units.length < 2 ? 'Need at least 2 drivers' : ''}
         >
-          {creating ? '⏳ Creating...' : '🗳️ Create New Poll'}
+          {creating ? '⏳ Creating...' : '🗳️ Create Poll & Send to Telegram'}
         </button>
       </div>
 
@@ -1624,26 +1637,33 @@ function ScheduledMessagesPage() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
+  const [processing, setProcessing] = useState(false);
 
-  const loadMessages = useCallback(async () => {
+  const loadMessages = useCallback(async (isMounted = true) => {
     try {
       const data = await api.getScheduledMessages();
-      setMessages(data);
+      if (isMounted) setMessages(data);
     } catch (err) {
-      setStatus({ type: 'error', text: err.message });
+      if (isMounted) setStatus({ type: 'error', text: err.message });
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadMessages();
-    const interval = setInterval(loadMessages, 30000);
-    return () => clearInterval(interval);
+    let isMounted = true;
+    const tick = () => loadMessages(isMounted);
+    tick();
+    const interval = setInterval(tick, 30000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [loadMessages]);
 
   const handleCancel = async (id) => {
     if (!window.confirm('Cancel this scheduled message?')) return;
+    setProcessing(true);
     try {
       await api.cancelScheduledMessage(id);
       setStatus({ type: 'success', text: 'Message cancelled.' });
@@ -1651,11 +1671,14 @@ function ScheduledMessagesPage() {
       setTimeout(() => setStatus(null), 3000);
     } catch (err) {
       setStatus({ type: 'error', text: err.message });
+    } finally {
+      setProcessing(false);
     }
   };
 
   const handleSendNow = async (id) => {
     if (!window.confirm('Send this message immediately?')) return;
+    setProcessing(true);
     try {
       const result = await api.sendScheduledMessageNow(id);
       setStatus({ type: 'success', text: `Message sent! ${result.sent} group(s) received, ${result.failed} failed.` });
@@ -1663,6 +1686,8 @@ function ScheduledMessagesPage() {
       setTimeout(() => setStatus(null), 5000);
     } catch (err) {
       setStatus({ type: 'error', text: err.message });
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -1747,11 +1772,11 @@ function ScheduledMessagesPage() {
                   <td>
                     {msg.status === 'pending' && (
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn btn-ghost btn-sm" onClick={() => handleSendNow(msg.id)} style={{ fontSize: 11, padding: '4px 10px' }}>
-                          📤 Send Now
+                        <button className="btn btn-ghost btn-sm" onClick={() => handleSendNow(msg.id)} disabled={processing} style={{ fontSize: 11, padding: '4px 10px' }}>
+                          {processing ? '⏳' : '📤 Send Now'}
                         </button>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleCancel(msg.id)} style={{ fontSize: 11, padding: '4px 10px' }}>
-                          ✕ Cancel
+                        <button className="btn btn-danger btn-sm" onClick={() => handleCancel(msg.id)} disabled={processing} style={{ fontSize: 11, padding: '4px 10px' }}>
+                          {processing ? '⏳' : '✕ Cancel'}
                         </button>
                       </div>
                     )}
@@ -1850,10 +1875,10 @@ function MessageManagerPage() {
 
         <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
           <button className="btn btn-primary" onClick={handleEdit} disabled={processing || !url || !newText}>
-            ✏️ Edit Message
+            {processing ? '⏳ Saving...' : '✏️ Edit Message'}
           </button>
           <button className="btn btn-danger" onClick={handleDelete} disabled={processing || !url}>
-            🗑️ Delete Message
+            {processing ? '⏳ Deleting...' : '🗑️ Delete Message'}
           </button>
         </div>
       </div>
@@ -1878,30 +1903,39 @@ function CompanyBirthdaysPage() {
   const [editLn, setEditLn] = useState('');
   const [editBd, setEditBd] = useState('');
 
-  const loadData = async () => {
+  const loadData = async (isMounted = true) => {
     setLoading(true);
     try {
       const data = await api.getEmployeeBirthdays();
       const sorted = data.sort((a, b) => getDaysUntilBirthday(a.birthday) - getDaysUntilBirthday(b.birthday));
-      setEmployees(sorted);
+      if (isMounted) setEmployees(sorted);
     } catch (err) {
-      setStatus({ type: 'error', text: err.message });
+      if (isMounted) setStatus({ type: 'error', text: err.message });
     } finally {
-      setLoading(false);
+      if (isMounted) setLoading(false);
     }
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    let isMounted = true;
+    loadData(isMounted);
+    return () => { isMounted = false; };
+  }, []);
 
   const handleManualAdd = async (e) => {
     e.preventDefault();
     if (!newFn || !newLn || !newBd) return;
+    setRequesting(true);
     try {
       await api.createEmployeeBirthday({ firstName: newFn, lastName: newLn, birthday: newBd });
       setNewFn(''); setNewLn(''); setNewBd('');
       setStatus({ type: 'success', text: 'Employee added successfully!' });
       loadData();
-    } catch (err) { setStatus({ type: 'error', text: err.message }); }
+    } catch (err) { 
+      setStatus({ type: 'error', text: err.message }); 
+    } finally {
+      setRequesting(false);
+    }
   };
 
   const handleDelete = async (id) => {
@@ -1921,12 +1955,17 @@ function CompanyBirthdaysPage() {
   };
 
   const handleUpdate = async (id) => {
+    setRequesting(true);
     try {
       await api.updateEmployeeBirthday(id, { firstName: editFn, lastName: editLn, birthday: editBd });
       setEditingId(null);
       setStatus({ type: 'success', text: 'Employee updated!' });
       loadData();
-    } catch (err) { setStatus({ type: 'error', text: err.message }); }
+    } catch (err) { 
+      setStatus({ type: 'error', text: err.message }); 
+    } finally {
+      setRequesting(false);
+    }
   };
 
   const handleSendRequest = async () => {
@@ -1953,7 +1992,7 @@ function CompanyBirthdaysPage() {
         <div style={{ display: 'flex', gap: 12 }}>
           <button className="btn btn-ghost" onClick={loadData}>🔄 Refresh</button>
           <button className="btn btn-primary" onClick={handleSendRequest} disabled={requesting}>
-            {requesting ? '⏳ Sending...' : '💬 Send Telegram Request'}
+            {requesting ? '⏳ Requesting...' : '💬 Send Telegram Request'}
           </button>
         </div>
       </div>
@@ -1975,7 +2014,9 @@ function CompanyBirthdaysPage() {
             <label>Birthday</label>
             <input className="form-input" type="date" value={newBd} onChange={e => setNewBd(e.target.value)} required />
           </div>
-          <button className="btn btn-primary" type="submit">Add Employee</button>
+          <button className="btn btn-primary" type="submit" disabled={requesting}>
+            {requesting ? '⏳ Adding...' : 'Add Employee'}
+          </button>
         </form>
       </div>
 
@@ -2007,7 +2048,9 @@ function CompanyBirthdaysPage() {
                       <td><input className="form-input" value={editLn} onChange={e => setEditLn(e.target.value)} /></td>
                       <td><input className="form-input" type="date" value={editBd} onChange={e => setEditBd(e.target.value)} /></td>
                       <td style={{ textAlign: 'right' }}>
-                        <button className="btn btn-primary btn-sm" onClick={() => handleUpdate(emp.id)} style={{ marginRight: 8 }}>Save</button>
+                        <button className="btn btn-primary btn-sm" onClick={() => handleUpdate(emp.id)} disabled={requesting} style={{ marginRight: 8 }}>
+                          {requesting ? '⏳' : 'Save'}
+                        </button>
                         <button className="btn btn-ghost btn-sm" onClick={() => setEditingId(null)}>Cancel</button>
                       </td>
                     </>
@@ -2036,6 +2079,7 @@ export default function App() {
   const [authed, setAuthed] = useState(false);
   const [checking, setChecking] = useState(true);
   const [page, setPage] = useState('groups');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -2079,7 +2123,7 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <aside className="sidebar">
+      <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-logo">
           <h1>🚛 Driver Feedback</h1>
           <p>Admin Panel</p>
@@ -2149,7 +2193,12 @@ export default function App() {
           </button>
         </div>
       </aside>
-      <main className="main-content">
+      <main className="main-content" onClick={() => setMobileMenuOpen(false)}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '20px' }}>
+          <button className="mobile-menu-btn" onClick={(e) => { e.stopPropagation(); setMobileMenuOpen(!mobileMenuOpen); }}>
+            ☰
+          </button>
+        </div>
         {pages[page]}
       </main>
     </div>

@@ -19,10 +19,7 @@ export async function login(username, password) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
   });
-  if (!res.ok) {
-    const data = await res.json();
-    throw new Error(data.error || 'Login failed');
-  }
+  if (!res.ok) { await handleApiError(res); }
   const data = await res.json();
   localStorage.setItem('token', data.token);
   return data;
@@ -41,7 +38,7 @@ export function logout() {
 
 export async function getGroups() {
   const res = await fetch(`${API_BASE}/groups`, { headers: getHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch groups');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -51,7 +48,7 @@ export async function setGroupLanguage(groupId, language) {
     headers: getHeaders(),
     body: JSON.stringify({ language }),
   });
-  if (!res.ok) throw new Error('Failed to update language');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -61,20 +58,20 @@ export async function setGroupBirthday(groupId, birthday) {
     headers: getHeaders(),
     body: JSON.stringify({ birthday: birthday || null }),
   });
-  if (!res.ok) throw new Error('Failed to update birthday');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
 
 export async function getQuestions() {
   const res = await fetch(`${API_BASE}/questions`, { headers: getHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch questions');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
 export async function getQuestion(id) {
   const res = await fetch(`${API_BASE}/questions/${id}`, { headers: getHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch question');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -84,10 +81,7 @@ export async function createQuestion(data) {
     headers: getHeaders(),
     body: JSON.stringify(data),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to create question');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -96,10 +90,7 @@ export async function sendQuestion(questionId) {
     method: 'POST',
     headers: getHeaders(),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to send question');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -108,7 +99,7 @@ export async function deactivateQuestion(questionId) {
     method: 'PUT',
     headers: getHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to deactivate question');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -123,10 +114,7 @@ export async function sendTestQuestion(questionEn, optionsEn, mediaItems, mediaP
     headers: getHeaders(),
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to send test question');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -160,10 +148,7 @@ export async function sendBroadcast(dataOrText, parseMode, messages, mediaItems,
     headers: getHeaders(),
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to send broadcast');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -183,10 +168,7 @@ export async function testBroadcast(data) {
     headers: getHeaders(),
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to send broadcast test');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -197,7 +179,7 @@ export async function sendBroadcastTest(messageText, parseMode, mediaItems, medi
 
 export async function getResponses(questionId) {
   const res = await fetch(`${API_BASE}/responses/${questionId}`, { headers: getHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch responses');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -211,10 +193,7 @@ export async function translateTexts(textBlocks) {
       text_blocks: textBlocks,
     }),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Translation failed. Please try again.');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -237,10 +216,7 @@ export async function uploadMedia(file) {
     headers: getAuthHeader(),
     body: formData,
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to upload media');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -248,13 +224,13 @@ export async function uploadMedia(file) {
 
 export async function getDriverUnits() {
   const res = await fetch(`${API_BASE}/voting/units`, { headers: getHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch driver units');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
 export async function getVotingPolls() {
   const res = await fetch(`${API_BASE}/voting/polls`, { headers: getHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch polls');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -264,22 +240,19 @@ export async function createVotingPoll(question) {
     headers: getHeaders(),
     body: JSON.stringify({ question }),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to create poll');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
 export async function getPollResults(pollId) {
   const res = await fetch(`${API_BASE}/voting/polls/${pollId}/results`, { headers: getHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch poll results');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
 export async function getPollVoters(pollId) {
   const res = await fetch(`${API_BASE}/voting/polls/${pollId}/voters`, { headers: getHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch poll voters');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -288,7 +261,7 @@ export async function closePoll(pollId) {
     method: 'PUT',
     headers: getHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to close poll');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -297,7 +270,7 @@ export async function resetPoll(pollId) {
     method: 'PUT',
     headers: getHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to reset poll');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -305,7 +278,7 @@ export async function resetPoll(pollId) {
 
 export async function getDriverGroups() {
   const res = await fetch(`${API_BASE}/groups/driver-list`, { headers: getHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch driver groups');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -315,16 +288,13 @@ export async function createScheduledMessage(data) {
     headers: getHeaders(),
     body: JSON.stringify(data),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to create scheduled message');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
 export async function getScheduledMessages() {
   const res = await fetch(`${API_BASE}/scheduled-messages`, { headers: getHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch scheduled messages');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -333,10 +303,7 @@ export async function cancelScheduledMessage(id) {
     method: 'PUT',
     headers: getHeaders(),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to cancel message');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -345,10 +312,7 @@ export async function sendScheduledMessageNow(id) {
     method: 'PUT',
     headers: getHeaders(),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to send message');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -368,10 +332,7 @@ export async function sendConfirmationBroadcast(data) {
     headers: getHeaders(),
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to send confirmation broadcast');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -389,10 +350,7 @@ export async function sendConfirmationBroadcastTest(data) {
     headers: getHeaders(),
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to send confirmation broadcast test');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -400,7 +358,7 @@ export async function getBroadcasts(type) {
   const res = await fetch(`${API_BASE}/broadcasts?type=${encodeURIComponent(type || 'regular')}`, {
     headers: getHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to fetch broadcasts');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -411,7 +369,7 @@ export async function getBroadcastDeliveries(broadcastId) {
   const res = await fetch(`${API_BASE}/broadcasts/${broadcastId}/deliveries`, {
     headers: getHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to fetch deliveries');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -419,7 +377,7 @@ export async function getBroadcastButtonClicks(broadcastId) {
   const res = await fetch(`${API_BASE}/broadcasts/${broadcastId}/clicks`, {
     headers: getHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to fetch button clicks');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -430,7 +388,7 @@ export async function getChatLogs() {
   const res = await fetch(`${API_BASE}/chat-logs?t=${Date.now()}`, {
     headers: getHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to fetch chat logs');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -440,10 +398,7 @@ export async function editTelegramMessage(url, newText) {
     headers: getHeaders(),
     body: JSON.stringify({ url, newText })
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to edit message');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -453,16 +408,13 @@ export async function deleteTelegramMessage(url) {
     headers: getHeaders(),
     body: JSON.stringify({ url })
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to delete message');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
 export async function getEmployeeBirthdays() {
   const res = await fetch(`${API_BASE}/employee-birthdays`, { headers: getHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch employee birthdays');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -470,10 +422,7 @@ export async function sendEmployeeBirthdayRequest() {
   const res = await fetch(`${API_BASE}/employee-birthdays/request`, {
     method: 'POST', headers: getHeaders(),
   });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || 'Failed to send request');
-  }
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -482,7 +431,7 @@ export async function createEmployeeBirthday(data) {
     method: 'POST', headers: getHeaders(),
     body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error('Failed to add employee');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -491,7 +440,7 @@ export async function updateEmployeeBirthday(id, data) {
     method: 'PUT', headers: getHeaders(),
     body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error('Failed to update employee');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
@@ -499,6 +448,6 @@ export async function deleteEmployeeBirthday(id) {
   const res = await fetch(`${API_BASE}/employee-birthdays/${id}`, {
     method: 'DELETE', headers: getHeaders()
   });
-  if (!res.ok) throw new Error('Failed to delete employee');
+  if (!res.ok) { await handleApiError(res); }
   return res.json();
 }

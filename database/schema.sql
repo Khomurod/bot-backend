@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS employee_votes_options (
   driver_name TEXT,
   company_name TEXT,
   driver_type TEXT,
-  group_id INTEGER
+  group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS employee_votes (
