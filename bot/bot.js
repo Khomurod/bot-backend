@@ -193,9 +193,23 @@ async function startBot() {
       return next();
     });
 
-    // ── Generic message listener for chat logging ──
     bot.on('message', async (ctx, next) => {
       try {
+        // Catch Telegram group upgrades to Supergroups
+        if (ctx.message && ctx.message.migrate_to_chat_id) {
+          const oldId = ctx.chat.id;
+          const newId = ctx.message.migrate_to_chat_id;
+          try {
+            await db.query(
+              'UPDATE groups SET telegram_group_id = $1 WHERE telegram_group_id = $2', 
+              [newId, oldId]
+            );
+            console.log(`[BOT] Migrated group ID from ${oldId} to ${newId}`);
+          } catch (e) {
+            console.error('[BOT] Failed to migrate group ID:', e.message);
+          }
+          return next();
+        }
         const chat = ctx.chat;
         // Only log if it's a group
         if (chat && (chat.type === 'group' || chat.type === 'supergroup')) {
@@ -426,12 +440,20 @@ async function reportToManagement(driver, group, questionId, optionId) {
 async function sendMedia(chatId, mediaItems, caption, parseMode, keyboard) {
   if (!mediaItems || mediaItems.length === 0) return;
 
+  // Telegram limits captions to 1024 chars. If longer, send media without caption, then send text.
+  let safeCaption = caption;
+  let textToFollowUp = null;
+  if (caption && caption.length > 1000) {
+    safeCaption = null;
+    textToFollowUp = caption;
+  }
+
   if (mediaItems.length === 1) {
-    // ── Single file: sendPhoto/sendVideo — supports caption + buttons ──
+    // Single file
     const { file_id, media_type } = mediaItems[0];
     const opts = { ...(keyboard || {}) };
-    if (caption) {
-      opts.caption = caption;
+    if (safeCaption) {
+      opts.caption = safeCaption;
       if (parseMode) opts.parse_mode = parseMode;
     }
     if (media_type === 'video') {
@@ -440,14 +462,21 @@ async function sendMedia(chatId, mediaItems, caption, parseMode, keyboard) {
       await bot.telegram.sendPhoto(chatId, file_id, opts);
     }
   } else {
-    // ── Multiple files: sendMediaGroup album ──
-    // Telegram: caption goes on first item only; inline keyboard NOT supported on albums
+    // Multiple files (Album)
     const group = mediaItems.map((m, i) => ({
       type: m.media_type === 'video' ? 'video' : 'photo',
       media: m.file_id,
-      ...(i === 0 && caption ? { caption, parse_mode: parseMode } : {}),
+      ...(i === 0 && safeCaption ? { caption: safeCaption, parse_mode: parseMode } : {}),
     }));
     await bot.telegram.sendMediaGroup(chatId, group);
+  }
+
+  // If the caption was too long, send it as a standalone text message immediately after
+  if (textToFollowUp) {
+    await bot.telegram.sendMessage(chatId, textToFollowUp, { 
+      parse_mode: parseMode,
+      ...(keyboard || {}) 
+    });
   }
 }
 

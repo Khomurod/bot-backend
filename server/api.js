@@ -177,11 +177,17 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
         fileId = photos && photos.length > 0 ? photos[photos.length - 1].file_id : null;
       }
 
-      // Delete the temp message from management group
+      // Edit the caption instead of deleting, so Telegram keeps the file_id alive
       try {
-        await bot.telegram.deleteMessage(managementGroupId, sentMessage.message_id);
+        await bot.telegram.editMessageCaption(
+          managementGroupId, 
+          sentMessage.message_id, 
+          undefined, 
+          '🔒 *Media stored securely for upcoming broadcast.*', 
+          { parse_mode: 'Markdown' }
+        );
       } catch (_) {
-        // Non-critical: ignore if delete fails
+        // Non-critical: ignore if edit fails
       }
 
       if (!fileId) {
@@ -209,7 +215,6 @@ app.get('/api/groups', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-
 // PUT /api/groups/:id/language
 app.put('/api/groups/:id/language', authMiddleware, async (req, res) => {
   try {
