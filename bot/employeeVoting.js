@@ -65,7 +65,7 @@ function registerVotingHandlers(bot) {
       console.error('[VOTING] Error handling vote callback:', err.message);
       try {
         await ctx.answerCbQuery('An error occurred. Please try again.');
-      } catch (_) {}
+      } catch (err) { console.warn('[BOT] Failed to answer callback query:', err.message); }
     }
   });
 }

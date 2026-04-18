@@ -14,7 +14,7 @@ function getDaysUntilBirthday(dateString) {
 }
 
 // ─────────────── Telegram Message Preview ───────────────
-function TelegramPreview({ text, buttons, label, langTabs, mediaItems, mediaPosition }) {
+const TelegramPreview = React.memo(function TelegramPreview({ text, buttons, label, langTabs, mediaItems, mediaPosition }) {
   const now = new Date();
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const [activeLang, setActiveLang] = React.useState('en');
@@ -91,13 +91,13 @@ function TelegramPreview({ text, buttons, label, langTabs, mediaItems, mediaPosi
       </div>
     </div>
   );
-}
+});
 
 // ─────────────── Media Uploader (multi-file) ───────────────
 // onAdd(item): item = { file_id, type, previewUrl }  — called when a file is uploaded
 // onRemove(index): remove item at index
 // items: [{ file_id, type, previewUrl }]
-function MediaUploader({ onAdd, onRemove, items }) {
+const MediaUploader = React.memo(function MediaUploader({ onAdd, onRemove, items }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(null);
@@ -229,7 +229,7 @@ function MediaUploader({ onAdd, onRemove, items }) {
       {uploadError && <div className="alert alert-error" style={{ marginTop: 8, marginBottom: 0 }}>⚠️ {uploadError}</div>}
     </div>
   );
-}
+});
 
 function MediaPositionSelector({ name, position, onChange }) {
   return (
@@ -358,24 +358,36 @@ function GroupsPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
 
-  const fetchGroups = useCallback(async (isMounted = true) => {
+  const fetchGroups = useCallback(async () => {
     setLoading(true);
     try {
       const data = await api.getGroups();
       const sorted = data.sort((a, b) => getDaysUntilBirthday(a.driver_birthday) - getDaysUntilBirthday(b.driver_birthday));
-      if (isMounted) setGroups(sorted);
+      setGroups(sorted);
     } catch (err) {
-      if (isMounted) setMessage({ type: 'error', text: err.message });
+      setMessage({ type: 'error', text: err.message });
     } finally {
-      if (isMounted) setLoading(false);
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     let isMounted = true;
-    fetchGroups(isMounted);
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const data = await api.getGroups();
+        const sorted = data.sort((a, b) => getDaysUntilBirthday(a.driver_birthday) - getDaysUntilBirthday(b.driver_birthday));
+        if (isMounted) setGroups(sorted);
+      } catch (err) {
+        if (isMounted) setMessage({ type: 'error', text: err.message });
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+    fetchData();
     return () => { isMounted = false; };
-  }, [fetchGroups]);
+  }, []);
 
   const handleLanguageChange = async (groupId, language) => {
     try {
@@ -458,22 +470,32 @@ function QuestionsPage() {
   const [expanded, setExpanded] = useState(null);
   const [responses, setResponses] = useState({});
 
-  const fetchQuestions = useCallback(async (isMounted = true) => {
+  const fetchQuestions = useCallback(async () => {
     try {
       const data = await api.getQuestions();
-      if (isMounted) setQuestions(data);
+      setQuestions(data);
     } catch (err) {
-      if (isMounted) setError(err.message);
+      setError(err.message);
     } finally {
-      if (isMounted) setLoading(false);
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     let isMounted = true;
-    fetchQuestions(isMounted);
+    const fetchData = async () => {
+      try {
+        const data = await api.getQuestions();
+        if (isMounted) setQuestions(data);
+      } catch (err) {
+        if (isMounted) setError(err.message);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+    fetchData();
     return () => { isMounted = false; };
-  }, [fetchQuestions]);
+  }, []);
 
   const toggleQuestion = async (id) => {
     if (expanded === id) {
@@ -566,27 +588,36 @@ function ChatLogsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchLogs = useCallback(async (isMounted = true) => {
+  const fetchLogs = useCallback(async () => {
     try {
       const data = await api.getChatLogs();
-      if (isMounted) setLogs(data);
+      setLogs(data);
     } catch (err) {
-      if (isMounted) setError(err.message);
+      setError(err.message);
     } finally {
-      if (isMounted) setLoading(false);
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     let isMounted = true;
-    const tick = () => fetchLogs(isMounted);
-    tick();
-    const interval = setInterval(tick, 10000);
+    const fetchData = async () => {
+      try {
+        const data = await api.getChatLogs();
+        if (isMounted) setLogs(data);
+      } catch (err) {
+        if (isMounted) setError(err.message);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+    fetchData();
+    const interval = setInterval(fetchData, 10000);
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [fetchLogs]);
+  }, []);
 
   const formatDate = (date) => new Date(date).toLocaleString();
 
@@ -1639,27 +1670,36 @@ function ScheduledMessagesPage() {
   const [status, setStatus] = useState(null);
   const [processing, setProcessing] = useState(false);
 
-  const loadMessages = useCallback(async (isMounted = true) => {
+  const loadMessages = useCallback(async () => {
     try {
       const data = await api.getScheduledMessages();
-      if (isMounted) setMessages(data);
+      setMessages(data);
     } catch (err) {
-      if (isMounted) setStatus({ type: 'error', text: err.message });
+      setStatus({ type: 'error', text: err.message });
     } finally {
-      if (isMounted) setLoading(false);
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     let isMounted = true;
-    const tick = () => loadMessages(isMounted);
-    tick();
-    const interval = setInterval(tick, 30000);
+    const fetchData = async () => {
+      try {
+        const data = await api.getScheduledMessages();
+        if (isMounted) setMessages(data);
+      } catch (err) {
+        if (isMounted) setStatus({ type: 'error', text: err.message });
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+    fetchData();
+    const interval = setInterval(fetchData, 30000);
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [loadMessages]);
+  }, []);
 
   const handleCancel = async (id) => {
     if (!window.confirm('Cancel this scheduled message?')) return;
@@ -1903,22 +1943,34 @@ function CompanyBirthdaysPage() {
   const [editLn, setEditLn] = useState('');
   const [editBd, setEditBd] = useState('');
 
-  const loadData = async (isMounted = true) => {
+  const loadData = async () => {
     setLoading(true);
     try {
       const data = await api.getEmployeeBirthdays();
       const sorted = data.sort((a, b) => getDaysUntilBirthday(a.birthday) - getDaysUntilBirthday(b.birthday));
-      if (isMounted) setEmployees(sorted);
+      setEmployees(sorted);
     } catch (err) {
-      if (isMounted) setStatus({ type: 'error', text: err.message });
+      setStatus({ type: 'error', text: err.message });
     } finally {
-      if (isMounted) setLoading(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     let isMounted = true;
-    loadData(isMounted);
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const data = await api.getEmployeeBirthdays();
+        const sorted = data.sort((a, b) => getDaysUntilBirthday(a.birthday) - getDaysUntilBirthday(b.birthday));
+        if (isMounted) setEmployees(sorted);
+      } catch (err) {
+        if (isMounted) setStatus({ type: 'error', text: err.message });
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+    fetchData();
     return () => { isMounted = false; };
   }, []);
 
