@@ -1,3 +1,20 @@
+async function handleApiError(res) {
+  let errorMessage = `HTTP Error: ${res.status}`;
+  try {
+    const contentType = res.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      const errData = await res.json();
+      errorMessage = errData.error || errorMessage;
+    } else {
+      const textData = await res.text();
+      errorMessage = textData.length < 200 ? textData : errorMessage;
+    }
+  } catch (e) {
+    // Fallback if parsing fails entirely
+  }
+  throw new Error(errorMessage);
+}
+
 const API_BASE = '/api';
 
 function getHeaders() {
