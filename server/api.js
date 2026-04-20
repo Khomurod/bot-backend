@@ -6,7 +6,7 @@ const path = require('path');
 const multer = require('multer');
 const config = require('../config/config');
 const db = require('../database/db');
-const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest, sendBroadcastToGroups, sendConfirmationBroadcast, sendConfirmationBroadcastTest } = require('../bot/bot');
+const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcastTest, sendBroadcastToGroups, sendConfirmationBroadcast, sendConfirmationBroadcastTest } = require('../bot/bot');
 const { translateBatch } = require('../services/translationService');
 const { generateDriverReport, generateCompanyReport, AI_REPORT_GENERATION_FAILED, callYandex } = require('../services/aiAnalysisService');
 const { buildTelegramMessageUrl } = require('../services/telegramUrl');
@@ -441,10 +441,44 @@ app.post('/api/translate', authMiddleware, async (req, res) => {
 
 // ─── Broadcast Routes ───
 
+async function resolveBroadcastTargetGroups(body) {
+  if (!body.target_type && Array.isArray(body.group_ids) && body.group_ids.length > 0) {
+    return db.getGroupsByIds(body.group_ids);
+  }
+  const tt = body.target_type || 'all';
+  if (tt === 'specific_drivers') {
+    const ids = body.target_driver_ids;
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+    return db.getGroupsByIds(ids);
+  }
+  if (tt === 'language_groups') {
+    const langs = body.target_languages;
+    if (!Array.isArray(langs) || langs.length === 0) return [];
+    return db.getGroupsByLanguages(langs);
+  }
+  return db.getAllDriverGroups();
+}
+
 // POST /api/broadcast/send
 app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
   try {
-    const { message_text, parse_mode, messages, group_ids } = req.body;
+    const {
+      message_text,
+      parse_mode,
+      messages,
+      target_type,
+      target_driver_ids,
+      target_languages,
+      force_language,
+    } = req.body;
+
+    let normalizedTargetType = target_type || 'all';
+    let storedDriverIds = target_driver_ids;
+    let storedLanguages = target_languages;
+    if (!target_type && Array.isArray(req.body.group_ids) && req.body.group_ids.length > 0) {
+      normalizedTargetType = 'specific_drivers';
+      storedDriverIds = req.body.group_ids;
+    }
 
     const primaryText = (messages && messages.en) || message_text;
     if (!primaryText || !primaryText.trim()) {
@@ -465,7 +499,16 @@ app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
       mediaItems = req.body.media_items;
     }
 
-    // Create a broadcast record first, then pass the broadcastId to sendBroadcast
+    const targetGroups = await resolveBroadcastTargetGroups({
+      ...req.body,
+      target_type: normalizedTargetType,
+      target_driver_ids: storedDriverIds,
+      target_languages: storedLanguages,
+    });
+    if (!targetGroups || targetGroups.length === 0) {
+      return res.status(400).json({ error: 'No valid target groups found. Broadcast aborted.' });
+    }
+
     const broadcast = await db.createBroadcast({
       type: 'regular',
       message_text_en: messages ? messages.en : primaryText.trim(),
@@ -474,16 +517,22 @@ app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
       media_items: mediaItems,
       media_position: mediaPosition,
       parse_mode: mode,
+      target_type: normalizedTargetType,
+      target_driver_ids: storedDriverIds || null,
+      target_languages: storedLanguages || null,
+      force_language: force_language || null,
     });
 
-    // If specific group_ids provided, send only to those groups; otherwise send to all
-    let results;
-    if (Array.isArray(group_ids) && group_ids.length > 0) {
-      const targetGroups = await db.getGroupsByIds(group_ids);
-      results = await sendBroadcastToGroups(targetGroups, primaryText.trim(), mode, messages || null, mediaItems, mediaPosition, broadcast.id);
-    } else {
-      results = await sendBroadcast(primaryText.trim(), mode, messages || null, mediaItems, mediaPosition, broadcast.id);
-    }
+    const results = await sendBroadcastToGroups(
+      targetGroups,
+      primaryText.trim(),
+      mode,
+      messages || null,
+      mediaItems,
+      mediaPosition,
+      broadcast.id,
+      force_language || null
+    );
     res.json({ ...results, broadcast_id: broadcast.id });
   } catch (err) {
     console.error('[API] Error sending broadcast:', err.message);
@@ -494,7 +543,7 @@ app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
 // POST /api/broadcast/test
 app.post('/api/broadcast/test', authMiddleware, async (req, res) => {
   try {
-    const { message_text, parse_mode, messages } = req.body;
+    const { message_text, parse_mode, messages, force_language } = req.body;
 
     const primaryText = (messages && messages.en) || message_text;
     if (!primaryText || !primaryText.trim()) {
@@ -512,7 +561,14 @@ app.post('/api/broadcast/test', authMiddleware, async (req, res) => {
       mediaItems = req.body.media_items;
     }
 
-    await sendBroadcastTest(primaryText.trim(), mode, mediaItems, mediaPosition);
+    await sendBroadcastTest(
+      primaryText.trim(),
+      mode,
+      messages || null,
+      mediaItems,
+      mediaPosition,
+      force_language || null
+    );
     res.json({ success: true });
   } catch (err) {
     console.error('[API] Error sending broadcast test:', err.message);
@@ -523,7 +579,24 @@ app.post('/api/broadcast/test', authMiddleware, async (req, res) => {
 // POST /api/broadcast/confirmation/send
 app.post('/api/broadcast/confirmation/send', authMiddleware, async (req, res) => {
   try {
-    const { message_text, parse_mode, messages, buttons } = req.body;
+    const {
+      message_text,
+      parse_mode,
+      messages,
+      buttons,
+      target_type,
+      target_driver_ids,
+      target_languages,
+      force_language,
+    } = req.body;
+
+    let normalizedTargetType = target_type || 'all';
+    let storedDriverIds = target_driver_ids;
+    let storedLanguages = target_languages;
+    if (!target_type && Array.isArray(req.body.group_ids) && req.body.group_ids.length > 0) {
+      normalizedTargetType = 'specific_drivers';
+      storedDriverIds = req.body.group_ids;
+    }
 
     const primaryText = (messages && messages.en) || message_text;
     if (!primaryText || !primaryText.trim()) {
@@ -547,6 +620,16 @@ app.post('/api/broadcast/confirmation/send', authMiddleware, async (req, res) =>
       mediaItems = req.body.media_items;
     }
 
+    const targetGroups = await resolveBroadcastTargetGroups({
+      ...req.body,
+      target_type: normalizedTargetType,
+      target_driver_ids: storedDriverIds,
+      target_languages: storedLanguages,
+    });
+    if (!targetGroups || targetGroups.length === 0) {
+      return res.status(400).json({ error: 'No valid target groups found. Broadcast aborted.' });
+    }
+
     const broadcast = await db.createBroadcast({
       type: 'confirmation',
       message_text_en: messages ? messages.en : primaryText.trim(),
@@ -556,10 +639,22 @@ app.post('/api/broadcast/confirmation/send', authMiddleware, async (req, res) =>
       media_position: mediaPosition,
       parse_mode: mode,
       buttons: buttons,
+      target_type: normalizedTargetType,
+      target_driver_ids: storedDriverIds || null,
+      target_languages: storedLanguages || null,
+      force_language: force_language || null,
     });
 
     const results = await sendConfirmationBroadcast(
-      primaryText.trim(), mode, messages || null, mediaItems, mediaPosition, buttons, broadcast.id
+      primaryText.trim(),
+      mode,
+      messages || null,
+      mediaItems,
+      mediaPosition,
+      buttons,
+      broadcast.id,
+      targetGroups,
+      force_language || null
     );
     res.json({ ...results, broadcast_id: broadcast.id });
   } catch (err) {
@@ -571,7 +666,7 @@ app.post('/api/broadcast/confirmation/send', authMiddleware, async (req, res) =>
 // POST /api/broadcast/confirmation/test
 app.post('/api/broadcast/confirmation/test', authMiddleware, async (req, res) => {
   try {
-    const { message_text, parse_mode, messages, buttons } = req.body;
+    const { message_text, parse_mode, messages, buttons, force_language } = req.body;
 
     const primaryText = (messages && messages.en) || message_text;
     if (!primaryText || !primaryText.trim()) {
@@ -589,7 +684,15 @@ app.post('/api/broadcast/confirmation/test', authMiddleware, async (req, res) =>
       mediaItems = req.body.media_items;
     }
 
-    await sendConfirmationBroadcastTest(primaryText.trim(), mode, mediaItems, mediaPosition, buttons || []);
+    await sendConfirmationBroadcastTest(
+      primaryText.trim(),
+      mode,
+      messages || null,
+      mediaItems,
+      mediaPosition,
+      buttons || [],
+      force_language || null
+    );
     res.json({ success: true });
   } catch (err) {
     console.error('[API] Error sending confirmation broadcast test:', err.message);

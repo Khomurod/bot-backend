@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import * as tgHtml from '@botServices/telegramHtml.js';
+import { sanitizeCompanyReportHtmlForTelegram } from './telegramHtmlPreview';
 import * as api from './api';
 
 function getDaysUntilBirthday(dateString) {
@@ -925,6 +925,12 @@ function BroadcastPage() {
 
   const handleConfSend = async () => {
     if (!confMessage.trim()) return;
+    if (targetType === 'specific_drivers' && selectedDriverIds.length === 0) {
+      return setConfStatus({ type: 'error', text: 'Please select at least one driver.' });
+    }
+    if (targetType === 'language_groups' && selectedLanguages.length === 0) {
+      return setConfStatus({ type: 'error', text: 'Please select at least one language.' });
+    }
     setConfSending(true);
     setConfStatus(null);
     try {
@@ -936,6 +942,10 @@ function BroadcastPage() {
         buttons: confirmationButtons,
         mediaItems: confMediaItems,
         mediaPosition: confMediaPosition,
+        targetType,
+        selectedDriverIds,
+        selectedLanguages,
+        forceLanguage,
       });
       setConfStatus({ type: 'success', text: `Confirmation broadcast sent! Sent: ${result.sent}, Failed: ${result.failed}` });
       setConfMessage(''); setConfMessageRu(''); setConfMessageUz('');
@@ -961,6 +971,7 @@ function BroadcastPage() {
         buttons: confirmationButtons,
         mediaItems: confMediaItems,
         mediaPosition: confMediaPosition,
+        forceLanguage,
       });
       setConfStatus({ type: 'success', text: 'Test confirmation sent to the management group.' });
     } catch (err) {
@@ -985,6 +996,78 @@ function BroadcastPage() {
         <button className={`nav-item ${broadcastTab === 'confirmation' ? 'active' : ''}`} onClick={() => setBroadcastTab('confirmation')} style={{ padding: '8px 20px', fontSize: 14 }}>Confirmation (Buttons)</button>
       </div>
 
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 12 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>🎯 Audience &amp; language</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>Force Language:</label>
+            <select className="form-input" style={{ width: 'auto', padding: '4px 8px', fontSize: 12 }} value={forceLanguage || ''} onChange={(e) => setForceLanguage(e.target.value || null)}>
+              <option value="">🔄 Auto (Group Default)</option>
+              <option value="en">🇺🇸 EN</option>
+              <option value="ru">🇷🇺 RU</option>
+              <option value="uz">🇺🇿 UZ</option>
+            </select>
+          </div>
+        </div>
+        <details className="collapse-panel">
+          <summary>Target groups</summary>
+          <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
+            <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                <input type="radio" name="target" value="all" checked={targetType === 'all'} onChange={() => setTargetType('all')} style={{ accentColor: 'var(--accent)' }} />
+                All Groups
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                <input type="radio" name="target" value="specific_drivers" checked={targetType === 'specific_drivers'} onChange={() => setTargetType('specific_drivers')} style={{ accentColor: 'var(--accent)' }} />
+                Specific Drivers
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                <input type="radio" name="target" value="language_groups" checked={targetType === 'language_groups'} onChange={() => setTargetType('language_groups')} style={{ accentColor: 'var(--accent)' }} />
+                By Language
+              </label>
+            </div>
+
+            {targetType === 'specific_drivers' && (
+              <div style={{ maxHeight: 200, overflowY: 'auto', background: 'var(--bg-primary)', borderRadius: 8, border: '1px solid var(--border)', padding: 8, marginBottom: 8 }}>
+                {driverGroups.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: 8 }}>No driver groups found.</p> : (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8, paddingRight: 8 }}>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
+                        if (selectedDriverIds.length === driverGroups.length) {
+                          setSelectedDriverIds([]);
+                        } else {
+                          setSelectedDriverIds(driverGroups.map(g => g.id));
+                        }
+                      }} style={{ padding: '4px 8px', fontSize: 11 }}>
+                        {selectedDriverIds.length === driverGroups.length ? 'Deselect All' : 'Select All'}
+                      </button>
+                    </div>
+                    {driverGroups.map(g => (
+                      <label key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', cursor: 'pointer', borderRadius: 6, fontSize: 13 }}>
+                        <input type="checkbox" checked={selectedDriverIds.includes(g.id)} onChange={() => toggleDriverId(g.id)} style={{ accentColor: 'var(--accent)' }} />
+                        <span style={{ fontWeight: 600 }}>{g.group_name || 'Unknown'}</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>({g.language?.toUpperCase()})</span>
+                      </label>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+
+            {targetType === 'language_groups' && (
+              <div style={{ display: 'flex', gap: 12, marginBottom: 0, flexWrap: 'wrap' }}>
+                {['en', 'ru', 'uz'].map(l => (
+                  <label key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', background: 'var(--bg-primary)', padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)' }}>
+                    <input type="checkbox" checked={selectedLanguages.includes(l)} onChange={() => toggleLanguage(l)} style={{ accentColor: 'var(--accent)' }} />
+                    {l.toUpperCase()}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
+      </div>
+
       {/* ════════ TAB 1: REGULAR ════════ */}
       {broadcastTab === 'regular' && (
         <div>
@@ -993,76 +1076,7 @@ function BroadcastPage() {
           <div className="broadcast-layout">
             <div className="broadcast-editor-section">
               <div className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h3 style={{ fontSize: 16, fontWeight: 600 }}>✍️ Compose Message</h3>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>Force Language:</label>
-                    <select className="form-input" style={{ width: 'auto', padding: '4px 8px', fontSize: 12 }} value={forceLanguage || ''} onChange={(e) => setForceLanguage(e.target.value || null)}>
-                      <option value="">🔄 Auto (Group Default)</option>
-                      <option value="en">🇺🇸 EN</option>
-                      <option value="ru">🇷🇺 RU</option>
-                      <option value="uz">🇺🇿 UZ</option>
-                    </select>
-                  </div>
-                </div>
-
-                <details className="collapse-panel" style={{ marginBottom: 16 }}>
-                  <summary>🎯 Target Groups</summary>
-                  <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
-                    <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                        <input type="radio" name="target" value="all" checked={targetType === 'all'} onChange={() => setTargetType('all')} style={{ accentColor: 'var(--accent)' }} />
-                        All Groups
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                        <input type="radio" name="target" value="specific_drivers" checked={targetType === 'specific_drivers'} onChange={() => setTargetType('specific_drivers')} style={{ accentColor: 'var(--accent)' }} />
-                        Specific Drivers
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                        <input type="radio" name="target" value="language_groups" checked={targetType === 'language_groups'} onChange={() => setTargetType('language_groups')} style={{ accentColor: 'var(--accent)' }} />
-                        By Language
-                      </label>
-                    </div>
-
-                    {targetType === 'specific_drivers' && (
-                      <div style={{ maxHeight: 200, overflowY: 'auto', background: 'var(--bg-primary)', borderRadius: 8, border: '1px solid var(--border)', padding: 8, marginBottom: 16 }}>
-                        {driverGroups.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: 8 }}>No driver groups found.</p> : (
-                          <>
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8, paddingRight: 8 }}>
-                              <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
-                                if (selectedDriverIds.length === driverGroups.length) {
-                                  setSelectedDriverIds([]);
-                                } else {
-                                  setSelectedDriverIds(driverGroups.map(g => g.id));
-                                }
-                              }} style={{ padding: '4px 8px', fontSize: 11 }}>
-                                {selectedDriverIds.length === driverGroups.length ? 'Deselect All' : 'Select All'}
-                              </button>
-                            </div>
-                            {driverGroups.map(g => (
-                              <label key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', cursor: 'pointer', borderRadius: 6, fontSize: 13 }}>
-                                <input type="checkbox" checked={selectedDriverIds.includes(g.id)} onChange={() => toggleDriverId(g.id)} style={{ accentColor: 'var(--accent)' }} />
-                                <span style={{ fontWeight: 600 }}>{g.group_name || 'Unknown'}</span>
-                                <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>({g.language?.toUpperCase()})</span>
-                              </label>
-                            ))}
-                          </>
-                        )}
-                      </div>
-                    )}
-
-                    {targetType === 'language_groups' && (
-                      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-                        {['en', 'ru', 'uz'].map(l => (
-                          <label key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', background: 'var(--bg-primary)', padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)' }}>
-                            <input type="checkbox" checked={selectedLanguages.includes(l)} onChange={() => toggleLanguage(l)} style={{ accentColor: 'var(--accent)' }} />
-                            {l.toUpperCase()}
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </details>
+                <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>✍️ Compose Message</h3>
 
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>Use the toolbar to format text with Telegram-compatible HTML tags.</p>
 
@@ -1840,7 +1854,7 @@ function ScheduledMessagesPage() {
 /** Combined company report HTML for Telegram-style preview (matches server sanitization). */
 function buildCompanyReportPreviewHtml(overall, breakdown) {
   const toPreview = (html) =>
-    tgHtml.sanitizeCompanyReportHtmlForTelegram(html).replace(/\n/g, '<br/>');
+    sanitizeCompanyReportHtmlForTelegram(html).replace(/\n/g, '<br/>');
   const o = toPreview(overall);
   const b = toPreview(breakdown);
   if (!o && !b) return '';

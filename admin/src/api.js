@@ -143,13 +143,27 @@ export async function sendBroadcast(dataOrText, parseMode, messages, mediaItems,
     if (dataOrText.type === 'confirmation') {
       return sendConfirmationBroadcast(dataOrText);
     }
-    const { messageEn, messageRu, messageUz, type, targetType, selectedDriverIds, selectedLanguages, mediaItems: items, mediaPosition: pos } = dataOrText;
+    const {
+      messageEn,
+      messageRu,
+      messageUz,
+      type,
+      targetType,
+      selectedDriverIds,
+      selectedLanguages,
+      forceLanguage,
+      mediaItems: items,
+      mediaPosition: pos,
+    } = dataOrText;
     body = {
       message_text: messageEn,
       messages: { en: messageEn, ru: messageRu, uz: messageUz },
-      group_ids: targetType === 'specific_drivers' ? selectedDriverIds : null,
+      target_type: targetType || 'all',
+      target_driver_ids: targetType === 'specific_drivers' ? selectedDriverIds : undefined,
+      target_languages: targetType === 'language_groups' ? selectedLanguages : undefined,
+      force_language: forceLanguage || null,
       media_items: items ? items.map(m => ({ file_id: m.file_id, media_type: m.type })) : null,
-      media_position: pos || 'above'
+      media_position: pos || 'above',
     };
   } else {
     body = { message_text: dataOrText, parse_mode: parseMode };
@@ -174,12 +188,13 @@ export async function testBroadcast(data) {
   if (data.type === 'confirmation') {
     return sendConfirmationBroadcastTest(data);
   }
-  const { messageEn, messageRu, messageUz, mediaItems, mediaPosition } = data;
+  const { messageEn, messageRu, messageUz, mediaItems, mediaPosition, forceLanguage } = data;
   const body = {
     message_text: messageEn,
     messages: { en: messageEn, ru: messageRu, uz: messageUz },
+    force_language: forceLanguage || null,
     media_items: mediaItems ? mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type })) : null,
-    media_position: mediaPosition || 'above'
+    media_position: mediaPosition || 'above',
   };
   const res = await fetch(`${API_BASE}/broadcast/test`, {
     method: 'POST',
@@ -337,13 +352,28 @@ export async function sendScheduledMessageNow(id) {
 // ─── Confirmation Broadcast API ───
 
 export async function sendConfirmationBroadcast(data) {
-  const { messageEn, messageRu, messageUz, buttons, mediaItems, mediaPosition } = data;
+  const {
+    messageEn,
+    messageRu,
+    messageUz,
+    buttons,
+    mediaItems,
+    mediaPosition,
+    targetType,
+    selectedDriverIds,
+    selectedLanguages,
+    forceLanguage,
+  } = data;
   const body = {
     message_text: messageEn,
     messages: { en: messageEn, ru: messageRu, uz: messageUz },
     buttons,
+    target_type: targetType || 'all',
+    target_driver_ids: targetType === 'specific_drivers' ? selectedDriverIds : undefined,
+    target_languages: targetType === 'language_groups' ? selectedLanguages : undefined,
+    force_language: forceLanguage || null,
     media_items: mediaItems ? mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type })) : null,
-    media_position: mediaPosition || 'above'
+    media_position: mediaPosition || 'above',
   };
   const res = await fetch(`${API_BASE}/broadcast/confirmation/send`, {
     method: 'POST',
@@ -355,13 +385,28 @@ export async function sendConfirmationBroadcast(data) {
 }
 
 export async function sendConfirmationBroadcastTest(data) {
-  const { messageEn, messageRu, messageUz, buttons, mediaItems, mediaPosition } = data;
+  const {
+    messageEn,
+    messageRu,
+    messageUz,
+    buttons,
+    mediaItems,
+    mediaPosition,
+    targetType,
+    selectedDriverIds,
+    selectedLanguages,
+    forceLanguage,
+  } = data;
   const body = {
     message_text: messageEn,
     messages: { en: messageEn, ru: messageRu, uz: messageUz },
     buttons,
+    force_language: forceLanguage || null,
+    target_type: targetType || 'all',
+    target_driver_ids: targetType === 'specific_drivers' ? selectedDriverIds : undefined,
+    target_languages: targetType === 'language_groups' ? selectedLanguages : undefined,
     media_items: mediaItems ? mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type })) : null,
-    media_position: mediaPosition || 'above'
+    media_position: mediaPosition || 'above',
   };
   const res = await fetch(`${API_BASE}/broadcast/confirmation/test`, {
     method: 'POST',
