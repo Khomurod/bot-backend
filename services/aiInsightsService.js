@@ -325,27 +325,27 @@ function computePulse(messages, buckets, daysBack) {
   };
 }
 
-// ── Narrative generation (one tiny Yandex call per card) ──────────
-const CARD_SYSTEM_PROMPT = [
-  'You are a briefing writer for a trucking company operations manager.',
-  'You will be given a tightly structured JSON briefing input about ONE card.',
-  'Write a 2-4 sentence narrative that a manager can read in 10 seconds.',
+// ── Narrative generation (Consolidated Yandex call for all cards) ──────────
+const BATCH_SYSTEM_PROMPT = [
+  'You are an executive auditor for a trucking company.',
+  'I am providing evidence for several operational categories in a JSON object.',
+  'Return a single, valid JSON object where the keys are the exact card IDs provided,',
+  'and the values are an object containing keys: narrative_html, suggested_action, severity (1..3).',
+  'The narrative_html should be a 1-2 sentence HTML-formatted narrative summarizing the evidence.',
   'Rules:',
   '- Ground every claim in the provided metrics or evidence excerpts.',
   '- Never fabricate facts. If evidence is thin, say "limited signal" explicitly.',
-  '- Use plain HTML only: <b>, <i>, <br>. No markdown, no <script>, no <style>.',
+  '- Use plain HTML only: <b>, <i>, <br>. DO NOT output markdown blocks, only raw JSON.',
   '- Include at most 3 inline <a href="..."> links using only URLs present in input.evidence.',
-  '- Output JSON only, with keys: narrative_html, suggested_action, severity (1..3).',
   '- Never include code fences or prose outside the JSON.',
 ].join('\n');
 
-function buildCardPrompt(cardContext) {
-  // cardContext is a compact object; keep below ~1 KB.
-  return `Card briefing input:\n${JSON.stringify(cardContext, null, 2)}`;
+function buildBatchCardPrompt(cardsContext) {
+  return `Cards briefing input:\n${JSON.stringify(cardsContext, null, 2)}`;
 }
 
-function parseCardNarrative(text) {
-  if (!text) return null;
+function parseBatchCardNarratives(text) {
+  if (!text) return {};
   const cleaned = String(text)
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/```\s*$/i, '')
@@ -353,38 +353,40 @@ function parseCardNarrative(text) {
   try {
     const parsed = JSON.parse(cleaned);
     if (parsed && typeof parsed === 'object') {
-      return {
-        narrative_html: typeof parsed.narrative_html === 'string'
-          ? parsed.narrative_html.slice(0, 4000)
-          : null,
-        suggested_action: typeof parsed.suggested_action === 'string'
-          ? parsed.suggested_action.slice(0, 500)
-          : null,
-        severity: Number.isFinite(Number(parsed.severity))
-          ? Math.max(1, Math.min(3, Math.round(Number(parsed.severity))))
-          : 1,
-      };
+      const result = {};
+      for (const [key, val] of Object.entries(parsed)) {
+        if (val && typeof val === 'object') {
+          result[key] = {
+             narrative_html: typeof val.narrative_html === 'string'
+               ? val.narrative_html.slice(0, 4000)
+               : null,
+             suggested_action: typeof val.suggested_action === 'string'
+               ? val.suggested_action.slice(0, 500)
+               : null,
+             severity: Number.isFinite(Number(val.severity))
+               ? Math.max(1, Math.min(3, Math.round(Number(val.severity))))
+               : 1,
+          };
+        }
+      }
+      return result;
     }
   } catch (_) { /* fall through */ }
-  // Recovery: treat raw text as narrative.
-  return { narrative_html: cleaned.slice(0, 2000), suggested_action: null, severity: 1 };
+  return {};
 }
 
-async function narrate(cardContext) {
+async function narrateBatch(cardsContext) {
+  if (Object.keys(cardsContext).length === 0) return {};
   try {
-    const raw = await callYandexRaw(buildCardPrompt(cardContext), {
-      systemText: CARD_SYSTEM_PROMPT,
+    const raw = await callYandexRaw(buildBatchCardPrompt(cardsContext), {
+      systemText: BATCH_SYSTEM_PROMPT,
       temperature: 0.3,
-      maxTokens: 600,
+      maxTokens: 3000,
     });
-    return parseCardNarrative(raw) || {
-      narrative_html: null,
-      suggested_action: null,
-      severity: 1,
-    };
+    return parseBatchCardNarratives(raw) || {};
   } catch (err) {
-    console.error('[AI-INSIGHTS] Narrative failed:', err.message);
-    return { narrative_html: null, suggested_action: null, severity: 1 };
+    console.error('[AI-INSIGHTS] Batch Narrative failed:', err.message);
+    return {};
   }
 }
 
@@ -392,14 +394,10 @@ async function narrate(cardContext) {
 async function generateInsightReport({ daysBack = 7, groupIds = null, reportType = 'company', groupIdForReport = null } = {}) {
   console.log(`[AI-INSIGHTS] Generating insight report (type=${reportType}, days=${daysBack})`);
 
-  // 1. Annotate any unannotated messages in scope
-  const { found, annotated } = await ensureAnnotationsForRange({ daysBack, groupIds });
-  console.log(`[AI-INSIGHTS] Annotations: found ${found} new, persisted ${annotated}`);
-
-  // 2. Refresh role consensus for these groups
+  // 1. Refresh role consensus for these groups
   await db.refreshSenderRoleConsensus(Math.max(30, daysBack * 4), groupIds);
 
-  // 3. Pull annotated messages for the window
+  // 2. Pull annotated messages for the window
   const messages = await db.getAnnotatedMessagesForRange({ daysBack, groupIds });
   if (!messages.length) {
     return {
@@ -435,7 +433,266 @@ async function generateInsightReport({ daysBack = 7, groupIds = null, reportType
   const anomalies = await detectAnomalies(buckets, daysBack);
   const pulse = computePulse(messages, buckets, daysBack);
 
-  // 6. Persist report envelope
+  const pendingCards = [];
+
+  // At-risk
+  for (let i = 0; i < atRisk.length; i += 1) {
+    const { bucket, score } = atRisk[i];
+    const evidence = topEvidence(
+      bucket.messages,
+      (m) => ['complaint', 'quit_signal', 'conflict', 'home_time_request'].includes(m.intent) || m.sentiment <= -1
+    );
+    pendingCards.push({
+      id: `at_risk_${i}`,
+      dbArgs: {
+        kind: 'at_risk',
+        rank: i,
+        title: `At-risk: ${bucket.sender_name}`,
+        evidence_json: evidence,
+        metrics_json: {
+          score: Number(score.toFixed(1)),
+          neg_count: bucket.stats.neg_count,
+          sentiment_avg: bucket.stats.sentiment_avg,
+          intent_counts: bucket.stats.intents,
+          message_count: bucket.stats.message_count,
+        },
+        driver_name: bucket.sender_name,
+        driver_telegram_id: bucket.telegram_user_id,
+        group_id: bucket.group_id,
+      },
+      promptContext: {
+        kind: 'at_risk',
+        driver: bucket.sender_name,
+        role: bucket.role,
+        group: bucket.group_name,
+        metrics: {
+          score: Number(score.toFixed(1)),
+          neg_count: bucket.stats.neg_count,
+          sentiment_avg: bucket.stats.sentiment_avg,
+          intent_counts: bucket.stats.intents,
+        },
+        evidence: evidence.map((e) => ({ url: e.url, text: e.excerpt, at: e.at })),
+      }
+    });
+  }
+
+  // Stars
+  for (let i = 0; i < stars.length; i += 1) {
+    const { bucket, score } = stars[i];
+    const evidence = topEvidence(
+      bucket.messages,
+      (m) => m.intent === 'praise' || m.sentiment >= 1
+    );
+    pendingCards.push({
+      id: `star_${i}`,
+      dbArgs: {
+        kind: 'star',
+        rank: i,
+        title: `Star: ${bucket.sender_name}`,
+        evidence_json: evidence,
+        metrics_json: { score, pos_count: bucket.stats.pos_count, sentiment_avg: bucket.stats.sentiment_avg },
+        driver_name: bucket.sender_name,
+        driver_telegram_id: bucket.telegram_user_id,
+        group_id: bucket.group_id,
+      },
+      promptContext: {
+        kind: 'star',
+        driver: bucket.sender_name,
+        role: bucket.role,
+        group: bucket.group_name,
+        metrics: { score: Number(score.toFixed(1)), pos_count: bucket.stats.pos_count, sentiment_avg: bucket.stats.sentiment_avg },
+        evidence: evidence.map((e) => ({ url: e.url, text: e.excerpt, at: e.at })),
+      }
+    });
+  }
+
+  // Home-time queue (single card, one narrative)
+  if (homeTime.length) {
+    pendingCards.push({
+      id: 'home_time_0',
+      dbArgs: {
+        kind: 'home_time',
+        rank: 0,
+        title: `Home-time queue (${homeTime.length})`,
+        evidence_json: homeTime.flatMap((h) => h.evidence).slice(0, 15),
+        metrics_json: { pending: homeTime.length, rows: homeTime },
+      },
+      promptContext: {
+        kind: 'home_time',
+        pending_count: homeTime.length,
+        rows: homeTime.slice(0, 10).map((h) => ({
+          driver: h.driver_name,
+          group: h.group_name,
+          requests: h.request_count,
+          days_since_first: h.days_since_first,
+          home_dates: h.extracted_dates,
+          cities: h.extracted_cities,
+        })),
+      }
+    });
+  }
+
+  // Unacked (single card)
+  if (unacked.length) {
+    pendingCards.push({
+      id: 'unacked_0',
+      dbArgs: {
+        kind: 'unacked',
+        rank: 0,
+        title: `Unacknowledged dispatcher messages (${unacked.length})`,
+        evidence_json: unacked.slice(0, 10).map((m) => ({
+          url: safeUrlForRow(m),
+          excerpt: excerpt(m.message_text),
+          group: m.group_name,
+          at: m.created_at,
+          urgency: m.urgency,
+        })),
+        metrics_json: { count: unacked.length, window_minutes: ACK_WINDOW_MINUTES },
+      },
+      promptContext: {
+        kind: 'unacked',
+        count: unacked.length,
+        examples: unacked.slice(0, 6).map((m) => ({
+          group: m.group_name,
+          sender: m.sender_name,
+          at: m.created_at,
+          urgency: m.urgency,
+          url: safeUrlForRow(m),
+          text: excerpt(m.message_text),
+        })),
+      }
+    });
+  }
+
+  // Silent drivers
+  if (silent.length) {
+    pendingCards.push({
+      id: 'silent_0',
+      dbArgs: {
+        kind: 'silent',
+        rank: 0,
+        title: `Silent drivers (${silent.length})`,
+        evidence_json: silent.slice(0, 10),
+        metrics_json: { count: silent.length },
+      },
+      promptContext: {
+        kind: 'silent',
+        count: silent.length,
+        window_days: daysBack,
+        rows: silent.slice(0, 10).map((s) => ({
+          driver: s.sender_name,
+          group: s.group_name,
+          previous_messages: s.prev_msg_count,
+          last_seen: s.last_seen,
+        })),
+      }
+    });
+  }
+
+  // Anomaly
+  for (let i = 0; i < Math.min(anomalies.length, 3); i += 1) {
+    const a = anomalies[i];
+    const evidence = topEvidence(a.bucket.messages, () => true);
+    pendingCards.push({
+      id: `anomaly_${i}`,
+      dbArgs: {
+        kind: 'anomaly',
+        rank: i,
+        title: `Anomaly: ${a.bucket.sender_name}`,
+        evidence_json: evidence,
+        metrics_json: {
+          jsd: a.jsd,
+          this_week: a.currentCounts,
+          baseline: a.baseCounts,
+        },
+        driver_name: a.bucket.sender_name,
+        driver_telegram_id: a.bucket.telegram_user_id,
+        group_id: a.bucket.group_id,
+      },
+      promptContext: {
+        kind: 'anomaly',
+        driver: a.bucket.sender_name,
+        group: a.bucket.group_name,
+        divergence: Number(a.jsd.toFixed(2)),
+        this_week_intents: a.currentCounts,
+        baseline_intents: a.baseCounts,
+        evidence: evidence.map((e) => ({ url: e.url, text: e.excerpt, at: e.at })),
+      }
+    });
+  }
+
+  // Hotspots (single card with all)
+  if (hotspots.length) {
+    pendingCards.push({
+      id: 'hotspot_0',
+      dbArgs: {
+        kind: 'hotspot',
+        rank: 0,
+        title: `Operational hotspots (${hotspots.length})`,
+        evidence_json: hotspots.slice(-15).map((m) => ({
+          url: safeUrlForRow(m),
+          excerpt: excerpt(m.message_text),
+          intent: m.intent,
+          group: m.group_name,
+          at: m.created_at,
+        })),
+        metrics_json: { count: hotspots.length },
+      },
+      promptContext: {
+        kind: 'hotspot',
+        count: hotspots.length,
+        rows: hotspots.slice(-8).map((m) => ({
+          kind: m.intent,
+          group: m.group_name,
+          sender: m.sender_name,
+          at: m.created_at,
+          url: safeUrlForRow(m),
+          text: excerpt(m.message_text),
+        })),
+      }
+    });
+  }
+
+  // 1:1 recommendations — top 3 names combining at-risk + anomaly + home-time
+  const oneOnOnePool = new Map();
+  const bump = (name, tgid, groupId, groupName, reason) => {
+    if (!name) return;
+    const key = `${tgid || name}:${groupId || ''}`;
+    const cur = oneOnOnePool.get(key) || {
+      name, tgid, group_id: groupId, group_name: groupName, reasons: [],
+    };
+    cur.reasons.push(reason);
+    oneOnOnePool.set(key, cur);
+  };
+  atRisk.forEach((x) => bump(x.bucket.sender_name, x.bucket.telegram_user_id, x.bucket.group_id, x.bucket.group_name, `at-risk (score ${x.score.toFixed(1)})`));
+  anomalies.forEach((a) => bump(a.bucket.sender_name, a.bucket.telegram_user_id, a.bucket.group_id, a.bucket.group_name, `tone shift (jsd ${a.jsd.toFixed(2)})`));
+  homeTime.forEach((h) => bump(h.driver_name, h.driver_telegram_id, h.group_id, h.group_name, `${h.request_count} home-time asks`));
+  const oneOnOne = Array.from(oneOnOnePool.values())
+    .sort((a, b) => b.reasons.length - a.reasons.length)
+    .slice(0, 3);
+  if (oneOnOne.length) {
+    pendingCards.push({
+      id: 'one_on_one_0',
+      dbArgs: {
+        kind: 'one_on_one',
+        rank: 0,
+        title: `Recommended 1:1s`,
+        evidence_json: null,
+        metrics_json: { candidates: oneOnOne },
+      },
+      promptContext: {
+        kind: 'one_on_one',
+        candidates: oneOnOne,
+      }
+    });
+  }
+
+  // 6. Batch narrative generation
+  const batchContext = {};
+  pendingCards.forEach((c) => { batchContext[c.id] = c.promptContext; });
+  const narratives = await narrateBatch(batchContext);
+
+  // 7. Persist report envelope
   const report = await db.saveAiReport(
     groupIdForReport,
     JSON.stringify({
@@ -461,270 +718,15 @@ async function generateInsightReport({ daysBack = 7, groupIds = null, reportType
   });
   cards.push(pulseCard);
 
-  // At-risk
-  for (let i = 0; i < atRisk.length; i += 1) {
-    const { bucket, score } = atRisk[i];
-    const evidence = topEvidence(
-      bucket.messages,
-      (m) => ['complaint', 'quit_signal', 'conflict', 'home_time_request'].includes(m.intent) || m.sentiment <= -1
-    );
-    const narr = await narrate({
-      kind: 'at_risk',
-      driver: bucket.sender_name,
-      role: bucket.role,
-      group: bucket.group_name,
-      metrics: {
-        score: Number(score.toFixed(1)),
-        neg_count: bucket.stats.neg_count,
-        sentiment_avg: bucket.stats.sentiment_avg,
-        intent_counts: bucket.stats.intents,
-      },
-      evidence: evidence.map((e) => ({ url: e.url, text: e.excerpt, at: e.at })),
-    });
+  // Insert generated cards into DB
+  for (const pc of pendingCards) {
+    const narr = narratives[pc.id] || {};
     const card = await db.createAiInsight({
       report_id: report.id,
-      kind: 'at_risk',
-      severity: narr.severity || 2,
-      rank: i,
-      title: `At-risk: ${bucket.sender_name}`,
-      narrative_html: narr.narrative_html,
-      suggested_action: narr.suggested_action,
-      evidence_json: evidence,
-      metrics_json: {
-        score: Number(score.toFixed(1)),
-        neg_count: bucket.stats.neg_count,
-        sentiment_avg: bucket.stats.sentiment_avg,
-        intent_counts: bucket.stats.intents,
-        message_count: bucket.stats.message_count,
-      },
-      driver_name: bucket.sender_name,
-      driver_telegram_id: bucket.telegram_user_id,
-      group_id: bucket.group_id,
-    });
-    cards.push(card);
-  }
-
-  // Stars
-  for (let i = 0; i < stars.length; i += 1) {
-    const { bucket, score } = stars[i];
-    const evidence = topEvidence(
-      bucket.messages,
-      (m) => m.intent === 'praise' || m.sentiment >= 1
-    );
-    const narr = await narrate({
-      kind: 'star',
-      driver: bucket.sender_name,
-      role: bucket.role,
-      group: bucket.group_name,
-      metrics: { score: Number(score.toFixed(1)), pos_count: bucket.stats.pos_count, sentiment_avg: bucket.stats.sentiment_avg },
-      evidence: evidence.map((e) => ({ url: e.url, text: e.excerpt, at: e.at })),
-    });
-    const card = await db.createAiInsight({
-      report_id: report.id,
-      kind: 'star',
-      severity: narr.severity || 1,
-      rank: i,
-      title: `Star: ${bucket.sender_name}`,
-      narrative_html: narr.narrative_html,
-      suggested_action: narr.suggested_action,
-      evidence_json: evidence,
-      metrics_json: { score, pos_count: bucket.stats.pos_count, sentiment_avg: bucket.stats.sentiment_avg },
-      driver_name: bucket.sender_name,
-      driver_telegram_id: bucket.telegram_user_id,
-      group_id: bucket.group_id,
-    });
-    cards.push(card);
-  }
-
-  // Home-time queue (single card, one narrative)
-  if (homeTime.length) {
-    const narr = await narrate({
-      kind: 'home_time',
-      pending_count: homeTime.length,
-      rows: homeTime.slice(0, 10).map((h) => ({
-        driver: h.driver_name,
-        group: h.group_name,
-        requests: h.request_count,
-        days_since_first: h.days_since_first,
-        home_dates: h.extracted_dates,
-        cities: h.extracted_cities,
-      })),
-    });
-    const card = await db.createAiInsight({
-      report_id: report.id,
-      kind: 'home_time',
-      severity: narr.severity || 2,
-      rank: 0,
-      title: `Home-time queue (${homeTime.length})`,
-      narrative_html: narr.narrative_html,
-      suggested_action: narr.suggested_action,
-      evidence_json: homeTime.flatMap((h) => h.evidence).slice(0, 15),
-      metrics_json: { pending: homeTime.length, rows: homeTime },
-    });
-    cards.push(card);
-  }
-
-  // Unacked (single card)
-  if (unacked.length) {
-    const narr = await narrate({
-      kind: 'unacked',
-      count: unacked.length,
-      examples: unacked.slice(0, 6).map((m) => ({
-        group: m.group_name,
-        sender: m.sender_name,
-        at: m.created_at,
-        urgency: m.urgency,
-        url: safeUrlForRow(m),
-        text: excerpt(m.message_text),
-      })),
-    });
-    const card = await db.createAiInsight({
-      report_id: report.id,
-      kind: 'unacked',
-      severity: narr.severity || 2,
-      rank: 0,
-      title: `Unacknowledged dispatcher messages (${unacked.length})`,
-      narrative_html: narr.narrative_html,
-      suggested_action: narr.suggested_action,
-      evidence_json: unacked.slice(0, 10).map((m) => ({
-        url: safeUrlForRow(m),
-        excerpt: excerpt(m.message_text),
-        group: m.group_name,
-        at: m.created_at,
-        urgency: m.urgency,
-      })),
-      metrics_json: { count: unacked.length, window_minutes: ACK_WINDOW_MINUTES },
-    });
-    cards.push(card);
-  }
-
-  // Silent drivers
-  if (silent.length) {
-    const narr = await narrate({
-      kind: 'silent',
-      count: silent.length,
-      window_days: daysBack,
-      rows: silent.slice(0, 10).map((s) => ({
-        driver: s.sender_name,
-        group: s.group_name,
-        previous_messages: s.prev_msg_count,
-        last_seen: s.last_seen,
-      })),
-    });
-    const card = await db.createAiInsight({
-      report_id: report.id,
-      kind: 'silent',
-      severity: narr.severity || 2,
-      rank: 0,
-      title: `Silent drivers (${silent.length})`,
-      narrative_html: narr.narrative_html,
-      suggested_action: narr.suggested_action,
-      evidence_json: silent.slice(0, 10),
-      metrics_json: { count: silent.length },
-    });
-    cards.push(card);
-  }
-
-  // Anomaly
-  for (let i = 0; i < Math.min(anomalies.length, 3); i += 1) {
-    const a = anomalies[i];
-    const evidence = topEvidence(a.bucket.messages, () => true);
-    const narr = await narrate({
-      kind: 'anomaly',
-      driver: a.bucket.sender_name,
-      group: a.bucket.group_name,
-      divergence: Number(a.jsd.toFixed(2)),
-      this_week_intents: a.currentCounts,
-      baseline_intents: a.baseCounts,
-      evidence: evidence.map((e) => ({ url: e.url, text: e.excerpt, at: e.at })),
-    });
-    const card = await db.createAiInsight({
-      report_id: report.id,
-      kind: 'anomaly',
-      severity: narr.severity || 2,
-      rank: i,
-      title: `Anomaly: ${a.bucket.sender_name}`,
-      narrative_html: narr.narrative_html,
-      suggested_action: narr.suggested_action,
-      evidence_json: evidence,
-      metrics_json: {
-        jsd: a.jsd,
-        this_week: a.currentCounts,
-        baseline: a.baseCounts,
-      },
-      driver_name: a.bucket.sender_name,
-      driver_telegram_id: a.bucket.telegram_user_id,
-      group_id: a.bucket.group_id,
-    });
-    cards.push(card);
-  }
-
-  // Hotspots (single card with all)
-  if (hotspots.length) {
-    const narr = await narrate({
-      kind: 'hotspot',
-      count: hotspots.length,
-      rows: hotspots.slice(-8).map((m) => ({
-        kind: m.intent,
-        group: m.group_name,
-        sender: m.sender_name,
-        at: m.created_at,
-        url: safeUrlForRow(m),
-        text: excerpt(m.message_text),
-      })),
-    });
-    const card = await db.createAiInsight({
-      report_id: report.id,
-      kind: 'hotspot',
-      severity: narr.severity || 3,
-      rank: 0,
-      title: `Operational hotspots (${hotspots.length})`,
-      narrative_html: narr.narrative_html,
-      suggested_action: narr.suggested_action,
-      evidence_json: hotspots.slice(-15).map((m) => ({
-        url: safeUrlForRow(m),
-        excerpt: excerpt(m.message_text),
-        intent: m.intent,
-        group: m.group_name,
-        at: m.created_at,
-      })),
-      metrics_json: { count: hotspots.length },
-    });
-    cards.push(card);
-  }
-
-  // 1:1 recommendations — top 3 names combining at-risk + anomaly + home-time
-  const oneOnOnePool = new Map();
-  const bump = (name, tgid, groupId, groupName, reason) => {
-    if (!name) return;
-    const key = `${tgid || name}:${groupId || ''}`;
-    const cur = oneOnOnePool.get(key) || {
-      name, tgid, group_id: groupId, group_name: groupName, reasons: [],
-    };
-    cur.reasons.push(reason);
-    oneOnOnePool.set(key, cur);
-  };
-  atRisk.forEach((x) => bump(x.bucket.sender_name, x.bucket.telegram_user_id, x.bucket.group_id, x.bucket.group_name, `at-risk (score ${x.score.toFixed(1)})`));
-  anomalies.forEach((a) => bump(a.bucket.sender_name, a.bucket.telegram_user_id, a.bucket.group_id, a.bucket.group_name, `tone shift (jsd ${a.jsd.toFixed(2)})`));
-  homeTime.forEach((h) => bump(h.driver_name, h.driver_telegram_id, h.group_id, h.group_name, `${h.request_count} home-time asks`));
-  const oneOnOne = Array.from(oneOnOnePool.values())
-    .sort((a, b) => b.reasons.length - a.reasons.length)
-    .slice(0, 3);
-  if (oneOnOne.length) {
-    const narr = await narrate({
-      kind: 'one_on_one',
-      candidates: oneOnOne,
-    });
-    const card = await db.createAiInsight({
-      report_id: report.id,
-      kind: 'one_on_one',
-      severity: narr.severity || 2,
-      rank: 0,
-      title: `Recommended 1:1s`,
-      narrative_html: narr.narrative_html,
-      suggested_action: narr.suggested_action,
-      evidence_json: null,
-      metrics_json: { candidates: oneOnOne },
+      ...pc.dbArgs,
+      narrative_html: narr.narrative_html || 'See evidence.',
+      suggested_action: narr.suggested_action || null,
+      severity: narr.severity || (pc.dbArgs.kind === 'hotspot' ? 3 : (pc.dbArgs.kind === 'star' ? 1 : 2)),
     });
     cards.push(card);
   }
@@ -744,6 +746,6 @@ module.exports = {
   detectHomeTimeRequests,
   intentDistribution,
   jsDivergence,
-  parseCardNarrative,
+  parseBatchCardNarratives,
   excerpt,
 };

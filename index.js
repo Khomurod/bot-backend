@@ -7,6 +7,7 @@ const { startServer, stopServer } = require('./server/api');
 const { startScheduler, stopScheduler } = require('./services/schedulerService');
 const { startWeeklyReporter, stopWeeklyReporter } = require('./services/weeklyReportService');
 const { startBirthdayService, stopBirthdayService } = require('./services/birthdayService');
+const { startBackgroundAnnotator } = require('./services/aiAnnotationService');
 const db = require('./database/db');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -252,6 +253,7 @@ process.on('SIGTERM', () => shutdownAll('SIGTERM'));
   startScheduler();
   startBirthdayService();
   startWeeklyReporter();
+  startBackgroundAnnotator();
 
   // 5. Spawn independent child processes.
   startLeadsBot();
