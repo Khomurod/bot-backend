@@ -11,15 +11,21 @@ let running = false;
 function mapLogsToTranscript(logs) {
   return logs.map((log) => {
     const link = buildTelegramMessageUrl(log.telegram_group_id, log.telegram_message_id);
-    const messageText = String(log.message_text || '').replace(/\s+/g, ' ').trim();
+    const rawText = log.message_text;
+    const messageText = rawText == null || rawText === ''
+      ? '(no message text)'
+      : String(rawText).replace(/\s+/g, ' ').trim();
     const senderName = String(log.sender_name || 'Unknown');
     const groupName = String(log.group_name || 'Unknown Group');
     const linkPrefix = link ? `[Link: ${link}] ` : '';
+    const transcript_line = link
+      ? `[Group: ${groupName}] ${linkPrefix}${senderName}: ${messageText}`
+      : `[Group: ${groupName}] ${senderName}: ${messageText}`;
     return {
       ...log,
-      transcript_line: `[Group: ${groupName}] ${linkPrefix}${senderName}: ${messageText}`,
+      transcript_line,
     };
-  }).filter((log) => log.message_text);
+  });
 }
 
 async function runWeeklyAnalysis(nowChicago = DateTime.now().setZone('America/Chicago')) {
