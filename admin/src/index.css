@@ -1318,3 +1318,97 @@ tr:hover td {
     min-width: 44px;
   }
 }
+
+/* --- AI Insights v2 --- */
+.ai-insights-page .insight-pulse-banner {
+  margin-top: 12px;
+  padding: 16px 18px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(99, 102, 241, 0.04));
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.ai-insights-page .insight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+.ai-insights-page .insight-card {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-left: 3px solid var(--border);
+  transition: var(--transition);
+}
+.ai-insights-page .insight-card.insight-severity-2 { border-left-color: var(--warning); }
+.ai-insights-page .insight-card.insight-severity-3 { border-left-color: var(--danger); }
+.ai-insights-page .insight-kind-star { border-left-color: var(--success); }
+.ai-insights-page .insight-kind-pulse { border-left-color: var(--accent); }
+.ai-insights-page .insight-kind-at_risk { border-left-color: var(--danger); }
+.ai-insights-page .insight-kind-hotspot { border-left-color: var(--danger); }
+.ai-insights-page .insight-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.ai-insights-page .insight-kind-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+}
+.ai-insights-page .insight-status-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+}
+.ai-insights-page .insight-status-approved { background: var(--success-soft); color: var(--success); }
+.ai-insights-page .insight-status-dismissed { background: var(--danger-soft); color: var(--danger); }
+.ai-insights-page .insight-status-edited { background: var(--warning-soft); color: var(--warning); }
+.ai-insights-page .insight-status-sent { background: var(--accent-soft); color: var(--accent); }
+.ai-insights-page .insight-narrative {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-primary);
+}
+.ai-insights-page .insight-action {
+  font-size: 12px;
+  padding: 8px 10px;
+  background: var(--accent-soft);
+  border-radius: 8px;
+  color: var(--text-primary);
+}
+.ai-insights-page .insight-meta summary {
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.ai-insights-page .insight-evidence {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.15);
+  border-radius: 8px;
+}
+.ai-insights-page .insight-evidence a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.ai-insights-page .insight-card-footer {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 6px;
+}
+.ai-insights-page .btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}

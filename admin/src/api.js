@@ -506,6 +506,72 @@ export async function testYandexAi() {
   return res.json();
 }
 
+// ── AI Insights v2 (card-based reports) ──
+export async function generateAiInsightReport(daysBack = 7) {
+  const res = await fetch(`${API_BASE}/ai-insights/generate`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ daysBack }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function listAiInsightReports(limit = 20) {
+  const res = await fetch(`${API_BASE}/ai-insights/reports?limit=${limit}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getAiInsightReport(reportId) {
+  const res = await fetch(`${API_BASE}/ai-insights/reports/${reportId}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function updateAiInsightCard(cardId, status, opts = {}) {
+  const res = await fetch(`${API_BASE}/ai-insights/cards/${cardId}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify({ status, feedback: opts.feedback || null, patch: opts.patch || null }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function sendAiInsightReport(reportId) {
+  const res = await fetch(`${API_BASE}/ai-insights/reports/${reportId}/send`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function backfillAnnotations(daysBack = 30) {
+  const res = await fetch(`${API_BASE}/ai-insights/annotate`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ daysBack }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function askTheData(question) {
+  const res = await fetch(`${API_BASE}/ai-ask`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ question }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function editTelegramMessage(url, newText) {
   const res = await fetch(`${API_BASE}/message/edit`, {
     method: 'POST',

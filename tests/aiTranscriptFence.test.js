@@ -42,7 +42,7 @@ test('buildTranscript strips smuggled nested fences from every line', () => {
 });
 
 test('buildTranscript reports wasTrimmed when trimming by count', () => {
-  const logs = Array.from({ length: 400 }, (_, i) => ({ transcript_line: `msg ${i}` }));
+  const logs = Array.from({ length: 2000 }, (_, i) => ({ transcript_line: `msg ${i}` }));
   const { wasTrimmed } = buildTranscript(logs);
   assert.equal(wasTrimmed, true);
 });

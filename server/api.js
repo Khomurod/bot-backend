@@ -9,6 +9,10 @@ const db = require('../database/db');
 const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcastTest, sendBroadcastToGroups, sendConfirmationBroadcast, sendConfirmationBroadcastTest } = require('../bot/bot');
 const { translateBatch } = require('../services/translationService');
 const { generateDriverReport, generateCompanyReport, AI_REPORT_GENERATION_FAILED, callYandex } = require('../services/aiAnalysisService');
+const { generateInsightReport } = require('../services/aiInsightsService');
+const { ensureAnnotationsForRange } = require('../services/aiAnnotationService');
+const { askData } = require('../services/aiAskService');
+const { renderInsightReportForTelegram } = require('../services/insightRenderer');
 const { buildTelegramMessageUrl } = require('../services/telegramUrl');
 const {
   sanitizeCompanyReportHtmlForTelegram,
@@ -1222,6 +1226,167 @@ app.post('/api/ai-reports/test-yandex', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[API] Yandex AI test failed:', err.message);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── AI Insights v2 (card-based reports) ─────────────────────────
+// Generates a brand-new insights report: annotates any missing chat_logs in
+// the window, rebuilds role consensus, computes per-sender stats, runs the
+// nine detectors, and asks Yandex for a narrative per non-empty card.
+app.post('/api/ai-insights/generate', authMiddleware, async (req, res) => {
+  try {
+    const daysBack = parseInt(req.body?.daysBack, 10);
+    if (!Number.isInteger(daysBack) || daysBack < 1 || daysBack > 30) {
+      return res.status(400).json({ error: 'daysBack must be an integer between 1 and 30' });
+    }
+    const result = await generateInsightReport({
+      daysBack,
+      reportType: 'company',
+    });
+    if (!result.report) {
+      return res.status(400).json({ error: result.reason || 'No messages in range to analyze' });
+    }
+    res.status(201).json({
+      report: result.report,
+      cards: await db.getInsightsForReport(result.report.id),
+      pulse: result.pulse,
+    });
+  } catch (err) {
+    console.error('[API] Insight generation failed:', err.message);
+    res.status(500).json({ error: 'Failed to generate insight report', detail: err.message });
+  }
+});
+
+// Lists reports produced by the new insights pipeline (format="insights_v2").
+app.get('/api/ai-insights/reports', authMiddleware, async (req, res) => {
+  try {
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const rows = await db.query(
+      `SELECT id, group_id, report_text, report_type, status, generated_at, sent_at
+         FROM ai_reports
+        WHERE report_type = 'company'
+          AND report_text LIKE '%"format":"insights_v2"%'
+        ORDER BY generated_at DESC
+        LIMIT $1`,
+      [limit]
+    );
+    res.json(rows.rows.map((r) => {
+      let meta = null;
+      try { meta = JSON.parse(r.report_text); } catch (_) { /* noop */ }
+      return { ...r, meta };
+    }));
+  } catch (err) {
+    console.error('[API] List insights reports failed:', err.message);
+    res.status(500).json({ error: 'Failed to list insight reports' });
+  }
+});
+
+// Returns the full card set for a given report.
+app.get('/api/ai-insights/reports/:id', authMiddleware, async (req, res) => {
+  try {
+    const reportId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(reportId) || reportId <= 0) {
+      return res.status(400).json({ error: 'Invalid report id' });
+    }
+    const report = await db.getAiReportById(reportId);
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+    const cards = await db.getInsightsForReport(reportId);
+    let meta = null;
+    try { meta = JSON.parse(report.report_text); } catch (_) { /* noop */ }
+    res.json({ report, cards, meta });
+  } catch (err) {
+    console.error('[API] Get insights report failed:', err.message);
+    res.status(500).json({ error: 'Failed to load insight report' });
+  }
+});
+
+// Per-card approve / dismiss / edit / feedback.
+app.put('/api/ai-insights/cards/:id', authMiddleware, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid card id' });
+    }
+    const { status, feedback, patch } = req.body || {};
+    const allowed = ['pending', 'approved', 'dismissed', 'edited'];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ error: `status must be one of: ${allowed.join(', ')}` });
+    }
+    const existing = await db.getInsightById(id);
+    if (!existing) return res.status(404).json({ error: 'Card not found' });
+    const updated = await db.updateInsightStatus(id, status, feedback || null, patch || null);
+    res.json(updated);
+  } catch (err) {
+    console.error('[API] Update insight card failed:', err.message);
+    res.status(500).json({ error: 'Failed to update insight card' });
+  }
+});
+
+// Send the (approved) subset of a report to management group.
+app.post('/api/ai-insights/reports/:id/send', authMiddleware, async (req, res) => {
+  try {
+    const reportId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(reportId) || reportId <= 0) {
+      return res.status(400).json({ error: 'Invalid report id' });
+    }
+    const report = await db.getAiReportById(reportId);
+    if (!report) return res.status(404).json({ error: 'Report not found' });
+    const allCards = await db.getInsightsForReport(reportId);
+    // Include anything not explicitly dismissed — "pending" is treated as OK-to-send
+    // to match the live-preview UX. If the user wants stricter behavior, they can
+    // approve each card first.
+    const cards = allCards.filter((c) => c.status !== 'dismissed');
+    if (!cards.length) {
+      return res.status(400).json({ error: 'No cards to send (all dismissed)' });
+    }
+    let meta = {};
+    try { meta = JSON.parse(report.report_text); } catch (_) { /* noop */ }
+    const html = renderInsightReportForTelegram({
+      report,
+      cards,
+      pulse: meta.pulse || { days_back: meta.days_back || 7 },
+    });
+    const safe = sanitizeCompanyReportHtmlForTelegram(html);
+    await sendTelegramHtmlChunks(bot.telegram, config.managementGroupId, safe);
+    await db.updateAiReportStatus(reportId, 'sent');
+    for (const c of cards) {
+      if (c.status !== 'sent') {
+        await db.updateInsightStatus(c.id, 'sent');
+      }
+    }
+    res.json({ success: true, sent_cards: cards.length });
+  } catch (err) {
+    const detail = err.response?.description || err.message;
+    console.error('[API] Send insight report failed:', detail);
+    res.status(500).json({ error: 'Failed to send insight report', detail });
+  }
+});
+
+// Manual annotation backfill (for Ask-the-Data freshness).
+app.post('/api/ai-insights/annotate', authMiddleware, async (req, res) => {
+  try {
+    const daysBack = parseInt(req.body?.daysBack, 10);
+    if (!Number.isInteger(daysBack) || daysBack < 1 || daysBack > 90) {
+      return res.status(400).json({ error: 'daysBack must be an integer between 1 and 90' });
+    }
+    const result = await ensureAnnotationsForRange({ daysBack });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[API] Annotation backfill failed:', err.message);
+    res.status(500).json({ error: 'Annotation backfill failed', detail: err.message });
+  }
+});
+
+// ─── Ask the Data (natural-language → plan → SQL → narrative) ────
+app.post('/api/ai-ask', authMiddleware, async (req, res) => {
+  try {
+    const question = typeof req.body?.question === 'string' ? req.body.question : '';
+    if (!question.trim()) return res.status(400).json({ error: 'question is required' });
+    const result = await askData(question);
+    res.json(result);
+  } catch (err) {
+    console.error('[API] Ask the data failed:', err.message);
+    res.status(500).json({ error: 'Ask the data failed', detail: err.message });
   }
 });
 

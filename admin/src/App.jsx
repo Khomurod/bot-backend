@@ -2216,6 +2216,511 @@ function AiFeaturesPage() {
   );
 }
 
+// ───────────────────────── AI Insights v2 ─────────────────────────
+const INSIGHT_ICON = {
+  pulse: '📊', at_risk: '🚨', star: '⭐', home_time: '🏠',
+  unacked: '⏳', silent: '🤐', anomaly: '📈', hotspot: '🔥', one_on_one: '🗣️',
+};
+
+const INSIGHT_LABEL = {
+  pulse: 'Weekly Pulse',
+  at_risk: 'At-Risk of Leaving',
+  star: 'Stars of the Week',
+  home_time: 'Home-Time Queue',
+  unacked: 'Unacknowledged',
+  silent: 'Silent Drivers',
+  anomaly: 'Tone Shifts',
+  hotspot: 'Operational Hotspots',
+  one_on_one: 'Recommended 1:1s',
+};
+
+function InsightCard({ card, onApprove, onDismiss, onEdit, disabled }) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(card.title || '');
+  const [narrative, setNarrative] = useState(card.narrative_html || '');
+  const [action, setAction] = useState(card.suggested_action || '');
+
+  useEffect(() => {
+    setTitle(card.title || '');
+    setNarrative(card.narrative_html || '');
+    setAction(card.suggested_action || '');
+  }, [card.id]);
+
+  const saveEdit = async () => {
+    await onEdit(card, { title, narrative_html: narrative, suggested_action: action });
+    setEditing(false);
+  };
+
+  const icon = INSIGHT_ICON[card.kind] || '•';
+  const statusBadge = card.status && card.status !== 'pending'
+    ? <span className={`insight-status-badge insight-status-${card.status}`}>{card.status}</span>
+    : null;
+
+  const metrics = card.metrics_json;
+  const evidence = Array.isArray(card.evidence_json) ? card.evidence_json : [];
+
+  return (
+    <div className={`ios-glass insight-card insight-kind-${card.kind} insight-severity-${card.severity || 1}`}>
+      <div className="insight-card-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="insight-icon" style={{ fontSize: 22 }}>{icon}</span>
+          {editing
+            ? <input className="form-input" value={title} onChange={(e) => setTitle(e.target.value)} style={{ fontWeight: 600 }} />
+            : <h3 style={{ margin: 0, fontSize: 16 }}>{card.title}</h3>}
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {statusBadge}
+          <span className="insight-kind-tag">{INSIGHT_LABEL[card.kind] || card.kind}</span>
+        </div>
+      </div>
+
+      <div className="insight-card-body">
+        {editing ? (
+          <textarea
+            className="form-textarea"
+            value={narrative}
+            onChange={(e) => setNarrative(e.target.value)}
+            rows={4}
+            placeholder="Narrative HTML"
+          />
+        ) : (
+          <div
+            className="insight-narrative"
+            dangerouslySetInnerHTML={{ __html: card.narrative_html || '<i style="opacity:0.6">No narrative.</i>' }}
+          />
+        )}
+
+        {metrics && Object.keys(metrics).length > 0 && (
+          <details className="insight-meta">
+            <summary>Metrics</summary>
+            <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', margin: '6px 0' }}>
+              {JSON.stringify(metrics, null, 2)}
+            </pre>
+          </details>
+        )}
+
+        {evidence.length > 0 && (
+          <div className="insight-evidence">
+            <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.75, marginBottom: 4 }}>Evidence</div>
+            <ul style={{ listStyle: 'none', paddingLeft: 0, margin: 0 }}>
+              {evidence.slice(0, 5).map((e, i) => (
+                <li key={i} style={{ fontSize: 12, marginBottom: 4, lineHeight: 1.4 }}>
+                  {e.url ? <a href={e.url} target="_blank" rel="noreferrer">proof</a> : '•'}
+                  {' — '}
+                  <span style={{ opacity: 0.85 }}>{e.excerpt || e.text || ''}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {editing ? (
+          <div style={{ marginTop: 8 }}>
+            <label style={{ fontSize: 12, opacity: 0.7 }}>Suggested action</label>
+            <input className="form-input" value={action} onChange={(e) => setAction(e.target.value)} />
+          </div>
+        ) : card.suggested_action ? (
+          <div className="insight-action">
+            <span style={{ fontWeight: 600 }}>Action: </span>
+            {card.suggested_action}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="insight-card-footer">
+        {editing ? (
+          <>
+            <button className="btn btn-primary btn-sm" onClick={saveEdit} disabled={disabled}>Save</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)} disabled={disabled}>Cancel</button>
+          </>
+        ) : (
+          <>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => onApprove(card)}
+              disabled={disabled || card.status === 'approved' || card.status === 'sent'}
+            >
+              {card.status === 'approved' ? 'Approved' : 'Approve'}
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)} disabled={disabled || card.status === 'sent'}>
+              Edit
+            </button>
+            <button className="btn btn-danger btn-sm" onClick={() => onDismiss(card)} disabled={disabled || card.status === 'dismissed' || card.status === 'sent'}>
+              Dismiss
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AskDataPanel() {
+  const [question, setQuestion] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  const ask = async () => {
+    if (!question.trim()) return;
+    setBusy(true); setError(null); setResult(null);
+    try {
+      const r = await api.askTheData(question.trim());
+      setResult(r);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const suggestions = [
+    'Which drivers complained about home time this month?',
+    'Top 10 drivers by negative sentiment in the last 14 days',
+    'How many quit signals this month, by group?',
+    'Which dispatcher messages went unanswered in the last 7 days?',
+    'Show me every breakdown or accident mention this week',
+  ];
+
+  return (
+    <div className="ios-glass ai-section-card" style={{ marginTop: 18 }}>
+      <h3 style={{ marginTop: 0 }}>💬 Ask the Data</h3>
+      <p style={{ fontSize: 13, opacity: 0.75, marginTop: 0 }}>
+        Ask anything about driver conversations. Powered by Yandex + annotated chat logs.
+      </p>
+      <div className="ai-action-row">
+        <input
+          className="form-input touch-target"
+          style={{ flex: 1 }}
+          placeholder="Ask a question…"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !busy) ask(); }}
+        />
+        <button className="btn btn-primary touch-target" onClick={ask} disabled={busy || !question.trim()}>
+          {busy ? 'Thinking…' : 'Ask'}
+        </button>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+        {suggestions.map((s) => (
+          <button
+            key={s}
+            className="btn btn-ghost btn-sm"
+            onClick={() => { setQuestion(s); }}
+            disabled={busy}
+            style={{ fontSize: 12 }}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+
+      {error && <div className="alert alert-error" style={{ marginTop: 12 }}>{error}</div>}
+
+      {result && (
+        <div style={{ marginTop: 12 }}>
+          <div className="ios-glass" style={{ padding: 12, marginBottom: 10 }}>
+            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Answer</div>
+            <div dangerouslySetInnerHTML={{ __html: result.answer_html || '<i>(no narrative)</i>' }} />
+          </div>
+          <details>
+            <summary style={{ cursor: 'pointer', fontSize: 13, opacity: 0.75 }}>
+              Query plan · {result.row_count} rows returned
+            </summary>
+            <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', background: 'rgba(0,0,0,0.25)', padding: 8, borderRadius: 6, marginTop: 6 }}>
+              {JSON.stringify(result.plan, null, 2)}
+            </pre>
+            <div style={{ fontSize: 11, marginTop: 6, opacity: 0.7 }}>SQL:</div>
+            <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', background: 'rgba(0,0,0,0.25)', padding: 8, borderRadius: 6 }}>
+              {result.sql}
+            </pre>
+          </details>
+          {result.rows && result.rows.length > 0 && (
+            <details style={{ marginTop: 8 }}>
+              <summary style={{ cursor: 'pointer', fontSize: 13, opacity: 0.75 }}>
+                Results ({result.rows.length})
+              </summary>
+              <div style={{ maxHeight: 300, overflow: 'auto', marginTop: 6, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6 }}>
+                <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      {Object.keys(result.rows[0]).slice(0, 8).map((k) => (
+                        <th key={k} style={{ textAlign: 'left', padding: 6, borderBottom: '1px solid rgba(255,255,255,0.08)', position: 'sticky', top: 0, background: 'rgba(0,0,0,0.3)' }}>
+                          {k}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.rows.slice(0, 50).map((r, i) => (
+                      <tr key={i}>
+                        {Object.keys(result.rows[0]).slice(0, 8).map((k) => (
+                          <td key={k} style={{ padding: 6, borderBottom: '1px solid rgba(255,255,255,0.05)', verticalAlign: 'top', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {typeof r[k] === 'object' ? JSON.stringify(r[k]) : String(r[k] ?? '')}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AiInsightsPage() {
+  const [reports, setReports] = useState([]);
+  const [activeReport, setActiveReport] = useState(null);
+  const [cards, setCards] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState(null);
+  const [daysBack, setDaysBack] = useState(7);
+  const [kindFilter, setKindFilter] = useState('all');
+
+  const loadReports = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await api.listAiInsightReports(30);
+      setReports(r);
+      if (r.length > 0) {
+        const full = await api.getAiInsightReport(r[0].id);
+        setActiveReport(full.report);
+        setCards(full.cards);
+      } else {
+        setActiveReport(null);
+        setCards([]);
+      }
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadReports(); }, [loadReports]);
+
+  const selectReport = async (reportId) => {
+    setBusy(true);
+    try {
+      const full = await api.getAiInsightReport(reportId);
+      setActiveReport(full.report);
+      setCards(full.cards);
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const generate = async () => {
+    const d = Number(daysBack);
+    if (!Number.isInteger(d) || d < 1 || d > 30) {
+      return setStatus({ type: 'error', text: 'daysBack must be 1–30' });
+    }
+    setBusy(true);
+    setStatus({ type: 'success', text: 'Generating insight report — annotating messages and running detectors. This may take a minute…' });
+    try {
+      const r = await api.generateAiInsightReport(d);
+      setActiveReport(r.report);
+      setCards(r.cards);
+      setStatus({ type: 'success', text: `Report #${r.report.id} generated with ${r.cards.length} cards.` });
+      await loadReports();
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const approve = async (card) => {
+    try {
+      const updated = await api.updateAiInsightCard(card.id, 'approved');
+      setCards((cs) => cs.map((c) => (c.id === card.id ? updated : c)));
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    }
+  };
+
+  const dismiss = async (card) => {
+    const feedback = window.prompt('Why is this not useful? (optional)');
+    if (feedback === null) return;
+    try {
+      const updated = await api.updateAiInsightCard(card.id, 'dismissed', { feedback });
+      setCards((cs) => cs.map((c) => (c.id === card.id ? updated : c)));
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    }
+  };
+
+  const edit = async (card, patch) => {
+    try {
+      const updated = await api.updateAiInsightCard(card.id, 'edited', { patch });
+      setCards((cs) => cs.map((c) => (c.id === card.id ? updated : c)));
+      setStatus({ type: 'success', text: 'Card updated.' });
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    }
+  };
+
+  const sendReport = async () => {
+    if (!activeReport) return;
+    if (!window.confirm('Send the non-dismissed cards to the management group?')) return;
+    setBusy(true);
+    try {
+      const r = await api.sendAiInsightReport(activeReport.id);
+      setStatus({ type: 'success', text: `Sent ${r.sent_cards} cards to management.` });
+      const full = await api.getAiInsightReport(activeReport.id);
+      setActiveReport(full.report);
+      setCards(full.cards);
+      await loadReports();
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const backfill = async () => {
+    setBusy(true);
+    setStatus({ type: 'success', text: 'Annotating last 30 days of chat logs…' });
+    try {
+      const r = await api.backfillAnnotations(30);
+      setStatus({ type: 'success', text: `Annotated ${r.annotated} / ${r.found} pending messages.` });
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const kinds = useMemo(() => {
+    const set = new Set(cards.map((c) => c.kind));
+    return ['all', ...Array.from(set)];
+  }, [cards]);
+
+  const visibleCards = kindFilter === 'all' ? cards : cards.filter((c) => c.kind === kindFilter);
+  const pulseCard = cards.find((c) => c.kind === 'pulse');
+  const nonDismissed = cards.filter((c) => c.status !== 'dismissed').length;
+
+  return (
+    <div className="ai-insights-page">
+      <div className="page-header">
+        <h2>🧠 AI Insights</h2>
+        <p>Card-based weekly briefing. Every claim is grounded in cited chat evidence.</p>
+      </div>
+
+      {status && <div className={`alert alert-${status.type}`}>{status.text}</div>}
+
+      <div className="ios-glass ai-section-card">
+        <div className="ai-action-row">
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label>Days Back</label>
+            <input
+              type="number" min="1" max="30"
+              className="form-input touch-target"
+              style={{ width: 100 }}
+              value={daysBack}
+              onChange={(e) => setDaysBack(e.target.value)}
+            />
+          </div>
+          <button className="btn btn-primary touch-target" onClick={generate} disabled={busy}>
+            {busy ? 'Working…' : '✨ Generate Insight Report'}
+          </button>
+          <button className="btn btn-ghost touch-target" onClick={backfill} disabled={busy}>
+            Re-annotate last 30d
+          </button>
+          <button className="btn btn-ghost touch-target" onClick={loadReports} disabled={busy}>
+            Refresh
+          </button>
+        </div>
+
+        {reports.length > 0 && (
+          <div className="form-group" style={{ marginTop: 10, marginBottom: 0 }}>
+            <label>Report</label>
+            <select
+              className="form-input touch-target"
+              value={activeReport?.id || ''}
+              onChange={(e) => selectReport(Number(e.target.value))}
+              disabled={busy}
+            >
+              {reports.map((r) => (
+                <option key={r.id} value={r.id}>
+                  #{r.id} · {new Date(r.generated_at).toLocaleString()} · {r.status}
+                  {r.meta?.pulse ? ` · ${r.meta.pulse.total_messages || 0} msgs / ${r.meta.pulse.active_drivers || 0} drivers` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="loading"><div className="spinner"></div> Loading insights…</div>
+      ) : !activeReport ? (
+        <div className="empty-state">
+          <h3>No insight reports yet</h3>
+          <p>Click "Generate Insight Report" to annotate your chat logs and produce the first briefing.</p>
+        </div>
+      ) : (
+        <>
+          {pulseCard && (
+            <div className="ios-glass ai-section-card insight-pulse-banner">
+              <div dangerouslySetInnerHTML={{ __html: pulseCard.narrative_html || '' }} />
+            </div>
+          )}
+
+          <div className="ai-action-row" style={{ marginTop: 12, flexWrap: 'wrap' }}>
+            {kinds.map((k) => (
+              <button
+                key={k}
+                className={`btn btn-sm ${kindFilter === k ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setKindFilter(k)}
+              >
+                {k === 'all' ? `All (${cards.length})` : `${INSIGHT_ICON[k] || ''} ${INSIGHT_LABEL[k] || k} (${cards.filter((c) => c.kind === k).length})`}
+              </button>
+            ))}
+            <div style={{ flex: 1 }} />
+            <button
+              className="btn btn-primary touch-target"
+              onClick={sendReport}
+              disabled={busy || activeReport.status === 'sent' || nonDismissed === 0}
+            >
+              {activeReport.status === 'sent' ? 'Already Sent' : `📤 Send ${nonDismissed} to Management`}
+            </button>
+          </div>
+
+          <div className="insight-grid">
+            {visibleCards.length === 0 ? (
+              <div className="empty-state">
+                <h3>No cards in this category</h3>
+                <p>Try "All" or a different filter.</p>
+              </div>
+            ) : (
+              visibleCards.map((card) => (
+                <InsightCard
+                  key={card.id}
+                  card={card}
+                  onApprove={approve}
+                  onDismiss={dismiss}
+                  onEdit={edit}
+                  disabled={busy}
+                />
+              ))
+            )}
+          </div>
+        </>
+      )}
+
+      <AskDataPanel />
+    </div>
+  );
+}
+
 function MessageManagerPage() {
   const [url, setUrl] = useState('');
   const [newText, setNewText] = useState('');
@@ -2552,6 +3057,7 @@ export default function App() {
     questions: <QuestionsPage />,
     broadcast: <BroadcastPage />,
     ai_features: <AiFeaturesPage />,
+    ai_insights: <AiInsightsPage />,
     scheduled: <ScheduledMessagesPage />,
     voting: <EmployeeVotingPage />,
     logs: <ChatLogsPage />,
@@ -2594,6 +3100,13 @@ export default function App() {
           >
             <span className="nav-icon">✨</span>
             AI Features
+          </button>
+          <button
+            className={`nav-item ${page === 'ai_insights' ? 'active' : ''}`}
+            onClick={() => setPage('ai_insights')}
+          >
+            <span className="nav-icon">🧠</span>
+            AI Insights
           </button>
           <button
             className={`nav-item ${page === 'logs' ? 'active' : ''}`}
