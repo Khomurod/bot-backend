@@ -80,21 +80,24 @@ async function callYandex(promptText) {
   return data?.result?.alternatives?.[0]?.message?.text?.trim() || '';
 }
 
-/**
- * Analyzes chat logs using OpenAI to evaluate performance.
- * @param {string} scopeName
- * @param {Array} logsArray 
- * @returns {Promise<string>}
- */
-async function analyzeChatLogs(scopeName, logsArray) {
+async function generateDriverReport(logsArray) {
   if (!logsArray || logsArray.length === 0) return 'No logs to analyze.';
   const { transcript, wasTrimmed } = buildTranscript(logsArray);
   const { from, to } = getDateRange(logsArray);
   const logCount = logsArray.length;
 
   try {
+    const systemPrompt = [
+      'You are a strict logistics auditor for a trucking company.',
+      'Analyze only provided evidence from driver-updater chats.',
+      'You must identify operational, compliance, and communication red flags.',
+      `Return EXACTLY two sections separated by "${REPORT_DELIMITER}" and nothing else.`,
+      'Section 1: 2-3 sentence overall summary for management.',
+      'Section 2: driver-by-driver breakdown, each line must mention red flags or say "Clear".',
+      'Do not invent facts, percentages, or events not present in transcript.',
+    ].join(' ');
     const prompt = [
-      `Analyze chat logs for scope "${scopeName}".`,
+      'Analyze logs for a per-driver report.',
       `Total messages available: ${logCount}.`,
       `Date range: ${from} to ${to}.`,
       wasTrimmed
@@ -102,34 +105,32 @@ async function analyzeChatLogs(scopeName, logsArray) {
         : 'Transcript is complete for the selected range.',
       '',
       'Evaluate:',
-      '1) Overall company operating health',
+      '1) Driver-updater interaction quality',
       '2) Communication consistency and responsiveness',
       '3) Dispatch/load handling behavior (if evidence exists)',
       '4) Operational red flags (delays, non-responsiveness, conflict, risky behavior)',
       '',
       `Output rules (MANDATORY):`,
       `- Return exactly two parts separated by ${REPORT_DELIMITER}`,
-      '- Part 1: Global Executive Summary in 2-4 sentences',
-      '- Part 2: Driver-by-driver breakdown wrapped in one <blockquote expandable>...</blockquote>',
-      '- For each specific claim, include a citation hyperlink using <a href=\'exact_link_from_transcript\'>proof</a>',
-      '- Use exact links from transcript only; never fabricate links',
-      '- Do not add markdown fences or extra separators',
+      '- Part 1: Overall summary in 2-3 sentences',
+      '- Part 2: Driver-by-driver breakdown, one line per driver, each line ends with either "Red Flags: <items>" or "Clear"',
+      '- Do not add markdown fences, labels, or extra separators',
       '',
       `Transcript:\n${transcript}`,
     ].join('\n');
 
-    let generated = await callYandex(prompt);
+    let generated = await callYandexWithSystem(prompt, systemPrompt);
     if (generated && !generated.includes(REPORT_DELIMITER)) {
-      generated = await callYandex(
+      generated = await callYandexWithSystem(
         [
           `Reformat the following content into EXACTLY two sections separated by ${REPORT_DELIMITER}.`,
-          'Section 1: global executive summary (2-4 sentences).',
-          'Section 2: a single <blockquote expandable>...</blockquote> with driver-by-driver breakdown.',
-          'Include proof links with <a href=\'exact_link_from_transcript\'>proof</a>.',
+          'Section 1: 2-3 sentence overall summary.',
+          'Section 2: driver-by-driver lines with "Red Flags: ..." or "Clear".',
           'Return only the final reformatted text.',
           '',
           generated,
-        ].join('\n')
+        ].join('\n'),
+        systemPrompt
       );
     }
     if (!generated || !generated.includes(REPORT_DELIMITER)) {
@@ -142,8 +143,85 @@ async function analyzeChatLogs(scopeName, logsArray) {
   }
 }
 
+async function generateCompanyReport(logsArray) {
+  if (!logsArray || logsArray.length === 0) return AI_REPORT_GENERATION_FAILED;
+  const { transcript, wasTrimmed } = buildTranscript(logsArray);
+  const { from, to } = getDateRange(logsArray);
+  const logCount = logsArray.length;
+
+  const systemPrompt = [
+    'You are an executive auditor.',
+    "Output an overall summary paragraph, followed by these exact bolded categories: **Exceptional communication:**, **Exceptional (on time) performance:**, **Home time requests:**, **Worst communication:**, **Drivers left the company this week:**, **Drivers who gave notice:**.",
+    "If no evidence exists for a category, output 'None this week'.",
+    "End with a **Notable Events:** section using hyperlinked proofs (<a href='...'>) based strictly on the provided transcript URLs.",
+    'Use standard HTML only and never fabricate links.',
+  ].join(' ');
+
+  const prompt = [
+    'Generate a company-wide weekly executive report in HTML.',
+    `Total messages available: ${logCount}.`,
+    `Date range: ${from} to ${to}.`,
+    wasTrimmed
+      ? 'Note: transcript was truncated to fit model context; prioritize recency and mention uncertainty where needed.'
+      : 'Transcript is complete for the selected range.',
+    '',
+    'Formatting requirements:',
+    '- First paragraph: concise overall summary of company health.',
+    '- Then include exactly these headings in bold with HTML <b> tags:',
+    '  <b>Exceptional communication:</b>',
+    '  <b>Exceptional (on time) performance:</b>',
+    '  <b>Home time requests:</b>',
+    '  <b>Worst communication:</b>',
+    '  <b>Drivers left the company this week:</b>',
+    '  <b>Drivers who gave notice:</b>',
+    '- End with <b>Notable Events:</b> and include evidence links in <a href=\'...\'>proof</a> form.',
+    "- If a section has no evidence, write exactly: None this week",
+    '',
+    `Transcript:\n${transcript}`,
+  ].join('\n');
+
+  try {
+    const generated = await callYandexWithSystem(prompt, systemPrompt);
+    return generated || AI_REPORT_GENERATION_FAILED;
+  } catch (err) {
+    console.error('[AI-ANALYSIS] Company report error:', err.message);
+    return AI_REPORT_GENERATION_FAILED;
+  }
+}
+
+async function callYandexWithSystem(promptText, systemText) {
+  const response = await fetch(YANDEX_API_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Api-Key ${YANDEX_API_KEY}`,
+      'Content-Type': 'application/json',
+      'x-folder-id': YANDEX_FOLDER_ID,
+    },
+    body: JSON.stringify({
+      modelUri: YANDEX_MODEL_URI,
+      completionOptions: {
+        stream: false,
+        temperature: 0.5,
+        maxTokens: 2000,
+      },
+      messages: [
+        { role: 'system', text: systemText },
+        { role: 'user', text: promptText },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Yandex API error ${response.status}: ${errorText}`);
+  }
+  const data = await response.json();
+  return data?.result?.alternatives?.[0]?.message?.text?.trim() || '';
+}
+
 module.exports = {
-  analyzeChatLogs,
+  generateDriverReport,
+  generateCompanyReport,
   AI_REPORT_GENERATION_FAILED,
   callYandex,
 };

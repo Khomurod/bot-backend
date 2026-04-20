@@ -1837,66 +1837,119 @@ function ScheduledMessagesPage() {
 }
 
 function AiFeaturesPage() {
-  const [reports, setReports] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('driver');
   const [status, setStatus] = useState(null);
-  const [daysBack, setDaysBack] = useState(7);
   const [busy, setBusy] = useState(false);
-  const [selectedReportId, setSelectedReportId] = useState(null);
-  const [overallSummary, setOverallSummary] = useState('');
+  const [driverGroups, setDriverGroups] = useState([]);
+  const [driverGroupId, setDriverGroupId] = useState('');
+  const [driverDaysBack, setDriverDaysBack] = useState(7);
+  const [companyDaysBack, setCompanyDaysBack] = useState(7);
+  const [driverDrafts, setDriverDrafts] = useState([]);
+  const [companyDrafts, setCompanyDrafts] = useState([]);
+  const [companyHistory, setCompanyHistory] = useState([]);
+  const [selectedDriverDraftId, setSelectedDriverDraftId] = useState(null);
+  const [selectedCompanyDraftId, setSelectedCompanyDraftId] = useState(null);
+  const [driverOverall, setDriverOverall] = useState('');
   const [driverBreakdown, setDriverBreakdown] = useState('');
+  const [companyOverall, setCompanyOverall] = useState('');
+  const [companyBreakdown, setCompanyBreakdown] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  const loadDrafts = useCallback(async () => {
+  const parseDraft = (reportText) => {
+    const [overall, breakdown] = String(reportText || '').split('|||');
+    return {
+      overall: (overall || '').trim(),
+      breakdown: (breakdown || '').trim(),
+    };
+  };
+
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const drafts = await api.getAiReports();
-      setReports(drafts);
-      if (drafts.length === 0) {
-        setSelectedReportId(null);
-        setOverallSummary('');
+      const [groups, driver, company] = await Promise.all([
+        api.getDriverGroups(),
+        api.getAiReports('driver'),
+        api.getAiReports('company', true),
+      ]);
+      setDriverGroups(groups);
+      if (!driverGroupId && groups.length > 0) setDriverGroupId(String(groups[0].id));
+
+      setDriverDrafts(driver);
+      setCompanyHistory(company);
+      setCompanyDrafts(company.filter((r) => r.status === 'draft'));
+
+      const driverSelected = driver.find((r) => r.id === selectedDriverDraftId) || driver[0] || null;
+      if (driverSelected) {
+        const parts = parseDraft(driverSelected.report_text);
+        setSelectedDriverDraftId(driverSelected.id);
+        setDriverOverall(parts.overall);
+        setDriverBreakdown(parts.breakdown);
+      } else {
+        setSelectedDriverDraftId(null);
+        setDriverOverall('');
         setDriverBreakdown('');
-        return;
       }
-      const activeReport = drafts.find((r) => r.id === selectedReportId) || drafts[0];
-      const [overall, breakdown] = String(activeReport.report_text || '').split('|||');
-      setSelectedReportId(activeReport.id);
-      setOverallSummary((overall || '').trim());
-      setDriverBreakdown((breakdown || '').trim());
+
+      const companyDraftPool = company.filter((r) => r.status === 'draft');
+      const companySelected = companyDraftPool.find((r) => r.id === selectedCompanyDraftId) || companyDraftPool[0] || null;
+      if (companySelected) {
+        const parts = parseDraft(companySelected.report_text);
+        setSelectedCompanyDraftId(companySelected.id);
+        setCompanyOverall(parts.overall);
+        setCompanyBreakdown(parts.breakdown);
+      } else {
+        setSelectedCompanyDraftId(null);
+        setCompanyOverall('');
+        setCompanyBreakdown('');
+      }
     } catch (err) {
       setStatus({ type: 'error', text: err.message });
     } finally {
       setLoading(false);
     }
-  }, [selectedReportId]);
+  }, [driverGroupId, selectedCompanyDraftId, selectedDriverDraftId]);
 
-  useEffect(() => {
-    loadDrafts();
-  }, [loadDrafts]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  const selectedReport = reports.find((r) => r.id === selectedReportId) || null;
+  const selectedDriverDraft = driverDrafts.find((d) => d.id === selectedDriverDraftId) || null;
+  const selectedCompanyDraft = companyDrafts.find((d) => d.id === selectedCompanyDraftId) || null;
 
-  const handleSelectDraft = (reportId) => {
-    const report = reports.find((r) => r.id === reportId);
-    if (!report) return;
-    const [overall, breakdown] = String(report.report_text || '').split('|||');
-    setSelectedReportId(report.id);
-    setOverallSummary((overall || '').trim());
-    setDriverBreakdown((breakdown || '').trim());
-    setStatus(null);
+  const selectDriverDraft = (id) => {
+    const draft = driverDrafts.find((d) => d.id === id);
+    if (!draft) return;
+    const parts = parseDraft(draft.report_text);
+    setSelectedDriverDraftId(draft.id);
+    setDriverOverall(parts.overall);
+    setDriverBreakdown(parts.breakdown);
   };
 
-  const handleGenerate = async () => {
-    const dayValue = Number(daysBack);
+  const selectCompanyDraft = (id) => {
+    const draft = companyDrafts.find((d) => d.id === id);
+    if (!draft) return;
+    const parts = parseDraft(draft.report_text);
+    setSelectedCompanyDraftId(draft.id);
+    setCompanyOverall(parts.overall);
+    setCompanyBreakdown(parts.breakdown);
+  };
+
+  const validateDays = (value) => {
+    const dayValue = Number(value);
     if (!Number.isInteger(dayValue) || dayValue < 1 || dayValue > 30) {
-      setStatus({ type: 'error', text: 'Days back must be between 1 and 30.' });
-      return;
+      return null;
     }
+    return dayValue;
+  };
+
+  const generateDriverDraft = async () => {
+    const dayValue = validateDays(driverDaysBack);
+    if (!dayValue) return setStatus({ type: 'error', text: 'Driver report days back must be between 1 and 30.' });
+    if (!driverGroupId) return setStatus({ type: 'error', text: 'Select a driver group first.' });
     setBusy(true);
     setStatus(null);
     try {
-      await api.generateAiReport(dayValue);
-      setStatus({ type: 'success', text: 'New 7-day summary draft generated.' });
-      await loadDrafts();
+      await api.generateAiReport({ reportType: 'driver', groupId: Number(driverGroupId), daysBack: dayValue });
+      setStatus({ type: 'success', text: 'Driver report draft generated.' });
+      await loadData();
     } catch (err) {
       setStatus({ type: 'error', text: err.message });
     } finally {
@@ -1904,15 +1957,15 @@ function AiFeaturesPage() {
     }
   };
 
-  const handleSend = async () => {
-    if (!selectedReport) return;
+  const generateCompanyDraft = async () => {
+    const dayValue = validateDays(companyDaysBack);
+    if (!dayValue) return setStatus({ type: 'error', text: 'Company report days back must be between 1 and 30.' });
     setBusy(true);
     setStatus(null);
     try {
-      const editedText = `${overallSummary.trim()}|||${driverBreakdown.trim()}`;
-      await api.sendAiReport(selectedReport.id, editedText);
-      setStatus({ type: 'success', text: 'Approved summary published to Telegram.' });
-      await loadDrafts();
+      await api.generateAiReport({ reportType: 'company', daysBack: dayValue });
+      setStatus({ type: 'success', text: 'Company draft generated on-demand.' });
+      await loadData();
     } catch (err) {
       setStatus({ type: 'error', text: err.message });
     } finally {
@@ -1920,112 +1973,188 @@ function AiFeaturesPage() {
     }
   };
 
-  const handleDiscard = async () => {
-    if (!selectedReport) return;
-    if (!window.confirm('Discard this draft? It will be marked as discarded.')) return;
+  const sendDriverDraft = async () => {
+    if (!selectedDriverDraft) return;
     setBusy(true);
     setStatus(null);
     try {
-      await api.discardAiReport(selectedReport.id);
+      await api.sendAiReport(selectedDriverDraft.id, `${driverOverall.trim()}|||${driverBreakdown.trim()}`);
+      setStatus({ type: 'success', text: 'Driver report sent to management.' });
+      await loadData();
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendCompanyDraft = async () => {
+    if (!selectedCompanyDraft) return;
+    setBusy(true);
+    setStatus(null);
+    try {
+      await api.sendAiReport(selectedCompanyDraft.id, `${companyOverall.trim()}|||${companyBreakdown.trim()}`);
+      setStatus({ type: 'success', text: 'Company report sent to management.' });
+      await loadData();
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const discardDraft = async (draft) => {
+    if (!draft) return;
+    if (!window.confirm('Discard this draft?')) return;
+    setBusy(true);
+    setStatus(null);
+    try {
+      await api.discardAiReport(draft.id);
       setStatus({ type: 'success', text: 'Draft discarded.' });
-      await loadDrafts();
+      await loadData();
     } catch (err) {
       setStatus({ type: 'error', text: err.message });
     } finally {
       setBusy(false);
     }
   };
+
+  const reportHistoryItem = (report) => (
+    <div key={report.id} className="ios-glass ai-history-item">
+      <div style={{ fontWeight: 600 }}>#{report.id}</div>
+      <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+        {new Date(report.generated_at).toLocaleString()}
+      </div>
+      <div style={{ fontSize: 12 }}>{report.group_name}</div>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>
+        {String(report.report_text || '').slice(0, 220)}{String(report.report_text || '').length > 220 ? '...' : ''}
+      </div>
+    </div>
+  );
 
   return (
     <div className="ai-features-page">
       <div className="page-header">
-        <h2>🧠 Executive Summary Dashboard</h2>
-        <p>Generate, edit, and publish global AI summaries.</p>
+        <h2>✨ AI Reports</h2>
+        <p>Dual-track reporting: per-driver manual workflow and company-wide automation workflow.</p>
       </div>
-
       {status && <div className={`alert alert-${status.type}`}>{status.text}</div>}
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <button className="btn btn-primary" onClick={handleGenerate} disabled={busy}>
-            {busy ? 'Generating...' : 'Generate 7-Day Summary'}
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label style={{ fontSize: 13, color: 'var(--text-muted)' }}>Days back</label>
-            <input
-              className="form-input"
-              style={{ width: 100 }}
-              type="number"
-              min="1"
-              max="30"
-              value={daysBack}
-              onChange={(e) => setDaysBack(e.target.value)}
-            />
-          </div>
-          <button className="btn btn-ghost" onClick={loadDrafts} disabled={busy}>
-            Refresh Drafts
-          </button>
-        </div>
+      <div className="ios-glass ai-tab-bar">
+        <button className={`btn ${activeTab === 'driver' ? 'btn-primary' : 'btn-ghost'} touch-target`} onClick={() => setActiveTab('driver')}>
+          Per Driver Report
+        </button>
+        <button className={`btn ${activeTab === 'company' ? 'btn-primary' : 'btn-ghost'} touch-target`} onClick={() => setActiveTab('company')}>
+          Company Report
+        </button>
+        <button className="btn btn-ghost touch-target" onClick={loadData} disabled={busy}>Refresh</button>
       </div>
 
       {loading ? (
-        <div className="loading"><div className="spinner"></div> Loading drafts...</div>
-      ) : reports.length === 0 ? (
-        <div className="empty-state">
-          <div className="icon">📝</div>
-          <h3>No pending draft</h3>
-          <p>Generate a 7-day summary to start reviewing.</p>
-        </div>
+        <div className="loading"><div className="spinner"></div> Loading AI reports...</div>
       ) : (
-        <div className="card">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
-            <label style={{ fontWeight: 600 }}>Draft</label>
-            <select
-              className="form-input"
-              style={{ width: 'auto', minWidth: 320 }}
-              value={selectedReportId || ''}
-              onChange={(e) => handleSelectDraft(Number(e.target.value))}
-            >
-              {reports.map((r) => (
-                <option key={r.id} value={r.id}>
-                  #{r.id} · {r.group_name} · {new Date(r.generated_at).toLocaleString()}
-                </option>
-              ))}
-            </select>
-          </div>
+        <>
+          {activeTab === 'driver' && (
+            <div className="ios-glass ai-section-card">
+              <div className="ai-action-row">
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>Driver Group</label>
+                  <select className="form-input touch-target" value={driverGroupId} onChange={(e) => setDriverGroupId(e.target.value)}>
+                    {driverGroups.map((g) => <option key={g.id} value={g.id}>{g.group_name}</option>)}
+                  </select>
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>Days Back</label>
+                  <input className="form-input touch-target" style={{ width: 120 }} type="number" min="1" max="30" value={driverDaysBack} onChange={(e) => setDriverDaysBack(e.target.value)} />
+                </div>
+                <button className="btn btn-primary touch-target" onClick={generateDriverDraft} disabled={busy}>
+                  {busy ? 'Generating...' : 'Generate Draft'}
+                </button>
+              </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14 }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Overall Summary</label>
-              <textarea
-                className="form-textarea"
-                style={{ minHeight: 220, resize: 'vertical' }}
-                value={overallSummary}
-                onChange={(e) => setOverallSummary(e.target.value)}
-                placeholder="Edit overall executive summary..."
-              />
+              {driverDrafts.length === 0 ? (
+                <div className="empty-state"><h3>No driver drafts</h3><p>Generate a per-driver draft to start editing.</p></div>
+              ) : (
+                <>
+                  <div className="form-group" style={{ marginBottom: 10 }}>
+                    <label>Select Driver Draft</label>
+                    <select className="form-input touch-target" value={selectedDriverDraftId || ''} onChange={(e) => selectDriverDraft(Number(e.target.value))}>
+                      {driverDrafts.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          #{d.id} · {d.group_name} · {new Date(d.generated_at).toLocaleString()}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="ai-editor-grid">
+                    <div className="ios-glass ai-editor-panel">
+                      <label>Overall Summary</label>
+                      <textarea className="form-textarea" value={driverOverall} onChange={(e) => setDriverOverall(e.target.value)} />
+                    </div>
+                    <div className="ios-glass ai-editor-panel">
+                      <label>Driver Breakdown</label>
+                      <textarea className="form-textarea" value={driverBreakdown} onChange={(e) => setDriverBreakdown(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="ai-action-row" style={{ marginTop: 12 }}>
+                    <button className="btn btn-primary touch-target" onClick={sendDriverDraft} disabled={busy || !selectedDriverDraft}>Approve & Send</button>
+                    <button className="btn btn-danger touch-target" onClick={() => discardDraft(selectedDriverDraft)} disabled={busy || !selectedDriverDraft}>Discard</button>
+                  </div>
+                </>
+              )}
             </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Driver Breakdown</label>
-              <textarea
-                className="form-textarea"
-                style={{ minHeight: 280, resize: 'vertical' }}
-                value={driverBreakdown}
-                onChange={(e) => setDriverBreakdown(e.target.value)}
-                placeholder="Edit driver-by-driver breakdown..."
-              />
-            </div>
-          </div>
+          )}
 
-          <div style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
-            <button className="btn btn-primary" onClick={handleSend} disabled={busy || !selectedReport}>
-              {busy ? 'Publishing...' : 'Approve & Publish to Telegram'}
-            </button>
-            <button className="btn btn-danger" onClick={handleDiscard} disabled={busy || !selectedReport}>
-              Discard Draft
-            </button>
-          </div>
-        </div>
+          {activeTab === 'company' && (
+            <div className="ios-glass ai-section-card">
+              <div className="ai-action-row">
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>Days Back</label>
+                  <input className="form-input touch-target" style={{ width: 120 }} type="number" min="1" max="30" value={companyDaysBack} onChange={(e) => setCompanyDaysBack(e.target.value)} />
+                </div>
+                <button className="btn btn-primary touch-target" onClick={generateCompanyDraft} disabled={busy}>
+                  {busy ? 'Generating...' : 'Generate On-Demand'}
+                </button>
+              </div>
+
+              {companyDrafts.length === 0 ? (
+                <div className="empty-state"><h3>No company drafts</h3><p>Automated Monday reports are sent immediately; on-demand generation creates editable drafts.</p></div>
+              ) : (
+                <>
+                  <div className="form-group" style={{ marginBottom: 10 }}>
+                    <label>Select Company Draft</label>
+                    <select className="form-input touch-target" value={selectedCompanyDraftId || ''} onChange={(e) => selectCompanyDraft(Number(e.target.value))}>
+                      {companyDrafts.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          #{d.id} · {new Date(d.generated_at).toLocaleString()}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="ai-editor-grid">
+                    <div className="ios-glass ai-editor-panel">
+                      <label>Overall Summary</label>
+                      <textarea className="form-textarea" value={companyOverall} onChange={(e) => setCompanyOverall(e.target.value)} />
+                    </div>
+                    <div className="ios-glass ai-editor-panel">
+                      <label>Company Details / Breakdown</label>
+                      <textarea className="form-textarea" value={companyBreakdown} onChange={(e) => setCompanyBreakdown(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="ai-action-row" style={{ marginTop: 12 }}>
+                    <button className="btn btn-primary touch-target" onClick={sendCompanyDraft} disabled={busy || !selectedCompanyDraft}>Approve & Send</button>
+                    <button className="btn btn-danger touch-target" onClick={() => discardDraft(selectedCompanyDraft)} disabled={busy || !selectedCompanyDraft}>Discard</button>
+                  </div>
+                </>
+              )}
+
+              <h3 style={{ marginTop: 18, marginBottom: 10 }}>Company Report History (Sent + Automated)</h3>
+              <div className="ai-history-list">
+                {companyHistory.map(reportHistoryItem)}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

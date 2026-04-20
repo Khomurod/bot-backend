@@ -8,7 +8,7 @@ const config = require('../config/config');
 const db = require('../database/db');
 const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest, sendBroadcastToGroups, sendConfirmationBroadcast, sendConfirmationBroadcastTest } = require('../bot/bot');
 const { translateBatch } = require('../services/translationService');
-const { analyzeChatLogs, AI_REPORT_GENERATION_FAILED, callYandex } = require('../services/aiAnalysisService');
+const { generateDriverReport, generateCompanyReport, AI_REPORT_GENERATION_FAILED, callYandex } = require('../services/aiAnalysisService');
 const { buildTelegramMessageUrl } = require('../services/telegramUrl');
 const { DateTime } = require('luxon');
 const employeeVotingRoutes = require('./employeeVotingApi');
@@ -822,7 +822,23 @@ app.get('/api/chat-logs', authMiddleware, async (req, res) => {
 // ─── AI Reports (HITL) ───
 app.get('/api/ai-reports', authMiddleware, async (req, res) => {
   try {
-    const reports = await db.getPendingAiReports();
+    const type = req.query.type === 'company' ? 'company' : 'driver';
+    const includeSent = req.query.includeSent === 'true';
+    let reports;
+    if (includeSent) {
+      const result = await db.query(
+        `SELECT ar.*, COALESCE(g.group_name, 'Global Driver Groups') AS group_name
+         FROM ai_reports ar
+         LEFT JOIN groups g ON g.id = ar.group_id
+         WHERE ar.report_type = $1
+         ORDER BY ar.generated_at DESC
+         LIMIT 100`,
+        [type]
+      );
+      reports = result.rows;
+    } else {
+      reports = await db.getPendingAiReports(type);
+    }
     res.json(reports);
   } catch (err) {
     console.error('[API] Error fetching AI reports:', err.message);
@@ -832,15 +848,39 @@ app.get('/api/ai-reports', authMiddleware, async (req, res) => {
 
 app.post('/api/ai-reports/generate', authMiddleware, async (req, res) => {
   try {
+    const reportType = req.body.reportType === 'company' ? 'company' : 'driver';
+    const groupId = parseInt(req.body.groupId, 10);
     const daysBack = parseInt(req.body.daysBack, 10);
 
     if (!Number.isInteger(daysBack) || daysBack < 1 || daysBack > 30) {
       return res.status(400).json({ error: 'daysBack must be an integer between 1 and 30' });
     }
 
-    const logs = await db.getChatLogsForActiveDriverGroups(daysBack);
+    if (reportType === 'driver' && (!Number.isInteger(groupId) || groupId <= 0)) {
+      return res.status(400).json({ error: 'Invalid groupId for driver report' });
+    }
+
+    let logs = [];
+    let reportText = '';
+    let reportGroupId = null;
+
+    if (reportType === 'company') {
+      logs = await db.getChatLogsForActiveDriverGroups(daysBack);
+    } else {
+      const groupRes = await db.query(
+        `SELECT id, group_name FROM groups WHERE id = $1 AND group_type = 'driver' AND active = TRUE`,
+        [groupId]
+      );
+      const group = groupRes.rows[0];
+      if (!group) {
+        return res.status(404).json({ error: 'Group not found' });
+      }
+      reportGroupId = group.id;
+      logs = await db.getChatLogsForGroup(group.id, daysBack);
+    }
+
     if (!logs || logs.length === 0) {
-      return res.status(400).json({ error: 'No logs found for active driver groups in the selected date range' });
+      return res.status(400).json({ error: 'No logs found in the selected date range' });
     }
 
     const transcriptReadyLogs = logs.map((log) => {
@@ -859,12 +899,17 @@ app.post('/api/ai-reports/generate', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'No valid transcript lines could be built from logs' });
     }
 
-    const reportText = await analyzeChatLogs('Global Driver Groups', transcriptReadyLogs);
+    if (reportType === 'company') {
+      reportText = await generateCompanyReport(transcriptReadyLogs);
+    } else {
+      reportText = await generateDriverReport(transcriptReadyLogs);
+    }
+
     if (!reportText || reportText === AI_REPORT_GENERATION_FAILED) {
       return res.status(502).json({ error: 'AI report generation failed' });
     }
 
-    const draft = await db.saveAiReport(null, reportText);
+    const draft = await db.saveAiReport(reportGroupId, reportText, reportType);
     const hydrated = await db.getAiReportById(draft.id);
     res.status(201).json(hydrated || draft);
   } catch (err) {
@@ -896,21 +941,34 @@ app.post('/api/ai-reports/:id/send', authMiddleware, async (req, res) => {
     const sourceText = typeof req.body?.editedText === 'string' && req.body.editedText.trim()
       ? req.body.editedText
       : report.report_text;
-    const [overallRaw, breakdownRaw] = String(sourceText || '').split('|||');
-    const overallSummary = (overallRaw || '').trim() || 'Summary unavailable.';
-    const driverBreakdown = (breakdownRaw || '').trim() || 'Driver breakdown unavailable.';
-
-    const message = [
-      '📊 <b>AI Chat Analysis (Admin Approved)</b>',
-      `<b>Group:</b> ${escapeHtml(report.group_name)}`,
-      `<b>Generated:</b> ${escapeHtml(new Date(report.generated_at).toLocaleString())}`,
-      '',
-      `<b>Overall Summary</b>`,
-      escapeHtml(overallSummary),
-      '',
-      `<b>Driver Breakdown</b>`,
-      `<blockquote expandable>${escapeHtml(driverBreakdown)}</blockquote>`,
-    ].join('\n');
+    let message = '';
+    if (report.report_type === 'company') {
+      const [overallRaw, breakdownRaw] = String(sourceText || '').split('|||');
+      const companyBody = breakdownRaw
+        ? `${(overallRaw || '').trim()}\n\n${(breakdownRaw || '').trim()}`
+        : String(sourceText || '').trim();
+      message = [
+        '📊 <b>Company AI Weekly Report (Admin Approved)</b>',
+        `<b>Generated:</b> ${escapeHtml(new Date(report.generated_at).toLocaleString())}`,
+        '',
+        companyBody || 'Report unavailable.',
+      ].join('\n');
+    } else {
+      const [overallRaw, breakdownRaw] = String(sourceText || '').split('|||');
+      const overallSummary = (overallRaw || '').trim() || 'Summary unavailable.';
+      const driverBreakdown = (breakdownRaw || '').trim() || 'Driver breakdown unavailable.';
+      message = [
+        '📊 <b>AI Chat Analysis (Admin Approved)</b>',
+        `<b>Group:</b> ${escapeHtml(report.group_name)}`,
+        `<b>Generated:</b> ${escapeHtml(new Date(report.generated_at).toLocaleString())}`,
+        '',
+        `<b>Overall Summary</b>`,
+        escapeHtml(overallSummary),
+        '',
+        `<b>Driver Breakdown</b>`,
+        `<blockquote expandable>${escapeHtml(driverBreakdown)}</blockquote>`,
+      ].join('\n');
+    }
 
     await bot.telegram.sendMessage(config.managementGroupId, message, { parse_mode: 'HTML' });
 

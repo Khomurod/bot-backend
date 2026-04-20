@@ -631,23 +631,27 @@ async function getRecentChatLogs(limit = 50) {
 }
 
 // ─── AI Reports ───
-async function saveAiReport(groupId, reportText) {
+async function saveAiReport(groupId, reportText, reportType = 'driver') {
+  const normalizedType = reportType === 'company' ? 'company' : 'driver';
   const res = await query(
-    `INSERT INTO ai_reports (group_id, report_text, status)
-     VALUES ($1, $2, 'draft')
+    `INSERT INTO ai_reports (group_id, report_text, report_type, status)
+     VALUES ($1, $2, $3, 'draft')
      RETURNING *`,
-    [groupId, reportText]
+    [groupId, reportText, normalizedType]
   );
   return res.rows[0];
 }
 
-async function getPendingAiReports() {
+async function getPendingAiReports(type = 'driver') {
+  const normalizedType = type === 'company' ? 'company' : 'driver';
   const res = await query(
     `SELECT ar.*, COALESCE(g.group_name, 'Global Driver Groups') AS group_name
      FROM ai_reports ar
      LEFT JOIN groups g ON g.id = ar.group_id
      WHERE ar.status = 'draft'
+       AND ar.report_type = $1
      ORDER BY ar.generated_at DESC`
+    , [normalizedType]
   );
   return res.rows;
 }

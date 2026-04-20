@@ -409,17 +409,24 @@ export async function getChatLogs() {
   return res.json();
 }
 
-export async function getAiReports() {
-  const res = await fetch(`${API_BASE}/ai-reports`, { headers: getHeaders() });
+export async function getAiReports(type = 'driver', includeSent = false) {
+  const res = await fetch(`${API_BASE}/ai-reports?type=${encodeURIComponent(type)}&includeSent=${includeSent ? 'true' : 'false'}`, { headers: getHeaders() });
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
-export async function generateAiReport(daysBack = 3) {
+export async function generateAiReport(params = {}) {
+  const body = typeof params === 'number'
+    ? { reportType: 'company', daysBack: params }
+    : {
+      reportType: params.reportType || 'company',
+      groupId: params.groupId ?? null,
+      daysBack: params.daysBack ?? 7,
+    };
   const res = await fetch(`${API_BASE}/ai-reports/generate`, {
     method: 'POST',
     headers: getHeaders(),
-    body: JSON.stringify({ daysBack }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) { await handleApiError(res); }
   return res.json();

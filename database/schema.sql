@@ -225,11 +225,31 @@ CREATE TABLE IF NOT EXISTS ai_reports (
   id SERIAL PRIMARY KEY,
   group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
   report_text TEXT NOT NULL,
+  report_type VARCHAR(50) NOT NULL DEFAULT 'driver',
   status VARCHAR(20) NOT NULL DEFAULT 'draft',
   generated_at TIMESTAMP NOT NULL DEFAULT NOW(),
   sent_at TIMESTAMP NULL,
-  CONSTRAINT ai_reports_status_check CHECK (status IN ('draft', 'sent', 'discarded'))
+  CONSTRAINT ai_reports_status_check CHECK (status IN ('draft', 'sent', 'discarded')),
+  CONSTRAINT ai_reports_type_check CHECK (report_type IN ('driver', 'company'))
 );
+
+ALTER TABLE ai_reports ADD COLUMN IF NOT EXISTS report_type VARCHAR(50) NOT NULL DEFAULT 'driver';
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE constraint_name = 'ai_reports_type_check'
+      AND table_name = 'ai_reports'
+  ) THEN
+    ALTER TABLE ai_reports DROP CONSTRAINT ai_reports_type_check;
+  END IF;
+END
+$$;
+
+ALTER TABLE ai_reports
+  ADD CONSTRAINT ai_reports_type_check CHECK (report_type IN ('driver', 'company'));
 
 CREATE INDEX IF NOT EXISTS idx_ai_reports_status_generated_at
   ON ai_reports(status, generated_at DESC);
