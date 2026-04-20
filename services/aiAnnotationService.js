@@ -308,6 +308,27 @@ async function ensureAnnotationsForRange({ daysBack = 7, groupIds = null, onProg
   return { found: rows.length, annotated };
 }
 
+let isAnnotating = false;
+
+function startBackgroundAnnotator() {
+  console.log('[ANNOTATOR] Starting background annotator loop (120s interval).');
+  setInterval(async () => {
+    if (isAnnotating) return;
+    isAnnotating = true;
+    try {
+      // console.log('[ANNOTATOR] Background loop: checking for unannotated messages...');
+      const result = await ensureAnnotationsForRange({ daysBack: 14 });
+      if (result.annotated > 0) {
+        console.log(`[ANNOTATOR] Background loop: found ${result.found}, annotated ${result.annotated}.`);
+      }
+    } catch (err) {
+      console.error('[ANNOTATOR] Background loop error:', err.message);
+    } finally {
+      isAnnotating = false;
+    }
+  }, 120000);
+}
+
 module.exports = {
   MODEL_VERSION,
   BATCH_SIZE,
@@ -316,6 +337,7 @@ module.exports = {
   VALID_LANGUAGES,
   annotateChatLogs,
   ensureAnnotationsForRange,
+  startBackgroundAnnotator,
   // pure helpers exported for tests
   buildAnnotationPrompt,
   parseAnnotationBatchResponse,

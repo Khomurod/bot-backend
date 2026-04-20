@@ -53,20 +53,72 @@ function renderCard(card) {
   ].filter(Boolean).join('\n');
 }
 
-function renderInsightReportForTelegram({ report, cards, pulse }) {
-  const sortedCards = [...cards].sort((a, b) => {
-    const ai = KIND_ORDER.indexOf(a.kind);
-    const bi = KIND_ORDER.indexOf(b.kind);
-    if (ai !== bi) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-    return (b.severity || 0) - (a.severity || 0);
-  });
-  const header = [
-    '📢 <b>Company AI Weekly Briefing</b>',
-    `<i>Window:</i> last ${pulse?.days_back || 7} days`,
-    `<i>Generated:</i> ${escapeHtml(new Date(report.generated_at || Date.now()).toLocaleString())}`,
-  ].join('\n');
-  const body = sortedCards.map(renderCard).join('\n\n━━━━━━━━━━━━━━━━━\n\n');
-  return `${header}\n\n${body}`;
+function renderCardContent(card) {
+  let text = card.narrative_html || '<i>See evidence.</i>';
+  text = text.replace(/<\/?ul>/gi, '').replace(/<li>/gi, '• ').replace(/<\/li>/gi, '<br/>');
+
+  const icon = KIND_ICON[card.kind] || '•';
+  let title = escapeHtml(card.title || card.kind);
+  if (card.driver_name) {
+     title = escapeHtml(card.driver_name);
+  }
+
+  let evidenceLink = '';
+  if (Array.isArray(card.evidence_json) && card.evidence_json.length > 0 && card.evidence_json[0] && card.evidence_json[0].url) {
+    evidenceLink = ` (<a href="${card.evidence_json[0].url}">proof</a>)`;
+  }
+
+  return `• <b>${title}:</b> ${text}${evidenceLink}`;
 }
 
-module.exports = { renderInsightReportForTelegram, renderCard, escapeHtml, KIND_ICON, KIND_ORDER };
+function renderInsightReportForTelegram({ report, cards, pulse }) {
+  const redFlagsKinds = ['at_risk', 'home_time', 'unacked', 'silent', 'anomaly', 'hotspot', 'one_on_one'];
+  const redFlags = cards.filter(c => redFlagsKinds.includes(c.kind) || c.severity >= 2);
+  const stars = cards.filter(c => c.kind === 'star' || (c.kind !== 'pulse' && !redFlagsKinds.includes(c.kind) && c.severity === 1));
+
+  const generatedDate = report.generated_at ? new Date(report.generated_at).toLocaleDateString() : new Date().toLocaleDateString();
+
+  const pulseSummary = pulse ? `<b>${pulse.active_drivers}</b> active drivers · <b>${pulse.total_messages}</b> messages · avg sentiment <b>${pulse.sentiment_avg}</b> (pos ${pulse.positive_messages} / neg ${pulse.negative_messages})` : 'No data available';
+
+  if (redFlags.length === 0 && stars.length === 0) {
+    return [
+      '🚛 <b>Weekly Fleet Intelligence Report</b>',
+      `📅 <i>Generated: ${generatedDate}</i>`,
+      '',
+      '📊 <b>Overall Status:</b>',
+      pulseSummary,
+      '',
+      '🚦 <b>The Pulse:</b>',
+      `• 💬 <b>Total Messages Analyzed:</b> ${pulse ? pulse.total_messages : 0}`,
+      '',
+      '✅ All active drivers operated normally with no notable issues.'
+    ].join('\n');
+  }
+
+  const redFlagsBlock = redFlags.length > 0
+    ? `🚨 <b>Actionable Red Flags</b>\n<blockquote expandable>\n${redFlags.map(renderCardContent).join('\n')}\n</blockquote>`
+    : '';
+
+  const starsBlock = stars.length > 0
+    ? `🌟 <b>Top Performers & Notable Events</b>\n<blockquote expandable>\n${stars.map(renderCardContent).join('\n')}\n</blockquote>`
+    : '';
+
+  return [
+    '🚛 <b>Weekly Fleet Intelligence Report</b>',
+    `📅 <i>Generated: ${generatedDate}</i>`,
+    '',
+    '📊 <b>Overall Status:</b>',
+    pulseSummary,
+    '',
+    '🚦 <b>The Pulse:</b>',
+    `• 🟢 <b>Exceptional Performers:</b> ${stars.length}`,
+    `• 🔴 <b>Red Flags Detected:</b> ${redFlags.length}`,
+    `• 💬 <b>Total Messages Analyzed:</b> ${pulse ? pulse.total_messages : 0}`,
+    '',
+    redFlagsBlock,
+    '',
+    starsBlock
+  ].filter(line => line !== null && line !== undefined).join('\n').trim();
+}
+
+module.exports = { renderInsightReportForTelegram, renderCard, renderCardContent, escapeHtml, KIND_ICON, KIND_ORDER };

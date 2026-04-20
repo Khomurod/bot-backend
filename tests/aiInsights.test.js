@@ -10,7 +10,7 @@ const {
   detectHotspots,
   intentDistribution,
   jsDivergence,
-  parseCardNarrative,
+  parseBatchCardNarratives,
   excerpt,
 } = require('../services/aiInsightsService');
 
@@ -131,22 +131,21 @@ test('jsDivergence is 0 for identical, >0 for different', () => {
   assert.ok(jsDivergence({ a: 1 }, { b: 1 }) > 0.9);
 });
 
-test('parseCardNarrative handles valid JSON', () => {
-  const out = parseCardNarrative('{"narrative_html":"<b>hi</b>","suggested_action":"call","severity":3}');
-  assert.equal(out.narrative_html, '<b>hi</b>');
-  assert.equal(out.suggested_action, 'call');
-  assert.equal(out.severity, 3);
+test('parseBatchCardNarratives handles valid JSON object correctly', () => {
+  const out = parseBatchCardNarratives('{"card1":{"narrative_html":"<b>hi</b>","suggested_action":"call","severity":3}}');
+  assert.equal(out.card1.narrative_html, '<b>hi</b>');
+  assert.equal(out.card1.suggested_action, 'call');
+  assert.equal(out.card1.severity, 3);
 });
 
-test('parseCardNarrative falls back on non-JSON text', () => {
-  const out = parseCardNarrative('just a narrative sentence');
-  assert.match(out.narrative_html, /narrative/);
-  assert.equal(out.severity, 1);
+test('parseBatchCardNarratives falls back on non-JSON text', () => {
+  const out = parseBatchCardNarratives('just a narrative sentence');
+  assert.deepEqual(out, {});
 });
 
-test('parseCardNarrative clamps severity to 1..3', () => {
-  assert.equal(parseCardNarrative('{"severity":99}').severity, 3);
-  assert.equal(parseCardNarrative('{"severity":-4}').severity, 1);
+test('parseBatchCardNarratives clamps severity to 1..3', () => {
+  assert.equal(parseBatchCardNarratives('{"c1":{"severity":99}}').c1.severity, 3);
+  assert.equal(parseBatchCardNarratives('{"c2":{"severity":-4}}').c2.severity, 1);
 });
 
 test('computeSenderBucketsWithStats splits by (group,user)', () => {

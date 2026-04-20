@@ -17,9 +17,9 @@ test('renderInsightReportForTelegram orders cards by KIND_ORDER', () => {
   ];
   const html = renderInsightReportForTelegram({ report, cards, pulse });
   // Pulse header block appears before at_risk, before star (per KIND_ORDER)
-  assert.ok(html.indexOf('Pulse') < html.indexOf('At-risk: John'));
+  assert.ok(html.indexOf('Overall Status') < html.indexOf('At-risk: John'));
   assert.ok(html.indexOf('At-risk: John') < html.indexOf('Star: Jane'));
-  assert.match(html, /Company AI Weekly Briefing/);
+  assert.match(html, /Weekly Fleet Intelligence Report/);
 });
 
 test('KIND_ORDER contains expected kinds', () => {
