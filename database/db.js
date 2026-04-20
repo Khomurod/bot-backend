@@ -88,6 +88,19 @@ async function getGroupByTelegramId(telegramGroupId) {
   return res.rows[0];
 }
 
+async function getGroupBySamsaraId(samsaraId) {
+  if (!samsaraId) return null;
+  const res = await query(
+    `SELECT * FROM groups
+     WHERE samsara_vehicle_id = $1
+       AND group_type = 'driver'
+       AND active = TRUE
+     LIMIT 1`,
+    [String(samsaraId)]
+  );
+  return res.rows[0] || null;
+}
+
 async function setGroupLanguage(groupId, language) {
   const res = await query(
     'UPDATE groups SET language = $1 WHERE id = $2 RETURNING *',
@@ -100,6 +113,18 @@ async function setGroupBirthday(groupId, birthday) {
   const res = await query(
     'UPDATE groups SET driver_birthday = $1 WHERE id = $2 RETURNING *',
     [birthday || null, groupId]
+  );
+  return res.rows[0];
+}
+
+async function updateGroupSamsaraId(groupId, samsaraId) {
+  const normalized = samsaraId ? String(samsaraId).trim() : null;
+  const res = await query(
+    `UPDATE groups
+     SET samsara_vehicle_id = $1
+     WHERE id = $2
+     RETURNING *`,
+    [normalized || null, groupId]
   );
   return res.rows[0];
 }
@@ -399,6 +424,17 @@ async function updateScheduledMessageStatus(id, status) {
   return res.rows[0];
 }
 
+async function claimScheduledMessage(id) {
+  const res = await query(
+    `UPDATE scheduled_messages
+     SET status = 'processing'
+     WHERE id = $1 AND status = 'pending'
+     RETURNING *`,
+    [id]
+  );
+  return res.rows[0] || null;
+}
+
 async function deleteScheduledMessage(id) {
   await query('DELETE FROM scheduled_messages WHERE id = $1', [id]);
 }
@@ -527,20 +563,40 @@ async function getBroadcastButtonClicks(broadcastId) {
 
 // ─── Chat Logs ───
 
-async function logChatMessage(groupId, telegramUserId, senderName, messageText) {
+async function logChatMessage(groupId, telegramUserId, senderName, messageText, telegramMessageId = null) {
   await query(
-    `INSERT INTO chat_logs (group_id, telegram_user_id, sender_name, message_text)
-     VALUES ($1, $2, $3, $4)`,
-    [groupId, telegramUserId, senderName, messageText]
+    `INSERT INTO chat_logs (group_id, telegram_user_id, telegram_message_id, sender_name, message_text)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [groupId, telegramUserId, telegramMessageId, senderName, messageText]
   );
 }
 
 async function getChatLogsForGroup(groupId, daysBack) {
   const res = await query(
-    `SELECT * FROM chat_logs
-     WHERE group_id = $1 AND created_at >= NOW() - ($2 || ' days')::INTERVAL
-     ORDER BY created_at ASC`,
+    `SELECT c.*,
+            g.group_name,
+            g.telegram_group_id
+     FROM chat_logs c
+     JOIN groups g ON c.group_id = g.id
+     WHERE c.group_id = $1 AND c.created_at >= NOW() - ($2 || ' days')::INTERVAL
+     ORDER BY c.created_at ASC`,
     [groupId, daysBack]
+  );
+  return res.rows;
+}
+
+async function getChatLogsForActiveDriverGroups(daysBack) {
+  const res = await query(
+    `SELECT c.*,
+            g.group_name,
+            g.telegram_group_id
+     FROM chat_logs c
+     JOIN groups g ON c.group_id = g.id
+     WHERE g.group_type = 'driver'
+       AND g.active = TRUE
+       AND c.created_at >= NOW() - ($1 || ' days')::INTERVAL
+     ORDER BY c.created_at ASC`,
+    [daysBack]
   );
   return res.rows;
 }
@@ -554,7 +610,8 @@ async function deleteOldChatLogs(daysOld) {
 
 async function getRecentChatLogs(limit = 50) {
   const res = await query(
-    `SELECT c.id, c.sender_name, c.message_text, c.created_at, g.group_name
+    `SELECT c.id, c.sender_name, c.message_text, c.created_at, c.telegram_message_id,
+            g.group_name, g.telegram_group_id
      FROM chat_logs c
      JOIN groups g ON c.group_id = g.id
      ORDER BY c.created_at DESC
@@ -577,9 +634,9 @@ async function saveAiReport(groupId, reportText) {
 
 async function getPendingAiReports() {
   const res = await query(
-    `SELECT ar.*, g.group_name
+    `SELECT ar.*, COALESCE(g.group_name, 'Global Driver Groups') AS group_name
      FROM ai_reports ar
-     JOIN groups g ON g.id = ar.group_id
+     LEFT JOIN groups g ON g.id = ar.group_id
      WHERE ar.status = 'draft'
      ORDER BY ar.generated_at DESC`
   );
@@ -588,9 +645,9 @@ async function getPendingAiReports() {
 
 async function getAiReportById(reportId) {
   const res = await query(
-    `SELECT ar.*, g.group_name
+    `SELECT ar.*, COALESCE(g.group_name, 'Global Driver Groups') AS group_name
      FROM ai_reports ar
-     JOIN groups g ON g.id = ar.group_id
+     LEFT JOIN groups g ON g.id = ar.group_id
      WHERE ar.id = $1`,
     [reportId]
   );
@@ -666,8 +723,10 @@ module.exports = {
   getAllGroups,
   getAllDriverGroups,
   getGroupByTelegramId,
+  getGroupBySamsaraId,
   setGroupLanguage,
   setGroupBirthday,
+  updateGroupSamsaraId,
   getGroupsWithBirthdayToday,
   getGroupsByIds,
   getGroupsByLanguages,
@@ -693,6 +752,7 @@ module.exports = {
   getAllScheduledMessages,
   getScheduledMessageById,
   updateScheduledMessageStatus,
+  claimScheduledMessage,
   deleteScheduledMessage,
   // Broadcast Tracking
   createBroadcast,
@@ -704,6 +764,7 @@ module.exports = {
   // Chat Logs
   logChatMessage,
   getChatLogsForGroup,
+  getChatLogsForActiveDriverGroups,
   deleteOldChatLogs,
   getRecentChatLogs,
   // AI Reports

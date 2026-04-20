@@ -20,10 +20,8 @@ function buildTranscript(logsArray) {
   const MAX_CHARS = 20000;
   const sliced = logsArray.slice(-MAX_MESSAGES);
   const body = sliced
-    .map((log) => {
-      const date = new Date(log.created_at).toISOString();
-      return `[${date}] ${log.sender_name}: ${log.message_text}`;
-    })
+    .map((log) => String(log.transcript_line || '').trim())
+    .filter(Boolean)
     .join('\n');
 
   if (body.length <= MAX_CHARS) {
@@ -54,12 +52,14 @@ async function callYandex(promptText) {
         {
           role: 'system',
           text: [
-            'You are a strict logistics auditor for a trucking company.',
-            'Analyze only provided evidence from driver-updater chats.',
-            'You must identify operational, compliance, and communication red flags.',
+            'You are a strict executive logistics auditor for a trucking company.',
+            'Analyze only provided evidence from a global transcript across all driver groups.',
+            'You must identify operational, compliance, safety, and communication red flags.',
             `Return EXACTLY two sections separated by "${REPORT_DELIMITER}" and nothing else.`,
-            'Section 1: 2-3 sentence overall summary for management.',
-            'Section 2: driver-by-driver breakdown, each line must mention red flags or say "Clear".',
+            'Section 1: Global Executive Summary for company health (2-4 concise sentences).',
+            'Section 2: Driver-by-driver breakdown wrapped in <blockquote expandable>...</blockquote>.',
+            'When citing specific driver behavior, include an HTML link using the exact URL from transcript lines, e.g. <a href=\'https://t.me/c/.../...\'>proof</a>.',
+            'Use HTML-safe output only (no markdown).',
             'Do not invent facts, percentages, or events not present in transcript.',
           ].join(' '),
         },
@@ -82,11 +82,11 @@ async function callYandex(promptText) {
 
 /**
  * Analyzes chat logs using OpenAI to evaluate performance.
- * @param {string} groupName 
+ * @param {string} scopeName
  * @param {Array} logsArray 
  * @returns {Promise<string>}
  */
-async function analyzeChatLogs(groupName, logsArray) {
+async function analyzeChatLogs(scopeName, logsArray) {
   if (!logsArray || logsArray.length === 0) return 'No logs to analyze.';
   const { transcript, wasTrimmed } = buildTranscript(logsArray);
   const { from, to } = getDateRange(logsArray);
@@ -94,7 +94,7 @@ async function analyzeChatLogs(groupName, logsArray) {
 
   try {
     const prompt = [
-      `Analyze chat logs for group "${groupName}".`,
+      `Analyze chat logs for scope "${scopeName}".`,
       `Total messages available: ${logCount}.`,
       `Date range: ${from} to ${to}.`,
       wasTrimmed
@@ -102,16 +102,18 @@ async function analyzeChatLogs(groupName, logsArray) {
         : 'Transcript is complete for the selected range.',
       '',
       'Evaluate:',
-      '1) Driver-updater interaction quality',
+      '1) Overall company operating health',
       '2) Communication consistency and responsiveness',
       '3) Dispatch/load handling behavior (if evidence exists)',
       '4) Operational red flags (delays, non-responsiveness, conflict, risky behavior)',
       '',
       `Output rules (MANDATORY):`,
       `- Return exactly two parts separated by ${REPORT_DELIMITER}`,
-      '- Part 1: Overall summary in 2-3 sentences',
-      '- Part 2: Driver-by-driver breakdown, one line per driver, each line ends with either "Red Flags: <items>" or "Clear"',
-      '- Do not add markdown fences, labels, or extra separators',
+      '- Part 1: Global Executive Summary in 2-4 sentences',
+      '- Part 2: Driver-by-driver breakdown wrapped in one <blockquote expandable>...</blockquote>',
+      '- For each specific claim, include a citation hyperlink using <a href=\'exact_link_from_transcript\'>proof</a>',
+      '- Use exact links from transcript only; never fabricate links',
+      '- Do not add markdown fences or extra separators',
       '',
       `Transcript:\n${transcript}`,
     ].join('\n');
@@ -121,8 +123,9 @@ async function analyzeChatLogs(groupName, logsArray) {
       generated = await callYandex(
         [
           `Reformat the following content into EXACTLY two sections separated by ${REPORT_DELIMITER}.`,
-          'Section 1: 2-3 sentence overall summary.',
-          'Section 2: driver-by-driver lines with "Red Flags: ..." or "Clear".',
+          'Section 1: global executive summary (2-4 sentences).',
+          'Section 2: a single <blockquote expandable>...</blockquote> with driver-by-driver breakdown.',
+          'Include proof links with <a href=\'exact_link_from_transcript\'>proof</a>.',
           'Return only the final reformatted text.',
           '',
           generated,

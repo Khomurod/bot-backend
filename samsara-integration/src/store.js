@@ -10,6 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { extractUnitNumber, normalizeName, resolveGroupByUnitAndName } = require('./routing');
 
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -156,11 +157,11 @@ module.exports = {
   },
 
   /**
-   * Resolve Driver Group by unit number from Postgres groups table.
-   * Returns telegram_group_id as string or null when not found.
+   * Resolve Driver Group by unit number and optional name hints.
+   * Returns matched group object or null when not found.
    */
-  async findGroupByUnit(unitNumber, vehicleName) {
-    if (!unitNumber && !vehicleName) return null;
+  async findGroupByUnit(unitNumber, driverName, vehicleName) {
+    if (!unitNumber) return null;
     const DATABASE_URL = process.env.DATABASE_URL;
     if (!DATABASE_URL) {
       console.warn('[Store] DATABASE_URL not set — cannot resolve unit group.');
@@ -174,45 +175,32 @@ module.exports = {
     });
 
     try {
-      const cleanUnit = String(unitNumber || '').replace(/\D/g, '');
-      if (cleanUnit) {
-        const query = `
-          SELECT telegram_group_id, group_name
-          FROM groups
-          WHERE group_type = 'driver'
-            AND active = TRUE
-            AND group_name ~* $1
-          ORDER BY id DESC
-          LIMIT 1
-        `;
-        // \y is a Postgres word boundary ensuring "27" doesn't match "2771"
-        const regexPattern = `#\\s*${cleanUnit}\\y`;
-        const res = await pool.query(query, [regexPattern]);
-        if (res.rows.length > 0 && res.rows[0].telegram_group_id) {
-          return String(res.rows[0].telegram_group_id);
-        }
-      }
+      const cleanUnit = String(unitNumber).replace(/\D/g, '');
+      if (!cleanUnit) return null;
 
-      // Fallback: if unit labels differ between systems, match by driver name
-      // from vehicleName pattern like "02429 JEAN DATOS".
-      const normalizedVehicleName = String(vehicleName || '').trim();
-      const possibleDriverName = normalizedVehicleName.replace(/^\s*#?\s*\d+\s*/, '').trim();
-      if (possibleDriverName && possibleDriverName.length >= 4) {
-        const byNameQuery = `
-          SELECT telegram_group_id, group_name
-          FROM groups
-          WHERE group_type = 'driver'
-            AND active = TRUE
-            AND group_name ILIKE $1
-          ORDER BY id DESC
-          LIMIT 1
-        `;
-        const byName = await pool.query(byNameQuery, [`%${possibleDriverName}%`]);
-        if (byName.rows.length > 0 && byName.rows[0].telegram_group_id) {
-          return String(byName.rows[0].telegram_group_id);
-        }
-      }
-      return null;
+      const query = `
+        SELECT id, telegram_group_id, group_name
+        FROM groups
+        WHERE group_type = 'driver'
+          AND active = TRUE
+          AND group_name ILIKE $1
+        ORDER BY id DESC
+      `;
+      const res = await pool.query(query, [`%${cleanUnit}%`]);
+      const nameHints = [driverName, vehicleName]
+        .map(normalizeName)
+        .filter(Boolean);
+      const fallbackNameHint = normalizeName(String(vehicleName || '').replace(/^\s*#?\s*\d+\s*/, ''));
+      if (fallbackNameHint) nameHints.push(fallbackNameHint);
+      const resolved = resolveGroupByUnitAndName(res.rows, cleanUnit, nameHints);
+      if (!resolved) return null;
+      const resolvedUnit = extractUnitNumber(resolved.group_name);
+      const matchReason = resolvedUnit === cleanUnit && nameHints.length > 0 ? 'unit+name' : 'unit';
+      return {
+        telegramGroupId: String(resolved.telegram_group_id),
+        groupName: resolved.group_name,
+        matchReason,
+      };
     } catch (err) {
       console.error('[Store] findGroupByUnit query failed:', err.message);
       return null;

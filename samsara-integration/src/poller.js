@@ -272,8 +272,10 @@ async function executePoll() {
                 const mappedPayload = await transformApiEventToWebhookShape(rawEvent);
                 const formattedMessage = formatAlert(mappedPayload);
                 
-                // Pass vehicle name for dynamic routing
+                // Pass metadata for dynamic routing
                 formattedMessage.vehicleName = rawEvent.vehicle?.name || rawEvent.asset?.name || '';
+                formattedMessage.vehicleId = rawEvent.vehicle?.id || rawEvent.asset?.id || null;
+                formattedMessage.driverName = rawEvent.driver?.name || null;
                 
                 queueAlert(formattedMessage);
             }

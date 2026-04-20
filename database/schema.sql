@@ -89,6 +89,7 @@ ALTER TABLE questions ADD COLUMN IF NOT EXISTS media_position TEXT DEFAULT 'abov
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS group_type TEXT DEFAULT 'driver';
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS driver_birthday DATE;
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS samsara_vehicle_id TEXT;
 
 -- ─── Employee Voting System (isolated) ───
 
@@ -189,15 +190,35 @@ CREATE TABLE IF NOT EXISTS scheduled_messages (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE constraint_name = 'scheduled_messages_status_check'
+      AND table_name = 'scheduled_messages'
+  ) THEN
+    ALTER TABLE scheduled_messages DROP CONSTRAINT scheduled_messages_status_check;
+  END IF;
+END
+$$;
+
+ALTER TABLE scheduled_messages
+  ADD CONSTRAINT scheduled_messages_status_check
+  CHECK (status IN ('pending', 'processing', 'sent', 'failed', 'cancelled'));
+
 -- TABLE: chat_logs
 CREATE TABLE IF NOT EXISTS chat_logs (
   id SERIAL PRIMARY KEY,
   group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
   telegram_user_id BIGINT,
+  telegram_message_id BIGINT,
   sender_name TEXT,
   message_text TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+ALTER TABLE chat_logs ADD COLUMN IF NOT EXISTS telegram_message_id BIGINT;
 
 -- ─── AI Reports (Human-in-the-Loop) ───
 CREATE TABLE IF NOT EXISTS ai_reports (

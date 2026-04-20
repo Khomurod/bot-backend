@@ -218,7 +218,8 @@ async function startBot() {
             const group = await db.getGroupByTelegramId(chat.id);
             if (group) {
               const senderName = ctx.from.first_name || ctx.from.username || 'Unknown';
-              await db.logChatMessage(group.id, ctx.from.id, senderName, text);
+              const telegramMessageId = ctx.message.message_id || null;
+              await db.logChatMessage(group.id, ctx.from.id, senderName, text, telegramMessageId);
             }
           }
         }

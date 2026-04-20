@@ -13,6 +13,7 @@ const TelegramBot = require('node-telegram-bot-api');
 
 const poller = require('./src/poller');
 const store = require('./src/store');
+const { determineTargetGroup } = require('./src/routing');
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const PORT = parseInt(process.env.PORT || process.env.WEBHOOK_PORT || '3000', 10);
@@ -143,23 +144,21 @@ async function broadcast(alertData) {
     }
 
     // 2. Forward to the specific Driver Group via main bot (@wenzefeedback_bot)
-    // We dynamically resolve the group ID based on the Unit # in the vehicle name
-    let targetDriverGroupId = process.env.EMPLOYEE_GROUP_ID; // default fallback
-    
-    // Extract unit number from vehicle name (e.g. "88 SHERZOD" or "Unit #88")
-    const vehicleName = typeof alertData === 'string' ? '' : (alertData.vehicleName || '');
-    const unitMatch = vehicleName.match(/#\s*(\d+)/) || vehicleName.match(/^(\d+)/);
-    const unitNumber = unitMatch ? unitMatch[1] : null;
-
-    if (unitNumber) {
-        const resolvedId = await store.findGroupByUnit(unitNumber, vehicleName);
-        if (resolvedId) {
-            targetDriverGroupId = resolvedId;
-        }
+    const MANAGEMENT_GROUP_ID = process.env.MANAGEMENT_GROUP_ID || process.env.EMPLOYEE_GROUP_ID;
+    const target = await determineTargetGroup(
+        typeof alertData === 'string' ? {} : alertData,
+        store.findGroupByUnit.bind(store),
+        MANAGEMENT_GROUP_ID
+    );
+    const targetDriverGroupId = target.targetGroupId;
+    if (target.matchReason.startsWith('fallback')) {
+        console.warn(`[Bot] Unmapped vehicle ${target.vehicleId || 'unknown'} unit ${target.unitNumber || 'unknown'} — routing to management group`);
+    } else {
+        console.log(`[Bot] Routed vehicle ${target.vehicleId || 'unknown'} unit ${target.unitNumber} to ${target.groupName || targetDriverGroupId} (${targetDriverGroupId}) via ${target.matchReason}`);
     }
 
     if (targetDriverGroupId && driverBot) {
-        console.log(`[Bot] Forwarding alert for Unit #${unitNumber || 'unknown'} to group ${targetDriverGroupId}...`);
+        console.log(`[Bot] Forwarding alert for Unit #${target.unitNumber || 'unknown'} to group ${targetDriverGroupId}...`);
         try {
             // Dual camera support for Driver Group
             if (videoUrl && inwardVideoUrl) {

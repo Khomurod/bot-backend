@@ -109,7 +109,12 @@ async function tick() {
     console.log(`[SCHEDULER] Found ${pendingMessages.length} pending message(s) to send`);
 
     for (const msg of pendingMessages) {
-      await processMessage(msg);
+      const locked = await db.claimScheduledMessage(msg.id);
+      if (!locked) {
+        console.log(`[SCHEDULER] Skipping message id=${msg.id} (already claimed by another worker)`);
+        continue;
+      }
+      await processMessage(locked);
     }
   } catch (err) {
     console.error('[SCHEDULER] Tick error:', err.message);
@@ -137,4 +142,4 @@ function stopScheduler() {
   }
 }
 
-module.exports = { startScheduler, stopScheduler };
+module.exports = { startScheduler, stopScheduler, tick, processMessage };
