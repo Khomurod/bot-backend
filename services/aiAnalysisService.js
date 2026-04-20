@@ -3,6 +3,7 @@ const YANDEX_API_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/com
 const YANDEX_MODEL_URI = 'gpt://b1g3bq30m1s8c1ik4tqj/yandexgpt/latest';
 const YANDEX_API_KEY = 'AQVNxTqFz0LLHgLbM42evQSxBfNqHoU-3kTsVrC2';
 const YANDEX_FOLDER_ID = 'b1g3bq30m1s8c1ik4tqj';
+const REPORT_DELIMITER = '|||';
 
 function getDateRange(logsArray) {
   if (!logsArray?.length) return { from: 'n/a', to: 'n/a' };
@@ -52,7 +53,15 @@ async function callYandex(promptText) {
       messages: [
         {
           role: 'system',
-          text: 'You are a logistics performance evaluator. Analyze only provided facts and produce concise, readable bullet points. Avoid invented data.',
+          text: [
+            'You are a strict logistics auditor for a trucking company.',
+            'Analyze only provided evidence from driver-updater chats.',
+            'You must identify operational, compliance, and communication red flags.',
+            `Return EXACTLY two sections separated by "${REPORT_DELIMITER}" and nothing else.`,
+            'Section 1: 2-3 sentence overall summary for management.',
+            'Section 2: driver-by-driver breakdown, each line must mention red flags or say "Clear".',
+            'Do not invent facts, percentages, or events not present in transcript.',
+          ].join(' '),
         },
         {
           role: 'user',
@@ -93,21 +102,34 @@ async function analyzeChatLogs(groupName, logsArray) {
         : 'Transcript is complete for the selected range.',
       '',
       'Evaluate:',
-      '1) Driver performance',
-      '2) Dispatch performance',
-      '3) Load offer acceptance behavior (if evidence exists)',
-      '4) Tone and communication quality',
+      '1) Driver-updater interaction quality',
+      '2) Communication consistency and responsiveness',
+      '3) Dispatch/load handling behavior (if evidence exists)',
+      '4) Operational red flags (delays, non-responsiveness, conflict, risky behavior)',
       '',
-      'Output format:',
-      '- concise bullets',
-      '- include practical action items for management',
-      '- do not invent metrics or facts',
+      `Output rules (MANDATORY):`,
+      `- Return exactly two parts separated by ${REPORT_DELIMITER}`,
+      '- Part 1: Overall summary in 2-3 sentences',
+      '- Part 2: Driver-by-driver breakdown, one line per driver, each line ends with either "Red Flags: <items>" or "Clear"',
+      '- Do not add markdown fences, labels, or extra separators',
       '',
       `Transcript:\n${transcript}`,
     ].join('\n');
 
-    const generated = await callYandex(prompt);
-    if (!generated) {
+    let generated = await callYandex(prompt);
+    if (generated && !generated.includes(REPORT_DELIMITER)) {
+      generated = await callYandex(
+        [
+          `Reformat the following content into EXACTLY two sections separated by ${REPORT_DELIMITER}.`,
+          'Section 1: 2-3 sentence overall summary.',
+          'Section 2: driver-by-driver lines with "Red Flags: ..." or "Clear".',
+          'Return only the final reformatted text.',
+          '',
+          generated,
+        ].join('\n')
+      );
+    }
+    if (!generated || !generated.includes(REPORT_DELIMITER)) {
       return AI_REPORT_GENERATION_FAILED;
     }
     return generated;

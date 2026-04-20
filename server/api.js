@@ -884,7 +884,27 @@ app.post('/api/ai-reports/:id/send', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Only draft reports can be sent' });
     }
 
-    const message = `📊 <b>AI Chat Analysis (Admin Approved)</b>\n<b>Group:</b> ${report.group_name}\n<b>Generated:</b> ${new Date(report.generated_at).toLocaleString()}\n\n${report.report_text}`;
+    const escapeHtml = (text) => String(text || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    const [overallRaw, breakdownRaw] = String(report.report_text || '').split('|||');
+    const overallSummary = (overallRaw || '').trim() || 'Summary unavailable.';
+    const driverBreakdown = (breakdownRaw || '').trim() || 'Driver breakdown unavailable.';
+
+    const message = [
+      '📊 <b>AI Chat Analysis (Admin Approved)</b>',
+      `<b>Group:</b> ${escapeHtml(report.group_name)}`,
+      `<b>Generated:</b> ${escapeHtml(new Date(report.generated_at).toLocaleString())}`,
+      '',
+      `<b>Overall Summary</b>`,
+      escapeHtml(overallSummary),
+      '',
+      `<b>Driver Breakdown</b>`,
+      `<blockquote expandable>${escapeHtml(driverBreakdown)}</blockquote>`,
+    ].join('\n');
+
     await bot.telegram.sendMessage(config.managementGroupId, message, { parse_mode: 'HTML' });
 
     await db.updateAiReportStatus(reportId, 'sent');

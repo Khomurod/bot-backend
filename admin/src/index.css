@@ -177,13 +177,17 @@ body {
 }
 
 .login-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  background: rgba(22, 26, 36, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 18px 48px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-radius: var(--radius);
   padding: 48px 40px;
   width: 100%;
   max-width: 420px;
-  box-shadow: var(--shadow);
 }
 
 .login-card h1 {
@@ -329,8 +333,11 @@ body {
 
 /* ─── Cards & Tables ─── */
 .card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22);
   border-radius: var(--radius);
   padding: 24px;
   transition: var(--transition);
@@ -1147,6 +1154,46 @@ tr:hover td {
   font-family: inherit;
 }
 
+.ai-summary-box,
+.ai-breakdown-box {
+  margin-bottom: 12px;
+}
+
+.ai-summary-box .ai-report-text {
+  background: rgba(99, 102, 241, 0.14);
+  border-color: rgba(129, 140, 248, 0.4);
+}
+
+.ai-review-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.collapse-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.12);
+  padding: 10px 12px;
+}
+
+.collapse-panel summary {
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.collapse-panel summary::-webkit-details-marker {
+  display: none;
+}
+
 .modal-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1180,5 +1227,31 @@ tr:hover td {
 
   .modal-actions .btn {
     flex: 1 1 100%;
+  }
+
+  .responses-table thead {
+    display: none;
+  }
+
+  .responses-table tr {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .responses-table td {
+    border-bottom: none;
+    padding: 6px 0;
+  }
+
+  .btn,
+  button,
+  [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
   }
 }

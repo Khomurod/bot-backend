@@ -313,7 +313,7 @@ function LoginPage({ onLogin }) {
   };
 
   return (
-    <div className="login-layout">
+    <div className="login-container">
       <div className="login-card">
         <div className="login-header">
           <h1>🚛 Driver Feedback</h1>
@@ -1005,61 +1005,63 @@ function BroadcastPage() {
                   </div>
                 </div>
 
-                <div className="form-group">
-                  <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, display: 'block' }}>🎯 Target Groups</label>
-                  <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                      <input type="radio" name="target" value="all" checked={targetType === 'all'} onChange={() => setTargetType('all')} style={{ accentColor: 'var(--accent)' }} />
-                      All Groups
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                      <input type="radio" name="target" value="specific_drivers" checked={targetType === 'specific_drivers'} onChange={() => setTargetType('specific_drivers')} style={{ accentColor: 'var(--accent)' }} />
-                      Specific Drivers
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                      <input type="radio" name="target" value="language_groups" checked={targetType === 'language_groups'} onChange={() => setTargetType('language_groups')} style={{ accentColor: 'var(--accent)' }} />
-                      By Language
-                    </label>
+                <details className="collapse-panel" style={{ marginBottom: 16 }}>
+                  <summary>🎯 Target Groups</summary>
+                  <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
+                    <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                        <input type="radio" name="target" value="all" checked={targetType === 'all'} onChange={() => setTargetType('all')} style={{ accentColor: 'var(--accent)' }} />
+                        All Groups
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                        <input type="radio" name="target" value="specific_drivers" checked={targetType === 'specific_drivers'} onChange={() => setTargetType('specific_drivers')} style={{ accentColor: 'var(--accent)' }} />
+                        Specific Drivers
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                        <input type="radio" name="target" value="language_groups" checked={targetType === 'language_groups'} onChange={() => setTargetType('language_groups')} style={{ accentColor: 'var(--accent)' }} />
+                        By Language
+                      </label>
+                    </div>
+
+                    {targetType === 'specific_drivers' && (
+                      <div style={{ maxHeight: 200, overflowY: 'auto', background: 'var(--bg-primary)', borderRadius: 8, border: '1px solid var(--border)', padding: 8, marginBottom: 16 }}>
+                        {driverGroups.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: 8 }}>No driver groups found.</p> : (
+                          <>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8, paddingRight: 8 }}>
+                              <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
+                                if (selectedDriverIds.length === driverGroups.length) {
+                                  setSelectedDriverIds([]);
+                                } else {
+                                  setSelectedDriverIds(driverGroups.map(g => g.id));
+                                }
+                              }} style={{ padding: '4px 8px', fontSize: 11 }}>
+                                {selectedDriverIds.length === driverGroups.length ? 'Deselect All' : 'Select All'}
+                              </button>
+                            </div>
+                            {driverGroups.map(g => (
+                              <label key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', cursor: 'pointer', borderRadius: 6, fontSize: 13 }}>
+                                <input type="checkbox" checked={selectedDriverIds.includes(g.id)} onChange={() => toggleDriverId(g.id)} style={{ accentColor: 'var(--accent)' }} />
+                                <span style={{ fontWeight: 600 }}>{g.group_name || 'Unknown'}</span>
+                                <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>({g.language?.toUpperCase()})</span>
+                              </label>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {targetType === 'language_groups' && (
+                      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                        {['en', 'ru', 'uz'].map(l => (
+                          <label key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', background: 'var(--bg-primary)', padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)' }}>
+                            <input type="checkbox" checked={selectedLanguages.includes(l)} onChange={() => toggleLanguage(l)} style={{ accentColor: 'var(--accent)' }} />
+                            {l.toUpperCase()}
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </div>
-
-                  {targetType === 'specific_drivers' && (
-                    <div style={{ maxHeight: 200, overflowY: 'auto', background: 'var(--bg-primary)', borderRadius: 8, border: '1px solid var(--border)', padding: 8, marginBottom: 16 }}>
-                      {driverGroups.length === 0 ? <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: 8 }}>No driver groups found.</p> : (
-                        <>
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8, paddingRight: 8 }}>
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => {
-                              if (selectedDriverIds.length === driverGroups.length) {
-                                setSelectedDriverIds([]);
-                              } else {
-                                setSelectedDriverIds(driverGroups.map(g => g.id));
-                              }
-                            }} style={{ padding: '4px 8px', fontSize: 11 }}>
-                              {selectedDriverIds.length === driverGroups.length ? 'Deselect All' : 'Select All'}
-                            </button>
-                          </div>
-                          {driverGroups.map(g => (
-                            <label key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', cursor: 'pointer', borderRadius: 6, fontSize: 13 }}>
-                              <input type="checkbox" checked={selectedDriverIds.includes(g.id)} onChange={() => toggleDriverId(g.id)} style={{ accentColor: 'var(--accent)' }} />
-                              <span style={{ fontWeight: 600 }}>{g.group_name || 'Unknown'}</span>
-                              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>({g.language?.toUpperCase()})</span>
-                            </label>
-                          ))}
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  {targetType === 'language_groups' && (
-                    <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-                      {['en', 'ru', 'uz'].map(l => (
-                        <label key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', background: 'var(--bg-primary)', padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)' }}>
-                          <input type="checkbox" checked={selectedLanguages.includes(l)} onChange={() => toggleLanguage(l)} style={{ accentColor: 'var(--accent)' }} />
-                          {l.toUpperCase()}
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                </details>
 
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>Use the toolbar to format text with Telegram-compatible HTML tags.</p>
 
@@ -1084,10 +1086,13 @@ function BroadcastPage() {
                 <textarea ref={regUzRef} className="form-textarea toolbar-textarea" value={messageUz} onChange={(e) => setMessageUz(e.target.value)} onKeyDown={regFmtUz.handleKeyDown}
                   placeholder="O'zbek tilidagi xabar (avto-tarjima yoki qo'lda kiritish)" style={{ minHeight: 100, resize: 'vertical' }} />
 
-                <div style={{ marginTop: 16 }}>
-                  <MediaUploader items={broadcastMediaItems} onAdd={(m) => setBroadcastMediaItems(prev => [...prev, m])} onRemove={(index) => setBroadcastMediaItems(prev => prev.filter((_, i) => i !== index))} />
-                  {broadcastMediaItems.length > 0 && <div style={{ marginTop: 16 }}><MediaPositionSelector name="broadcast-media-position" position={broadcastMediaPosition} onChange={setBroadcastMediaPosition} /></div>}
-                </div>
+                <details className="collapse-panel" style={{ marginTop: 16 }}>
+                  <summary>📎 Media Attachments</summary>
+                  <div style={{ marginTop: 12 }}>
+                    <MediaUploader items={broadcastMediaItems} onAdd={(m) => setBroadcastMediaItems(prev => [...prev, m])} onRemove={(index) => setBroadcastMediaItems(prev => prev.filter((_, i) => i !== index))} />
+                    {broadcastMediaItems.length > 0 && <div style={{ marginTop: 16 }}><MediaPositionSelector name="broadcast-media-position" position={broadcastMediaPosition} onChange={setBroadcastMediaPosition} /></div>}
+                  </div>
+                </details>
 
                 <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
                   <button className="btn btn-primary" onClick={handleSend} disabled={sending || !message.trim() || message.length > 4096}>
@@ -1943,6 +1948,14 @@ function AiFeaturesPage() {
     }
   };
 
+  const parseReportParts = (text) => {
+    const [overall, breakdown] = String(text || '').split('|||');
+    return {
+      overall: (overall || '').trim() || 'Overall summary unavailable.',
+      breakdown: (breakdown || '').trim() || 'Driver breakdown unavailable.',
+    };
+  };
+
   return (
     <div className="ai-features-page">
       <div className="page-header">
@@ -2027,17 +2040,31 @@ function AiFeaturesPage() {
       {showReviewModal && selectedReport && (
         <div className="glass-modal-overlay" onClick={() => setShowReviewModal(false)}>
           <div className="glass-modal large" onClick={(e) => e.stopPropagation()}>
+            {(() => {
+              const parsed = parseReportParts(selectedReport.report_text);
+              return (
+                <>
             <div className="ai-review-head">
               <h3>{selectedReport.group_name}</h3>
               <span>{new Date(selectedReport.generated_at).toLocaleString()}</span>
             </div>
-            <pre className="ai-report-text">{selectedReport.report_text}</pre>
+            <div className="ai-summary-box">
+              <div className="ai-review-label">Overall Summary</div>
+              <pre className="ai-report-text">{parsed.overall}</pre>
+            </div>
+            <div className="ai-breakdown-box">
+              <div className="ai-review-label">Driver Breakdown (Telegram expandable section)</div>
+              <pre className="ai-report-text">{parsed.breakdown}</pre>
+            </div>
             <div className="modal-actions">
               <button className="btn btn-danger touch-target" onClick={handleDiscard} disabled={busy}>Discard Draft</button>
               <button className="btn btn-primary touch-target" onClick={handleSend} disabled={busy}>
                 {busy ? 'Sending...' : 'Approve & Send to Management'}
               </button>
             </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
