@@ -1838,45 +1838,54 @@ function ScheduledMessagesPage() {
 
 function AiFeaturesPage() {
   const [reports, setReports] = useState([]);
-  const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
-  const [showGenerateModal, setShowGenerateModal] = useState(false);
-  const [showReviewModal, setShowReviewModal] = useState(false);
-  const [selectedReport, setSelectedReport] = useState(null);
-  const [groupId, setGroupId] = useState('');
-  const [daysBack, setDaysBack] = useState(3);
+  const [daysBack, setDaysBack] = useState(7);
   const [busy, setBusy] = useState(false);
-  const [testing, setTesting] = useState(false);
+  const [selectedReportId, setSelectedReportId] = useState(null);
+  const [overallSummary, setOverallSummary] = useState('');
+  const [driverBreakdown, setDriverBreakdown] = useState('');
 
-  const loadData = useCallback(async () => {
+  const loadDrafts = useCallback(async () => {
     setLoading(true);
     try {
-      const [drafts, driverGroups] = await Promise.all([
-        api.getAiReports(),
-        api.getDriverGroups(),
-      ]);
+      const drafts = await api.getAiReports();
       setReports(drafts);
-      setGroups(driverGroups);
-      if (!groupId && driverGroups.length > 0) {
-        setGroupId(String(driverGroups[0].id));
+      if (drafts.length === 0) {
+        setSelectedReportId(null);
+        setOverallSummary('');
+        setDriverBreakdown('');
+        return;
       }
+      const activeReport = drafts.find((r) => r.id === selectedReportId) || drafts[0];
+      const [overall, breakdown] = String(activeReport.report_text || '').split('|||');
+      setSelectedReportId(activeReport.id);
+      setOverallSummary((overall || '').trim());
+      setDriverBreakdown((breakdown || '').trim());
     } catch (err) {
       setStatus({ type: 'error', text: err.message });
     } finally {
       setLoading(false);
     }
-  }, [groupId]);
+  }, [selectedReportId]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadDrafts();
+  }, [loadDrafts]);
+
+  const selectedReport = reports.find((r) => r.id === selectedReportId) || null;
+
+  const handleSelectDraft = (reportId) => {
+    const report = reports.find((r) => r.id === reportId);
+    if (!report) return;
+    const [overall, breakdown] = String(report.report_text || '').split('|||');
+    setSelectedReportId(report.id);
+    setOverallSummary((overall || '').trim());
+    setDriverBreakdown((breakdown || '').trim());
+    setStatus(null);
+  };
 
   const handleGenerate = async () => {
-    if (!groupId) {
-      setStatus({ type: 'error', text: 'Please select a group first.' });
-      return;
-    }
     const dayValue = Number(daysBack);
     if (!Number.isInteger(dayValue) || dayValue < 1 || dayValue > 30) {
       setStatus({ type: 'error', text: 'Days back must be between 1 and 30.' });
@@ -1885,10 +1894,9 @@ function AiFeaturesPage() {
     setBusy(true);
     setStatus(null);
     try {
-      await api.generateAiReport(Number(groupId), dayValue);
-      setShowGenerateModal(false);
-      setStatus({ type: 'success', text: 'Draft generated and added to review queue.' });
-      await loadData();
+      await api.generateAiReport(dayValue);
+      setStatus({ type: 'success', text: 'New 7-day summary draft generated.' });
+      await loadDrafts();
     } catch (err) {
       setStatus({ type: 'error', text: err.message });
     } finally {
@@ -1901,11 +1909,10 @@ function AiFeaturesPage() {
     setBusy(true);
     setStatus(null);
     try {
-      await api.sendAiReport(selectedReport.id);
-      setShowReviewModal(false);
-      setSelectedReport(null);
-      setStatus({ type: 'success', text: 'Report sent to management successfully.' });
-      await loadData();
+      const editedText = `${overallSummary.trim()}|||${driverBreakdown.trim()}`;
+      await api.sendAiReport(selectedReport.id, editedText);
+      setStatus({ type: 'success', text: 'Approved summary published to Telegram.' });
+      await loadDrafts();
     } catch (err) {
       setStatus({ type: 'error', text: err.message });
     } finally {
@@ -1920,10 +1927,8 @@ function AiFeaturesPage() {
     setStatus(null);
     try {
       await api.discardAiReport(selectedReport.id);
-      setShowReviewModal(false);
-      setSelectedReport(null);
       setStatus({ type: 'success', text: 'Draft discarded.' });
-      await loadData();
+      await loadDrafts();
     } catch (err) {
       setStatus({ type: 'error', text: err.message });
     } finally {
@@ -1931,140 +1936,94 @@ function AiFeaturesPage() {
     }
   };
 
-  const handleTestYandex = async () => {
-    setTesting(true);
-    setStatus(null);
-    try {
-      const res = await api.testYandexAi();
-      if (res.success) {
-        setStatus({ type: 'success', text: 'Yandex AI credentials test passed.' });
-      } else {
-        setStatus({ type: 'error', text: `Yandex AI test failed: ${res.output || 'Unexpected response'}` });
-      }
-    } catch (err) {
-      setStatus({ type: 'error', text: err.message });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  const parseReportParts = (text) => {
-    const [overall, breakdown] = String(text || '').split('|||');
-    return {
-      overall: (overall || '').trim() || 'Overall summary unavailable.',
-      breakdown: (breakdown || '').trim() || 'Driver breakdown unavailable.',
-    };
-  };
-
   return (
     <div className="ai-features-page">
       <div className="page-header">
-        <h2>✨ AI Features</h2>
-        <p>Review AI draft reports before sending them to management.</p>
+        <h2>🧠 Executive Summary Dashboard</h2>
+        <p>Generate, edit, and publish global AI summaries.</p>
       </div>
 
       {status && <div className={`alert alert-${status.type}`}>{status.text}</div>}
 
-      <div className="ai-top-bar glass-card">
-        <button className="btn btn-primary touch-target" onClick={() => setShowGenerateModal(true)}>
-          Generate New Summary
-        </button>
-        <button className="btn btn-ghost touch-target" onClick={handleTestYandex} disabled={testing}>
-          {testing ? 'Testing Yandex...' : 'Test Yandex Credentials'}
-        </button>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={handleGenerate} disabled={busy}>
+            {busy ? 'Generating...' : 'Generate 7-Day Summary'}
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ fontSize: 13, color: 'var(--text-muted)' }}>Days back</label>
+            <input
+              className="form-input"
+              style={{ width: 100 }}
+              type="number"
+              min="1"
+              max="30"
+              value={daysBack}
+              onChange={(e) => setDaysBack(e.target.value)}
+            />
+          </div>
+          <button className="btn btn-ghost" onClick={loadDrafts} disabled={busy}>
+            Refresh Drafts
+          </button>
+        </div>
       </div>
 
       {loading ? (
         <div className="loading"><div className="spinner"></div> Loading drafts...</div>
       ) : reports.length === 0 ? (
-        <div className="empty-state glass-card">
-          <div className="icon">🧠</div>
-          <h3>No pending drafts</h3>
-          <p>Generate a new report to start admin review.</p>
+        <div className="empty-state">
+          <div className="icon">📝</div>
+          <h3>No pending draft</h3>
+          <p>Generate a 7-day summary to start reviewing.</p>
         </div>
       ) : (
-        <div className="ai-drafts-grid">
-          {reports.map((report) => (
-            <button
-              key={report.id}
-              type="button"
-              className="ai-draft-card glass-card touch-target"
-              onClick={() => {
-                setSelectedReport(report);
-                setShowReviewModal(true);
-              }}
+        <div className="card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+            <label style={{ fontWeight: 600 }}>Draft</label>
+            <select
+              className="form-input"
+              style={{ width: 'auto', minWidth: 320 }}
+              value={selectedReportId || ''}
+              onChange={(e) => handleSelectDraft(Number(e.target.value))}
             >
-              <div className="ai-draft-head">
-                <h4>{report.group_name}</h4>
-                <span>{new Date(report.generated_at).toLocaleString()}</span>
-              </div>
-              <p>{report.report_text.slice(0, 220)}{report.report_text.length > 220 ? '...' : ''}</p>
-            </button>
-          ))}
-        </div>
-      )}
+              {reports.map((r) => (
+                <option key={r.id} value={r.id}>
+                  #{r.id} · {r.group_name} · {new Date(r.generated_at).toLocaleString()}
+                </option>
+              ))}
+            </select>
+          </div>
 
-      {showGenerateModal && (
-        <div className="glass-modal-overlay" onClick={() => setShowGenerateModal(false)}>
-          <div className="glass-modal small" onClick={(e) => e.stopPropagation()}>
-            <h3>Generate New Summary</h3>
-            <div className="form-group">
-              <label>Driver Group</label>
-              <select className="form-select" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-                {groups.map((group) => (
-                  <option key={group.id} value={group.id}>{group.group_name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Days Back</label>
-              <input
-                className="form-input"
-                type="number"
-                min="1"
-                max="30"
-                value={daysBack}
-                onChange={(e) => setDaysBack(e.target.value)}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14 }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Overall Summary</label>
+              <textarea
+                className="form-textarea"
+                style={{ minHeight: 220, resize: 'vertical' }}
+                value={overallSummary}
+                onChange={(e) => setOverallSummary(e.target.value)}
+                placeholder="Edit overall executive summary..."
               />
             </div>
-            <div className="modal-actions">
-              <button className="btn btn-ghost touch-target" onClick={() => setShowGenerateModal(false)} disabled={busy}>Cancel</button>
-              <button className="btn btn-primary touch-target" onClick={handleGenerate} disabled={busy}>
-                {busy ? 'Generating...' : 'Generate'}
-              </button>
+            <div>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 600 }}>Driver Breakdown</label>
+              <textarea
+                className="form-textarea"
+                style={{ minHeight: 280, resize: 'vertical' }}
+                value={driverBreakdown}
+                onChange={(e) => setDriverBreakdown(e.target.value)}
+                placeholder="Edit driver-by-driver breakdown..."
+              />
             </div>
           </div>
-        </div>
-      )}
 
-      {showReviewModal && selectedReport && (
-        <div className="glass-modal-overlay" onClick={() => setShowReviewModal(false)}>
-          <div className="glass-modal large" onClick={(e) => e.stopPropagation()}>
-            {(() => {
-              const parsed = parseReportParts(selectedReport.report_text);
-              return (
-                <>
-            <div className="ai-review-head">
-              <h3>{selectedReport.group_name}</h3>
-              <span>{new Date(selectedReport.generated_at).toLocaleString()}</span>
-            </div>
-            <div className="ai-summary-box">
-              <div className="ai-review-label">Overall Summary</div>
-              <pre className="ai-report-text">{parsed.overall}</pre>
-            </div>
-            <div className="ai-breakdown-box">
-              <div className="ai-review-label">Driver Breakdown (Telegram expandable section)</div>
-              <pre className="ai-report-text">{parsed.breakdown}</pre>
-            </div>
-            <div className="modal-actions">
-              <button className="btn btn-danger touch-target" onClick={handleDiscard} disabled={busy}>Discard Draft</button>
-              <button className="btn btn-primary touch-target" onClick={handleSend} disabled={busy}>
-                {busy ? 'Sending...' : 'Approve & Send to Management'}
-              </button>
-            </div>
-                </>
-              );
-            })()}
+          <div style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" onClick={handleSend} disabled={busy || !selectedReport}>
+              {busy ? 'Publishing...' : 'Approve & Publish to Telegram'}
+            </button>
+            <button className="btn btn-danger" onClick={handleDiscard} disabled={busy || !selectedReport}>
+              Discard Draft
+            </button>
           </div>
         </div>
       )}

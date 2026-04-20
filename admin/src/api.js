@@ -415,20 +415,21 @@ export async function getAiReports() {
   return res.json();
 }
 
-export async function generateAiReport(groupId, daysBack = 3) {
+export async function generateAiReport(daysBack = 3) {
   const res = await fetch(`${API_BASE}/ai-reports/generate`, {
     method: 'POST',
     headers: getHeaders(),
-    body: JSON.stringify({ groupId, daysBack }),
+    body: JSON.stringify({ daysBack }),
   });
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
 
-export async function sendAiReport(reportId) {
+export async function sendAiReport(reportId, editedText) {
   const res = await fetch(`${API_BASE}/ai-reports/${reportId}/send`, {
     method: 'POST',
     headers: getHeaders(),
+    body: JSON.stringify({ editedText }),
   });
   if (!res.ok) { await handleApiError(res); }
   return res.json();

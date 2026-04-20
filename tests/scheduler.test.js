@@ -20,6 +20,8 @@ function loadSchedulerWithMocks(dbMock, botMock) {
 test('tick lock prevents duplicate sends on concurrent runs', async () => {
   const sendCalls = [];
   const claimState = new Set();
+  const claimAttempts = [];
+  const statusUpdates = [];
 
   const dbMock = {
     async getPendingScheduledMessages() {
@@ -33,6 +35,7 @@ test('tick lock prevents duplicate sends on concurrent runs', async () => {
       ];
     },
     async claimScheduledMessage(id) {
+      claimAttempts.push(id);
       if (claimState.has(id)) return null;
       claimState.add(id);
       return {
@@ -51,6 +54,7 @@ test('tick lock prevents duplicate sends on concurrent runs', async () => {
       return [{ id: 1, language: 'en', telegram_group_id: -1001, group_name: 'Group' }];
     },
     async updateScheduledMessageStatus() {
+      statusUpdates.push([...arguments]);
       return {};
     },
   };
@@ -66,4 +70,8 @@ test('tick lock prevents duplicate sends on concurrent runs', async () => {
 
   await Promise.all([scheduler.tick(), scheduler.tick()]);
   assert.equal(sendCalls.length, 1, 'broadcast should be sent once for same message id');
+  assert.equal(claimAttempts.length, 2, 'both concurrent ticks attempt to claim lock');
+  assert.equal(claimState.has(7), true, 'first tick should claim message 7');
+  assert.equal(statusUpdates.length, 1, 'message should be finalized exactly once');
+  assert.deepEqual(statusUpdates[0], [7, 'sent']);
 });

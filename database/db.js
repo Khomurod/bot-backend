@@ -337,12 +337,21 @@ async function getQuestionResponses(questionId) {
     `SELECT r.*, d.username, d.first_name, d.last_name,
             g.group_name, g.language AS group_language,
             qt.question_text AS english_question,
-            ot.option_text AS english_option
+            ot.option_text AS english_option,
+            ot_pick.option_text AS response_text,
+            r.answered_at AS created_at
      FROM responses r
      JOIN drivers d ON d.id = r.driver_id
      JOIN groups g ON g.id = r.group_id
      LEFT JOIN question_translations qt ON qt.question_id = r.question_id AND qt.language = 'en'
      LEFT JOIN option_translations ot ON ot.option_id = r.option_id AND ot.language = 'en'
+     LEFT JOIN LATERAL (
+       SELECT option_text
+       FROM option_translations ot2
+       WHERE ot2.option_id = r.option_id
+       ORDER BY CASE WHEN ot2.language = 'en' THEN 0 ELSE 1 END, ot2.id ASC
+       LIMIT 1
+     ) ot_pick ON TRUE
      WHERE r.question_id = $1
      ORDER BY r.answered_at DESC`,
     [questionId]

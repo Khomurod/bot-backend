@@ -848,10 +848,10 @@ app.post('/api/ai-reports/generate', authMiddleware, async (req, res) => {
       const messageText = String(log.message_text || '').replace(/\s+/g, ' ').trim();
       const senderName = String(log.sender_name || 'Unknown');
       const groupName = String(log.group_name || 'Unknown Group');
-      const safeLink = link || 'N/A';
+      const linkPrefix = link ? `[Link: ${link}] ` : '';
       return {
         ...log,
-        transcript_line: `[Group: ${groupName}] [Link: ${safeLink}] ${senderName}: ${messageText}`,
+        transcript_line: `[Group: ${groupName}] ${linkPrefix}${senderName}: ${messageText}`,
       };
     }).filter((log) => log.message_text);
 
@@ -893,7 +893,10 @@ app.post('/api/ai-reports/:id/send', authMiddleware, async (req, res) => {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
 
-    const [overallRaw, breakdownRaw] = String(report.report_text || '').split('|||');
+    const sourceText = typeof req.body?.editedText === 'string' && req.body.editedText.trim()
+      ? req.body.editedText
+      : report.report_text;
+    const [overallRaw, breakdownRaw] = String(sourceText || '').split('|||');
     const overallSummary = (overallRaw || '').trim() || 'Summary unavailable.';
     const driverBreakdown = (breakdownRaw || '').trim() || 'Driver breakdown unavailable.';
 
@@ -906,7 +909,7 @@ app.post('/api/ai-reports/:id/send', authMiddleware, async (req, res) => {
       escapeHtml(overallSummary),
       '',
       `<b>Driver Breakdown</b>`,
-      driverBreakdown,
+      `<blockquote expandable>${escapeHtml(driverBreakdown)}</blockquote>`,
     ].join('\n');
 
     await bot.telegram.sendMessage(config.managementGroupId, message, { parse_mode: 'HTML' });
