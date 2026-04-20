@@ -2,11 +2,11 @@
  * Main entry point: starts the Telegram bot, Express API server,
  * and spawns the Leads-Bot (Python/FastAPI) as a child process.
  */
-const { startBot } = require('./bot/bot');
+const { startBot, stopBot } = require('./bot/bot');
 const { startServer, stopServer } = require('./server/api');
 const { startScheduler, stopScheduler } = require('./services/schedulerService');
-const { startWeeklyReporter } = require('./services/weeklyReportService');
-const { startBirthdayService } = require('./services/birthdayService');
+const { startWeeklyReporter, stopWeeklyReporter } = require('./services/weeklyReportService');
+const { startBirthdayService, stopBirthdayService } = require('./services/birthdayService');
 const db = require('./database/db');
 const { spawn } = require('child_process');
 const path = require('path');
@@ -154,34 +154,67 @@ function startSamsaraBot() {
 // ─── Graceful shutdown ───
 let isShuttingDown = false;
 
-async function shutdownAll() {
+const CHILD_SHUTDOWN_TIMEOUT_MS = 8000;
+const DB_DRAIN_TIMEOUT_MS = 5000;
+
+// Send SIGTERM; escalate to SIGKILL after timeout so a hung child doesn't
+// block the entire shutdown and trigger Render to SIGKILL the whole dyno.
+function killWithEscalation(proc, label) {
+  if (!proc || proc.killed || proc.exitCode !== null) return Promise.resolve();
+  return new Promise((resolve) => {
+    let resolved = false;
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      if (proc && !proc.killed && proc.exitCode === null) {
+        console.warn(`[SHUTDOWN] ${label} did not exit in time; sending SIGKILL.`);
+        try { proc.kill('SIGKILL'); } catch { /* ignore */ }
+      }
+      done();
+    }, CHILD_SHUTDOWN_TIMEOUT_MS);
+    proc.once('exit', () => {
+      clearTimeout(timer);
+      done();
+    });
+    try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+  });
+}
+
+async function shutdownAll(signal = 'SIGTERM') {
   if (isShuttingDown) return;
   isShuttingDown = true;
-  console.log('[SHUTDOWN] Graceful shutdown initiated...');
+  console.log(`[SHUTDOWN] Graceful shutdown initiated (${signal})...`);
 
-  // 1. Stop the scheduler so no new ticks fire
-  stopScheduler();
+  // 1. Stop scheduled background services so no new ticks fire.
+  try { stopScheduler(); } catch (err) { console.error('[SHUTDOWN] stopScheduler failed:', err.message); }
+  try { stopBirthdayService(); } catch (err) { console.error('[SHUTDOWN] stopBirthdayService failed:', err.message); }
+  try { stopWeeklyReporter(); } catch (err) { console.error('[SHUTDOWN] stopWeeklyReporter failed:', err.message); }
 
-  // 2. Stop accepting new HTTP requests
-  stopServer();
+  // 2. Stop the Telegram bot polling loop so in-flight updates drain.
+  try { stopBot(signal); } catch (err) { console.error('[SHUTDOWN] stopBot failed:', err.message); }
 
-  // 3. Kill the Python child process
+  // 3. Stop accepting new HTTP requests.
+  try { stopServer(); } catch (err) { console.error('[SHUTDOWN] stopServer failed:', err.message); }
+
+  // 4. Kill the Python and Samsara child processes with SIGKILL fallback.
   leadsStopping = true;
-  if (leadsProcess && !leadsProcess.killed) {
-    console.log('[SHUTDOWN] Stopping Python process...');
-    leadsProcess.kill('SIGTERM');
-  }
-
-  // 4. Kill the Samsara bot child process
   samsaraStopping = true;
-  if (samsaraProcess && !samsaraProcess.killed) {
-    console.log('[SHUTDOWN] Stopping Samsara bot process...');
-    samsaraProcess.kill('SIGTERM');
-  }
+  await Promise.allSettled([
+    killWithEscalation(leadsProcess, 'LEADS-BOT'),
+    killWithEscalation(samsaraProcess, 'SAMSARA-BOT'),
+  ]);
 
-  // 5. Drain the PostgreSQL pool (waits for in-flight queries)
+  // 5. Drain the PostgreSQL pool with a timeout so a stuck client can't
+  //    wedge shutdown indefinitely.
   try {
-    await db.pool.end();
+    await Promise.race([
+      db.pool.end(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('pool.end() timeout')), DB_DRAIN_TIMEOUT_MS)),
+    ]);
     console.log('[SHUTDOWN] Database pool drained.');
   } catch (err) {
     console.error('[SHUTDOWN] Error draining pool:', err.message);
@@ -190,8 +223,8 @@ async function shutdownAll() {
   process.exit(0);
 }
 
-process.on('SIGINT', shutdownAll);
-process.on('SIGTERM', shutdownAll);
+process.on('SIGINT', () => shutdownAll('SIGINT'));
+process.on('SIGTERM', () => shutdownAll('SIGTERM'));
 
 // ─── Main startup ───
 (async () => {
@@ -199,24 +232,28 @@ process.on('SIGTERM', shutdownAll);
   console.log('  Telegram Driver Feedback System');
   console.log('═══════════════════════════════════════════');
 
-  // Start the Express API server
+  // 1. Migrate the DB schema BEFORE anything starts serving traffic.
+  //    If this fails, there is no point in booting the API or bot because
+  //    every request would hit an unmigrated schema.
+  try {
+    await db.initializeDatabase();
+  } catch (err) {
+    console.error('[BOOT] Database initialization failed — aborting startup:', err.message);
+    process.exit(1);
+  }
+
+  // 2. Start the Express API server (health check comes up ASAP for Render).
   startServer();
 
-  // Initialize the Telegram bot in the background so Render sees the HTTP port immediately
+  // 3. Launch the Telegram bot.
   await startBot();
 
-  // Start the scheduled message processor
+  // 4. Start background services that depend on bot + DB.
   startScheduler();
-
-  // Start the birthday automated service
   startBirthdayService();
-
-  // Start the weekly AI report service
   startWeeklyReporter();
 
-  // Start the Leads-Bot (Python/FastAPI) as a child process
+  // 5. Spawn independent child processes.
   startLeadsBot();
-
-  // Start the Samsara Alert Bot as a child process
   startSamsaraBot();
 })();

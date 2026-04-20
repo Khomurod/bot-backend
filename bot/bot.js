@@ -1,21 +1,10 @@
 const { Telegraf, Markup } = require('telegraf');
 const config = require('../config/config');
 const db = require('../database/db');
+const { safeSend, isPermanentSendError: isPermanentSendErrorFromHtml } = require('../services/telegramHtml');
 
-if (!config.botToken) {
-  console.error('[BOT] FATAL: BOT_TOKEN environment variable is not set!');
-  process.exit(1);
-}
-
-if (!config.databaseUrl) {
-  console.error('[BOT] FATAL: DATABASE_URL environment variable is not set!');
-  process.exit(1);
-}
-
-if (!config.managementGroupId) {
-  console.error('[BOT] FATAL: MANAGEMENT_GROUP_ID environment variable is not set!');
-  process.exit(1);
-}
+// config.js already validates BOT_TOKEN, DATABASE_URL, MANAGEMENT_GROUP_ID
+// and exits on missing values — no need to re-check here.
 
 const bot = new Telegraf(config.botToken);
 const MANAGEMENT_GROUP_ID = config.managementGroupId;
@@ -26,7 +15,6 @@ let botRunning = false;
 let botLaunchPromise = null;
 let botLaunchRetryTimer = null;
 let botStopRequested = false;
-let shutdownHooksRegistered = false;
 let botInitialized = false;
 
 // ─── Rate-limit sleep helper ───
@@ -50,15 +38,9 @@ function effectiveLangForConfirmation(group, forceLanguage) {
 }
 
 // ─── Detect permanent Telegram send errors (stale/dead groups) ───
-function isPermanentSendError(err) {
-  const code = err.response?.error_code;
-  const desc = (err.response?.description || '').toLowerCase();
-  if (code === 403) return true; // bot kicked/banned
-  if (code === 400 && desc.includes('chat not found')) return true;
-  if (code === 400 && desc.includes('group chat was deactivated')) return true;
-  if (code === 400 && desc.includes('chat was upgraded')) return true;
-  return false;
-}
+// Kept as a thin re-export so nothing else has to change; the real logic
+// lives in services/telegramHtml.js so it can be shared with safeSend().
+const isPermanentSendError = isPermanentSendErrorFromHtml;
 
 // HTML escape helper to prevent injection in Telegram messages
 function escapeHtml(text) {
@@ -159,8 +141,10 @@ async function startBot() {
     if (botInitialized) return;
     botInitialized = true;
 
-    await db.initializeDatabase();
-    console.log('[BOT] Database initialized.');
+    // NOTE: index.js is responsible for calling db.initializeDatabase()
+    // BEFORE startBot() so the bot never handles a message against a
+    // schema that hasn't been migrated yet. Keeping the init out of here
+    // also avoids running the schema SQL twice on hot reloads.
 
     // ── 1. Detect when bot is added/removed from a group ──
     bot.on('my_chat_member', async (ctx) => {
@@ -366,11 +350,9 @@ async function startBot() {
       }
     });
 
-    if (!shutdownHooksRegistered) {
-      process.once('SIGINT', () => safeStop('SIGINT'));
-      process.once('SIGTERM', () => safeStop('SIGTERM'));
-      shutdownHooksRegistered = true;
-    }
+    // Signal handling is centralized in index.js::shutdownAll, which calls
+    // safeStop() explicitly. Registering process-level handlers here would
+    // race with that coordinator (bot would stop before HTTP server drained).
 
     launchBotWithRetry();
   } catch (err) {
@@ -385,11 +367,9 @@ async function reportToManagement(driver, group, questionId, optionId) {
     const question = await db.getQuestionWithOptions(questionId);
     if (!question) return;
 
-    // Get English question text
     const englishQ = getTranslation(question.translations, 'en');
     const questionText = englishQ ? englishQ.question_text : 'Unknown question';
 
-    // Get English option text
     let optionText = 'Unknown answer';
     if (question.options) {
       for (const opt of question.options) {
@@ -401,7 +381,9 @@ async function reportToManagement(driver, group, questionId, optionId) {
       }
     }
 
-    const driverHandle = driver.username ? `@${escapeHtml(driver.username)}` : escapeHtml(`${driver.first_name || ''} ${driver.last_name || ''}`.trim());
+    const driverHandle = driver.username
+      ? `@${escapeHtml(driver.username)}`
+      : escapeHtml(`${driver.first_name || ''} ${driver.last_name || ''}`.trim());
 
     const message = `📋 <b>Driver Feedback</b>\n\n` +
       `<b>Group:</b> ${escapeHtml(group.group_name)}\n` +
@@ -409,38 +391,16 @@ async function reportToManagement(driver, group, questionId, optionId) {
       `<b>Question:</b>\n${escapeHtml(questionText)}\n\n` +
       `<b>Answer:</b>\n${escapeHtml(optionText)}`;
 
-    await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, message, {
-      parse_mode: 'HTML',
-    });
+    await safeSend(
+      () => bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, message, { parse_mode: 'HTML' }),
+      { maxAttempts: 4, baseDelayMs: 750 }
+    );
 
     console.log(`[BOT] Report sent to management for driver=${driverHandle}`);
   } catch (err) {
-    console.error('[BOT] Error reporting to management:', err.message);
-    // Retry once after 2 seconds
-    setTimeout(async () => {
-      try {
-        const question = await db.getQuestionWithOptions(questionId);
-        if (!question) return;
-        const englishQ = getTranslation(question.translations, 'en');
-        const questionText = englishQ ? englishQ.question_text : 'Unknown question';
-        let optionText = 'Unknown answer';
-        if (question.options) {
-          for (const opt of question.options) {
-            if (opt.id === optionId) {
-              const englishO = getTranslation(opt.translations, 'en');
-              optionText = englishO ? englishO.option_text : 'Unknown answer';
-              break;
-            }
-          }
-        }
-        const driverHandle = driver.username ? `@${escapeHtml(driver.username)}` : escapeHtml(`${driver.first_name || ''} ${driver.last_name || ''}`.trim());
-        const message = `📋 <b>Driver Feedback</b>\n\n<b>Group:</b> ${escapeHtml(group.group_name)}\n<b>Driver:</b> ${driverHandle}\n\n<b>Question:</b>\n${escapeHtml(questionText)}\n\n<b>Answer:</b>\n${escapeHtml(optionText)}`;
-        await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, message, { parse_mode: 'HTML' });
-        console.log('[BOT] Retry report sent to management.');
-      } catch (retryErr) {
-        console.error('[BOT] Retry failed:', retryErr.message);
-      }
-    }, 2000);
+    // safeSend already retried with exponential backoff + 429 awareness,
+    // so by the time we get here the failure is effectively permanent.
+    console.error('[BOT] Error reporting to management (after retries):', err.message);
   }
 }
 
@@ -934,4 +894,10 @@ async function sendConfirmationBroadcastTest(
   console.log('[BOT] Confirmation broadcast test sent to management group.');
 }
 
-module.exports = { bot, startBot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest, sendBroadcastToGroups, sendConfirmationBroadcast, sendConfirmationBroadcastTest };
+// Exposed so the central shutdown coordinator (index.js) can stop the
+// Telegraf polling loop during graceful shutdown.
+function stopBot(signal = 'SHUTDOWN') {
+  safeStop(signal);
+}
+
+module.exports = { bot, startBot, stopBot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest, sendBroadcastToGroups, sendConfirmationBroadcast, sendConfirmationBroadcastTest };

@@ -6,8 +6,13 @@ const db = require('../database/db');
 const { sendBroadcastToGroups } = require('../bot/bot');
 
 const POLL_INTERVAL_MS = 30 * 1000; // 30 seconds
+// Hourly chat_logs retention pass (lightweight DELETE).
+const RETENTION_INTERVAL_MS = 60 * 60 * 1000;
 
-let intervalHandle = null;
+let nextTickTimer = null;
+let retentionTimer = null;
+let schedulerStopped = false;
+let tickRunning = false;
 
 /**
  * Resolve target groups based on message targeting configuration.
@@ -100,8 +105,18 @@ async function processMessage(msg) {
 
 /**
  * Main polling tick — fetch and process all due messages.
+ *
+ * Uses a re-entrancy guard so a slow tick (e.g. a broadcast holding the
+ * Telegram rate limiter for > 30s) can't stack on top of itself and
+ * double-send. Combined with the setTimeout chain in scheduleNextTick(),
+ * this also prevents drift from slow ticks piling up behind setInterval().
  */
 async function tick() {
+  if (tickRunning) {
+    // Previous tick still in flight — skip rather than overlap.
+    return;
+  }
+  tickRunning = true;
   try {
     const pendingMessages = await db.getPendingScheduledMessages();
     if (pendingMessages.length === 0) return;
@@ -109,6 +124,7 @@ async function tick() {
     console.log(`[SCHEDULER] Found ${pendingMessages.length} pending message(s) to send`);
 
     for (const msg of pendingMessages) {
+      if (schedulerStopped) break;
       const locked = await db.claimScheduledMessage(msg.id);
       if (!locked) {
         console.log(`[SCHEDULER] Skipping message id=${msg.id} (already claimed by another worker)`);
@@ -118,6 +134,33 @@ async function tick() {
     }
   } catch (err) {
     console.error('[SCHEDULER] Tick error:', err.message);
+  } finally {
+    tickRunning = false;
+  }
+}
+
+function scheduleNextTick() {
+  if (schedulerStopped) return;
+  nextTickTimer = setTimeout(async () => {
+    await tick();
+    scheduleNextTick();
+  }, POLL_INTERVAL_MS);
+}
+
+/**
+ * Periodic chat_logs retention pass — hard-wires the 30-day window
+ * documented in the schema. Runs hourly; cheap if nothing to delete.
+ */
+async function retentionTick() {
+  try {
+    if (typeof db.deleteOldChatLogs === 'function') {
+      const deleted = await db.deleteOldChatLogs(30);
+      if (deleted > 0) {
+        console.log(`[SCHEDULER] chat_logs retention: deleted ${deleted} row(s) older than 30 days`);
+      }
+    }
+  } catch (err) {
+    console.error('[SCHEDULER] Retention tick error:', err.message);
   }
 }
 
@@ -126,20 +169,32 @@ async function tick() {
  */
 function startScheduler() {
   console.log(`[SCHEDULER] Started — polling every ${POLL_INTERVAL_MS / 1000}s`);
-  // Run immediately once, then every interval
-  tick();
-  intervalHandle = setInterval(tick, POLL_INTERVAL_MS);
+  schedulerStopped = false;
+  // Fire immediately on boot, then chain subsequent ticks with setTimeout
+  // so a long-running tick can never pile up duplicates.
+  (async () => {
+    await tick();
+    scheduleNextTick();
+  })();
+  // Kick off chat_logs retention: immediate then hourly.
+  retentionTick();
+  retentionTimer = setInterval(retentionTick, RETENTION_INTERVAL_MS);
 }
 
 /**
  * Stop the scheduler service.
  */
 function stopScheduler() {
-  if (intervalHandle) {
-    clearInterval(intervalHandle);
-    intervalHandle = null;
-    console.log('[SCHEDULER] Stopped.');
+  schedulerStopped = true;
+  if (nextTickTimer) {
+    clearTimeout(nextTickTimer);
+    nextTickTimer = null;
   }
+  if (retentionTimer) {
+    clearInterval(retentionTimer);
+    retentionTimer = null;
+  }
+  console.log('[SCHEDULER] Stopped.');
 }
 
-module.exports = { startScheduler, stopScheduler, tick, processMessage };
+module.exports = { startScheduler, stopScheduler, tick, processMessage, retentionTick };

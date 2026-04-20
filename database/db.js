@@ -611,10 +611,11 @@ async function getChatLogsForActiveDriverGroups(daysBack) {
 }
 
 async function deleteOldChatLogs(daysOld) {
-  await query(
+  const res = await query(
     `DELETE FROM chat_logs WHERE created_at < NOW() - ($1 || ' days')::INTERVAL`,
     [daysOld]
   );
+  return res.rowCount || 0;
 }
 
 async function getRecentChatLogs(limit = 50) {
@@ -727,6 +728,27 @@ async function deleteEmployeeBirthday(id) {
   await query('DELETE FROM employee_birthdays WHERE id = $1', [id]);
 }
 
+// ─── Service Run Guard (daily/weekly idempotency) ───
+// Claim a logical run so a scheduled task fires exactly once per key
+// across restarts and (future) multi-instance deployments.
+// Returns `true` if this call successfully claimed the run.
+async function claimServiceRun(serviceName, runKey) {
+  const res = await query(
+    `INSERT INTO service_runs (service_name, run_key)
+     VALUES ($1, $2)
+     ON CONFLICT (service_name, run_key) DO NOTHING
+     RETURNING id`,
+    [serviceName, runKey]
+  );
+  return res.rows.length > 0;
+}
+
+// Simple DB liveness probe used by /api/health.
+async function ping() {
+  const res = await query('SELECT 1 AS ok');
+  return res.rows[0]?.ok === 1;
+}
+
 module.exports = {
   pool,
   query,
@@ -792,4 +814,7 @@ module.exports = {
   getEmployeesWithBirthdayToday,
   updateEmployeeBirthday,
   deleteEmployeeBirthday,
+  // Service run guard + health
+  claimServiceRun,
+  ping,
 };

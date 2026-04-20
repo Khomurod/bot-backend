@@ -6,8 +6,9 @@ const { buildTelegramMessageUrl } = require('./telegramUrl');
 const { sanitizeCompanyReportHtmlForTelegram, sendTelegramHtmlChunks } = require('./telegramHtml');
 const { generateCompanyReport, AI_REPORT_GENERATION_FAILED } = require('./aiAnalysisService');
 
-let lastRunDate = null;
 let running = false;
+let reporterTimer = null;
+let reporterStopped = false;
 
 function mapLogsToTranscript(logs) {
   return logs.map((log) => {
@@ -71,36 +72,54 @@ async function runWeeklyAnalysis(nowChicago = DateTime.now().setZone('America/Ch
 }
 
 function startWeeklyReporter() {
-  console.log('[WEEKLY-REPORT] Service started. Checking every minute.');
-  
-  // Check immediately at startup.
+  console.log('[WEEKLY-REPORT] Service started. Checking every minute (Mon 07:00 America/Chicago).');
+  reporterStopped = false;
+
   checkAndRun().catch((err) => {
     console.error('[WEEKLY-REPORT] Initial check failed:', err.message);
   });
 
-  // Then check every minute for strict 7:00 AM trigger.
-  setInterval(() => {
+  reporterTimer = setInterval(() => {
+    if (reporterStopped) return;
     checkAndRun().catch((err) => {
       console.error('[WEEKLY-REPORT] Periodic check failed:', err.message);
     });
   }, 60 * 1000);
 }
 
+function stopWeeklyReporter() {
+  reporterStopped = true;
+  if (reporterTimer) {
+    clearInterval(reporterTimer);
+    reporterTimer = null;
+  }
+}
+
+/**
+ * Trigger the Monday 07:00 America/Chicago weekly analysis at-most-once
+ * per ISO-week, using service_runs for cross-restart / multi-instance
+ * idempotency. The per-process `running` flag still guards against two
+ * concurrent analyses in the same process.
+ */
 async function checkAndRun(nowChicago = DateTime.now().setZone('America/Chicago')) {
   const dayOfWeek = nowChicago.weekday; // Monday = 1
   const hour = nowChicago.hour;
   const minute = nowChicago.minute;
-  const dateStr = nowChicago.toISODate();
 
-  if (dayOfWeek === 1 && hour === 7 && minute === 0 && lastRunDate !== dateStr) {
-    lastRunDate = dateStr;
-    return runWeeklyAnalysis(nowChicago);
-  }
-  return false;
+  if (!(dayOfWeek === 1 && hour === 7 && minute === 0)) return false;
+
+  // Use the ISO week as the idempotency key — regardless of how many ticks
+  // fall inside the 07:00 minute, only the first one will claim the row.
+  const runKey = `weekly-company:${nowChicago.weekYear}-W${String(nowChicago.weekNumber).padStart(2, '0')}`;
+  const claimed = await db.claimServiceRun('weekly_report', runKey);
+  if (!claimed) return false;
+
+  return runWeeklyAnalysis(nowChicago);
 }
 
 module.exports = {
   startWeeklyReporter,
+  stopWeeklyReporter,
   checkAndRun,
   runWeeklyAnalysis,
 };

@@ -23,6 +23,18 @@ const SELF_URL = process.env.RENDER_EXTERNAL_URL || PUBLIC_URL;
 
 if (!TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is not set');
 
+// Prevent a nightmare dual-polling configuration: if this process were
+// started with the same BOT_TOKEN as the main Telegraf bot, both would
+// race for getUpdates(), constantly stealing the long-poll from each
+// other. Fail fast and loud so the operator sees it on first boot.
+if (process.env.BOT_TOKEN && process.env.BOT_TOKEN === TOKEN) {
+    throw new Error(
+        '[Samsara] TELEGRAM_BOT_TOKEN equals the main BOT_TOKEN. ' +
+        'This would cause getUpdates() polling conflicts. Configure a ' +
+        'separate bot (SAMSARA_BOT_TOKEN) for the Samsara integration.'
+    );
+}
+
 // ── Express App (Health checks & optionally Telegram Webhook only) ────────────
 const app = express();
 app.use(express.json());
@@ -36,18 +48,26 @@ app.get('/health', (req, res) => {
 });
 
 // ── Broadcast helper ──────────────────────────────────────────────────────────
+const { parseTrustedVideoUrl } = require('./src/videoUrl');
+
 async function downloadVideo(videoUrl) {
+    // Before touching the network, parse the URL and enforce an allow-list
+    // of Samsara/CloudFront hostnames. Previously we did a substring check
+    // which was spoofable (e.g. https://evil.test/?x=api.samsara.com).
+    const parsed = parseTrustedVideoUrl(videoUrl);
+    const host = parsed.hostname.toLowerCase();
+
     const fetchHeaders = {};
     const SAMSARA_API_KEY = process.env.SAMSARA_API_KEY;
     // Samsara media URLs are pre-signed CloudFront CDN URLs that embed auth in query params
     // (Signature=, Key-Pair-Id=, Expires=). Adding an Authorization header to a pre-signed
     // URL causes CloudFront/S3 to return HTTP 400 "conflicting auth methods".
     // Only add the header for direct Samsara REST API endpoints.
-    const isPreSigned = /[?&](Signature|X-Amz-Signature|AWSAccessKeyId|Key-Pair-Id)=/i.test(videoUrl);
-    if (SAMSARA_API_KEY && !isPreSigned && videoUrl.includes('api.samsara.com')) {
+    const isPreSigned = /[?&](Signature|X-Amz-Signature|AWSAccessKeyId|Key-Pair-Id)=/i.test(parsed.search);
+    if (SAMSARA_API_KEY && !isPreSigned && host === 'api.samsara.com') {
         fetchHeaders['Authorization'] = `Bearer ${SAMSARA_API_KEY}`;
     }
-    const response = await fetch(videoUrl, { headers: fetchHeaders });
+    const response = await fetch(parsed.toString(), { headers: fetchHeaders });
     if (!response.ok) {
         throw new Error(`HTTP ${response.status} ${response.statusText}`);
     }

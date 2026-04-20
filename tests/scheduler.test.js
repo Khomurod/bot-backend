@@ -93,17 +93,68 @@ test('tick lock prevents duplicate sends on concurrent runs', async () => {
   const scheduler = loadSchedulerWithMocks(dbMock, botMock);
 
   await Promise.all([scheduler.tick(), scheduler.tick()]);
+  // The scheduler now has a per-process tickRunning guard: the second
+  // concurrent tick early-returns BEFORE issuing any DB work. DB-level
+  // idempotency (the partial index on pending scheduled_messages and the
+  // claim row-lock) still protects multi-instance deploys. What this test
+  // asserts is the invariant both guards must satisfy together:
+  //   → exactly one broadcast send
+  //   → exactly one status finalization
   assert.equal(sendCalls.length, 1, 'broadcast should be sent once for same message id');
-  assert.equal(claimAttempts.length, 2, 'both concurrent ticks attempt to claim lock');
-  assert.equal(claimState.has(7), true, 'first tick should claim message 7');
+  assert.ok(claimAttempts.length >= 1, 'at least one tick must attempt to claim the message');
+  assert.equal(claimState.has(7), true, 'winning tick should claim message 7');
   assert.equal(statusUpdates.length, 1, 'message should be finalized exactly once');
   assert.deepEqual(statusUpdates[0], [7, 'sent']);
+});
+
+test('tick guard lets a second tick run after the first completes', async () => {
+  let callIndex = 0;
+  const dbMock = {
+    async getPendingScheduledMessages() {
+      callIndex += 1;
+      if (callIndex === 1) {
+        return [{ id: 9, target_type: 'all', message_text_en: 'first', media_position: 'above' }];
+      }
+      return [{ id: 10, target_type: 'all', message_text_en: 'second', media_position: 'above' }];
+    },
+    async claimScheduledMessage(id) {
+      return {
+        id, target_type: 'all', message_text_en: `msg-${id}`,
+        message_text_ru: null, message_text_uz: null,
+        media_file_id: null, media_type: null, media_position: 'above',
+        force_language: null,
+      };
+    },
+    async getAllDriverGroups() {
+      return [{ id: 1, language: 'en', telegram_group_id: -1001, group_name: 'G' }];
+    },
+    async updateScheduledMessageStatus() {},
+  };
+  const sent = [];
+  const botMock = {
+    async sendBroadcastToGroups() {
+      sent.push(true);
+      return { sent: 1, failed: 0 };
+    },
+  };
+
+  const scheduler = loadSchedulerWithMocks(dbMock, botMock);
+  await scheduler.tick();
+  await scheduler.tick();
+  assert.equal(sent.length, 2, 'tickRunning must reset between sequential ticks');
 });
 
 test('weekly reporter fires once at Monday 7:00 AM Chicago', async () => {
   const sends = [];
   const inserts = [];
+  const claimed = new Set();
   const dbMock = {
+    async claimServiceRun(service, runKey) {
+      const key = `${service}:${runKey}`;
+      if (claimed.has(key)) return false;
+      claimed.add(key);
+      return true;
+    },
     async getChatLogsForActiveDriverGroups() {
       return [{ message_text: 'x', sender_name: 'A', group_name: 'G', telegram_group_id: -100123, telegram_message_id: 1 }];
     },
@@ -120,17 +171,23 @@ test('weekly reporter fires once at Monday 7:00 AM Chicago', async () => {
     { generateCompanyReport: async () => '<b>Weekly</b>', AI_REPORT_GENERATION_FAILED: 'AI_REPORT_GENERATION_FAILED' }
   );
 
-  const monday700 = { weekday: 1, hour: 7, minute: 0, toISODate: () => '2026-05-04', setZone() { return this; } };
+  const monday700 = {
+    weekday: 1, hour: 7, minute: 0,
+    weekYear: 2026, weekNumber: 19,
+    toISODate: () => '2026-05-04',
+    setZone() { return this; },
+  };
   await weekly.checkAndRun(monday700);
   await weekly.checkAndRun(monday700);
 
-  assert.equal(sends.length, 1, 'weekly report should send once for same day');
-  assert.equal(inserts.length, 1, 'weekly report should persist once for same day');
+  assert.equal(sends.length, 1, 'weekly report should send once for same ISO week');
+  assert.equal(inserts.length, 1, 'weekly report should persist once for same ISO week');
 });
 
 test('weekly reporter does not fire Tuesday 7:00 AM Chicago', async () => {
   const sends = [];
   const dbMock = {
+    async claimServiceRun() { return true; },
     async getChatLogsForActiveDriverGroups() { return []; },
     async query() { return { rows: [] }; },
   };
@@ -142,7 +199,12 @@ test('weekly reporter does not fire Tuesday 7:00 AM Chicago', async () => {
     { generateCompanyReport: async () => '<b>Weekly</b>', AI_REPORT_GENERATION_FAILED: 'AI_REPORT_GENERATION_FAILED' }
   );
 
-  const tuesday700 = { weekday: 2, hour: 7, minute: 0, toISODate: () => '2026-05-05', setZone() { return this; } };
+  const tuesday700 = {
+    weekday: 2, hour: 7, minute: 0,
+    weekYear: 2026, weekNumber: 19,
+    toISODate: () => '2026-05-05',
+    setZone() { return this; },
+  };
   await weekly.checkAndRun(tuesday700);
   assert.equal(sends.length, 0, 'weekly report must not send on Tuesday');
 });

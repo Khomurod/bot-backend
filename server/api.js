@@ -34,7 +34,22 @@ const upload = multer({
 });
 
 const app = express();
-app.use(cors());
+
+// ─── CORS ───
+// In testing we default to permissive; production should set CORS_ALLOWED_ORIGINS
+// to an explicit allow-list (comma-separated). Origin is honored via config.
+const corsOptions = config.corsAllowAll
+  ? { origin: true }
+  : {
+      origin(origin, cb) {
+        // Non-browser requests (curl, server-to-server) have no Origin header.
+        if (!origin) return cb(null, true);
+        if (config.corsAllowedOrigins.includes(origin)) return cb(null, true);
+        return cb(new Error(`Origin ${origin} not allowed by CORS policy`));
+      },
+    };
+app.use(cors(corsOptions));
+app.set('trust proxy', 1); // Render terminates TLS upstream; needed for rate-limit + IP logs.
 
 // ─── Leads-Bot Proxy (Python/FastAPI on internal port) ───
 // These routes MUST be before express.json() so the raw body is preserved
@@ -68,8 +83,22 @@ function proxyToLeadsBot(req, res) {
 
 app.all('/webhook', proxyToLeadsBot);
 app.all('/rc-webhook', proxyToLeadsBot);
-app.get('/leads-log', proxyToLeadsBot);
-app.get('/retry/:id', (req, res) => {
+// /leads-log and /retry/:id expose internal lead data — require admin auth.
+// The auth check happens via a tiny inline JWT decode so we don't need the
+// full authMiddleware (which lives below and depends on express.json()).
+function proxyAuthGuard(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] });
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+}
+app.get('/leads-log', proxyAuthGuard, proxyToLeadsBot);
+app.get('/retry/:id', proxyAuthGuard, (req, res) => {
   req.url = `/retry/${req.params.id}`;
   proxyToLeadsBot(req, res);
 });
@@ -90,7 +119,9 @@ function authMiddleware(req, res, next) {
   }
   const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, config.jwtSecret);
+    // Pin the algorithm to HS256 so a token forged with alg:"none" or an
+    // asymmetric alg cannot impersonate an admin.
+    const decoded = jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] });
     req.admin = decoded;
     next();
   } catch (err) {
@@ -98,32 +129,70 @@ function authMiddleware(req, res, next) {
   }
 }
 
+// ─── Login Rate Limiter (in-memory sliding window) ───
+// Simple per-IP throttle: 10 failed attempts in 15 minutes → 429.
+// Memory-only is acceptable for a single-dyno deployment; swap for a
+// shared store (Redis) before horizontal scaling.
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILURES = 10;
+const loginAttempts = new Map(); // ip -> [timestamps]
+
+function loginRateLimit(req, res, next) {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const now = Date.now();
+  const attempts = (loginAttempts.get(ip) || []).filter((ts) => now - ts < LOGIN_WINDOW_MS);
+  if (attempts.length >= LOGIN_MAX_FAILURES) {
+    res.set('Retry-After', String(Math.ceil(LOGIN_WINDOW_MS / 1000)));
+    return res.status(429).json({ error: 'Too many failed login attempts. Try again later.' });
+  }
+  loginAttempts.set(ip, attempts);
+  req._loginIp = ip;
+  next();
+}
+
+function recordLoginFailure(req) {
+  const ip = req._loginIp;
+  if (!ip) return;
+  const attempts = loginAttempts.get(ip) || [];
+  attempts.push(Date.now());
+  loginAttempts.set(ip, attempts);
+}
+
+function clearLoginFailures(req) {
+  if (req._loginIp) loginAttempts.delete(req._loginIp);
+}
+
 // ─── Auth Routes ───
 
 // POST /api/auth/login
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginRateLimit, async (req, res) => {
   try {
-    const { username, password } = req.body;
-    if (!username || !password) {
+    const { username, password } = req.body || {};
+    if (typeof username !== 'string' || typeof password !== 'string'
+        || !username.trim() || !password) {
+      recordLoginFailure(req);
       return res.status(400).json({ error: 'Username and password required' });
     }
 
     const admin = await db.getAdminByUsername(username);
     if (!admin) {
+      recordLoginFailure(req);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const valid = await bcrypt.compare(password, admin.password_hash);
     if (!valid) {
+      recordLoginFailure(req);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const token = jwt.sign(
       { id: admin.id, username: admin.username },
       config.jwtSecret,
-      { expiresIn: '24h' }
+      { algorithm: 'HS256', expiresIn: '24h' }
     );
 
+    clearLoginFailures(req);
     res.json({ token, username: admin.username });
   } catch (err) {
     console.error('[API] Login error:', err.message);
@@ -137,8 +206,22 @@ app.get('/api/auth/verify', authMiddleware, (req, res) => {
 });
 
 // ─── Health Check (public, for cron keep-alive) ───
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', uptime: process.uptime() });
+// Pings the DB so a healthy response genuinely means the app can serve
+// requests, not just that Node is alive. Render / uptime monitors treat
+// any non-2xx as "down" which will now actually reflect reality.
+app.get('/api/health', async (req, res) => {
+  let dbOk = false;
+  try {
+    dbOk = await db.ping();
+  } catch (err) {
+    console.error('[API] /api/health DB ping failed:', err.message);
+  }
+  const body = {
+    status: dbOk ? 'ok' : 'degraded',
+    uptime: process.uptime(),
+    db: dbOk,
+  };
+  res.status(dbOk ? 200 : 503).json(body);
 });
 
 // Avoid noisy browser console 404 for default favicon requests.
@@ -245,10 +328,21 @@ app.put('/api/groups/:id/language', authMiddleware, async (req, res) => {
 });
 
 // PUT /api/groups/:id/birthday
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 app.put('/api/groups/:id/birthday', authMiddleware, async (req, res) => {
   try {
-    const { birthday } = req.body;
-    const group = await db.setGroupBirthday(req.params.id, birthday);
+    const { birthday } = req.body || {};
+    // Allow explicit null to clear, otherwise require strict YYYY-MM-DD.
+    if (birthday !== null && birthday !== undefined) {
+      if (typeof birthday !== 'string' || !ISO_DATE_RE.test(birthday)) {
+        return res.status(400).json({ error: 'birthday must be a YYYY-MM-DD date or null' });
+      }
+      const d = new Date(birthday);
+      if (Number.isNaN(d.getTime())) {
+        return res.status(400).json({ error: 'birthday is not a valid calendar date' });
+      }
+    }
+    const group = await db.setGroupBirthday(req.params.id, birthday ?? null);
     if (!group) {
       return res.status(404).json({ error: 'Group not found' });
     }
@@ -1266,9 +1360,27 @@ app.get('/employee-birthday-form', (req, res) => {
 // 2. Submit Route (Public)
 app.post('/api/submit-employee-birthday', async (req, res) => {
   try {
-    const { firstName, lastName, birthday } = req.body;
-    if (!firstName || !lastName || !birthday) return res.status(400).json({ error: 'Missing fields' });
-    await db.upsertEmployeeBirthday(firstName, lastName, birthday);
+    const { firstName, lastName, birthday } = req.body || {};
+
+    if (typeof firstName !== 'string' || typeof lastName !== 'string'
+        || typeof birthday !== 'string') {
+      return res.status(400).json({ error: 'Missing fields' });
+    }
+    const fn = firstName.trim();
+    const ln = lastName.trim();
+    if (!fn || !ln) return res.status(400).json({ error: 'Missing fields' });
+    if (fn.length > 100 || ln.length > 100) {
+      return res.status(400).json({ error: 'Name too long' });
+    }
+    if (!ISO_DATE_RE.test(birthday)) {
+      return res.status(400).json({ error: 'birthday must be YYYY-MM-DD' });
+    }
+    const d = new Date(birthday);
+    if (Number.isNaN(d.getTime())) {
+      return res.status(400).json({ error: 'birthday is not a valid calendar date' });
+    }
+
+    await db.upsertEmployeeBirthday(fn, ln, birthday);
     res.json({ success: true });
   } catch (err) {
     console.error('[API] Error saving employee birthday:', err.message);

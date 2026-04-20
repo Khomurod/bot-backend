@@ -283,9 +283,16 @@ async def receive_webhook(request: Request):
     """
     body = await request.body()
 
-    # Verify signature
+    # Verify signature. The previous implementation treated a missing
+    # META_APP_SECRET as "skip verification", which meant a misconfigured
+    # deploy silently accepted unsigned webhook traffic from anyone. Fail
+    # closed instead: no secret configured → reject every webhook.
+    if not META_APP_SECRET:
+        logger.error("META_APP_SECRET not configured — rejecting webhook (fail closed).")
+        raise HTTPException(status_code=500, detail="Webhook secret not configured")
+
     sig = request.headers.get("X-Hub-Signature-256", "")
-    if META_APP_SECRET and not _verify_signature(body, sig):
+    if not _verify_signature(body, sig):
         logger.warning("Invalid signature — rejecting webhook.")
         raise HTTPException(status_code=403, detail="Invalid signature")
 

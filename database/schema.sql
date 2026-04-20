@@ -262,3 +262,56 @@ CREATE TABLE IF NOT EXISTS employee_birthdays (
   created_at TIMESTAMP DEFAULT NOW(),
   UNIQUE(first_name, last_name)
 );
+
+-- ─── service_runs ────────────────────────────────────────────────
+-- Tracks one-shot daily/weekly job runs (birthday wishes, weekly reports)
+-- so they are guaranteed to fire at most once per logical run key, even
+-- across process restarts or multiple instances. Use INSERT ... ON CONFLICT
+-- DO NOTHING with a run key like "birthday:driver:2026-05-04" to claim a run.
+CREATE TABLE IF NOT EXISTS service_runs (
+  id SERIAL PRIMARY KEY,
+  service_name TEXT NOT NULL,
+  run_key TEXT NOT NULL,
+  ran_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  UNIQUE(service_name, run_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_runs_ran_at
+  ON service_runs(ran_at DESC);
+
+-- ─── Performance indexes for growing tables ───────────────────────
+-- responses: primary lookup is by question, which already has a unique
+-- composite index. Add a driver-centric index for "my answers" style
+-- queries and ordering-by-recency.
+CREATE INDEX IF NOT EXISTS idx_responses_answered_at
+  ON responses(answered_at DESC);
+CREATE INDEX IF NOT EXISTS idx_responses_group_id_answered_at
+  ON responses(group_id, answered_at DESC);
+
+-- chat_logs: retention deletes by created_at and reads are scoped by
+-- group_id + date range. These two indexes support both access patterns.
+CREATE INDEX IF NOT EXISTS idx_chat_logs_created_at
+  ON chat_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_logs_group_id_created_at
+  ON chat_logs(group_id, created_at DESC);
+
+-- broadcast_deliveries: UI loads "deliveries for broadcast N".
+CREATE INDEX IF NOT EXISTS idx_broadcast_deliveries_broadcast_id
+  ON broadcast_deliveries(broadcast_id);
+
+-- broadcast_button_clicks: UI loads "clicks for broadcast N".
+CREATE INDEX IF NOT EXISTS idx_broadcast_button_clicks_broadcast_id
+  ON broadcast_button_clicks(broadcast_id);
+
+-- scheduled_messages: scheduler scans pending messages due now. The
+-- partial index keeps the cost constant regardless of total row count.
+CREATE INDEX IF NOT EXISTS idx_scheduled_messages_pending_due
+  ON scheduled_messages(scheduled_at)
+  WHERE status = 'pending';
+
+-- groups: samsara lookups by samsara_vehicle_id and active driver filters.
+CREATE INDEX IF NOT EXISTS idx_groups_samsara_vehicle_id
+  ON groups(samsara_vehicle_id)
+  WHERE samsara_vehicle_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_groups_type_active
+  ON groups(group_type, active);

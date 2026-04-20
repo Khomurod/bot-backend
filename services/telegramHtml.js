@@ -101,15 +101,72 @@ function splitHtmlForTelegram(text) {
   return out;
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
- * Split so each Telegram message stays within the 4096 limit.
+ * Heuristic to decide if a Telegram API error is a hard/permanent delivery
+ * failure (chat gone, bot kicked, deactivated) vs a transient failure worth
+ * retrying.
+ */
+function isPermanentSendError(err) {
+  const code = err?.response?.error_code;
+  const desc = String(err?.response?.description || '').toLowerCase();
+  if (code === 403) return true;
+  if (code === 400 && desc.includes('chat not found')) return true;
+  if (code === 400 && desc.includes('group chat was deactivated')) return true;
+  if (code === 400 && desc.includes('chat was upgraded')) return true;
+  return false;
+}
+
+/**
+ * Call a Telegram Bot API send function with 429-aware retries and
+ * exponential backoff on transient failures. Permanent errors bubble up
+ * immediately so callers can deactivate stale groups without waiting.
+ *
+ * @param {Function} sendFn  async zero-arg function performing the send.
+ * @param {object}   [opts]
+ * @param {number}   [opts.maxAttempts=4]
+ * @param {number}   [opts.baseDelayMs=500]
+ * @returns {Promise<any>} result of sendFn
+ */
+async function safeSend(sendFn, opts = {}) {
+  const maxAttempts = Math.max(1, opts.maxAttempts ?? 4);
+  const baseDelayMs = Math.max(50, opts.baseDelayMs ?? 500);
+  let lastErr = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await sendFn();
+    } catch (err) {
+      lastErr = err;
+      if (isPermanentSendError(err)) throw err;
+
+      if (err?.response?.error_code === 429) {
+        const retryAfter = Number(err.response?.parameters?.retry_after) || 1;
+        await sleep(Math.min(retryAfter * 1000 + 250, 30000));
+        continue;
+      }
+
+      if (attempt === maxAttempts) break;
+      const delay = Math.min(baseDelayMs * 2 ** (attempt - 1), 30000);
+      await sleep(delay);
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * Split so each Telegram message stays within the 4096 limit, and send
+ * each chunk through `safeSend` for 429/backoff safety.
  */
 async function sendTelegramHtmlChunks(telegram, chatId, text, extra = {}) {
   const parts = splitHtmlForTelegram(text);
   if (parts.length === 0) return [];
   const messages = [];
   for (const body of parts) {
-    messages.push(await telegram.sendMessage(chatId, body, { parse_mode: 'HTML', ...extra }));
+    const sent = await safeSend(() =>
+      telegram.sendMessage(chatId, body, { parse_mode: 'HTML', ...extra })
+    );
+    messages.push(sent);
   }
   return messages;
 }
@@ -118,5 +175,7 @@ module.exports = {
   stripMarkdownCodeFences,
   sanitizeCompanyReportHtmlForTelegram,
   sendTelegramHtmlChunks,
+  safeSend,
+  isPermanentSendError,
   TELEGRAM_HTML_MAX,
 };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { sanitizeCompanyReportHtmlForTelegram } from './telegramHtmlPreview';
+import { sanitizeCompanyReportHtmlForTelegram, sanitizeTelegramHtmlForPreview } from './telegramHtmlPreview';
 import * as api from './api';
 
 function getDaysUntilBirthday(dateString) {
@@ -79,7 +79,14 @@ const TelegramPreview = React.memo(function TelegramPreview({ text, buttons, lab
       )}
       <div className="telegram-preview">
         {MediaBlock && effectivePosition === 'above' && MediaBlock}
-        <div className="tg-text" dangerouslySetInnerHTML={{ __html: (displayText || '<span style="color:#6b7d8e">Type a message to see preview...</span>').replace(/\n/g, '<br/>') }} />
+        <div
+          className="tg-text"
+          dangerouslySetInnerHTML={{
+            __html: displayText
+              ? sanitizeTelegramHtmlForPreview(displayText).replace(/\n/g, '<br/>')
+              : '<span style="color:#6b7d8e">Type a message to see preview...</span>',
+          }}
+        />
         {displayButtons && displayButtons.length > 0 && (
           <div className="tg-buttons">
             {displayButtons.map((btn, i) => (
