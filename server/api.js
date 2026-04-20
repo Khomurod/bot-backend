@@ -883,21 +883,24 @@ app.post('/api/ai-reports/generate', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'No logs found in the selected date range' });
     }
 
+    // Legacy logs may lack telegram_message_id: omit [Link: ...] but never drop the row.
     const transcriptReadyLogs = logs.map((log) => {
       const link = buildTelegramMessageUrl(log.telegram_group_id, log.telegram_message_id);
-      const messageText = String(log.message_text || '').replace(/\s+/g, ' ').trim();
+      const rawText = log.message_text;
+      const messageText = rawText == null || rawText === ''
+        ? '(no message text)'
+        : String(rawText).replace(/\s+/g, ' ').trim();
       const senderName = String(log.sender_name || 'Unknown');
       const groupName = String(log.group_name || 'Unknown Group');
       const linkPrefix = link ? `[Link: ${link}] ` : '';
+      const transcript_line = link
+        ? `[Group: ${groupName}] ${linkPrefix}${senderName}: ${messageText}`
+        : `[Group: ${groupName}] ${senderName}: ${messageText}`;
       return {
         ...log,
-        transcript_line: `[Group: ${groupName}] ${linkPrefix}${senderName}: ${messageText}`,
+        transcript_line,
       };
-    }).filter((log) => log.message_text);
-
-    if (transcriptReadyLogs.length === 0) {
-      return res.status(400).json({ error: 'No valid transcript lines could be built from logs' });
-    }
+    });
 
     if (reportType === 'company') {
       reportText = await generateCompanyReport(transcriptReadyLogs);

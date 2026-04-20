@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as api from './api';
 
 function getDaysUntilBirthday(dateString) {
@@ -1836,6 +1836,20 @@ function ScheduledMessagesPage() {
   );
 }
 
+/** Combined company report HTML for Telegram-style preview (admin-trusted content). */
+function buildCompanyReportPreviewHtml(overall, breakdown) {
+  const sanitize = (html) =>
+    String(html || '')
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/\n/g, '<br/>');
+  const o = sanitize(overall);
+  const b = sanitize(breakdown);
+  if (!o && !b) return '';
+  if (!o) return b;
+  if (!b) return o;
+  return `${o}<br/><br/>${b}`;
+}
+
 function AiFeaturesPage() {
   const [activeTab, setActiveTab] = useState('driver');
   const [status, setStatus] = useState(null);
@@ -1913,6 +1927,11 @@ function AiFeaturesPage() {
 
   const selectedDriverDraft = driverDrafts.find((d) => d.id === selectedDriverDraftId) || null;
   const selectedCompanyDraft = companyDrafts.find((d) => d.id === selectedCompanyDraftId) || null;
+
+  const companyReportPreviewHtml = useMemo(
+    () => buildCompanyReportPreviewHtml(companyOverall, companyBreakdown),
+    [companyOverall, companyBreakdown]
+  );
 
   const selectDriverDraft = (id) => {
     const draft = driverDrafts.find((d) => d.id === id);
@@ -2140,6 +2159,23 @@ function AiFeaturesPage() {
                       <label>Company Details / Breakdown</label>
                       <textarea className="form-textarea" value={companyBreakdown} onChange={(e) => setCompanyBreakdown(e.target.value)} />
                     </div>
+                  </div>
+                  <div className="form-group" style={{ marginTop: 14 }}>
+                    <label>Live Preview</label>
+                    <div
+                      className="ai-company-html-preview"
+                      style={{
+                        background: 'rgba(255,255,255,0.05)',
+                        padding: '14px 16px',
+                        borderRadius: 12,
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        minHeight: 80,
+                        lineHeight: 1.45,
+                      }}
+                      dangerouslySetInnerHTML={{
+                        __html: companyReportPreviewHtml || '<span style="opacity:0.45">(empty)</span>',
+                      }}
+                    />
                   </div>
                   <div className="ai-action-row" style={{ marginTop: 12 }}>
                     <button className="btn btn-primary touch-target" onClick={sendCompanyDraft} disabled={busy || !selectedCompanyDraft}>Approve & Send</button>
