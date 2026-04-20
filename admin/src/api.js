@@ -409,6 +409,49 @@ export async function getChatLogs() {
   return res.json();
 }
 
+export async function getAiReports() {
+  const res = await fetch(`${API_BASE}/ai-reports`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function generateAiReport(groupId, daysBack = 3) {
+  const res = await fetch(`${API_BASE}/ai-reports/generate`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ groupId, daysBack }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function sendAiReport(reportId) {
+  const res = await fetch(`${API_BASE}/ai-reports/${reportId}/send`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function discardAiReport(reportId) {
+  const res = await fetch(`${API_BASE}/ai-reports/${reportId}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function testYandexAi() {
+  const res = await fetch(`${API_BASE}/ai-reports/test-yandex`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function editTelegramMessage(url, newText) {
   const res = await fetch(`${API_BASE}/message/edit`, {
     method: 'POST',

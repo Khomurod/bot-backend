@@ -564,6 +564,59 @@ async function getRecentChatLogs(limit = 50) {
   return res.rows;
 }
 
+// ─── AI Reports ───
+async function saveAiReport(groupId, reportText) {
+  const res = await query(
+    `INSERT INTO ai_reports (group_id, report_text, status)
+     VALUES ($1, $2, 'draft')
+     RETURNING *`,
+    [groupId, reportText]
+  );
+  return res.rows[0];
+}
+
+async function getPendingAiReports() {
+  const res = await query(
+    `SELECT ar.*, g.group_name
+     FROM ai_reports ar
+     JOIN groups g ON g.id = ar.group_id
+     WHERE ar.status = 'draft'
+     ORDER BY ar.generated_at DESC`
+  );
+  return res.rows;
+}
+
+async function getAiReportById(reportId) {
+  const res = await query(
+    `SELECT ar.*, g.group_name
+     FROM ai_reports ar
+     JOIN groups g ON g.id = ar.group_id
+     WHERE ar.id = $1`,
+    [reportId]
+  );
+  return res.rows[0];
+}
+
+async function updateAiReportStatus(reportId, status) {
+  const normalized = String(status || '').toLowerCase();
+  if (!['draft', 'sent', 'discarded'].includes(normalized)) {
+    throw new Error('Invalid ai report status');
+  }
+  const res = await query(
+    `UPDATE ai_reports
+     SET status = $1,
+         sent_at = CASE WHEN $1 = 'sent' THEN NOW() ELSE sent_at END
+     WHERE id = $2
+     RETURNING *`,
+    [normalized, reportId]
+  );
+  return res.rows[0];
+}
+
+async function discardAiReport(reportId) {
+  return updateAiReportStatus(reportId, 'discarded');
+}
+
 
 async function upsertEmployeeBirthday(firstName, lastName, birthday) {
   const res = await query(
@@ -653,6 +706,12 @@ module.exports = {
   getChatLogsForGroup,
   deleteOldChatLogs,
   getRecentChatLogs,
+  // AI Reports
+  saveAiReport,
+  getPendingAiReports,
+  getAiReportById,
+  updateAiReportStatus,
+  discardAiReport,
   // Employee Birthdays
   upsertEmployeeBirthday,
   getAllEmployeeBirthdays,

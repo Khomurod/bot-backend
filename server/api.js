@@ -8,6 +8,7 @@ const config = require('../config/config');
 const db = require('../database/db');
 const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcastTest, sendBroadcastToGroups, sendConfirmationBroadcast, sendConfirmationBroadcastTest } = require('../bot/bot');
 const { translateBatch } = require('../services/translationService');
+const { analyzeChatLogs, AI_REPORT_GENERATION_FAILED, callYandex } = require('../services/aiAnalysisService');
 const { DateTime } = require('luxon');
 const employeeVotingRoutes = require('./employeeVotingApi');
 
@@ -814,6 +815,115 @@ app.get('/api/chat-logs', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[API] Error fetching chat logs:', err.message);
     res.status(500).json({ error: 'Failed to fetch chat logs' });
+  }
+});
+
+// ─── AI Reports (HITL) ───
+app.get('/api/ai-reports', authMiddleware, async (req, res) => {
+  try {
+    const reports = await db.getPendingAiReports();
+    res.json(reports);
+  } catch (err) {
+    console.error('[API] Error fetching AI reports:', err.message);
+    res.status(500).json({ error: 'Failed to fetch AI reports' });
+  }
+});
+
+app.post('/api/ai-reports/generate', authMiddleware, async (req, res) => {
+  try {
+    const groupId = parseInt(req.body.groupId, 10);
+    const daysBack = parseInt(req.body.daysBack, 10);
+
+    if (!Number.isInteger(groupId) || groupId <= 0) {
+      return res.status(400).json({ error: 'Invalid groupId' });
+    }
+    if (!Number.isInteger(daysBack) || daysBack < 1 || daysBack > 30) {
+      return res.status(400).json({ error: 'daysBack must be an integer between 1 and 30' });
+    }
+
+    const groupRes = await db.query(
+      `SELECT id, group_name FROM groups WHERE id = $1 AND group_type = 'driver' AND active = TRUE`,
+      [groupId]
+    );
+    const group = groupRes.rows[0];
+    if (!group) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    const logs = await db.getChatLogsForGroup(groupId, daysBack);
+    if (!logs || logs.length === 0) {
+      return res.status(400).json({ error: 'No logs found for selected group and date range' });
+    }
+
+    const reportText = await analyzeChatLogs(group.group_name, logs);
+    if (!reportText || reportText === AI_REPORT_GENERATION_FAILED) {
+      return res.status(502).json({ error: 'AI report generation failed' });
+    }
+
+    const draft = await db.saveAiReport(groupId, reportText);
+    const hydrated = await db.getAiReportById(draft.id);
+    res.status(201).json(hydrated || draft);
+  } catch (err) {
+    console.error('[API] Error generating AI report:', err.message);
+    res.status(500).json({ error: 'Failed to generate AI report' });
+  }
+});
+
+app.post('/api/ai-reports/:id/send', authMiddleware, async (req, res) => {
+  try {
+    const reportId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(reportId) || reportId <= 0) {
+      return res.status(400).json({ error: 'Invalid report id' });
+    }
+
+    const report = await db.getAiReportById(reportId);
+    if (!report) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+    if (report.status !== 'draft') {
+      return res.status(400).json({ error: 'Only draft reports can be sent' });
+    }
+
+    const message = `📊 <b>AI Chat Analysis (Admin Approved)</b>\n<b>Group:</b> ${report.group_name}\n<b>Generated:</b> ${new Date(report.generated_at).toLocaleString()}\n\n${report.report_text}`;
+    await bot.telegram.sendMessage(config.managementGroupId, message, { parse_mode: 'HTML' });
+
+    await db.updateAiReportStatus(reportId, 'sent');
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[API] Error sending AI report:', err.message);
+    res.status(500).json({ error: 'Failed to send AI report to management group' });
+  }
+});
+
+app.delete('/api/ai-reports/:id', authMiddleware, async (req, res) => {
+  try {
+    const reportId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(reportId) || reportId <= 0) {
+      return res.status(400).json({ error: 'Invalid report id' });
+    }
+    const report = await db.getAiReportById(reportId);
+    if (!report) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+    if (report.status !== 'draft') {
+      return res.status(400).json({ error: 'Only draft reports can be discarded' });
+    }
+    await db.discardAiReport(reportId);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[API] Error discarding AI report:', err.message);
+    res.status(500).json({ error: 'Failed to discard AI report' });
+  }
+});
+
+app.post('/api/ai-reports/test-yandex', authMiddleware, async (req, res) => {
+  try {
+    const output = await callYandex('Reply with exactly: YANDEX_OK');
+    const ok = output.includes('YANDEX_OK');
+    res.json({ success: ok, output: output.slice(0, 200) });
+  } catch (err) {
+    console.error('[API] Yandex AI test failed:', err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

@@ -1,7 +1,5 @@
 const db = require('../database/db');
-const { analyzeChatLogs } = require('./aiAnalysisService');
-const { bot } = require('../bot/bot');
-const config = require('../config/config');
+const { analyzeChatLogs, AI_REPORT_GENERATION_FAILED } = require('./aiAnalysisService');
 
 let lastRunDate = null;
 
@@ -15,12 +13,14 @@ async function runWeeklyAnalysis() {
       if (logs && logs.length > 0) {
         console.log(`[WEEKLY-REPORT] Analyzing logs for group: ${group.group_name}`);
         const report = await analyzeChatLogs(group.group_name, logs);
-        
-        const message = `📊 <b>Weekly AI Chat Analysis</b>\n` +
-                        `<b>Group:</b> ${group.group_name}\n\n` +
-                        report;
-                        
-        await bot.telegram.sendMessage(config.managementGroupId, message, { parse_mode: 'HTML' });
+
+        if (!report || report === AI_REPORT_GENERATION_FAILED) {
+          console.log(`[WEEKLY-REPORT] AI generation failed for group "${group.group_name}". Draft was not saved.`);
+          continue;
+        }
+
+        await db.saveAiReport(group.id, report);
+        console.log(`[WEEKLY-REPORT] Draft saved for admin review: group="${group.group_name}"`);
       } else {
         console.log(`[WEEKLY-REPORT] No logs for group: ${group.group_name}`);
       }

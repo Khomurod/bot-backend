@@ -199,6 +199,20 @@ CREATE TABLE IF NOT EXISTS chat_logs (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- ─── AI Reports (Human-in-the-Loop) ───
+CREATE TABLE IF NOT EXISTS ai_reports (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
+  report_text TEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  generated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  sent_at TIMESTAMP NULL,
+  CONSTRAINT ai_reports_status_check CHECK (status IN ('draft', 'sent', 'discarded'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_reports_status_generated_at
+  ON ai_reports(status, generated_at DESC);
+
 CREATE TABLE IF NOT EXISTS employee_birthdays (
   id SERIAL PRIMARY KEY,
   first_name TEXT NOT NULL,

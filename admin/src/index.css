@@ -1017,3 +1017,168 @@ tr:hover td {
 .button-builder-row:last-of-type {
   margin-bottom: 0;
 }
+
+/* ─── AI Features (Glassmorphism) ─── */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22);
+  border-radius: 16px;
+}
+
+.ai-top-bar {
+  padding: 14px;
+  margin-bottom: 16px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.ai-drafts-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.ai-draft-card {
+  width: 100%;
+  border: none;
+  text-align: left;
+  padding: 16px;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.ai-draft-card:hover {
+  transform: translateY(-2px);
+}
+
+.ai-draft-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ai-draft-head h4 {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ai-draft-head span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.ai-draft-card p {
+  color: var(--text-secondary);
+  line-height: 1.4;
+  font-size: 13px;
+}
+
+.glass-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 10, 15, 0.62);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+}
+
+.glass-modal {
+  width: 100%;
+  max-height: 90vh;
+  overflow: auto;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(22, 26, 36, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+}
+
+.glass-modal.small {
+  max-width: 460px;
+}
+
+.glass-modal.large {
+  max-width: 920px;
+}
+
+.ai-review-head {
+  margin-bottom: 12px;
+}
+
+.ai-review-head h3 {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+
+.ai-review-head span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.ai-report-text {
+  background: rgba(4, 8, 16, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  color: var(--text-primary);
+  padding: 14px;
+  font-size: 14px;
+  white-space: pre-wrap;
+  margin-bottom: 12px;
+  max-height: 58vh;
+  overflow-y: auto;
+  font-family: inherit;
+}
+
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+@media (min-width: 720px) {
+  .ai-drafts-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1100px) {
+  .ai-drafts-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .glass-modal-overlay {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .glass-modal {
+    max-height: 100vh;
+    border-radius: 0;
+    padding: 16px;
+  }
+
+  .modal-actions .btn {
+    flex: 1 1 100%;
+  }
+}

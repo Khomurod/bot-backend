@@ -1831,6 +1831,220 @@ function ScheduledMessagesPage() {
   );
 }
 
+function AiFeaturesPage() {
+  const [reports, setReports] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState(null);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [groupId, setGroupId] = useState('');
+  const [daysBack, setDaysBack] = useState(3);
+  const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [drafts, driverGroups] = await Promise.all([
+        api.getAiReports(),
+        api.getDriverGroups(),
+      ]);
+      setReports(drafts);
+      setGroups(driverGroups);
+      if (!groupId && driverGroups.length > 0) {
+        setGroupId(String(driverGroups[0].id));
+      }
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
+    }
+  }, [groupId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleGenerate = async () => {
+    if (!groupId) {
+      setStatus({ type: 'error', text: 'Please select a group first.' });
+      return;
+    }
+    const dayValue = Number(daysBack);
+    if (!Number.isInteger(dayValue) || dayValue < 1 || dayValue > 30) {
+      setStatus({ type: 'error', text: 'Days back must be between 1 and 30.' });
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      await api.generateAiReport(Number(groupId), dayValue);
+      setShowGenerateModal(false);
+      setStatus({ type: 'success', text: 'Draft generated and added to review queue.' });
+      await loadData();
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSend = async () => {
+    if (!selectedReport) return;
+    setBusy(true);
+    setStatus(null);
+    try {
+      await api.sendAiReport(selectedReport.id);
+      setShowReviewModal(false);
+      setSelectedReport(null);
+      setStatus({ type: 'success', text: 'Report sent to management successfully.' });
+      await loadData();
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDiscard = async () => {
+    if (!selectedReport) return;
+    if (!window.confirm('Discard this draft? It will be marked as discarded.')) return;
+    setBusy(true);
+    setStatus(null);
+    try {
+      await api.discardAiReport(selectedReport.id);
+      setShowReviewModal(false);
+      setSelectedReport(null);
+      setStatus({ type: 'success', text: 'Draft discarded.' });
+      await loadData();
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleTestYandex = async () => {
+    setTesting(true);
+    setStatus(null);
+    try {
+      const res = await api.testYandexAi();
+      if (res.success) {
+        setStatus({ type: 'success', text: 'Yandex AI credentials test passed.' });
+      } else {
+        setStatus({ type: 'error', text: `Yandex AI test failed: ${res.output || 'Unexpected response'}` });
+      }
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="ai-features-page">
+      <div className="page-header">
+        <h2>✨ AI Features</h2>
+        <p>Review AI draft reports before sending them to management.</p>
+      </div>
+
+      {status && <div className={`alert alert-${status.type}`}>{status.text}</div>}
+
+      <div className="ai-top-bar glass-card">
+        <button className="btn btn-primary touch-target" onClick={() => setShowGenerateModal(true)}>
+          Generate New Summary
+        </button>
+        <button className="btn btn-ghost touch-target" onClick={handleTestYandex} disabled={testing}>
+          {testing ? 'Testing Yandex...' : 'Test Yandex Credentials'}
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="loading"><div className="spinner"></div> Loading drafts...</div>
+      ) : reports.length === 0 ? (
+        <div className="empty-state glass-card">
+          <div className="icon">🧠</div>
+          <h3>No pending drafts</h3>
+          <p>Generate a new report to start admin review.</p>
+        </div>
+      ) : (
+        <div className="ai-drafts-grid">
+          {reports.map((report) => (
+            <button
+              key={report.id}
+              type="button"
+              className="ai-draft-card glass-card touch-target"
+              onClick={() => {
+                setSelectedReport(report);
+                setShowReviewModal(true);
+              }}
+            >
+              <div className="ai-draft-head">
+                <h4>{report.group_name}</h4>
+                <span>{new Date(report.generated_at).toLocaleString()}</span>
+              </div>
+              <p>{report.report_text.slice(0, 220)}{report.report_text.length > 220 ? '...' : ''}</p>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {showGenerateModal && (
+        <div className="glass-modal-overlay" onClick={() => setShowGenerateModal(false)}>
+          <div className="glass-modal small" onClick={(e) => e.stopPropagation()}>
+            <h3>Generate New Summary</h3>
+            <div className="form-group">
+              <label>Driver Group</label>
+              <select className="form-select" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+                {groups.map((group) => (
+                  <option key={group.id} value={group.id}>{group.group_name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Days Back</label>
+              <input
+                className="form-input"
+                type="number"
+                min="1"
+                max="30"
+                value={daysBack}
+                onChange={(e) => setDaysBack(e.target.value)}
+              />
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-ghost touch-target" onClick={() => setShowGenerateModal(false)} disabled={busy}>Cancel</button>
+              <button className="btn btn-primary touch-target" onClick={handleGenerate} disabled={busy}>
+                {busy ? 'Generating...' : 'Generate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showReviewModal && selectedReport && (
+        <div className="glass-modal-overlay" onClick={() => setShowReviewModal(false)}>
+          <div className="glass-modal large" onClick={(e) => e.stopPropagation()}>
+            <div className="ai-review-head">
+              <h3>{selectedReport.group_name}</h3>
+              <span>{new Date(selectedReport.generated_at).toLocaleString()}</span>
+            </div>
+            <pre className="ai-report-text">{selectedReport.report_text}</pre>
+            <div className="modal-actions">
+              <button className="btn btn-danger touch-target" onClick={handleDiscard} disabled={busy}>Discard Draft</button>
+              <button className="btn btn-primary touch-target" onClick={handleSend} disabled={busy}>
+                {busy ? 'Sending...' : 'Approve & Send to Management'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageManagerPage() {
   const [url, setUrl] = useState('');
   const [newText, setNewText] = useState('');
@@ -2166,6 +2380,7 @@ export default function App() {
     groups: <GroupsPage />,
     questions: <QuestionsPage />,
     broadcast: <BroadcastPage />,
+    ai_features: <AiFeaturesPage />,
     scheduled: <ScheduledMessagesPage />,
     voting: <EmployeeVotingPage />,
     logs: <ChatLogsPage />,
@@ -2201,6 +2416,13 @@ export default function App() {
           >
             <span className="nav-icon">📢</span>
             Broadcast
+          </button>
+          <button
+            className={`nav-item ${page === 'ai_features' ? 'active' : ''}`}
+            onClick={() => setPage('ai_features')}
+          >
+            <span className="nav-icon">✨</span>
+            AI Features
           </button>
           <button
             className={`nav-item ${page === 'logs' ? 'active' : ''}`}
