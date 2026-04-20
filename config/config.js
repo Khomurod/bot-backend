@@ -1,4 +1,5 @@
 require('dotenv').config();
+const HARDCODED_MANAGEMENT_GROUP_ID = '-1002997837889';
 
 // Validate required environment variables
 const requiredEnv = [
@@ -20,7 +21,8 @@ module.exports = {
   databaseUrl: process.env.DATABASE_URL,
   adminUsername: process.env.ADMIN_USERNAME || 'admin',
   adminPassword: process.env.ADMIN_PASSWORD || 'admin123',
-  managementGroupId: process.env.MANAGEMENT_GROUP_ID,
+  // Forced override to avoid stale env values after Telegram group->supergroup migration.
+  managementGroupId: HARDCODED_MANAGEMENT_GROUP_ID,
   jwtSecret: process.env.JWT_SECRET || 'driver-feedback-jwt-secret-key',
   port: process.env.PORT || 3001,
   openaiApiKey: process.env.OPENAI_API_KEY,

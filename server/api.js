@@ -137,6 +137,21 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
 });
 
+// Avoid noisy browser console 404 for default favicon requests.
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end();
+});
+
+function sanitizeTelegramHtml(input) {
+  let html = String(input || '');
+  html = html.replace(/^\s*```(?:html)?\s*/i, '').replace(/\s*```\s*$/i, '');
+  html = html.replace(/<!DOCTYPE[^>]*>/gi, '');
+  html = html.replace(/<\/?(?:html|head|body|meta|title)[^>]*>/gi, '');
+  html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  html = html.replace(/\r\n/g, '\n');
+  return html.trim();
+}
+
 // ─── Media Upload ───
 
 // POST /api/upload-media
@@ -948,8 +963,8 @@ app.post('/api/ai-reports/:id/send', authMiddleware, async (req, res) => {
     if (report.report_type === 'company') {
       const [overallRaw, breakdownRaw] = String(sourceText || '').split('|||');
       const companyBody = breakdownRaw
-        ? `${(overallRaw || '').trim()}\n\n${(breakdownRaw || '').trim()}`
-        : String(sourceText || '').trim();
+        ? `${sanitizeTelegramHtml(overallRaw)}\n\n${sanitizeTelegramHtml(breakdownRaw)}`
+        : sanitizeTelegramHtml(sourceText);
       message = [
         '📊 <b>Company AI Weekly Report (Admin Approved)</b>',
         `<b>Generated:</b> ${escapeHtml(new Date(report.generated_at).toLocaleString())}`,
