@@ -3,6 +3,7 @@ const db = require('../database/db');
 const config = require('../config/config');
 const { bot } = require('../bot/bot');
 const { buildTelegramMessageUrl } = require('./telegramUrl');
+const { sanitizeCompanyReportHtmlForTelegram, sendTelegramHtmlChunks } = require('./telegramHtml');
 const { generateCompanyReport, AI_REPORT_GENERATION_FAILED } = require('./aiAnalysisService');
 
 let lastRunDate = null;
@@ -52,7 +53,8 @@ async function runWeeklyAnalysis(nowChicago = DateTime.now().setZone('America/Ch
       return false;
     }
 
-    await bot.telegram.sendMessage(config.managementGroupId, report, { parse_mode: 'HTML' });
+    const safe = sanitizeCompanyReportHtmlForTelegram(report);
+    await sendTelegramHtmlChunks(bot.telegram, config.managementGroupId, safe);
     await db.query(
       `INSERT INTO ai_reports (group_id, report_text, report_type, status, sent_at)
        VALUES ($1, $2, 'company', 'sent', NOW())`,

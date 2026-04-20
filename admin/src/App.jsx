@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import * as tgHtml from '@botServices/telegramHtml.js';
 import * as api from './api';
 
 function getDaysUntilBirthday(dateString) {
@@ -1836,14 +1837,12 @@ function ScheduledMessagesPage() {
   );
 }
 
-/** Combined company report HTML for Telegram-style preview (admin-trusted content). */
+/** Combined company report HTML for Telegram-style preview (matches server sanitization). */
 function buildCompanyReportPreviewHtml(overall, breakdown) {
-  const sanitize = (html) =>
-    String(html || '')
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-      .replace(/\n/g, '<br/>');
-  const o = sanitize(overall);
-  const b = sanitize(breakdown);
+  const toPreview = (html) =>
+    tgHtml.sanitizeCompanyReportHtmlForTelegram(html).replace(/\n/g, '<br/>');
+  const o = toPreview(overall);
+  const b = toPreview(breakdown);
   if (!o && !b) return '';
   if (!o) return b;
   if (!b) return o;

@@ -10,6 +10,10 @@ const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcast, sendBroadcas
 const { translateBatch } = require('../services/translationService');
 const { generateDriverReport, generateCompanyReport, AI_REPORT_GENERATION_FAILED, callYandex } = require('../services/aiAnalysisService');
 const { buildTelegramMessageUrl } = require('../services/telegramUrl');
+const {
+  sanitizeCompanyReportHtmlForTelegram,
+  sendTelegramHtmlChunks,
+} = require('../services/telegramHtml');
 const { DateTime } = require('luxon');
 const employeeVotingRoutes = require('./employeeVotingApi');
 
@@ -141,16 +145,6 @@ app.get('/api/health', (req, res) => {
 app.get('/favicon.ico', (req, res) => {
   res.status(204).end();
 });
-
-function sanitizeTelegramHtml(input) {
-  let html = String(input || '');
-  html = html.replace(/^\s*```(?:html)?\s*/i, '').replace(/\s*```\s*$/i, '');
-  html = html.replace(/<!DOCTYPE[^>]*>/gi, '');
-  html = html.replace(/<\/?(?:html|head|body|meta|title)[^>]*>/gi, '');
-  html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  html = html.replace(/\r\n/g, '\n');
-  return html.trim();
-}
 
 // ─── Media Upload ───
 
@@ -963,8 +957,8 @@ app.post('/api/ai-reports/:id/send', authMiddleware, async (req, res) => {
     if (report.report_type === 'company') {
       const [overallRaw, breakdownRaw] = String(sourceText || '').split('|||');
       const companyBody = breakdownRaw
-        ? `${sanitizeTelegramHtml(overallRaw)}\n\n${sanitizeTelegramHtml(breakdownRaw)}`
-        : sanitizeTelegramHtml(sourceText);
+        ? `${sanitizeCompanyReportHtmlForTelegram(overallRaw)}\n\n${sanitizeCompanyReportHtmlForTelegram(breakdownRaw)}`
+        : sanitizeCompanyReportHtmlForTelegram(sourceText);
       message = [
         '📊 <b>Company AI Weekly Report (Admin Approved)</b>',
         `<b>Generated:</b> ${escapeHtml(new Date(report.generated_at).toLocaleString())}`,
@@ -988,13 +982,17 @@ app.post('/api/ai-reports/:id/send', authMiddleware, async (req, res) => {
       ].join('\n');
     }
 
-    await bot.telegram.sendMessage(config.managementGroupId, message, { parse_mode: 'HTML' });
+    await sendTelegramHtmlChunks(bot.telegram, config.managementGroupId, message);
 
     await db.updateAiReportStatus(reportId, 'sent');
     res.json({ success: true });
   } catch (err) {
-    console.error('[API] Error sending AI report:', err.message);
-    res.status(500).json({ error: 'Failed to send AI report to management group' });
+    const detail = err.response?.description || err.message;
+    console.error('[API] Error sending AI report:', detail);
+    res.status(500).json({
+      error: 'Failed to send AI report to management group',
+      detail,
+    });
   }
 });
 

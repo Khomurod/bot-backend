@@ -4,7 +4,8 @@ async function handleApiError(res) {
     const contentType = res.headers.get("content-type");
     if (contentType && contentType.includes("application/json")) {
       const errData = await res.json();
-      errorMessage = errData.error || errorMessage;
+      const base = errData.error || errorMessage;
+      errorMessage = errData.detail ? `${base} (${errData.detail})` : base;
     } else {
       const textData = await res.text();
       errorMessage = textData.length < 200 ? textData : errorMessage;
