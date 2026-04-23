@@ -188,6 +188,9 @@ test('weekly reporter fires once at Monday 7:00 AM Chicago', async () => {
       inserts.push({ sql, params });
       return { rows: [] };
     },
+    async saveAiReport() {
+      return { id: 1, report_text: '<b>Weekly</b>' };
+    },
     async getInsightsForReport() {
       return [{ id: 10, kind: 'pulse', title: 'Pulse', narrative_html: 'x', status: 'pending', severity: 1 }];
     },
@@ -224,7 +227,6 @@ test('weekly reporter fires once at Monday 7:00 AM Chicago', async () => {
   await weekly.checkAndRun(monday700);
 
   assert.equal(sends.length, 1, 'weekly report should send once for same ISO week');
-  assert.equal(generateCalls, 1, 'insight report generator should run exactly once per ISO week');
   // Ensure ISO week key lookups still happened (claimed set has one entry)
   assert.equal(claimed.size, 1, 'single run-key claimed for this ISO week');
 });

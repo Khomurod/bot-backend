@@ -1161,7 +1161,7 @@ app.post('/api/ai-reports/:id/send', authMiddleware, async (req, res) => {
         ? `${sanitizeCompanyReportHtmlForTelegram(overallRaw)}\n\n${sanitizeCompanyReportHtmlForTelegram(breakdownRaw)}`
         : sanitizeCompanyReportHtmlForTelegram(sourceText);
       message = [
-        '📊 <b>Company AI Weekly Report (Admin Approved)</b>',
+        '📊 <b>Company AI Weekly Dispatch Report (Admin Approved)</b>',
         `<b>Generated:</b> ${escapeHtml(new Date(report.generated_at).toLocaleString())}`,
         '',
         companyBody || 'Report unavailable.',
