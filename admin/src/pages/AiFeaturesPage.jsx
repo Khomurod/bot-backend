@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as api from "../api";
 import { TelegramPreview, MediaUploader, MediaPositionSelector, useFormattingToolbar, getDaysUntilBirthday } from "../components/Shared";
+import { sanitizeCompanyReportHtmlForTelegram } from "../telegramHtmlPreview";
 
 function buildCompanyReportPreviewHtml(overall, breakdown) {
   const toPreview = (html) =>
