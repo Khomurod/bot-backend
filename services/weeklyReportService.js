@@ -3,8 +3,8 @@ const db = require('../database/db');
 const config = require('../config/config');
 const { bot } = require('../bot/bot');
 const { sanitizeCompanyReportHtmlForTelegram, sendTelegramHtmlChunks } = require('./telegramHtml');
-const { generateInsightReport } = require('./aiInsightsService');
-const { renderInsightReportForTelegram } = require('./insightRenderer');
+const { generateCompanyReport, AI_REPORT_GENERATION_FAILED } = require('./aiAnalysisService');
+const { buildTelegramMessageUrl } = require('./telegramUrl');
 
 let running = false;
 let reporterTimer = null;
@@ -14,30 +14,62 @@ async function runWeeklyAnalysis(nowChicago = DateTime.now().setZone('America/Ch
   if (running) return false;
   running = true;
 
-  console.log('[WEEKLY-REPORT] Starting weekly company analysis (insights v2)...');
+  console.log('[WEEKLY-REPORT] Starting weekly company analysis...');
   try {
-    const result = await generateInsightReport({
-      daysBack: 7,
-      reportType: 'company',
-    });
-
-    if (!result.report) {
-      console.log('[WEEKLY-REPORT] No insights generated:', result.reason || 'unknown');
+    const daysBack = 7;
+    const logs = await db.getChatLogsForActiveDriverGroups(daysBack);
+    if (!logs || logs.length === 0) {
+      console.log('[WEEKLY-REPORT] No logs found to generate report.');
       return false;
     }
 
-    const cards = await db.getInsightsForReport(result.report.id);
-    const html = renderInsightReportForTelegram({ report: result.report, cards, pulse: result.pulse });
-    const safe = sanitizeCompanyReportHtmlForTelegram(html);
-    await sendTelegramHtmlChunks(bot.telegram, config.managementGroupId, safe);
+    const transcriptReadyLogs = logs.map((log) => {
+      const link = buildTelegramMessageUrl(log.telegram_group_id, log.telegram_message_id);
+      const rawText = log.message_text;
+      const messageText = rawText == null || rawText === ''
+        ? '(no message text)'
+        : String(rawText).replace(/\s+/g, ' ').trim();
+      const senderName = String(log.sender_name || 'Unknown');
+      const groupName = String(log.group_name || 'Unknown Group');
+      const linkPrefix = link ? `[Link: ${link}] ` : '';
+      const transcript_line = link
+        ? `[Group: ${groupName}] ${linkPrefix}${senderName}: ${messageText}`
+        : `[Group: ${groupName}] ${senderName}: ${messageText}`;
+      return {
+        ...log,
+        transcript_line,
+      };
+    });
 
-    // Mark envelope + all cards as sent
-    await db.updateAiReportStatus(result.report.id, 'sent');
-    for (const card of cards) {
-      await db.updateInsightStatus(card.id, 'sent');
+    const reportText = await generateCompanyReport(transcriptReadyLogs);
+    if (!reportText || reportText === AI_REPORT_GENERATION_FAILED) {
+      console.log('[WEEKLY-REPORT] Report generation failed.');
+      return false;
     }
 
-    console.log(`[WEEKLY-REPORT] Insight report ${result.report.id} sent. Cards: ${cards.length}`);
+    const report = await db.saveAiReport(null, reportText, 'company');
+
+    const [overallRaw, breakdownRaw] = String(reportText || '').split('|||');
+    const companyBody = breakdownRaw
+      ? `${sanitizeCompanyReportHtmlForTelegram(overallRaw)}\n\n${sanitizeCompanyReportHtmlForTelegram(breakdownRaw)}`
+      : sanitizeCompanyReportHtmlForTelegram(reportText);
+
+    const escapeHtml = (text) => String(text || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    const message = [
+      '📊 <b>Company AI Weekly Dispatch Report</b>',
+      `<b>Generated:</b> ${escapeHtml(new Date().toLocaleString())}`,
+      '',
+      companyBody || 'Report unavailable.',
+    ].join('\n');
+
+    await sendTelegramHtmlChunks(bot.telegram, config.managementGroupId, message);
+    await db.updateAiReportStatus(report.id, 'sent');
+
+    console.log(`[WEEKLY-REPORT] Report ${report.id} sent.`);
     return true;
   } catch (err) {
     console.error('[WEEKLY-REPORT] Error in weekly analysis:', err.message);

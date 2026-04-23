@@ -1,0 +1,3086 @@
+
+> driver-feedback-bot@1.0.0 start
+> node index.js
+
+═══════════════════════════════════════════
+  Telegram Driver Feedback System
+═══════════════════════════════════════════
+(node:490613) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[DB] Database tables verified/created.
+[VOTING] EMPLOYEE_GROUP_ID not set — voting feature disabled.
+[BOT] Launching Telegram bot...
+[SCHEDULER] Started — polling every 30s
+[BIRTHDAY] Service started — driver wishes at 8:00 America/Chicago, employee wishes at 9:00 America/Chicago
+[WEEKLY-REPORT] Service started. Checking every minute (Mon 07:00 America/Chicago).
+[ANNOTATOR] Starting background annotator loop (120s interval).
+[LEADS-BOT] Starting Python process...
+[SAMSARA-BOT] Starting Node process...
+[API] Server running on port 3002
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[BOT] Another instance is still polling this token. Retrying launch in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[BOT] Launching Telegram bot...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[BOT] Another instance is still polling this token. Retrying launch in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[BOT] Launching Telegram bot...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[BOT] Another instance is still polling this token. Retrying launch in 20s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[BOT] Launching Telegram bot...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[BOT] Another instance is still polling this token. Retrying launch in 30s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[BOT] Launching Telegram bot...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[BOT] Another instance is still polling this token. Retrying launch in 30s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[BOT] Launching Telegram bot...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[BOT] Another instance is still polling this token. Retrying launch in 30s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[BOT] Launching Telegram bot...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[BOT] Another instance is still polling this token. Retrying launch in 30s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[BOT] Launching Telegram bot...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[BOT] Another instance is still polling this token. Retrying launch in 30s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[BOT] Launching Telegram bot...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[BOT] Another instance is still polling this token. Retrying launch in 30s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[SAMSARA-BOT] Starting Node process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[LEADS-BOT] Starting Python process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[BOT] Launching Telegram bot...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[BOT] Another instance is still polling this token. Retrying launch in 30s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[BOT] Launching Telegram bot...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[BOT] Another instance is still polling this token. Retrying launch in 30s...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[BOT] Launching Telegram bot...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[BOT] Another instance is still polling this token. Retrying launch in 30s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[BOT] Launching Telegram bot...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[BOT] Another instance is still polling this token. Retrying launch in 30s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[LEADS-BOT] Starting Python process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[BOT] Launching Telegram bot...
+[ANNOTATOR] Background loop: found 2, annotated 2.
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[DB] Group upserted: WENZE UNIT # 27 RUSLAN ABDULLAEV (-4532192670)
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT] import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[BOT] Another instance is still polling this token. Retrying launch in 30s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 10s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 5s...
+[LEADS-BOT] Starting Python process...
+[LEADS-BOT] Traceback (most recent call last):
+[LEADS-BOT]   File "/app/leads-bot/main.py", line 2, in <module>
+[LEADS-BOT]     import uvicorn
+[LEADS-BOT] ModuleNotFoundError: No module named 'uvicorn'
+[LEADS-BOT] Process exited with code 1. Restarting in 5s...
+[SAMSARA-BOT] Starting Node process...
+[SAMSARA-BOT] node:internal/modules/cjs/loader:1386
+[SAMSARA-BOT]   throw err;
+[SAMSARA-BOT]   ^
+[SAMSARA-BOT]
+[SAMSARA-BOT] Error: Cannot find module 'node-telegram-bot-api'
+[SAMSARA-BOT] Require stack:
+[SAMSARA-BOT] - /app/samsara-integration/index.js
+[SAMSARA-BOT]     at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)
+[SAMSARA-BOT]     at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)
+[SAMSARA-BOT]     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)
+[SAMSARA-BOT]     at Function._load (node:internal/modules/cjs/loader:1192:37)
+[SAMSARA-BOT]     at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+[SAMSARA-BOT]     at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+[SAMSARA-BOT]     at Module.require (node:internal/modules/cjs/loader:1463:12)
+[SAMSARA-BOT]     at require (node:internal/modules/helpers:147:16)
+[SAMSARA-BOT]     at Object.<anonymous> (/app/samsara-integration/index.js:12:21)
+[SAMSARA-BOT]     at Module._compile (node:internal/modules/cjs/loader:1705:14) {
+[SAMSARA-BOT]   code: 'MODULE_NOT_FOUND',
+[SAMSARA-BOT]   requireStack: [ '/app/samsara-integration/index.js' ]
+[SAMSARA-BOT] }
+[SAMSARA-BOT]
+[SAMSARA-BOT] Node.js v22.22.1
+[SAMSARA-BOT] Process exited with code 1. Restarting in 10s...
