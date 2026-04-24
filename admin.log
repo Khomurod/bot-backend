@@ -27,3 +27,16 @@ AggregateError [ECONNREFUSED]:
 AggregateError [ECONNREFUSED]:
     at internalConnectMultiple (node:net:1134:18)
     at afterConnectMultiple (node:net:1715:7)
+9:09:40 PM [vite] hmr update /src/pages/AiFeaturesPage.jsx
+9:10:42 PM [vite] http proxy error: /api/auth/login
+AggregateError [ECONNREFUSED]:
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+9:11:44 PM [vite] http proxy error: /api/auth/login
+AggregateError [ECONNREFUSED]:
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+9:14:19 PM [vite] http proxy error: /api/auth/login
+AggregateError [ECONNREFUSED]:
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
