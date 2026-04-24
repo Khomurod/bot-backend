@@ -293,7 +293,7 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
       }
 
       console.log(`[API] Media uploaded: type=${mediaType}, file_id=${fileId}`);
-      res.json({ file_id: fileId, media_type: mediaType });
+      res.json({ file_id: fileId, media_type: mediaType, type: mediaType, url: null });
     } catch (uploadErr) {
       console.error('[API] Media upload error:', uploadErr.message);
       res.status(500).json({ error: 'Failed to upload media to Telegram. Check bot permissions.' });

@@ -227,13 +227,24 @@ export async function translateTexts(textBlocks) {
     }),
   });
   if (!res.ok) { await handleApiError(res); }
-  return res.json();
+  const data = await res.json();
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === "object") {
+    const ru = Array.isArray(data.ru) ? data.ru : (typeof data.ru === "string" ? [data.ru] : []);
+    const uz = Array.isArray(data.uz) ? data.uz : (typeof data.uz === "string" ? [data.uz] : []);
+    const max = Math.max(ru.length, uz.length, textBlocks.length || 0);
+    return Array.from({ length: max }, (_, idx) => ({
+      ru: ru[idx] || "",
+      uz: uz[idx] || "",
+    }));
+  }
+  return [];
 }
 
 // Alias for App.jsx compatibility
 export async function translateBroadcast(text) {
-  const data = await translateTexts([text]);
-  return data[0];
+  const rows = await translateTexts([text]);
+  return rows[0] || { ru: "", uz: "" };
 }
 
 /**
@@ -250,7 +261,11 @@ export async function uploadMedia(file) {
     body: formData,
   });
   if (!res.ok) { await handleApiError(res); }
-  return res.json();
+  const data = await res.json();
+  return {
+    ...data,
+    type: data.type || data.media_type || (file.type.startsWith("video/") ? "video" : "photo"),
+  };
 }
 
 // ─── Employee Voting API ───

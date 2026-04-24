@@ -35,7 +35,15 @@ function loadApiWithMocks(dbMock, aiMock) {
       sendConfirmationBroadcastTest: async () => ({}),
     },
   };
-  require.cache[configPath] = { exports: { jwtSecret: 'test-secret', managementGroupId: '-1001', port: 0 } };
+  require.cache[configPath] = {
+    exports: {
+      jwtSecret: 'test-secret',
+      managementGroupId: '-1001',
+      port: 0,
+      corsAllowAll: true,
+      corsAllowedOrigins: [],
+    },
+  };
   require.cache[translationPath] = { exports: { translateBatch: async () => [] } };
   require.cache[aiPath] = { exports: aiMock };
   require.cache[employeeVotingPath] = { exports: (req, res, next) => next() };

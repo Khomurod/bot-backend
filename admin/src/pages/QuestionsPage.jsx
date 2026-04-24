@@ -53,6 +53,13 @@ export default function QuestionsPage() {
   };
 
   const formatDate = (date) => new Date(date).toLocaleString();
+  const getQuestionText = (question) => {
+    if (question.text_en) return question.text_en;
+    if (!Array.isArray(question.translations)) return "(no question text)";
+    const en = question.translations.find((t) => t && t.language === "en");
+    const fallback = question.translations.find((t) => t && typeof t.question_text === "string");
+    return (en && en.question_text) || (fallback && fallback.question_text) || "(no question text)";
+  };
 
   return (
     <div>
@@ -72,7 +79,7 @@ export default function QuestionsPage() {
               <div className="question-header" onClick={() => toggleQuestion(q.id)}>
                 <div className="question-info">
                   <span className="question-date">{formatDate(q.created_at)}</span>
-                  <h3>{q.text_en}</h3>
+                  <h3>{getQuestionText(q)}</h3>
                 </div>
                 <div className="question-stats">
                   <span className="badge">{responses[q.id]?.length || 0} responses</span>

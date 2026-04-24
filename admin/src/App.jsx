@@ -19,13 +19,19 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      const token = localStorage.getItem("token");
-      if (token) {
-        const valid = await api.verifyAuth();
-        if (!valid) localStorage.removeItem("token");
-        setAuthed(valid);
+      try {
+        const token = localStorage.getItem("token");
+        if (token) {
+          const valid = await api.verifyAuth();
+          if (!valid) localStorage.removeItem("token");
+          setAuthed(valid);
+        }
+      } catch (err) {
+        localStorage.removeItem("token");
+        setAuthed(false);
+      } finally {
+        setChecking(false);
       }
-      setChecking(false);
     })();
   }, []);
 

@@ -67,7 +67,7 @@ export default function ChatLogsPage() {
                 <tr key={log.id}>
                   <td className="log-time">{formatDate(log.created_at)}</td>
                   <td><strong>{log.group_name}</strong></td>
-                  <td>{log.first_name} {log.last_name}</td>
+                  <td>{log.sender_name || "-"}</td>
                   <td className="log-text">{log.message_text}</td>
                 </tr>
               ))}

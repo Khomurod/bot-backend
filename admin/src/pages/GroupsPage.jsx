@@ -94,7 +94,7 @@ export default function GroupsPage() {
                       className="form-input"
                       style={{ width: 'auto', padding: '4px 8px' }}
                       value={group.language || ''}
-                      onChange={(e) => handleLanguageChange(group.telegram_group_id, e.target.value)}
+                      onChange={(e) => handleLanguageChange(group.id, e.target.value)}
                     >
                       <option value="en">🇺🇸 English</option>
                       <option value="ru">🇷🇺 Russian</option>

@@ -141,7 +141,8 @@ export default function BroadcastPage() {
   const getClickSummary = (clicks) => {
     const summary = {};
     clicks.forEach(c => {
-      summary[c.button_label_en] = (summary[c.button_label_en] || 0) + 1;
+      const label = c.button_label || `Button ${Number(c.button_index) + 1}`;
+      summary[label] = (summary[label] || 0) + 1;
     });
     return Object.entries(summary);
   };
@@ -206,6 +207,12 @@ export default function BroadcastPage() {
     setConfirmationButtons(updated);
   };
 
+  const normalizeMediaItems = (items) => (
+    Array.isArray(items)
+      ? items.flatMap((m) => (Array.isArray(m) ? m : [m])).filter(Boolean)
+      : []
+  );
+
   const handleSend = async () => {
     if (!message.trim()) return;
     if (targetType === 'specific_drivers' && selectedDriverIds.length === 0) {
@@ -227,7 +234,7 @@ export default function BroadcastPage() {
         targetType,
         selectedDriverIds,
         selectedLanguages,
-        mediaItems: broadcastMediaItems,
+        mediaItems: normalizeMediaItems(broadcastMediaItems),
         mediaPosition: broadcastMediaPosition,
       });
       setStatus({ type: 'success', text: `Broadcast sent! Sent: ${result.sent}, Failed: ${result.failed}` });
@@ -252,7 +259,7 @@ export default function BroadcastPage() {
         messageRu,
         messageUz,
         forceLanguage,
-        mediaItems: broadcastMediaItems,
+        mediaItems: normalizeMediaItems(broadcastMediaItems),
         mediaPosition: broadcastMediaPosition,
       });
       setStatus({ type: 'success', text: 'Test broadcast sent to the management group.' });
@@ -280,7 +287,7 @@ export default function BroadcastPage() {
         messageRu: confMessageRu,
         messageUz: confMessageUz,
         buttons: confirmationButtons,
-        mediaItems: confMediaItems,
+        mediaItems: normalizeMediaItems(confMediaItems),
         mediaPosition: confMediaPosition,
         targetType,
         selectedDriverIds,
@@ -309,7 +316,7 @@ export default function BroadcastPage() {
         messageRu: confMessageRu,
         messageUz: confMessageUz,
         buttons: confirmationButtons,
-        mediaItems: confMediaItems,
+        mediaItems: normalizeMediaItems(confMediaItems),
         mediaPosition: confMediaPosition,
         forceLanguage,
       });
@@ -444,7 +451,7 @@ export default function BroadcastPage() {
                 <details className="collapse-panel" style={{ marginTop: 16 }}>
                   <summary>📎 Media Attachments</summary>
                   <div style={{ marginTop: 12 }}>
-                    <MediaUploader items={broadcastMediaItems} onAdd={(m) => setBroadcastMediaItems(prev => [...prev, m])} onRemove={(index) => setBroadcastMediaItems(prev => prev.filter((_, i) => i !== index))} />
+                    <MediaUploader items={broadcastMediaItems} onAdd={(newItems) => setBroadcastMediaItems(prev => [...prev, ...newItems])} onRemove={(index) => setBroadcastMediaItems(prev => prev.filter((_, i) => i !== index))} />
                     {broadcastMediaItems.length > 0 && <div style={{ marginTop: 16 }}><MediaPositionSelector name="broadcast-media-position" position={broadcastMediaPosition} onChange={setBroadcastMediaPosition} /></div>}
                   </div>
                 </details>
@@ -546,7 +553,7 @@ export default function BroadcastPage() {
                   placeholder="O'zbek tilidagi xabar (avto-tarjima yoki qo'lda kiritish)" style={{ minHeight: 100, resize: 'vertical' }} />
 
                 <div style={{ marginTop: 16 }}>
-                  <MediaUploader items={confMediaItems} onAdd={(m) => setConfMediaItems(prev => [...prev, m])} onRemove={(index) => setConfMediaItems(prev => prev.filter((_, i) => i !== index))} />
+                  <MediaUploader items={confMediaItems} onAdd={(newItems) => setConfMediaItems(prev => [...prev, ...newItems])} onRemove={(index) => setConfMediaItems(prev => prev.filter((_, i) => i !== index))} />
                   {confMediaItems.length > 0 && <div style={{ marginTop: 16 }}><MediaPositionSelector name="conf-media-position" position={confMediaPosition} onChange={setConfMediaPosition} /></div>}
                 </div>
 

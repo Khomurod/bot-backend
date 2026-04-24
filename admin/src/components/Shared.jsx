@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import * as api from "../api";
 
 export function getDaysUntilBirthday(dateString) {
@@ -12,28 +12,113 @@ export function getDaysUntilBirthday(dateString) {
 }
 
 export const TelegramPreview = React.memo(function TelegramPreview({ text, buttons, label, langTabs, mediaItems, mediaPosition }) {
-  const [tab, setTab] = useState(langTabs ? "en" : null);
+  const [tab, setTab] = useState(null);
   const [mounted, setMounted] = useState(false);
+
+  const previewModel = useMemo(() => {
+    const tabData = {};
+    let tabOrder = [];
+
+    if (Array.isArray(langTabs) && langTabs.length > 0) {
+      tabOrder = langTabs.filter((lang) => typeof lang === "string" && lang.trim());
+      tabOrder.forEach((lang) => {
+        const textValue = text && typeof text === "object"
+          ? (text[lang] || "")
+          : (text || "");
+        const buttonValue = Array.isArray(buttons)
+          ? buttons
+          : (buttons && typeof buttons === "object" && Array.isArray(buttons[lang]) ? buttons[lang] : []);
+        tabData[lang] = { text: textValue, buttons: buttonValue };
+      });
+      return { tabOrder, tabData };
+    }
+
+    if (langTabs && typeof langTabs === "object") {
+      tabOrder = Object.keys(langTabs);
+      tabOrder.forEach((lang) => {
+        const cfg = langTabs[lang];
+        const fallbackText = text && typeof text === "object"
+          ? (text[lang] || "")
+          : (text || "");
+        const cfgText = cfg && typeof cfg === "object" && !Array.isArray(cfg)
+          ? cfg.text
+          : cfg;
+        const cfgButtons = cfg && typeof cfg === "object" && Array.isArray(cfg.buttons)
+          ? cfg.buttons
+          : null;
+        const buttonValue = cfgButtons
+          || (Array.isArray(buttons)
+            ? buttons
+            : (buttons && typeof buttons === "object" && Array.isArray(buttons[lang]) ? buttons[lang] : []));
+        tabData[lang] = {
+          text: cfgText != null ? cfgText : fallbackText,
+          buttons: buttonValue || [],
+        };
+      });
+      return { tabOrder, tabData };
+    }
+
+    if (text && typeof text === "object" && !Array.isArray(text)) {
+      tabOrder = Object.keys(text);
+      tabOrder.forEach((lang) => {
+        const buttonValue = Array.isArray(buttons)
+          ? buttons
+          : (buttons && typeof buttons === "object" && Array.isArray(buttons[lang]) ? buttons[lang] : []);
+        tabData[lang] = { text: text[lang] || "", buttons: buttonValue };
+      });
+      return { tabOrder, tabData };
+    }
+
+    return { tabOrder, tabData };
+  }, [langTabs, text, buttons]);
+
+  const normalizedMediaItems = useMemo(() => {
+    if (!Array.isArray(mediaItems)) return [];
+    return mediaItems.reduce((acc, item) => {
+      if (Array.isArray(item)) {
+        item.forEach((nested) => {
+          if (nested && typeof nested === "object") acc.push(nested);
+        });
+      } else if (item && typeof item === "object") {
+        acc.push(item);
+      }
+      return acc;
+    }, []);
+  }, [mediaItems]);
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
-    if (langTabs && !langTabs.includes(tab)) setTab(langTabs[0]);
-  }, [langTabs, tab]);
+    const langs = previewModel.tabOrder;
+    if (!langs.length) {
+      if (tab !== null) setTab(null);
+      return;
+    }
+    if (!tab || !langs.includes(tab)) setTab(langs[0]);
+  }, [previewModel.tabOrder, tab]);
 
   if (!mounted) return null;
 
-  const content = (text && typeof text === "object")
-    ? (text[tab] || "")
-    : (text || "");
+  const activeTab = previewModel.tabOrder.length ? (tab || previewModel.tabOrder[0]) : null;
+  const content = activeTab
+    ? (previewModel.tabData[activeTab]?.text || "")
+    : (text && typeof text === "object" ? "" : (text || ""));
+  const visibleButtons = activeTab
+    ? (previewModel.tabData[activeTab]?.buttons || [])
+    : (Array.isArray(buttons) ? buttons : []);
 
   const getMediaElement = (item, style) => {
-    if (item.type === "photo") {
-      return <img src={item.url} alt="attachment" style={{ ...style, objectFit: "cover" }} />;
+    const type = item.type || item.media_type;
+    const src = item.url || item.preview_url || null;
+
+    if (type === "photo") {
+      if (!src) return <div style={{ ...style, display: "grid", placeItems: "center", color: "#666", fontSize: 12 }}>photo</div>;
+      return <img src={src} alt="attachment" style={{ ...style, objectFit: "cover" }} />;
     }
-    if (item.type === "video") {
+    if (type === "video") {
+      if (!src) return <div style={{ ...style, display: "grid", placeItems: "center", color: "#666", fontSize: 12 }}>video</div>;
       return (
         <video style={{ ...style, objectFit: "cover", background: "#000" }} controls preload="metadata">
-          <source src={item.url} type="video/mp4" />
+          <source src={src} type="video/mp4" />
         </video>
       );
     }
@@ -41,38 +126,37 @@ export const TelegramPreview = React.memo(function TelegramPreview({ text, butto
   };
 
   const renderMedia = () => {
-    if (!mediaItems || mediaItems.length === 0) return null;
+    if (!normalizedMediaItems.length) return null;
 
-    if (mediaItems.length === 1) {
+    if (normalizedMediaItems.length === 1) {
       return (
         <div style={{ width: "100%", maxHeight: 300, overflow: "hidden", display: "flex", justifyContent: "center", background: "#f0f0f0" }}>
-          {getMediaElement(mediaItems[0], { maxWidth: "100%", maxHeight: 300 })}
+          {getMediaElement(normalizedMediaItems[0], { maxWidth: "100%", maxHeight: 300 })}
         </div>
       );
     }
 
-    // Grid for 2+ items
     const gridStyle = {
       display: "grid",
       gridTemplateColumns: "1fr 1fr",
       gap: 2,
       maxHeight: 400,
-      overflow: "hidden"
+      overflow: "hidden",
     };
 
     return (
       <div style={gridStyle}>
-        {mediaItems.slice(0, 4).map((m, i) => (
+        {normalizedMediaItems.slice(0, 4).map((m, i) => (
           <div key={i} style={{ position: "relative", width: "100%", aspectRatio: "1" }}>
             {getMediaElement(m, { width: "100%", height: "100%" })}
-            {i === 3 && mediaItems.length > 4 && (
+            {i === 3 && normalizedMediaItems.length > 4 && (
               <div style={{
                 position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
                 background: "rgba(0,0,0,0.5)", color: "white",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 24, fontWeight: "bold"
+                fontSize: 24, fontWeight: "bold",
               }}>
-                +{mediaItems.length - 4}
+                +{normalizedMediaItems.length - 4}
               </div>
             )}
           </div>
@@ -90,21 +174,21 @@ export const TelegramPreview = React.memo(function TelegramPreview({ text, butto
       overflow: "hidden",
       fontFamily: "system-ui, -apple-system, sans-serif",
       boxShadow: "0 8px 32px rgba(0,0,0,0.1)",
-      margin: "0 auto"
+      margin: "0 auto",
     }}>
       <div style={{
         background: "rgba(255,255,255,0.1)",
         padding: "10px 16px",
         fontWeight: 600,
         fontSize: 14,
-        borderBottom: "1px solid rgba(255,255,255,0.1)"
+        borderBottom: "1px solid rgba(255,255,255,0.1)",
       }}>
         {label || "Preview"}
       </div>
 
-      {langTabs && (
+      {previewModel.tabOrder.length > 0 && (
         <div style={{ display: "flex", padding: "8px 16px", gap: 8, background: "rgba(0,0,0,0.1)" }}>
-          {langTabs.map((l) => (
+          {previewModel.tabOrder.map((l) => (
             <button
               key={l}
               onClick={() => setTab(l)}
@@ -113,12 +197,12 @@ export const TelegramPreview = React.memo(function TelegramPreview({ text, butto
                 padding: "6px",
                 border: "none",
                 borderRadius: 8,
-                background: tab === l ? "#007aff" : "rgba(255,255,255,0.1)",
-                color: tab === l ? "#fff" : "var(--text-color)",
+                background: activeTab === l ? "#007aff" : "rgba(255,255,255,0.1)",
+                color: activeTab === l ? "#fff" : "var(--text-color)",
                 fontSize: 12,
                 fontWeight: 600,
                 cursor: "pointer",
-                transition: "all 0.2s"
+                transition: "all 0.2s",
               }}
             >
               {l.toUpperCase()}
@@ -127,7 +211,7 @@ export const TelegramPreview = React.memo(function TelegramPreview({ text, butto
         </div>
       )}
 
-      {mediaItems && mediaItems.length > 0 && mediaPosition === "above" && renderMedia()}
+      {normalizedMediaItems.length > 0 && mediaPosition === "above" && renderMedia()}
 
       <div style={{ padding: 16 }}>
         <div
@@ -137,11 +221,11 @@ export const TelegramPreview = React.memo(function TelegramPreview({ text, butto
         />
       </div>
 
-      {mediaItems && mediaItems.length > 0 && mediaPosition === "below" && renderMedia()}
+      {normalizedMediaItems.length > 0 && mediaPosition === "below" && renderMedia()}
 
-      {buttons && buttons.length > 0 && (
+      {visibleButtons.length > 0 && (
         <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-          {buttons.map((btn, i) => (
+          {visibleButtons.map((btn, i) => (
             <div key={i} style={{
               background: "rgba(255,255,255,0.1)",
               padding: "12px",
@@ -151,7 +235,7 @@ export const TelegramPreview = React.memo(function TelegramPreview({ text, butto
               color: "#007aff",
               fontWeight: 500,
               cursor: "pointer",
-              border: "1px solid rgba(255,255,255,0.05)"
+              border: "1px solid rgba(255,255,255,0.05)",
             }}>
               {btn}
             </div>
@@ -165,9 +249,25 @@ export const TelegramPreview = React.memo(function TelegramPreview({ text, butto
 export const MediaUploader = React.memo(function MediaUploader({ onAdd, onRemove, items }) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
+  const itemsRef = useRef(items);
+  const MAX_VIDEO_UPLOAD_MB = 20;
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
+    return () => {
+      (itemsRef.current || []).forEach((item) => {
+        if (item && item.preview_object_url && item.url) {
+          URL.revokeObjectURL(item.url);
+        }
+      });
+    };
+  }, []);
 
   const handleUpload = async (e) => {
-    const files = Array.from(e.target.files);
+    const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
     if (items.length + files.length > 10) {
@@ -176,23 +276,42 @@ export const MediaUploader = React.memo(function MediaUploader({ onAdd, onRemove
     }
 
     setUploading(true);
+    const createdUrls = [];
     try {
       const results = [];
       for (const file of files) {
         const type = file.type.startsWith("video/") ? "video" : "photo";
-        if (type === "video" && file.size > 50 * 1024 * 1024) {
-          throw new Error(`Video ${file.name} exceeds 50MB limit for bots.`);
+        if (type === "video" && file.size > MAX_VIDEO_UPLOAD_MB * 1024 * 1024) {
+          throw new Error(`Video ${file.name} exceeds ${MAX_VIDEO_UPLOAD_MB}MB limit for bots.`);
         }
-        const data = await api.uploadMedia(file, type);
-        results.push({ file_id: data.file_id, type: data.type, url: data.url });
+        const data = await api.uploadMedia(file);
+        const normalizedType = data.type || data.media_type || type;
+        const hasRemoteUrl = Boolean(data.url);
+        const uploadedUrl = hasRemoteUrl ? data.url : URL.createObjectURL(file);
+        if (!hasRemoteUrl) createdUrls.push(uploadedUrl);
+        results.push({
+          file_id: data.file_id,
+          type: normalizedType,
+          url: uploadedUrl,
+          preview_object_url: !hasRemoteUrl,
+        });
       }
       onAdd(results);
     } catch (err) {
+      createdUrls.forEach((u) => URL.revokeObjectURL(u));
       alert("Upload failed: " + err.message);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  };
+
+  const handleRemove = (idx) => {
+    const item = items[idx];
+    if (item && item.preview_object_url && item.url) {
+      URL.revokeObjectURL(item.url);
+    }
+    onRemove(idx);
   };
 
   return (
@@ -206,9 +325,9 @@ export const MediaUploader = React.memo(function MediaUploader({ onAdd, onRemove
             borderRadius: 8,
             overflow: "hidden",
             background: "rgba(255,255,255,0.1)",
-            border: "1px solid rgba(255,255,255,0.2)"
+            border: "1px solid rgba(255,255,255,0.2)",
           }}>
-            {m.type === "photo" ? (
+            {(m.type || m.media_type) === "photo" ? (
               <img src={m.url} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
             ) : (
               <video src={m.url} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -228,14 +347,14 @@ export const MediaUploader = React.memo(function MediaUploader({ onAdd, onRemove
                 justifyContent: "center",
                 fontSize: 12,
                 cursor: "pointer",
-                fontWeight: "bold"
+                fontWeight: "bold",
               }}
-              onClick={() => onRemove(idx)}
+              onClick={() => handleRemove(idx)}
               title="Remove"
             >
-              ×
+              x
             </div>
-            {m.type === "video" && (
+            {(m.type === "video" || m.media_type === "video") && (
               <div style={{
                 position: "absolute",
                 bottom: 4,
@@ -246,7 +365,7 @@ export const MediaUploader = React.memo(function MediaUploader({ onAdd, onRemove
                 padding: "2px 4px",
                 fontSize: 10,
               }}>
-                📹
+                VID
               </div>
             )}
           </div>
@@ -259,7 +378,7 @@ export const MediaUploader = React.memo(function MediaUploader({ onAdd, onRemove
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
           >
-            <span style={{ fontSize: 24 }}>{uploading ? "⏳" : "+"}</span>
+            <span style={{ fontSize: 24 }}>{uploading ? "..." : "+"}</span>
             <span style={{ fontSize: 10 }}>{items.length}/10</span>
           </button>
         )}
@@ -268,7 +387,7 @@ export const MediaUploader = React.memo(function MediaUploader({ onAdd, onRemove
         type="file"
         ref={fileInputRef}
         onChange={handleUpload}
-        accept="image/jpeg,image/png,image/gif,video/mp4"
+        accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"
         style={{ display: "none" }}
         multiple
       />
@@ -356,8 +475,8 @@ export function useFormattingToolbar(textareaRef, value, onChange) {
       <button type="button" onClick={() => insertTag("<u>", "</u>")} title="Underline (Ctrl+U)"><u>U</u></button>
       <button type="button" onClick={() => insertTag("<s>", "</s>")} title="Strikethrough"><s>S</s></button>
       <div className="divider" />
-      <button type="button" onClick={() => insertLink()} title="Link (Ctrl+K)">🔗</button>
-      <button type="button" onClick={() => insertTag("<tg-spoiler>", "</tg-spoiler>")} title="Spoiler">👀</button>
+      <button type="button" onClick={() => insertLink()} title="Link (Ctrl+K)">link</button>
+      <button type="button" onClick={() => insertTag("<tg-spoiler>", "</tg-spoiler>")} title="Spoiler">spoiler</button>
     </div>
   );
 
