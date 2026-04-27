@@ -14,6 +14,12 @@ const ALLOWED_VIDEO_HOST_SUFFIXES = [
   '.samsara.com',
 ];
 
+function isTrustedSamsaraAwsHost(host) {
+  // Official examples use buckets like samsara-driver-media-upload.s3.us-west-2.amazonaws.com
+  if (!host.endsWith('.amazonaws.com')) return false;
+  return host.includes('samsara');
+}
+
 function parseTrustedVideoUrl(videoUrl) {
   let parsed;
   try {
@@ -27,7 +33,8 @@ function parseTrustedVideoUrl(videoUrl) {
   const host = parsed.hostname.toLowerCase();
   const allowed =
     ALLOWED_VIDEO_HOSTS.has(host) ||
-    ALLOWED_VIDEO_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix));
+    ALLOWED_VIDEO_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix)) ||
+    isTrustedSamsaraAwsHost(host);
   if (!allowed) {
     throw new Error(`Refusing to fetch video: untrusted host "${host}"`);
   }

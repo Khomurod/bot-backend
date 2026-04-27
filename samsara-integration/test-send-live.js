@@ -8,15 +8,20 @@
  *   node test-send-live.js
  *   node test-send-live.js --dry-run
  *   node test-send-live.js --offset=1 --dry-run
+ *   node test-send-live.js --latest-harsh-turn
  */
 
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const { formatAlert } = require('./src/formatter');
 const { reverseGeocode } = require('./src/geocoder');
 const store = require('./src/store');
+const { enrichSafetyEventWithMediaIfNeeded } = require('./src/safetyEventMedia');
 
 const SAMSARA_API_KEY = process.env.SAMSARA_API_KEY;
+const SAMSARA_API_BASE = process.env.SAMSARA_API_BASE || 'https://api.samsara.com';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MAIN_BOT_TOKEN = process.env.BOT_TOKEN;
 const FORCED_GROUP_ID = process.env.HARDCODED_GROUP_ID || '-5192934125';
@@ -26,12 +31,19 @@ const deleteAfterArg = process.argv.find((arg) => arg.startsWith('--delete-after
 const DELETE_AFTER_SEC = deleteAfterArg ? parseInt(deleteAfterArg.split('=')[1], 10) : 0;
 const offsetArg = process.argv.find((arg) => arg.startsWith('--offset='));
 const EVENT_OFFSET = offsetArg ? Math.max(0, parseInt(offsetArg.split('=')[1], 10) || 0) : 0;
+const LATEST_HARSH_TURN = process.argv.includes('--latest-harsh-turn');
 
 if (!SAMSARA_API_KEY) throw new Error('SAMSARA_API_KEY is not set');
 if (!TELEGRAM_BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is not set');
 if (!MAIN_BOT_TOKEN) throw new Error('BOT_TOKEN is not set');
 
-async function transformApiEventToWebhookShape(event) {
+async function transformApiEventToWebhookShape(rawEvent) {
+  const { event, forwardUrl, inwardUrl } = await enrichSafetyEventWithMediaIfNeeded(
+    rawEvent,
+    SAMSARA_API_KEY,
+    SAMSARA_API_BASE
+  );
+
   const happenedAtTime = event.time || event.happenedAtTime || new Date().toISOString();
   const vehicleObj = event.asset || event.vehicle || {};
   const vehicleName = vehicleObj.name || 'Unknown Unit';
@@ -63,18 +75,6 @@ async function transformApiEventToWebhookShape(event) {
     event.safetyEventType ||
     null;
   if (behaviorLabel) webhookPayload._enrichedEventType = behaviorLabel;
-
-  const mediaItems = event.media || [];
-  const forwardUrl =
-    mediaItems.find((m) => m.input === 'MEDIA_INPUT_PRIMARY' || m.input === 'dashcamRoadFacing')?.url ||
-    event.downloadForwardVideoUrl ||
-    event.mediaUrl ||
-    event.videoUrl ||
-    null;
-  const inwardUrl =
-    mediaItems.find((m) => m.input === 'MEDIA_INPUT_SECONDARY' || m.input === 'dashcamDriverFacing')?.url ||
-    event.downloadInwardVideoUrl ||
-    null;
 
   if (forwardUrl) {
     details.harshEvent.mediaUrl = forwardUrl;
@@ -148,7 +148,7 @@ async function fetchEventByOffset(offset = 0) {
     limit,
   });
 
-  const url = `https://api.samsara.com/fleet/safety-events?${params.toString()}`;
+  const url = `${SAMSARA_API_BASE}/fleet/safety-events?${params.toString()}`;
   const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${SAMSARA_API_KEY}`,
@@ -165,6 +165,40 @@ async function fetchEventByOffset(offset = 0) {
   const event = (json.data || [])[offset];
   if (!event) return null;
   return event;
+}
+
+function isHarshTurnEvent(e) {
+  return (e.behaviorLabels || []).some((b) => {
+    const label = String(b.label || '');
+    if (/^harshTurn$/i.test(label)) return true;
+    return /harsh/i.test(label) && /turn/i.test(label);
+  });
+}
+
+async function fetchLatestHarshTurnEvent() {
+  const params = new URLSearchParams({
+    includeDriver: 'true',
+    startTime: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
+    endTime: new Date().toISOString(),
+    limit: '100',
+  });
+
+  const url = `${SAMSARA_API_BASE}/fleet/safety-events?${params.toString()}`;
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${SAMSARA_API_KEY}`,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Samsara API ${response.status}: ${body}`);
+  }
+
+  const json = await response.json();
+  const events = json.data || [];
+  return events.find(isHarshTurnEvent) || null;
 }
 
 function uniqueIds(ids) {
@@ -246,13 +280,24 @@ async function main() {
     console.log(`[Test] Auto-delete enabled (${DELETE_AFTER_SEC}s after send).`);
   }
   console.log(`[Test] Event offset: ${EVENT_OFFSET}`);
+  if (LATEST_HARSH_TURN) console.log('[Test] Mode: latest harsh turn');
 
   await store.init();
 
-  const event = await fetchEventByOffset(EVENT_OFFSET);
-  if (!event) {
-    console.log('[Test] No event found for requested offset in the last 7 days.');
-    return;
+  let event;
+  if (LATEST_HARSH_TURN) {
+    event = await fetchLatestHarshTurnEvent();
+    if (!event) {
+      console.log('[Test] No harsh turn event found in the last 14 days.');
+      return;
+    }
+    console.log(`[Test] Harsh turn event id=${event.id}`);
+  } else {
+    event = await fetchEventByOffset(EVENT_OFFSET);
+    if (!event) {
+      console.log('[Test] No event found for requested offset in the last 7 days.');
+      return;
+    }
   }
 
   const mappedPayload = await transformApiEventToWebhookShape(event);
@@ -278,8 +323,12 @@ async function main() {
 
   let driverGroupId = FALLBACK_DRIVER_GROUP_ID;
   if (unitNumber) {
-    const resolved = await store.findGroupByUnit(unitNumber, vehicleName);
-    if (resolved) driverGroupId = resolved;
+    const resolved = await store.findGroupByUnit(
+      unitNumber,
+      event.driver?.name || null,
+      vehicleName
+    );
+    if (resolved?.telegramGroupId) driverGroupId = resolved.telegramGroupId;
   }
 
   if (driverGroupId) {

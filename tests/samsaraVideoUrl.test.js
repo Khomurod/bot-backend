@@ -34,3 +34,10 @@ test('parseTrustedVideoUrl is case-insensitive on hostname', () => {
   const url = parseTrustedVideoUrl('https://API.Samsara.com/media/x.mp4');
   assert.equal(url.hostname.toLowerCase(), 'api.samsara.com');
 });
+
+test('parseTrustedVideoUrl accepts Samsara driver-media S3 URLs', () => {
+  const url = parseTrustedVideoUrl(
+    'https://samsara-driver-media-upload.s3.us-west-2.amazonaws.com/org/key.mp4'
+  );
+  assert.match(url.hostname, /amazonaws\.com$/);
+});

@@ -379,7 +379,11 @@ function formatAlert(payload) {
             }
             // 5. Top-level payload fields (some Samsara events include these at root)
             if (!videoUrl) {
-                videoUrl = payload.mediaUrl || payload.videoUrl || null;
+                videoUrl =
+                    payload._enrichedVideoUrl ||
+                    payload.mediaUrl ||
+                    payload.videoUrl ||
+                    null;
             }
 
             // Standardize fields (always show as per user request)

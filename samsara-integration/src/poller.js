@@ -8,8 +8,10 @@
 const { getCursor, saveCursor, clearCursor, isEventProcessed, markEventProcessed } = require('./db');
 const { formatAlert } = require('./formatter');
 const { reverseGeocode } = require('./geocoder');
+const { enrichSafetyEventWithMediaIfNeeded } = require('./safetyEventMedia');
 
 const SAMSARA_API_KEY = process.env.SAMSARA_API_KEY;
+const SAMSARA_API_BASE = process.env.SAMSARA_API_BASE || 'https://api.samsara.com';
 
 // ── Rate-Limited Telegram Queue ─────────────────────────────────────────────
 // Telegram has limits (usually ~30 msgs/sec globally, and ~20 msgs/min per group).
@@ -78,7 +80,13 @@ async function processQueue() {
  * Re-formats the raw v2 API event into the shape the webhook formatter expects.
  * Adapts mergeEnrichedData from the old webhook.js into a direct transform.
  */
-async function transformApiEventToWebhookShape(event) {
+async function transformApiEventToWebhookShape(rawEvent) {
+    const { event, forwardUrl, inwardUrl } = await enrichSafetyEventWithMediaIfNeeded(
+        rawEvent,
+        SAMSARA_API_KEY,
+        SAMSARA_API_BASE
+    );
+
     // Mimic the webhook envelope
     const happenedAtTime = event.time || event.happenedAtTime || new Date().toISOString();
     
@@ -115,14 +123,6 @@ async function transformApiEventToWebhookShape(event) {
         event.safetyEventType ||
         null;
     if (behaviorLabel) webhookPayload._enrichedEventType = behaviorLabel;
-
-    // Videos
-    // Samsara v2 API often has media[] array or downloadForwardVideoUrl
-    const mediaItems = event.media || [];
-    const forwardUrl = mediaItems.find(m => m.input === 'MEDIA_INPUT_PRIMARY' || m.input === 'dashcamRoadFacing')?.url
-        || event.downloadForwardVideoUrl || event.mediaUrl || event.videoUrl || null;
-    const inwardUrl  = mediaItems.find(m => m.input === 'MEDIA_INPUT_SECONDARY' || m.input === 'dashcamDriverFacing')?.url
-        || event.downloadInwardVideoUrl || null;
 
     if (forwardUrl) {
         details.harshEvent.mediaUrl = forwardUrl;
@@ -229,7 +229,7 @@ async function executePoll() {
         console.log(`[Poller] No valid cursor found. Fetching fresh window from: ${startTime}`);
     }
 
-    const url = `https://api.samsara.com/fleet/safety-events?${params.toString()}`;
+    const url = `${SAMSARA_API_BASE}/fleet/safety-events?${params.toString()}`;
 
     try {
         const response = await fetch(url, {
