@@ -331,10 +331,47 @@ export async function getDriverGroups() {
 }
 
 export async function createScheduledMessage(data) {
+  const {
+    messageEn,
+    messageRu,
+    messageUz,
+    mediaItems,
+    mediaPosition,
+    targetType,
+    selectedDriverIds,
+    selectedLanguages,
+    forceLanguage,
+    scheduleType,
+    scheduledAtChicago,
+    weeklyDayOfWeek,
+    weeklyTimeChicago,
+    scheduleTimezone,
+  } = data;
+  const body = messageEn !== undefined
+    ? {
+        message_text_en: messageEn,
+        message_text_ru: messageRu || null,
+        message_text_uz: messageUz || null,
+        target_type: targetType || 'all',
+        target_driver_ids: targetType === 'specific_drivers' ? selectedDriverIds : undefined,
+        target_languages: targetType === 'language_groups' ? selectedLanguages : undefined,
+        force_language: forceLanguage || null,
+        media_items: mediaItems && mediaItems.length > 0
+          ? mediaItems.map((m) => ({ file_id: m.file_id, media_type: m.type || m.media_type }))
+          : null,
+        media_position: mediaPosition || 'above',
+        schedule_type: scheduleType || 'one_time',
+        scheduled_at_chicago: scheduleType === 'weekly' ? null : scheduledAtChicago,
+        weekly_day_of_week: scheduleType === 'weekly' ? weeklyDayOfWeek : null,
+        weekly_time_chicago: scheduleType === 'weekly' ? weeklyTimeChicago : null,
+        schedule_timezone: scheduleTimezone || 'America/Chicago',
+      }
+    : data;
+
   const res = await fetch(`${API_BASE}/scheduled-messages`, {
     method: 'POST',
     headers: getHeaders(),
-    body: JSON.stringify(data),
+    body: JSON.stringify(body),
   });
   if (!res.ok) { await handleApiError(res); }
   return res.json();

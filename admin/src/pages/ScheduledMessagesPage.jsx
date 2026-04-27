@@ -95,6 +95,12 @@ export default function ScheduledMessagesPage() {
     return { en: '🇺🇸 EN', ru: '🇷🇺 RU', uz: '🇺🇿 UZ' }[msg.force_language] || msg.force_language;
   };
 
+  const mediaCount = (msg) => {
+    if (Array.isArray(msg.media_items) && msg.media_items.length > 0) return msg.media_items.length;
+    if (msg.media_count) return msg.media_count;
+    return msg.media_file_id ? 1 : 0;
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -124,7 +130,7 @@ export default function ScheduledMessagesPage() {
                 <th>Message</th>
                 <th>Targets</th>
                 <th>Language</th>
-                <th>Time (Chicago)</th>
+                <th>Next Run (Chicago)</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -137,7 +143,7 @@ export default function ScheduledMessagesPage() {
                       {msg.message_text_en?.substring(0, 80) || '(no text)'}
                       {msg.message_text_en?.length > 80 ? '...' : ''}
                     </div>
-                    {msg.media_file_id && (
+                    {mediaCount(msg) > 0 && (
                       <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                         📎 {msg.media_type === 'video' ? 'Video' : 'Photo'} attached
                       </span>
@@ -145,8 +151,25 @@ export default function ScheduledMessagesPage() {
                   </td>
                   <td style={{ fontSize: 12 }}>{targetLabel(msg)}</td>
                   <td style={{ fontSize: 12 }}>{langLabel(msg)}</td>
-                  <td style={{ fontSize: 13, fontFamily: 'monospace' }}>{msg.scheduled_at_chicago}</td>
-                  <td>{statusBadge(msg.status)}</td>
+                  <td style={{ fontSize: 13 }}>
+                    <div style={{ fontFamily: 'monospace' }}>{msg.scheduled_at_chicago}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                      {msg.schedule_label || 'One time'}
+                    </div>
+                    {msg.last_sent_at_chicago && (
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                        Last sent: {msg.last_sent_at_chicago}
+                      </div>
+                    )}
+                  </td>
+                  <td>
+                    {statusBadge(msg.status)}
+                    {msg.last_run_status && (
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                        Last run: {msg.last_run_status}
+                      </div>
+                    )}
+                  </td>
                   <td>
                     {msg.status === 'pending' && (
                       <div style={{ display: 'flex', gap: 6 }}>

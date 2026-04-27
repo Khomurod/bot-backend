@@ -19,6 +19,15 @@ const {
   sendTelegramHtmlChunks,
 } = require('../services/telegramHtml');
 const { DateTime } = require('luxon');
+const {
+  DEFAULT_SCHEDULE_TIMEZONE,
+  WEEKDAY_LABELS,
+  computeNextWeeklyOccurrence,
+  describeWeeklySchedule,
+  isValidTimezone,
+  normalizeMediaItems,
+} = require('../services/scheduledMessageUtils');
+const { processMessage: processScheduledMessage } = require('../services/schedulerService');
 const employeeVotingRoutes = require('./employeeVotingApi');
 
 // ─── Multer: memory storage for media uploads ───
@@ -233,6 +242,49 @@ app.get('/favicon.ico', (req, res) => {
   res.status(204).end();
 });
 
+function getNormalizedMediaItemsFromBody(body) {
+  if (!Array.isArray(body?.media_items) || body.media_items.length === 0) {
+    return null;
+  }
+
+  if (body.media_items.length > 10) {
+    throw new Error('Maximum 10 media items allowed');
+  }
+
+  const normalized = normalizeMediaItems(body.media_items);
+  if (normalized.length !== body.media_items.length) {
+    throw new Error('Each media item must include a valid file_id and media type');
+  }
+
+  return normalized;
+}
+
+function formatScheduledMessageForResponse(msg) {
+  const timezone = msg.schedule_timezone || DEFAULT_SCHEDULE_TIMEZONE;
+  const nextRunChicago = DateTime.fromJSDate(new Date(msg.scheduled_at))
+    .setZone(timezone)
+    .toFormat('yyyy-MM-dd HH:mm');
+
+  const mediaItems = normalizeMediaItems(msg.media_items);
+  const mediaCount = mediaItems.length || (msg.media_file_id ? 1 : 0);
+
+  return {
+    ...msg,
+    media_items: mediaItems.length ? mediaItems : msg.media_items,
+    media_count: mediaCount,
+    scheduled_at_chicago: nextRunChicago,
+    schedule_type: msg.schedule_type || 'one_time',
+    schedule_timezone: timezone,
+    schedule_label: (msg.schedule_type || 'one_time') === 'weekly'
+      ? describeWeeklySchedule(msg.weekly_day_of_week, msg.weekly_time_local, timezone)
+      : `One time on ${nextRunChicago}`,
+    weekly_day_label: msg.weekly_day_of_week ? WEEKDAY_LABELS[msg.weekly_day_of_week] || null : null,
+    last_sent_at_chicago: msg.last_sent_at
+      ? DateTime.fromJSDate(new Date(msg.last_sent_at)).setZone(timezone).toFormat('yyyy-MM-dd HH:mm')
+      : null,
+  };
+}
+
 // ─── Media Upload ───
 
 // POST /api/upload-media
@@ -252,15 +304,17 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
       const isVideo = req.file.mimetype.startsWith('video/');
       const mediaType = isVideo ? 'video' : 'photo';
       const fileSource = { source: req.file.buffer, filename: req.file.originalname };
-      const managementGroupId = config.managementGroupId;
+      const mediaStorageChatId = config.mediaStorageChatId;
 
       let sentMessage;
       if (isVideo) {
-        sentMessage = await bot.telegram.sendVideo(managementGroupId, fileSource, {
+        sentMessage = await bot.telegram.sendVideo(mediaStorageChatId, fileSource, {
+          disable_notification: true,
           caption: '📎 [Upload to get file_id — will be deleted]',
         });
       } else {
-        sentMessage = await bot.telegram.sendPhoto(managementGroupId, fileSource, {
+        sentMessage = await bot.telegram.sendPhoto(mediaStorageChatId, fileSource, {
+          disable_notification: true,
           caption: '📎 [Upload to get file_id — will be deleted]',
         });
       }
@@ -275,17 +329,23 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
         fileId = photos && photos.length > 0 ? photos[photos.length - 1].file_id : null;
       }
 
-      // Edit the caption instead of deleting, so Telegram keeps the file_id alive
       try {
-        await bot.telegram.editMessageCaption(
-          managementGroupId, 
-          sentMessage.message_id, 
-          undefined, 
+        await bot.telegram.deleteMessage(mediaStorageChatId, sentMessage.message_id);
           '🔒 <b>Media stored securely for upcoming broadcast.</b>', 
-          { parse_mode: 'HTML' }
-        );
-      } catch (editErr) {
-        console.warn('[API] Failed to edit caption:', editErr.message);
+          null;
+      } catch (deleteErr) {
+        console.warn('[API] Failed to delete staged media message:', deleteErr.message);
+        try {
+          await bot.telegram.editMessageCaption(
+            mediaStorageChatId,
+            sentMessage.message_id,
+            undefined,
+            'Staged media for upcoming broadcast.',
+            { parse_mode: 'HTML' }
+          );
+        } catch (editErr) {
+          console.warn('[API] Failed to edit staged media caption:', editErr.message);
+        }
       }
 
       if (!fileId) {
@@ -414,17 +474,10 @@ app.post('/api/questions', authMiddleware, async (req, res) => {
 
     // Optional media items — validate if provided
     let mediaItems = null;
-    if (Array.isArray(req.body.media_items) && req.body.media_items.length > 0) {
-      if (req.body.media_items.length > 10) {
-        return res.status(400).json({ error: 'Maximum 10 media items allowed per message' });
-      }
-      for (const item of req.body.media_items) {
-        if (!item.file_id) return res.status(400).json({ error: 'Each media item must have a file_id' });
-        if (!['photo', 'video'].includes(item.media_type)) {
-          return res.status(400).json({ error: 'Each media item must have media_type of photo or video' });
-        }
-      }
-      mediaItems = req.body.media_items;
+    try {
+      mediaItems = getNormalizedMediaItemsFromBody(req.body);
+    } catch (mediaErr) {
+      return res.status(400).json({ error: mediaErr.message });
     }
 
     const mediaPosition = req.body.media_position;
@@ -484,8 +537,10 @@ app.post('/api/questions/send-test', authMiddleware, async (req, res) => {
 
     let mediaItems = null;
     const mediaPosition = req.body.media_position || 'above';
-    if (Array.isArray(req.body.media_items) && req.body.media_items.length > 0) {
-      mediaItems = req.body.media_items;
+    try {
+      mediaItems = getNormalizedMediaItemsFromBody(req.body);
+    } catch (mediaErr) {
+      return res.status(400).json({ error: mediaErr.message });
     }
 
     await sendTestQuestion(question_en.trim(), options_en.map((o) => o.trim()), mediaItems, mediaPosition);
@@ -590,11 +645,10 @@ app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
 
     let mediaItems = null;
     const mediaPosition = req.body.media_position || 'above';
-    if (Array.isArray(req.body.media_items) && req.body.media_items.length > 0) {
-      if (req.body.media_items.length > 10) {
-        return res.status(400).json({ error: 'Maximum 10 media items allowed' });
-      }
-      mediaItems = req.body.media_items;
+    try {
+      mediaItems = getNormalizedMediaItemsFromBody(req.body);
+    } catch (mediaErr) {
+      return res.status(400).json({ error: mediaErr.message });
     }
 
     const targetGroups = await resolveBroadcastTargetGroups({
@@ -655,8 +709,10 @@ app.post('/api/broadcast/test', authMiddleware, async (req, res) => {
 
     let mediaItems = null;
     const mediaPosition = req.body.media_position || 'above';
-    if (Array.isArray(req.body.media_items) && req.body.media_items.length > 0) {
-      mediaItems = req.body.media_items;
+    try {
+      mediaItems = getNormalizedMediaItemsFromBody(req.body);
+    } catch (mediaErr) {
+      return res.status(400).json({ error: mediaErr.message });
     }
 
     await sendBroadcastTest(
@@ -711,11 +767,10 @@ app.post('/api/broadcast/confirmation/send', authMiddleware, async (req, res) =>
 
     let mediaItems = null;
     const mediaPosition = req.body.media_position || 'above';
-    if (Array.isArray(req.body.media_items) && req.body.media_items.length > 0) {
-      if (req.body.media_items.length > 10) {
-        return res.status(400).json({ error: 'Maximum 10 media items allowed' });
-      }
-      mediaItems = req.body.media_items;
+    try {
+      mediaItems = getNormalizedMediaItemsFromBody(req.body);
+    } catch (mediaErr) {
+      return res.status(400).json({ error: mediaErr.message });
     }
 
     const targetGroups = await resolveBroadcastTargetGroups({
@@ -778,8 +833,10 @@ app.post('/api/broadcast/confirmation/test', authMiddleware, async (req, res) =>
 
     let mediaItems = null;
     const mediaPosition = req.body.media_position || 'above';
-    if (Array.isArray(req.body.media_items) && req.body.media_items.length > 0) {
-      mediaItems = req.body.media_items;
+    try {
+      mediaItems = getNormalizedMediaItemsFromBody(req.body);
+    } catch (mediaErr) {
+      return res.status(400).json({ error: mediaErr.message });
     }
 
     await sendConfirmationBroadcastTest(
@@ -866,6 +923,8 @@ app.post('/api/scheduled-messages', authMiddleware, async (req, res) => {
       media_file_id, media_type, media_position,
       target_type, target_driver_ids, target_languages,
       force_language, scheduled_at_chicago,
+      schedule_type, schedule_timezone,
+      weekly_day_of_week, weekly_time_chicago,
     } = req.body;
 
     // Validation
@@ -875,19 +934,40 @@ app.post('/api/scheduled-messages', authMiddleware, async (req, res) => {
     if (message_text_en.length > 4096) {
       return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
     }
-    if (!scheduled_at_chicago) {
-      return res.status(400).json({ error: 'Schedule date/time is required' });
+    const scheduleType = schedule_type === 'weekly' ? 'weekly' : 'one_time';
+    const scheduleTimezone = schedule_timezone || DEFAULT_SCHEDULE_TIMEZONE;
+    if (!isValidTimezone(scheduleTimezone)) {
+      return res.status(400).json({ error: 'Invalid schedule_timezone' });
     }
 
     // Convert Chicago time → UTC
-    const chicagoTime = DateTime.fromISO(scheduled_at_chicago, { zone: 'America/Chicago' });
-    if (!chicagoTime.isValid) {
-      return res.status(400).json({ error: 'Invalid date/time format' });
+    let scheduledAtUtc;
+    if (scheduleType === 'weekly') {
+      if (!weekly_day_of_week || !weekly_time_chicago) {
+        return res.status(400).json({ error: 'weekly_day_of_week and weekly_time_chicago are required for weekly schedules' });
+      }
+      const nextOccurrence = computeNextWeeklyOccurrence({
+        dayOfWeek: weekly_day_of_week,
+        timeOfDay: weekly_time_chicago,
+        timezone: scheduleTimezone,
+      });
+      if (!nextOccurrence) {
+        return res.status(400).json({ error: 'Invalid weekly schedule configuration' });
+      }
+      scheduledAtUtc = nextOccurrence.toUTC().toISO();
+    } else {
+      if (!scheduled_at_chicago) {
+        return res.status(400).json({ error: 'Schedule date/time is required' });
+      }
+      const localScheduledTime = DateTime.fromISO(scheduled_at_chicago, { zone: scheduleTimezone });
+      if (!localScheduledTime.isValid) {
+        return res.status(400).json({ error: 'Invalid date/time format' });
+      }
+      if (localScheduledTime <= DateTime.now().setZone(scheduleTimezone)) {
+        return res.status(400).json({ error: 'Scheduled time must be in the future' });
+      }
+      scheduledAtUtc = localScheduledTime.toUTC().toISO();
     }
-    if (chicagoTime <= DateTime.now()) {
-      return res.status(400).json({ error: 'Scheduled time must be in the future' });
-    }
-    const scheduledAtUtc = chicagoTime.toUTC().toISO();
 
     // Validate target_type
     const validTargetTypes = ['all', 'specific_drivers', 'language_groups'];
@@ -907,22 +987,34 @@ app.post('/api/scheduled-messages', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Invalid force_language' });
     }
 
+    let mediaItems = null;
+    try {
+      mediaItems = getNormalizedMediaItemsFromBody(req.body);
+    } catch (mediaErr) {
+      return res.status(400).json({ error: mediaErr.message });
+    }
+
     const msg = await db.createScheduledMessage({
       message_text_en: message_text_en.trim(),
       message_text_ru: message_text_ru?.trim() || null,
       message_text_uz: message_text_uz?.trim() || null,
-      media_file_id: media_file_id || null,
-      media_type: media_type || null,
+      media_items: mediaItems,
+      media_file_id: media_file_id || mediaItems?.[0]?.file_id || null,
+      media_type: media_type || mediaItems?.[0]?.media_type || null,
       media_position: media_position || 'above',
       target_type: tt,
       target_driver_ids: target_driver_ids || null,
       target_languages: target_languages || null,
       force_language: force_language || null,
       scheduled_at: scheduledAtUtc,
+      schedule_type: scheduleType,
+      schedule_timezone: scheduleTimezone,
+      weekly_day_of_week: scheduleType === 'weekly' ? parseInt(weekly_day_of_week, 10) : null,
+      weekly_time_local: scheduleType === 'weekly' ? weekly_time_chicago : null,
     });
 
     console.log(`[API] Scheduled message created: id=${msg.id}, scheduled_at_utc=${scheduledAtUtc}`);
-    res.status(201).json(msg);
+    res.status(201).json(formatScheduledMessageForResponse(msg));
   } catch (err) {
     console.error('[API] Error creating scheduled message:', err.message);
     res.status(500).json({ error: 'Server error' });
@@ -934,12 +1026,7 @@ app.get('/api/scheduled-messages', authMiddleware, async (req, res) => {
   try {
     const messages = await db.getAllScheduledMessages();
     // Convert UTC → Chicago for display
-    const enriched = messages.map(m => ({
-      ...m,
-      scheduled_at_chicago: DateTime.fromJSDate(new Date(m.scheduled_at))
-        .setZone('America/Chicago')
-        .toFormat('yyyy-MM-dd HH:mm'),
-    }));
+    const enriched = messages.map(formatScheduledMessageForResponse);
     res.json(enriched);
   } catch (err) {
     console.error('[API] Error fetching scheduled messages:', err.message);
@@ -973,45 +1060,20 @@ app.put('/api/scheduled-messages/:id/send-now', authMiddleware, async (req, res)
       return res.status(400).json({ error: 'Only pending messages can be sent' });
     }
 
-    // Resolve target groups
-    let groups;
-    switch (msg.target_type) {
-      case 'specific_drivers':
-        groups = await db.getGroupsByIds(msg.target_driver_ids);
-        break;
-      case 'language_groups':
-        groups = await db.getGroupsByLanguages(msg.target_languages);
-        break;
-      default:
-        groups = await db.getAllDriverGroups();
+    const locked = await db.claimScheduledMessage(req.params.id);
+    if (!locked) {
+      return res.status(409).json({ error: 'Scheduled message is already being processed' });
     }
 
-    if (groups.length === 0) {
-      await db.updateScheduledMessageStatus(req.params.id, 'failed');
-      return res.status(400).json({ error: 'No target groups found' });
-    }
-
-    // Build messages
-    const en = msg.message_text_en || '';
-    const ru = msg.message_text_ru || en;
-    const uz = msg.message_text_uz || en;
-    let messages;
-    if (msg.force_language) {
-      const forced = msg.force_language === 'ru' ? ru : msg.force_language === 'uz' ? uz : en;
-      messages = { en: forced, ru: forced, uz: forced };
-    } else {
-      messages = { en, ru, uz };
-    }
-
-    const mediaItems = msg.media_file_id
-      ? [{ file_id: msg.media_file_id, media_type: msg.media_type || 'photo' }]
-      : null;
-
-    const results = await sendBroadcastToGroups(groups, en, 'HTML', messages, mediaItems, msg.media_position);
-    await db.updateScheduledMessageStatus(req.params.id, 'sent');
-
+    const results = await processScheduledMessage(locked);
     console.log(`[API] Scheduled message sent now: id=${req.params.id}`);
-    res.json({ success: true, sent: results.sent, failed: results.failed });
+    res.json({
+      success: results.status !== 'failed',
+      sent: results.sent,
+      failed: results.failed,
+      status: results.status,
+      next_run_at: results.next_run_at || null,
+    });
   } catch (err) {
     console.error('[API] Error sending scheduled message now:', err.message);
     res.status(500).json({ error: 'Server error' });

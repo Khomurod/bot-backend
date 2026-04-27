@@ -23,6 +23,11 @@ export default function BroadcastPage() {
   const [testing, setTesting] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [status, setStatus] = useState(null);
+  const [scheduling, setScheduling] = useState(false);
+  const [scheduleType, setScheduleType] = useState('one_time');
+  const [scheduledAtChicago, setScheduledAtChicago] = useState('');
+  const [weeklyDayOfWeek, setWeeklyDayOfWeek] = useState('1');
+  const [weeklyTimeChicago, setWeeklyTimeChicago] = useState('09:00');
 
   // History State
   const [regularHistory, setRegularHistory] = useState([]);
@@ -213,14 +218,43 @@ export default function BroadcastPage() {
       : []
   );
 
-  const handleSend = async () => {
-    if (!message.trim()) return;
+  const weeklyDayOptions = [
+    { value: '1', label: 'Monday' },
+    { value: '2', label: 'Tuesday' },
+    { value: '3', label: 'Wednesday' },
+    { value: '4', label: 'Thursday' },
+    { value: '5', label: 'Friday' },
+    { value: '6', label: 'Saturday' },
+    { value: '7', label: 'Sunday' },
+  ];
+
+  const clearRegularComposer = () => {
+    setMessage('');
+    setMessageRu('');
+    setMessageUz('');
+    setBroadcastMediaItems([]);
+    setBroadcastMediaPosition('above');
+    setScheduleType('one_time');
+    setScheduledAtChicago('');
+    setWeeklyDayOfWeek('1');
+    setWeeklyTimeChicago('09:00');
+  };
+
+  const validateRegularTargeting = () => {
     if (targetType === 'specific_drivers' && selectedDriverIds.length === 0) {
-      return setStatus({ type: 'error', text: 'Please select at least one driver.' });
+      setStatus({ type: 'error', text: 'Please select at least one driver.' });
+      return false;
     }
     if (targetType === 'language_groups' && selectedLanguages.length === 0) {
-      return setStatus({ type: 'error', text: 'Please select at least one language.' });
+      setStatus({ type: 'error', text: 'Please select at least one language.' });
+      return false;
     }
+    return true;
+  };
+
+  const handleSend = async () => {
+    if (!message.trim()) return;
+    if (!validateRegularTargeting()) return;
 
     setSending(true);
     setStatus(null);
@@ -238,8 +272,7 @@ export default function BroadcastPage() {
         mediaPosition: broadcastMediaPosition,
       });
       setStatus({ type: 'success', text: `Broadcast sent! Sent: ${result.sent}, Failed: ${result.failed}` });
-      setMessage(''); setMessageRu(''); setMessageUz('');
-      setBroadcastMediaItems([]);
+      clearRegularComposer();
       loadRegularHistory();
     } catch (err) {
       setStatus({ type: 'error', text: err.message });
@@ -267,6 +300,48 @@ export default function BroadcastPage() {
       setStatus({ type: 'error', text: err.message });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleSchedule = async () => {
+    if (!message.trim()) return;
+    if (!validateRegularTargeting()) return;
+    if (scheduleType === 'one_time' && !scheduledAtChicago) {
+      return setStatus({ type: 'error', text: 'Please choose a Central Time date and time.' });
+    }
+    if (scheduleType === 'weekly' && (!weeklyDayOfWeek || !weeklyTimeChicago)) {
+      return setStatus({ type: 'error', text: 'Please choose a weekday and time for the recurring schedule.' });
+    }
+
+    setScheduling(true);
+    setStatus(null);
+    try {
+      const result = await api.createScheduledMessage({
+        messageEn: message,
+        messageRu,
+        messageUz,
+        forceLanguage,
+        targetType,
+        selectedDriverIds,
+        selectedLanguages,
+        mediaItems: normalizeMediaItems(broadcastMediaItems),
+        mediaPosition: broadcastMediaPosition,
+        scheduleType,
+        scheduledAtChicago,
+        weeklyDayOfWeek: Number(weeklyDayOfWeek),
+        weeklyTimeChicago,
+        scheduleTimezone: 'America/Chicago',
+      });
+
+      const successText = scheduleType === 'weekly'
+        ? `Recurring schedule saved. Next run: ${result.scheduled_at_chicago}.`
+        : `Message scheduled for ${result.scheduled_at_chicago} Central.`;
+      setStatus({ type: 'success', text: successText });
+      clearRegularComposer();
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setScheduling(false);
     }
   };
 
@@ -456,12 +531,74 @@ export default function BroadcastPage() {
                   </div>
                 </details>
 
+                <div className="card" style={{ marginTop: 20, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <div>
+                      <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Schedule This Broadcast</h3>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
+                        Schedule once or repeat weekly in America/Chicago.
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                        <input type="radio" name="regular-schedule-type" checked={scheduleType === 'one_time'} onChange={() => setScheduleType('one_time')} />
+                        One time
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                        <input type="radio" name="regular-schedule-type" checked={scheduleType === 'weekly'} onChange={() => setScheduleType('weekly')} />
+                        Weekly recurring
+                      </label>
+                    </div>
+                  </div>
+
+                  {scheduleType === 'one_time' ? (
+                    <div style={{ marginTop: 16 }}>
+                      <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+                        Date &amp; time (Central)
+                      </label>
+                      <input
+                        type="datetime-local"
+                        className="form-input"
+                        value={scheduledAtChicago}
+                        onChange={(e) => setScheduledAtChicago(e.target.value)}
+                      />
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 12, marginTop: 16 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+                          Day of week
+                        </label>
+                        <select className="form-input" value={weeklyDayOfWeek} onChange={(e) => setWeeklyDayOfWeek(e.target.value)}>
+                          {weeklyDayOptions.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+                          Time (Central)
+                        </label>
+                        <input
+                          type="time"
+                          className="form-input"
+                          value={weeklyTimeChicago}
+                          onChange={(e) => setWeeklyTimeChicago(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
                   <button className="btn btn-primary" onClick={handleSend} disabled={sending || !message.trim() || message.length > 4096}>
                     {sending ? '⏳ Sending...' : targetType === 'all' ? '📤 Send to All Groups' : '📤 Send to Selected'}
                   </button>
                   <button className="btn btn-ghost" onClick={handleTest} disabled={testing || !message.trim()} style={{ border: '1px solid var(--border)' }}>
                     {testing ? '⏳ Testing...' : '🧪 Test (Management Group)'}
+                  </button>
+                  <button className="btn btn-ghost" onClick={handleSchedule} disabled={scheduling || !message.trim() || message.length > 4096} style={{ border: '1px solid var(--border)' }}>
+                    {scheduling ? 'â³ Scheduling...' : 'Save Schedule'}
                   </button>
                 </div>
               </div>

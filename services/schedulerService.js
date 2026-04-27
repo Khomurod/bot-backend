@@ -4,6 +4,11 @@
  */
 const db = require('../database/db');
 const { sendBroadcastToGroups } = require('../bot/bot');
+const {
+  DEFAULT_SCHEDULE_TIMEZONE,
+  computeNextWeeklyOccurrence,
+  normalizeMediaItems,
+} = require('./scheduledMessageUtils');
 
 const POLL_INTERVAL_MS = 30 * 1000; // 30 seconds
 // Hourly chat_logs retention pass (lightweight DELETE).
@@ -57,6 +62,8 @@ function buildMessages(msg) {
  * Build media items array from scheduled message fields.
  */
 function buildMediaItems(msg) {
+  const normalized = normalizeMediaItems(msg.media_items);
+  if (normalized.length > 0) return normalized;
   if (!msg.media_file_id) return null;
   return [{ file_id: msg.media_file_id, media_type: msg.media_type || 'photo' }];
 }
@@ -68,12 +75,32 @@ async function processMessage(msg) {
   console.log(`[SCHEDULER] Processing scheduled message id=${msg.id}`);
 
   try {
+    const scheduleType = msg.schedule_type || 'one_time';
+    const isWeeklyRecurring = scheduleType === 'weekly';
     const groups = await resolveTargetGroups(msg);
 
     if (groups.length === 0) {
-      console.log(`[SCHEDULER] No groups found for message id=${msg.id}, marking as failed`);
-      await db.updateScheduledMessageStatus(msg.id, 'failed');
-      return;
+      if (isWeeklyRecurring) {
+        const nextOccurrence = computeNextWeeklyOccurrence({
+          dayOfWeek: msg.weekly_day_of_week,
+          timeOfDay: msg.weekly_time_local,
+          timezone: msg.schedule_timezone || DEFAULT_SCHEDULE_TIMEZONE,
+        });
+        if (nextOccurrence) {
+          await db.recordRecurringScheduledMessageRun(
+            msg.id,
+            nextOccurrence.toUTC().toISO(),
+            'failed',
+            false
+          );
+        } else {
+          await db.updateScheduledMessageStatus(msg.id, 'failed');
+        }
+      } else {
+        console.log(`[SCHEDULER] No groups found for message id=${msg.id}, marking as failed`);
+        await db.updateScheduledMessageStatus(msg.id, 'failed');
+      }
+      return { sent: 0, failed: 0, status: 'failed' };
     }
 
     const messages = buildMessages(msg);
@@ -90,16 +117,65 @@ async function processMessage(msg) {
       mediaPosition
     );
 
+    if (isWeeklyRecurring) {
+      const nextOccurrence = computeNextWeeklyOccurrence({
+        dayOfWeek: msg.weekly_day_of_week,
+        timeOfDay: msg.weekly_time_local,
+        timezone: msg.schedule_timezone || DEFAULT_SCHEDULE_TIMEZONE,
+      });
+
+      if (!nextOccurrence) {
+        await db.updateScheduledMessageStatus(msg.id, 'failed');
+        console.log(`[SCHEDULER] Message id=${msg.id} FAILED: invalid recurring schedule metadata`);
+        return { ...results, status: 'failed' };
+      }
+
+      const runStatus = results.failed > 0 && results.sent === 0
+        ? 'failed'
+        : (results.failed > 0 ? 'partial' : 'sent');
+
+      await db.recordRecurringScheduledMessageRun(
+        msg.id,
+        nextOccurrence.toUTC().toISO(),
+        runStatus,
+        results.sent > 0
+      );
+
+      console.log(
+        `[SCHEDULER] Weekly message id=${msg.id} ${runStatus.toUpperCase()}: ` +
+        `${results.sent} sent, ${results.failed} failed, next=${nextOccurrence.toISO()}`
+      );
+      return { ...results, status: runStatus, next_run_at: nextOccurrence.toUTC().toISO() };
+    }
+
     if (results.failed > 0 && results.sent === 0) {
       await db.updateScheduledMessageStatus(msg.id, 'failed');
       console.log(`[SCHEDULER] Message id=${msg.id} FAILED: all ${results.failed} groups failed`);
-    } else {
-      await db.updateScheduledMessageStatus(msg.id, 'sent');
-      console.log(`[SCHEDULER] Message id=${msg.id} SENT: ${results.sent} sent, ${results.failed} failed`);
+      return { ...results, status: 'failed' };
     }
+    await db.updateScheduledMessageStatus(msg.id, 'sent');
+    console.log(`[SCHEDULER] Message id=${msg.id} SENT: ${results.sent} sent, ${results.failed} failed`);
+    return { ...results, status: 'sent' };
   } catch (err) {
     console.error(`[SCHEDULER] Error processing message id=${msg.id}:`, err.message);
+    if ((msg.schedule_type || 'one_time') === 'weekly') {
+      const nextOccurrence = computeNextWeeklyOccurrence({
+        dayOfWeek: msg.weekly_day_of_week,
+        timeOfDay: msg.weekly_time_local,
+        timezone: msg.schedule_timezone || DEFAULT_SCHEDULE_TIMEZONE,
+      });
+      if (nextOccurrence) {
+        await db.recordRecurringScheduledMessageRun(
+          msg.id,
+          nextOccurrence.toUTC().toISO(),
+          'failed',
+          false
+        );
+        return { sent: 0, failed: 0, status: 'failed', next_run_at: nextOccurrence.toUTC().toISO() };
+      }
+    }
     await db.updateScheduledMessageStatus(msg.id, 'failed');
+    return { sent: 0, failed: 0, status: 'failed' };
   }
 }
 

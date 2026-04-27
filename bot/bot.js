@@ -2,6 +2,7 @@ const { Telegraf, Markup } = require('telegraf');
 const config = require('../config/config');
 const db = require('../database/db');
 const { safeSend, isPermanentSendError: isPermanentSendErrorFromHtml } = require('../services/telegramHtml');
+const { normalizeMediaItems } = require('../services/scheduledMessageUtils');
 
 // config.js already validates BOT_TOKEN, DATABASE_URL, MANAGEMENT_GROUP_ID
 // and exits on missing values — no need to re-check here.
@@ -416,7 +417,8 @@ async function reportToManagement(driver, group, questionId, optionId) {
  * @param {object|null} keyboard   Markup.inlineKeyboard(...) — only used for single-file
  */
 async function sendMedia(chatId, mediaItems, caption, parseMode, keyboard) {
-  if (!mediaItems || mediaItems.length === 0) return;
+  const normalizedMediaItems = normalizeMediaItems(mediaItems);
+  if (!normalizedMediaItems.length) return;
 
   // Telegram limits captions to 1024 chars. If longer, send media without caption, then send text.
   let safeCaption = caption;
@@ -426,9 +428,9 @@ async function sendMedia(chatId, mediaItems, caption, parseMode, keyboard) {
     textToFollowUp = caption;
   }
 
-  if (mediaItems.length === 1) {
+  if (normalizedMediaItems.length === 1) {
     // Single file
-    const { file_id, media_type } = mediaItems[0];
+    const { file_id, media_type } = normalizedMediaItems[0];
     const opts = { ...(keyboard || {}) };
     if (safeCaption) {
       opts.caption = safeCaption;
@@ -441,7 +443,7 @@ async function sendMedia(chatId, mediaItems, caption, parseMode, keyboard) {
     }
   } else {
     // Multiple files (Album)
-    const group = mediaItems.map((m, i) => ({
+    const group = normalizedMediaItems.map((m, i) => ({
       type: m.media_type === 'video' ? 'video' : 'photo',
       media: m.file_id,
       ...(i === 0 && safeCaption ? { caption: safeCaption, parse_mode: parseMode } : {}),
@@ -466,7 +468,7 @@ async function sendQuestionToGroups(questionId) {
   const groups = await db.getAllGroups();
   const results = { sent: 0, failed: 0, errors: [] };
 
-  const mediaItems = question.media_items || [];
+  const mediaItems = normalizeMediaItems(question.media_items || []);
   const hasMedia = mediaItems.length > 0;
   const mediaPosition = question.media_position || 'above';
   const isAlbum = mediaItems.length > 1;
@@ -574,22 +576,23 @@ async function sendTestQuestion(questionEn, optionsEn, mediaItems, mediaPosition
 
   const message = `🧪 <b>TEST QUESTION PREVIEW</b>\n\n${escapeHtml(questionEn)}\n\n<i>Choose an option:</i>`;
   const keyboard = Markup.inlineKeyboard(buttons);
-  const hasMedia = mediaItems && mediaItems.length > 0;
-  const isAlbum = hasMedia && mediaItems.length > 1;
+  const normalizedMediaItems = normalizeMediaItems(mediaItems);
+  const hasMedia = normalizedMediaItems.length > 0;
+  const isAlbum = normalizedMediaItems.length > 1;
   const position = mediaPosition || 'above';
 
   if (!hasMedia) {
     await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, message, { parse_mode: 'HTML', ...keyboard });
   } else if (position === 'above') {
     if (isAlbum) {
-      await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, message, 'HTML', null);
+      await sendMedia(MANAGEMENT_GROUP_ID, normalizedMediaItems, message, 'HTML', null);
       await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, message, { parse_mode: 'HTML', ...keyboard });
     } else {
-      await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, message, 'HTML', keyboard);
+      await sendMedia(MANAGEMENT_GROUP_ID, normalizedMediaItems, message, 'HTML', keyboard);
     }
   } else {
     await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, message, { parse_mode: 'HTML', ...keyboard });
-    await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, null, null, null);
+    await sendMedia(MANAGEMENT_GROUP_ID, normalizedMediaItems, null, null, null);
   }
 
   console.log('[BOT] Test question sent to management group.');
@@ -614,16 +617,17 @@ async function sendBroadcast(messageText, parseMode, messages, mediaItems, media
 async function sendBroadcastTest(messageText, parseMode, messages, mediaItems, mediaPosition, forceLanguage) {
   const fakeGroup = { language: 'en' };
   const text = pickBroadcastMessage(messages, messageText, fakeGroup, forceLanguage);
-  const hasMedia = !!(mediaItems && mediaItems.length > 0);
+  const normalizedMediaItems = normalizeMediaItems(mediaItems);
+  const hasMedia = normalizedMediaItems.length > 0;
   const position = mediaPosition || 'above';
 
   if (!hasMedia) {
     await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, text, { parse_mode: parseMode });
   } else if (position === 'above') {
-    await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, text, parseMode, null);
+    await sendMedia(MANAGEMENT_GROUP_ID, normalizedMediaItems, text, parseMode, null);
   } else {
     await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, text, { parse_mode: parseMode });
-    await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, null, null, null);
+    await sendMedia(MANAGEMENT_GROUP_ID, normalizedMediaItems, null, null, null);
   }
   console.log('[BOT] Broadcast test sent to management group.');
 }
@@ -645,7 +649,8 @@ async function sendBroadcastToGroups(
     return results;
   }
 
-  const hasMedia = !!(mediaItems && mediaItems.length > 0);
+  const normalizedMediaItems = normalizeMediaItems(mediaItems);
+  const hasMedia = normalizedMediaItems.length > 0;
   const position = mediaPosition || 'above';
 
   for (const group of groups) {
@@ -657,10 +662,10 @@ async function sendBroadcastToGroups(
       if (!hasMedia) {
         await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode });
       } else if (position === 'above') {
-        await sendMedia(group.telegram_group_id, mediaItems, text, parseMode, null);
+        await sendMedia(group.telegram_group_id, normalizedMediaItems, text, parseMode, null);
       } else {
         await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode });
-        await sendMedia(group.telegram_group_id, mediaItems, null, null, null);
+        await sendMedia(group.telegram_group_id, normalizedMediaItems, null, null, null);
       }
 
       results.sent++;
@@ -677,10 +682,10 @@ async function sendBroadcastToGroups(
           if (!hasMedia) {
             await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode });
           } else if (position === 'above') {
-            await sendMedia(group.telegram_group_id, mediaItems, text, parseMode, null);
+            await sendMedia(group.telegram_group_id, normalizedMediaItems, text, parseMode, null);
           } else {
             await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode });
-            await sendMedia(group.telegram_group_id, mediaItems, null, null, null);
+            await sendMedia(group.telegram_group_id, normalizedMediaItems, null, null, null);
           }
           results.sent++;
           success = true;
@@ -751,7 +756,8 @@ async function sendConfirmationBroadcast(
     return results;
   }
 
-  const hasMedia = !!(mediaItems && mediaItems.length > 0);
+  const normalizedMediaItems = normalizeMediaItems(mediaItems);
+  const hasMedia = normalizedMediaItems.length > 0;
   const position = mediaPosition || 'above';
   const btnList = Array.isArray(buttons) ? buttons : [];
 
@@ -771,15 +777,15 @@ async function sendConfirmationBroadcast(
       if (!hasMedia) {
         await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode, ...keyboard });
       } else if (position === 'above') {
-        if (mediaItems.length === 1) {
-          await sendMedia(group.telegram_group_id, mediaItems, text, parseMode, keyboard);
+        if (normalizedMediaItems.length === 1) {
+          await sendMedia(group.telegram_group_id, normalizedMediaItems, text, parseMode, keyboard);
         } else {
-          await sendMedia(group.telegram_group_id, mediaItems, text, parseMode, null);
+          await sendMedia(group.telegram_group_id, normalizedMediaItems, text, parseMode, null);
           await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode, ...keyboard });
         }
       } else {
         await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode, ...keyboard });
-        await sendMedia(group.telegram_group_id, mediaItems, null, null, null);
+        await sendMedia(group.telegram_group_id, normalizedMediaItems, null, null, null);
       }
 
       results.sent++;
@@ -801,15 +807,15 @@ async function sendConfirmationBroadcast(
           if (!hasMedia) {
             await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode, ...keyboard });
           } else if (position === 'above') {
-            if (mediaItems.length === 1) {
-              await sendMedia(group.telegram_group_id, mediaItems, text, parseMode, keyboard);
+            if (normalizedMediaItems.length === 1) {
+              await sendMedia(group.telegram_group_id, normalizedMediaItems, text, parseMode, keyboard);
             } else {
-              await sendMedia(group.telegram_group_id, mediaItems, text, parseMode, null);
+              await sendMedia(group.telegram_group_id, normalizedMediaItems, text, parseMode, null);
               await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode, ...keyboard });
             }
           } else {
             await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode, ...keyboard });
-            await sendMedia(group.telegram_group_id, mediaItems, null, null, null);
+            await sendMedia(group.telegram_group_id, normalizedMediaItems, null, null, null);
           }
           results.sent++;
           success = true;
@@ -869,7 +875,8 @@ async function sendConfirmationBroadcastTest(
   const lang = effectiveLangForConfirmation(fakeGroup, forceLanguage);
   const btnList = Array.isArray(buttons) ? buttons : [];
 
-  const hasMedia = !!(mediaItems && mediaItems.length > 0);
+  const normalizedMediaItems = normalizeMediaItems(mediaItems);
+  const hasMedia = normalizedMediaItems.length > 0;
   const position = mediaPosition || 'above';
 
   const keyboardRows = btnList.map((btn, i) => {
@@ -881,15 +888,15 @@ async function sendConfirmationBroadcastTest(
   if (!hasMedia) {
     await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, text, { parse_mode: parseMode, ...keyboard });
   } else if (position === 'above') {
-    if (mediaItems.length === 1) {
-      await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, text, parseMode, keyboard);
+    if (normalizedMediaItems.length === 1) {
+      await sendMedia(MANAGEMENT_GROUP_ID, normalizedMediaItems, text, parseMode, keyboard);
     } else {
-      await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, text, parseMode, null);
+      await sendMedia(MANAGEMENT_GROUP_ID, normalizedMediaItems, text, parseMode, null);
       await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, text, { parse_mode: parseMode, ...keyboard });
     }
   } else {
     await bot.telegram.sendMessage(MANAGEMENT_GROUP_ID, text, { parse_mode: parseMode, ...keyboard });
-    await sendMedia(MANAGEMENT_GROUP_ID, mediaItems, null, null, null);
+    await sendMedia(MANAGEMENT_GROUP_ID, normalizedMediaItems, null, null, null);
   }
   console.log('[BOT] Confirmation broadcast test sent to management group.');
 }

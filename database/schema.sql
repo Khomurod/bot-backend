@@ -178,6 +178,7 @@ CREATE TABLE IF NOT EXISTS scheduled_messages (
   message_text_en TEXT,
   message_text_ru TEXT,
   message_text_uz TEXT,
+  media_items JSONB,
   media_file_id TEXT,
   media_type TEXT,
   media_position TEXT DEFAULT 'above',
@@ -186,9 +187,33 @@ CREATE TABLE IF NOT EXISTS scheduled_messages (
   target_languages TEXT[],
   force_language TEXT,
   scheduled_at TIMESTAMP NOT NULL,
+  schedule_type TEXT DEFAULT 'one_time',
+  schedule_timezone TEXT DEFAULT 'America/Chicago',
+  weekly_day_of_week SMALLINT,
+  weekly_time_local TEXT,
+  last_sent_at TIMESTAMP,
+  last_run_status TEXT,
   status TEXT DEFAULT 'pending',
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS media_items JSONB;
+ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS schedule_type TEXT DEFAULT 'one_time';
+ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS schedule_timezone TEXT DEFAULT 'America/Chicago';
+ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS weekly_day_of_week SMALLINT;
+ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS weekly_time_local TEXT;
+ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS last_sent_at TIMESTAMP;
+ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS last_run_status TEXT;
+
+UPDATE scheduled_messages
+SET media_items = jsonb_build_array(
+  jsonb_build_object(
+    'file_id', media_file_id,
+    'media_type', COALESCE(media_type, 'photo')
+  )
+)
+WHERE media_items IS NULL
+  AND media_file_id IS NOT NULL;
 
 DO $$
 BEGIN

@@ -25,6 +25,12 @@ if (!/^-?\d+$/.test(managementGroupId)) {
   process.exit(1);
 }
 
+const mediaStorageChatId = String(process.env.MEDIA_STORAGE_CHAT_ID || managementGroupId).trim();
+if (!/^-?\d+$/.test(mediaStorageChatId)) {
+  console.error(`[CONFIG] MEDIA_STORAGE_CHAT_ID is not a numeric chat id: "${mediaStorageChatId}"`);
+  process.exit(1);
+}
+
 // Allow-list of CORS origins for the admin panel (comma-separated) — falls back to
 // permissive wildcard only when explicitly opted into (dev convenience).
 const corsOriginsEnv = process.env.CORS_ALLOWED_ORIGINS || '';
@@ -39,6 +45,7 @@ module.exports = {
   adminUsername: process.env.ADMIN_USERNAME || 'admin',
   adminPassword: process.env.ADMIN_PASSWORD || 'admin123',
   managementGroupId,
+  mediaStorageChatId,
   jwtSecret: process.env.JWT_SECRET || 'driver-feedback-jwt-secret-key',
   port: process.env.PORT || 3001,
   openaiApiKey: process.env.OPENAI_API_KEY,
