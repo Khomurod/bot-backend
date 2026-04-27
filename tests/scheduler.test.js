@@ -170,6 +170,50 @@ test('tick guard lets a second tick run after the first completes', async () => 
   assert.equal(sent.length, 2, 'tickRunning must reset between sequential ticks');
 });
 
+test('weekly scheduled message reschedules itself after a successful send', async () => {
+  const recurringRuns = [];
+  const dbMock = {
+    async getAllDriverGroups() {
+      return [{ id: 1, language: 'en', telegram_group_id: -1001, group_name: 'Group' }];
+    },
+    async recordRecurringScheduledMessageRun(id, nextScheduledAt, lastRunStatus, markSent) {
+      recurringRuns.push({ id, nextScheduledAt, lastRunStatus, markSent });
+      return {};
+    },
+    async updateScheduledMessageStatus() {
+      throw new Error('one-time status updater should not be used for weekly schedules');
+    },
+  };
+  const botMock = {
+    async sendBroadcastToGroups() {
+      return { sent: 1, failed: 0 };
+    },
+  };
+
+  const scheduler = loadSchedulerWithMocks(dbMock, botMock);
+  const result = await scheduler.processMessage({
+    id: 11,
+    schedule_type: 'weekly',
+    schedule_timezone: 'America/Chicago',
+    weekly_day_of_week: 1,
+    weekly_time_local: '09:00',
+    target_type: 'all',
+    message_text_en: 'hello',
+    message_text_ru: null,
+    message_text_uz: null,
+    media_items: [{ file_id: 'photo-1', type: 'photo' }],
+    media_position: 'above',
+    force_language: null,
+  });
+
+  assert.equal(result.status, 'sent');
+  assert.equal(recurringRuns.length, 1, 'weekly send should schedule the next run');
+  assert.equal(recurringRuns[0].id, 11);
+  assert.equal(recurringRuns[0].lastRunStatus, 'sent');
+  assert.equal(recurringRuns[0].markSent, true);
+  assert.ok(typeof recurringRuns[0].nextScheduledAt === 'string' && recurringRuns[0].nextScheduledAt.length > 0);
+});
+
 test('weekly reporter fires once at Monday 7:00 AM Chicago', async () => {
   const sends = [];
   const inserts = [];

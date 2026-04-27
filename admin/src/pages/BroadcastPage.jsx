@@ -598,7 +598,7 @@ export default function BroadcastPage() {
                     {testing ? '⏳ Testing...' : '🧪 Test (Management Group)'}
                   </button>
                   <button className="btn btn-ghost" onClick={handleSchedule} disabled={scheduling || !message.trim() || message.length > 4096} style={{ border: '1px solid var(--border)' }}>
-                    {scheduling ? 'â³ Scheduling...' : 'Save Schedule'}
+                    {scheduling ? 'Scheduling...' : 'Save Schedule'}
                   </button>
                 </div>
               </div>

@@ -101,6 +101,16 @@ export default function ScheduledMessagesPage() {
     return msg.media_file_id ? 1 : 0;
   };
 
+  const mediaLabel = (msg) => {
+    const count = mediaCount(msg);
+    if (count <= 0) return null;
+    if (count > 1) return `${count} media items attached`;
+    const firstType = Array.isArray(msg.media_items) && msg.media_items[0]
+      ? (msg.media_items[0].media_type || msg.media_items[0].type)
+      : msg.media_type;
+    return `${firstType === 'video' ? 'Video' : 'Photo'} attached`;
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -145,7 +155,7 @@ export default function ScheduledMessagesPage() {
                     </div>
                     {mediaCount(msg) > 0 && (
                       <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        📎 {msg.media_type === 'video' ? 'Video' : 'Photo'} attached
+                        📎 {mediaLabel(msg)}
                       </span>
                     )}
                   </td>

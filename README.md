@@ -8,6 +8,7 @@ A Telegram bot-based feedback and communication system for trucking companies. C
 - **Management Reporting** — All responses forwarded to management group in English
 - **Multilingual** — English, Russian, Uzbek with AI-powered auto-translation (OpenAI)
 - **Broadcast Messages** — Send announcements to all driver groups with multilingual support
+- **Scheduled Broadcasts** — One-time or weekly recurring sends in Central Time
 - **Employee Voting** — "Driver of the Week" polls sent to employee group with inline buttons
 - **Media Support** — Photo/video attachments (single or albums), above/below positioning
 - **Leads-Bot** — Facebook/Meta lead capture via webhook (Python/FastAPI subprocess)
@@ -56,6 +57,7 @@ Optional variables:
 | Variable | Description |
 |---|---|
 | `EMPLOYEE_GROUP_ID` | Telegram employee group ID (enables voting) |
+| `MEDIA_STORAGE_CHAT_ID` | Optional storage chat used to upload media and capture reusable `file_id`s |
 | `OPENAI_API_KEY` | OpenAI API key (enables auto-translation) |
 | `PORT` | API server port (default: 3001) |
 | `LEADS_BOT_PORT` | Leads-Bot internal port (default: 8000) |
@@ -181,6 +183,16 @@ cd admin && npm run dev
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
 | POST | `/api/upload-media` | Yes | Upload photo/video to Telegram |
+
+`/api/upload-media` must stage the file in a Telegram chat briefly so Telegram returns a reusable `file_id`. Set `MEDIA_STORAGE_CHAT_ID` to a private storage chat if you do not want uploads to use the management group. If `MEDIA_STORAGE_CHAT_ID` is not set, the app falls back to `MANAGEMENT_GROUP_ID`.
+
+### Scheduled Messages
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/api/scheduled-messages` | Yes | Create a one-time or weekly recurring broadcast |
+| GET | `/api/scheduled-messages` | Yes | List scheduled broadcasts and next run times |
+| PUT | `/api/scheduled-messages/:id/send-now` | Yes | Send a scheduled broadcast immediately |
+| PUT | `/api/scheduled-messages/:id/cancel` | Yes | Cancel a pending scheduled broadcast |
 
 ### Employee Voting
 | Method | Endpoint | Auth | Description |

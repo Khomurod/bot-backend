@@ -310,12 +310,12 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
       if (isVideo) {
         sentMessage = await bot.telegram.sendVideo(mediaStorageChatId, fileSource, {
           disable_notification: true,
-          caption: '📎 [Upload to get file_id — will be deleted]',
+          caption: 'Upload staging for file_id capture.',
         });
       } else {
         sentMessage = await bot.telegram.sendPhoto(mediaStorageChatId, fileSource, {
           disable_notification: true,
-          caption: '📎 [Upload to get file_id — will be deleted]',
+          caption: 'Upload staging for file_id capture.',
         });
       }
 
@@ -331,8 +331,6 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
 
       try {
         await bot.telegram.deleteMessage(mediaStorageChatId, sentMessage.message_id);
-          '🔒 <b>Media stored securely for upcoming broadcast.</b>', 
-          null;
       } catch (deleteErr) {
         console.warn('[API] Failed to delete staged media message:', deleteErr.message);
         try {
