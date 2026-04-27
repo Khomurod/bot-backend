@@ -3,6 +3,7 @@ const config = require('../config/config');
 const db = require('../database/db');
 const { safeSend, isPermanentSendError: isPermanentSendErrorFromHtml } = require('../services/telegramHtml');
 const { normalizeMediaItems } = require('../services/scheduledMessageUtils');
+const { getLiveLocationForGroupTitle } = require('../services/samsaraLocationService');
 
 // config.js already validates BOT_TOKEN, DATABASE_URL, MANAGEMENT_GROUP_ID
 // and exits on missing values — no need to re-check here.
@@ -229,6 +230,64 @@ async function startBot() {
         console.error('[BOT] Error logging chat message:', err.message);
       }
       return next();
+    });
+
+    // Dispatcher helper: post live truck location for this group's unit number.
+    bot.command('location', async (ctx) => {
+      try {
+        const chatType = ctx.chat?.type;
+        if (chatType !== 'group' && chatType !== 'supergroup') {
+          await ctx.reply('Use /location inside a driver group chat.');
+          return;
+        }
+
+        const groupTitle = ctx.chat?.title || '';
+        const location = await getLiveLocationForGroupTitle({
+          groupTitle,
+          apiKey: config.samsaraApiKey,
+          apiBase: config.samsaraApiBase,
+        });
+
+        await ctx.replyWithLocation(location.latitude, location.longitude);
+
+        const pingAgeText = location.pingAgeMinutes == null
+          ? 'unknown'
+          : `${location.pingAgeMinutes} min ago`;
+        const speedText = location.speedMilesPerHour == null
+          ? null
+          : `${location.speedMilesPerHour.toFixed(1)} mph`;
+
+        const summary = [
+          `Unit: ${location.unitNumber}`,
+          `Vehicle: ${location.vehicleName}`,
+          location.address ? `Address: ${location.address}` : null,
+          `Last ping: ${pingAgeText}${location.pingTimeIso ? ` (${location.pingTimeIso})` : ''}`,
+          speedText ? `Speed: ${speedText}` : null,
+        ].filter(Boolean).join('\n');
+
+        await ctx.reply(summary);
+      } catch (err) {
+        console.error('[BOT] /location failed:', err.message);
+
+        if (err.code === 'SAMSARA_API_KEY_MISSING') {
+          await ctx.reply('Location lookup is not configured yet (SAMSARA_API_KEY missing).');
+          return;
+        }
+        if (err.code === 'UNIT_NOT_FOUND_IN_GROUP_TITLE') {
+          await ctx.reply('Could not find a unit number in this group title.');
+          return;
+        }
+        if (err.code === 'VEHICLE_NOT_FOUND') {
+          await ctx.reply('No matching Samsara vehicle was found for this unit.');
+          return;
+        }
+        if (err.code === 'GPS_NOT_AVAILABLE') {
+          await ctx.reply('A matching vehicle was found, but no GPS coordinates are available right now.');
+          return;
+        }
+
+        await ctx.reply('Could not fetch live location right now. Please try again in a minute.');
+      }
     });
 
     // Register employee voting handlers BEFORE generic callback_query handler

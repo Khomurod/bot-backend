@@ -49,6 +49,8 @@ module.exports = {
   jwtSecret: process.env.JWT_SECRET || 'driver-feedback-jwt-secret-key',
   port: process.env.PORT || 3001,
   openaiApiKey: process.env.OPENAI_API_KEY,
+  samsaraApiKey: process.env.SAMSARA_API_KEY,
+  samsaraApiBase: process.env.SAMSARA_API_BASE || 'https://api.samsara.com',
   employeeGroupId: process.env.EMPLOYEE_GROUP_ID,
   corsAllowedOrigins,
   // When true, CORS allows any origin (useful in local dev/testing).
