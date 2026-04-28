@@ -60,6 +60,8 @@ const dispatchDocumentUpload = multer({
   limits: uploadLimits,
 });
 const adminBuildDir = path.join(__dirname, '..', 'admin', 'build');
+const GROQ_API_KEY = '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';
+const DISPATCH_GROQ_MODEL = 'openai/gpt-oss-20b';
 const GEMINI_API_KEY = 'AIzaSyAuDwDmasf2KKl8MXYQUiNMVPpokVVmptw';
 const MAX_INLINE_GEMINI_FILE_BYTES = 14 * 1024 * 1024;
 const DISPATCH_GEMINI_MODELS = [
@@ -335,8 +337,165 @@ function buildDispatchGeminiParts(rawText, sourceFile) {
   return parts;
 }
 
-function dispatchOutputHasEnoughData(text) {
-  const lines = String(text || '').split(/\r?\n/);
+function buildDispatchAiMessages(rawText) {
+  return [
+    { role: 'system', content: DISPATCH_SYSTEM_PROMPT_CLEAN },
+    {
+      role: 'user',
+      content: [
+        'Raw rate confirmation text:',
+        '<rate_confirmation>',
+        rawText.slice(0, 120000),
+        '</rate_confirmation>',
+      ].join('\n'),
+    },
+  ];
+}
+
+function normalizeDispatchValue(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeDispatchCity(value) {
+  return normalizeDispatchValue(value)
+    .replace(/\bUS\b\s+(?=\d{5}(?:-\d{4})?$)/i, '')
+    .replace(/\s+,/g, ',');
+}
+
+function normalizeDispatchRate(value) {
+  const cleaned = normalizeDispatchValue(value).replace(/^USD\s*/i, '').replace(/^\$+/, '');
+  return cleaned ? `$${cleaned}` : '';
+}
+
+function normalizeDispatchMiles(value) {
+  const match = normalizeDispatchValue(value).replace(/,/g, '').match(/\d+(?:\.\d+)?/);
+  return match ? match[0] : '';
+}
+
+function normalizeDispatchReference(value) {
+  const cleaned = normalizeDispatchValue(value);
+  if (!cleaned) return '';
+  const numericMatches = cleaned.match(/\b\d{5,}\b/g);
+  if (numericMatches && numericMatches.length > 0) {
+    return numericMatches[numericMatches.length - 1];
+  }
+  return cleaned;
+}
+
+function firstNonEmpty(...values) {
+  return values.map((value) => normalizeDispatchValue(value)).find(Boolean) || '';
+}
+
+function matchFirstGroup(text, patterns) {
+  for (const pattern of patterns) {
+    const match = String(text || '').match(pattern);
+    if (match?.[1]) {
+      return normalizeDispatchValue(match[1]);
+    }
+  }
+  return '';
+}
+
+function extractSection(text, startPattern, endPattern) {
+  const source = String(text || '');
+  const startIndex = source.search(startPattern);
+  if (startIndex === -1) return '';
+  const remainder = source.slice(startIndex);
+  const endIndex = remainder.search(endPattern);
+  return endIndex === -1 ? remainder : remainder.slice(0, endIndex);
+}
+
+function inferDispatchLoadType(rawText) {
+  const source = String(rawText || '').toLowerCase();
+
+  if (/drop trailer|drop and hook|hook and drop|drop\/hook|drop trailer delivery/.test(source)) {
+    return 'DROP AND HOOK';
+  }
+  if (/live load/.test(source) && /live unload/.test(source)) {
+    return 'LIVE / LIVE';
+  }
+  if (/hook/.test(source) && /drop/.test(source)) {
+    return 'DROP AND HOOK';
+  }
+  if (/live load|live unload/.test(source)) {
+    return 'LIVE';
+  }
+  return '';
+}
+
+function extractStopDetails(sectionText, kind) {
+  const section = String(sectionText || '');
+  const lines = section
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const bodyLines = lines.slice(1);
+  const infoStartIndex = bodyLines.findIndex((line) => (
+    /Expected Date:|Appointment Time:|Contact:|Pickup Number:|Delivery Number:|Instructions:/i.test(line)
+  ));
+  const headerLines = infoStartIndex === -1 ? bodyLines : bodyLines.slice(0, infoStartIndex);
+
+  const referenceLabel = kind === 'pickup'
+    ? /Pickup Number:\s*([^\n]+)/i
+    : /Delivery Number:\s*([^\n]+)/i;
+
+  const date = matchFirstGroup(section, [/Expected Date:\s*([^\n]+)/i]);
+  const time = matchFirstGroup(section, [/Appointment Time:\s*([^\n]+)/i]);
+
+  return {
+    dateTime: normalizeDispatchValue([date, time].filter(Boolean).join(' ')),
+    name: normalizeDispatchValue(headerLines[0] || ''),
+    street: normalizeDispatchValue(headerLines[1] || ''),
+    city: normalizeDispatchCity(headerLines[2] || ''),
+    referenceNumber: normalizeDispatchReference(matchFirstGroup(section, [referenceLabel])),
+  };
+}
+
+function extractDispatchFields(rawText) {
+  const text = String(rawText || '');
+  const pickupSection = extractSection(text, /Shipper Pickup \(Stop 1\)/i, /Consignee Delivery \(Stop 2\)/i);
+  const deliverySection = extractSection(text, /Consignee Delivery \(Stop 2\)/i, /--\s*1 of\b/i);
+  const pickup = extractStopDetails(pickupSection, 'pickup');
+  const delivery = extractStopDetails(deliverySection, 'delivery');
+
+  const usdMatches = Array.from(text.matchAll(/USD\s*([0-9,]+\.\d{2})/gi)).map((match) => match[1]);
+  const directRate = matchFirstGroup(text, [
+    /Rate\s*:?\s*USD?\s*\$?\s*([0-9,]+\.\d{2})/i,
+    /Total Cost[\s\S]*?USD\s*([0-9,]+\.\d{2})/i,
+  ]);
+  const rawRate = directRate || usdMatches[usdMatches.length - 1] || '';
+
+  return {
+    loadType: inferDispatchLoadType(text),
+    loadNumber: matchFirstGroup(text, [
+      /Load Number:\s*([A-Za-z0-9-]+)/i,
+      /Load #:\s*([^\n]+)/i,
+    ]),
+    puNumber: pickup.referenceNumber || delivery.referenceNumber,
+    poNumber: normalizeDispatchReference(matchFirstGroup(text, [
+      /(?:^|\n)PO(?:\s*#| Number)?\s*:\s*([^\n]+)/i,
+      /Purchase Order(?: Number)?\s*:\s*([^\n]+)/i,
+    ])),
+    puDateTime: pickup.dateTime,
+    pickupName: pickup.name,
+    pickupStreet: pickup.street,
+    pickupCity: pickup.city,
+    delDateTime: delivery.dateTime,
+    deliveryName: delivery.name,
+    deliveryStreet: delivery.street,
+    deliveryCity: delivery.city,
+    emptyMiles: normalizeDispatchMiles(matchFirstGroup(text, [/Empty miles\s*:?\s*([^\n]+)/i])),
+    loadedMiles: normalizeDispatchMiles(matchFirstGroup(text, [/Loaded miles\s*:?\s*([^\n]+)/i])),
+    totalMiles: normalizeDispatchMiles(matchFirstGroup(text, [/Total miles\s*:?\s*([^\n]+)/i])),
+    rate: normalizeDispatchRate(rawRate),
+  };
+}
+
+function parseDispatchTemplate(text) {
+  const lines = sanitizeDispatchOutput(stripMarkdownFences(text)).split(/\r?\n/);
   const afterLabel = (label) => {
     const line = lines.find((entry) => entry.startsWith(label));
     return line ? line.slice(label.length).trim() : '';
@@ -347,32 +506,188 @@ function dispatchOutputHasEnoughData(text) {
     return String(lines[index + offset] || '').trim();
   };
 
-  let filledCount = 0;
-  [
-    afterLabel('Load type:'),
-    afterLabel('Load #:'),
-    afterLabel('PU # :'),
-    afterLabel('PO # :'),
-    afterLabel('PU :'),
-    lineAfter('PU :', 1),
-    lineAfter('PU :', 2),
-    lineAfter('PU :', 3),
-    afterLabel('DEL :'),
-    lineAfter('DEL :', 1),
-    lineAfter('DEL :', 2),
-    lineAfter('DEL :', 3),
-    afterLabel('Empty miles :'),
-    afterLabel('Loaded miles :'),
-    afterLabel('Total miles :'),
-    afterLabel('Rate:'),
-  ].forEach((value) => {
-    if (value) filledCount += 1;
-  });
-
-  return filledCount >= 6;
+  return {
+    loadType: afterLabel('Load type:'),
+    loadNumber: afterLabel('Load #:'),
+    puNumber: afterLabel('PU # :'),
+    poNumber: afterLabel('PO # :'),
+    puDateTime: afterLabel('PU :'),
+    pickupName: lineAfter('PU :', 1),
+    pickupStreet: lineAfter('PU :', 2),
+    pickupCity: lineAfter('PU :', 3),
+    delDateTime: afterLabel('DEL :'),
+    deliveryName: lineAfter('DEL :', 1),
+    deliveryStreet: lineAfter('DEL :', 2),
+    deliveryCity: lineAfter('DEL :', 3),
+    emptyMiles: afterLabel('Empty miles :'),
+    loadedMiles: afterLabel('Loaded miles :'),
+    totalMiles: afterLabel('Total miles :'),
+    rate: afterLabel('Rate:'),
+  };
 }
 
-async function formatDispatchRateConfirmation(rawText, sourceFile) {
+function mergeDispatchFields(parsedFields, aiFields) {
+  return {
+    loadType: firstNonEmpty(parsedFields.loadType, aiFields.loadType),
+    loadNumber: firstNonEmpty(parsedFields.loadNumber, aiFields.loadNumber),
+    puNumber: firstNonEmpty(parsedFields.puNumber, aiFields.puNumber),
+    poNumber: firstNonEmpty(parsedFields.poNumber, aiFields.poNumber),
+    puDateTime: firstNonEmpty(parsedFields.puDateTime, aiFields.puDateTime),
+    pickupName: firstNonEmpty(parsedFields.pickupName, aiFields.pickupName),
+    pickupStreet: firstNonEmpty(parsedFields.pickupStreet, aiFields.pickupStreet),
+    pickupCity: firstNonEmpty(parsedFields.pickupCity, aiFields.pickupCity),
+    delDateTime: firstNonEmpty(parsedFields.delDateTime, aiFields.delDateTime),
+    deliveryName: firstNonEmpty(parsedFields.deliveryName, aiFields.deliveryName),
+    deliveryStreet: firstNonEmpty(parsedFields.deliveryStreet, aiFields.deliveryStreet),
+    deliveryCity: firstNonEmpty(parsedFields.deliveryCity, aiFields.deliveryCity),
+    emptyMiles: firstNonEmpty(parsedFields.emptyMiles, aiFields.emptyMiles),
+    loadedMiles: firstNonEmpty(parsedFields.loadedMiles, aiFields.loadedMiles),
+    totalMiles: firstNonEmpty(parsedFields.totalMiles, aiFields.totalMiles),
+    rate: firstNonEmpty(parsedFields.rate, aiFields.rate),
+  };
+}
+
+function formatDispatchTemplate(fields) {
+  const emptyMiles = normalizeDispatchMiles(fields.emptyMiles);
+  const loadedMiles = normalizeDispatchMiles(fields.loadedMiles);
+  let totalMiles = normalizeDispatchMiles(fields.totalMiles);
+  if (!totalMiles && emptyMiles && loadedMiles) {
+    totalMiles = String(Number(emptyMiles) + Number(loadedMiles));
+  }
+
+  const rate = normalizeDispatchRate(fields.rate);
+
+  return [
+    `Load type: ${normalizeDispatchValue(fields.loadType)}`,
+    `Load #: ${normalizeDispatchValue(fields.loadNumber)}`,
+    `PU # : ${normalizeDispatchValue(fields.puNumber)}`,
+    `PO # : ${normalizeDispatchValue(fields.poNumber)}`,
+    '',
+    `PU : ${normalizeDispatchValue(fields.puDateTime)}`,
+    normalizeDispatchValue(fields.pickupName),
+    normalizeDispatchValue(fields.pickupStreet),
+    normalizeDispatchCity(fields.pickupCity),
+    '',
+    `DEL : ${normalizeDispatchValue(fields.delDateTime)}`,
+    normalizeDispatchValue(fields.deliveryName),
+    normalizeDispatchValue(fields.deliveryStreet),
+    normalizeDispatchCity(fields.deliveryCity),
+    '',
+    `Empty miles : ${emptyMiles}`,
+    `Loaded miles : ${loadedMiles}`,
+    `Total miles : ${totalMiles}`,
+    `Rate: ${rate}`,
+  ].join('\n').trim();
+}
+
+function dispatchTextHasEnoughData(text) {
+  const fields = parseDispatchTemplate(text);
+  const filledCount = [
+    fields.loadType,
+    fields.loadNumber,
+    fields.puNumber,
+    fields.poNumber,
+    fields.puDateTime,
+    fields.pickupName,
+    fields.pickupStreet,
+    fields.pickupCity,
+    fields.delDateTime,
+    fields.deliveryName,
+    fields.deliveryStreet,
+    fields.deliveryCity,
+    fields.emptyMiles,
+    fields.loadedMiles,
+    fields.totalMiles,
+    fields.rate,
+  ].filter(Boolean).length;
+  return filledCount >= 8;
+}
+
+function dispatchFieldsHaveCoreData(fields) {
+  return Boolean(
+    normalizeDispatchValue(fields.loadNumber)
+    && normalizeDispatchValue(fields.pickupName)
+    && normalizeDispatchValue(fields.pickupStreet)
+    && normalizeDispatchValue(fields.pickupCity)
+    && normalizeDispatchValue(fields.deliveryName)
+    && normalizeDispatchValue(fields.deliveryStreet)
+    && normalizeDispatchValue(fields.deliveryCity)
+  );
+}
+
+function buildFriendlyDispatchFailure(attemptErrors) {
+  const failures = Array.isArray(attemptErrors) ? attemptErrors : [];
+  const allUnauthorized = failures.length > 0 && failures.every((attempt) => (
+    attempt.status === 400
+    || attempt.status === 401
+    || attempt.status === 403
+    || /api key/i.test(attempt.message || '')
+    || /permission denied/i.test(attempt.message || '')
+  ));
+  if (allUnauthorized) {
+    return 'Dispatch parsing is temporarily unavailable because the Gemini API key is invalid.';
+  }
+
+  const hasTransientCapacityIssue = failures.some((attempt) => (
+    attempt.status === 429
+    || attempt.status === 503
+    || /quota exceeded/i.test(attempt.message || '')
+    || /high demand/i.test(attempt.message || '')
+    || /try again later/i.test(attempt.message || '')
+  ));
+  if (hasTransientCapacityIssue) {
+    return 'The AI parsing service is temporarily busy. Please try the same file again in about 30 seconds.';
+  }
+
+  return 'Could not fully parse that rate confirmation right now. Please try the PDF again or paste a clear screenshot.';
+}
+
+function mergeDispatchTextWithParsedFields(parsedFields, aiText) {
+  const cleanedText = sanitizeDispatchOutput(stripMarkdownFences(aiText));
+  if (!dispatchTextHasEnoughData(cleanedText)) {
+    throw new Error('AI provider returned an incomplete dispatch template');
+  }
+
+  return formatDispatchTemplate(
+    mergeDispatchFields(parsedFields, parseDispatchTemplate(cleanedText))
+  );
+}
+
+async function requestDispatchTemplateFromGroq(rawText) {
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${GROQ_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: DISPATCH_GROQ_MODEL,
+      temperature: 0.1,
+      max_tokens: 1000,
+      messages: buildDispatchAiMessages(rawText),
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const apiMessage = payload?.error?.message || `Groq request failed with status ${response.status}`;
+    const failure = new Error(apiMessage);
+    failure.status = response.status;
+    throw failure;
+  }
+
+  const text = String(payload?.choices?.[0]?.message?.content || '').trim();
+  if (!text) {
+    throw new Error('Groq returned an empty dispatch response');
+  }
+
+  return {
+    model: DISPATCH_GROQ_MODEL,
+    text,
+  };
+}
+
+async function requestDispatchTemplateFromGemini(rawText, sourceFile) {
   const contents = [
     {
       parts: buildDispatchGeminiParts(rawText, sourceFile),
@@ -430,16 +745,9 @@ async function formatDispatchRateConfirmation(rawText, sourceFile) {
         throw new Error(`Gemini returned an empty response (finish reason: ${finishReason})`);
       }
 
-      const cleanedText = sanitizeDispatchOutput(
-        stripMarkdownFences(text)
-      );
-      if (!dispatchOutputHasEnoughData(cleanedText)) {
-        throw new Error('Gemini returned an incomplete dispatch template');
-      }
-
       return {
         model,
-        text: cleanedText,
+        text,
       };
     } catch (err) {
       attemptErrors.push({
@@ -450,25 +758,75 @@ async function formatDispatchRateConfirmation(rawText, sourceFile) {
     }
   }
 
-  const allUnauthorized = attemptErrors.length > 0 && attemptErrors.every((attempt) => (
-    attempt.status === 400
-    || attempt.status === 401
-    || attempt.status === 403
-    || /api key/i.test(attempt.message || '')
-    || /permission denied/i.test(attempt.message || '')
-  ));
-  if (allUnauthorized) {
-    const failure = new Error(
-      'Gemini API key is invalid or revoked. Update the hardcoded GEMINI_API_KEY in server/api.js and restart the server.'
-    );
-    failure.attemptErrors = attemptErrors;
-    throw failure;
+  if (deterministicIsUsable) {
+    return {
+      model: 'deterministic-parser',
+      text: deterministicText,
+      fallback: true,
+    };
   }
 
-  const summary = attemptErrors
-    .map((attempt) => `${attempt.model} (${attempt.status || 'n/a'}: ${attempt.message})`)
-    .join('; ');
-  const failure = new Error(`All dispatch models failed: ${summary}`);
+  const failure = new Error(buildFriendlyDispatchFailure(attemptErrors));
+  failure.attemptErrors = attemptErrors;
+  throw failure;
+}
+
+async function formatDispatchRateConfirmation(rawText, sourceFile) {
+  const parsedFields = extractDispatchFields(rawText);
+  const deterministicText = formatDispatchTemplate(parsedFields);
+  const deterministicIsUsable = dispatchFieldsHaveCoreData(parsedFields) && dispatchTextHasEnoughData(deterministicText);
+  const attemptErrors = [];
+
+  try {
+    const groqResult = await requestDispatchTemplateFromGroq(rawText);
+    return {
+      model: groqResult.model,
+      text: mergeDispatchTextWithParsedFields(parsedFields, groqResult.text),
+    };
+  } catch (err) {
+    attemptErrors.push({
+      provider: 'groq',
+      model: DISPATCH_GROQ_MODEL,
+      status: err.status || null,
+      message: err?.error?.message || err.message,
+    });
+  }
+
+  try {
+    const geminiResult = await requestDispatchTemplateFromGemini(rawText, sourceFile);
+    return {
+      model: geminiResult.model,
+      text: mergeDispatchTextWithParsedFields(parsedFields, geminiResult.text),
+    };
+  } catch (err) {
+    if (Array.isArray(err?.attemptErrors) && err.attemptErrors.length > 0) {
+      err.attemptErrors.forEach((attempt) => {
+        attemptErrors.push({
+          provider: 'gemini',
+          model: attempt.model,
+          status: attempt.status || null,
+          message: attempt.message,
+        });
+      });
+    } else {
+      attemptErrors.push({
+        provider: 'gemini',
+        model: 'gemini',
+        status: err.status || null,
+        message: err?.error?.message || err.message,
+      });
+    }
+  }
+
+  if (deterministicIsUsable) {
+    return {
+      model: 'deterministic-parser',
+      text: deterministicText,
+      fallback: true,
+    };
+  }
+
+  const failure = new Error(buildFriendlyDispatchFailure(attemptErrors));
   failure.attemptErrors = attemptErrors;
   throw failure;
 }
@@ -696,11 +1054,14 @@ app.post('/api/dispatch/parse-rate-con', (req, res) => {
         extractedText: rawText,
         filename: req.file.originalname,
         model: formatted.model,
+        fallback: Boolean(formatted.fallback),
       });
     } catch (parseErr) {
       const detail = parseErr?.error?.message || parseErr.message;
-      console.error('[API] Dispatch parse error:', detail);
-      res.status(500).json({ error: 'Failed to parse rate confirmation', detail });
+      console.error('[API] Dispatch parse error:', detail, parseErr?.attemptErrors || []);
+      res.status(500).json({
+        error: detail || 'Could not parse that rate confirmation right now. Please try again shortly.',
+      });
     }
   });
 });
