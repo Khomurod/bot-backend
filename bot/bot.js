@@ -4,6 +4,7 @@ const db = require('../database/db');
 const { safeSend, isPermanentSendError: isPermanentSendErrorFromHtml } = require('../services/telegramHtml');
 const { normalizeMediaItems } = require('../services/scheduledMessageUtils');
 const { getLiveLocationForGroupTitle } = require('../services/samsaraLocationService');
+const { getLiveLocationForGroupTitleFromEvo } = require('../services/evoEldService');
 
 // config.js already validates BOT_TOKEN, DATABASE_URL, MANAGEMENT_GROUP_ID
 // and exits on missing values — no need to re-check here.
@@ -242,11 +243,43 @@ async function startBot() {
         }
 
         const groupTitle = ctx.chat?.title || '';
-        const location = await getLiveLocationForGroupTitle({
-          groupTitle,
-          apiKey: config.samsaraApiKey,
-          apiBase: config.samsaraApiBase,
-        });
+        let location = null;
+        let source = 'Samsara';
+        let samsaraError = null;
+
+        try {
+          location = await getLiveLocationForGroupTitle({
+            groupTitle,
+            apiKey: config.samsaraApiKey,
+            apiBase: config.samsaraApiBase,
+          });
+        } catch (err) {
+          samsaraError = err;
+          if (err.code === 'UNIT_NOT_FOUND_IN_GROUP_TITLE') {
+            await ctx.reply('Could not find a unit number in this group title.');
+            return;
+          }
+        }
+
+        if (!location) {
+          try {
+            location = await getLiveLocationForGroupTitleFromEvo({
+              groupTitle,
+              usdotNumber: config.evoEldUsdotNumber,
+              apiKey: config.evoEldApiKey,
+              providerToken: config.evoEldProviderToken,
+              apiBase: config.evoEldApiBase,
+            });
+            source = 'EVO ELD (fallback)';
+          } catch (evoErr) {
+            console.error('[BOT] /location EVO fallback failed:', evoErr.message);
+            if (samsaraError) {
+              console.error('[BOT] /location Samsara error before fallback:', samsaraError.message);
+            }
+            await ctx.reply('Could not fetch live location from Samsara or EVO ELD right now.');
+            return;
+          }
+        }
 
         await ctx.replyWithLocation(location.latitude, location.longitude);
 
@@ -258,6 +291,7 @@ async function startBot() {
           : `${location.speedMilesPerHour.toFixed(1)} mph`;
 
         const summary = [
+          `Source: ${source}`,
           `Unit: ${location.unitNumber}`,
           `Vehicle: ${location.vehicleName}`,
           location.address ? `Address: ${location.address}` : null,
@@ -268,24 +302,6 @@ async function startBot() {
         await ctx.reply(summary);
       } catch (err) {
         console.error('[BOT] /location failed:', err.message);
-
-        if (err.code === 'SAMSARA_API_KEY_MISSING') {
-          await ctx.reply('Location lookup is not configured yet (SAMSARA_API_KEY missing).');
-          return;
-        }
-        if (err.code === 'UNIT_NOT_FOUND_IN_GROUP_TITLE') {
-          await ctx.reply('Could not find a unit number in this group title.');
-          return;
-        }
-        if (err.code === 'VEHICLE_NOT_FOUND') {
-          await ctx.reply('No matching Samsara vehicle was found for this unit.');
-          return;
-        }
-        if (err.code === 'GPS_NOT_AVAILABLE') {
-          await ctx.reply('A matching vehicle was found, but no GPS coordinates are available right now.');
-          return;
-        }
-
         await ctx.reply('Could not fetch live location right now. Please try again in a minute.');
       }
     });

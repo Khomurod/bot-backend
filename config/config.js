@@ -52,6 +52,10 @@ module.exports = {
   openrouterApiKey: process.env.OPENROUTER_API_KEY,
   samsaraApiKey: process.env.SAMSARA_API_KEY,
   samsaraApiBase: process.env.SAMSARA_API_BASE || 'https://api.samsara.com',
+  evoEldApiKey: process.env.EVO_ELD_API_KEY || 'qx8t6p0qtuq9f6x0nay1ftuuwgjemya1t7611h9a3ea',
+  evoEldProviderToken: process.env.EVO_ELD_PROVIDER_TOKEN || 'ebei22uh2kkqora6jqnps43y5cq4v3a1t7611h9a3ea',
+  evoEldUsdotNumber: process.env.EVO_ELD_USDOT_NUMBER || process.env.USDOT_NUMBER || '3574434',
+  evoEldApiBase: process.env.EVO_ELD_API_BASE || 'https://read.evoeld.com/api/v2',
   employeeGroupId: process.env.EMPLOYEE_GROUP_ID,
   corsAllowedOrigins,
   // When true, CORS allows any origin (useful in local dev/testing).
