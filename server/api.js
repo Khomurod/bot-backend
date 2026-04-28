@@ -82,6 +82,7 @@ const DISPATCH_SYSTEM_PROMPT = [
   'Extract the load details and output ONLY the template below.',
   'Do not add any conversational filler, explanations, markdown, or code fences.',
   'Keep the labels, spacing, and line breaks exactly as shown.',
+  'Do not include any extra warning, safety, tracking, or call-answer reminder lines.',
   'If a field is missing, leave it blank after the colon.',
   'If there are multiple pickup or delivery stops, use the first pickup for PU and the final delivery for DEL.',
   'Extract the rate from the document and place it on the final Rate line in dollar format.',
@@ -113,6 +114,12 @@ const DISPATCH_SYSTEM_PROMPT = [
   'Total miles :',
   'Rate: $[Amount]',
 ].join('\n');
+const DISPATCH_SYSTEM_PROMPT_CLEAN = DISPATCH_SYSTEM_PROMPT
+  .replace(/^.*MUST SECURE FREIGHT WITH STRAPS.*\r?\n?/gim, '')
+  .replace(/^.*ANSWER WHEN BROKERS CALLS.*\r?\n?/gim, '')
+  .replace(/^.*Must Accept tracking !.*\r?\n?/gim, '')
+  .replace(/\n{3,}/g, '\n\n')
+  .trim();
 
 const app = express();
 
@@ -252,6 +259,27 @@ function stripMarkdownFences(text) {
     .trim();
 }
 
+function sanitizeDispatchOutput(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .filter((line) => {
+      const normalized = line
+        .replace(/[^\w\s:!$#./-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+
+      if (!normalized) return true;
+      if (normalized.includes('must secure freight with straps')) return false;
+      if (normalized.includes('answer when brokers calls')) return false;
+      if (normalized.includes('must accept tracking')) return false;
+      return true;
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 async function extractTextFromPdf(buffer) {
   const parser = new PDFParse({ data: buffer });
   try {
@@ -278,7 +306,7 @@ async function extractTextFromImage(buffer) {
 
 async function formatDispatchRateConfirmation(rawText) {
   const messages = [
-    { role: 'system', content: DISPATCH_SYSTEM_PROMPT },
+    { role: 'system', content: DISPATCH_SYSTEM_PROMPT_CLEAN },
     {
       role: 'user',
       content: [
@@ -301,7 +329,9 @@ async function formatDispatchRateConfirmation(rawText) {
       });
       return {
         model,
-        text: stripMarkdownFences(completion.choices?.[0]?.message?.content || ''),
+        text: sanitizeDispatchOutput(
+          stripMarkdownFences(completion.choices?.[0]?.message?.content || '')
+        ),
       };
     } catch (err) {
       attemptErrors.push({
