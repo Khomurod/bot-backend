@@ -55,7 +55,10 @@ export function logout() {
 }
 
 export async function getGroups() {
-  const res = await fetch(`${API_BASE}/groups`, { headers: getHeaders() });
+  const token = localStorage.getItem('token');
+  const endpoint = token ? `${API_BASE}/groups` : `${API_BASE}/dispatch/groups`;
+  const headers = token ? getHeaders() : {};
+  const res = await fetch(endpoint, { headers });
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
@@ -276,6 +279,15 @@ export async function parseDispatchRateCon(file) {
   const res = await fetch(`${API_BASE}/dispatch/parse-rate-con`, {
     method: 'POST',
     headers: getAuthHeader(),
+    body: formData,
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function sendDispatchToTelegram(formData) {
+  const res = await fetch(`${API_BASE}/dispatch/send-to-telegram`, {
+    method: 'POST',
     body: formData,
   });
   if (!res.ok) { await handleApiError(res); }

@@ -56,6 +56,10 @@ function createUploadMiddleware(allowedMimeTypes, allowedTypesLabel) {
 
 const upload = createUploadMiddleware(MEDIA_UPLOAD_MIME_TYPES, 'jpg, png, webp, mp4, mov');
 const dispatchUpload = createUploadMiddleware(DISPATCH_UPLOAD_MIME_TYPES, 'pdf, jpg, png, webp');
+const dispatchDocumentUpload = multer({
+  storage: uploadStorage,
+  limits: uploadLimits,
+});
 const adminBuildDir = path.join(__dirname, '..', 'admin', 'build');
 const dispatchAiClient = new OpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
@@ -80,6 +84,7 @@ const DISPATCH_SYSTEM_PROMPT = [
   'Keep the labels, spacing, and line breaks exactly as shown.',
   'If a field is missing, leave it blank after the colon.',
   'If there are multiple pickup or delivery stops, use the first pickup for PU and the final delivery for DEL.',
+  'Extract the rate from the document and place it on the final Rate line in dollar format.',
   'For miles, never invent route distances. Only use mile values present in the document.',
   'If Total miles is missing but Empty miles and Loaded miles are both present, calculate Total miles as their sum.',
   'Template:',
@@ -106,6 +111,7 @@ const DISPATCH_SYSTEM_PROMPT = [
   'Empty miles :',
   'Loaded miles :',
   'Total miles :',
+  'Rate: $[Amount]',
 ].join('\n');
 
 const app = express();
@@ -290,7 +296,7 @@ async function formatDispatchRateConfirmation(rawText) {
       const completion = await dispatchAiClient.chat.completions.create({
         model,
         temperature: 0.1,
-        max_tokens: 700,
+        max_tokens: 1000,
         messages,
       });
       return {
@@ -553,6 +559,67 @@ app.post('/api/dispatch/parse-rate-con', (req, res) => {
       const detail = parseErr?.error?.message || parseErr.message;
       console.error('[API] Dispatch parse error:', detail);
       res.status(500).json({ error: 'Failed to parse rate confirmation', detail });
+    }
+  });
+});
+
+// GET /api/dispatch/groups
+app.get('/api/dispatch/groups', async (req, res) => {
+  try {
+    const groups = await db.getAllDriverGroups();
+    res.json({
+      managementGroupId: config.managementGroupId,
+      groups: groups.map((group) => ({
+        id: group.id,
+        group_name: group.group_name,
+        telegram_group_id: group.telegram_group_id,
+        driver_first_name: group.driver_first_name || '',
+        driver_last_name: group.driver_last_name || '',
+      })),
+    });
+  } catch (err) {
+    console.error('[API] Error fetching dispatch groups:', err.message);
+    res.status(500).json({ error: 'Failed to fetch dispatch groups' });
+  }
+});
+
+// POST /api/dispatch/send-to-telegram
+app.post('/api/dispatch/send-to-telegram', (req, res) => {
+  dispatchDocumentUpload.single('document')(req, res, async (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: `File too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.` });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+
+    const chatId = String(req.body?.chatId || '').trim();
+    const messageText = typeof req.body?.messageText === 'string' ? req.body.messageText.trim() : '';
+
+    if (!chatId) {
+      return res.status(400).json({ error: 'chatId is required' });
+    }
+    if (!messageText) {
+      return res.status(400).json({ error: 'messageText is required' });
+    }
+
+    try {
+      await bot.telegram.sendMessage(chatId, messageText);
+
+      if (req.file) {
+        const fileSource = { source: req.file.buffer, filename: req.file.originalname };
+        if (req.file.mimetype.startsWith('image/')) {
+          await bot.telegram.sendPhoto(chatId, fileSource);
+        } else {
+          await bot.telegram.sendDocument(chatId, fileSource);
+        }
+      }
+
+      res.json({ success: true, documentSent: Boolean(req.file) });
+    } catch (sendErr) {
+      const detail = sendErr.response?.description || sendErr.message;
+      console.error('[API] Dispatch Telegram send error:', detail);
+      res.status(500).json({ error: 'Failed to send dispatch load to Telegram', detail });
     }
   });
 });

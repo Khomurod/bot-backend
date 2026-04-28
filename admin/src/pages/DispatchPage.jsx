@@ -26,12 +26,114 @@ function normalizeClipboardFile(file) {
   );
 }
 
+function formatGroupLabel(group) {
+  const driverName = [group.driver_first_name, group.driver_last_name]
+    .filter(Boolean)
+    .join(" ");
+  const namePart = driverName
+    ? `${group.group_name} - ${driverName}`
+    : group.group_name;
+  return `${namePart} | ${group.telegram_group_id}`;
+}
+
+function stripRateLine(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .filter((line) => !/^Rate:\s*/i.test(line.trim()))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function resolveChatId(groupInput, groups) {
+  const trimmed = String(groupInput || "").trim();
+  if (!trimmed) return "";
+
+  const exactMatch = groups.find(
+    (group) =>
+      group.label === trimmed ||
+      group.group_name === trimmed ||
+      String(group.telegram_group_id || "") === trimmed
+  );
+  if (exactMatch) {
+    return String(exactMatch.telegram_group_id || "").trim();
+  }
+
+  const idMatch = trimmed.match(/(@[A-Za-z0-9_]+|-?\d+)\s*$/);
+  return idMatch ? idMatch[1] : trimmed;
+}
+
 export default function DispatchPage() {
   const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
   const [message, setMessage] = useState(null);
   const [resultText, setResultText] = useState("");
   const [activeFileName, setActiveFileName] = useState("");
+  const [sourceFile, setSourceFile] = useState(null);
   const [copying, setCopying] = useState(false);
+  const [groups, setGroups] = useState([]);
+  const [selectedGroupInput, setSelectedGroupInput] = useState("");
+  const [withRate, setWithRate] = useState(true);
+  const [withRateConfirmation, setWithRateConfirmation] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadGroups = async () => {
+      try {
+        const data = await api.getGroups();
+        if (!isMounted) return;
+
+        const rawGroups = Array.isArray(data) ? data : Array.isArray(data?.groups) ? data.groups : [];
+        const managementGroupId = Array.isArray(data)
+          ? ""
+          : String(data?.managementGroupId || "").trim();
+
+        const managementGroup = {
+          id: "management-group",
+          group_name: "Management Group",
+          telegram_group_id: managementGroupId,
+          driver_first_name: "",
+          driver_last_name: "",
+          label: managementGroupId
+            ? `Management Group | ${managementGroupId}`
+            : "Management Group | Paste chat ID manually",
+        };
+
+        const mappedGroups = rawGroups.map((group) => ({
+          ...group,
+          label: formatGroupLabel(group),
+        }));
+
+        const uniqueGroups = mappedGroups.filter(
+          (group) => String(group.telegram_group_id || "") !== managementGroupId
+        );
+        const nextGroups = [managementGroup, ...uniqueGroups];
+
+        setGroups(nextGroups);
+        setSelectedGroupInput((current) => (
+          current || (managementGroupId ? managementGroup.label : current)
+        ));
+      } catch (err) {
+        if (!isMounted) return;
+        setGroups([
+          {
+            id: "management-group",
+            group_name: "Management Group",
+            telegram_group_id: "",
+            driver_first_name: "",
+            driver_last_name: "",
+            label: "Management Group | Paste chat ID manually",
+          },
+        ]);
+      }
+    };
+
+    loadGroups();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const uploadFile = useCallback(async (inputFile) => {
     const file = normalizeClipboardFile(inputFile);
@@ -45,6 +147,7 @@ export default function DispatchPage() {
     setLoading(true);
     setMessage(null);
     setActiveFileName(file.name);
+    setSourceFile(file);
 
     try {
       const data = await api.parseDispatchRateCon(file);
@@ -96,6 +199,43 @@ export default function DispatchPage() {
       setMessage({ type: "error", text: "Copy failed. Please copy the text manually." });
     } finally {
       setCopying(false);
+    }
+  };
+
+  const handleSendToTelegram = async () => {
+    const chatId = resolveChatId(selectedGroupInput, groups);
+    if (!chatId) {
+      setMessage({ type: "error", text: "Select a group from the list or paste a valid Telegram chat ID." });
+      return;
+    }
+
+    let finalText = resultText.trim();
+    if (!finalText) {
+      setMessage({ type: "error", text: "There is no parsed load text to send yet." });
+      return;
+    }
+
+    if (!withRate) {
+      finalText = stripRateLine(finalText);
+    }
+
+    const formData = new FormData();
+    formData.append("chatId", chatId);
+    formData.append("messageText", finalText);
+    if (withRateConfirmation && sourceFile) {
+      formData.append("document", sourceFile);
+    }
+
+    setSending(true);
+    setMessage(null);
+
+    try {
+      await api.sendDispatchToTelegram(formData);
+      setMessage({ type: "success", text: "Dispatch load sent to Telegram successfully." });
+    } catch (err) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setSending(false);
     }
   };
 
@@ -192,6 +332,55 @@ export default function DispatchPage() {
               whiteSpace: "pre-wrap",
             }}
           />
+
+          <div style={{ display: "grid", gap: "16px", marginTop: "24px" }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label>Telegram Group</label>
+              <input
+                type="text"
+                className="form-input"
+                list="dispatch-group-options"
+                value={selectedGroupInput}
+                onChange={(event) => setSelectedGroupInput(event.target.value)}
+                placeholder="Search a group name or paste a chat ID"
+              />
+              <datalist id="dispatch-group-options">
+                {groups.map((group) => (
+                  <option key={group.id || group.label} value={group.label} />
+                ))}
+              </datalist>
+            </div>
+
+            <div style={{ display: "flex", gap: "20px", flexWrap: "wrap" }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: "8px", color: "var(--text-secondary)" }}>
+                <input
+                  type="checkbox"
+                  checked={withRate}
+                  onChange={(event) => setWithRate(event.target.checked)}
+                />
+                With Rate
+              </label>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: "8px", color: "var(--text-secondary)" }}>
+                <input
+                  type="checkbox"
+                  checked={withRateConfirmation}
+                  onChange={(event) => setWithRateConfirmation(event.target.checked)}
+                />
+                With Rate Confirmation
+              </label>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="btn btn-success"
+                onClick={handleSendToTelegram}
+                disabled={sending || !resultText.trim()}
+              >
+                {sending ? "Sending..." : "Send to Telegram"}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
