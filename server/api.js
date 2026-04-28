@@ -314,8 +314,9 @@ async function extractTextFromImage(buffer) {
 
 async function calculateDrivingMiles(origin, destination) {
   async function geocode(place) {
+    const query = encodeURIComponent(place.replace(/,\s*US(?:A)?$/i, '').trim() + ', USA');
     const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(place)}&format=json&limit=1`,
+      `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`,
       {
         headers: {
           'User-Agent': 'DispatchBot/1.0',
@@ -756,15 +757,26 @@ function buildFriendlyDispatchFailure(attemptErrors) {
   return 'Could not fully parse that rate confirmation right now. Please try the PDF again or paste a clear screenshot.';
 }
 
-function mergeDispatchTextWithParsedFields(parsedFields, aiText) {
+async function enrichWithMiles(fields) {
+  if (!fields.loadedMiles && fields.pickupCity && fields.deliveryCity) {
+    const miles = await calculateDrivingMiles(fields.pickupCity, fields.deliveryCity);
+    if (miles) {
+      fields.loadedMiles = miles;
+      fields.totalMiles = miles;
+    }
+  }
+  return fields;
+}
+
+async function mergeDispatchTextWithParsedFields(parsedFields, aiText) {
   const cleanedText = sanitizeDispatchOutput(stripMarkdownFences(aiText));
   if (!dispatchTextHasEnoughData(cleanedText)) {
     throw new Error('AI provider returned an incomplete dispatch template');
   }
 
-  return formatDispatchTemplate(
-    mergeDispatchFields(parsedFields, parseDispatchTemplate(cleanedText))
-  );
+  const merged = mergeDispatchFields(parsedFields, parseDispatchTemplate(cleanedText));
+  const enriched = await enrichWithMiles(merged);
+  return formatDispatchTemplate(enriched);
 }
 
 function buildDispatchFieldsFromObject(aiObject) {
@@ -940,24 +952,17 @@ async function requestDispatchTemplateFromGemini(rawText, sourceFile) {
 
 async function formatDispatchRateConfirmation(rawText, sourceFile) {
   const parsedFields = extractDispatchFields(rawText);
-  if (parsedFields.pickupCity && parsedFields.deliveryCity) {
-    const calculatedMiles = await calculateDrivingMiles(parsedFields.pickupCity, parsedFields.deliveryCity);
-    if (calculatedMiles) {
-      parsedFields.loadedMiles = calculatedMiles;
-      parsedFields.totalMiles = calculatedMiles;
-    }
-  }
   const deterministicText = formatDispatchTemplate(parsedFields);
   const deterministicIsUsable = dispatchFieldsHaveCoreData(parsedFields) && dispatchTextHasEnoughData(deterministicText);
   const attemptErrors = [];
 
   try {
     const groqResult = await requestDispatchTemplateFromGroq(rawText);
+    const merged = mergeDispatchFields(parsedFields, groqResult.fields);
+    const enriched = await enrichWithMiles(merged);
     return {
       model: groqResult.model,
-      text: formatDispatchTemplate(
-        mergeDispatchFields(parsedFields, groqResult.fields)
-      ),
+      text: formatDispatchTemplate(enriched),
     };
   } catch (err) {
     attemptErrors.push({
@@ -972,7 +977,7 @@ async function formatDispatchRateConfirmation(rawText, sourceFile) {
     const geminiResult = await requestDispatchTemplateFromGemini(rawText, sourceFile);
     return {
       model: geminiResult.model,
-      text: mergeDispatchTextWithParsedFields(parsedFields, geminiResult.text),
+      text: await mergeDispatchTextWithParsedFields(parsedFields, geminiResult.text),
     };
   } catch (err) {
     if (Array.isArray(err?.attemptErrors) && err.attemptErrors.length > 0) {
