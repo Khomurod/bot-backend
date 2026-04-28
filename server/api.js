@@ -60,8 +60,17 @@ const adminBuildDir = path.join(__dirname, '..', 'admin', 'build');
 const dispatchAiClient = new OpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
   apiKey: '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',
+  defaultHeaders: {
+    'X-Title': 'Driver Feedback Dispatch Assistant',
+  },
 });
-const DISPATCH_MODEL = 'meta-llama/llama-3-8b-instruct:free';
+const DISPATCH_MODELS = [
+  'openai/gpt-oss-20b:free',
+  'openai/gpt-oss-120b:free',
+  'liquid/lfm-2.5-1.2b-instruct:free',
+  'meta-llama/llama-3.2-3b-instruct:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+];
 const DISPATCH_SYSTEM_PROMPT = [
   'You are a trucking dispatch assistant formatting freight broker rate confirmations.',
   'You will receive raw PDF or OCR text from a rate confirmation.',
@@ -262,25 +271,47 @@ async function extractTextFromImage(buffer) {
 }
 
 async function formatDispatchRateConfirmation(rawText) {
-  const completion = await dispatchAiClient.chat.completions.create({
-    model: DISPATCH_MODEL,
-    temperature: 0.1,
-    max_tokens: 700,
-    messages: [
-      { role: 'system', content: DISPATCH_SYSTEM_PROMPT },
-      {
-        role: 'user',
-        content: [
-          'Raw rate confirmation text:',
-          '<rate_confirmation>',
-          rawText.slice(0, 120000),
-          '</rate_confirmation>',
-        ].join('\n'),
-      },
-    ],
-  });
+  const messages = [
+    { role: 'system', content: DISPATCH_SYSTEM_PROMPT },
+    {
+      role: 'user',
+      content: [
+        'Raw rate confirmation text:',
+        '<rate_confirmation>',
+        rawText.slice(0, 120000),
+        '</rate_confirmation>',
+      ].join('\n'),
+    },
+  ];
+  const attemptErrors = [];
 
-  return stripMarkdownFences(completion.choices?.[0]?.message?.content || '');
+  for (const model of DISPATCH_MODELS) {
+    try {
+      const completion = await dispatchAiClient.chat.completions.create({
+        model,
+        temperature: 0.1,
+        max_tokens: 700,
+        messages,
+      });
+      return {
+        model,
+        text: stripMarkdownFences(completion.choices?.[0]?.message?.content || ''),
+      };
+    } catch (err) {
+      attemptErrors.push({
+        model,
+        status: err.status || null,
+        message: err?.error?.message || err.message,
+      });
+    }
+  }
+
+  const summary = attemptErrors
+    .map((attempt) => `${attempt.model} (${attempt.status || 'n/a'}: ${attempt.message})`)
+    .join('; ');
+  const failure = new Error(`All dispatch models failed: ${summary}`);
+  failure.attemptErrors = attemptErrors;
+  throw failure;
 }
 
 // POST /api/auth/login
@@ -496,15 +527,16 @@ app.post('/api/dispatch/parse-rate-con', authMiddleware, (req, res) => {
         return res.status(422).json({ error: 'No text could be extracted from that file.' });
       }
 
-      const formattedText = await formatDispatchRateConfirmation(rawText);
-      if (!formattedText) {
+      const formatted = await formatDispatchRateConfirmation(rawText);
+      if (!formatted.text) {
         return res.status(502).json({ error: 'The AI model returned an empty response.' });
       }
 
       res.json({
-        text: formattedText,
+        text: formatted.text,
         extractedText: rawText,
         filename: req.file.originalname,
+        model: formatted.model,
       });
     } catch (parseErr) {
       const detail = parseErr?.error?.message || parseErr.message;
