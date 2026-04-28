@@ -7,6 +7,13 @@ const {
   computePingAgeMinutes,
 } = require('./samsaraLocationService');
 
+let reverseGeocode = null;
+try {
+  ({ reverseGeocode } = require('../samsara-integration/src/geocoder'));
+} catch (_) {
+  reverseGeocode = null;
+}
+
 function pickCoordinates(unit) {
   const lat = unit?.coordinates?.lat ?? unit?.coordinates?.latitude ?? unit?.lat ?? unit?.latitude ?? null;
   const lng = unit?.coordinates?.lng ?? unit?.coordinates?.lon ?? unit?.coordinates?.longitude ?? unit?.lng ?? unit?.lon ?? unit?.longitude ?? null;
@@ -39,6 +46,17 @@ function findUnitByTruckNumber(units, unitNumber) {
     const bTs = Date.parse(b?.timestamp || 0) || 0;
     return bTs - aTs;
   })[0];
+}
+
+async function resolveAddressFromCoordinates(coords) {
+  if (typeof reverseGeocode !== 'function') return null;
+  if (!coords || typeof coords.latitude !== 'number' || typeof coords.longitude !== 'number') return null;
+
+  try {
+    return await reverseGeocode(coords.latitude, coords.longitude);
+  } catch (_) {
+    return null;
+  }
 }
 
 async function fetchUnitsByUsdot({
@@ -163,7 +181,7 @@ async function getLiveLocationForGroupTitleFromEvo({
     pingAgeMinutes: computePingAgeMinutes(unit.timestamp || null),
     speedMilesPerHour: null,
     headingDegrees: typeof unit.rotation === 'number' ? unit.rotation : null,
-    address: null,
+    address: await resolveAddressFromCoordinates(coords),
     rawUnit: unit,
   };
 }

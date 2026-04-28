@@ -287,7 +287,7 @@ async function startBot() {
           ? 'unknown'
           : `${location.pingAgeMinutes} min ago`;
         const speedText = location.speedMilesPerHour == null
-          ? null
+          ? 'unknown'
           : `${location.speedMilesPerHour.toFixed(1)} mph`;
 
         const summary = [
@@ -296,7 +296,7 @@ async function startBot() {
           `Vehicle: ${location.vehicleName}`,
           location.address ? `Address: ${location.address}` : null,
           `Last ping: ${pingAgeText}${location.pingTimeIso ? ` (${location.pingTimeIso})` : ''}`,
-          speedText ? `Speed: ${speedText}` : null,
+          `Speed: ${speedText}`,
         ].filter(Boolean).join('\n');
 
         await ctx.reply(summary);
