@@ -8,8 +8,16 @@ const MAX_INLINE_GEMINI_FILE_BYTES = 14 * 1024 * 1024;
 const PDF_OCR_MAX_PAGES = 3;
 const DISPATCH_GEMINI_MODELS = [
   'gemini-2.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-2.5-flash-lite',
+  'gemini-3-flash',
+  'gemini-3.1-flash',
   'gemini-2.0-flash',
+  'gemma-3-12b-it',
+  'gemma-3-4b-it',
+  'gemma-3-1b-it',
 ];
+const GEMINI_MAX_ATTEMPTS_PER_MODEL = 2;
 const DISPATCH_WARNING_LINES = [
   '🛑MUST SECURE FREIGHT WITH STRAPS',
   '🛑ANSWER WHEN BROKERS CALLS',
@@ -265,6 +273,25 @@ function isGroqTransientError(status, message) {
     || /too many requests/i.test(message || '')
     || /service unavailable/i.test(message || '')
     || /try again/i.test(message || '');
+}
+
+function isGeminiQuotaExhaustedError(status, message) {
+  if (status !== 429) return false;
+  const normalized = String(message || '').toLowerCase();
+  return normalized.includes('quota')
+    || normalized.includes('resource_exhausted')
+    || normalized.includes('limit')
+    || normalized.includes('daily')
+    || normalized.includes('exceeded');
+}
+
+function isGeminiTransientError(status, message) {
+  const normalized = String(message || '').toLowerCase();
+  return status === 503
+    || status >= 500
+    || normalized.includes('high demand')
+    || normalized.includes('try again')
+    || normalized.includes('temporarily unavailable');
 }
 
 function safeParseJsonObject(text) {
@@ -739,6 +766,11 @@ function formatDispatchTemplate(fields) {
 
 function dispatchTextHasEnoughData(text) {
   const fields = parseDispatchTemplate(text);
+  const filledCount = countDispatchFilledFields(fields);
+  return filledCount >= 8;
+}
+
+function countDispatchFilledFields(fields) {
   const filledCount = [
     fields.loadType,
     fields.loadNumber,
@@ -756,7 +788,7 @@ function dispatchTextHasEnoughData(text) {
     fields.totalMiles,
     fields.rate,
   ].filter(Boolean).length;
-  return filledCount >= 8;
+  return filledCount;
 }
 
 function dispatchFieldsHaveCoreData(fields) {
@@ -924,65 +956,82 @@ async function requestDispatchTemplateFromGemini(rawText, sourceFile) {
   const attemptErrors = [];
 
   for (const model of DISPATCH_GEMINI_MODELS) {
-    try {
-      const generationConfig = {
-        maxOutputTokens: 1000,
-        responseMimeType: 'text/plain',
-      };
-      if (!/^gemini-3/i.test(model)) {
-        generationConfig.temperature = 0.1;
-      }
-
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': GEMINI_API_KEY,
-          },
-          body: JSON.stringify({
-            system_instruction: {
-              parts: [
-                {
-                  text: DISPATCH_SYSTEM_PROMPT_CLEAN,
-                },
-              ],
-            },
-            contents,
-            generationConfig,
-          }),
+    for (let attempt = 0; attempt < GEMINI_MAX_ATTEMPTS_PER_MODEL; attempt += 1) {
+      try {
+        const generationConfig = {
+          maxOutputTokens: 1000,
+          responseMimeType: 'text/plain',
+        };
+        if (!/^gemini-3/i.test(model)) {
+          generationConfig.temperature = 0.1;
         }
-      );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const apiMessage = payload?.error?.message || `Gemini request failed with status ${response.status}`;
-        const failure = new Error(apiMessage);
-        failure.status = response.status;
-        throw failure;
+
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': GEMINI_API_KEY,
+            },
+            body: JSON.stringify({
+              system_instruction: {
+                parts: [
+                  {
+                    text: DISPATCH_SYSTEM_PROMPT_CLEAN,
+                  },
+                ],
+              },
+              contents,
+              generationConfig,
+            }),
+          }
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const apiMessage = payload?.error?.message || `Gemini request failed with status ${response.status}`;
+          const failure = new Error(apiMessage);
+          failure.status = response.status;
+          failure.retryAfterMs = parseRetryAfterMs(response);
+          throw failure;
+        }
+
+        const text = (payload?.candidates || [])
+          .flatMap((candidate) => candidate?.content?.parts || [])
+          .map((part) => part?.text || '')
+          .join('')
+          .trim();
+
+        if (!text) {
+          const finishReason = payload?.candidates?.[0]?.finishReason || 'UNKNOWN';
+          throw new Error(`Gemini returned an empty response (finish reason: ${finishReason})`);
+        }
+
+        return {
+          model,
+          text,
+        };
+      } catch (err) {
+        const status = err.status || null;
+        const message = err?.error?.message || err.message;
+        attemptErrors.push({
+          model,
+          status,
+          message,
+        });
+
+        if (isGeminiQuotaExhaustedError(status, message)) {
+          break;
+        }
+
+        if (attempt + 1 < GEMINI_MAX_ATTEMPTS_PER_MODEL && isGeminiTransientError(status, message)) {
+          const waitMs = err.retryAfterMs || 750;
+          await sleep(waitMs);
+          continue;
+        }
+
+        break;
       }
-
-      const text = (payload?.candidates || [])
-        .flatMap((candidate) => candidate?.content?.parts || [])
-        .map((part) => part?.text || '')
-        .join('')
-        .trim();
-
-      if (!text) {
-        const finishReason = payload?.candidates?.[0]?.finishReason || 'UNKNOWN';
-        throw new Error(`Gemini returned an empty response (finish reason: ${finishReason})`);
-      }
-
-      return {
-        model,
-        text,
-      };
-    } catch (err) {
-      attemptErrors.push({
-        model,
-        status: err.status || null,
-        message: err?.error?.message || err.message,
-      });
     }
   }
 
@@ -1087,6 +1136,15 @@ async function formatDispatchRateConfirmation(rawText, sourceFile, options = {})
   }
 
   if (deterministicIsUsable) {
+    return {
+      model: 'deterministic-parser',
+      text: deterministicText,
+      fallback: true,
+    };
+  }
+
+  const deterministicFallbackCount = countDispatchFilledFields(parseDispatchTemplate(deterministicText));
+  if (deterministicFallbackCount >= 6) {
     return {
       model: 'deterministic-parser',
       text: deterministicText,

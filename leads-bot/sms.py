@@ -15,6 +15,49 @@ logger = logging.getLogger(__name__)
 # Cache the access token so we don't re-auth on every SMS
 _cached_token: dict = {"access_token": "", "expires_at": 0}
 
+# Base URL for relative attachment URIs from webhook payloads
+RC_PLATFORM_BASE = "https://platform.ringcentral.com"
+
+# Subscriptions must include these filters so inbound SMS and MMS (photos) are delivered.
+RC_INBOUND_SMS_MMS_FILTERS: tuple[str, ...] = (
+    "/restapi/v1.0/account/~/extension/~/message-store/instant?type=SMS",
+    "/restapi/v1.0/account/~/extension/~/message-store/instant?type=MMS",
+)
+
+
+def resolve_ringcentral_uri(uri: str) -> str:
+    """Make attachment URIs absolute; RingCentral often returns a path under /restapi/..."""
+    if not uri or not isinstance(uri, str):
+        return ""
+    u = uri.strip()
+    if u.startswith("http://") or u.startswith("https://"):
+        return u
+    if u.startswith("/"):
+        return RC_PLATFORM_BASE + u
+    return RC_PLATFORM_BASE + "/" + u
+
+
+async def download_ringcentral_attachment(uri: str) -> tuple[bytes, str]:
+    """Fetch MMS/SMS attachment bytes using RingCentral OAuth (Bearer).
+
+    Returns (content_bytes, content_type_without_charset).
+    Raises on HTTP errors or missing RC credentials.
+    """
+    if not uri:
+        raise ValueError("empty attachment uri")
+    if not all([RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT_TOKEN]):
+        raise RuntimeError("RingCentral credentials not configured — cannot download MMS attachments.")
+
+    full_uri = resolve_ringcentral_uri(uri)
+    token = await _get_access_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.get(full_uri, headers=headers, follow_redirects=True)
+        resp.raise_for_status()
+        ct = (resp.headers.get("content-type") or "application/octet-stream").split(";")[0].strip()
+        return resp.content, ct
+
 
 async def _get_access_token() -> str:
     """Exchange JWT for a short-lived RingCentral access token.
@@ -100,7 +143,7 @@ async def register_sms_webhook(callback_url: str) -> bool:
         token = await _get_access_token()
         headers = {"Authorization": f"Bearer {token}"}
 
-        # Check for existing subscriptions to avoid duplicates
+        desired = set(RC_INBOUND_SMS_MMS_FILTERS)
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
                 "https://platform.ringcentral.com/restapi/v1.0/subscription",
@@ -110,15 +153,35 @@ async def register_sms_webhook(callback_url: str) -> bool:
                 subs = resp.json().get("records", [])
                 for sub in subs:
                     delivery = sub.get("deliveryMode", {})
-                    if delivery.get("address", "") == callback_url:
-                        logger.info("RingCentral webhook already registered at %s (ID: %s).", callback_url, sub.get("id"))
+                    if delivery.get("address", "") != callback_url:
+                        continue
+                    existing_filters = set(sub.get("eventFilters") or [])
+                    if desired.issubset(existing_filters):
+                        logger.info(
+                            "RingCentral webhook already registered (SMS+MMS) at %s (ID: %s).",
+                            callback_url,
+                            sub.get("id"),
+                        )
                         return True
+                    # Replace stale subscription (e.g. SMS-only) so MMS events are delivered.
+                    sub_id = sub.get("id")
+                    if sub_id:
+                        del_resp = await client.delete(
+                            f"https://platform.ringcentral.com/restapi/v1.0/subscription/{sub_id}",
+                            headers=headers,
+                        )
+                        if del_resp.is_success:
+                            logger.info("Removed outdated RingCentral subscription %s to add MMS filter.", sub_id)
+                        else:
+                            logger.warning(
+                                "Could not delete RingCentral subscription %s (%s): %s",
+                                sub_id,
+                                del_resp.status_code,
+                                del_resp.text[:200],
+                            )
 
-            # Create new subscription
             payload = {
-                "eventFilters": [
-                    "/restapi/v1.0/account/~/extension/~/message-store/instant?type=SMS"
-                ],
+                "eventFilters": list(RC_INBOUND_SMS_MMS_FILTERS),
                 "deliveryMode": {
                     "transportType": "WebHook",
                     "address": callback_url,
@@ -132,11 +195,41 @@ async def register_sms_webhook(callback_url: str) -> bool:
             )
             if resp.is_success:
                 sub_id = resp.json().get("id", "?")
-                logger.info("RingCentral webhook subscription created (ID: %s) → %s", sub_id, callback_url)
+                logger.info(
+                    "RingCentral webhook subscription created (SMS+MMS) (ID: %s) → %s",
+                    sub_id,
+                    callback_url,
+                )
                 return True
-            else:
-                logger.warning("RingCentral webhook registration failed (%s): %s", resp.status_code, resp.text[:300])
-                return False
+            # Some tenants may reject duplicate MMS filter — retry SMS-only for text-only reliability.
+            logger.warning(
+                "RingCentral SMS+MMS subscription failed (%s): %s — retrying SMS-only.",
+                resp.status_code,
+                resp.text[:300],
+            )
+            payload_sms_only = {
+                **payload,
+                "eventFilters": [RC_INBOUND_SMS_MMS_FILTERS[0]],
+            }
+            resp2 = await client.post(
+                "https://platform.ringcentral.com/restapi/v1.0/subscription",
+                json=payload_sms_only,
+                headers=headers,
+            )
+            if resp2.is_success:
+                sub_id = resp2.json().get("id", "?")
+                logger.info(
+                    "RingCentral webhook subscription created (SMS-only fallback) (ID: %s) → %s",
+                    sub_id,
+                    callback_url,
+                )
+                return True
+            logger.warning(
+                "RingCentral webhook registration failed (%s): %s",
+                resp2.status_code,
+                resp2.text[:300],
+            )
+            return False
 
     except Exception as exc:
         logger.error("RingCentral webhook registration error: %s", exc)

@@ -9,8 +9,10 @@ FastAPI webhook server.
 import asyncio
 import hashlib
 import hmac
+import html
 import json
 import logging
+import mimetypes
 import os
 import time
 from collections import OrderedDict
@@ -21,7 +23,7 @@ from fastapi.responses import PlainTextResponse, Response
 
 from config import META_APP_SECRET, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, WEBHOOK_VERIFY_TOKEN
 from graph import fetch_lead, format_lead_message, fetch_sender_profile, format_messenger_message
-from sms import send_sms, register_sms_webhook
+from sms import download_ringcentral_attachment, register_sms_webhook, send_sms
 
 import httpx
 
@@ -165,6 +167,50 @@ async def _send_telegram(text: str) -> int | None:
     return None
 
 
+async def _send_telegram_html(text: str) -> int | None:
+    """Like _send_telegram but parse_mode HTML (for RingCentral forwards with <pre> monospace)."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": text,
+        "parse_mode": "HTML",
+    }
+
+    for attempt in range(2):
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(url, json=payload)
+                if not resp.is_success:
+                    logger.warning(
+                        "Telegram HTML send failed (attempt %d), retrying without parse_mode: %s",
+                        attempt + 1,
+                        resp.text,
+                    )
+                    payload.pop("parse_mode", None)
+                    resp2 = await client.post(url, json=payload)
+                    if not resp2.is_success:
+                        if attempt == 0:
+                            logger.warning("Telegram send failed (attempt 1), retrying in 2s...")
+                            await asyncio.sleep(2)
+                            payload["parse_mode"] = "HTML"
+                            continue
+                        logger.error("Telegram send failed completely: %s", resp2.text)
+                        return None
+                    logger.info("Telegram message sent (plain text fallback).")
+                    return resp2.json().get("result", {}).get("message_id")
+                logger.info("Telegram HTML message sent successfully.")
+                return resp.json().get("result", {}).get("message_id")
+        except Exception as exc:
+            if attempt == 0:
+                logger.warning("Telegram send exception (attempt 1): %s, retrying in 2s...", exc)
+                await asyncio.sleep(2)
+                continue
+            logger.error("Telegram send failed after retry: %s", exc)
+            return None
+
+    return None
+
+
 async def _edit_telegram(message_id: int, new_text: str) -> None:
     """Edit an existing Telegram message (to append SMS status).
     
@@ -191,6 +237,248 @@ async def _edit_telegram(message_id: int, new_text: str) -> None:
                 logger.info("Telegram message edited with SMS status.")
     except Exception as exc:
         logger.warning("Telegram edit error (non-critical): %s", exc)
+
+
+# ── RingCentral MMS → Telegram (download attachment URIs, sendPhoto / sendMediaGroup) ──
+
+RC_INBOUND_TYPES = frozenset({"SMS", "MMS"})
+
+def _format_ringcentral_forward_html(
+    from_number: str,
+    subject: str,
+    created: str,
+    *,
+    warning_plain: str | None = None,
+    max_body_len: int = 3500,
+) -> str:
+    """Build Telegram HTML: SMS body in <pre> (monospace), labels in bold/code."""
+    body = subject if subject is not None else ""
+    if len(body) > max_body_len:
+        body = body[: max_body_len - 1] + "…"
+
+    esc_from = html.escape(from_number)
+    esc_body = html.escape(body)
+    parts = [
+        "\U0001f4e9 <b>SMS/MMS Reply Received!</b>",
+        "",
+        f"\U0001f4de From: <code>{esc_from}</code>",
+        "\U0001f4ac Message:",
+        f"<pre>{esc_body}</pre>",
+    ]
+    if created:
+        parts.append(f"\U0001f550 Received: <code>{html.escape(created)}</code>")
+    if warning_plain:
+        parts.append("")
+        parts.append(f"<i>{html.escape(warning_plain)}</i>")
+    return "\n".join(parts)
+
+
+def _fit_ringcentral_caption_html(
+    from_number: str,
+    subject: str,
+    created: str,
+    *,
+    warning_plain: str | None = None,
+) -> str:
+    """Shrink SMS body in <pre> until full HTML fits Telegram's 1024-char caption limit."""
+    limits = list(range(min(len(subject), 850), -1, -25))
+    if not limits:
+        limits = [0]
+    for lim in limits:
+        text = _format_ringcentral_forward_html(
+            from_number,
+            subject,
+            created,
+            warning_plain=warning_plain,
+            max_body_len=max(lim, 0),
+        )
+        if len(text) <= 1024:
+            return text
+    return _format_ringcentral_forward_html(
+        from_number,
+        subject[:50],
+        created,
+        warning_plain=warning_plain,
+        max_body_len=50,
+    )
+
+
+def _ringcentral_media_attachments(event_body: dict) -> list[dict]:
+    """Attachment dicts that reference downloadable media (not plain Text duplicates)."""
+    out: list[dict] = []
+    for att in event_body.get("attachments") or []:
+        if not isinstance(att, dict):
+            continue
+        uri = (att.get("uri") or att.get("contentUri") or "").strip()
+        if not uri:
+            continue
+        atype = (att.get("type") or "").lower()
+        ct = (att.get("contentType") or "").lower()
+        if atype == "text" and ("text/plain" in ct or ct.startswith("text/")):
+            continue
+        if ct.startswith("image/") or ct.startswith("video/"):
+            out.append(att)
+            continue
+        if atype in ("mmsattachment", "mms", "file", "attachment"):
+            out.append(att)
+    return out
+
+
+def _telegram_upload_method(content_type: str) -> tuple[str, str]:
+    """Return (Telegram API method, multipart field name) for this MIME type."""
+    ct = (content_type or "").split(";")[0].strip().lower()
+    if ct in ("image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"):
+        return "sendPhoto", "photo"
+    if ct.startswith("video/"):
+        return "sendVideo", "video"
+    if ct.startswith("image/"):
+        return "sendDocument", "document"
+    return "sendDocument", "document"
+
+
+def _attachment_download_filename(att: dict, content_type: str, index: int) -> str:
+    raw = (att.get("fileName") or att.get("filename") or "").strip()
+    if raw:
+        return raw
+    ext = mimetypes.guess_extension(content_type.split(";")[0].strip()) or ".bin"
+    return f"attachment_{index}{ext}"
+
+
+async def _send_telegram_upload(
+    method: str,
+    field: str,
+    file_bytes: bytes,
+    filename: str,
+    mime: str,
+    caption: str,
+) -> bool:
+    """Multipart upload to Telegram Bot API (photo, video, or document)."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}"
+    base_data = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption[:1024]}
+
+    for use_html in (True, False):
+        data = {**base_data}
+        if use_html:
+            data["parse_mode"] = "HTML"
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                files = {field: (filename, file_bytes, mime)}
+                resp = await client.post(url, data=data, files=files)
+            if resp.is_success:
+                logger.info("Telegram %s sent successfully.", method)
+                return True
+            err = (resp.text or "").lower()
+            if use_html and ("parse" in err or "html" in err or "entities" in err):
+                logger.warning("Telegram %s caption parse failed, retrying plain: %s", method, resp.text[:200])
+                continue
+            logger.warning("Telegram %s failed (%s): %s", method, resp.status_code, resp.text[:400])
+            return False
+        except Exception as exc:
+            logger.error("Telegram %s exception: %s", method, exc)
+            return False
+    return False
+
+
+async def _send_telegram_media_group_photos(
+    caption: str,
+    photo_items: list[tuple[bytes, str, str]],
+) -> bool:
+    """Send 2–10 images as one album (InputMediaPhoto). All items must be photo-compatible."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMediaGroup"
+    media_json: list[dict] = []
+    files = {}
+    for i, (b, fn, mime) in enumerate(photo_items):
+        key = f"f{i}"
+        media_json.append({"type": "photo", "media": f"attach://{key}"})
+        files[key] = (fn, b, mime)
+    media_json[0]["caption"] = caption[:1024]
+
+    for use_html in (True, False):
+        payload_media = json.loads(json.dumps(media_json))
+        if use_html:
+            payload_media[0]["parse_mode"] = "HTML"
+        else:
+            payload_media[0].pop("parse_mode", None)
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                data = {"chat_id": TELEGRAM_CHAT_ID, "media": json.dumps(payload_media)}
+                resp = await client.post(url, data=data, files=files)
+            if resp.is_success:
+                logger.info("Telegram sendMediaGroup sent successfully (%d photos).", len(photo_items))
+                return True
+            err = (resp.text or "").lower()
+            if use_html and ("parse" in err or "html" in err):
+                logger.warning("Telegram sendMediaGroup caption parse failed, retrying plain.")
+                continue
+            logger.warning("Telegram sendMediaGroup failed: %s", resp.text[:400])
+            return False
+        except Exception as exc:
+            logger.error("Telegram sendMediaGroup exception: %s", exc)
+            return False
+    return False
+
+
+async def _forward_ringcentral_inbound_to_telegram(event_body: dict) -> None:
+    """Forward inbound SMS/MMS to Telegram: text via sendMessage; images/video via upload."""
+    from_number = event_body.get("from", {}).get("phoneNumber", "Unknown")
+    subject = event_body.get("subject", "(no text)")
+    created = event_body.get("creationTime", "")
+
+    media_atts = _ringcentral_media_attachments(event_body)
+    if not media_atts:
+        caption_html = _format_ringcentral_forward_html(from_number, subject, created)
+        await _send_telegram_html(caption_html)
+        logger.info("SMS reply from %s forwarded to Telegram (text only).", from_number)
+        return
+
+    caption_html = _fit_ringcentral_caption_html(from_number, subject, created)
+
+    downloaded: list[tuple[bytes, str, str]] = []
+    for i, att in enumerate(media_atts):
+        uri = (att.get("uri") or att.get("contentUri") or "").strip()
+        try:
+            raw, ct = await download_ringcentral_attachment(uri)
+            fn = _attachment_download_filename(att, ct, i)
+            downloaded.append((raw, fn, ct))
+            logger.info(
+                "Downloaded RC attachment %d bytes, type %s",
+                len(raw),
+                ct,
+            )
+        except Exception as exc:
+            logger.error("RingCentral attachment download failed (%s): %s", uri[:120], exc)
+
+    if not downloaded:
+        warn_html = _format_ringcentral_forward_html(
+            from_number,
+            subject,
+            created,
+            warning_plain="Could not download MMS attachments — check RingCentral credentials.",
+        )
+        await _send_telegram_html(warn_html)
+        return
+
+    photo_compatible: list[tuple[bytes, str, str]] = []
+    other_items: list[tuple[bytes, str, str]] = []
+    for item in downloaded:
+        method, _ = _telegram_upload_method(item[2])
+        if method == "sendPhoto":
+            photo_compatible.append(item)
+        else:
+            other_items.append(item)
+
+    if len(photo_compatible) >= 2 and len(photo_compatible) <= 10 and not other_items:
+        ok = await _send_telegram_media_group_photos(caption_html, photo_compatible)
+        if ok:
+            logger.info("MMS from %s forwarded to Telegram as album (%d).", from_number, len(photo_compatible))
+            return
+        logger.warning("sendMediaGroup failed; falling back to individual sends.")
+
+    for idx, (b, fn, ct) in enumerate(downloaded):
+        cap = caption_html if idx == 0 else ""
+        method, field = _telegram_upload_method(ct)
+        await _send_telegram_upload(method, field, b, fn, ct, cap)
+    logger.info("MMS from %s forwarded to Telegram (%d file(s)).", from_number, len(downloaded))
 
 
 # ── Startup: register RingCentral webhook ────────────────────
@@ -232,25 +520,15 @@ async def rc_webhook(request: Request):
 
         direction = event_body.get("direction", "")
         msg_type = event_body.get("type", "")
-        if direction != "Inbound" or msg_type != "SMS":
-            logger.info("RC webhook: ignoring non-inbound-SMS event (direction=%s, type=%s).", direction, msg_type)
+        if direction != "Inbound" or msg_type not in RC_INBOUND_TYPES:
+            logger.info(
+                "RC webhook: ignoring event (direction=%s, type=%s).",
+                direction,
+                msg_type,
+            )
             return {"status": "ignored"}
 
-        from_number = event_body.get("from", {}).get("phoneNumber", "Unknown")
-        to_number = event_body.get("to", [{}])[0].get("phoneNumber", "Unknown") if event_body.get("to") else "Unknown"
-        subject = event_body.get("subject", "(no text)")
-        created = event_body.get("creationTime", "")
-
-        telegram_msg = (
-            f"\U0001F4E9 *SMS Reply Received!*\n\n"
-            f"\U0001F4DE From: `{from_number}`\n"
-            f"\U0001F4AC Message: {subject}\n"
-        )
-        if created:
-            telegram_msg += f"\n\U0001F550 Received: {created}"
-
-        await _send_telegram(telegram_msg)
-        logger.info("SMS reply from %s forwarded to Telegram.", from_number)
+        await _forward_ringcentral_inbound_to_telegram(event_body)
 
     except Exception as exc:
         logger.error("Error processing RingCentral webhook: %s", exc)
