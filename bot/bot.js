@@ -5,6 +5,7 @@ const { safeSend, isPermanentSendError: isPermanentSendErrorFromHtml } = require
 const { normalizeMediaItems } = require('../services/scheduledMessageUtils');
 const { getLiveLocationForGroupTitle } = require('../services/samsaraLocationService');
 const { getLiveLocationForGroupTitleFromEvo } = require('../services/evoEldService');
+const { getLiveLocationForGroupTitleFromTt } = require('../services/ttEldService');
 
 // config.js already validates BOT_TOKEN, DATABASE_URL, MANAGEMENT_GROUP_ID
 // and exits on missing values — no need to re-check here.
@@ -246,6 +247,7 @@ async function startBot() {
         let location = null;
         let source = 'Samsara';
         let samsaraError = null;
+        let evoError = null;
 
         try {
           location = await getLiveLocationForGroupTitle({
@@ -272,11 +274,45 @@ async function startBot() {
             });
             source = 'EVO ELD (fallback)';
           } catch (evoErr) {
+            evoError = evoErr;
             console.error('[BOT] /location EVO fallback failed:', evoErr.message);
+          }
+        }
+
+        if (!location) {
+          const ttApiKeys = Array.from(
+            new Set([config.ttEldApiKey, config.evoEldApiKey].filter(Boolean))
+          );
+          let ttError = null;
+
+          for (const ttApiKey of ttApiKeys) {
+            try {
+              location = await getLiveLocationForGroupTitleFromTt({
+                groupTitle,
+                usdotNumber: config.ttEldUsdotNumber,
+                apiKey: ttApiKey,
+                providerToken: config.ttEldProviderToken,
+                apiBase: config.ttEldApiBase,
+              });
+              source = 'TT ELD (fallback)';
+              break;
+            } catch (err) {
+              ttError = err;
+              console.error('[BOT] /location TT fallback attempt failed:', err.message);
+            }
+          }
+
+          if (!location) {
             if (samsaraError) {
               console.error('[BOT] /location Samsara error before fallback:', samsaraError.message);
             }
-            await ctx.reply('Could not fetch live location from Samsara or EVO ELD right now.');
+            if (evoError) {
+              console.error('[BOT] /location EVO error before TT fallback:', evoError.message);
+            }
+            if (ttError) {
+              console.error('[BOT] /location TT error after all key attempts:', ttError.message);
+            }
+            await ctx.reply('Could not fetch live location from Samsara, EVO ELD, or TT ELD right now.');
             return;
           }
         }

@@ -56,6 +56,10 @@ module.exports = {
   evoEldProviderToken: process.env.EVO_ELD_PROVIDER_TOKEN || 'ebei22uh2kkqora6jqnps43y5cq4v3a1t7611h9a3ea',
   evoEldUsdotNumber: process.env.EVO_ELD_USDOT_NUMBER || process.env.USDOT_NUMBER || '3574434',
   evoEldApiBase: process.env.EVO_ELD_API_BASE || 'https://read.evoeld.com/api/v2',
+  ttEldApiKey: process.env.TT_ELD_API_KEY || 'euhz42lrdlplnyx7l3vthbjottm384d79b9a92e27w8',
+  ttEldProviderToken: process.env.TT_ELD_PROVIDER_TOKEN || 'dm5rw3cl5sj8p1feei488rj43a6fn7d79b9a92e27w8',
+  ttEldUsdotNumber: process.env.TT_ELD_USDOT_NUMBER || process.env.USDOT_NUMBER || '3574434',
+  ttEldApiBase: process.env.TT_ELD_API_BASE || 'https://read.tteld.com/api/externalservice',
   employeeGroupId: process.env.EMPLOYEE_GROUP_ID,
   corsAllowedOrigins,
   // When true, CORS allows any origin (useful in local dev/testing).
