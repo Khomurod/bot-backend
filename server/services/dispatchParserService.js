@@ -282,6 +282,39 @@ function normalizeDispatchValue(value) {
     .trim();
 }
 
+function splitInstructionTail(value) {
+  const text = normalizeDispatchValue(value);
+  if (!text) return { clean: '', note: '' };
+  const markerIndex = text.search(/\b(?:Pickup Instructions?|Delivery Instructions?|Instructions?|Contact|Pickup Number|Delivery Number|Appt Notes?|Ref\s*#|Seal\s*#)\b/i);
+  if (markerIndex === -1) {
+    return { clean: text, note: '' };
+  }
+  return {
+    clean: text.slice(0, markerIndex).trim(),
+    note: text.slice(markerIndex).trim(),
+  };
+}
+
+function normalizeDispatchDateTime(value) {
+  const text = normalizeDispatchValue(value)
+    .replace(/Expected Date:\s*/ig, '')
+    .replace(/Appointment Time:\s*/ig, '')
+    .replace(/\bAppointment:\s*/ig, '')
+    .replace(/Hours\s*:\s*/ig, '');
+  const split = splitInstructionTail(text);
+
+  const dateMatch = split.clean.match(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/);
+  const timeMatch = split.clean.match(/\b(?:\d{1,2}:\d{2}\s*(?:AM|PM)?\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM)?|\d{4}\s*-\s*\d{4}|\d{1,2}:\d{2}\s*(?:AM|PM)?)\b/i);
+  if (dateMatch || timeMatch) {
+    return {
+      clean: normalizeDispatchValue([dateMatch?.[0] || '', timeMatch?.[0] || ''].filter(Boolean).join(' ')),
+      note: split.note,
+    };
+  }
+
+  return split;
+}
+
 function normalizeDispatchCompany(value) {
   const cleaned = normalizeDispatchValue(value)
     .replace(/^SEAL\s*#?\s*/i, '')
@@ -623,28 +656,80 @@ function mergeDispatchFields(parsedFields, aiFields) {
   };
 }
 
+function sanitizeDispatchTemplateFields(fields) {
+  const pickupNotes = [];
+  const deliveryNotes = [];
+
+  const cleanPickup = (value, isDateTime = false) => {
+    const { clean, note } = isDateTime ? normalizeDispatchDateTime(value) : splitInstructionTail(value);
+    if (note) pickupNotes.push(note);
+    return clean;
+  };
+  const cleanDelivery = (value, isDateTime = false) => {
+    const { clean, note } = isDateTime ? normalizeDispatchDateTime(value) : splitInstructionTail(value);
+    if (note) deliveryNotes.push(note);
+    return clean;
+  };
+
+  const dedupe = (values) => {
+    const seen = new Set();
+    return values
+      .map((entry) => normalizeDispatchValue(entry))
+      .filter(Boolean)
+      .filter((entry) => {
+        const key = entry.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  };
+
+  return {
+    cleaned: {
+      ...fields,
+      puDateTime: cleanPickup(fields.puDateTime, true),
+      pickupName: normalizeDispatchCompany(cleanPickup(fields.pickupName)),
+      pickupStreet: normalizeDispatchStreet(cleanPickup(fields.pickupStreet)),
+      pickupCity: normalizeDispatchCity(cleanPickup(fields.pickupCity)),
+      delDateTime: cleanDelivery(fields.delDateTime, true),
+      deliveryName: normalizeDispatchCompany(cleanDelivery(fields.deliveryName)),
+      deliveryStreet: normalizeDispatchStreet(cleanDelivery(fields.deliveryStreet)),
+      deliveryCity: normalizeDispatchCity(cleanDelivery(fields.deliveryCity)),
+    },
+    pickupNotes: dedupe(pickupNotes),
+    deliveryNotes: dedupe(deliveryNotes),
+  };
+}
+
 function formatDispatchTemplate(fields) {
+  const sanitized = sanitizeDispatchTemplateFields(fields);
+  const outputFields = sanitized.cleaned;
   const loadedMiles = normalizeDispatchMiles(fields.loadedMiles);
   const totalMiles = normalizeDispatchMiles(fields.totalMiles);
   const rate = normalizeDispatchRate(fields.rate);
+  const noteLines = [
+    sanitized.pickupNotes.length > 0 ? `Pickup notes: ${sanitized.pickupNotes.join(' | ')}` : '',
+    sanitized.deliveryNotes.length > 0 ? `Delivery notes: ${sanitized.deliveryNotes.join(' | ')}` : '',
+  ].filter(Boolean);
 
   return [
-    `Load type: ${normalizeDispatchValue(fields.loadType)}`,
-    `Load #: ${normalizeDispatchValue(fields.loadNumber)}`,
-    `PU # : ${normalizeDispatchValue(fields.puNumber)}`,
-    `PO # : ${normalizeDispatchValue(fields.poNumber)}`,
+    `Load type: ${normalizeDispatchValue(outputFields.loadType)}`,
+    `Load #: ${normalizeDispatchValue(outputFields.loadNumber)}`,
+    `PU # : ${normalizeDispatchValue(outputFields.puNumber)}`,
+    `PO # : ${normalizeDispatchValue(outputFields.poNumber)}`,
     '',
-    `PU : ${normalizeDispatchValue(fields.puDateTime)}`,
-    normalizeDispatchValue(fields.pickupName),
-    normalizeDispatchValue(fields.pickupStreet),
-    normalizeDispatchCity(fields.pickupCity),
+    `PU : ${normalizeDispatchValue(outputFields.puDateTime)}`,
+    normalizeDispatchValue(outputFields.pickupName),
+    normalizeDispatchValue(outputFields.pickupStreet),
+    normalizeDispatchCity(outputFields.pickupCity),
     '',
-    `DEL : ${normalizeDispatchValue(fields.delDateTime)}`,
-    normalizeDispatchValue(fields.deliveryName),
-    normalizeDispatchValue(fields.deliveryStreet),
-    normalizeDispatchCity(fields.deliveryCity),
+    `DEL : ${normalizeDispatchValue(outputFields.delDateTime)}`,
+    normalizeDispatchValue(outputFields.deliveryName),
+    normalizeDispatchValue(outputFields.deliveryStreet),
+    normalizeDispatchCity(outputFields.deliveryCity),
     '',
     ...DISPATCH_WARNING_LINES,
+    ...(noteLines.length > 0 ? ['', ...noteLines] : []),
     '',
     `Loaded miles : ${loadedMiles}`,
     `Total miles : ${totalMiles}`,
