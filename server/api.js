@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const OpenAI = require('openai');
 const path = require('path');
 const multer = require('multer');
 const { PDFParse } = require('pdf-parse');
@@ -61,19 +60,11 @@ const dispatchDocumentUpload = multer({
   limits: uploadLimits,
 });
 const adminBuildDir = path.join(__dirname, '..', 'admin', 'build');
-const dispatchAiClient = new OpenAI({
-  baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: process.env.OPENROUTER_API_KEY || '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',
-  defaultHeaders: {
-    'X-Title': 'Driver Feedback Dispatch Assistant',
-  },
-});
-const DISPATCH_MODELS = [
-  'openai/gpt-oss-20b:free',
-  'openai/gpt-oss-120b:free',
-  'liquid/lfm-2.5-1.2b-instruct:free',
-  'meta-llama/llama-3.2-3b-instruct:free',
-  'meta-llama/llama-3.3-70b-instruct:free',
+const GEMINI_API_KEY = 'AIzaSyAuDwDmasf2KKl8MXYQUiNMVPpokVVmptw';
+const DISPATCH_GEMINI_MODELS = [
+  'gemini-3-flash-preview',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
 ];
 const DISPATCH_SYSTEM_PROMPT = [
   'You are a trucking dispatch assistant formatting freight broker rate confirmations.',
@@ -305,32 +296,72 @@ async function extractTextFromImage(buffer) {
 }
 
 async function formatDispatchRateConfirmation(rawText) {
-  const messages = [
-    { role: 'system', content: DISPATCH_SYSTEM_PROMPT_CLEAN },
-    {
-      role: 'user',
-      content: [
-        'Raw rate confirmation text:',
-        '<rate_confirmation>',
-        rawText.slice(0, 120000),
-        '</rate_confirmation>',
-      ].join('\n'),
-    },
-  ];
+  const promptText = [
+    'Raw rate confirmation text:',
+    '<rate_confirmation>',
+    rawText.slice(0, 120000),
+    '</rate_confirmation>',
+  ].join('\n');
   const attemptErrors = [];
 
-  for (const model of DISPATCH_MODELS) {
+  for (const model of DISPATCH_GEMINI_MODELS) {
     try {
-      const completion = await dispatchAiClient.chat.completions.create({
-        model,
-        temperature: 0.1,
-        max_tokens: 1000,
-        messages,
-      });
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': GEMINI_API_KEY,
+          },
+          body: JSON.stringify({
+            system_instruction: {
+              parts: [
+                {
+                  text: DISPATCH_SYSTEM_PROMPT_CLEAN,
+                },
+              ],
+            },
+            contents: [
+              {
+                parts: [
+                  {
+                    text: promptText,
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 1000,
+              responseMimeType: 'text/plain',
+            },
+          }),
+        }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const apiMessage = payload?.error?.message || `Gemini request failed with status ${response.status}`;
+        const failure = new Error(apiMessage);
+        failure.status = response.status;
+        throw failure;
+      }
+
+      const text = (payload?.candidates || [])
+        .flatMap((candidate) => candidate?.content?.parts || [])
+        .map((part) => part?.text || '')
+        .join('')
+        .trim();
+
+      if (!text) {
+        const finishReason = payload?.candidates?.[0]?.finishReason || 'UNKNOWN';
+        throw new Error(`Gemini returned an empty response (finish reason: ${finishReason})`);
+      }
+
       return {
         model,
         text: sanitizeDispatchOutput(
-          stripMarkdownFences(completion.choices?.[0]?.message?.content || '')
+          stripMarkdownFences(text)
         ),
       };
     } catch (err) {
@@ -343,11 +374,15 @@ async function formatDispatchRateConfirmation(rawText) {
   }
 
   const allUnauthorized = attemptErrors.length > 0 && attemptErrors.every((attempt) => (
-    attempt.status === 401 || /user not found/i.test(attempt.message || '')
+    attempt.status === 400
+    || attempt.status === 401
+    || attempt.status === 403
+    || /api key/i.test(attempt.message || '')
+    || /permission denied/i.test(attempt.message || '')
   ));
   if (allUnauthorized) {
     const failure = new Error(
-      'OpenRouter API key is invalid or revoked. Set OPENROUTER_API_KEY to a valid OpenRouter key and restart the server.'
+      'Gemini API key is invalid or revoked. Update the hardcoded GEMINI_API_KEY in server/api.js and restart the server.'
     );
     failure.attemptErrors = attemptErrors;
     throw failure;
