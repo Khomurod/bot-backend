@@ -64,9 +64,10 @@ const GROQ_API_KEY = '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';
 const DISPATCH_GROQ_MODEL = 'llama-3.1-8b-instant';
 const GEMINI_API_KEY = 'AIzaSyAuDwDmasf2KKl8MXYQUiNMVPpokVVmptw';
 const MAX_INLINE_GEMINI_FILE_BYTES = 14 * 1024 * 1024;
+const PDF_OCR_MAX_PAGES = 3;
 const DISPATCH_GEMINI_MODELS = [
-  'gemini-1.5-flash',
-  'gemini-1.5-pro',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
 ];
 const DISPATCH_WARNING_LINES = [
   '🛑MUST SECURE FREIGHT WITH STRAPS',
@@ -291,7 +292,36 @@ async function extractTextFromPdf(buffer) {
   const parser = new PDFParse({ data: buffer });
   try {
     const result = await parser.getText();
-    return String(result?.text || '').trim();
+    const textLayer = String(result?.text || '').trim();
+    if (!isWeakDispatchRawText(textLayer)) {
+      return textLayer;
+    }
+
+    let screenshotOcrText = '';
+    try {
+      const screenshots = await parser.getScreenshot({ scale: 2, imageDataUrl: false });
+      const pages = Array.isArray(screenshots?.pages) ? screenshots.pages.slice(0, PDF_OCR_MAX_PAGES) : [];
+      if (pages.length > 0) {
+        const worker = await createWorker('eng');
+        try {
+          const fragments = [];
+          for (const page of pages) {
+            const pngBytes = page?.data;
+            if (!pngBytes || !pngBytes.length) continue;
+            const ocrResult = await worker.recognize(Buffer.from(pngBytes));
+            const pageText = String(ocrResult?.data?.text || '').trim();
+            if (pageText) fragments.push(pageText);
+          }
+          screenshotOcrText = fragments.join('\n\n').trim();
+        } finally {
+          await worker.terminate();
+        }
+      }
+    } catch {
+      screenshotOcrText = '';
+    }
+
+    return [textLayer, screenshotOcrText].filter(Boolean).join('\n\n').trim();
   } finally {
     try {
       await parser.destroy();
@@ -729,6 +759,18 @@ function dispatchFieldsHaveCoreData(fields) {
   );
 }
 
+function isWeakDispatchRawText(rawText) {
+  const source = String(rawText || '');
+  const normalized = source.replace(/\s+/g, ' ').trim();
+  if (!normalized) return true;
+
+  const alphaWordCount = (normalized.match(/[A-Za-z]{3,}/g) || []).length;
+  const digitCount = (normalized.match(/\d/g) || []).length;
+  const boilerplateOnly = /^(\s*--\s*\d+\s+of\s+\d+\s*--\s*)+$/i.test(normalized);
+
+  return boilerplateOnly || (alphaWordCount < 12 && digitCount < 18);
+}
+
 function buildFriendlyDispatchFailure(attemptErrors) {
   const failures = Array.isArray(attemptErrors) ? attemptErrors : [];
   const allUnauthorized = failures.length > 0 && failures.every((attempt) => (
@@ -954,59 +996,93 @@ async function formatDispatchRateConfirmation(rawText, sourceFile) {
   const deterministicText = formatDispatchTemplate(parsedFields);
   const deterministicIsUsable = dispatchFieldsHaveCoreData(parsedFields) && dispatchTextHasEnoughData(deterministicText);
   const attemptErrors = [];
+  const canUseInlineVisionSource = Boolean(
+    sourceFile?.buffer
+    && sourceFile?.mimetype
+    && (
+      sourceFile.mimetype === 'application/pdf'
+      || sourceFile.mimetype.startsWith('image/')
+    )
+    && sourceFile.buffer.length <= MAX_INLINE_GEMINI_FILE_BYTES
+  );
+  const preferGeminiFirst = canUseInlineVisionSource && isWeakDispatchRawText(rawText);
 
-  try {
-    const groqResult = await requestDispatchTemplateFromGroq(rawText);
-    const merged = mergeDispatchFields(parsedFields, groqResult.fields);
-    const enriched = await enrichWithMiles(merged);
-    return {
-      model: groqResult.model,
-      text: formatDispatchTemplate(enriched),
-    };
-  } catch (err) {
-    if (Array.isArray(err?.attemptErrors) && err.attemptErrors.length > 0) {
-      err.attemptErrors.forEach((attempt) => {
+  async function tryGroq() {
+    try {
+      const groqResult = await requestDispatchTemplateFromGroq(rawText);
+      const merged = mergeDispatchFields(parsedFields, groqResult.fields);
+      const enriched = await enrichWithMiles(merged);
+      const formattedText = formatDispatchTemplate(enriched);
+      if (!dispatchTextHasEnoughData(formattedText)) {
+        throw new Error('Groq returned an incomplete dispatch template');
+      }
+      return {
+        model: groqResult.model,
+        text: formattedText,
+      };
+    } catch (err) {
+      if (Array.isArray(err?.attemptErrors) && err.attemptErrors.length > 0) {
+        err.attemptErrors.forEach((attempt) => {
+          attemptErrors.push({
+            provider: 'groq',
+            model: attempt.model,
+            status: attempt.status || null,
+            message: attempt.message,
+          });
+        });
+      } else {
         attemptErrors.push({
           provider: 'groq',
-          model: attempt.model,
-          status: attempt.status || null,
-          message: attempt.message,
+          model: DISPATCH_GROQ_MODEL,
+          status: err.status || null,
+          message: err?.error?.message || err.message,
         });
-      });
-    } else {
-      attemptErrors.push({
-        provider: 'groq',
-        model: DISPATCH_GROQ_MODEL,
-        status: err.status || null,
-        message: err?.error?.message || err.message,
-      });
+      }
+      return null;
     }
   }
 
-  try {
-    const geminiResult = await requestDispatchTemplateFromGemini(rawText, sourceFile);
-    return {
-      model: geminiResult.model,
-      text: await mergeDispatchTextWithParsedFields(parsedFields, geminiResult.text),
-    };
-  } catch (err) {
-    if (Array.isArray(err?.attemptErrors) && err.attemptErrors.length > 0) {
-      err.attemptErrors.forEach((attempt) => {
+  async function tryGemini() {
+    try {
+      const geminiResult = await requestDispatchTemplateFromGemini(rawText, sourceFile);
+      return {
+        model: geminiResult.model,
+        text: await mergeDispatchTextWithParsedFields(parsedFields, geminiResult.text),
+      };
+    } catch (err) {
+      if (Array.isArray(err?.attemptErrors) && err.attemptErrors.length > 0) {
+        err.attemptErrors.forEach((attempt) => {
+          attemptErrors.push({
+            provider: 'gemini',
+            model: attempt.model,
+            status: attempt.status || null,
+            message: attempt.message,
+          });
+        });
+      } else {
         attemptErrors.push({
           provider: 'gemini',
-          model: attempt.model,
-          status: attempt.status || null,
-          message: attempt.message,
+          model: 'gemini',
+          status: err.status || null,
+          message: err?.error?.message || err.message,
         });
-      });
-    } else {
-      attemptErrors.push({
-        provider: 'gemini',
-        model: 'gemini',
-        status: err.status || null,
-        message: err?.error?.message || err.message,
-      });
+      }
+      return null;
     }
+  }
+
+  if (preferGeminiFirst) {
+    const geminiFirstResult = await tryGemini();
+    if (geminiFirstResult) return geminiFirstResult;
+
+    const groqSecondResult = await tryGroq();
+    if (groqSecondResult) return groqSecondResult;
+  } else {
+    const groqFirstResult = await tryGroq();
+    if (groqFirstResult) return groqFirstResult;
+
+    const geminiSecondResult = await tryGemini();
+    if (geminiSecondResult) return geminiSecondResult;
   }
 
   if (deterministicIsUsable) {
@@ -1231,7 +1307,17 @@ app.post('/api/dispatch/parse-rate-con', (req, res) => {
         return res.status(400).json({ error: 'Only PDF, JPG, PNG, and WEBP files are supported.' });
       }
 
-      if (!rawText.trim()) {
+      const canParseFromInlineSource = Boolean(
+        req.file?.buffer
+        && req.file?.mimetype
+        && (
+          req.file.mimetype === 'application/pdf'
+          || req.file.mimetype.startsWith('image/')
+        )
+        && req.file.buffer.length <= MAX_INLINE_GEMINI_FILE_BYTES
+      );
+
+      if (!rawText.trim() && !canParseFromInlineSource) {
         return res.status(422).json({ error: 'No text could be extracted from that file.' });
       }
 
