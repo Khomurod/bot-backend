@@ -270,6 +270,18 @@ export async function uploadMedia(file) {
 
 // ─── Employee Voting API ───
 
+export async function parseDispatchRateCon(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE}/dispatch/parse-rate-con`, {
+    method: 'POST',
+    headers: getAuthHeader(),
+    body: formData,
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function getDriverUnits() {
   const res = await fetch(`${API_BASE}/voting/units`, { headers: getHeaders() });
   if (!res.ok) { await handleApiError(res); }
