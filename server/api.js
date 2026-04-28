@@ -65,9 +65,8 @@ const DISPATCH_GROQ_MODEL = 'llama-3.1-8b-instant';
 const GEMINI_API_KEY = 'AIzaSyAuDwDmasf2KKl8MXYQUiNMVPpokVVmptw';
 const MAX_INLINE_GEMINI_FILE_BYTES = 14 * 1024 * 1024;
 const DISPATCH_GEMINI_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-3-flash-preview',
-  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
 ];
 const DISPATCH_WARNING_LINES = [
   '🛑MUST SECURE FREIGHT WITH STRAPS',
@@ -384,7 +383,7 @@ function buildDispatchGeminiParts(rawText, sourceFile) {
     'Return the completed template all the way through the final Rate line.',
     'Raw extracted text:',
     '<rate_confirmation>',
-    rawText.slice(0, 120000),
+    rawText.slice(0, 12000),
     '</rate_confirmation>',
   ].join('\n');
 
@@ -411,7 +410,7 @@ function buildDispatchAiMessages(rawText) {
       content: [
         'Raw rate confirmation text:',
         '<rate_confirmation>',
-        rawText.slice(0, 120000),
+        rawText.slice(0, 12000),
         '</rate_confirmation>',
       ].join('\n'),
     },
@@ -965,12 +964,23 @@ async function formatDispatchRateConfirmation(rawText, sourceFile) {
       text: formatDispatchTemplate(enriched),
     };
   } catch (err) {
-    attemptErrors.push({
-      provider: 'groq',
-      model: DISPATCH_GROQ_MODEL,
-      status: err.status || null,
-      message: err?.error?.message || err.message,
-    });
+    if (Array.isArray(err?.attemptErrors) && err.attemptErrors.length > 0) {
+      err.attemptErrors.forEach((attempt) => {
+        attemptErrors.push({
+          provider: 'groq',
+          model: attempt.model,
+          status: attempt.status || null,
+          message: attempt.message,
+        });
+      });
+    } else {
+      attemptErrors.push({
+        provider: 'groq',
+        model: DISPATCH_GROQ_MODEL,
+        status: err.status || null,
+        message: err?.error?.message || err.message,
+      });
+    }
   }
 
   try {
