@@ -393,7 +393,18 @@ function buildDispatchGeminiParts(rawText, sourceFile) {
 
 function buildDispatchAiMessages(rawText) {
   return [
-    { role: 'system', content: DISPATCH_SYSTEM_PROMPT_CLEAN },
+    {
+      role: 'system',
+      content: [
+        'You are a trucking dispatch assistant that extracts load details from freight broker rate confirmations.',
+        'Return a valid JSON object only. Do not include markdown, explanations, or any extra text.',
+        'Use exactly these keys:',
+        'loadType, loadNumber, puNumber, poNumber, puDateTime, pickupName, pickupStreet, pickupCity, delDateTime, deliveryName, deliveryStreet, deliveryCity, loadedMiles, totalMiles, rate',
+        'Use empty strings for missing fields.',
+        'For loadType, use the actual detected value only, such as LIVE, LIVE / LIVE, DROP AND HOOK, HOOK AND DROP, etc.',
+        'For rate, return a dollar-formatted string when possible, for example $1,800.00.',
+      ].join('\n'),
+    },
     {
       role: 'user',
       content: [
@@ -404,6 +415,41 @@ function buildDispatchAiMessages(rawText) {
       ].join('\n'),
     },
   ];
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function parseRetryAfterMs(response) {
+  const retryAfter = response.headers.get('retry-after');
+  if (!retryAfter) return 0;
+  const seconds = Number.parseFloat(retryAfter);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.min(Math.ceil(seconds * 1000), 5000);
+  }
+  return 0;
+}
+
+function isGroqTransientError(status, message) {
+  return status === 429
+    || status === 503
+    || status >= 500
+    || /rate limit/i.test(message || '')
+    || /too many requests/i.test(message || '')
+    || /service unavailable/i.test(message || '')
+    || /try again/i.test(message || '');
+}
+
+function safeParseJsonObject(text) {
+  try {
+    const parsed = JSON.parse(String(text || '').trim());
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeDispatchValue(value) {
@@ -721,38 +767,99 @@ function mergeDispatchTextWithParsedFields(parsedFields, aiText) {
   );
 }
 
-async function requestDispatchTemplateFromGroq(rawText) {
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${GROQ_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: DISPATCH_GROQ_MODEL,
-      temperature: 0.1,
-      max_tokens: 1000,
-      messages: buildDispatchAiMessages(rawText),
-    }),
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const apiMessage = payload?.error?.message || `Groq request failed with status ${response.status}`;
-    const failure = new Error(apiMessage);
-    failure.status = response.status;
-    throw failure;
-  }
-
-  const text = String(payload?.choices?.[0]?.message?.content || '').trim();
-  if (!text) {
-    throw new Error('Groq returned an empty dispatch response');
-  }
-
+function buildDispatchFieldsFromObject(aiObject) {
+  const source = aiObject && typeof aiObject === 'object' ? aiObject : {};
   return {
-    model: DISPATCH_GROQ_MODEL,
-    text,
+    loadType: normalizeDispatchValue(source.loadType),
+    loadNumber: normalizeDispatchValue(source.loadNumber),
+    puNumber: normalizeDispatchReference(source.puNumber),
+    poNumber: normalizeDispatchReference(source.poNumber),
+    puDateTime: normalizeDispatchValue(source.puDateTime),
+    pickupName: normalizeDispatchValue(source.pickupName),
+    pickupStreet: normalizeDispatchValue(source.pickupStreet),
+    pickupCity: normalizeDispatchCity(source.pickupCity),
+    delDateTime: normalizeDispatchValue(source.delDateTime),
+    deliveryName: normalizeDispatchValue(source.deliveryName),
+    deliveryStreet: normalizeDispatchValue(source.deliveryStreet),
+    deliveryCity: normalizeDispatchCity(source.deliveryCity),
+    loadedMiles: normalizeDispatchMiles(source.loadedMiles),
+    totalMiles: normalizeDispatchMiles(source.totalMiles),
+    rate: normalizeDispatchRate(source.rate),
   };
+}
+
+async function requestDispatchTemplateFromGroq(rawText) {
+  const models = [
+    DISPATCH_GROQ_MODEL,
+    'llama-3.3-70b-versatile',
+    'openai/gpt-oss-20b',
+  ];
+  const attemptErrors = [];
+
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${GROQ_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            temperature: 0,
+            seed: 7,
+            max_completion_tokens: 400,
+            response_format: { type: 'json_object' },
+            messages: buildDispatchAiMessages(rawText),
+          }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const apiMessage = payload?.error?.message || `Groq request failed with status ${response.status}`;
+          const failure = new Error(apiMessage);
+          failure.status = response.status;
+          failure.retryAfterMs = parseRetryAfterMs(response);
+          throw failure;
+        }
+
+        const text = String(payload?.choices?.[0]?.message?.content || '').trim();
+        if (!text) {
+          throw new Error('Groq returned an empty dispatch response');
+        }
+
+        const parsedObject = safeParseJsonObject(text);
+        if (!parsedObject) {
+          throw new Error('Groq returned invalid JSON for dispatch parsing');
+        }
+
+        return {
+          model,
+          fields: buildDispatchFieldsFromObject(parsedObject),
+        };
+      } catch (err) {
+        const status = err.status || null;
+        const message = err?.error?.message || err.message;
+        attemptErrors.push({
+          model,
+          status,
+          message,
+        });
+
+        if (attempt === 0 && isGroqTransientError(status, message)) {
+          const waitMs = err.retryAfterMs || 750;
+          await sleep(waitMs);
+          continue;
+        }
+        break;
+      }
+    }
+  }
+
+  const failure = new Error(buildFriendlyDispatchFailure(attemptErrors));
+  failure.attemptErrors = attemptErrors;
+  throw failure;
 }
 
 async function requestDispatchTemplateFromGemini(rawText, sourceFile) {
@@ -848,7 +955,9 @@ async function formatDispatchRateConfirmation(rawText, sourceFile) {
     const groqResult = await requestDispatchTemplateFromGroq(rawText);
     return {
       model: groqResult.model,
-      text: mergeDispatchTextWithParsedFields(parsedFields, groqResult.text),
+      text: formatDispatchTemplate(
+        mergeDispatchFields(parsedFields, groqResult.fields)
+      ),
     };
   } catch (err) {
     attemptErrors.push({
