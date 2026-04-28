@@ -28,6 +28,7 @@ export default function App() {
   const [checking, setChecking] = useState(true);
   const [page, setPage] = useState(() => getPageFromPath(window.location.pathname));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isDispatchPage = page === "dispatch";
 
   useEffect(() => {
     const handlePopState = () => {
@@ -77,6 +78,14 @@ export default function App() {
       window.history.replaceState({}, "", "/admin");
     }
   };
+
+  if (isDispatchPage) {
+    return (
+      <main className="main-content" style={{ marginLeft: 0 }}>
+        <DispatchPage />
+      </main>
+    );
+  }
 
   if (checking) {
     return (

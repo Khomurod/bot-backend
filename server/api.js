@@ -59,7 +59,7 @@ const dispatchUpload = createUploadMiddleware(DISPATCH_UPLOAD_MIME_TYPES, 'pdf, 
 const adminBuildDir = path.join(__dirname, '..', 'admin', 'build');
 const dispatchAiClient = new OpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: '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',
+  apiKey: process.env.OPENROUTER_API_KEY || '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',
   defaultHeaders: {
     'X-Title': 'Driver Feedback Dispatch Assistant',
   },
@@ -306,6 +306,17 @@ async function formatDispatchRateConfirmation(rawText) {
     }
   }
 
+  const allUnauthorized = attemptErrors.length > 0 && attemptErrors.every((attempt) => (
+    attempt.status === 401 || /user not found/i.test(attempt.message || '')
+  ));
+  if (allUnauthorized) {
+    const failure = new Error(
+      'OpenRouter API key is invalid or revoked. Set OPENROUTER_API_KEY to a valid OpenRouter key and restart the server.'
+    );
+    failure.attemptErrors = attemptErrors;
+    throw failure;
+  }
+
   const summary = attemptErrors
     .map((attempt) => `${attempt.model} (${attempt.status || 'n/a'}: ${attempt.message})`)
     .join('; ');
@@ -499,7 +510,7 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
 // ─── Groups Routes ───
 
 // POST /api/dispatch/parse-rate-con
-app.post('/api/dispatch/parse-rate-con', authMiddleware, (req, res) => {
+app.post('/api/dispatch/parse-rate-con', (req, res) => {
   dispatchUpload.single('file')(req, res, async (err) => {
     if (err) {
       if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
