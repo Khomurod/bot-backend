@@ -1,7 +1,7 @@
 const { DateTime } = require('luxon');
 const db = require('../database/db');
 const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
-const { readPinnedLoadContext } = require('./dispatchPinnedContextService');
+const { readLoadContextWithFallbacks, NO_CURRENT_LOAD_INFO_MESSAGE } = require('./dispatchPinnedContextService');
 const { calculateEtaToDestination } = require('./etaRoutingService');
 
 const ETA_POLL_INTERVAL_MS = 30 * 1000;
@@ -26,28 +26,101 @@ function formatDuration(minutes) {
   return `${mins}m`;
 }
 
+function escapeHtml(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function formatSpeedValue(value) {
+  if (!Number.isFinite(value)) return '0mph';
+  const rounded = Number(value.toFixed(1));
+  return `${rounded}mph`;
+}
+
 function computeNextRunAt(intervalMinutes) {
   const safe = Number.isInteger(intervalMinutes) && intervalMinutes > 0 ? intervalMinutes : 60;
   return DateTime.utc().plus({ minutes: safe }).toISO();
 }
 
 function buildEtaMessage({ group, context, location, source, eta }) {
-  const lines = [
-    'ETA Update',
-    `Group: ${group.group_name || group.telegram_group_id}`,
-    context.deliverySummary ? `Delivery: ${context.deliverySummary}` : null,
-    `Destination query: ${context.destinationQuery}`,
-    location.address ? `Current location: ${location.address}` : `Current location: ${location.latitude}, ${location.longitude}`,
-    `Remaining: ${eta.remainingMiles} miles`,
-    `ETA: ${formatDuration(eta.etaMinutes)} (around ${eta.etaChicagoLabel} CT)`,
-    `Location source: ${source}`,
-    location.pingAgeMinutes == null ? null : `Last ping: ${location.pingAgeMinutes} min ago`,
-  ];
-  return lines.filter(Boolean).join('\n');
+  const destination = context.deliverySummary || context.destinationQuery || '';
+  const currentLocation = location.address
+    ? location.address
+    : `${location.latitude}, ${location.longitude}`;
+  const pingText = location.pingAgeMinutes == null ? 'unknown' : `${location.pingAgeMinutes} min ago`;
+
+  return [
+    '📡 <b>Current update</b>:',
+    `📍 <b>Delivery location</b>: ${escapeHtml(destination)}`,
+    `🚛 <b>Current location</b>: ${escapeHtml(currentLocation)}`,
+    `🛣️ <b>Miles left</b>: ${eta.remainingMiles} miles`,
+    `🏎️ <b>Speed</b>: ${escapeHtml(formatSpeedValue(location.speedMilesPerHour))}`,
+    `⏱️ <b>ETA</b>: ${escapeHtml(formatDuration(eta.etaMinutes))} (around ${escapeHtml(eta.etaChicagoLabel)} CT)`,
+    `🛰️ <b>Location source</b>: ${escapeHtml(source)}`,
+    `🕒 <b>Last ping</b>: ${escapeHtml(pingText)}`,
+  ].join('\n');
+}
+
+async function resolveDispatchEtaSnapshotForGroup({
+  telegram,
+  group,
+  previousSignature = '',
+  cachedDestinationQuery = '',
+  cachedPickup = '',
+  cachedDelivery = '',
+}) {
+  let liveGroupTitle = String(group.group_name || '').trim();
+  try {
+    const chat = await telegram.getChat(group.telegram_group_id);
+    const chatTitle = String(chat?.title || '').trim();
+    if (chatTitle) {
+      liveGroupTitle = chatTitle;
+    }
+  } catch (err) {
+    console.warn(
+      `[DISPATCH-ETA] Could not refresh chat title for ${group.telegram_group_id}: ${err.message}`
+    );
+  }
+
+  const context = await readLoadContextWithFallbacks({
+    telegram,
+    chatId: group.telegram_group_id,
+    groupId: group.id,
+    previousSignature,
+    cachedDestinationQuery,
+    cachedPickup,
+    cachedDelivery,
+  });
+  if (!context.destinationQuery) {
+    const noInfo = new Error(NO_CURRENT_LOAD_INFO_MESSAGE);
+    noInfo.code = 'LOAD_CONTEXT_NOT_FOUND';
+    throw noInfo;
+  }
+
+  const resolved = await resolveLiveLocationForGroupTitle(liveGroupTitle);
+  const route = await calculateEtaToDestination({
+    currentLatitude: resolved.location.latitude,
+    currentLongitude: resolved.location.longitude,
+    destinationQuery: context.destinationQuery,
+  });
+  if (!route) {
+    throw new Error('Could not calculate route ETA to destination.');
+  }
+
+  return {
+    context,
+    location: resolved.location,
+    source: resolved.source,
+    eta: route,
+    liveGroupTitle,
+  };
 }
 
 async function processDispatchEtaJob(job) {
   const nextRunAt = computeNextRunAt(job.interval_minutes);
+  let targetTelegramGroupId = null;
 
   try {
     if (!telegramClient) {
@@ -59,65 +132,39 @@ async function processDispatchEtaJob(job) {
     if (!group) {
       throw new Error('Driver group is not active or not found.');
     }
+    targetTelegramGroupId = group.telegram_group_id;
 
-    let liveGroupTitle = String(group.group_name || '').trim();
-    try {
-      const chat = await telegramClient.getChat(group.telegram_group_id);
-      const chatTitle = String(chat?.title || '').trim();
-      if (chatTitle) {
-        liveGroupTitle = chatTitle;
-      }
-    } catch (err) {
-      console.warn(
-        `[DISPATCH-ETA] Could not refresh chat title for ${group.telegram_group_id}: ${err.message}`
-      );
-    }
-
-    const context = await readPinnedLoadContext({
+    const snapshot = await resolveDispatchEtaSnapshotForGroup({
       telegram: telegramClient,
-      chatId: group.telegram_group_id,
-      groupId: group.id,
+      group,
       previousSignature: job.last_pinned_signature || '',
       cachedDestinationQuery: job.cached_destination_query || '',
       cachedPickup: job.cached_pickup || '',
       cachedDelivery: job.cached_delivery || '',
     });
-    if (!context.destinationQuery) {
-      throw new Error('Could not determine delivery destination from pinned message text/media.');
-    }
-
-    const resolved = await resolveLiveLocationForGroupTitle(liveGroupTitle);
-    const route = await calculateEtaToDestination({
-      currentLatitude: resolved.location.latitude,
-      currentLongitude: resolved.location.longitude,
-      destinationQuery: context.destinationQuery,
-    });
-    if (!route) {
-      throw new Error('Could not calculate route ETA to destination.');
-    }
 
     const message = buildEtaMessage({
       group,
-      context,
-      location: resolved.location,
-      source: resolved.source,
-      eta: route,
+      context: snapshot.context,
+      location: snapshot.location,
+      source: snapshot.source,
+      eta: snapshot.eta,
     });
 
-    await telegramClient.sendMessage(group.telegram_group_id, message);
+    await telegramClient.sendMessage(group.telegram_group_id, message, { parse_mode: 'HTML' });
 
     await db.completeDispatchEtaUpdateSuccess({
       id: job.id,
       nextRunAt,
       lastStatus: 'sent',
-      lastPinnedSignature: context.pinnedSignature,
-      cachedPickup: context.pickupSummary || '',
-      cachedDelivery: context.deliverySummary || '',
-      cachedDestinationQuery: context.destinationQuery || '',
+      lastPinnedSignature: snapshot.context.pinnedSignature || null,
+      cachedPickup: snapshot.context.pickupSummary || '',
+      cachedDelivery: snapshot.context.deliverySummary || '',
+      cachedDestinationQuery: snapshot.context.destinationQuery || '',
       cachedContextJson: {
-        source: context.source,
-        pinnedMessageId: context.pinnedMessageId || null,
-        aiModel: context.aiModel || null,
+        source: snapshot.context.source,
+        pinnedMessageId: snapshot.context.pinnedMessageId || null,
+        aiModel: snapshot.context.aiModel || null,
         updatedAt: new Date().toISOString(),
       },
     });
@@ -127,6 +174,32 @@ async function processDispatchEtaJob(job) {
     );
     return { success: true };
   } catch (err) {
+    if (err?.code === 'LOAD_CONTEXT_NOT_FOUND') {
+      try {
+        if (targetTelegramGroupId) {
+          await telegramClient.sendMessage(targetTelegramGroupId, NO_CURRENT_LOAD_INFO_MESSAGE);
+        }
+      } catch (sendErr) {
+        console.warn('[DISPATCH-ETA] Could not send no-load-info message:', sendErr.message);
+      }
+
+      await db.completeDispatchEtaUpdateSuccess({
+        id: job.id,
+        nextRunAt,
+        lastStatus: 'no_load_info',
+        lastPinnedSignature: null,
+        cachedPickup: '',
+        cachedDelivery: '',
+        cachedDestinationQuery: '',
+        cachedContextJson: {
+          source: 'fallback-miss',
+          updatedAt: new Date().toISOString(),
+          note: NO_CURRENT_LOAD_INFO_MESSAGE,
+        },
+      });
+      return { success: true, noLoadInfo: true };
+    }
+
     await db.completeDispatchEtaUpdateFailure({
       id: job.id,
       nextRunAt,
@@ -200,6 +273,8 @@ function stopDispatchEtaScheduler() {
 module.exports = {
   buildEtaMessage,
   configureDispatchEtaTelegram,
+  NO_CURRENT_LOAD_INFO_MESSAGE,
+  resolveDispatchEtaSnapshotForGroup,
   processDispatchEtaJob,
   triggerDispatchEtaNowByGroupId,
   startDispatchEtaScheduler,

@@ -4,7 +4,12 @@ const db = require('../database/db');
 const { safeSend, isPermanentSendError: isPermanentSendErrorFromHtml } = require('../services/telegramHtml');
 const { normalizeMediaItems } = require('../services/scheduledMessageUtils');
 const { resolveLiveLocationForGroupTitle } = require('../services/liveLocationResolver');
-const { triggerDispatchEtaNowByGroupId } = require('../services/dispatchEtaUpdateService');
+const {
+  triggerDispatchEtaNowByGroupId,
+  resolveDispatchEtaSnapshotForGroup,
+  buildEtaMessage,
+  NO_CURRENT_LOAD_INFO_MESSAGE,
+} = require('../services/dispatchEtaUpdateService');
 
 // config.js already validates BOT_TOKEN, DATABASE_URL, MANAGEMENT_GROUP_ID
 // and exits on missing values — no need to re-check here.
@@ -13,6 +18,7 @@ const bot = new Telegraf(config.botToken);
 const MANAGEMENT_GROUP_ID = config.managementGroupId;
 const BOT_LAUNCH_RETRY_MS = 5000;
 const BOT_LAUNCH_MAX_RETRY_MS = 30000;
+const STATUS_TOGGLE_CALLBACK_PREFIX = 'status_toggle';
 
 let botRunning = false;
 let botLaunchPromise = null;
@@ -22,6 +28,39 @@ let botInitialized = false;
 
 // ─── Rate-limit sleep helper ───
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+function buildCollapsedStatusMessage() {
+  return '📡 <b>Current update</b>:';
+}
+
+function buildStatusToggleMarkup(groupId, expanded) {
+  const mode = expanded ? 'hide' : 'show';
+  const label = expanded ? 'Hide details ▲' : 'Show details ▼';
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(label, `${STATUS_TOGGLE_CALLBACK_PREFIX}:${mode}:${groupId}`)],
+  ]);
+}
+
+async function buildExpandedStatusMessage(group) {
+  try {
+    const snapshot = await resolveDispatchEtaSnapshotForGroup({
+      telegram: bot.telegram,
+      group,
+    });
+    return buildEtaMessage({
+      group,
+      context: snapshot.context,
+      location: snapshot.location,
+      source: snapshot.source,
+      eta: snapshot.eta,
+    });
+  } catch (err) {
+    if (err?.code === 'LOAD_CONTEXT_NOT_FOUND') {
+      return `${buildCollapsedStatusMessage()}\n${escapeHtml(NO_CURRENT_LOAD_INFO_MESSAGE)}`;
+    }
+    throw err;
+  }
+}
 
 /** Pick localized message text; `forceLanguage` overrides per-group language when set. */
 function pickBroadcastMessage(messages, messageText, group, forceLanguage) {
@@ -331,6 +370,76 @@ async function startBot() {
       } catch (err) {
         console.error('[BOT] /update failed:', err.message);
         await ctx.reply('Could not run ETA update right now. Please try again shortly.');
+      }
+    });
+
+    // Dispatcher status helper: always available, even if auto updates are disabled.
+    bot.command('status', async (ctx) => {
+      try {
+        const chatType = ctx.chat?.type;
+        if (chatType !== 'group' && chatType !== 'supergroup') {
+          await ctx.reply('Use /status inside a driver group chat.');
+          return;
+        }
+
+        const group = await db.getGroupByTelegramId(ctx.chat.id);
+        if (!group || group.group_type !== 'driver' || !group.active) {
+          await ctx.reply('This command works only in active driver groups.');
+          return;
+        }
+
+        await ctx.replyWithHTML(
+          buildCollapsedStatusMessage(),
+          buildStatusToggleMarkup(group.id, false)
+        );
+      } catch (err) {
+        console.error('[BOT] /status failed:', err.message);
+        await ctx.reply('Could not build current status right now. Please try again shortly.');
+      }
+    });
+
+    bot.action(/^status_toggle:(show|hide):(\d+)$/, async (ctx) => {
+      try {
+        const mode = ctx.match[1];
+        const expectedGroupId = Number.parseInt(ctx.match[2], 10);
+        const chatType = ctx.chat?.type;
+        if (chatType !== 'group' && chatType !== 'supergroup') {
+          await ctx.answerCbQuery('Open this inside a driver group.', { show_alert: false });
+          return;
+        }
+
+        const group = await db.getGroupByTelegramId(ctx.chat.id);
+        if (!group || group.group_type !== 'driver' || !group.active) {
+          await ctx.answerCbQuery('This group is not active for status updates.', { show_alert: false });
+          return;
+        }
+        if (Number.isInteger(expectedGroupId) && expectedGroupId > 0 && group.id !== expectedGroupId) {
+          await ctx.answerCbQuery('Status card is out of date. Run /status again.', { show_alert: false });
+          return;
+        }
+
+        if (mode === 'hide') {
+          await ctx.editMessageText(buildCollapsedStatusMessage(), {
+            parse_mode: 'HTML',
+            ...buildStatusToggleMarkup(group.id, false),
+          });
+          await ctx.answerCbQuery('Collapsed');
+          return;
+        }
+
+        const expanded = await buildExpandedStatusMessage(group);
+        await ctx.editMessageText(expanded, {
+          parse_mode: 'HTML',
+          ...buildStatusToggleMarkup(group.id, true),
+        });
+        await ctx.answerCbQuery('Updated');
+      } catch (err) {
+        console.error('[BOT] status_toggle failed:', err.message);
+        try {
+          await ctx.answerCbQuery('Could not refresh status right now.');
+        } catch (_) {
+          // ignore answer callback errors
+        }
       }
     });
 

@@ -1,6 +1,6 @@
 const config = require('../config/config');
 const db = require('../database/db');
-const { readPinnedLoadContext, choosePinnedMessageCandidate } = require('./dispatchPinnedContextService');
+const { readLoadContextWithFallbacks, choosePinnedMessageCandidate } = require('./dispatchPinnedContextService');
 const { calculateEtaToDestination } = require('./etaRoutingService');
 const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
 const { getLiveLocationForGroupTitle } = require('./samsaraLocationService');
@@ -159,12 +159,8 @@ async function buildPinnedSection({ telegram, group }) {
     parseError: '',
   };
 
-  if (!pinnedMessage) {
-    return section;
-  }
-
   try {
-    const context = await readPinnedLoadContext({
+    const context = await readLoadContextWithFallbacks({
       telegram,
       chatId: group.telegram_group_id,
       groupId: group.id,
@@ -178,6 +174,10 @@ async function buildPinnedSection({ telegram, group }) {
     section.deliverySummary = context.deliverySummary || '';
     section.destinationQuery = context.destinationQuery || '';
     section.parseModel = context.aiModel || '';
+    if (!pinnedMessage) {
+      section.source = context.source || section.source;
+      section.preview = section.preview || safePreview(context.pinnedText || '');
+    }
   } catch (err) {
     section.parseError = normalizeErrorMessage(err);
   }

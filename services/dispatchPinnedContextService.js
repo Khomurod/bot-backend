@@ -20,6 +20,10 @@ const PINNED_CONTEXT_GEMINI_MODELS = [
   'gemma-3-4b-it',
   'gemma-3-1b-it',
 ];
+const CHAT_HISTORY_LOOKBACK_DAYS = 8;
+const LOAD_LIKE_CHAT_MESSAGE_REGEX = /(load\s*#|load\s*id|rate.?confirm|carrier_rate|secure.?rate.?con|\.pdf\b|live\s*[-/\\]\s*live|drop\s*[-/\\]?\s*hook|hook\s*[-/\\]?\s*drop|[A-Z]{2}\s*[-/>]+\s*[A-Z]{2})/i;
+const STALE_STATUS_CHAT_MESSAGE_REGEX = /\b(pod|completed|cancel(?:led)?|picked up|status\s*:|rolling|stopped|miles?\s+left)\b/i;
+const NO_CURRENT_LOAD_INFO_MESSAGE = 'No information about the current load is found';
 
 async function getPinnedSnapshotFromDb(groupId) {
   if (!groupId) return null;
@@ -36,6 +40,26 @@ function normalizeLine(line) {
   return String(line || '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function isLoadLikeChatMessage(text) {
+  const source = String(text || '');
+  if (!source.trim()) return false;
+  if (/^\s*\/(?:location|update|status)\b/i.test(source)) return false;
+  return LOAD_LIKE_CHAT_MESSAGE_REGEX.test(source);
+}
+
+function isLikelyStaleStatusMessage(text) {
+  const source = String(text || '');
+  return STALE_STATUS_CHAT_MESSAGE_REGEX.test(source);
+}
+
+function isLoadContextComplete(context) {
+  return Boolean(
+    normalizeLine(context?.pickupSummary)
+    && normalizeLine(context?.deliverySummary)
+    && normalizeLine(context?.destinationQuery)
+  );
 }
 
 function getPinnedFileDescriptor(message) {
@@ -413,6 +437,86 @@ async function requestPinnedContextFromGemini({ pinnedText, extractedRawText, so
   throw new Error(details || 'All pinned-context AI models failed');
 }
 
+async function buildLoadContextFromText({
+  pinnedText,
+  extractedRawText = '',
+  sourceFile = null,
+  sourceLabel = 'pinned-text+ai',
+}) {
+  const normalizedPinnedText = String(pinnedText || '').trim();
+  const normalizedExtractedText = String(extractedRawText || '').trim();
+
+  let aiResult = null;
+  try {
+    aiResult = await requestPinnedContextFromGroq({
+      pinnedText: normalizedPinnedText,
+      extractedRawText: normalizedExtractedText,
+    });
+  } catch (err) {
+    console.warn('[DISPATCH-ETA] Pinned-context Groq parse failed:', err.message);
+  }
+
+  if (!aiResult) {
+    try {
+      aiResult = await requestPinnedContextFromGemini({
+        pinnedText: normalizedPinnedText,
+        extractedRawText: normalizedExtractedText,
+        sourceFile,
+      });
+    } catch (err) {
+      console.warn('[DISPATCH-ETA] Pinned-context Gemini parse failed:', err.message);
+    }
+  }
+
+  const fallbackDestination = inferDestinationFromPinnedText(
+    [normalizedPinnedText, normalizedExtractedText].filter(Boolean).join('\n')
+  );
+  const pickupSummary = normalizeLine(aiResult?.fields?.pickupLocation || '');
+  const pickupDateTime = normalizeLine(aiResult?.fields?.pickupDateTime || '');
+  const deliverySummary = normalizeLine(aiResult?.fields?.deliveryLocation || '');
+  const deliveryDateTime = normalizeLine(aiResult?.fields?.deliveryDateTime || '');
+  const destinationQuery = chooseBestDestinationQuery({
+    aiDestination: aiResult?.fields?.destinationQuery || '',
+    pickupLocation: pickupSummary,
+    deliveryLocation: deliverySummary,
+    fallbackDestination,
+  });
+
+  return {
+    pickupSummary: [pickupSummary, pickupDateTime].filter(Boolean).join(' | '),
+    deliverySummary: [deliverySummary, deliveryDateTime].filter(Boolean).join(' | '),
+    destinationQuery,
+    source: sourceLabel,
+    pinnedText: normalizedPinnedText,
+    aiModel: aiResult?.model || '',
+    extractedRawText: normalizedExtractedText,
+    loadInfoComplete: isLoadContextComplete({
+      pickupSummary: [pickupSummary, pickupDateTime].filter(Boolean).join(' | '),
+      deliverySummary: [deliverySummary, deliveryDateTime].filter(Boolean).join(' | '),
+      destinationQuery,
+    }),
+  };
+}
+
+async function getLatestLoadLikeChatMessageFromHistory(groupId, daysBack = CHAT_HISTORY_LOOKBACK_DAYS) {
+  if (!groupId) return null;
+  const db = require('../database/db');
+  const logs = await db.getChatLogsForGroup(groupId, daysBack);
+  for (let index = logs.length - 1; index >= 0; index -= 1) {
+    const row = logs[index];
+    const text = String(row?.message_text || '').trim();
+    if (!isLoadLikeChatMessage(text)) continue;
+    if (isLikelyStaleStatusMessage(text)) continue;
+    return {
+      messageText: text,
+      createdAt: row?.created_at || null,
+      senderName: row?.sender_name || '',
+      messageId: row?.telegram_message_id || null,
+    };
+  }
+  return null;
+}
+
 async function readPinnedLoadContext({
   telegram,
   chatId,
@@ -483,56 +587,113 @@ async function readPinnedLoadContext({
     }
   }
 
-  let aiResult = null;
-  try {
-    aiResult = await requestPinnedContextFromGroq({
-      pinnedText,
-      extractedRawText,
-    });
-  } catch (err) {
-    console.warn('[DISPATCH-ETA] Pinned-context Groq parse failed:', err.message);
-  }
-
-  if (!aiResult) {
-    try {
-      aiResult = await requestPinnedContextFromGemini({
-        pinnedText,
-        extractedRawText,
-        sourceFile,
-      });
-    } catch (err) {
-      console.warn('[DISPATCH-ETA] Pinned-context Gemini parse failed:', err.message);
-    }
-  }
-
-  const fallbackDestination = inferDestinationFromPinnedText([pinnedText, extractedRawText].filter(Boolean).join('\n'));
-  const pickupSummary = normalizeLine(aiResult?.fields?.pickupLocation || '');
-  const pickupDateTime = normalizeLine(aiResult?.fields?.pickupDateTime || '');
-  const deliverySummary = normalizeLine(aiResult?.fields?.deliveryLocation || '');
-  const deliveryDateTime = normalizeLine(aiResult?.fields?.deliveryDateTime || '');
-  const destinationQuery = chooseBestDestinationQuery({
-    aiDestination: aiResult?.fields?.destinationQuery || '',
-    pickupLocation: pickupSummary,
-    deliveryLocation: deliverySummary,
-    fallbackDestination,
+  const parsedContext = await buildLoadContextFromText({
+    pinnedText,
+    extractedRawText,
+    sourceFile,
+    sourceLabel: fileDescriptor ? 'pinned-text+media+ai' : 'pinned-text+ai',
   });
 
   return {
     pinnedMessageId: pinnedMessage.message_id || null,
     pinnedSignature,
-    pickupSummary: [pickupSummary, pickupDateTime].filter(Boolean).join(' | '),
-    deliverySummary: [deliverySummary, deliveryDateTime].filter(Boolean).join(' | '),
-    destinationQuery,
-    source: fileDescriptor ? 'pinned-text+media+ai' : 'pinned-text+ai',
-    pinnedText,
-    aiModel: aiResult?.model || '',
-    extractedRawText,
+    pickupSummary: parsedContext.pickupSummary,
+    deliverySummary: parsedContext.deliverySummary,
+    destinationQuery: parsedContext.destinationQuery,
+    source: parsedContext.source,
+    pinnedText: parsedContext.pinnedText,
+    aiModel: parsedContext.aiModel,
+    extractedRawText: parsedContext.extractedRawText,
+    loadInfoComplete: parsedContext.loadInfoComplete,
   };
+}
+
+async function readLoadContextWithFallbacks({
+  telegram,
+  chatId,
+  groupId = null,
+  previousSignature = '',
+  cachedDestinationQuery = '',
+  cachedPickup = '',
+  cachedDelivery = '',
+}) {
+  const attempts = [];
+  let firstContext = null;
+
+  try {
+    const pinnedContext = await readPinnedLoadContext({
+      telegram,
+      chatId,
+      groupId,
+      previousSignature,
+      cachedDestinationQuery,
+      cachedPickup,
+      cachedDelivery,
+    });
+    attempts.push(pinnedContext.source || 'pinned');
+    if (isLoadContextComplete(pinnedContext)) {
+      return {
+        ...pinnedContext,
+        loadInfoComplete: true,
+        fallbackLevel: 1,
+        fallbackAttempts: attempts,
+      };
+    }
+    firstContext = pinnedContext;
+  } catch (err) {
+    attempts.push(`pinned-error:${err.code || 'unknown'}`);
+  }
+
+  const fallbackMessage = await getLatestLoadLikeChatMessageFromHistory(groupId);
+  if (fallbackMessage?.messageText) {
+    const historyContext = await buildLoadContextFromText({
+      pinnedText: fallbackMessage.messageText,
+      sourceLabel: 'chat-history+ai',
+    });
+    const withMetadata = {
+      ...historyContext,
+      pinnedMessageId: null,
+      pinnedSignature: '',
+      historyMessageCreatedAt: fallbackMessage.createdAt,
+      historyMessageId: fallbackMessage.messageId,
+      historyMessageSender: fallbackMessage.senderName,
+      fallbackLevel: 3,
+      fallbackAttempts: [...attempts, 'chat-history'],
+    };
+    if (isLoadContextComplete(withMetadata)) {
+      return {
+        ...withMetadata,
+        loadInfoComplete: true,
+      };
+    }
+    if (!firstContext) {
+      firstContext = withMetadata;
+    }
+  } else {
+    attempts.push('chat-history-missing');
+  }
+
+  if (firstContext && isLoadContextComplete(firstContext)) {
+    return {
+      ...firstContext,
+      loadInfoComplete: true,
+      fallbackAttempts: attempts,
+    };
+  }
+
+  const err = new Error(NO_CURRENT_LOAD_INFO_MESSAGE);
+  err.code = 'LOAD_CONTEXT_NOT_FOUND';
+  err.fallbackAttempts = attempts;
+  throw err;
 }
 
 module.exports = {
   buildPinnedSignature,
   choosePinnedMessageCandidate,
+  getLatestLoadLikeChatMessageFromHistory,
   inferDestinationFromPinnedText,
+  isLoadContextComplete,
+  NO_CURRENT_LOAD_INFO_MESSAGE,
+  readLoadContextWithFallbacks,
   readPinnedLoadContext,
 };
