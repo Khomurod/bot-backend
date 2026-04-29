@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const { extractRateConRawTextFromFile } = require('../server/services/dispatchParserService');
 const { pickStoredLoadForContext } = require('./recentLoadSelection');
+const { isLoadLikeChatMessage } = require('./loadTextPatterns');
 
 const GROQ_API_KEY = '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';
 const PINNED_CONTEXT_GROQ_MODELS = [
@@ -24,7 +25,6 @@ const PINNED_CONTEXT_GEMINI_MODELS = [
   'gemma-3-1b-it',
 ];
 const CHAT_HISTORY_LOOKBACK_DAYS = 8;
-const LOAD_LIKE_CHAT_MESSAGE_REGEX = /(load\s*#|load\s*id|rate.?confirm|carrier_rate|secure.?rate.?con|\.pdf\b|live\s*[-/\\]\s*live|drop\s*[-/\\]?\s*hook|hook\s*[-/\\]?\s*drop|[A-Z]{2}\s*[-/>]+\s*[A-Z]{2})/i;
 const STALE_STATUS_CHAT_MESSAGE_REGEX = /\b(pod|completed|cancel(?:led)?|picked up|status\s*:|rolling|stopped|miles?\s+left)\b/i;
 const NO_CURRENT_LOAD_INFO_MESSAGE = 'No information about the current load is found';
 
@@ -43,13 +43,6 @@ function normalizeLine(line) {
   return String(line || '')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function isLoadLikeChatMessage(text) {
-  const source = String(text || '');
-  if (!source.trim()) return false;
-  if (/^\s*\/(?:location|update|status)\b/i.test(source)) return false;
-  return LOAD_LIKE_CHAT_MESSAGE_REGEX.test(source);
 }
 
 function isLikelyStaleStatusMessage(text) {

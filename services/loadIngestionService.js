@@ -1,11 +1,11 @@
 const crypto = require('node:crypto');
 const db = require('../database/db');
 const { extractRateConRawTextFromFile } = require('../server/services/dispatchParserService');
+const { extractLoadIdentifier, isLoadLikeChatMessage } = require('./loadTextPatterns');
 const {
   buildLoadContextFromText,
   downloadTelegramFileBuffer,
   getPinnedFileDescriptor,
-  isLoadLikeChatMessage,
 } = require('./dispatchPinnedContextService');
 const { inferWindowsFromAiDateTimeStrings } = require('./loadWindowParse');
 const { scheduleAlbumPiece } = require('./mediaGroupIngestBuffer');
@@ -157,9 +157,7 @@ async function ingestAlbumMessages(telegram, group, messages) {
       ? new Date(firstUnix * 1000).toISOString()
       : null;
 
-  let loadIdentifier = null;
-  const loadMatch = caption.match(/\b(?:load\s*#|load\s*id)\s*:?\s*([A-Za-z0-9\-]+)/i);
-  if (loadMatch) loadIdentifier = loadMatch[1];
+  const loadIdentifier = extractLoadIdentifier(caption);
 
   await db.insertGroupRecentLoad({
     groupId: group.id,
@@ -263,11 +261,7 @@ async function ingestLoadMessage(telegram, group, message) {
       ? new Date(messageUnix * 1000).toISOString()
       : null;
 
-  let loadIdentifier = null;
-  const loadMatch = caption.match(/\b(?:load\s*#|load\s*id)\s*:?\s*([A-Za-z0-9\-]+)/i);
-  if (loadMatch) {
-    loadIdentifier = loadMatch[1];
-  }
+  const loadIdentifier = extractLoadIdentifier(caption);
 
   await db.insertGroupRecentLoad({
     groupId: group.id,

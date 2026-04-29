@@ -29,6 +29,15 @@ test('isCandidateLoadMessage: load-like caption without attachment', () => {
   );
 });
 
+test('isCandidateLoadMessage: Load number without hash (caption only)', () => {
+  assert.equal(
+    isCandidateLoadMessage({
+      caption: 'Load 418911\nLive-Drop\nMN>NJ',
+    }),
+    true
+  );
+});
+
 test('isCandidateLoadMessage: ignores plain chatter', () => {
   assert.equal(
     isCandidateLoadMessage({
