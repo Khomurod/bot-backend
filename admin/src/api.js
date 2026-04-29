@@ -300,6 +300,12 @@ export async function getDispatchTestingGroups() {
   return res.json();
 }
 
+export async function getDispatchTestingGroupDetails(groupId) {
+  const res = await fetch(`${API_BASE}/dispatch/testing-feature/groups/${groupId}/details`);
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function updateDispatchTestingGroup(groupId, payload) {
   const res = await fetch(`${API_BASE}/dispatch/testing-feature/groups/${groupId}`, {
     method: 'PUT',

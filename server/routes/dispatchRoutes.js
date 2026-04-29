@@ -5,6 +5,7 @@ const db = require('../../database/db');
 const { bot } = require('../../bot/bot');
 const { parseRateConfirmationFile } = require('../services/dispatchParserService');
 const { triggerDispatchEtaNowByGroupId } = require('../../services/dispatchEtaUpdateService');
+const { buildDispatchTestingGroupDetails } = require('../../services/dispatchTestingDiagnosticsService');
 
 const router = express.Router();
 const DISPATCH_UPLOAD_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
@@ -171,6 +172,28 @@ router.get('/testing-feature/groups', async (req, res) => {
   } catch (err) {
     console.error('[API] Dispatch ETA groups fetch failed:', err.message);
     return res.status(500).json({ error: 'Failed to fetch testing feature groups' });
+  }
+});
+
+router.get('/testing-feature/groups/:groupId/details', async (req, res) => {
+  const groupId = Number.parseInt(req.params.groupId, 10);
+  if (!Number.isInteger(groupId) || groupId <= 0) {
+    return res.status(400).json({ error: 'Invalid groupId' });
+  }
+
+  try {
+    const details = await buildDispatchTestingGroupDetails({
+      telegram: bot.telegram,
+      groupId,
+    });
+    return res.json({ details });
+  } catch (err) {
+    const status = err.status || 500;
+    console.error('[API] Dispatch ETA details fetch failed:', err.message);
+    return res.status(status).json({
+      error: status === 404 ? 'Active driver group not found' : 'Failed to fetch testing feature details',
+      detail: err.message,
+    });
   }
 });
 

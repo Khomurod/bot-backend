@@ -76,6 +76,13 @@ function parsePromptInteger(value, fallback = 0) {
   return parsed;
 }
 
+function formatOptionalDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString();
+}
+
 export default function DispatchPage() {
   const [activeTab, setActiveTab] = useState("assistant");
   const [loading, setLoading] = useState(false);
@@ -92,6 +99,9 @@ export default function DispatchPage() {
   const [testingGroups, setTestingGroups] = useState([]);
   const [testingLoading, setTestingLoading] = useState(false);
   const [testingSavingGroupId, setTestingSavingGroupId] = useState(null);
+  const [expandedTestingGroupId, setExpandedTestingGroupId] = useState(null);
+  const [testingDetailsByGroupId, setTestingDetailsByGroupId] = useState({});
+  const [testingDetailsLoadingGroupId, setTestingDetailsLoadingGroupId] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -168,6 +178,31 @@ export default function DispatchPage() {
   useEffect(() => {
     loadTestingGroups();
   }, [loadTestingGroups]);
+
+  const loadTestingGroupDetails = useCallback(async (groupId, options = {}) => {
+    const forceRefresh = Boolean(options.forceRefresh);
+    if (!groupId) return;
+
+    if (!forceRefresh && testingDetailsByGroupId[groupId]) {
+      return;
+    }
+
+    setTestingDetailsLoadingGroupId(groupId);
+    try {
+      const data = await api.getDispatchTestingGroupDetails(groupId);
+      setTestingDetailsByGroupId((current) => ({
+        ...current,
+        [groupId]: data?.details || { error: "No details available." },
+      }));
+    } catch (err) {
+      setTestingDetailsByGroupId((current) => ({
+        ...current,
+        [groupId]: { error: err.message || "Failed to load group details." },
+      }));
+    } finally {
+      setTestingDetailsLoadingGroupId((current) => (current === groupId ? null : current));
+    }
+  }, [testingDetailsByGroupId]);
 
   const uploadFile = useCallback(async (inputFile) => {
     const file = normalizeClipboardFile(inputFile);
@@ -314,6 +349,27 @@ export default function DispatchPage() {
       setTestingGroups((current) => current.map((group) => (
         group.group_id === row.group_id ? { ...group, ...saved } : group
       )));
+      setTestingDetailsByGroupId((current) => {
+        const existing = current[row.group_id];
+        if (!existing || existing.error) return current;
+        return {
+          ...current,
+          [row.group_id]: {
+            ...existing,
+            settings: {
+              ...existing.settings,
+              enabled: Boolean(saved.eta_enabled),
+              intervalMinutes: Number(saved.eta_interval_minutes) || existing.settings?.intervalMinutes || 60,
+              intervalHours: Number(saved.eta_interval_hours) || 0,
+              intervalRemainingMinutes: Number(saved.eta_interval_remaining_minutes) || 0,
+              nextRunAt: saved.eta_next_run_at || existing.settings?.nextRunAt || null,
+              lastRunAt: saved.eta_last_run_at || existing.settings?.lastRunAt || null,
+              lastStatus: saved.eta_last_status || existing.settings?.lastStatus || null,
+              lastError: saved.eta_last_error || existing.settings?.lastError || null,
+            },
+          },
+        };
+      });
 
       if (nextEnabled) {
         if (response?.immediate?.success) {
@@ -330,6 +386,19 @@ export default function DispatchPage() {
     } finally {
       setTestingSavingGroupId(null);
     }
+  };
+
+  const handleTestingExpand = async (row) => {
+    if (!row?.group_id) return;
+    const nextExpanded = expandedTestingGroupId === row.group_id ? null : row.group_id;
+    setExpandedTestingGroupId(nextExpanded);
+    if (nextExpanded) {
+      await loadTestingGroupDetails(row.group_id);
+    }
+  };
+
+  const handleRefreshTestingDetails = async (groupId) => {
+    await loadTestingGroupDetails(groupId, { forceRefresh: true });
   };
 
   const renderAssistantTab = () => (
@@ -499,6 +568,10 @@ export default function DispatchPage() {
 
           {testingGroups.map((row) => {
             const saving = testingSavingGroupId === row.group_id;
+            const expanded = expandedTestingGroupId === row.group_id;
+            const detailsLoading = testingDetailsLoadingGroupId === row.group_id;
+            const details = testingDetailsByGroupId[row.group_id];
+            const detailsError = details && details.error;
             return (
               <div
                 key={row.group_id}
@@ -518,15 +591,24 @@ export default function DispatchPage() {
                       {row.telegram_group_id}
                     </div>
                   </div>
-                  <label style={{ display: "inline-flex", alignItems: "center", gap: "8px", color: "var(--text-secondary)" }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(row.eta_enabled)}
-                      onChange={(event) => handleTestingToggle(row, event.target.checked)}
-                      disabled={saving}
-                    />
-                    {saving ? "Saving..." : (row.eta_enabled ? "On" : "Off")}
-                  </label>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => handleTestingExpand(row)}
+                    >
+                      {expanded ? "Hide details" : "Show details"}
+                    </button>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: "8px", color: "var(--text-secondary)" }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(row.eta_enabled)}
+                        onChange={(event) => handleTestingToggle(row, event.target.checked)}
+                        disabled={saving}
+                      />
+                      {saving ? "Saving..." : (row.eta_enabled ? "On" : "Off")}
+                    </label>
+                  </div>
                 </div>
 
                 <div style={{ display: "flex", gap: "14px", flexWrap: "wrap", color: "var(--text-secondary)", fontSize: "13px" }}>
@@ -538,6 +620,142 @@ export default function DispatchPage() {
                 {row.eta_last_error && (
                   <div style={{ color: "var(--danger)", fontSize: "13px" }}>
                     Last error: {row.eta_last_error}
+                  </div>
+                )}
+
+                {expanded && (
+                  <div
+                    style={{
+                      marginTop: "6px",
+                      paddingTop: "10px",
+                      borderTop: "1px solid var(--border)",
+                      display: "grid",
+                      gap: "10px",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                      <strong>Driver Diagnostics</strong>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => handleRefreshTestingDetails(row.group_id)}
+                        disabled={detailsLoading}
+                      >
+                        {detailsLoading ? "Refreshing..." : "Refresh details"}
+                      </button>
+                    </div>
+
+                    {detailsLoading ? (
+                      <div className="loading" style={{ justifyContent: "flex-start" }}>
+                        <div className="spinner"></div>
+                        Loading diagnostics...
+                      </div>
+                    ) : detailsError ? (
+                      <div style={{ color: "var(--danger)", fontSize: "13px" }}>
+                        {detailsError}
+                      </div>
+                    ) : details ? (
+                      <>
+                        <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+                          <strong style={{ color: "var(--text-primary)" }}>Current load:</strong>{" "}
+                          {details.pinned?.available ? "Pinned message found" : "No pinned message found"}
+                          {details.pinned?.pinnedMessageId ? ` (ID: ${details.pinned.pinnedMessageId})` : ""}
+                          {details.pinned?.source ? ` via ${details.pinned.source}` : ""}
+                        </div>
+
+                        {details.pinned?.preview && (
+                          <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+                            Pinned preview: {details.pinned.preview}
+                          </div>
+                        )}
+                        {details.pinned?.pickupSummary && (
+                          <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+                            Pickup: {details.pinned.pickupSummary}
+                          </div>
+                        )}
+                        {details.pinned?.deliverySummary && (
+                          <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+                            Delivery: {details.pinned.deliverySummary}
+                          </div>
+                        )}
+                        {details.pinned?.destinationQuery && (
+                          <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+                            Destination query: {details.pinned.destinationQuery}
+                          </div>
+                        )}
+                        {details.pinned?.parseModel && (
+                          <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+                            Pinned parser model: {details.pinned.parseModel}
+                          </div>
+                        )}
+                        {details.pinned?.parseError && (
+                          <div style={{ fontSize: "13px", color: "var(--danger)" }}>
+                            Pinned parser error: {details.pinned.parseError}
+                          </div>
+                        )}
+
+                        <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+                          <strong style={{ color: "var(--text-primary)" }}>Current location:</strong>{" "}
+                          {details.location?.available
+                            ? `${details.location.address || `${details.location.latitude}, ${details.location.longitude}`} (${details.location.source})`
+                            : `Unavailable${details.location?.error ? ` - ${details.location.error}` : ""}`}
+                        </div>
+
+                        {details.location?.available && (
+                          <div style={{ display: "flex", gap: "14px", flexWrap: "wrap", color: "var(--text-secondary)", fontSize: "13px" }}>
+                            <span>Unit: {details.location.unitNumber || "-"}</span>
+                            <span>Vehicle: {details.location.vehicleName || "-"}</span>
+                            <span>
+                              Coords: {Number.isFinite(details.location.latitude) ? details.location.latitude.toFixed(6) : "-"},{" "}
+                              {Number.isFinite(details.location.longitude) ? details.location.longitude.toFixed(6) : "-"}
+                            </span>
+                            <span>Last ping: {details.location.pingAgeMinutes ?? "-"} min</span>
+                          </div>
+                        )}
+
+                        <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+                          <strong style={{ color: "var(--text-primary)" }}>Device status:</strong>
+                        </div>
+                        <div style={{ display: "grid", gap: "6px" }}>
+                          {(details.providers || []).map((provider) => (
+                            <div key={provider.label} style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+                              {provider.label}:{" "}
+                              <strong style={{ color: provider.connected ? "var(--success)" : "var(--danger)" }}>
+                                {provider.connected ? "Connected" : "Not Connected"}
+                              </strong>
+                              {provider.error ? ` (${provider.error})` : ""}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+                          <strong style={{ color: "var(--text-primary)" }}>ETA:</strong>{" "}
+                          {details.eta?.available
+                            ? `${details.eta.remainingMiles} mi, ${details.eta.etaMinutes} min (around ${details.eta.etaChicagoLabel} CT)`
+                            : `Unavailable${details.eta?.error ? ` - ${details.eta.error}` : ""}`}
+                        </div>
+                        {details.eta?.destinationDisplayName && (
+                          <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+                            ETA destination: {details.eta.destinationDisplayName}
+                          </div>
+                        )}
+
+                        <div style={{ display: "flex", gap: "14px", flexWrap: "wrap", color: "var(--text-secondary)", fontSize: "13px" }}>
+                          <span>
+                            Auto Update:{" "}
+                            <strong style={{ color: row.eta_enabled ? "var(--success)" : "var(--text-secondary)" }}>
+                              {row.eta_enabled ? "On" : "Off"}
+                            </strong>
+                          </span>
+                          <span>Interval: {formatIntervalText(row.eta_interval_minutes)}</span>
+                          <span>Next run: {formatOptionalDateTime(row.eta_next_run_at)}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div style={{ color: "var(--text-secondary)", fontSize: "13px" }}>
+                        No diagnostics loaded yet.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -582,4 +800,3 @@ export default function DispatchPage() {
     </div>
   );
 }
-
