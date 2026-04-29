@@ -10,6 +10,8 @@ const PINNED_CONTEXT_GROQ_MODELS = [
 ];
 const GEMINI_API_KEY = 'AIzaSyAuDwDmasf2KKl8MXYQUiNMVPpokVVmptw';
 const MAX_INLINE_GEMINI_FILE_BYTES = 14 * 1024 * 1024;
+/** Cap inline images/docs per Gemini request (albums). */
+const MAX_ALBUM_INLINE_PARTS = 6;
 const PINNED_CONTEXT_GEMINI_MODELS = [
   'gemini-2.5-flash',
   'gemini-3.1-flash-lite',
@@ -242,10 +244,41 @@ function chooseBestDestinationQuery({
   return aiCandidate || deliveryCandidate || fallbackCandidate;
 }
 
-function buildPinnedContextPrompt({ pinnedText, extractedRawText }) {
-  return [
+function mergeGroqGeminiAiResults(groq, gemini) {
+  if (!groq) return gemini;
+  if (!gemini) return groq;
+  const r = groq.fields || {};
+  const g = gemini.fields || {};
+  const longer = (a, b) => {
+    const na = normalizeLine(a || '');
+    const nb = normalizeLine(b || '');
+    if (nb.length > na.length) return nb;
+    return na || nb;
+  };
+  return {
+    model: `${groq.model || ''}+${gemini.model || ''}`,
+    fields: {
+      pickupLocation: longer(r.pickupLocation, g.pickupLocation),
+      pickupDateTime: longer(r.pickupDateTime, g.pickupDateTime),
+      deliveryLocation: longer(r.deliveryLocation, g.deliveryLocation),
+      deliveryDateTime: longer(r.deliveryDateTime, g.deliveryDateTime),
+      destinationQuery: longer(r.destinationQuery, g.destinationQuery),
+      notes: longer(r.notes, g.notes),
+    },
+  };
+}
+
+function buildPinnedContextPrompt({ pinnedText, extractedRawText, multipleMedia = false }) {
+  const lines = [
     'You are a trucking dispatch assistant.',
     'Pinned Telegram load messages can be messy and inconsistent. Do not assume a fixed template.',
+  ];
+  if (multipleMedia) {
+    lines.push(
+      'Multiple images or PDF pages may belong to ONE load (album, screenshots, or multi-page). Read ALL media together and return ONE coherent pickup/delivery.'
+    );
+  }
+  lines.push(
     'Answer these exact questions based on all provided content:',
     '1) What is the pickup location and pickup date/time?',
     '2) What is the delivery location and delivery date/time?',
@@ -264,29 +297,50 @@ function buildPinnedContextPrompt({ pinnedText, extractedRawText }) {
     'Extracted file text (if available):',
     '<extracted_file_text>',
     extractedRawText.slice(0, 10000),
-    '</extracted_file_text>',
-  ].join('\n');
+    '</extracted_file_text>'
+  );
+  return lines.join('\n');
 }
 
-function buildPinnedContextAiParts({ pinnedText, extractedRawText, sourceFile }) {
+function buildPinnedContextAiParts({
+  pinnedText,
+  extractedRawText,
+  sourceFile,
+  sourceFiles,
+}) {
   const parts = [];
-  const canInlineSourceFile = Boolean(
+  const multi = Array.isArray(sourceFiles) && sourceFiles.length > 1;
+  const prompt = buildPinnedContextPrompt({
+    pinnedText,
+    extractedRawText,
+    multipleMedia: multi,
+  });
+
+  const inlineCandidates = [];
+  if (Array.isArray(sourceFiles) && sourceFiles.length > 0) {
+    for (const sf of sourceFiles.slice(0, MAX_ALBUM_INLINE_PARTS)) {
+      if (!sf?.buffer || !sf?.mimetype) continue;
+      if (sf.buffer.length > MAX_INLINE_GEMINI_FILE_BYTES) continue;
+      if (!(sf.mimetype === 'application/pdf' || sf.mimetype.startsWith('image/'))) continue;
+      inlineCandidates.push(sf);
+    }
+  } else if (
     sourceFile?.buffer
     && sourceFile?.mimetype
     && (sourceFile.mimetype === 'application/pdf' || sourceFile.mimetype.startsWith('image/'))
     && sourceFile.buffer.length <= MAX_INLINE_GEMINI_FILE_BYTES
-  );
+  ) {
+    inlineCandidates.push(sourceFile);
+  }
 
-  if (canInlineSourceFile) {
+  for (const sf of inlineCandidates) {
     parts.push({
       inline_data: {
-        mime_type: sourceFile.mimetype,
-        data: sourceFile.buffer.toString('base64'),
+        mime_type: sf.mimetype,
+        data: sf.buffer.toString('base64'),
       },
     });
   }
-
-  const prompt = buildPinnedContextPrompt({ pinnedText, extractedRawText });
 
   parts.push({ text: prompt });
   return parts;
@@ -365,10 +419,20 @@ async function requestPinnedContextFromGroq({ pinnedText, extractedRawText }) {
   throw new Error(details || 'All pinned-context Groq models failed');
 }
 
-async function requestPinnedContextFromGemini({ pinnedText, extractedRawText, sourceFile }) {
+async function requestPinnedContextFromGemini({
+  pinnedText,
+  extractedRawText,
+  sourceFile,
+  sourceFiles,
+}) {
   const contents = [
     {
-      parts: buildPinnedContextAiParts({ pinnedText, extractedRawText, sourceFile }),
+      parts: buildPinnedContextAiParts({
+        pinnedText,
+        extractedRawText,
+        sourceFile,
+        sourceFiles,
+      }),
     },
   ];
 
@@ -438,18 +502,34 @@ async function requestPinnedContextFromGemini({ pinnedText, extractedRawText, so
   throw new Error(details || 'All pinned-context AI models failed');
 }
 
+function hasInlineVisualMedia(sourceFile, sourceFiles) {
+  const okFile = (f) =>
+    Boolean(
+      f?.buffer
+        && f?.mimetype
+        && (f.mimetype === 'application/pdf' || f.mimetype.startsWith('image/'))
+        && f.buffer.length <= MAX_INLINE_GEMINI_FILE_BYTES
+    );
+  if (okFile(sourceFile)) return true;
+  if (Array.isArray(sourceFiles)) {
+    return sourceFiles.some((s) => okFile(s));
+  }
+  return false;
+}
+
 async function buildLoadContextFromText({
   pinnedText,
   extractedRawText = '',
   sourceFile = null,
+  sourceFiles = null,
   sourceLabel = 'pinned-text+ai',
 }) {
   const normalizedPinnedText = String(pinnedText || '').trim();
   const normalizedExtractedText = String(extractedRawText || '').trim();
 
-  let aiResult = null;
+  let groqResult = null;
   try {
-    aiResult = await requestPinnedContextFromGroq({
+    groqResult = await requestPinnedContextFromGroq({
       pinnedText: normalizedPinnedText,
       extractedRawText: normalizedExtractedText,
     });
@@ -457,16 +537,34 @@ async function buildLoadContextFromText({
     console.warn('[DISPATCH-ETA] Pinned-context Groq parse failed:', err.message);
   }
 
-  if (!aiResult) {
-    try {
-      aiResult = await requestPinnedContextFromGemini({
+  const hasVisualMedia = hasInlineVisualMedia(sourceFile, sourceFiles);
+
+  let geminiResult = null;
+  try {
+    if (hasVisualMedia) {
+      geminiResult = await requestPinnedContextFromGemini({
         pinnedText: normalizedPinnedText,
         extractedRawText: normalizedExtractedText,
-        sourceFile,
+        sourceFile: Array.isArray(sourceFiles) && sourceFiles.length > 0 ? null : sourceFile,
+        sourceFiles: Array.isArray(sourceFiles) && sourceFiles.length > 0 ? sourceFiles : null,
       });
-    } catch (err) {
-      console.warn('[DISPATCH-ETA] Pinned-context Gemini parse failed:', err.message);
+    } else if (!groqResult) {
+      geminiResult = await requestPinnedContextFromGemini({
+        pinnedText: normalizedPinnedText,
+        extractedRawText: normalizedExtractedText,
+        sourceFile: null,
+        sourceFiles: null,
+      });
     }
+  } catch (err) {
+    console.warn('[DISPATCH-ETA] Pinned-context Gemini parse failed:', err.message);
+  }
+
+  let aiResult = groqResult;
+  if (groqResult && geminiResult) {
+    aiResult = mergeGroqGeminiAiResults(groqResult, geminiResult);
+  } else {
+    aiResult = geminiResult || groqResult;
   }
 
   const fallbackDestination = inferDestinationFromPinnedText(

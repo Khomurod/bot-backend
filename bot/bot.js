@@ -12,6 +12,7 @@ const {
   toPlainStatusText,
 } = require('../services/dispatchEtaUpdateService');
 const { scheduleLoadIngest } = require('../services/loadIngestionService');
+const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedContextService');
 
 // config.js already validates BOT_TOKEN, DATABASE_URL, MANAGEMENT_GROUP_ID
 // and exits on missing values — no need to re-check here.
@@ -292,6 +293,44 @@ async function startBot() {
         console.error('[BOT] Error logging chat message:', err.message);
       }
       return next();
+    });
+
+    // Summarize resolved load context (stored recent loads → pin → chat history). No GPS.
+    bot.command('load', async (ctx) => {
+      try {
+        const chatType = ctx.chat?.type;
+        if (chatType !== 'group' && chatType !== 'supergroup') {
+          await ctx.reply('Use /load inside a driver group chat.');
+          return;
+        }
+
+        const group = await db.getGroupByTelegramId(ctx.chat.id);
+        if (!group || group.group_type !== 'driver' || !group.active) {
+          await ctx.reply('This command works only in active driver groups.');
+          return;
+        }
+
+        const context = await readLoadContextWithFallbacks({
+          telegram: bot.telegram,
+          chatId: ctx.chat.id,
+          groupId: group.id,
+        });
+
+        const lines = [
+          `Resolved from: ${context.source}`,
+          `Pickup: ${context.pickupSummary || '—'}`,
+          `Delivery: ${context.deliverySummary || '—'}`,
+          `Destination (routing): ${context.destinationQuery || '—'}`,
+        ];
+        await ctx.reply(lines.join('\n'));
+      } catch (err) {
+        if (err?.code === 'LOAD_CONTEXT_NOT_FOUND') {
+          await ctx.reply(NO_CURRENT_LOAD_INFO_MESSAGE);
+          return;
+        }
+        console.error('[BOT] /load failed:', err.message);
+        await ctx.reply('Could not resolve load context right now.');
+      }
     });
 
     // Dispatcher helper: post live truck location for this group's unit number.

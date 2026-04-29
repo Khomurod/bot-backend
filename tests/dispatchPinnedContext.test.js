@@ -21,6 +21,7 @@ function loadPinnedContextWithMocks({ parserMock, dbMock } = {}) {
       getChatLogsForGroup: async () => [],
       getGroupRecentLoads: async () => [],
       hasGroupRecentLoadForMessage: async () => false,
+      hasAnyGroupRecentLoadForMessages: async () => false,
     },
   };
   return require(servicePath);

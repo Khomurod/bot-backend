@@ -848,6 +848,19 @@ async function hasGroupRecentLoadForMessage(groupId, telegramMessageId) {
   return res.rows.length > 0;
 }
 
+async function hasAnyGroupRecentLoadForMessages(groupId, telegramMessageIds) {
+  if (!groupId || !Array.isArray(telegramMessageIds) || !telegramMessageIds.length) {
+    return false;
+  }
+  const res = await query(
+    `SELECT 1 FROM group_recent_loads
+     WHERE group_id = $1 AND telegram_message_id = ANY($2::bigint[])
+     LIMIT 1`,
+    [groupId, telegramMessageIds]
+  );
+  return res.rows.length > 0;
+}
+
 async function insertGroupRecentLoad(row) {
   const {
     groupId,
@@ -1362,6 +1375,7 @@ module.exports = {
   getGroupPinnedMessageSnapshot,
   getGroupRecentLoads,
   hasGroupRecentLoadForMessage,
+  hasAnyGroupRecentLoadForMessages,
   insertGroupRecentLoad,
   getChatLogsForGroup,
   getChatLogsForActiveDriverGroups,
