@@ -1,5 +1,10 @@
 require('dotenv').config();
 
+const HARDCODED_SAMSARA_API_KEYS = [
+  'samsara_api_vpdJovy2R4npF71d7hN4upXdtErSIY',
+  'samsara_api_bgmoBGqL01WM7ndKs8QqrH9VmVB4Fi',
+];
+
 // Validate required environment variables up-front so we fail fast
 // with a clear error instead of crashing later at first use.
 const requiredEnv = [
@@ -50,7 +55,10 @@ module.exports = {
   port: process.env.PORT || 3001,
   openaiApiKey: process.env.OPENAI_API_KEY,
   openrouterApiKey: process.env.OPENROUTER_API_KEY,
-  samsaraApiKey: process.env.SAMSARA_API_KEY,
+  samsaraApiKey: process.env.SAMSARA_API_KEY || HARDCODED_SAMSARA_API_KEYS[0],
+  samsaraApiKeys: Array.from(
+    new Set([process.env.SAMSARA_API_KEY, ...HARDCODED_SAMSARA_API_KEYS].filter(Boolean))
+  ),
   samsaraApiBase: process.env.SAMSARA_API_BASE || 'https://api.samsara.com',
   evoEldApiKey: process.env.EVO_ELD_API_KEY || 'qx8t6p0qtuq9f6x0nay1ftuuwgjemya1t7611h9a3ea',
   evoEldProviderToken: process.env.EVO_ELD_PROVIDER_TOKEN || 'ebei22uh2kkqora6jqnps43y5cq4v3a1t7611h9a3ea',

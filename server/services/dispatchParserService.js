@@ -1164,20 +1164,9 @@ async function parseRateConfirmationFile(file) {
     throw error;
   }
 
-  let rawText = '';
-  let usedPdfOcr = false;
-  if (file.mimetype === 'application/pdf') {
-    const parsedPdf = await extractTextFromPdf(file.buffer);
-    rawText = parsedPdf.text;
-    usedPdfOcr = Boolean(parsedPdf.usedPdfOcr);
-  } else if (file.mimetype.startsWith('image/')) {
-    const parsedImage = await extractTextFromImage(file.buffer);
-    rawText = parsedImage.text;
-  } else {
-    const error = new Error('Only PDF, JPG, PNG, and WEBP files are supported.');
-    error.status = 400;
-    throw error;
-  }
+  const extracted = await extractRateConRawTextFromFile(file);
+  const rawText = extracted.text;
+  const usedPdfOcr = Boolean(extracted.usedPdfOcr);
 
   const canParseFromInlineSource = Boolean(
     file?.buffer
@@ -1210,6 +1199,35 @@ async function parseRateConfirmationFile(file) {
   };
 }
 
+async function extractRateConRawTextFromFile(file) {
+  if (!file) {
+    const error = new Error('No file provided');
+    error.status = 400;
+    throw error;
+  }
+
+  let rawText = '';
+  let usedPdfOcr = false;
+  if (file.mimetype === 'application/pdf') {
+    const parsedPdf = await extractTextFromPdf(file.buffer);
+    rawText = parsedPdf.text;
+    usedPdfOcr = Boolean(parsedPdf.usedPdfOcr);
+  } else if (file.mimetype.startsWith('image/')) {
+    const parsedImage = await extractTextFromImage(file.buffer);
+    rawText = parsedImage.text;
+  } else {
+    const error = new Error('Only PDF, JPG, PNG, and WEBP files are supported.');
+    error.status = 400;
+    throw error;
+  }
+
+  return {
+    text: String(rawText || '').trim(),
+    usedPdfOcr: Boolean(usedPdfOcr),
+  };
+}
+
 module.exports = {
+  extractRateConRawTextFromFile,
   parseRateConfirmationFile,
 };

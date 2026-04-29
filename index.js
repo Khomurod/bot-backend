@@ -6,12 +6,17 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-const { startBot, stopBot } = require('./bot/bot');
+const { bot, startBot, stopBot } = require('./bot/bot');
 const { startServer, stopServer } = require('./server/api');
 const { startScheduler, stopScheduler } = require('./services/schedulerService');
 const { startWeeklyReporter, stopWeeklyReporter } = require('./services/weeklyReportService');
 const { startBirthdayService, stopBirthdayService } = require('./services/birthdayService');
 const { startBackgroundAnnotator } = require('./services/aiAnnotationService');
+const {
+  configureDispatchEtaTelegram,
+  startDispatchEtaScheduler,
+  stopDispatchEtaScheduler,
+} = require('./services/dispatchEtaUpdateService');
 const db = require('./database/db');
 
 const MAX_RESTART_DELAY = 60000;
@@ -243,6 +248,7 @@ async function shutdownAll(signal = 'SIGTERM') {
   console.log(`[SHUTDOWN] Graceful shutdown initiated (${signal})...`);
 
   try { stopScheduler(); } catch (err) { console.error('[SHUTDOWN] stopScheduler failed:', err.message); }
+  try { stopDispatchEtaScheduler(); } catch (err) { console.error('[SHUTDOWN] stopDispatchEtaScheduler failed:', err.message); }
   try { stopBirthdayService(); } catch (err) { console.error('[SHUTDOWN] stopBirthdayService failed:', err.message); }
   try { stopWeeklyReporter(); } catch (err) { console.error('[SHUTDOWN] stopWeeklyReporter failed:', err.message); }
   try { stopBot(signal); } catch (err) { console.error('[SHUTDOWN] stopBot failed:', err.message); }
@@ -283,10 +289,12 @@ process.on('SIGTERM', () => shutdownAll('SIGTERM'));
     process.exit(1);
   }
 
+  configureDispatchEtaTelegram(bot.telegram);
   startServer();
   await startBot();
 
   startScheduler();
+  startDispatchEtaScheduler();
   startBirthdayService();
   startWeeklyReporter();
   startBackgroundAnnotator();

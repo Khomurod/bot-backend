@@ -245,6 +245,35 @@ CREATE TABLE IF NOT EXISTS chat_logs (
 
 ALTER TABLE chat_logs ADD COLUMN IF NOT EXISTS telegram_message_id BIGINT;
 
+-- TABLE: group_pinned_messages
+-- Stores the latest pinned-message snapshot we observed in updates for each
+-- driver group, so ETA parsing can use the newest pin event reliably.
+CREATE TABLE IF NOT EXISTS group_pinned_messages (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER NOT NULL UNIQUE REFERENCES groups(id) ON DELETE CASCADE,
+  telegram_group_id BIGINT NOT NULL,
+  pinned_message_id BIGINT NOT NULL,
+  pinned_message_json JSONB NOT NULL,
+  source_event_message_id BIGINT,
+  source_event_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS group_id INTEGER;
+ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS telegram_group_id BIGINT;
+ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS pinned_message_id BIGINT;
+ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS pinned_message_json JSONB;
+ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS source_event_message_id BIGINT;
+ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS source_event_at TIMESTAMP;
+ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_group_pinned_messages_group_id
+  ON group_pinned_messages(group_id);
+CREATE INDEX IF NOT EXISTS idx_group_pinned_messages_updated_at
+  ON group_pinned_messages(updated_at DESC);
+
 -- ─── AI Reports (Human-in-the-Loop) ───
 CREATE TABLE IF NOT EXISTS ai_reports (
   id SERIAL PRIMARY KEY,
@@ -304,6 +333,63 @@ CREATE TABLE IF NOT EXISTS service_runs (
 CREATE INDEX IF NOT EXISTS idx_service_runs_ran_at
   ON service_runs(ran_at DESC);
 
+-- ─── Dispatch ETA Testing Feature ─────────────────────────────────────────────
+-- Per-group settings/state for automated ETA updates derived from pinned load
+-- context + live telematics location.
+CREATE TABLE IF NOT EXISTS dispatch_eta_updates (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER NOT NULL UNIQUE REFERENCES groups(id) ON DELETE CASCADE,
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  interval_minutes INTEGER NOT NULL DEFAULT 60,
+  next_run_at TIMESTAMP NULL,
+  processing BOOLEAN NOT NULL DEFAULT FALSE,
+  processing_started_at TIMESTAMP NULL,
+  last_run_at TIMESTAMP NULL,
+  last_status TEXT NULL,
+  last_error TEXT NULL,
+  last_pinned_signature TEXT NULL,
+  cached_pickup TEXT NULL,
+  cached_delivery TEXT NULL,
+  cached_destination_query TEXT NULL,
+  cached_context_json JSONB NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT dispatch_eta_interval_check CHECK (interval_minutes BETWEEN 1 AND 1440)
+);
+
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS interval_minutes INTEGER NOT NULL DEFAULT 60;
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS next_run_at TIMESTAMP NULL;
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS processing BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP NULL;
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS last_run_at TIMESTAMP NULL;
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS last_status TEXT NULL;
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS last_error TEXT NULL;
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS last_pinned_signature TEXT NULL;
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS cached_pickup TEXT NULL;
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS cached_delivery TEXT NULL;
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS cached_destination_query TEXT NULL;
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS cached_context_json JSONB NULL;
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW();
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE constraint_name = 'dispatch_eta_interval_check'
+      AND table_name = 'dispatch_eta_updates'
+  ) THEN
+    ALTER TABLE dispatch_eta_updates DROP CONSTRAINT dispatch_eta_interval_check;
+  END IF;
+END
+$$;
+
+ALTER TABLE dispatch_eta_updates
+  ADD CONSTRAINT dispatch_eta_interval_check
+  CHECK (interval_minutes BETWEEN 1 AND 1440);
+
 -- ─── Performance indexes for growing tables ───────────────────────
 -- responses: primary lookup is by question, which already has a unique
 -- composite index. Add a driver-centric index for "my answers" style
@@ -333,6 +419,10 @@ CREATE INDEX IF NOT EXISTS idx_broadcast_button_clicks_broadcast_id
 CREATE INDEX IF NOT EXISTS idx_scheduled_messages_pending_due
   ON scheduled_messages(scheduled_at)
   WHERE status = 'pending';
+
+CREATE INDEX IF NOT EXISTS idx_dispatch_eta_due
+  ON dispatch_eta_updates(next_run_at)
+  WHERE enabled = TRUE;
 
 -- groups: samsara lookups by samsara_vehicle_id and active driver filters.
 CREATE INDEX IF NOT EXISTS idx_groups_samsara_vehicle_id

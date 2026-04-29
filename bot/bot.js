@@ -3,9 +3,8 @@ const config = require('../config/config');
 const db = require('../database/db');
 const { safeSend, isPermanentSendError: isPermanentSendErrorFromHtml } = require('../services/telegramHtml');
 const { normalizeMediaItems } = require('../services/scheduledMessageUtils');
-const { getLiveLocationForGroupTitle } = require('../services/samsaraLocationService');
-const { getLiveLocationForGroupTitleFromEvo } = require('../services/evoEldService');
-const { getLiveLocationForGroupTitleFromTt } = require('../services/ttEldService');
+const { resolveLiveLocationForGroupTitle } = require('../services/liveLocationResolver');
+const { triggerDispatchEtaNowByGroupId } = require('../services/dispatchEtaUpdateService');
 
 // config.js already validates BOT_TOKEN, DATABASE_URL, MANAGEMENT_GROUP_ID
 // and exits on missing values — no need to re-check here.
@@ -218,14 +217,25 @@ async function startBot() {
         const chat = ctx.chat;
         // Only log if it's a group
         if (chat && (chat.type === 'group' || chat.type === 'supergroup')) {
+          const group = await db.getGroupByTelegramId(chat.id);
+          if (group && ctx.message?.pinned_message?.message_id) {
+            const sourceEventDate = Number.isFinite(ctx.message.date)
+              ? new Date(ctx.message.date * 1000).toISOString()
+              : null;
+            await db.upsertGroupPinnedMessageSnapshot({
+              groupId: group.id,
+              telegramGroupId: chat.id,
+              pinnedMessage: ctx.message.pinned_message,
+              sourceEventMessageId: ctx.message.message_id || null,
+              sourceEventAt: sourceEventDate,
+            });
+          }
+
           const text = ctx.message.text || ctx.message.caption;
-          if (text) {
-            const group = await db.getGroupByTelegramId(chat.id);
-            if (group) {
-              const senderName = ctx.from.first_name || ctx.from.username || 'Unknown';
-              const telegramMessageId = ctx.message.message_id || null;
-              await db.logChatMessage(group.id, ctx.from.id, senderName, text, telegramMessageId);
-            }
+          if (text && group) {
+            const senderName = ctx.from.first_name || ctx.from.username || 'Unknown';
+            const telegramMessageId = ctx.message.message_id || null;
+            await db.logChatMessage(group.id, ctx.from.id, senderName, text, telegramMessageId);
           }
         }
       } catch (err) {
@@ -244,78 +254,19 @@ async function startBot() {
         }
 
         const groupTitle = ctx.chat?.title || '';
-        let location = null;
-        let source = 'Samsara';
-        let samsaraError = null;
-        let evoError = null;
-
+        let resolved = null;
         try {
-          location = await getLiveLocationForGroupTitle({
-            groupTitle,
-            apiKey: config.samsaraApiKey,
-            apiBase: config.samsaraApiBase,
-          });
+          resolved = await resolveLiveLocationForGroupTitle(groupTitle);
         } catch (err) {
-          samsaraError = err;
           if (err.code === 'UNIT_NOT_FOUND_IN_GROUP_TITLE') {
             await ctx.reply('Could not find a unit number in this group title.');
             return;
           }
+          console.error('[BOT] /location provider chain failed:', err.message);
+          await ctx.reply('Could not fetch live location from Samsara, EVO ELD, or TT ELD right now.');
+          return;
         }
-
-        if (!location) {
-          try {
-            location = await getLiveLocationForGroupTitleFromEvo({
-              groupTitle,
-              usdotNumber: config.evoEldUsdotNumber,
-              apiKey: config.evoEldApiKey,
-              providerToken: config.evoEldProviderToken,
-              apiBase: config.evoEldApiBase,
-            });
-            source = 'EVO ELD (fallback)';
-          } catch (evoErr) {
-            evoError = evoErr;
-            console.error('[BOT] /location EVO fallback failed:', evoErr.message);
-          }
-        }
-
-        if (!location) {
-          const ttApiKeys = Array.from(
-            new Set([config.ttEldApiKey, config.evoEldApiKey].filter(Boolean))
-          );
-          let ttError = null;
-
-          for (const ttApiKey of ttApiKeys) {
-            try {
-              location = await getLiveLocationForGroupTitleFromTt({
-                groupTitle,
-                usdotNumber: config.ttEldUsdotNumber,
-                apiKey: ttApiKey,
-                providerToken: config.ttEldProviderToken,
-                apiBase: config.ttEldApiBase,
-              });
-              source = 'TT ELD (fallback)';
-              break;
-            } catch (err) {
-              ttError = err;
-              console.error('[BOT] /location TT fallback attempt failed:', err.message);
-            }
-          }
-
-          if (!location) {
-            if (samsaraError) {
-              console.error('[BOT] /location Samsara error before fallback:', samsaraError.message);
-            }
-            if (evoError) {
-              console.error('[BOT] /location EVO error before TT fallback:', evoError.message);
-            }
-            if (ttError) {
-              console.error('[BOT] /location TT error after all key attempts:', ttError.message);
-            }
-            await ctx.reply('Could not fetch live location from Samsara, EVO ELD, or TT ELD right now.');
-            return;
-          }
-        }
+        const { location, source } = resolved;
 
         await ctx.replyWithLocation(location.latitude, location.longitude);
 
@@ -339,6 +290,47 @@ async function startBot() {
       } catch (err) {
         console.error('[BOT] /location failed:', err.message);
         await ctx.reply('Could not fetch live location right now. Please try again in a minute.');
+      }
+    });
+
+    // Dispatcher ETA helper: manually trigger immediate ETA update if feature is enabled.
+    bot.command('update', async (ctx) => {
+      try {
+        const chatType = ctx.chat?.type;
+        if (chatType !== 'group' && chatType !== 'supergroup') {
+          await ctx.reply('Use /update inside a driver group chat.');
+          return;
+        }
+
+        const group = await db.getGroupByTelegramId(ctx.chat.id);
+        if (!group || group.group_type !== 'driver' || !group.active) {
+          await ctx.reply('This command works only in active driver groups.');
+          return;
+        }
+
+        const setting = await db.getDispatchEtaSettingByGroupId(group.id);
+        if (!setting || !setting.enabled) {
+          await ctx.reply('ETA updates are currently turned off for this group.');
+          return;
+        }
+
+        await ctx.reply('Running ETA update now...');
+        const result = await triggerDispatchEtaNowByGroupId(group.id);
+        if (result?.success) {
+          await ctx.reply('ETA update sent.');
+          return;
+        }
+
+        if (result?.triggered === false && result?.reason === 'not_enabled_or_already_processing') {
+          await ctx.reply('ETA update is already running. Please wait a moment.');
+          return;
+        }
+
+        const detail = result?.error || 'Unknown error';
+        await ctx.reply(`ETA update failed: ${detail}`);
+      } catch (err) {
+        console.error('[BOT] /update failed:', err.message);
+        await ctx.reply('Could not run ETA update right now. Please try again shortly.');
       }
     });
 

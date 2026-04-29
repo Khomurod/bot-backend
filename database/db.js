@@ -384,6 +384,161 @@ async function getAllDriverGroups() {
   return res.rows;
 }
 
+async function getDriverGroupsWithDispatchEtaSettings() {
+  const res = await query(
+    `SELECT g.id,
+            g.group_name,
+            g.telegram_group_id,
+            g.language,
+            g.active,
+            COALESCE(e.enabled, FALSE) AS eta_enabled,
+            COALESCE(e.interval_minutes, 60) AS eta_interval_minutes,
+            e.next_run_at AS eta_next_run_at,
+            e.last_run_at AS eta_last_run_at,
+            e.last_status AS eta_last_status,
+            e.last_error AS eta_last_error
+     FROM groups g
+     LEFT JOIN dispatch_eta_updates e ON e.group_id = g.id
+     WHERE g.group_type = 'driver'
+       AND g.active = TRUE
+     ORDER BY g.id ASC`
+  );
+  return res.rows;
+}
+
+async function getDispatchEtaSettingByGroupId(groupId) {
+  const res = await query(
+    `SELECT *
+     FROM dispatch_eta_updates
+     WHERE group_id = $1
+     LIMIT 1`,
+    [groupId]
+  );
+  return res.rows[0] || null;
+}
+
+async function upsertDispatchEtaSetting({
+  groupId,
+  enabled,
+  intervalMinutes,
+  nextRunAt = null,
+}) {
+  const normalizedEnabled = Boolean(enabled);
+  const normalizedInterval = Number.isInteger(intervalMinutes) ? intervalMinutes : 60;
+  const res = await query(
+    `INSERT INTO dispatch_eta_updates (group_id, enabled, interval_minutes, next_run_at, processing, processing_started_at, updated_at)
+     VALUES ($1, $2, $3, $4, FALSE, NULL, NOW())
+     ON CONFLICT (group_id)
+     DO UPDATE SET enabled = EXCLUDED.enabled,
+                   interval_minutes = EXCLUDED.interval_minutes,
+                   next_run_at = EXCLUDED.next_run_at,
+                   processing = FALSE,
+                   processing_started_at = NULL,
+                   updated_at = NOW()
+     RETURNING *`,
+    [groupId, normalizedEnabled, normalizedInterval, nextRunAt]
+  );
+  return res.rows[0];
+}
+
+async function claimDispatchEtaUpdateByGroupId(groupId) {
+  const res = await query(
+    `UPDATE dispatch_eta_updates
+     SET processing = TRUE,
+         processing_started_at = NOW(),
+         updated_at = NOW()
+     WHERE group_id = $1
+       AND enabled = TRUE
+       AND (processing = FALSE OR processing_started_at < NOW() - INTERVAL '10 minutes')
+     RETURNING *`,
+    [groupId]
+  );
+  return res.rows[0] || null;
+}
+
+async function claimDueDispatchEtaUpdates(limit = 20) {
+  const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 20;
+  const res = await query(
+    `WITH due AS (
+       SELECT id
+       FROM dispatch_eta_updates
+       WHERE enabled = TRUE
+         AND next_run_at IS NOT NULL
+         AND next_run_at <= NOW()
+         AND (processing = FALSE OR processing_started_at < NOW() - INTERVAL '10 minutes')
+       ORDER BY next_run_at ASC
+       LIMIT $1
+       FOR UPDATE SKIP LOCKED
+     )
+     UPDATE dispatch_eta_updates e
+     SET processing = TRUE,
+         processing_started_at = NOW(),
+         updated_at = NOW()
+     FROM due
+     WHERE e.id = due.id
+     RETURNING e.*`,
+    [safeLimit]
+  );
+  return res.rows;
+}
+
+async function completeDispatchEtaUpdateSuccess({
+  id,
+  nextRunAt,
+  lastStatus = 'sent',
+  lastPinnedSignature = null,
+  cachedPickup = null,
+  cachedDelivery = null,
+  cachedDestinationQuery = null,
+  cachedContextJson = null,
+}) {
+  const res = await query(
+    `UPDATE dispatch_eta_updates
+     SET processing = FALSE,
+         processing_started_at = NULL,
+         last_run_at = NOW(),
+         last_status = $2,
+         last_error = NULL,
+         next_run_at = $3,
+         last_pinned_signature = $4,
+         cached_pickup = $5,
+         cached_delivery = $6,
+         cached_destination_query = $7,
+         cached_context_json = $8,
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [
+      id,
+      lastStatus,
+      nextRunAt,
+      lastPinnedSignature,
+      cachedPickup,
+      cachedDelivery,
+      cachedDestinationQuery,
+      cachedContextJson ? JSON.stringify(cachedContextJson) : null,
+    ]
+  );
+  return res.rows[0] || null;
+}
+
+async function completeDispatchEtaUpdateFailure({ id, nextRunAt, errorMessage }) {
+  const res = await query(
+    `UPDATE dispatch_eta_updates
+     SET processing = FALSE,
+         processing_started_at = NULL,
+         last_run_at = NOW(),
+         last_status = 'failed',
+         last_error = $2,
+         next_run_at = $3,
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [id, String(errorMessage || 'Unknown ETA update error').slice(0, 1000), nextRunAt]
+  );
+  return res.rows[0] || null;
+}
+
 async function createScheduledMessage(data) {
   const mediaItems = Array.isArray(data.media_items) && data.media_items.length > 0
     ? data.media_items
@@ -609,6 +764,63 @@ async function logChatMessage(groupId, telegramUserId, senderName, messageText, 
      VALUES ($1, $2, $3, $4, $5)`,
     [groupId, telegramUserId, telegramMessageId, senderName, messageText]
   );
+}
+
+async function upsertGroupPinnedMessageSnapshot({
+  groupId,
+  telegramGroupId,
+  pinnedMessage,
+  sourceEventMessageId = null,
+  sourceEventAt = null,
+}) {
+  if (!groupId || !telegramGroupId || !pinnedMessage?.message_id) return null;
+
+  const res = await query(
+    `INSERT INTO group_pinned_messages (
+       group_id,
+       telegram_group_id,
+       pinned_message_id,
+       pinned_message_json,
+       source_event_message_id,
+       source_event_at,
+       updated_at
+     )
+     VALUES ($1, $2, $3, $4::jsonb, $5, $6, NOW())
+     ON CONFLICT (group_id)
+     DO UPDATE SET
+       telegram_group_id = EXCLUDED.telegram_group_id,
+       pinned_message_id = EXCLUDED.pinned_message_id,
+       pinned_message_json = EXCLUDED.pinned_message_json,
+       source_event_message_id = EXCLUDED.source_event_message_id,
+       source_event_at = EXCLUDED.source_event_at,
+       updated_at = NOW()
+     WHERE group_pinned_messages.source_event_at IS NULL
+        OR EXCLUDED.source_event_at IS NULL
+        OR EXCLUDED.source_event_at >= group_pinned_messages.source_event_at
+     RETURNING *`,
+    [
+      groupId,
+      telegramGroupId,
+      pinnedMessage.message_id,
+      JSON.stringify(pinnedMessage),
+      sourceEventMessageId,
+      sourceEventAt,
+    ]
+  );
+
+  return res.rows[0] || null;
+}
+
+async function getGroupPinnedMessageSnapshot(groupId) {
+  if (!groupId) return null;
+  const res = await query(
+    `SELECT *
+     FROM group_pinned_messages
+     WHERE group_id = $1
+     LIMIT 1`,
+    [groupId]
+  );
+  return res.rows[0] || null;
 }
 
 async function getChatLogsForGroup(groupId, daysBack) {
@@ -981,6 +1193,7 @@ module.exports = {
   upsertGroup,
   getAllGroups,
   getAllDriverGroups,
+  getDriverGroupsWithDispatchEtaSettings,
   getGroupByTelegramId,
   getGroupBySamsaraId,
   setGroupLanguage,
@@ -990,6 +1203,12 @@ module.exports = {
   getGroupsByIds,
   getGroupsByLanguages,
   deactivateGroup,
+  getDispatchEtaSettingByGroupId,
+  upsertDispatchEtaSetting,
+  claimDispatchEtaUpdateByGroupId,
+  claimDueDispatchEtaUpdates,
+  completeDispatchEtaUpdateSuccess,
+  completeDispatchEtaUpdateFailure,
   // Drivers
   upsertDriver,
   getDriverByTelegramId,
@@ -1023,6 +1242,8 @@ module.exports = {
   getBroadcastButtonClicks,
   // Chat Logs
   logChatMessage,
+  upsertGroupPinnedMessageSnapshot,
+  getGroupPinnedMessageSnapshot,
   getChatLogsForGroup,
   getChatLogsForActiveDriverGroups,
   deleteOldChatLogs,
