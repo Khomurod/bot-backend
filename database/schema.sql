@@ -390,6 +390,31 @@ ALTER TABLE dispatch_eta_updates
   ADD CONSTRAINT dispatch_eta_interval_check
   CHECK (interval_minutes BETWEEN 1 AND 1440);
 
+-- Last two AI-extracted loads per driver group (text + window fields only; files stay on Telegram).
+CREATE TABLE IF NOT EXISTS group_recent_loads (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  telegram_message_id BIGINT NOT NULL,
+  source_message_at TIMESTAMPTZ NULL,
+  context_signature TEXT NOT NULL,
+  pickup_summary TEXT NOT NULL DEFAULT '',
+  delivery_summary TEXT NOT NULL DEFAULT '',
+  destination_query TEXT NOT NULL DEFAULT '',
+  pickup_window_start TIMESTAMPTZ NULL,
+  pickup_window_end TIMESTAMPTZ NULL,
+  delivery_window_start TIMESTAMPTZ NULL,
+  delivery_window_end TIMESTAMPTZ NULL,
+  load_identifier TEXT NULL,
+  caption_preview TEXT NULL,
+  extracted_raw_json JSONB NULL,
+  ai_model TEXT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (group_id, telegram_message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_recent_loads_group_created
+  ON group_recent_loads (group_id, created_at DESC);
+
 -- ─── Performance indexes for growing tables ───────────────────────
 -- responses: primary lookup is by question, which already has a unique
 -- composite index. Add a driver-centric index for "my answers" style

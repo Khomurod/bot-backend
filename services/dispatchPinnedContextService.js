@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const { extractRateConRawTextFromFile } = require('../server/services/dispatchParserService');
+const { pickStoredLoadForContext } = require('./recentLoadSelection');
 
 const GROQ_API_KEY = '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';
 const PINNED_CONTEXT_GROQ_MODELS = [
@@ -482,17 +483,34 @@ async function buildLoadContextFromText({
     fallbackDestination,
   });
 
+  const pickupSummaryLine = [pickupSummary, pickupDateTime].filter(Boolean).join(' | ');
+  const deliverySummaryLine = [deliverySummary, deliveryDateTime].filter(Boolean).join(' | ');
+
+  const aiFieldsJson = aiResult
+    ? {
+        pickup_location: aiResult.fields.pickupLocation,
+        pickup_datetime: aiResult.fields.pickupDateTime,
+        delivery_location: aiResult.fields.deliveryLocation,
+        delivery_datetime: aiResult.fields.deliveryDateTime,
+        destination_query: aiResult.fields.destinationQuery,
+        notes: aiResult.fields.notes,
+      }
+    : null;
+
   return {
-    pickupSummary: [pickupSummary, pickupDateTime].filter(Boolean).join(' | '),
-    deliverySummary: [deliverySummary, deliveryDateTime].filter(Boolean).join(' | '),
+    pickupSummary: pickupSummaryLine,
+    deliverySummary: deliverySummaryLine,
     destinationQuery,
     source: sourceLabel,
     pinnedText: normalizedPinnedText,
     aiModel: aiResult?.model || '',
     extractedRawText: normalizedExtractedText,
+    pickupDateTimeRaw: pickupDateTime,
+    deliveryDateTimeRaw: deliveryDateTime,
+    aiFieldsJson,
     loadInfoComplete: isLoadContextComplete({
-      pickupSummary: [pickupSummary, pickupDateTime].filter(Boolean).join(' | '),
-      deliverySummary: [deliverySummary, deliveryDateTime].filter(Boolean).join(' | '),
+      pickupSummary: pickupSummaryLine,
+      deliverySummary: deliverySummaryLine,
       destinationQuery,
     }),
   };
@@ -565,6 +583,7 @@ async function readPinnedLoadContext({
       pinnedText,
       aiModel: '',
       extractedRawText: '',
+      loadInfoComplete: true,
     };
   }
 
@@ -608,6 +627,62 @@ async function readPinnedLoadContext({
   };
 }
 
+async function readStoredRecentLoadContext({
+  groupId,
+  previousSignature = '',
+  cachedDestinationQuery = '',
+  cachedPickup = '',
+  cachedDelivery = '',
+}) {
+  if (!groupId) return null;
+  const db = require('../database/db');
+  const rows = await db.getGroupRecentLoads(groupId, 2);
+  if (!rows.length) return null;
+
+  const chosen = pickStoredLoadForContext(rows, new Date());
+  if (!chosen) return null;
+
+  if (
+    previousSignature
+    && previousSignature === chosen.context_signature
+    && normalizeLine(cachedDestinationQuery)
+  ) {
+    return {
+      pinnedMessageId: chosen.telegram_message_id,
+      pinnedSignature: chosen.context_signature,
+      pickupSummary: normalizeLine(cachedPickup),
+      deliverySummary: normalizeLine(cachedDelivery),
+      destinationQuery: normalizeLine(cachedDestinationQuery),
+      source: 'stored-recent-load-cache',
+      pinnedText: chosen.caption_preview || '',
+      aiModel: '',
+      extractedRawText: '',
+      loadInfoComplete: true,
+    };
+  }
+
+  const pickupSummary = normalizeLine(chosen.pickup_summary);
+  const deliverySummary = normalizeLine(chosen.delivery_summary);
+  const destinationQuery = normalizeLine(chosen.destination_query);
+
+  return {
+    pinnedMessageId: chosen.telegram_message_id,
+    pinnedSignature: chosen.context_signature,
+    pickupSummary,
+    deliverySummary,
+    destinationQuery,
+    source: 'stored-recent-load',
+    pinnedText: chosen.caption_preview || '',
+    aiModel: chosen.ai_model || '',
+    extractedRawText: '',
+    loadInfoComplete: isLoadContextComplete({
+      pickupSummary,
+      deliverySummary,
+      destinationQuery,
+    }),
+  };
+}
+
 async function readLoadContextWithFallbacks({
   telegram,
   chatId,
@@ -619,6 +694,30 @@ async function readLoadContextWithFallbacks({
 }) {
   const attempts = [];
   let firstContext = null;
+
+  try {
+    const storedContext = await readStoredRecentLoadContext({
+      groupId,
+      previousSignature,
+      cachedDestinationQuery,
+      cachedPickup,
+      cachedDelivery,
+    });
+    if (storedContext) {
+      attempts.push(storedContext.source || 'stored');
+      if (isLoadContextComplete(storedContext)) {
+        return {
+          ...storedContext,
+          loadInfoComplete: true,
+          fallbackLevel: 0,
+          fallbackAttempts: attempts,
+        };
+      }
+      firstContext = storedContext;
+    }
+  } catch (err) {
+    attempts.push(`stored-error:${err.message}`);
+  }
 
   try {
     const pinnedContext = await readPinnedLoadContext({
@@ -639,7 +738,9 @@ async function readLoadContextWithFallbacks({
         fallbackAttempts: attempts,
       };
     }
-    firstContext = pinnedContext;
+    if (!firstContext) {
+      firstContext = pinnedContext;
+    }
   } catch (err) {
     attempts.push(`pinned-error:${err.code || 'unknown'}`);
   }
@@ -688,12 +789,17 @@ async function readLoadContextWithFallbacks({
 }
 
 module.exports = {
+  buildLoadContextFromText,
   buildPinnedSignature,
   choosePinnedMessageCandidate,
+  downloadTelegramFileBuffer,
   getLatestLoadLikeChatMessageFromHistory,
+  getPinnedFileDescriptor,
   inferDestinationFromPinnedText,
   isLoadContextComplete,
+  isLoadLikeChatMessage,
   NO_CURRENT_LOAD_INFO_MESSAGE,
   readLoadContextWithFallbacks,
   readPinnedLoadContext,
+  readStoredRecentLoadContext,
 };

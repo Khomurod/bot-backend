@@ -823,6 +823,122 @@ async function getGroupPinnedMessageSnapshot(groupId) {
   return res.rows[0] || null;
 }
 
+async function getGroupRecentLoads(groupId, limit = 2) {
+  if (!groupId) return [];
+  const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 2;
+  const res = await query(
+    `SELECT *
+     FROM group_recent_loads
+     WHERE group_id = $1
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [groupId, safeLimit]
+  );
+  return res.rows;
+}
+
+async function hasGroupRecentLoadForMessage(groupId, telegramMessageId) {
+  if (!groupId || telegramMessageId == null) return false;
+  const res = await query(
+    `SELECT 1 FROM group_recent_loads
+     WHERE group_id = $1 AND telegram_message_id = $2
+     LIMIT 1`,
+    [groupId, telegramMessageId]
+  );
+  return res.rows.length > 0;
+}
+
+async function insertGroupRecentLoad(row) {
+  const {
+    groupId,
+    telegramMessageId,
+    sourceMessageAt = null,
+    contextSignature,
+    pickupSummary = '',
+    deliverySummary = '',
+    destinationQuery = '',
+    pickupWindowStart = null,
+    pickupWindowEnd = null,
+    deliveryWindowStart = null,
+    deliveryWindowEnd = null,
+    loadIdentifier = null,
+    captionPreview = null,
+    extractedRawJson = null,
+    aiModel = null,
+  } = row;
+
+  if (!groupId || !telegramMessageId || !contextSignature) {
+    throw new Error('insertGroupRecentLoad: groupId, telegramMessageId, and contextSignature are required');
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const ins = await client.query(
+      `INSERT INTO group_recent_loads (
+         group_id,
+         telegram_message_id,
+         source_message_at,
+         context_signature,
+         pickup_summary,
+         delivery_summary,
+         destination_query,
+         pickup_window_start,
+         pickup_window_end,
+         delivery_window_start,
+         delivery_window_end,
+         load_identifier,
+         caption_preview,
+         extracted_raw_json,
+         ai_model
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15)
+       ON CONFLICT (group_id, telegram_message_id) DO NOTHING
+       RETURNING id`,
+      [
+        groupId,
+        telegramMessageId,
+        sourceMessageAt,
+        contextSignature,
+        pickupSummary,
+        deliverySummary,
+        destinationQuery,
+        pickupWindowStart,
+        pickupWindowEnd,
+        deliveryWindowStart,
+        deliveryWindowEnd,
+        loadIdentifier,
+        captionPreview,
+        extractedRawJson ? JSON.stringify(extractedRawJson) : null,
+        aiModel,
+      ]
+    );
+
+    if (ins.rows.length > 0) {
+      await client.query(
+        `DELETE FROM group_recent_loads
+         WHERE group_id = $1
+           AND id NOT IN (
+             SELECT id FROM group_recent_loads
+             WHERE group_id = $1
+             ORDER BY created_at DESC
+             LIMIT 2
+           )`,
+        [groupId]
+      );
+    }
+
+    await client.query('COMMIT');
+    return ins.rows[0] || null;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 async function getChatLogsForGroup(groupId, daysBack) {
   const res = await query(
     `SELECT c.*,
@@ -1244,6 +1360,9 @@ module.exports = {
   logChatMessage,
   upsertGroupPinnedMessageSnapshot,
   getGroupPinnedMessageSnapshot,
+  getGroupRecentLoads,
+  hasGroupRecentLoadForMessage,
+  insertGroupRecentLoad,
   getChatLogsForGroup,
   getChatLogsForActiveDriverGroups,
   deleteOldChatLogs,

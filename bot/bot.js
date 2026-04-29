@@ -11,6 +11,7 @@ const {
   NO_CURRENT_LOAD_INFO_MESSAGE,
   toPlainStatusText,
 } = require('../services/dispatchEtaUpdateService');
+const { scheduleLoadIngest } = require('../services/loadIngestionService');
 
 // config.js already validates BOT_TOKEN, DATABASE_URL, MANAGEMENT_GROUP_ID
 // and exits on missing values — no need to re-check here.
@@ -272,10 +273,19 @@ async function startBot() {
           }
 
           const text = ctx.message.text || ctx.message.caption;
-          if (text && group) {
+          const hasMedia =
+            Boolean(ctx.message?.document)
+            || (Array.isArray(ctx.message?.photo) && ctx.message.photo.length > 0);
+          const logText = (text && String(text).trim()) || (hasMedia ? '[attachment]' : '');
+
+          if (logText && group) {
             const senderName = ctx.from.first_name || ctx.from.username || 'Unknown';
             const telegramMessageId = ctx.message.message_id || null;
-            await db.logChatMessage(group.id, ctx.from.id, senderName, text, telegramMessageId);
+            await db.logChatMessage(group.id, ctx.from.id, senderName, logText, telegramMessageId);
+          }
+
+          if (group && group.group_type === 'driver' && group.active && ctx.message) {
+            scheduleLoadIngest(bot.telegram, group, ctx.message);
           }
         }
       } catch (err) {

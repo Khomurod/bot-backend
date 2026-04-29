@@ -238,6 +238,26 @@ function buildEtaSection(eta, error) {
   };
 }
 
+function mapRecentLoadsForAdmin(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((r) => ({
+    id: r.id,
+    telegramMessageId: r.telegram_message_id,
+    createdAt: r.created_at || null,
+    sourceMessageAt: r.source_message_at || null,
+    loadIdentifier: r.load_identifier || null,
+    pickupSummary: r.pickup_summary || '',
+    deliverySummary: r.delivery_summary || '',
+    destinationQuery: r.destination_query || '',
+    pickupWindowStart: r.pickup_window_start || null,
+    pickupWindowEnd: r.pickup_window_end || null,
+    deliveryWindowStart: r.delivery_window_start || null,
+    deliveryWindowEnd: r.delivery_window_end || null,
+    captionPreview: r.caption_preview || '',
+    aiModel: r.ai_model || '',
+  }));
+}
+
 function mapSetting(settingRow) {
   const interval = Number(settingRow?.interval_minutes || 60) || 60;
   return {
@@ -262,10 +282,11 @@ async function buildDispatchTestingGroupDetails({ telegram, groupId }) {
   }
 
   const liveGroupTitle = String(group.group_name || '').trim();
-  const [settingRow, pinned, providerStatuses] = await Promise.all([
+  const [settingRow, pinned, providerStatuses, recentLoadRows] = await Promise.all([
     db.getDispatchEtaSettingByGroupId(groupId),
     buildPinnedSection({ telegram, group }),
     checkProviderStatuses(liveGroupTitle),
+    db.getGroupRecentLoads(groupId, 2),
   ]);
 
   let resolvedLocation = null;
@@ -292,7 +313,7 @@ async function buildDispatchTestingGroupDetails({ telegram, groupId }) {
       etaError = err;
     }
   } else if (!pinned.destinationQuery) {
-    etaError = new Error('No delivery destination found in pinned load context.');
+    etaError = new Error('No delivery destination found in resolved load context.');
   } else if (!resolvedLocation?.location) {
     etaError = new Error('No live location available from providers right now.');
   }
@@ -308,6 +329,7 @@ async function buildDispatchTestingGroupDetails({ telegram, groupId }) {
     providers: providerStatuses,
     eta: buildEtaSection(eta, etaError),
     settings: mapSetting(settingRow),
+    recentLoads: mapRecentLoadsForAdmin(recentLoadRows),
   };
 }
 

@@ -19,6 +19,8 @@ function loadPinnedContextWithMocks({ parserMock, dbMock } = {}) {
     exports: dbMock || {
       getGroupPinnedMessageSnapshot: async () => null,
       getChatLogsForGroup: async () => [],
+      getGroupRecentLoads: async () => [],
+      hasGroupRecentLoadForMessage: async () => false,
     },
   };
   return require(servicePath);
@@ -168,6 +170,53 @@ test('readLoadContextWithFallbacks uses latest load-like chat message when no pi
   } finally {
     global.fetch = originalFetch;
   }
+});
+
+test('readLoadContextWithFallbacks prefers stored recent loads over pinned when stored is complete', async () => {
+  const service = loadPinnedContextWithMocks({
+    dbMock: {
+      getGroupPinnedMessageSnapshot: async () => null,
+      getGroupRecentLoads: async () => [
+        {
+          telegram_message_id: 9001,
+          context_signature: 'storedsig',
+          pickup_summary: 'Charlotte, NC',
+          delivery_summary: 'Memphis, TN',
+          destination_query: '5151 E RAINES RD, Memphis, TN 38118',
+          caption_preview: 'Load # 1',
+          pickup_window_start: null,
+          pickup_window_end: null,
+          delivery_window_start: null,
+          delivery_window_end: null,
+          created_at: '2026-04-29T12:00:00.000Z',
+          ai_model: 'test-model',
+        },
+      ],
+      hasGroupRecentLoadForMessage: async () => false,
+      getChatLogsForGroup: async () => [],
+    },
+  });
+
+  const context = await service.readLoadContextWithFallbacks({
+    telegram: {
+      async getChat() {
+        return {
+          pinned_message: {
+            message_id: 8000,
+            date: 100,
+            edit_date: 101,
+            text: 'Different pinned load text',
+          },
+        };
+      },
+    },
+    chatId: -100123,
+    groupId: 77,
+  });
+
+  assert.equal(context.source, 'stored-recent-load');
+  assert.equal(context.destinationQuery, '5151 E RAINES RD, Memphis, TN 38118');
+  assert.equal(context.fallbackLevel, 0);
 });
 
 test('readLoadContextWithFallbacks throws canonical message when all fallbacks fail', async () => {

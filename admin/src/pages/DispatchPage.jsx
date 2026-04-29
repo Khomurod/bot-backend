@@ -694,6 +694,89 @@ export default function DispatchPage() {
                           </div>
                         )}
 
+                        <div style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: "6px" }}>
+                          <strong style={{ color: "var(--text-primary)" }}>Last ingested loads (chat listener, max 2)</strong>
+                          <div style={{ marginTop: "6px", fontSize: "12px", lineHeight: 1.45 }}>
+                            Saved automatically when dispatch sends PDF/image/photo or load-style text—does not require a pinned message.
+                          </div>
+                        </div>
+
+                        {Array.isArray(details.recentLoads) && details.recentLoads.length > 0 ? (
+                          <div style={{ display: "grid", gap: "10px" }}>
+                            {details.recentLoads.map((load) => (
+                              <div
+                                key={load.id ?? load.telegramMessageId}
+                                style={{
+                                  border: "1px solid var(--border)",
+                                  borderRadius: "10px",
+                                  padding: "10px 12px",
+                                  background: "var(--bg-primary)",
+                                  fontSize: "13px",
+                                  color: "var(--text-secondary)",
+                                }}
+                              >
+                                <div style={{ fontWeight: 600, color: "var(--text-primary)", marginBottom: "6px" }}>
+                                  Telegram msg #{load.telegramMessageId}
+                                  {load.loadIdentifier ? ` · Load ${load.loadIdentifier}` : ""}
+                                  {load.createdAt ? (
+                                    <span style={{ fontWeight: 400, color: "var(--text-secondary)" }}>
+                                      {" "}
+                                      · saved {formatOptionalDateTime(load.createdAt)}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {load.captionPreview ? (
+                                  <div style={{ marginBottom: "6px" }}>
+                                    <strong style={{ color: "var(--text-primary)" }}>Caption:</strong>{" "}
+                                    {load.captionPreview.length > 280 ? `${load.captionPreview.slice(0, 280)}…` : load.captionPreview}
+                                  </div>
+                                ) : null}
+                                {load.pickupSummary ? (
+                                  <div>
+                                    <strong style={{ color: "var(--text-primary)" }}>Pickup:</strong> {load.pickupSummary}
+                                  </div>
+                                ) : null}
+                                {load.deliverySummary ? (
+                                  <div>
+                                    <strong style={{ color: "var(--text-primary)" }}>Delivery:</strong> {load.deliverySummary}
+                                  </div>
+                                ) : null}
+                                {load.destinationQuery ? (
+                                  <div>
+                                    <strong style={{ color: "var(--text-primary)" }}>Destination (routing):</strong>{" "}
+                                    {load.destinationQuery}
+                                  </div>
+                                ) : null}
+                                <div style={{ marginTop: "6px", fontSize: "12px", opacity: 0.9 }}>
+                                  {(load.pickupWindowStart || load.pickupWindowEnd || load.deliveryWindowStart || load.deliveryWindowEnd) ? (
+                                    <>
+                                      <strong style={{ color: "var(--text-primary)" }}>Windows (parsed):</strong> PU{" "}
+                                      {formatOptionalDateTime(load.pickupWindowStart)}
+                                      {" → "}
+                                      {formatOptionalDateTime(load.pickupWindowEnd)}
+                                      {" · DEL "}
+                                      {formatOptionalDateTime(load.deliveryWindowStart)}
+                                      {" → "}
+                                      {formatOptionalDateTime(load.deliveryWindowEnd)}
+                                    </>
+                                  ) : (
+                                    <span>No appointment windows parsed (fallback: newest load wins).</span>
+                                  )}
+                                </div>
+                                {load.aiModel ? (
+                                  <div style={{ marginTop: "4px", fontSize: "12px" }}>
+                                    Model: {load.aiModel}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: "13px", color: "var(--text-secondary)", fontStyle: "italic" }}>
+                            No loads ingested yet for this group (send a rate con / load message while the bot is online).
+                          </div>
+                        )}
+
                         <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
                           <strong style={{ color: "var(--text-primary)" }}>Current location:</strong>{" "}
                           {details.location?.available
