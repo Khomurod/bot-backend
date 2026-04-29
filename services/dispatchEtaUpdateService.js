@@ -50,9 +50,7 @@ function buildEtaMessage({ group, context, location, source, eta }) {
     ? location.address
     : `${location.latitude}, ${location.longitude}`;
   const pingText = location.pingAgeMinutes == null ? 'unknown' : `${location.pingAgeMinutes} min ago`;
-
-  return [
-    '📡 <b>Current update</b>:',
+  const detailLines = [
     `📍 <b>Delivery location</b>: ${escapeHtml(destination)}`,
     `🚛 <b>Current location</b>: ${escapeHtml(currentLocation)}`,
     `🛣️ <b>Miles left</b>: ${eta.remainingMiles} miles`,
@@ -61,6 +59,8 @@ function buildEtaMessage({ group, context, location, source, eta }) {
     `🛰️ <b>Location source</b>: ${escapeHtml(source)}`,
     `🕒 <b>Last ping</b>: ${escapeHtml(pingText)}`,
   ].join('\n');
+
+  return `⚡ <b>Current update</b>:\n<blockquote expandable>${detailLines}</blockquote>`;
 }
 
 async function resolveDispatchEtaSnapshotForGroup({

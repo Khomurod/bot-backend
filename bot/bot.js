@@ -387,59 +387,25 @@ async function startBot() {
           await ctx.reply('This command works only in active driver groups.');
           return;
         }
-
-        await ctx.replyWithHTML(
-          buildCollapsedStatusMessage(),
-          buildStatusToggleMarkup(group.id, false)
-        );
+        const snapshot = await resolveDispatchEtaSnapshotForGroup({
+          telegram: bot.telegram,
+          group,
+        });
+        const message = buildEtaMessage({
+          group,
+          context: snapshot.context,
+          location: snapshot.location,
+          source: snapshot.source,
+          eta: snapshot.eta,
+        });
+        await ctx.replyWithHTML(message);
       } catch (err) {
+        if (err?.code === 'LOAD_CONTEXT_NOT_FOUND') {
+          await ctx.reply(NO_CURRENT_LOAD_INFO_MESSAGE);
+          return;
+        }
         console.error('[BOT] /status failed:', err.message);
         await ctx.reply('Could not build current status right now. Please try again shortly.');
-      }
-    });
-
-    bot.action(/^status_toggle:(show|hide):(\d+)$/, async (ctx) => {
-      try {
-        const mode = ctx.match[1];
-        const expectedGroupId = Number.parseInt(ctx.match[2], 10);
-        const chatType = ctx.chat?.type;
-        if (chatType !== 'group' && chatType !== 'supergroup') {
-          await ctx.answerCbQuery('Open this inside a driver group.', { show_alert: false });
-          return;
-        }
-
-        const group = await db.getGroupByTelegramId(ctx.chat.id);
-        if (!group || group.group_type !== 'driver' || !group.active) {
-          await ctx.answerCbQuery('This group is not active for status updates.', { show_alert: false });
-          return;
-        }
-        if (Number.isInteger(expectedGroupId) && expectedGroupId > 0 && group.id !== expectedGroupId) {
-          await ctx.answerCbQuery('Status card is out of date. Run /status again.', { show_alert: false });
-          return;
-        }
-
-        if (mode === 'hide') {
-          await ctx.editMessageText(buildCollapsedStatusMessage(), {
-            parse_mode: 'HTML',
-            ...buildStatusToggleMarkup(group.id, false),
-          });
-          await ctx.answerCbQuery('Collapsed');
-          return;
-        }
-
-        const expanded = await buildExpandedStatusMessage(group);
-        await ctx.editMessageText(expanded, {
-          parse_mode: 'HTML',
-          ...buildStatusToggleMarkup(group.id, true),
-        });
-        await ctx.answerCbQuery('Updated');
-      } catch (err) {
-        console.error('[BOT] status_toggle failed:', err.message);
-        try {
-          await ctx.answerCbQuery('Could not refresh status right now.');
-        } catch (_) {
-          // ignore answer callback errors
-        }
       }
     });
 
