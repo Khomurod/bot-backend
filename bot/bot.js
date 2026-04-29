@@ -9,6 +9,7 @@ const {
   resolveDispatchEtaSnapshotForGroup,
   buildEtaMessage,
   NO_CURRENT_LOAD_INFO_MESSAGE,
+  toPlainStatusText,
 } = require('../services/dispatchEtaUpdateService');
 
 // config.js already validates BOT_TOKEN, DATABASE_URL, MANAGEMENT_GROUP_ID
@@ -392,13 +393,21 @@ async function startBot() {
           group,
         });
         const message = buildEtaMessage({
-          group,
           context: snapshot.context,
           location: snapshot.location,
           source: snapshot.source,
           eta: snapshot.eta,
+          etaError: snapshot.etaError,
         });
-        await ctx.replyWithHTML(message);
+        try {
+          await ctx.replyWithHTML(message);
+        } catch (sendErr) {
+          const messageText = String(sendErr?.message || '').toLowerCase();
+          if (!messageText.includes("can't parse entities")) {
+            throw sendErr;
+          }
+          await ctx.reply(toPlainStatusText(message));
+        }
       } catch (err) {
         if (err?.code === 'LOAD_CONTEXT_NOT_FOUND') {
           await ctx.reply(NO_CURRENT_LOAD_INFO_MESSAGE);
