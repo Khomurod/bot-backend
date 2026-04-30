@@ -423,7 +423,16 @@ async function upsertDispatchEtaSetting({
   intervalMinutes,
   nextRunAt = null,
 }) {
-  const normalizedEnabled = Boolean(enabled);
+  const normalizedEnabled = (() => {
+    if (typeof enabled === 'boolean') return enabled;
+    if (typeof enabled === 'string') {
+      const value = enabled.trim().toLowerCase();
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+    }
+    if (typeof enabled === 'number') return enabled === 1;
+    return false;
+  })();
   const normalizedInterval = Number.isInteger(intervalMinutes) ? intervalMinutes : 60;
   const res = await query(
     `INSERT INTO dispatch_eta_updates (group_id, enabled, interval_minutes, next_run_at, processing, processing_started_at, updated_at)

@@ -65,12 +65,22 @@ function parseIntervalMinutes(body, fallback = 60) {
 }
 
 function mapEtaRow(row) {
+  const normalizeEtaEnabled = (value) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true') return true;
+      if (normalized === 'false') return false;
+    }
+    if (typeof value === 'number') return value === 1;
+    return false;
+  };
   const interval = Number(row?.eta_interval_minutes ?? row?.interval_minutes ?? 60) || 60;
   return {
     group_id: row.group_id ?? row.id,
     group_name: row.group_name,
     telegram_group_id: row.telegram_group_id,
-    eta_enabled: Boolean(row.eta_enabled ?? row.enabled),
+    eta_enabled: normalizeEtaEnabled(row.eta_enabled ?? row.enabled),
     eta_interval_minutes: interval,
     eta_interval_hours: Math.floor(interval / 60),
     eta_interval_remaining_minutes: interval % 60,

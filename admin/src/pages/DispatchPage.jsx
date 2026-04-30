@@ -76,6 +76,17 @@ function parsePromptInteger(value, fallback = 0) {
   return parsed;
 }
 
+function normalizeEtaEnabled(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  if (typeof value === "number") return value === 1;
+  return false;
+}
+
 function formatOptionalDateTime(value) {
   if (!value) return "-";
   const date = new Date(value);
@@ -358,7 +369,7 @@ export default function DispatchPage() {
             ...existing,
             settings: {
               ...existing.settings,
-              enabled: Boolean(saved.eta_enabled),
+              enabled: normalizeEtaEnabled(saved.eta_enabled),
               intervalMinutes: Number(saved.eta_interval_minutes) || existing.settings?.intervalMinutes || 60,
               intervalHours: Number(saved.eta_interval_hours) || 0,
               intervalRemainingMinutes: Number(saved.eta_interval_remaining_minutes) || 0,
@@ -599,15 +610,51 @@ export default function DispatchPage() {
                     >
                       {expanded ? "Hide details" : "Show details"}
                     </button>
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: "8px", color: "var(--text-secondary)" }}>
-                      <input
-                        type="checkbox"
-                        checked={Boolean(row.eta_enabled)}
-                        onChange={(event) => handleTestingToggle(row, event.target.checked)}
-                        disabled={saving}
-                      />
-                      {saving ? "Saving..." : (row.eta_enabled ? "On" : "Off")}
-                    </label>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={normalizeEtaEnabled(row.eta_enabled)}
+                      aria-label={`Toggle ETA updates for ${row.group_name}`}
+                      onClick={() => handleTestingToggle(row, !normalizeEtaEnabled(row.eta_enabled))}
+                      disabled={saving}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        border: "none",
+                        background: "transparent",
+                        color: "var(--text-secondary)",
+                        cursor: saving ? "not-allowed" : "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: "42px",
+                          height: "24px",
+                          borderRadius: "999px",
+                          background: normalizeEtaEnabled(row.eta_enabled) ? "var(--success)" : "var(--border)",
+                          position: "relative",
+                          transition: "background 150ms ease",
+                          opacity: saving ? 0.7 : 1,
+                        }}
+                      >
+                        <span
+                          style={{
+                            position: "absolute",
+                            top: "3px",
+                            left: normalizeEtaEnabled(row.eta_enabled) ? "21px" : "3px",
+                            width: "18px",
+                            height: "18px",
+                            borderRadius: "50%",
+                            background: "#fff",
+                            boxShadow: "0 1px 2px rgba(0,0,0,0.25)",
+                            transition: "left 150ms ease",
+                          }}
+                        />
+                      </span>
+                      {saving ? "Saving..." : (normalizeEtaEnabled(row.eta_enabled) ? "On" : "Off")}
+                    </button>
                   </div>
                 </div>
 
