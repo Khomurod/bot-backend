@@ -392,6 +392,7 @@ async function getDriverGroupsWithDispatchEtaSettings() {
             g.language,
             g.active,
             COALESCE(e.enabled, FALSE) AS eta_enabled,
+            COALESCE(e.target_mode, 'driver') AS eta_target_mode,
             COALESCE(e.interval_minutes, 60) AS eta_interval_minutes,
             e.next_run_at AS eta_next_run_at,
             e.last_run_at AS eta_last_run_at,
@@ -420,6 +421,7 @@ async function getDispatchEtaSettingByGroupId(groupId) {
 async function upsertDispatchEtaSetting({
   groupId,
   enabled,
+  targetMode = 'driver',
   intervalMinutes,
   nextRunAt = null,
 }) {
@@ -433,19 +435,23 @@ async function upsertDispatchEtaSetting({
     if (typeof enabled === 'number') return enabled === 1;
     return false;
   })();
+  const normalizedTargetMode = String(targetMode || 'driver').trim().toLowerCase() === 'test'
+    ? 'test'
+    : 'driver';
   const normalizedInterval = Number.isInteger(intervalMinutes) ? intervalMinutes : 60;
   const res = await query(
-    `INSERT INTO dispatch_eta_updates (group_id, enabled, interval_minutes, next_run_at, processing, processing_started_at, updated_at)
-     VALUES ($1, $2, $3, $4, FALSE, NULL, NOW())
+    `INSERT INTO dispatch_eta_updates (group_id, enabled, target_mode, interval_minutes, next_run_at, processing, processing_started_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, FALSE, NULL, NOW())
      ON CONFLICT (group_id)
      DO UPDATE SET enabled = EXCLUDED.enabled,
-                   interval_minutes = EXCLUDED.interval_minutes,
-                   next_run_at = EXCLUDED.next_run_at,
+                  target_mode = EXCLUDED.target_mode,
+                  interval_minutes = EXCLUDED.interval_minutes,
+                  next_run_at = EXCLUDED.next_run_at,
                    processing = FALSE,
                    processing_started_at = NULL,
                    updated_at = NOW()
      RETURNING *`,
-    [groupId, normalizedEnabled, normalizedInterval, nextRunAt]
+    [groupId, normalizedEnabled, normalizedTargetMode, normalizedInterval, nextRunAt]
   );
   return res.rows[0];
 }

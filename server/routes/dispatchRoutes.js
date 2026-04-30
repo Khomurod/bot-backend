@@ -75,12 +75,18 @@ function mapEtaRow(row) {
     if (typeof value === 'number') return value === 1;
     return false;
   };
+  const targetMode = String(row?.eta_target_mode ?? row?.target_mode ?? 'driver').trim().toLowerCase() === 'test'
+    ? 'test'
+    : 'driver';
   const interval = Number(row?.eta_interval_minutes ?? row?.interval_minutes ?? 60) || 60;
   return {
     group_id: row.group_id ?? row.id,
     group_name: row.group_name,
     telegram_group_id: row.telegram_group_id,
     eta_enabled: normalizeEtaEnabled(row.eta_enabled ?? row.enabled),
+    eta_target_mode: targetMode,
+    eta_enabled_driver: normalizeEtaEnabled(row.eta_enabled ?? row.enabled) && targetMode === 'driver',
+    eta_enabled_test: normalizeEtaEnabled(row.eta_enabled ?? row.enabled) && targetMode === 'test',
     eta_interval_minutes: interval,
     eta_interval_hours: Math.floor(interval / 60),
     eta_interval_remaining_minutes: interval % 60,
@@ -177,6 +183,7 @@ router.get('/testing-feature/groups', async (req, res) => {
   try {
     const rows = await db.getDriverGroupsWithDispatchEtaSettings();
     return res.json({
+      dispatchEtaTestGroupId: config.dispatchEtaTestGroupId || '',
       groups: rows.map(mapEtaRow),
     });
   } catch (err) {
@@ -220,7 +227,38 @@ router.put('/testing-feature/groups/:groupId', async (req, res) => {
     }
 
     const existing = await db.getDispatchEtaSettingByGroupId(groupId);
-    const enabled = toBoolean(req.body?.enabled, Boolean(existing?.enabled));
+    const enabledDriver = toBoolean(req.body?.enabledDriver, false);
+    const enabledTest = toBoolean(req.body?.enabledTest, false);
+    const hasSplitTogglePayload = Object.prototype.hasOwnProperty.call(req.body || {}, 'enabledDriver')
+      || Object.prototype.hasOwnProperty.call(req.body || {}, 'enabledTest');
+    let enabled = toBoolean(req.body?.enabled, Boolean(existing?.enabled));
+    let targetMode = String(existing?.target_mode || 'driver').trim().toLowerCase() === 'test' ? 'test' : 'driver';
+
+    if (hasSplitTogglePayload) {
+      if (enabledTest && !config.dispatchEtaTestGroupId) {
+        return res.status(400).json({ error: 'DISPATCH_ETA_TEST_GROUP_ID is not configured on the server' });
+      }
+      if (enabledDriver && enabledTest) {
+        targetMode = 'test';
+        enabled = true;
+      } else if (enabledTest) {
+        targetMode = 'test';
+        enabled = true;
+      } else if (enabledDriver) {
+        targetMode = 'driver';
+        enabled = true;
+      } else {
+        enabled = false;
+      }
+    } else if (enabled) {
+      const requestedTargetMode = String(req.body?.targetMode || req.body?.etaTargetMode || targetMode)
+        .trim()
+        .toLowerCase();
+      targetMode = requestedTargetMode === 'test' ? 'test' : 'driver';
+      if (targetMode === 'test' && !config.dispatchEtaTestGroupId) {
+        return res.status(400).json({ error: 'DISPATCH_ETA_TEST_GROUP_ID is not configured on the server' });
+      }
+    }
     const intervalMinutes = parseIntervalMinutes(req.body, existing?.interval_minutes || 60);
 
     if (enabled && (!Number.isInteger(intervalMinutes) || intervalMinutes < 1 || intervalMinutes > 1440)) {
@@ -230,6 +268,7 @@ router.put('/testing-feature/groups/:groupId', async (req, res) => {
     const saved = await db.upsertDispatchEtaSetting({
       groupId,
       enabled,
+      targetMode,
       intervalMinutes: Number.isInteger(intervalMinutes) ? intervalMinutes : (existing?.interval_minutes || 60),
       nextRunAt: enabled ? new Date().toISOString() : null,
     });

@@ -260,8 +260,15 @@ function mapRecentLoadsForAdmin(rows) {
 
 function mapSetting(settingRow) {
   const interval = Number(settingRow?.interval_minutes || 60) || 60;
+  const targetMode = String(settingRow?.target_mode || 'driver').trim().toLowerCase() === 'test'
+    ? 'test'
+    : 'driver';
+  const enabled = Boolean(settingRow?.enabled);
   return {
-    enabled: Boolean(settingRow?.enabled),
+    enabled,
+    targetMode,
+    enabledDriver: enabled && targetMode === 'driver',
+    enabledTest: enabled && targetMode === 'test',
     intervalMinutes: interval,
     intervalHours: Math.floor(interval / 60),
     intervalRemainingMinutes: interval % 60,

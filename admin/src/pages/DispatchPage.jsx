@@ -108,6 +108,7 @@ export default function DispatchPage() {
   const [withRate, setWithRate] = useState(true);
   const [withRateConfirmation, setWithRateConfirmation] = useState(true);
   const [testingGroups, setTestingGroups] = useState([]);
+  const [dispatchEtaTestGroupId, setDispatchEtaTestGroupId] = useState("");
   const [testingLoading, setTestingLoading] = useState(false);
   const [testingSavingGroupId, setTestingSavingGroupId] = useState(null);
   const [expandedTestingGroupId, setExpandedTestingGroupId] = useState(null);
@@ -179,6 +180,7 @@ export default function DispatchPage() {
       const data = await api.getDispatchTestingGroups();
       const rows = Array.isArray(data?.groups) ? data.groups : [];
       setTestingGroups(rows);
+      setDispatchEtaTestGroupId(String(data?.dispatchEtaTestGroupId || "").trim());
     } catch (err) {
       setMessage({ type: "error", text: `Testing feature load failed: ${err.message}` });
     } finally {
@@ -319,8 +321,12 @@ export default function DispatchPage() {
     }
   };
 
-  const handleTestingToggle = async (row, nextEnabled) => {
+  const handleTestingToggle = async (row, mode, nextEnabled) => {
     if (!row?.group_id) return;
+    if (mode === "test" && nextEnabled && !dispatchEtaTestGroupId) {
+      setMessage({ type: "error", text: "DISPATCH_ETA_TEST_GROUP_ID is not configured on server." });
+      return;
+    }
 
     let intervalMinutes = Number(row.eta_interval_minutes) > 0 ? Number(row.eta_interval_minutes) : 60;
     if (nextEnabled) {
@@ -351,9 +357,11 @@ export default function DispatchPage() {
     setTestingSavingGroupId(row.group_id);
     setMessage(null);
     try {
+      const payload = mode === "test"
+        ? { enabledDriver: false, enabledTest: nextEnabled, intervalMinutes }
+        : { enabledDriver: nextEnabled, enabledTest: false, intervalMinutes };
       const response = await api.updateDispatchTestingGroup(row.group_id, {
-        enabled: nextEnabled,
-        intervalMinutes,
+        ...payload,
       });
 
       const saved = response?.setting || {};
@@ -384,7 +392,10 @@ export default function DispatchPage() {
 
       if (nextEnabled) {
         if (response?.immediate?.success) {
-          setMessage({ type: "success", text: `ETA updates enabled for ${row.group_name}. Immediate update sent.` });
+          const destination = mode === "test"
+            ? `test group ${dispatchEtaTestGroupId}`
+            : "driver group";
+          setMessage({ type: "success", text: `ETA updates enabled for ${row.group_name} -> ${destination}. Immediate update sent.` });
         } else {
           const immediateError = response?.immediate?.error || "Immediate ETA attempt failed.";
           setMessage({ type: "error", text: `ETA enabled for ${row.group_name}, but first send failed: ${immediateError}` });
@@ -579,6 +590,8 @@ export default function DispatchPage() {
 
           {testingGroups.map((row) => {
             const saving = testingSavingGroupId === row.group_id;
+            const driverEnabled = normalizeEtaEnabled(row.eta_enabled_driver ?? (row.eta_enabled && row.eta_target_mode !== "test"));
+            const testEnabled = normalizeEtaEnabled(row.eta_enabled_test ?? (row.eta_enabled && row.eta_target_mode === "test"));
             const expanded = expandedTestingGroupId === row.group_id;
             const detailsLoading = testingDetailsLoadingGroupId === row.group_id;
             const details = testingDetailsByGroupId[row.group_id];
@@ -613,9 +626,9 @@ export default function DispatchPage() {
                     <button
                       type="button"
                       role="switch"
-                      aria-checked={normalizeEtaEnabled(row.eta_enabled)}
-                      aria-label={`Toggle ETA updates for ${row.group_name}`}
-                      onClick={() => handleTestingToggle(row, !normalizeEtaEnabled(row.eta_enabled))}
+                      aria-checked={driverEnabled}
+                      aria-label={`Toggle driver-group ETA updates for ${row.group_name}`}
+                      onClick={() => handleTestingToggle(row, "driver", !driverEnabled)}
                       disabled={saving}
                       style={{
                         display: "inline-flex",
@@ -628,12 +641,13 @@ export default function DispatchPage() {
                         padding: 0,
                       }}
                     >
+                      <span style={{ fontSize: "12px" }}>Driver group</span>
                       <span
                         style={{
                           width: "42px",
                           height: "24px",
                           borderRadius: "999px",
-                          background: normalizeEtaEnabled(row.eta_enabled) ? "var(--success)" : "var(--border)",
+                          background: driverEnabled ? "var(--success)" : "var(--border)",
                           position: "relative",
                           transition: "background 150ms ease",
                           opacity: saving ? 0.7 : 1,
@@ -643,7 +657,7 @@ export default function DispatchPage() {
                           style={{
                             position: "absolute",
                             top: "3px",
-                            left: normalizeEtaEnabled(row.eta_enabled) ? "21px" : "3px",
+                            left: driverEnabled ? "21px" : "3px",
                             width: "18px",
                             height: "18px",
                             borderRadius: "50%",
@@ -653,7 +667,55 @@ export default function DispatchPage() {
                           }}
                         />
                       </span>
-                      {saving ? "Saving..." : (normalizeEtaEnabled(row.eta_enabled) ? "On" : "Off")}
+                      {saving && driverEnabled ? "Saving..." : (driverEnabled ? "On" : "Off")}
+                    </button>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={testEnabled}
+                      aria-label={`Toggle test-group ETA updates for ${row.group_name}`}
+                      onClick={() => handleTestingToggle(row, "test", !testEnabled)}
+                      disabled={saving || !dispatchEtaTestGroupId}
+                      title={dispatchEtaTestGroupId ? `Test group: ${dispatchEtaTestGroupId}` : "DISPATCH_ETA_TEST_GROUP_ID not configured"}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        border: "none",
+                        background: "transparent",
+                        color: "var(--text-secondary)",
+                        cursor: saving || !dispatchEtaTestGroupId ? "not-allowed" : "pointer",
+                        padding: 0,
+                        opacity: dispatchEtaTestGroupId ? 1 : 0.6,
+                      }}
+                    >
+                      <span style={{ fontSize: "12px" }}>Test group</span>
+                      <span
+                        style={{
+                          width: "42px",
+                          height: "24px",
+                          borderRadius: "999px",
+                          background: testEnabled ? "var(--success)" : "var(--border)",
+                          position: "relative",
+                          transition: "background 150ms ease",
+                          opacity: saving ? 0.7 : 1,
+                        }}
+                      >
+                        <span
+                          style={{
+                            position: "absolute",
+                            top: "3px",
+                            left: testEnabled ? "21px" : "3px",
+                            width: "18px",
+                            height: "18px",
+                            borderRadius: "50%",
+                            background: "#fff",
+                            boxShadow: "0 1px 2px rgba(0,0,0,0.25)",
+                            transition: "left 150ms ease",
+                          }}
+                        />
+                      </span>
+                      {saving && testEnabled ? "Saving..." : (testEnabled ? "On" : "Off")}
                     </button>
                   </div>
                 </div>

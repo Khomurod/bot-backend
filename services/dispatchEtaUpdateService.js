@@ -1,5 +1,6 @@
 const { DateTime } = require('luxon');
 const db = require('../database/db');
+const config = require('../config/config');
 const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
 const { readLoadContextWithFallbacks, NO_CURRENT_LOAD_INFO_MESSAGE } = require('./dispatchPinnedContextService');
 const { calculateEtaToDestination } = require('./etaRoutingService');
@@ -228,7 +229,19 @@ async function processDispatchEtaJob(job) {
     if (!group) {
       throw new Error('Driver group is not active or not found.');
     }
-    targetTelegramGroupId = group.telegram_group_id;
+    const targetMode = String(job?.target_mode || 'driver').trim().toLowerCase() === 'test'
+      ? 'test'
+      : 'driver';
+    targetTelegramGroupId = targetMode === 'test'
+      ? String(config.dispatchEtaTestGroupId || '').trim()
+      : String(group.telegram_group_id || '').trim();
+    if (!targetTelegramGroupId) {
+      throw new Error(
+        targetMode === 'test'
+          ? 'DISPATCH_ETA_TEST_GROUP_ID is not configured.'
+          : 'Driver group telegram chat id is missing.'
+      );
+    }
 
     const snapshot = await resolveDispatchEtaSnapshotForGroup({
       telegram: telegramClient,
@@ -247,7 +260,7 @@ async function processDispatchEtaJob(job) {
       etaError: snapshot.etaError,
     });
 
-    await sendEtaMessageWithFallback(telegramClient, group.telegram_group_id, message);
+    await sendEtaMessageWithFallback(telegramClient, targetTelegramGroupId, message);
 
     await db.completeDispatchEtaUpdateSuccess({
       id: job.id,
@@ -269,7 +282,7 @@ async function processDispatchEtaJob(job) {
     });
 
     console.log(
-      `[DISPATCH-ETA] Sent ETA update for group ${group.id} (${group.telegram_group_id}); next run at ${nextRunAt}`
+      `[DISPATCH-ETA] Sent ETA update for group ${group.id} to ${targetTelegramGroupId} (mode=${targetMode}); next run at ${nextRunAt}`
     );
     return { success: true, partial: !snapshot.eta };
   } catch (err) {

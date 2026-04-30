@@ -340,6 +340,7 @@ CREATE TABLE IF NOT EXISTS dispatch_eta_updates (
   id SERIAL PRIMARY KEY,
   group_id INTEGER NOT NULL UNIQUE REFERENCES groups(id) ON DELETE CASCADE,
   enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  target_mode TEXT NOT NULL DEFAULT 'driver',
   interval_minutes INTEGER NOT NULL DEFAULT 60,
   next_run_at TIMESTAMP NULL,
   processing BOOLEAN NOT NULL DEFAULT FALSE,
@@ -358,6 +359,7 @@ CREATE TABLE IF NOT EXISTS dispatch_eta_updates (
 );
 
 ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS target_mode TEXT NOT NULL DEFAULT 'driver';
 ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS interval_minutes INTEGER NOT NULL DEFAULT 60;
 ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS next_run_at TIMESTAMP NULL;
 ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS processing BOOLEAN NOT NULL DEFAULT FALSE;
@@ -389,6 +391,23 @@ $$;
 ALTER TABLE dispatch_eta_updates
   ADD CONSTRAINT dispatch_eta_interval_check
   CHECK (interval_minutes BETWEEN 1 AND 1440);
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE constraint_name = 'dispatch_eta_target_mode_check'
+      AND table_name = 'dispatch_eta_updates'
+  ) THEN
+    ALTER TABLE dispatch_eta_updates DROP CONSTRAINT dispatch_eta_target_mode_check;
+  END IF;
+END
+$$;
+
+ALTER TABLE dispatch_eta_updates
+  ADD CONSTRAINT dispatch_eta_target_mode_check
+  CHECK (target_mode IN ('driver', 'test'));
 
 -- Last two AI-extracted loads per driver group (text + window fields only; files stay on Telegram).
 CREATE TABLE IF NOT EXISTS group_recent_loads (
