@@ -80,7 +80,7 @@ function buildEtaMessage({ context, location, source, eta, etaError = '' }) {
     ? `${eta.remainingMiles} miles`
     : 'Unavailable';
   const etaText = Number.isFinite(eta?.etaMinutes) && normalizeText(eta?.etaChicagoLabel)
-    ? `${formatDuration(eta.etaMinutes)} (around ${eta.etaChicagoLabel} CT)`
+    ? `${formatDuration(eta.etaMinutes)} (around ${eta.etaChicagoLabel} CT${eta?.approximate ? ', approximate' : ''})`
     : `Unavailable${normalizeText(etaError) ? ` - ${normalizeText(etaError)}` : ''}`;
 
   const detailLines = [
