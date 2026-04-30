@@ -64,7 +64,7 @@ function computeNextRunAt(intervalMinutes) {
   return DateTime.utc().plus({ minutes: safe }).toISO();
 }
 
-function buildEtaMessage({ context, location, source, eta, etaError = '' }) {
+function buildEtaMessage({ context, location, source, eta, etaError = '', targetMode = 'driver', groupName = '' }) {
   const destination = normalizeText(context?.deliverySummary)
     || normalizeText(context?.destinationQuery)
     || 'Unavailable';
@@ -85,6 +85,9 @@ function buildEtaMessage({ context, location, source, eta, etaError = '' }) {
     : `Unavailable${normalizeText(etaError) ? ` - ${normalizeText(etaError)}` : ''}`;
 
   const detailLines = [
+    ...(targetMode === 'test' && normalizeText(groupName)
+      ? [`🧪 <b>Driver group</b>: ${escapeHtml(normalizeText(groupName))}`]
+      : []),
     `📍 <b>Delivery location</b>: ${escapeHtml(destination)}`,
     `🚛 <b>Current location</b>: ${escapeHtml(currentLocation)}`,
     `🛣️ <b>Miles left</b>: ${escapeHtml(milesLeftText)}`,
@@ -218,6 +221,7 @@ async function resolveDispatchEtaSnapshotForGroup({
 async function processDispatchEtaJob(job) {
   const nextRunAt = computeNextRunAt(job.interval_minutes);
   let targetTelegramGroupId = null;
+  let targetGroupName = '';
 
   try {
     if (!telegramClient) {
@@ -229,6 +233,7 @@ async function processDispatchEtaJob(job) {
     if (!group) {
       throw new Error('Driver group is not active or not found.');
     }
+    targetGroupName = String(group.group_name || '').trim();
     const targetMode = String(job?.target_mode || 'driver').trim().toLowerCase() === 'test'
       ? 'test'
       : 'driver';
@@ -258,6 +263,8 @@ async function processDispatchEtaJob(job) {
       source: snapshot.source,
       eta: snapshot.eta,
       etaError: snapshot.etaError,
+      targetMode,
+      groupName: group.group_name || '',
     });
 
     await sendEtaMessageWithFallback(telegramClient, targetTelegramGroupId, message);
@@ -289,7 +296,13 @@ async function processDispatchEtaJob(job) {
     if (err?.code === 'LOAD_CONTEXT_NOT_FOUND') {
       try {
         if (targetTelegramGroupId) {
-          await telegramClient.sendMessage(targetTelegramGroupId, NO_CURRENT_LOAD_INFO_MESSAGE);
+          const targetMode = String(job?.target_mode || 'driver').trim().toLowerCase() === 'test'
+            ? 'test'
+            : 'driver';
+          const noInfoMessage = targetMode === 'test'
+            ? `🧪 Driver group: ${targetGroupName || `#${job.group_id}`}\n${NO_CURRENT_LOAD_INFO_MESSAGE}`
+            : NO_CURRENT_LOAD_INFO_MESSAGE;
+          await telegramClient.sendMessage(targetTelegramGroupId, noInfoMessage);
         }
       } catch (sendErr) {
         console.warn('[DISPATCH-ETA] Could not send no-load-info message:', sendErr.message);

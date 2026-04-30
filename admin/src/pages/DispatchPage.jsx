@@ -111,6 +111,7 @@ export default function DispatchPage() {
   const [dispatchEtaTestGroupId, setDispatchEtaTestGroupId] = useState("");
   const [testingLoading, setTestingLoading] = useState(false);
   const [testingSavingGroupId, setTestingSavingGroupId] = useState(null);
+  const [testingBulkSavingMode, setTestingBulkSavingMode] = useState(null);
   const [expandedTestingGroupId, setExpandedTestingGroupId] = useState(null);
   const [testingDetailsByGroupId, setTestingDetailsByGroupId] = useState({});
   const [testingDetailsLoadingGroupId, setTestingDetailsLoadingGroupId] = useState(null);
@@ -423,6 +424,67 @@ export default function DispatchPage() {
     await loadTestingGroupDetails(groupId, { forceRefresh: true });
   };
 
+  const handleTestingToggleAll = async (mode, nextEnabled) => {
+    if (mode === "test" && nextEnabled && !dispatchEtaTestGroupId) {
+      setMessage({ type: "error", text: "DISPATCH_ETA_TEST_GROUP_ID is not configured on server." });
+      return;
+    }
+
+    let intervalMinutes = 60;
+    if (nextEnabled) {
+      const hoursInput = window.prompt(
+        `How many hours between ETA updates for ALL active driver groups (${mode} mode)?`,
+        "1"
+      );
+      if (hoursInput === null) return;
+      const minutesInput = window.prompt(
+        `How many additional minutes between updates for ALL active driver groups (${mode} mode)?`,
+        "0"
+      );
+      if (minutesInput === null) return;
+      const hours = Math.max(0, parsePromptInteger(hoursInput, 1));
+      const minutes = Math.max(0, parsePromptInteger(minutesInput, 0));
+      intervalMinutes = hours * 60 + minutes;
+      if (intervalMinutes < 1 || intervalMinutes > 1440) {
+        setMessage({ type: "error", text: "Interval must be between 1 minute and 24 hours." });
+        return;
+      }
+    }
+
+    setTestingBulkSavingMode(mode);
+    setMessage(null);
+    try {
+      const response = await api.updateAllDispatchTestingGroups({
+        enabled: nextEnabled,
+        targetMode: mode,
+        intervalMinutes,
+      });
+      const rows = Array.isArray(response?.groups) ? response.groups : [];
+      if (rows.length) {
+        setTestingGroups(rows);
+      } else {
+        await loadTestingGroups();
+      }
+      if (nextEnabled) {
+        const immediateOk = Number(response?.immediate?.success || 0);
+        const immediateFailed = Number(response?.immediate?.failed || 0);
+        const destination = mode === "test"
+          ? `test group ${dispatchEtaTestGroupId}`
+          : "driver groups";
+        setMessage({
+          type: immediateFailed > 0 ? "error" : "success",
+          text: `Enabled ${mode} updates for ${response?.updatedCount || rows.length} groups -> ${destination}. Immediate: ${immediateOk} sent, ${immediateFailed} failed.`,
+        });
+      } else {
+        setMessage({ type: "success", text: "Disabled ETA updates for all active driver groups." });
+      }
+    } catch (err) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setTestingBulkSavingMode(null);
+    }
+  };
+
   const renderAssistantTab = () => (
     <div style={{ display: "grid", gap: "24px" }}>
       <div className="card">
@@ -567,14 +629,41 @@ export default function DispatchPage() {
       </div>
 
       <div style={{ marginBottom: "14px" }}>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={loadTestingGroups}
-          disabled={testingLoading}
-        >
-          {testingLoading ? "Refreshing..." : "Refresh Groups"}
-        </button>
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={loadTestingGroups}
+            disabled={testingLoading || testingBulkSavingMode !== null}
+          >
+            {testingLoading ? "Refreshing..." : "Refresh Groups"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => handleTestingToggleAll("driver", true)}
+            disabled={testingBulkSavingMode !== null}
+          >
+            {testingBulkSavingMode === "driver" ? "Applying..." : "Enable ALL Driver groups"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => handleTestingToggleAll("test", true)}
+            disabled={testingBulkSavingMode !== null || !dispatchEtaTestGroupId}
+            title={dispatchEtaTestGroupId ? `Test group: ${dispatchEtaTestGroupId}` : "DISPATCH_ETA_TEST_GROUP_ID not configured"}
+          >
+            {testingBulkSavingMode === "test" ? "Applying..." : "Enable ALL Test group"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => handleTestingToggleAll("driver", false)}
+            disabled={testingBulkSavingMode !== null}
+          >
+            Disable ALL
+          </button>
+        </div>
       </div>
 
       {testingLoading ? (
