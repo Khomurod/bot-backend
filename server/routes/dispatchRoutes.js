@@ -214,6 +214,59 @@ router.get('/testing-feature/groups/:groupId/details', async (req, res) => {
   }
 });
 
+router.put('/testing-feature/groups/toggle-all', async (req, res) => {
+  try {
+    const enabled = toBoolean(req.body?.enabled, false);
+    const requestedMode = String(req.body?.targetMode || req.body?.etaTargetMode || 'driver')
+      .trim()
+      .toLowerCase();
+    const targetMode = requestedMode === 'test' ? 'test' : 'driver';
+    if (enabled && targetMode === 'test' && !config.dispatchEtaTestGroupId) {
+      return res.status(400).json({ error: 'DISPATCH_ETA_TEST_GROUP_ID is not configured on the server' });
+    }
+
+    const groups = await db.getAllDriverGroups();
+    if (!groups.length) {
+      return res.json({ success: true, updatedCount: 0, groups: [] });
+    }
+
+    const savedRows = [];
+    let immediateSuccess = 0;
+    let immediateFailed = 0;
+    for (const group of groups) {
+      const existing = await db.getDispatchEtaSettingByGroupId(group.id);
+      const intervalMinutes = parseIntervalMinutes(req.body, existing?.interval_minutes || 60);
+      if (enabled && (!Number.isInteger(intervalMinutes) || intervalMinutes < 1 || intervalMinutes > 1440)) {
+        return res.status(400).json({ error: 'Interval must be between 1 and 1440 minutes' });
+      }
+      const saved = await db.upsertDispatchEtaSetting({
+        groupId: group.id,
+        enabled,
+        targetMode,
+        intervalMinutes: Number.isInteger(intervalMinutes) ? intervalMinutes : (existing?.interval_minutes || 60),
+        nextRunAt: enabled ? new Date().toISOString() : null,
+      });
+      savedRows.push(mapEtaRow({ ...group, ...saved, group_id: group.id }));
+
+      if (enabled) {
+        const immediate = await triggerDispatchEtaNowByGroupId(group.id);
+        if (immediate?.success) immediateSuccess += 1;
+        else immediateFailed += 1;
+      }
+    }
+
+    return res.json({
+      success: true,
+      updatedCount: savedRows.length,
+      immediate: enabled ? { success: immediateSuccess, failed: immediateFailed } : null,
+      groups: savedRows,
+    });
+  } catch (err) {
+    console.error('[API] Dispatch ETA bulk update failed:', err.message);
+    return res.status(500).json({ error: 'Failed to update all testing feature settings', detail: err.message });
+  }
+});
+
 router.put('/testing-feature/groups/:groupId', async (req, res) => {
   const groupId = Number.parseInt(req.params.groupId, 10);
   if (!Number.isInteger(groupId) || groupId <= 0) {
@@ -294,59 +347,6 @@ router.put('/testing-feature/groups/:groupId', async (req, res) => {
   } catch (err) {
     console.error('[API] Dispatch ETA update failed:', err.message);
     return res.status(500).json({ error: 'Failed to update testing feature setting', detail: err.message });
-  }
-});
-
-router.put('/testing-feature/groups/toggle-all', async (req, res) => {
-  try {
-    const enabled = toBoolean(req.body?.enabled, false);
-    const requestedMode = String(req.body?.targetMode || req.body?.etaTargetMode || 'driver')
-      .trim()
-      .toLowerCase();
-    const targetMode = requestedMode === 'test' ? 'test' : 'driver';
-    if (enabled && targetMode === 'test' && !config.dispatchEtaTestGroupId) {
-      return res.status(400).json({ error: 'DISPATCH_ETA_TEST_GROUP_ID is not configured on the server' });
-    }
-
-    const groups = await db.getAllDriverGroups();
-    if (!groups.length) {
-      return res.json({ success: true, updatedCount: 0, groups: [] });
-    }
-
-    const savedRows = [];
-    let immediateSuccess = 0;
-    let immediateFailed = 0;
-    for (const group of groups) {
-      const existing = await db.getDispatchEtaSettingByGroupId(group.id);
-      const intervalMinutes = parseIntervalMinutes(req.body, existing?.interval_minutes || 60);
-      if (enabled && (!Number.isInteger(intervalMinutes) || intervalMinutes < 1 || intervalMinutes > 1440)) {
-        return res.status(400).json({ error: 'Interval must be between 1 and 1440 minutes' });
-      }
-      const saved = await db.upsertDispatchEtaSetting({
-        groupId: group.id,
-        enabled,
-        targetMode,
-        intervalMinutes: Number.isInteger(intervalMinutes) ? intervalMinutes : (existing?.interval_minutes || 60),
-        nextRunAt: enabled ? new Date().toISOString() : null,
-      });
-      savedRows.push(mapEtaRow({ ...group, ...saved, group_id: group.id }));
-
-      if (enabled) {
-        const immediate = await triggerDispatchEtaNowByGroupId(group.id);
-        if (immediate?.success) immediateSuccess += 1;
-        else immediateFailed += 1;
-      }
-    }
-
-    return res.json({
-      success: true,
-      updatedCount: savedRows.length,
-      immediate: enabled ? { success: immediateSuccess, failed: immediateFailed } : null,
-      groups: savedRows,
-    });
-  } catch (err) {
-    console.error('[API] Dispatch ETA bulk update failed:', err.message);
-    return res.status(500).json({ error: 'Failed to update all testing feature settings', detail: err.message });
   }
 });
 
