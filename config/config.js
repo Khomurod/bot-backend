@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const { feedbackBotToken: HARDCODED_FEEDBACK_BOT_TOKEN } = require('./telegramBotTokens');
+const metaAppCredentials = require('./metaAppCredentials.json');
 
 const HARDCODED_SAMSARA_API_KEYS = [
   'samsara_api_vpdJovy2R4npF71d7hN4upXdtErSIY',
@@ -80,8 +81,8 @@ module.exports = {
   corsAllowAll: !corsAllowedOrigins.length || process.env.CORS_ALLOW_ALL === 'true',
   nodeEnv: process.env.NODE_ENV || 'development',
   renderExternalUrl: process.env.RENDER_EXTERNAL_URL || '',
-  metaAppId: process.env.META_APP_ID || '',
-  metaAppSecret: process.env.META_APP_SECRET || '',
+  metaAppId: process.env.META_APP_ID || metaAppCredentials.metaAppId || '',
+  metaAppSecret: process.env.META_APP_SECRET || metaAppCredentials.metaAppSecret || '',
   metaLoginConfigId: process.env.META_LOGIN_CONFIG_ID || '',
   metaGraphVersion: process.env.META_GRAPH_VERSION || 'v25.0',
   metaWebhookVerifyToken: process.env.WEBHOOK_VERIFY_TOKEN || '',
