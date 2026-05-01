@@ -48,6 +48,13 @@ SEEN_SENDERS_FILE = DATA_DIR / "seen_senders.json"
 
 # ── Public base URL (for RingCentral webhook callback) ────────
 BASE_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://leads-bot-e6x5.onrender.com")
+TELEGRAM_API_BASE = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+CONNECT_COMMAND_POLL_TIMEOUT = 50
+CONNECT_COMMAND_ALLOWED_UPDATES = ["message"]
+_connect_command_task: asyncio.Task | None = None
+_connect_command_stop = asyncio.Event()
+_telegram_update_offset: int | None = None
+_telegram_bot_username: str = ""
 
 # ── De-duplication: track seen Messenger senders ──────────────────
 # File-backed OrderedDict — survives restarts.
@@ -139,6 +146,215 @@ async def _forward_verified_facebook_payload(payload: dict) -> dict:
         if not resp.is_success:
             raise RuntimeError(f"Internal Facebook ingest failed ({resp.status_code}): {resp.text[:500]}")
         return resp.json()
+
+
+async def _telegram_api_call(method: str, payload: dict) -> dict:
+    """Call a Telegram Bot API method and return the parsed result object."""
+    url = f"{TELEGRAM_API_BASE}/{method}"
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.post(url, json=payload)
+        data = resp.json()
+        if not resp.is_success or not data.get("ok"):
+            description = data.get("description") or resp.text[:300]
+            raise RuntimeError(f"Telegram {method} failed ({resp.status_code}): {description}")
+        return data.get("result", {})
+
+
+async def _send_telegram_to_chat(
+    chat_id: str | int,
+    text: str,
+    *,
+    parse_mode: str | None = None,
+    reply_markup: dict | None = None,
+) -> int | None:
+    """Send a Telegram message to an arbitrary chat with optional inline keyboard."""
+    payload = {
+        "chat_id": str(chat_id),
+        "text": text,
+    }
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
+    for attempt in range(2):
+        try:
+            result = await _telegram_api_call("sendMessage", payload)
+            return result.get("message_id")
+        except Exception as exc:
+            if attempt == 0 and parse_mode:
+                payload.pop("parse_mode", None)
+                continue
+            if attempt == 0:
+                await asyncio.sleep(2)
+                continue
+            logger.error("Telegram sendMessage to chat %s failed: %s", chat_id, exc)
+            return None
+    return None
+
+
+async def _bootstrap_connect_command_offset():
+    """Skip any stale backlog so only fresh /connect commands are handled."""
+    global _telegram_update_offset
+    payload = {
+        "timeout": 0,
+        "limit": 100,
+        "allowed_updates": CONNECT_COMMAND_ALLOWED_UPDATES,
+    }
+    try:
+        updates = await _telegram_api_call("getUpdates", payload)
+        if updates:
+            _telegram_update_offset = max(update["update_id"] for update in updates) + 1
+    except Exception as exc:
+        logger.warning("Could not bootstrap Telegram update offset for leads bot: %s", exc)
+
+
+async def _load_telegram_bot_profile():
+    """Fetch bot username so /connect@ThisBot works in groups."""
+    global _telegram_bot_username
+    try:
+        me = await _telegram_api_call("getMe", {})
+        _telegram_bot_username = str(me.get("username", "")).lower()
+        if _telegram_bot_username:
+            logger.info("Leads bot Telegram username detected: @%s", _telegram_bot_username)
+    except Exception as exc:
+        logger.warning("Could not load leads bot Telegram profile: %s", exc)
+
+
+def _extract_connect_command(text: str) -> bool:
+    """Return True when text is a /connect command for this bot."""
+    first_token = str(text or "").strip().split()[0] if text else ""
+    if not first_token.startswith("/connect"):
+        return False
+    if "@" not in first_token:
+        return first_token == "/connect"
+    command, mentioned = first_token.split("@", 1)
+    if command != "/connect":
+        return False
+    if not _telegram_bot_username:
+        return False
+    return mentioned.lower() == _telegram_bot_username
+
+
+async def _is_group_admin_via_telegram(chat_id: int | str, user_id: int | str) -> bool:
+    """Ask Telegram whether the calling user is an admin/creator in the group."""
+    try:
+        member = await _telegram_api_call(
+            "getChatMember",
+            {"chat_id": str(chat_id), "user_id": int(user_id)},
+        )
+        return member.get("status") in {"administrator", "creator"}
+    except Exception as exc:
+        logger.warning("Could not verify group admin status for %s in %s: %s", user_id, chat_id, exc)
+        return False
+
+
+async def _request_connect_session_for_group(chat: dict, sender: dict) -> dict:
+    """Ask the Node app to mint a connect session for the leads bot command."""
+    if not LEADS_INTERNAL_SHARED_SECRET:
+        raise RuntimeError("LEADS_INTERNAL_SHARED_SECRET is not configured")
+
+    url = f"{LOCAL_API_BASE_URL.rstrip('/')}/api/internal/facebook/connect-command"
+    payload = {
+        "telegramGroupId": chat.get("id"),
+        "groupName": chat.get("title") or "Unknown",
+        "requestedBy": {
+            "id": sender.get("id"),
+            "name": " ".join(
+                part for part in [sender.get("first_name"), sender.get("last_name")] if part
+            ) or sender.get("username") or "Unknown",
+        },
+    }
+    headers = {"x-internal-shared-secret": LEADS_INTERNAL_SHARED_SECRET}
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(url, json=payload, headers=headers)
+        data = resp.json()
+        if not resp.is_success:
+            description = data.get("detail") or data.get("error") or resp.text[:300]
+            raise RuntimeError(description)
+        return data
+
+
+def _build_connect_command_reply(connect_result: dict) -> tuple[str, dict]:
+    """Format the message and inline button shown by the leads bot."""
+    existing_pages = connect_result.get("existingPages", [])
+    existing_summary = ""
+    if existing_pages:
+        names = "\n".join(f"- {page['pageName']}" for page in existing_pages)
+        existing_summary = f"\n\nCurrently connected pages:\n{names}"
+
+    text = (
+        "Open the button below, sign in to Facebook, and choose which Pages should send leads "
+        f"into this group. This link expires in 30 minutes.{existing_summary}"
+    )
+    reply_markup = {
+        "inline_keyboard": [
+            [{"text": "Connect Facebook", "url": connect_result["connectUrl"]}]
+        ]
+    }
+    return text, reply_markup
+
+
+async def _handle_connect_command_message(message: dict):
+    """Process one incoming Telegram message for the leads bot token."""
+    chat = message.get("chat") or {}
+    sender = message.get("from") or {}
+    chat_type = chat.get("type")
+    if chat_type not in {"group", "supergroup"}:
+        return
+
+    text = message.get("text") or ""
+    if not _extract_connect_command(text):
+        return
+
+    chat_id = chat.get("id")
+    user_id = sender.get("id")
+    if not await _is_group_admin_via_telegram(chat_id, user_id):
+        await _send_telegram_to_chat(
+            chat_id,
+            "Only a group admin can start the Facebook connect flow here.",
+        )
+        return
+
+    try:
+        connect_result = await _request_connect_session_for_group(chat, sender)
+    except Exception as exc:
+        await _send_telegram_to_chat(
+            chat_id,
+            f"Could not start Facebook connect right now: {exc}",
+        )
+        return
+
+    text, reply_markup = _build_connect_command_reply(connect_result)
+    await _send_telegram_to_chat(chat_id, text, reply_markup=reply_markup)
+
+
+async def _poll_connect_commands():
+    """Long-poll Telegram for /connect commands on the leads bot token."""
+    global _telegram_update_offset
+    await _load_telegram_bot_profile()
+    await _bootstrap_connect_command_offset()
+
+    while not _connect_command_stop.is_set():
+        payload = {
+            "timeout": CONNECT_COMMAND_POLL_TIMEOUT,
+            "allowed_updates": CONNECT_COMMAND_ALLOWED_UPDATES,
+        }
+        if _telegram_update_offset is not None:
+            payload["offset"] = _telegram_update_offset
+
+        try:
+            updates = await _telegram_api_call("getUpdates", payload)
+        except Exception as exc:
+            logger.warning("Leads bot getUpdates failed: %s", exc)
+            await asyncio.sleep(5)
+            continue
+
+        for update in updates:
+            _telegram_update_offset = update["update_id"] + 1
+            message = update.get("message")
+            if message:
+                await _handle_connect_command_message(message)
 
 
 async def _send_telegram(text: str) -> int | None:
@@ -505,7 +721,7 @@ async def _forward_ringcentral_inbound_to_telegram(event_body: dict) -> None:
 # ── Startup: register RingCentral webhook ────────────────────
 @app.on_event("startup")
 async def _startup_register_rc_webhook():
-    """Register RingCentral webhook subscription after a short delay."""
+    """Register background tasks for the leads bot service."""
     async def _delayed_register():
         await asyncio.sleep(3)
         callback = f"{BASE_URL}/rc-webhook"
@@ -513,6 +729,23 @@ async def _startup_register_rc_webhook():
         await register_sms_webhook(callback)
 
     asyncio.create_task(_delayed_register())
+    global _connect_command_task
+    _connect_command_stop.clear()
+    _connect_command_task = asyncio.create_task(_poll_connect_commands())
+
+
+@app.on_event("shutdown")
+async def _shutdown_connect_command_poller():
+    """Stop the leads bot Telegram long-poll loop cleanly."""
+    _connect_command_stop.set()
+    global _connect_command_task
+    if _connect_command_task:
+        _connect_command_task.cancel()
+        try:
+            await _connect_command_task
+        except asyncio.CancelledError:
+            pass
+        _connect_command_task = None
 
 
 @app.get("/health")

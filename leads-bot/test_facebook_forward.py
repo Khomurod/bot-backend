@@ -29,6 +29,15 @@ class TestFacebookForwardHelpers(unittest.TestCase):
     def test_verify_signature_rejects_wrong_prefix(self):
         self.assertFalse(wh._verify_signature(b"{}", "md5=abc"))
 
+    def test_extract_connect_command_matches_plain_command(self):
+        wh._telegram_bot_username = "wenzeleadbots"
+        self.assertTrue(wh._extract_connect_command("/connect"))
+
+    def test_extract_connect_command_matches_bot_mention_only_for_this_bot(self):
+        wh._telegram_bot_username = "wenzeleadbots"
+        self.assertTrue(wh._extract_connect_command("/connect@WenzeLeadBots"))
+        self.assertFalse(wh._extract_connect_command("/connect@SomeOtherBot"))
+
 
 class TestForwardVerifiedPayload(unittest.IsolatedAsyncioTestCase):
     async def test_forward_verified_payload_posts_to_node_api(self):

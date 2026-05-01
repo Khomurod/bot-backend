@@ -13,7 +13,6 @@ const {
 } = require('../services/dispatchEtaUpdateService');
 const { scheduleLoadIngest } = require('../services/loadIngestionService');
 const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedContextService');
-const { createConnectSession } = require('../services/facebookConnectService');
 
 // config.js already validates BOT_TOKEN, DATABASE_URL, MANAGEMENT_GROUP_ID
 // and exits on missing values — no need to re-check here.
@@ -95,16 +94,6 @@ function escapeHtml(text) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
-}
-
-async function isGroupAdmin(ctx) {
-  try {
-    const member = await ctx.getChatMember(ctx.from.id);
-    return member?.status === 'administrator' || member?.status === 'creator';
-  } catch (err) {
-    console.error('[BOT] Failed to determine admin status:', err.message);
-    return false;
-  }
 }
 
 // ─── Helper: get translation for a language ───
@@ -475,47 +464,6 @@ async function startBot() {
         }
         console.error('[BOT] /status failed:', err.message);
         await ctx.reply('Could not build current status right now. Please try again shortly.');
-      }
-    });
-
-    bot.command('connect', async (ctx) => {
-      try {
-        const chatType = ctx.chat?.type;
-        if (chatType !== 'group' && chatType !== 'supergroup') {
-          await ctx.reply('Use /connect inside the Telegram group that should receive Facebook leads.');
-          return;
-        }
-
-        if (!(await isGroupAdmin(ctx))) {
-          await ctx.reply('Only a group admin can start the Facebook connect flow here.');
-          return;
-        }
-
-        const { connectUrl } = await createConnectSession({
-          telegramGroupId: ctx.chat.id,
-          groupName: ctx.chat.title || 'Unknown',
-          requestedBy: {
-            id: ctx.from?.id,
-            name: [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(' ')
-              || ctx.from?.username
-              || 'Unknown',
-          },
-        });
-
-        const existingConnections = await db.getFacebookPageConnectionsByTelegramGroupId(ctx.chat.id);
-        const existingSummary = existingConnections.length
-          ? `\n\nCurrently connected pages:\n${existingConnections.map((page) => `• ${page.page_name}`).join('\n')}`
-          : '';
-
-        await ctx.reply(
-          `Open the button below, sign in to Facebook, and choose which Pages should send leads into this group. This link expires in 30 minutes.${existingSummary}`,
-          Markup.inlineKeyboard([
-            [Markup.button.url('Connect Facebook', connectUrl)],
-          ])
-        );
-      } catch (err) {
-        console.error('[BOT] /connect failed:', err.message);
-        await ctx.reply(`Could not start Facebook connect right now: ${err.message}`);
       }
     });
 

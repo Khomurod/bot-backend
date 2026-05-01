@@ -19,6 +19,7 @@ const {
   sendTelegramHtmlChunks,
 } = require('../services/telegramHtml');
 const {
+  createConnectSession,
   getSessionByToken,
   buildLoginRedirectForSession,
   finishOAuthCallback,
@@ -492,6 +493,40 @@ app.post('/api/internal/facebook/webhook-events', internalSharedSecretGuard, asy
   } catch (err) {
     console.error('[API] Facebook internal webhook ingest failed:', err.message);
     res.status(500).json({ error: 'Failed to ingest Facebook webhook payload', detail: err.message });
+  }
+});
+
+app.post('/api/internal/facebook/connect-command', internalSharedSecretGuard, async (req, res) => {
+  try {
+    const telegramGroupId = Number(req.body?.telegramGroupId);
+    const groupName = typeof req.body?.groupName === 'string' ? req.body.groupName : 'Unknown';
+    if (!Number.isFinite(telegramGroupId)) {
+      return res.status(400).json({ error: 'telegramGroupId is required' });
+    }
+
+    const { connectUrl, session } = await createConnectSession({
+      telegramGroupId,
+      groupName,
+      requestedBy: {
+        id: req.body?.requestedBy?.id || null,
+        name: req.body?.requestedBy?.name || 'Unknown',
+      },
+    });
+
+    const existingConnections = await db.getFacebookPageConnectionsByTelegramGroupId(telegramGroupId);
+    return res.json({
+      status: 'ok',
+      connectUrl,
+      sessionToken: session.session_token,
+      existingPages: existingConnections.map((page) => ({
+        pageId: page.page_id,
+        pageName: page.page_name,
+        isActive: page.is_active,
+      })),
+    });
+  } catch (err) {
+    console.error('[API] Facebook connect command setup failed:', err.message);
+    return res.status(500).json({ error: 'Could not create Facebook connect session', detail: err.message });
   }
 });
 
