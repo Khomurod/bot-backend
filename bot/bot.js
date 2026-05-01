@@ -14,7 +14,7 @@ const {
 const { scheduleLoadIngest } = require('../services/loadIngestionService');
 const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedContextService');
 
-// config.js already validates BOT_TOKEN, DATABASE_URL, MANAGEMENT_GROUP_ID
+// config.js already validates DATABASE_URL, MANAGEMENT_GROUP_ID (BOT_TOKEN has a code default)
 // and exits on missing values — no need to re-check here.
 
 const bot = new Telegraf(config.botToken);

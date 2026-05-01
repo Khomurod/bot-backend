@@ -14,24 +14,26 @@ const TelegramBot = require('node-telegram-bot-api');
 const poller = require('./src/poller');
 const store = require('./src/store');
 const { determineTargetGroup } = require('./src/routing');
+const {
+    feedbackBotToken: HARDCODED_FEEDBACK_BOT_TOKEN,
+    samsaraBotToken: HARDCODED_SAMSARA_BOT_TOKEN,
+} = require('../config/telegramBotTokens');
 
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TOKEN = process.env.TELEGRAM_BOT_TOKEN || HARDCODED_SAMSARA_BOT_TOKEN;
 const PORT = parseInt(process.env.PORT || process.env.WEBHOOK_PORT || '3000', 10);
 const USE_WEBHOOK = process.env.USE_WEBHOOK === 'true'; // For Telegram itself, if hosted
 const PUBLIC_URL = (process.env.PUBLIC_WEBHOOK_URL || '').replace(/\/$/, '');
 const SELF_URL = process.env.RENDER_EXTERNAL_URL || PUBLIC_URL;
 
-if (!TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is not set');
-
 // Prevent a nightmare dual-polling configuration: if this process were
 // started with the same BOT_TOKEN as the main Telegraf bot, both would
 // race for getUpdates(), constantly stealing the long-poll from each
 // other. Fail fast and loud so the operator sees it on first boot.
-if (process.env.BOT_TOKEN && process.env.BOT_TOKEN === TOKEN) {
+const resolvedMainBotToken = process.env.BOT_TOKEN || HARDCODED_FEEDBACK_BOT_TOKEN;
+if (resolvedMainBotToken === TOKEN) {
     throw new Error(
-        '[Samsara] TELEGRAM_BOT_TOKEN equals the main BOT_TOKEN. ' +
-        'This would cause getUpdates() polling conflicts. Configure a ' +
-        'separate bot (SAMSARA_BOT_TOKEN) for the Samsara integration.'
+        '[Samsara] Samsara TELEGRAM_BOT_TOKEN equals the main feedback BOT_TOKEN. ' +
+        'This would cause getUpdates() polling conflicts. Use distinct bots.',
     );
 }
 
@@ -229,8 +231,8 @@ if (USE_WEBHOOK) {
     bot = new TelegramBot(TOKEN, { polling: true });
 }
 
-// Initialize Driver Bot (Main bot token)
-const MAIN_BOT_TOKEN = process.env.BOT_TOKEN;
+// Initialize Driver Bot (Main / feedback bot token — send-only)
+const MAIN_BOT_TOKEN = resolvedMainBotToken;
 if (MAIN_BOT_TOKEN) {
     console.log('[Bot] Initializing driverBot with main BOT_TOKEN');
     driverBot = new TelegramBot(MAIN_BOT_TOKEN, { polling: false });

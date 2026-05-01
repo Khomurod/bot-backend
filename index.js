@@ -23,6 +23,11 @@ const {
   stopDispatchEtaScheduler,
 } = require('./services/dispatchEtaUpdateService');
 const db = require('./database/db');
+const {
+  feedbackBotToken: HARDCODED_FEEDBACK_BOT_TOKEN,
+  leadsBotToken: HARDCODED_LEADS_BOT_TOKEN,
+  samsaraBotToken: HARDCODED_SAMSARA_BOT_TOKEN,
+} = require('./config/telegramBotTokens');
 
 const MAX_RESTART_DELAY = 60000;
 const MAX_CHILD_RESTARTS = 6;
@@ -104,7 +109,10 @@ function startLeadsBot() {
   console.log('[LEADS-BOT] Starting Python process...');
   leadsProcess = spawn(pythonCmd, [scriptPath], {
     cwd: path.join(__dirname, 'leads-bot'),
-    env: { ...process.env },
+    env: {
+      ...process.env,
+      TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || HARDCODED_LEADS_BOT_TOKEN,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
@@ -164,12 +172,43 @@ function startSamsaraBot() {
     return;
   }
 
+  const leadsBotEnabled = process.env.ENABLE_LEADS_BOT !== 'false';
+  const leadsToken = process.env.TELEGRAM_BOT_TOKEN || HARDCODED_LEADS_BOT_TOKEN;
+  const explicitSamsara = process.env.SAMSARA_BOT_TOKEN || HARDCODED_SAMSARA_BOT_TOKEN;
+
+  // Leads-bot long-polls getUpdates() on TELEGRAM_BOT_TOKEN for /connect. Samsara does the same on
+  // its token. Telegram allows only one getUpdates stream per bot — sharing causes 409 conflicts.
+  if (leadsBotEnabled && leadsToken) {
+    if (!explicitSamsara) {
+      console.error(
+        '[SAMSARA-BOT] Not starting: SAMSARA_BOT_TOKEN is unset but the Leads bot uses TELEGRAM_BOT_TOKEN. '
+        + 'Both services would poll the same bot token (Telegram 409). Create a separate bot with @BotFather, '
+        + 'set SAMSARA_BOT_TOKEN in Render, or set ENABLE_SAMSARA_BOT=false.',
+      );
+      return;
+    }
+    if (explicitSamsara === leadsToken) {
+      console.error(
+        '[SAMSARA-BOT] Not starting: SAMSARA_BOT_TOKEN equals TELEGRAM_BOT_TOKEN while the Leads bot is enabled. '
+        + 'Use two different bots.',
+      );
+      return;
+    }
+  }
+
+  const tokenForSamsara = explicitSamsara || leadsToken;
+  if (!tokenForSamsara) {
+    console.warn('[SAMSARA-BOT] Neither SAMSARA_BOT_TOKEN nor TELEGRAM_BOT_TOKEN is set; skipping.');
+    return;
+  }
+
   console.log('[SAMSARA-BOT] Starting Node process...');
   samsaraProcess = spawn('node', ['index.js'], {
     cwd: path.join(__dirname, 'samsara-integration'),
     env: {
       ...process.env,
-      TELEGRAM_BOT_TOKEN: process.env.SAMSARA_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN,
+      TELEGRAM_BOT_TOKEN: tokenForSamsara,
+      BOT_TOKEN: process.env.BOT_TOKEN || HARDCODED_FEEDBACK_BOT_TOKEN,
       SAMSARA_API_KEY: process.env.SAMSARA_API_KEY,
       PORT: process.env.SAMSARA_PORT || '3002',
       WEBHOOK_PORT: process.env.SAMSARA_PORT || '3002',

@@ -1,5 +1,7 @@
 require('dotenv').config();
 
+const { feedbackBotToken: HARDCODED_FEEDBACK_BOT_TOKEN } = require('./telegramBotTokens');
+
 const HARDCODED_SAMSARA_API_KEYS = [
   'samsara_api_vpdJovy2R4npF71d7hN4upXdtErSIY',
   'samsara_api_bgmoBGqL01WM7ndKs8QqrH9VmVB4Fi',
@@ -9,7 +11,6 @@ const HARDCODED_DISPATCH_ETA_TEST_GROUP_ID = '-5289094495';
 // Validate required environment variables up-front so we fail fast
 // with a clear error instead of crashing later at first use.
 const requiredEnv = [
-  'BOT_TOKEN',
   'DATABASE_URL',
   'MANAGEMENT_GROUP_ID',
   'JWT_SECRET',
@@ -46,7 +47,7 @@ const corsAllowedOrigins = corsOriginsEnv
   .filter(Boolean);
 
 module.exports = {
-  botToken: process.env.BOT_TOKEN,
+  botToken: process.env.BOT_TOKEN || HARDCODED_FEEDBACK_BOT_TOKEN,
   databaseUrl: process.env.DATABASE_URL,
   adminUsername: process.env.ADMIN_USERNAME || 'admin',
   adminPassword: process.env.ADMIN_PASSWORD || 'admin123',

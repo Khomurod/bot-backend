@@ -58,7 +58,7 @@ services:
         sync: false
       - key: RC_FROM_NUMBER
         sync: false
-      # ─── Samsara Alert Bot ───
+      # ─── Samsara Alert Bot (must differ from TELEGRAM_BOT_TOKEN if Leads bot is enabled) ───
       - key: SAMSARA_BOT_TOKEN
         sync: false
       - key: SAMSARA_API_KEY

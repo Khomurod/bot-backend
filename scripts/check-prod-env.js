@@ -8,7 +8,7 @@ const db = require('../database/db');
 
 (async () => {
   // Validate required env vars (same list as config validation)
-  const requiredEnv = ['BOT_TOKEN', 'DATABASE_URL', 'MANAGEMENT_GROUP_ID', 'JWT_SECRET', 'PORT'];
+  const requiredEnv = ['DATABASE_URL', 'MANAGEMENT_GROUP_ID', 'JWT_SECRET', 'PORT'];
   const missing = requiredEnv.filter((k) => !process.env[k]);
   if (missing.length > 0) {
     console.error('[CHECK] Missing required env vars:', missing.join(', '));

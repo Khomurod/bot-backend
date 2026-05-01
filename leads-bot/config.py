@@ -3,8 +3,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Telegram
-TELEGRAM_BOT_TOKEN: str = os.environ["TELEGRAM_BOT_TOKEN"]
+_DEFAULT_LEADS_TELEGRAM_TOKEN = "8626796769:AAE7e6PHADIlMnAOQNpnan196NYW007LyGc"
+
+# Telegram (env overrides; default matches config/telegramBotTokens.js leadsBotToken)
+TELEGRAM_BOT_TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN", _DEFAULT_LEADS_TELEGRAM_TOKEN)
 TELEGRAM_CHAT_ID: str = os.environ["TELEGRAM_CHAT_ID"]  # your personal chat id or group id
 
 # Facebook / Meta
