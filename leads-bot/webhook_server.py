@@ -21,7 +21,14 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse, Response
 
-from config import META_APP_SECRET, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, WEBHOOK_VERIFY_TOKEN
+from config import (
+    LEADS_INTERNAL_SHARED_SECRET,
+    LOCAL_API_BASE_URL,
+    META_APP_SECRET,
+    TELEGRAM_BOT_TOKEN,
+    TELEGRAM_CHAT_ID,
+    WEBHOOK_VERIFY_TOKEN,
+)
 from graph import fetch_lead, format_lead_message, fetch_sender_profile, format_messenger_message
 from sms import download_ringcentral_attachment, register_sms_webhook, send_sms
 
@@ -118,6 +125,20 @@ def _verify_signature(payload: bytes, signature_header: str) -> bool:
         hashlib.sha256,
     ).hexdigest()
     return hmac.compare_digest(expected, signature_header[7:])
+
+
+async def _forward_verified_facebook_payload(payload: dict) -> dict:
+    """Hand verified Facebook payloads to the main Node app for durable processing."""
+    if not LEADS_INTERNAL_SHARED_SECRET:
+        raise RuntimeError("LEADS_INTERNAL_SHARED_SECRET is not configured")
+
+    url = f"{LOCAL_API_BASE_URL.rstrip('/')}/api/internal/facebook/webhook-events"
+    headers = {"x-internal-shared-secret": LEADS_INTERNAL_SHARED_SECRET}
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(url, json=payload, headers=headers)
+        if not resp.is_success:
+            raise RuntimeError(f"Internal Facebook ingest failed ({resp.status_code}): {resp.text[:500]}")
+        return resp.json()
 
 
 async def _send_telegram(text: str) -> int | None:
@@ -583,6 +604,10 @@ async def receive_webhook(request: Request):
 
     if data.get("object") != "page":
         return {"status": "ignored"}
+
+    result = await _forward_verified_facebook_payload(data)
+    logger.info("Forwarded verified Facebook payload to Node app: %s", result)
+    return {"status": "ok", **result}
 
     # ── Collect all work items, then process in background ──
     leadgen_ids = []

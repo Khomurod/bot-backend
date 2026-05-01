@@ -21,9 +21,21 @@ services:
         sync: false
       - key: PORT
         sync: false
+      - key: RENDER_EXTERNAL_URL
+        sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: EMPLOYEE_GROUP_ID
+        sync: false
+      - key: META_APP_ID
+        sync: false
+      - key: META_LOGIN_CONFIG_ID
+        sync: false
+      - key: META_REQUESTED_PERMISSIONS
+        sync: false
+      - key: FACEBOOK_TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: LEADS_INTERNAL_SHARED_SECRET
         sync: false
       # ─── Leads-Bot (Python) ───
       - key: TELEGRAM_BOT_TOKEN
@@ -37,8 +49,6 @@ services:
       - key: META_PAGE_ACCESS_TOKEN
         sync: false
       - key: LEADS_BOT_PORT
-        sync: false
-      - key: RENDER_EXTERNAL_URL
         sync: false
       - key: RC_CLIENT_ID
         sync: false

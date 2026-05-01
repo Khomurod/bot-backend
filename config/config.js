@@ -78,6 +78,19 @@ module.exports = {
   // When true, CORS allows any origin (useful in local dev/testing).
   corsAllowAll: !corsAllowedOrigins.length || process.env.CORS_ALLOW_ALL === 'true',
   nodeEnv: process.env.NODE_ENV || 'development',
+  renderExternalUrl: process.env.RENDER_EXTERNAL_URL || '',
+  metaAppId: process.env.META_APP_ID || '',
+  metaAppSecret: process.env.META_APP_SECRET || '',
+  metaLoginConfigId: process.env.META_LOGIN_CONFIG_ID || '',
+  metaGraphVersion: process.env.META_GRAPH_VERSION || 'v25.0',
+  metaWebhookVerifyToken: process.env.WEBHOOK_VERIFY_TOKEN || '',
+  metaRequestedPermissions: (process.env.META_REQUESTED_PERMISSIONS
+    || 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,pages_manage_ads,ads_management,pages_messaging')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean),
+  facebookTokenEncryptionKey: process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY || process.env.JWT_SECRET || 'driver-feedback-jwt-secret-key',
+  leadsInternalSharedSecret: process.env.LEADS_INTERNAL_SHARED_SECRET || process.env.JWT_SECRET || 'driver-feedback-jwt-secret-key',
   // When false, load ingestion skips forwarding parse-failure hints to DISPATCH_ETA_TEST_GROUP_ID.
   loadIngestNotifyExtractionFailure:
     process.env.LOAD_INGEST_NOTIFY_EXTRACTION_FAILURE !== 'false',

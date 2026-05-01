@@ -10,7 +10,12 @@ TELEGRAM_CHAT_ID: str = os.environ["TELEGRAM_CHAT_ID"]  # your personal chat id 
 # Facebook / Meta
 WEBHOOK_VERIFY_TOKEN: str = os.environ["WEBHOOK_VERIFY_TOKEN"]   # any secret string you choose
 META_APP_SECRET: str = os.environ["META_APP_SECRET"]              # from Meta App dashboard
-META_PAGE_ACCESS_TOKEN: str = os.environ["META_PAGE_ACCESS_TOKEN"]  # Page access token
+META_PAGE_ACCESS_TOKEN: str = os.environ.get("META_PAGE_ACCESS_TOKEN", "")  # legacy single-page token
+LOCAL_API_BASE_URL: str = os.environ.get("LOCAL_API_BASE_URL", f"http://127.0.0.1:{os.environ.get('PORT', '3001')}")
+LEADS_INTERNAL_SHARED_SECRET: str = os.environ.get(
+    "LEADS_INTERNAL_SHARED_SECRET",
+    os.environ.get("JWT_SECRET", ""),
+)
 
 # Server
 PORT: int = int(os.environ.get("LEADS_BOT_PORT", 8000))

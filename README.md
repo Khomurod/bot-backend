@@ -12,6 +12,7 @@ A Telegram bot-based feedback and communication system for trucking companies. C
 - **Employee Voting** — "Driver of the Week" polls sent to employee group with inline buttons
 - **Media Support** — Photo/video attachments (single or albums), above/below positioning
 - **Leads-Bot** — Facebook/Meta lead capture via webhook (Python/FastAPI subprocess)
+- **Facebook Self-Serve Connect** — `/connect` in a Telegram group opens a Facebook login flow, lets an admin choose Pages, and routes incoming leads into that group
 - **Admin Panel** — React-based web interface for groups, questions, broadcasts, voting, and responses
 - **JWT Auth** — Secure admin panel with bcrypt + JWT
 
@@ -61,6 +62,13 @@ Optional variables:
 | `OPENAI_API_KEY` | OpenAI API key (enables auto-translation) |
 | `PORT` | API server port (default: 3001) |
 | `LEADS_BOT_PORT` | Leads-Bot internal port (default: 8000) |
+| `RENDER_EXTERNAL_URL` | Public base URL used for `/connect` and webhook callbacks |
+| `META_APP_ID` | Meta app id used for Facebook login |
+| `META_APP_SECRET` | Meta app secret |
+| `WEBHOOK_VERIFY_TOKEN` | Meta webhook verify token |
+| `META_LOGIN_CONFIG_ID` | Optional Facebook Login for Business configuration id |
+| `FACEBOOK_TOKEN_ENCRYPTION_KEY` | Secret used to encrypt stored Page tokens |
+| `LEADS_INTERNAL_SHARED_SECRET` | Shared secret between Python webhook verifier and Node app |
 
 ### 3. Initialize database
 
@@ -210,6 +218,14 @@ cd admin && npm run dev
 |---|---|---|---|
 | ALL | `/webhook` | No | Facebook webhook (proxied to Python) |
 | ALL | `/rc-webhook` | No | RingCentral webhook (proxied to Python) |
+
+## Facebook Connect Flow
+
+1. Configure the Meta app's Webhooks product to point at `https://YOUR-DOMAIN/webhook`
+2. Make sure the Meta app can request the Page permissions you need, especially `leads_retrieval`, `pages_show_list`, `pages_read_engagement`, and `pages_manage_metadata`
+3. In the Telegram group that should receive Facebook leads, send `/connect`
+4. Click the button, sign in to Facebook, and select one or more Pages
+5. The app stores each selected Page token securely, subscribes the Page to webhook updates, and routes new leads into that same Telegram group
 
 ### Health
 | Method | Endpoint | Auth | Description |

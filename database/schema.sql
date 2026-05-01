@@ -260,6 +260,88 @@ CREATE TABLE IF NOT EXISTS group_pinned_messages (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Facebook Leads self-serve connect flow
+
+CREATE TABLE IF NOT EXISTS facebook_connect_sessions (
+  id SERIAL PRIMARY KEY,
+  session_token TEXT NOT NULL UNIQUE,
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  telegram_group_id BIGINT NOT NULL,
+  group_name TEXT,
+  requested_by_telegram_user_id BIGINT,
+  requested_by_name TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  oauth_state TEXT UNIQUE,
+  oauth_user_access_token_encrypted TEXT,
+  oauth_user_id TEXT,
+  oauth_user_name TEXT,
+  expires_at TIMESTAMP NOT NULL,
+  last_error TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  completed_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_facebook_connect_sessions_group
+  ON facebook_connect_sessions (telegram_group_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_facebook_connect_sessions_expires
+  ON facebook_connect_sessions (expires_at);
+
+CREATE TABLE IF NOT EXISTS facebook_page_connections (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  telegram_group_id BIGINT NOT NULL,
+  group_name TEXT,
+  page_id TEXT NOT NULL UNIQUE,
+  page_name TEXT NOT NULL,
+  access_token_encrypted TEXT NOT NULL,
+  token_last4 TEXT,
+  connected_by_facebook_user_id TEXT,
+  connected_by_facebook_user_name TEXT,
+  granted_tasks TEXT[] DEFAULT '{}',
+  granted_scopes TEXT[] DEFAULT '{}',
+  subscribed_fields TEXT[] DEFAULT '{}',
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  last_subscription_status TEXT,
+  last_error TEXT,
+  connected_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_facebook_page_connections_group
+  ON facebook_page_connections (telegram_group_id, is_active);
+
+CREATE TABLE IF NOT EXISTS facebook_webhook_events (
+  id SERIAL PRIMARY KEY,
+  event_key TEXT NOT NULL UNIQUE,
+  page_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  next_retry_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  last_error TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  processed_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_facebook_webhook_events_status_retry
+  ON facebook_webhook_events (status, next_retry_at, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_facebook_webhook_events_page
+  ON facebook_webhook_events (page_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS facebook_seen_senders (
+  page_id TEXT NOT NULL,
+  sender_id TEXT NOT NULL,
+  first_event_key TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  PRIMARY KEY (page_id, sender_id)
+);
+
 ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS group_id INTEGER;
 ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS telegram_group_id BIGINT;
 ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS pinned_message_id BIGINT;

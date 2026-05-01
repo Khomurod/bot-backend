@@ -13,6 +13,11 @@ const { startWeeklyReporter, stopWeeklyReporter } = require('./services/weeklyRe
 const { startBirthdayService, stopBirthdayService } = require('./services/birthdayService');
 const { startBackgroundAnnotator } = require('./services/aiAnnotationService');
 const {
+  configureFacebookLeadTelegram,
+  startFacebookWebhookWorker,
+  stopFacebookWebhookWorker,
+} = require('./services/facebookWebhookService');
+const {
   configureDispatchEtaTelegram,
   startDispatchEtaScheduler,
   stopDispatchEtaScheduler,
@@ -251,6 +256,7 @@ async function shutdownAll(signal = 'SIGTERM') {
   try { stopDispatchEtaScheduler(); } catch (err) { console.error('[SHUTDOWN] stopDispatchEtaScheduler failed:', err.message); }
   try { stopBirthdayService(); } catch (err) { console.error('[SHUTDOWN] stopBirthdayService failed:', err.message); }
   try { stopWeeklyReporter(); } catch (err) { console.error('[SHUTDOWN] stopWeeklyReporter failed:', err.message); }
+  try { stopFacebookWebhookWorker(); } catch (err) { console.error('[SHUTDOWN] stopFacebookWebhookWorker failed:', err.message); }
   try { stopBot(signal); } catch (err) { console.error('[SHUTDOWN] stopBot failed:', err.message); }
   try { stopServer(); } catch (err) { console.error('[SHUTDOWN] stopServer failed:', err.message); }
 
@@ -290,6 +296,7 @@ process.on('SIGTERM', () => shutdownAll('SIGTERM'));
   }
 
   configureDispatchEtaTelegram(bot.telegram);
+  configureFacebookLeadTelegram(bot.telegram);
   startServer();
   await startBot();
 
@@ -298,6 +305,7 @@ process.on('SIGTERM', () => shutdownAll('SIGTERM'));
   startBirthdayService();
   startWeeklyReporter();
   startBackgroundAnnotator();
+  startFacebookWebhookWorker();
 
   startLeadsBot();
   startSamsaraBot();

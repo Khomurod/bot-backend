@@ -1348,6 +1348,386 @@ async function deleteEmployeeBirthday(id) {
   await query('DELETE FROM employee_birthdays WHERE id = $1', [id]);
 }
 
+async function createFacebookConnectSession({
+  sessionToken,
+  groupId,
+  telegramGroupId,
+  groupName,
+  requestedByTelegramUserId,
+  requestedByName,
+  expiresAt,
+}) {
+  const res = await query(
+    `INSERT INTO facebook_connect_sessions (
+       session_token,
+       group_id,
+       telegram_group_id,
+       group_name,
+       requested_by_telegram_user_id,
+       requested_by_name,
+       expires_at
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING *`,
+    [
+      sessionToken,
+      groupId,
+      telegramGroupId,
+      groupName || null,
+      requestedByTelegramUserId || null,
+      requestedByName || null,
+      expiresAt,
+    ]
+  );
+  return res.rows[0];
+}
+
+async function getFacebookConnectSessionByToken(sessionToken) {
+  const res = await query(
+    `SELECT *
+       FROM facebook_connect_sessions
+      WHERE session_token = $1
+      LIMIT 1`,
+    [sessionToken]
+  );
+  return res.rows[0] || null;
+}
+
+async function getFacebookConnectSessionByOAuthState(oauthState) {
+  const res = await query(
+    `SELECT *
+       FROM facebook_connect_sessions
+      WHERE oauth_state = $1
+      LIMIT 1`,
+    [oauthState]
+  );
+  return res.rows[0] || null;
+}
+
+async function updateFacebookConnectSessionOAuthState(sessionId, oauthState) {
+  const res = await query(
+    `UPDATE facebook_connect_sessions
+        SET oauth_state = $1,
+            updated_at = NOW(),
+            last_error = NULL
+      WHERE id = $2
+      RETURNING *`,
+    [oauthState, sessionId]
+  );
+  return res.rows[0] || null;
+}
+
+async function storeFacebookConnectSessionOAuthResult(sessionId, {
+  oauthUserAccessTokenEncrypted,
+  oauthUserId,
+  oauthUserName,
+}) {
+  const res = await query(
+    `UPDATE facebook_connect_sessions
+        SET oauth_user_access_token_encrypted = $1,
+            oauth_user_id = $2,
+            oauth_user_name = $3,
+            status = 'authorized',
+            last_error = NULL,
+            updated_at = NOW()
+      WHERE id = $4
+      RETURNING *`,
+    [
+      oauthUserAccessTokenEncrypted,
+      oauthUserId || null,
+      oauthUserName || null,
+      sessionId,
+    ]
+  );
+  return res.rows[0] || null;
+}
+
+async function markFacebookConnectSessionCompleted(sessionId) {
+  const res = await query(
+    `UPDATE facebook_connect_sessions
+        SET status = 'completed',
+            completed_at = NOW(),
+            updated_at = NOW()
+      WHERE id = $1
+      RETURNING *`,
+    [sessionId]
+  );
+  return res.rows[0] || null;
+}
+
+async function markFacebookConnectSessionError(sessionId, errorMessage) {
+  const res = await query(
+    `UPDATE facebook_connect_sessions
+        SET status = CASE
+              WHEN completed_at IS NOT NULL THEN status
+              ELSE 'error'
+            END,
+            last_error = $1,
+            updated_at = NOW()
+      WHERE id = $2
+      RETURNING *`,
+    [errorMessage ? String(errorMessage).slice(0, 1000) : null, sessionId]
+  );
+  return res.rows[0] || null;
+}
+
+async function expireOldFacebookConnectSessions() {
+  const res = await query(
+    `UPDATE facebook_connect_sessions
+        SET status = 'expired',
+            updated_at = NOW()
+      WHERE expires_at < NOW()
+        AND status IN ('pending', 'authorized', 'error')`
+  );
+  return res.rowCount || 0;
+}
+
+async function upsertFacebookPageConnection({
+  groupId,
+  telegramGroupId,
+  groupName,
+  pageId,
+  pageName,
+  accessTokenEncrypted,
+  tokenLast4,
+  connectedByFacebookUserId,
+  connectedByFacebookUserName,
+  grantedTasks,
+  grantedScopes,
+  subscribedFields,
+  lastSubscriptionStatus,
+  lastError,
+}) {
+  const res = await query(
+    `INSERT INTO facebook_page_connections (
+       group_id,
+       telegram_group_id,
+       group_name,
+       page_id,
+       page_name,
+       access_token_encrypted,
+       token_last4,
+       connected_by_facebook_user_id,
+       connected_by_facebook_user_name,
+       granted_tasks,
+       granted_scopes,
+       subscribed_fields,
+       is_active,
+       last_subscription_status,
+       last_error,
+       connected_at,
+       updated_at
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text[], $11::text[], $12::text[], TRUE, $13, $14, NOW(), NOW())
+     ON CONFLICT (page_id)
+     DO UPDATE SET
+       group_id = EXCLUDED.group_id,
+       telegram_group_id = EXCLUDED.telegram_group_id,
+       group_name = EXCLUDED.group_name,
+       page_name = EXCLUDED.page_name,
+       access_token_encrypted = EXCLUDED.access_token_encrypted,
+       token_last4 = EXCLUDED.token_last4,
+       connected_by_facebook_user_id = EXCLUDED.connected_by_facebook_user_id,
+       connected_by_facebook_user_name = EXCLUDED.connected_by_facebook_user_name,
+       granted_tasks = EXCLUDED.granted_tasks,
+       granted_scopes = EXCLUDED.granted_scopes,
+       subscribed_fields = EXCLUDED.subscribed_fields,
+       is_active = TRUE,
+       last_subscription_status = EXCLUDED.last_subscription_status,
+       last_error = EXCLUDED.last_error,
+       updated_at = NOW()
+     RETURNING *`,
+    [
+      groupId,
+      telegramGroupId,
+      groupName || null,
+      String(pageId),
+      pageName,
+      accessTokenEncrypted,
+      tokenLast4 || null,
+      connectedByFacebookUserId || null,
+      connectedByFacebookUserName || null,
+      Array.isArray(grantedTasks) ? grantedTasks : [],
+      Array.isArray(grantedScopes) ? grantedScopes : [],
+      Array.isArray(subscribedFields) ? subscribedFields : [],
+      lastSubscriptionStatus || null,
+      lastError || null,
+    ]
+  );
+  return res.rows[0] || null;
+}
+
+async function getFacebookPageConnectionByPageId(pageId) {
+  const res = await query(
+    `SELECT *
+       FROM facebook_page_connections
+      WHERE page_id = $1
+        AND is_active = TRUE
+      LIMIT 1`,
+    [String(pageId)]
+  );
+  return res.rows[0] || null;
+}
+
+async function getFacebookPageConnectionsByTelegramGroupId(telegramGroupId) {
+  const res = await query(
+    `SELECT *
+       FROM facebook_page_connections
+      WHERE telegram_group_id = $1
+      ORDER BY page_name ASC`,
+    [telegramGroupId]
+  );
+  return res.rows;
+}
+
+async function deactivateFacebookPageConnection(pageId) {
+  const res = await query(
+    `UPDATE facebook_page_connections
+        SET is_active = FALSE,
+            updated_at = NOW()
+      WHERE page_id = $1
+      RETURNING *`,
+    [String(pageId)]
+  );
+  return res.rows[0] || null;
+}
+
+async function insertFacebookWebhookEvents(events) {
+  if (!Array.isArray(events) || events.length === 0) return [];
+  const inserted = [];
+  for (const event of events) {
+    const res = await query(
+      `INSERT INTO facebook_webhook_events (
+         event_key,
+         page_id,
+         event_type,
+         payload
+       )
+       VALUES ($1, $2, $3, $4::jsonb)
+       ON CONFLICT (event_key) DO NOTHING
+       RETURNING *`,
+      [
+        event.eventKey,
+        String(event.pageId),
+        event.eventType,
+        JSON.stringify(event.payload || {}),
+      ]
+    );
+    if (res.rows[0]) inserted.push(res.rows[0]);
+  }
+  return inserted;
+}
+
+async function claimPendingFacebookWebhookEvents(limit = 10) {
+  const res = await query(
+    `WITH candidates AS (
+       SELECT id
+         FROM facebook_webhook_events
+        WHERE status IN ('pending', 'failed')
+          AND next_retry_at <= NOW()
+        ORDER BY created_at ASC
+        LIMIT $1
+        FOR UPDATE SKIP LOCKED
+     )
+     UPDATE facebook_webhook_events e
+        SET status = 'processing',
+            attempt_count = e.attempt_count + 1,
+            updated_at = NOW()
+       FROM candidates
+      WHERE e.id = candidates.id
+      RETURNING e.*`,
+    [limit]
+  );
+  return res.rows;
+}
+
+async function completeFacebookWebhookEvent(eventId) {
+  const res = await query(
+    `UPDATE facebook_webhook_events
+        SET status = 'completed',
+            processed_at = NOW(),
+            updated_at = NOW(),
+            last_error = NULL
+      WHERE id = $1
+      RETURNING *`,
+    [eventId]
+  );
+  return res.rows[0] || null;
+}
+
+async function failFacebookWebhookEvent(eventId, errorMessage, nextRetryAt) {
+  const res = await query(
+    `UPDATE facebook_webhook_events
+        SET status = 'failed',
+            last_error = $1,
+            next_retry_at = $2,
+            updated_at = NOW()
+      WHERE id = $3
+      RETURNING *`,
+    [String(errorMessage || 'Unknown error').slice(0, 2000), nextRetryAt, eventId]
+  );
+  return res.rows[0] || null;
+}
+
+async function resetFacebookWebhookEventByIdentifier(identifier) {
+  const normalized = String(identifier || '').trim();
+  if (!normalized) return null;
+  const res = await query(
+    `UPDATE facebook_webhook_events
+        SET status = 'pending',
+            next_retry_at = NOW(),
+            updated_at = NOW(),
+            last_error = NULL
+      WHERE id::text = $1
+         OR event_key = $1
+         OR event_key LIKE '%' || $1
+      RETURNING *`,
+    [normalized]
+  );
+  return res.rows[0] || null;
+}
+
+async function getRecentFacebookWebhookEvents(limit = 50) {
+  const cappedLimit = Math.max(1, Math.min(200, Number(limit) || 50));
+  const res = await query(
+    `SELECT *
+       FROM facebook_webhook_events
+      ORDER BY created_at DESC
+      LIMIT $1`,
+    [cappedLimit]
+  );
+  return res.rows;
+}
+
+async function recordFacebookSenderSeen(pageId, senderId, firstEventKey) {
+  const res = await query(
+    `INSERT INTO facebook_seen_senders (
+       page_id,
+       sender_id,
+       first_event_key,
+       created_at,
+       updated_at
+     )
+     VALUES ($1, $2, $3, NOW(), NOW())
+     ON CONFLICT (page_id, sender_id) DO NOTHING
+     RETURNING page_id, sender_id`,
+    [String(pageId), String(senderId), firstEventKey || null]
+  );
+  return res.rows.length > 0;
+}
+
+async function hasFacebookSenderBeenSeen(pageId, senderId) {
+  const res = await query(
+    `SELECT 1
+       FROM facebook_seen_senders
+      WHERE page_id = $1
+        AND sender_id = $2
+      LIMIT 1`,
+    [String(pageId), String(senderId)]
+  );
+  return res.rows.length > 0;
+}
+
 // ─── Service Run Guard (daily/weekly idempotency) ───
 // Claim a logical run so a scheduled task fires exactly once per key
 // across restarts and (future) multi-instance deployments.
@@ -1460,6 +1840,27 @@ module.exports = {
   getEmployeesWithBirthdayToday,
   updateEmployeeBirthday,
   deleteEmployeeBirthday,
+  // Facebook leads + connect
+  createFacebookConnectSession,
+  getFacebookConnectSessionByToken,
+  getFacebookConnectSessionByOAuthState,
+  updateFacebookConnectSessionOAuthState,
+  storeFacebookConnectSessionOAuthResult,
+  markFacebookConnectSessionCompleted,
+  markFacebookConnectSessionError,
+  expireOldFacebookConnectSessions,
+  upsertFacebookPageConnection,
+  getFacebookPageConnectionByPageId,
+  getFacebookPageConnectionsByTelegramGroupId,
+  deactivateFacebookPageConnection,
+  insertFacebookWebhookEvents,
+  claimPendingFacebookWebhookEvents,
+  completeFacebookWebhookEvent,
+  failFacebookWebhookEvent,
+  resetFacebookWebhookEventByIdentifier,
+  getRecentFacebookWebhookEvents,
+  recordFacebookSenderSeen,
+  hasFacebookSenderBeenSeen,
   // Service run guard + health
   claimServiceRun,
   ping,
