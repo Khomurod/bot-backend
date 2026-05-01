@@ -300,6 +300,18 @@ export async function getDispatchTestingGroups() {
   return res.json();
 }
 
+export async function saveDispatchEtaGlobalIntervals(payload) {
+  const res = await fetch(`${API_BASE}/dispatch/testing-feature/global-intervals`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function getDispatchTestingGroupDetails(groupId) {
   const res = await fetch(`${API_BASE}/dispatch/testing-feature/groups/${groupId}/details`);
   if (!res.ok) { await handleApiError(res); }

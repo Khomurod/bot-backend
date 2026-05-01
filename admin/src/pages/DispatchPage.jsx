@@ -70,12 +70,6 @@ function formatIntervalText(intervalMinutes) {
   return `${hours}h ${minutes}m`;
 }
 
-function parsePromptInteger(value, fallback = 0) {
-  const parsed = Number.parseInt(String(value || "").trim(), 10);
-  if (!Number.isInteger(parsed) || Number.isNaN(parsed)) return fallback;
-  return parsed;
-}
-
 function normalizeEtaEnabled(value) {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
@@ -115,6 +109,9 @@ export default function DispatchPage() {
   const [expandedTestingGroupId, setExpandedTestingGroupId] = useState(null);
   const [testingDetailsByGroupId, setTestingDetailsByGroupId] = useState({});
   const [testingDetailsLoadingGroupId, setTestingDetailsLoadingGroupId] = useState(null);
+  const [globalDriverIntervalMin, setGlobalDriverIntervalMin] = useState(60);
+  const [globalTestIntervalMin, setGlobalTestIntervalMin] = useState(60);
+  const [savingGlobalIntervals, setSavingGlobalIntervals] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -182,6 +179,10 @@ export default function DispatchPage() {
       const rows = Array.isArray(data?.groups) ? data.groups : [];
       setTestingGroups(rows);
       setDispatchEtaTestGroupId(String(data?.dispatchEtaTestGroupId || "").trim());
+      const gd = Number(data?.globalDriverIntervalMinutes);
+      const gt = Number(data?.globalTestIntervalMinutes);
+      if (Number.isInteger(gd) && gd >= 1 && gd <= 1440) setGlobalDriverIntervalMin(gd);
+      if (Number.isInteger(gt) && gt >= 1 && gt <= 1440) setGlobalTestIntervalMin(gt);
     } catch (err) {
       setMessage({ type: "error", text: `Testing feature load failed: ${err.message}` });
     } finally {
@@ -329,31 +330,11 @@ export default function DispatchPage() {
       return;
     }
 
-    let intervalMinutes = Number(row.eta_interval_minutes) > 0 ? Number(row.eta_interval_minutes) : 60;
-    if (nextEnabled) {
-      const defaultHours = Math.floor(intervalMinutes / 60);
-      const defaultMinutes = intervalMinutes % 60;
-
-      const hoursInput = window.prompt(
-        `How many hours between ETA updates for "${row.group_name}"?`,
-        String(defaultHours)
-      );
-      if (hoursInput === null) return;
-
-      const minutesInput = window.prompt(
-        `How many additional minutes between updates for "${row.group_name}"?`,
-        String(defaultMinutes)
-      );
-      if (minutesInput === null) return;
-
-      const hours = Math.max(0, parsePromptInteger(hoursInput, defaultHours));
-      const minutes = Math.max(0, parsePromptInteger(minutesInput, defaultMinutes));
-      intervalMinutes = hours * 60 + minutes;
-      if (intervalMinutes < 1 || intervalMinutes > 1440) {
-        setMessage({ type: "error", text: "Interval must be between 1 minute and 24 hours." });
-        return;
-      }
-    }
+    const intervalMinutes = nextEnabled
+      ? (mode === "test" ? globalTestIntervalMin : globalDriverIntervalMin)
+      : Number(row.eta_interval_minutes) > 0
+        ? Number(row.eta_interval_minutes)
+        : (mode === "test" ? globalTestIntervalMin : globalDriverIntervalMin);
 
     setTestingSavingGroupId(row.group_id);
     setMessage(null);
@@ -430,26 +411,9 @@ export default function DispatchPage() {
       return;
     }
 
-    let intervalMinutes = 60;
-    if (nextEnabled) {
-      const hoursInput = window.prompt(
-        `How many hours between ETA updates for ALL active driver groups (${mode} mode)?`,
-        "1"
-      );
-      if (hoursInput === null) return;
-      const minutesInput = window.prompt(
-        `How many additional minutes between updates for ALL active driver groups (${mode} mode)?`,
-        "0"
-      );
-      if (minutesInput === null) return;
-      const hours = Math.max(0, parsePromptInteger(hoursInput, 1));
-      const minutes = Math.max(0, parsePromptInteger(minutesInput, 0));
-      intervalMinutes = hours * 60 + minutes;
-      if (intervalMinutes < 1 || intervalMinutes > 1440) {
-        setMessage({ type: "error", text: "Interval must be between 1 minute and 24 hours." });
-        return;
-      }
-    }
+    const intervalMinutes = nextEnabled
+      ? (mode === "test" ? globalTestIntervalMin : globalDriverIntervalMin)
+      : 60;
 
     setTestingBulkSavingMode(mode);
     setMessage(null);
@@ -482,6 +446,35 @@ export default function DispatchPage() {
       setMessage({ type: "error", text: err.message });
     } finally {
       setTestingBulkSavingMode(null);
+    }
+  };
+
+  const handleSaveGlobalIntervals = async () => {
+    const driver = Number(globalDriverIntervalMin);
+    const test = Number(globalTestIntervalMin);
+    if (
+      !Number.isInteger(driver) || driver < 1 || driver > 1440
+      || !Number.isInteger(test) || test < 1 || test > 1440
+    ) {
+      setMessage({ type: "error", text: "Each global interval must be between 1 and 1440 minutes." });
+      return;
+    }
+    setSavingGlobalIntervals(true);
+    setMessage(null);
+    try {
+      await api.saveDispatchEtaGlobalIntervals({
+        driverIntervalMinutes: driver,
+        testIntervalMinutes: test,
+      });
+      setMessage({
+        type: "success",
+        text: "Global intervals saved and applied to every ETA row by target (driver vs test). Enable/disable stays unchanged.",
+      });
+      await loadTestingGroups();
+    } catch (err) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setSavingGlobalIntervals(false);
     }
   };
 
@@ -624,8 +617,62 @@ export default function DispatchPage() {
       <div style={{ marginBottom: "16px" }}>
         <h3 style={{ marginBottom: "6px" }}>Testing Feature</h3>
         <p style={{ color: "var(--text-secondary)", fontSize: "14px" }}>
-          Toggle periodic ETA updates per driver group. Turning it on sends an immediate update first, then keeps running on your interval.
+          Toggle periodic ETA updates per driver group. Turning a toggle on sends one immediate update, then repeats on the interval below.
+          Global intervals apply to every row that targets driver chats vs the test chat; you can edit them anytime, including while updates are running.
         </p>
+      </div>
+
+      <div
+        style={{
+          marginBottom: "18px",
+          padding: "14px 16px",
+          borderRadius: "12px",
+          border: "1px solid var(--border)",
+          background: "var(--bg-primary)",
+          display: "grid",
+          gap: "12px",
+        }}
+      >
+        <div style={{ fontWeight: 600 }}>Global ETA intervals (minutes)</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "16px", alignItems: "flex-end" }}>
+          <div className="form-group" style={{ marginBottom: 0, minWidth: "200px" }}>
+            <label>Driver group targets</label>
+            <input
+              type="number"
+              className="form-input"
+              min={1}
+              max={1440}
+              value={globalDriverIntervalMin}
+              onChange={(e) => setGlobalDriverIntervalMin(Number(e.target.value))}
+              disabled={testingLoading || savingGlobalIntervals}
+            />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0, minWidth: "200px" }}>
+            <label>Test group targets</label>
+            <input
+              type="number"
+              className="form-input"
+              min={1}
+              max={1440}
+              value={globalTestIntervalMin}
+              onChange={(e) => setGlobalTestIntervalMin(Number(e.target.value))}
+              disabled={testingLoading || savingGlobalIntervals}
+            />
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={handleSaveGlobalIntervals}
+            disabled={testingLoading || savingGlobalIntervals || testingBulkSavingMode !== null}
+          >
+            {savingGlobalIntervals ? "Saving..." : "Save global intervals"}
+          </button>
+        </div>
+        <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+          Saving updates the defaults and sets <code style={{ fontSize: "12px" }}>interval_minutes</code> on all ETA rows:
+          driver-mode rows use the first value, test-mode rows use the second (test chat:{" "}
+          {dispatchEtaTestGroupId || "not configured"}).
+        </div>
       </div>
 
       <div style={{ marginBottom: "14px" }}>

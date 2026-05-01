@@ -409,6 +409,22 @@ ALTER TABLE dispatch_eta_updates
   ADD CONSTRAINT dispatch_eta_target_mode_check
   CHECK (target_mode IN ('driver', 'test'));
 
+-- Single-row defaults for dispatch ETA intervals (admin-editable; applied to all rows by target_mode).
+CREATE TABLE IF NOT EXISTS dispatch_eta_global_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  driver_interval_minutes INTEGER NOT NULL DEFAULT 60,
+  test_interval_minutes INTEGER NOT NULL DEFAULT 60,
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT dispatch_eta_global_intervals_check CHECK (
+    driver_interval_minutes BETWEEN 1 AND 1440
+    AND test_interval_minutes BETWEEN 1 AND 1440
+  )
+);
+
+INSERT INTO dispatch_eta_global_settings (id, driver_interval_minutes, test_interval_minutes)
+VALUES (1, 60, 60)
+ON CONFLICT (id) DO NOTHING;
+
 -- Last two AI-extracted loads per driver group (text + window fields only; files stay on Telegram).
 CREATE TABLE IF NOT EXISTS group_recent_loads (
   id SERIAL PRIMARY KEY,

@@ -456,6 +456,46 @@ async function upsertDispatchEtaSetting({
   return res.rows[0];
 }
 
+async function getDispatchEtaGlobalSettings() {
+  try {
+    const res = await query(
+      'SELECT driver_interval_minutes, test_interval_minutes FROM dispatch_eta_global_settings WHERE id = 1'
+    );
+    if (res.rows[0]) return res.rows[0];
+  } catch (err) {
+    console.warn('[DB] dispatch_eta_global_settings unavailable:', err.message);
+  }
+  return { driver_interval_minutes: 60, test_interval_minutes: 60 };
+}
+
+async function setDispatchEtaGlobalIntervals(driverMinutes, testMinutes) {
+  const res = await query(
+    `INSERT INTO dispatch_eta_global_settings (id, driver_interval_minutes, test_interval_minutes, updated_at)
+     VALUES (1, $1, $2, NOW())
+     ON CONFLICT (id) DO UPDATE SET
+       driver_interval_minutes = EXCLUDED.driver_interval_minutes,
+       test_interval_minutes = EXCLUDED.test_interval_minutes,
+       updated_at = NOW()
+     RETURNING driver_interval_minutes, test_interval_minutes`,
+    [driverMinutes, testMinutes]
+  );
+  return res.rows[0];
+}
+
+/** Push stored globals onto every dispatch_eta_updates row by target_mode. */
+async function applyDispatchEtaIntervalsFromGlobals() {
+  const g = await getDispatchEtaGlobalSettings();
+  await query(
+    `UPDATE dispatch_eta_updates SET interval_minutes = $1, updated_at = NOW() WHERE target_mode = 'driver'`,
+    [g.driver_interval_minutes]
+  );
+  await query(
+    `UPDATE dispatch_eta_updates SET interval_minutes = $1, updated_at = NOW() WHERE target_mode = 'test'`,
+    [g.test_interval_minutes]
+  );
+  return g;
+}
+
 async function claimDispatchEtaUpdateByGroupId(groupId) {
   const res = await query(
     `UPDATE dispatch_eta_updates
@@ -1349,6 +1389,9 @@ module.exports = {
   deactivateGroup,
   getDispatchEtaSettingByGroupId,
   upsertDispatchEtaSetting,
+  getDispatchEtaGlobalSettings,
+  setDispatchEtaGlobalIntervals,
+  applyDispatchEtaIntervalsFromGlobals,
   claimDispatchEtaUpdateByGroupId,
   claimDueDispatchEtaUpdates,
   completeDispatchEtaUpdateSuccess,

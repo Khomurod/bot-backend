@@ -78,4 +78,7 @@ module.exports = {
   // When true, CORS allows any origin (useful in local dev/testing).
   corsAllowAll: !corsAllowedOrigins.length || process.env.CORS_ALLOW_ALL === 'true',
   nodeEnv: process.env.NODE_ENV || 'development',
+  // When false, load ingestion skips forwarding parse-failure hints to DISPATCH_ETA_TEST_GROUP_ID.
+  loadIngestNotifyExtractionFailure:
+    process.env.LOAD_INGEST_NOTIFY_EXTRACTION_FAILURE !== 'false',
 };

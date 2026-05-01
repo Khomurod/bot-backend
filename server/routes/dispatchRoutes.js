@@ -182,8 +182,11 @@ router.post('/send-to-telegram', (req, res) => {
 router.get('/testing-feature/groups', async (req, res) => {
   try {
     const rows = await db.getDriverGroupsWithDispatchEtaSettings();
+    const globalSettings = await db.getDispatchEtaGlobalSettings();
     return res.json({
       dispatchEtaTestGroupId: config.dispatchEtaTestGroupId || '',
+      globalDriverIntervalMinutes: Number(globalSettings.driver_interval_minutes) || 60,
+      globalTestIntervalMinutes: Number(globalSettings.test_interval_minutes) || 60,
       groups: rows.map(mapEtaRow),
     });
   } catch (err) {
@@ -214,6 +217,34 @@ router.get('/testing-feature/groups/:groupId/details', async (req, res) => {
   }
 });
 
+router.put('/testing-feature/global-intervals', async (req, res) => {
+  try {
+    const current = await db.getDispatchEtaGlobalSettings();
+    const driverM = parseIntervalMinutes(
+      { intervalMinutes: req.body?.driverIntervalMinutes },
+      Number(current.driver_interval_minutes) || 60
+    );
+    const testM = parseIntervalMinutes(
+      { intervalMinutes: req.body?.testIntervalMinutes },
+      Number(current.test_interval_minutes) || 60
+    );
+    if (!Number.isInteger(driverM) || driverM < 1 || driverM > 1440
+      || !Number.isInteger(testM) || testM < 1 || testM > 1440) {
+      return res.status(400).json({ error: 'Each interval must be between 1 and 1440 minutes' });
+    }
+    await db.setDispatchEtaGlobalIntervals(driverM, testM);
+    await db.applyDispatchEtaIntervalsFromGlobals();
+    return res.json({
+      success: true,
+      globalDriverIntervalMinutes: driverM,
+      globalTestIntervalMinutes: testM,
+    });
+  } catch (err) {
+    console.error('[API] Dispatch ETA global intervals failed:', err.message);
+    return res.status(500).json({ error: 'Failed to save global ETA intervals', detail: err.message });
+  }
+});
+
 router.put('/testing-feature/groups/toggle-all', async (req, res) => {
   try {
     const enabled = toBoolean(req.body?.enabled, false);
@@ -230,12 +261,19 @@ router.put('/testing-feature/groups/toggle-all', async (req, res) => {
       return res.json({ success: true, updatedCount: 0, groups: [] });
     }
 
+    const globals = await db.getDispatchEtaGlobalSettings();
     const savedRows = [];
     let immediateSuccess = 0;
     let immediateFailed = 0;
     for (const group of groups) {
       const existing = await db.getDispatchEtaSettingByGroupId(group.id);
-      const intervalMinutes = parseIntervalMinutes(req.body, existing?.interval_minutes || 60);
+      const modeDefault = targetMode === 'test'
+        ? globals.test_interval_minutes
+        : globals.driver_interval_minutes;
+      const intervalMinutes = parseIntervalMinutes(
+        req.body,
+        Number.isInteger(existing?.interval_minutes) ? existing.interval_minutes : modeDefault
+      );
       if (enabled && (!Number.isInteger(intervalMinutes) || intervalMinutes < 1 || intervalMinutes > 1440)) {
         return res.status(400).json({ error: 'Interval must be between 1 and 1440 minutes' });
       }
@@ -312,7 +350,14 @@ router.put('/testing-feature/groups/:groupId', async (req, res) => {
         return res.status(400).json({ error: 'DISPATCH_ETA_TEST_GROUP_ID is not configured on the server' });
       }
     }
-    const intervalMinutes = parseIntervalMinutes(req.body, existing?.interval_minutes || 60);
+    const globals = await db.getDispatchEtaGlobalSettings();
+    const modeDefault = targetMode === 'test'
+      ? globals.test_interval_minutes
+      : globals.driver_interval_minutes;
+    const intervalMinutes = parseIntervalMinutes(
+      req.body,
+      Number.isInteger(existing?.interval_minutes) ? existing.interval_minutes : modeDefault
+    );
 
     if (enabled && (!Number.isInteger(intervalMinutes) || intervalMinutes < 1 || intervalMinutes > 1440)) {
       return res.status(400).json({ error: 'Interval must be between 1 and 1440 minutes' });

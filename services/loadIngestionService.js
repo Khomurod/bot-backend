@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const config = require('../config/config');
 const db = require('../database/db');
 const { extractRateConRawTextFromFile } = require('../server/services/dispatchParserService');
 const { extractLoadIdentifier, isLoadLikeChatMessage } = require('./loadTextPatterns');
@@ -48,14 +49,33 @@ function isCandidateLoadMessage(message) {
   return isLoadLikeChatMessage(text);
 }
 
-async function maybeNotifyExtractionFailed(telegram, chatId, hadAttachment) {
-  if (!hadAttachment || !telegram || !chatId) return;
+function formatDriverGroupLabel(group) {
+  if (!group) return 'Unknown driver group';
+  const person = [group.driver_first_name, group.driver_last_name].filter(Boolean).join(' ').trim();
+  const title = String(group.group_name || '').trim();
+  if (person && title) return `${title} — ${person}`;
+  if (title) return title;
+  if (person) return person;
+  return group.id ? `Group id ${group.id}` : 'Unknown driver group';
+}
+
+/**
+ * Never notifies driver chats. Optionally forwards to DISPATCH_ETA_TEST_GROUP_ID with driver context.
+ */
+async function maybeNotifyExtractionFailed(telegram, group, hadAttachment) {
+  if (!config.loadIngestNotifyExtractionFailure) return;
+  if (!hadAttachment || !telegram || !group) return;
+  const testChatId = String(config.dispatchEtaTestGroupId || '').trim();
+  if (!testChatId) {
+    console.warn('[LOAD-INGEST] Parse failed but DISPATCH_ETA_TEST_GROUP_ID is not set; not notifying.');
+    return;
+  }
+  const label = formatDriverGroupLabel(group);
+  const text =
+    `[Load ingest — ${label}]\n\n` +
+    'Could not read load details from this attachment. Ask dispatch to resend as a clear PDF/image or add pickup/delivery in the caption.';
   try {
-    await telegram.sendMessage(
-      chatId,
-      'Could not read load details from this attachment. Ask dispatch to resend as a clear PDF/image or add pickup/delivery in the caption.',
-      { disable_notification: true }
-    );
+    await telegram.sendMessage(testChatId, text, { disable_notification: true });
   } catch {
     // ignore send errors
   }
@@ -134,7 +154,7 @@ async function ingestAlbumMessages(telegram, group, messages) {
 
   if (!dest && !pickup && !delivery) {
     console.warn('[LOAD-INGEST] No extractable fields for album', canonicalId);
-    await maybeNotifyExtractionFailed(telegram, group.telegram_group_id, hadAttachment);
+    await maybeNotifyExtractionFailed(telegram, group, hadAttachment);
     return null;
   }
 
@@ -238,7 +258,7 @@ async function ingestLoadMessage(telegram, group, message) {
 
   if (!dest && !pickup && !delivery) {
     console.warn('[LOAD-INGEST] No extractable load fields for message', telegramMessageId);
-    await maybeNotifyExtractionFailed(telegram, group.telegram_group_id, hadAttachment);
+    await maybeNotifyExtractionFailed(telegram, group, hadAttachment);
     return null;
   }
 
