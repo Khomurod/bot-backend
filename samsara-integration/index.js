@@ -2,9 +2,8 @@
  * index.js
  * Entry point for the Samsara Telegram Bot (Polling Architecture).
  *
- * ⚠️  NOTE: This app is in active development. Credentials in .env are
- *    intentionally committed for dev convenience. Before production release,
- *    rotate all API keys and remove secrets from version control.
+ * Credentials are loaded from environment variables.
+ * Keep secrets out of source files and store them in your secret manager.
  */
 
 require('dotenv').config();

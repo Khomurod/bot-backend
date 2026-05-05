@@ -8,7 +8,7 @@
  */
 require('dotenv').config();
 
-const EVO_ELD_API_KEY = 'y9ss8gj4zey7p493f11cfk7085vb0da1t7611h9a3ea';
+const EVO_ELD_API_KEY = process.env.EVO_ELD_API_KEY || '';
 const EVO_ELD_BASE_URL = 'https://read.evoeld.com/api/v2';
 const REQUEST_TIMEOUT_MS = 20_000;
 
@@ -56,6 +56,10 @@ async function fetchUnitsByUsdot(usdotNumber, providerToken) {
 }
 
 (async () => {
+  if (!EVO_ELD_API_KEY) {
+    throw new Error('EVO_ELD_API_KEY is not set');
+  }
+
   const usdotNumber = requireEnv('USDOT_NUMBER');
   const providerToken = requireEnv('EVO_ELD_PROVIDER_TOKEN');
 

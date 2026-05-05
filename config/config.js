@@ -1,13 +1,14 @@
 require('dotenv').config();
 
-const { feedbackBotToken: HARDCODED_FEEDBACK_BOT_TOKEN } = require('./telegramBotTokens');
 const metaAppCredentials = require('./metaAppCredentials.json');
 
-const HARDCODED_SAMSARA_API_KEYS = [
-  'samsara_api_vpdJovy2R4npF71d7hN4upXdtErSIY',
-  'samsara_api_bgmoBGqL01WM7ndKs8QqrH9VmVB4Fi',
-];
-const HARDCODED_DISPATCH_ETA_TEST_GROUP_ID = '-5289094495';
+const samsaraApiKeysFromEnv = String(process.env.SAMSARA_API_KEYS || '')
+  .split(',')
+  .map((key) => key.trim())
+  .filter(Boolean);
+const resolvedSamsaraApiKeys = Array.from(
+  new Set([process.env.SAMSARA_API_KEY, ...samsaraApiKeysFromEnv].filter(Boolean))
+);
 
 // Validate required environment variables up-front so we fail fast
 // with a clear error instead of crashing later at first use.
@@ -48,30 +49,28 @@ const corsAllowedOrigins = corsOriginsEnv
   .filter(Boolean);
 
 module.exports = {
-  botToken: process.env.BOT_TOKEN || HARDCODED_FEEDBACK_BOT_TOKEN,
+  botToken: process.env.BOT_TOKEN || '',
   databaseUrl: process.env.DATABASE_URL,
   adminUsername: process.env.ADMIN_USERNAME || 'admin',
-  adminPassword: process.env.ADMIN_PASSWORD || 'admin123',
+  adminPassword: process.env.ADMIN_PASSWORD || '',
   managementGroupId,
   mediaStorageChatId,
-  jwtSecret: process.env.JWT_SECRET || 'driver-feedback-jwt-secret-key',
+  jwtSecret: process.env.JWT_SECRET || '',
   port: process.env.PORT || 3001,
   openaiApiKey: process.env.OPENAI_API_KEY,
   openrouterApiKey: process.env.OPENROUTER_API_KEY,
-  samsaraApiKey: process.env.SAMSARA_API_KEY || HARDCODED_SAMSARA_API_KEYS[0],
-  samsaraApiKeys: Array.from(
-    new Set([process.env.SAMSARA_API_KEY, ...HARDCODED_SAMSARA_API_KEYS].filter(Boolean))
-  ),
+  samsaraApiKey: process.env.SAMSARA_API_KEY || resolvedSamsaraApiKeys[0] || '',
+  samsaraApiKeys: resolvedSamsaraApiKeys,
   samsaraApiBase: process.env.SAMSARA_API_BASE || 'https://api.samsara.com',
-  evoEldApiKey: process.env.EVO_ELD_API_KEY || 'qx8t6p0qtuq9f6x0nay1ftuuwgjemya1t7611h9a3ea',
-  evoEldProviderToken: process.env.EVO_ELD_PROVIDER_TOKEN || 'ebei22uh2kkqora6jqnps43y5cq4v3a1t7611h9a3ea',
-  evoEldUsdotNumber: process.env.EVO_ELD_USDOT_NUMBER || process.env.USDOT_NUMBER || '3574434',
+  evoEldApiKey: process.env.EVO_ELD_API_KEY || '',
+  evoEldProviderToken: process.env.EVO_ELD_PROVIDER_TOKEN || '',
+  evoEldUsdotNumber: process.env.EVO_ELD_USDOT_NUMBER || process.env.USDOT_NUMBER || '',
   evoEldApiBase: process.env.EVO_ELD_API_BASE || 'https://read.evoeld.com/api/v2',
-  ttEldApiKey: process.env.TT_ELD_API_KEY || 'euhz42lrdlplnyx7l3vthbjottm384d79b9a92e27w8',
-  ttEldProviderToken: process.env.TT_ELD_PROVIDER_TOKEN || 'dm5rw3cl5sj8p1feei488rj43a6fn7d79b9a92e27w8',
-  ttEldUsdotNumber: process.env.TT_ELD_USDOT_NUMBER || process.env.USDOT_NUMBER || '3574434',
+  ttEldApiKey: process.env.TT_ELD_API_KEY || '',
+  ttEldProviderToken: process.env.TT_ELD_PROVIDER_TOKEN || '',
+  ttEldUsdotNumber: process.env.TT_ELD_USDOT_NUMBER || process.env.USDOT_NUMBER || '',
   ttEldApiBase: process.env.TT_ELD_API_BASE || 'https://read.tteld.com/api/externalservice',
-  dispatchEtaTestGroupId: String(process.env.DISPATCH_ETA_TEST_GROUP_ID || HARDCODED_DISPATCH_ETA_TEST_GROUP_ID).trim(),
+  dispatchEtaTestGroupId: String(process.env.DISPATCH_ETA_TEST_GROUP_ID || '').trim(),
   googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   googleGeocodingApiBase: process.env.GOOGLE_GEOCODING_API_BASE || 'https://maps.googleapis.com/maps/api/geocode/json',
   googleRoutesApiBase: process.env.GOOGLE_ROUTES_API_BASE || 'https://routes.googleapis.com/directions/v2:computeRoutes',
@@ -91,8 +90,8 @@ module.exports = {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean),
-  facebookTokenEncryptionKey: process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY || process.env.JWT_SECRET || 'driver-feedback-jwt-secret-key',
-  leadsInternalSharedSecret: process.env.LEADS_INTERNAL_SHARED_SECRET || process.env.JWT_SECRET || 'driver-feedback-jwt-secret-key',
+  facebookTokenEncryptionKey: process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY || process.env.JWT_SECRET || '',
+  leadsInternalSharedSecret: process.env.LEADS_INTERNAL_SHARED_SECRET || process.env.JWT_SECRET || '',
   // When false, load ingestion skips forwarding parse-failure hints to DISPATCH_ETA_TEST_GROUP_ID.
   loadIngestNotifyExtractionFailure:
     process.env.LOAD_INGEST_NOTIFY_EXTRACTION_FAILURE !== 'false',

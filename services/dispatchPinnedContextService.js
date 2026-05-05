@@ -3,13 +3,15 @@ const { extractRateConRawTextFromFile } = require('../server/services/dispatchPa
 const { pickStoredLoadForContext } = require('./recentLoadSelection');
 const { isLoadLikeChatMessage } = require('./loadTextPatterns');
 
-const GROQ_API_KEY = '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';
+require('dotenv').config();
+
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const PINNED_CONTEXT_GROQ_MODELS = [
   'llama-3.1-8b-instant',
   'llama-3.3-70b-versatile',
   'openai/gpt-oss-20b',
 ];
-const GEMINI_API_KEY = 'AIzaSyAuDwDmasf2KKl8MXYQUiNMVPpokVVmptw';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const MAX_INLINE_GEMINI_FILE_BYTES = 14 * 1024 * 1024;
 /** Cap inline images/docs per Gemini request (albums). */
 const MAX_ALBUM_INLINE_PARTS = 6;
@@ -353,6 +355,10 @@ function buildPinnedContextGroqMessages({ pinnedText, extractedRawText }) {
 }
 
 async function requestPinnedContextFromGroq({ pinnedText, extractedRawText }) {
+  if (!GROQ_API_KEY) {
+    throw new Error('GROQ_API_KEY is not configured');
+  }
+
   const attemptErrors = [];
 
   for (const model of PINNED_CONTEXT_GROQ_MODELS) {
@@ -418,6 +424,10 @@ async function requestPinnedContextFromGemini({
   sourceFile,
   sourceFiles,
 }) {
+  if (!GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY is not configured');
+  }
+
   const contents = [
     {
       parts: buildPinnedContextAiParts({

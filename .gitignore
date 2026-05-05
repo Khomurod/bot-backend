@@ -8,3 +8,7 @@ __pycache__/
 *.pyo
 samsara-integration/node_modules/
 samsara-integration/data/
+.env
+.env.*
+!.env.example
+samsara-integration/.env

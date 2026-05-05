@@ -1,9 +1,11 @@
 const { PDFParse } = require('pdf-parse');
 const { createWorker } = require('tesseract.js');
 
-const GROQ_API_KEY = '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';
+require('dotenv').config();
+
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const DISPATCH_GROQ_MODEL = 'llama-3.1-8b-instant';
-const GEMINI_API_KEY = 'AIzaSyAuDwDmasf2KKl8MXYQUiNMVPpokVVmptw';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const MAX_INLINE_GEMINI_FILE_BYTES = 14 * 1024 * 1024;
 const PDF_OCR_MAX_PAGES = 3;
 const DISPATCH_GEMINI_MODELS = [
@@ -874,6 +876,12 @@ function buildDispatchFieldsFromObject(aiObject) {
 }
 
 async function requestDispatchTemplateFromGroq(rawText) {
+  if (!GROQ_API_KEY) {
+    const failure = new Error('GROQ_API_KEY is not configured');
+    failure.attemptErrors = [{ model: DISPATCH_GROQ_MODEL, status: null, message: failure.message }];
+    throw failure;
+  }
+
   const models = [
     DISPATCH_GROQ_MODEL,
     'llama-3.3-70b-versatile',
@@ -948,6 +956,12 @@ async function requestDispatchTemplateFromGroq(rawText) {
 }
 
 async function requestDispatchTemplateFromGemini(rawText, sourceFile) {
+  if (!GEMINI_API_KEY) {
+    const failure = new Error('GEMINI_API_KEY is not configured');
+    failure.attemptErrors = [{ model: 'gemini', status: null, message: failure.message }];
+    throw failure;
+  }
+
   const contents = [
     {
       parts: buildDispatchGeminiParts(rawText, sourceFile),

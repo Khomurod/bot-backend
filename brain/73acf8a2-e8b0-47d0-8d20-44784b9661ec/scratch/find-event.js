@@ -1,7 +1,11 @@
 require('dotenv').config();
-const SAMSARA_API_KEY = 'samsara_api_vpdJovy2R4npF71d7hN4upXdtErSIY';
+const SAMSARA_API_KEY = process.env.SAMSARA_API_KEY || '';
 
 async function findSpecificEvent() {
+    if (!SAMSARA_API_KEY) {
+        throw new Error('SAMSARA_API_KEY is not set');
+    }
+
     const startTime = new Date('2026-04-15T18:00:00Z').toISOString(); // Earlier than 11:27 PM +5
     const endTime = new Date('2026-04-16T00:00:00Z').toISOString();
     const params = new URLSearchParams({ startTime, endTime, includeDriver: 'true' });

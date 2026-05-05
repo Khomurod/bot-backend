@@ -12,6 +12,7 @@ const { generateDriverReport, generateCompanyReport, AI_REPORT_GENERATION_FAILED
 const { generateInsightReport } = require('../services/aiInsightsService');
 const { ensureAnnotationsForRange } = require('../services/aiAnnotationService');
 const { askData } = require('../services/aiAskService');
+const { inspectDatPageLayout } = require('../services/datUiInspectorService');
 const { renderInsightReportForTelegram } = require('../services/insightRenderer');
 const { buildTelegramMessageUrl } = require('../services/telegramUrl');
 const {
@@ -419,6 +420,22 @@ function clearLoginFailures(req) {
   if (req._loginIp) loginAttempts.delete(req._loginIp);
 }
 
+function isLoopbackRequest(req) {
+  const candidates = [
+    req.ip,
+    req.socket?.remoteAddress,
+    req.connection?.remoteAddress,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+
+  return candidates.some((value) => (
+    value === '::1'
+    || value === '127.0.0.1'
+    || value === '::ffff:127.0.0.1'
+  ));
+}
+
 // ─── Auth Routes ───
 
 // POST /api/auth/login
@@ -479,6 +496,45 @@ app.get('/api/health', async (req, res) => {
     db: dbOk,
   };
   res.status(dbOk ? 200 : 503).json(body);
+});
+
+app.post('/api/dat-ui/inspect', async (req, res) => {
+  try {
+    if (!isLoopbackRequest(req)) {
+      return res.status(403).json({ error: 'DAT UI inspector is only available from localhost' });
+    }
+
+    const estimatedSize = Buffer.byteLength(JSON.stringify(req.body || {}), 'utf8');
+    if (estimatedSize > 50_000) {
+      return res.status(413).json({ error: 'Snapshot too large' });
+    }
+
+    const snapshot = req.body?.snapshot && typeof req.body.snapshot === 'object'
+      ? {
+          ...req.body.snapshot,
+          url: req.body.snapshot.url || req.body?.url || '',
+          signature: req.body.snapshot.signature || req.body?.signature || '',
+          currentConfig: req.body.snapshot.currentConfig || req.body?.currentConfig || null,
+        }
+      : (req.body && typeof req.body === 'object' ? req.body : null);
+
+    if (!snapshot) {
+      return res.status(400).json({ error: 'snapshot object is required' });
+    }
+
+    const inspection = await inspectDatPageLayout(snapshot);
+    return res.json({
+      ok: true,
+      ...inspection,
+    });
+  } catch (err) {
+    console.error('[API] DAT UI inspect failed:', err.message);
+    return res.status(500).json({
+      ok: false,
+      error: 'Failed to inspect DAT UI snapshot',
+      detail: err.message,
+    });
+  }
 });
 
 // Avoid noisy browser console 404 for default favicon requests.

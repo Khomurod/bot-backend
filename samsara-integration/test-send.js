@@ -7,9 +7,13 @@
 
 const TelegramBot = require('node-telegram-bot-api');
 const { formatAlert } = require('./src/formatter');
+require('dotenv').config();
 
-// Extracted from Render dashboard via browser subagent
-const token = '7955098141:AAHf1AX-McadL2qRr4sKlVrnkdliEnmbzGo';
+const token = process.env.TELEGRAM_BOT_TOKEN || '';
+if (!token) {
+    throw new Error('TELEGRAM_BOT_TOKEN is not set');
+}
+
 const bot = new TelegramBot(token, { polling: true });
 
 // Simulated raw API response from Samsara for the user's uploaded event

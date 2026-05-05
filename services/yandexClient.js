@@ -6,18 +6,27 @@
 //   - aiInsightsService.js   (narrative generation)
 //   - aiAskService.js        ("Ask the Data" plan + narrative)
 //
-// Credentials are intentionally hardcoded per user direction
-// ("disregard the api and/or credential exposed error, as the app is
-// still in test"). Move to env before production.
-const YANDEX_API_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
-const YANDEX_MODEL_URI = 'gpt://b1g3bq30m1s8c1ik4tqj/yandexgpt/latest';
-const YANDEX_API_KEY = 'AQVNxTqFz0LLHgLbM42evQSxBfNqHoU-3kTsVrC2';
-const YANDEX_FOLDER_ID = 'b1g3bq30m1s8c1ik4tqj';
+require('dotenv').config();
+
+const YANDEX_API_URL = process.env.YANDEX_API_URL || 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
+const YANDEX_MODEL_URI = process.env.YANDEX_MODEL_URI || '';
+const YANDEX_API_KEY = process.env.YANDEX_API_KEY || '';
+const YANDEX_FOLDER_ID = process.env.YANDEX_FOLDER_ID || '';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_RETRIES = 2;
 
 async function callYandexRaw(promptText, opts = {}) {
+  if (!YANDEX_API_KEY) {
+    throw new Error('YANDEX_API_KEY is not configured');
+  }
+  if (!YANDEX_MODEL_URI) {
+    throw new Error('YANDEX_MODEL_URI is not configured');
+  }
+  if (!YANDEX_FOLDER_ID) {
+    throw new Error('YANDEX_FOLDER_ID is not configured');
+  }
+
   const {
     systemText = null,
     temperature = 0.2,
