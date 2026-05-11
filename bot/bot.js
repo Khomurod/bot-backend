@@ -114,7 +114,11 @@ function scheduleBotLaunchRetry(delayMs) {
   if (botStopRequested || botRunning || botLaunchRetryTimer) return;
 
   const retryInMs = Math.min(delayMs, BOT_LAUNCH_MAX_RETRY_MS);
-  console.warn(`[BOT] Another instance is still polling this token. Retrying launch in ${retryInMs / 1000}s...`);
+  console.warn(
+    `[BOT] Telegram reports this token is already in use (long-poll conflict). `
+    + `Retrying in ${retryInMs / 1000}s… (If this never clears: stop any second server using BOT_TOKEN, `
+    + `or run @BotFather /revoke and update Render; a webhook on this bot is cleared automatically on each attempt.)`,
+  );
 
   botLaunchRetryTimer = setTimeout(() => {
     botLaunchRetryTimer = null;
@@ -130,7 +134,22 @@ async function launchBotWithRetry(delayMs = BOT_LAUNCH_RETRY_MS) {
 
   console.log('[BOT] Launching Telegram bot...');
   botRunning = true;
-  botLaunchPromise = bot.launch()
+
+  async function startPollingAfterClearingWebhook() {
+    // If this bot ever had a webhook URL set, Telegram will reject or fight long-polling
+    // until the webhook is removed. Same symptom as "two getUpdates" for operators.
+    if (process.env.TELEGRAM_SKIP_DELETE_WEBHOOK_BEFORE_POLL !== 'true') {
+      try {
+        await bot.telegram.deleteWebhook({ drop_pending_updates: false });
+      } catch (whErr) {
+        console.warn('[BOT] deleteWebhook before polling (non-fatal):', whErr.message);
+      }
+      await sleep(400);
+    }
+    return bot.launch();
+  }
+
+  botLaunchPromise = startPollingAfterClearingWebhook()
     .then(() => {
       botRunning = false;
       botLaunchPromise = null;
