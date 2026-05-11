@@ -4,8 +4,9 @@
   "description": "Telegram Driver Feedback System with bot, API, and admin panel",
   "main": "index.js",
   "scripts": {
+    "postinstall": "npm install --prefix samsara-integration && node scripts/install-leads-bot-deps.js",
     "start": "node index.js",
-    "test": "node --test tests/*.test.js && python -m unittest discover -s leads-bot -p \"test_*.py\"",
+    "test": "node --test --test-concurrency=1 tests/*.test.js && python -m unittest discover -s leads-bot -p \"test_*.py\"",
     "bot": "node bot/bot.js",
     "server": "node server/api.js",
     "dev": "node index.js",

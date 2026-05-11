@@ -4,6 +4,7 @@ services:
     runtime: node
     buildCommand: pip install -r leads-bot/requirements.txt && npm install && cd admin && npm install && npm run build && cd .. && cd samsara-integration && npm install
     startCommand: node index.js
+    # Same handler as GET /health (cron-friendly short URL).
     healthCheckPath: /api/health
     envVars:
       # ─── bot-backend (Node.js) ───

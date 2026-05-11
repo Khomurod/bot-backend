@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const config = require('../config/config');
@@ -67,6 +68,7 @@ function createUploadMiddleware(allowedMimeTypes, allowedTypesLabel) {
 
 const upload = createUploadMiddleware(MEDIA_UPLOAD_MIME_TYPES, 'jpg, png, webp, mp4, mov');
 const adminBuildDir = path.join(__dirname, '..', 'admin', 'build');
+const adminSpaIndexPath = path.join(adminBuildDir, 'index.html');
 
 const app = express();
 
@@ -479,24 +481,41 @@ app.get('/api/auth/verify', authMiddleware, (req, res) => {
   res.json({ valid: true, username: req.admin.username });
 });
 
-// ─── Health Check (public, for cron keep-alive) ───
+// ─── Health Check (public, for Render + external cron / uptime pings) ───
 // Pings the DB so a healthy response genuinely means the app can serve
-// requests, not just that Node is alive. Render / uptime monitors treat
-// any non-2xx as "down" which will now actually reflect reality.
-app.get('/api/health', async (req, res) => {
+// requests, not just that Node is alive. Exposed at /api/health and /health
+// (short path for cron jobs). HEAD returns the same status code without a body.
+async function runHealthCheck() {
   let dbOk = false;
   try {
     dbOk = await db.ping();
   } catch (err) {
-    console.error('[API] /api/health DB ping failed:', err.message);
+    console.error('[API] Health DB ping failed:', err.message);
   }
-  const body = {
+  return {
+    healthy: dbOk,
     status: dbOk ? 'ok' : 'degraded',
     uptime: process.uptime(),
     db: dbOk,
+    service: 'driver-feedback-bot',
   };
-  res.status(dbOk ? 200 : 503).json(body);
-});
+}
+
+async function healthHandler(req, res) {
+  const body = await runHealthCheck();
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(body.healthy ? 200 : 503);
+  if (req.method === 'HEAD') {
+    res.end();
+    return;
+  }
+  res.json(body);
+}
+
+app.get('/api/health', healthHandler);
+app.head('/api/health', healthHandler);
+app.get('/health', healthHandler);
+app.head('/health', healthHandler);
 
 app.post('/api/dat-ui/inspect', async (req, res) => {
   try {
@@ -2145,9 +2164,16 @@ app.delete('/api/employee-birthdays/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// ─── Catch-all for admin SPA ───
+// ─── Catch-all for admin SPA (/admin and public /dispatch share one build) ───
 app.get(['/admin', '/admin/*', '/dispatch', '/dispatch/*'], (req, res) => {
-  res.sendFile(path.join(adminBuildDir, 'index.html'));
+  if (!fs.existsSync(adminSpaIndexPath)) {
+    return res.status(503).type('text/plain').send(
+      'Admin UI build is missing (admin/build/index.html). '
+      + 'From repo root run: cd admin && npm install && npm run build. '
+      + 'On Render, use the Blueprint buildCommand in render.yaml or equivalent.',
+    );
+  }
+  res.sendFile(adminSpaIndexPath);
 });
 
 // ─── Start server function ───

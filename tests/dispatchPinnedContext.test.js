@@ -15,14 +15,15 @@ function loadPinnedContextWithMocks({ parserMock, dbMock } = {}) {
       extractRateConRawTextFromFile: async () => ({ text: '', usedPdfOcr: false }),
     },
   };
+  const defaultDb = {
+    getGroupPinnedMessageSnapshot: async () => null,
+    getChatLogsForGroup: async () => [],
+    getGroupRecentLoads: async () => [],
+    hasGroupRecentLoadForMessage: async () => false,
+    hasAnyGroupRecentLoadForMessages: async () => false,
+  };
   require.cache[dbPath] = {
-    exports: dbMock || {
-      getGroupPinnedMessageSnapshot: async () => null,
-      getChatLogsForGroup: async () => [],
-      getGroupRecentLoads: async () => [],
-      hasGroupRecentLoadForMessage: async () => false,
-      hasAnyGroupRecentLoadForMessages: async () => false,
-    },
+    exports: { ...defaultDb, ...(dbMock || {}) },
   };
   return require(servicePath);
 }
@@ -105,7 +106,10 @@ test('readPinnedLoadContext returns cached values when signature is unchanged', 
 
 test('readLoadContextWithFallbacks uses latest load-like chat message when no pin exists', async () => {
   const originalFetch = global.fetch;
+  const originalGroqKey = process.env.GROQ_API_KEY;
   try {
+    // Service throws before fetch unless a key is set; the mock supplies Groq-style JSON.
+    process.env.GROQ_API_KEY = 'test-mock-groq-key';
     global.fetch = async (_url, options = {}) => {
       const body = JSON.parse(String(options.body || '{}'));
       if (body?.model) {
@@ -145,7 +149,8 @@ test('readLoadContextWithFallbacks uses latest load-like chat message when no pi
             telegram_message_id: '100',
           },
           {
-            message_text: 'RateConfirmation (1).pdf, Load # 370550 Live/Live PA>OH',
+            // Avoid "Live/Live" here — it matches isLikelyStaleStatusMessage and is skipped as stale traffic.
+            message_text: 'RateConfirmation (1).pdf, Load # 370550 PA>OH',
             created_at: '2026-04-29T21:00:00.000Z',
             sender_name: 'Leo',
             telegram_message_id: '99',
@@ -170,6 +175,11 @@ test('readLoadContextWithFallbacks uses latest load-like chat message when no pi
     assert.equal(context.destinationQuery, '5151 E RAINES RD, Memphis, TN 38118');
   } finally {
     global.fetch = originalFetch;
+    if (originalGroqKey === undefined) {
+      delete process.env.GROQ_API_KEY;
+    } else {
+      process.env.GROQ_API_KEY = originalGroqKey;
+    }
   }
 });
 
