@@ -35,6 +35,9 @@ from sms import download_ringcentral_attachment, register_sms_webhook, send_sms
 import httpx
 
 logging.basicConfig(level=logging.INFO)
+# Avoid logging full Telegram URLs (they embed the bot token) at INFO.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Leads Webhook")
@@ -346,7 +349,8 @@ async def _poll_connect_commands():
         try:
             updates = await _telegram_api_call("getUpdates", payload)
         except Exception as exc:
-            logger.warning("Leads bot getUpdates failed: %s", exc)
+            detail = str(exc).strip() or repr(exc)
+            logger.warning("Leads bot getUpdates failed: %s", detail)
             await asyncio.sleep(5)
             continue
 
@@ -746,6 +750,12 @@ async def _shutdown_connect_command_poller():
         except asyncio.CancelledError:
             pass
         _connect_command_task = None
+
+
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+async def root_probe():
+    """Render/port scanners often hit `/` with HEAD; return 200 without requiring a path prefix."""
+    return Response(status_code=200)
 
 
 @app.get("/health")

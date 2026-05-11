@@ -2,7 +2,10 @@ import os
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# On Render, secrets come from the dashboard — skip dotenv file parsing so a checked-in or
+# stale .env cannot trigger "could not parse line …" warnings or override injected env.
+if not os.environ.get("RENDER"):
+    load_dotenv()
 
 TELEGRAM_BOT_TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID: str = os.environ["TELEGRAM_CHAT_ID"]  # your personal chat id or group id
