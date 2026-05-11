@@ -15,17 +15,24 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const MAX_INLINE_GEMINI_FILE_BYTES = 14 * 1024 * 1024;
 /** Cap inline images/docs per Gemini request (albums). */
 const MAX_ALBUM_INLINE_PARTS = 6;
-const PINNED_CONTEXT_GEMINI_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-3.1-flash-lite',
-  'gemini-2.5-flash-lite',
-  'gemini-3-flash',
-  'gemini-3.1-flash',
-  'gemini-2.0-flash',
-  'gemma-3-12b-it',
-  'gemma-3-4b-it',
-  'gemma-3-1b-it',
-];
+
+/** Comma-separated override, e.g. `gemini-2.5-flash,gemini-2.5-flash-lite`. */
+const PINNED_CONTEXT_GEMINI_MODELS = (() => {
+  const fromEnv = String(process.env.GEMINI_PINNED_CONTEXT_MODELS || '')
+    .split(',')
+    .map((m) => m.trim())
+    .filter(Boolean);
+  if (fromEnv.length) return fromEnv;
+  // Only models that exist on v1beta :generateContent (see Google AI Studio / ListModels).
+  // Older defaults included IDs that always 404 and burned free-tier quota for no benefit.
+  return ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+})();
+
+function truncateDispatchEtaLogMessage(msg, maxLen = 480) {
+  const s = String(msg || '').replace(/\s+/g, ' ').trim();
+  if (s.length <= maxLen) return s;
+  return `${s.slice(0, maxLen)}… (+${s.length - maxLen} chars)`;
+}
 const CHAT_HISTORY_LOOKBACK_DAYS = 8;
 const STALE_STATUS_CHAT_MESSAGE_REGEX = /\b(pod|completed|cancel(?:led)?|picked up|status\s*:|rolling|stopped|miles?\s+left)\b/i;
 const NO_CURRENT_LOAD_INFO_MESSAGE = 'No information about the current load is found';
@@ -537,7 +544,7 @@ async function buildLoadContextFromText({
       extractedRawText: normalizedExtractedText,
     });
   } catch (err) {
-    console.warn('[DISPATCH-ETA] Pinned-context Groq parse failed:', err.message);
+    console.warn('[DISPATCH-ETA] Pinned-context Groq parse failed:', truncateDispatchEtaLogMessage(err.message));
   }
 
   const hasVisualMedia = hasInlineVisualMedia(sourceFile, sourceFiles);
@@ -560,7 +567,7 @@ async function buildLoadContextFromText({
       });
     }
   } catch (err) {
-    console.warn('[DISPATCH-ETA] Pinned-context Gemini parse failed:', err.message);
+    console.warn('[DISPATCH-ETA] Pinned-context Gemini parse failed:', truncateDispatchEtaLogMessage(err.message));
   }
 
   let aiResult = groqResult;
