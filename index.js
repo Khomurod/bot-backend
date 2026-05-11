@@ -34,6 +34,58 @@ const MAX_CHILD_RESTARTS = 6;
 const CHILD_SHUTDOWN_TIMEOUT_MS = 8000;
 const DB_DRAIN_TIMEOUT_MS = 5000;
 
+function normalizeTelegramToken(value) {
+  return String(value ?? '').trim();
+}
+
+/**
+ * Fail fast when two enabled services would long-poll the same Bot API token (Telegram 409).
+ * Mirrors the SAMSARA vs LEADS guard in startSamsaraBot, plus BOT_TOKEN vs child tokens.
+ */
+function assertDistinctTelegramPollingTokens() {
+  const leadsOn = process.env.ENABLE_LEADS_BOT !== 'false';
+  const samsaraOn = process.env.ENABLE_SAMSARA_BOT !== 'false';
+  const main = normalizeTelegramToken(process.env.BOT_TOKEN || HARDCODED_FEEDBACK_BOT_TOKEN);
+  const leads = normalizeTelegramToken(process.env.TELEGRAM_BOT_TOKEN || HARDCODED_LEADS_BOT_TOKEN);
+  const samsara = normalizeTelegramToken(process.env.SAMSARA_BOT_TOKEN || HARDCODED_SAMSARA_BOT_TOKEN);
+
+  const die = (msg) => {
+    console.error(`[BOOT] FATAL: ${msg}`);
+    process.exit(1);
+  };
+
+  if (leadsOn && main && leads && main === leads) {
+    die(
+      'BOT_TOKEN equals TELEGRAM_BOT_TOKEN while the Leads bot is enabled. '
+      + 'Use a separate @BotFather bot for driver feedback vs Meta leads, or set ENABLE_LEADS_BOT=false.',
+    );
+  }
+
+  let samsaraPoll = '';
+  if (samsaraOn) {
+    if (leadsOn && leads) {
+      if (!samsara) {
+        samsaraPoll = '';
+      } else if (samsara === leads) {
+        die(
+          'TELEGRAM_BOT_TOKEN equals SAMSARA_BOT_TOKEN while both bots are enabled. '
+          + 'Create two different bots for Leads /connect vs Samsara.',
+        );
+      } else {
+        samsaraPoll = samsara;
+      }
+    } else {
+      samsaraPoll = samsara || leads;
+    }
+    if (main && samsaraPoll && main === samsaraPoll) {
+      die(
+        'BOT_TOKEN equals the Samsara Telegram token while Samsara is enabled. '
+        + 'Samsara must use its own bot token (SAMSARA_BOT_TOKEN or a distinct TELEGRAM_BOT_TOKEN when Leads is off).',
+      );
+    }
+  }
+}
+
 function isTelegramPollingConflict(err) {
   const description = err?.response?.description || err?.message || '';
   return err?.response?.error_code === 409
@@ -107,11 +159,14 @@ function startLeadsBot() {
   }
 
   console.log('[LEADS-BOT] Starting Python process...');
+  const rawLeadsToken = process.env.TELEGRAM_BOT_TOKEN || HARDCODED_LEADS_BOT_TOKEN;
+  const leadsEnvToken = normalizeTelegramToken(rawLeadsToken) || rawLeadsToken;
+
   leadsProcess = spawn(pythonCmd, [scriptPath], {
     cwd: path.join(__dirname, 'leads-bot'),
     env: {
       ...process.env,
-      TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || HARDCODED_LEADS_BOT_TOKEN,
+      TELEGRAM_BOT_TOKEN: leadsEnvToken,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -173,8 +228,8 @@ function startSamsaraBot() {
   }
 
   const leadsBotEnabled = process.env.ENABLE_LEADS_BOT !== 'false';
-  const leadsToken = process.env.TELEGRAM_BOT_TOKEN || HARDCODED_LEADS_BOT_TOKEN;
-  const explicitSamsara = process.env.SAMSARA_BOT_TOKEN || HARDCODED_SAMSARA_BOT_TOKEN;
+  const leadsToken = normalizeTelegramToken(process.env.TELEGRAM_BOT_TOKEN || HARDCODED_LEADS_BOT_TOKEN);
+  const explicitSamsara = normalizeTelegramToken(process.env.SAMSARA_BOT_TOKEN || HARDCODED_SAMSARA_BOT_TOKEN);
 
   // Leads-bot long-polls getUpdates() on TELEGRAM_BOT_TOKEN for /connect. Samsara does the same on
   // its token. Telegram allows only one getUpdates stream per bot — sharing causes 409 conflicts.
@@ -333,6 +388,8 @@ process.on('SIGTERM', () => shutdownAll('SIGTERM'));
     console.error('[BOOT] Database initialization failed; aborting startup:', err.message);
     process.exit(1);
   }
+
+  assertDistinctTelegramPollingTokens();
 
   configureDispatchEtaTelegram(bot.telegram);
   configureFacebookLeadTelegram(bot.telegram);

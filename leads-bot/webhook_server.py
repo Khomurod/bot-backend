@@ -154,13 +154,34 @@ async def _forward_verified_facebook_payload(payload: dict) -> dict:
 async def _telegram_api_call(method: str, payload: dict) -> dict:
     """Call a Telegram Bot API method and return the parsed result object."""
     url = f"{TELEGRAM_API_BASE}/{method}"
-    async with httpx.AsyncClient(timeout=20) as client:
+    if method == "getUpdates":
+        tg_long_poll = int(payload.get("timeout") or 0)
+        # HTTP client must outlive Telegram's long-poll (up to 50s); a 20s read timeout causes ReadTimeout.
+        read_seconds = float(tg_long_poll) + 25.0 if tg_long_poll else 30.0
+        read_seconds = min(max(read_seconds, 25.0), 120.0)
+        timeout = httpx.Timeout(connect=15.0, read=read_seconds, write=20.0, pool=15.0)
+    else:
+        timeout = httpx.Timeout(connect=15.0, read=25.0, write=20.0, pool=15.0)
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(url, json=payload)
         data = resp.json()
         if not resp.is_success or not data.get("ok"):
             description = data.get("description") or resp.text[:300]
             raise RuntimeError(f"Telegram {method} failed ({resp.status_code}): {description}")
         return data.get("result", {})
+
+
+async def _delete_leads_bot_webhook() -> None:
+    """Drop any webhook so getUpdates long-polling is allowed (same idea as the main Node bot)."""
+    if not TELEGRAM_BOT_TOKEN:
+        return
+    try:
+        await _telegram_api_call("deleteWebhook", {"drop_pending_updates": False})
+        logger.info("Leads bot deleteWebhook OK (polling mode).")
+        await asyncio.sleep(0.4)
+    except Exception as exc:
+        logger.warning("Leads bot deleteWebhook failed (continuing): %s", exc)
 
 
 async def _send_telegram_to_chat(
@@ -335,6 +356,7 @@ async def _handle_connect_command_message(message: dict):
 async def _poll_connect_commands():
     """Long-poll Telegram for /connect commands on the leads bot token."""
     global _telegram_update_offset
+    await _delete_leads_bot_webhook()
     await _load_telegram_bot_profile()
     await _bootstrap_connect_command_offset()
 
