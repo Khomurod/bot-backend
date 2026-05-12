@@ -15,8 +15,17 @@ const { extractUnitNumber, normalizeName, resolveGroupByUnitAndName } = require(
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 const REDIS_KEY = 'samsara_bot_subscribers';
+const DATABASE_URL = process.env.DATABASE_URL;
 
 const USE_REDIS = !!(REDIS_URL && REDIS_TOKEN);
+let sharedPgPool = null;
+if (DATABASE_URL) {
+  const { Pool } = require('pg');
+  sharedPgPool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+  });
+}
 
 // ── Redis store ───────────────────────────────────────────────────────────────
 let redis = null;
@@ -162,17 +171,10 @@ module.exports = {
    */
   async findGroupByUnit(unitNumber, driverName, vehicleName) {
     if (!unitNumber) return null;
-    const DATABASE_URL = process.env.DATABASE_URL;
-    if (!DATABASE_URL) {
+    if (!sharedPgPool) {
       console.warn('[Store] DATABASE_URL not set — cannot resolve unit group.');
       return null;
     }
-
-    const { Pool } = require('pg');
-    const pool = new Pool({
-      connectionString: DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-    });
 
     try {
       const cleanUnit = String(unitNumber).replace(/\D/g, '');
@@ -186,7 +188,7 @@ module.exports = {
           AND group_name ILIKE $1
         ORDER BY id DESC
       `;
-      const res = await pool.query(query, [`%${cleanUnit}%`]);
+      const res = await sharedPgPool.query(query, [`%${cleanUnit}%`]);
       const nameHints = [driverName, vehicleName]
         .map(normalizeName)
         .filter(Boolean);
@@ -204,8 +206,6 @@ module.exports = {
     } catch (err) {
       console.error('[Store] findGroupByUnit query failed:', err.message);
       return null;
-    } finally {
-      await pool.end();
     }
   },
 };

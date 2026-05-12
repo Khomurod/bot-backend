@@ -20,6 +20,7 @@ const {
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || HARDCODED_SAMSARA_BOT_TOKEN;
 const PORT = parseInt(process.env.PORT || process.env.WEBHOOK_PORT || '3000', 10);
+const MAX_VIDEO_BYTES = parseInt(process.env.SAMSARA_MAX_VIDEO_BYTES || '0', 10);
 const USE_WEBHOOK = process.env.USE_WEBHOOK === 'true'; // For Telegram itself, if hosted
 const PUBLIC_URL = (process.env.PUBLIC_WEBHOOK_URL || '').replace(/\/$/, '');
 const SELF_URL = process.env.RENDER_EXTERNAL_URL || PUBLIC_URL;
@@ -72,18 +73,38 @@ async function downloadVideo(videoUrl) {
     if (!response.ok) {
         throw new Error(`HTTP ${response.status} ${response.statusText}`);
     }
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (MAX_VIDEO_BYTES > 0 && Number.isFinite(contentLength) && contentLength > 0 && contentLength > MAX_VIDEO_BYTES) {
+        throw new Error(`Video exceeds max size (${contentLength} bytes > ${MAX_VIDEO_BYTES} bytes)`);
+    }
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('video') && !contentType.includes('octet-stream')) {
         console.warn(`[Bot] Unexpected content-type "${contentType}" — may not be a direct video link`);
     }
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+    if (MAX_VIDEO_BYTES > 0 && buffer.length > MAX_VIDEO_BYTES) {
+        throw new Error(`Video exceeds max size after download (${buffer.length} bytes > ${MAX_VIDEO_BYTES} bytes)`);
+    }
     console.log(`[Bot] Downloaded ${(buffer.length / 1024).toFixed(1)} KB from ${videoUrl}`);
     return buffer;
 }
 
 // Ensure the queue in poller.js knows how to send messages
 async function broadcast(alertData) {
+    const videoCache = new Map();
+    const getVideoBuffer = async (url) => {
+        if (!url) return null;
+        if (!videoCache.has(url)) {
+            const promise = downloadVideo(url).catch((err) => {
+                videoCache.delete(url);
+                throw err;
+            });
+            videoCache.set(url, promise);
+        }
+        return videoCache.get(url);
+    };
+
     const subscribers = await store.getAll();
     
     // Always include the hardcoded group ID for "Samsara Notifications"
@@ -111,8 +132,8 @@ async function broadcast(alertData) {
                 console.log(`[Bot] Dual camera detected — sending media group to ${chatId}`);
                 try {
                     const [forwardBuf, inwardBuf] = await Promise.all([
-                        downloadVideo(videoUrl),
-                        downloadVideo(inwardVideoUrl),
+                        getVideoBuffer(videoUrl),
+                        getVideoBuffer(inwardVideoUrl),
                     ]);
 
                     await bot.sendMediaGroup(chatId, [
@@ -133,7 +154,7 @@ async function broadcast(alertData) {
             if (videoUrl) {
                 console.log(`[Bot] Fetching single video for ${chatId} from: ${videoUrl}`);
                 try {
-                    const buffer = await downloadVideo(videoUrl);
+                    const buffer = await getVideoBuffer(videoUrl);
                     await bot.sendVideo(chatId, buffer, {
                         caption:    text,
                         parse_mode: 'HTML',
@@ -184,8 +205,8 @@ async function broadcast(alertData) {
             // Dual camera support for Driver Group
             if (videoUrl && inwardVideoUrl) {
                 const [forwardBuf, inwardBuf] = await Promise.all([
-                    downloadVideo(videoUrl),
-                    downloadVideo(inwardVideoUrl),
+                    getVideoBuffer(videoUrl),
+                    getVideoBuffer(inwardVideoUrl),
                 ]);
 
                 await driverBot.sendMediaGroup(targetDriverGroupId, [
@@ -196,7 +217,7 @@ async function broadcast(alertData) {
                     inward:  { value: inwardBuf,  options: { filename: 'inward.mp4',  contentType: 'video/mp4' } },
                 });
             } else if (videoUrl) {
-                const buffer = await downloadVideo(videoUrl);
+                const buffer = await getVideoBuffer(videoUrl);
                 await driverBot.sendVideo(targetDriverGroupId, buffer, {
                     caption: text,
                     parse_mode: 'HTML',
@@ -212,6 +233,8 @@ async function broadcast(alertData) {
             console.error(`[Bot] Forwarding failed to ${targetDriverGroupId}:`, err.message);
         }
     }
+
+    videoCache.clear();
 }
 
 

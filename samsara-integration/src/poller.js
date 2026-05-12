@@ -5,13 +5,27 @@
  * Sends raw events to the formatter and pushes them to a local queue.
  */
 
-const { getCursor, saveCursor, clearCursor, isEventProcessed, markEventProcessed } = require('./db');
+const {
+    getCursor,
+    saveCursor,
+    clearCursor,
+    isEventProcessed,
+    markEventProcessed,
+    getPollWatermark,
+    savePollWatermark,
+} = require('./db');
 const { formatAlert } = require('./formatter');
 const { reverseGeocode } = require('./geocoder');
 const { enrichSafetyEventWithMediaIfNeeded } = require('./safetyEventMedia');
 
 const SAMSARA_API_KEY = process.env.SAMSARA_API_KEY;
 const SAMSARA_API_BASE = process.env.SAMSARA_API_BASE || 'https://api.samsara.com';
+const PREVENT_POLL_OVERLAP = process.env.SAMSARA_PREVENT_POLL_OVERLAP !== 'false';
+const USE_POLL_WATERMARK = process.env.SAMSARA_POLL_USE_WATERMARK !== 'false';
+const ENABLE_POLL_METRICS = process.env.SAMSARA_POLL_METRICS !== 'false';
+const POLL_BOOTSTRAP_WINDOW_MS = parseInt(process.env.SAMSARA_POLL_BOOTSTRAP_WINDOW_MS || '1800000', 10);
+const POLL_WATERMARK_OVERLAP_MS = parseInt(process.env.SAMSARA_POLL_WATERMARK_OVERLAP_MS || '120000', 10);
+const MAX_ALERT_QUEUE = parseInt(process.env.SAMSARA_QUEUE_MAX || '200', 10);
 
 // ── Rate-Limited Telegram Queue ─────────────────────────────────────────────
 // Telegram has limits (usually ~30 msgs/sec globally, and ~20 msgs/min per group).
@@ -20,6 +34,7 @@ const SAMSARA_API_BASE = process.env.SAMSARA_API_BASE || 'https://api.samsara.co
 const ALERT_QUEUE = [];
 let isProcessingQueue = false;
 let broadcastFn = null;
+let droppedAlertsCount = 0;
 
 // Keep track of recently seen event IDs to prevent duplicates if the cursor
 // hasn't updated yet or if we fall back to time-based polling.
@@ -37,6 +52,11 @@ function isIsoTimestamp(value) {
  */
 function queueAlert(formattedAlert) {
     if (!formattedAlert) return;
+    if (ALERT_QUEUE.length >= MAX_ALERT_QUEUE) {
+        ALERT_QUEUE.shift();
+        droppedAlertsCount += 1;
+        console.warn(`[Queue] Queue limit reached (${MAX_ALERT_QUEUE}). Dropping oldest alert. Total dropped: ${droppedAlertsCount}`);
+    }
     ALERT_QUEUE.push(formattedAlert);
     if (!isProcessingQueue) {
         processQueue();
@@ -196,8 +216,15 @@ async function transformApiEventToWebhookShape(rawEvent) {
 // ── Samsara Poller Engine ─────────────────────────────────────────────────────
 
 async function executePoll() {
+    if (PREVENT_POLL_OVERLAP && executePoll.isRunning) {
+        console.warn('[Poller] Previous poll still running; skipping overlapping tick.');
+        return;
+    }
+    executePoll.isRunning = true;
+
     if (!SAMSARA_API_KEY) {
         console.warn('[Poller] SAMSARA_API_KEY is not set. Cannot poll.');
+        executePoll.isRunning = false;
         return;
     }
 
@@ -207,10 +234,14 @@ async function executePoll() {
         includeDriver: 'true',
     });
 
-    // Mandatory: Samsara Safety Events endpoint REQUIRES startTime/endTime
-    // Fetch last 30 mins as a fallback/window, even if using a cursor.
-    const startTime = new Date(Date.now() - 1800000).toISOString();
+    // Mandatory: Samsara Safety Events endpoint REQUIRES startTime/endTime.
+    // We use a persisted watermark with overlap to avoid repeatedly scanning a large fixed window.
     const endTime = new Date().toISOString();
+    const watermark = USE_POLL_WATERMARK ? await getPollWatermark() : null;
+    const watermarkMs = watermark ? Date.parse(watermark) : NaN;
+    const startTime = Number.isFinite(watermarkMs)
+        ? new Date(Math.max(0, watermarkMs - POLL_WATERMARK_OVERLAP_MS)).toISOString()
+        : new Date(Date.now() - POLL_BOOTSTRAP_WINDOW_MS).toISOString();
     
     params.set('startTime', startTime);
     params.set('endTime', endTime);
@@ -246,6 +277,7 @@ async function executePoll() {
                 console.warn('[Poller] Clearing invalid cursor so next poll uses time window only.');
                 clearCursor();
             }
+            executePoll.isRunning = false;
             return;
         }
 
@@ -293,15 +325,21 @@ async function executePoll() {
         if (nextCursor) {
             saveCursor(nextCursor);
         }
+        if (USE_POLL_WATERMARK) {
+            await savePollWatermark(endTime);
+        }
 
     } catch (err) {
         console.error('[Poller] Fetch error:', err.message);
+    } finally {
+        executePoll.isRunning = false;
     }
 }
 
 // ── Exported API ──────────────────────────────────────────────────────────────
 
 let intervalId = null;
+let metricsIntervalId = null;
 
 module.exports = {
     /**
@@ -324,6 +362,14 @@ module.exports = {
         // Execute immediately, then set interval
         executePoll();
         intervalId = setInterval(executePoll, intervalMs);
+        if (ENABLE_POLL_METRICS) {
+            metricsIntervalId = setInterval(() => {
+                const mem = process.memoryUsage();
+                console.log(
+                    `[Poller] Metrics rss=${Math.round(mem.rss / 1024 / 1024)}MB heapUsed=${Math.round(mem.heapUsed / 1024 / 1024)}MB queue=${ALERT_QUEUE.length} dropped=${droppedAlertsCount}`
+                );
+            }, 60000);
+        }
     },
 
     /**
@@ -334,6 +380,10 @@ module.exports = {
             clearInterval(intervalId);
             intervalId = null;
             console.log('[Poller] Stopped API polling loop.');
+        }
+        if (metricsIntervalId) {
+            clearInterval(metricsIntervalId);
+            metricsIntervalId = null;
         }
     }
 };

@@ -60,6 +60,7 @@ try {
 }
 
 let cachedCursor = null;
+let cachedPollWatermark = null;
 
 function isIsoTimestamp(value) {
     return typeof value === 'string'
@@ -182,6 +183,40 @@ module.exports = {
     },
 
     /**
+     * Persisted fallback watermark for time-window polling.
+     * Stored in Postgres so it survives restarts on ephemeral filesystems.
+     */
+    async getPollWatermark() {
+        if (cachedPollWatermark) return cachedPollWatermark;
+        if (!pgPool) return null;
+        try {
+            const res = await pgPool.query('SELECT value FROM samsara_poll_state WHERE key = $1', ['last_successful_poll_end_time']);
+            cachedPollWatermark = res.rows[0]?.value || null;
+            return cachedPollWatermark;
+        } catch (err) {
+            console.error('[DB] getPollWatermark error:', err.message);
+            return null;
+        }
+    },
+
+    async savePollWatermark(isoTime) {
+        if (!isoTime || !pgPool) return;
+        cachedPollWatermark = isoTime;
+        try {
+            await pgPool.query(
+                `INSERT INTO samsara_poll_state (key, value, updated_at)
+                 VALUES ($1, $2, NOW())
+                 ON CONFLICT (key) DO UPDATE
+                 SET value = EXCLUDED.value,
+                     updated_at = NOW()`,
+                ['last_successful_poll_end_time', isoTime]
+            );
+        } catch (err) {
+            console.error('[DB] savePollWatermark error:', err.message);
+        }
+    },
+
+    /**
      * EXTENSION: Postgres Group Lookup
      *
      * Reuses the module-level `pgPool` instead of spinning up (and tearing
@@ -228,6 +263,11 @@ module.exports = {
                 await pgPool.query(`CREATE TABLE IF NOT EXISTS samsara_processed_events (
                     id VARCHAR(255) PRIMARY KEY,
                     processed_at TIMESTAMP DEFAULT NOW()
+                )`);
+                await pgPool.query(`CREATE TABLE IF NOT EXISTS samsara_poll_state (
+                    key VARCHAR(120) PRIMARY KEY,
+                    value TEXT,
+                    updated_at TIMESTAMP DEFAULT NOW()
                 )`);
                 console.log('[DB] PostgreSQL deduplication table ready.');
             } catch (err) {
