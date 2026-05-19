@@ -58,6 +58,15 @@ const metaAuthPermissions = (process.env.META_AUTH_PERMISSIONS || 'public_profil
   .map((value) => value.trim())
   .filter(Boolean);
 
+/** Render/Meta UIs sometimes leave literal placeholder strings in env vars. */
+function normalizeOptionalEnv(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  const lower = trimmed.toLowerCase();
+  if (lower === 'value' || lower === 'placeholder' || lower === 'changeme') return '';
+  return trimmed;
+}
+
 module.exports = {
   botToken: process.env.BOT_TOKEN || '',
   databaseUrl: process.env.DATABASE_URL,
@@ -92,7 +101,7 @@ module.exports = {
   renderExternalUrl: process.env.RENDER_EXTERNAL_URL || '',
   metaAppId: process.env.META_APP_ID || metaAppCredentials.metaAppId || '',
   metaAppSecret: process.env.META_APP_SECRET || metaAppCredentials.metaAppSecret || '',
-  metaLoginConfigId: process.env.META_LOGIN_CONFIG_ID || '',
+  metaLoginConfigId: normalizeOptionalEnv(process.env.META_LOGIN_CONFIG_ID),
   metaGraphVersion: process.env.META_GRAPH_VERSION || 'v25.0',
   metaWebhookVerifyToken: process.env.WEBHOOK_VERIFY_TOKEN || '',
   metaRequestedPermissions: (process.env.META_REQUESTED_PERMISSIONS
@@ -101,7 +110,7 @@ module.exports = {
     .map((value) => value.trim())
     .filter(Boolean),
   metaAuthPermissions,
-  metaAuthLoginConfigId: process.env.META_AUTH_LOGIN_CONFIG_ID || '',
+  metaAuthLoginConfigId: normalizeOptionalEnv(process.env.META_AUTH_LOGIN_CONFIG_ID),
   adminFacebookUserIds,
   facebookTokenEncryptionKey: process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY || process.env.JWT_SECRET || '',
   leadsInternalSharedSecret: process.env.LEADS_INTERNAL_SHARED_SECRET || process.env.JWT_SECRET || '',
