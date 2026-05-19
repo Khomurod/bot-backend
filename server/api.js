@@ -561,6 +561,50 @@ app.get('/favicon.ico', (req, res) => {
   res.status(204).end();
 });
 
+function renderMetaCompliancePage(title, bodyHtml) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #f3f0e8; color: #152033; }
+    main { max-width: 720px; margin: 48px auto; padding: 32px; background: #fff; border-radius: 16px; box-shadow: 0 12px 40px rgba(21,32,51,.08); }
+    h1 { margin-top: 0; }
+    p, li { line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>${title}</h1>
+    ${bodyHtml}
+  </main>
+</body>
+</html>`;
+}
+
+app.get('/privacy-policy.html', (req, res) => {
+  res.type('html').send(renderMetaCompliancePage(
+    'Privacy Policy',
+    '<p>This app connects Facebook Pages to Telegram groups for lead notifications. We only use Facebook data needed to authenticate Page managers, subscribe Pages to webhooks, and deliver lead events to the Telegram group you connect.</p><p>Contact: holmurod96@gmail.com</p>'
+  ));
+});
+
+app.get('/terms-of-use', (req, res) => {
+  res.type('html').send(renderMetaCompliancePage(
+    'Terms of Use',
+    '<p>By using this service you authorize the app to access the Facebook Pages you select and to send related lead notifications into your chosen Telegram group.</p>'
+  ));
+});
+
+app.get('/user-data-deletion', (req, res) => {
+  res.type('html').send(renderMetaCompliancePage(
+    'User Data Deletion',
+    '<p>To disconnect Facebook Page access, remove the Page connection in Telegram or revoke the app under your Facebook account settings. For help, email holmurod96@gmail.com.</p>'
+  ));
+});
+
 app.post('/api/internal/facebook/webhook-events', internalSharedSecretGuard, async (req, res) => {
   try {
     const result = await enqueueVerifiedFacebookPayload(req.body || {});
@@ -2127,7 +2171,7 @@ app.post('/api/employee-birthdays/request', authMiddleware, async (req, res) => 
   try {
     if (!config.employeeGroupId) return res.status(400).json({ error: 'EMPLOYEE_GROUP_ID not configured in .env' });
     const { Markup } = require('telegraf');
-    const appUrl = process.env.RENDER_EXTERNAL_URL || 'https://wenze-bots.onrender.com';
+    const appUrl = process.env.RENDER_EXTERNAL_URL || 'https://bot-backend-x9lc.onrender.com';
     const keyboard = Markup.inlineKeyboard([
       Markup.button.url('🎂 Enter Your Birthday', `${appUrl}/employee-birthday-form`)
     ]);

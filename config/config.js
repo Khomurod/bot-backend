@@ -48,6 +48,16 @@ const corsAllowedOrigins = corsOriginsEnv
   .map((o) => o.trim())
   .filter(Boolean);
 
+const adminFacebookUserIds = String(process.env.ADMIN_FACEBOOK_USER_IDS || '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+const metaAuthPermissions = (process.env.META_AUTH_PERMISSIONS || 'public_profile')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
 module.exports = {
   botToken: process.env.BOT_TOKEN || '',
   databaseUrl: process.env.DATABASE_URL,
@@ -90,6 +100,9 @@ module.exports = {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean),
+  metaAuthPermissions,
+  metaAuthLoginConfigId: process.env.META_AUTH_LOGIN_CONFIG_ID || '',
+  adminFacebookUserIds,
   facebookTokenEncryptionKey: process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY || process.env.JWT_SECRET || '',
   leadsInternalSharedSecret: process.env.LEADS_INTERNAL_SHARED_SECRET || process.env.JWT_SECRET || '',
   // When false, load ingestion skips forwarding parse-failure hints to DISPATCH_ETA_TEST_GROUP_ID.
