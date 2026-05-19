@@ -50,7 +50,7 @@ LEADS_LOG_FILE = DATA_DIR / "leads_log.json"
 SEEN_SENDERS_FILE = DATA_DIR / "seen_senders.json"
 
 # ── Public base URL (for RingCentral webhook callback) ────────
-BASE_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://leads-bot-e6x5.onrender.com")
+BASE_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://bot-backend-x9lc.onrender.com")
 TELEGRAM_API_BASE = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 CONNECT_COMMAND_POLL_TIMEOUT = 50
 CONNECT_COMMAND_ALLOWED_UPDATES = ["message"]

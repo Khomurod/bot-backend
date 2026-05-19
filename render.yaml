@@ -24,6 +24,8 @@ services:
         sync: false
       - key: RENDER_EXTERNAL_URL
         sync: false
+      - key: LOCAL_API_BASE_URL
+        value: http://127.0.0.1:3001
       - key: OPENAI_API_KEY
         sync: false
       - key: EMPLOYEE_GROUP_ID
