@@ -1941,6 +1941,7 @@ async function insertFacebookLeadSmsMirror({
   pageId = null,
   ruleLabel = null,
   ringcentralMessageId = null,
+  sourceType = 'outbound_auto',
 }) {
   const res = await query(
     `INSERT INTO facebook_lead_sms_mirrors (
@@ -1951,15 +1952,17 @@ async function insertFacebookLeadSmsMirror({
        lead_name,
        page_id,
        rule_label,
-       ringcentral_message_id
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ringcentral_message_id,
+       source_type
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (telegram_chat_id, telegram_message_id) DO UPDATE
        SET driver_phone = EXCLUDED.driver_phone,
            sms_body = EXCLUDED.sms_body,
            lead_name = EXCLUDED.lead_name,
            page_id = EXCLUDED.page_id,
            rule_label = EXCLUDED.rule_label,
-           ringcentral_message_id = EXCLUDED.ringcentral_message_id
+           ringcentral_message_id = EXCLUDED.ringcentral_message_id,
+           source_type = EXCLUDED.source_type
      RETURNING *`,
     [
       telegramChatId,
@@ -1970,6 +1973,7 @@ async function insertFacebookLeadSmsMirror({
       pageId,
       ruleLabel,
       ringcentralMessageId,
+      sourceType,
     ]
   );
   return res.rows[0];

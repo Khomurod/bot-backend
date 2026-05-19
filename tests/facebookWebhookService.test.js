@@ -11,6 +11,7 @@ const {
   extractFacebookWebhookEvents,
   buildAutoMessageNotification,
 } = require('../services/facebookWebhookService');
+const { buildAutoMessageSentHtml } = require('../services/facebookLeadSmsMirrorService');
 
 test('extractFacebookWebhookEvents emits dedupable leadgen events with page ids', () => {
   const events = extractFacebookWebhookEvents({
@@ -70,14 +71,20 @@ test('extractFacebookWebhookEvents ignores non-page payloads', () => {
   assert.deepEqual(events, []);
 });
 
-test('buildAutoMessageNotification reports SMS success', () => {
+test('buildAutoMessageNotification returns null on SMS success', () => {
   const text = buildAutoMessageNotification(
     { phone_number: '+15551234567' },
     { ok: true },
     'Jane Doe',
+    'Working hours',
   );
-  assert.match(text, /AutoMessage sent via SMS to \+15551234567/);
-  assert.match(text, /Jane Doe/);
+  assert.equal(text, null);
+});
+
+test('buildAutoMessageSentHtml includes phone and monospace body', () => {
+  const html = buildAutoMessageSentHtml('+15551234567', 'Hello Jane');
+  assert.match(html, /AutoMessage sent via SMS to \+15551234567:/);
+  assert.match(html, /<pre>Hello Jane<\/pre>/);
 });
 
 test('buildAutoMessageNotification reports missing phone', () => {

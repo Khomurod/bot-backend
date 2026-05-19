@@ -392,6 +392,67 @@ async def _handle_connect_command_message(message: dict):
     await _send_telegram_to_chat(chat_id, text, reply_markup=reply_markup)
 
 
+async def _request_register_sms_mirror(
+    *,
+    telegram_chat_id: int | str,
+    telegram_message_id: int,
+    driver_phone: str,
+    sms_body: str,
+    source_type: str = "inbound_rc",
+) -> dict:
+    """Register a Telegram message as replyable via RingCentral SMS."""
+    if not LEADS_INTERNAL_SHARED_SECRET:
+        raise RuntimeError("LEADS_INTERNAL_SHARED_SECRET is not configured")
+
+    url = f"{LOCAL_API_BASE_URL.rstrip('/')}/api/internal/facebook/register-sms-mirror"
+    payload = {
+        "telegramChatId": telegram_chat_id,
+        "telegramMessageId": telegram_message_id,
+        "driverPhone": driver_phone,
+        "smsBody": sms_body,
+        "sourceType": source_type,
+    }
+    headers = {"x-internal-shared-secret": LEADS_INTERNAL_SHARED_SECRET}
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(url, json=payload, headers=headers)
+        data = resp.json() if resp.content else {}
+        if not resp.is_success:
+            description = data.get("error") or data.get("detail") or resp.text[:300]
+            raise RuntimeError(description)
+        return data
+
+
+async def _register_inbound_sms_mirror(
+    phone: str,
+    sms_body: str,
+    telegram_message_id: int | None,
+) -> None:
+    """Link an inbound RC forward Telegram message to the driver phone for replies."""
+    if not telegram_message_id:
+        return
+    normalized_phone = str(phone or "").strip()
+    if not normalized_phone or normalized_phone.lower() == "unknown":
+        return
+    body = str(sms_body or "").strip()
+    if not body:
+        body = "(no text)"
+    try:
+        await _request_register_sms_mirror(
+            telegram_chat_id=TELEGRAM_CHAT_ID,
+            telegram_message_id=telegram_message_id,
+            driver_phone=normalized_phone,
+            sms_body=body,
+            source_type="inbound_rc",
+        )
+    except Exception as exc:
+        logger.warning(
+            "Could not register inbound SMS mirror (msg %s, %s): %s",
+            telegram_message_id,
+            normalized_phone,
+            exc,
+        )
+
+
 async def _request_telegram_sms_reply(
     *,
     telegram_chat_id: int | str,
@@ -425,12 +486,13 @@ async def _request_telegram_sms_reply(
 
 
 async def _handle_leads_hub_reply(message: dict) -> None:
-    """Forward a Telegram reply in Wenze Facebook Leads to RingCentral SMS."""
+    """Forward a Telegram reply to a tracked SMS mirror as RingCentral SMS."""
     chat = message.get("chat") or {}
-    chat_id = chat.get("id")
-    if not _is_leads_hub_chat(chat_id):
+    chat_type = chat.get("type")
+    if chat_type not in {"group", "supergroup"}:
         return
 
+    chat_id = chat.get("id")
     sender = message.get("from") or {}
     if sender.get("is_bot"):
         return
@@ -463,7 +525,8 @@ async def _handle_leads_hub_reply(message: dict) -> None:
         status = getattr(exc, "status_code", None)
         if status == 404:
             err_text = (
-                "Not linked to an auto-SMS — reply only to the monospace outbound copy."
+                "Not linked to a tracked SMS — reply to an auto-SMS copy "
+                "or an incoming driver message."
             )
         elif status == 400:
             err_text = str(exc)
@@ -739,7 +802,7 @@ async def _send_telegram_upload(
     filename: str,
     mime: str,
     caption: str,
-) -> bool:
+) -> int | None:
     """Multipart upload to Telegram Bot API (photo, video, or document)."""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}"
     base_data = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption[:1024]}
@@ -754,23 +817,24 @@ async def _send_telegram_upload(
                 resp = await client.post(url, data=data, files=files)
             if resp.is_success:
                 logger.info("Telegram %s sent successfully.", method)
-                return True
+                payload = resp.json()
+                return payload.get("result", {}).get("message_id")
             err = (resp.text or "").lower()
             if use_html and ("parse" in err or "html" in err or "entities" in err):
                 logger.warning("Telegram %s caption parse failed, retrying plain: %s", method, resp.text[:200])
                 continue
             logger.warning("Telegram %s failed (%s): %s", method, resp.status_code, resp.text[:400])
-            return False
+            return None
         except Exception as exc:
             logger.error("Telegram %s exception: %s", method, exc)
-            return False
-    return False
+            return None
+    return None
 
 
 async def _send_telegram_media_group_photos(
     caption: str,
     photo_items: list[tuple[bytes, str, str]],
-) -> bool:
+) -> int | None:
     """Send 2–10 images as one album (InputMediaPhoto). All items must be photo-compatible."""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMediaGroup"
     media_json: list[dict] = []
@@ -793,17 +857,20 @@ async def _send_telegram_media_group_photos(
                 resp = await client.post(url, data=data, files=files)
             if resp.is_success:
                 logger.info("Telegram sendMediaGroup sent successfully (%d photos).", len(photo_items))
-                return True
+                result = resp.json().get("result") or []
+                if result and isinstance(result, list):
+                    return result[0].get("message_id")
+                return None
             err = (resp.text or "").lower()
             if use_html and ("parse" in err or "html" in err):
                 logger.warning("Telegram sendMediaGroup caption parse failed, retrying plain.")
                 continue
             logger.warning("Telegram sendMediaGroup failed: %s", resp.text[:400])
-            return False
+            return None
         except Exception as exc:
             logger.error("Telegram sendMediaGroup exception: %s", exc)
-            return False
-    return False
+            return None
+    return None
 
 
 async def _forward_ringcentral_inbound_to_telegram(event_body: dict) -> None:
@@ -815,7 +882,8 @@ async def _forward_ringcentral_inbound_to_telegram(event_body: dict) -> None:
     media_atts = _ringcentral_media_attachments(event_body)
     if not media_atts:
         caption_html = _format_ringcentral_forward_html(from_number, subject, created)
-        await _send_telegram_html(caption_html)
+        message_id = await _send_telegram_html(caption_html)
+        await _register_inbound_sms_mirror(from_number, subject, message_id)
         logger.info("SMS reply from %s forwarded to Telegram (text only).", from_number)
         return
 
@@ -843,7 +911,8 @@ async def _forward_ringcentral_inbound_to_telegram(event_body: dict) -> None:
             created,
             warning_plain="Could not download MMS attachments — check RingCentral credentials.",
         )
-        await _send_telegram_html(warn_html)
+        message_id = await _send_telegram_html(warn_html)
+        await _register_inbound_sms_mirror(from_number, subject, message_id)
         return
 
     photo_compatible: list[tuple[bytes, str, str]] = []
@@ -856,16 +925,21 @@ async def _forward_ringcentral_inbound_to_telegram(event_body: dict) -> None:
             other_items.append(item)
 
     if len(photo_compatible) >= 2 and len(photo_compatible) <= 10 and not other_items:
-        ok = await _send_telegram_media_group_photos(caption_html, photo_compatible)
-        if ok:
+        album_message_id = await _send_telegram_media_group_photos(caption_html, photo_compatible)
+        if album_message_id:
+            await _register_inbound_sms_mirror(from_number, subject, album_message_id)
             logger.info("MMS from %s forwarded to Telegram as album (%d).", from_number, len(photo_compatible))
             return
         logger.warning("sendMediaGroup failed; falling back to individual sends.")
 
+    first_message_id = None
     for idx, (b, fn, ct) in enumerate(downloaded):
         cap = caption_html if idx == 0 else ""
         method, field = _telegram_upload_method(ct)
-        await _send_telegram_upload(method, field, b, fn, ct, cap)
+        uploaded_id = await _send_telegram_upload(method, field, b, fn, ct, cap)
+        if idx == 0 and uploaded_id:
+            first_message_id = uploaded_id
+    await _register_inbound_sms_mirror(from_number, subject, first_message_id)
     logger.info("MMS from %s forwarded to Telegram (%d file(s)).", from_number, len(downloaded))
 
 

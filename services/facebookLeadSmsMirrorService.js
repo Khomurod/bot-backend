@@ -1,4 +1,3 @@
-const config = require('../config/config');
 const db = require('../database/db');
 const { sendSms } = require('./ringCentralSmsService');
 const { sendTelegramHtmlChunks, safeSend } = require('./telegramHtml');
@@ -30,23 +29,10 @@ function candidateTelegramChatIds(chatId) {
   return [...candidates];
 }
 
-function buildMirrorHtml({ leadName, phone, pageName, ruleLabel, smsBody }) {
-  const name = escapeHtml(leadName || 'Lead');
+function buildAutoMessageSentHtml(phone, smsBody) {
   const phoneEsc = escapeHtml(phone || '');
-  const pageEsc = escapeHtml(pageName || '');
-  const ruleSuffix = ruleLabel ? ` (${escapeHtml(ruleLabel)})` : '';
   const bodyEsc = escapeHtml(smsBody || '');
-
-  const lines = [
-    `📤 <b>Auto-SMS</b> to ${name} (${phoneEsc})`,
-  ];
-  if (pageEsc) {
-    lines.push(`Page: ${pageEsc}${ruleSuffix}`);
-  } else if (ruleSuffix) {
-    lines.push(`Rule${ruleSuffix}`);
-  }
-  lines.push(`<pre>${bodyEsc}</pre>`);
-  return lines.join('\n');
+  return `AutoMessage sent via SMS to ${phoneEsc}:\n<pre>${bodyEsc}</pre>`;
 }
 
 async function findMirrorByTelegramMessage(telegramChatId, telegramMessageId) {
@@ -57,30 +43,27 @@ async function findMirrorByTelegramMessage(telegramChatId, telegramMessageId) {
   return null;
 }
 
-async function mirrorAutoSmsToLeadsHub(telegram, {
-  chatId,
+async function sendAutoMessageSentNotice(telegram, chatId, {
   phone,
   smsBody,
-  leadName,
-  pageName,
-  pageId,
-  ruleLabel,
-  ringcentralMessageId,
+  leadName = null,
+  pageId = null,
+  ruleLabel = null,
+  ringcentralMessageId = null,
 }) {
-  const hubChatId = String(chatId || config.leadsTelegramChatId || '').trim();
-  if (!hubChatId || !telegram) {
+  if (!telegram || chatId == null || chatId === '') {
     return { ok: false, reason: 'not_configured' };
   }
 
-  const sendChatId = toSupergroupStyleChatId(hubChatId);
-  const html = buildMirrorHtml({ leadName, phone, pageName, ruleLabel, smsBody });
+  const sendChatId = toSupergroupStyleChatId(chatId);
+  const html = buildAutoMessageSentHtml(phone, smsBody);
   const sentMessages = await sendTelegramHtmlChunks(telegram, sendChatId, html);
   const first = sentMessages[0];
   const telegramMessageId = first?.message_id;
   const resolvedChatId = first?.chat?.id ?? sendChatId;
 
   if (!telegramMessageId) {
-    console.warn('[FacebookLeadSmsMirror] Mirror send did not return message_id');
+    console.warn('[FacebookLeadSmsMirror] Auto-message notice did not return message_id');
     return { ok: false, reason: 'telegram_send_failed' };
   }
 
@@ -93,9 +76,61 @@ async function mirrorAutoSmsToLeadsHub(telegram, {
     pageId,
     ruleLabel,
     ringcentralMessageId,
+    sourceType: 'outbound_auto',
   });
 
   return { ok: true, telegramMessageId, telegramChatId: resolvedChatId };
+}
+
+async function registerSmsMirror({
+  telegramChatId,
+  telegramMessageId,
+  driverPhone,
+  smsBody,
+  sourceType = 'outbound_auto',
+  leadName = null,
+  pageId = null,
+  ruleLabel = null,
+  ringcentralMessageId = null,
+}) {
+  const phone = String(driverPhone || '').trim();
+  if (!phone || phone.toLowerCase() === 'unknown') {
+    const err = new Error('driverPhone is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const chatId = Number(telegramChatId);
+  const messageId = Number(telegramMessageId);
+  if (!Number.isFinite(chatId) || !Number.isFinite(messageId)) {
+    const err = new Error('telegramChatId and telegramMessageId are required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const body = String(smsBody ?? '');
+  if (!body.trim()) {
+    const err = new Error('smsBody is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const allowedSources = new Set(['outbound_auto', 'inbound_rc']);
+  const resolvedSource = allowedSources.has(sourceType) ? sourceType : 'outbound_auto';
+
+  const row = await db.insertFacebookLeadSmsMirror({
+    telegramChatId: chatId,
+    telegramMessageId: messageId,
+    driverPhone: phone,
+    smsBody: body,
+    leadName,
+    pageId,
+    ruleLabel,
+    ringcentralMessageId,
+    sourceType: resolvedSource,
+  });
+
+  return { ok: true, mirror: row };
 }
 
 async function handleTelegramSmsReply(telegram, {
@@ -149,9 +184,10 @@ async function handleTelegramSmsReply(telegram, {
 
 module.exports = {
   escapeHtml,
-  buildMirrorHtml,
+  buildAutoMessageSentHtml,
   candidateTelegramChatIds,
-  mirrorAutoSmsToLeadsHub,
+  sendAutoMessageSentNotice,
+  registerSmsMirror,
   handleTelegramSmsReply,
   findMirrorByTelegramMessage,
 };

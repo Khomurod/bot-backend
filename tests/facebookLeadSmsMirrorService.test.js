@@ -7,26 +7,21 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  buildMirrorHtml,
+  buildAutoMessageSentHtml,
   escapeHtml,
   candidateTelegramChatIds,
   handleTelegramSmsReply,
+  registerSmsMirror,
 } = require('../services/facebookLeadSmsMirrorService');
 
 const db = require('../database/db');
 
-test('buildMirrorHtml escapes HTML and wraps SMS in pre', () => {
-  const html = buildMirrorHtml({
-    leadName: 'Jane <Doe>',
-    phone: '+15551234567',
-    pageName: 'Wenze & Co',
-    ruleLabel: 'Evening',
-    smsBody: 'Hi <there>\n& welcome',
-  });
-  assert.match(html, /Jane &lt;Doe&gt;/);
-  assert.match(html, /Wenze &amp; Co/);
+test('buildAutoMessageSentHtml escapes HTML and wraps SMS in pre', () => {
+  const html = buildAutoMessageSentHtml('+15551234567', 'Hi <there>\n& welcome');
+  assert.match(html, /AutoMessage sent via SMS to \+15551234567:/);
   assert.match(html, /<pre>Hi &lt;there&gt;\n&amp; welcome<\/pre>/);
-  assert.match(html, /Evening/);
+  assert.doesNotMatch(html, /Working hours/);
+  assert.doesNotMatch(html, /for lead/);
 });
 
 test('escapeHtml encodes special characters', () => {
@@ -96,6 +91,43 @@ test('handleTelegramSmsReply rejects empty text', async () => {
       telegramChatId: '-100999',
       replyToMessageId: 42,
       replyText: '   ',
+    }),
+    (err) => err.statusCode === 400
+  );
+});
+
+test('registerSmsMirror inserts inbound row', async () => {
+  const originalInsert = db.insertFacebookLeadSmsMirror;
+  let inserted = null;
+  db.insertFacebookLeadSmsMirror = async (row) => {
+    inserted = row;
+    return { ...row, id: 1 };
+  };
+  try {
+    const result = await registerSmsMirror({
+      telegramChatId: '-100123',
+      telegramMessageId: 55,
+      driverPhone: '+15551234567',
+      smsBody: 'No thank you',
+      sourceType: 'inbound_rc',
+    });
+    assert.equal(result.ok, true);
+    assert.equal(inserted.sourceType, 'inbound_rc');
+    assert.equal(inserted.driverPhone, '+15551234567');
+    assert.equal(inserted.smsBody, 'No thank you');
+  } finally {
+    db.insertFacebookLeadSmsMirror = originalInsert;
+  }
+});
+
+test('registerSmsMirror rejects unknown phone', async () => {
+  await assert.rejects(
+    () => registerSmsMirror({
+      telegramChatId: '-100123',
+      telegramMessageId: 55,
+      driverPhone: 'Unknown',
+      smsBody: 'hi',
+      sourceType: 'inbound_rc',
     }),
     (err) => err.statusCode === 400
   );

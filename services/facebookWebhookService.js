@@ -1,7 +1,6 @@
-const config = require('../config/config');
 const db = require('../database/db');
 const { decryptText } = require('./facebookCrypto');
-const { mirrorAutoSmsToLeadsHub } = require('./facebookLeadSmsMirrorService');
+const { sendAutoMessageSentNotice } = require('./facebookLeadSmsMirrorService');
 const { safeSend } = require('./telegramHtml');
 const {
   fetchLeadById,
@@ -103,7 +102,7 @@ function buildAutoMessageNotification(fieldMap, smsResult, leadName, ruleLabel =
     return `AutoMessage skipped for ${name}: auto-SMS is disabled in admin.`;
   }
   if (smsResult.ok) {
-    return `AutoMessage sent via SMS to ${phone} for lead ${name}${ruleSuffix}.`;
+    return null;
   }
   if (smsResult.reason === 'not_configured') {
     return `AutoMessage skipped for ${phone} (RingCentral not configured).`;
@@ -156,23 +155,23 @@ async function processLeadEvent(eventRow) {
     }
   }
 
-  const autoMessageNotice = buildAutoMessageNotification(fieldMap, smsResult, fullName, ruleLabel);
-  await sendTelegramMessage(connection.telegram_group_id, autoMessageNotice);
-
-  if (smsResult.ok && smsBody && config.leadsTelegramChatId) {
+  if (smsResult.ok && smsBody) {
     try {
-      await mirrorAutoSmsToLeadsHub(telegramClient, {
-        chatId: config.leadsTelegramChatId,
+      await sendAutoMessageSentNotice(telegramClient, connection.telegram_group_id, {
         phone,
         smsBody,
         leadName: fullName,
-        pageName: connection.page_name,
         pageId,
         ruleLabel,
         ringcentralMessageId: smsResult.messageId,
       });
-    } catch (mirrorErr) {
-      console.error('[FacebookWebhook] Auto-SMS mirror to leads hub failed:', mirrorErr.message);
+    } catch (noticeErr) {
+      console.error('[FacebookWebhook] Auto-message notice failed:', noticeErr.message);
+    }
+  } else {
+    const autoMessageNotice = buildAutoMessageNotification(fieldMap, smsResult, fullName, ruleLabel);
+    if (autoMessageNotice) {
+      await sendTelegramMessage(connection.telegram_group_id, autoMessageNotice);
     }
   }
 }

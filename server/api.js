@@ -30,7 +30,7 @@ const {
 } = require('../services/facebookConnectService');
 const { validateMetaAppCredentials } = require('../services/facebookGraphService');
 const { getLeadsTelegram, sendLeadsMessage } = require('../services/leadsTelegramClient');
-const { handleTelegramSmsReply } = require('../services/facebookLeadSmsMirrorService');
+const { handleTelegramSmsReply, registerSmsMirror } = require('../services/facebookLeadSmsMirrorService');
 const {
   enqueueVerifiedFacebookPayload,
   retryFacebookWebhookEvent,
@@ -711,6 +711,40 @@ app.post('/api/internal/facebook/connect-command', internalSharedSecretGuard, as
   } catch (err) {
     console.error('[API] Facebook connect command setup failed:', err.message);
     return res.status(500).json({ error: 'Could not create Facebook connect session', detail: err.message });
+  }
+});
+
+app.post('/api/internal/facebook/register-sms-mirror', internalSharedSecretGuard, async (req, res) => {
+  try {
+    const telegramChatId = req.body?.telegramChatId;
+    const telegramMessageId = Number(req.body?.telegramMessageId);
+    const driverPhone = req.body?.driverPhone;
+    const smsBody = req.body?.smsBody;
+    const sourceType = req.body?.sourceType || 'outbound_auto';
+
+    if (telegramChatId == null || telegramChatId === '') {
+      return res.status(400).json({ error: 'telegramChatId is required' });
+    }
+    if (!Number.isFinite(telegramMessageId)) {
+      return res.status(400).json({ error: 'telegramMessageId is required' });
+    }
+
+    const result = await registerSmsMirror({
+      telegramChatId,
+      telegramMessageId,
+      driverPhone,
+      smsBody,
+      sourceType,
+    });
+    return res.json({ status: 'ok', ...result });
+  } catch (err) {
+    const status = err.statusCode || 500;
+    if (status >= 500) {
+      console.error('[API] Facebook register-sms-mirror failed:', err.message);
+    }
+    return res.status(status).json({
+      error: err.message || 'Failed to register SMS mirror',
+    });
   }
 });
 

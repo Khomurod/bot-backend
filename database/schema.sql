@@ -383,12 +383,16 @@ CREATE TABLE IF NOT EXISTS facebook_lead_sms_mirrors (
   page_id TEXT,
   rule_label TEXT,
   ringcentral_message_id TEXT,
+  source_type TEXT NOT NULL DEFAULT 'outbound_auto',
   created_at TIMESTAMP DEFAULT NOW(),
   UNIQUE (telegram_chat_id, telegram_message_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_facebook_lead_sms_mirrors_lookup
   ON facebook_lead_sms_mirrors (telegram_chat_id, telegram_message_id);
+
+ALTER TABLE facebook_lead_sms_mirrors
+  ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT 'outbound_auto';
 
 ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS group_id INTEGER;
 ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS telegram_group_id BIGINT;
