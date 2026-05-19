@@ -7,6 +7,7 @@ const {
   exchangeCodeForAccessToken,
   fetchFacebookPages,
   fetchFacebookProfile,
+  describeFacebookTokenAccess,
   subscribePageToApp,
 } = require('./facebookGraphService');
 
@@ -99,6 +100,23 @@ async function finishOAuthCallback({ state, code }) {
       fetchFacebookProfile(userAccessToken),
       fetchFacebookPages(userAccessToken),
     ]);
+
+    if (!pages.length) {
+      const tokenAccess = await describeFacebookTokenAccess(userAccessToken);
+      const scopeHint = Array.isArray(tokenAccess.scopes) && tokenAccess.scopes.length
+        ? tokenAccess.scopes.join(', ')
+        : 'none';
+      const pageIdHint = Array.isArray(tokenAccess.pageIds) && tokenAccess.pageIds.length
+        ? tokenAccess.pageIds.join(', ')
+        : 'none';
+      throw new Error(
+        `Facebook did not return any Pages for this account. `
+        + `Granted scopes: ${scopeHint}. `
+        + `Page IDs in token: ${pageIdHint}. `
+        + 'Re-run /connect and ensure WENZE Transport Services is selected, '
+        + 'or add business_management to the Login configuration.'
+      );
+    }
 
     await db.storeFacebookConnectSessionOAuthResult(session.id, {
       oauthUserAccessTokenEncrypted: encryptText(userAccessToken),

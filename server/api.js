@@ -28,6 +28,7 @@ const {
   connectSelectedPages,
   normalizeSelectedPageIds,
 } = require('../services/facebookConnectService');
+const { validateMetaAppCredentials } = require('../services/facebookGraphService');
 const {
   enqueueVerifiedFacebookPayload,
   retryFacebookWebhookEvent,
@@ -485,6 +486,31 @@ app.get('/api/auth/verify', authMiddleware, (req, res) => {
 // Pings the DB so a healthy response genuinely means the app can serve
 // requests, not just that Node is alive. Exposed at /api/health and /health
 // (short path for cron jobs). HEAD returns the same status code without a body.
+let metaCredentialHealthCache = { checkedAt: 0, meta: null };
+const META_CREDENTIAL_HEALTH_TTL_MS = 5 * 60 * 1000;
+
+async function getMetaCredentialHealth() {
+  if (!config.metaAppId || !config.metaAppSecret) {
+    return { configured: false, valid: false };
+  }
+  const now = Date.now();
+  if (
+    metaCredentialHealthCache.meta
+    && now - metaCredentialHealthCache.checkedAt < META_CREDENTIAL_HEALTH_TTL_MS
+  ) {
+    return metaCredentialHealthCache.meta;
+  }
+  const validation = await validateMetaAppCredentials();
+  const meta = {
+    configured: true,
+    valid: validation.valid,
+    appId: config.metaAppId,
+    ...(validation.valid ? {} : { error: validation.error }),
+  };
+  metaCredentialHealthCache = { checkedAt: now, meta };
+  return meta;
+}
+
 async function runHealthCheck() {
   let dbOk = false;
   try {
@@ -492,11 +518,13 @@ async function runHealthCheck() {
   } catch (err) {
     console.error('[API] Health DB ping failed:', err.message);
   }
+  const meta = await getMetaCredentialHealth();
   return {
     healthy: dbOk,
     status: dbOk ? 'ok' : 'degraded',
     uptime: process.uptime(),
     db: dbOk,
+    meta,
     service: 'driver-feedback-bot',
   };
 }
@@ -686,16 +714,6 @@ app.get('/facebook/oauth/callback', async (req, res) => {
       state: req.query.state,
       code: req.query.code,
     });
-
-    if (!pages.length) {
-      res.status(400).send(
-        renderConnectResultPage({
-          title: 'No Pages Available',
-          message: 'Facebook did not return any Pages for this account. Make sure this Facebook account has Page access and that the app was granted the right permissions.',
-        })
-      );
-      return;
-    }
 
     res.send(renderPagePicker(session, profile, pages));
   } catch (err) {

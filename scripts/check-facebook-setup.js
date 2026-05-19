@@ -22,6 +22,28 @@ async function checkOne({ path, expect, label }) {
   return ok;
 }
 
+async function checkMetaCredentials(baseUrl) {
+  const url = `${baseUrl}/api/health`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    console.log(`FAIL  Meta credentials: health returned ${res.status}`);
+    return false;
+  }
+  const body = await res.json().catch(() => null);
+  const meta = body?.meta;
+  if (!meta?.configured) {
+    console.log('WARN  Meta credentials: META_APP_ID / META_APP_SECRET not set on server');
+    return false;
+  }
+  if (meta.valid) {
+    console.log(`OK    Meta credentials: app ${meta.appId} secret validates with Meta`);
+    return true;
+  }
+  console.log(`FAIL  Meta credentials: ${meta.error || 'invalid'} (app ${meta.appId})`);
+  console.log('      Fix META_APP_SECRET in Render → App settings → Basic → App secret');
+  return false;
+}
+
 (async () => {
   console.log(`Checking ${base} ...\n`);
   let allOk = true;
@@ -34,6 +56,13 @@ async function checkOne({ path, expect, label }) {
       allOk = false;
     }
   }
-  console.log(allOk ? '\nAll public checks passed.' : '\nSome checks failed — deploy or fix routes first.');
+  try {
+    const metaOk = await checkMetaCredentials(base);
+    if (!metaOk) allOk = false;
+  } catch (err) {
+    console.log(`FAIL  Meta credentials: ${err.message}`);
+    allOk = false;
+  }
+  console.log(allOk ? '\nAll checks passed.' : '\nSome checks failed — see messages above.');
   process.exit(allOk ? 0 : 1);
 })();

@@ -78,6 +78,26 @@ function buildFacebookLoginUrl({ state, redirectUri }) {
   return url.toString();
 }
 
+/** Confirms META_APP_ID + META_APP_SECRET match Meta (client_credentials grant). */
+async function validateMetaAppCredentials() {
+  if (!config.metaAppId || !config.metaAppSecret) {
+    return { valid: false, error: 'META_APP_ID or META_APP_SECRET is not configured' };
+  }
+
+  const url = new URL(`${graphBaseUrl()}/oauth/access_token`);
+  url.searchParams.set('client_id', config.metaAppId);
+  url.searchParams.set('client_secret', config.metaAppSecret);
+  url.searchParams.set('grant_type', 'client_credentials');
+
+  const response = await fetch(url);
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.access_token) {
+    const detail = payload?.error?.message || response.statusText || 'invalid credentials';
+    return { valid: false, error: detail };
+  }
+  return { valid: true };
+}
+
 async function exchangeCodeForAccessToken({ code, redirectUri }) {
   if (!config.metaAppId || !config.metaAppSecret) {
     throw new Error('META_APP_ID and META_APP_SECRET must be configured');
@@ -98,6 +118,62 @@ async function exchangeCodeForAccessToken({ code, redirectUri }) {
   return payload.access_token;
 }
 
+function getAppAccessToken() {
+  return `${config.metaAppId}|${config.metaAppSecret}`;
+}
+
+async function debugUserAccessToken(userAccessToken) {
+  const payload = await graphRequest('/debug_token', {
+    accessToken: getAppAccessToken(),
+    query: { input_token: userAccessToken },
+  });
+  return payload?.data || null;
+}
+
+function collectPageIdsFromDebugData(debugData) {
+  const pageIds = new Set();
+  const granular = Array.isArray(debugData?.granular_scopes) ? debugData.granular_scopes : [];
+  for (const entry of granular) {
+    const scope = String(entry?.scope || '');
+    if (!scope.startsWith('pages_') && scope !== 'leads_retrieval') continue;
+    for (const id of entry?.target_ids || []) {
+      if (id) pageIds.add(String(id));
+    }
+  }
+  return [...pageIds];
+}
+
+async function fetchFacebookPageById(pageId, userAccessToken) {
+  return graphRequest(`/${pageId}`, {
+    accessToken: userAccessToken,
+    query: { fields: 'id,name,access_token,tasks' },
+  });
+}
+
+async function fetchPagesViaBusinesses(userAccessToken) {
+  const businessesPayload = await graphRequest('/me/businesses', {
+    accessToken: userAccessToken,
+    query: { fields: 'id,name', limit: '25' },
+  });
+  const pagesById = new Map();
+  for (const business of businessesPayload?.data || []) {
+    for (const edge of ['owned_pages', 'client_pages']) {
+      try {
+        const payload = await graphRequest(`/${business.id}/${edge}`, {
+          accessToken: userAccessToken,
+          query: { fields: 'id,name,access_token,tasks', limit: '100' },
+        });
+        for (const page of payload?.data || []) {
+          if (page?.id) pagesById.set(String(page.id), page);
+        }
+      } catch {
+        // business edge may be unavailable without business_management
+      }
+    }
+  }
+  return [...pagesById.values()];
+}
+
 async function fetchFacebookProfile(userAccessToken) {
   return graphRequest('/me', {
     accessToken: userAccessToken,
@@ -108,9 +184,50 @@ async function fetchFacebookProfile(userAccessToken) {
 async function fetchFacebookPages(userAccessToken) {
   const payload = await graphRequest('/me/accounts', {
     accessToken: userAccessToken,
-    query: { fields: 'id,name,access_token,tasks' },
+    query: { fields: 'id,name,access_token,tasks', limit: '100' },
   });
-  return Array.isArray(payload?.data) ? payload.data : [];
+  const fromAccounts = Array.isArray(payload?.data) ? payload.data : [];
+  if (fromAccounts.length > 0) return fromAccounts;
+
+  // Facebook Login for Business often grants page access only in granular_scopes.
+  let debugData = null;
+  try {
+    debugData = await debugUserAccessToken(userAccessToken);
+  } catch (err) {
+    console.warn('[Facebook] debug_token failed:', err.message);
+  }
+
+  const granularPageIds = collectPageIdsFromDebugData(debugData);
+  const pages = [];
+  for (const pageId of granularPageIds) {
+    try {
+      const page = await fetchFacebookPageById(pageId, userAccessToken);
+      if (page?.id) pages.push(page);
+    } catch (err) {
+      console.warn(`[Facebook] Could not load page ${pageId}:`, err.message);
+    }
+  }
+  if (pages.length > 0) return pages;
+
+  try {
+    return await fetchPagesViaBusinesses(userAccessToken);
+  } catch (err) {
+    console.warn('[Facebook] /me/businesses page lookup failed:', err.message);
+    return [];
+  }
+}
+
+async function describeFacebookTokenAccess(userAccessToken) {
+  try {
+    const debugData = await debugUserAccessToken(userAccessToken);
+    return {
+      scopes: debugData?.scopes || [],
+      granularScopes: debugData?.granular_scopes || [],
+      pageIds: collectPageIdsFromDebugData(debugData),
+    };
+  } catch (err) {
+    return { error: err.message };
+  }
 }
 
 async function subscribePageToApp({ pageId, pageAccessToken, subscribedFields }) {
@@ -148,9 +265,11 @@ async function fetchSenderProfile({ senderId, pageAccessToken }) {
 module.exports = {
   buildAppSecretProof,
   buildFacebookLoginUrl,
+  validateMetaAppCredentials,
   exchangeCodeForAccessToken,
   fetchFacebookProfile,
   fetchFacebookPages,
+  describeFacebookTokenAccess,
   subscribePageToApp,
   fetchLeadById,
   fetchSenderProfile,

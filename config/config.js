@@ -99,13 +99,13 @@ module.exports = {
   corsAllowAll: !corsAllowedOrigins.length || process.env.CORS_ALLOW_ALL === 'true',
   nodeEnv: process.env.NODE_ENV || 'development',
   renderExternalUrl: process.env.RENDER_EXTERNAL_URL || '',
-  metaAppId: process.env.META_APP_ID || metaAppCredentials.metaAppId || '',
-  metaAppSecret: process.env.META_APP_SECRET || metaAppCredentials.metaAppSecret || '',
+  metaAppId: String(process.env.META_APP_ID || metaAppCredentials.metaAppId || '').trim(),
+  metaAppSecret: normalizeOptionalEnv(process.env.META_APP_SECRET || metaAppCredentials.metaAppSecret || ''),
   metaLoginConfigId: normalizeOptionalEnv(process.env.META_LOGIN_CONFIG_ID),
   metaGraphVersion: process.env.META_GRAPH_VERSION || 'v25.0',
   metaWebhookVerifyToken: process.env.WEBHOOK_VERIFY_TOKEN || '',
   metaRequestedPermissions: (process.env.META_REQUESTED_PERMISSIONS
-    || 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,pages_manage_ads,ads_management,pages_messaging')
+    || 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,pages_manage_ads,ads_management,pages_messaging,business_management')
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean),
