@@ -3,30 +3,22 @@ const { extractRateConRawTextFromFile } = require('../server/services/dispatchPa
 const { pickStoredLoadForContext } = require('./recentLoadSelection');
 const { isLoadLikeChatMessage } = require('./loadTextPatterns');
 
+const { callGroqWithFallback } = require('./groqClient');
+const {
+  callGeminiGenerateContent,
+  getPinnedContextGeminiModels,
+} = require('./geminiClient');
+
 require('dotenv').config();
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const PINNED_CONTEXT_GROQ_MODELS = [
   'llama-3.1-8b-instant',
   'llama-3.3-70b-versatile',
   'openai/gpt-oss-20b',
 ];
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const MAX_INLINE_GEMINI_FILE_BYTES = 14 * 1024 * 1024;
 /** Cap inline images/docs per Gemini request (albums). */
 const MAX_ALBUM_INLINE_PARTS = 6;
-
-/** Comma-separated override, e.g. `gemini-2.5-flash,gemini-2.5-flash-lite`. */
-const PINNED_CONTEXT_GEMINI_MODELS = (() => {
-  const fromEnv = String(process.env.GEMINI_PINNED_CONTEXT_MODELS || '')
-    .split(',')
-    .map((m) => m.trim())
-    .filter(Boolean);
-  if (fromEnv.length) return fromEnv;
-  // Only models that exist on v1beta :generateContent (see Google AI Studio / ListModels).
-  // Older defaults included IDs that always 404 and burned free-tier quota for no benefit.
-  return ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
-})();
 
 function truncateDispatchEtaLogMessage(msg, maxLen = 480) {
   const s = String(msg || '').replace(/\s+/g, ' ').trim();
@@ -361,68 +353,30 @@ function buildPinnedContextGroqMessages({ pinnedText, extractedRawText }) {
   ];
 }
 
+function mapPinnedContextFields(parsed) {
+  return {
+    pickupLocation: normalizeLine(parsed.pickup_location || ''),
+    pickupDateTime: normalizeLine(parsed.pickup_datetime || ''),
+    deliveryLocation: normalizeLine(parsed.delivery_location || ''),
+    deliveryDateTime: normalizeLine(parsed.delivery_datetime || ''),
+    destinationQuery: normalizeLine(parsed.destination_query || ''),
+    notes: normalizeLine(parsed.notes || ''),
+  };
+}
+
 async function requestPinnedContextFromGroq({ pinnedText, extractedRawText }) {
-  if (!GROQ_API_KEY) {
-    throw new Error('GROQ_API_KEY is not configured');
-  }
-
-  const attemptErrors = [];
-
-  for (const model of PINNED_CONTEXT_GROQ_MODELS) {
-    try {
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${GROQ_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model,
-          temperature: 0,
-          seed: 7,
-          max_completion_tokens: 700,
-          response_format: { type: 'json_object' },
-          messages: buildPinnedContextGroqMessages({ pinnedText, extractedRawText }),
-        }),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const apiMessage = payload?.error?.message || `Groq request failed with status ${response.status}`;
-        attemptErrors.push({ model, status: response.status, message: apiMessage });
-        continue;
-      }
-
-      const text = String(payload?.choices?.[0]?.message?.content || '').trim();
-      if (!text) {
-        attemptErrors.push({ model, status: null, message: 'Groq returned an empty response' });
-        continue;
-      }
-
-      const parsed = safeParseJsonObject(text);
-      if (!parsed) {
-        attemptErrors.push({ model, status: null, message: 'Groq returned non-JSON output' });
-        continue;
-      }
-
-      return {
-        model,
-        fields: {
-          pickupLocation: normalizeLine(parsed.pickup_location || ''),
-          pickupDateTime: normalizeLine(parsed.pickup_datetime || ''),
-          deliveryLocation: normalizeLine(parsed.delivery_location || ''),
-          deliveryDateTime: normalizeLine(parsed.delivery_datetime || ''),
-          destinationQuery: normalizeLine(parsed.destination_query || ''),
-          notes: normalizeLine(parsed.notes || ''),
-        },
-      };
-    } catch (err) {
-      attemptErrors.push({ model, status: null, message: err.message });
-    }
-  }
-
-  const details = attemptErrors.map((e) => `${e.model}: ${e.message}`).join('; ');
-  throw new Error(details || 'All pinned-context Groq models failed');
+  const messages = buildPinnedContextGroqMessages({ pinnedText, extractedRawText });
+  const { text, model } = await callGroqWithFallback('', {
+    messages,
+    models: PINNED_CONTEXT_GROQ_MODELS,
+    temperature: 0,
+    seed: 7,
+    maxCompletionTokens: 700,
+    responseFormat: { type: 'json_object' },
+    validateResult: (raw) => (safeParseJsonObject(raw) ? true : { message: 'Groq returned non-JSON output' }),
+  });
+  const parsed = safeParseJsonObject(text);
+  return { model, fields: mapPinnedContextFields(parsed) };
 }
 
 async function requestPinnedContextFromGemini({
@@ -431,10 +385,6 @@ async function requestPinnedContextFromGemini({
   sourceFile,
   sourceFiles,
 }) {
-  if (!GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY is not configured');
-  }
-
   const contents = [
     {
       parts: buildPinnedContextAiParts({
@@ -446,70 +396,19 @@ async function requestPinnedContextFromGemini({
     },
   ];
 
-  const attemptErrors = [];
-  for (const model of PINNED_CONTEXT_GEMINI_MODELS) {
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': GEMINI_API_KEY,
-          },
-          body: JSON.stringify({
-            contents,
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 800,
-              responseMimeType: 'text/plain',
-            },
-          }),
-        }
-      );
+  const { text, model } = await callGeminiGenerateContent({
+    models: getPinnedContextGeminiModels(),
+    contents,
+    generationConfig: {
+      temperature: 0.1,
+      maxOutputTokens: 800,
+      responseMimeType: 'text/plain',
+    },
+    validateResult: (raw) => (safeParseJsonObject(raw) ? true : { message: 'Gemini returned non-JSON output' }),
+  });
 
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        const apiMessage = payload?.error?.message || `Gemini request failed with status ${response.status}`;
-        attemptErrors.push({ model, status: response.status, message: apiMessage });
-        continue;
-      }
-
-      const text = (payload?.candidates || [])
-        .flatMap((candidate) => candidate?.content?.parts || [])
-        .map((part) => part?.text || '')
-        .join('')
-        .trim();
-      if (!text) {
-        const finishReason = payload?.candidates?.[0]?.finishReason || 'UNKNOWN';
-        attemptErrors.push({ model, status: null, message: `Gemini returned empty response (${finishReason})` });
-        continue;
-      }
-
-      const parsed = safeParseJsonObject(text);
-      if (!parsed) {
-        attemptErrors.push({ model, status: null, message: 'Gemini returned non-JSON output' });
-        continue;
-      }
-
-      return {
-        model,
-        fields: {
-          pickupLocation: normalizeLine(parsed.pickup_location || ''),
-          pickupDateTime: normalizeLine(parsed.pickup_datetime || ''),
-          deliveryLocation: normalizeLine(parsed.delivery_location || ''),
-          deliveryDateTime: normalizeLine(parsed.delivery_datetime || ''),
-          destinationQuery: normalizeLine(parsed.destination_query || ''),
-          notes: normalizeLine(parsed.notes || ''),
-        },
-      };
-    } catch (err) {
-      attemptErrors.push({ model, status: null, message: err.message });
-    }
-  }
-
-  const details = attemptErrors.map((e) => `${e.model}: ${e.message}`).join('; ');
-  throw new Error(details || 'All pinned-context AI models failed');
+  const parsed = safeParseJsonObject(text);
+  return { model, fields: mapPinnedContextFields(parsed) };
 }
 
 function hasInlineVisualMedia(sourceFile, sourceFiles) {

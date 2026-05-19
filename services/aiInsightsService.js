@@ -19,7 +19,7 @@
 // operational data. Everything comes from chat_logs + its annotations.
 
 const db = require('../database/db');
-const { callGroqRaw } = require('./groqClient');
+const { callGroqWithFallback } = require('./groqClient');
 const { ensureAnnotationsForRange } = require('./aiAnnotationService');
 const { buildTelegramMessageUrl } = require('./telegramUrl');
 
@@ -378,7 +378,7 @@ function parseBatchCardNarratives(text) {
 async function narrateBatch(cardsContext) {
   if (Object.keys(cardsContext).length === 0) return {};
   try {
-    const raw = await callGroqRaw(buildBatchCardPrompt(cardsContext), {
+    const { text: raw } = await callGroqWithFallback(buildBatchCardPrompt(cardsContext), {
       systemText: BATCH_SYSTEM_PROMPT,
       temperature: 0.3,
       maxTokens: 3000,

@@ -18,13 +18,45 @@
 //
 const db = require('../database/db');
 const {
-  callGroqRaw,
+  callGroqWithFallback,
+  parseModelList,
   GROQ_API_KEY,
   GROQ_AI_FAST_MODEL,
+  GROQ_AI_FALLBACK_MODELS,
   isAuthOrConfigError,
 } = require('./groqClient');
+const {
+  GEMINI_API_KEY,
+  callGeminiJson,
+} = require('./geminiClient');
 
 const MODEL_VERSION = 'groq-v1-annotator';
+const ANNOTATOR_GROQ_MODELS = parseModelList(
+  process.env.ANNOTATOR_GROQ_MODELS,
+  uniqueAnnotatorModels([GROQ_AI_FAST_MODEL, ...GROQ_AI_FALLBACK_MODELS])
+);
+const ANNOTATOR_RATE_LIMIT_COOLDOWN_MS = Math.max(
+  0,
+  Number.parseInt(process.env.ANNOTATOR_RATE_LIMIT_COOLDOWN_MS || '15000', 10) || 15000
+);
+
+function uniqueAnnotatorModels(models) {
+  const seen = new Set();
+  const out = [];
+  for (const m of models) {
+    const key = String(m || '').trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+  return out;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 const BATCH_SIZE = 12; // keeps per-call prompt comfortably under Groq fast-model context
 const MAX_MESSAGE_CHARS = 1200; // per message, truncate so one ranter can't eat the batch
 
@@ -201,16 +233,40 @@ function parseAnnotationBatchResponse(responseText, batch) {
   });
 }
 
-async function annotateBatch(batch) {
+async function annotateBatchViaGroq(batch) {
   const prompt = buildAnnotationPrompt(batch);
   const systemText = 'You are a strict classifier. Return JSON only. Never include prose or code fences. If unsure, use "unknown" / "no_signal" and confidence 0.';
-  const response = await callGroqRaw(prompt, {
+  const { text, model } = await callGroqWithFallback(prompt, {
     systemText,
     temperature: 0.1,
     maxTokens: Math.min(4000, 250 + batch.length * 180),
-    model: GROQ_AI_FAST_MODEL,
+    models: ANNOTATOR_GROQ_MODELS,
   });
-  return parseAnnotationBatchResponse(response, batch);
+  return { annotations: parseAnnotationBatchResponse(text, batch), model, provider: 'groq' };
+}
+
+async function annotateBatchViaGemini(batch) {
+  const prompt = buildAnnotationPrompt(batch);
+  const systemText = 'You are a strict classifier. Return JSON only. Never include prose or code fences. If unsure, use "unknown" / "no_signal" and confidence 0.';
+  const { text, model } = await callGeminiJson({
+    systemText,
+    userText: prompt,
+    maxOutputTokens: Math.min(4000, 250 + batch.length * 180),
+    generationConfig: { temperature: 0.1 },
+  });
+  return { annotations: parseAnnotationBatchResponse(text, batch), model, provider: 'gemini' };
+}
+
+async function annotateBatch(batch) {
+  try {
+    return await annotateBatchViaGroq(batch);
+  } catch (groqErr) {
+    if (!GEMINI_API_KEY || isAuthOrConfigError(groqErr.message)) {
+      throw groqErr;
+    }
+    console.warn('[ANNOTATE] Groq chain failed, trying Gemini:', groqErr.message.slice(0, 200));
+    return annotateBatchViaGemini(batch);
+  }
 }
 
 async function persistAnnotations(annotations) {
@@ -276,14 +332,21 @@ async function annotateChatLogs(logs, opts = {}) {
       created_at: log.created_at,
     }));
     try {
-      const annotations = await annotateBatch(batch);
-      const written = await persistAnnotations(annotations);
+      const result = await annotateBatch(batch);
+      const written = await persistAnnotations(result.annotations);
       totalWritten += written;
+      console.log(`[ANNOTATE] Batch ok via ${result.provider}/${result.model} (${written} rows)`);
       onProgress({ done: Math.min(i + BATCH_SIZE, logs.length), total: logs.length, written });
     } catch (err) {
-      console.error('[ANNOTATE] Batch failed, skipping:', err.message);
-      onProgress({ done: Math.min(i + BATCH_SIZE, logs.length), total: logs.length, error: err.message });
+      const detail = err.attemptErrors
+        ? err.attemptErrors.map((e) => `${e.model}: ${e.message}`).join('; ')
+        : err.message;
+      console.error('[ANNOTATE] All models failed, skipping:', detail);
+      onProgress({ done: Math.min(i + BATCH_SIZE, logs.length), total: logs.length, error: detail });
       if (isAuthOrConfigError(err.message)) break;
+      if (err.allRateLimited && ANNOTATOR_RATE_LIMIT_COOLDOWN_MS > 0) {
+        await sleep(ANNOTATOR_RATE_LIMIT_COOLDOWN_MS);
+      }
     }
   }
   return totalWritten;

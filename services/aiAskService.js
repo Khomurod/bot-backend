@@ -15,7 +15,7 @@
 // the whitelist are rejected with a structured error.
 
 const db = require('../database/db');
-const { callGroqRaw } = require('./groqClient');
+const { callGroqWithFallback, INTERACTIVE_MAX_RETRY_WAIT_MS } = require('./groqClient');
 
 const ALLOWED_FIELDS = new Set([
   'sender_name',
@@ -250,10 +250,11 @@ async function askData(question) {
   if (q.length > 500) throw new Error('Question too long (max 500 chars)');
 
   // 1. Plan
-  const planText = await callGroqRaw(`Question: ${q}`, {
+  const { text: planText } = await callGroqWithFallback(`Question: ${q}`, {
     systemText: PLAN_SYSTEM_PROMPT,
     temperature: 0.1,
     maxTokens: 700,
+    maxRetryWaitMs: INTERACTIVE_MAX_RETRY_WAIT_MS,
   });
   const rawPlan = parsePlan(planText);
   if (!rawPlan) {
@@ -275,7 +276,7 @@ async function askData(question) {
     return base;
   });
 
-  const answerText = await callGroqRaw(
+  const { text: answerText } = await callGroqWithFallback(
     JSON.stringify({
       question: q,
       plan: compiled.plan,
@@ -286,6 +287,7 @@ async function askData(question) {
       systemText: ANSWER_SYSTEM_PROMPT,
       temperature: 0.2,
       maxTokens: 800,
+      maxRetryWaitMs: INTERACTIVE_MAX_RETRY_WAIT_MS,
     }
   );
   const html = parseAnswer(answerText);

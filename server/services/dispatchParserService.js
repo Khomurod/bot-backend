@@ -3,23 +3,22 @@ const { createWorker } = require('tesseract.js');
 
 require('dotenv').config();
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const { callGroqWithFallback } = require('../../services/groqClient');
+const {
+  callGeminiGenerateContent,
+  GEMINI_DISPATCH_MODELS,
+  GEMINI_API_KEY,
+} = require('../../services/geminiClient');
+
 const DISPATCH_GROQ_MODEL = 'llama-3.1-8b-instant';
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const DISPATCH_GROQ_MODELS = [
+  DISPATCH_GROQ_MODEL,
+  'llama-3.3-70b-versatile',
+  'openai/gpt-oss-20b',
+];
 const MAX_INLINE_GEMINI_FILE_BYTES = 14 * 1024 * 1024;
 const PDF_OCR_MAX_PAGES = 3;
-const DISPATCH_GEMINI_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-3.1-flash-lite',
-  'gemini-2.5-flash-lite',
-  'gemini-3-flash',
-  'gemini-3.1-flash',
-  'gemini-2.0-flash',
-  'gemma-3-12b-it',
-  'gemma-3-4b-it',
-  'gemma-3-1b-it',
-];
-const GEMINI_MAX_ATTEMPTS_PER_MODEL = 2;
+const DISPATCH_GEMINI_MODELS = GEMINI_DISPATCH_MODELS;
 const DISPATCH_WARNING_LINES = [
   '🛑MUST SECURE FREIGHT WITH STRAPS',
   '🛑ANSWER WHEN BROKERS CALLS',
@@ -876,83 +875,28 @@ function buildDispatchFieldsFromObject(aiObject) {
 }
 
 async function requestDispatchTemplateFromGroq(rawText) {
-  if (!GROQ_API_KEY) {
-    const failure = new Error('GROQ_API_KEY is not configured');
-    failure.attemptErrors = [{ model: DISPATCH_GROQ_MODEL, status: null, message: failure.message }];
+  try {
+    const { text, model } = await callGroqWithFallback('', {
+      messages: buildDispatchAiMessages(rawText),
+      models: DISPATCH_GROQ_MODELS,
+      temperature: 0,
+      seed: 7,
+      maxCompletionTokens: 400,
+      responseFormat: { type: 'json_object' },
+      validateResult: (raw) => (
+        safeParseJsonObject(raw) ? true : { message: 'Groq returned invalid JSON for dispatch parsing' }
+      ),
+    });
+    const parsedObject = safeParseJsonObject(text);
+    return {
+      model,
+      fields: buildDispatchFieldsFromObject(parsedObject),
+    };
+  } catch (err) {
+    const failure = new Error(buildFriendlyDispatchFailure(err.attemptErrors || []));
+    failure.attemptErrors = err.attemptErrors || [{ model: DISPATCH_GROQ_MODEL, message: err.message }];
     throw failure;
   }
-
-  const models = [
-    DISPATCH_GROQ_MODEL,
-    'llama-3.3-70b-versatile',
-    'openai/gpt-oss-20b',
-  ];
-  const attemptErrors = [];
-
-  for (const model of models) {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      try {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${GROQ_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model,
-            temperature: 0,
-            seed: 7,
-            max_completion_tokens: 400,
-            response_format: { type: 'json_object' },
-            messages: buildDispatchAiMessages(rawText),
-          }),
-        });
-
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const apiMessage = payload?.error?.message || `Groq request failed with status ${response.status}`;
-          const failure = new Error(apiMessage);
-          failure.status = response.status;
-          failure.retryAfterMs = parseRetryAfterMs(response);
-          throw failure;
-        }
-
-        const text = String(payload?.choices?.[0]?.message?.content || '').trim();
-        if (!text) {
-          throw new Error('Groq returned an empty dispatch response');
-        }
-
-        const parsedObject = safeParseJsonObject(text);
-        if (!parsedObject) {
-          throw new Error('Groq returned invalid JSON for dispatch parsing');
-        }
-
-        return {
-          model,
-          fields: buildDispatchFieldsFromObject(parsedObject),
-        };
-      } catch (err) {
-        const status = err.status || null;
-        const message = err?.error?.message || err.message;
-        attemptErrors.push({
-          model,
-          status,
-          message,
-        });
-
-        if (attempt === 0 && isGroqTransientError(status, message)) {
-          const waitMs = err.retryAfterMs || 750;
-          await sleep(waitMs);
-          continue;
-        }
-        break;
-      }
-    }
-  }
-
-  const failure = new Error(buildFriendlyDispatchFailure(attemptErrors));
-  failure.attemptErrors = attemptErrors;
-  throw failure;
 }
 
 async function requestDispatchTemplateFromGemini(rawText, sourceFile) {
@@ -962,96 +906,27 @@ async function requestDispatchTemplateFromGemini(rawText, sourceFile) {
     throw failure;
   }
 
-  const contents = [
-    {
-      parts: buildDispatchGeminiParts(rawText, sourceFile),
-    },
-  ];
-  const attemptErrors = [];
+  const contents = [{ parts: buildDispatchGeminiParts(rawText, sourceFile) }];
 
-  for (const model of DISPATCH_GEMINI_MODELS) {
-    for (let attempt = 0; attempt < GEMINI_MAX_ATTEMPTS_PER_MODEL; attempt += 1) {
-      try {
-        const generationConfig = {
-          maxOutputTokens: 1000,
-          responseMimeType: 'text/plain',
-        };
-        if (!/^gemini-3/i.test(model)) {
-          generationConfig.temperature = 0.1;
-        }
-
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': GEMINI_API_KEY,
-            },
-            body: JSON.stringify({
-              system_instruction: {
-                parts: [
-                  {
-                    text: DISPATCH_SYSTEM_PROMPT_CLEAN,
-                  },
-                ],
-              },
-              contents,
-              generationConfig,
-            }),
-          }
-        );
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const apiMessage = payload?.error?.message || `Gemini request failed with status ${response.status}`;
-          const failure = new Error(apiMessage);
-          failure.status = response.status;
-          failure.retryAfterMs = parseRetryAfterMs(response);
-          throw failure;
-        }
-
-        const text = (payload?.candidates || [])
-          .flatMap((candidate) => candidate?.content?.parts || [])
-          .map((part) => part?.text || '')
-          .join('')
-          .trim();
-
-        if (!text) {
-          const finishReason = payload?.candidates?.[0]?.finishReason || 'UNKNOWN';
-          throw new Error(`Gemini returned an empty response (finish reason: ${finishReason})`);
-        }
-
-        return {
-          model,
-          text,
-        };
-      } catch (err) {
-        const status = err.status || null;
-        const message = err?.error?.message || err.message;
-        attemptErrors.push({
-          model,
-          status,
-          message,
-        });
-
-        if (isGeminiQuotaExhaustedError(status, message)) {
-          break;
-        }
-
-        if (attempt + 1 < GEMINI_MAX_ATTEMPTS_PER_MODEL && isGeminiTransientError(status, message)) {
-          const waitMs = err.retryAfterMs || 750;
-          await sleep(waitMs);
-          continue;
-        }
-
-        break;
-      }
-    }
+  try {
+    const { text, model } = await callGeminiGenerateContent({
+      models: DISPATCH_GEMINI_MODELS,
+      contents,
+      systemInstruction: {
+        parts: [{ text: DISPATCH_SYSTEM_PROMPT_CLEAN }],
+      },
+      generationConfig: {
+        maxOutputTokens: 1000,
+        responseMimeType: 'text/plain',
+      },
+      validateResult: (raw) => (String(raw || '').trim() ? true : { message: 'Gemini returned an empty response' }),
+    });
+    return { model, text };
+  } catch (err) {
+    const failure = new Error(buildFriendlyDispatchFailure(err.attemptErrors || []));
+    failure.attemptErrors = err.attemptErrors || [{ model: 'gemini', message: err.message }];
+    throw failure;
   }
-
-  const failure = new Error(buildFriendlyDispatchFailure(attemptErrors));
-  failure.attemptErrors = attemptErrors;
-  throw failure;
 }
 
 async function formatDispatchRateConfirmation(rawText, sourceFile, options = {}) {

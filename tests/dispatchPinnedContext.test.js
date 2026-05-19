@@ -10,6 +10,8 @@ function loadPinnedContextWithMocks({ parserMock, dbMock } = {}) {
   delete require.cache[servicePath];
   delete require.cache[parserPath];
   delete require.cache[dbPath];
+  delete require.cache[require.resolve('../services/groqClient')];
+  delete require.cache[require.resolve('../services/geminiClient')];
   require.cache[parserPath] = {
     exports: parserMock || {
       extractRateConRawTextFromFile: async () => ({ text: '', usedPdfOcr: false }),
@@ -110,29 +112,30 @@ test('readLoadContextWithFallbacks uses latest load-like chat message when no pi
   try {
     // Service throws before fetch unless a key is set; the mock supplies Groq-style JSON.
     process.env.GROQ_API_KEY = 'test-mock-groq-key';
+    delete require.cache[require.resolve('../services/groqClient')];
     global.fetch = async (_url, options = {}) => {
       const body = JSON.parse(String(options.body || '{}'));
       if (body?.model) {
         return {
           ok: true,
-          async json() {
-            return {
-              choices: [
-                {
-                  message: {
-                    content: JSON.stringify({
-                      pickup_location: 'Charlotte, NC 28273',
-                      pickup_datetime: '04/29/2026 09:00',
-                      delivery_location: 'Memphis, TN 38118',
-                      delivery_datetime: '04/30/2026 08:00',
-                      destination_query: '5151 E RAINES RD, Memphis, TN 38118',
-                      notes: '',
-                    }),
-                  },
+          status: 200,
+          headers: { get: () => null },
+          text: async () => JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    pickup_location: 'Charlotte, NC 28273',
+                    pickup_datetime: '04/29/2026 09:00',
+                    delivery_location: 'Memphis, TN 38118',
+                    delivery_datetime: '04/30/2026 08:00',
+                    destination_query: '5151 E RAINES RD, Memphis, TN 38118',
+                    notes: '',
+                  }),
                 },
-              ],
-            };
-          },
+              },
+            ],
+          }),
         };
       }
       throw new Error('Unexpected fetch call');

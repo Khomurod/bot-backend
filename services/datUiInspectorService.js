@@ -1,4 +1,4 @@
-const { callGroqRaw, GROQ_AI_MODEL } = require('./groqClient');
+const { callGroqWithFallback, GROQ_AI_MODEL } = require('./groqClient');
 
 const DEFAULT_CONFIG = Object.freeze({
   toolbarMode: 'balanced',
@@ -193,7 +193,7 @@ function buildInspectorPrompt(snapshot) {
 
 async function inspectDatPageLayout(snapshot) {
   const compact = compactSnapshot(snapshot);
-  const raw = await callGroqRaw(buildInspectorPrompt(compact), {
+  const { text: raw, model: usedModel } = await callGroqWithFallback(buildInspectorPrompt(compact), {
     systemText: INSPECTOR_SYSTEM_PROMPT,
     temperature: 0.15,
     maxTokens: 900,
@@ -205,7 +205,7 @@ async function inspectDatPageLayout(snapshot) {
     ...normalized,
     signature: compact.signature || null,
     inspectedAt: new Date().toISOString(),
-    model: GROQ_AI_MODEL,
+    model: usedModel || GROQ_AI_MODEL,
   };
 }
 

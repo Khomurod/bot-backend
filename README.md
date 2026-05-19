@@ -63,6 +63,11 @@ Optional variables:
 | `GROQ_API_KEY` | Groq API key (AI reports, insights, Ask Data, chat annotation, dispatch parsing) |
 | `GROQ_AI_MODEL` | Optional Groq model for reports/insights (default: `llama-3.3-70b-versatile`) |
 | `GROQ_AI_FAST_MODEL` | Optional fast Groq model for annotation batches (default: `llama-3.1-8b-instant`) |
+| `GROQ_AI_FALLBACK_MODELS` | Comma-separated Groq models to try when one hits rate limits (limits are **per model**) |
+| `ANNOTATOR_GROQ_MODELS` | Optional annotator-only Groq chain (defaults to fast model + `GROQ_AI_FALLBACK_MODELS`) |
+| `ANNOTATOR_RATE_LIMIT_COOLDOWN_MS` | Pause between annotator batches when all Groq models return 429 (default: `15000`) |
+| `GEMINI_API_KEY` | Google Gemini key (dispatch parsing, pinned-context; annotator fallback if Groq exhausted) |
+| `GEMINI_TEXT_MODELS` | Gemini model chain, highest free-tier quota first (default starts with `gemini-3.1-flash-lite`) |
 | `PORT` | API server port (default: 3001) |
 | `LEADS_BOT_PORT` | Leads-Bot internal port (default: 8000) |
 | `RENDER_EXTERNAL_URL` | Public base URL used for `/connect` and webhook callbacks |

@@ -1,4 +1,4 @@
-const { callGroqRaw } = require('./groqClient');
+const { callGroqWithFallback } = require('./groqClient');
 
 const AI_REPORT_GENERATION_FAILED = 'AI_REPORT_GENERATION_FAILED';
 const REPORT_DELIMITER = '|||';
@@ -59,7 +59,8 @@ async function callGroq(promptText) {
     'Use HTML-safe output only (no markdown).',
     'Do not invent facts, percentages, or events not present in transcript.',
   ].join(' ');
-  return callGroqRaw(promptText, { systemText, temperature: 0.5, maxTokens: 2000 });
+  const { text } = await callGroqWithFallback(promptText, { systemText, temperature: 0.5, maxTokens: 2000 });
+  return text;
 }
 
 async function generateDriverReport(logsArray) {
@@ -194,7 +195,8 @@ async function generateCompanyReport(logsArray) {
 }
 
 async function callGroqWithSystem(promptText, systemText) {
-  return callGroqRaw(promptText, { systemText, temperature: 0.5, maxTokens: 2000 });
+  const { text } = await callGroqWithFallback(promptText, { systemText, temperature: 0.5, maxTokens: 2000 });
+  return text;
 }
 
 module.exports = {
