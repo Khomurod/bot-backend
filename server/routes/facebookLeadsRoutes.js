@@ -120,8 +120,9 @@ function createFacebookLeadsRouter({ authMiddleware }) {
     try {
       const { settings, rules } = await loadAutoMessageConfig();
       const body = req.body || {};
+      const mergedSettings = { ...settings, ...(body.settings || {}) };
       const preview = previewAutoMessage({
-        settings: { ...settings, ...(body.settings || {}) },
+        settings: mergedSettings,
         rules: body.rules || rules,
         template: body.template || null,
         fieldMap: body.field_map || body.fieldMap || {
@@ -131,6 +132,7 @@ function createFacebookLeadsRouter({ authMiddleware }) {
         },
         pageName: body.page_name || body.pageName || '',
         at: body.at || null,
+        ruleLabel: body.rule_label || body.ruleLabel || null,
       });
 
       return res.json({
@@ -139,6 +141,9 @@ function createFacebookLeadsRouter({ authMiddleware }) {
         source: preview.source,
         segments: preview.segments,
         template: preview.template,
+        timezone: preview.timezone,
+        timezone_friendly: preview.timezone_friendly,
+        evaluated_at_iso: preview.evaluated_at_iso,
       });
     } catch (err) {
       console.error('[API] POST facebook-leads/auto-messages/preview failed:', err.message);

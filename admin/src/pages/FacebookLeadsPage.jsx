@@ -20,6 +20,19 @@ const TIMEZONES = [
   "UTC",
 ];
 
+const TIMEZONE_FRIENDLY = {
+  "America/Chicago": "Central Time",
+  "America/New_York": "Eastern Time",
+  "America/Denver": "Mountain Time",
+  "America/Los_Angeles": "Pacific Time",
+  "America/Phoenix": "Arizona Time",
+  UTC: "UTC",
+};
+
+function friendlyTimezone(tz) {
+  return TIMEZONE_FRIENDLY[tz] || tz;
+}
+
 function emptyRule(sortOrder = 0) {
   return {
     label: `Rule ${sortOrder + 1}`,
@@ -34,6 +47,54 @@ function emptyRule(sortOrder = 0) {
     sort_order: sortOrder,
     is_active: true,
   };
+}
+
+function mapPreviewResult(result) {
+  if (!result) return null;
+  return {
+    rendered: result.rendered || "",
+    rule_label: result.rule_label || "",
+    source: result.source || "",
+    segments: result.segments || null,
+    timezone: result.timezone || "",
+    timezone_friendly: result.timezone_friendly || "",
+    evaluated_at_iso: result.evaluated_at_iso || null,
+  };
+}
+
+function PreviewPanel({ title, subtitle, preview, emptyText = "(empty)" }) {
+  const charCount = preview?.segments?.length ?? 0;
+  const segmentCount = preview?.segments?.segments ?? 1;
+
+  return (
+    <div className="card" style={{ padding: 16, flex: 1, minWidth: 280 }}>
+      <h3 style={{ marginTop: 0, marginBottom: 4 }}>{title}</h3>
+      {subtitle && (
+        <p style={{ margin: "0 0 12px", fontSize: 13, color: "#94a3b8" }}>{subtitle}</p>
+      )}
+      {preview?.error ? (
+        <p style={{ color: "#ef4444", fontSize: 13 }}>{preview.error}</p>
+      ) : preview ? (
+        <>
+          <p style={{ margin: "4px 0", fontSize: 13, color: "#94a3b8" }}>
+            Would use: <strong>{preview.rule_label || "—"}</strong>
+            {charCount > 0 && (
+              <>
+                {" · "}{charCount} chars
+                {segmentCount > 1 ? ` (${segmentCount} SMS segments)` : ""}
+                {charCount > 320 ? " — long message (multipart SMS)" : ""}
+              </>
+            )}
+          </p>
+          <pre style={{ whiteSpace: "pre-wrap", background: "#0f172a", padding: 12, borderRadius: 8, margin: 0 }}>
+            {preview.rendered || emptyText}
+          </pre>
+        </>
+      ) : (
+        <p style={{ color: "#94a3b8", fontSize: 13 }}>Loading preview…</p>
+      )}
+    </div>
+  );
 }
 
 function PlaceholderChips({ placeholders, onInsert }) {
@@ -65,26 +126,35 @@ export default function FacebookLeadsPage() {
   const [settings, setSettings] = useState(null);
   const [rules, setRules] = useState([]);
   const [placeholders, setPlaceholders] = useState([]);
-  const [activeNow, setActiveNow] = useState(null);
+
+  const [previewTarget, setPreviewTarget] = useState({ kind: "rule", index: 0 });
+  const [nowPreview, setNowPreview] = useState(null);
+  const [editPreview, setEditPreview] = useState(null);
 
   const [sampleLead, setSampleLead] = useState({
     full_name: "Jane Doe",
     phone_number: "+15551234567",
     email: "jane@example.com",
   });
-  const [previewText, setPreviewText] = useState("");
-  const [previewMeta, setPreviewMeta] = useState(null);
 
   const [pages, setPages] = useState([]);
   const [webhookLog, setWebhookLog] = useState([]);
   const [logLoading, setLogLoading] = useState(false);
 
-  const focusRef = useRef({ type: "fallback", index: null });
+  const focusRef = useRef({ type: "rule", index: 0 });
   const fallbackRef = useRef(null);
   const ruleRefs = useRef({});
 
-  const setFocus = (type, index = null) => {
-    focusRef.current = { type, index };
+  const timezone = settings?.timezone || "America/Chicago";
+
+  const focusRule = (index) => {
+    focusRef.current = { type: "rule", index };
+    setPreviewTarget({ kind: "rule", index });
+  };
+
+  const focusFallback = () => {
+    focusRef.current = { type: "fallback", index: null };
+    setPreviewTarget({ kind: "fallback" });
   };
 
   const insertPlaceholder = (token) => {
@@ -116,6 +186,7 @@ export default function FacebookLeadsPage() {
     setLoading(true);
     try {
       const data = await api.getFacebookLeadAutoMessages();
+      const loadedRules = data.rules?.length ? data.rules : [emptyRule(0)];
       setSettings(data.settings || {
         timezone: "America/Chicago",
         is_enabled: true,
@@ -124,9 +195,12 @@ export default function FacebookLeadsPage() {
         position_label: "OTR position",
         fallback_template: "",
       });
-      setRules(data.rules?.length ? data.rules : [emptyRule(0)]);
+      setRules(loadedRules);
       setPlaceholders(data.placeholders || []);
-      setActiveNow(data.active_now || null);
+      setPreviewTarget(loadedRules.length ? { kind: "rule", index: 0 } : { kind: "fallback" });
+      focusRef.current = loadedRules.length
+        ? { type: "rule", index: 0 }
+        : { type: "fallback", index: null };
     } catch (err) {
       setStatus({ type: "error", text: err.message });
     } finally {
@@ -134,7 +208,7 @@ export default function FacebookLeadsPage() {
     }
   }, []);
 
-  const runPreview = useCallback(async () => {
+  const runNowPreview = useCallback(async () => {
     if (!settings) return;
     try {
       const result = await api.previewFacebookLeadAutoMessage({
@@ -142,26 +216,55 @@ export default function FacebookLeadsPage() {
         rules,
         field_map: sampleLead,
       });
-      setPreviewText(result.rendered || "");
-      setPreviewMeta({
-        rule_label: result.rule_label,
-        segments: result.segments,
-        source: result.source,
-      });
+      setNowPreview(mapPreviewResult(result));
     } catch (err) {
-      setPreviewText("");
-      setPreviewMeta({ error: err.message });
+      setNowPreview({ error: err.message });
     }
   }, [settings, rules, sampleLead]);
+
+  const runEditPreview = useCallback(async () => {
+    if (!settings) return;
+
+    let template = "";
+    let ruleLabel = "Preview";
+
+    if (previewTarget.kind === "fallback") {
+      template = settings.fallback_template || "";
+      ruleLabel = "Fallback (outside hours)";
+    } else {
+      const rule = rules[previewTarget.index];
+      if (!rule) return;
+      template = rule.message_template || "";
+      ruleLabel = rule.label || `Rule ${previewTarget.index + 1}`;
+    }
+
+    try {
+      const result = await api.previewFacebookLeadAutoMessage({
+        settings,
+        rules,
+        field_map: sampleLead,
+        template,
+        rule_label: ruleLabel,
+      });
+      setEditPreview(mapPreviewResult(result));
+    } catch (err) {
+      setEditPreview({ error: err.message });
+    }
+  }, [settings, rules, sampleLead, previewTarget]);
 
   useEffect(() => {
     loadConfig();
   }, [loadConfig]);
 
   useEffect(() => {
-    const t = setTimeout(() => { void runPreview(); }, 400);
+    const t = setTimeout(() => { void runNowPreview(); }, 400);
     return () => clearTimeout(t);
-  }, [runPreview]);
+  }, [runNowPreview]);
+
+  useEffect(() => {
+    const t = setTimeout(() => { void runEditPreview(); }, 400);
+    return () => clearTimeout(t);
+  }, [runEditPreview]);
 
   const loadPages = async () => {
     try {
@@ -200,11 +303,8 @@ export default function FacebookLeadsPage() {
       const saved = await api.saveFacebookLeadAutoMessages(payload);
       setSettings(saved.settings);
       setRules(saved.rules?.length ? saved.rules : rules);
-      const refreshed = await api.getFacebookLeadAutoMessages();
-      setActiveNow(refreshed.active_now || saved.active_now);
       setStatus({ type: "success", text: "Auto-message settings saved." });
       setTimeout(() => setStatus(null), 4000);
-      void runPreview();
     } catch (err) {
       setStatus({ type: "error", text: err.message });
     } finally {
@@ -235,6 +335,12 @@ export default function FacebookLeadsPage() {
       [next[index], next[target]] = [next[target], next[index]];
       return next.map((r, i) => ({ ...r, sort_order: i }));
     });
+    if (previewTarget.kind === "rule" && previewTarget.index === index) {
+      const newIndex = index + direction;
+      focusRule(newIndex);
+    } else if (previewTarget.kind === "rule" && previewTarget.index === index + direction) {
+      focusRule(index);
+    }
   };
 
   const handleRetry = async (id) => {
@@ -247,6 +353,14 @@ export default function FacebookLeadsPage() {
       setStatus({ type: "error", text: err.message });
     }
   };
+
+  const nowSubtitle = nowPreview?.evaluated_at_iso
+    ? `Based on current time in ${timezone} (${friendlyTimezone(timezone)}). Evaluated at ${new Date(nowPreview.evaluated_at_iso).toLocaleString()}.`
+    : `Based on current time in ${timezone} (${friendlyTimezone(timezone)}). Uses your unsaved draft rules below.`;
+
+  const editingLabel = previewTarget.kind === "fallback"
+    ? "Fallback (outside hours)"
+    : (rules[previewTarget.index]?.label || `Rule ${previewTarget.index + 1}`);
 
   if (loading) {
     return (
@@ -288,21 +402,11 @@ export default function FacebookLeadsPage() {
 
       {tab === "auto" && settings && (
         <div>
-          <div className="card" style={{ marginBottom: 16, padding: 16 }}>
-            <h3 style={{ marginTop: 0 }}>Message sending right now</h3>
-            {activeNow ? (
-              <div>
-                <p style={{ margin: "4px 0", color: "#94a3b8" }}>
-                  Rule: <strong>{activeNow.ruleLabel || activeNow.rule_label || "—"}</strong>
-                </p>
-                <pre style={{ whiteSpace: "pre-wrap", background: "#0f172a", padding: 12, borderRadius: 8 }}>
-                  {activeNow.rendered || activeNow.template}
-                </pre>
-              </div>
-            ) : (
-              <p>No configuration loaded.</p>
-            )}
-          </div>
+          <PreviewPanel
+            title="What sends now"
+            subtitle={nowSubtitle}
+            preview={nowPreview}
+          />
 
           <div className="card" style={{ marginBottom: 16, padding: 16 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
@@ -319,13 +423,16 @@ export default function FacebookLeadsPage() {
                 Timezone
                 <select
                   className="form-input"
-                  value={settings.timezone || "America/Chicago"}
+                  value={timezone}
                   onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}
                 >
                   {TIMEZONES.map((tz) => (
                     <option key={tz} value={tz}>{tz}</option>
                   ))}
                 </select>
+                <span style={{ display: "block", fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
+                  All rule start/end times use this timezone.
+                </span>
               </label>
               <label>
                 Rep name
@@ -365,7 +472,14 @@ export default function FacebookLeadsPage() {
             <div
               key={index}
               className="card"
-              style={{ marginBottom: 12, padding: 16, opacity: rule.is_active === false ? 0.6 : 1 }}
+              style={{
+                marginBottom: 12,
+                padding: 16,
+                opacity: rule.is_active === false ? 0.6 : 1,
+                outline: previewTarget.kind === "rule" && previewTarget.index === index
+                  ? "1px solid #6366f1"
+                  : undefined,
+              }}
             >
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
                 <input
@@ -391,7 +505,12 @@ export default function FacebookLeadsPage() {
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => setRules((prev) => prev.filter((_, i) => i !== index))}
+                  onClick={() => {
+                    setRules((prev) => prev.filter((_, i) => i !== index));
+                    if (previewTarget.kind === "rule" && previewTarget.index >= index) {
+                      focusRule(Math.max(0, previewTarget.index - 1));
+                    }
+                  }}
                   disabled={rules.length <= 1}
                 >
                   Remove
@@ -411,7 +530,7 @@ export default function FacebookLeadsPage() {
                 ))}
               </div>
 
-              <div style={{ display: "flex", gap: 12, marginBottom: 8 }}>
+              <div style={{ display: "flex", gap: 12, marginBottom: 4, alignItems: "flex-end" }}>
                 <label>
                   Start
                   <input
@@ -435,6 +554,9 @@ export default function FacebookLeadsPage() {
                   />
                 </label>
               </div>
+              <p style={{ fontSize: 11, color: "#64748b", margin: "0 0 8px" }}>
+                Times in {timezone} ({friendlyTimezone(timezone)})
+              </p>
 
               <textarea
                 ref={(el) => { ruleRefs.current[index] = el; }}
@@ -442,7 +564,7 @@ export default function FacebookLeadsPage() {
                 rows={4}
                 placeholder="SMS template for this time window..."
                 value={rule.message_template || ""}
-                onFocus={() => setFocus("rule", index)}
+                onFocus={() => focusRule(index)}
                 onChange={(e) => setRules((prev) => prev.map((r, i) => (
                   i === index ? { ...r, message_template: e.target.value } : r
                 )))}
@@ -454,7 +576,11 @@ export default function FacebookLeadsPage() {
             type="button"
             className="btn btn-secondary"
             style={{ marginBottom: 16 }}
-            onClick={() => setRules((prev) => [...prev, emptyRule(prev.length)])}
+            onClick={() => {
+              const nextIndex = rules.length;
+              setRules((prev) => [...prev, emptyRule(prev.length)]);
+              focusRule(nextIndex);
+            }}
           >
             + Add time rule
           </button>
@@ -464,14 +590,17 @@ export default function FacebookLeadsPage() {
             ref={fallbackRef}
             className="form-input"
             rows={4}
+            style={{
+              outline: previewTarget.kind === "fallback" ? "1px solid #6366f1" : undefined,
+            }}
             value={settings.fallback_template || ""}
-            onFocus={() => setFocus("fallback")}
+            onFocus={focusFallback}
             onChange={(e) => setSettings({ ...settings, fallback_template: e.target.value })}
           />
 
           <div className="card" style={{ marginTop: 16, padding: 16 }}>
-            <h3 style={{ marginTop: 0 }}>Live preview</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
+            <h3 style={{ marginTop: 0 }}>Sample lead (shared by both previews)</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
               <input
                 className="form-input"
                 placeholder="Full name"
@@ -491,20 +620,14 @@ export default function FacebookLeadsPage() {
                 onChange={(e) => setSampleLead({ ...sampleLead, email: e.target.value })}
               />
             </div>
-            {previewMeta && !previewMeta.error && (
-              <p style={{ fontSize: 13, color: "#94a3b8" }}>
-                Would use: <strong>{previewMeta.rule_label}</strong>
-                {" · "}{previewMeta.segments?.length || 0} chars
-                {(previewMeta.segments?.segments || 0) > 1 ? ` (${previewMeta.segments.segments} SMS segments)` : ""}
-                {(previewMeta.segments?.length || 0) > 320 ? " — long message (multipart SMS)" : ""}
-              </p>
-            )}
-            {previewMeta?.error && (
-              <p style={{ color: "#ef4444", fontSize: 13 }}>{previewMeta.error}</p>
-            )}
-            <pre style={{ whiteSpace: "pre-wrap", background: "#0f172a", padding: 12, borderRadius: 8 }}>
-              {previewText || "(empty)"}
-            </pre>
+
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <PreviewPanel
+                title="Message I'm editing"
+                subtitle={`Previewing: ${editingLabel}. Click a rule or fallback above to switch.`}
+                preview={editPreview}
+              />
+            </div>
           </div>
 
           <div style={{ display: "flex", gap: 8, marginTop: 16 }}>

@@ -5,6 +5,8 @@ const { DateTime } = require('luxon');
 const {
   pickActiveRule,
   resolveTemplateAt,
+  previewAutoMessage,
+  previewTemplate,
   isTimeInWindow,
   timeToMinutes,
 } = require('../services/facebookLeadAutoMessageService');
@@ -61,4 +63,42 @@ test('pickActiveRule respects sort_order', () => {
   const sat10am = DateTime.fromISO('2026-05-23T10:00:00', { zone: 'America/Chicago' });
   const rule = pickActiveRule(rules, sat10am);
   assert.equal(rule.label, 'Weekend');
+});
+
+test('previewAutoMessage with explicit template renders that text', () => {
+  const result = previewAutoMessage({
+    settings,
+    rules,
+    template: 'Hi {first_name}, call me back when you can.',
+    fieldMap: { full_name: 'Jane Doe' },
+    ruleLabel: 'Fallback (outside hours)',
+  });
+  assert.equal(result.source, 'template');
+  assert.equal(result.ruleLabel, 'Fallback (outside hours)');
+  assert.match(result.rendered, /Hi Jane, call me back/);
+});
+
+test('previewAutoMessage at Saturday evening uses fallback not weekday rule', () => {
+  const sat8pm = DateTime.fromISO('2026-05-23T20:00:00', { zone: 'America/Chicago' }).toISO();
+  const result = previewAutoMessage({
+    settings,
+    rules,
+    fieldMap: { full_name: 'Jane Doe' },
+    at: sat8pm,
+  });
+  assert.equal(result.source, 'fallback');
+  assert.match(result.rendered, /Fallback for Jane/);
+  assert.equal(result.timezone, 'America/Chicago');
+  assert.ok(result.evaluated_at_iso);
+});
+
+test('previewTemplate helper renders without time routing', () => {
+  const result = previewTemplate({
+    settings,
+    template: 'Custom {first_name} from {company_name}',
+    fieldMap: { full_name: 'Bob Smith' },
+    ruleLabel: 'My rule',
+  });
+  assert.match(result.rendered, /Custom Bob/);
+  assert.equal(result.ruleLabel, 'My rule');
 });

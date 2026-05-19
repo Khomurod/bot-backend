@@ -117,6 +117,20 @@ async function resolveAutoSmsForLead({ fieldMap, pageName, at = null } = {}) {
   };
 }
 
+const TIMEZONE_FRIENDLY_NAMES = {
+  'America/Chicago': 'Central Time',
+  'America/New_York': 'Eastern Time',
+  'America/Denver': 'Mountain Time',
+  'America/Los_Angeles': 'Pacific Time',
+  'America/Phoenix': 'Arizona Time',
+  UTC: 'UTC',
+};
+
+function getTimezoneFriendlyName(timezone) {
+  const tz = String(timezone || 'America/Chicago').trim();
+  return TIMEZONE_FRIENDLY_NAMES[tz] || tz;
+}
+
 function previewAutoMessage({
   settings,
   rules,
@@ -124,9 +138,18 @@ function previewAutoMessage({
   fieldMap = {},
   pageName = '',
   at = null,
+  ruleLabel = null,
 }) {
+  const timezone = String(settings?.timezone || 'America/Chicago').trim();
   const picked = template
-    ? { template, ruleLabel: 'Preview', source: 'preview' }
+    ? {
+      template,
+      ruleLabel: ruleLabel || 'Preview',
+      source: 'template',
+      atIso: at
+        ? DateTime.fromISO(String(at), { setZone: true }).setZone(timezone).toISO()
+        : null,
+    }
     : resolveTemplateAt({ settings, rules, at });
 
   const context = buildTemplateContext({ fieldMap, settings, pageName });
@@ -138,7 +161,31 @@ function previewAutoMessage({
     rendered,
     context,
     segments,
+    timezone,
+    evaluated_at_iso: picked.atIso || null,
+    timezone_friendly: getTimezoneFriendlyName(timezone),
   };
+}
+
+function previewNow({ settings, rules, fieldMap = {}, pageName = '', at = null }) {
+  return previewAutoMessage({ settings, rules, fieldMap, pageName, at });
+}
+
+function previewTemplate({
+  settings,
+  template,
+  fieldMap = {},
+  pageName = '',
+  ruleLabel = 'Preview',
+}) {
+  return previewAutoMessage({
+    settings,
+    rules: [],
+    template,
+    fieldMap,
+    pageName,
+    ruleLabel,
+  });
 }
 
 function validateAutoMessagePayload({ settings, rules }) {
@@ -212,6 +259,9 @@ module.exports = {
   loadAutoMessageConfig,
   resolveAutoSmsForLead,
   previewAutoMessage,
+  previewNow,
+  previewTemplate,
+  getTimezoneFriendlyName,
   validateAutoMessagePayload,
   serializeRuleForApi,
   serializeSettingsForApi,
