@@ -68,6 +68,7 @@ Optional variables:
 | `ANNOTATOR_RATE_LIMIT_COOLDOWN_MS` | Pause between annotator batches when all Groq models return 429 (default: `15000`) |
 | `GEMINI_API_KEY` | Google Gemini key (dispatch parsing, pinned-context; annotator fallback if Groq exhausted) |
 | `GEMINI_TEXT_MODELS` | Gemini model chain, highest free-tier quota first (default starts with `gemini-3.1-flash-lite`) |
+| `LOCATION_DRIVER_NAME_STRICT` | If `true`, `/location` blocks when Telegram group driver name does not match Samsara vehicle label (default: warn and still send pin) |
 | `PORT` | API server port (default: 3001) |
 | `LEADS_BOT_PORT` | Leads-Bot internal port (default: 8000) |
 | `RENDER_EXTERNAL_URL` | Public base URL used for `/connect` and webhook callbacks |

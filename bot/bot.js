@@ -5,6 +5,11 @@ const { safeSend, isPermanentSendError: isPermanentSendErrorFromHtml } = require
 const { normalizeMediaItems } = require('../services/scheduledMessageUtils');
 const { resolveLiveLocationForGroupTitle } = require('../services/liveLocationResolver');
 const {
+  buildLocationSummaryLines,
+  buildStrictMismatchBlockMessage,
+  isLocationDriverNameStrict,
+} = require('../services/driverGroupTitle');
+const {
   triggerDispatchEtaNowByGroupId,
   resolveDispatchEtaSnapshotForGroup,
   buildEtaMessage,
@@ -375,25 +380,13 @@ async function startBot() {
         }
         const { location, source } = resolved;
 
+        if (location.driverNameMismatch && isLocationDriverNameStrict()) {
+          await ctx.reply(buildStrictMismatchBlockMessage(location));
+          return;
+        }
+
         await ctx.replyWithLocation(location.latitude, location.longitude);
-
-        const pingAgeText = location.pingAgeMinutes == null
-          ? 'unknown'
-          : `${location.pingAgeMinutes} min ago`;
-        const speedText = location.speedMilesPerHour == null
-          ? 'unknown'
-          : `${location.speedMilesPerHour.toFixed(1)} mph`;
-
-        const summary = [
-          `Source: ${source}`,
-          `Unit: ${location.unitNumber}`,
-          `Vehicle: ${location.vehicleName}`,
-          location.address ? `Address: ${location.address}` : null,
-          `Last ping: ${pingAgeText}${location.pingTimeIso ? ` (${location.pingTimeIso})` : ''}`,
-          `Speed: ${speedText}`,
-        ].filter(Boolean).join('\n');
-
-        await ctx.reply(summary);
+        await ctx.reply(buildLocationSummaryLines({ location, source }).join('\n'));
       } catch (err) {
         console.error('[BOT] /location failed:', err.message);
         await ctx.reply('Could not fetch live location right now. Please try again in a minute.');

@@ -17,16 +17,11 @@ function escapeHtml(str) {
   ));
 }
 
-/**
- * Try to extract a driver name from a group name like:
- *   "WENZE UNIT # 800  John Smith (COMPANY DRIVER)"
- */
+const { extractDriverNameFromGroupTitle } = require('./driverGroupTitle');
+
 function extractDriverName(groupName) {
-  const stripped = String(groupName || '')
-    .replace(/^.*?(UNIT\s*#?\s*\d+|#\s*\d+)\s+/i, '')
-    .replace(/\(.*?\)/g, '')
-    .trim();
-  return stripped && stripped !== groupName ? stripped : 'Driver';
+  const name = extractDriverNameFromGroupTitle(groupName);
+  return name || 'Driver';
 }
 
 async function processDriverBirthdays(isoDate, month, day) {

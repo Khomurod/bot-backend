@@ -8,6 +8,7 @@ const {
   computePingAgeMinutes,
   findVehicleByUnit,
 } = require('../services/samsaraLocationService');
+const { extractDriverNameFromGroupTitle } = require('../services/driverGroupTitle');
 
 test('extractUnitNumberFromGroupName supports UNIT # pattern', () => {
   assert.equal(
@@ -56,4 +57,32 @@ test('findVehicleByUnit matches normalized unit and picks freshest gps timestamp
 test('findVehicleByUnit returns null when there is no unit match', () => {
   const vehicles = [{ id: 'v1', name: '311 JEAN WALKENS', gps: { time: '2026-04-27T20:59:00Z' } }];
   assert.equal(findVehicleByUnit(vehicles, '4604'), null);
+});
+
+test('findVehicleByUnit prefers name-matching vehicle when driver hint provided', () => {
+  const vehicles = [
+    {
+      id: 'v-stale',
+      name: '2908 NIKE AUGUSTE',
+      gps: { time: '2026-05-19T16:05:00Z' },
+    },
+    {
+      id: 'v-current',
+      name: '2908 TESFAMARIAM YOSIEF',
+      gps: { time: '2026-05-19T15:00:00Z' },
+    },
+  ];
+  const hint = extractDriverNameFromGroupTitle('WENZE UNIT # 2908 TESFAMARIAM YOSIEF');
+  const match = findVehicleByUnit(vehicles, '2908', { driverNameHint: hint });
+  assert.equal(match.id, 'v-current');
+});
+
+test('findVehicleByUnit with single mismatch still returns vehicle', () => {
+  const vehicles = [
+    { id: 'v1', name: '2908 NIKE AUGUSTE', gps: { time: '2026-05-19T16:00:00Z' } },
+  ];
+  const match = findVehicleByUnit(vehicles, '2908', {
+    driverNameHint: 'TESFAMARIAM YOSIEF',
+  });
+  assert.equal(match.id, 'v1');
 });

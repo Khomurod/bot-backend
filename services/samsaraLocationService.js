@@ -1,3 +1,10 @@
+const {
+  extractDriverNameFromGroupTitle,
+  extractDriverNameFromVehicleLabel,
+  driverNamesMatch,
+  scoreVehicleNameMatch,
+} = require('./driverGroupTitle');
+
 const DEFAULT_SAMSARA_API_BASE = 'https://api.samsara.com';
 const REQUEST_TIMEOUT_MS = 20_000;
 const PAGE_LIMIT = 512;
@@ -123,9 +130,19 @@ async function fetchAllVehicleStats({ apiKey, apiBase = DEFAULT_SAMSARA_API_BASE
   return allVehicles;
 }
 
-function findVehicleByUnit(vehicles, unitNumber) {
+function sortVehiclesByGpsFreshness(vehicles) {
+  return [...vehicles].sort((a, b) => {
+    const aTime = Date.parse(a?.gps?.time || 0) || 0;
+    const bTime = Date.parse(b?.gps?.time || 0) || 0;
+    return bTime - aTime;
+  });
+}
+
+function findVehicleByUnit(vehicles, unitNumber, opts = {}) {
   const target = normalizeUnitNumber(unitNumber);
   if (!target || !Array.isArray(vehicles) || vehicles.length === 0) return null;
+
+  const driverNameHint = String(opts.driverNameHint || '').trim();
 
   const matches = vehicles.filter((vehicle) => {
     const vehicleUnit = extractUnitNumberFromVehicleName(vehicle?.name);
@@ -133,12 +150,43 @@ function findVehicleByUnit(vehicles, unitNumber) {
   });
 
   if (!matches.length) return null;
+  if (matches.length === 1) return matches[0];
 
-  return matches.sort((a, b) => {
-    const aTime = Date.parse(a?.gps?.time || 0) || 0;
-    const bTime = Date.parse(b?.gps?.time || 0) || 0;
-    return bTime - aTime;
-  })[0];
+  if (!driverNameHint) {
+    return sortVehiclesByGpsFreshness(matches)[0];
+  }
+
+  const scored = matches.map((vehicle) => ({
+    vehicle,
+    nameScore: scoreVehicleNameMatch(driverNameHint, vehicle?.name || ''),
+    gpsTime: Date.parse(vehicle?.gps?.time || 0) || 0,
+  }));
+
+  scored.sort((a, b) => {
+    if (b.nameScore !== a.nameScore) return b.nameScore - a.nameScore;
+    return b.gpsTime - a.gpsTime;
+  });
+
+  return scored[0].vehicle;
+}
+
+function enrichLocationWithDriverAssignment(locationFields, groupTitle) {
+  const assignedDriverName = extractDriverNameFromGroupTitle(groupTitle);
+  const providerDriverName = extractDriverNameFromVehicleLabel(
+    locationFields.vehicleName,
+    locationFields.unitNumber
+  );
+  const driverNameMismatch = Boolean(
+    assignedDriverName
+    && providerDriverName
+    && !driverNamesMatch(assignedDriverName, providerDriverName)
+  );
+  return {
+    ...locationFields,
+    assignedDriverName,
+    providerDriverName,
+    driverNameMismatch,
+  };
 }
 
 async function resolveAddress(gps) {
@@ -169,8 +217,9 @@ async function getLiveLocationForGroupTitle({ groupTitle, apiKey, apiBase }) {
     throw err;
   }
 
+  const driverNameHint = extractDriverNameFromGroupTitle(groupTitle);
   const vehicles = await fetchAllVehicleStats({ apiKey, apiBase });
-  const vehicle = findVehicleByUnit(vehicles, unitNumber);
+  const vehicle = findVehicleByUnit(vehicles, unitNumber, { driverNameHint });
   if (!vehicle) {
     const err = new Error(`No Samsara vehicle matched unit ${unitNumber}.`);
     err.code = 'VEHICLE_NOT_FOUND';
@@ -184,7 +233,7 @@ async function getLiveLocationForGroupTitle({ groupTitle, apiKey, apiBase }) {
     throw err;
   }
 
-  return {
+  const base = {
     unitNumber,
     vehicleId: vehicle.id || null,
     vehicleName: vehicle.name || 'Unknown vehicle',
@@ -197,6 +246,7 @@ async function getLiveLocationForGroupTitle({ groupTitle, apiKey, apiBase }) {
     address: await resolveAddress(gps),
     rawVehicle: vehicle,
   };
+  return enrichLocationWithDriverAssignment(base, groupTitle);
 }
 
 module.exports = {

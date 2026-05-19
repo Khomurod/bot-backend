@@ -6,6 +6,7 @@ const {
   normalizeUnitNumber,
   computePingAgeMinutes,
 } = require('./samsaraLocationService');
+const { extractDriverNameFromGroupTitle } = require('./driverGroupTitle');
 
 let reverseGeocode = null;
 try {
@@ -171,10 +172,14 @@ async function getLiveLocationForGroupTitleFromEvo({
     throw err;
   }
 
+  const assignedDriverName = extractDriverNameFromGroupTitle(groupTitle);
   return {
     unitNumber,
     vehicleId: unit.id || null,
     vehicleName: `Truck ${pickTruckNumber(unit) || unitNumber}`,
+    assignedDriverName,
+    providerDriverName: '',
+    driverNameMismatch: false,
     latitude: coords.latitude,
     longitude: coords.longitude,
     pingTimeIso: unit.timestamp || null,

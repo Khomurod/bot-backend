@@ -84,9 +84,16 @@ function buildEtaMessage({ context, location, source, eta, etaError = '', target
     ? `${formatDuration(eta.etaMinutes)} (around ${eta.etaChicagoLabel} CT${eta?.approximate ? ', approximate' : ''})`
     : `Unavailable${normalizeText(etaError) ? ` - ${normalizeText(etaError)}` : ''}`;
 
+  const assignedDriver = normalizeText(location?.assignedDriverName);
   const detailLines = [
     ...(targetMode === 'test' && normalizeText(groupName)
       ? [`🧪 <b>Driver group</b>: ${escapeHtml(normalizeText(groupName))}`]
+      : []),
+    ...(assignedDriver
+      ? [`👤 <b>Assigned driver</b>: ${escapeHtml(assignedDriver)}`]
+      : []),
+    ...(location?.driverNameMismatch
+      ? [`⚠️ <b>Driver mismatch</b>: Samsara lists ${escapeHtml(normalizeText(location?.providerDriverName || location?.vehicleName || 'unknown'))}; group title says ${escapeHtml(assignedDriver || 'unknown')}. Update Samsara vehicle name if needed.`]
       : []),
     `📍 <b>Delivery location</b>: ${escapeHtml(destination)}`,
     `🚛 <b>Current location</b>: ${escapeHtml(currentLocation)}`,
