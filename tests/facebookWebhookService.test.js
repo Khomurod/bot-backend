@@ -9,6 +9,7 @@ process.env.PORT ||= '3001';
 
 const {
   extractFacebookWebhookEvents,
+  buildAutoMessageNotification,
 } = require('../services/facebookWebhookService');
 
 test('extractFacebookWebhookEvents emits dedupable leadgen events with page ids', () => {
@@ -67,4 +68,29 @@ test('extractFacebookWebhookEvents ignores non-page payloads', () => {
     entry: [],
   });
   assert.deepEqual(events, []);
+});
+
+test('buildAutoMessageNotification reports SMS success', () => {
+  const text = buildAutoMessageNotification(
+    { phone_number: '+15551234567' },
+    { ok: true },
+    'Jane Doe',
+  );
+  assert.match(text, /AutoMessage sent via SMS to \+15551234567/);
+  assert.match(text, /Jane Doe/);
+});
+
+test('buildAutoMessageNotification reports missing phone', () => {
+  const text = buildAutoMessageNotification({}, { ok: false, reason: 'no_phone' }, 'Jane');
+  assert.equal(text, 'AutoMessage skipped: no phone on lead.');
+});
+
+test('buildAutoMessageNotification reports RingCentral failure', () => {
+  const text = buildAutoMessageNotification(
+    { phone: '+15559876543' },
+    { ok: false, detail: 'rate limited' },
+    'Bob',
+  );
+  assert.match(text, /AutoMessage failed for \+15559876543/);
+  assert.match(text, /rate limited/);
 });

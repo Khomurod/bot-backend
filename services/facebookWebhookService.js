@@ -82,12 +82,20 @@ async function sendTelegramMessage(chatId, text) {
   return safeSend(() => telegramClient.sendMessage(chatId, text));
 }
 
-function buildSmsStatus(fieldMap, smsResult) {
+function buildAutoMessageNotification(fieldMap, smsResult, leadName) {
+  const name = leadName || 'lead';
   const phone = fieldMap.phone_number || fieldMap.phone || '';
-  if (!phone) return 'Skipped (no phone)';
-  if (smsResult.ok) return `Sent to ${phone}`;
-  if (smsResult.reason === 'not_configured') return `Skipped (${phone}, RingCentral not configured)`;
-  return `Failed (${phone})${smsResult.detail ? `: ${smsResult.detail}` : ''}`;
+  if (!phone) {
+    return 'AutoMessage skipped: no phone on lead.';
+  }
+  if (smsResult.ok) {
+    return `AutoMessage sent via SMS to ${phone} for lead ${name}.`;
+  }
+  if (smsResult.reason === 'not_configured') {
+    return `AutoMessage skipped for ${phone} (RingCentral not configured).`;
+  }
+  const detail = smsResult.detail ? `: ${smsResult.detail}` : '';
+  return `AutoMessage failed for ${phone}${detail}`;
 }
 
 async function processLeadEvent(eventRow) {
@@ -110,6 +118,8 @@ async function processLeadEvent(eventRow) {
   const firstName = String(fullName).trim().split(/\s+/)[0] || 'Driver';
   const phone = fieldMap.phone_number || fieldMap.phone || '';
 
+  await sendTelegramMessage(connection.telegram_group_id, formatLeadMessage(leadData));
+
   let smsResult = { ok: false, reason: phone ? 'skipped' : 'no_phone' };
   if (phone) {
     smsResult = await sendSms(
@@ -118,8 +128,8 @@ async function processLeadEvent(eventRow) {
     );
   }
 
-  const message = `${formatLeadMessage(leadData)}\n\nSMS: ${buildSmsStatus(fieldMap, smsResult)}`;
-  await sendTelegramMessage(connection.telegram_group_id, message);
+  const autoMessageNotice = buildAutoMessageNotification(fieldMap, smsResult, fullName);
+  await sendTelegramMessage(connection.telegram_group_id, autoMessageNotice);
 }
 
 function buildMessengerText(event) {
@@ -268,4 +278,5 @@ module.exports = {
   retryFacebookWebhookEvent,
   getFacebookWebhookLog,
   extractFacebookWebhookEvents,
+  buildAutoMessageNotification,
 };

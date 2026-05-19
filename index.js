@@ -394,7 +394,9 @@ process.on('SIGTERM', () => shutdownAll('SIGTERM'));
   assertDistinctTelegramPollingTokens();
 
   configureDispatchEtaTelegram(bot.telegram);
-  configureFacebookLeadTelegram(bot.telegram);
+  const { getLeadsTelegram } = require('./services/leadsTelegramClient');
+  configureFacebookLeadTelegram(getLeadsTelegram());
+  console.log('[BOOT] Facebook lead Telegram delivery uses TELEGRAM_BOT_TOKEN (WenzeLeadBots).');
   startServer();
   await startBot();
 

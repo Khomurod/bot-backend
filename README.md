@@ -1,6 +1,6 @@
 # 🚛 Telegram Driver Feedback System
 
-A Telegram bot-based feedback and communication system for trucking companies. Collects driver feedback, broadcasts announcements, runs employee voting polls, and processes Facebook leads — all managed through a web admin panel.
+A Telegram bot-based feedback and communication system for trucking companies. Collects driver feedback, broadcasts announcements, runs employee voting polls, and processes Facebook leads (via a separate WenzeLeadBots token) — all managed through a web admin panel.
 
 ## Features
 
@@ -11,8 +11,8 @@ A Telegram bot-based feedback and communication system for trucking companies. C
 - **Scheduled Broadcasts** — One-time or weekly recurring sends in Central Time
 - **Employee Voting** — "Driver of the Week" polls sent to employee group with inline buttons
 - **Media Support** — Photo/video attachments (single or albums), above/below positioning
-- **Leads-Bot** — Facebook/Meta lead capture via webhook (Python/FastAPI subprocess)
-- **Facebook Self-Serve Connect** — `/connect` in a Telegram group opens a Facebook login flow, lets an admin choose Pages, and routes incoming leads into that group
+- **Leads-Bot (WenzeLeadBots)** — Facebook/Meta lead capture, auto-SMS, and RingCentral reply forwarding (Python verifier + Node worker on `TELEGRAM_BOT_TOKEN`)
+- **Facebook Self-Serve Connect** — `/connect` in a leads Telegram group (WenzeLeadBots only) opens Facebook login, lets an admin choose Pages, and routes new leads into that group
 - **Admin Panel** — React-based web interface for groups, questions, broadcasts, voting, and responses
 - **JWT Auth** — Secure admin panel with bcrypt + JWT
 
@@ -69,6 +69,9 @@ Optional variables:
 | `META_LOGIN_CONFIG_ID` | Optional Facebook Login for Business configuration id |
 | `FACEBOOK_TOKEN_ENCRYPTION_KEY` | Secret used to encrypt stored Page tokens |
 | `LEADS_INTERNAL_SHARED_SECRET` | Shared secret between Python webhook verifier and Node app |
+| `TELEGRAM_BOT_TOKEN` | **WenzeLeadBots** token — `/connect`, lead alerts, connect confirmations |
+| `TELEGRAM_CHAT_ID` | Telegram group id for **Wenze Facebook Leads** (RingCentral SMS/MMS inbound forwards) |
+| `BOT_TOKEN` | **Wenze Feedback** token — driver feedback only (not Facebook leads) |
 
 ### 3. Initialize database
 
@@ -223,9 +226,13 @@ cd admin && npm run dev
 
 1. Configure the Meta app's Webhooks product to point at `https://YOUR-DOMAIN/webhook`
 2. Make sure the Meta app can request the Page permissions you need, especially `leads_retrieval`, `pages_show_list`, `pages_read_engagement`, and `pages_manage_metadata`
-3. In the Telegram group that should receive Facebook leads, send `/connect` to the **Wenze Feedback** bot (or your separate leads bot if configured)
-4. Click the button, sign in to Facebook, and select one or more Pages
-5. The app stores each selected Page token securely, subscribes the Page to webhook updates, and routes new leads into that same Telegram group
+3. Add **WenzeLeadBots** (`TELEGRAM_BOT_TOKEN`) to your **Wenze Facebook Leads** Telegram group
+4. Set `TELEGRAM_CHAT_ID` on Render to that group's numeric chat id (supergroup ids look like `-100…`) so RingCentral SMS replies forward to the same group
+5. In that group, a group admin sends `/connect` to **WenzeLeadBots** (not Wenze Feedback)
+6. Click the button, sign in to Facebook, and select one or more Pages
+7. New leads post to the group via WenzeLeadBots; after the auto-SMS to the applicant, a second message reports whether the AutoMessage was sent
+
+**Render checklist:** `BOT_TOKEN` ≠ `TELEGRAM_BOT_TOKEN`; `ENABLE_LEADS_BOT` is not `false`; deploy logs show `[LEADS-BOT] Starting Python process`.
 
 ### Health
 | Method | Endpoint | Auth | Description |

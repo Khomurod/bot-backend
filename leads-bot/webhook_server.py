@@ -879,35 +879,10 @@ async def receive_webhook(request: Request):
     logger.info("Forwarded verified Facebook payload to Node app: %s", result)
     return {"status": "ok", **result}
 
-    # ── Collect all work items, then process in background ──
-    leadgen_ids = []
-    messenger_events = []
 
-    for entry in data.get("entry", []):
-        # Collect leadgen IDs
-        for change in entry.get("changes", []):
-            if change.get("field") != "leadgen":
-                continue
-            value = change.get("value", {})
-            leadgen_id = value.get("leadgen_id")
-            if leadgen_id:
-                leadgen_ids.append(leadgen_id)
-
-        # Collect messenger events
-        for messaging_event in entry.get("messaging", []):
-            messenger_events.append(messaging_event)
-
-    # ── Fire background tasks and return 200 immediately ──
-    if leadgen_ids:
-        logger.info("Queuing %d lead(s) for background processing: %s", len(leadgen_ids), leadgen_ids)
-        asyncio.create_task(_process_leads_batch(leadgen_ids))
-
-    if messenger_events:
-        logger.info("Queuing %d messenger event(s) for background processing.", len(messenger_events))
-        asyncio.create_task(_process_messenger_batch(messenger_events))
-
-    # Return 200 immediately — Facebook gets a fast response
-    return {"status": "ok"}
+# ── Legacy in-process Facebook lead handling (pre-Node queue) ──
+# Live Meta webhooks are forwarded to Node above. The functions below remain only
+# for the internal GET /retry/{leadgen_id} helper on the leads-bot port.
 
 
 async def _process_leads_batch(leadgen_ids: list[str]) -> None:

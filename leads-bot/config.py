@@ -8,7 +8,8 @@ if not os.environ.get("RENDER"):
     load_dotenv()
 
 TELEGRAM_BOT_TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID: str = os.environ["TELEGRAM_CHAT_ID"]  # your personal chat id or group id
+# Wenze Facebook Leads group — RingCentral inbound SMS/MMS forwards (same group as /connect)
+TELEGRAM_CHAT_ID: str = os.environ["TELEGRAM_CHAT_ID"]
 
 WEBHOOK_VERIFY_TOKEN: str = os.environ.get("WEBHOOK_VERIFY_TOKEN", "")
 META_APP_SECRET: str = os.environ.get("META_APP_SECRET", "")

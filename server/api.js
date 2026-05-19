@@ -29,6 +29,7 @@ const {
   normalizeSelectedPageIds,
 } = require('../services/facebookConnectService');
 const { validateMetaAppCredentials } = require('../services/facebookGraphService');
+const { sendLeadsMessage } = require('../services/leadsTelegramClient');
 const {
   enqueueVerifiedFacebookPayload,
   retryFacebookWebhookEvent,
@@ -338,7 +339,7 @@ function renderConnectLandingPage(session) {
       <h1>Connect Facebook Pages</h1>
       <p>Sign in with the Facebook account that manages the Pages you want to connect. After login, you can choose one or many Pages and route their leads into this Telegram group automatically.</p>
       <div class="note">
-        <p style="margin:0;">This link is short-lived and tied to one Telegram group. If it expires, send <strong>/connect</strong> in the group again.</p>
+        <p style="margin:0;">This link is short-lived and tied to one Telegram group. If it expires, send <strong>/connect</strong> to <strong>WenzeLeadBots</strong> in the group again.</p>
       </div>
       <div class="actions">
         <a class="button" href="/facebook/oauth/start?session=${encodeURIComponent(session.session_token)}">Continue With Facebook</a>
@@ -744,7 +745,7 @@ app.post('/facebook/connect/:sessionToken/select-pages', async (req, res) => {
     });
 
     try {
-      await bot.telegram.sendMessage(
+      await sendLeadsMessage(
         session.telegram_group_id,
         [
           'Facebook Page connection updated.',

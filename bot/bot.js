@@ -13,8 +13,6 @@ const {
 } = require('../services/dispatchEtaUpdateService');
 const { scheduleLoadIngest } = require('../services/loadIngestionService');
 const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedContextService');
-const { createConnectSession } = require('../services/facebookConnectService');
-
 // config.js already validates DATABASE_URL, MANAGEMENT_GROUP_ID (BOT_TOKEN has a code default)
 // and exits on missing values — no need to re-check here.
 
@@ -443,68 +441,17 @@ async function startBot() {
       }
     });
 
-    bot.command('connect', async (ctx) => {
-      try {
-        const chatType = ctx.chat?.type;
-        if (chatType !== 'group' && chatType !== 'supergroup') {
-          await ctx.reply(
-            'Run /connect inside the Telegram group that should receive Facebook leads '
-            + '(add this bot to that group first). Private chats are not supported.',
-          );
-          return;
-        }
-
-        const member = await ctx.telegram.getChatMember(ctx.chat.id, ctx.from.id);
-        if (!['administrator', 'creator'].includes(member.status)) {
-          await ctx.reply('Only a group admin can start the Facebook connect flow here.');
-          return;
-        }
-
-        const { connectUrl } = await createConnectSession({
-          telegramGroupId: ctx.chat.id,
-          groupName: ctx.chat.title || 'Unknown',
-          requestedBy: {
-            id: ctx.from.id,
-            name: [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ')
-              || ctx.from.username
-              || 'Unknown',
-          },
-        });
-
-        const existingConnections = await db.getFacebookPageConnectionsByTelegramGroupId(ctx.chat.id);
-        let existingSummary = '';
-        if (existingConnections.length) {
-          existingSummary = `\n\nCurrently connected pages:\n${
-            existingConnections.map((page) => `- ${page.page_name}`).join('\n')
-          }`;
-        }
-
-        await ctx.reply(
-          `Open the button below, sign in to Facebook, and choose which Pages should send leads `
-          + `into this group. This link expires in 30 minutes.${existingSummary}`,
-          {
-            reply_markup: {
-              inline_keyboard: [[{ text: 'Connect Facebook', url: connectUrl }]],
-            },
-          },
-        );
-      } catch (err) {
-        console.error('[BOT] /connect failed:', err.message);
-        await ctx.reply(`Could not start Facebook connect right now: ${err.message}`);
-      }
-    });
-
     bot.start(async (ctx) => {
       const chatType = ctx.chat?.type;
       if (chatType === 'group' || chatType === 'supergroup') {
         await ctx.reply(
-          'Wenze Feedback bot is active in this group. Group admins can run /connect to link Facebook Pages for lead alerts.',
+          'Wenze Feedback bot is active in this group for driver feedback, broadcasts, and ETA updates.',
         );
         return;
       }
       await ctx.reply(
-        'Add me to your driver or leads Telegram group to get started. '
-        + 'In that group, an admin can run /connect to link Facebook Pages.',
+        'Add me to your driver Telegram group to get started. '
+        + 'For Facebook lead alerts, use the WenzeLeadBots bot in your leads group.',
       );
     });
 
