@@ -325,6 +325,11 @@ async def _handle_connect_command_message(message: dict):
     sender = message.get("from") or {}
     chat_type = chat.get("type")
     if chat_type not in {"group", "supergroup"}:
+        await _send_telegram_to_chat(
+            chat.get("id"),
+            "Run /connect inside the Telegram group that should receive Facebook leads, "
+            "not in a private chat with this bot.",
+        )
         return
 
     text = message.get("text") or ""

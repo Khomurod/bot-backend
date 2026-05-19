@@ -162,11 +162,13 @@ function startLeadsBot() {
   const rawLeadsToken = process.env.TELEGRAM_BOT_TOKEN || HARDCODED_LEADS_BOT_TOKEN;
   const leadsEnvToken = normalizeTelegramToken(rawLeadsToken) || rawLeadsToken;
 
+  const nodeApiPort = process.env.PORT || '3001';
   leadsProcess = spawn(pythonCmd, [scriptPath], {
     cwd: path.join(__dirname, 'leads-bot'),
     env: {
       ...process.env,
       TELEGRAM_BOT_TOKEN: leadsEnvToken,
+      LOCAL_API_BASE_URL: process.env.LOCAL_API_BASE_URL || `http://127.0.0.1:${nodeApiPort}`,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

@@ -223,7 +223,7 @@ cd admin && npm run dev
 
 1. Configure the Meta app's Webhooks product to point at `https://YOUR-DOMAIN/webhook`
 2. Make sure the Meta app can request the Page permissions you need, especially `leads_retrieval`, `pages_show_list`, `pages_read_engagement`, and `pages_manage_metadata`
-3. In the Telegram group that should receive Facebook leads, send `/connect`
+3. In the Telegram group that should receive Facebook leads, send `/connect` to the **Wenze Feedback** bot (or your separate leads bot if configured)
 4. Click the button, sign in to Facebook, and select one or more Pages
 5. The app stores each selected Page token securely, subscribes the Page to webhook updates, and routes new leads into that same Telegram group
 

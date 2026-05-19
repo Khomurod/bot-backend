@@ -13,7 +13,12 @@ TELEGRAM_CHAT_ID: str = os.environ["TELEGRAM_CHAT_ID"]  # your personal chat id 
 WEBHOOK_VERIFY_TOKEN: str = os.environ.get("WEBHOOK_VERIFY_TOKEN", "")
 META_APP_SECRET: str = os.environ.get("META_APP_SECRET", "")
 META_PAGE_ACCESS_TOKEN: str = os.environ.get("META_PAGE_ACCESS_TOKEN", "")
-LOCAL_API_BASE_URL: str = os.environ.get("LOCAL_API_BASE_URL", f"http://127.0.0.1:{os.environ.get('PORT', '3001')}")
+# Node API port (not LEADS_BOT_PORT). On Render, PORT is the Express server.
+_NODE_API_PORT = os.environ.get("PORT", "3001")
+LOCAL_API_BASE_URL: str = os.environ.get(
+    "LOCAL_API_BASE_URL",
+    f"http://127.0.0.1:{_NODE_API_PORT}",
+)
 LEADS_INTERNAL_SHARED_SECRET: str = os.environ.get(
     "LEADS_INTERNAL_SHARED_SECRET",
     os.environ.get("JWT_SECRET", ""),
