@@ -11,11 +11,14 @@ const {
 } = require('../services/driverGroupTitle');
 const {
   triggerDispatchEtaNowByGroupId,
-  resolveDispatchEtaSnapshotForGroup,
-  buildEtaMessage,
+  sendDriverStatusSnapshot,
   NO_CURRENT_LOAD_INFO_MESSAGE,
-  toPlainStatusText,
 } = require('../services/dispatchEtaUpdateService');
+const {
+  isDispatchEtaTestHub,
+  handleTestHubStatusCommand,
+  registerDispatchStatusLookupHandlers,
+} = require('./dispatchStatusLookupHandlers');
 const { scheduleLoadIngest } = require('../services/loadIngestionService');
 const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedContextService');
 // config.js already validates DATABASE_URL, MANAGEMENT_GROUP_ID (BOT_TOKEN has a code default)
@@ -448,6 +451,9 @@ async function startBot() {
       );
     });
 
+    // Test hub: interactive driver lookup for /status (before driver-group /status).
+    registerDispatchStatusLookupHandlers(bot);
+
     // Dispatcher status helper: always available, even if auto updates are disabled.
     bot.command('status', async (ctx) => {
       try {
@@ -457,36 +463,24 @@ async function startBot() {
           return;
         }
 
+        if (await isDispatchEtaTestHub(ctx)) {
+          await handleTestHubStatusCommand(ctx);
+          return;
+        }
+
         const group = await db.getGroupByTelegramId(ctx.chat.id);
         if (!group || group.group_type !== 'driver' || !group.active) {
           await ctx.reply('This command works only in active driver groups.');
           return;
         }
-        const snapshot = await resolveDispatchEtaSnapshotForGroup({
-          telegram: bot.telegram,
-          group,
+
+        await sendDriverStatusSnapshot({
+          telegram: ctx.telegram,
+          driverGroup: group,
+          destinationChatId: ctx.chat.id,
+          targetMode: 'driver',
         });
-        const message = buildEtaMessage({
-          context: snapshot.context,
-          location: snapshot.location,
-          source: snapshot.source,
-          eta: snapshot.eta,
-          etaError: snapshot.etaError,
-        });
-        try {
-          await ctx.replyWithHTML(message);
-        } catch (sendErr) {
-          const messageText = String(sendErr?.message || '').toLowerCase();
-          if (!messageText.includes("can't parse entities")) {
-            throw sendErr;
-          }
-          await ctx.reply(toPlainStatusText(message));
-        }
       } catch (err) {
-        if (err?.code === 'LOAD_CONTEXT_NOT_FOUND') {
-          await ctx.reply(NO_CURRENT_LOAD_INFO_MESSAGE);
-          return;
-        }
         console.error('[BOT] /status failed:', err.message);
         await ctx.reply('Could not build current status right now. Please try again shortly.');
       }

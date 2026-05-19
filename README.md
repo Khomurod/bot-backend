@@ -15,6 +15,20 @@ A Telegram bot-based feedback and communication system for trucking companies. C
 - **Facebook Self-Serve Connect** — `/connect` in a leads Telegram group (WenzeLeadBots only) opens Facebook login, lets an admin choose Pages, and routes new leads into that group
 - **Admin Panel** — React-based web interface for groups, questions, broadcasts, voting, and responses
 - **JWT Auth** — Secure admin panel with bcrypt + JWT
+- **Dispatch ETA (Wenze Feedback)** — `/location`, `/status`, `/load`, `/update` in driver groups; test hub interactive `/status` when `DISPATCH_ETA_TEST_GROUP_ID` is set
+
+## Driver group commands (Wenze Feedback / `BOT_TOKEN`)
+
+| Command | Where | Description |
+|---|---|---|
+| `/location` | Driver group | Live truck location pin + summary |
+| `/status` | Driver group | Current load/ETA snapshot for that group |
+| `/status` | **Automatic updating (Test)** hub (`DISPATCH_ETA_TEST_GROUP_ID`) | Bot asks for a driver name (first, last, or full); disambiguates duplicates; posts that driver's status into the hub |
+| `/cancel` | Test hub (during lookup) | Cancels an in-progress `/status` name lookup |
+| `/load` | Driver group | Resolved pickup/delivery context |
+| `/update` | Driver group | Triggers immediate ETA update (if enabled for that group) |
+
+Set `DISPATCH_ETA_TEST_GROUP_ID` to the Telegram chat id of **Automatic updating (Test)** (example production value: `-5289094495`).
 
 ## Tech Stack
 
@@ -69,6 +83,7 @@ Optional variables:
 | `GEMINI_API_KEY` | Google Gemini key (dispatch parsing, pinned-context; annotator fallback if Groq exhausted) |
 | `GEMINI_TEXT_MODELS` | Gemini model chain, highest free-tier quota first (default starts with `gemini-3.1-flash-lite`) |
 | `LOCATION_DRIVER_NAME_STRICT` | If `true`, `/location` blocks when Telegram group driver name does not match Samsara vehicle label (default: warn and still send pin) |
+| `DISPATCH_ETA_TEST_GROUP_ID` | Telegram chat id for **Automatic updating (Test)** — receives test-mode ETA posts and interactive `/status` lookups |
 | `PORT` | API server port (default: 3001) |
 | `LEADS_BOT_PORT` | Leads-Bot internal port (default: 8000) |
 | `RENDER_EXTERNAL_URL` | Public base URL used for `/connect` and webhook callbacks |
@@ -131,6 +146,8 @@ cd admin && npm run dev
 ├── index.js                     # Entry point (bot + API + leads-bot)
 ├── bot/
 │   ├── bot.js                   # Telegram bot (Telegraf) — surveys, broadcasts
+│   ├── dispatchStatusLookupHandlers.js  # Test hub interactive /status
+│   ├── dispatchStatusLookupSession.js   # In-memory lookup sessions
 │   └── employeeVoting.js        # Employee voting bot handlers
 ├── server/
 │   ├── api.js                   # Express API server + leads-bot proxy

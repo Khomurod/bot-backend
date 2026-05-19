@@ -129,6 +129,41 @@ async function sendEtaMessageWithFallback(telegram, chatId, htmlMessage) {
   }
 }
 
+async function sendDriverStatusSnapshot({
+  telegram,
+  driverGroup,
+  destinationChatId,
+  targetMode = 'driver',
+}) {
+  const groupName = String(driverGroup?.group_name || '').trim();
+  try {
+    const snapshot = await resolveDispatchEtaSnapshotForGroup({
+      telegram,
+      group: driverGroup,
+    });
+    const message = buildEtaMessage({
+      context: snapshot.context,
+      location: snapshot.location,
+      source: snapshot.source,
+      eta: snapshot.eta,
+      etaError: snapshot.etaError,
+      targetMode,
+      groupName,
+    });
+    await sendEtaMessageWithFallback(telegram, destinationChatId, message);
+    return { success: true };
+  } catch (err) {
+    if (err?.code === 'LOAD_CONTEXT_NOT_FOUND') {
+      const noInfoMessage = targetMode === 'test'
+        ? `🧪 Driver group: ${groupName || `#${driverGroup?.id}`}\n${NO_CURRENT_LOAD_INFO_MESSAGE}`
+        : NO_CURRENT_LOAD_INFO_MESSAGE;
+      await telegram.sendMessage(destinationChatId, noInfoMessage);
+      return { success: true, noLoadInfo: true };
+    }
+    throw err;
+  }
+}
+
 async function resolveDispatchEtaSnapshotForGroup({
   telegram,
   group,
@@ -416,4 +451,5 @@ module.exports = {
   formatDuration,
   toPlainStatusText,
   sendEtaMessageWithFallback,
+  sendDriverStatusSnapshot,
 };

@@ -3,6 +3,44 @@
  * and compare them for assignment validation.
  */
 
+function extractUnitFromGroupName(name) {
+  if (!name) return null;
+
+  const m1 = name.match(/UNIT\s*#\s*(\d+)/i);
+  if (m1) return m1[1];
+
+  const m2 = name.match(/#\s*(\d+)/);
+  if (m2) return m2[1];
+
+  const m3 = name.match(/UNIT\s+(\d+)/i);
+  if (m3) return m3[1];
+
+  return null;
+}
+
+function parseGroupName(name) {
+  if (!name) return { company: null, driver: null, type: null };
+
+  let type = null;
+  let cleaned = name;
+  const parenMatch = name.match(/\(([^)]+)\)\s*$/);
+  if (parenMatch) {
+    type = parenMatch[1].trim();
+    cleaned = name.replace(/\([^)]+\)\s*$/, '').trim();
+  }
+
+  const p1 = cleaned.match(/^(.+?)\s+UNIT\s*#\s*\d+\s+(.+)$/i);
+  if (p1) return { company: p1[1].trim(), driver: p1[2].trim(), type };
+
+  const p2 = cleaned.match(/^(.+?)\s+#\s*\d+\s+(.+)$/i);
+  if (p2) return { company: p2[1].trim(), driver: p2[2].trim(), type };
+
+  const p3 = cleaned.match(/^(.+?)\s+UNIT\s+\d+\s+(.+)$/i);
+  if (p3) return { company: p3[1].trim(), driver: p3[2].trim(), type };
+
+  return { company: null, driver: null, type: null };
+}
+
 function normalizePersonName(value) {
   return String(value || '')
     .toLowerCase()
@@ -174,6 +212,8 @@ function evaluateDriverNameAssignment({ groupTitle, vehicleName, unitNumber }) {
 }
 
 module.exports = {
+  extractUnitFromGroupName,
+  parseGroupName,
   normalizePersonName,
   tokenizePersonName,
   extractDriverNameFromGroupTitle,
