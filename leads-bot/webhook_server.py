@@ -200,12 +200,28 @@ async def _delete_leads_bot_webhook() -> None:
         logger.warning("Leads bot deleteWebhook failed (continuing): %s", exc)
 
 
+def _leads_hub_chat_id_candidates() -> set[str]:
+    """Chat id forms Telegram may use for the same Wenze Facebook Leads supergroup."""
+    raw = str(TELEGRAM_CHAT_ID).strip()
+    candidates = {raw}
+    if raw.startswith("-100"):
+        candidates.add(f"-{raw[4:]}")
+    elif raw.startswith("-") and not raw.startswith("-100"):
+        candidates.add(f"-100{raw[1:]}")
+    return candidates
+
+
+def _is_leads_hub_chat(chat_id: int | str) -> bool:
+    return str(chat_id).strip() in _leads_hub_chat_id_candidates()
+
+
 async def _send_telegram_to_chat(
     chat_id: str | int,
     text: str,
     *,
     parse_mode: str | None = None,
     reply_markup: dict | None = None,
+    reply_to_message_id: int | None = None,
 ) -> int | None:
     """Send a Telegram message to an arbitrary chat with optional inline keyboard."""
     payload = {
@@ -216,6 +232,8 @@ async def _send_telegram_to_chat(
         payload["parse_mode"] = parse_mode
     if reply_markup:
         payload["reply_markup"] = reply_markup
+    if reply_to_message_id is not None:
+        payload["reply_to_message_id"] = reply_to_message_id
 
     for attempt in range(2):
         try:
@@ -374,6 +392,91 @@ async def _handle_connect_command_message(message: dict):
     await _send_telegram_to_chat(chat_id, text, reply_markup=reply_markup)
 
 
+async def _request_telegram_sms_reply(
+    *,
+    telegram_chat_id: int | str,
+    reply_to_message_id: int,
+    reply_text: str,
+    user_reply_message_id: int | None = None,
+) -> dict:
+    """Ask Node to send a RingCentral SMS for a reply to an auto-SMS mirror."""
+    if not LEADS_INTERNAL_SHARED_SECRET:
+        raise RuntimeError("LEADS_INTERNAL_SHARED_SECRET is not configured")
+
+    url = f"{LOCAL_API_BASE_URL.rstrip('/')}/api/internal/facebook/telegram-sms-reply"
+    payload = {
+        "telegramChatId": telegram_chat_id,
+        "replyToMessageId": reply_to_message_id,
+        "replyText": reply_text,
+    }
+    if user_reply_message_id is not None:
+        payload["userReplyMessageId"] = user_reply_message_id
+
+    headers = {"x-internal-shared-secret": LEADS_INTERNAL_SHARED_SECRET}
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(url, json=payload, headers=headers)
+        data = resp.json() if resp.content else {}
+        if not resp.is_success:
+            description = data.get("error") or data.get("detail") or resp.text[:300]
+            err = RuntimeError(description)
+            err.status_code = resp.status_code  # type: ignore[attr-defined]
+            raise err
+        return data
+
+
+async def _handle_leads_hub_reply(message: dict) -> None:
+    """Forward a Telegram reply in Wenze Facebook Leads to RingCentral SMS."""
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
+    if not _is_leads_hub_chat(chat_id):
+        return
+
+    sender = message.get("from") or {}
+    if sender.get("is_bot"):
+        return
+
+    reply_to = message.get("reply_to_message")
+    if not reply_to:
+        return
+
+    reply_text = (message.get("text") or message.get("caption") or "").strip()
+    if not reply_text:
+        return
+
+    mirror_message_id = reply_to.get("message_id")
+    user_reply_message_id = message.get("message_id")
+    if not mirror_message_id:
+        return
+
+    try:
+        await _request_telegram_sms_reply(
+            telegram_chat_id=chat_id,
+            reply_to_message_id=mirror_message_id,
+            reply_text=reply_text,
+            user_reply_message_id=user_reply_message_id,
+        )
+        logger.info(
+            "Telegram reply in leads hub forwarded via SMS (mirror msg %s).",
+            mirror_message_id,
+        )
+    except Exception as exc:
+        status = getattr(exc, "status_code", None)
+        if status == 404:
+            err_text = (
+                "Not linked to an auto-SMS — reply only to the monospace outbound copy."
+            )
+        elif status == 400:
+            err_text = str(exc)
+        else:
+            err_text = f"Could not send SMS: {exc}"
+        await _send_telegram_to_chat(
+            chat_id,
+            err_text,
+            reply_to_message_id=user_reply_message_id,
+        )
+        logger.warning("Leads hub SMS reply failed: %s", exc)
+
+
 async def _poll_connect_commands():
     """Long-poll Telegram for /connect commands on the leads bot token."""
     global _telegram_update_offset
@@ -401,6 +504,7 @@ async def _poll_connect_commands():
             _telegram_update_offset = update["update_id"] + 1
             message = update.get("message")
             if message:
+                await _handle_leads_hub_reply(message)
                 await _handle_connect_command_message(message)
 
 

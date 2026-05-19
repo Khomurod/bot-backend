@@ -372,6 +372,24 @@ CREATE TABLE IF NOT EXISTS facebook_lead_auto_message_rules (
 CREATE INDEX IF NOT EXISTS idx_facebook_lead_auto_message_rules_settings
   ON facebook_lead_auto_message_rules (settings_id, sort_order, id);
 
+-- Outbound auto-SMS mirrors in Wenze Facebook Leads (Telegram reply → RingCentral)
+CREATE TABLE IF NOT EXISTS facebook_lead_sms_mirrors (
+  id SERIAL PRIMARY KEY,
+  telegram_chat_id BIGINT NOT NULL,
+  telegram_message_id BIGINT NOT NULL,
+  driver_phone TEXT NOT NULL,
+  sms_body TEXT NOT NULL,
+  lead_name TEXT,
+  page_id TEXT,
+  rule_label TEXT,
+  ringcentral_message_id TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE (telegram_chat_id, telegram_message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_facebook_lead_sms_mirrors_lookup
+  ON facebook_lead_sms_mirrors (telegram_chat_id, telegram_message_id);
+
 ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS group_id INTEGER;
 ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS telegram_group_id BIGINT;
 ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS pinned_message_id BIGINT;

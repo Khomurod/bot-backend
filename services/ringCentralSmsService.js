@@ -70,7 +70,12 @@ async function sendSms(to, message) {
     });
 
     if (response.ok) {
-      return { ok: true };
+      const data = await response.json().catch(() => ({}));
+      return {
+        ok: true,
+        messageId: data?.id != null ? String(data.id) : null,
+        conversationId: data?.conversationId != null ? String(data.conversationId) : null,
+      };
     }
 
     const text = await response.text();

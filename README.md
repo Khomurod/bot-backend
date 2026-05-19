@@ -94,7 +94,7 @@ Optional variables:
 | `FACEBOOK_TOKEN_ENCRYPTION_KEY` | Secret used to encrypt stored Page tokens |
 | `LEADS_INTERNAL_SHARED_SECRET` | Shared secret between Python webhook verifier and Node app |
 | `TELEGRAM_BOT_TOKEN` | **WenzeLeadBots** token — `/connect`, lead alerts, connect confirmations |
-| `TELEGRAM_CHAT_ID` | Telegram group id for **Wenze Facebook Leads** (RingCentral SMS/MMS inbound forwards) |
+| `TELEGRAM_CHAT_ID` | Telegram group id for **Wenze Facebook Leads** (RingCentral inbound forwards, outbound auto-SMS mirrors, reply-to-SMS bridge) |
 | `BOT_TOKEN` | **Wenze Feedback** token — driver feedback only (not Facebook leads) |
 
 ### 3. Initialize database
@@ -258,7 +258,8 @@ cd admin && npm run dev
 4. Set `TELEGRAM_CHAT_ID` on Render to that group's numeric chat id (supergroup ids look like `-100…`) so RingCentral SMS replies forward to the same group
 5. In that group, a group admin sends `/connect` to **WenzeLeadBots** (not Wenze Feedback)
 6. Click the button, sign in to Facebook, and select one or more Pages
-7. New leads post to the group via WenzeLeadBots; after the auto-SMS to the applicant, a second message reports whether the AutoMessage was sent
+7. New leads post to the connected Telegram group via WenzeLeadBots; after a successful auto-SMS, a short notice is posted there and the **exact SMS text** is mirrored to **Wenze Facebook Leads** (`TELEGRAM_CHAT_ID`) in monospace
+8. **Reply in Telegram** to that monospace mirror in Wenze Facebook Leads to send the same text to the driver via RingCentral SMS (confirmation appears in-thread)
 
 ### Lead auto-SMS templates (admin)
 

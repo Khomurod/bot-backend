@@ -1,5 +1,7 @@
+const config = require('../config/config');
 const db = require('../database/db');
 const { decryptText } = require('./facebookCrypto');
+const { mirrorAutoSmsToLeadsHub } = require('./facebookLeadSmsMirrorService');
 const { safeSend } = require('./telegramHtml');
 const {
   fetchLeadById,
@@ -133,6 +135,7 @@ async function processLeadEvent(eventRow) {
 
   let smsResult = { ok: false, reason: phone ? 'skipped' : 'no_phone' };
   let ruleLabel = null;
+  let smsBody = null;
   if (phone) {
     const resolved = await resolveAutoSmsForLead({
       fieldMap,
@@ -148,13 +151,30 @@ async function processLeadEvent(eventRow) {
         settings: resolved.settings,
         pageName: connection.page_name,
       });
-      const body = renderLeadSmsTemplate(template, context);
-      smsResult = await sendSms(phone, body);
+      smsBody = renderLeadSmsTemplate(template, context);
+      smsResult = await sendSms(phone, smsBody);
     }
   }
 
   const autoMessageNotice = buildAutoMessageNotification(fieldMap, smsResult, fullName, ruleLabel);
   await sendTelegramMessage(connection.telegram_group_id, autoMessageNotice);
+
+  if (smsResult.ok && smsBody && config.leadsTelegramChatId) {
+    try {
+      await mirrorAutoSmsToLeadsHub(telegramClient, {
+        chatId: config.leadsTelegramChatId,
+        phone,
+        smsBody,
+        leadName: fullName,
+        pageName: connection.page_name,
+        pageId,
+        ruleLabel,
+        ringcentralMessageId: smsResult.messageId,
+      });
+    } catch (mirrorErr) {
+      console.error('[FacebookWebhook] Auto-SMS mirror to leads hub failed:', mirrorErr.message);
+    }
+  }
 }
 
 function buildMessengerText(event) {

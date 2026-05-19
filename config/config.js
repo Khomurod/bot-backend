@@ -114,6 +114,8 @@ module.exports = {
   adminFacebookUserIds,
   facebookTokenEncryptionKey: process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY || process.env.JWT_SECRET || '',
   leadsInternalSharedSecret: process.env.LEADS_INTERNAL_SHARED_SECRET || process.env.JWT_SECRET || '',
+  // Wenze Facebook Leads hub — auto-SMS mirrors + RC inbound forwards (same as leads-bot TELEGRAM_CHAT_ID)
+  leadsTelegramChatId: String(process.env.TELEGRAM_CHAT_ID || '').trim(),
   // When false, load ingestion skips forwarding parse-failure hints to DISPATCH_ETA_TEST_GROUP_ID.
   loadIngestNotifyExtractionFailure:
     process.env.LOAD_INGEST_NOTIFY_EXTRACTION_FAILURE !== 'false',

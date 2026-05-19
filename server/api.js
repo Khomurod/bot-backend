@@ -29,7 +29,8 @@ const {
   normalizeSelectedPageIds,
 } = require('../services/facebookConnectService');
 const { validateMetaAppCredentials } = require('../services/facebookGraphService');
-const { sendLeadsMessage } = require('../services/leadsTelegramClient');
+const { getLeadsTelegram, sendLeadsMessage } = require('../services/leadsTelegramClient');
+const { handleTelegramSmsReply } = require('../services/facebookLeadSmsMirrorService');
 const {
   enqueueVerifiedFacebookPayload,
   retryFacebookWebhookEvent,
@@ -710,6 +711,42 @@ app.post('/api/internal/facebook/connect-command', internalSharedSecretGuard, as
   } catch (err) {
     console.error('[API] Facebook connect command setup failed:', err.message);
     return res.status(500).json({ error: 'Could not create Facebook connect session', detail: err.message });
+  }
+});
+
+app.post('/api/internal/facebook/telegram-sms-reply', internalSharedSecretGuard, async (req, res) => {
+  try {
+    const telegramChatId = req.body?.telegramChatId;
+    const replyToMessageId = Number(req.body?.replyToMessageId);
+    const replyText = req.body?.replyText;
+    const userReplyMessageId = req.body?.userReplyMessageId != null
+      ? Number(req.body.userReplyMessageId)
+      : null;
+
+    if (telegramChatId == null || telegramChatId === '') {
+      return res.status(400).json({ error: 'telegramChatId is required' });
+    }
+    if (!Number.isFinite(replyToMessageId)) {
+      return res.status(400).json({ error: 'replyToMessageId is required' });
+    }
+
+    const telegram = getLeadsTelegram();
+    const result = await handleTelegramSmsReply(telegram, {
+      telegramChatId,
+      replyToMessageId,
+      replyText,
+      userReplyMessageId: Number.isFinite(userReplyMessageId) ? userReplyMessageId : null,
+    });
+    return res.json({ status: 'ok', ...result });
+  } catch (err) {
+    const status = err.statusCode || 500;
+    if (status >= 500) {
+      console.error('[API] Facebook telegram-sms-reply failed:', err.message);
+    }
+    return res.status(status).json({
+      error: err.message || 'Failed to send SMS reply',
+      detail: err.smsResult?.detail || null,
+    });
   }
 });
 
