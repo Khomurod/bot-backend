@@ -151,6 +151,7 @@ cd admin && npm run dev
 │   └── employeeVoting.js        # Employee voting bot handlers
 ├── server/
 │   ├── api.js                   # Express API server + leads-bot proxy
+│   └── routes/facebookLeadsRoutes.js  # Admin API for lead auto-SMS config
 │   └── employeeVotingApi.js     # Voting API routes
 ├── database/
 │   ├── db.js                    # Database helpers (groups, drivers, questions)
@@ -164,6 +165,7 @@ cd admin && npm run dev
 │   └── src/
 │       ├── App.jsx              # Main app component
 │       ├── api.js               # API client
+│       └── pages/FacebookLeadsPage.jsx  # Lead auto-SMS templates
 │       └── index.css            # Styles
 ├── leads-bot/                   # Facebook leads processor (Python/FastAPI)
 │   ├── main.py                  # Entry point
@@ -257,6 +259,16 @@ cd admin && npm run dev
 5. In that group, a group admin sends `/connect` to **WenzeLeadBots** (not Wenze Feedback)
 6. Click the button, sign in to Facebook, and select one or more Pages
 7. New leads post to the group via WenzeLeadBots; after the auto-SMS to the applicant, a second message reports whether the AutoMessage was sent
+
+### Lead auto-SMS templates (admin)
+
+In the admin panel, open **Facebook Leads** to configure global automated SMS copy for new lead submissions:
+
+- Edit message templates with clickable placeholders (`{first_name}`, `{phone}`, `{rep_name}`, etc.)
+- Add **time rules** (e.g. Mon–Fri 08:00–17:00 → “Can I call you now?”) and a **fallback** message for outside those hours
+- Preview the message that would send right now; view connected Pages and webhook log retries
+
+SMS text is stored in the database and applied by the Node lead worker (not hardcoded in `.env`).
 
 **Render checklist:** `BOT_TOKEN` ≠ `TELEGRAM_BOT_TOKEN`; `ENABLE_LEADS_BOT` is not `false`; deploy logs show `[LEADS-BOT] Starting Python process`.
 

@@ -151,6 +151,22 @@ async def _forward_verified_facebook_payload(payload: dict) -> dict:
         return resp.json()
 
 
+async def _forward_retry_leadgen_to_node(leadgen_id: str) -> dict:
+    """Re-queue a lead through the Node worker (uses admin-configured SMS templates)."""
+    if not LEADS_INTERNAL_SHARED_SECRET:
+        raise RuntimeError("LEADS_INTERNAL_SHARED_SECRET is not configured")
+
+    url = f"{LOCAL_API_BASE_URL.rstrip('/')}/api/internal/facebook/retry-leadgen"
+    headers = {"x-internal-shared-secret": LEADS_INTERNAL_SHARED_SECRET}
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(url, json={"leadgenId": leadgen_id}, headers=headers)
+        if resp.status_code == 404:
+            return {"status": "not_found"}
+        if not resp.is_success:
+            raise RuntimeError(f"Internal lead retry failed ({resp.status_code}): {resp.text[:500]}")
+        return resp.json()
+
+
 async def _telegram_api_call(method: str, payload: dict) -> dict:
     """Call a Telegram Bot API method and return the parsed result object."""
     url = f"{TELEGRAM_API_BASE}/{method}"
@@ -944,86 +960,19 @@ async def get_leads_log():
 
 
 async def _process_lead(leadgen_id: str) -> str:
-    """Fetch lead data from Graph API, send to Telegram, and auto-SMS.
-    
-    Returns a status string. Never raises — always sends SOMETHING to Telegram.
-    SMS is a bonus step that never affects the Telegram flow.
-    """
-    logger.info("Processing lead ID: %s", leadgen_id)
+    """Re-queue lead processing on the Node worker (admin-managed SMS templates)."""
+    logger.info("Queueing lead retry via Node for lead ID: %s", leadgen_id)
 
     try:
-        lead_data = await fetch_lead(leadgen_id)
-        logger.info("Graph API returned lead data for %s", leadgen_id)
+        result = await _forward_retry_leadgen_to_node(leadgen_id)
+        if result.get("status") == "not_found":
+            logger.warning("No webhook event found for leadgen id %s", leadgen_id)
+            return "no_webhook_event_found"
+        logger.info("Lead %s queued on Node worker", leadgen_id)
+        return "queued_node_retry"
     except Exception as exc:
-        logger.error("Graph API fetch failed for lead %s: %s", leadgen_id, exc)
-        fallback_msg = (
-            f"🔔 *FACEBOOK LEAD RECEIVED!*\n\n"
-            f"🆔 Lead ID: `{leadgen_id}`\n"
-            f"⚠️ Could not fetch details from Graph API.\n"
-            f"Error: `{exc}`"
-        )
-        await _send_telegram(fallback_msg)
-        return "sent_fallback_fetch_error"
-
-    try:
-        message = format_lead_message(lead_data)
-    except Exception as exc:
-        logger.error("Format error for lead %s: %s", leadgen_id, exc)
-        raw = json.dumps(lead_data, indent=2, ensure_ascii=False)
-        message = (
-            f"🔔 *FACEBOOK LEAD RECEIVED!*\n\n"
-            f"🆔 Lead ID: `{leadgen_id}`\n"
-            f"⚠️ Could not format lead data.\n"
-            f"Raw data:\n```\n{raw[:3000]}\n```"
-        )
-
-    try:
-        logger.info("Sending Telegram message for lead %s", leadgen_id)
-        msg_id = await _send_telegram(message)
-    except Exception as exc:
-        logger.error("Telegram send failed for lead %s: %s", leadgen_id, exc)
-        return "telegram_error"
-
-    # ── Auto-SMS via RingCentral (never affects Telegram flow) ──
-    sms_status = "⏭ Skipped (no phone)"
-    try:
-        from graph import _safe_field_value
-        field_map = {}
-        for field in lead_data.get("field_data", []):
-            name = field.get("name", "")
-            value = _safe_field_value(field)
-            if name and value:
-                field_map[name] = value
-
-        phone = field_map.get("phone_number") or field_map.get("phone", "")
-        full_name = field_map.get("full_name", "Driver")
-        first_name = full_name.split()[0] if full_name else "Driver"
-
-        if phone:
-            sms_text = (
-                f"Hello {first_name}, this is Tom with Wenze trucking company "
-                f"and thanks for applying to our OTR position. "
-                f"Can I call you right now to explain the details?"
-            )
-            sent = await send_sms(to=phone, message=sms_text)
-            if sent:
-                sms_status = f"✅ Sent to {phone}"
-                logger.info("SMS sent to %s for lead %s", phone, leadgen_id)
-            else:
-                sms_status = f"❌ Failed ({phone})"
-                logger.info("SMS failed for lead %s (phone: %s)", leadgen_id, phone)
-        else:
-            logger.info("No phone number for lead %s — SMS skipped.", leadgen_id)
-    except Exception as exc:
-        sms_status = f"❌ Error: {exc}"
-        logger.warning("SMS error for lead %s (non-critical): %s", leadgen_id, exc)
-
-    # ── Edit Telegram message to show SMS result ──
-    if msg_id:
-        updated_message = message + f"\n\n📱 SMS: {sms_status}"
-        await _edit_telegram(msg_id, updated_message)
-
-    return "sent_ok"
+        logger.error("Node retry forward failed for lead %s: %s", leadgen_id, exc)
+        return f"node_retry_error: {exc}"
 
 
 async def _process_messenger_event(event: dict) -> None:

@@ -47,6 +47,7 @@ const {
 const { processMessage: processScheduledMessage } = require('../services/schedulerService');
 const employeeVotingRoutes = require('./employeeVotingApi');
 const dispatchRoutes = require('./routes/dispatchRoutes');
+const { createFacebookLeadsRouter } = require('./routes/facebookLeadsRoutes');
 
 // ─── Multer: memory storage for media uploads ───
 const MEDIA_UPLOAD_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime'];
@@ -661,6 +662,23 @@ app.post('/api/internal/facebook/webhook-events', internalSharedSecretGuard, asy
   }
 });
 
+app.post('/api/internal/facebook/retry-leadgen', internalSharedSecretGuard, async (req, res) => {
+  try {
+    const leadgenId = String(req.body?.leadgenId || req.body?.leadgen_id || '').trim();
+    if (!leadgenId) {
+      return res.status(400).json({ error: 'leadgenId is required' });
+    }
+    const event = await retryFacebookWebhookEvent(leadgenId);
+    if (!event) {
+      return res.status(404).json({ error: 'No webhook event found for that leadgen id' });
+    }
+    return res.json({ status: 'queued', event });
+  } catch (err) {
+    console.error('[API] Facebook internal retry-leadgen failed:', err.message);
+    return res.status(500).json({ error: 'Failed to queue lead retry', detail: err.message });
+  }
+});
+
 app.post('/api/internal/facebook/connect-command', internalSharedSecretGuard, async (req, res) => {
   try {
     const telegramGroupId = Number(req.body?.telegramGroupId);
@@ -938,6 +956,7 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
 // ─── Groups Routes ───
 
 app.use('/api/dispatch', dispatchRoutes);
+app.use('/api/facebook-leads', createFacebookLeadsRouter({ authMiddleware }));
 
 // GET /api/groups
 app.get('/api/groups', authMiddleware, async (req, res) => {

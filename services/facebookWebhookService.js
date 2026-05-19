@@ -11,6 +11,14 @@ const {
   formatMessengerMessage,
 } = require('./facebookLeadFormatter');
 const { sendSms } = require('./ringCentralSmsService');
+const {
+  resolveAutoSmsForLead,
+  LEGACY_HARDCODED_TEMPLATE,
+} = require('./facebookLeadAutoMessageService');
+const {
+  buildTemplateContext,
+  renderLeadSmsTemplate,
+} = require('./facebookLeadSmsTemplate');
 
 let telegramClient = null;
 let workerInterval = null;
@@ -82,14 +90,18 @@ async function sendTelegramMessage(chatId, text) {
   return safeSend(() => telegramClient.sendMessage(chatId, text));
 }
 
-function buildAutoMessageNotification(fieldMap, smsResult, leadName) {
+function buildAutoMessageNotification(fieldMap, smsResult, leadName, ruleLabel = null) {
   const name = leadName || 'lead';
   const phone = fieldMap.phone_number || fieldMap.phone || '';
+  const ruleSuffix = ruleLabel ? ` (${ruleLabel})` : '';
   if (!phone) {
     return 'AutoMessage skipped: no phone on lead.';
   }
+  if (smsResult.reason === 'disabled') {
+    return `AutoMessage skipped for ${name}: auto-SMS is disabled in admin.`;
+  }
   if (smsResult.ok) {
-    return `AutoMessage sent via SMS to ${phone} for lead ${name}.`;
+    return `AutoMessage sent via SMS to ${phone} for lead ${name}${ruleSuffix}.`;
   }
   if (smsResult.reason === 'not_configured') {
     return `AutoMessage skipped for ${phone} (RingCentral not configured).`;
@@ -115,20 +127,33 @@ async function processLeadEvent(eventRow) {
   const leadData = await fetchLeadById({ leadgenId, pageAccessToken });
   const fieldMap = buildLeadFieldMap(leadData);
   const fullName = fieldMap.full_name || fieldMap.first_name || 'Driver';
-  const firstName = String(fullName).trim().split(/\s+/)[0] || 'Driver';
   const phone = fieldMap.phone_number || fieldMap.phone || '';
 
   await sendTelegramMessage(connection.telegram_group_id, formatLeadMessage(leadData));
 
   let smsResult = { ok: false, reason: phone ? 'skipped' : 'no_phone' };
+  let ruleLabel = null;
   if (phone) {
-    smsResult = await sendSms(
-      phone,
-      `Hello ${firstName}, this is Tom with Wenze trucking company and thanks for applying to our OTR position. Can I call you right now to explain the details?`
-    );
+    const resolved = await resolveAutoSmsForLead({
+      fieldMap,
+      pageName: connection.page_name,
+    });
+    ruleLabel = resolved.ruleLabel;
+    if (!resolved.isEnabled) {
+      smsResult = { ok: false, reason: 'disabled' };
+    } else {
+      const template = resolved.template || LEGACY_HARDCODED_TEMPLATE;
+      const context = buildTemplateContext({
+        fieldMap,
+        settings: resolved.settings,
+        pageName: connection.page_name,
+      });
+      const body = renderLeadSmsTemplate(template, context);
+      smsResult = await sendSms(phone, body);
+    }
   }
 
-  const autoMessageNotice = buildAutoMessageNotification(fieldMap, smsResult, fullName);
+  const autoMessageNotice = buildAutoMessageNotification(fieldMap, smsResult, fullName, ruleLabel);
   await sendTelegramMessage(connection.telegram_group_id, autoMessageNotice);
 }
 

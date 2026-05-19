@@ -342,6 +342,36 @@ CREATE TABLE IF NOT EXISTS facebook_seen_senders (
   PRIMARY KEY (page_id, sender_id)
 );
 
+-- Global Facebook lead auto-SMS templates (admin-managed)
+CREATE TABLE IF NOT EXISTS facebook_lead_auto_message_settings (
+  id SERIAL PRIMARY KEY,
+  timezone TEXT NOT NULL DEFAULT 'America/Chicago',
+  is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  rep_name TEXT NOT NULL DEFAULT 'Tom',
+  company_name TEXT NOT NULL DEFAULT 'Wenze trucking company',
+  position_label TEXT NOT NULL DEFAULT 'OTR position',
+  fallback_template TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS facebook_lead_auto_message_rules (
+  id SERIAL PRIMARY KEY,
+  settings_id INTEGER NOT NULL REFERENCES facebook_lead_auto_message_settings(id) ON DELETE CASCADE,
+  label TEXT NOT NULL DEFAULT 'Rule',
+  days_of_week SMALLINT[] NOT NULL DEFAULT '{1,2,3,4,5}',
+  start_time_local TIME NOT NULL,
+  end_time_local TIME NOT NULL,
+  message_template TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_facebook_lead_auto_message_rules_settings
+  ON facebook_lead_auto_message_rules (settings_id, sort_order, id);
+
 ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS group_id INTEGER;
 ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS telegram_group_id BIGINT;
 ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS pinned_message_id BIGINT;

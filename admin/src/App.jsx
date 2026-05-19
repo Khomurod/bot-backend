@@ -11,6 +11,7 @@ import ChatLogsPage from "./pages/ChatLogsPage";
 import MessageManagerPage from "./pages/MessageManagerPage";
 import CompanyBirthdaysPage from "./pages/CompanyBirthdaysPage";
 import DispatchPage from "./pages/DispatchPage";
+import FacebookLeadsPage from "./pages/FacebookLeadsPage";
 
 function getPageFromPath(pathname) {
   if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) {
@@ -117,6 +118,7 @@ export default function App() {
     logs: <ChatLogsPage />,
     manager: <MessageManagerPage />,
     company_birthdays: <CompanyBirthdaysPage />,
+    facebook_leads: <FacebookLeadsPage />,
   };
 
   return (
@@ -196,6 +198,13 @@ export default function App() {
           >
             <span className="nav-icon">🏢</span>
             Employee Birthdays
+          </button>
+          <button
+            className={`nav-item ${page === "facebook_leads" ? "active" : ""}`}
+            onClick={() => navigateToPage("facebook_leads")}
+          >
+            <span className="nav-icon">📣</span>
+            Facebook Leads
           </button>
         </nav>
         <div className="sidebar-footer">
