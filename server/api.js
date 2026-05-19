@@ -541,6 +541,23 @@ async function healthHandler(req, res) {
   res.json(body);
 }
 
+function siteRootHandler(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).type('html').send(
+    '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
+    '<title>Wenze Bot Backend</title></head><body>' +
+    '<h1>Wenze Bot Backend</h1>' +
+    '<p>Telegram + Facebook leads integration for Wenze Transport.</p>' +
+    '<ul>' +
+    '<li><a href="/admin/">Admin panel</a></li>' +
+    '<li><a href="/privacy-policy.html">Privacy policy</a></li>' +
+    '<li><a href="/terms-of-use">Terms of use</a></li>' +
+    '</ul></body></html>'
+  );
+}
+
+app.get('/', siteRootHandler);
+app.head('/', siteRootHandler);
 app.get('/api/health', healthHandler);
 app.head('/api/health', healthHandler);
 app.get('/health', healthHandler);
