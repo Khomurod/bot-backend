@@ -61,7 +61,7 @@ function loadAppWithDb(dbMock) {
       generateCompanyReport: async () => '',
       generateDriverReport: async () => '',
       AI_REPORT_GENERATION_FAILED: 'FAIL',
-      callYandex: async () => '',
+      callGroq: async () => '',
     },
   };
   require.cache[employeeVotingPath] = { exports: (req, res, next) => next() };

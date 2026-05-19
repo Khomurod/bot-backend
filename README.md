@@ -60,6 +60,9 @@ Optional variables:
 | `EMPLOYEE_GROUP_ID` | Telegram employee group ID (enables voting) |
 | `MEDIA_STORAGE_CHAT_ID` | Optional storage chat used to upload media and capture reusable `file_id`s |
 | `OPENAI_API_KEY` | OpenAI API key (enables auto-translation) |
+| `GROQ_API_KEY` | Groq API key (AI reports, insights, Ask Data, chat annotation, dispatch parsing) |
+| `GROQ_AI_MODEL` | Optional Groq model for reports/insights (default: `llama-3.3-70b-versatile`) |
+| `GROQ_AI_FAST_MODEL` | Optional fast Groq model for annotation batches (default: `llama-3.1-8b-instant`) |
 | `PORT` | API server port (default: 3001) |
 | `LEADS_BOT_PORT` | Leads-Bot internal port (default: 8000) |
 | `RENDER_EXTERNAL_URL` | Public base URL used for `/connect` and webhook callbacks |

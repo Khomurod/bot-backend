@@ -621,8 +621,8 @@ export async function discardAiReport(reportId) {
   return res.json();
 }
 
-export async function testYandexAi() {
-  const res = await fetch(`${API_BASE}/ai-reports/test-yandex`, {
+export async function testGroqAi() {
+  const res = await fetch(`${API_BASE}/ai-reports/test-groq`, {
     method: 'POST',
     headers: getHeaders(),
   });

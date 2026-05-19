@@ -10,7 +10,7 @@
 //   4. Detect at-risk / stars / silent / home-time / unacked / hotspots /
 //      anomaly / 1:1 recommendations / weekly pulse purely from those
 //      annotations + stats.
-//   5. For every detection that should ship to management, ask Yandex
+//   5. For every detection that should ship to management, ask Groq
 //      for a short narrative — given the metrics + cited excerpts, not
 //      the raw transcript. This keeps context small, cost low, and
 //      grounding high.
@@ -19,7 +19,7 @@
 // operational data. Everything comes from chat_logs + its annotations.
 
 const db = require('../database/db');
-const { callYandexRaw } = require('./yandexClient');
+const { callGroqRaw } = require('./groqClient');
 const { ensureAnnotationsForRange } = require('./aiAnnotationService');
 const { buildTelegramMessageUrl } = require('./telegramUrl');
 
@@ -325,7 +325,7 @@ function computePulse(messages, buckets, daysBack) {
   };
 }
 
-// ── Narrative generation (Consolidated Yandex call for all cards) ──────────
+// ── Narrative generation (Consolidated Groq call for all cards) ──────────
 const BATCH_SYSTEM_PROMPT = [
   'You are an executive auditor for a trucking company.',
   'I am providing evidence for several operational categories in a JSON object.',
@@ -378,7 +378,7 @@ function parseBatchCardNarratives(text) {
 async function narrateBatch(cardsContext) {
   if (Object.keys(cardsContext).length === 0) return {};
   try {
-    const raw = await callYandexRaw(buildBatchCardPrompt(cardsContext), {
+    const raw = await callGroqRaw(buildBatchCardPrompt(cardsContext), {
       systemText: BATCH_SYSTEM_PROMPT,
       temperature: 0.3,
       maxTokens: 3000,

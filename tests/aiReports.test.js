@@ -104,7 +104,7 @@ test('api /ai-reports/generate routes company and driver correctly', async () =>
     generateCompanyReport: async () => { calls.companyGenerate += 1; return '<b>Company</b>'; },
     generateDriverReport: async () => { calls.driverGenerate += 1; return 'Overall|||Breakdown'; },
     AI_REPORT_GENERATION_FAILED: 'AI_REPORT_GENERATION_FAILED',
-    callYandex: async () => 'YANDEX_OK',
+    callGroq: async () => 'GROQ_OK',
   };
 
   const { app } = loadApiWithMocks(dbMock, aiMock);

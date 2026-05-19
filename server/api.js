@@ -9,7 +9,7 @@ const config = require('../config/config');
 const db = require('../database/db');
 const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcastTest, sendBroadcastToGroups, sendConfirmationBroadcast, sendConfirmationBroadcastTest } = require('../bot/bot');
 const { translateBatch } = require('../services/translationService');
-const { generateDriverReport, generateCompanyReport, AI_REPORT_GENERATION_FAILED, callYandex } = require('../services/aiAnalysisService');
+const { generateDriverReport, generateCompanyReport, AI_REPORT_GENERATION_FAILED, callGroq } = require('../services/aiAnalysisService');
 const { generateInsightReport } = require('../services/aiInsightsService');
 const { ensureAnnotationsForRange } = require('../services/aiAnnotationService');
 const { askData } = require('../services/aiAskService');
@@ -1840,13 +1840,13 @@ app.delete('/api/ai-reports/:id', authMiddleware, async (req, res) => {
   }
 });
 
-app.post('/api/ai-reports/test-yandex', authMiddleware, async (req, res) => {
+app.post('/api/ai-reports/test-groq', authMiddleware, async (req, res) => {
   try {
-    const output = await callYandex('Reply with exactly: YANDEX_OK');
-    const ok = output.includes('YANDEX_OK');
+    const output = await callGroq('Reply with exactly: GROQ_OK');
+    const ok = output.includes('GROQ_OK');
     res.json({ success: ok, output: output.slice(0, 200) });
   } catch (err) {
-    console.error('[API] Yandex AI test failed:', err.message);
+    console.error('[API] Groq AI test failed:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -1854,7 +1854,7 @@ app.post('/api/ai-reports/test-yandex', authMiddleware, async (req, res) => {
 // ─── AI Insights v2 (card-based reports) ─────────────────────────
 // Generates a brand-new insights report: annotates any missing chat_logs in
 // the window, rebuilds role consensus, computes per-sender stats, runs the
-// nine detectors, and asks Yandex for a narrative per non-empty card.
+// nine detectors, and asks Groq for a narrative per non-empty card.
 app.post('/api/ai-insights/generate', authMiddleware, async (req, res) => {
   try {
     const daysBack = parseInt(req.body?.daysBack, 10);

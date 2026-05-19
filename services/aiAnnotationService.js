@@ -3,7 +3,7 @@
 // Stage A of the AI Insights pipeline.
 //
 // Reads rows from chat_logs that have no matching chat_message_annotations,
-// classifies them via Yandex (batched JSON call), and inserts the results.
+// classifies them via Groq (batched JSON call), and inserts the results.
 //
 // Role attribution is inferred per-message from context ONLY — no user_roles
 // table. The caller later aggregates per-sender consensus from many messages.
@@ -17,10 +17,15 @@
 //   - VALID_INTENTS / VALID_ROLES
 //
 const db = require('../database/db');
-const { callYandexRaw } = require('./yandexClient');
+const {
+  callGroqRaw,
+  GROQ_API_KEY,
+  GROQ_AI_FAST_MODEL,
+  isAuthOrConfigError,
+} = require('./groqClient');
 
-const MODEL_VERSION = 'yandex-v1-annotator';
-const BATCH_SIZE = 12; // keeps per-call prompt comfortably under Yandex lite context
+const MODEL_VERSION = 'groq-v1-annotator';
+const BATCH_SIZE = 12; // keeps per-call prompt comfortably under Groq fast-model context
 const MAX_MESSAGE_CHARS = 1200; // per message, truncate so one ranter can't eat the batch
 
 const VALID_ROLES = ['driver', 'dispatcher', 'admin', 'unknown'];
@@ -167,7 +172,7 @@ function normalizeAnnotation(raw, fallbackId) {
 
 /**
  * Pure parser — tested directly. Returns array of normalized annotations.
- * Input: raw yandex text, array of batch inputs (for id fallback alignment).
+ * Input: raw model text, array of batch inputs (for id fallback alignment).
  */
 function parseAnnotationBatchResponse(responseText, batch) {
   const arr = extractJsonArray(responseText) || [];
@@ -199,10 +204,11 @@ function parseAnnotationBatchResponse(responseText, batch) {
 async function annotateBatch(batch) {
   const prompt = buildAnnotationPrompt(batch);
   const systemText = 'You are a strict classifier. Return JSON only. Never include prose or code fences. If unsure, use "unknown" / "no_signal" and confidence 0.';
-  const response = await callYandexRaw(prompt, {
+  const response = await callGroqRaw(prompt, {
     systemText,
     temperature: 0.1,
     maxTokens: Math.min(4000, 250 + batch.length * 180),
+    model: GROQ_AI_FAST_MODEL,
   });
   return parseAnnotationBatchResponse(response, batch);
 }
@@ -257,6 +263,7 @@ async function persistAnnotations(annotations) {
 
 async function annotateChatLogs(logs, opts = {}) {
   if (!Array.isArray(logs) || logs.length === 0) return 0;
+  if (!GROQ_API_KEY) return 0;
   const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : () => {};
 
   let totalWritten = 0;
@@ -276,6 +283,7 @@ async function annotateChatLogs(logs, opts = {}) {
     } catch (err) {
       console.error('[ANNOTATE] Batch failed, skipping:', err.message);
       onProgress({ done: Math.min(i + BATCH_SIZE, logs.length), total: logs.length, error: err.message });
+      if (isAuthOrConfigError(err.message)) break;
     }
   }
   return totalWritten;
@@ -311,6 +319,10 @@ async function ensureAnnotationsForRange({ daysBack = 7, groupIds = null, onProg
 let isAnnotating = false;
 
 function startBackgroundAnnotator() {
+  if (!GROQ_API_KEY) {
+    console.log('[ANNOTATOR] GROQ_API_KEY not set; background annotator disabled.');
+    return;
+  }
   console.log('[ANNOTATOR] Starting background annotator loop (120s interval).');
   setInterval(async () => {
     if (isAnnotating) return;

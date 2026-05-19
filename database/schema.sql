@@ -574,7 +574,7 @@ CREATE INDEX IF NOT EXISTS idx_groups_type_active
   ON groups(group_type, active);
 
 -- ─── AI Insights Pipeline v2 ─────────────────────────────────────────
--- Per-message annotations produced by Yandex classifier. One row per
+-- Per-message annotations produced by Groq classifier. One row per
 -- chat_logs row, populated asynchronously (and incrementally) by the
 -- aiAnnotationService. All fields are nullable so a partially-annotated
 -- row is still usable; the pipeline tops up missing annotations on demand.

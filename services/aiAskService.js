@@ -4,18 +4,18 @@
 //
 // Flow:
 //   1. User asks a question (plain English/Russian/Uzbek).
-//   2. Yandex returns a strict JSON *query plan* — never raw SQL.
+//   2. Groq returns a strict JSON *query plan* — never raw SQL.
 //   3. We compile the plan into a single parameterized SELECT on
 //      v_annotated_messages with a whitelist of fields and operators.
 //   4. We run the query (LIMIT 200 hard cap).
-//   5. Yandex produces a short narrative answer using only the
+//   5. Groq produces a short narrative answer using only the
 //      resulting rows + cited t.me links.
 //
 // Nothing here constructs SQL from model free-text. Plans that violate
 // the whitelist are rejected with a structured error.
 
 const db = require('../database/db');
-const { callYandexRaw } = require('./yandexClient');
+const { callGroqRaw } = require('./groqClient');
 
 const ALLOWED_FIELDS = new Set([
   'sender_name',
@@ -250,7 +250,7 @@ async function askData(question) {
   if (q.length > 500) throw new Error('Question too long (max 500 chars)');
 
   // 1. Plan
-  const planText = await callYandexRaw(`Question: ${q}`, {
+  const planText = await callGroqRaw(`Question: ${q}`, {
     systemText: PLAN_SYSTEM_PROMPT,
     temperature: 0.1,
     maxTokens: 700,
@@ -275,7 +275,7 @@ async function askData(question) {
     return base;
   });
 
-  const answerText = await callYandexRaw(
+  const answerText = await callGroqRaw(
     JSON.stringify({
       question: q,
       plan: compiled.plan,

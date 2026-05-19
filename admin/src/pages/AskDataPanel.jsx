@@ -35,7 +35,7 @@ export default function AskDataPanel() {
     <div className="ios-glass ai-section-card" style={{ marginTop: 18 }}>
       <h3 style={{ marginTop: 0 }}>💬 Ask the Data</h3>
       <p style={{ fontSize: 13, opacity: 0.75, marginTop: 0 }}>
-        Ask anything about driver conversations. Powered by Yandex + annotated chat logs.
+        Ask anything about driver conversations. Powered by Groq + annotated chat logs.
       </p>
       <div className="ai-action-row">
         <input

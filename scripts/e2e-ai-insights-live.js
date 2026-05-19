@@ -74,7 +74,7 @@ async function main() {
 
     const token = login.json.token;
 
-    console.log('\n=== POST /api/ai-ask (Yandex plan + SQL + narrative) ===');
+    console.log('\n=== POST /api/ai-ask (Groq plan + SQL + narrative) ===');
     const ask = await httpJson(
       base,
       'POST',

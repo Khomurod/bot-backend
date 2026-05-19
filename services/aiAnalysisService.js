@@ -1,4 +1,4 @@
-const { callYandexRaw } = require('./yandexClient');
+const { callGroqRaw } = require('./groqClient');
 
 const AI_REPORT_GENERATION_FAILED = 'AI_REPORT_GENERATION_FAILED';
 const REPORT_DELIMITER = '|||';
@@ -29,7 +29,7 @@ function sanitizeTranscriptLine(line) {
 
 function buildTranscript(logsArray, opts = {}) {
   // Legacy single-shot report caps kept generous so weekly narrative still
-  // fits Yandex context; full-coverage analysis uses the insights pipeline
+  // fits model context; full-coverage analysis uses the insights pipeline
   // (aiInsightsService) which processes messages in batches instead.
   const MAX_MESSAGES = Number(opts.maxMessages) || 1500;
   const MAX_CHARS = Number(opts.maxChars) || 60000;
@@ -47,7 +47,7 @@ function buildTranscript(logsArray, opts = {}) {
   };
 }
 
-async function callYandex(promptText) {
+async function callGroq(promptText) {
   const systemText = [
     'You are a strict executive logistics auditor for a trucking company.',
     'Analyze only provided evidence from a global transcript across all driver groups.',
@@ -59,7 +59,7 @@ async function callYandex(promptText) {
     'Use HTML-safe output only (no markdown).',
     'Do not invent facts, percentages, or events not present in transcript.',
   ].join(' ');
-  return callYandexRaw(promptText, { systemText, temperature: 0.5, maxTokens: 2000 });
+  return callGroqRaw(promptText, { systemText, temperature: 0.5, maxTokens: 2000 });
 }
 
 async function generateDriverReport(logsArray) {
@@ -103,9 +103,9 @@ async function generateDriverReport(logsArray) {
       `Transcript:\n${transcript}`,
     ].join('\n');
 
-    let generated = await callYandexWithSystem(prompt, systemPrompt);
+    let generated = await callGroqWithSystem(prompt, systemPrompt);
     if (generated && !generated.includes(REPORT_DELIMITER)) {
-      generated = await callYandexWithSystem(
+      generated = await callGroqWithSystem(
         [
           `Reformat the following content into EXACTLY two sections separated by ${REPORT_DELIMITER}.`,
           'Section 1: 2-3 sentence overall summary.',
@@ -169,9 +169,9 @@ async function generateCompanyReport(logsArray) {
   ].join('\n');
 
   try {
-    let generated = await callYandexWithSystem(prompt, systemPrompt);
+    let generated = await callGroqWithSystem(prompt, systemPrompt);
     if (generated && !generated.includes(REPORT_DELIMITER)) {
-      generated = await callYandexWithSystem(
+      generated = await callGroqWithSystem(
         [
           `Reformat the following content into EXACTLY two sections separated by ${REPORT_DELIMITER}.`,
           'Section 1: 2-3 sentence overall summary.',
@@ -193,15 +193,15 @@ async function generateCompanyReport(logsArray) {
   }
 }
 
-async function callYandexWithSystem(promptText, systemText) {
-  return callYandexRaw(promptText, { systemText, temperature: 0.5, maxTokens: 2000 });
+async function callGroqWithSystem(promptText, systemText) {
+  return callGroqRaw(promptText, { systemText, temperature: 0.5, maxTokens: 2000 });
 }
 
 module.exports = {
   generateDriverReport,
   generateCompanyReport,
   AI_REPORT_GENERATION_FAILED,
-  callYandex,
+  callGroq,
   buildTranscript,
   sanitizeTranscriptLine,
   TRANSCRIPT_FENCE_OPEN,
