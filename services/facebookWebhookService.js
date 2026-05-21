@@ -20,6 +20,7 @@ const {
   buildTemplateContext,
   renderLeadSmsTemplate,
 } = require('./facebookLeadSmsTemplate');
+const { createCrmRecordFromLead } = require('./bitrix24Service');
 
 let telegramClient = null;
 let workerInterval = null;
@@ -131,6 +132,22 @@ async function processLeadEvent(eventRow) {
   const phone = fieldMap.phone_number || fieldMap.phone || '';
 
   await sendTelegramMessage(connection.telegram_group_id, formatLeadMessage(leadData));
+
+  try {
+    const formId = String(payload.value?.form_id || payload.value?.formId || '');
+    const bitrixResult = await createCrmRecordFromLead({
+      fieldMap,
+      leadData,
+      connection,
+      leadgenId,
+      formId,
+    });
+    if (!bitrixResult.ok && bitrixResult.reason !== 'not_configured') {
+      console.error('[Bitrix24] Lead sync failed:', bitrixResult.error || bitrixResult.reason);
+    }
+  } catch (bitrixErr) {
+    console.error('[Bitrix24] Lead sync error:', bitrixErr.message);
+  }
 
   let smsResult = { ok: false, reason: phone ? 'skipped' : 'no_phone' };
   let ruleLabel = null;

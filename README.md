@@ -96,6 +96,9 @@ Optional variables:
 | `TELEGRAM_BOT_TOKEN` | **WenzeLeadBots** token — `/connect`, lead alerts, connect confirmations |
 | `TELEGRAM_CHAT_ID` | Telegram group id for **Wenze Facebook Leads** (RingCentral inbound SMS/MMS forwards and reply-to-SMS on those messages) |
 | `BOT_TOKEN` | **Wenze Feedback** token — driver feedback only (not Facebook leads) |
+| `BITRIX24_ENABLED` | Set `true` to also create CRM records in Bitrix24 when a Facebook lead arrives |
+| `BITRIX24_WEBHOOK_URL` | Bitrix24 incoming webhook base URL (scope: `crm`), e.g. `https://wenze.bitrix24.com/rest/1/…/` |
+| `BITRIX24_ENTITY` | `lead` (default) or `deal` — deals require `BITRIX24_DEAL_CATEGORY_ID` and `BITRIX24_DEAL_STAGE_ID` |
 
 ### 3. Initialize database
 
@@ -260,6 +263,18 @@ cd admin && npm run dev
 6. Click the button, sign in to Facebook, and select one or more Pages
 7. New leads post to the connected Telegram group via WenzeLeadBots; after a successful auto-SMS, a notice is posted there: `AutoMessage sent via SMS to {phone}:` followed by the **exact SMS text** in monospace
 8. **Reply in Telegram** to that notice (in the page group) or to an inbound **SMS/MMS Reply Received** in Wenze Facebook Leads (`TELEGRAM_CHAT_ID`) to send SMS via RingCentral (confirmation appears in-thread)
+
+### Bitrix24 dual delivery (optional)
+
+When `BITRIX24_ENABLED=true`, each Facebook lead is still sent to Telegram first, then synced to Bitrix24 via the incoming webhook (`crm.lead.add` by default). Bitrix failures are logged only — they do not block Telegram or webhook processing.
+
+1. In Bitrix24 (`wenze.bitrix24.com`): **Developer resources → Incoming webhook** with `crm` scope
+2. Set `BITRIX24_WEBHOOK_URL` to the webhook base (must end with `/` or the app normalizes it)
+3. Redeploy with `BITRIX24_ENABLED=true`
+4. Test with [Meta Lead Ads Testing Tool](https://developers.facebook.com/tools/lead-ads-testing/) or a live form on a connected Page
+5. Confirm a new lead appears in Bitrix CRM and the Telegram group still receives the lead message
+
+If Bitrix native Facebook Lead Ads forms are also active, the same Meta lead may appear twice in Bitrix — prefer this bot-backend path as the single CRM source until duplicates are ruled out.
 
 ### Lead auto-SMS templates (admin)
 

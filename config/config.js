@@ -119,4 +119,16 @@ module.exports = {
   // When false, load ingestion skips forwarding parse-failure hints to DISPATCH_ETA_TEST_GROUP_ID.
   loadIngestNotifyExtractionFailure:
     process.env.LOAD_INGEST_NOTIFY_EXTRACTION_FAILURE !== 'false',
+  // Bitrix24 incoming webhook — optional dual delivery for Facebook leads
+  bitrix24Enabled: process.env.BITRIX24_ENABLED === 'true',
+  bitrix24WebhookUrl: normalizeOptionalEnv(process.env.BITRIX24_WEBHOOK_URL),
+  bitrix24Entity: String(process.env.BITRIX24_ENTITY || 'lead').trim().toLowerCase() === 'deal'
+    ? 'deal'
+    : 'lead',
+  bitrix24AssignedById: String(process.env.BITRIX24_ASSIGNED_BY_ID || '').trim(),
+  bitrix24SourceId: normalizeOptionalEnv(process.env.BITRIX24_SOURCE_ID) || 'WEB',
+  bitrix24SourceDescription:
+    normalizeOptionalEnv(process.env.BITRIX24_SOURCE_DESCRIPTION) || 'Facebook / bot-backend',
+  bitrix24DealCategoryId: String(process.env.BITRIX24_DEAL_CATEGORY_ID || '').trim(),
+  bitrix24DealStageId: String(process.env.BITRIX24_DEAL_STAGE_ID || '').trim(),
 };
