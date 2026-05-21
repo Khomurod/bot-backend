@@ -1,0 +1,13 @@
+{
+  "statusId": "NEW",
+  "statusNote": "INCOMING not in portal; NEW = Unassigned (first kanban column)",
+  "custom": {},
+  "customNote": "crm.lead.userfield.list returned no custom fields — create Lead fields in Bitrix for experience/CDL, then re-run discovery",
+  "leadStatuses": [
+    { "STATUS_ID": "NEW", "NAME": "Unassigned" },
+    { "STATUS_ID": "IN_PROCESS", "NAME": "In Progress" },
+    { "STATUS_ID": "PROCESSED", "NAME": "Processed" },
+    { "STATUS_ID": "CONVERTED", "NAME": "Good Lead" },
+    { "STATUS_ID": "JUNK", "NAME": "Junk Lead" }
+  ]
+}

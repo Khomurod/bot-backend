@@ -1,5 +1,5 @@
 {
-  "statusId": "",
+  "statusId": "NEW",
   "defaults": {
     "full_name": { "split": ["NAME", "LAST_NAME"] },
     "first_name": "NAME",
@@ -44,5 +44,5 @@
     "yes": ["Y", "YES", "Yes", "1"],
     "no": ["N", "NO", "No", "0"]
   },
-  "_note": "Run: BITRIX24_WEBHOOK_URL=... node scripts/discover-bitrix-lead-fields.js — then set statusId and replace matchTitle entries with explicit bitrixField UF_CRM_* if needed."
+  "_note": "Discovered 2026-05-21: wenze portal has no INCOMING status — NEW (Unassigned) is the first stage. No UF_CRM_* lead userfields yet; add Experience/CDL fields in CRM → Settings → Lead fields, then re-run npm run discover-bitrix-fields."
 }
