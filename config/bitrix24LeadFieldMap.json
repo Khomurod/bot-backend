@@ -1,0 +1,48 @@
+{
+  "statusId": "",
+  "defaults": {
+    "full_name": { "split": ["NAME", "LAST_NAME"] },
+    "first_name": "NAME",
+    "last_name": "LAST_NAME",
+    "email": "EMAIL",
+    "phone_number": "PHONE",
+    "phone": "PHONE",
+    "city": "ADDRESS_CITY",
+    "state": "ADDRESS_PROVINCE",
+    "zip_code": "ADDRESS_POSTAL_CODE",
+    "country": "ADDRESS_COUNTRY",
+    "company_name": "COMPANY_TITLE",
+    "job_title": "POST"
+  },
+  "custom": {
+    "do_you_have_2_years_of_experience": {
+      "matchTitle": ["years", "experience"]
+    },
+    "do_you_have_2_years_of_experience_": {
+      "matchTitle": ["years", "experience"]
+    },
+    "are_you_cdl_a_over_the_road_driver": {
+      "matchTitle": ["cdl", "road", "driver"]
+    },
+    "are_you_cdl_a_over_the_road_driver_": {
+      "matchTitle": ["cdl", "road", "driver"]
+    }
+  },
+  "byFormId": {
+    "1489274899611047": {
+      "custom": {
+        "do_you_have_2_years_of_experience": {
+          "matchTitle": ["years", "experience"]
+        },
+        "are_you_cdl_a_over_the_road_driver": {
+          "matchTitle": ["cdl", "road", "driver"]
+        }
+      }
+    }
+  },
+  "enumerations": {
+    "yes": ["Y", "YES", "Yes", "1"],
+    "no": ["N", "NO", "No", "0"]
+  },
+  "_note": "Run: BITRIX24_WEBHOOK_URL=... node scripts/discover-bitrix-lead-fields.js — then set statusId and replace matchTitle entries with explicit bitrixField UF_CRM_* if needed."
+}

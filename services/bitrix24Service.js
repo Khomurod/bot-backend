@@ -1,5 +1,6 @@
 const config = require('../config/config');
 const { buildBitrixCrmFields } = require('./bitrix24LeadMapper');
+const { loadCatalog } = require('./bitrix24FieldCatalog');
 
 function normalizeWebhookBase(url) {
   const trimmed = String(url || '').trim();
@@ -21,7 +22,19 @@ function getBitrixMapperConfig() {
     sourceDescription: config.bitrix24SourceDescription,
     dealCategoryId: config.bitrix24DealCategoryId,
     dealStageId: config.bitrix24DealStageId,
+    fieldMap: config.bitrix24FieldMap,
   };
+}
+
+async function loadBitrixFieldCatalog(fetchImpl = fetch) {
+  const base = normalizeWebhookBase(config.bitrix24WebhookUrl);
+  if (!base) return null;
+  try {
+    return await loadCatalog(base, fetchImpl);
+  } catch (err) {
+    console.warn('[Bitrix24] Field catalog unavailable:', err.message);
+    return null;
+  }
 }
 
 function getRestMethod(entity) {
@@ -64,6 +77,9 @@ async function createCrmRecordFromLead({
 
   const method = getRestMethod(bitrixConfig.entity);
   const url = `${normalizeWebhookBase(config.bitrix24WebhookUrl)}${method}.json`;
+  const catalog = bitrixConfig.entity === 'lead'
+    ? await loadBitrixFieldCatalog(fetchImpl)
+    : null;
   const fields = buildBitrixCrmFields({
     fieldMap,
     leadData,
@@ -71,6 +87,7 @@ async function createCrmRecordFromLead({
     leadgenId,
     formId,
     bitrixConfig,
+    catalog,
   });
 
   try {
@@ -101,5 +118,6 @@ module.exports = {
   normalizeWebhookBase,
   isBitrixConfigured,
   getBitrixMapperConfig,
+  loadBitrixFieldCatalog,
   createCrmRecordFromLead,
 };

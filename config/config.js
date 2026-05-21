@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const metaAppCredentials = require('./metaAppCredentials.json');
+const { loadBitrixFieldMapConfig } = require('../services/bitrix24FieldMapLoader');
 
 const samsaraApiKeysFromEnv = String(process.env.SAMSARA_API_KEYS || '')
   .split(',')
@@ -131,4 +132,5 @@ module.exports = {
     normalizeOptionalEnv(process.env.BITRIX24_SOURCE_DESCRIPTION) || 'Facebook / bot-backend',
   bitrix24DealCategoryId: String(process.env.BITRIX24_DEAL_CATEGORY_ID || '').trim(),
   bitrix24DealStageId: String(process.env.BITRIX24_DEAL_STAGE_ID || '').trim(),
+  bitrix24FieldMap: loadBitrixFieldMapConfig(),
 };

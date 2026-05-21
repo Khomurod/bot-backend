@@ -50,6 +50,18 @@ test('createCrmRecordFromLead posts to crm.lead.add when configured', async () =
   let capturedUrl = '';
   let capturedBody = null;
   const mockFetch = async (url, options) => {
+    if (String(url).includes('crm.lead.fields')) {
+      return {
+        ok: true,
+        json: async () => ({ result: {} }),
+      };
+    }
+    if (String(url).includes('crm.status.list')) {
+      return {
+        ok: true,
+        json: async () => ({ result: [{ STATUS_ID: 'INCOMING', NAME: 'INCOMING' }] }),
+      };
+    }
     capturedUrl = url;
     capturedBody = JSON.parse(options.body);
     return {
@@ -79,6 +91,8 @@ test('createCrmRecordFromLead posts to crm.lead.add when configured', async () =
   else delete process.env.BITRIX24_WEBHOOK_URL;
   if (originalEntity !== undefined) process.env.BITRIX24_ENTITY = originalEntity;
   else delete process.env.BITRIX24_ENTITY;
+  const { resetCatalogForTests } = require('../services/bitrix24FieldCatalog');
+  resetCatalogForTests();
   delete require.cache[require.resolve('../config/config')];
   delete require.cache[require.resolve('../services/bitrix24Service')];
 });

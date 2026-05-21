@@ -1,24 +1,24 @@
-const PRETTY_FIELD_LABELS = {
-  full_name: 'Name',
-  first_name: 'First Name',
-  last_name: 'Last Name',
-  email: 'Email',
-  phone_number: 'Phone',
-  phone: 'Phone',
-  city: 'City',
-  state: 'State',
-  zip_code: 'ZIP',
-  country: 'Country',
-  company_name: 'Company',
-  job_title: 'Job Title',
-  message: 'Message',
-  comments: 'Comments',
-};
+const {
+  findFieldByTitleHints,
+  resolveEnumerationValue,
+  findIncomingStatusId,
+} = require('./bitrix24FieldCatalog');
+const { resolveFieldMapConfig } = require('./bitrix24FieldMapLoader');
+
+const MULTI_VALUE_FIELDS = new Set(['EMAIL', 'PHONE', 'WEB', 'IM']);
 
 function bitrixMultiField(value, valueType = 'WORK') {
   const trimmed = String(value || '').trim();
   if (!trimmed) return undefined;
   return [{ VALUE: trimmed, VALUE_TYPE: valueType }];
+}
+
+function normalizeMetaFieldKey(key) {
+  return String(key || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }
 
 function splitNameFromFieldMap(fieldMap) {
@@ -45,39 +45,120 @@ function resolveDisplayName(fieldMap, pageName) {
   return combined || pageName || 'Facebook Lead';
 }
 
-function buildLeadComments({
-  fieldMap,
+function normalizeFieldMapKeys(fieldMap) {
+  const out = {};
+  for (const [key, value] of Object.entries(fieldMap || {})) {
+    const normalized = normalizeMetaFieldKey(key);
+    if (!normalized || out[normalized]) continue;
+    out[normalized] = String(value || '').trim();
+  }
+  return out;
+}
+
+function setBitrixField(fields, bitrixField, value, fieldMeta) {
+  if (!bitrixField || value === undefined || value === null || String(value).trim() === '') {
+    return;
+  }
+  const resolved = fieldMeta?.type === 'enumeration'
+    ? resolveEnumerationValue(fieldMeta, value)
+    : value;
+
+  if (MULTI_VALUE_FIELDS.has(bitrixField)) {
+    const multi = bitrixMultiField(resolved);
+    if (multi) fields[bitrixField] = multi;
+    return;
+  }
+  fields[bitrixField] = resolved;
+}
+
+function applySplitName(fields, fieldMap, targetFields) {
+  const { firstName, lastName } = splitNameFromFieldMap(fieldMap);
+  const [firstTarget, lastTarget] = targetFields || ['NAME', 'LAST_NAME'];
+  if (firstName && firstTarget) fields[firstTarget] = firstName;
+  if (lastName && lastTarget) fields[lastTarget] = lastName;
+}
+
+function resolveCustomBitrixField(rule, catalog) {
+  if (!rule) return null;
+  if (typeof rule === 'string') return { name: rule, meta: catalog?.fields?.[rule] };
+  if (rule.bitrixField) {
+    return { name: rule.bitrixField, meta: catalog?.fields?.[rule.bitrixField] };
+  }
+  if (rule.matchTitle && catalog?.fields) {
+    const found = findFieldByTitleHints(catalog.fields, rule.matchTitle);
+    if (found) return found;
+  }
+  return null;
+}
+
+function applyMappedFields(fieldMap, mapConfig, catalog) {
+  const fields = {};
+  const mappedMetaKeys = new Set();
+  const normalizedMap = normalizeFieldMapKeys(fieldMap);
+
+  for (const [metaKey, rule] of Object.entries(mapConfig.defaults || {})) {
+    const value = normalizedMap[metaKey];
+    if (!value) continue;
+    mappedMetaKeys.add(metaKey);
+
+    if (typeof rule === 'string') {
+      setBitrixField(fields, rule, value, catalog?.fields?.[rule]);
+      continue;
+    }
+    if (rule.split) {
+      applySplitName(fields, { full_name: value, first_name: normalizedMap.first_name, last_name: normalizedMap.last_name }, rule.split);
+      continue;
+    }
+    if (rule.bitrixField) {
+      setBitrixField(fields, rule.bitrixField, value, catalog?.fields?.[rule.bitrixField]);
+    }
+  }
+
+  if (normalizedMap.full_name && !mappedMetaKeys.has('full_name')) {
+    const splitRule = mapConfig.defaults?.full_name;
+    if (splitRule?.split) {
+      applySplitName(fields, normalizedMap, splitRule.split);
+      mappedMetaKeys.add('full_name');
+    }
+  }
+
+  for (const [metaKey, rule] of Object.entries(mapConfig.custom || {})) {
+    const value = normalizedMap[metaKey];
+    if (!value) continue;
+
+    const resolved = resolveCustomBitrixField(rule, catalog);
+    if (!resolved?.name) {
+      console.warn('[Bitrix24] No Bitrix field for custom Meta key:', metaKey);
+      continue;
+    }
+    mappedMetaKeys.add(metaKey);
+    setBitrixField(fields, resolved.name, value, resolved.meta);
+  }
+
+  return { fields, mappedMetaKeys, normalizedMap };
+}
+
+function buildTrackingComments({
   leadData,
   connection,
   leadgenId,
   formId,
 }) {
   const lines = ['Facebook lead (bot-backend)', ''];
-  const shown = new Set();
-
-  for (const [key, label] of Object.entries(PRETTY_FIELD_LABELS)) {
-    if (fieldMap[key]) {
-      lines.push(`${label}: ${fieldMap[key]}`);
-      shown.add(key);
-    }
-  }
-
-  for (const [key, value] of Object.entries(fieldMap)) {
-    if (!shown.has(key)) {
-      const label = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-      lines.push(`${label}: ${value}`);
-    }
-  }
-
-  lines.push('');
   if (connection?.page_name) lines.push(`Page: ${connection.page_name}`);
   if (connection?.page_id) lines.push(`Page ID: ${connection.page_id}`);
   if (formId) lines.push(`Form ID: ${formId}`);
   if (leadgenId) lines.push(`Leadgen ID: ${leadgenId}`);
   if (leadData?.id) lines.push(`Meta lead ID: ${leadData.id}`);
   if (leadData?.created_time) lines.push(`Submitted: ${leadData.created_time}`);
-
   return lines.join('\n');
+}
+
+function logUnmappedFields(normalizedMap, mappedMetaKeys) {
+  for (const [key, value] of Object.entries(normalizedMap)) {
+    if (!value || mappedMetaKeys.has(key)) continue;
+    console.warn('[Bitrix24] Unmapped Meta field:', key, '=', value);
+  }
 }
 
 /**
@@ -88,6 +169,7 @@ function buildLeadComments({
  * @param {string} params.leadgenId
  * @param {string} params.formId
  * @param {object} params.bitrixConfig
+ * @param {object} [params.catalog]
  */
 function buildBitrixCrmFields({
   fieldMap,
@@ -96,35 +178,34 @@ function buildBitrixCrmFields({
   leadgenId,
   formId,
   bitrixConfig,
+  catalog = null,
 }) {
   const pageName = connection?.page_name || 'Facebook Page';
   const displayName = resolveDisplayName(fieldMap, pageName);
-  const { firstName, lastName } = splitNameFromFieldMap(fieldMap);
-  const phone = fieldMap.phone_number || fieldMap.phone || '';
-  const email = fieldMap.email || '';
+  const mapConfig = resolveFieldMapConfig(formId);
 
-  const fields = {
-    TITLE: `Facebook Lead – ${displayName}`,
-    COMMENTS: buildLeadComments({
-      fieldMap,
-      leadData,
-      connection,
-      leadgenId,
-      formId,
-    }),
-    SOURCE_DESCRIPTION: bitrixConfig.sourceDescription,
-  };
+  const { fields, mappedMetaKeys, normalizedMap } = applyMappedFields(
+    fieldMap,
+    mapConfig,
+    catalog,
+  );
 
-  if (firstName) fields.NAME = firstName;
-  if (lastName) fields.LAST_NAME = lastName;
+  logUnmappedFields(normalizedMap, mappedMetaKeys);
 
-  const phoneField = bitrixMultiField(phone);
-  if (phoneField) fields.PHONE = phoneField;
+  fields.TITLE = fields.TITLE || `Facebook Lead – ${displayName}`;
+  fields.COMMENTS = buildTrackingComments({ leadData, connection, leadgenId, formId });
 
-  const emailField = bitrixMultiField(email);
-  if (emailField) fields.EMAIL = emailField;
+  if (bitrixConfig.sourceDescription) {
+    fields.SOURCE_DESCRIPTION = bitrixConfig.sourceDescription;
+  }
+  if (bitrixConfig.sourceId) {
+    fields.SOURCE_ID = bitrixConfig.sourceId;
+  }
 
-  if (bitrixConfig.sourceId) fields.SOURCE_ID = bitrixConfig.sourceId;
+  const statusId = mapConfig.statusId
+    || (catalog ? findIncomingStatusId(catalog.statuses) : '')
+    || '';
+  if (statusId) fields.STATUS_ID = statusId;
 
   const assignedBy = Number(bitrixConfig.assignedById);
   if (Number.isFinite(assignedBy) && assignedBy > 0) {
@@ -145,8 +226,12 @@ function buildBitrixCrmFields({
 
 module.exports = {
   bitrixMultiField,
+  normalizeMetaFieldKey,
   splitNameFromFieldMap,
   resolveDisplayName,
-  buildLeadComments,
+  normalizeFieldMapKeys,
+  applyMappedFields,
+  buildTrackingComments,
+  buildLeadComments: buildTrackingComments,
   buildBitrixCrmFields,
 };

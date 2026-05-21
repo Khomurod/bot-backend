@@ -99,6 +99,9 @@ Optional variables:
 | `BITRIX24_ENABLED` | Set `true` to also create CRM records in Bitrix24 when a Facebook lead arrives |
 | `BITRIX24_WEBHOOK_URL` | Bitrix24 incoming webhook base URL (scope: `crm`), e.g. `https://wenze.bitrix24.com/rest/1/…/` |
 | `BITRIX24_ENTITY` | `lead` (default) or `deal` — deals require `BITRIX24_DEAL_CATEGORY_ID` and `BITRIX24_DEAL_STAGE_ID` |
+| `BITRIX24_STATUS_ID` | Optional lead stage override (e.g. `INCOMING`); also set in `config/bitrix24LeadFieldMap.json` |
+| `BITRIX24_FIELD_MAP` | Optional JSON override for field mapping (`defaults`, `custom`, `statusId`) |
+| `BITRIX24_FIELD_MAP_BY_FORM_ID` | Optional per-Facebook-form overrides keyed by form id |
 
 ### 3. Initialize database
 
@@ -270,9 +273,18 @@ When `BITRIX24_ENABLED=true`, each Facebook lead is still sent to Telegram first
 
 1. In Bitrix24 (`wenze.bitrix24.com`): **Developer resources → Incoming webhook** with `crm` scope
 2. Set `BITRIX24_WEBHOOK_URL` to the webhook base (must end with `/` or the app normalizes it)
-3. Redeploy with `BITRIX24_ENABLED=true`
-4. Test with [Meta Lead Ads Testing Tool](https://developers.facebook.com/tools/lead-ads-testing/) or a live form on a connected Page
-5. Confirm a new lead appears in Bitrix CRM and the Telegram group still receives the lead message
+3. Discover field API names and **INCOMING** status id, then update `config/bitrix24LeadFieldMap.json`:
+
+   ```bash
+   BITRIX24_WEBHOOK_URL=https://wenze.bitrix24.com/rest/1/your-secret/ npm run discover-bitrix-fields
+   ```
+
+   Merge `statusId` and `UF_CRM_*` ids from `config/bitrix24LeadFieldMap.discovered.json` into `bitrix24LeadFieldMap.json`. Custom questions can use `matchTitle` hints until you paste explicit `bitrixField` names.
+
+4. Redeploy with `BITRIX24_ENABLED=true`
+5. Test with [Meta Lead Ads Testing Tool](https://developers.facebook.com/tools/lead-ads-testing/) or a live form on a connected Page (e.g. **ENglish Company Drivers - New One**, form id `1489274899611047`)
+6. Confirm in **Leads → Incoming**: name, email, phone, and custom columns are on the lead card; **Comments** contains only tracking metadata (Page, Form ID, Leadgen ID)
+7. Check Render logs for `[Bitrix24] Unmapped Meta field` and add keys to `custom` in the field map if needed
 
 If Bitrix native Facebook Lead Ads forms are also active, the same Meta lead may appear twice in Bitrix — prefer this bot-backend path as the single CRM source until duplicates are ruled out.
 

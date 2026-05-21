@@ -13,7 +13,8 @@
     "seed-admin": "node scripts/seed-admin.js",
     "init-db": "node scripts/init-db.js",
     "migrate-media": "node scripts/migrate-media.js",
-    "migrate-multi-media": "node scripts/migrate-multi-media.js"
+    "migrate-multi-media": "node scripts/migrate-multi-media.js",
+    "discover-bitrix-fields": "node scripts/discover-bitrix-lead-fields.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
