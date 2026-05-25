@@ -204,6 +204,8 @@ ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS weekly_day_of_week SMALL
 ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS weekly_time_local TEXT;
 ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS last_sent_at TIMESTAMP;
 ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS last_run_status TEXT;
+ALTER TABLE broadcasts ADD COLUMN IF NOT EXISTS target_active_filter TEXT;
+ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS target_active_filter TEXT;
 
 UPDATE scheduled_messages
 SET media_items = jsonb_build_array(

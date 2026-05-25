@@ -84,10 +84,20 @@ export default function ScheduledMessagesPage() {
     );
   };
 
+  const activeFilterSuffix = (msg) => {
+    if (msg.target_type !== 'all' && msg.target_type !== 'language_groups') return '';
+    const f = msg.target_active_filter || 'active';
+    if (f === 'all') return ' · All statuses';
+    if (f === 'inactive') return ' · Inactive only';
+    return ' · Active only';
+  };
+
   const targetLabel = (msg) => {
     if (msg.target_type === 'specific_drivers') return `🚛 ${msg.target_driver_ids?.length || 0} driver(s)`;
-    if (msg.target_type === 'language_groups') return `🌐 ${(msg.target_languages || []).map(l => l.toUpperCase()).join(', ')}`;
-    return '👥 All Drivers';
+    if (msg.target_type === 'language_groups') {
+      return `🌐 ${(msg.target_languages || []).map(l => l.toUpperCase()).join(', ')}${activeFilterSuffix(msg)}`;
+    }
+    return `👥 All Drivers${activeFilterSuffix(msg)}`;
   };
 
   const langLabel = (msg) => {

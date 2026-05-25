@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import * as api from "../api";
 import {
   getDaysUntilBirthday,
@@ -20,17 +20,45 @@ function displayDriverName(group) {
   return parseDriverNameFromGroupTitle(group.group_name) || "—";
 }
 
+function isGroupActive(group) {
+  return group.active !== false;
+}
+
+function prepareDisplayGroups(allGroups, activeTab, statusSort) {
+  let list = sortBySoonestBirthday(allGroups, (g) => g.driver_birthday);
+
+  if (activeTab === "active") {
+    list = list.filter((g) => isGroupActive(g));
+  } else if (activeTab === "inactive") {
+    list = list.filter((g) => !isGroupActive(g));
+  } else if (statusSort) {
+    list = [...list].sort((a, b) => {
+      const aRank = isGroupActive(a) ? 0 : 1;
+      const bRank = isGroupActive(b) ? 0 : 1;
+      const statusCmp = statusSort === "active-first" ? aRank - bRank : bRank - aRank;
+      if (statusCmp !== 0) return statusCmp;
+      return (
+        getDaysUntilBirthday(a.driver_birthday) - getDaysUntilBirthday(b.driver_birthday)
+      );
+    });
+  }
+
+  return list;
+}
+
 export default function GroupsPage() {
-  const [groups, setGroups] = useState([]);
+  const [allGroups, setAllGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
   const [savingBirthdayId, setSavingBirthdayId] = useState(null);
+  const [activeTab, setActiveTab] = useState("all");
+  const [statusSort, setStatusSort] = useState("active-first");
 
   const fetchGroups = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.getGroups();
-      setGroups(sortBySoonestBirthday(data, (g) => g.driver_birthday));
+      const data = await api.getGroupsManage();
+      setAllGroups(Array.isArray(data) ? data : []);
     } catch (err) {
       setMessage({ type: "error", text: err.message });
     } finally {
@@ -41,6 +69,11 @@ export default function GroupsPage() {
   useEffect(() => {
     fetchGroups();
   }, [fetchGroups]);
+
+  const displayGroups = useMemo(
+    () => prepareDisplayGroups(allGroups, activeTab, activeTab === "all" ? statusSort : null),
+    [allGroups, activeTab, statusSort],
+  );
 
   const handleLanguageChange = async (groupId, language) => {
     try {
@@ -66,6 +99,16 @@ export default function GroupsPage() {
     }
   };
 
+  const toggleStatusSort = () => {
+    setStatusSort((s) => (s === "active-first" ? "inactive-first" : "active-first"));
+  };
+
+  const tabCounts = useMemo(() => ({
+    all: allGroups.length,
+    active: allGroups.filter((g) => isGroupActive(g)).length,
+    inactive: allGroups.filter((g) => !isGroupActive(g)).length,
+  }), [allGroups]);
+
   return (
     <div>
       <div className="page-header">
@@ -79,13 +122,41 @@ export default function GroupsPage() {
         </div>
       )}
 
+      <div className="broadcast-tabs" style={{ marginBottom: 16 }}>
+        <button
+          type="button"
+          className={`broadcast-tab-btn ${activeTab === "all" ? "active" : ""}`}
+          onClick={() => setActiveTab("all")}
+        >
+          All ({tabCounts.all})
+        </button>
+        <button
+          type="button"
+          className={`broadcast-tab-btn ${activeTab === "active" ? "active" : ""}`}
+          onClick={() => setActiveTab("active")}
+        >
+          Active Drivers ({tabCounts.active})
+        </button>
+        <button
+          type="button"
+          className={`broadcast-tab-btn ${activeTab === "inactive" ? "active" : ""}`}
+          onClick={() => setActiveTab("inactive")}
+        >
+          Inactive Drivers ({tabCounts.inactive})
+        </button>
+      </div>
+
       {loading ? (
         <div className="loading"><div className="spinner"></div> Loading groups...</div>
-      ) : groups.length === 0 ? (
+      ) : displayGroups.length === 0 ? (
         <div className="empty-state">
           <div className="icon">👥</div>
-          <h3>No driver groups found</h3>
-          <p>Active driver Telegram groups appear here once the bot has joined them.</p>
+          <h3>No driver groups in this view</h3>
+          <p>
+            {activeTab === "inactive"
+              ? "Inactive groups appear when the bot has left a driver Telegram group."
+              : "Driver Telegram groups appear here once the bot has joined them."}
+          </p>
         </div>
       ) : (
         <div className="table-container">
@@ -95,23 +166,57 @@ export default function GroupsPage() {
                 <th>Group Name</th>
                 <th>Telegram ID</th>
                 <th>Driver Name</th>
+                {activeTab === "all" && (
+                  <th>
+                    <button
+                      type="button"
+                      onClick={toggleStatusSort}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        font: "inherit",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        color: "inherit",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
+                      title="Click to sort by status"
+                    >
+                      Status
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                        {statusSort === "active-first" ? "▲ Active first" : "▲ Inactive first"}
+                      </span>
+                    </button>
+                  </th>
+                )}
                 <th>Birthday</th>
                 <th>Language</th>
               </tr>
             </thead>
             <tbody>
-              {groups.map((group) => {
+              {displayGroups.map((group) => {
                 const bdayStr = formatBirthdayValue(group.driver_birthday);
                 const daysUntil = group.driver_birthday
                   ? getDaysUntilBirthday(group.driver_birthday)
                   : null;
                 const saving = savingBirthdayId === group.id;
+                const active = isGroupActive(group);
 
                 return (
                   <tr key={group.id}>
                     <td><strong>{group.group_name}</strong></td>
                     <td><code>{group.telegram_group_id}</code></td>
                     <td>{displayDriverName(group)}</td>
+                    {activeTab === "all" && (
+                      <td>
+                        <span className={`badge ${active ? "badge-active" : ""}`} style={active ? {} : { opacity: 0.85 }}>
+                          {active ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                    )}
                     <td>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 160 }}>
                         <input

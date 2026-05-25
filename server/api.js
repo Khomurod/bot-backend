@@ -1039,6 +1039,17 @@ app.get('/api/groups', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+// GET /api/groups/manage — all driver groups (active + inactive) for admin manage UI
+app.get('/api/groups/manage', authMiddleware, async (req, res) => {
+  try {
+    const groups = await db.getDriverGroupsByActiveFilter('all');
+    res.json(groups);
+  } catch (err) {
+    console.error('[API] Error fetching manage groups:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 // PUT /api/groups/:id/language
 app.put('/api/groups/:id/language', authMiddleware, async (req, res) => {
   try {
@@ -1260,23 +1271,10 @@ app.post('/api/translate', authMiddleware, async (req, res) => {
 
 // ─── Broadcast Routes ───
 
-async function resolveBroadcastTargetGroups(body) {
-  if (!body.target_type && Array.isArray(body.group_ids) && body.group_ids.length > 0) {
-    return db.getGroupsByIds(body.group_ids);
-  }
-  const tt = body.target_type || 'all';
-  if (tt === 'specific_drivers') {
-    const ids = body.target_driver_ids;
-    if (!Array.isArray(ids) || ids.length === 0) return [];
-    return db.getGroupsByIds(ids);
-  }
-  if (tt === 'language_groups') {
-    const langs = body.target_languages;
-    if (!Array.isArray(langs) || langs.length === 0) return [];
-    return db.getGroupsByLanguages(langs);
-  }
-  return db.getAllDriverGroups();
-}
+const {
+  normalizeActiveFilter,
+  resolveBroadcastTargetGroups,
+} = require('../services/broadcastTargetService');
 
 // POST /api/broadcast/send
 app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
@@ -1327,6 +1325,8 @@ app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'No valid target groups found. Broadcast aborted.' });
     }
 
+    const targetActiveFilter = normalizeActiveFilter(req.body);
+
     const broadcast = await db.createBroadcast({
       type: 'regular',
       message_text_en: messages ? messages.en : primaryText.trim(),
@@ -1339,6 +1339,7 @@ app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
       target_driver_ids: storedDriverIds || null,
       target_languages: storedLanguages || null,
       force_language: force_language || null,
+      target_active_filter: targetActiveFilter,
     });
 
     const results = await sendBroadcastToGroups(
@@ -1449,6 +1450,8 @@ app.post('/api/broadcast/confirmation/send', authMiddleware, async (req, res) =>
       return res.status(400).json({ error: 'No valid target groups found. Broadcast aborted.' });
     }
 
+    const targetActiveFilter = normalizeActiveFilter(req.body);
+
     const broadcast = await db.createBroadcast({
       type: 'confirmation',
       message_text_en: messages ? messages.en : primaryText.trim(),
@@ -1462,6 +1465,7 @@ app.post('/api/broadcast/confirmation/send', authMiddleware, async (req, res) =>
       target_driver_ids: storedDriverIds || null,
       target_languages: storedLanguages || null,
       force_language: force_language || null,
+      target_active_filter: targetActiveFilter,
     });
 
     const results = await sendConfirmationBroadcast(
@@ -1589,6 +1593,7 @@ app.post('/api/scheduled-messages', authMiddleware, async (req, res) => {
       message_text_en, message_text_ru, message_text_uz,
       media_file_id, media_type, media_position,
       target_type, target_driver_ids, target_languages,
+      target_active_filter,
       force_language, scheduled_at_chicago,
       schedule_type, schedule_timezone,
       weekly_day_of_week, weekly_time_chicago,
@@ -1649,6 +1654,15 @@ app.post('/api/scheduled-messages', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'At least one language must be selected' });
     }
 
+    const targetActiveFilter = normalizeActiveFilter({ target_active_filter });
+    if (
+      target_active_filter != null
+      && target_active_filter !== ''
+      && !['all', 'active', 'inactive'].includes(target_active_filter)
+    ) {
+      return res.status(400).json({ error: 'Invalid target_active_filter' });
+    }
+
     // Validate force_language
     if (force_language && !['en', 'ru', 'uz'].includes(force_language)) {
       return res.status(400).json({ error: 'Invalid force_language' });
@@ -1672,6 +1686,7 @@ app.post('/api/scheduled-messages', authMiddleware, async (req, res) => {
       target_type: tt,
       target_driver_ids: target_driver_ids || null,
       target_languages: target_languages || null,
+      target_active_filter: targetActiveFilter,
       force_language: force_language || null,
       scheduled_at: scheduledAtUtc,
       schedule_type: scheduleType,

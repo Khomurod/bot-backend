@@ -4,6 +4,7 @@
  */
 const db = require('../database/db');
 const { sendBroadcastToGroups } = require('../bot/bot');
+const { resolveBroadcastTargetGroups } = require('./broadcastTargetService');
 const {
   DEFAULT_SCHEDULE_TIMEZONE,
   computeNextWeeklyOccurrence,
@@ -23,19 +24,12 @@ let tickRunning = false;
  * Resolve target groups based on message targeting configuration.
  */
 async function resolveTargetGroups(msg) {
-  switch (msg.target_type) {
-    case 'specific_drivers':
-      return db.getGroupsByIds(msg.target_driver_ids);
-    case 'language_groups':
-      return db.getGroupsByLanguages(msg.target_languages);
-    case 'company_drivers': {
-      const allGroups = await db.getAllDriverGroups();
-      return allGroups.filter(g => g.group_name && g.group_name.includes('(COMPANY DRIVER)'));
-    }
-    case 'all':
-    default:
-      return db.getAllDriverGroups();
-  }
+  return resolveBroadcastTargetGroups({
+    target_type: msg.target_type,
+    target_driver_ids: msg.target_driver_ids,
+    target_languages: msg.target_languages,
+    target_active_filter: msg.target_active_filter,
+  });
 }
 
 /**

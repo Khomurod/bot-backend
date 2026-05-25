@@ -8,6 +8,7 @@ export default function BroadcastPage() {
 
   // Common Target Selection
   const [targetType, setTargetType] = useState('all'); // 'all' | 'specific_drivers' | 'language_groups'
+  const [targetActiveFilter, setTargetActiveFilter] = useState('active'); // 'all' | 'active' | 'inactive'
   const [selectedDriverIds, setSelectedDriverIds] = useState([]);
   const [selectedLanguages, setSelectedLanguages] = useState([]);
   const [driverGroups, setDriverGroups] = useState([]);
@@ -75,7 +76,7 @@ export default function BroadcastPage() {
   useEffect(() => {
     (async () => {
       try {
-        const groups = await api.getGroups();
+        const groups = await api.getGroupsManage();
         setDriverGroups(groups.filter(g => g.group_type === 'driver'));
       } catch (err) { console.error(err); }
     })();
@@ -266,6 +267,7 @@ export default function BroadcastPage() {
         messageUz,
         forceLanguage,
         targetType,
+        targetActiveFilter,
         selectedDriverIds,
         selectedLanguages,
         mediaItems: normalizeMediaItems(broadcastMediaItems),
@@ -322,6 +324,7 @@ export default function BroadcastPage() {
         messageUz,
         forceLanguage,
         targetType,
+        targetActiveFilter,
         selectedDriverIds,
         selectedLanguages,
         mediaItems: normalizeMediaItems(broadcastMediaItems),
@@ -365,6 +368,7 @@ export default function BroadcastPage() {
         mediaItems: normalizeMediaItems(confMediaItems),
         mediaPosition: confMediaPosition,
         targetType,
+        targetActiveFilter,
         selectedDriverIds,
         selectedLanguages,
         forceLanguage,
@@ -468,7 +472,9 @@ export default function BroadcastPage() {
                       <label key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', cursor: 'pointer', borderRadius: 6, fontSize: 13 }}>
                         <input type="checkbox" checked={selectedDriverIds.includes(g.id)} onChange={() => toggleDriverId(g.id)} style={{ accentColor: 'var(--accent)' }} />
                         <span style={{ fontWeight: 600 }}>{g.group_name || 'Unknown'}</span>
-                        <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>({g.language?.toUpperCase()})</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                          ({g.language?.toUpperCase()}) {g.active === false ? '(Inactive)' : '(Active)'}
+                        </span>
                       </label>
                     ))}
                   </>
@@ -484,6 +490,31 @@ export default function BroadcastPage() {
                     {l.toUpperCase()}
                   </label>
                 ))}
+              </div>
+            )}
+
+            {(targetType === 'all' || targetType === 'language_groups') && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 600 }}>Driver status</p>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                  {[
+                    { value: 'all', label: 'All' },
+                    { value: 'active', label: 'Active' },
+                    { value: 'inactive', label: 'Inactive' },
+                  ].map((opt) => (
+                    <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="target_active_filter"
+                        value={opt.value}
+                        checked={targetActiveFilter === opt.value}
+                        onChange={() => setTargetActiveFilter(opt.value)}
+                        style={{ accentColor: 'var(--accent)' }}
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
               </div>
             )}
           </div>

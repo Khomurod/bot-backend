@@ -74,6 +74,42 @@ async function getAllGroups() {
   return res.rows;
 }
 
+/** Admin manage list: all | active | inactive driver groups. */
+async function getDriverGroupsByActiveFilter(filter) {
+  const f = filter === 'all' || filter === 'inactive' ? filter : 'active';
+  let activeClause = '';
+  if (f === 'active') activeClause = ' AND active = TRUE';
+  else if (f === 'inactive') activeClause = ' AND active = FALSE';
+  const res = await query(
+    `SELECT * FROM groups WHERE group_type = 'driver'${activeClause} ORDER BY id`
+  );
+  return res.rows;
+}
+
+/** Broadcast specific-driver picks: resolve IDs even when inactive. */
+async function getGroupsByIdsForAdmin(ids) {
+  if (!ids || ids.length === 0) return [];
+  const res = await query(
+    `SELECT * FROM groups WHERE id = ANY($1) AND group_type = 'driver' ORDER BY id`,
+    [ids]
+  );
+  return res.rows;
+}
+
+/** Language targeting with active filter (all | active | inactive). */
+async function getDriverGroupsByLanguagesAndActiveFilter(languages, filter) {
+  if (!languages || languages.length === 0) return [];
+  const f = filter === 'all' || filter === 'inactive' ? filter : 'active';
+  let activeClause = '';
+  if (f === 'active') activeClause = ' AND active = TRUE';
+  else if (f === 'inactive') activeClause = ' AND active = FALSE';
+  const res = await query(
+    `SELECT * FROM groups WHERE language = ANY($1) AND group_type = 'driver'${activeClause} ORDER BY id`,
+    [languages]
+  );
+  return res.rows;
+}
+
 async function deactivateGroup(telegramGroupId) {
   await query(
     'UPDATE groups SET active = FALSE WHERE telegram_group_id = $1',
@@ -609,8 +645,8 @@ async function createScheduledMessage(data) {
        media_items, media_file_id, media_type, media_position,
        target_type, target_driver_ids, target_languages,
        force_language, scheduled_at, schedule_type, schedule_timezone,
-       weekly_day_of_week, weekly_time_local, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'pending')
+       weekly_day_of_week, weekly_time_local, target_active_filter, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'pending')
      RETURNING *`,
     [
       data.message_text_en, data.message_text_ru || null, data.message_text_uz || null,
@@ -627,6 +663,7 @@ async function createScheduledMessage(data) {
       data.schedule_timezone || 'America/Chicago',
       data.weekly_day_of_week || null,
       data.weekly_time_local || null,
+      data.target_active_filter || null,
     ]
   );
   console.log(`[DB] Scheduled message created: id=${res.rows[0].id}, at=${data.scheduled_at}`);
@@ -716,8 +753,9 @@ async function createBroadcast(data) {
     `INSERT INTO broadcasts
       (type, message_text_en, message_text_ru, message_text_uz,
        media_items, media_position, parse_mode, buttons,
-       target_type, target_driver_ids, target_languages, force_language, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       target_type, target_driver_ids, target_languages, force_language,
+       target_active_filter, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      RETURNING *`,
     [
       data.type || 'regular',
@@ -732,6 +770,7 @@ async function createBroadcast(data) {
       data.target_driver_ids || null,
       data.target_languages || null,
       data.force_language || null,
+      data.target_active_filter || null,
       data.status || 'sent',
     ]
   );
@@ -2024,6 +2063,9 @@ module.exports = {
   upsertGroup,
   getAllGroups,
   getAllDriverGroups,
+  getDriverGroupsByActiveFilter,
+  getGroupsByIdsForAdmin,
+  getDriverGroupsByLanguagesAndActiveFilter,
   getDriverGroupsWithDispatchEtaSettings,
   getGroupByTelegramId,
   getGroupBySamsaraId,

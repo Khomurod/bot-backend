@@ -64,6 +64,21 @@ export async function getGroups() {
   return Array.isArray(data) ? data : (data?.groups ?? []);
 }
 
+/** All driver groups (active + inactive) for Groups page and broadcast driver picker. */
+export async function getGroupsManage() {
+  const res = await fetch(`${API_BASE}/groups/manage`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+function appendTargetActiveFilter(body, targetType, targetActiveFilter) {
+  if (targetType === 'all' || targetType === 'language_groups') {
+    body.target_active_filter = targetActiveFilter || 'active';
+  }
+  return body;
+}
+
 export async function setGroupLanguage(groupId, language) {
   const res = await fetch(`${API_BASE}/groups/${groupId}/language`, {
     method: 'PUT',
@@ -153,6 +168,7 @@ export async function sendBroadcast(dataOrText, parseMode, messages, mediaItems,
       messageUz,
       type,
       targetType,
+      targetActiveFilter,
       selectedDriverIds,
       selectedLanguages,
       forceLanguage,
@@ -169,6 +185,7 @@ export async function sendBroadcast(dataOrText, parseMode, messages, mediaItems,
       media_items: items ? items.map(m => ({ file_id: m.file_id, media_type: m.type })) : null,
       media_position: pos || 'above',
     };
+    appendTargetActiveFilter(body, targetType || 'all', targetActiveFilter);
   } else {
     body = { message_text: dataOrText, parse_mode: parseMode };
     if (messages) body.messages = messages;
@@ -411,6 +428,7 @@ export async function createScheduledMessage(data) {
     mediaItems,
     mediaPosition,
     targetType,
+    targetActiveFilter,
     selectedDriverIds,
     selectedLanguages,
     forceLanguage,
@@ -440,6 +458,9 @@ export async function createScheduledMessage(data) {
         schedule_timezone: scheduleTimezone || 'America/Chicago',
       }
     : data;
+  if (messageEn !== undefined) {
+    appendTargetActiveFilter(body, targetType || 'all', targetActiveFilter);
+  }
 
   const res = await fetch(`${API_BASE}/scheduled-messages`, {
     method: 'POST',
@@ -485,6 +506,7 @@ export async function sendConfirmationBroadcast(data) {
     mediaItems,
     mediaPosition,
     targetType,
+    targetActiveFilter,
     selectedDriverIds,
     selectedLanguages,
     forceLanguage,
@@ -500,6 +522,7 @@ export async function sendConfirmationBroadcast(data) {
     media_items: mediaItems ? mediaItems.map(m => ({ file_id: m.file_id, media_type: m.type })) : null,
     media_position: mediaPosition || 'above',
   };
+  appendTargetActiveFilter(body, targetType || 'all', targetActiveFilter);
   const res = await fetch(`${API_BASE}/broadcast/confirmation/send`, {
     method: 'POST',
     headers: getHeaders(),
