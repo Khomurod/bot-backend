@@ -60,7 +60,8 @@ export async function getGroups() {
   const headers = token ? getHeaders() : {};
   const res = await fetch(endpoint, { headers });
   if (!res.ok) { await handleApiError(res); }
-  return res.json();
+  const data = await res.json();
+  return Array.isArray(data) ? data : (data?.groups ?? []);
 }
 
 export async function setGroupLanguage(groupId, language) {

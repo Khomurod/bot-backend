@@ -1,15 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import * as api from "../api";
 
-export function getDaysUntilBirthday(dateString) {
-  const bd = new Date(dateString);
-  const now = new Date();
-  let next = new Date(Date.UTC(now.getUTCFullYear(), bd.getUTCMonth(), bd.getUTCDate()));
-  if (next < now && next.getUTCDate() !== now.getUTCDate()) {
-    next.setUTCFullYear(next.getUTCFullYear() + 1);
-  }
-  return Math.ceil((next - now) / (1000 * 60 * 60 * 24));
-}
+export {
+  getDaysUntilBirthday,
+  sortBySoonestBirthday,
+  parseDriverNameFromGroupTitle,
+} from "../utils/birthdaySort.js";
 
 export const TelegramPreview = React.memo(function TelegramPreview({ text, buttons, label, langTabs, mediaItems, mediaPosition }) {
   const [tab, setTab] = useState(null);
