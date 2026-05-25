@@ -99,6 +99,25 @@ export async function setGroupBirthday(groupId, birthday) {
   return res.json();
 }
 
+export async function setGroupStatus(groupId, active) {
+  const res = await fetch(`${API_BASE}/groups/${groupId}/status`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify({ active }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function runGroupStatusAi() {
+  const res = await fetch(`${API_BASE}/groups/status/run-now`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 
 export async function getQuestions() {
   const res = await fetch(`${API_BASE}/questions`, { headers: getHeaders() });

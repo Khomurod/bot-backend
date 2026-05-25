@@ -1050,6 +1050,38 @@ app.get('/api/groups/manage', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+const { runClassificationRun } = require('../services/groupStatusAiService');
+
+// POST /api/groups/status/run-now — trigger AI status classification (skips manual-locked groups)
+app.post('/api/groups/status/run-now', authMiddleware, async (req, res) => {
+  try {
+    const result = await runClassificationRun();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[API] Error running group status AI:', err.message);
+    res.status(500).json({ error: err.message || 'Classification run failed' });
+  }
+});
+
+// PUT /api/groups/:id/status — manual active/inactive (locked from AI)
+app.put('/api/groups/:id/status', authMiddleware, async (req, res) => {
+  try {
+    const { active } = req.body;
+    if (typeof active !== 'boolean') {
+      return res.status(400).json({ error: 'active must be a boolean' });
+    }
+    const group = await db.setGroupStatusByAdmin(req.params.id, active);
+    if (!group) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+    res.json(group);
+  } catch (err) {
+    console.error('[API] Error updating group status:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // PUT /api/groups/:id/language
 app.put('/api/groups/:id/language', authMiddleware, async (req, res) => {
   try {

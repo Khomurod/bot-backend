@@ -227,8 +227,8 @@ async function startBot() {
           (chat.type === 'group' || chat.type === 'supergroup') &&
           (newStatus === 'member' || newStatus === 'administrator')
         ) {
-          // Bot added (or re-added) — upsert also reactivates if previously deactivated
-          await db.upsertGroup(chat.id, chat.title);
+          // Bot added (or re-added) — provisional active until AI/manual classification
+          await db.reactivateGroupOnBotJoin(chat.id, chat.title);
           console.log(`[BOT] Added to group: ${chat.title} (${chat.id})`);
         } else if (
           (chat.type === 'group' || chat.type === 'supergroup') &&

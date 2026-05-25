@@ -90,6 +90,8 @@ ALTER TABLE groups ADD COLUMN IF NOT EXISTS group_type TEXT DEFAULT 'driver';
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS driver_birthday DATE;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS samsara_vehicle_id TEXT;
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS status_source TEXT;
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMP;
 
 -- ─── Employee Voting System (isolated) ───
 

@@ -47,7 +47,11 @@ export function parseDriverNameFromGroupTitle(groupName) {
   ];
   for (const re of patterns) {
     const m = cleaned.match(re);
-    if (m) return m[1].trim();
+    if (m) {
+      let driver = m[1].trim();
+      driver = driver.replace(/\s*\(?\s*INACTIVE\s*\)?\s*$/i, '').trim();
+      return driver || null;
+    }
   }
   return null;
 }

@@ -24,6 +24,13 @@ function isGroupActive(group) {
   return group.active !== false;
 }
 
+function formatStatusSource(source) {
+  if (source === "manual") return "Manual";
+  if (source === "ai") return "AI";
+  if (source === "bot") return "Bot";
+  return "—";
+}
+
 function prepareDisplayGroups(allGroups, activeTab, statusSort) {
   let list = sortBySoonestBirthday(allGroups, (g) => g.driver_birthday);
 
@@ -51,6 +58,8 @@ export default function GroupsPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
   const [savingBirthdayId, setSavingBirthdayId] = useState(null);
+  const [savingStatusId, setSavingStatusId] = useState(null);
+  const [runningAi, setRunningAi] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const [statusSort, setStatusSort] = useState("active-first");
 
@@ -103,6 +112,40 @@ export default function GroupsPage() {
     setStatusSort((s) => (s === "active-first" ? "inactive-first" : "active-first"));
   };
 
+  const handleStatusChange = async (groupId, active) => {
+    setSavingStatusId(groupId);
+    setMessage(null);
+    try {
+      await api.setGroupStatus(groupId, active);
+      setMessage({
+        type: "success",
+        text: `Status set to ${active ? "Active" : "Inactive"} (manual — AI will not change this until you update it).`,
+      });
+      await fetchGroups();
+    } catch (err) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setSavingStatusId(null);
+    }
+  };
+
+  const handleRunAiClassification = async () => {
+    setRunningAi(true);
+    setMessage(null);
+    try {
+      const result = await api.runGroupStatusAi();
+      setMessage({
+        type: "success",
+        text: `AI classification finished: ${result.updated ?? 0} of ${result.total ?? 0} groups updated.`,
+      });
+      await fetchGroups();
+    } catch (err) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setRunningAi(false);
+    }
+  };
+
   const tabCounts = useMemo(() => ({
     all: allGroups.length,
     active: allGroups.filter((g) => isGroupActive(g)).length,
@@ -111,9 +154,19 @@ export default function GroupsPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <h2>👥 Driver Groups</h2>
-        <p>Manage Telegram groups, driver birthdays (soonest first), and languages</p>
+      <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h2>👥 Driver Groups</h2>
+          <p>Manage groups, birthdays, and operational status. AI runs twice daily; manual status is locked from AI.</p>
+        </div>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={handleRunAiClassification}
+          disabled={runningAi || loading}
+        >
+          {runningAi ? "⏳ Classifying..." : "🤖 Run AI classification now"}
+        </button>
       </div>
 
       {message && (
@@ -166,8 +219,8 @@ export default function GroupsPage() {
                 <th>Group Name</th>
                 <th>Telegram ID</th>
                 <th>Driver Name</th>
-                {activeTab === "all" && (
-                  <th>
+                <th>
+                  {activeTab === "all" ? (
                     <button
                       type="button"
                       onClick={toggleStatusSort}
@@ -190,8 +243,10 @@ export default function GroupsPage() {
                         {statusSort === "active-first" ? "▲ Active first" : "▲ Inactive first"}
                       </span>
                     </button>
-                  </th>
-                )}
+                  ) : (
+                    "Status"
+                  )}
+                </th>
                 <th>Birthday</th>
                 <th>Language</th>
               </tr>
@@ -203,6 +258,7 @@ export default function GroupsPage() {
                   ? getDaysUntilBirthday(group.driver_birthday)
                   : null;
                 const saving = savingBirthdayId === group.id;
+                const savingStatus = savingStatusId === group.id;
                 const active = isGroupActive(group);
 
                 return (
@@ -210,13 +266,24 @@ export default function GroupsPage() {
                     <td><strong>{group.group_name}</strong></td>
                     <td><code>{group.telegram_group_id}</code></td>
                     <td>{displayDriverName(group)}</td>
-                    {activeTab === "all" && (
-                      <td>
-                        <span className={`badge ${active ? "badge-active" : ""}`} style={active ? {} : { opacity: 0.85 }}>
-                          {active ? "Active" : "Inactive"}
+                    <td>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 140 }}>
+                        <select
+                          className="form-input"
+                          style={{ width: "auto", padding: "4px 8px" }}
+                          value={active ? "active" : "inactive"}
+                          disabled={savingStatus}
+                          onChange={(e) => handleStatusChange(group.id, e.target.value === "active")}
+                        >
+                          <option value="active">Active</option>
+                          <option value="inactive">Inactive</option>
+                        </select>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                          via {formatStatusSource(group.status_source)}
+                          {group.status_source === "manual" ? " (locked)" : ""}
                         </span>
-                      </td>
-                    )}
+                      </div>
+                    </td>
                     <td>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 160 }}>
                         <input

@@ -35,6 +35,11 @@ async function initializeDatabase() {
     }
 
     await seedFacebookLeadAutoMessageDefaults();
+
+    await pool.query(
+      `UPDATE groups SET status_source = 'bot'
+       WHERE group_type = 'driver' AND status_source IS NULL`
+    );
   } catch (err) {
     console.error('[DB] Error initializing database:', err.message);
     throw err;
@@ -58,15 +63,59 @@ async function query(text, params) {
 
 async function upsertGroup(telegramGroupId, groupName) {
   const res = await query(
-    `INSERT INTO groups (telegram_group_id, group_name, active)
-     VALUES ($1, $2, TRUE)
+    `INSERT INTO groups (telegram_group_id, group_name, active, status_source)
+     VALUES ($1, $2, TRUE, 'bot')
      ON CONFLICT (telegram_group_id)
-     DO UPDATE SET group_name = EXCLUDED.group_name, active = TRUE
+     DO UPDATE SET group_name = EXCLUDED.group_name
      RETURNING *`,
     [telegramGroupId, groupName]
   );
   console.log(`[DB] Group upserted: ${groupName} (${telegramGroupId})`);
   return res.rows[0];
+}
+
+async function reactivateGroupOnBotJoin(telegramGroupId, groupName) {
+  const res = await query(
+    `INSERT INTO groups (telegram_group_id, group_name, active, status_source, status_updated_at)
+     VALUES ($1, $2, TRUE, 'bot', NOW())
+     ON CONFLICT (telegram_group_id)
+     DO UPDATE SET
+       group_name = EXCLUDED.group_name,
+       active = TRUE,
+       status_source = 'bot',
+       status_updated_at = NOW()
+     RETURNING *`,
+    [telegramGroupId, groupName]
+  );
+  console.log(`[DB] Group reactivated on bot join: ${groupName} (${telegramGroupId})`);
+  return res.rows[0];
+}
+
+async function updateGroupOperationalStatus(groupId, active, source) {
+  const res = await query(
+    `UPDATE groups
+     SET active = $1, status_source = $2, status_updated_at = NOW()
+     WHERE id = $3 AND group_type = 'driver'
+     RETURNING *`,
+    [!!active, source, groupId]
+  );
+  return res.rows[0];
+}
+
+async function setGroupStatusByAdmin(groupId, active) {
+  return updateGroupOperationalStatus(groupId, active, 'manual');
+}
+
+/** Driver groups eligible for AI status classification (excludes manual locks). */
+async function getDriverGroupsForStatusAi() {
+  const res = await query(
+    `SELECT id, group_name, active, status_source
+     FROM groups
+     WHERE group_type = 'driver'
+       AND (status_source IS NULL OR status_source IS DISTINCT FROM 'manual')
+     ORDER BY id`
+  );
+  return res.rows;
 }
 
 async function getAllGroups() {
@@ -112,7 +161,9 @@ async function getDriverGroupsByLanguagesAndActiveFilter(languages, filter) {
 
 async function deactivateGroup(telegramGroupId) {
   await query(
-    'UPDATE groups SET active = FALSE WHERE telegram_group_id = $1',
+    `UPDATE groups
+     SET active = FALSE, status_source = 'bot', status_updated_at = NOW()
+     WHERE telegram_group_id = $1`,
     [telegramGroupId]
   );
   console.log(`[DB] Group deactivated: ${telegramGroupId}`);
@@ -2061,6 +2112,10 @@ module.exports = {
   initializeDatabase,
   // Groups
   upsertGroup,
+  reactivateGroupOnBotJoin,
+  updateGroupOperationalStatus,
+  setGroupStatusByAdmin,
+  getDriverGroupsForStatusAi,
   getAllGroups,
   getAllDriverGroups,
   getDriverGroupsByActiveFilter,
