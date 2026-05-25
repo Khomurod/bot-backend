@@ -2,11 +2,56 @@ import React, { useState, useEffect, useCallback } from "react";
 import * as api from "../api";
 import { getDaysUntilBirthday, sortBySoonestBirthday } from "../components/Shared";
 
+const TIMEZONE_OPTIONS = [
+  "Asia/Tashkent",
+  "America/Chicago",
+  "America/New_York",
+  "Europe/London",
+  "UTC",
+];
+
+function formatSchedule(settings) {
+  if (!settings) return "";
+  const h = String(settings.sendHour ?? 0).padStart(2, "0");
+  const m = String(settings.sendMinute ?? 0).padStart(2, "0");
+  return `${h}:${m} ${settings.timezone || "Asia/Tashkent"}`;
+}
+
+function wishResultMessage(result) {
+  if (!result) return "Done.";
+  if (result.sent) {
+    return `Sent birthday wishes to employee group for: ${result.names} (${result.provider || "ai"}).`;
+  }
+  if (result.reason === "already_sent") {
+    return `Already sent today (${result.isoDate}). Scheduled run will be skipped.`;
+  }
+  if (result.reason === "no_birthdays") {
+    return "No employees have a birthday today in the configured timezone.";
+  }
+  if (result.reason === "no_employee_group") {
+    return "EMPLOYEE_GROUP_ID is not configured.";
+  }
+  return result.reason || "No action taken.";
+}
+
 export default function CompanyBirthdaysPage() {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [requesting, setRequesting] = useState(false);
+
+  const [settings, setSettings] = useState(null);
+  const [settingsForm, setSettingsForm] = useState({
+    timezone: "Asia/Tashkent",
+    sendHour: 0,
+    sendMinute: 0,
+    aiInstructions: "",
+    fallbackTemplate: "",
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [customMessage, setCustomMessage] = useState("");
 
   const [newFn, setNewFn] = useState("");
   const [newLn, setNewLn] = useState("");
@@ -16,6 +61,22 @@ export default function CompanyBirthdaysPage() {
   const [editFn, setEditFn] = useState("");
   const [editLn, setEditLn] = useState("");
   const [editBd, setEditBd] = useState("");
+
+  const loadSettings = useCallback(async () => {
+    try {
+      const data = await api.getEmployeeBirthdaySettings();
+      setSettings(data);
+      setSettingsForm({
+        timezone: data.timezone || "Asia/Tashkent",
+        sendHour: data.sendHour ?? 0,
+        sendMinute: data.sendMinute ?? 0,
+        aiInstructions: data.aiInstructions || "",
+        fallbackTemplate: data.fallbackTemplate || "",
+      });
+    } catch (err) {
+      setStatus({ type: "error", text: err.message });
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -30,8 +91,88 @@ export default function CompanyBirthdaysPage() {
   }, []);
 
   useEffect(() => {
+    loadSettings();
     loadData();
-  }, [loadData]);
+  }, [loadSettings, loadData]);
+
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === employees.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(employees.map((e) => e.id)));
+    }
+  };
+
+  const handleSaveSettings = async (e) => {
+    e.preventDefault();
+    setSavingSettings(true);
+    setStatus(null);
+    try {
+      const updated = await api.updateEmployeeBirthdaySettings(settingsForm);
+      setSettings(updated);
+      setStatus({ type: "success", text: `Settings saved. Scheduled wishes at ${formatSchedule(updated)}.` });
+    } catch (err) {
+      setStatus({ type: "error", text: err.message });
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleSendTodayNow = async () => {
+    if (!window.confirm("Send today's birthday wishes to the employee group now? This blocks the scheduled send for today.")) return;
+    setRequesting(true);
+    setStatus(null);
+    try {
+      const result = await api.sendEmployeeBirthdayWishesNow();
+      setStatus({ type: result.sent ? "success" : "error", text: wishResultMessage(result) });
+    } catch (err) {
+      setStatus({ type: "error", text: err.message });
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  const handleCongratulateSelected = async () => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+    if (!window.confirm(`Send AI birthday wishes for ${ids.length} selected employee(s)?`)) return;
+    setRequesting(true);
+    setStatus(null);
+    try {
+      const result = await api.congratulateEmployees(ids);
+      setStatus({ type: result.sent ? "success" : "error", text: wishResultMessage(result) });
+    } catch (err) {
+      setStatus({ type: "error", text: err.message });
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  const handleSendCustom = async () => {
+    const msg = customMessage.trim();
+    if (!msg) return;
+    if (!window.confirm("Send this custom message to the employee group?")) return;
+    setRequesting(true);
+    setStatus(null);
+    try {
+      await api.sendEmployeeGroupCustomMessage(msg);
+      setCustomMessage("");
+      setStatus({ type: "success", text: "Custom message sent to employee group." });
+    } catch (err) {
+      setStatus({ type: "error", text: err.message });
+    } finally {
+      setRequesting(false);
+    }
+  };
 
   const handleManualAdd = async (e) => {
     e.preventDefault();
@@ -55,6 +196,11 @@ export default function CompanyBirthdaysPage() {
     if (!window.confirm("Are you sure you want to delete this employee?")) return;
     try {
       await api.deleteEmployeeBirthday(id);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       setStatus({ type: "success", text: "Employee deleted." });
       loadData();
     } catch (err) {
@@ -99,13 +245,20 @@ export default function CompanyBirthdaysPage() {
 
   return (
     <div>
-      <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h2>🏢 Company Employee Birthdays</h2>
-          <p>Manage office staff birthdays (soonest first). Bot congratulates them automatically at 9 AM CT.</p>
+          <p>
+            Manage office staff birthdays (soonest first).
+            {settings ? (
+              <> Automatic AI wishes at <strong>{formatSchedule(settings)}</strong>.</>
+            ) : (
+              " Loading schedule..."
+            )}
+          </p>
         </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button className="btn btn-ghost" onClick={loadData}>🔄 Refresh</button>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button className="btn btn-ghost" onClick={() => { loadData(); loadSettings(); }}>🔄 Refresh</button>
           <button className="btn btn-primary" onClick={handleSendRequest} disabled={requesting}>
             {requesting ? "⏳ Requesting..." : "💬 Send Telegram Request"}
           </button>
@@ -113,6 +266,98 @@ export default function CompanyBirthdaysPage() {
       </div>
 
       {status && <div className={`alert alert-${status.type}`} style={{ marginBottom: 20 }}>{status.text}</div>}
+
+      <div className="card" style={{ marginBottom: 24 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>🎂 Birthday Wishes Settings</h3>
+        <form onSubmit={handleSaveSettings}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 16 }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label>Timezone</label>
+              <select
+                className="form-input"
+                value={settingsForm.timezone}
+                onChange={(e) => setSettingsForm((s) => ({ ...s, timezone: e.target.value }))}
+              >
+                {TIMEZONE_OPTIONS.map((tz) => (
+                  <option key={tz} value={tz}>{tz}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label>Hour (0–23)</label>
+              <input
+                className="form-input"
+                type="number"
+                min={0}
+                max={23}
+                value={settingsForm.sendHour}
+                onChange={(e) => setSettingsForm((s) => ({ ...s, sendHour: Number(e.target.value) }))}
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label>Minute (0–59)</label>
+              <input
+                className="form-input"
+                type="number"
+                min={0}
+                max={59}
+                value={settingsForm.sendMinute}
+                onChange={(e) => setSettingsForm((s) => ({ ...s, sendMinute: Number(e.target.value) }))}
+              />
+            </div>
+          </div>
+          <div className="form-group">
+            <label>AI instructions (tone and style — each send uses unique wording)</label>
+            <textarea
+              className="form-input"
+              rows={3}
+              value={settingsForm.aiInstructions}
+              onChange={(e) => setSettingsForm((s) => ({ ...s, aiInstructions: e.target.value }))}
+            />
+          </div>
+          <div className="form-group">
+            <label>Fallback template (use {"{names}"} placeholder; used if AI unavailable)</label>
+            <textarea
+              className="form-input"
+              rows={4}
+              value={settingsForm.fallbackTemplate}
+              onChange={(e) => setSettingsForm((s) => ({ ...s, fallbackTemplate: e.target.value }))}
+            />
+          </div>
+          <button className="btn btn-primary" type="submit" disabled={savingSettings}>
+            {savingSettings ? "Saving..." : "Save settings"}
+          </button>
+        </form>
+
+        <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1px solid var(--border)", display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" }}>
+          <button className="btn btn-primary" type="button" onClick={handleSendTodayNow} disabled={requesting}>
+            Send today&apos;s wishes now
+          </button>
+          <button
+            className="btn btn-ghost"
+            type="button"
+            onClick={handleCongratulateSelected}
+            disabled={requesting || selectedIds.size === 0}
+          >
+            Congratulate selected ({selectedIds.size})
+          </button>
+          <div style={{ flex: 1, minWidth: 260, display: "flex", gap: 8, alignItems: "flex-end" }}>
+            <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+              <label>Custom message to employee group</label>
+              <textarea
+                className="form-input"
+                rows={2}
+                value={customMessage}
+                onChange={(e) => setCustomMessage(e.target.value)}
+                placeholder="HTML allowed: &lt;b&gt;, &lt;i&gt;"
+              />
+            </div>
+            <button className="btn btn-ghost" type="button" onClick={handleSendCustom} disabled={requesting || !customMessage.trim()}>
+              Send custom
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div className="card" style={{ marginBottom: 24 }}>
         <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>➕ Manual Entry</h3>
@@ -148,6 +393,14 @@ export default function CompanyBirthdaysPage() {
           <table>
             <thead>
               <tr>
+                <th style={{ width: 40 }}>
+                  <input
+                    type="checkbox"
+                    checked={employees.length > 0 && selectedIds.size === employees.length}
+                    onChange={toggleSelectAll}
+                    title="Select all"
+                  />
+                </th>
                 <th>First Name</th>
                 <th>Last Name</th>
                 <th>Birthday</th>
@@ -159,6 +412,7 @@ export default function CompanyBirthdaysPage() {
                 <tr key={emp.id}>
                   {editingId === emp.id ? (
                     <>
+                      <td />
                       <td><input className="form-input" value={editFn} onChange={(e) => setEditFn(e.target.value)} /></td>
                       <td><input className="form-input" value={editLn} onChange={(e) => setEditLn(e.target.value)} /></td>
                       <td><input className="form-input" type="date" value={editBd} onChange={(e) => setEditBd(e.target.value)} /></td>
@@ -171,6 +425,13 @@ export default function CompanyBirthdaysPage() {
                     </>
                   ) : (
                     <>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(emp.id)}
+                          onChange={() => toggleSelect(emp.id)}
+                        />
+                      </td>
                       <td><strong>{emp.first_name}</strong></td>
                       <td>{emp.last_name}</td>
                       <td>

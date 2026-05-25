@@ -15,6 +15,10 @@ const {
   startGroupStatusAiService,
   stopGroupStatusAiService,
 } = require('./services/groupStatusAiService');
+const {
+  startEmployeeBirthdayWishService,
+  stopEmployeeBirthdayWishService,
+} = require('./services/employeeBirthdayWishService');
 const { startBackgroundAnnotator } = require('./services/aiAnnotationService');
 const {
   configureFacebookLeadTelegram,
@@ -355,6 +359,7 @@ async function shutdownAll(signal = 'SIGTERM') {
   try { stopScheduler(); } catch (err) { console.error('[SHUTDOWN] stopScheduler failed:', err.message); }
   try { stopDispatchEtaScheduler(); } catch (err) { console.error('[SHUTDOWN] stopDispatchEtaScheduler failed:', err.message); }
   try { stopBirthdayService(); } catch (err) { console.error('[SHUTDOWN] stopBirthdayService failed:', err.message); }
+  try { stopEmployeeBirthdayWishService(); } catch (err) { console.error('[SHUTDOWN] stopEmployeeBirthdayWishService failed:', err.message); }
   try { stopGroupStatusAiService(); } catch (err) { console.error('[SHUTDOWN] stopGroupStatusAiService failed:', err.message); }
   try { stopWeeklyReporter(); } catch (err) { console.error('[SHUTDOWN] stopWeeklyReporter failed:', err.message); }
   try { stopFacebookWebhookWorker(); } catch (err) { console.error('[SHUTDOWN] stopFacebookWebhookWorker failed:', err.message); }
@@ -408,6 +413,7 @@ process.on('SIGTERM', () => shutdownAll('SIGTERM'));
   startScheduler();
   startDispatchEtaScheduler();
   startBirthdayService();
+  startEmployeeBirthdayWishService();
   startGroupStatusAiService();
   startWeeklyReporter();
   startBackgroundAnnotator();

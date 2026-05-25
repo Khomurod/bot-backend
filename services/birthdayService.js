@@ -2,10 +2,8 @@ const { DateTime } = require('luxon');
 const db = require('../database/db');
 const { bot } = require('../bot/bot');
 const { safeSend } = require('./telegramHtml');
-const config = require('../config/config');
 
 const DRIVER_BIRTHDAY_HOUR = 8;   // 8 AM Central Time
-const EMPLOYEE_BIRTHDAY_HOUR = 9; // 9 AM Central Time
 const TZ = 'America/Chicago';
 
 let serviceTimer = null;
@@ -25,13 +23,13 @@ function extractDriverName(groupName) {
 }
 
 async function processDriverBirthdays(isoDate, month, day) {
-  const runKey = `driver:${isoDate}`;
-  const claimed = await db.claimServiceRun('birthday', runKey);
-  if (!claimed) return; // already ran today (or being run elsewhere)
-
   try {
     const birthdayGroups = await db.getGroupsWithBirthdayToday(month, day);
     if (birthdayGroups.length === 0) return;
+
+    const runKey = `driver:${isoDate}`;
+    const claimed = await db.claimServiceRun('birthday', runKey);
+    if (!claimed) return;
 
     console.log(`[BIRTHDAY] Found ${birthdayGroups.length} driver birthday(s) today`);
 
@@ -59,36 +57,6 @@ async function processDriverBirthdays(isoDate, month, day) {
   }
 }
 
-async function processEmployeeBirthdays(isoDate, month, day) {
-  if (!config.employeeGroupId) return;
-
-  const runKey = `employee:${isoDate}`;
-  const claimed = await db.claimServiceRun('birthday', runKey);
-  if (!claimed) return;
-
-  try {
-    const empBirthdays = await db.getEmployeesWithBirthdayToday(month, day);
-    if (empBirthdays.length === 0) return;
-
-    const names = empBirthdays
-      .map((e) => escapeHtml(`${e.first_name} ${e.last_name}`))
-      .join(', ');
-
-    const message =
-      `🎉 <b>Happy Birthday!</b> 🎂\n\n` +
-      `Today we celebrate the birthday of our amazing team member(s):\n<b>${names}</b>!\n\n` +
-      `Wishing you a fantastic day and a great year ahead! 🥳\n\n` +
-      `— <i>Wenze Management</i>`;
-
-    await safeSend(
-      () => bot.telegram.sendMessage(config.employeeGroupId, message, { parse_mode: 'HTML' })
-    );
-    console.log(`[BIRTHDAY] Sent employee birthday wish to ${names}`);
-  } catch (err) {
-    console.error('[BIRTHDAY] Error processing employee birthdays:', err.message);
-  }
-}
-
 async function checkAndSendBirthdays() {
   try {
     const now = DateTime.now().setZone(TZ);
@@ -97,9 +65,6 @@ async function checkAndSendBirthdays() {
     if (now.hour === DRIVER_BIRTHDAY_HOUR) {
       await processDriverBirthdays(isoDate, now.month, now.day);
     }
-    if (now.hour === EMPLOYEE_BIRTHDAY_HOUR) {
-      await processEmployeeBirthdays(isoDate, now.month, now.day);
-    }
   } catch (err) {
     console.error('[BIRTHDAY] Tick error:', err.message);
   }
@@ -107,12 +72,9 @@ async function checkAndSendBirthdays() {
 
 function startBirthdayService() {
   console.log(
-    `[BIRTHDAY] Service started — driver wishes at ${DRIVER_BIRTHDAY_HOUR}:00 ` +
-    `${TZ}, employee wishes at ${EMPLOYEE_BIRTHDAY_HOUR}:00 ${TZ}`
+    `[BIRTHDAY] Driver service started — wishes at ${DRIVER_BIRTHDAY_HOUR}:00 ${TZ}`
   );
   serviceStopped = false;
-  // Check every 60s; DB-backed service_runs guarantees at-most-once
-  // per logical day across restarts and (future) multi-instance deploys.
   checkAndSendBirthdays();
   serviceTimer = setInterval(() => {
     if (!serviceStopped) checkAndSendBirthdays();

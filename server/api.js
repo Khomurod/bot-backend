@@ -2339,6 +2339,121 @@ app.get('/api/employee-birthdays', authMiddleware, async (req, res) => {
   }
 });
 
+// Employee birthday wish settings + send actions
+const {
+  runEmployeeBirthdayWishes,
+  sendCustomEmployeeGroupMessage,
+} = require('../services/employeeBirthdayWishService');
+
+function mapEmployeeBirthdaySettings(row) {
+  if (!row) return null;
+  return {
+    timezone: row.timezone,
+    sendHour: row.send_hour,
+    sendMinute: row.send_minute,
+    aiInstructions: row.ai_instructions,
+    fallbackTemplate: row.fallback_template,
+    updatedAt: row.updated_at,
+  };
+}
+
+app.get('/api/employee-birthdays/settings', authMiddleware, async (req, res) => {
+  try {
+    const settings = await db.getEmployeeBirthdaySettings();
+    res.json(mapEmployeeBirthdaySettings(settings));
+  } catch (err) {
+    console.error('[API] Error loading employee birthday settings:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/employee-birthdays/settings', authMiddleware, async (req, res) => {
+  try {
+    const {
+      timezone,
+      sendHour,
+      sendMinute,
+      aiInstructions,
+      fallbackTemplate,
+    } = req.body || {};
+
+    if (!timezone || typeof timezone !== 'string') {
+      return res.status(400).json({ error: 'timezone is required' });
+    }
+    if (!DateTime.now().setZone(timezone).isValid) {
+      return res.status(400).json({ error: 'Invalid timezone' });
+    }
+
+    const hour = Number(sendHour);
+    const minute = Number(sendMinute);
+    if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+      return res.status(400).json({ error: 'sendHour must be 0–23' });
+    }
+    if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+      return res.status(400).json({ error: 'sendMinute must be 0–59' });
+    }
+    if (typeof aiInstructions !== 'string' || !aiInstructions.trim()) {
+      return res.status(400).json({ error: 'aiInstructions is required' });
+    }
+    if (typeof fallbackTemplate !== 'string' || !fallbackTemplate.trim()) {
+      return res.status(400).json({ error: 'fallbackTemplate is required' });
+    }
+    if (!fallbackTemplate.includes('{names}')) {
+      return res.status(400).json({ error: 'fallbackTemplate must include {names}' });
+    }
+
+    const updated = await db.updateEmployeeBirthdaySettings({
+      timezone: timezone.trim(),
+      sendHour: hour,
+      sendMinute: minute,
+      aiInstructions: aiInstructions.trim().slice(0, 4000),
+      fallbackTemplate: fallbackTemplate.trim().slice(0, 4000),
+    });
+    res.json(mapEmployeeBirthdaySettings(updated));
+  } catch (err) {
+    console.error('[API] Error updating employee birthday settings:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/employee-birthdays/send-now', authMiddleware, async (req, res) => {
+  try {
+    const result = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+    res.json(result);
+  } catch (err) {
+    console.error('[API] Error sending employee birthday wishes:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to send wishes' });
+  }
+});
+
+app.post('/api/employee-birthdays/congratulate', authMiddleware, async (req, res) => {
+  try {
+    const { employeeIds } = req.body || {};
+    if (!Array.isArray(employeeIds) || employeeIds.length === 0) {
+      return res.status(400).json({ error: 'employeeIds array is required' });
+    }
+    const ids = employeeIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0);
+    if (!ids.length) return res.status(400).json({ error: 'Invalid employeeIds' });
+
+    const result = await runEmployeeBirthdayWishes({ employeeIds: ids, claimDailyRun: false });
+    res.json(result);
+  } catch (err) {
+    console.error('[API] Error congratulating employees:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to send congratulations' });
+  }
+});
+
+app.post('/api/employee-birthdays/send-custom', authMiddleware, async (req, res) => {
+  try {
+    const { message } = req.body || {};
+    const result = await sendCustomEmployeeGroupMessage(message);
+    res.json(result);
+  } catch (err) {
+    console.error('[API] Error sending custom employee message:', err.message);
+    res.status(400).json({ error: err.message || 'Failed to send message' });
+  }
+});
+
 // 4. Trigger Bot Request Message (Protected Admin)
 app.post('/api/employee-birthdays/request', authMiddleware, async (req, res) => {
   try {
