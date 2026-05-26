@@ -253,7 +253,8 @@ function formatAlert(payload) {
         if (payload.eventType === 'Ping' || payload.event?.text === 'Ping') {
             return {
                 text: `🏓 *Samsara Webhook Test*\n\n✅ Connection successful! Your Telegram bot is correctly receiving Samsara alerts.\n\n_Webhook ID: ${payload.webhookId || 'N/A'}_`,
-                videoUrl: null
+                videoUrl: null,
+                isCrash: false,
             };
         }
 
@@ -416,7 +417,7 @@ function formatAlert(payload) {
 
             const inwardVideoUrl = payload._enrichedVideoUrlInward || null;
 
-            return { text, videoUrl, inwardVideoUrl };
+            return { text, videoUrl, inwardVideoUrl, isCrash, eventLabel: description };
         }
 
         // ── Generic fallback ────────────
@@ -424,20 +425,23 @@ function formatAlert(payload) {
             const { eventType } = payload;
             return {
                 text: `🔔 *Samsara Notification:*\nUnmapped event type: ${eventType}`,
-                videoUrl: null
+                videoUrl: null,
+                isCrash: false,
             };
         }
 
         return {
             text: `🔔 *Samsara Notification:*\nReceived an unrecognized alert payload.`,
-            videoUrl: null
+            videoUrl: null,
+            isCrash: false,
         };
 
     } catch (err) {
         console.error('[Formatter] Error formatting payload:', err.message);
         return {
             text: `🔔 *Samsara Alert*\nReceived an alert (formatting error: ${err.message})`,
-            videoUrl: null
+            videoUrl: null,
+            isCrash: false,
         };
     }
 }

@@ -13,6 +13,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const poller = require('./src/poller');
 const store = require('./src/store');
 const { determineTargetGroup } = require('./src/routing');
+const { resolveDriverCaption } = require('./src/driverAlertMessageAi');
 const {
     feedbackBotToken: HARDCODED_FEEDBACK_BOT_TOKEN,
     samsaraBotToken: HARDCODED_SAMSARA_BOT_TOKEN,
@@ -199,6 +200,14 @@ async function broadcast(alertData) {
         console.log(`[Bot] Routed vehicle ${target.vehicleId || 'unknown'} unit ${target.unitNumber} to ${target.groupName || targetDriverGroupId} (${targetDriverGroupId}) via ${target.matchReason}`);
     }
 
+    let driverCaption = text;
+    if (targetDriverGroupId && driverBot && !target.matchReason.startsWith('fallback')) {
+        driverCaption = await resolveDriverCaption(
+            typeof alertData === 'string' ? {} : alertData,
+            text,
+        );
+    }
+
     if (targetDriverGroupId && driverBot) {
         console.log(`[Bot] Forwarding alert for Unit #${target.unitNumber || 'unknown'} to group ${targetDriverGroupId}...`);
         try {
@@ -210,7 +219,7 @@ async function broadcast(alertData) {
                 ]);
 
                 await driverBot.sendMediaGroup(targetDriverGroupId, [
-                    { type: 'video', media: 'attach://forward', caption: text, parse_mode: 'HTML' },
+                    { type: 'video', media: 'attach://forward', caption: driverCaption, parse_mode: 'HTML' },
                     { type: 'video', media: 'attach://inward' },
                 ], {}, {
                     forward: { value: forwardBuf, options: { filename: 'forward.mp4', contentType: 'video/mp4' } },
@@ -219,11 +228,11 @@ async function broadcast(alertData) {
             } else if (videoUrl) {
                 const buffer = await getVideoBuffer(videoUrl);
                 await driverBot.sendVideo(targetDriverGroupId, buffer, {
-                    caption: text,
+                    caption: driverCaption,
                     parse_mode: 'HTML',
                 });
             } else {
-                await driverBot.sendMessage(targetDriverGroupId, text, {
+                await driverBot.sendMessage(targetDriverGroupId, driverCaption, {
                     parse_mode: 'HTML',
                     disable_web_page_preview: true,
                 });

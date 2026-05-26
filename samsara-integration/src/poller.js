@@ -17,6 +17,7 @@ const {
 const { formatAlert } = require('./formatter');
 const { reverseGeocode } = require('./geocoder');
 const { enrichSafetyEventWithMediaIfNeeded } = require('./safetyEventMedia');
+const { enqueueFormattedAlert } = require('./videoRetryDelivery');
 
 const SAMSARA_API_KEY = process.env.SAMSARA_API_KEY;
 const SAMSARA_API_BASE = process.env.SAMSARA_API_BASE || 'https://api.samsara.com';
@@ -309,7 +310,7 @@ async function executePoll() {
                 formattedMessage.vehicleId = rawEvent.vehicle?.id || rawEvent.asset?.id || null;
                 formattedMessage.driverName = rawEvent.driver?.name || null;
                 
-                queueAlert(formattedMessage);
+                enqueueFormattedAlert(formattedMessage, rawEvent, queueAlert);
             }
             
             if (newEventsCount > 0) {
