@@ -30,13 +30,26 @@ test('routes to specific group when unit is shared and name matches', async () =
   assert.equal(target.matchReason, 'unit+name');
 });
 
-test('unmapped vehicle routes strictly to management group', async () => {
+test('unmapped vehicle does not route to fallback group', async () => {
   const target = await determineTargetGroup(
     { vehicleId: 'veh_unknown', vehicleName: 'Unit 77 UNKNOWN', driverName: 'UNKNOWN' },
     async () => null,
     '-100999'
   );
 
-  assert.equal(target.targetGroupId, '-100999');
+  assert.equal(target.targetGroupId, null);
   assert.equal(target.matchReason, 'fallback-unmapped');
 });
+
+
+test('missing unit does not route to fallback group', async () => {
+  const target = await determineTargetGroup(
+    { vehicleId: 'veh_unknown', vehicleName: 'Unknown Unit', driverName: 'UNKNOWN' },
+    async () => null,
+    '-100999'
+  );
+
+  assert.equal(target.targetGroupId, null);
+  assert.equal(target.matchReason, 'fallback-no-unit');
+});
+

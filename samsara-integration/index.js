@@ -40,7 +40,7 @@ if (resolvedMainBotToken === TOKEN) {
     );
 }
 
-// ── Express App (Health checks & optionally Telegram Webhook only) ────────────
+// ?? Express App (Health checks & optionally Telegram Webhook only) ????????????
 const app = express();
 app.use(express.json());
 
@@ -52,7 +52,7 @@ app.get('/health', (req, res) => {
     });
 });
 
-// ── Broadcast helper ──────────────────────────────────────────────────────────
+// ?? Broadcast helper ??????????????????????????????????????????????????????????
 const { parseTrustedVideoUrl } = require('./src/videoUrl');
 
 async function downloadVideo(videoUrl) {
@@ -82,7 +82,7 @@ async function downloadVideo(videoUrl) {
     }
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('video') && !contentType.includes('octet-stream')) {
-        console.warn(`[Bot] Unexpected content-type "${contentType}" — may not be a direct video link`);
+        console.warn(`[Bot] Unexpected content-type "${contentType}" ? may not be a direct video link`);
     }
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -136,7 +136,7 @@ async function broadcast(alertData) {
     const unitLabel = target.unitNumber || 'unknown';
 
     if (target.matchReason.startsWith('fallback')) {
-        console.warn(`[Bot] Unmapped vehicle ${target.vehicleId || 'unknown'} unit ${unitLabel} — routing to management group`);
+        console.warn(`[Bot] Unmapped vehicle ${target.vehicleId || 'unknown'} unit ${unitLabel} ? no driver group mapped, skipping driver forward`);
     } else {
         console.log(`[Bot] Routed vehicle ${target.vehicleId || 'unknown'} unit ${target.unitNumber} to ${target.groupName || targetDriverGroupId} (${targetDriverGroupId}) via ${target.matchReason}`);
     }
@@ -146,7 +146,7 @@ async function broadcast(alertData) {
         try {
             driverCaption = await resolveDriverCaption(alertObj, text);
         } catch (aiErr) {
-            console.error('[Bot] Driver caption AI failed — using standard text:', aiErr.message);
+            console.error('[Bot] Driver caption AI failed ? using standard text:', aiErr.message);
             driverCaption = text;
         }
     }
@@ -184,7 +184,7 @@ async function broadcast(alertData) {
         for (const chatId of subscribers) {
             try {
                 if (videoUrl && inwardVideoUrl) {
-                    console.log(`[Bot] Dual camera detected — sending media group to ${chatId}`);
+                    console.log(`[Bot] Dual camera detected ? sending media group to ${chatId}`);
                     try {
                         const [forwardBuf, inwardBuf] = await Promise.all([
                             getVideoBuffer(videoUrl),
@@ -201,7 +201,7 @@ async function broadcast(alertData) {
                         notificationsOk += 1;
                         continue;
                     } catch (dualErr) {
-                        console.error(`[Bot] Dual camera send failed — trying single video fallback:`, dualErr.message);
+                        console.error(`[Bot] Dual camera send failed ? trying single video fallback:`, dualErr.message);
                     }
                 }
 
@@ -220,7 +220,7 @@ async function broadcast(alertData) {
                         notificationsOk += 1;
                         continue;
                     } catch (videoErr) {
-                        console.error(`[Bot] Video send failed — falling back to text:`, videoErr.message);
+                        console.error(`[Bot] Video send failed ? falling back to text:`, videoErr.message);
                     }
                 }
 
@@ -251,7 +251,7 @@ async function broadcast(alertData) {
 }
 
 
-// ── Telegram Bot Setup ────────────────────────────────────────────────────────
+// ?? Telegram Bot Setup ????????????????????????????????????????????????????????
 let bot;
 let driverBot;
 
@@ -266,7 +266,7 @@ if (USE_WEBHOOK) {
     bot = new TelegramBot(TOKEN, { polling: true });
 }
 
-// Initialize Driver Bot (Main / feedback bot token — send-only)
+// Initialize Driver Bot (Main / feedback bot token ? send-only)
 const MAIN_BOT_TOKEN = resolvedMainBotToken;
 if (MAIN_BOT_TOKEN) {
     console.log('[Bot] Initializing driverBot with main BOT_TOKEN');
@@ -276,15 +276,15 @@ if (MAIN_BOT_TOKEN) {
 poller.setBroadcastFn(broadcast);
 speedingPoller.setBroadcastFn(broadcast);
 
-// ── Bot Commands ──────────────────────────────────────────────────────────────
+// ?? Bot Commands ??????????????????????????????????????????????????????????????
 bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
     const firstName = msg.from?.first_name || 'there';
     const added = await store.add(chatId);
     bot.sendMessage(chatId,
         added
-            ? `✅ *Welcome, ${firstName}!*\n\nYou are now subscribed to *Samsara fleet alerts*.\nWhenever an alert fires, I'll send it here instantly.\n\nUse /help to see all commands.`
-            : `👋 Hey ${firstName}! You're already subscribed.\nUse /help to see all commands.`,
+            ? `? *Welcome, ${firstName}!*\n\nYou are now subscribed to *Samsara fleet alerts*.\nWhenever an alert fires, I'll send it here instantly.\n\nUse /help to see all commands.`
+            : `?? Hey ${firstName}! You're already subscribed.\nUse /help to see all commands.`,
         { parse_mode: 'Markdown' }
     );
     console.log(`[Bot] /start from chatId=${chatId} (${msg.from?.username || 'unknown'})`);
@@ -295,8 +295,8 @@ bot.onText(/\/stop/, async (msg) => {
     const removed = await store.remove(chatId);
     bot.sendMessage(chatId,
         removed
-            ? `🔕 *You have been unsubscribed.*\n\nSend /start at any time to re-subscribe.`
-            : `ℹ️ You are not currently subscribed.\nSend /start to subscribe.`,
+            ? `?? *You have been unsubscribed.*\n\nSend /start at any time to re-subscribe.`
+            : `?? You are not currently subscribed.\nSend /start to subscribe.`,
         { parse_mode: 'Markdown' }
     );
 });
@@ -306,24 +306,24 @@ bot.onText(/\/status/, async (msg) => {
     const subscribed = store.has(chatId);
     bot.sendMessage(chatId,
         subscribed
-            ? `✅ *You are subscribed* to Samsara alerts.\n_Total subscribers: ${store.count()}_`
-            : `🔕 *You are not subscribed.*\nSend /start to subscribe.\n_Total subscribers: ${store.count()}_`,
+            ? `? *You are subscribed* to Samsara alerts.\n_Total subscribers: ${store.count()}_`
+            : `?? *You are not subscribed.*\nSend /start to subscribe.\n_Total subscribers: ${store.count()}_`,
         { parse_mode: 'Markdown' }
     );
 });
 
 bot.onText(/\/help/, (msg) => {
     bot.sendMessage(msg.chat.id,
-        `🤖 *Samsara Alert Bot — Commands*\n\n` +
-        `/start — Subscribe to Samsara alerts\n` +
-        `/stop — Unsubscribe from alerts\n` +
-        `/status — Check your subscription status\n` +
-        `/help — Show this help message`,
+        `?? *Samsara Alert Bot ? Commands*\n\n` +
+        `/start ? Subscribe to Samsara alerts\n` +
+        `/stop ? Unsubscribe from alerts\n` +
+        `/status ? Check your subscription status\n` +
+        `/help ? Show this help message`,
         { parse_mode: 'Markdown' }
     );
 });
 
-// ── Start Server ──────────────────────────────────────────────────────────────
+// ?? Start Server ??????????????????????????????????????????????????????????????
 async function start() {
     await store.init();
     const samsaraDb = require('./src/db');
@@ -331,21 +331,21 @@ async function start() {
     await new Promise((resolve) => app.listen(PORT, resolve));
 
     console.log('');
-    console.log('╔══════════════════════════════════════════════╗');
-    console.log('║      Samsara → Telegram Bot (Polling Mode)   ║');
-    console.log('╚══════════════════════════════════════════════╝');
-    console.log(`✅ Express server listening on port ${PORT} (Health checks)`);
-    console.log(`👥 Subscribers loaded: ${store.count()}`);
+    console.log('????????????????????????????????????????????????');
+    console.log('?      Samsara ? Telegram Bot (Polling Mode)   ?');
+    console.log('????????????????????????????????????????????????');
+    console.log(`? Express server listening on port ${PORT} (Health checks)`);
+    console.log(`?? Subscribers loaded: ${store.count()}`);
 
     if (USE_WEBHOOK && SELF_URL) {
         const telegramWebhookUrl = `${SELF_URL}/telegram-webhook/${TOKEN}`;
         try {
             await bot.setWebHook(telegramWebhookUrl);
-            console.log(`✅ Telegram webhook set: ${telegramWebhookUrl}`);
+            console.log(`? Telegram webhook set: ${telegramWebhookUrl}`);
         } catch (err) {
             console.error('[Bot] Failed to set Telegram webhook:', err.message);
         }
-        console.log(`✅ Telegram bot is online (webhook mode)`);
+        console.log(`? Telegram bot is online (webhook mode)`);
 
         // Keep-alive
         const https = require('https');
@@ -354,18 +354,18 @@ async function start() {
             const url = `${SELF_URL}/health`;
             const client = url.startsWith('https') ? https : http;
             client.get(url, (res) => {
-                console.log(`[KeepAlive] Pinged ${url} → ${res.statusCode}`);
+                console.log(`[KeepAlive] Pinged ${url} ? ${res.statusCode}`);
             }).on('error', (err) => {
                 console.warn(`[KeepAlive] Ping failed: ${err.message}`);
             });
         }, 14 * 60 * 1000);
 
     } else {
-        console.log(`✅ Telegram bot is online (long-polling mode)`);
+        console.log(`? Telegram bot is online (long-polling mode)`);
     }
 
     console.log('');
-    console.log('🤖 Bot is ready! Send /start to @wenzesambot on Telegram');
+    console.log('?? Bot is ready! Send /start to @wenzesambot on Telegram');
     console.log('');
 
     // Start polling the Samsara APIs every 15 seconds
@@ -387,4 +387,6 @@ process.on('SIGINT', () => {
 });
 process.on('uncaughtException', (err) => console.error('[App] Uncaught:', err.message));
 process.on('unhandledRejection', (reason) => console.error('[App] Rejection:', reason));
+
+
 

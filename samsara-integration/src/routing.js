@@ -40,7 +40,7 @@ async function determineTargetGroup(alertData, resolveGroupByUnit, managementGro
 
   if (!unitNumber) {
     return {
-      targetGroupId: managementGroupId,
+      targetGroupId: null,
       unitNumber: null,
       vehicleId,
       matchReason: 'fallback-no-unit',
@@ -50,7 +50,7 @@ async function determineTargetGroup(alertData, resolveGroupByUnit, managementGro
   const resolved = await resolveGroupByUnit(unitNumber, driverName, vehicleName);
   if (!resolved?.telegramGroupId) {
     return {
-      targetGroupId: managementGroupId,
+      targetGroupId: null,
       unitNumber,
       vehicleId,
       matchReason: 'fallback-unmapped',
@@ -72,3 +72,4 @@ module.exports = {
   resolveGroupByUnitAndName,
   determineTargetGroup,
 };
+
