@@ -14,6 +14,7 @@ const poller = require('./src/poller');
 const store = require('./src/store');
 const { determineTargetGroup } = require('./src/routing');
 const { resolveDriverCaption } = require('./src/driverAlertMessageAi');
+const { sendDriverGroupAlert } = require('./src/driverGroupDelivery');
 const {
     feedbackBotToken: HARDCODED_FEEDBACK_BOT_TOKEN,
     samsaraBotToken: HARDCODED_SAMSARA_BOT_TOKEN,
@@ -114,134 +115,136 @@ async function broadcast(alertData) {
         subscribers.push(String(forcedId));
     }
 
-    if (subscribers.length === 0 && !process.env.EMPLOYEE_GROUP_ID) {
-        console.warn('[Bot] No subscribers to broadcast to.');
-        return;
-    }
-
-    const text         = typeof alertData === 'string' ? alertData : alertData.text;
-    const videoUrl     = typeof alertData === 'string' ? null : alertData.videoUrl;
+    const text = typeof alertData === 'string' ? alertData : alertData.text;
+    const videoUrl = typeof alertData === 'string' ? null : alertData.videoUrl;
     const inwardVideoUrl = typeof alertData === 'string' ? null : alertData.inwardVideoUrl;
+    const eventId = typeof alertData === 'string' ? null : alertData.samsaraEventId;
+    const alertObj = typeof alertData === 'string' ? {} : alertData;
 
-    console.log(`[Bot] Broadcasting to ${subscribers.length} subscriber(s)...`);
+    let driverStatus = 'skip';
+    let notificationsStatus = 'skip';
 
-    // 1. Broadcast to dedicated Samsara bot subscribers
-    for (const chatId of subscribers) {
-        try {
-            // Dual camera
-            if (videoUrl && inwardVideoUrl) {
-                console.log(`[Bot] Dual camera detected — sending media group to ${chatId}`);
-                try {
-                    const [forwardBuf, inwardBuf] = await Promise.all([
-                        getVideoBuffer(videoUrl),
-                        getVideoBuffer(inwardVideoUrl),
-                    ]);
-
-                    await bot.sendMediaGroup(chatId, [
-                        { type: 'video', media: 'attach://forward', caption: text, parse_mode: 'HTML' },
-                        { type: 'video', media: 'attach://inward' },
-                    ], {}, {
-                        forward: { value: forwardBuf, options: { filename: 'forward.mp4', contentType: 'video/mp4' } },
-                        inward:  { value: inwardBuf,  options: { filename: 'inward.mp4',  contentType: 'video/mp4' } },
-                    });
-                    console.log(`[Bot] Successfully sent dual-camera media group to ${chatId}`);
-                    continue;
-                } catch (dualErr) {
-                    console.error(`[Bot] Dual camera send failed — trying single video fallback:`, dualErr.message);
-                }
-            }
-
-            // Single camera
-            if (videoUrl) {
-                console.log(`[Bot] Fetching single video for ${chatId} from: ${videoUrl}`);
-                try {
-                    const buffer = await getVideoBuffer(videoUrl);
-                    await bot.sendVideo(chatId, buffer, {
-                        caption:    text,
-                        parse_mode: 'HTML',
-                    }, {
-                        filename:    'event.mp4',
-                        contentType: 'video/mp4',
-                    });
-                    console.log(`[Bot] Successfully sent video to ${chatId}`);
-                    continue;
-                } catch (videoErr) {
-                    console.error(`[Bot] Video send failed — falling back to text:`, videoErr.message);
-                }
-            }
-
-            // Text fallback
-            await bot.sendMessage(chatId, text, {
-                parse_mode: 'HTML',
-                disable_web_page_preview: true,
-            });
-            console.log(`[Bot] Successfully sent text alert to ${chatId}`);
-
-        } catch (err) {
-            console.error(`[Bot] Failed to send to ${chatId}:`, err.message);
-            if (err.response?.body?.error_code === 403) {
-                console.log(`[Bot] Removing blocked user ${chatId}`);
-                store.remove(chatId);
-            }
-        }
-    }
-
-    // 2. Forward to the specific Driver Group via main bot (@wenzefeedback_bot)
+    // 1. Forward to driver group first (before slow notification video uploads)
     const MANAGEMENT_GROUP_ID = process.env.MANAGEMENT_GROUP_ID || process.env.EMPLOYEE_GROUP_ID;
     const target = await determineTargetGroup(
-        typeof alertData === 'string' ? {} : alertData,
+        alertObj,
         store.findGroupByUnit.bind(store),
-        MANAGEMENT_GROUP_ID
+        MANAGEMENT_GROUP_ID,
     );
     const targetDriverGroupId = target.targetGroupId;
+    const unitLabel = target.unitNumber || 'unknown';
+
     if (target.matchReason.startsWith('fallback')) {
-        console.warn(`[Bot] Unmapped vehicle ${target.vehicleId || 'unknown'} unit ${target.unitNumber || 'unknown'} — routing to management group`);
+        console.warn(`[Bot] Unmapped vehicle ${target.vehicleId || 'unknown'} unit ${unitLabel} — routing to management group`);
     } else {
         console.log(`[Bot] Routed vehicle ${target.vehicleId || 'unknown'} unit ${target.unitNumber} to ${target.groupName || targetDriverGroupId} (${targetDriverGroupId}) via ${target.matchReason}`);
     }
 
     let driverCaption = text;
     if (targetDriverGroupId && driverBot && !target.matchReason.startsWith('fallback')) {
-        driverCaption = await resolveDriverCaption(
-            typeof alertData === 'string' ? {} : alertData,
-            text,
-        );
+        try {
+            driverCaption = await resolveDriverCaption(alertObj, text);
+        } catch (aiErr) {
+            console.error('[Bot] Driver caption AI failed — using standard text:', aiErr.message);
+            driverCaption = text;
+        }
     }
 
     if (targetDriverGroupId && driverBot) {
-        console.log(`[Bot] Forwarding alert for Unit #${target.unitNumber || 'unknown'} to group ${targetDriverGroupId}...`);
+        console.log(`[Bot] Forwarding alert for Unit #${unitLabel} to group ${targetDriverGroupId}...`);
+        driverStatus = 'fail';
         try {
-            // Dual camera support for Driver Group
-            if (videoUrl && inwardVideoUrl) {
-                const [forwardBuf, inwardBuf] = await Promise.all([
-                    getVideoBuffer(videoUrl),
-                    getVideoBuffer(inwardVideoUrl),
-                ]);
-
-                await driverBot.sendMediaGroup(targetDriverGroupId, [
-                    { type: 'video', media: 'attach://forward', caption: driverCaption, parse_mode: 'HTML' },
-                    { type: 'video', media: 'attach://inward' },
-                ], {}, {
-                    forward: { value: forwardBuf, options: { filename: 'forward.mp4', contentType: 'video/mp4' } },
-                    inward:  { value: inwardBuf,  options: { filename: 'inward.mp4',  contentType: 'video/mp4' } },
-                });
-            } else if (videoUrl) {
-                const buffer = await getVideoBuffer(videoUrl);
-                await driverBot.sendVideo(targetDriverGroupId, buffer, {
-                    caption: driverCaption,
-                    parse_mode: 'HTML',
-                });
-            } else {
-                await driverBot.sendMessage(targetDriverGroupId, driverCaption, {
-                    parse_mode: 'HTML',
-                    disable_web_page_preview: true,
-                });
-            }
+            await sendDriverGroupAlert(driverBot, targetDriverGroupId, {
+                caption: driverCaption,
+                videoUrl,
+                inwardVideoUrl,
+                getVideoBuffer,
+            });
+            driverStatus = 'ok';
             console.log(`[Bot] Successfully forwarded to Driver Group ${targetDriverGroupId}`);
         } catch (err) {
             console.error(`[Bot] Forwarding failed to ${targetDriverGroupId}:`, err.message);
         }
     }
+
+    if (driverStatus === 'fail') {
+        throw new Error(`Driver delivery failed for event ${eventId || 'unknown'}`);
+    }
+
+    // 2. Broadcast to Samsara bot subscribers (notifications group)
+    if (subscribers.length === 0) {
+        console.warn('[Bot] No subscribers to broadcast to.');
+        notificationsStatus = 'skip';
+    } else {
+        console.log(`[Bot] Broadcasting to ${subscribers.length} subscriber(s)...`);
+        let notificationsOk = 0;
+        let notificationsFail = 0;
+
+        for (const chatId of subscribers) {
+            try {
+                if (videoUrl && inwardVideoUrl) {
+                    console.log(`[Bot] Dual camera detected — sending media group to ${chatId}`);
+                    try {
+                        const [forwardBuf, inwardBuf] = await Promise.all([
+                            getVideoBuffer(videoUrl),
+                            getVideoBuffer(inwardVideoUrl),
+                        ]);
+                        await bot.sendMediaGroup(chatId, [
+                            { type: 'video', media: 'attach://forward', caption: text, parse_mode: 'HTML' },
+                            { type: 'video', media: 'attach://inward' },
+                        ], {}, {
+                            forward: { value: forwardBuf, options: { filename: 'forward.mp4', contentType: 'video/mp4' } },
+                            inward: { value: inwardBuf, options: { filename: 'inward.mp4', contentType: 'video/mp4' } },
+                        });
+                        console.log(`[Bot] Successfully sent dual-camera media group to ${chatId}`);
+                        notificationsOk += 1;
+                        continue;
+                    } catch (dualErr) {
+                        console.error(`[Bot] Dual camera send failed — trying single video fallback:`, dualErr.message);
+                    }
+                }
+
+                if (videoUrl) {
+                    console.log(`[Bot] Fetching single video for ${chatId} from: ${videoUrl}`);
+                    try {
+                        const buffer = await getVideoBuffer(videoUrl);
+                        await bot.sendVideo(chatId, buffer, {
+                            caption: text,
+                            parse_mode: 'HTML',
+                        }, {
+                            filename: 'event.mp4',
+                            contentType: 'video/mp4',
+                        });
+                        console.log(`[Bot] Successfully sent video to ${chatId}`);
+                        notificationsOk += 1;
+                        continue;
+                    } catch (videoErr) {
+                        console.error(`[Bot] Video send failed — falling back to text:`, videoErr.message);
+                    }
+                }
+
+                await bot.sendMessage(chatId, text, {
+                    parse_mode: 'HTML',
+                    disable_web_page_preview: true,
+                });
+                console.log(`[Bot] Successfully sent text alert to ${chatId}`);
+                notificationsOk += 1;
+            } catch (err) {
+                notificationsFail += 1;
+                console.error(`[Bot] Failed to send to ${chatId}:`, err.message);
+                if (err.response?.body?.error_code === 403) {
+                    console.log(`[Bot] Removing blocked user ${chatId}`);
+                    store.remove(chatId);
+                }
+            }
+        }
+
+        notificationsStatus = notificationsOk > 0 ? 'ok' : (notificationsFail > 0 ? 'fail' : 'skip');
+    }
+
+    console.log(
+        `[Bot] Broadcast complete event=${eventId || 'unknown'} notifications=${notificationsStatus} driver=${driverStatus} unit=${unitLabel}`,
+    );
 
     videoCache.clear();
 }

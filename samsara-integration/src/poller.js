@@ -41,7 +41,25 @@ let droppedAlertsCount = 0;
 // Keep track of recently seen event IDs to prevent duplicates if the cursor
 // hasn't updated yet or if we fall back to time-based polling.
 const SEEN_IDS = new Set();
+// In-flight deliveries (picked up but not yet marked processed in DB).
+const PENDING_DELIVERY_IDS = new Set();
 const MAX_SEEN_IDS = 1000;
+
+async function noteEventDelivered(eventId) {
+    if (!eventId) return;
+    await markEventProcessed(eventId);
+    SEEN_IDS.add(eventId);
+    PENDING_DELIVERY_IDS.delete(eventId);
+    if (SEEN_IDS.size > MAX_SEEN_IDS) {
+        const oldest = SEEN_IDS.values().next().value;
+        SEEN_IDS.delete(oldest);
+    }
+}
+
+function noteEventDeliveryFailed(eventId) {
+    if (!eventId) return;
+    PENDING_DELIVERY_IDS.delete(eventId);
+}
 
 function isIsoTimestamp(value) {
     return typeof value === 'string'
@@ -77,16 +95,19 @@ async function processQueue() {
     isProcessingQueue = true;
     const alert = ALERT_QUEUE.shift(); // Get oldest
     
+    const eventId = alert?.samsaraEventId || null;
+
     if (broadcastFn) {
         try {
             await broadcastFn(alert);
+            await noteEventDelivered(eventId);
         } catch (err) {
-            console.error('[Queue] Error broadcasting alert:', err.message);
-            // Optionally could re-queue here if we wanted strict delivery on Telegram failure
-            // but we usually discard so we don't get stuck in an endless error loop.
+            noteEventDeliveryFailed(eventId);
+            console.error('[Queue] Delivery failed, will retry on next poll:', err.message);
         }
     } else {
         console.warn('[Queue] No broadcastFn set. Dropping alert.');
+        noteEventDeliveryFailed(eventId);
     }
     
     // Wait 2000ms before sending the next one (Rate Limiting)
@@ -290,18 +311,16 @@ async function executePoll() {
         if (events.length > 0) {
             let newEventsCount = 0;
             for (const rawEvent of events) {
-                // In-memory Deduplication check
-                if (SEEN_IDS.has(rawEvent.id)) continue;
-                
-                // Permanent PostgreSQL Deduplication check
+                // In-memory dedup: delivered or already queued for delivery
+                if (SEEN_IDS.has(rawEvent.id) || PENDING_DELIVERY_IDS.has(rawEvent.id)) continue;
+
+                // Permanent PostgreSQL dedup (successfully delivered in a prior run)
                 if (await isEventProcessed(rawEvent.id)) {
-                    SEEN_IDS.add(rawEvent.id); // Add to memory to save DB calls next time
+                    SEEN_IDS.add(rawEvent.id);
                     continue;
                 }
-                
-                SEEN_IDS.add(rawEvent.id);
-                await markEventProcessed(rawEvent.id);
 
+                PENDING_DELIVERY_IDS.add(rawEvent.id);
                 newEventsCount++;
                 const mappedPayload = await transformApiEventToWebhookShape(rawEvent);
                 const formattedMessage = formatAlert(mappedPayload);
@@ -343,6 +362,40 @@ async function executePoll() {
 let intervalId = null;
 let metricsIntervalId = null;
 
+/** @internal Test hook: process one queued alert without inter-alert delay. */
+async function processNextQueuedAlertForTest() {
+    if (ALERT_QUEUE.length === 0) return { processed: false };
+
+    const alert = ALERT_QUEUE.shift();
+    const eventId = alert?.samsaraEventId || null;
+
+    if (!broadcastFn) {
+        noteEventDeliveryFailed(eventId);
+        return { processed: true, delivered: false, eventId };
+    }
+
+    try {
+        await broadcastFn(alert);
+        await noteEventDelivered(eventId);
+        return { processed: true, delivered: true, eventId };
+    } catch (err) {
+        noteEventDeliveryFailed(eventId);
+        return { processed: true, delivered: false, eventId, error: err.message };
+    }
+}
+
+function enqueueAlertForTest(formattedAlert) {
+    if (!formattedAlert) return;
+    ALERT_QUEUE.push(formattedAlert);
+}
+
+function resetDeliveryStateForTest() {
+    SEEN_IDS.clear();
+    PENDING_DELIVERY_IDS.clear();
+    ALERT_QUEUE.length = 0;
+    isProcessingQueue = false;
+}
+
 module.exports = {
     /**
      * Set the function that actually sends the message via the Telegram Bot.
@@ -350,6 +403,14 @@ module.exports = {
      */
     setBroadcastFn(fn) {
         broadcastFn = fn;
+    },
+
+    _forTest: {
+        enqueueAlertForTest,
+        processNextQueuedAlertForTest,
+        resetDeliveryStateForTest,
+        getPendingDeliveryIds: () => new Set(PENDING_DELIVERY_IDS),
+        getSeenIds: () => new Set(SEEN_IDS),
     },
 
     /**
