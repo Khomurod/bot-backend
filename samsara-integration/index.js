@@ -11,6 +11,7 @@ const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 
 const poller = require('./src/poller');
+const speedingPoller = require('./src/speedingPoller');
 const store = require('./src/store');
 const { determineTargetGroup } = require('./src/routing');
 const { resolveDriverCaption } = require('./src/driverAlertMessageAi');
@@ -273,6 +274,7 @@ if (MAIN_BOT_TOKEN) {
 }
 
 poller.setBroadcastFn(broadcast);
+speedingPoller.setBroadcastFn(broadcast);
 
 // ── Bot Commands ──────────────────────────────────────────────────────────────
 bot.onText(/\/start/, async (msg) => {
@@ -366,8 +368,9 @@ async function start() {
     console.log('🤖 Bot is ready! Send /start to @wenzesambot on Telegram');
     console.log('');
 
-    // Start polling the Samsara API every 15 seconds
+    // Start polling the Samsara APIs every 15 seconds
     poller.start(15000);
+    speedingPoller.start(15000);
 }
 
 start().catch((err) => {
@@ -378,8 +381,10 @@ start().catch((err) => {
 process.on('SIGINT', () => {
     console.log('\n[App] Shutting down...');
     poller.stop();
+    speedingPoller.stop();
     if (!USE_WEBHOOK) bot.stopPolling();
     process.exit(0);
 });
 process.on('uncaughtException', (err) => console.error('[App] Uncaught:', err.message));
 process.on('unhandledRejection', (reason) => console.error('[App] Rejection:', reason));
+
