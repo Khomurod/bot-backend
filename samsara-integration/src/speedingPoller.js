@@ -10,6 +10,7 @@ const { Pool } = require('pg');
 
 const { formatAlert } = require('./formatter');
 const { reverseGeocode } = require('./geocoder');
+const { enqueueFormattedAlert } = require('./videoRetryDelivery');
 
 const SAMSARA_API_KEY = process.env.SAMSARA_API_KEY;
 const SAMSARA_API_BASE = process.env.SAMSARA_API_BASE || 'https://api.samsara.com';
@@ -316,6 +317,7 @@ async function tryRetrieveSpeedingVideo(rawEvent, options = {}) {
   const sleepImpl = options.sleepImpl || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const maxPolls = Number.isFinite(options.maxPolls) ? options.maxPolls : 8;
   const pollIntervalMs = Number.isFinite(options.pollIntervalMs) ? options.pollIntervalMs : 15_000;
+  const skipRetrievalRequest = options.skipRetrievalRequest === true;
 
   const vehicleId = rawEvent.asset?.id || rawEvent.vehicle?.id || null;
   const startTime = rawEvent.startMs || rawEvent.time || rawEvent.createdAtTime;
@@ -326,30 +328,32 @@ async function tryRetrieveSpeedingVideo(rawEvent, options = {}) {
     return rawEvent.downloadForwardVideoUrl || rawEvent.media?.[0]?.url || null;
   }
 
-  try {
-    const reqRes = await fetchImpl(`${SAMSARA_API_BASE}/cameras/media/retrieval`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${SAMSARA_API_KEY}`,
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        vehicleId,
-        startTime,
-        endTime,
-        mediaType: 'videoHighRes',
-        inputs: ['dashcamRoadFacing', 'dashcamDriverFacing'],
-      }),
-    });
+  if (!skipRetrievalRequest) {
+    try {
+      const reqRes = await fetchImpl(`${SAMSARA_API_BASE}/cameras/media/retrieval`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${SAMSARA_API_KEY}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          vehicleId,
+          startTime,
+          endTime,
+          mediaType: 'videoHighRes',
+          inputs: ['dashcamRoadFacing', 'dashcamDriverFacing'],
+        }),
+      });
 
-    const reqText = await reqRes.text();
-    if (!reqRes.ok) {
-      throw new Error(`retrieval ${reqRes.status}: ${reqText.slice(0, 200)}`);
+      const reqText = await reqRes.text();
+      if (!reqRes.ok) {
+        throw new Error(`retrieval ${reqRes.status}: ${reqText.slice(0, 200)}`);
+      }
+    } catch (err) {
+      console.warn('[SpeedPoller] Media retrieval request failed:', err.message);
+      return null;
     }
-  } catch (err) {
-    console.warn('[SpeedPoller] Media retrieval request failed:', err.message);
-    return null;
   }
 
   const queryStart = new Date(Date.parse(startTime) - 60_000).toISOString();
@@ -480,13 +484,33 @@ async function executePoll() {
           formatted.driverName = transformed.driverName || null;
           formatted.samsaraEventId = eventId;
 
-          const retrievedVideoUrl = await tryRetrieveSpeedingVideo(rawEvent);
-          if (retrievedVideoUrl) {
-            formatted.videoUrl = retrievedVideoUrl;
+          const directVideoUrl = rawEvent.downloadForwardVideoUrl || rawEvent.media?.[0]?.url || null;
+          if (directVideoUrl) {
+            formatted.videoUrl = directVideoUrl;
             formatted.inwardVideoUrl = null;
           }
 
-          queueAlert(formatted);
+          enqueueFormattedAlert(
+            formatted,
+            rawEvent,
+            queueAlert,
+            {
+              // First re-check after 60s without forcing retrieval.
+              refetchFn: async () => {
+                const url = await tryRetrieveSpeedingVideo(rawEvent, {
+                  skipRetrievalRequest: true,
+                  maxPolls: 1,
+                  pollIntervalMs: 0,
+                });
+                return { forwardUrl: url, inwardUrl: null };
+              },
+              // If still missing, then start retrieval job and poll for result.
+              retrievalFn: async () => {
+                const url = await tryRetrieveSpeedingVideo(rawEvent);
+                return { forwardUrl: url, inwardUrl: null };
+              },
+            },
+          );
           // #region agent log
           fetch('http://127.0.0.1:7869/ingest/5069c10b-4d7b-4b84-95eb-05813bc92a8b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4c7305'},body:JSON.stringify({sessionId:'4c7305',runId:'baseline',hypothesisId:'H5',location:'samsara-integration/src/speedingPoller.js:queue_alert',message:'speeding_event_queued',data:{eventId,vehicleId:formatted.vehicleId||null,unit:formatted.vehicleName||null,hasVideo:!!formatted.videoUrl},timestamp:Date.now()})}).catch(()=>{});
           // #endregion

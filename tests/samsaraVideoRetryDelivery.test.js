@@ -8,6 +8,8 @@ const {
   patchAlertVideoUrls,
   enqueueFormattedAlert,
   scheduleVideoRetryDelivery,
+  inferVideoRetrievalParams,
+  pollRetrievedVideoUrls,
   DEFAULT_DELAY_MS,
 } = require('../samsara-integration/src/videoRetryDelivery');
 
@@ -99,6 +101,37 @@ test('enqueueFormattedAlert defers queueAlert until timer fires', async () => {
   assert.equal(alert.videoUrl, 'https://retry.mp4');
 });
 
+test('enqueueFormattedAlert starts retrieval when delayed refetch has no video', async () => {
+  delete process.env.SAMSARA_VIDEO_RETRY_ENABLED;
+  let queued = 0;
+  const alert = { text: 'x' };
+  let timerFn = null;
+
+  enqueueFormattedAlert(
+    alert,
+    { id: 'evt-retrieve' },
+    () => { queued += 1; },
+    {
+      delayMs: 0,
+      setTimer: (fn) => {
+        timerFn = fn;
+      },
+      refetchFn: async () => ({
+        forwardUrl: null,
+        inwardUrl: null,
+      }),
+      retrievalFn: async () => ({
+        forwardUrl: 'https://retrieved.mp4',
+        inwardUrl: null,
+      }),
+    },
+  );
+
+  await timerFn();
+  assert.equal(queued, 1);
+  assert.equal(alert.videoUrl, 'https://retrieved.mp4');
+});
+
 test('scheduleVideoRetryDelivery still queues on refetch failure', async () => {
   delete process.env.SAMSARA_VIDEO_RETRY_ENABLED;
   let queued = 0;
@@ -117,6 +150,59 @@ test('scheduleVideoRetryDelivery still queues on refetch failure', async () => {
   await timerFn();
   assert.equal(queued, 1);
   assert.equal(alert.videoUrl, undefined);
+});
+
+test('inferVideoRetrievalParams tolerates invalid start with valid end', () => {
+  const out = inferVideoRetrievalParams({
+    asset: { id: 'veh-1' },
+    startMs: 'not-a-time',
+    endMs: '2026-05-29T14:56:32.338Z',
+  });
+  assert.equal(out.vehicleId, 'veh-1');
+  assert.equal(out.startTime, '2026-05-29T14:56:32.338Z');
+  assert.equal(out.endTime, '2026-05-29T14:56:32.338Z');
+});
+
+test('pollRetrievedVideoUrls continues after transient polling failure', async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    if (calls === 1) {
+      return {
+        ok: false,
+        status: 500,
+        text: async () => 'temporary backend issue',
+      };
+    }
+    return {
+      ok: true,
+      text: async () => JSON.stringify({
+        data: {
+          media: [
+            {
+              mediaType: 'videoHighRes',
+              input: 'dashcamRoadFacing',
+              urlInfo: { url: 'https://retrieved-after-retry.mp4' },
+            },
+          ],
+        },
+      }),
+    };
+  };
+
+  const out = await pollRetrievedVideoUrls({
+    vehicleId: 'veh-1',
+    startTime: '2026-05-29T14:56:00.000Z',
+    endTime: '2026-05-29T14:56:32.338Z',
+    apiKey: 'k',
+    baseUrl: 'https://api.samsara.com',
+    fetchImpl,
+    sleepImpl: async () => {},
+    maxPolls: 2,
+    pollIntervalMs: 0,
+  });
+
+  assert.equal(out.forwardUrl, 'https://retrieved-after-retry.mp4');
 });
 
 test('isVideoRetryEnabled defaults to true', () => {
