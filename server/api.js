@@ -1163,8 +1163,12 @@ app.put('/api/driver-profiles/:id', authMiddleware, async (req, res) => {
       status: body.status,
       unit_number: body.unit_number,
       language: body.language,
-      date_of_birth: body.date_of_birth ?? null,
-      date_of_start: body.date_of_start ?? null,
+      ...(Object.prototype.hasOwnProperty.call(body, 'date_of_birth')
+        ? { date_of_birth: body.date_of_birth || null }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'date_of_start')
+        ? { date_of_start: body.date_of_start || null }
+        : {}),
       needs_review: body.needs_review,
       backfill_confidence: body.backfill_confidence,
     });

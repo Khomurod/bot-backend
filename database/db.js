@@ -2,6 +2,10 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config/config');
+const {
+  parseGroupName,
+  extractUnitFromGroupName,
+} = require('../services/driverGroupTitle');
 
 const pool = new Pool({
   connectionString: config.databaseUrl,
@@ -235,6 +239,44 @@ function mapDriverProfileRow(row) {
   };
 }
 
+function splitPersonName(fullName) {
+  const tokens = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return { first_name: null, last_name: null };
+  if (tokens.length === 1) return { first_name: tokens[0], last_name: null };
+  return {
+    first_name: tokens[0],
+    last_name: tokens.slice(1).join(' '),
+  };
+}
+
+function inferDriverTypeFromGroup(groupName) {
+  const parsed = parseGroupName(groupName || '');
+  const raw = `${parsed.type || ''} ${groupName || ''}`.toLowerCase();
+  if (raw.includes('company driver')) return 'company_driver';
+  return 'owner';
+}
+
+function buildDefaultProfileFromGroup(group) {
+  const parsed = parseGroupName(group.group_name || '');
+  const { first_name, last_name } = splitPersonName(parsed.driver || '');
+  const unit_number = extractUnitFromGroupName(group.group_name || '');
+  const hasGaps = !first_name || !unit_number;
+  const created = group.created_at ? new Date(group.created_at) : null;
+  return {
+    group_id: group.id,
+    first_name,
+    last_name,
+    driver_type: inferDriverTypeFromGroup(group.group_name || ''),
+    status: group.active === false ? 'inactive' : 'active',
+    unit_number,
+    language: normalizeProfileLanguage(group.language),
+    date_of_birth: parseOptionalDate(group.driver_birthday),
+    date_of_start: created && !Number.isNaN(created.getTime()) ? created.toISOString().slice(0, 10) : null,
+    needs_review: hasGaps,
+    backfill_confidence: hasGaps ? 60 : 95,
+  };
+}
+
 async function syncGroupFromDriverProfile(profileRow) {
   if (!profileRow?.group_id) return null;
   const groupStatusActive = profileRow.status !== 'inactive';
@@ -277,6 +319,29 @@ async function getDriverProfileById(id) {
 async function listDriverProfiles(filters = {}) {
   const includeInactive = filters.includeInactive === true;
   const needsReviewOnly = filters.needsReviewOnly === true;
+
+  const groupRes = await query(
+    `SELECT id, group_name, telegram_group_id, active, language, driver_birthday, created_at
+     FROM groups
+     WHERE group_type = 'driver'
+       ${includeInactive ? '' : 'AND active = TRUE'}
+     ORDER BY id ASC`
+  );
+  const groups = groupRes.rows || [];
+  if (groups.length > 0) {
+    const groupIds = groups.map((g) => g.id);
+    const existingRes = await query(
+      `SELECT group_id FROM driver_profiles WHERE group_id = ANY($1)`,
+      [groupIds]
+    );
+    const existingByGroupId = new Set(existingRes.rows.map((r) => Number(r.group_id)));
+    for (const group of groups) {
+      if (existingByGroupId.has(Number(group.id))) continue;
+      const seed = buildDefaultProfileFromGroup(group);
+      await upsertDriverProfileByGroupId(seed, { syncGroup: false });
+    }
+  }
+
   const clauses = ['g.group_type = \'driver\''];
   const params = [];
 
@@ -370,18 +435,19 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
 async function updateDriverProfile(id, data, opts = {}) {
   const existing = await getDriverProfileById(id);
   if (!existing) return null;
+  const hasOwn = (key) => Object.prototype.hasOwnProperty.call(data || {}, key);
   const merged = {
     group_id: existing.group_id,
-    first_name: data.first_name ?? existing.first_name,
-    last_name: data.last_name ?? existing.last_name,
-    driver_type: data.driver_type ?? existing.driver_type,
-    status: data.status ?? existing.status,
-    unit_number: data.unit_number ?? existing.unit_number,
-    language: data.language ?? existing.language,
-    date_of_birth: data.date_of_birth ?? existing.date_of_birth,
-    date_of_start: data.date_of_start ?? existing.date_of_start,
-    needs_review: data.needs_review ?? existing.needs_review,
-    backfill_confidence: data.backfill_confidence ?? existing.backfill_confidence,
+    first_name: hasOwn('first_name') ? data.first_name : existing.first_name,
+    last_name: hasOwn('last_name') ? data.last_name : existing.last_name,
+    driver_type: hasOwn('driver_type') ? data.driver_type : existing.driver_type,
+    status: hasOwn('status') ? data.status : existing.status,
+    unit_number: hasOwn('unit_number') ? data.unit_number : existing.unit_number,
+    language: hasOwn('language') ? data.language : existing.language,
+    date_of_birth: hasOwn('date_of_birth') ? data.date_of_birth : existing.date_of_birth,
+    date_of_start: hasOwn('date_of_start') ? data.date_of_start : existing.date_of_start,
+    needs_review: hasOwn('needs_review') ? data.needs_review : existing.needs_review,
+    backfill_confidence: hasOwn('backfill_confidence') ? data.backfill_confidence : existing.backfill_confidence,
   };
   return upsertDriverProfileByGroupId(merged, opts);
 }

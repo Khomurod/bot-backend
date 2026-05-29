@@ -9,6 +9,7 @@ const PLACEHOLDER_DEFS = [
   { key: 'date_of_birth', label: 'Date of birth', required: true },
   { key: 'date_of_start', label: 'Date of start', required: true },
 ];
+const { parseGroupName, extractUnitFromGroupName } = require('./driverGroupTitle');
 
 const ALLOWED_KEYS = new Set(PLACEHOLDER_DEFS.map((p) => p.key));
 const TOKEN_PATTERN = /\{([a-z][a-z0-9_]*)\}/gi;
@@ -59,19 +60,30 @@ function escapeHtml(value) {
 }
 
 function buildBroadcastTemplateContext({ profile, group }) {
-  const firstName = String(profile?.first_name || '').trim();
-  const lastName = String(profile?.last_name || '').trim();
+  const parsedGroup = parseGroupName(group?.group_name || '');
+  const parsedName = String(parsedGroup.driver || '').trim();
+  const nameParts = parsedName.split(/\s+/).filter(Boolean);
+  const fallbackFirst = nameParts[0] || '';
+  const fallbackLast = nameParts.slice(1).join(' ');
+
+  const firstName = String(profile?.first_name || fallbackFirst || '').trim();
+  const lastName = String(profile?.last_name || fallbackLast || '').trim();
   const driverName = [firstName, lastName].filter(Boolean).join(' ').trim();
+  const inferredType = String(profile?.driver_type || '').trim()
+    || (String(parsedGroup.type || '').toLowerCase().includes('company driver') ? 'company_driver' : 'owner');
+  const fallbackUnit = extractUnitFromGroupName(group?.group_name || '');
+  const fallbackDob = formatDateValue(group?.driver_birthday);
+  const fallbackStart = formatDateValue(group?.created_at);
   return {
     driver_name: driverName,
     first_name: firstName,
     last_name: lastName,
-    unit_number: String(profile?.unit_number || '').trim(),
-    driver_type: String(profile?.driver_type || '').trim(),
+    unit_number: String(profile?.unit_number || fallbackUnit || '').trim(),
+    driver_type: inferredType,
     status: String(profile?.status || (group?.active === false ? 'inactive' : 'active')).trim(),
     language: String(profile?.language || group?.language || 'en').trim(),
-    date_of_birth: formatDateValue(profile?.date_of_birth),
-    date_of_start: formatDateValue(profile?.date_of_start),
+    date_of_birth: formatDateValue(profile?.date_of_birth) || fallbackDob,
+    date_of_start: formatDateValue(profile?.date_of_start) || fallbackStart,
   };
 }
 
