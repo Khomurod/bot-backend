@@ -487,6 +487,9 @@ async function executePoll() {
           }
 
           queueAlert(formatted);
+          // #region agent log
+          fetch('http://127.0.0.1:7869/ingest/5069c10b-4d7b-4b84-95eb-05813bc92a8b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4c7305'},body:JSON.stringify({sessionId:'4c7305',runId:'baseline',hypothesisId:'H5',location:'samsara-integration/src/speedingPoller.js:queue_alert',message:'speeding_event_queued',data:{eventId,vehicleId:formatted.vehicleId||null,unit:formatted.vehicleName||null,hasVideo:!!formatted.videoUrl},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           totalQueued += 1;
         } catch (eventErr) {
           noteEventDeliveryFailed(eventId);

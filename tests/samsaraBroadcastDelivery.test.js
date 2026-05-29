@@ -2,6 +2,11 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { sendDriverGroupAlert } = require('../samsara-integration/src/driverGroupDelivery');
+const {
+  appendDriverMissingNote,
+  isDriverMembershipAccessError,
+  shouldRetryDelivery,
+} = require('../samsara-integration/src/deliveryWarnings');
 const poller = require('../samsara-integration/src/poller');
 
 test.afterEach(() => {
@@ -89,4 +94,33 @@ test('sendDriverGroupAlert sends dual camera when both URLs present', async () =
   });
 
   assert.deepEqual(calls, ['sendMediaGroup']);
+});
+
+test('driver membership/access errors are detected for warning notes', () => {
+  const chatNotFoundErr = {
+    response: { body: { error_code: 400, description: 'Bad Request: chat not found' } },
+  };
+  const forbiddenErr = {
+    response: { body: { error_code: 403, description: 'Forbidden: bot was kicked from the supergroup chat' } },
+  };
+  const genericErr = new Error('network timeout');
+
+  assert.equal(isDriverMembershipAccessError(chatNotFoundErr), true);
+  assert.equal(isDriverMembershipAccessError(forbiddenErr), true);
+  assert.equal(isDriverMembershipAccessError(genericErr), false);
+});
+
+test('warning note appends once and keeps original content', () => {
+  const original = '<b>Alert</b>\nDriver event details';
+  const withNote = appendDriverMissingNote(original);
+  const secondAppend = appendDriverMissingNote(withNote);
+
+  assert.match(withNote, /@wenzefeedback_bot is not in the driver's group/i);
+  assert.equal(secondAppend, withNote);
+});
+
+test('only notification failure should trigger retry signal', () => {
+  assert.equal(shouldRetryDelivery('fail'), true);
+  assert.equal(shouldRetryDelivery('ok'), false);
+  assert.equal(shouldRetryDelivery('skip'), false);
 });
