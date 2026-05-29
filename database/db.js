@@ -208,6 +208,184 @@ async function setGroupBirthday(groupId, birthday) {
   return res.rows[0];
 }
 
+function normalizeProfileLanguage(language) {
+  return ['en', 'ru', 'uz'].includes(language) ? language : 'en';
+}
+
+function normalizeProfileStatus(status) {
+  return status === 'inactive' ? 'inactive' : 'active';
+}
+
+function normalizeProfileDriverType(driverType) {
+  return driverType === 'company_driver' ? 'company_driver' : 'owner';
+}
+
+function parseOptionalDate(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+function mapDriverProfileRow(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    full_name: [row.first_name, row.last_name].filter(Boolean).join(' ').trim(),
+  };
+}
+
+async function syncGroupFromDriverProfile(profileRow) {
+  if (!profileRow?.group_id) return null;
+  const groupStatusActive = profileRow.status !== 'inactive';
+  const res = await query(
+    `UPDATE groups
+     SET active = $1,
+         language = $2,
+         driver_birthday = $3
+     WHERE id = $4
+     RETURNING *`,
+    [groupStatusActive, profileRow.language || 'en', profileRow.date_of_birth || null, profileRow.group_id]
+  );
+  return res.rows[0] || null;
+}
+
+async function getDriverProfileByGroupId(groupId) {
+  const res = await query(
+    `SELECT dp.*, g.group_name, g.telegram_group_id, g.status_source
+     FROM driver_profiles dp
+     JOIN groups g ON g.id = dp.group_id
+     WHERE dp.group_id = $1
+     LIMIT 1`,
+    [groupId]
+  );
+  return mapDriverProfileRow(res.rows[0] || null);
+}
+
+async function getDriverProfileById(id) {
+  const res = await query(
+    `SELECT dp.*, g.group_name, g.telegram_group_id, g.status_source
+     FROM driver_profiles dp
+     JOIN groups g ON g.id = dp.group_id
+     WHERE dp.id = $1
+     LIMIT 1`,
+    [id]
+  );
+  return mapDriverProfileRow(res.rows[0] || null);
+}
+
+async function listDriverProfiles(filters = {}) {
+  const includeInactive = filters.includeInactive === true;
+  const needsReviewOnly = filters.needsReviewOnly === true;
+  const clauses = ['g.group_type = \'driver\''];
+  const params = [];
+
+  if (!includeInactive) {
+    clauses.push('g.active = TRUE');
+  }
+  if (needsReviewOnly) {
+    clauses.push('dp.needs_review = TRUE');
+  }
+
+  const whereSql = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const res = await query(
+    `SELECT
+       dp.*,
+       g.group_name,
+       g.telegram_group_id,
+       g.active AS group_active,
+       g.language AS group_language,
+       g.status_source
+     FROM driver_profiles dp
+     JOIN groups g ON g.id = dp.group_id
+     ${whereSql}
+     ORDER BY g.id ASC`,
+    params
+  );
+  return res.rows.map(mapDriverProfileRow);
+}
+
+async function upsertDriverProfileByGroupId(data, opts = {}) {
+  const normalized = {
+    group_id: Number(data.group_id),
+    first_name: data.first_name ? String(data.first_name).trim() : null,
+    last_name: data.last_name ? String(data.last_name).trim() : null,
+    driver_type: normalizeProfileDriverType(data.driver_type),
+    status: normalizeProfileStatus(data.status),
+    unit_number: data.unit_number ? String(data.unit_number).trim() : null,
+    language: normalizeProfileLanguage(data.language),
+    date_of_birth: parseOptionalDate(data.date_of_birth),
+    date_of_start: parseOptionalDate(data.date_of_start),
+    needs_review: data.needs_review === true,
+    backfill_confidence: Number.isInteger(data.backfill_confidence) ? data.backfill_confidence : null,
+  };
+
+  const res = await query(
+    `INSERT INTO driver_profiles (
+       group_id, first_name, last_name, driver_type, status, unit_number,
+       language, date_of_birth, date_of_start, needs_review, backfill_confidence,
+       created_at, updated_at
+     )
+     VALUES (
+       $1, $2, $3, $4, $5, $6,
+       $7, $8, $9, $10, $11,
+       NOW(), NOW()
+     )
+     ON CONFLICT (group_id)
+     DO UPDATE SET
+       first_name = EXCLUDED.first_name,
+       last_name = EXCLUDED.last_name,
+       driver_type = EXCLUDED.driver_type,
+       status = EXCLUDED.status,
+       unit_number = EXCLUDED.unit_number,
+       language = EXCLUDED.language,
+       date_of_birth = EXCLUDED.date_of_birth,
+       date_of_start = EXCLUDED.date_of_start,
+       needs_review = EXCLUDED.needs_review,
+       backfill_confidence = EXCLUDED.backfill_confidence,
+       updated_at = NOW()
+     RETURNING *`,
+    [
+      normalized.group_id,
+      normalized.first_name,
+      normalized.last_name,
+      normalized.driver_type,
+      normalized.status,
+      normalized.unit_number,
+      normalized.language,
+      normalized.date_of_birth,
+      normalized.date_of_start,
+      normalized.needs_review,
+      normalized.backfill_confidence,
+    ]
+  );
+  const row = res.rows[0] || null;
+  if (!row) return null;
+  if (opts.syncGroup !== false) {
+    await syncGroupFromDriverProfile(row);
+  }
+  return getDriverProfileByGroupId(row.group_id);
+}
+
+async function updateDriverProfile(id, data, opts = {}) {
+  const existing = await getDriverProfileById(id);
+  if (!existing) return null;
+  const merged = {
+    group_id: existing.group_id,
+    first_name: data.first_name ?? existing.first_name,
+    last_name: data.last_name ?? existing.last_name,
+    driver_type: data.driver_type ?? existing.driver_type,
+    status: data.status ?? existing.status,
+    unit_number: data.unit_number ?? existing.unit_number,
+    language: data.language ?? existing.language,
+    date_of_birth: data.date_of_birth ?? existing.date_of_birth,
+    date_of_start: data.date_of_start ?? existing.date_of_start,
+    needs_review: data.needs_review ?? existing.needs_review,
+    backfill_confidence: data.backfill_confidence ?? existing.backfill_confidence,
+  };
+  return upsertDriverProfileByGroupId(merged, opts);
+}
+
 async function updateGroupSamsaraId(groupId, samsaraId) {
   const normalized = samsaraId ? String(samsaraId).trim() : null;
   const res = await query(
@@ -2202,6 +2380,12 @@ module.exports = {
   getDriverGroupsWithDispatchEtaSettings,
   getGroupByTelegramId,
   getGroupBySamsaraId,
+  getDriverProfileByGroupId,
+  getDriverProfileById,
+  listDriverProfiles,
+  upsertDriverProfileByGroupId,
+  updateDriverProfile,
+  syncGroupFromDriverProfile,
   setGroupLanguage,
   setGroupBirthday,
   updateGroupSamsaraId,

@@ -72,6 +72,33 @@ export async function getGroupsManage() {
   return Array.isArray(data) ? data : [];
 }
 
+export async function getBroadcastPlaceholders() {
+  const res = await fetch(`${API_BASE}/broadcast/placeholders`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return Array.isArray(data?.placeholders) ? data.placeholders : [];
+}
+
+export async function getDriverProfiles({ includeInactive = true, needsReviewOnly = false } = {}) {
+  const params = new URLSearchParams();
+  params.set('include_inactive', includeInactive ? 'true' : 'false');
+  if (needsReviewOnly) params.set('needs_review_only', 'true');
+  const res = await fetch(`${API_BASE}/driver-profiles?${params.toString()}`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+export async function updateDriverProfile(profileId, payload) {
+  const res = await fetch(`${API_BASE}/driver-profiles/${profileId}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 function appendTargetActiveFilter(body, targetType, targetActiveFilter) {
   if (targetType === 'all' || targetType === 'language_groups') {
     body.target_active_filter = targetActiveFilter || 'active';

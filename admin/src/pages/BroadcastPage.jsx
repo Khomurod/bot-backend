@@ -2,6 +2,52 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import * as api from "../api";
 import { TelegramPreview, MediaUploader, MediaPositionSelector, useFormattingToolbar, getDaysUntilBirthday } from "../components/Shared";
 
+const TEMPLATE_TOKEN_PATTERN = /\{([a-z][a-z0-9_]*)\}/gi;
+const DEFAULT_BROADCAST_PLACEHOLDER_KEYS = [
+  'driver_name',
+  'first_name',
+  'last_name',
+  'unit_number',
+  'driver_type',
+  'status',
+  'language',
+  'date_of_birth',
+  'date_of_start',
+];
+
+function extractUnknownTokens(text, allowedKeys) {
+  const source = String(text || '');
+  const unknown = new Set();
+  let match = TEMPLATE_TOKEN_PATTERN.exec(source);
+  while (match) {
+    const key = String(match[1] || '').toLowerCase();
+    if (!allowedKeys.has(key)) unknown.add(key);
+    match = TEMPLATE_TOKEN_PATTERN.exec(source);
+  }
+  TEMPLATE_TOKEN_PATTERN.lastIndex = 0;
+  return [...unknown];
+}
+
+function PlaceholderChips({ placeholders, onInsert }) {
+  if (!Array.isArray(placeholders) || placeholders.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+      {placeholders.map((p) => (
+        <button
+          key={p.key}
+          type="button"
+          className="btn btn-ghost"
+          style={{ fontSize: 12, padding: '4px 10px', border: '1px solid var(--border)' }}
+          title={p.description || p.label || p.key}
+          onClick={() => onInsert(`{${p.key}}`)}
+        >
+          {`{${p.key}}`}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function BroadcastPage() {
   // Tabs
   const [broadcastTab, setBroadcastTab] = useState('regular'); // 'regular' | 'confirmation'
@@ -12,6 +58,7 @@ export default function BroadcastPage() {
   const [selectedDriverIds, setSelectedDriverIds] = useState([]);
   const [selectedLanguages, setSelectedLanguages] = useState([]);
   const [driverGroups, setDriverGroups] = useState([]);
+  const [broadcastPlaceholders, setBroadcastPlaceholders] = useState([]);
 
   // Regular Broadcast State
   const [message, setMessage] = useState('');
@@ -56,6 +103,8 @@ export default function BroadcastPage() {
   const [confDeliveries, setConfDeliveries] = useState({});
   const [confClicks, setConfClicks] = useState({});
   const [expandedClicks, setExpandedClicks] = useState(null);
+  const [activeRegularField, setActiveRegularField] = useState('en');
+  const [activeConfirmationField, setActiveConfirmationField] = useState('en');
 
   // Refs for toolbars
   const regTextareaRef = useRef(null);
@@ -73,11 +122,43 @@ export default function BroadcastPage() {
   const confFmtRu = useFormattingToolbar(confRuRef, confMessageRu, setConfMessageRu);
   const confFmtUz = useFormattingToolbar(confUzRef, confMessageUz, setConfMessageUz);
 
+  const allowedPlaceholderKeys = useMemo(
+    () => {
+      const dynamic = (broadcastPlaceholders || [])
+        .map((p) => String(p.key || '').toLowerCase())
+        .filter(Boolean);
+      return new Set(dynamic.length > 0 ? dynamic : DEFAULT_BROADCAST_PLACEHOLDER_KEYS);
+    },
+    [broadcastPlaceholders]
+  );
+
+  const regularUnknownTokens = useMemo(() => {
+    const unknown = new Set([
+      ...extractUnknownTokens(message, allowedPlaceholderKeys),
+      ...extractUnknownTokens(messageRu, allowedPlaceholderKeys),
+      ...extractUnknownTokens(messageUz, allowedPlaceholderKeys),
+    ]);
+    return [...unknown];
+  }, [message, messageRu, messageUz, allowedPlaceholderKeys]);
+
+  const confirmationUnknownTokens = useMemo(() => {
+    const unknown = new Set([
+      ...extractUnknownTokens(confMessage, allowedPlaceholderKeys),
+      ...extractUnknownTokens(confMessageRu, allowedPlaceholderKeys),
+      ...extractUnknownTokens(confMessageUz, allowedPlaceholderKeys),
+    ]);
+    return [...unknown];
+  }, [confMessage, confMessageRu, confMessageUz, allowedPlaceholderKeys]);
+
   useEffect(() => {
     (async () => {
       try {
-        const groups = await api.getGroupsManage();
+        const [groups, placeholders] = await Promise.all([
+          api.getGroupsManage(),
+          api.getBroadcastPlaceholders(),
+        ]);
         setDriverGroups(groups.filter(g => g.group_type === 'driver'));
+        setBroadcastPlaceholders(Array.isArray(placeholders) ? placeholders : []);
       } catch (err) { console.error(err); }
     })();
     loadRegularHistory();
@@ -159,6 +240,36 @@ export default function BroadcastPage() {
 
   const toggleLanguage = (lang) => {
     setSelectedLanguages(prev => prev.includes(lang) ? prev.filter(x => x !== lang) : [...prev, lang]);
+  };
+
+  const insertTokenIntoEditor = (kind, token) => {
+    const regularMap = {
+      en: { ref: regTextareaRef, value: message, setter: setMessage },
+      ru: { ref: regRuRef, value: messageRu, setter: setMessageRu },
+      uz: { ref: regUzRef, value: messageUz, setter: setMessageUz },
+    };
+    const confirmationMap = {
+      en: { ref: confTextareaRef, value: confMessage, setter: setConfMessage },
+      ru: { ref: confRuRef, value: confMessageRu, setter: setConfMessageRu },
+      uz: { ref: confUzRef, value: confMessageUz, setter: setConfMessageUz },
+    };
+    const map = kind === 'confirmation' ? confirmationMap : regularMap;
+    const activeKey = kind === 'confirmation' ? activeConfirmationField : activeRegularField;
+    const target = map[activeKey] || map.en;
+    const el = target.ref.current;
+    if (!el) {
+      target.setter((prev) => `${prev || ''}${token}`);
+      return;
+    }
+    const start = el.selectionStart ?? (target.value || '').length;
+    const end = el.selectionEnd ?? (target.value || '').length;
+    const next = `${target.value.slice(0, start)}${token}${target.value.slice(end)}`;
+    target.setter(next);
+    setTimeout(() => {
+      el.focus();
+      const pos = start + token.length;
+      el.setSelectionRange(pos, pos);
+    }, 0);
   };
 
   const handleAutoTranslate = async () => {
@@ -255,6 +366,13 @@ export default function BroadcastPage() {
 
   const handleSend = async () => {
     if (!message.trim()) return;
+    if (regularUnknownTokens.length > 0) {
+      setStatus({
+        type: 'error',
+        text: `Unknown placeholders: ${regularUnknownTokens.map((t) => `{${t}}`).join(', ')}`,
+      });
+      return;
+    }
     if (!validateRegularTargeting()) return;
 
     setSending(true);
@@ -285,6 +403,13 @@ export default function BroadcastPage() {
 
   const handleTest = async () => {
     if (!message.trim()) return;
+    if (regularUnknownTokens.length > 0) {
+      setStatus({
+        type: 'error',
+        text: `Unknown placeholders: ${regularUnknownTokens.map((t) => `{${t}}`).join(', ')}`,
+      });
+      return;
+    }
     setTesting(true);
     setStatus(null);
     try {
@@ -307,6 +432,13 @@ export default function BroadcastPage() {
 
   const handleSchedule = async () => {
     if (!message.trim()) return;
+    if (regularUnknownTokens.length > 0) {
+      setStatus({
+        type: 'error',
+        text: `Unknown placeholders: ${regularUnknownTokens.map((t) => `{${t}}`).join(', ')}`,
+      });
+      return;
+    }
     if (!validateRegularTargeting()) return;
     if (scheduleType === 'one_time' && !scheduledAtChicago) {
       return setStatus({ type: 'error', text: 'Please choose a Central Time date and time.' });
@@ -350,6 +482,13 @@ export default function BroadcastPage() {
 
   const handleConfSend = async () => {
     if (!confMessage.trim()) return;
+    if (confirmationUnknownTokens.length > 0) {
+      setConfStatus({
+        type: 'error',
+        text: `Unknown placeholders: ${confirmationUnknownTokens.map((t) => `{${t}}`).join(', ')}`,
+      });
+      return;
+    }
     if (targetType === 'specific_drivers' && selectedDriverIds.length === 0) {
       return setConfStatus({ type: 'error', text: 'Please select at least one driver.' });
     }
@@ -386,6 +525,13 @@ export default function BroadcastPage() {
 
   const handleConfTest = async () => {
     if (!confMessage.trim()) return;
+    if (confirmationUnknownTokens.length > 0) {
+      setConfStatus({
+        type: 'error',
+        text: `Unknown placeholders: ${confirmationUnknownTokens.map((t) => `{${t}}`).join(', ')}`,
+      });
+      return;
+    }
     setConfTesting(true);
     setConfStatus(null);
     try {
@@ -532,10 +678,20 @@ export default function BroadcastPage() {
                 <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>✍️ Compose Message</h3>
 
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>Use the toolbar to format text with Telegram-compatible HTML tags.</p>
+                <PlaceholderChips
+                  placeholders={broadcastPlaceholders}
+                  onInsert={(token) => insertTokenIntoEditor('regular', token)}
+                />
+                {regularUnknownTokens.length > 0 && (
+                  <div className="alert alert-error" style={{ marginBottom: 12 }}>
+                    Unknown placeholders: {regularUnknownTokens.map((t) => `{${t}}`).join(', ')}
+                  </div>
+                )}
 
                 <h4 style={{ marginBottom: 6 }}><span className="badge badge-en">EN</span> English</h4>
                 {regFmt.toolbar}
                 <textarea ref={regTextareaRef} className="form-textarea toolbar-textarea" value={message} onChange={(e) => setMessage(e.target.value)} onKeyDown={regFmt.handleKeyDown}
+                  onFocus={() => setActiveRegularField('en')}
                   placeholder="Type your message here..." style={{ minHeight: 140, resize: 'vertical' }} />
                 <div className={`char-count ${message.length > 4096 ? 'over-limit' : ''}`}>{message.length} / 4096</div>
 
@@ -547,11 +703,13 @@ export default function BroadcastPage() {
                 <h4 style={{ marginBottom: 6 }}><span className="badge badge-ru">RU</span> Russian</h4>
                 {regFmtRu.toolbar}
                 <textarea ref={regRuRef} className="form-textarea toolbar-textarea" value={messageRu} onChange={(e) => setMessageRu(e.target.value)} onKeyDown={regFmtRu.handleKeyDown}
+                  onFocus={() => setActiveRegularField('ru')}
                   placeholder="Сообщение на русском (авто-перевод или ручной ввод)" style={{ minHeight: 100, resize: 'vertical', marginBottom: 12 }} />
 
                 <h4 style={{ marginBottom: 6 }}><span className="badge badge-uz">UZ</span> Uzbek</h4>
                 {regFmtUz.toolbar}
                 <textarea ref={regUzRef} className="form-textarea toolbar-textarea" value={messageUz} onChange={(e) => setMessageUz(e.target.value)} onKeyDown={regFmtUz.handleKeyDown}
+                  onFocus={() => setActiveRegularField('uz')}
                   placeholder="O'zbek tilidagi xabar (avto-tarjima yoki qo'lda kiritish)" style={{ minHeight: 100, resize: 'vertical' }} />
 
                 <details className="collapse-panel" style={{ marginTop: 16 }}>
@@ -622,13 +780,13 @@ export default function BroadcastPage() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
-                  <button className="btn btn-primary" onClick={handleSend} disabled={sending || !message.trim() || message.length > 4096}>
+                  <button className="btn btn-primary" onClick={handleSend} disabled={sending || !message.trim() || message.length > 4096 || regularUnknownTokens.length > 0}>
                     {sending ? '⏳ Sending...' : targetType === 'all' ? '📤 Send to All Groups' : '📤 Send to Selected'}
                   </button>
-                  <button className="btn btn-ghost" onClick={handleTest} disabled={testing || !message.trim()} style={{ border: '1px solid var(--border)' }}>
+                  <button className="btn btn-ghost" onClick={handleTest} disabled={testing || !message.trim() || regularUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
                     {testing ? '⏳ Testing...' : '🧪 Test (Management Group)'}
                   </button>
-                  <button className="btn btn-ghost" onClick={handleSchedule} disabled={scheduling || !message.trim() || message.length > 4096} style={{ border: '1px solid var(--border)' }}>
+                  <button className="btn btn-ghost" onClick={handleSchedule} disabled={scheduling || !message.trim() || message.length > 4096 || regularUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
                     {scheduling ? 'Scheduling...' : 'Save Schedule'}
                   </button>
                 </div>
@@ -698,10 +856,20 @@ export default function BroadcastPage() {
               <div className="card">
                 <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>✍️ Compose Message</h3>
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>Use the toolbar to format text with Telegram-compatible HTML tags.</p>
+                <PlaceholderChips
+                  placeholders={broadcastPlaceholders}
+                  onInsert={(token) => insertTokenIntoEditor('confirmation', token)}
+                />
+                {confirmationUnknownTokens.length > 0 && (
+                  <div className="alert alert-error" style={{ marginBottom: 12 }}>
+                    Unknown placeholders: {confirmationUnknownTokens.map((t) => `{${t}}`).join(', ')}
+                  </div>
+                )}
 
                 <h4 style={{ marginBottom: 6 }}><span className="badge badge-en">EN</span> English</h4>
                 {confFmt.toolbar}
                 <textarea ref={confTextareaRef} className="form-textarea toolbar-textarea" value={confMessage} onChange={(e) => setConfMessage(e.target.value)} onKeyDown={confFmt.handleKeyDown}
+                  onFocus={() => setActiveConfirmationField('en')}
                   placeholder="Type your confirmation message here..." style={{ minHeight: 140, resize: 'vertical' }} />
                 <div className={`char-count ${confMessage.length > 4096 ? 'over-limit' : ''}`}>{confMessage.length} / 4096</div>
 
@@ -713,11 +881,13 @@ export default function BroadcastPage() {
                 <h4 style={{ marginBottom: 6 }}><span className="badge badge-ru">RU</span> Russian</h4>
                 {confFmtRu.toolbar}
                 <textarea ref={confRuRef} className="form-textarea toolbar-textarea" value={confMessageRu} onChange={(e) => setConfMessageRu(e.target.value)} onKeyDown={confFmtRu.handleKeyDown}
+                  onFocus={() => setActiveConfirmationField('ru')}
                   placeholder="Сообщение на русском (авто-перевод или ручной ввод)" style={{ minHeight: 100, resize: 'vertical', marginBottom: 12 }} />
 
                 <h4 style={{ marginBottom: 6 }}><span className="badge badge-uz">UZ</span> Uzbek</h4>
                 {confFmtUz.toolbar}
                 <textarea ref={confUzRef} className="form-textarea toolbar-textarea" value={confMessageUz} onChange={(e) => setConfMessageUz(e.target.value)} onKeyDown={confFmtUz.handleKeyDown}
+                  onFocus={() => setActiveConfirmationField('uz')}
                   placeholder="O'zbek tilidagi xabar (avto-tarjima yoki qo'lda kiritish)" style={{ minHeight: 100, resize: 'vertical' }} />
 
                 <div style={{ marginTop: 16 }}>
@@ -762,10 +932,10 @@ export default function BroadcastPage() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-                  <button className="btn btn-primary" onClick={handleConfSend} disabled={confSending || !confMessage.trim() || confMessage.length > 4096}>
+                  <button className="btn btn-primary" onClick={handleConfSend} disabled={confSending || !confMessage.trim() || confMessage.length > 4096 || confirmationUnknownTokens.length > 0}>
                     {confSending ? '⏳ Sending...' : '📤 Send Broadcast'}
                   </button>
-                  <button className="btn btn-ghost" onClick={handleConfTest} disabled={confTesting || !confMessage.trim()} style={{ border: '1px solid var(--border)' }}>
+                  <button className="btn btn-ghost" onClick={handleConfTest} disabled={confTesting || !confMessage.trim() || confirmationUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
                     {confTesting ? '⏳ Testing...' : '🧪 Test'}
                   </button>
                 </div>

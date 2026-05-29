@@ -12,6 +12,7 @@
     "dev": "node index.js",
     "seed-admin": "node scripts/seed-admin.js",
     "init-db": "node scripts/init-db.js",
+    "backfill-driver-profiles": "node scripts/backfill-driver-profiles.js",
     "migrate-media": "node scripts/migrate-media.js",
     "migrate-multi-media": "node scripts/migrate-multi-media.js",
     "discover-bitrix-fields": "node scripts/discover-bitrix-lead-fields.js"

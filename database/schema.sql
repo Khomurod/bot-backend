@@ -10,6 +10,37 @@ CREATE TABLE IF NOT EXISTS groups (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- TABLE: driver_profiles (future source of truth for driver identity fields)
+CREATE TABLE IF NOT EXISTS driver_profiles (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  first_name TEXT,
+  last_name TEXT,
+  driver_type TEXT,
+  status TEXT DEFAULT 'active',
+  unit_number TEXT,
+  language VARCHAR(5) DEFAULT 'en',
+  date_of_birth DATE,
+  date_of_start DATE,
+  needs_review BOOLEAN DEFAULT FALSE,
+  backfill_confidence SMALLINT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  CONSTRAINT driver_profiles_group_id_unique UNIQUE (group_id),
+  CONSTRAINT driver_profiles_driver_type_check CHECK (
+    driver_type IS NULL OR driver_type IN ('owner', 'company_driver')
+  ),
+  CONSTRAINT driver_profiles_status_check CHECK (
+    status IN ('active', 'inactive')
+  ),
+  CONSTRAINT driver_profiles_language_check CHECK (
+    language IN ('en', 'ru', 'uz')
+  ),
+  CONSTRAINT driver_profiles_backfill_confidence_check CHECK (
+    backfill_confidence IS NULL OR (backfill_confidence >= 0 AND backfill_confidence <= 100)
+  )
+);
+
 -- TABLE: drivers
 CREATE TABLE IF NOT EXISTS drivers (
   id SERIAL PRIMARY KEY,
@@ -92,6 +123,78 @@ ALTER TABLE groups ADD COLUMN IF NOT EXISTS driver_birthday DATE;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS samsara_vehicle_id TEXT;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS status_source TEXT;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMP;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS first_name TEXT;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS last_name TEXT;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS driver_type TEXT;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS unit_number TEXT;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS language VARCHAR(5) DEFAULT 'en';
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS date_of_start DATE;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS needs_review BOOLEAN DEFAULT FALSE;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS backfill_confidence SMALLINT;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'driver_profiles_driver_type_check'
+      AND conrelid = 'driver_profiles'::regclass
+  ) THEN
+    ALTER TABLE driver_profiles
+      ADD CONSTRAINT driver_profiles_driver_type_check
+      CHECK (driver_type IS NULL OR driver_type IN ('owner', 'company_driver'));
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'driver_profiles_status_check'
+      AND conrelid = 'driver_profiles'::regclass
+  ) THEN
+    ALTER TABLE driver_profiles
+      ADD CONSTRAINT driver_profiles_status_check
+      CHECK (status IN ('active', 'inactive'));
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'driver_profiles_language_check'
+      AND conrelid = 'driver_profiles'::regclass
+  ) THEN
+    ALTER TABLE driver_profiles
+      ADD CONSTRAINT driver_profiles_language_check
+      CHECK (language IN ('en', 'ru', 'uz'));
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'driver_profiles_backfill_confidence_check'
+      AND conrelid = 'driver_profiles'::regclass
+  ) THEN
+    ALTER TABLE driver_profiles
+      ADD CONSTRAINT driver_profiles_backfill_confidence_check
+      CHECK (backfill_confidence IS NULL OR (backfill_confidence >= 0 AND backfill_confidence <= 100));
+  END IF;
+END
+$$;
 
 -- ─── Employee Voting System (isolated) ───
 
@@ -651,6 +754,17 @@ CREATE INDEX IF NOT EXISTS idx_groups_samsara_vehicle_id
   WHERE samsara_vehicle_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_groups_type_active
   ON groups(group_type, active);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_driver_profiles_group_id
+  ON driver_profiles(group_id);
+CREATE INDEX IF NOT EXISTS idx_driver_profiles_unit_number
+  ON driver_profiles(unit_number);
+CREATE INDEX IF NOT EXISTS idx_driver_profiles_status
+  ON driver_profiles(status);
+CREATE INDEX IF NOT EXISTS idx_driver_profiles_language
+  ON driver_profiles(language);
+CREATE INDEX IF NOT EXISTS idx_driver_profiles_needs_review
+  ON driver_profiles(needs_review)
+  WHERE needs_review = TRUE;
 
 -- ─── AI Insights Pipeline v2 ─────────────────────────────────────────
 -- Per-message annotations produced by Groq classifier. One row per

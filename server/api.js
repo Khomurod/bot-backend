@@ -46,6 +46,10 @@ const {
   normalizeMediaItems,
 } = require('../services/scheduledMessageUtils');
 const { processMessage: processScheduledMessage } = require('../services/schedulerService');
+const {
+  listBroadcastPlaceholders,
+  validateBroadcastTemplate,
+} = require('../services/broadcastTemplateService');
 const employeeVotingRoutes = require('./employeeVotingApi');
 const dispatchRoutes = require('./routes/dispatchRoutes');
 const { createFacebookLeadsRouter } = require('./routes/facebookLeadsRoutes');
@@ -950,6 +954,27 @@ function formatScheduledMessageForResponse(msg) {
   };
 }
 
+function validateBroadcastTemplates(payload = {}) {
+  const problems = [];
+  const values = [];
+  if (payload.message_text) values.push({ lang: 'base', text: payload.message_text });
+  if (payload.messages && typeof payload.messages === 'object') {
+    for (const lang of ['en', 'ru', 'uz']) {
+      if (payload.messages[lang]) values.push({ lang, text: payload.messages[lang] });
+    }
+  }
+  for (const item of values) {
+    const verdict = validateBroadcastTemplate(item.text);
+    if (!verdict.valid) {
+      problems.push({
+        lang: item.lang,
+        unknown_tokens: verdict.unknownTokens,
+      });
+    }
+  }
+  return problems;
+}
+
 // ─── Media Upload ───
 
 // POST /api/upload-media
@@ -1047,6 +1072,108 @@ app.get('/api/groups/manage', authMiddleware, async (req, res) => {
     res.json(groups);
   } catch (err) {
     console.error('[API] Error fetching manage groups:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+function mapDriverProfileForApi(profile) {
+  if (!profile) return null;
+  return {
+    id: profile.id,
+    group_id: profile.group_id,
+    group_name: profile.group_name,
+    telegram_group_id: profile.telegram_group_id,
+    first_name: profile.first_name || null,
+    last_name: profile.last_name || null,
+    full_name: profile.full_name || null,
+    driver_type: profile.driver_type || 'owner',
+    status: profile.status || 'active',
+    unit_number: profile.unit_number || null,
+    language: profile.language || 'en',
+    date_of_birth: profile.date_of_birth || null,
+    date_of_start: profile.date_of_start || null,
+    needs_review: profile.needs_review === true,
+    backfill_confidence: profile.backfill_confidence,
+    status_source: profile.status_source || null,
+    created_at: profile.created_at,
+    updated_at: profile.updated_at,
+  };
+}
+
+const DRIVER_PROFILE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+app.get('/api/driver-profiles', authMiddleware, async (req, res) => {
+  try {
+    const includeInactive = req.query.include_inactive !== 'false';
+    const needsReviewOnly = req.query.needs_review_only === 'true';
+    const rows = await db.listDriverProfiles({ includeInactive, needsReviewOnly });
+    res.json(rows.map(mapDriverProfileForApi));
+  } catch (err) {
+    console.error('[API] Error fetching driver profiles:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/driver-profiles/:id', authMiddleware, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid driver profile id' });
+    }
+
+    const body = req.body || {};
+    const allowedTypes = ['owner', 'company_driver'];
+    const allowedStatuses = ['active', 'inactive'];
+    const allowedLanguages = ['en', 'ru', 'uz'];
+
+    if (body.driver_type != null && !allowedTypes.includes(body.driver_type)) {
+      return res.status(400).json({ error: 'driver_type must be owner or company_driver' });
+    }
+    if (body.status != null && !allowedStatuses.includes(body.status)) {
+      return res.status(400).json({ error: 'status must be active or inactive' });
+    }
+    if (body.language != null && !allowedLanguages.includes(body.language)) {
+      return res.status(400).json({ error: 'language must be en, ru, or uz' });
+    }
+    if (
+      body.backfill_confidence != null
+      && (!Number.isInteger(body.backfill_confidence)
+        || body.backfill_confidence < 0
+        || body.backfill_confidence > 100)
+    ) {
+      return res.status(400).json({ error: 'backfill_confidence must be an integer between 0 and 100' });
+    }
+
+    for (const key of ['date_of_birth', 'date_of_start']) {
+      const value = body[key];
+      if (value == null || value === '') continue;
+      if (typeof value !== 'string' || !DRIVER_PROFILE_DATE_RE.test(value)) {
+        return res.status(400).json({ error: `${key} must be YYYY-MM-DD or null` });
+      }
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) {
+        return res.status(400).json({ error: `${key} is not a valid calendar date` });
+      }
+    }
+
+    const updated = await db.updateDriverProfile(id, {
+      first_name: body.first_name,
+      last_name: body.last_name,
+      driver_type: body.driver_type,
+      status: body.status,
+      unit_number: body.unit_number,
+      language: body.language,
+      date_of_birth: body.date_of_birth ?? null,
+      date_of_start: body.date_of_start ?? null,
+      needs_review: body.needs_review,
+      backfill_confidence: body.backfill_confidence,
+    });
+    if (!updated) {
+      return res.status(404).json({ error: 'Driver profile not found' });
+    }
+    res.json(mapDriverProfileForApi(updated));
+  } catch (err) {
+    console.error('[API] Error updating driver profile:', err.message);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -1308,6 +1435,15 @@ const {
   resolveBroadcastTargetGroups,
 } = require('../services/broadcastTargetService');
 
+app.get('/api/broadcast/placeholders', authMiddleware, async (req, res) => {
+  try {
+    res.json({ placeholders: listBroadcastPlaceholders() });
+  } catch (err) {
+    console.error('[API] Error loading broadcast placeholders:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // POST /api/broadcast/send
 app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
   try {
@@ -1335,6 +1471,13 @@ app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
     }
     if (primaryText.length > 4096) {
       return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
+    }
+    const templateProblems = validateBroadcastTemplates({ message_text, messages });
+    if (templateProblems.length > 0) {
+      return res.status(400).json({
+        error: 'Broadcast message contains unknown placeholders',
+        details: templateProblems,
+      });
     }
 
     const mode = ['HTML', 'MarkdownV2'].includes(parse_mode) ? parse_mode : 'HTML';
@@ -1403,6 +1546,13 @@ app.post('/api/broadcast/test', authMiddleware, async (req, res) => {
     if (primaryText.length > 4096) {
       return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
     }
+    const templateProblems = validateBroadcastTemplates({ message_text, messages });
+    if (templateProblems.length > 0) {
+      return res.status(400).json({
+        error: 'Broadcast message contains unknown placeholders',
+        details: templateProblems,
+      });
+    }
 
     const mode = ['HTML', 'MarkdownV2'].includes(parse_mode) ? parse_mode : 'HTML';
 
@@ -1457,6 +1607,13 @@ app.post('/api/broadcast/confirmation/send', authMiddleware, async (req, res) =>
     }
     if (primaryText.length > 4096) {
       return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
+    }
+    const templateProblems = validateBroadcastTemplates({ message_text, messages });
+    if (templateProblems.length > 0) {
+      return res.status(400).json({
+        error: 'Broadcast message contains unknown placeholders',
+        details: templateProblems,
+      });
     }
     if (!buttons || !Array.isArray(buttons) || buttons.length === 0) {
       return res.status(400).json({ error: 'At least one button is required' });
@@ -1529,6 +1686,13 @@ app.post('/api/broadcast/confirmation/test', authMiddleware, async (req, res) =>
     }
     if (primaryText.length > 4096) {
       return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
+    }
+    const templateProblems = validateBroadcastTemplates({ message_text, messages });
+    if (templateProblems.length > 0) {
+      return res.status(400).json({
+        error: 'Broadcast message contains unknown placeholders',
+        details: templateProblems,
+      });
     }
 
     const mode = ['HTML', 'MarkdownV2'].includes(parse_mode) ? parse_mode : 'HTML';
@@ -1637,6 +1801,20 @@ app.post('/api/scheduled-messages', authMiddleware, async (req, res) => {
     }
     if (message_text_en.length > 4096) {
       return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
+    }
+    const templateProblems = validateBroadcastTemplates({
+      message_text: message_text_en,
+      messages: {
+        en: message_text_en,
+        ru: message_text_ru,
+        uz: message_text_uz,
+      },
+    });
+    if (templateProblems.length > 0) {
+      return res.status(400).json({
+        error: 'Scheduled message contains unknown placeholders',
+        details: templateProblems,
+      });
     }
     const scheduleType = schedule_type === 'weekly' ? 'weekly' : 'one_time';
     const scheduleTimezone = schedule_timezone || DEFAULT_SCHEDULE_TIMEZONE;

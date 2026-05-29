@@ -15,6 +15,10 @@ const {
   NO_CURRENT_LOAD_INFO_MESSAGE,
 } = require('../services/dispatchEtaUpdateService');
 const {
+  buildBroadcastTemplateContext,
+  renderBroadcastTemplateStrict,
+} = require('../services/broadcastTemplateService');
+const {
   isDispatchEtaTestHub,
   handleTestHubStatusCommand,
   registerDispatchStatusLookupHandlers,
@@ -87,6 +91,35 @@ function pickBroadcastMessage(messages, messageText, group, forceLanguage) {
 function effectiveLangForConfirmation(group, forceLanguage) {
   if (forceLanguage && ['en', 'ru', 'uz'].includes(forceLanguage)) return forceLanguage;
   return (group && group.language) || 'en';
+}
+
+async function resolveRenderedBroadcastText({
+  group,
+  messageText,
+  messages,
+  forceLanguage,
+  enablePlaceholders = true,
+}) {
+  const rawText = pickBroadcastMessage(messages, messageText, group, forceLanguage);
+  if (!enablePlaceholders) return rawText;
+
+  const profile = await db.getDriverProfileByGroupId(group.id);
+  const context = buildBroadcastTemplateContext({ profile, group });
+  const rendered = renderBroadcastTemplateStrict(rawText, context);
+  if (rendered.unknownTokens.length > 0) {
+    const err = new Error(`Unknown placeholders: ${rendered.unknownTokens.map((t) => `{${t}}`).join(', ')}`);
+    err.code = 'BROADCAST_UNKNOWN_PLACEHOLDER';
+    err.unknownTokens = rendered.unknownTokens;
+    throw err;
+  }
+  if (rendered.missingTokens.length > 0) {
+    const err = new Error(`Missing placeholder values: ${rendered.missingTokens.map((t) => `{${t}}`).join(', ')}`);
+    err.code = 'BROADCAST_PLACEHOLDER_MISSING';
+    err.missingTokens = rendered.missingTokens;
+    throw err;
+  }
+
+  return rendered.rendered;
 }
 
 // ─── Detect permanent Telegram send errors (stale/dead groups) ───
@@ -896,7 +929,8 @@ async function sendBroadcastToGroups(
   mediaItems,
   mediaPosition,
   broadcastId,
-  forceLanguage
+  forceLanguage,
+  options = {}
 ) {
   const results = { sent: 0, failed: 0, errors: [] };
   if (!groups || !Array.isArray(groups) || groups.length === 0) {
@@ -907,12 +941,19 @@ async function sendBroadcastToGroups(
   const normalizedMediaItems = normalizeMediaItems(mediaItems);
   const hasMedia = normalizedMediaItems.length > 0;
   const position = mediaPosition || 'above';
+  const enablePlaceholders = options.enablePlaceholders !== false;
 
   for (const group of groups) {
     let success = false;
     let errorMsg = null;
     try {
-      const text = pickBroadcastMessage(messages, messageText, group, forceLanguage);
+      const text = await resolveRenderedBroadcastText({
+        group,
+        messageText,
+        messages,
+        forceLanguage,
+        enablePlaceholders,
+      });
 
       if (!hasMedia) {
         await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode });
@@ -933,7 +974,13 @@ async function sendBroadcastToGroups(
         console.warn(`[BOT] Rate limited on ${group.group_name}, retrying after ${retryAfter}s`);
         await sleep(retryAfter * 1000);
         try {
-          const text = pickBroadcastMessage(messages, messageText, group, forceLanguage);
+          const text = await resolveRenderedBroadcastText({
+            group,
+            messageText,
+            messages,
+            forceLanguage,
+            enablePlaceholders,
+          });
           if (!hasMedia) {
             await bot.telegram.sendMessage(group.telegram_group_id, text, { parse_mode: parseMode });
           } else if (position === 'above') {
@@ -948,13 +995,23 @@ async function sendBroadcastToGroups(
         } catch (retryErr) {
           results.failed++;
           errorMsg = retryErr.message;
-          results.errors.push({ group: group.group_name, error: retryErr.message });
+          results.errors.push({
+            group: group.group_name,
+            error: retryErr.message,
+            ...(retryErr.missingTokens ? { missing_tokens: retryErr.missingTokens } : {}),
+            ...(retryErr.unknownTokens ? { unknown_tokens: retryErr.unknownTokens } : {}),
+          });
           console.error(`[BOT] Broadcast retry failed for ${group.group_name}:`, retryErr.message);
         }
       } else {
         results.failed++;
         errorMsg = err.message;
-        results.errors.push({ group: group.group_name, error: err.message });
+        results.errors.push({
+          group: group.group_name,
+          error: err.message,
+          ...(err.missingTokens ? { missing_tokens: err.missingTokens } : {}),
+          ...(err.unknownTokens ? { unknown_tokens: err.unknownTokens } : {}),
+        });
         console.error(`[BOT] Broadcast failed for ${group.group_name}:`, err.message);
         if (isPermanentSendError(err)) {
           try { await db.deactivateGroup(group.telegram_group_id); } catch (_) {}
@@ -996,7 +1053,8 @@ async function sendConfirmationBroadcast(
   buttons,
   broadcastId,
   targetGroups,
-  forceLanguage
+  forceLanguage,
+  options = {}
 ) {
   let groups;
   if (Array.isArray(targetGroups) && targetGroups.length > 0) {
@@ -1015,12 +1073,19 @@ async function sendConfirmationBroadcast(
   const hasMedia = normalizedMediaItems.length > 0;
   const position = mediaPosition || 'above';
   const btnList = Array.isArray(buttons) ? buttons : [];
+  const enablePlaceholders = options.enablePlaceholders !== false;
 
   for (const group of groups) {
     let success = false;
     let errorMsg = null;
     try {
-      const text = pickBroadcastMessage(messages, messageText, group, forceLanguage);
+      const text = await resolveRenderedBroadcastText({
+        group,
+        messageText,
+        messages,
+        forceLanguage,
+        enablePlaceholders,
+      });
       const lang = effectiveLangForConfirmation(group, forceLanguage);
 
       const keyboardRows = btnList.map((btn, i) => {
@@ -1052,7 +1117,13 @@ async function sendConfirmationBroadcast(
         console.warn(`[BOT] Rate limited on ${group.group_name}, retrying after ${retryAfter}s`);
         await sleep(retryAfter * 1000);
         try {
-          const text = pickBroadcastMessage(messages, messageText, group, forceLanguage);
+          const text = await resolveRenderedBroadcastText({
+            group,
+            messageText,
+            messages,
+            forceLanguage,
+            enablePlaceholders,
+          });
           const lang = effectiveLangForConfirmation(group, forceLanguage);
           const keyboardRows = btnList.map((btn, i) => {
             const label = btn[`label_${lang}`] || btn.label_en || btn.label_ru || btn.label_uz || `Button ${i + 1}`;
@@ -1078,13 +1149,23 @@ async function sendConfirmationBroadcast(
         } catch (retryErr) {
           results.failed++;
           errorMsg = retryErr.message;
-          results.errors.push({ group: group.group_name, error: retryErr.message });
+          results.errors.push({
+            group: group.group_name,
+            error: retryErr.message,
+            ...(retryErr.missingTokens ? { missing_tokens: retryErr.missingTokens } : {}),
+            ...(retryErr.unknownTokens ? { unknown_tokens: retryErr.unknownTokens } : {}),
+          });
           console.error(`[BOT] Confirmation broadcast retry failed for ${group.group_name}:`, retryErr.message);
         }
       } else {
         results.failed++;
         errorMsg = err.message;
-        results.errors.push({ group: group.group_name, error: err.message });
+        results.errors.push({
+          group: group.group_name,
+          error: err.message,
+          ...(err.missingTokens ? { missing_tokens: err.missingTokens } : {}),
+          ...(err.unknownTokens ? { unknown_tokens: err.unknownTokens } : {}),
+        });
         console.error(`[BOT] Confirmation broadcast failed for ${group.group_name}:`, err.message);
         if (isPermanentSendError(err)) {
           try { await db.deactivateGroup(group.telegram_group_id); } catch (_) {}
