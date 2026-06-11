@@ -4,6 +4,7 @@ services:
     runtime: node
     buildCommand: pip install -r leads-bot/requirements.txt && npm install && cd admin && npm install && npm run build && cd .. && cd samsara-integration && npm install
     startCommand: node index.js
+    # Cap V8 old-gen heap to 400 MB — leaves headroom under Render 512 MB limit
     # Same handler as GET /health (cron-friendly short URL).
     healthCheckPath: /api/health
     envVars:
@@ -68,6 +69,8 @@ services:
         sync: false
       - key: SAMSARA_PORT
         value: "3002"
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=400"
       - key: UPSTASH_REDIS_REST_URL
         sync: false
       - key: UPSTASH_REDIS_REST_TOKEN

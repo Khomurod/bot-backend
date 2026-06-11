@@ -425,9 +425,9 @@ async function start() {
     console.log('?? Bot is ready! Send /start to @wenzesambot on Telegram');
     console.log('');
 
-    // Start polling the Samsara APIs every 15 seconds
-    poller.start(15000);
-    speedingPoller.start(15000);
+    // Start the coordinated poller (staggered 30s cycle)
+    const coordinator = require('./src/pollCoordinator');
+    coordinator.start();
 }
 
 start().catch((err) => {
@@ -437,8 +437,8 @@ start().catch((err) => {
 
 process.on('SIGINT', () => {
     console.log('\n[App] Shutting down...');
-    poller.stop();
-    speedingPoller.stop();
+    const coordinator = require('./src/pollCoordinator');
+    coordinator.stop();
     if (!USE_WEBHOOK) bot.stopPolling();
     process.exit(0);
 });

@@ -27,7 +27,7 @@ const ENABLE_POLL_METRICS = process.env.SAMSARA_POLL_METRICS !== 'false';
 // Intentionally hardcoded for reliable late-event capture; no env override.
 const POLL_BOOTSTRAP_WINDOW_MS = 86_400_000; // 24 hours
 const POLL_WATERMARK_OVERLAP_MS = 7_200_000; // 2 hours
-const MAX_ALERT_QUEUE = parseInt(process.env.SAMSARA_QUEUE_MAX || '200', 10);
+const MAX_ALERT_QUEUE = parseInt(process.env.SAMSARA_QUEUE_MAX || '50', 10);
 
 // ── Rate-Limited Telegram Queue ─────────────────────────────────────────────
 // Telegram has limits (usually ~30 msgs/sec globally, and ~20 msgs/min per group).
@@ -43,7 +43,7 @@ let droppedAlertsCount = 0;
 const SEEN_IDS = new Set();
 // In-flight deliveries (picked up but not yet marked processed in DB).
 const PENDING_DELIVERY_IDS = new Set();
-const MAX_SEEN_IDS = 1000;
+const MAX_SEEN_IDS = 300;
 
 async function noteEventDelivered(eventId) {
     if (!eventId) return;
@@ -304,8 +304,8 @@ async function executePoll() {
             return;
         }
 
-        const json = await response.json();
-        const events = json.data || [];
+        let json = await response.json();
+        let events = json.data || [];
         const nextCursor = json.pagination?.endCursor;
 
         if (events.length > 0) {
@@ -336,10 +336,11 @@ async function executePoll() {
             if (newEventsCount > 0) {
                 console.log(`[Poller] Picked up ${newEventsCount} new event(s).`);
             }
-        } else {
-            // Uncomment if you want noisy logs
-            // console.log(`[Poller] No new events.`);
         }
+
+        // Release parsed response for GC before any async persistence calls
+        json = null;
+        events = null;
 
         // Save the cursor for the next run, even if no events were found
         // Samsara provides a new timestamp cursor to prevent querying the same window.
@@ -358,9 +359,6 @@ async function executePoll() {
 }
 
 // ── Exported API ──────────────────────────────────────────────────────────────
-
-let intervalId = null;
-let metricsIntervalId = null;
 
 /** @internal Test hook: process one queued alert without inter-alert delay. */
 async function processNextQueuedAlertForTest() {
@@ -405,6 +403,11 @@ module.exports = {
         broadcastFn = fn;
     },
 
+    /**
+     * Called directly by pollCoordinator. Do not call start() anymore.
+     */
+    executePoll,
+
     _forTest: {
         enqueueAlertForTest,
         processNextQueuedAlertForTest,
@@ -414,39 +417,16 @@ module.exports = {
     },
 
     /**
-     * Start the interval loop.
-     * @param {number} intervalMs - Milliseconds between API polls (default 15000).
+     * @deprecated Scheduling is handled by pollCoordinator. Kept for API compat.
      */
-    start(intervalMs = 15000) {
-        if (intervalId) return; // Already running
-        
-        console.log(`[Poller] Started API polling loop (every ${intervalMs}ms)`);
-        
-        // Execute immediately, then set interval
-        executePoll();
-        intervalId = setInterval(executePoll, intervalMs);
-        if (ENABLE_POLL_METRICS) {
-            metricsIntervalId = setInterval(() => {
-                const mem = process.memoryUsage();
-                console.log(
-                    `[Poller] Metrics rss=${Math.round(mem.rss / 1024 / 1024)}MB heapUsed=${Math.round(mem.heapUsed / 1024 / 1024)}MB queue=${ALERT_QUEUE.length} dropped=${droppedAlertsCount}`
-                );
-            }, 60000);
-        }
+    start(_intervalMs) {
+        console.log('[Poller] start() is deprecated — scheduling is handled by pollCoordinator.');
     },
 
     /**
-     * Stop polling gracefully.
+     * @deprecated Scheduling is handled by pollCoordinator. Kept for API compat.
      */
     stop() {
-        if (intervalId) {
-            clearInterval(intervalId);
-            intervalId = null;
-            console.log('[Poller] Stopped API polling loop.');
-        }
-        if (metricsIntervalId) {
-            clearInterval(metricsIntervalId);
-            metricsIntervalId = null;
-        }
-    }
+        console.log('[Poller] stop() is deprecated — scheduling is handled by pollCoordinator.');
+    },
 };
