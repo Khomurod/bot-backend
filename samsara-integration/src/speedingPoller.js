@@ -510,6 +510,7 @@ async function executePoll() {
                 return { forwardUrl: url, inwardUrl: null };
               },
             },
+          );
 
           totalQueued += 1;
         } catch (eventErr) {

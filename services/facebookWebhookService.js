@@ -317,16 +317,16 @@ async function startFacebookWebhookWorker() {
   if (workerInterval) return;
 
   try {
-    await db.query(\`
+    await db.query(`
       UPDATE facebook_webhook_events
       SET status = 'pending', attempt_count = LEAST(attempt_count, 4)
       WHERE status = 'processing'
-    \`);
-    await db.query(\`
+    `);
+    await db.query(`
       UPDATE facebook_webhook_events
       SET status = 'failed'
       WHERE status = 'pending' AND attempt_count >= 5
-    \`);
+    `);
   } catch (err) {
     console.error('[WebhookWorker] Recovery error:', err.message);
   }

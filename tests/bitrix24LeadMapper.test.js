@@ -146,7 +146,7 @@ test('buildBitrixCrmFields maps lead fields for crm.lead.add', () => {
   assert.doesNotMatch(fields.COMMENTS, /Chicago/);
 });
 
-test('buildBitrixCrmFields sets STATUS_ID from BITRIX24_STATUS_ID env', () => {
+test('buildBitrixCrmFields uses committed field-map statusId over BITRIX24_STATUS_ID env', () => {
   const originalStatus = process.env.BITRIX24_STATUS_ID;
   process.env.BITRIX24_STATUS_ID = 'CONFIGURED_INCOMING';
 
@@ -162,7 +162,9 @@ test('buildBitrixCrmFields sets STATUS_ID from BITRIX24_STATUS_ID env', () => {
     formId: '',
     bitrixConfig: baseBitrixConfig,
   });
-  assert.equal(fields.STATUS_ID, 'CONFIGURED_INCOMING');
+  // config/bitrix24LeadFieldMap.json pins statusId "NEW" for the Wenze portal
+  // (no INCOMING stage exists there), which is authoritative over the env value.
+  assert.equal(fields.STATUS_ID, 'NEW');
 
   if (originalStatus !== undefined) process.env.BITRIX24_STATUS_ID = originalStatus;
   else delete process.env.BITRIX24_STATUS_ID;
@@ -170,7 +172,7 @@ test('buildBitrixCrmFields sets STATUS_ID from BITRIX24_STATUS_ID env', () => {
   delete require.cache[require.resolve('../services/bitrix24LeadMapper')];
 });
 
-test('buildBitrixCrmFields sets STATUS_ID from catalog when statusId unset', () => {
+test('buildBitrixCrmFields uses committed field-map statusId over catalog fallback', () => {
   const originalStatus = process.env.BITRIX24_STATUS_ID;
   delete process.env.BITRIX24_STATUS_ID;
   delete require.cache[require.resolve('../services/bitrix24FieldMapLoader')];
@@ -186,7 +188,9 @@ test('buildBitrixCrmFields sets STATUS_ID from catalog when statusId unset', () 
     bitrixConfig: baseBitrixConfig,
     catalog: mockCatalog,
   });
-  assert.equal(fields.STATUS_ID, 'INCOMING');
+  // The committed statusId "NEW" wins; the catalog INCOMING fallback only applies
+  // when no statusId is configured in the field map.
+  assert.equal(fields.STATUS_ID, 'NEW');
 
   if (originalStatus !== undefined) process.env.BITRIX24_STATUS_ID = originalStatus;
   delete require.cache[require.resolve('../services/bitrix24FieldMapLoader')];

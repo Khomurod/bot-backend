@@ -4,19 +4,7 @@ services:
     env: node
     buildCommand: npm install
     startCommand: node index.js
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-=======
->>>>>>> parent of bedbf94 (some changes)
-=======
->>>>>>> parent of bedbf94 (some changes)
-=======
->>>>>>> parent of bedbf94 (some changes)
     # Same handler as GET /health (cron-friendly short URL).
->>>>>>> parent of bedbf94 (some changes)
     healthCheckPath: /api/health
     envVars:
       - key: BOT_TOKEN
@@ -138,17 +126,3 @@ services:
         sync: false
       - key: RC_FROM_NUMBER
         sync: false
-<<<<<<< HEAD
-=======
-      # ─── Samsara Alert Bot (must differ from TELEGRAM_BOT_TOKEN if Leads bot is enabled) ───
-      - key: SAMSARA_BOT_TOKEN
-        sync: false
-      - key: SAMSARA_API_KEY
-        sync: false
-      - key: SAMSARA_PORT
-        value: "3002"
-      - key: UPSTASH_REDIS_REST_URL
-        sync: false
-      - key: UPSTASH_REDIS_REST_TOKEN
-        sync: false
->>>>>>> parent of bedbf94 (some changes)
