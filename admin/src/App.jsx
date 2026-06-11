@@ -30,6 +30,7 @@ export default function App() {
   const [checking, setChecking] = useState(true);
   const [page, setPage] = useState(() => getPageFromPath(window.location.pathname));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [adminExpanded, setAdminExpanded] = useState(false);
   const isDispatchPage = page === "dispatch";
 
   useEffect(() => {
@@ -108,7 +109,7 @@ export default function App() {
     );
   }
 
-  const [adminExpanded, setAdminExpanded] = useState(false);
+
 
   const pages = {
     dispatch: <DispatchPage />,
