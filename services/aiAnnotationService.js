@@ -373,10 +373,28 @@ async function ensureAnnotationsForRange({ daysBack = 7, groupIds = null, onProg
        ${groupClause}
        AND a.chat_log_id IS NULL
      ORDER BY cl.created_at ASC
+     LIMIT 500
   `;
-  const { rows } = await db.query(sql, params);
-  const annotated = await annotateChatLogs(rows, { onProgress });
-  return { found: rows.length, annotated };
+  
+  let totalFound = 0;
+  let totalAnnotated = 0;
+  let iterations = 0;
+  
+  while (iterations < 100) {
+    iterations++;
+    let { rows } = await db.query(sql, params);
+    if (!rows || rows.length === 0) break;
+    
+    totalFound += rows.length;
+    const annotated = await annotateChatLogs(rows, { onProgress });
+    totalAnnotated += annotated;
+    
+    rows = null;
+    
+    if (annotated === 0) break;
+  }
+  
+  return { found: totalFound, annotated: totalAnnotated };
 }
 
 let isAnnotating = false;

@@ -181,7 +181,7 @@ async def _telegram_api_call(method: str, payload: dict) -> dict:
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(url, json=payload)
-        data = resp.json()
+        data = json.loads(resp.text, strict=False) if resp.text else {}
         if not resp.is_success or not data.get("ok"):
             description = data.get("description") or resp.text[:300]
             raise RuntimeError(f"Telegram {method} failed ({resp.status_code}): {description}")
@@ -556,7 +556,10 @@ async def _poll_connect_commands():
             payload["offset"] = _telegram_update_offset
 
         try:
-            updates = await _telegram_api_call("getUpdates", payload)
+            updates = await asyncio.wait_for(
+                _telegram_api_call("getUpdates", payload),
+                timeout=CONNECT_COMMAND_POLL_TIMEOUT + 30.0
+            )
         except Exception as exc:
             detail = str(exc).strip() or repr(exc)
             logger.warning("Leads bot getUpdates failed: %s", detail)

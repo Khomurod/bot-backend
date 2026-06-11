@@ -10,8 +10,7 @@ require('dotenv').config();
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 
-const poller = require('./src/poller');
-const speedingPoller = require('./src/speedingPoller');
+const coordinator = require('./src/pollCoordinator');
 const store = require('./src/store');
 const { determineTargetGroup } = require('./src/routing');
 const { resolveDriverCaption } = require('./src/driverAlertMessageAi');
@@ -78,23 +77,52 @@ async function downloadVideo(videoUrl) {
     if (SAMSARA_API_KEY && !isPreSigned && host === 'api.samsara.com') {
         fetchHeaders['Authorization'] = `Bearer ${SAMSARA_API_KEY}`;
     }
-    const response = await fetch(parsed.toString(), { headers: fetchHeaders });
+    const response = await fetch(parsed.toString(), { 
+        headers: fetchHeaders,
+        signal: AbortSignal.timeout(30000)
+    });
     if (!response.ok) {
+        if (response.body && typeof response.body.resume === 'function') {
+            response.body.resume();
+        } else if (response.body && typeof response.body.cancel === 'function') {
+            response.body.cancel();
+        }
         throw new Error(`HTTP ${response.status} ${response.statusText}`);
     }
+    
+    const resolvedMax = MAX_VIDEO_BYTES > 0 ? MAX_VIDEO_BYTES : 25 * 1024 * 1024;
     const contentLength = Number(response.headers.get('content-length') || 0);
-    if (MAX_VIDEO_BYTES > 0 && Number.isFinite(contentLength) && contentLength > 0 && contentLength > MAX_VIDEO_BYTES) {
-        throw new Error(`Video exceeds max size (${contentLength} bytes > ${MAX_VIDEO_BYTES} bytes)`);
+    if (contentLength > resolvedMax) {
+        if (response.body && typeof response.body.resume === 'function') {
+            response.body.resume();
+        } else if (response.body && typeof response.body.cancel === 'function') {
+            response.body.cancel();
+        }
+        throw new Error(`Video exceeds max size (${contentLength} bytes > ${resolvedMax} bytes)`);
     }
+    
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('video') && !contentType.includes('octet-stream')) {
         console.warn(`[Bot] Unexpected content-type "${contentType}" ? may not be a direct video link`);
     }
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    if (MAX_VIDEO_BYTES > 0 && buffer.length > MAX_VIDEO_BYTES) {
-        throw new Error(`Video exceeds max size after download (${buffer.length} bytes > ${MAX_VIDEO_BYTES} bytes)`);
+    
+    const reader = response.body.getReader();
+    const chunks = [];
+    let downloadedBytes = 0;
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+            downloadedBytes += value.length;
+            if (downloadedBytes > resolvedMax) {
+                reader.cancel();
+                throw new Error(`Video exceeds max size after download (${downloadedBytes} bytes > ${resolvedMax} bytes)`);
+            }
+            chunks.push(Buffer.from(value));
+        }
     }
+    
+    const buffer = Buffer.concat(chunks);
     console.log(`[Bot] Downloaded ${(buffer.length / 1024).toFixed(1)} KB from ${videoUrl}`);
     return buffer;
 }
@@ -331,6 +359,8 @@ if (MAIN_BOT_TOKEN) {
     driverBot = new TelegramBot(MAIN_BOT_TOKEN, { polling: false });
 }
 
+const poller = require('./src/poller');
+const speedingPoller = require('./src/speedingPoller');
 poller.setBroadcastFn(broadcast);
 speedingPoller.setBroadcastFn(broadcast);
 
@@ -428,9 +458,8 @@ async function start() {
     console.log('?? Bot is ready! Send /start to @wenzesambot on Telegram');
     console.log('');
 
-    // Start polling the Samsara APIs every 15 seconds
-    poller.start(15000);
-    speedingPoller.start(15000);
+    // Start coordinated polling
+    coordinator.start();
 }
 
 start().catch((err) => {
@@ -438,16 +467,11 @@ start().catch((err) => {
     process.exit(1);
 });
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
 let isShuttingDown = false;
 async function shutdown(signal) {
     if (isShuttingDown) return;
     isShuttingDown = true;
     console.log(`\n[App] Shutting down (${signal})...`);
-    const coordinator = require('./src/pollCoordinator');
     coordinator.stop();
     if (!USE_WEBHOOK) {
         try {
@@ -460,19 +484,6 @@ async function shutdown(signal) {
         await new Promise((resolve) => httpServer.close(resolve));
         httpServer = null;
     }
-=======
-=======
->>>>>>> parent of bedbf94 (some changes)
-=======
->>>>>>> parent of bedbf94 (some changes)
-=======
->>>>>>> parent of bedbf94 (some changes)
-process.on('SIGINT', () => {
-    console.log('\n[App] Shutting down...');
-    poller.stop();
-    speedingPoller.stop();
-    if (!USE_WEBHOOK) bot.stopPolling();
->>>>>>> parent of bedbf94 (some changes)
     process.exit(0);
 }
 

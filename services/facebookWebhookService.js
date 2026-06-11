@@ -277,7 +277,7 @@ async function drainFacebookWebhookQueue() {
     if (drainQueued) {
       drainQueued = false;
       setImmediate(() => {
-        void drainFacebookWebhookQueue();
+        drainFacebookWebhookQueue().catch(err => console.error('[WebhookWorker] Drain error:', err.message));
       });
     }
   }
@@ -292,7 +292,7 @@ async function enqueueVerifiedFacebookPayload(payload) {
   const inserted = await db.insertFacebookWebhookEvents(events);
   if (inserted.length) {
     setImmediate(() => {
-      void drainFacebookWebhookQueue();
+      drainFacebookWebhookQueue().catch(err => console.error('[WebhookWorker] Drain error:', err.message));
     });
   }
 
@@ -303,7 +303,7 @@ async function retryFacebookWebhookEvent(identifier) {
   const event = await db.resetFacebookWebhookEventByIdentifier(identifier);
   if (event) {
     setImmediate(() => {
-      void drainFacebookWebhookQueue();
+      drainFacebookWebhookQueue().catch(err => console.error('[WebhookWorker] Drain error:', err.message));
     });
   }
   return event;
@@ -313,21 +313,40 @@ async function getFacebookWebhookLog(limit = 50) {
   return db.getRecentFacebookWebhookEvents(limit);
 }
 
-function startFacebookWebhookWorker() {
+async function startFacebookWebhookWorker() {
   if (workerInterval) return;
+
+  try {
+    await db.query(\`
+      UPDATE facebook_webhook_events
+      SET status = 'pending', attempt_count = LEAST(attempt_count, 4)
+      WHERE status = 'processing'
+    \`);
+    await db.query(\`
+      UPDATE facebook_webhook_events
+      SET status = 'failed'
+      WHERE status = 'pending' AND attempt_count >= 5
+    \`);
+  } catch (err) {
+    console.error('[WebhookWorker] Recovery error:', err.message);
+  }
+
   workerInterval = setInterval(() => {
-    void drainFacebookWebhookQueue();
+    drainFacebookWebhookQueue().catch(err => console.error('[WebhookWorker] Drain error:', err.message));
   }, 5000);
   workerInterval.unref?.();
   setImmediate(() => {
-    void drainFacebookWebhookQueue();
+    drainFacebookWebhookQueue().catch(err => console.error('[WebhookWorker] Drain error:', err.message));
   });
 }
 
-function stopFacebookWebhookWorker() {
+async function stopFacebookWebhookWorker() {
   if (workerInterval) {
     clearInterval(workerInterval);
     workerInterval = null;
+  }
+  while (drainInProgress) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
 

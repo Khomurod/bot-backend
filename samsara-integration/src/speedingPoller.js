@@ -460,7 +460,7 @@ async function executePoll() {
     let pages = 0;
     let totalQueued = 0;
 
-    while (pages < 10) {
+    while (pages < 2) {
       const { events, nextCursor, hasNextPage } = await fetchSpeedingEventsPage({ startTime, endTime, cursor });
 
       for (const rawEvent of events) {
@@ -510,10 +510,7 @@ async function executePoll() {
                 return { forwardUrl: url, inwardUrl: null };
               },
             },
-          );
-          // #region agent log
-          fetch('http://127.0.0.1:7869/ingest/5069c10b-4d7b-4b84-95eb-05813bc92a8b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4c7305'},body:JSON.stringify({sessionId:'4c7305',runId:'baseline',hypothesisId:'H5',location:'samsara-integration/src/speedingPoller.js:queue_alert',message:'speeding_event_queued',data:{eventId,vehicleId:formatted.vehicleId||null,unit:formatted.vehicleName||null,hasVideo:!!formatted.videoUrl},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
+
           totalQueued += 1;
         } catch (eventErr) {
           noteEventDeliveryFailed(eventId);
@@ -547,37 +544,17 @@ module.exports = {
     broadcastFn = fn;
   },
 
+  executePoll,
+
   start(intervalMs = 15000) {
     if (!SPEEDING_ENABLED) {
       console.log('[SpeedPoller] Disabled by SAMSARA_SPEEDING_ENABLED=false');
       return;
     }
-    if (intervalId) return;
-
-    console.log(`[SpeedPoller] Started v2 speed polling loop (every ${intervalMs}ms)`);
-    executePoll();
-    intervalId = setInterval(executePoll, intervalMs);
-
-    if (ENABLE_METRICS) {
-      metricsIntervalId = setInterval(() => {
-        const mem = process.memoryUsage();
-        console.log(
-          `[SpeedPoller] Metrics rss=${Math.round(mem.rss / 1024 / 1024)}MB heapUsed=${Math.round(mem.heapUsed / 1024 / 1024)}MB queue=${ALERT_QUEUE.length} dropped=${droppedAlertsCount}`,
-        );
-      }, 60000);
-    }
   },
 
   stop() {
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
-      console.log('[SpeedPoller] Stopped v2 speed polling loop.');
-    }
-    if (metricsIntervalId) {
-      clearInterval(metricsIntervalId);
-      metricsIntervalId = null;
-    }
+    console.log('[SpeedPoller] Stopped v2 speed polling loop.');
   },
 
   _forTest: {

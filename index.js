@@ -1,6 +1,9 @@
 /**
  * Main entry point for the dispatch and feedback hub.
  */
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
 const { bot, startBot, stopBot } = require('./bot/bot');
 const { startServer, stopServer } = require('./server/api');
 const { startScheduler, stopScheduler } = require('./services/schedulerService');
@@ -31,6 +34,270 @@ const {
 const db = require('./database/db');
 
 const DB_DRAIN_TIMEOUT_MS = 5000;
+const CHILD_STOP_TIMEOUT_MS = 10_000;
+const CHILD_RESTART_BASE_MS = 2_000;
+const CHILD_RESTART_MAX_MS = 60_000;
+
+let leadsProcess = null;
+let samsaraProcess = null;
+let leadsRestartTimer = null;
+let samsaraRestartTimer = null;
+let leadsRestartDelayMs = CHILD_RESTART_BASE_MS;
+let samsaraRestartDelayMs = CHILD_RESTART_BASE_MS;
+let isShuttingDown = false;
+
+function isEnabled(name, defaultValue = true) {
+  const value = process.env[name];
+  if (value === undefined || value === null || value === '') return defaultValue;
+  return value !== 'false';
+}
+
+function assertDistinctTelegramPollingTokens() {
+  const enabledTokens = [
+    {
+      service: 'feedback hub',
+      enabled: true,
+      envName: 'BOT_TOKEN',
+      token: String(process.env.BOT_TOKEN || '').trim(),
+    },
+    {
+      service: 'leads bot',
+      enabled: isEnabled('ENABLE_LEADS_BOT', true),
+      envName: 'TELEGRAM_BOT_TOKEN',
+      token: String(process.env.TELEGRAM_BOT_TOKEN || '').trim(),
+    },
+    {
+      service: 'Samsara bot',
+      enabled: isEnabled('ENABLE_SAMSARA_BOT', true),
+      envName: 'SAMSARA_BOT_TOKEN',
+      token: String(process.env.SAMSARA_BOT_TOKEN || '').trim(),
+    },
+  ].filter(({ enabled }) => enabled);
+
+  for (const entry of enabledTokens) {
+    if (!entry.token) {
+      throw new Error(`${entry.envName} is required while the ${entry.service} is enabled`);
+    }
+  }
+
+  for (let i = 0; i < enabledTokens.length; i += 1) {
+    for (let j = i + 1; j < enabledTokens.length; j += 1) {
+      if (enabledTokens[i].token === enabledTokens[j].token) {
+        throw new Error(
+          `Telegram polling token conflict: ${enabledTokens[i].envName} and `
+          + `${enabledTokens[j].envName} must be different`
+        );
+      }
+    }
+  }
+}
+
+function writeChildOutput(prefix, stream, writer) {
+  if (!stream) return;
+  stream.on('data', (chunk) => {
+    const text = String(chunk).trimEnd();
+    if (text) writer(`[${prefix}] ${text}`);
+  });
+}
+
+function scheduleLeadsRestart(reason) {
+  if (isShuttingDown || !isEnabled('ENABLE_LEADS_BOT', true) || leadsRestartTimer) return;
+  const delay = leadsRestartDelayMs;
+  leadsRestartDelayMs = Math.min(leadsRestartDelayMs * 2, CHILD_RESTART_MAX_MS);
+  console.warn(`[LEADS] Restart scheduled in ${delay}ms (${reason})`);
+  leadsRestartTimer = setTimeout(() => {
+    leadsRestartTimer = null;
+    startLeadsBot();
+  }, delay);
+  leadsRestartTimer.unref?.();
+}
+
+function scheduleSamsaraRestart(reason) {
+  if (isShuttingDown || !isEnabled('ENABLE_SAMSARA_BOT', true) || samsaraRestartTimer) return;
+  const delay = samsaraRestartDelayMs;
+  samsaraRestartDelayMs = Math.min(samsaraRestartDelayMs * 2, CHILD_RESTART_MAX_MS);
+  console.warn(`[SAMSARA] Restart scheduled in ${delay}ms (${reason})`);
+  samsaraRestartTimer = setTimeout(() => {
+    samsaraRestartTimer = null;
+    startSamsaraBot();
+  }, delay);
+  samsaraRestartTimer.unref?.();
+}
+
+function startLeadsBot() {
+  if (
+    isShuttingDown
+    || !isEnabled('ENABLE_LEADS_BOT', true)
+    || (leadsProcess && leadsProcess.exitCode === null)
+  ) {
+    return;
+  }
+
+  const leadsDir = path.join(__dirname, 'leads-bot');
+  const scriptPath = path.join(leadsDir, 'main.py');
+  if (!fs.existsSync(scriptPath)) {
+    console.error(`[LEADS] Missing entry point: ${scriptPath}`);
+    scheduleLeadsRestart('entry point missing');
+    return;
+  }
+
+  const pythonBin = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
+  const rootPort = Number.parseInt(process.env.PORT || '3001', 10);
+  const leadsPort = Number.parseInt(process.env.LEADS_BOT_PORT || '8000', 10);
+
+  try {
+    const child = spawn(pythonBin, ['-u', scriptPath], {
+      cwd: leadsDir,
+      env: {
+        ...process.env,
+        PORT: String(leadsPort),
+        LOCAL_API_BASE_URL: process.env.LOCAL_API_BASE_URL || `http://127.0.0.1:${rootPort}`,
+        PYTHONUNBUFFERED: '1',
+        MALLOC_ARENA_MAX: process.env.MALLOC_ARENA_MAX || '2',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+
+    leadsProcess = child;
+    console.log(`[LEADS] Started PID ${child.pid}`);
+    writeChildOutput('LEADS', child.stdout, console.log);
+    writeChildOutput('LEADS', child.stderr, console.error);
+
+    const stableTimer = setTimeout(() => {
+      if (leadsProcess === child && child.exitCode === null) {
+        leadsRestartDelayMs = CHILD_RESTART_BASE_MS;
+      }
+    }, 30_000);
+    stableTimer.unref?.();
+
+    child.once('error', (error) => {
+      clearTimeout(stableTimer);
+      if (leadsProcess === child) leadsProcess = null;
+      console.error('[LEADS] Process error:', error);
+      scheduleLeadsRestart(error.message);
+    });
+
+    child.once('exit', (code, signal) => {
+      clearTimeout(stableTimer);
+      if (leadsProcess === child) leadsProcess = null;
+      if (!isShuttingDown) {
+        scheduleLeadsRestart(`exit code=${code} signal=${signal || 'none'}`);
+      }
+    });
+  } catch (error) {
+    leadsProcess = null;
+    console.error('[LEADS] Failed to spawn:', error);
+    scheduleLeadsRestart(error.message);
+  }
+}
+
+function startSamsaraBot() {
+  if (
+    isShuttingDown
+    || !isEnabled('ENABLE_SAMSARA_BOT', true)
+    || (samsaraProcess && samsaraProcess.exitCode === null)
+  ) {
+    return;
+  }
+
+  const samsaraDir = path.join(__dirname, 'samsara-integration');
+  const scriptPath = path.join(samsaraDir, 'index.js');
+  if (!fs.existsSync(scriptPath)) {
+    console.error(`[SAMSARA] Missing entry point: ${scriptPath}`);
+    scheduleSamsaraRestart('entry point missing');
+    return;
+  }
+
+  const samsaraPort = Number.parseInt(process.env.SAMSARA_PORT || '3002', 10);
+  const heapLimit = Number.parseInt(process.env.SAMSARA_MAX_OLD_SPACE_MB || '96', 10);
+
+  try {
+    const child = spawn(process.execPath, [
+      `--max-old-space-size=${heapLimit}`,
+      '--optimize-for-size',
+      '--gc-global',
+      scriptPath,
+    ], {
+      cwd: samsaraDir,
+      env: {
+        ...process.env,
+        PORT: String(samsaraPort),
+        BOT_TOKEN: process.env.SAMSARA_BOT_TOKEN,
+        TELEGRAM_BOT_TOKEN: process.env.SAMSARA_BOT_TOKEN,
+        NODE_OPTIONS: '',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+
+    samsaraProcess = child;
+    console.log(`[SAMSARA] Started PID ${child.pid}`);
+    writeChildOutput('SAMSARA', child.stdout, console.log);
+    writeChildOutput('SAMSARA', child.stderr, console.error);
+
+    const stableTimer = setTimeout(() => {
+      if (samsaraProcess === child && child.exitCode === null) {
+        samsaraRestartDelayMs = CHILD_RESTART_BASE_MS;
+      }
+    }, 30_000);
+    stableTimer.unref?.();
+
+    child.once('error', (error) => {
+      clearTimeout(stableTimer);
+      if (samsaraProcess === child) samsaraProcess = null;
+      console.error('[SAMSARA] Process error:', error);
+      scheduleSamsaraRestart(error.message);
+    });
+
+    child.once('exit', (code, signal) => {
+      clearTimeout(stableTimer);
+      if (samsaraProcess === child) samsaraProcess = null;
+      if (!isShuttingDown) {
+        scheduleSamsaraRestart(`exit code=${code} signal=${signal || 'none'}`);
+      }
+    });
+  } catch (error) {
+    samsaraProcess = null;
+    console.error('[SAMSARA] Failed to spawn:', error);
+    scheduleSamsaraRestart(error.message);
+  }
+}
+
+function killWithEscalation(child, label) {
+  return new Promise((resolve) => {
+    if (!child || child.exitCode !== null) {
+      resolve();
+      return;
+    }
+
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(forceTimer);
+      resolve();
+    };
+    const forceTimer = setTimeout(() => {
+      console.warn(`[${label}] SIGTERM grace period expired; sending SIGKILL`);
+      try {
+        child.kill('SIGKILL');
+      } catch (error) {
+        console.error(`[${label}] SIGKILL failed:`, error);
+      }
+      finish();
+    }, CHILD_STOP_TIMEOUT_MS);
+    forceTimer.unref?.();
+
+    child.once('exit', finish);
+    try {
+      child.kill('SIGTERM');
+    } catch (error) {
+      console.error(`[${label}] SIGTERM failed:`, error);
+      finish();
+    }
+  });
+}
 
 function isTelegramPollingConflict(err) {
   const description = err?.response?.description || err?.message || '';
@@ -38,24 +305,22 @@ function isTelegramPollingConflict(err) {
     || description.includes('terminated by other getUpdates request');
 }
 
-process.on('uncaughtException', (err) => {
-  console.error('[FATAL] Uncaught Exception:', err.message);
-  console.error(err.stack);
-  setTimeout(() => process.exit(1), 1000);
-});
+async function drainDatabasePool() {
+  await Promise.race([
+    db.pool.end(),
+    new Promise((_, reject) => setTimeout(
+      () => reject(new Error('pool.end() timeout')),
+      DB_DRAIN_TIMEOUT_MS,
+    )),
+  ]);
+}
 
-process.on('unhandledRejection', (reason) => {
-  if (isTelegramPollingConflict(reason)) {
-    console.warn('[BOT] Polling conflict detected. Waiting for retry loop to reclaim the token.');
-    return;
-  }
-  console.error('[FATAL] Unhandled Rejection:', reason);
-});
-
-let isShuttingDown = false;
-async function shutdownAll(signal = 'SIGTERM') {
+async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   if (isShuttingDown) return;
   isShuttingDown = true;
+  if (leadsRestartTimer) clearTimeout(leadsRestartTimer);
+  if (samsaraRestartTimer) clearTimeout(samsaraRestartTimer);
+
   console.log(`[SHUTDOWN] Graceful shutdown initiated (${signal})...`);
 
   try { stopScheduler(); } catch (err) { console.error('[SHUTDOWN] stopScheduler failed:', err.message); }
@@ -65,40 +330,32 @@ async function shutdownAll(signal = 'SIGTERM') {
   try { stopGroupStatusAiService(); } catch (err) { console.error('[SHUTDOWN] stopGroupStatusAiService failed:', err.message); }
   try { stopWeeklyReporter(); } catch (err) { console.error('[SHUTDOWN] stopWeeklyReporter failed:', err.message); }
   try { stopBackgroundAnnotator(); } catch (err) { console.error('[SHUTDOWN] stopBackgroundAnnotator failed:', err.message); }
-  try { stopFacebookWebhookWorker(); } catch (err) { console.error('[SHUTDOWN] stopFacebookWebhookWorker failed:', err.message); }
-  try { stopBot(signal); } catch (err) { console.error('[SHUTDOWN] stopBot failed:', err.message); }
-  try { await stopServer(); } catch (err) { console.error('[SHUTDOWN] stopServer failed:', err.message); }
+
+  await Promise.allSettled([
+    stopFacebookWebhookWorker(),
+    Promise.resolve().then(() => stopBot(signal)),
+    stopServer(),
+    killWithEscalation(leadsProcess, 'LEADS'),
+    killWithEscalation(samsaraProcess, 'SAMSARA'),
+  ]);
 
   try {
-    await Promise.race([
-      db.pool.end(),
-      new Promise((_, reject) => setTimeout(
-        () => reject(new Error('pool.end() timeout')),
-        DB_DRAIN_TIMEOUT_MS,
-      )),
-    ]);
+    await drainDatabasePool();
     console.log('[SHUTDOWN] Database pool drained.');
   } catch (err) {
     console.error('[SHUTDOWN] Error draining pool:', err.message);
   }
 
-  process.exit(0);
+  process.exit(exitCode);
 }
 
-process.on('SIGINT', () => shutdownAll('SIGINT'));
-process.on('SIGTERM', () => shutdownAll('SIGTERM'));
-
-(async () => {
+async function start() {
   console.log('===========================================');
   console.log('  Telegram Driver Feedback System');
   console.log('===========================================');
 
-  try {
-    await db.initializeDatabase();
-  } catch (err) {
-    console.error('[BOOT] Database initialization failed; aborting startup:', err.message);
-    process.exit(1);
-  }
+  assertDistinctTelegramPollingTokens();
+  await db.initializeDatabase();
 
   configureDispatchEtaTelegram(bot.telegram);
   const { getLeadsTelegram } = require('./services/leadsTelegramClient');
@@ -107,7 +364,6 @@ process.on('SIGTERM', () => shutdownAll('SIGTERM'));
 
   startServer();
   await startBot();
-
   startScheduler();
   startDispatchEtaScheduler();
   startBirthdayService();
@@ -115,5 +371,33 @@ process.on('SIGTERM', () => shutdownAll('SIGTERM'));
   startGroupStatusAiService();
   startWeeklyReporter();
   startBackgroundAnnotator();
-  startFacebookWebhookWorker();
-})();
+  await startFacebookWebhookWorker();
+  startLeadsBot();
+  startSamsaraBot();
+}
+
+process.once('SIGINT', () => {
+  void shutdownAll('SIGINT');
+});
+process.once('SIGTERM', () => {
+  void shutdownAll('SIGTERM');
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught Exception:', err);
+  void shutdownAll('uncaughtException', 1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  if (isTelegramPollingConflict(reason)) {
+    console.warn('[BOT] Polling conflict detected. Waiting for retry loop to reclaim the token.');
+    return;
+  }
+  console.error('[FATAL] Unhandled Rejection:', reason);
+  void shutdownAll('unhandledRejection', 1);
+});
+
+start().catch((err) => {
+  console.error('[BOOT] Fatal startup error:', err);
+  process.exit(1);
+});

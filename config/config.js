@@ -18,6 +18,9 @@ const requiredEnv = [
   'MANAGEMENT_GROUP_ID',
   'JWT_SECRET',
   'PORT',
+  'BOT_TOKEN',
+  'TELEGRAM_BOT_TOKEN',
+  'FACEBOOK_TOKEN_ENCRYPTION_KEY',
 ];
 
 const missing = requiredEnv.filter((key) => !process.env[key]);
@@ -49,6 +52,10 @@ const corsAllowedOrigins = corsOriginsEnv
   .map((o) => o.trim())
   .filter(Boolean);
 
+if (process.env.NODE_ENV === 'production' && corsAllowedOrigins.length === 0) {
+  throw new Error('[CONFIG] CORS_ALLOWED_ORIGINS must be explicitly set in production environments.');
+}
+
 const adminFacebookUserIds = String(process.env.ADMIN_FACEBOOK_USER_IDS || '')
   .split(',')
   .map((value) => value.trim())
@@ -63,8 +70,9 @@ const metaAuthPermissions = (process.env.META_AUTH_PERMISSIONS || 'public_profil
 function normalizeOptionalEnv(value) {
   const trimmed = String(value || '').trim();
   if (!trimmed) return '';
+  if (/placeholder|changeme|your-.+key/i.test(trimmed)) return '';
   const lower = trimmed.toLowerCase();
-  if (lower === 'value' || lower === 'placeholder' || lower === 'changeme') return '';
+  if (lower === 'value') return '';
   return trimmed;
 }
 
@@ -113,8 +121,8 @@ module.exports = {
   metaAuthPermissions,
   metaAuthLoginConfigId: normalizeOptionalEnv(process.env.META_AUTH_LOGIN_CONFIG_ID),
   adminFacebookUserIds,
-  facebookTokenEncryptionKey: process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY || process.env.JWT_SECRET || '',
-  leadsInternalSharedSecret: process.env.LEADS_INTERNAL_SHARED_SECRET || process.env.JWT_SECRET || '',
+  facebookTokenEncryptionKey: process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY,
+  leadsInternalSharedSecret: process.env.LEADS_INTERNAL_SHARED_SECRET,
   // Wenze Facebook Leads hub — auto-SMS mirrors + RC inbound forwards (same as leads-bot TELEGRAM_CHAT_ID)
   leadsTelegramChatId: String(process.env.TELEGRAM_CHAT_ID || '').trim(),
   // When false, load ingestion skips forwarding parse-failure hints to DISPATCH_ETA_TEST_GROUP_ID.

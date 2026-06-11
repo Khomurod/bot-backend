@@ -255,6 +255,7 @@ async function executePoll() {
     const cursor = isIsoTimestamp(rawCursor) ? '' : rawCursor;
     const params = new URLSearchParams({
         includeDriver: 'true',
+        limit: '100',
     });
 
     // Mandatory: Samsara Safety Events endpoint REQUIRES startTime/endTime.
@@ -304,9 +305,10 @@ async function executePoll() {
             return;
         }
 
-        const json = await response.json();
+        let json = await response.json();
         const events = json.data || [];
         const nextCursor = json.pagination?.endCursor;
+        json = null;
 
         if (events.length > 0) {
             let newEventsCount = 0;
@@ -405,6 +407,8 @@ module.exports = {
         broadcastFn = fn;
     },
 
+    executePoll,
+
     _forTest: {
         enqueueAlertForTest,
         processNextQueuedAlertForTest,
@@ -414,39 +418,9 @@ module.exports = {
     },
 
     /**
-     * Start the interval loop.
-     * @param {number} intervalMs - Milliseconds between API polls (default 15000).
-     */
-    start(intervalMs = 15000) {
-        if (intervalId) return; // Already running
-        
-        console.log(`[Poller] Started API polling loop (every ${intervalMs}ms)`);
-        
-        // Execute immediately, then set interval
-        executePoll();
-        intervalId = setInterval(executePoll, intervalMs);
-        if (ENABLE_POLL_METRICS) {
-            metricsIntervalId = setInterval(() => {
-                const mem = process.memoryUsage();
-                console.log(
-                    `[Poller] Metrics rss=${Math.round(mem.rss / 1024 / 1024)}MB heapUsed=${Math.round(mem.heapUsed / 1024 / 1024)}MB queue=${ALERT_QUEUE.length} dropped=${droppedAlertsCount}`
-                );
-            }, 60000);
-        }
-    },
-
-    /**
      * Stop polling gracefully.
      */
     stop() {
-        if (intervalId) {
-            clearInterval(intervalId);
-            intervalId = null;
-            console.log('[Poller] Stopped API polling loop.');
-        }
-        if (metricsIntervalId) {
-            clearInterval(metricsIntervalId);
-            metricsIntervalId = null;
-        }
+        console.log('[Poller] Stopped API polling loop.');
     }
 };
