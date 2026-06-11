@@ -5,7 +5,10 @@ services:
     buildCommand: npm install
     startCommand: node index.js
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> parent of bedbf94 (some changes)
     # Same handler as GET /health (cron-friendly short URL).
 >>>>>>> parent of bedbf94 (some changes)
     healthCheckPath: /api/health

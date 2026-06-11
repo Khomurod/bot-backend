@@ -439,6 +439,7 @@ start().catch((err) => {
 });
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 let isShuttingDown = false;
 async function shutdown(signal) {
     if (isShuttingDown) return;
@@ -458,6 +459,8 @@ async function shutdown(signal) {
         httpServer = null;
     }
 =======
+=======
+>>>>>>> parent of bedbf94 (some changes)
 process.on('SIGINT', () => {
     console.log('\n[App] Shutting down...');
     poller.stop();
