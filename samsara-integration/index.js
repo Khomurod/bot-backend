@@ -440,6 +440,7 @@ start().catch((err) => {
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 let isShuttingDown = false;
 async function shutdown(signal) {
     if (isShuttingDown) return;
@@ -459,6 +460,8 @@ async function shutdown(signal) {
         httpServer = null;
     }
 =======
+=======
+>>>>>>> parent of bedbf94 (some changes)
 =======
 >>>>>>> parent of bedbf94 (some changes)
 process.on('SIGINT', () => {

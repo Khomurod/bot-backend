@@ -6,7 +6,10 @@ services:
     startCommand: node index.js
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> parent of bedbf94 (some changes)
 =======
 >>>>>>> parent of bedbf94 (some changes)
     # Same handler as GET /health (cron-friendly short URL).
