@@ -120,13 +120,17 @@ function compilePlan(plan) {
     ? Math.min(365, Math.max(1, Math.round(Number(plan.days_back))))
     : DEFAULT_DAYS_WINDOW;
   params.push(daysBack);
-  where.push(`created_at >= NOW() - ($${params.length} || ' days')::INTERVAL`);
+  where.push(`created_at >= NOW() - make_interval(days => $${params.length})`);
 
   // Filters
   const filters = Array.isArray(plan.filters) ? plan.filters : [];
   for (const f of filters) {
     if (!f || typeof f !== 'object') continue;
     assertField(f.field);
+    // created_at is already handled by the days_back window above.
+    // The model often hallucinates SQL expressions (e.g. "now() - interval '30 days'")
+    // as filter values, which PostgreSQL rejects as invalid timestamps.
+    if (String(f.field) === 'created_at') continue;
     const op = assertOp(f.op);
     const field = String(f.field);
     if (op === 'is_null') { where.push(`${field} IS NULL`); continue; }

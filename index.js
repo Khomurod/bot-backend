@@ -223,7 +223,7 @@ function startSamsaraBot() {
       env: {
         ...process.env,
         PORT: String(samsaraPort),
-        BOT_TOKEN: process.env.SAMSARA_BOT_TOKEN,
+        BOT_TOKEN: process.env.BOT_TOKEN,
         TELEGRAM_BOT_TOKEN: process.env.SAMSARA_BOT_TOKEN,
         NODE_OPTIONS: '',
       },
