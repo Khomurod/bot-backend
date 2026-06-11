@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as api from "../api";
 import { TelegramPreview, MediaUploader, MediaPositionSelector, useFormattingToolbar, getDaysUntilBirthday } from "../components/Shared";
+import { timeAgo } from "../utils/formatTime";
 
 export default function ScheduledMessagesPage() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [processing, setProcessing] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null);
 
   const loadMessages = useCallback(async () => {
     try {
@@ -40,7 +42,6 @@ export default function ScheduledMessagesPage() {
   }, []);
 
   const handleCancel = async (id) => {
-    if (!window.confirm('Cancel this scheduled message?')) return;
     setProcessing(true);
     try {
       await api.cancelScheduledMessage(id);
@@ -55,7 +56,6 @@ export default function ScheduledMessagesPage() {
   };
 
   const handleSendNow = async (id) => {
-    if (!window.confirm('Send this message immediately?')) return;
     setProcessing(true);
     try {
       const result = await api.sendScheduledMessageNow(id);
@@ -69,19 +69,30 @@ export default function ScheduledMessagesPage() {
     }
   };
 
-  const statusBadge = (s) => {
-    const styles = {
-      pending: { bg: '#f59e0b22', color: '#f59e0b', border: '#f59e0b44', label: '⏳ Pending' },
-      sent: { bg: '#16a34a22', color: '#4ade80', border: '#16a34a44', label: '✅ Sent' },
-      failed: { bg: '#ef444422', color: '#ef4444', border: '#ef444444', label: '❌ Failed' },
-      cancelled: { bg: '#64748b22', color: '#94a3b8', border: '#64748b44', label: '🚫 Cancelled' },
+  const statusPillClass = (s) => {
+    const map = {
+      pending: 'status-pill--info',
+      scheduled: 'status-pill--info',
+      sent: 'status-pill--success',
+      delivered: 'status-pill--success',
+      failed: 'status-pill--danger',
+      error: 'status-pill--danger',
+      cancelled: 'status-pill--neutral',
     };
-    const st = styles[s] || styles.pending;
-    return (
-      <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>
-        {st.label}
-      </span>
-    );
+    return map[s] || 'status-pill--info';
+  };
+
+  const statusLabel = (s) => {
+    const map = {
+      pending: 'Pending',
+      scheduled: 'Scheduled',
+      sent: 'Sent',
+      delivered: 'Delivered',
+      failed: 'Failed',
+      error: 'Error',
+      cancelled: 'Cancelled',
+    };
+    return map[s] || s || 'Pending';
   };
 
   const activeFilterSuffix = (msg) => {
@@ -125,7 +136,7 @@ export default function ScheduledMessagesPage() {
     <div>
       <div className="page-header">
         <h2>📅 Scheduled Messages</h2>
-        <p>View and manage scheduled broadcast messages</p>
+        <p>Messages queued for future delivery.</p>
       </div>
 
       {status && (
@@ -140,7 +151,7 @@ export default function ScheduledMessagesPage() {
         <div className="empty-state">
           <div className="icon">📅</div>
           <h3>No scheduled messages</h3>
-          <p>Schedule a message from the Broadcast page to see it here.</p>
+          <p>Schedule a message from the Broadcast page to see it here. Messages you schedule will appear in this list so you can track, send early, or cancel them.</p>
         </div>
       ) : (
         <div className="table-container">
@@ -148,9 +159,9 @@ export default function ScheduledMessagesPage() {
             <thead>
               <tr>
                 <th>Message</th>
-                <th>Targets</th>
+                <th>Recipients</th>
                 <th>Language</th>
-                <th>Next Run (Chicago)</th>
+                <th>Scheduled For</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -178,12 +189,14 @@ export default function ScheduledMessagesPage() {
                     </div>
                     {msg.last_sent_at_chicago && (
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                        Last sent: {msg.last_sent_at_chicago}
+                        Last sent: {timeAgo(msg.last_sent_at) || msg.last_sent_at_chicago}
                       </div>
                     )}
                   </td>
                   <td>
-                    {statusBadge(msg.status)}
+                    <span className={`status-pill ${statusPillClass(msg.status)}`}>
+                      {statusLabel(msg.status)}
+                    </span>
                     {msg.last_run_status && (
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
                         Last run: {msg.last_run_status}
@@ -193,10 +206,20 @@ export default function ScheduledMessagesPage() {
                   <td>
                     {msg.status === 'pending' && (
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn btn-ghost btn-sm" onClick={() => handleSendNow(msg.id)} disabled={processing} style={{ fontSize: 11, padding: '4px 10px' }}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => setConfirmAction({ type: 'sendNow', id: msg.id })}
+                          disabled={processing}
+                          style={{ fontSize: 11, padding: '4px 10px' }}
+                        >
                           {processing ? '⏳' : '📤 Send Now'}
                         </button>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleCancel(msg.id)} disabled={processing} style={{ fontSize: 11, padding: '4px 10px' }}>
+                        <button
+                          className="btn btn-danger btn-sm"
+                          onClick={() => setConfirmAction({ type: 'cancel', id: msg.id })}
+                          disabled={processing}
+                          style={{ fontSize: 11, padding: '4px 10px' }}
+                        >
                           {processing ? '⏳' : '✕ Cancel'}
                         </button>
                       </div>
@@ -206,6 +229,35 @@ export default function ScheduledMessagesPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {confirmAction && (
+        <div className="confirm-overlay" onClick={() => setConfirmAction(null)}>
+          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>
+              {confirmAction.type === 'sendNow' ? '📤 Send Message Now?' : '🚫 Cancel Scheduled Message?'}
+            </h3>
+            <p>
+              {confirmAction.type === 'sendNow'
+                ? 'This will send the message to all recipients immediately instead of waiting for the scheduled time.'
+                : 'This will cancel the scheduled message. It will not be sent at the scheduled time.'}
+            </p>
+            <div className="confirm-actions">
+              <button className="btn btn-ghost" onClick={() => setConfirmAction(null)}>Go Back</button>
+              <button
+                className={confirmAction.type === 'cancel' ? 'btn btn-danger' : 'btn btn-primary'}
+                onClick={async () => {
+                  const action = confirmAction;
+                  setConfirmAction(null);
+                  if (action.type === 'sendNow') await handleSendNow(action.id);
+                  else if (action.type === 'cancel') await handleCancel(action.id);
+                }}
+              >
+                {confirmAction.type === 'sendNow' ? 'Send Now' : 'Cancel Message'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

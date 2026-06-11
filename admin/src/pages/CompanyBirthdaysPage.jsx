@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import * as api from "../api";
 import { getDaysUntilBirthday, sortBySoonestBirthday } from "../components/Shared";
+import { friendlyTimezone } from "../utils/formatTime";
 
 const TIMEZONE_OPTIONS = [
   "Asia/Tashkent",
@@ -61,6 +62,7 @@ export default function CompanyBirthdaysPage() {
   const [editFn, setEditFn] = useState("");
   const [editLn, setEditLn] = useState("");
   const [editBd, setEditBd] = useState("");
+  const [confirmAction, setConfirmAction] = useState(null);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -128,7 +130,6 @@ export default function CompanyBirthdaysPage() {
   };
 
   const handleSendTodayNow = async () => {
-    if (!window.confirm("Send today's birthday wishes to the employee group now? This blocks the scheduled send for today.")) return;
     setRequesting(true);
     setStatus(null);
     try {
@@ -144,7 +145,6 @@ export default function CompanyBirthdaysPage() {
   const handleCongratulateSelected = async () => {
     const ids = Array.from(selectedIds);
     if (!ids.length) return;
-    if (!window.confirm(`Send AI birthday wishes for ${ids.length} selected employee(s)?`)) return;
     setRequesting(true);
     setStatus(null);
     try {
@@ -160,7 +160,6 @@ export default function CompanyBirthdaysPage() {
   const handleSendCustom = async () => {
     const msg = customMessage.trim();
     if (!msg) return;
-    if (!window.confirm("Send this custom message to the employee group?")) return;
     setRequesting(true);
     setStatus(null);
     try {
@@ -193,7 +192,6 @@ export default function CompanyBirthdaysPage() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this employee?")) return;
     try {
       await api.deleteEmployeeBirthday(id);
       setSelectedIds((prev) => {
@@ -230,7 +228,6 @@ export default function CompanyBirthdaysPage() {
   };
 
   const handleSendRequest = async () => {
-    if (!window.confirm("Send a message to the Employee Group asking for their birthdays?")) return;
     setRequesting(true);
     setStatus(null);
     try {
@@ -247,7 +244,7 @@ export default function CompanyBirthdaysPage() {
     <div>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h2>🏢 Company Employee Birthdays</h2>
+          <h2>🎂 Birthdays</h2>
           <p>
             Manage office staff birthdays (soonest first).
             {settings ? (
@@ -279,7 +276,7 @@ export default function CompanyBirthdaysPage() {
                 onChange={(e) => setSettingsForm((s) => ({ ...s, timezone: e.target.value }))}
               >
                 {TIMEZONE_OPTIONS.map((tz) => (
-                  <option key={tz} value={tz}>{tz}</option>
+                  <option key={tz} value={tz}>{friendlyTimezone(tz)} ({tz})</option>
                 ))}
               </select>
             </div>
@@ -330,13 +327,13 @@ export default function CompanyBirthdaysPage() {
         </form>
 
         <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1px solid var(--border)", display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" }}>
-          <button className="btn btn-primary" type="button" onClick={handleSendTodayNow} disabled={requesting}>
+          <button className="btn btn-primary" type="button" onClick={() => setConfirmAction({ type: 'sendToday' })} disabled={requesting}>
             Send today&apos;s wishes now
           </button>
           <button
             className="btn btn-ghost"
             type="button"
-            onClick={handleCongratulateSelected}
+            onClick={() => setConfirmAction({ type: 'congratulate', ids: Array.from(selectedIds) })}
             disabled={requesting || selectedIds.size === 0}
           >
             Congratulate selected ({selectedIds.size})
@@ -352,7 +349,7 @@ export default function CompanyBirthdaysPage() {
                 placeholder="HTML allowed: &lt;b&gt;, &lt;i&gt;"
               />
             </div>
-            <button className="btn btn-ghost" type="button" onClick={handleSendCustom} disabled={requesting || !customMessage.trim()}>
+            <button className="btn btn-ghost" type="button" onClick={() => setConfirmAction({ type: 'custom' })} disabled={requesting || !customMessage.trim()}>
               Send custom
             </button>
           </div>
@@ -444,7 +441,7 @@ export default function CompanyBirthdaysPage() {
                       </td>
                       <td style={{ textAlign: "right" }}>
                         <button className="btn btn-ghost btn-sm" onClick={() => startEdit(emp)} style={{ marginRight: 8 }}>Edit</button>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(emp.id)}>Delete</button>
+                        <button className="btn btn-danger btn-sm" onClick={() => setConfirmAction({ type: 'delete', id: emp.id })}>Delete</button>
                       </td>
                     </>
                   )}
@@ -452,6 +449,44 @@ export default function CompanyBirthdaysPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {confirmAction && (
+        <div className="confirm-overlay" onClick={() => setConfirmAction(null)}>
+          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>
+              {confirmAction.type === 'delete' ? '🗑️ Remove Employee?' :
+               confirmAction.type === 'sendToday' ? '🎂 Send Birthday Wishes?' :
+               confirmAction.type === 'congratulate' ? `🎂 Congratulate ${confirmAction.ids?.length} Employee(s)?` :
+               confirmAction.type === 'custom' ? '💬 Send Custom Message?' :
+               confirmAction.type === 'request' ? '💬 Request Birthdays?' : 'Confirm'}
+            </h3>
+            <p>
+              {confirmAction.type === 'delete' ? 'This will permanently remove this employee from the birthday list.' :
+               confirmAction.type === 'sendToday' ? "This sends today's birthday wishes to the employee group now and blocks the scheduled send for today." :
+               confirmAction.type === 'congratulate' ? `AI-generated birthday wishes will be sent for ${confirmAction.ids?.length} selected employee(s).` :
+               confirmAction.type === 'custom' ? 'This sends your custom message to the employee group.' :
+               confirmAction.type === 'request' ? 'This sends a message asking all employees for their birthdays.' : 'Are you sure?'}
+            </p>
+            <div className="confirm-actions">
+              <button className="btn btn-ghost" onClick={() => setConfirmAction(null)}>Cancel</button>
+              <button
+                className={confirmAction.type === 'delete' ? 'btn btn-danger' : 'btn btn-primary'}
+                onClick={async () => {
+                  const action = confirmAction;
+                  setConfirmAction(null);
+                  if (action.type === 'delete') await handleDelete(action.id);
+                  else if (action.type === 'sendToday') await handleSendTodayNow();
+                  else if (action.type === 'congratulate') await handleCongratulateSelected();
+                  else if (action.type === 'custom') await handleSendCustom();
+                  else if (action.type === 'request') await handleSendRequest();
+                }}
+              >
+                {confirmAction.type === 'delete' ? 'Remove' : 'Send'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import * as api from "../api";
-import { TelegramPreview, MediaUploader, MediaPositionSelector, useFormattingToolbar, getDaysUntilBirthday } from "../components/Shared";
+import { timeAgo } from "../utils/formatTime";
 import { sanitizeCompanyReportHtmlForTelegram } from "../telegramHtmlPreview";
 
 function buildCompanyReportPreviewHtml(overall, breakdown) {
@@ -32,6 +32,7 @@ export default function AiFeaturesPage() {
   const [companyOverall, setCompanyOverall] = useState('');
   const [companyBreakdown, setCompanyBreakdown] = useState('');
   const [loading, setLoading] = useState(true);
+  const [discardTarget, setDiscardTarget] = useState(null);
 
   const parseDraft = (reportText) => {
     const [overall, breakdown] = String(reportText || '').split('|||');
@@ -187,8 +188,8 @@ export default function AiFeaturesPage() {
   };
 
   const discardDraft = async (draft) => {
+    setDiscardTarget(null);
     if (!draft) return;
-    if (!window.confirm('Discard this draft?')) return;
     setBusy(true);
     setStatus(null);
     try {
@@ -206,7 +207,7 @@ export default function AiFeaturesPage() {
     <div key={report.id} className="ios-glass ai-history-item">
       <div style={{ fontWeight: 600 }}>#{report.id}</div>
       <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-        {new Date(report.generated_at).toLocaleString()}
+        {timeAgo(report.generated_at)}
       </div>
       <div style={{ fontSize: 12 }}>{report.group_name}</div>
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>
@@ -218,8 +219,8 @@ export default function AiFeaturesPage() {
   return (
     <div className="ai-features-page">
       <div className="page-header">
-        <h2>🧠 AI Insights</h2>
-        <p>Dual-track reporting: per-driver manual workflow and company-wide automation workflow.</p>
+        <h2>📊 AI Reports</h2>
+        <p>Generate and review AI-powered driver and company performance reports.</p>
       </div>
       {status && <div className={`alert alert-${status.type}`}>{status.text}</div>}
 
@@ -264,7 +265,7 @@ export default function AiFeaturesPage() {
                     <select className="form-input touch-target" value={selectedDriverDraftId || ''} onChange={(e) => selectDriverDraft(Number(e.target.value))}>
                       {driverDrafts.map((d) => (
                         <option key={d.id} value={d.id}>
-                          #{d.id} · {d.group_name} · {new Date(d.generated_at).toLocaleString()}
+                          #{d.id} · {d.group_name} · {timeAgo(d.generated_at)}
                         </option>
                       ))}
                     </select>
@@ -281,7 +282,7 @@ export default function AiFeaturesPage() {
                   </div>
                   <div className="ai-action-row" style={{ marginTop: 12 }}>
                     <button className="btn btn-primary touch-target" onClick={sendDriverDraft} disabled={busy || !selectedDriverDraft}>Approve & Send</button>
-                    <button className="btn btn-danger touch-target" onClick={() => discardDraft(selectedDriverDraft)} disabled={busy || !selectedDriverDraft}>Discard</button>
+                    <button className="btn btn-danger touch-target" onClick={() => setDiscardTarget(selectedDriverDraft)} disabled={busy || !selectedDriverDraft}>Discard</button>
                   </div>
                 </>
               )}
@@ -309,7 +310,7 @@ export default function AiFeaturesPage() {
                     <select className="form-input touch-target" value={selectedCompanyDraftId || ''} onChange={(e) => selectCompanyDraft(Number(e.target.value))}>
                       {companyDrafts.map((d) => (
                         <option key={d.id} value={d.id}>
-                          #{d.id} · {new Date(d.generated_at).toLocaleString()}
+                          #{d.id} · {timeAgo(d.generated_at)}
                         </option>
                       ))}
                     </select>
@@ -343,7 +344,7 @@ export default function AiFeaturesPage() {
                   </div>
                   <div className="ai-action-row" style={{ marginTop: 12 }}>
                     <button className="btn btn-primary touch-target" onClick={sendCompanyDraft} disabled={busy || !selectedCompanyDraft}>Approve & Send</button>
-                    <button className="btn btn-danger touch-target" onClick={() => discardDraft(selectedCompanyDraft)} disabled={busy || !selectedCompanyDraft}>Discard</button>
+                    <button className="btn btn-danger touch-target" onClick={() => setDiscardTarget(selectedCompanyDraft)} disabled={busy || !selectedCompanyDraft}>Discard</button>
                   </div>
                 </>
               )}
@@ -355,6 +356,20 @@ export default function AiFeaturesPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* ─── Confirm Discard Dialog ─── */}
+      {discardTarget && (
+        <div className="confirm-overlay" onClick={() => setDiscardTarget(null)}>
+          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>Discard this draft?</h3>
+            <p>This draft will be permanently deleted and cannot be recovered.</p>
+            <div className="confirm-actions">
+              <button className="btn btn-ghost touch-target" onClick={() => setDiscardTarget(null)}>Cancel</button>
+              <button className="btn btn-danger touch-target" onClick={() => discardDraft(discardTarget)}>Discard</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

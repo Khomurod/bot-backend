@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../api";
+import { timeAgo } from "../utils/formatTime";
 
 const ACCEPTED_MIME_TYPES = new Set([
   "application/pdf",
@@ -30,10 +31,9 @@ function formatGroupLabel(group) {
   const driverName = [group.driver_first_name, group.driver_last_name]
     .filter(Boolean)
     .join(" ");
-  const namePart = driverName
-    ? `${group.group_name} - ${driverName}`
+  return driverName
+    ? `${group.group_name} — ${driverName}`
     : group.group_name;
-  return `${namePart} | ${group.telegram_group_id}`;
 }
 
 function stripRateLine(text) {
@@ -81,11 +81,12 @@ function normalizeEtaEnabled(value) {
   return false;
 }
 
-function formatOptionalDateTime(value) {
-  if (!value) return "-";
+function formatOptionalDateTime(value, { future = false } = {}) {
+  if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString();
+  if (future) return date.toLocaleString();
+  return timeAgo(value);
 }
 
 export default function DispatchPage() {
@@ -483,7 +484,7 @@ export default function DispatchPage() {
       <div className="card">
         <div style={{ display: "grid", gap: "16px" }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>Rate Confirmation File</label>
+            <label>Upload Rate Confirmation</label>
             <input
               type="file"
               className="form-input"
@@ -533,9 +534,9 @@ export default function DispatchPage() {
           }}
         >
           <div>
-            <h3 style={{ marginBottom: "4px" }}>Formatted Dispatch Notes</h3>
+            <h3 style={{ marginBottom: "4px" }}>Load Details</h3>
             <p style={{ color: "var(--text-secondary)", fontSize: "14px" }}>
-              Review and tweak the output before sending it to the dispatcher.
+              Review and edit before sending to the driver group.
             </p>
           </div>
           <button
@@ -544,7 +545,7 @@ export default function DispatchPage() {
             onClick={handleCopy}
             disabled={!resultText || copying}
           >
-            {copying ? "Copying..." : "Copy to Clipboard"}
+            {copying ? "Copying..." : "📋 Copy"}
           </button>
         </div>
 
@@ -562,7 +563,7 @@ export default function DispatchPage() {
 
         <div style={{ display: "grid", gap: "16px", marginTop: "24px" }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label>Telegram Group</label>
+            <label>Driver Group</label>
             <input
               type="text"
               className="form-input"
@@ -585,7 +586,7 @@ export default function DispatchPage() {
                 checked={withRate}
                 onChange={(event) => setWithRate(event.target.checked)}
               />
-              With Rate
+              Include rate amount
             </label>
             <label style={{ display: "inline-flex", alignItems: "center", gap: "8px", color: "var(--text-secondary)" }}>
               <input
@@ -593,7 +594,7 @@ export default function DispatchPage() {
                 checked={withRateConfirmation}
                 onChange={(event) => setWithRateConfirmation(event.target.checked)}
               />
-              With Rate Confirmation
+              Attach document
             </label>
           </div>
 
@@ -604,7 +605,7 @@ export default function DispatchPage() {
               onClick={handleSendToTelegram}
               disabled={sending || !resultText.trim()}
             >
-              {sending ? "Sending..." : "Send to Telegram"}
+              {sending ? "Sending..." : "📤 Send to Driver"}
             </button>
           </div>
         </div>
@@ -615,10 +616,9 @@ export default function DispatchPage() {
   const renderTestingTab = () => (
     <div className="card">
       <div style={{ marginBottom: "16px" }}>
-        <h3 style={{ marginBottom: "6px" }}>Testing Feature</h3>
+        <h3 style={{ marginBottom: "6px" }}>ETA Update Configuration</h3>
         <p style={{ color: "var(--text-secondary)", fontSize: "14px" }}>
-          Toggle periodic ETA updates per driver group. Turning a toggle on sends one immediate update, then repeats on the interval below.
-          Global intervals apply to every row that targets driver chats vs the test chat; you can edit them anytime, including while updates are running.
+          Configure automatic ETA updates for each driver group. When enabled, drivers receive periodic position and arrival time updates.
         </p>
       </div>
 
@@ -633,10 +633,10 @@ export default function DispatchPage() {
           gap: "12px",
         }}
       >
-        <div style={{ fontWeight: 600 }}>Global ETA intervals (minutes)</div>
+        <div style={{ fontWeight: 600 }}>Update Frequency</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "16px", alignItems: "flex-end" }}>
           <div className="form-group" style={{ marginBottom: 0, minWidth: "200px" }}>
-            <label>Driver group targets</label>
+            <label>Driver updates every (minutes)</label>
             <input
               type="number"
               className="form-input"
@@ -648,7 +648,7 @@ export default function DispatchPage() {
             />
           </div>
           <div className="form-group" style={{ marginBottom: 0, minWidth: "200px" }}>
-            <label>Test group targets</label>
+            <label>Test updates every (minutes)</label>
             <input
               type="number"
               className="form-input"
@@ -665,13 +665,11 @@ export default function DispatchPage() {
             onClick={handleSaveGlobalIntervals}
             disabled={testingLoading || savingGlobalIntervals || testingBulkSavingMode !== null}
           >
-            {savingGlobalIntervals ? "Saving..." : "Save global intervals"}
+            {savingGlobalIntervals ? "Saving..." : "Save Frequency"}
           </button>
         </div>
         <div style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
-          Saving updates the defaults and sets <code style={{ fontSize: "12px" }}>interval_minutes</code> on all ETA rows:
-          driver-mode rows use the first value, test-mode rows use the second (test chat:{" "}
-          {dispatchEtaTestGroupId || "not configured"}).
+          Changes apply to all groups immediately. Driver-mode groups use the first value, test-mode groups use the second.
         </div>
       </div>
 
@@ -683,7 +681,7 @@ export default function DispatchPage() {
             onClick={loadTestingGroups}
             disabled={testingLoading || testingBulkSavingMode !== null}
           >
-            {testingLoading ? "Refreshing..." : "Refresh Groups"}
+            {testingLoading ? "Refreshing..." : "🔄 Refresh"}
           </button>
           <button
             type="button"
@@ -691,7 +689,7 @@ export default function DispatchPage() {
             onClick={() => handleTestingToggleAll("driver", true)}
             disabled={testingBulkSavingMode !== null}
           >
-            {testingBulkSavingMode === "driver" ? "Applying..." : "Enable ALL Driver groups"}
+            {testingBulkSavingMode === "driver" ? "Applying..." : "🟢 Enable All (Driver)"}
           </button>
           <button
             type="button"
@@ -700,7 +698,7 @@ export default function DispatchPage() {
             disabled={testingBulkSavingMode !== null || !dispatchEtaTestGroupId}
             title={dispatchEtaTestGroupId ? `Test group: ${dispatchEtaTestGroupId}` : "DISPATCH_ETA_TEST_GROUP_ID not configured"}
           >
-            {testingBulkSavingMode === "test" ? "Applying..." : "Enable ALL Test group"}
+            {testingBulkSavingMode === "test" ? "Applying..." : "🟡 Enable All (Test)"}
           </button>
           <button
             type="button"
@@ -708,7 +706,7 @@ export default function DispatchPage() {
             onClick={() => handleTestingToggleAll("driver", false)}
             disabled={testingBulkSavingMode !== null}
           >
-            Disable ALL
+            🔴 Disable All
           </button>
         </div>
       </div>
@@ -747,9 +745,7 @@ export default function DispatchPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
                   <div>
                     <div style={{ fontWeight: 600 }}>{row.group_name}</div>
-                    <div style={{ color: "var(--text-secondary)", fontSize: "13px" }}>
-                      {row.telegram_group_id}
-                    </div>
+                    <details style={{fontSize: 13, color: 'var(--text-secondary)'}}><summary style={{cursor:'pointer',fontSize:12}}>Technical ID</summary>{row.telegram_group_id}</details>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                     <button
@@ -757,7 +753,7 @@ export default function DispatchPage() {
                       className="btn btn-ghost btn-sm"
                       onClick={() => handleTestingExpand(row)}
                     >
-                      {expanded ? "Hide details" : "Show details"}
+                      {expanded ? "📋 Hide" : "📋 Details"}
                     </button>
                     <button
                       type="button"
@@ -858,8 +854,8 @@ export default function DispatchPage() {
 
                 <div style={{ display: "flex", gap: "14px", flexWrap: "wrap", color: "var(--text-secondary)", fontSize: "13px" }}>
                   <span>Interval: {formatIntervalText(row.eta_interval_minutes)}</span>
-                  <span>Status: {row.eta_last_status || "idle"}</span>
-                  <span>Next run: {row.eta_next_run_at ? new Date(row.eta_next_run_at).toLocaleString() : "-"}</span>
+                  <span>Status: <span className={`status-pill status-pill--${(row.eta_last_status === "ok" || row.eta_last_status === "success") ? "success" : (row.eta_last_status === "error" || row.eta_last_status === "failed") ? "danger" : (row.eta_last_status === "running" || row.eta_last_status === "sending") ? "info" : "neutral"}`}>{row.eta_last_status || "idle"}</span></span>
+                  <span>Next run: {row.eta_next_run_at ? new Date(row.eta_next_run_at).toLocaleString() : "—"}</span>
                 </div>
 
                 {row.eta_last_error && (
@@ -879,14 +875,14 @@ export default function DispatchPage() {
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-                      <strong>Driver Diagnostics</strong>
+                      <strong>📊 Live Status</strong>
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm"
                         onClick={() => handleRefreshTestingDetails(row.group_id)}
                         disabled={detailsLoading}
                       >
-                        {detailsLoading ? "Refreshing..." : "Refresh details"}
+                        {detailsLoading ? "Refreshing..." : "🔄 Refresh"}
                       </button>
                     </div>
 
@@ -966,7 +962,7 @@ export default function DispatchPage() {
                                   {load.createdAt ? (
                                     <span style={{ fontWeight: 400, color: "var(--text-secondary)" }}>
                                       {" "}
-                                      · saved {formatOptionalDateTime(load.createdAt)}
+                                      · saved {timeAgo(load.createdAt)}
                                     </span>
                                   ) : null}
                                 </div>
@@ -1076,7 +1072,7 @@ export default function DispatchPage() {
                             </strong>
                           </span>
                           <span>Interval: {formatIntervalText(row.eta_interval_minutes)}</span>
-                          <span>Next run: {formatOptionalDateTime(row.eta_next_run_at)}</span>
+                          <span>Next run: {formatOptionalDateTime(row.eta_next_run_at, { future: true })}</span>
                         </div>
                       </>
                     ) : (
@@ -1097,8 +1093,8 @@ export default function DispatchPage() {
   return (
     <div>
       <div className="page-header">
-        <h2>Dispatch Assistant</h2>
-        <p>Upload or paste a rate confirmation PDF or image and get a dispatcher-ready template.</p>
+        <h2>🚛 Dispatch Center</h2>
+        <p>Upload a rate confirmation to create dispatch notes and send them to drivers.</p>
       </div>
 
       {message && (
@@ -1113,14 +1109,14 @@ export default function DispatchPage() {
           className={`btn ${activeTab === "assistant" ? "btn-primary" : "btn-ghost"}`}
           onClick={() => setActiveTab("assistant")}
         >
-          Dispatch Assistant
+          📄 Send Load
         </button>
         <button
           type="button"
           className={`btn ${activeTab === "testing" ? "btn-primary" : "btn-ghost"}`}
           onClick={() => setActiveTab("testing")}
         >
-          Testing Feature
+          ⚙️ ETA Tracking
         </button>
       </div>
 

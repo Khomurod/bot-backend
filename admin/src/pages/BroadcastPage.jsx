@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as api from "../api";
-import { TelegramPreview, MediaUploader, MediaPositionSelector, useFormattingToolbar, getDaysUntilBirthday } from "../components/Shared";
+import { TelegramPreview, MediaUploader, MediaPositionSelector, useFormattingToolbar } from "../components/Shared";
+import { timeAgo } from '../utils/formatTime';
 
 const TEMPLATE_TOKEN_PATTERN = /\{([a-z][a-z0-9_]*)\}/gi;
 const DEFAULT_BROADCAST_PLACEHOLDER_KEYS = [
@@ -51,6 +52,7 @@ function PlaceholderChips({ placeholders, onInsert }) {
 export default function BroadcastPage() {
   // Tabs
   const [broadcastTab, setBroadcastTab] = useState('regular'); // 'regular' | 'confirmation'
+  const [showSendConfirm, setShowSendConfirm] = useState(null);
 
   // Common Target Selection
   const [targetType, setTargetType] = useState('all'); // 'all' | 'specific_drivers' | 'language_groups'
@@ -553,7 +555,7 @@ export default function BroadcastPage() {
     }
   };
 
-  const formatDate = (d) => new Date(d).toLocaleString();
+  const formatDate = (d) => timeAgo(d);
   const truncate = (s, n) => s?.length > n ? s.substring(0, n) + '...' : s;
 
   return (
@@ -563,9 +565,9 @@ export default function BroadcastPage() {
         <p>Send messages and media to multiple driver groups</p>
       </div>
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
-        <button className={`nav-item ${broadcastTab === 'regular' ? 'active' : ''}`} onClick={() => setBroadcastTab('regular')} style={{ padding: '8px 20px', fontSize: 14 }}>Regular Broadcast</button>
-        <button className={`nav-item ${broadcastTab === 'confirmation' ? 'active' : ''}`} onClick={() => setBroadcastTab('confirmation')} style={{ padding: '8px 20px', fontSize: 14 }}>Confirmation (Buttons)</button>
+      <div className="broadcast-tabs">
+        <button className={`broadcast-tab-btn ${broadcastTab === 'regular' ? 'active' : ''}`} onClick={() => setBroadcastTab('regular')}>📢 Announcement</button>
+        <button className={`broadcast-tab-btn ${broadcastTab === 'confirmation' ? 'active' : ''}`} onClick={() => setBroadcastTab('confirmation')}>✅ Confirmation</button>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
@@ -700,17 +702,22 @@ export default function BroadcastPage() {
                   {translating ? '⏳ Translating...' : '🌐 Auto Translate'}
                 </button>
 
-                <h4 style={{ marginBottom: 6 }}><span className="badge badge-ru">RU</span> Russian</h4>
-                {regFmtRu.toolbar}
-                <textarea ref={regRuRef} className="form-textarea toolbar-textarea" value={messageRu} onChange={(e) => setMessageRu(e.target.value)} onKeyDown={regFmtRu.handleKeyDown}
-                  onFocus={() => setActiveRegularField('ru')}
-                  placeholder="Сообщение на русском (авто-перевод или ручной ввод)" style={{ minHeight: 100, resize: 'vertical', marginBottom: 12 }} />
+                <details className="collapse-panel">
+                  <summary>🌐 Russian &amp; Uzbek translations</summary>
+                  <div style={{ marginTop: 12 }}>
+                    <h4 style={{ marginBottom: 6 }}><span className="badge badge-ru">RU</span> Russian</h4>
+                    {regFmtRu.toolbar}
+                    <textarea ref={regRuRef} className="form-textarea toolbar-textarea" value={messageRu} onChange={(e) => setMessageRu(e.target.value)} onKeyDown={regFmtRu.handleKeyDown}
+                      onFocus={() => setActiveRegularField('ru')}
+                      placeholder="Сообщение на русском (авто-перевод или ручной ввод)" style={{ minHeight: 100, resize: 'vertical', marginBottom: 12 }} />
 
-                <h4 style={{ marginBottom: 6 }}><span className="badge badge-uz">UZ</span> Uzbek</h4>
-                {regFmtUz.toolbar}
-                <textarea ref={regUzRef} className="form-textarea toolbar-textarea" value={messageUz} onChange={(e) => setMessageUz(e.target.value)} onKeyDown={regFmtUz.handleKeyDown}
-                  onFocus={() => setActiveRegularField('uz')}
-                  placeholder="O'zbek tilidagi xabar (avto-tarjima yoki qo'lda kiritish)" style={{ minHeight: 100, resize: 'vertical' }} />
+                    <h4 style={{ marginBottom: 6 }}><span className="badge badge-uz">UZ</span> Uzbek</h4>
+                    {regFmtUz.toolbar}
+                    <textarea ref={regUzRef} className="form-textarea toolbar-textarea" value={messageUz} onChange={(e) => setMessageUz(e.target.value)} onKeyDown={regFmtUz.handleKeyDown}
+                      onFocus={() => setActiveRegularField('uz')}
+                      placeholder="O'zbek tilidagi xabar (avto-tarjima yoki qo'lda kiritish)" style={{ minHeight: 100, resize: 'vertical' }} />
+                  </div>
+                </details>
 
                 <details className="collapse-panel" style={{ marginTop: 16 }}>
                   <summary>📎 Media Attachments</summary>
@@ -723,9 +730,9 @@ export default function BroadcastPage() {
                 <div className="card" style={{ marginTop: 20, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <div>
-                      <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Schedule This Broadcast</h3>
+                      <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>⏰ Schedule for Later</h3>
                       <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
-                        Schedule once or repeat weekly in America/Chicago.
+                        Schedule this message to be sent at a specific time (Central Time).
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -780,14 +787,14 @@ export default function BroadcastPage() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
-                  <button className="btn btn-primary" onClick={handleSend} disabled={sending || !message.trim() || message.length > 4096 || regularUnknownTokens.length > 0}>
+                  <button className="btn btn-primary" onClick={() => setShowSendConfirm('regular')} disabled={sending || !message.trim() || message.length > 4096 || regularUnknownTokens.length > 0}>
                     {sending ? '⏳ Sending...' : targetType === 'all' ? '📤 Send to All Groups' : '📤 Send to Selected'}
                   </button>
                   <button className="btn btn-ghost" onClick={handleTest} disabled={testing || !message.trim() || regularUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
                     {testing ? '⏳ Testing...' : '🧪 Test (Management Group)'}
                   </button>
                   <button className="btn btn-ghost" onClick={handleSchedule} disabled={scheduling || !message.trim() || message.length > 4096 || regularUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
-                    {scheduling ? 'Scheduling...' : 'Save Schedule'}
+                    {scheduling ? 'Scheduling...' : '⏰ Schedule'}
                   </button>
                 </div>
               </div>
@@ -835,7 +842,7 @@ export default function BroadcastPage() {
                         : (regularDeliveries[b.id] || []).map(d => (
                           <div key={d.id} className="delivery-row">
                             <span style={{ fontSize: 13 }}>{d.group_name || `Group ${d.telegram_group_id}`}</span>
-                            <span className={`delivery-badge ${d.status === 'sent' ? 'sent' : 'failed'}`}>{d.status === 'sent' ? '✅ Sent' : '❌ Failed'}</span>
+                            <span className={`status-pill status-pill--${d.status === 'sent' ? 'success' : 'danger'}`}>{d.status === 'sent' ? 'Delivered' : 'Failed'}</span>
                           </div>
                         ))}
                     </div>
@@ -878,17 +885,22 @@ export default function BroadcastPage() {
                   {confTranslating ? '⏳ Translating...' : '🌐 Auto Translate'}
                 </button>
 
-                <h4 style={{ marginBottom: 6 }}><span className="badge badge-ru">RU</span> Russian</h4>
-                {confFmtRu.toolbar}
-                <textarea ref={confRuRef} className="form-textarea toolbar-textarea" value={confMessageRu} onChange={(e) => setConfMessageRu(e.target.value)} onKeyDown={confFmtRu.handleKeyDown}
-                  onFocus={() => setActiveConfirmationField('ru')}
-                  placeholder="Сообщение на русском (авто-перевод или ручной ввод)" style={{ minHeight: 100, resize: 'vertical', marginBottom: 12 }} />
+                <details className="collapse-panel">
+                  <summary>🌐 Russian &amp; Uzbek translations</summary>
+                  <div style={{ marginTop: 12 }}>
+                    <h4 style={{ marginBottom: 6 }}><span className="badge badge-ru">RU</span> Russian</h4>
+                    {confFmtRu.toolbar}
+                    <textarea ref={confRuRef} className="form-textarea toolbar-textarea" value={confMessageRu} onChange={(e) => setConfMessageRu(e.target.value)} onKeyDown={confFmtRu.handleKeyDown}
+                      onFocus={() => setActiveConfirmationField('ru')}
+                      placeholder="Сообщение на русском (авто-перевод или ручной ввод)" style={{ minHeight: 100, resize: 'vertical', marginBottom: 12 }} />
 
-                <h4 style={{ marginBottom: 6 }}><span className="badge badge-uz">UZ</span> Uzbek</h4>
-                {confFmtUz.toolbar}
-                <textarea ref={confUzRef} className="form-textarea toolbar-textarea" value={confMessageUz} onChange={(e) => setConfMessageUz(e.target.value)} onKeyDown={confFmtUz.handleKeyDown}
-                  onFocus={() => setActiveConfirmationField('uz')}
-                  placeholder="O'zbek tilidagi xabar (avto-tarjima yoki qo'lda kiritish)" style={{ minHeight: 100, resize: 'vertical' }} />
+                    <h4 style={{ marginBottom: 6 }}><span className="badge badge-uz">UZ</span> Uzbek</h4>
+                    {confFmtUz.toolbar}
+                    <textarea ref={confUzRef} className="form-textarea toolbar-textarea" value={confMessageUz} onChange={(e) => setConfMessageUz(e.target.value)} onKeyDown={confFmtUz.handleKeyDown}
+                      onFocus={() => setActiveConfirmationField('uz')}
+                      placeholder="O'zbek tilidagi xabar (avto-tarjima yoki qo'lda kiritish)" style={{ minHeight: 100, resize: 'vertical' }} />
+                  </div>
+                </details>
 
                 <div style={{ marginTop: 16 }}>
                   <MediaUploader items={confMediaItems} onAdd={(newItems) => setConfMediaItems(prev => [...prev, ...newItems])} onRemove={(index) => setConfMediaItems(prev => prev.filter((_, i) => i !== index))} />
@@ -932,7 +944,7 @@ export default function BroadcastPage() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-                  <button className="btn btn-primary" onClick={handleConfSend} disabled={confSending || !confMessage.trim() || confMessage.length > 4096 || confirmationUnknownTokens.length > 0}>
+                  <button className="btn btn-primary" onClick={() => setShowSendConfirm('confirmation')} disabled={confSending || !confMessage.trim() || confMessage.length > 4096 || confirmationUnknownTokens.length > 0}>
                     {confSending ? '⏳ Sending...' : '📤 Send Broadcast'}
                   </button>
                   <button className="btn btn-ghost" onClick={handleConfTest} disabled={confTesting || !confMessage.trim() || confirmationUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
@@ -985,7 +997,7 @@ export default function BroadcastPage() {
                           : (confDeliveries[b.id] || []).map(d => (
                             <div key={d.id} className="delivery-row">
                               <span style={{ fontSize: 13 }}>{d.group_name || `Group ${d.telegram_group_id}`}</span>
-                              <span className={`delivery-badge ${d.status === 'sent' ? 'sent' : 'failed'}`}>{d.status === 'sent' ? '✅ Sent' : '❌ Failed'}</span>
+                              <span className={`status-pill status-pill--${d.status === 'sent' ? 'success' : 'danger'}`}>{d.status === 'sent' ? 'Delivered' : 'Failed'}</span>
                             </div>
                           ))}
                       </div>
@@ -1033,6 +1045,23 @@ export default function BroadcastPage() {
                   )}
                 </div>
               ))}
+          </div>
+        </div>
+      )}
+      {/* ════════ SEND CONFIRMATION DIALOG ════════ */}
+      {showSendConfirm && (
+        <div className="confirm-overlay" onClick={() => setShowSendConfirm(null)}>
+          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>📢 Send Broadcast?</h3>
+            {showSendConfirm === 'regular' ? (
+              <p>{targetType === 'all' ? 'This will send your message to ALL driver groups. This cannot be undone.' : `This will send to ${selectedDriverIds.length || 'selected'} groups.`}</p>
+            ) : (
+              <p>This will send the confirmation broadcast with interactive buttons. Drivers will be able to click and respond.</p>
+            )}
+            <div className="confirm-actions">
+              <button className="btn btn-ghost" onClick={() => setShowSendConfirm(null)} style={{ border: '1px solid var(--border)' }}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => { setShowSendConfirm(null); showSendConfirm === 'regular' ? handleSend() : handleConfSend(); }}>Send Now</button>
+            </div>
           </div>
         </div>
       )}

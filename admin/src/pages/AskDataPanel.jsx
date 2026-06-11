@@ -1,21 +1,54 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState } from "react";
 import * as api from "../api";
-import { TelegramPreview, MediaUploader, MediaPositionSelector, useFormattingToolbar, getDaysUntilBirthday } from "../components/Shared";
+import { humanizeColumn } from "../utils/formatTime";
 
-// ───────────────────────── AI Insights v2 ─────────────────────────
+const QUICK_QUERIES = [
+  {
+    icon: '📋',
+    label: 'Drivers who responded this week',
+    question: 'Which drivers responded to surveys this week?',
+  },
+  {
+    icon: '📊',
+    label: 'Negative sentiment trends',
+    question: 'Top 10 drivers by negative sentiment in the last 14 days',
+  },
+  {
+    icon: '🚨',
+    label: 'Quit signals this month',
+    question: 'How many quit signals this month, by group?',
+  },
+  {
+    icon: '💬',
+    label: 'Unanswered dispatcher messages',
+    question: 'Which dispatcher messages went unanswered in the last 7 days?',
+  },
+  {
+    icon: '⚠️',
+    label: 'Breakdowns & accidents',
+    question: 'Show me every breakdown or accident mention this week',
+  },
+];
 
 export default function AskDataPanel() {
   const [question, setQuestion] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [history, setHistory] = useState([]);
 
-  const ask = async () => {
-    if (!question.trim()) return;
+  const ask = async (q) => {
+    const query = (q || question).trim();
+    if (!query) return;
+    setQuestion(query);
     setBusy(true); setError(null); setResult(null);
     try {
-      const r = await api.askTheData(question.trim());
+      const r = await api.askTheData(query);
       setResult(r);
+      setHistory(prev => {
+        const next = [query, ...prev.filter(h => h !== query)];
+        return next.slice(0, 5);
+      });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -23,79 +56,113 @@ export default function AskDataPanel() {
     }
   };
 
-  const suggestions = [
-    'Which drivers complained about home time this month?',
-    'Top 10 drivers by negative sentiment in the last 14 days',
-    'How many quit signals this month, by group?',
-    'Which dispatcher messages went unanswered in the last 7 days?',
-    'Show me every breakdown or accident mention this week',
-  ];
+  const humanizeError = (msg) => {
+    if (!msg) return 'Something went wrong. Please try again.';
+    if (msg.includes('syntax') || msg.includes('SQL'))
+      return "Sorry, I couldn't understand that question. Try rephrasing it in simpler terms.";
+    if (msg.includes('timeout'))
+      return 'The query took too long. Try asking something more specific.';
+    if (msg.includes('401') || msg.includes('403'))
+      return 'You don\'t have permission to run this query. Please contact your admin.';
+    return msg;
+  };
 
   return (
-    <div className="ios-glass ai-section-card" style={{ marginTop: 18 }}>
-      <h3 style={{ marginTop: 0 }}>💬 Ask the Data</h3>
-      <p style={{ fontSize: 13, opacity: 0.75, marginTop: 0 }}>
-        Ask anything about driver conversations. Powered by Groq + annotated chat logs.
-      </p>
-      <div className="ai-action-row">
-        <input
-          className="form-input touch-target"
-          style={{ flex: 1 }}
-          placeholder="Ask a question…"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !busy) ask(); }}
-        />
-        <button className="btn btn-primary touch-target" onClick={ask} disabled={busy || !question.trim()}>
-          {busy ? 'Thinking…' : 'Ask'}
-        </button>
+    <div>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h2>🔍 Ask a Question</h2>
+          <p>Ask anything about your drivers, messages, or leads in plain English.</p>
+        </div>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-        {suggestions.map((s) => (
+
+      {/* Quick Query Cards */}
+      <div className="quick-query-grid">
+        {QUICK_QUERIES.map((q, i) => (
           <button
-            key={s}
-            className="btn btn-ghost btn-sm"
-            onClick={() => { setQuestion(s); }}
+            key={i}
+            className="quick-query-card"
+            onClick={() => ask(q.question)}
             disabled={busy}
-            style={{ fontSize: 12 }}
           >
-            {s}
+            <span className="quick-query-icon">{q.icon}</span>
+            <span className="quick-query-label">{q.label}</span>
           </button>
         ))}
       </div>
 
-      {error && <div className="alert alert-error" style={{ marginTop: 12 }}>{error}</div>}
+      {/* Search input */}
+      <div className="ai-action-row" style={{ marginBottom: 16 }}>
+        <input
+          className="form-input touch-target"
+          style={{ flex: 1 }}
+          placeholder="Or type your own question…"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !busy) ask(); }}
+        />
+        <button className="btn btn-primary touch-target" onClick={() => ask()} disabled={busy || !question.trim()}>
+          {busy ? '⏳ Thinking…' : '🔍 Ask'}
+        </button>
+      </div>
 
-      {result && (
-        <div style={{ marginTop: 12 }}>
-          <div className="ios-glass" style={{ padding: 12, marginBottom: 10 }}>
-            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Answer</div>
-            <div dangerouslySetInnerHTML={{ __html: result.answer_html || '<i>(no narrative)</i>' }} />
+      {/* Recent queries */}
+      {history.length > 0 && !busy && !result && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
+            Recent questions
           </div>
-          <details>
-            <summary style={{ cursor: 'pointer', fontSize: 13, opacity: 0.75 }}>
-              Query plan · {result.row_count} rows returned
-            </summary>
-            <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', background: 'rgba(0,0,0,0.25)', padding: 8, borderRadius: 6, marginTop: 6 }}>
-              {JSON.stringify(result.plan, null, 2)}
-            </pre>
-            <div style={{ fontSize: 11, marginTop: 6, opacity: 0.7 }}>SQL:</div>
-            <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', background: 'rgba(0,0,0,0.25)', padding: 8, borderRadius: 6 }}>
-              {result.sql}
-            </pre>
-          </details>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {history.map((h, i) => (
+              <button
+                key={i}
+                className="btn btn-ghost btn-sm"
+                onClick={() => ask(h)}
+                style={{ fontSize: 12 }}
+              >
+                {h.length > 60 ? h.slice(0, 60) + '…' : h}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Error display */}
+      {error && (
+        <div className="alert alert-error" style={{ marginTop: 0 }}>
+          ⚠️ {humanizeError(error)}
+        </div>
+      )}
+
+      {/* Results */}
+      {result && (
+        <div style={{ marginTop: 0 }}>
+          {/* Answer card */}
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
+              Answer
+            </div>
+            <div
+              style={{ fontSize: 15, lineHeight: 1.6 }}
+              dangerouslySetInnerHTML={{ __html: result.answer_html || '<i style="color: var(--text-muted)">(No answer generated)</i>' }}
+            />
+          </div>
+
+          {/* Results table with humanized column names */}
           {result.rows && result.rows.length > 0 && (
-            <details style={{ marginTop: 8 }}>
-              <summary style={{ cursor: 'pointer', fontSize: 13, opacity: 0.75 }}>
-                Results ({result.rows.length})
-              </summary>
-              <div style={{ maxHeight: 300, overflow: 'auto', marginTop: 6, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6 }}>
-                <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse' }}>
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  📊 {result.rows.length} result{result.rows.length !== 1 ? 's' : ''} found
+                </span>
+              </div>
+              <div style={{ maxHeight: 400, overflow: 'auto' }}>
+                <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
                       {Object.keys(result.rows[0]).slice(0, 8).map((k) => (
-                        <th key={k} style={{ textAlign: 'left', padding: 6, borderBottom: '1px solid rgba(255,255,255,0.08)', position: 'sticky', top: 0, background: 'rgba(0,0,0,0.3)' }}>
-                          {k}
+                        <th key={k} style={{ textAlign: 'left', padding: '10px 16px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-secondary)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                          {humanizeColumn(k)}
                         </th>
                       ))}
                     </tr>
@@ -104,7 +171,7 @@ export default function AskDataPanel() {
                     {result.rows.slice(0, 50).map((r, i) => (
                       <tr key={i}>
                         {Object.keys(result.rows[0]).slice(0, 8).map((k) => (
-                          <td key={k} style={{ padding: 6, borderBottom: '1px solid rgba(255,255,255,0.05)', verticalAlign: 'top', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <td key={k} style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', verticalAlign: 'top', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {typeof r[k] === 'object' ? JSON.stringify(r[k]) : String(r[k] ?? '')}
                           </td>
                         ))}
@@ -113,10 +180,40 @@ export default function AskDataPanel() {
                   </tbody>
                 </table>
               </div>
-            </details>
+              {result.rows.length > 50 && (
+                <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text-muted)', borderTop: '1px solid var(--border)' }}>
+                  Showing first 50 of {result.rows.length} results
+                </div>
+              )}
+            </div>
           )}
+
+          {/* Technical details — hidden by default */}
+          <details style={{ marginTop: 16 }}>
+            <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)', padding: '8px 0' }}>
+              🔧 Show technical details
+            </summary>
+            <div className="card" style={{ marginTop: 8, padding: 16 }}>
+              {result.plan && (
+                <>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', fontWeight: 600 }}>Query Plan</div>
+                  <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', background: 'rgba(0,0,0,0.25)', padding: 8, borderRadius: 6, marginBottom: 12, color: 'var(--text-secondary)' }}>
+                    {JSON.stringify(result.plan, null, 2)}
+                  </pre>
+                </>
+              )}
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', fontWeight: 600 }}>SQL Query</div>
+              <pre style={{ fontSize: 11, whiteSpace: 'pre-wrap', background: 'rgba(0,0,0,0.25)', padding: 8, borderRadius: 6, color: 'var(--text-secondary)' }}>
+                {result.sql}
+              </pre>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+                {result.row_count} rows returned
+              </div>
+            </div>
+          </details>
         </div>
       )}
     </div>
   );
 }
+

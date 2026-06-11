@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import * as api from "../api";
+import { timeAgo, friendlyTimezone } from "../utils/formatTime";
 
 const WEEKDAYS = [
   { value: 1, label: "Mon" },
@@ -19,19 +20,6 @@ const TIMEZONES = [
   "America/Phoenix",
   "UTC",
 ];
-
-const TIMEZONE_FRIENDLY = {
-  "America/Chicago": "Central Time",
-  "America/New_York": "Eastern Time",
-  "America/Denver": "Mountain Time",
-  "America/Los_Angeles": "Pacific Time",
-  "America/Phoenix": "Arizona Time",
-  UTC: "UTC",
-};
-
-function friendlyTimezone(tz) {
-  return TIMEZONE_FRIENDLY[tz] || tz;
-}
 
 function emptyRule(sortOrder = 0) {
   return {
@@ -60,6 +48,21 @@ function mapPreviewResult(result) {
     timezone_friendly: result.timezone_friendly || "",
     evaluated_at_iso: result.evaluated_at_iso || null,
   };
+}
+
+function statusPillClass(status) {
+  switch ((status || "").toLowerCase()) {
+    case "processed": return "status-pill status-pill--success";
+    case "failed": return "status-pill status-pill--danger";
+    case "pending": return "status-pill status-pill--warning";
+    default: return "status-pill status-pill--neutral";
+  }
+}
+
+function shortenId(id) {
+  if (id == null) return "—";
+  const s = String(id);
+  return s.length > 8 ? `#${s.slice(-6)}` : `#${s}`;
 }
 
 function PreviewPanel({ title, subtitle, preview, emptyText = "(empty)" }) {
@@ -118,6 +121,7 @@ function PlaceholderChips({ placeholders, onInsert }) {
 }
 
 export default function FacebookLeadsPage() {
+  const isDev = new URLSearchParams(window.location.search).get('dev') === '1';
   const [tab, setTab] = useState("auto");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -140,6 +144,8 @@ export default function FacebookLeadsPage() {
   const [pages, setPages] = useState([]);
   const [webhookLog, setWebhookLog] = useState([]);
   const [logLoading, setLogLoading] = useState(false);
+
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const focusRef = useRef({ type: "rule", index: 0 });
   const fallbackRef = useRef(null);
@@ -313,7 +319,11 @@ export default function FacebookLeadsPage() {
   };
 
   const handleReset = () => {
-    if (!window.confirm("Discard unsaved changes and reload from server?")) return;
+    setShowResetConfirm(true);
+  };
+
+  const confirmReset = () => {
+    setShowResetConfirm(false);
     void loadConfig();
   };
 
@@ -354,9 +364,16 @@ export default function FacebookLeadsPage() {
     }
   };
 
+  const activePages = pages.filter((p) => p.is_active);
+  const recentEvents = webhookLog.filter((e) => {
+    if (!e.created_at) return false;
+    const diff = Date.now() - new Date(e.created_at).getTime();
+    return diff < 7 * 24 * 60 * 60 * 1000;
+  });
+
   const nowSubtitle = nowPreview?.evaluated_at_iso
-    ? `Based on current time in ${timezone} (${friendlyTimezone(timezone)}). Evaluated at ${new Date(nowPreview.evaluated_at_iso).toLocaleString()}.`
-    : `Based on current time in ${timezone} (${friendlyTimezone(timezone)}). Uses your unsaved draft rules below.`;
+    ? `Based on current time in ${friendlyTimezone(timezone)}. Evaluated ${timeAgo(nowPreview.evaluated_at_iso)}.`
+    : `Based on current time in ${friendlyTimezone(timezone)}. Uses your unsaved draft rules below.`;
 
   const editingLabel = previewTarget.kind === "fallback"
     ? "Fallback (outside hours)"
@@ -365,7 +382,7 @@ export default function FacebookLeadsPage() {
   if (loading) {
     return (
       <div className="loading">
-        <div className="spinner" /> Loading Facebook Leads settings...
+        <div className="spinner" /> Loading Customer Inquiries settings...
       </div>
     );
   }
@@ -373,8 +390,28 @@ export default function FacebookLeadsPage() {
   return (
     <div>
       <div className="page-header">
-        <h2>Facebook Leads</h2>
-        <p>Manage automated SMS replies for new Facebook lead submissions.</p>
+        <h2>👥 Customer Inquiries</h2>
+        <p>Manage automated responses for new customer inquiries from Facebook ads.</p>
+      </div>
+
+      {/* ─── Summary Cards ─── */}
+      <div className="summary-cards">
+        <div className="summary-card">
+          <div className="summary-card-value">{pages.length}</div>
+          <div className="summary-card-label">Connected Pages</div>
+        </div>
+        <div className="summary-card">
+          <div className="summary-card-value">{activePages.length}</div>
+          <div className="summary-card-label">Active Pages</div>
+        </div>
+        <div className="summary-card">
+          <div className="summary-card-value">{rules.length}</div>
+          <div className="summary-card-label">Time Rules</div>
+        </div>
+        <div className="summary-card">
+          <div className="summary-card-value">{recentEvents.length}</div>
+          <div className="summary-card-label">Events (7 days)</div>
+        </div>
       </div>
 
       {status && (
@@ -383,16 +420,17 @@ export default function FacebookLeadsPage() {
         </div>
       )}
 
-      <div className="tabs" style={{ marginBottom: 20, display: "flex", gap: 8 }}>
+      {/* ─── Tabs ─── */}
+      <div className="broadcast-tabs" style={{ marginBottom: 24 }}>
         {[
-          { id: "auto", label: "Auto messages" },
-          { id: "pages", label: "Connected pages" },
-          { id: "log", label: "Webhook log" },
+          { id: "auto", label: "Auto-Reply Setup" },
+          { id: "pages", label: "Connected Pages" },
+          ...(isDev ? [{ id: "log", label: "Activity Log" }] : []),
         ].map((t) => (
           <button
             key={t.id}
             type="button"
-            className={`btn ${tab === t.id ? "btn-primary" : "btn-secondary"}`}
+            className={`broadcast-tab-btn ${tab === t.id ? "active" : ""}`}
             onClick={() => setTab(t.id)}
           >
             {t.label}
@@ -403,7 +441,7 @@ export default function FacebookLeadsPage() {
       {tab === "auto" && settings && (
         <div>
           <PreviewPanel
-            title="What sends now"
+            title="📱 Live Preview — What New Leads Receive Now"
             subtitle={nowSubtitle}
             preview={nowPreview}
           />
@@ -427,7 +465,7 @@ export default function FacebookLeadsPage() {
                   onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}
                 >
                   {TIMEZONES.map((tz) => (
-                    <option key={tz} value={tz}>{tz}</option>
+                    <option key={tz} value={tz}>{friendlyTimezone(tz)} ({tz})</option>
                   ))}
                 </select>
                 <span style={{ display: "block", fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
@@ -555,7 +593,7 @@ export default function FacebookLeadsPage() {
                 </label>
               </div>
               <p style={{ fontSize: 11, color: "#64748b", margin: "0 0 8px" }}>
-                Times in {timezone} ({friendlyTimezone(timezone)})
+                Times in {friendlyTimezone(timezone)} ({timezone})
               </p>
 
               <textarea
@@ -599,31 +637,33 @@ export default function FacebookLeadsPage() {
           />
 
           <div className="card" style={{ marginTop: 16, padding: 16 }}>
-            <h3 style={{ marginTop: 0 }}>Sample lead (shared by both previews)</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
-              <input
-                className="form-input"
-                placeholder="Full name"
-                value={sampleLead.full_name}
-                onChange={(e) => setSampleLead({ ...sampleLead, full_name: e.target.value })}
-              />
-              <input
-                className="form-input"
-                placeholder="Phone"
-                value={sampleLead.phone_number}
-                onChange={(e) => setSampleLead({ ...sampleLead, phone_number: e.target.value })}
-              />
-              <input
-                className="form-input"
-                placeholder="Email"
-                value={sampleLead.email}
-                onChange={(e) => setSampleLead({ ...sampleLead, email: e.target.value })}
-              />
-            </div>
+            <details className="collapse-panel">
+              <summary>Customize test lead data</summary>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 12, marginBottom: 16 }}>
+                <input
+                  className="form-input"
+                  placeholder="Full name"
+                  value={sampleLead.full_name}
+                  onChange={(e) => setSampleLead({ ...sampleLead, full_name: e.target.value })}
+                />
+                <input
+                  className="form-input"
+                  placeholder="Phone"
+                  value={sampleLead.phone_number}
+                  onChange={(e) => setSampleLead({ ...sampleLead, phone_number: e.target.value })}
+                />
+                <input
+                  className="form-input"
+                  placeholder="Email"
+                  value={sampleLead.email}
+                  onChange={(e) => setSampleLead({ ...sampleLead, email: e.target.value })}
+                />
+              </div>
+            </details>
 
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 12 }}>
               <PreviewPanel
-                title="Message I'm editing"
+                title="✏️ Editing Preview"
                 subtitle={`Previewing: ${editingLabel}. Click a rule or fallback above to switch.`}
                 preview={editPreview}
               />
@@ -657,10 +697,15 @@ export default function FacebookLeadsPage() {
               <tbody>
                 {pages.map((p) => (
                   <tr key={p.id}>
-                    <td>{p.page_name} <span style={{ color: "#64748b" }}>({p.page_id})</span></td>
+                    <td>{p.page_name || p.page_id}</td>
                     <td>{p.group_name || p.telegram_group_id}</td>
-                    <td>{p.is_active ? "Yes" : "No"}</td>
-                    <td>{p.connected_at ? new Date(p.connected_at).toLocaleString() : "—"}</td>
+                    <td>
+                      {p.is_active
+                        ? <span className="status-pill status-pill--success">Yes</span>
+                        : <span className="status-pill status-pill--danger">No</span>
+                      }
+                    </td>
+                    <td>{timeAgo(p.connected_at)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -669,10 +714,10 @@ export default function FacebookLeadsPage() {
         </div>
       )}
 
-      {tab === "log" && (
+      {isDev && tab === "log" && (
         <div className="card" style={{ padding: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h3 style={{ marginTop: 0 }}>Webhook log</h3>
+            <h3 style={{ marginTop: 0 }}>Activity Log</h3>
             <button type="button" className="btn btn-secondary" onClick={loadWebhookLog} disabled={logLoading}>
               Refresh
             </button>
@@ -686,7 +731,7 @@ export default function FacebookLeadsPage() {
               <thead>
                 <tr>
                   <th>ID</th>
-                  <th>Type</th>
+                  <th>Event</th>
                   <th>Page</th>
                   <th>Status</th>
                   <th>Created</th>
@@ -696,11 +741,11 @@ export default function FacebookLeadsPage() {
               <tbody>
                 {webhookLog.map((e) => (
                   <tr key={e.id}>
-                    <td>{e.id}</td>
+                    <td>{shortenId(e.id)}</td>
                     <td>{e.event_type}</td>
-                    <td>{e.page_id}</td>
-                    <td>{e.status}</td>
-                    <td>{e.created_at ? new Date(e.created_at).toLocaleString() : "—"}</td>
+                    <td>{e.page_name || e.page_id}</td>
+                    <td><span className={statusPillClass(e.status)}>{e.status}</span></td>
+                    <td>{timeAgo(e.created_at)}</td>
                     <td>
                       <button type="button" className="btn btn-secondary" onClick={() => handleRetry(e.id)}>
                         Retry
@@ -711,6 +756,24 @@ export default function FacebookLeadsPage() {
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {/* ─── Confirm Reset Dialog ─── */}
+      {showResetConfirm && (
+        <div className="confirm-overlay" onClick={() => setShowResetConfirm(false)}>
+          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>Discard unsaved changes?</h3>
+            <p>This will reload all settings from the server. Any edits you haven't saved will be lost.</p>
+            <div className="confirm-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setShowResetConfirm(false)}>
+                Cancel
+              </button>
+              <button type="button" className="btn btn-danger" onClick={confirmReset}>
+                Discard changes
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

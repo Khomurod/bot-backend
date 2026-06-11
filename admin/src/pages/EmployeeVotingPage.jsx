@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import * as api from "../api";
-import { TelegramPreview, MediaUploader, MediaPositionSelector, useFormattingToolbar, getDaysUntilBirthday } from "../components/Shared";
+import { timeAgo } from "../utils/formatTime";
 
 export default function EmployeeVotingPage() {
   const [polls, setPolls] = useState([]);
@@ -15,6 +15,7 @@ export default function EmployeeVotingPage() {
   const [status, setStatus] = useState(null);
   const [activeTab, setActiveTab] = useState('results');
   const [pollQuestion, setPollQuestion] = useState('Choose the best driver of the week in your opinion.');
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const loadPolls = async () => {
     try {
@@ -92,7 +93,8 @@ export default function EmployeeVotingPage() {
   };
 
   const handleReset = async () => {
-    if (!selectedPoll || !window.confirm('Reset ALL votes for this poll? This cannot be undone.')) return;
+    if (!selectedPoll) return;
+    setShowResetConfirm(false);
     setResetting(true);
     try {
       await api.resetPoll(selectedPoll.id);
@@ -114,8 +116,8 @@ export default function EmployeeVotingPage() {
   return (
     <div>
       <div className="page-header">
-        <h2>🏆 Employee Voting</h2>
-        <p>Driver of the Week — create polls and track votes</p>
+        <h2>🏆 Driver Polls</h2>
+        <p>Driver of the Week — create polls, track votes, and celebrate top drivers</p>
       </div>
 
       {status && (
@@ -208,7 +210,7 @@ export default function EmployeeVotingPage() {
               >
                 {polls.map(p => (
                   <option key={p.id} value={p.id}>
-                    #{p.id} — {new Date(p.created_at).toLocaleDateString()} — {p.status.toUpperCase()} — {p.total_votes} votes
+                    #{p.id} — {new Date(p.created_at).toLocaleDateString()} — {p.status === 'active' ? '🟢 Active' : '🔴 Closed'} — {p.total_votes} votes
                   </option>
                 ))}
               </select>
@@ -221,7 +223,7 @@ export default function EmployeeVotingPage() {
                     {closing ? '⏳' : '🔒 Close Poll'}
                   </button>
                 )}
-                <button className="btn btn-danger btn-sm" onClick={handleReset} disabled={resetting}>
+                <button className="btn btn-danger btn-sm" onClick={() => setShowResetConfirm(true)} disabled={resetting}>
                   {resetting ? '⏳' : '🔄 Reset Votes'}
                 </button>
               </div>
@@ -307,7 +309,7 @@ export default function EmployeeVotingPage() {
                           <td>{v.telegram_first_name || ''}{v.telegram_username ? ` @${v.telegram_username}` : ''}</td>
                           <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{v.telegram_user_id}</td>
                           <td><strong>#{v.unit_number}</strong></td>
-                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(v.created_at).toLocaleString()}</td>
+                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{timeAgo(v.created_at)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -323,6 +325,18 @@ export default function EmployeeVotingPage() {
           <div style={{ fontSize: 48, marginBottom: 12 }}>🗳️</div>
           <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>No polls yet</div>
           <div style={{ fontSize: 13 }}>Click "Create New Poll" to start the first Driver of the Week vote.</div>
+        </div>
+      )}
+      {showResetConfirm && (
+        <div className="confirm-overlay" onClick={() => setShowResetConfirm(false)}>
+          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>🔄 Reset All Votes?</h3>
+            <p>This will permanently remove all votes for this poll. This action cannot be undone.</p>
+            <div className="confirm-actions">
+              <button className="btn btn-ghost" onClick={() => setShowResetConfirm(false)}>Cancel</button>
+              <button className="btn btn-danger" onClick={handleReset}>Reset Votes</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

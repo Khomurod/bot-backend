@@ -52,8 +52,16 @@ const corsAllowedOrigins = corsOriginsEnv
   .map((o) => o.trim())
   .filter(Boolean);
 
+// Render auto-sets RENDER_EXTERNAL_URL; use it when CORS isn't configured explicitly.
+if (corsAllowedOrigins.length === 0 && process.env.RENDER_EXTERNAL_URL) {
+  corsAllowedOrigins.push(String(process.env.RENDER_EXTERNAL_URL).replace(/\/+$/, ''));
+}
+
 if (process.env.NODE_ENV === 'production' && corsAllowedOrigins.length === 0) {
-  throw new Error('[CONFIG] CORS_ALLOWED_ORIGINS must be explicitly set in production environments.');
+  throw new Error(
+    '[CONFIG] CORS_ALLOWED_ORIGINS must be explicitly set in production environments '
+    + '(or set RENDER_EXTERNAL_URL on Render).',
+  );
 }
 
 const adminFacebookUserIds = String(process.env.ADMIN_FACEBOOK_USER_IDS || '')

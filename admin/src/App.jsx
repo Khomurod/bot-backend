@@ -12,6 +12,7 @@ import MessageManagerPage from "./pages/MessageManagerPage";
 import CompanyBirthdaysPage from "./pages/CompanyBirthdaysPage";
 import DispatchPage from "./pages/DispatchPage";
 import FacebookLeadsPage from "./pages/FacebookLeadsPage";
+import AskDataPanel from "./pages/AskDataPanel";
 
 function getPageFromPath(pathname) {
   if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) {
@@ -107,19 +108,64 @@ export default function App() {
     );
   }
 
+  const [adminExpanded, setAdminExpanded] = useState(false);
+
   const pages = {
-    groups: <GroupsPage />,
-    questions: <QuestionsPage />,
-    broadcast: <BroadcastPage />,
     dispatch: <DispatchPage />,
-    ai_insights: <AiFeaturesPage />,
-    scheduled: <ScheduledMessagesPage />,
+    facebook_leads: <FacebookLeadsPage />,
+    broadcast: <BroadcastPage />,
+    questions: <QuestionsPage />,
     voting: <EmployeeVotingPage />,
+    ai_insights: <AiFeaturesPage />,
+    ask: <AskDataPanel />,
+    groups: <GroupsPage />,
+    company_birthdays: <CompanyBirthdaysPage />,
     logs: <ChatLogsPage />,
     manager: <MessageManagerPage />,
-    company_birthdays: <CompanyBirthdaysPage />,
-    facebook_leads: <FacebookLeadsPage />,
+    scheduled: <ScheduledMessagesPage />,
   };
+
+  const NAV_SECTIONS = [
+    {
+      label: 'Operations',
+      color: '#22c55e',
+      items: [
+        { key: 'dispatch', icon: '🚚', label: 'Dispatch Center' },
+        { key: 'facebook_leads', icon: '👥', label: 'Customer Inquiries' },
+      ],
+    },
+    {
+      label: 'Communications',
+      color: '#6366f1',
+      items: [
+        { key: 'broadcast', icon: '📢', label: 'Send Message' },
+        { key: 'questions', icon: '📝', label: 'Surveys' },
+        { key: 'voting', icon: '🏆', label: 'Driver Polls' },
+      ],
+    },
+    {
+      label: 'Insights',
+      color: '#f59e0b',
+      items: [
+        { key: 'ai_insights', icon: '🧠', label: 'AI Reports' },
+        { key: 'ask', icon: '🔍', label: 'Ask a Question' },
+      ],
+    },
+    {
+      label: 'Team',
+      color: '#a78bfa',
+      items: [
+        { key: 'groups', icon: '👷', label: 'Driver Groups' },
+        { key: 'company_birthdays', icon: '🎂', label: 'Birthdays' },
+      ],
+    },
+  ];
+
+  const ADMIN_ITEMS = [
+    { key: 'logs', icon: '💬', label: 'Chat Monitor' },
+    { key: 'manager', icon: '🛠️', label: 'Edit Message' },
+    { key: 'scheduled', icon: '📅', label: 'Scheduled Messages' },
+  ];
 
   return (
     <div className="app-layout">
@@ -129,83 +175,43 @@ export default function App() {
           <p>Admin Panel</p>
         </div>
         <nav className="sidebar-nav">
-          <button
-            className={`nav-item ${page === "groups" ? "active" : ""}`}
-            onClick={() => navigateToPage("groups")}
-          >
-            <span className="nav-icon">👥</span>
-            Groups
-          </button>
-          <button
-            className={`nav-item ${page === "questions" ? "active" : ""}`}
-            onClick={() => navigateToPage("questions")}
-          >
-            <span className="nav-icon">📝</span>
-            Questions
-          </button>
-          <button
-            className={`nav-item ${page === "broadcast" ? "active" : ""}`}
-            onClick={() => navigateToPage("broadcast")}
-          >
-            <span className="nav-icon">📢</span>
-            Broadcast
-          </button>
-          <button
-            className={`nav-item ${page === "dispatch" ? "active" : ""}`}
-            onClick={() => navigateToPage("dispatch")}
-          >
-            <span className="nav-icon">📄</span>
-            Dispatch
-          </button>
-          <button
-            className={`nav-item ${page === "ai_insights" ? "active" : ""}`}
-            onClick={() => navigateToPage("ai_insights")}
-          >
-            <span className="nav-icon">🧠</span>
-            AI Insights
-          </button>
-          <button
-            className={`nav-item ${page === "logs" ? "active" : ""}`}
-            onClick={() => navigateToPage("logs")}
-          >
-            <span className="nav-icon">💬</span>
-            Live Chat Logs
-          </button>
-          <button
-            className={`nav-item ${page === "scheduled" ? "active" : ""}`}
-            onClick={() => navigateToPage("scheduled")}
-          >
-            <span className="nav-icon">📅</span>
-            Scheduled
-          </button>
-          <button
-            className={`nav-item ${page === "voting" ? "active" : ""}`}
-            onClick={() => navigateToPage("voting")}
-          >
-            <span className="nav-icon">🏆</span>
-            Employee Voting
-          </button>
-          <button
-            className={`nav-item ${page === "manager" ? "active" : ""}`}
-            onClick={() => navigateToPage("manager")}
-          >
-            <span className="nav-icon">🛠️</span>
-            Message Manager
-          </button>
-          <button
-            className={`nav-item ${page === "company_birthdays" ? "active" : ""}`}
-            onClick={() => navigateToPage("company_birthdays")}
-          >
-            <span className="nav-icon">🏢</span>
-            Employee Birthdays
-          </button>
-          <button
-            className={`nav-item ${page === "facebook_leads" ? "active" : ""}`}
-            onClick={() => navigateToPage("facebook_leads")}
-          >
-            <span className="nav-icon">📣</span>
-            Facebook Leads
-          </button>
+          {NAV_SECTIONS.map((section) => (
+            <div key={section.label} className="nav-section">
+              <div className="nav-section-header" style={{ borderLeftColor: section.color }}>
+                {section.label}
+              </div>
+              {section.items.map((item) => (
+                <button
+                  key={item.key}
+                  className={`nav-item ${page === item.key ? "active" : ""}`}
+                  onClick={() => navigateToPage(item.key)}
+                >
+                  <span className="nav-icon">{item.icon}</span>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ))}
+          <div className="nav-section">
+            <button
+              className="nav-section-header nav-section-toggle"
+              onClick={() => setAdminExpanded(!adminExpanded)}
+              style={{ borderLeftColor: '#64748b' }}
+            >
+              ⚙️ Admin
+              <span className="nav-section-arrow">{adminExpanded ? '▾' : '▸'}</span>
+            </button>
+            {adminExpanded && ADMIN_ITEMS.map((item) => (
+              <button
+                key={item.key}
+                className={`nav-item ${page === item.key ? "active" : ""}`}
+                onClick={() => navigateToPage(item.key)}
+              >
+                <span className="nav-icon">{item.icon}</span>
+                {item.label}
+              </button>
+            ))}
+          </div>
         </nav>
         <div className="sidebar-footer">
           <button className="logout-btn" onClick={handleLogout}>
@@ -226,7 +232,7 @@ export default function App() {
             ☰
           </button>
         </div>
-        {pages[page] || pages.groups}
+        {pages[page] || pages.dispatch}
       </main>
     </div>
   );
