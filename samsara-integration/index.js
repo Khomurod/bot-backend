@@ -21,24 +21,24 @@ const {
     appendDriverMissingNote,
     shouldRetryDelivery,
 } = require('./src/deliveryWarnings');
-const {
-    feedbackBotToken: HARDCODED_FEEDBACK_BOT_TOKEN,
-    samsaraBotToken: HARDCODED_SAMSARA_BOT_TOKEN,
-} = require('../config/telegramBotTokens');
 
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN || HARDCODED_SAMSARA_BOT_TOKEN;
-const PORT = parseInt(process.env.PORT || process.env.WEBHOOK_PORT || '3000', 10);
+const TOKEN = String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
+const PORT = parseInt(process.env.PORT || '3000', 10);
 const MAX_VIDEO_BYTES = parseInt(process.env.SAMSARA_MAX_VIDEO_BYTES || '0', 10);
 const USE_WEBHOOK = process.env.USE_WEBHOOK === 'true'; // For Telegram itself, if hosted
 const PUBLIC_URL = (process.env.PUBLIC_WEBHOOK_URL || '').replace(/\/$/, '');
 const SELF_URL = process.env.RENDER_EXTERNAL_URL || PUBLIC_URL;
 
+if (!TOKEN) {
+    throw new Error('[Samsara] TELEGRAM_BOT_TOKEN is required.');
+}
+
 // Prevent a nightmare dual-polling configuration: if this process were
 // started with the same BOT_TOKEN as the main Telegraf bot, both would
 // race for getUpdates(), constantly stealing the long-poll from each
 // other. Fail fast and loud so the operator sees it on first boot.
-const resolvedMainBotToken = process.env.BOT_TOKEN || HARDCODED_FEEDBACK_BOT_TOKEN;
-if (resolvedMainBotToken === TOKEN) {
+const resolvedMainBotToken = String(process.env.BOT_TOKEN || '').trim();
+if (resolvedMainBotToken && resolvedMainBotToken === TOKEN) {
     throw new Error(
         '[Samsara] Samsara TELEGRAM_BOT_TOKEN equals the main feedback BOT_TOKEN. ' +
         'This would cause getUpdates() polling conflicts. Use distinct bots.',
@@ -48,6 +48,7 @@ if (resolvedMainBotToken === TOKEN) {
 // ?? Express App (Health checks & optionally Telegram Webhook only) ????????????
 const app = express();
 app.use(express.json());
+let httpServer = null;
 
 app.get('/health', (req, res) => {
     res.json({
@@ -385,7 +386,9 @@ async function start() {
     await store.init();
     const samsaraDb = require('./src/db');
     await samsaraDb.initPgDb();
-    await new Promise((resolve) => app.listen(PORT, resolve));
+    await new Promise((resolve) => {
+        httpServer = app.listen(PORT, resolve);
+    });
 
     console.log('');
     console.log('????????????????????????????????????????????????');
@@ -435,15 +438,30 @@ start().catch((err) => {
     process.exit(1);
 });
 
-process.on('SIGINT', () => {
-    console.log('\n[App] Shutting down...');
+let isShuttingDown = false;
+async function shutdown(signal) {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`\n[App] Shutting down (${signal})...`);
     const coordinator = require('./src/pollCoordinator');
     coordinator.stop();
-    if (!USE_WEBHOOK) bot.stopPolling();
+    if (!USE_WEBHOOK) {
+        try {
+            await bot.stopPolling();
+        } catch (err) {
+            console.warn('[App] Failed to stop Telegram polling:', err.message);
+        }
+    }
+    if (httpServer) {
+        await new Promise((resolve) => httpServer.close(resolve));
+        httpServer = null;
+    }
     process.exit(0);
-});
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('uncaughtException', (err) => console.error('[App] Uncaught:', err.message));
 process.on('unhandledRejection', (reason) => console.error('[App] Rejection:', reason));
-
 
 

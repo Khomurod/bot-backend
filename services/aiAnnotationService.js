@@ -380,6 +380,7 @@ async function ensureAnnotationsForRange({ daysBack = 7, groupIds = null, onProg
 }
 
 let isAnnotating = false;
+let backgroundAnnotatorTimer = null;
 
 function startBackgroundAnnotator() {
   if (!GROQ_API_KEY) {
@@ -387,7 +388,7 @@ function startBackgroundAnnotator() {
     return;
   }
   console.log('[ANNOTATOR] Starting background annotator loop (120s interval).');
-  setInterval(async () => {
+  backgroundAnnotatorTimer = setInterval(async () => {
     if (isAnnotating) return;
     isAnnotating = true;
     try {
@@ -404,6 +405,13 @@ function startBackgroundAnnotator() {
   }, 120000);
 }
 
+function stopBackgroundAnnotator() {
+  if (!backgroundAnnotatorTimer) return;
+  clearInterval(backgroundAnnotatorTimer);
+  backgroundAnnotatorTimer = null;
+  console.log('[ANNOTATOR] Background annotator stopped.');
+}
+
 module.exports = {
   MODEL_VERSION,
   BATCH_SIZE,
@@ -413,6 +421,7 @@ module.exports = {
   annotateChatLogs,
   ensureAnnotationsForRange,
   startBackgroundAnnotator,
+  stopBackgroundAnnotator,
   // pure helpers exported for tests
   buildAnnotationPrompt,
   parseAnnotationBatchResponse,

@@ -1,15 +1,16 @@
 services:
   - type: web
     name: driver-feedback-bot
-    runtime: node
-    buildCommand: pip install -r leads-bot/requirements.txt && npm install && cd admin && npm install && npm run build && cd .. && cd samsara-integration && npm install
+    env: node
+    buildCommand: npm install
     startCommand: node index.js
-    # Cap V8 old-gen heap to 400 MB — leaves headroom under Render 512 MB limit
-    # Same handler as GET /health (cron-friendly short URL).
     healthCheckPath: /api/health
     envVars:
-      # ─── bot-backend (Node.js) ───
       - key: BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
         sync: false
       - key: DATABASE_URL
         sync: false
@@ -19,29 +20,91 @@ services:
         sync: false
       - key: MANAGEMENT_GROUP_ID
         sync: false
-      - key: JWT_SECRET
-        sync: false
-      - key: PORT
-        sync: false
-      - key: RENDER_EXTERNAL_URL
-        sync: false
-      - key: LOCAL_API_BASE_URL
-        value: http://127.0.0.1:3001
-      - key: OPENAI_API_KEY
-        sync: false
       - key: EMPLOYEE_GROUP_ID
         sync: false
+      - key: MEDIA_STORAGE_CHAT_ID
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
       - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_PAGE_ACCESS_TOKEN
         sync: false
       - key: META_LOGIN_CONFIG_ID
         sync: false
       - key: META_REQUESTED_PERMISSIONS
         sync: false
+      - key: WEBHOOK_VERIFY_TOKEN
+        sync: false
       - key: FACEBOOK_TOKEN_ENCRYPTION_KEY
         sync: false
       - key: LEADS_INTERNAL_SHARED_SECRET
         sync: false
-      # ─── Leads-Bot (Python) ───
+      - key: RC_CLIENT_ID
+        sync: false
+      - key: RC_CLIENT_SECRET
+        sync: false
+      - key: RC_JWT_TOKEN
+        sync: false
+      - key: RC_FROM_NUMBER
+        sync: false
+      - key: SAMSARA_API_KEY
+        sync: false
+      - key: SAMSARA_API_BASE
+        value: https://api.samsara.com
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=400
+
+  - type: web
+    name: samsara-poller
+    env: node
+    buildCommand: cd samsara-integration && npm install
+    startCommand: cd samsara-integration && node index.js
+    healthCheckPath: /health
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: SAMSARA_API_KEY
+        sync: false
+      - key: SAMSARA_API_BASE
+        value: https://api.samsara.com
+      - key: DATABASE_URL
+        sync: false
+      - key: MANAGEMENT_GROUP_ID
+        sync: false
+      - key: EMPLOYEE_GROUP_ID
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=400
+
+  - type: web
+    name: facebook-leads-engine
+    env: python
+    buildCommand: cd leads-bot && pip install -r requirements.txt
+    startCommand: cd leads-bot && python main.py
+    healthCheckPath: /health
+    envVars:
+      # Set this to the Main Hub's public HTTPS Render URL.
+      - key: LOCAL_API_BASE_URL
+        sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
@@ -52,7 +115,7 @@ services:
         sync: false
       - key: META_PAGE_ACCESS_TOKEN
         sync: false
-      - key: LEADS_BOT_PORT
+      - key: LEADS_INTERNAL_SHARED_SECRET
         sync: false
       - key: RC_CLIENT_ID
         sync: false
@@ -61,17 +124,4 @@ services:
       - key: RC_JWT_TOKEN
         sync: false
       - key: RC_FROM_NUMBER
-        sync: false
-      # ─── Samsara Alert Bot (must differ from TELEGRAM_BOT_TOKEN if Leads bot is enabled) ───
-      - key: SAMSARA_BOT_TOKEN
-        sync: false
-      - key: SAMSARA_API_KEY
-        sync: false
-      - key: SAMSARA_PORT
-        value: "3002"
-      - key: NODE_OPTIONS
-        value: "--max-old-space-size=400"
-      - key: UPSTASH_REDIS_REST_URL
-        sync: false
-      - key: UPSTASH_REDIS_REST_TOKEN
         sync: false

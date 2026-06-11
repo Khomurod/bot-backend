@@ -2700,9 +2700,18 @@ function startServer() {
 }
 
 function stopServer() {
-  if (httpServer) {
-    httpServer.close(() => console.log('[API] HTTP server closed.'));
-  }
+  if (!httpServer) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    httpServer.close((err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      httpServer = null;
+      console.log('[API] HTTP server closed.');
+      resolve();
+    });
+  });
 }
 
 module.exports = { app, startServer, stopServer };
