@@ -18,7 +18,7 @@ const SPEEDING_ENABLED = process.env.SAMSARA_SPEEDING_ENABLED !== 'false';
 const ENABLE_METRICS = process.env.SAMSARA_POLL_METRICS !== 'false';
 const POLL_BOOTSTRAP_WINDOW_MS = 86_400_000;
 const POLL_WATERMARK_OVERLAP_MS = 7_200_000;
-const MAX_ALERT_QUEUE = parseInt(process.env.SAMSARA_QUEUE_MAX || '50', 10);
+const MAX_ALERT_QUEUE = parseInt(process.env.SAMSARA_QUEUE_MAX || '200', 10);
 
 const SPEEDING_LABELS = [
   'SevereSpeeding',
@@ -50,21 +50,10 @@ let droppedAlertsCount = 0;
 
 const SEEN_IDS = new Set();
 const PENDING_DELIVERY_IDS = new Set();
-const MAX_SEEN_IDS = 300;
+const MAX_SEEN_IDS = 1000;
 
-// LRU-bounded vehicle name cache (max 50 entries)
 const vehicleNameCache = new Map();
 const VEHICLE_CACHE_TTL_MS = 10 * 60 * 1000;
-const VEHICLE_CACHE_MAX = 50;
-
-function vehicleCacheSet(key, value) {
-    // Evict oldest entry when at capacity (Map preserves insertion order)
-    if (vehicleNameCache.size >= VEHICLE_CACHE_MAX && !vehicleNameCache.has(key)) {
-        const oldest = vehicleNameCache.keys().next().value;
-        vehicleNameCache.delete(oldest);
-    }
-    vehicleNameCache.set(key, value);
-}
 
 let intervalId = null;
 let metricsIntervalId = null;
@@ -77,33 +66,26 @@ function ensureDataDir() {
   }
 }
 
-async function getJsonState() {
+function getJsonState() {
   ensureDataDir();
   try {
-    const fsp = require('fs').promises;
-    const text = await fsp.readFile(STATE_JSON, 'utf8').catch(() => null);
-    return text ? JSON.parse(text) : {};
+    if (!fs.existsSync(STATE_JSON)) return {};
+    return JSON.parse(fs.readFileSync(STATE_JSON, 'utf8'));
   } catch (err) {
     console.error('[SpeedPoller] JSON state read error:', err.message);
     return {};
   }
 }
 
-let _saveDebounce = null;
-async function saveJsonState(patch) {
-  const state = await getJsonState();
+function saveJsonState(patch) {
+  const state = getJsonState();
   const next = { ...state, ...patch };
   ensureDataDir();
-  // Coalesce rapid writes: only the last patch wins within 500ms
-  if (_saveDebounce) clearTimeout(_saveDebounce);
-  _saveDebounce = setTimeout(async () => {
-    try {
-      const fsp = require('fs').promises;
-      await fsp.writeFile(STATE_JSON, JSON.stringify(next));
-    } catch (err) {
-      console.error('[SpeedPoller] JSON state write error:', err.message);
-    }
-  }, 500);
+  try {
+    fs.writeFileSync(STATE_JSON, JSON.stringify(next));
+  } catch (err) {
+    console.error('[SpeedPoller] JSON state write error:', err.message);
+  }
 }
 
 async function getPollState(key) {
@@ -116,7 +98,7 @@ async function getPollState(key) {
       return null;
     }
   }
-  const state = await getJsonState();
+  const state = getJsonState();
   return state[key] || null;
 }
 
@@ -143,7 +125,7 @@ async function isSpeedingEventProcessed(eventId) {
   if (!eventId) return false;
   const namespaced = `${PROCESSED_PREFIX}${eventId}`;
   if (!pgPool) {
-    const state = await getJsonState();
+    const state = getJsonState();
     const list = Array.isArray(state.speeding_processed_ids) ? state.speeding_processed_ids : [];
     return list.includes(namespaced);
   }
@@ -161,11 +143,11 @@ async function markSpeedingEventProcessed(eventId) {
   if (!eventId) return;
   const namespaced = `${PROCESSED_PREFIX}${eventId}`;
   if (!pgPool) {
-    const state = await getJsonState();
+    const state = getJsonState();
     const list = Array.isArray(state.speeding_processed_ids) ? state.speeding_processed_ids : [];
     if (!list.includes(namespaced)) {
       list.push(namespaced);
-      await saveJsonState({ speeding_processed_ids: list.slice(-5000) });
+      saveJsonState({ speeding_processed_ids: list.slice(-5000) });
     }
     return;
   }
@@ -251,7 +233,7 @@ async function fetchVehicleName(vehicleId, fetchImpl = fetch) {
     }
     const json = await res.json();
     const name = json.data?.name || null;
-    vehicleCacheSet(vehicleId, { name, expiresAt: now + VEHICLE_CACHE_TTL_MS });
+    vehicleNameCache.set(vehicleId, { name, expiresAt: now + VEHICLE_CACHE_TTL_MS });
     return name;
   } catch (err) {
     console.warn('[SpeedPoller] Vehicle lookup failed:', err.message);
@@ -478,11 +460,8 @@ async function executePoll() {
     let pages = 0;
     let totalQueued = 0;
 
-    while (pages < 2) {
-      let pageResult = await fetchSpeedingEventsPage({ startTime, endTime, cursor });
-      let { events } = pageResult;
-      const { nextCursor, hasNextPage } = pageResult;
-      pageResult = null; // release page envelope for GC
+    while (pages < 10) {
+      const { events, nextCursor, hasNextPage } = await fetchSpeedingEventsPage({ startTime, endTime, cursor });
 
       for (const rawEvent of events) {
         if (!rawEvent?.id) continue;
@@ -532,15 +511,15 @@ async function executePoll() {
               },
             },
           );
+          // #region agent log
+          fetch('http://127.0.0.1:7869/ingest/5069c10b-4d7b-4b84-95eb-05813bc92a8b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4c7305'},body:JSON.stringify({sessionId:'4c7305',runId:'baseline',hypothesisId:'H5',location:'samsara-integration/src/speedingPoller.js:queue_alert',message:'speeding_event_queued',data:{eventId,vehicleId:formatted.vehicleId||null,unit:formatted.vehicleName||null,hasVideo:!!formatted.videoUrl},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           totalQueued += 1;
         } catch (eventErr) {
           noteEventDeliveryFailed(eventId);
           console.error(`[SpeedPoller] Failed processing speed event ${eventId}:`, eventErr.message);
         }
       }
-
-      // Release page events array for GC before fetching next page
-      events = null;
 
       pages += 1;
       if (nextCursor) {
@@ -568,27 +547,37 @@ module.exports = {
     broadcastFn = fn;
   },
 
-  /**
-   * Called directly by pollCoordinator. Do not call start() anymore.
-   */
-  executePoll,
-
-  /**
-   * @deprecated Scheduling is handled by pollCoordinator. Kept for API compat.
-   */
-  start(_intervalMs) {
+  start(intervalMs = 15000) {
     if (!SPEEDING_ENABLED) {
       console.log('[SpeedPoller] Disabled by SAMSARA_SPEEDING_ENABLED=false');
       return;
     }
-    console.log('[SpeedPoller] start() is deprecated — scheduling is handled by pollCoordinator.');
+    if (intervalId) return;
+
+    console.log(`[SpeedPoller] Started v2 speed polling loop (every ${intervalMs}ms)`);
+    executePoll();
+    intervalId = setInterval(executePoll, intervalMs);
+
+    if (ENABLE_METRICS) {
+      metricsIntervalId = setInterval(() => {
+        const mem = process.memoryUsage();
+        console.log(
+          `[SpeedPoller] Metrics rss=${Math.round(mem.rss / 1024 / 1024)}MB heapUsed=${Math.round(mem.heapUsed / 1024 / 1024)}MB queue=${ALERT_QUEUE.length} dropped=${droppedAlertsCount}`,
+        );
+      }, 60000);
+    }
   },
 
-  /**
-   * @deprecated Scheduling is handled by pollCoordinator. Kept for API compat.
-   */
   stop() {
-    console.log('[SpeedPoller] stop() is deprecated — scheduling is handled by pollCoordinator.');
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+      console.log('[SpeedPoller] Stopped v2 speed polling loop.');
+    }
+    if (metricsIntervalId) {
+      clearInterval(metricsIntervalId);
+      metricsIntervalId = null;
+    }
   },
 
   _forTest: {

@@ -428,9 +428,9 @@ async function start() {
     console.log('?? Bot is ready! Send /start to @wenzesambot on Telegram');
     console.log('');
 
-    // Start the coordinated poller (staggered 30s cycle)
-    const coordinator = require('./src/pollCoordinator');
-    coordinator.start();
+    // Start polling the Samsara APIs every 15 seconds
+    poller.start(15000);
+    speedingPoller.start(15000);
 }
 
 start().catch((err) => {
@@ -438,6 +438,7 @@ start().catch((err) => {
     process.exit(1);
 });
 
+<<<<<<< HEAD
 let isShuttingDown = false;
 async function shutdown(signal) {
     if (isShuttingDown) return;
@@ -456,6 +457,13 @@ async function shutdown(signal) {
         await new Promise((resolve) => httpServer.close(resolve));
         httpServer = null;
     }
+=======
+process.on('SIGINT', () => {
+    console.log('\n[App] Shutting down...');
+    poller.stop();
+    speedingPoller.stop();
+    if (!USE_WEBHOOK) bot.stopPolling();
+>>>>>>> parent of bedbf94 (some changes)
     process.exit(0);
 }
 
