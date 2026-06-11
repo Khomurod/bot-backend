@@ -38,13 +38,41 @@ const CHILD_STOP_TIMEOUT_MS = 10_000;
 const CHILD_RESTART_BASE_MS = 2_000;
 const CHILD_RESTART_MAX_MS = 60_000;
 
+// Circuit breaker: if a child crashes MAX_RAPID_CRASHES times within
+// RAPID_CRASH_WINDOW_MS, stop restarting it permanently. This prevents
+// config errors (e.g. bad tokens) from creating an infinite restart loop
+// that eats all available memory and OOM-kills the entire instance.
+const MAX_RAPID_CRASHES = 5;
+const RAPID_CRASH_WINDOW_MS = 3 * 60_000; // 3 minutes
+
 let leadsProcess = null;
 let samsaraProcess = null;
 let leadsRestartTimer = null;
 let samsaraRestartTimer = null;
 let leadsRestartDelayMs = CHILD_RESTART_BASE_MS;
 let samsaraRestartDelayMs = CHILD_RESTART_BASE_MS;
+const leadsCrashTimestamps = [];
+const samsaraCrashTimestamps = [];
+let leadsCircuitOpen = false;
+let samsaraCircuitOpen = false;
 let isShuttingDown = false;
+
+function isCircuitBroken(timestamps, label) {
+  const now = Date.now();
+  // Remove old entries outside the window
+  while (timestamps.length && timestamps[0] < now - RAPID_CRASH_WINDOW_MS) {
+    timestamps.shift();
+  }
+  timestamps.push(now);
+  if (timestamps.length >= MAX_RAPID_CRASHES) {
+    console.error(
+      `[${label}] CIRCUIT BREAKER OPEN: ${timestamps.length} crashes in ${Math.round(RAPID_CRASH_WINDOW_MS / 1000)}s. `
+      + `Child will NOT be restarted. Fix the root cause and redeploy.`
+    );
+    return true;
+  }
+  return false;
+}
 
 function isEnabled(name, defaultValue = true) {
   const value = process.env[name];
@@ -101,7 +129,11 @@ function writeChildOutput(prefix, stream, writer) {
 }
 
 function scheduleLeadsRestart(reason) {
-  if (isShuttingDown || !isEnabled('ENABLE_LEADS_BOT', true) || leadsRestartTimer) return;
+  if (isShuttingDown || !isEnabled('ENABLE_LEADS_BOT', true) || leadsRestartTimer || leadsCircuitOpen) return;
+  if (isCircuitBroken(leadsCrashTimestamps, 'LEADS')) {
+    leadsCircuitOpen = true;
+    return;
+  }
   const delay = leadsRestartDelayMs;
   leadsRestartDelayMs = Math.min(leadsRestartDelayMs * 2, CHILD_RESTART_MAX_MS);
   console.warn(`[LEADS] Restart scheduled in ${delay}ms (${reason})`);
@@ -113,7 +145,11 @@ function scheduleLeadsRestart(reason) {
 }
 
 function scheduleSamsaraRestart(reason) {
-  if (isShuttingDown || !isEnabled('ENABLE_SAMSARA_BOT', true) || samsaraRestartTimer) return;
+  if (isShuttingDown || !isEnabled('ENABLE_SAMSARA_BOT', true) || samsaraRestartTimer || samsaraCircuitOpen) return;
+  if (isCircuitBroken(samsaraCrashTimestamps, 'SAMSARA')) {
+    samsaraCircuitOpen = true;
+    return;
+  }
   const delay = samsaraRestartDelayMs;
   samsaraRestartDelayMs = Math.min(samsaraRestartDelayMs * 2, CHILD_RESTART_MAX_MS);
   console.warn(`[SAMSARA] Restart scheduled in ${delay}ms (${reason})`);
@@ -181,9 +217,13 @@ function startLeadsBot() {
     child.once('exit', (code, signal) => {
       clearTimeout(stableTimer);
       if (leadsProcess === child) leadsProcess = null;
-      if (!isShuttingDown) {
-        scheduleLeadsRestart(`exit code=${code} signal=${signal || 'none'}`);
+      if (isShuttingDown) return;
+      if (code === 78) {
+        console.error('[LEADS] Exited with EX_CONFIG (78) — permanent config error, will NOT restart.');
+        leadsCircuitOpen = true;
+        return;
       }
+      scheduleLeadsRestart(`exit code=${code} signal=${signal || 'none'}`);
     });
   } catch (error) {
     leadsProcess = null;
@@ -253,9 +293,13 @@ function startSamsaraBot() {
     child.once('exit', (code, signal) => {
       clearTimeout(stableTimer);
       if (samsaraProcess === child) samsaraProcess = null;
-      if (!isShuttingDown) {
-        scheduleSamsaraRestart(`exit code=${code} signal=${signal || 'none'}`);
+      if (isShuttingDown) return;
+      if (code === 78) {
+        console.error('[SAMSARA] Exited with EX_CONFIG (78) — permanent config error, will NOT restart.');
+        samsaraCircuitOpen = true;
+        return;
       }
+      scheduleSamsaraRestart(`exit code=${code} signal=${signal || 'none'}`);
     });
   } catch (error) {
     samsaraProcess = null;

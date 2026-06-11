@@ -29,19 +29,21 @@ const PUBLIC_URL = (process.env.PUBLIC_WEBHOOK_URL || '').replace(/\/$/, '');
 const SELF_URL = process.env.RENDER_EXTERNAL_URL || PUBLIC_URL;
 
 if (!TOKEN) {
-    throw new Error('[Samsara] TELEGRAM_BOT_TOKEN is required.');
+    console.error('[Samsara] FATAL: TELEGRAM_BOT_TOKEN is required.');
+    process.exit(78); // EX_CONFIG
 }
 
 // Prevent a nightmare dual-polling configuration: if this process were
 // started with the same BOT_TOKEN as the main Telegraf bot, both would
 // race for getUpdates(), constantly stealing the long-poll from each
-// other. Fail fast and loud so the operator sees it on first boot.
+// other. Exit with code 78 (EX_CONFIG) so the parent knows not to restart.
 const resolvedMainBotToken = String(process.env.BOT_TOKEN || '').trim();
 if (resolvedMainBotToken && resolvedMainBotToken === TOKEN) {
-    throw new Error(
-        '[Samsara] Samsara TELEGRAM_BOT_TOKEN equals the main feedback BOT_TOKEN. ' +
-        'This would cause getUpdates() polling conflicts. Use distinct bots.',
+    console.error(
+        '[Samsara] FATAL: Samsara TELEGRAM_BOT_TOKEN equals the main feedback BOT_TOKEN. '
+        + 'This would cause getUpdates() polling conflicts. Use distinct bots.',
     );
+    process.exit(78); // EX_CONFIG — permanent configuration error, do not restart
 }
 
 // ?? Express App (Health checks & optionally Telegram Webhook only) ????????????
