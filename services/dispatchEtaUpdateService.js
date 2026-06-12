@@ -134,12 +134,15 @@ async function sendDriverStatusSnapshot({
   driverGroup,
   destinationChatId,
   targetMode = 'driver',
+  interactive = false,
 }) {
   const groupName = String(driverGroup?.group_name || '').trim();
+  const startedAt = Date.now();
   try {
     const snapshot = await resolveDispatchEtaSnapshotForGroup({
       telegram,
       group: driverGroup,
+      interactive,
     });
     const message = buildEtaMessage({
       context: snapshot.context,
@@ -151,6 +154,9 @@ async function sendDriverStatusSnapshot({
       groupName,
     });
     await sendEtaMessageWithFallback(telegram, destinationChatId, message);
+    console.log(
+      `[DISPATCH-ETA] Status snapshot sent for ${groupName || `#${driverGroup?.id}`} in ${Date.now() - startedAt}ms`
+    );
     return { success: true };
   } catch (err) {
     if (err?.code === 'LOAD_CONTEXT_NOT_FOUND') {
@@ -158,8 +164,15 @@ async function sendDriverStatusSnapshot({
         ? `🧪 Driver group: ${groupName || `#${driverGroup?.id}`}\n${NO_CURRENT_LOAD_INFO_MESSAGE}`
         : NO_CURRENT_LOAD_INFO_MESSAGE;
       await telegram.sendMessage(destinationChatId, noInfoMessage);
+      console.log(
+        `[DISPATCH-ETA] Status snapshot no-load-info for ${groupName || `#${driverGroup?.id}`} in ${Date.now() - startedAt}ms`
+      );
       return { success: true, noLoadInfo: true };
     }
+    console.error(
+      `[DISPATCH-ETA] Status snapshot failed for ${groupName || `#${driverGroup?.id}`} in ${Date.now() - startedAt}ms:`,
+      err.message
+    );
     throw err;
   }
 }
@@ -171,6 +184,7 @@ async function resolveDispatchEtaSnapshotForGroup({
   cachedDestinationQuery = '',
   cachedPickup = '',
   cachedDelivery = '',
+  interactive = false,
 }) {
   let liveGroupTitle = String(group.group_name || '').trim();
   try {
@@ -196,6 +210,7 @@ async function resolveDispatchEtaSnapshotForGroup({
       cachedDestinationQuery,
       cachedPickup,
       cachedDelivery,
+      interactive,
     });
   } catch (err) {
     contextError = String(err?.message || err || '');

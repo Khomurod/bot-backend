@@ -3,10 +3,11 @@ const { extractRateConRawTextFromFile } = require('../server/services/dispatchPa
 const { pickStoredLoadForContext } = require('./recentLoadSelection');
 const { isLoadLikeChatMessage } = require('./loadTextPatterns');
 
-const { callGroqWithFallback } = require('./groqClient');
+const { callGroqWithFallback, INTERACTIVE_MAX_RETRY_WAIT_MS } = require('./groqClient');
 const {
   callGeminiGenerateContent,
   getPinnedContextGeminiModels,
+  GEMINI_API_KEY,
 } = require('./geminiClient');
 
 require('dotenv').config();
@@ -16,6 +17,8 @@ const PINNED_CONTEXT_GROQ_MODELS = [
   'llama-3.3-70b-versatile',
   'openai/gpt-oss-20b',
 ];
+const INTERACTIVE_GEMINI_MAX_RETRY_WAIT_MS = 8_000;
+const INTERACTIVE_GROQ_TIMEOUT_MS = 20_000;
 const MAX_INLINE_GEMINI_FILE_BYTES = 14 * 1024 * 1024;
 /** Cap inline images/docs per Gemini request (albums). */
 const MAX_ALBUM_INLINE_PARTS = 6;
@@ -364,9 +367,9 @@ function mapPinnedContextFields(parsed) {
   };
 }
 
-async function requestPinnedContextFromGroq({ pinnedText, extractedRawText }) {
+async function requestPinnedContextFromGroq({ pinnedText, extractedRawText, interactive = false }) {
   const messages = buildPinnedContextGroqMessages({ pinnedText, extractedRawText });
-  const { text, model } = await callGroqWithFallback('', {
+  const groqOpts = {
     messages,
     models: PINNED_CONTEXT_GROQ_MODELS,
     temperature: 0,
@@ -374,7 +377,12 @@ async function requestPinnedContextFromGroq({ pinnedText, extractedRawText }) {
     maxCompletionTokens: 700,
     responseFormat: { type: 'json_object' },
     validateResult: (raw) => (safeParseJsonObject(raw) ? true : { message: 'Groq returned non-JSON output' }),
-  });
+  };
+  if (interactive) {
+    groqOpts.maxRetryWaitMs = INTERACTIVE_MAX_RETRY_WAIT_MS;
+    groqOpts.timeoutMs = INTERACTIVE_GROQ_TIMEOUT_MS;
+  }
+  const { text, model } = await callGroqWithFallback('', groqOpts);
   const parsed = safeParseJsonObject(text);
   return { model, fields: mapPinnedContextFields(parsed) };
 }
@@ -384,6 +392,7 @@ async function requestPinnedContextFromGemini({
   extractedRawText,
   sourceFile,
   sourceFiles,
+  interactive = false,
 }) {
   const contents = [
     {
@@ -396,7 +405,7 @@ async function requestPinnedContextFromGemini({
     },
   ];
 
-  const { text, model } = await callGeminiGenerateContent({
+  const geminiOpts = {
     models: getPinnedContextGeminiModels(),
     contents,
     generationConfig: {
@@ -405,7 +414,12 @@ async function requestPinnedContextFromGemini({
       responseMimeType: 'text/plain',
     },
     validateResult: (raw) => (safeParseJsonObject(raw) ? true : { message: 'Gemini returned non-JSON output' }),
-  });
+  };
+  if (interactive) {
+    geminiOpts.maxRetryWaitMs = INTERACTIVE_GEMINI_MAX_RETRY_WAIT_MS;
+  }
+
+  const { text, model } = await callGeminiGenerateContent(geminiOpts);
 
   const parsed = safeParseJsonObject(text);
   return { model, fields: mapPinnedContextFields(parsed) };
@@ -432,49 +446,94 @@ async function buildLoadContextFromText({
   sourceFile = null,
   sourceFiles = null,
   sourceLabel = 'pinned-text+ai',
+  interactive = false,
 }) {
   const normalizedPinnedText = String(pinnedText || '').trim();
   const normalizedExtractedText = String(extractedRawText || '').trim();
-
-  let groqResult = null;
-  try {
-    groqResult = await requestPinnedContextFromGroq({
-      pinnedText: normalizedPinnedText,
-      extractedRawText: normalizedExtractedText,
-    });
-  } catch (err) {
-    console.warn('[DISPATCH-ETA] Pinned-context Groq parse failed:', truncateDispatchEtaLogMessage(err.message));
-  }
-
+  const aiStartMs = Date.now();
   const hasVisualMedia = hasInlineVisualMedia(sourceFile, sourceFiles);
 
+  let groqResult = null;
   let geminiResult = null;
-  try {
-    if (hasVisualMedia) {
+
+  const groqRequestOpts = {
+    pinnedText: normalizedPinnedText,
+    extractedRawText: normalizedExtractedText,
+    interactive,
+  };
+
+  const geminiRequestOpts = {
+    pinnedText: normalizedPinnedText,
+    extractedRawText: normalizedExtractedText,
+    interactive,
+  };
+
+  if (hasVisualMedia) {
+    try {
+      groqResult = await requestPinnedContextFromGroq(groqRequestOpts);
+    } catch (err) {
+      console.warn('[DISPATCH-ETA] Pinned-context Groq parse failed:', truncateDispatchEtaLogMessage(err.message));
+    }
+
+    try {
+      const modelList = getPinnedContextGeminiModels().join(', ');
+      console.log(`[DISPATCH-ETA] Pinned-context Gemini attempt (${modelList})`);
       geminiResult = await requestPinnedContextFromGemini({
-        pinnedText: normalizedPinnedText,
-        extractedRawText: normalizedExtractedText,
+        ...geminiRequestOpts,
         sourceFile: Array.isArray(sourceFiles) && sourceFiles.length > 0 ? null : sourceFile,
         sourceFiles: Array.isArray(sourceFiles) && sourceFiles.length > 0 ? sourceFiles : null,
       });
-    } else if (!groqResult) {
-      geminiResult = await requestPinnedContextFromGemini({
-        pinnedText: normalizedPinnedText,
-        extractedRawText: normalizedExtractedText,
-        sourceFile: null,
-        sourceFiles: null,
-      });
+    } catch (err) {
+      console.warn('[DISPATCH-ETA] Pinned-context Gemini parse failed:', truncateDispatchEtaLogMessage(err.message));
     }
-  } catch (err) {
-    console.warn('[DISPATCH-ETA] Pinned-context Gemini parse failed:', truncateDispatchEtaLogMessage(err.message));
+  } else if (GEMINI_API_KEY) {
+    const modelList = getPinnedContextGeminiModels().join(', ');
+    console.log(`[DISPATCH-ETA] Pinned-context Gemini attempt (${modelList})`);
+
+    const groqPromise = requestPinnedContextFromGroq(groqRequestOpts).catch((err) => {
+      console.warn('[DISPATCH-ETA] Pinned-context Groq parse failed:', truncateDispatchEtaLogMessage(err.message));
+      return null;
+    });
+
+    const geminiPromise = requestPinnedContextFromGemini({
+      ...geminiRequestOpts,
+      sourceFile: null,
+      sourceFiles: null,
+    }).catch((err) => {
+      console.warn('[DISPATCH-ETA] Pinned-context Gemini parse failed:', truncateDispatchEtaLogMessage(err.message));
+      return null;
+    });
+
+    groqResult = await groqPromise;
+    if (!groqResult) {
+      geminiResult = await geminiPromise;
+    } else {
+      geminiPromise.catch(() => {});
+    }
+  } else {
+    try {
+      groqResult = await requestPinnedContextFromGroq(groqRequestOpts);
+    } catch (err) {
+      console.warn('[DISPATCH-ETA] Pinned-context Groq parse failed:', truncateDispatchEtaLogMessage(err.message));
+    }
   }
 
   let aiResult = groqResult;
+  let provider = 'none';
   if (groqResult && geminiResult) {
     aiResult = mergeGroqGeminiAiResults(groqResult, geminiResult);
-  } else {
-    aiResult = geminiResult || groqResult;
+    provider = 'merged';
+  } else if (geminiResult) {
+    aiResult = geminiResult;
+    provider = 'gemini';
+  } else if (groqResult) {
+    aiResult = groqResult;
+    provider = 'groq';
   }
+
+  console.log(
+    `[DISPATCH-ETA] Pinned-context AI result: provider=${provider} model=${aiResult?.model || 'none'} in ${Date.now() - aiStartMs}ms`
+  );
 
   const fallbackDestination = inferDestinationFromPinnedText(
     [normalizedPinnedText, normalizedExtractedText].filter(Boolean).join('\n')
@@ -550,6 +609,7 @@ async function readPinnedLoadContext({
   cachedDestinationQuery = '',
   cachedPickup = '',
   cachedDelivery = '',
+  interactive = false,
 }) {
   const chat = await telegram.getChat(chatId);
   const snapshot = await getPinnedSnapshotFromDb(groupId);
@@ -618,6 +678,7 @@ async function readPinnedLoadContext({
     extractedRawText,
     sourceFile,
     sourceLabel: fileDescriptor ? 'pinned-text+media+ai' : 'pinned-text+ai',
+    interactive,
   });
 
   return {
@@ -698,6 +759,7 @@ async function readLoadContextWithFallbacks({
   cachedDestinationQuery = '',
   cachedPickup = '',
   cachedDelivery = '',
+  interactive = false,
 }) {
   const attempts = [];
   let firstContext = null;
@@ -735,6 +797,7 @@ async function readLoadContextWithFallbacks({
       cachedDestinationQuery,
       cachedPickup,
       cachedDelivery,
+      interactive,
     });
     attempts.push(pinnedContext.source || 'pinned');
     if (isLoadContextComplete(pinnedContext)) {
@@ -757,6 +820,7 @@ async function readLoadContextWithFallbacks({
     const historyContext = await buildLoadContextFromText({
       pinnedText: fallbackMessage.messageText,
       sourceLabel: 'chat-history+ai',
+      interactive,
     });
     const withMetadata = {
       ...historyContext,

@@ -8,7 +8,7 @@ const {
   buildDriverCandidate,
 } = require('../services/driverStatusLookupService');
 const { extractUnitFromGroupName } = require('../services/driverGroupTitle');
-const { sendDriverStatusSnapshot } = require('../services/dispatchEtaUpdateService');
+const { runStatusSnapshotDetached } = require('../services/statusSnapshotDetached');
 const session = require('./dispatchStatusLookupSession');
 
 const MAX_INLINE_BUTTONS = 8;
@@ -46,20 +46,28 @@ async function resolveDriverGroupById(groupId) {
   return groups[0] || null;
 }
 
-async function sendStatusForCandidate(ctx, candidate) {
+async function sendStatusForCandidate(ctx, candidate, options = {}) {
   const driverGroup = await resolveDriverGroupById(candidate.groupId);
   if (!driverGroup) {
     await ctx.reply('That driver group is no longer active. Try /status again.');
-    return;
+    return null;
   }
 
   await ctx.reply('Building status update...');
-  await sendDriverStatusSnapshot({
-    telegram: ctx.telegram,
+
+  const telegram = ctx.telegram;
+  const destinationChatId = ctx.chat.id;
+
+  runStatusSnapshotDetached({
+    telegram,
     driverGroup,
-    destinationChatId: ctx.chat.id,
+    destinationChatId,
     targetMode: 'test',
-  });
+    interactive: true,
+    timeoutMs: options.timeoutMs,
+  }).catch(() => {});
+
+  return null;
 }
 
 function buildPickKeyboard(candidates) {
@@ -240,4 +248,5 @@ module.exports = {
   isDispatchEtaTestHub,
   handleTestHubStatusCommand,
   registerDispatchStatusLookupHandlers,
+  sendStatusForCandidate,
 };

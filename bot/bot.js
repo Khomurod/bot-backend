@@ -11,9 +11,9 @@ const {
 } = require('../services/driverGroupTitle');
 const {
   triggerDispatchEtaNowByGroupId,
-  sendDriverStatusSnapshot,
   NO_CURRENT_LOAD_INFO_MESSAGE,
 } = require('../services/dispatchEtaUpdateService');
+const { runStatusSnapshotDetached } = require('../services/statusSnapshotDetached');
 const {
   buildBroadcastTemplateContext,
   renderBroadcastTemplateStrict,
@@ -633,14 +633,20 @@ async function startBot() {
           return;
         }
 
-        await sendDriverStatusSnapshot({
-          telegram: ctx.telegram,
-          driverGroup: group,
-          destinationChatId: ctx.chat.id,
+        await ctx.reply('Building status update...');
+        const telegram = ctx.telegram;
+        const destinationChatId = ctx.chat.id;
+        const driverGroup = group;
+
+        runStatusSnapshotDetached({
+          telegram,
+          driverGroup,
+          destinationChatId,
           targetMode: 'driver',
-        });
+          interactive: true,
+        }).catch(() => {});
         // #region agent log
-        debugLog('bot/bot.js:status', '/status snapshot sent', {
+        debugLog('bot/bot.js:status', '/status snapshot detached', {
           chatId: ctx.chat?.id,
           groupId: group.id,
         }, 'D');
