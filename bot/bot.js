@@ -29,6 +29,23 @@ const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedCont
 // and exits on missing values — no need to re-check here.
 
 const bot = new Telegraf(config.botToken);
+// #region agent log
+function debugLog(location, message, data, hypothesisId) {
+  fetch('http://127.0.0.1:7869/ingest/5069c10b-4d7b-4b84-95eb-05813bc92a8b', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b5ce42' },
+    body: JSON.stringify({
+      sessionId: 'b5ce42',
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+      hypothesisId,
+      runId: 'pre-fix',
+    }),
+  }).catch(() => {});
+}
+// #endregion
 const MANAGEMENT_GROUP_ID = config.managementGroupId;
 const BOT_LAUNCH_RETRY_MS = 5000;
 const BOT_LAUNCH_MAX_RETRY_MS = 30000;
@@ -186,6 +203,12 @@ async function launchBotWithRetry(delayMs = BOT_LAUNCH_RETRY_MS) {
       }
       await sleep(400);
     }
+    // #region agent log
+    debugLog('bot/bot.js:launch', 'starting bot.launch polling', {
+      botRunning,
+      botStopRequested,
+    }, 'A');
+    // #endregion
     return bot.launch();
   }
 
@@ -249,6 +272,48 @@ async function startBot() {
     // BEFORE startBot() so the bot never handles a message against a
     // schema that hasn't been migrated yet. Keeping the init out of here
     // also avoids running the schema SQL twice on hot reloads.
+
+    // #region agent log
+    bot.use(async (ctx, next) => {
+      try {
+        const text = ctx.message?.text || ctx.message?.caption || '';
+        const chatType = ctx.chat?.type;
+        const isGroup = chatType === 'group' || chatType === 'supergroup';
+        const looksLikeCommand = typeof text === 'string' && text.trim().startsWith('/');
+        if (isGroup && looksLikeCommand) {
+          const entities = ctx.message?.entities || ctx.message?.caption_entities || [];
+          const cmdEntity = entities[0];
+          let commandTarget = null;
+          let commandName = null;
+          if (cmdEntity?.type === 'bot_command' && typeof text === 'string') {
+            const slice = text.slice(cmdEntity.offset, cmdEntity.offset + cmdEntity.length);
+            const atIdx = slice.indexOf('@');
+            commandName = atIdx >= 0 ? slice.slice(1, atIdx) : slice.slice(1);
+            commandTarget = atIdx >= 0 ? slice.slice(atIdx + 1) : null;
+          }
+          const botUsername = ctx.botInfo?.username || ctx.me || null;
+          debugLog('bot/bot.js:incoming-command', 'group slash message received', {
+            chatId: ctx.chat?.id,
+            chatTitle: ctx.chat?.title || '',
+            text: text.trim().slice(0, 80),
+            commandName,
+            commandTarget,
+            botUsername,
+            entityOffset: cmdEntity?.offset ?? null,
+            routedToThisBot: !commandTarget || !botUsername
+              || String(commandTarget).toLowerCase() === String(botUsername).toLowerCase(),
+            updateType: ctx.updateType,
+            botRunning,
+            botInitialized,
+          }, commandTarget && botUsername
+            && String(commandTarget).toLowerCase() !== String(botUsername).toLowerCase()
+            ? 'F'
+            : 'A');
+        }
+      } catch (_) { /* ignore */ }
+      return next();
+    });
+    // #endregion
 
     // ── 1. Detect when bot is added/removed from a group ──
     bot.on('my_chat_member', async (ctx) => {
@@ -357,6 +422,12 @@ async function startBot() {
     // Summarize resolved load context (stored recent loads → pin → chat history). No GPS.
     bot.command('load', async (ctx) => {
       try {
+        // #region agent log
+        debugLog('bot/bot.js:load', '/load handler entered', {
+          chatId: ctx.chat?.id,
+          chatType: ctx.chat?.type,
+        }, 'C');
+        // #endregion
         const chatType = ctx.chat?.type;
         if (chatType !== 'group' && chatType !== 'supergroup') {
           await ctx.reply('Use /load inside a driver group chat.');
@@ -364,6 +435,15 @@ async function startBot() {
         }
 
         const group = await db.getGroupByTelegramId(ctx.chat.id);
+        // #region agent log
+        debugLog('bot/bot.js:load', '/load group lookup', {
+          chatId: ctx.chat?.id,
+          found: Boolean(group),
+          groupType: group?.group_type || null,
+          active: group?.active ?? null,
+          groupId: group?.id ?? null,
+        }, 'B');
+        // #endregion
         if (!group || group.group_type !== 'driver' || !group.active) {
           await ctx.reply('This command works only in active driver groups.');
           return;
@@ -395,6 +475,13 @@ async function startBot() {
     // Dispatcher helper: post live truck location for this group's unit number.
     bot.command('location', async (ctx) => {
       try {
+        // #region agent log
+        debugLog('bot/bot.js:location', '/location handler entered', {
+          chatId: ctx.chat?.id,
+          chatType: ctx.chat?.type,
+          chatTitle: ctx.chat?.title || '',
+        }, 'C');
+        // #endregion
         const chatType = ctx.chat?.type;
         if (chatType !== 'group' && chatType !== 'supergroup') {
           await ctx.reply('Use /location inside a driver group chat.');
@@ -423,7 +510,21 @@ async function startBot() {
 
         await ctx.replyWithLocation(location.latitude, location.longitude);
         await ctx.reply(buildLocationSummaryLines({ location, source }).join('\n'));
+        // #region agent log
+        debugLog('bot/bot.js:location', '/location succeeded', {
+          chatId: ctx.chat?.id,
+          source,
+          hasCoords: Boolean(location?.latitude && location?.longitude),
+        }, 'D');
+        // #endregion
       } catch (err) {
+        // #region agent log
+        debugLog('bot/bot.js:location', '/location failed', {
+          chatId: ctx.chat?.id,
+          error: err?.message || String(err),
+          code: err?.code || null,
+        }, 'D');
+        // #endregion
         console.error('[BOT] /location failed:', err.message);
         await ctx.reply('Could not fetch live location right now. Please try again in a minute.');
       }
@@ -490,18 +591,40 @@ async function startBot() {
     // Dispatcher status helper: always available, even if auto updates are disabled.
     bot.command('status', async (ctx) => {
       try {
+        // #region agent log
+        debugLog('bot/bot.js:status', '/status handler entered', {
+          chatId: ctx.chat?.id,
+          chatType: ctx.chat?.type,
+        }, 'C');
+        // #endregion
         const chatType = ctx.chat?.type;
         if (chatType !== 'group' && chatType !== 'supergroup') {
           await ctx.reply('Use /status inside a driver group chat.');
           return;
         }
 
-        if (await isDispatchEtaTestHub(ctx)) {
+        const testHub = await isDispatchEtaTestHub(ctx);
+        // #region agent log
+        debugLog('bot/bot.js:status', '/status test hub check', {
+          chatId: ctx.chat?.id,
+          testHub,
+        }, 'E');
+        // #endregion
+        if (testHub) {
           await handleTestHubStatusCommand(ctx);
           return;
         }
 
         const group = await db.getGroupByTelegramId(ctx.chat.id);
+        // #region agent log
+        debugLog('bot/bot.js:status', '/status group lookup', {
+          chatId: ctx.chat?.id,
+          found: Boolean(group),
+          groupType: group?.group_type || null,
+          active: group?.active ?? null,
+          groupId: group?.id ?? null,
+        }, 'B');
+        // #endregion
         if (!group || group.group_type !== 'driver' || !group.active) {
           await ctx.reply('This command works only in active driver groups.');
           return;
@@ -513,7 +636,20 @@ async function startBot() {
           destinationChatId: ctx.chat.id,
           targetMode: 'driver',
         });
+        // #region agent log
+        debugLog('bot/bot.js:status', '/status snapshot sent', {
+          chatId: ctx.chat?.id,
+          groupId: group.id,
+        }, 'D');
+        // #endregion
       } catch (err) {
+        // #region agent log
+        debugLog('bot/bot.js:status', '/status failed', {
+          chatId: ctx.chat?.id,
+          error: err?.message || String(err),
+          code: err?.code || null,
+        }, 'D');
+        // #endregion
         console.error('[BOT] /status failed:', err.message);
         await ctx.reply('Could not build current status right now. Please try again shortly.');
       }
