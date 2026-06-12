@@ -149,4 +149,9 @@ module.exports = {
   bitrix24DealCategoryId: String(process.env.BITRIX24_DEAL_CATEGORY_ID || '').trim(),
   bitrix24DealStageId: String(process.env.BITRIX24_DEAL_STAGE_ID || '').trim(),
   bitrix24FieldMap: loadBitrixFieldMapConfig(),
+  // @datatruck_driver_bot peer reactions / banter in driver groups (requires Bot-to-Bot mode in BotFather)
+  datatruckPeerEnabled: process.env.DATATRUCK_PEER_ENABLED !== 'false',
+  datatruckPeerBotUsername: String(process.env.DATATRUCK_PEER_BOT_USERNAME || 'datatruck_driver_bot').trim(),
+  datatruckLoadFlameChance: Math.min(1, Math.max(0, parseFloat(process.env.DATATRUCK_LOAD_FLAME_CHANCE || '0.35') || 0.35)),
+  datatruckBanterMaxPerHourPerChat: Math.max(1, parseInt(process.env.DATATRUCK_BANTER_MAX_PER_HOUR_PER_CHAT || '10', 10) || 10),
 };
