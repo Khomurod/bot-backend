@@ -30,6 +30,24 @@ A Telegram bot-based feedback and communication system for trucking companies. C
 
 Set `DISPATCH_ETA_TEST_GROUP_ID` to the Telegram chat id of **Automatic updating (Test)** (example production value: `-5289094495`).
 
+## Datatruck peer bot (Wenze Feedback / `BOT_TOKEN`)
+
+When `@datatruck_driver_bot` posts in an **active driver group**, `@wenzefeedback_bot` can:
+
+- React with 👍 (and sometimes 🔥) to **load-related** messages
+- Reply with a short **AI-generated playful roast** when Datatruck posts failure text (e.g. unknown command)
+
+**Prerequisite:** Enable **Bot-to-Bot Communication Mode** for `@wenzefeedback_bot` in @BotFather (Bot settings). Privacy mode must remain **off** so Wenze receives group messages from other bots.
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATATRUCK_PEER_ENABLED` | `true` | Set `false` to disable reactions and banter |
+| `DATATRUCK_PEER_BOT_USERNAME` | `datatruck_driver_bot` | Username of the peer bot (no `@`) |
+| `DATATRUCK_LOAD_FLAME_CHANCE` | `0.35` | Probability of adding 🔥 on load messages |
+| `DATATRUCK_BANTER_MAX_PER_HOUR_PER_CHAT` | `10` | Max reactions + roasts per driver group per hour |
+
+Uses existing `GROQ_API_KEY` / `GEMINI_API_KEY` for banter text (fallback lines if AI unavailable).
+
 ## Tech Stack
 
 - **Backend:** Node.js, Telegraf, Express.js
@@ -84,6 +102,10 @@ Optional variables:
 | `GEMINI_TEXT_MODELS` | Gemini model chain, highest free-tier quota first (default starts with `gemini-3.1-flash-lite`) |
 | `LOCATION_DRIVER_NAME_STRICT` | If `true`, `/location` blocks when Telegram group driver name does not match Samsara vehicle label (default: warn and still send pin) |
 | `DISPATCH_ETA_TEST_GROUP_ID` | Telegram chat id for **Automatic updating (Test)** — receives test-mode ETA posts and interactive `/status` lookups |
+| `DATATRUCK_PEER_ENABLED` | Enable 👍/🔥 reactions and AI banter for `@datatruck_driver_bot` in driver groups (default: on; set `false` to disable) |
+| `DATATRUCK_PEER_BOT_USERNAME` | Peer bot username without `@` (default: `datatruck_driver_bot`) |
+| `DATATRUCK_LOAD_FLAME_CHANCE` | `0`–`1` chance to add 🔥 on Datatruck load posts (default: `0.35`) |
+| `DATATRUCK_BANTER_MAX_PER_HOUR_PER_CHAT` | Rate limit for peer reactions + roasts per driver group (default: `10`) |
 | `PORT` | API server port (default: 3001) |
 | `LEADS_BOT_PORT` | Leads-Bot internal port (default: 8000) |
 | `RENDER_EXTERNAL_URL` | Public base URL used for `/connect` and webhook callbacks |

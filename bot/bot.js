@@ -25,6 +25,7 @@ const {
 } = require('./dispatchStatusLookupHandlers');
 const { scheduleLoadIngest } = require('../services/loadIngestionService');
 const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedContextService');
+const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
 // config.js already validates DATABASE_URL, MANAGEMENT_GROUP_ID (BOT_TOKEN has a code default)
 // and exits on missing values — no need to re-check here.
 
@@ -418,6 +419,8 @@ async function startBot() {
       }
       return next();
     });
+
+    registerDatatruckPeerHandlers(bot);
 
     // Summarize resolved load context (stored recent loads → pin → chat history). No GPS.
     bot.command('load', async (ctx) => {
