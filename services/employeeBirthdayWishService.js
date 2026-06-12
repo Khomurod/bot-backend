@@ -84,14 +84,28 @@ async function sendCustomEmployeeGroupMessage(message) {
   return { sent: true };
 }
 
+function getEmployeeBirthdayScheduledTime(isoDate, settings) {
+  const tz = settings.timezone || 'Asia/Tashkent';
+  return DateTime.fromISO(isoDate, { zone: tz }).set({
+    hour: settings.send_hour,
+    minute: settings.send_minute,
+    second: 0,
+    millisecond: 0,
+  });
+}
+
+function isPastEmployeeBirthdaySchedule(now, settings) {
+  return now >= getEmployeeBirthdayScheduledTime(now.toISODate(), settings);
+}
+
 async function checkAndRunScheduled() {
   const settings = await db.getEmployeeBirthdaySettings();
   const tz = settings.timezone || 'Asia/Tashkent';
   const now = DateTime.now().setZone(tz);
+  const isoDate = now.toISODate();
 
-  if (!shouldRunEmployeeBirthdayAt(settings, now)) {
-    return null;
-  }
+  if (!isPastEmployeeBirthdaySchedule(now, settings)) return null;
+  if (await db.hasServiceRun('birthday', `employee:${isoDate}`)) return null;
 
   return runEmployeeBirthdayWishes({ claimDailyRun: true });
 }
@@ -144,4 +158,6 @@ module.exports = {
   sendCustomEmployeeGroupMessage,
   checkAndRunScheduled,
   shouldRunEmployeeBirthdayAt,
+  getEmployeeBirthdayScheduledTime,
+  isPastEmployeeBirthdaySchedule,
 };

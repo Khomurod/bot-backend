@@ -30,6 +30,7 @@ const db = {
     claimedKeys.add(key);
     return true;
   },
+  hasServiceRun: async (service, runKey) => claimedKeys.has(`${service}:${runKey}`),
 };
 
 const sentMessages = [];
@@ -66,7 +67,9 @@ require.cache[require.resolve('../services/employeeBirthdayMessage')] = {
 
 const {
   runEmployeeBirthdayWishes,
+  checkAndRunScheduled,
   shouldRunEmployeeBirthdayAt,
+  isPastEmployeeBirthdaySchedule,
 } = require('../services/employeeBirthdayWishService');
 
 test('runEmployeeBirthdayWishes with no birthdays does not claim run key', async () => {
@@ -112,7 +115,7 @@ test('congratulate selected does not claim daily run key', async () => {
 });
 
 test('shouldRunEmployeeBirthdayAt matches configured hour and minute', () => {
-  const cfg = { send_hour: 12, send_minute: 30 };
+  const cfg = { send_hour: 12, send_minute: 30, timezone: 'Asia/Tashkent' };
   const match = DateTime.fromObject(
     { year: 2026, month: 5, day: 25, hour: 12, minute: 30 },
     { zone: 'Asia/Tashkent' }
@@ -120,4 +123,64 @@ test('shouldRunEmployeeBirthdayAt matches configured hour and minute', () => {
   const noMatch = match.plus({ minute: 1 });
   assert.equal(shouldRunEmployeeBirthdayAt(cfg, match), true);
   assert.equal(shouldRunEmployeeBirthdayAt(cfg, noMatch), false);
+});
+
+test('isPastEmployeeBirthdaySchedule is false before send time and true after', () => {
+  const cfg = { send_hour: 12, send_minute: 30, timezone: 'Asia/Tashkent' };
+  const before = DateTime.fromObject(
+    { year: 2026, month: 5, day: 25, hour: 12, minute: 29 },
+    { zone: 'Asia/Tashkent' }
+  );
+  const at = before.plus({ minute: 1 });
+  const after = before.plus({ hours: 2 });
+  assert.equal(isPastEmployeeBirthdaySchedule(before, cfg), false);
+  assert.equal(isPastEmployeeBirthdaySchedule(at, cfg), true);
+  assert.equal(isPastEmployeeBirthdaySchedule(after, cfg), true);
+});
+
+test('checkAndRunScheduled catches up after scheduled time when not yet claimed', async () => {
+  claims.length = 0;
+  claimedKeys.clear();
+  sentMessages.length = 0;
+
+  const now = DateTime.now().setZone('Asia/Tashkent');
+  const pastHour = Math.max(0, now.hour - 1);
+
+  const origSettings = db.getEmployeeBirthdaySettings;
+  db.getEmployeeBirthdaySettings = async () => ({
+    ...settings,
+    send_hour: pastHour,
+    send_minute: 0,
+  });
+
+  const result = await checkAndRunScheduled();
+  assert.equal(result?.sent, true);
+  assert.equal(sentMessages.length, 1);
+
+  db.getEmployeeBirthdaySettings = origSettings;
+});
+
+test('checkAndRunScheduled skips when daily run already claimed', async () => {
+  claims.length = 0;
+  claimedKeys.clear();
+  sentMessages.length = 0;
+
+  const isoDate = DateTime.now().setZone('Asia/Tashkent').toISODate();
+  claimedKeys.add(`birthday:employee:${isoDate}`);
+
+  const now = DateTime.now().setZone('Asia/Tashkent');
+  const pastHour = Math.max(0, now.hour - 1);
+
+  const origSettings = db.getEmployeeBirthdaySettings;
+  db.getEmployeeBirthdaySettings = async () => ({
+    ...settings,
+    send_hour: pastHour,
+    send_minute: 0,
+  });
+
+  const result = await checkAndRunScheduled();
+  assert.equal(result, null);
+  assert.equal(sentMessages.length, 0);
+
+  db.getEmployeeBirthdaySettings = origSettings;
 });

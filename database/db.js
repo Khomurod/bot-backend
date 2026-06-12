@@ -2422,6 +2422,14 @@ async function claimServiceRun(serviceName, runKey) {
   return res.rows.length > 0;
 }
 
+async function hasServiceRun(serviceName, runKey) {
+  const res = await query(
+    'SELECT 1 FROM service_runs WHERE service_name = $1 AND run_key = $2',
+    [serviceName, runKey]
+  );
+  return res.rows.length > 0;
+}
+
 // Simple DB liveness probe used by /api/health.
 async function ping() {
   const res = await query('SELECT 1 AS ok');
@@ -2565,5 +2573,6 @@ module.exports = {
   getFacebookLeadSmsMirror,
   // Service run guard + health
   claimServiceRun,
+  hasServiceRun,
   ping,
 };

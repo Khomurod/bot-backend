@@ -57,14 +57,28 @@ async function processDriverBirthdays(isoDate, month, day) {
   }
 }
 
+function getDriverBirthdayScheduledTime(isoDate) {
+  return DateTime.fromISO(isoDate, { zone: TZ }).set({
+    hour: DRIVER_BIRTHDAY_HOUR,
+    minute: 0,
+    second: 0,
+    millisecond: 0,
+  });
+}
+
+function isPastDriverBirthdaySchedule(now) {
+  return now >= getDriverBirthdayScheduledTime(now.toISODate());
+}
+
 async function checkAndSendBirthdays() {
   try {
     const now = DateTime.now().setZone(TZ);
     const isoDate = now.toISODate();
 
-    if (now.hour === DRIVER_BIRTHDAY_HOUR) {
-      await processDriverBirthdays(isoDate, now.month, now.day);
-    }
+    if (!isPastDriverBirthdaySchedule(now)) return;
+    if (await db.hasServiceRun('birthday', `driver:${isoDate}`)) return;
+
+    await processDriverBirthdays(isoDate, now.month, now.day);
   } catch (err) {
     console.error('[BIRTHDAY] Tick error:', err.message);
   }
@@ -89,4 +103,10 @@ function stopBirthdayService() {
   }
 }
 
-module.exports = { startBirthdayService, stopBirthdayService, checkAndSendBirthdays };
+module.exports = {
+  startBirthdayService,
+  stopBirthdayService,
+  checkAndSendBirthdays,
+  getDriverBirthdayScheduledTime,
+  isPastDriverBirthdaySchedule,
+};
