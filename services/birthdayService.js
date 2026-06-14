@@ -107,6 +107,7 @@ module.exports = {
   startBirthdayService,
   stopBirthdayService,
   checkAndSendBirthdays,
+  processDriverBirthdays,
   getDriverBirthdayScheduledTime,
   isPastDriverBirthdaySchedule,
 };

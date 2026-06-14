@@ -1159,6 +1159,130 @@ async function logChatMessage(groupId, telegramUserId, senderName, messageText, 
   );
 }
 
+async function recordBotSentMessage({
+  telegramChatId,
+  telegramMessageId,
+  sentAt = null,
+  messageText = null,
+  contentKind = 'other',
+  sourceMethod = null,
+}) {
+  const res = await query(
+    `INSERT INTO bot_sent_messages (
+       telegram_chat_id, telegram_message_id, sent_at, message_text,
+       content_kind, source_method
+     )
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (telegram_chat_id, telegram_message_id)
+     DO UPDATE SET
+       sent_at = COALESCE(EXCLUDED.sent_at, bot_sent_messages.sent_at),
+       message_text = COALESCE(EXCLUDED.message_text, bot_sent_messages.message_text),
+       content_kind = EXCLUDED.content_kind,
+       source_method = COALESCE(EXCLUDED.source_method, bot_sent_messages.source_method),
+       updated_at = NOW()
+     RETURNING *`,
+    [
+      telegramChatId,
+      telegramMessageId,
+      sentAt,
+      messageText,
+      contentKind,
+      sourceMethod,
+    ]
+  );
+  return res.rows[0] || null;
+}
+
+async function getBotSentMessage(telegramChatId, telegramMessageId) {
+  const res = await query(
+    `SELECT b.*,
+            (
+              SELECT g.group_name FROM groups g
+              WHERE g.telegram_group_id = b.telegram_chat_id
+              LIMIT 1
+            ) AS chat_title
+       FROM bot_sent_messages b
+      WHERE b.telegram_chat_id = $1
+        AND b.telegram_message_id = $2
+        AND b.deleted_at IS NULL
+      LIMIT 1`,
+    [telegramChatId, telegramMessageId]
+  );
+  return res.rows[0] || null;
+}
+
+async function findBotSentMessagesForForward({
+  sentAt,
+  messageText,
+  telegramChatId = null,
+  toleranceSeconds = 5,
+}) {
+  if (!sentAt || messageText == null) return [];
+
+  const safeTolerance = Number.isInteger(toleranceSeconds)
+    ? Math.min(Math.max(toleranceSeconds, 0), 30)
+    : 5;
+  const params = [sentAt, safeTolerance, messageText];
+  let chatClause = '';
+  if (telegramChatId != null) {
+    params.push(telegramChatId);
+    chatClause = `AND b.telegram_chat_id = $${params.length}`;
+  }
+
+  const res = await query(
+    `SELECT b.*,
+            (
+              SELECT g.group_name FROM groups g
+              WHERE g.telegram_group_id = b.telegram_chat_id
+              LIMIT 1
+            ) AS chat_title
+       FROM bot_sent_messages b
+      WHERE b.deleted_at IS NULL
+        AND b.sent_at BETWEEN ($1::timestamptz - make_interval(secs => $2::int))
+                          AND ($1::timestamptz + make_interval(secs => $2::int))
+        AND b.message_text = $3
+        ${chatClause}
+      ORDER BY ABS(EXTRACT(EPOCH FROM (b.sent_at - $1::timestamptz))) ASC,
+               b.id DESC
+      LIMIT 2`,
+    params
+  );
+  return res.rows;
+}
+
+async function updateBotSentMessageContent(
+  telegramChatId,
+  telegramMessageId,
+  messageText,
+  contentKind
+) {
+  const res = await query(
+    `UPDATE bot_sent_messages
+        SET message_text = $3,
+            content_kind = $4,
+            edited_at = NOW(),
+            updated_at = NOW()
+      WHERE telegram_chat_id = $1
+        AND telegram_message_id = $2
+      RETURNING *`,
+    [telegramChatId, telegramMessageId, messageText, contentKind]
+  );
+  return res.rows[0] || null;
+}
+
+async function markBotSentMessageDeleted(telegramChatId, telegramMessageId) {
+  const res = await query(
+    `UPDATE bot_sent_messages
+        SET deleted_at = NOW(),
+            updated_at = NOW()
+      WHERE telegram_chat_id = $1
+        AND telegram_message_id = $2
+      RETURNING *`,
+    [telegramChatId, telegramMessageId]
+  );
+  return res.rows[0] || null;
+}
+
 async function upsertGroupPinnedMessageSnapshot({
   groupId,
   telegramGroupId,
@@ -2509,6 +2633,11 @@ module.exports = {
   getBroadcastButtonClicks,
   // Chat Logs
   logChatMessage,
+  recordBotSentMessage,
+  getBotSentMessage,
+  findBotSentMessagesForForward,
+  updateBotSentMessageContent,
+  markBotSentMessageDeleted,
   upsertGroupPinnedMessageSnapshot,
   getGroupPinnedMessageSnapshot,
   getGroupRecentLoads,
