@@ -352,6 +352,29 @@ CREATE TABLE IF NOT EXISTS chat_logs (
 
 ALTER TABLE chat_logs ADD COLUMN IF NOT EXISTS telegram_message_id BIGINT;
 
+-- TABLE: bot_sent_messages
+-- Telegram forwards from ordinary groups do not reliably expose the original
+-- message id. This registry lets the creator-only message manager resolve a
+-- forwarded Wenze Feedback message by its original timestamp and content.
+CREATE TABLE IF NOT EXISTS bot_sent_messages (
+  id BIGSERIAL PRIMARY KEY,
+  telegram_chat_id BIGINT NOT NULL,
+  telegram_message_id BIGINT NOT NULL,
+  sent_at TIMESTAMPTZ,
+  message_text TEXT,
+  content_kind TEXT NOT NULL DEFAULT 'other',
+  source_method TEXT,
+  edited_at TIMESTAMPTZ,
+  deleted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (telegram_chat_id, telegram_message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_sent_messages_forward_lookup
+  ON bot_sent_messages (sent_at DESC, telegram_chat_id)
+  WHERE deleted_at IS NULL;
+
 -- TABLE: group_pinned_messages
 -- Stores the latest pinned-message snapshot we observed in updates for each
 -- driver group, so ETA parsing can use the newest pin event reliably.

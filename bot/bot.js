@@ -26,11 +26,17 @@ const {
 const { scheduleLoadIngest } = require('../services/loadIngestionService');
 const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedContextService');
 const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
+<<<<<<< HEAD
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
+=======
+const { registerCreatorMessageManager } = require('./creatorMessageManager');
+const { installBotSentMessageTracking } = require('../services/botSentMessageRegistry');
+>>>>>>> cf0171da5a266c9d0ffbdab5b41c65db36417973
 // config.js already validates DATABASE_URL, MANAGEMENT_GROUP_ID (BOT_TOKEN has a code default)
 // and exits on missing values — no need to re-check here.
 
 const bot = new Telegraf(config.botToken);
+installBotSentMessageTracking(bot.telegram, db);
 // #region agent log
 function debugLog(location, message, data, hypothesisId) {
   fetch('http://127.0.0.1:7869/ingest/5069c10b-4d7b-4b84-95eb-05813bc92a8b', {
@@ -274,7 +280,6 @@ async function startBot() {
     // BEFORE startBot() so the bot never handles a message against a
     // schema that hasn't been migrated yet. Keeping the init out of here
     // also avoids running the schema SQL twice on hot reloads.
-
     // #region agent log
     bot.use(async (ctx, next) => {
       try {
@@ -422,6 +427,7 @@ async function startBot() {
     });
 
     registerDatatruckPeerHandlers(bot);
+    registerCreatorMessageManager(bot);
 
     // Summarize resolved load context (stored recent loads → pin → chat history). No GPS.
     bot.command('load', async (ctx) => {
