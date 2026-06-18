@@ -26,12 +26,9 @@ const {
 const { scheduleLoadIngest } = require('../services/loadIngestionService');
 const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedContextService');
 const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
-<<<<<<< HEAD
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
-=======
 const { registerCreatorMessageManager } = require('./creatorMessageManager');
 const { installBotSentMessageTracking } = require('../services/botSentMessageRegistry');
->>>>>>> cf0171da5a266c9d0ffbdab5b41c65db36417973
 // config.js already validates DATABASE_URL, MANAGEMENT_GROUP_ID (BOT_TOKEN has a code default)
 // and exits on missing values — no need to re-check here.
 
