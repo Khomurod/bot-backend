@@ -13,6 +13,7 @@ import CompanyBirthdaysPage from "./pages/CompanyBirthdaysPage";
 import DispatchPage from "./pages/DispatchPage";
 import FacebookLeadsPage from "./pages/FacebookLeadsPage";
 import AskDataPanel from "./pages/AskDataPanel";
+import MileageBonusPage from "./pages/MileageBonusPage";
 
 function getPageFromPath(pathname) {
   if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) {
@@ -121,6 +122,7 @@ export default function App() {
     ask: <AskDataPanel />,
     groups: <GroupsPage />,
     company_birthdays: <CompanyBirthdaysPage />,
+    mileage_bonus: <MileageBonusPage />,
     logs: <ChatLogsPage />,
     manager: <MessageManagerPage />,
     scheduled: <ScheduledMessagesPage />,
@@ -158,6 +160,7 @@ export default function App() {
       items: [
         { key: 'groups', icon: '👷', label: 'Driver Groups' },
         { key: 'company_birthdays', icon: '🎂', label: 'Birthdays' },
+        { key: 'mileage_bonus', icon: '🏁', label: 'Mileage Bonuses' },
       ],
     },
   ];

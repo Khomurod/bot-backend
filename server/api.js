@@ -1182,6 +1182,54 @@ app.put('/api/driver-profiles/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// ─── Mileage Bonus (company drivers) ───
+const mileageBonusService = require('../services/mileageBonusService');
+
+// GET /api/mileage-bonus/overview — cached progress + notifications (fast).
+app.get('/api/mileage-bonus/overview', authMiddleware, async (req, res) => {
+  try {
+    const overview = await mileageBonusService.getOverview();
+    res.json(overview);
+  } catch (err) {
+    console.error('[API] Error fetching mileage bonus overview:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/mileage-bonus/run — recompute + send qualifying milestone cards.
+// Long-running (hits the rate-limited Datatruck API), so it runs in the
+// background; the client polls /overview for progress + results.
+app.post('/api/mileage-bonus/run', authMiddleware, async (req, res) => {
+  try {
+    if (mileageBonusService.isRunning()) {
+      return res.status(409).json({ error: 'A mileage bonus run is already in progress.' });
+    }
+    mileageBonusService
+      .runMileageBonusCheck({ trigger: 'manual' })
+      .catch((err) => console.error('[API] Mileage bonus run failed:', err.message));
+    res.status(202).json({ started: true });
+  } catch (err) {
+    console.error('[API] Error starting mileage bonus run:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/mileage-bonus/refresh — recompute progress only (no notifications).
+app.post('/api/mileage-bonus/refresh', authMiddleware, async (req, res) => {
+  try {
+    if (mileageBonusService.isRunning()) {
+      return res.status(409).json({ error: 'A mileage bonus run is already in progress.' });
+    }
+    mileageBonusService
+      .refreshProgressOnly({})
+      .catch((err) => console.error('[API] Mileage bonus refresh failed:', err.message));
+    res.status(202).json({ started: true });
+  } catch (err) {
+    console.error('[API] Error starting mileage bonus refresh:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 const { runClassificationRun } = require('../services/groupStatusAiService');
 
 // POST /api/groups/status/run-now — trigger AI status classification (skips manual-locked groups)

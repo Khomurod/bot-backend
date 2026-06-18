@@ -866,3 +866,64 @@ JOIN groups g ON g.id = cl.group_id
 LEFT JOIN chat_message_annotations a ON a.chat_log_id = cl.id
 LEFT JOIN sender_role_consensus src
   ON src.group_id = cl.group_id AND src.telegram_user_id = cl.telegram_user_id;
+
+-- ─── Mileage Bonus (company drivers) ──────────────────────────────────────
+-- Cumulative-mileage milestone bonuses for COMPANY DRIVERS ONLY. Source of
+-- truth for driver identity/mileage is the Datatruck OpenAPI; these tables
+-- record what we computed and which milestone notifications have been sent so
+-- the (free-tier, sleep-prone) service never double-notifies a driver/tier.
+
+-- Latest computed progress snapshot per company driver (one row per driver).
+-- Powers the admin "who is close to a milestone" view without re-hitting the
+-- Datatruck API on every page load.
+CREATE TABLE IF NOT EXISTS mileage_bonus_progress (
+  id SERIAL PRIMARY KEY,
+  driver_external_id TEXT,
+  driver_normalized_name TEXT UNIQUE NOT NULL,
+  driver_name TEXT NOT NULL,
+  driver_type TEXT,
+  hire_date DATE,
+  period_start DATE,
+  period_end DATE,
+  total_miles NUMERIC(12,2) NOT NULL DEFAULT 0,
+  trips INTEGER NOT NULL DEFAULT 0,
+  highest_tier_reached INTEGER,
+  next_tier INTEGER,
+  miles_to_next_tier NUMERIC(12,2),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mileage_bonus_progress_total
+  ON mileage_bonus_progress(total_miles DESC);
+
+-- One row per (driver, milestone) ever awarded. The UNIQUE constraint is the
+-- idempotency guard: a milestone notification is sent at most once for a
+-- driver, no matter how many times the check runs.
+CREATE TABLE IF NOT EXISTS mileage_bonus_notifications (
+  id SERIAL PRIMARY KEY,
+  driver_external_id TEXT,
+  driver_normalized_name TEXT NOT NULL,
+  driver_name TEXT NOT NULL,
+  threshold_miles INTEGER NOT NULL,
+  bonus_amount INTEGER NOT NULL,
+  miles_at_notification NUMERIC(12,2) NOT NULL,
+  period_start DATE,
+  period_end DATE,
+  trigger TEXT NOT NULL DEFAULT 'scheduled',
+  status TEXT NOT NULL DEFAULT 'pending',
+  telegram_chat_id BIGINT,
+  telegram_message_id BIGINT,
+  decided_by_username TEXT,
+  decided_by_user_id BIGINT,
+  decided_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT mileage_bonus_notifications_unique UNIQUE (driver_normalized_name, threshold_miles),
+  CONSTRAINT mileage_bonus_notifications_status_check CHECK (
+    status IN ('pending', 'paid', 'rejected')
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_mileage_bonus_notifications_status
+  ON mileage_bonus_notifications(status);
+CREATE INDEX IF NOT EXISTS idx_mileage_bonus_notifications_created
+  ON mileage_bonus_notifications(created_at DESC);

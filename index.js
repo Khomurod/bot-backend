@@ -31,6 +31,10 @@ const {
   startDispatchEtaScheduler,
   stopDispatchEtaScheduler,
 } = require('./services/dispatchEtaUpdateService');
+const {
+  startMileageBonusService,
+  stopMileageBonusService,
+} = require('./services/mileageBonusService');
 const db = require('./database/db');
 
 const DB_DRAIN_TIMEOUT_MS = 5000;
@@ -374,6 +378,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopGroupStatusAiService(); } catch (err) { console.error('[SHUTDOWN] stopGroupStatusAiService failed:', err.message); }
   try { stopWeeklyReporter(); } catch (err) { console.error('[SHUTDOWN] stopWeeklyReporter failed:', err.message); }
   try { stopBackgroundAnnotator(); } catch (err) { console.error('[SHUTDOWN] stopBackgroundAnnotator failed:', err.message); }
+  try { stopMileageBonusService(); } catch (err) { console.error('[SHUTDOWN] stopMileageBonusService failed:', err.message); }
 
   await Promise.allSettled([
     stopFacebookWebhookWorker(),
@@ -415,6 +420,7 @@ async function start() {
   startGroupStatusAiService();
   startWeeklyReporter();
   startBackgroundAnnotator();
+  startMileageBonusService();
   await startFacebookWebhookWorker();
   startLeadsBot();
   startSamsaraBot();

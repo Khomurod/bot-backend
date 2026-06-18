@@ -925,3 +925,31 @@ export async function retryFacebookLeadWebhookEvent(id) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+// ─── Mileage Bonus ───
+
+export async function getMileageBonusOverview() {
+  const res = await fetch(`${API_BASE}/mileage-bonus/overview?t=${Date.now()}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function runMileageBonusCheck() {
+  const res = await fetch(`${API_BASE}/mileage-bonus/run`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function refreshMileageBonusProgress() {
+  const res = await fetch(`${API_BASE}/mileage-bonus/refresh`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

@@ -154,4 +154,9 @@ module.exports = {
   datatruckPeerBotUsername: String(process.env.DATATRUCK_PEER_BOT_USERNAME || 'datatruck_driver_bot').trim(),
   datatruckLoadFlameChance: Math.min(1, Math.max(0, parseFloat(process.env.DATATRUCK_LOAD_FLAME_CHANCE || '0.35') || 0.35)),
   datatruckBanterMaxPerHourPerChat: Math.max(1, parseInt(process.env.DATATRUCK_BANTER_MAX_PER_HOUR_PER_CHAT || '10', 10) || 10),
+  // Datatruck OpenAPI (read-only) — powers the mileage bonus feature.
+  // Token is created in the Datatruck dashboard; company is the subdomain
+  // (e.g. "wenze" for https://wenze.datatruck.io).
+  datatruckApiToken: normalizeOptionalEnv(process.env.DATATRUCK_API_TOKEN),
+  datatruckCompany: String(process.env.DATATRUCK_COMPANY || 'wenze').trim().toLowerCase(),
 };

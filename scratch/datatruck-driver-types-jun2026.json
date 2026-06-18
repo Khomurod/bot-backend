@@ -1,0 +1,1015 @@
+{
+  "summary": {
+    "companyDrivers": {
+      "count": 43,
+      "trips": 373,
+      "miles": 352268.08
+    },
+    "ownerOperators": {
+      "count": 53,
+      "trips": 547,
+      "miles": 452521.63
+    },
+    "unmatchedOrOther": {
+      "count": 3,
+      "trips": 11,
+      "miles": 5704.31
+    }
+  },
+  "companyDrivers": [
+    {
+      "name": "ABDINASIR ARTE YAHYE + IBRAHIM GEDI ALI",
+      "trips": 13,
+      "totalMiles": 15900.77,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "ABDINASIR ARTE YAHYE",
+      "teamDriverType": "Company Driver",
+      "teamMatchedName": "IBRAHIM GEDI ALI"
+    },
+    {
+      "name": "Mesele Abraha FETWI +  ",
+      "trips": 13,
+      "totalMiles": 15898.91,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "Mesele Abraha FETWI",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Usmon Begjanov +  ",
+      "trips": 9,
+      "totalMiles": 14042.96,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "Usmon Begjanov",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "TERENCE NESBITT +  ",
+      "trips": 13,
+      "totalMiles": 13745.25,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "TERENCE NESBITT",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Omar Alawad +  ",
+      "trips": 14,
+      "totalMiles": 13283.58,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "Omar Alawad",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "JASURBEK MASHARIPOV +  ",
+      "trips": 13,
+      "totalMiles": 12318.65,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "JASURBEK MASHARIPOV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "SHERZAD KARIM DIZAII +  ",
+      "trips": 13,
+      "totalMiles": 12166.29,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "SHERZAD KARIM DIZAII",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Oumar Dieng +  ",
+      "trips": 12,
+      "totalMiles": 12026.88,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "Oumar Dieng",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Sarah Ogbomah +  ",
+      "trips": 15,
+      "totalMiles": 11649,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "Sarah Ogbomah",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Jean Dukens Belland +  ",
+      "trips": 11,
+      "totalMiles": 11413.47,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "Jean Dukens Belland",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "ABDIFATAH MOHAMED SALAH +  ",
+      "trips": 12,
+      "totalMiles": 10653.13,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "ABDIFATAH MOHAMED SALAH",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Jasper Ronique Buckingham +  ",
+      "trips": 12,
+      "totalMiles": 10465.38,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "Jasper Ronique Buckingham",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "GEBRU BRHANE REDA +  ",
+      "trips": 13,
+      "totalMiles": 10444.8,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "GEBRU BRHANE REDA",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "DAVID MICHAEL JR PENA +  ",
+      "trips": 9,
+      "totalMiles": 10377.55,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "DAVID MICHAEL JR PENA",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "El Hadji Thiam +  ",
+      "trips": 9,
+      "totalMiles": 10335.76,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "El Hadji Thiam",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "SA NEE RANDOLPH +  ",
+      "trips": 8,
+      "totalMiles": 10309.59,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "SA NEE RANDOLPH",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "JEAN PAUL WALKENS +  ",
+      "trips": 10,
+      "totalMiles": 9910.84,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "JEAN PAUL WALKENS",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "REY DAVID GO HIONG +  ",
+      "trips": 11,
+      "totalMiles": 9696.45,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "REY DAVID GO HIONG",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "YOSIEF TESFAMARIAM +  ",
+      "trips": 10,
+      "totalMiles": 9652.08,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "YOSIEF TESFAMARIAM",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "MALE ADAMS +  ",
+      "trips": 13,
+      "totalMiles": 9508.87,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "MALE ADAMS",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "EDER GIOVANNI ALVAREZ FLORES +  ",
+      "trips": 9,
+      "totalMiles": 9111.23,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "EDER GIOVANNI ALVAREZ FLORES",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Pascal Fleurimond +  ",
+      "trips": 9,
+      "totalMiles": 8530.39,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "Pascal Fleurimond",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Zahid Atif +  ",
+      "trips": 10,
+      "totalMiles": 8284.27,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "Zahid Atif",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "ANTHONY COLLINS +  ",
+      "trips": 10,
+      "totalMiles": 8107.11,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "ANTHONY COLLINS",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "TERRELL DALTON +  ",
+      "trips": 10,
+      "totalMiles": 7894.75,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "TERRELL DALTON",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "John Potter +  ",
+      "trips": 11,
+      "totalMiles": 7473.08,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "John Potter",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "CLYDE LEE JR MALLETT +  ",
+      "trips": 7,
+      "totalMiles": 7224.26,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "CLYDE LEE JR MALLETT",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "ABRAHAM FINHAS S +  ",
+      "trips": 8,
+      "totalMiles": 6786.37,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "ABRAHAM FINHAS S",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "UWEZO MULUMBA +  ",
+      "trips": 7,
+      "totalMiles": 6634.36,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "UWEZO MULUMBA",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "ABIGAIL ADRIANA RODRIGUEZ +  ",
+      "trips": 6,
+      "totalMiles": 6258.37,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "ABIGAIL ADRIANA RODRIGUEZ",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Emanuel Ennis +  ",
+      "trips": 8,
+      "totalMiles": 6109.98,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "Emanuel Ennis",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Michael Bullock +  ",
+      "trips": 3,
+      "totalMiles": 5817,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "Michael Bullock",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Azizbek Abdurakhmonov +  ",
+      "trips": 7,
+      "totalMiles": 4901.33,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "Azizbek Abdurakhmonov",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Torris Dewod Robinson +  ",
+      "trips": 5,
+      "totalMiles": 4803.13,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "Torris Dewod Robinson",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "RAISHAUNA NICOLE WHEATLEY +  ",
+      "trips": 7,
+      "totalMiles": 4511.49,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "RAISHAUNA NICOLE WHEATLEY",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "AHMED MOHAMED FARAH +  ",
+      "trips": 6,
+      "totalMiles": 4392.18,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "AHMED MOHAMED FARAH",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "GURUDATTA GURUDATTA +  ",
+      "trips": 5,
+      "totalMiles": 3141.25,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "GURUDATTA GURUDATTA",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "TRISTON J CAMPBELL +  ",
+      "trips": 4,
+      "totalMiles": 2496.8,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "TRISTON J CAMPBELL",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Bakhromjon Ilkhomov +  ",
+      "trips": 1,
+      "totalMiles": 1709.56,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "Bakhromjon Ilkhomov",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "GREGORY LAMAR HARDRICK +  ",
+      "trips": 3,
+      "totalMiles": 1556.55,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "GREGORY LAMAR HARDRICK",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "NARGIZA DADASHEVA +  ",
+      "trips": 2,
+      "totalMiles": 1205.84,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "NARGIZA DADASHEVA",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "SAEED ABRHDARY +  ",
+      "trips": 1,
+      "totalMiles": 787.27,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "SAEED ABRHDARY",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Michael Bullock",
+      "trips": 1,
+      "totalMiles": 731.3,
+      "driverType": "Company Driver",
+      "rawType": "company_driver",
+      "matchedName": "Michael Bullock",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    }
+  ],
+  "ownerOperators": [
+    {
+      "name": "FIRUZ AZIMOV +  ",
+      "trips": 16,
+      "totalMiles": 16613.89,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "FIRUZ AZIMOV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Frederic Rudolph Mike Peguy +  ",
+      "trips": 9,
+      "totalMiles": 14851.47,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "Frederic Rudolph Mike Peguy",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "SARDOR SADIKOV +  ",
+      "trips": 9,
+      "totalMiles": 13318.38,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "SARDOR SADIKOV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "STANLEY BRUTUS +  ",
+      "trips": 28,
+      "totalMiles": 12635.59,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "STANLEY BRUTUS",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Ray Anthony Ransom +  ",
+      "trips": 15,
+      "totalMiles": 11631.16,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "Ray Anthony Ransom",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "KEDIAN LUNAN +  ",
+      "trips": 9,
+      "totalMiles": 11546.02,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "KEDIAN LUNAN",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "AKBAR RUSTAMOV +  ",
+      "trips": 11,
+      "totalMiles": 10912.54,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "AKBAR RUSTAMOV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "JURABEK SHADMANOV +  ",
+      "trips": 15,
+      "totalMiles": 10912.21,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "JURABEK SHADMANOV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "SHAHBOZ MAMATOV +  ",
+      "trips": 14,
+      "totalMiles": 10825.09,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "SHAHBOZ MAMATOV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Doniyor Ziyaev +  ",
+      "trips": 15,
+      "totalMiles": 10803.14,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "Doniyor Ziyaev",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "AZAT NURGELDYYEV +  ",
+      "trips": 10,
+      "totalMiles": 10736.79,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "AZAT NURGELDYYEV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Azamat Otamuradov +  ",
+      "trips": 15,
+      "totalMiles": 10594.57,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "Azamat Otamuradov",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "OLEG ZELENSKI +  ",
+      "trips": 17,
+      "totalMiles": 10512.57,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "OLEG ZELENSKI",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Timothee Malie +  ",
+      "trips": 17,
+      "totalMiles": 10508.65,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "Timothee Malie",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "RENAT SABIROV +  ",
+      "trips": 15,
+      "totalMiles": 10506.86,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "RENAT SABIROV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "OLABODE OLUDAISI +  ",
+      "trips": 10,
+      "totalMiles": 10338.15,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "OLABODE OLUDAISI",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "EVENS NOEL +  ",
+      "trips": 17,
+      "totalMiles": 10289.96,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "EVENS NOEL",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "DJEMSKY BRUTUS +  ",
+      "trips": 16,
+      "totalMiles": 10108.07,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "DJEMSKY BRUTUS",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "BEKTOSHJON SATTAROV +  ",
+      "trips": 14,
+      "totalMiles": 9955.31,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "BEKTOSHJON SATTAROV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "RUSLAN ABDULLAYEV +  ",
+      "trips": 13,
+      "totalMiles": 9909.94,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "RUSLAN ABDULLAYEV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "IBROKHIM NIYAZOV +  ",
+      "trips": 9,
+      "totalMiles": 9722.75,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "IBROKHIM NIYAZOV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Ralph Michel +  ",
+      "trips": 12,
+      "totalMiles": 9566.48,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "Ralph Michel",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "JEAN ENICSON +  ",
+      "trips": 12,
+      "totalMiles": 9565.51,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "JEAN ENICSON",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "NAJMIDDIN URUNBOEV +  ",
+      "trips": 6,
+      "totalMiles": 9545.76,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "NAJMIDDIN URUNBOEV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "MUZAFFAR KHAMIDULLAYEV +  ",
+      "trips": 12,
+      "totalMiles": 9225.69,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "MUZAFFAR KHAMIDULLAYEV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Tolmas Fayziev +  ",
+      "trips": 9,
+      "totalMiles": 9161.4,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "Tolmas Fayziev",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Tulkin Absalomov +  ",
+      "trips": 8,
+      "totalMiles": 9067.47,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "Tulkin Absalomov",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "SHAVKAT MURTOZOEV +  ",
+      "trips": 14,
+      "totalMiles": 8771.95,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "SHAVKAT MURTOZOEV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "JAKHONGIR ABDUNABIEV +  ",
+      "trips": 9,
+      "totalMiles": 8617.83,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "JAKHONGIR ABDUNABIEV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "AKBARBEK ABDULLAEV +  ",
+      "trips": 9,
+      "totalMiles": 8617.67,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "AKBARBEK ABDULLAEV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "MICHAEL WILLIAM MIKOWSKI +  ",
+      "trips": 11,
+      "totalMiles": 8138.76,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "MICHAEL WILLIAM MIKOWSKI",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Prosner Lubin +  ",
+      "trips": 8,
+      "totalMiles": 8010.98,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "Prosner Lubin",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "ZIYOVADDIN AZIMOV +  ",
+      "trips": 8,
+      "totalMiles": 7889.17,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "ZIYOVADDIN AZIMOV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Sherzod Abduev +  ",
+      "trips": 11,
+      "totalMiles": 7668.18,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "Sherzod Abduev",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Dilshod Urinov +  ",
+      "trips": 12,
+      "totalMiles": 7596.26,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "Dilshod Urinov",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "JAFAR KHALIMOV +  ",
+      "trips": 7,
+      "totalMiles": 7508.43,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "JAFAR KHALIMOV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "DENIS MAXIMOV A2B Transportation LLC +  ",
+      "trips": 10,
+      "totalMiles": 7486.65,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "DENIS MAXIMOV A2B Transportation LLC",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "AKMALJON BOYBEKOV +  ",
+      "trips": 4,
+      "totalMiles": 7427.89,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "AKMALJON BOYBEKOV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "JAVOKHIR ISLOMOV +  ",
+      "trips": 12,
+      "totalMiles": 7296.11,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "JAVOKHIR ISLOMOV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Ernst Brutus +  ",
+      "trips": 12,
+      "totalMiles": 7203.59,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "Ernst Brutus",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "UROZOLI TAJIBOEV +  ",
+      "trips": 8,
+      "totalMiles": 6736.04,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "UROZOLI TAJIBOEV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "POLVANBEK POLVANOV +  ",
+      "trips": 5,
+      "totalMiles": 6352.86,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "POLVANBEK POLVANOV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "KAMOLIDDIN SHARIPOV +  ",
+      "trips": 11,
+      "totalMiles": 6148.53,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "KAMOLIDDIN SHARIPOV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "ANTOINE ELIEZER ALIWALY LJ +  ",
+      "trips": 6,
+      "totalMiles": 5631.18,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "ANTOINE ELIEZER ALIWALY LJ",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Arthur Jean Rony +  ",
+      "trips": 7,
+      "totalMiles": 5456,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "Arthur Jean Rony",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "RUZIMBOY KHUJAEV +  ",
+      "trips": 6,
+      "totalMiles": 5062.73,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "RUZIMBOY KHUJAEV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "JOSEPH JEAN WALMY +  ",
+      "trips": 5,
+      "totalMiles": 4712.56,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "JOSEPH JEAN WALMY",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "MUBORAK URAKOVA +  ",
+      "trips": 4,
+      "totalMiles": 4643.05,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "MUBORAK URAKOVA",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "MUROD DADASHEV +  ",
+      "trips": 5,
+      "totalMiles": 4205.12,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "MUROD DADASHEV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "YLYAS ACHYLOV +  ",
+      "trips": 3,
+      "totalMiles": 3143.53,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "YLYAS ACHYLOV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Sirojkhon Azimov +  ",
+      "trips": 5,
+      "totalMiles": 2483.27,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "Sirojkhon Azimov",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "ABDULLOH AKBAROV +  ",
+      "trips": 1,
+      "totalMiles": 1745.2,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "ABDULLOH AKBAROV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "JURATBEK TADJIEV +  ",
+      "trips": 1,
+      "totalMiles": 602.67,
+      "driverType": "Owner Operator",
+      "rawType": "company_owner",
+      "matchedName": "JURATBEK TADJIEV",
+      "teamDriverType": null,
+      "teamMatchedName": null
+    }
+  ],
+  "unmatchedOrOther": [
+    {
+      "name": "GOCHY GOCHYYEV +  ",
+      "trips": 3,
+      "totalMiles": 3503.88,
+      "driverType": "Unmatched",
+      "rawType": null,
+      "matchedName": null,
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "Unknown / Unassigned",
+      "trips": 7,
+      "totalMiles": 1444,
+      "driverType": "Unmatched",
+      "rawType": null,
+      "matchedName": null,
+      "teamDriverType": null,
+      "teamMatchedName": null
+    },
+    {
+      "name": "TELY METHELUS +  ",
+      "trips": 1,
+      "totalMiles": 756.43,
+      "driverType": "Unmatched",
+      "rawType": null,
+      "matchedName": null,
+      "teamDriverType": null,
+      "teamMatchedName": null
+    }
+  ]
+}

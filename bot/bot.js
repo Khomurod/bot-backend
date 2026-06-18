@@ -26,6 +26,7 @@ const {
 const { scheduleLoadIngest } = require('../services/loadIngestionService');
 const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedContextService');
 const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
+const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
 // config.js already validates DATABASE_URL, MANAGEMENT_GROUP_ID (BOT_TOKEN has a code default)
 // and exits on missing values — no need to re-check here.
 
@@ -668,6 +669,9 @@ async function startBot() {
     // so bot.action(/vote_unit_/) fires first for voting callbacks
     const { registerVotingHandlers } = require('./employeeVoting');
     registerVotingHandlers(bot);
+
+    // Mileage bonus Paid / Rejected buttons (accounting-only).
+    registerMileageBonusHandlers(bot);
 
     // ── Handler: confirmation broadcast button clicks ──
     bot.action(/^bcast_(\d+)_(\d+)$/, async (ctx) => {
