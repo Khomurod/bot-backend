@@ -1201,11 +1201,11 @@ app.get('/api/mileage-bonus/overview', authMiddleware, async (req, res) => {
 // background; the client polls /overview for progress + results.
 app.post('/api/mileage-bonus/run', authMiddleware, async (req, res) => {
   try {
-    if (mileageBonusService.isRunning()) {
+    if (await mileageBonusService.isRunActive()) {
       return res.status(409).json({ error: 'A mileage bonus run is already in progress.' });
     }
     mileageBonusService
-      .runMileageBonusCheck({ trigger: 'manual' })
+      .runMileageBonusCheck({ trigger: 'manual', requestedBy: req.admin?.username })
       .catch((err) => console.error('[API] Mileage bonus run failed:', err.message));
     res.status(202).json({ started: true });
   } catch (err) {
@@ -1217,16 +1217,64 @@ app.post('/api/mileage-bonus/run', authMiddleware, async (req, res) => {
 // POST /api/mileage-bonus/refresh — recompute progress only (no notifications).
 app.post('/api/mileage-bonus/refresh', authMiddleware, async (req, res) => {
   try {
-    if (mileageBonusService.isRunning()) {
+    if (await mileageBonusService.isRunActive()) {
       return res.status(409).json({ error: 'A mileage bonus run is already in progress.' });
     }
     mileageBonusService
-      .refreshProgressOnly({})
+      .refreshProgressOnly({ requestedBy: req.admin?.username })
       .catch((err) => console.error('[API] Mileage bonus refresh failed:', err.message));
     res.status(202).json({ started: true });
   } catch (err) {
     console.error('[API] Error starting mileage bonus refresh:', err.message);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PATCH /api/mileage-bonus/drivers/:name/status — persist the admin override.
+// Deactivating also disregards and removes every open Telegram bonus card.
+app.patch('/api/mileage-bonus/drivers/:normalizedName/status', authMiddleware, async (req, res) => {
+  try {
+    const status = String(req.body?.status || '').toLowerCase();
+    if (!['active', 'inactive'].includes(status)) {
+      return res.status(400).json({ error: 'status must be active or inactive' });
+    }
+    const result = await mileageBonusService.setDriverActivation(
+      req.params.normalizedName,
+      status === 'active',
+      { username: req.admin?.username }
+    );
+    res.json(result);
+  } catch (err) {
+    console.error('[API] Error updating mileage bonus driver status:', err.message);
+    res.status(err.status || 500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.post('/api/mileage-bonus/notifications/:id/resend', authMiddleware, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid notification id' });
+    const result = await mileageBonusService.resendBonusNotification(id, {
+      username: req.admin?.username,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error('[API] Error resending mileage bonus:', err.message);
+    res.status(err.status || 500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.post('/api/mileage-bonus/notifications/:id/disregard', authMiddleware, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid notification id' });
+    const result = await mileageBonusService.disregardBonusNotification(id, {
+      username: req.admin?.username,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error('[API] Error disregarding mileage bonus:', err.message);
+    res.status(err.status || 500).json({ error: err.message || 'Server error' });
   }
 });
 

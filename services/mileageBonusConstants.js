@@ -20,12 +20,19 @@ const MILEAGE_BONUS_TIERS = [
   { miles: 200000, amount: 1500 },
 ];
 
-// Hard-coded "Bonus Penalty For Drivers" group.
-const BONUS_GROUP_CHAT_ID = -5170359585;
+function csvValues(value) {
+  return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+// "Bonus Penalty For Drivers" group. The fallback preserves the current
+// deployment while allowing staging/test environments to stay isolated.
+const BONUS_GROUP_CHAT_ID = Number(process.env.MILEAGE_BONUS_GROUP_CHAT_ID || -5170359585);
 
 // Only these usernames may approve/reject a bonus card (case-insensitive,
 // stored without the leading @).
-const ACCOUNTING_USERNAMES = ['cameron_acc', 'Ellaaccounting'];
+const ACCOUNTING_USERNAMES = csvValues(process.env.MILEAGE_BONUS_ACCOUNTING_USERNAMES);
+if (!ACCOUNTING_USERNAMES.length) ACCOUNTING_USERNAMES.push('cameron_acc', 'Ellaaccounting');
+const ACCOUNTING_USER_IDS = new Set(csvValues(process.env.MILEAGE_BONUS_ACCOUNTING_USER_IDS));
 
 // Tagged on the notification card so accounting is pinged.
 const ACCOUNTING_MENTIONS = ['@cameron_acc', '@Ellaaccounting'];
@@ -74,6 +81,13 @@ function isAccountingUsername(username) {
   const u = String(username || '').replace(/^@/, '').toLowerCase();
   if (!u) return false;
   return ACCOUNTING_USERNAMES.some((name) => name.toLowerCase() === u);
+}
+
+function isAccountingUser(user) {
+  const id = user?.id == null ? '' : String(user.id);
+  // Once immutable IDs are configured, usernames no longer grant authority.
+  if (ACCOUNTING_USER_IDS.size > 0) return ACCOUNTING_USER_IDS.has(id);
+  return isAccountingUsername(user?.username);
 }
 
 /** Parse a number out of a Datatruck decimal string. */
@@ -133,6 +147,7 @@ module.exports = {
   MILEAGE_BONUS_TIERS,
   BONUS_GROUP_CHAT_ID,
   ACCOUNTING_USERNAMES,
+  ACCOUNTING_USER_IDS,
   ACCOUNTING_MENTIONS,
   REJECTION_ESCALATION_MENTIONS,
   PROGRAM_START_ISO,
@@ -145,6 +160,7 @@ module.exports = {
   BONUS_STATUS,
   normalizeDriverName,
   isAccountingUsername,
+  isAccountingUser,
   toMiles,
   computePayPeriodEnd,
   mostRecentScheduledRun,

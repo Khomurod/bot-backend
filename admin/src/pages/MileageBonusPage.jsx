@@ -5,6 +5,7 @@ const STATUS_BADGE = {
   pending: { label: "Pending", bg: "rgba(245,158,11,0.18)", color: "#f59e0b" },
   paid: { label: "Paid", bg: "rgba(34,197,94,0.18)", color: "#22c55e" },
   rejected: { label: "Rejected", bg: "rgba(239,68,68,0.18)", color: "#ef4444" },
+  disregarded: { label: "Disregarded", bg: "rgba(148,163,184,0.18)", color: "#94a3b8" },
 };
 
 function fmtMiles(value) {
@@ -54,6 +55,16 @@ export default function MileageBonusPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null);
+  const [rowBusy, setRowBusy] = useState({});
+
+  const withRowBusy = async (key, action) => {
+    setRowBusy((current) => ({ ...current, [key]: true }));
+    try {
+      return await action();
+    } finally {
+      setRowBusy((current) => ({ ...current, [key]: false }));
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -107,6 +118,62 @@ export default function MileageBonusPage() {
       setStatus({ type: "error", text: err.message });
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleDriverStatus = async (driver, nextStatus) => {
+    if (nextStatus === "inactive" && !window.confirm(
+      `Make ${driver.driver_name} inactive? Mileage calculation and new bonus messages will stop, and open Telegram bonus cards will be disregarded.`
+    )) return;
+    setStatus(null);
+    try {
+      const result = await withRowBusy(`driver:${driver.driver_normalized_name}`, () =>
+        api.updateMileageBonusDriverStatus(driver.driver_normalized_name, nextStatus)
+      );
+      const cleanupErrors = (result.cleanedNotifications || [])
+        .flatMap((item) => [item.error, item.cleanup?.error])
+        .filter(Boolean);
+      setStatus({
+        type: cleanupErrors.length ? "error" : "success",
+        text: `${driver.driver_name} is now ${nextStatus}.`
+          + (cleanupErrors.length ? ` Telegram cleanup warning: ${cleanupErrors.join(" | ")}` : ""),
+      });
+      await load();
+    } catch (err) {
+      setStatus({ type: "error", text: err.message });
+    }
+  };
+
+  const handleResend = async (notification) => {
+    if (!window.confirm(`Resend the ${fmtMiles(notification.threshold_miles)} mile bonus for ${notification.driver_name}?`)) return;
+    setStatus(null);
+    try {
+      const result = await withRowBusy(`notification:${notification.id}`, () =>
+        api.resendMileageBonusNotification(notification.id)
+      );
+      const cleanupWarning = result.cleanup?.error ? ` ${result.cleanup.error}` : "";
+      setStatus({ type: cleanupWarning ? "error" : "success", text: `Bonus message resent.${cleanupWarning}` });
+      await load();
+    } catch (err) {
+      setStatus({ type: "error", text: err.message });
+    }
+  };
+
+  const handleDisregard = async (notification) => {
+    if (!window.confirm(`Disregard this bonus task for ${notification.driver_name} and remove its Telegram card?`)) return;
+    setStatus(null);
+    try {
+      const result = await withRowBusy(`notification:${notification.id}`, () =>
+        api.disregardMileageBonusNotification(notification.id)
+      );
+      const cleanupWarning = result.cleanup?.error ? ` ${result.cleanup.error}` : "";
+      setStatus({
+        type: cleanupWarning ? "error" : "success",
+        text: `Bonus task disregarded.${cleanupWarning}`,
+      });
+      await load();
+    } catch (err) {
+      setStatus({ type: "error", text: err.message });
     }
   };
 
@@ -177,6 +244,11 @@ export default function MileageBonusPage() {
             {overview.lastRun.ranAt ? new Date(overview.lastRun.ranAt).toLocaleString() : ""}
           </div>
         )}
+        {overview?.lastRunRecord?.status === "failed" && (
+          <div style={{ marginTop: 10, fontSize: 13, color: "#ef4444" }}>
+            Last run failed: {overview.lastRunRecord.error || "Unknown error"}. It will retry automatically.
+          </div>
+        )}
       </div>
 
       <h3>Driver progress</h3>
@@ -200,9 +272,21 @@ export default function MileageBonusPage() {
             </thead>
             <tbody>
               {progress.map((d) => (
-                <tr key={d.driver_normalized_name}>
+                <tr key={d.driver_normalized_name} style={{ opacity: d.is_active === false ? 0.62 : 1 }}>
                   <td>
-                    <div style={{ fontWeight: 600 }}>{d.driver_name}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 600 }}>{d.driver_name}</span>
+                      <select
+                        value={d.is_active === false ? "inactive" : "active"}
+                        disabled={Boolean(rowBusy[`driver:${d.driver_normalized_name}`])}
+                        onChange={(event) => handleDriverStatus(d, event.target.value)}
+                        style={{ fontSize: 12, padding: "3px 6px" }}
+                        aria-label={`Mileage status for ${d.driver_name}`}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                       since {fmtDate(d.period_start)} · {d.trips || 0} trips
                     </div>
@@ -253,6 +337,7 @@ export default function MileageBonusPage() {
                 <th style={{ textAlign: "left" }}>Status</th>
                 <th style={{ textAlign: "left" }}>Decided by</th>
                 <th style={{ textAlign: "left" }}>Sent</th>
+                <th style={{ textAlign: "left" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -266,6 +351,30 @@ export default function MileageBonusPage() {
                   <td>{n.decided_by_username ? `@${n.decided_by_username}` : "—"}</td>
                   <td style={{ fontSize: 12, color: "var(--text-muted)" }}>
                     {n.created_at ? new Date(n.created_at).toLocaleString() : "—"}
+                  </td>
+                  <td>
+                    {n.status !== "paid" && (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ padding: "4px 8px", fontSize: 12 }}
+                          disabled={Boolean(rowBusy[`notification:${n.id}`])}
+                          onClick={() => handleResend(n)}
+                        >
+                          Resend
+                        </button>
+                        {n.status !== "disregarded" && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: "4px 8px", fontSize: 12, color: "#ef4444" }}
+                            disabled={Boolean(rowBusy[`notification:${n.id}`])}
+                            onClick={() => handleDisregard(n)}
+                          >
+                            Disregard
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

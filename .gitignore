@@ -12,3 +12,4 @@ samsara-integration/data/
 .env.*
 !.env.example
 samsara-integration/.env
+scratch/datatruck-driver-*

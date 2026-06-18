@@ -48,6 +48,31 @@ When `@datatruck_driver_bot` posts in an **active driver group**, `@wenzefeedbac
 
 Uses existing `GROQ_API_KEY` / `GEMINI_API_KEY` for banter text (fallback lines if AI unavailable).
 
+## Mileage bonus workflow
+
+The admin **Mileage Bonuses** page computes company-driver progress from the
+Datatruck OpenAPI and sends milestone cards to the configured Telegram group.
+Runs are serialized across instances and recorded in `mileage_bonus_runs`;
+failed scheduled runs retry with exponential backoff.
+
+- `Active` drivers are calculated and may receive new cards. Switching a
+  driver to `Inactive` freezes the stored progress and disregards open cards.
+- `Resend` creates a new current card, then removes the previous card and any
+  tracked rejection follow-up. Paid bonuses cannot be resent.
+- `Disregard` records an auditable terminal status and deletes the Telegram
+  card. Telegram limits deletion of older messages; when deletion is refused,
+  the bot removes the inline buttons so the task is no longer actionable.
+- Configure immutable `MILEAGE_BONUS_ACCOUNTING_USER_IDS` in production.
+  Username authorization is a compatibility fallback only when no IDs exist.
+
+| Variable | Description |
+|---|---|
+| `DATATRUCK_API_TOKEN` | Read-only Datatruck OpenAPI token |
+| `DATATRUCK_COMPANY` | Datatruck company subdomain |
+| `MILEAGE_BONUS_GROUP_CHAT_ID` | Telegram destination for bonus cards |
+| `MILEAGE_BONUS_ACCOUNTING_USER_IDS` | Comma-separated Telegram numeric IDs allowed to decide cards |
+| `MILEAGE_BONUS_ACCOUNTING_USERNAMES` | Compatibility fallback usernames |
+
 ## Tech Stack
 
 - **Backend:** Node.js, Telegraf, Express.js

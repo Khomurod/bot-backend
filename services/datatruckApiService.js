@@ -14,6 +14,9 @@ const PAGE_SIZE = 25;
 // ~3.1s between requests keeps us under 20 req/min with headroom.
 const REQUEST_SPACING_MS = 3100;
 const MAX_PAGES = 400; // hard stop so a pagination bug can't loop forever.
+const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_REQUEST_ATTEMPTS = 4;
+const RETRY_BASE_MS = 1_000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -35,14 +38,37 @@ function authHeaders() {
 }
 
 async function fetchJson(url) {
-  const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    const err = new Error(`Datatruck API ${res.status}: ${body.slice(0, 300)}`);
-    err.status = res.status;
-    throw err;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= MAX_REQUEST_ATTEMPTS; attempt += 1) {
+    try {
+      const res = await fetch(url, {
+        headers: authHeaders(),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      if (res.ok) return res.json();
+
+      const body = await res.text().catch(() => '');
+      const err = new Error(`Datatruck API ${res.status}: ${body.slice(0, 300)}`);
+      err.status = res.status;
+      lastErr = err;
+
+      const retryable = res.status === 429 || res.status >= 500;
+      if (!retryable || attempt === MAX_REQUEST_ATTEMPTS) throw err;
+      const retryAfterSeconds = Number(res.headers.get('retry-after'));
+      const delay = Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0
+        ? retryAfterSeconds * 1000
+        : RETRY_BASE_MS * (2 ** (attempt - 1));
+      await sleep(Math.min(delay, 30_000));
+    } catch (err) {
+      lastErr = err;
+      const networkFailure = err?.name === 'AbortError'
+        || err?.name === 'TimeoutError'
+        || err instanceof TypeError;
+      if (!networkFailure || attempt === MAX_REQUEST_ATTEMPTS) throw err;
+      await sleep(Math.min(RETRY_BASE_MS * (2 ** (attempt - 1)), 30_000));
+    }
   }
-  return res.json();
+  throw lastErr || new Error('Datatruck API request failed.');
 }
 
 /**
@@ -102,4 +128,6 @@ module.exports = {
   fetchAllPages,
   PAGE_SIZE,
   REQUEST_SPACING_MS,
+  REQUEST_TIMEOUT_MS,
+  MAX_REQUEST_ATTEMPTS,
 };

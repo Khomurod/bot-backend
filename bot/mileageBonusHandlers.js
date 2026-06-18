@@ -8,7 +8,11 @@
  */
 const mb = require('../database/mileageBonus');
 const { safeSend } = require('../services/telegramHtml');
-const { isAccountingUsername, BONUS_STATUS } = require('../services/mileageBonusConstants');
+const {
+  isAccountingUser,
+  BONUS_GROUP_CHAT_ID,
+  BONUS_STATUS,
+} = require('../services/mileageBonusConstants');
 const {
   buildDecidedCardText,
   buildRejectionFollowupText,
@@ -21,11 +25,30 @@ function registerMileageBonusHandlers(bot) {
       const notificationId = parseInt(ctx.match[2], 10);
       const from = ctx.from || {};
 
-      if (!isAccountingUsername(from.username)) {
+      if (!isAccountingUser(from)) {
         await ctx.answerCbQuery(
-          'Only @cameron_acc or @Ellaaccounting can confirm this bonus.',
+          'Only approved accounting users can confirm this bonus.',
           { show_alert: true }
         );
+        return;
+      }
+
+      const current = await mb.getBonusNotificationById(notificationId);
+      if (!current) {
+        await ctx.answerCbQuery('This bonus is no longer available.');
+        return;
+      }
+      const callbackChatId = ctx.callbackQuery?.message?.chat?.id;
+      const callbackMessageId = ctx.callbackQuery?.message?.message_id;
+      const isCurrentCard = String(callbackChatId) === String(BONUS_GROUP_CHAT_ID)
+        && String(callbackChatId) === String(current.telegram_chat_id)
+        && String(callbackMessageId) === String(current.telegram_message_id);
+      if (!isCurrentCard) {
+        await ctx.answerCbQuery('This is an old or invalid bonus card.', { show_alert: true });
+        return;
+      }
+      if (!(await mb.isDriverActive(current.driver_normalized_name))) {
+        await ctx.answerCbQuery('This driver is inactive; the bonus cannot be changed.', { show_alert: true });
         return;
       }
 
@@ -41,6 +64,14 @@ function registerMileageBonusHandlers(bot) {
       }
 
       if (alreadyDecided) {
+        if (record.status === 'pending' && record.action_state !== 'idle') {
+          await ctx.answerCbQuery('This bonus is currently being updated.');
+          return;
+        }
+        if (record.status === 'pending') {
+          await ctx.answerCbQuery('This driver is no longer eligible for this action.');
+          return;
+        }
         const by = record.decided_by_username ? `@${record.decided_by_username}` : 'accounting';
         await ctx.answerCbQuery(`Already ${record.status} by ${by}.`);
         return;
@@ -63,11 +94,21 @@ function registerMileageBonusHandlers(bot) {
       if (decision === BONUS_STATUS.REJECTED) {
         const chatId = ctx.callbackQuery?.message?.chat?.id;
         if (chatId) {
-          await safeSend(() => ctx.telegram.sendMessage(
-            chatId,
-            buildRejectionFollowupText(record, from.username),
-            { parse_mode: 'HTML' }
-          )).catch((err) => console.warn('[MILEAGE-BONUS] Rejection follow-up failed:', err.message));
+          let followup = null;
+          try {
+            followup = await safeSend(() => ctx.telegram.sendMessage(
+              chatId,
+              buildRejectionFollowupText(record, from.username),
+              { parse_mode: 'HTML' }
+            ));
+            const stored = await mb.setBonusNotificationFollowupMessage(record.id, followup?.message_id || null);
+            if (!stored) throw new Error('Could not record the rejection follow-up message.');
+          } catch (err) {
+            if (followup?.message_id) {
+              await ctx.telegram.deleteMessage(chatId, followup.message_id).catch(() => {});
+            }
+            console.warn('[MILEAGE-BONUS] Rejection follow-up failed:', err.message);
+          }
         }
       }
 
