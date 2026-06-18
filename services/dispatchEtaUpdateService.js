@@ -5,7 +5,7 @@ const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
 const { readLoadContextWithFallbacks, NO_CURRENT_LOAD_INFO_MESSAGE } = require('./dispatchPinnedContextService');
 const { calculateEtaToDestination } = require('./etaRoutingService');
 
-const ETA_POLL_INTERVAL_MS = 30 * 1000;
+const ETA_POLL_INTERVAL_MS = 90 * 1000;
 const ETA_MAX_BATCH = 10;
 
 let schedulerStopped = false;

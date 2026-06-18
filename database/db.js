@@ -9,6 +9,12 @@ const {
 
 const pool = new Pool({
   connectionString: config.databaseUrl,
+  // Keep the pool small: this app runs on a memory-constrained single
+  // instance and most database providers' free tiers cap total connections.
+  // A bounded pool also stops a slow query from exhausting the instance.
+  max: Number.parseInt(process.env.PG_POOL_MAX || '5', 10),
+  idleTimeoutMillis: Number.parseInt(process.env.PG_IDLE_TIMEOUT_MS || '30000', 10),
+  connectionTimeoutMillis: Number.parseInt(process.env.PG_CONNECTION_TIMEOUT_MS || '5000', 10),
   ssl: config.databaseUrl && config.databaseUrl.includes('sslmode=require')
     ? { rejectUnauthorized: false }
     : (config.databaseUrl && (config.databaseUrl.includes('supabase') || config.databaseUrl.includes('neon'))

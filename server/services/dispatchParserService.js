@@ -18,6 +18,11 @@ const DISPATCH_GROQ_MODELS = [
 ];
 const MAX_INLINE_GEMINI_FILE_BYTES = 14 * 1024 * 1024;
 const PDF_OCR_MAX_PAGES = 3;
+// OCR (tesseract.js) loads a ~5MB language model and spikes memory on each
+// run. It stays ON by default so scanned/image rate confirmations still
+// parse; set ENABLE_OCR=false on a memory-constrained instance to skip it
+// (text-layer PDFs continue to work; image-only docs fall back to AI vision).
+const OCR_ENABLED = process.env.ENABLE_OCR !== 'false';
 const DISPATCH_GEMINI_MODELS = GEMINI_DISPATCH_MODELS;
 const DISPATCH_WARNING_LINES = [
   '🛑MUST SECURE FREIGHT WITH STRAPS',
@@ -96,6 +101,9 @@ async function extractTextFromPdf(buffer) {
 
     let screenshotOcrText = '';
     try {
+      if (!OCR_ENABLED) {
+        return { text: textLayer, usedPdfOcr: false };
+      }
       const screenshots = await parser.getScreenshot({ scale: 2, imageDataUrl: false });
       const pages = Array.isArray(screenshots?.pages) ? screenshots.pages.slice(0, PDF_OCR_MAX_PAGES) : [];
       if (pages.length > 0) {
@@ -132,6 +140,9 @@ async function extractTextFromPdf(buffer) {
 }
 
 async function extractTextFromImage(buffer) {
+  if (!OCR_ENABLED) {
+    return { text: '', usedPdfOcr: false };
+  }
   const worker = await createWorker('eng');
   try {
     const result = await worker.recognize(buffer);

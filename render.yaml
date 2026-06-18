@@ -64,7 +64,9 @@ services:
       - key: SAMSARA_API_BASE
         value: https://api.samsara.com
       - key: NODE_OPTIONS
-        value: --max-old-space-size=400
+        # Main process heap cap. Kept well under the 512MB instance so the
+        # spawned samsara (Node child) and leads-bot (Python child) have room.
+        value: --max-old-space-size=300
 
   - type: web
     name: samsara-poller
