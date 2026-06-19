@@ -7,7 +7,7 @@ function getRingCentralConfig() {
     clientId: process.env.RC_CLIENT_ID || '',
     clientSecret: process.env.RC_CLIENT_SECRET || '',
     jwtToken: process.env.RC_JWT_TOKEN || '',
-    fromNumber: process.env.RC_FROM_NUMBER || '',
+    fromNumber: process.env.RC_FROM_NUMBER || '+14704804679',
   };
 }
 

@@ -249,7 +249,7 @@ function startSamsaraBot() {
   }
 
   const samsaraPort = Number.parseInt(process.env.SAMSARA_PORT || '3002', 10);
-  const heapLimit = Number.parseInt(process.env.SAMSARA_MAX_OLD_SPACE_MB || '96', 10);
+  const heapLimit = Number.parseInt(process.env.SAMSARA_MAX_OLD_SPACE_MB || '64', 10);
 
   try {
     const child = spawn(process.execPath, [

@@ -13,11 +13,13 @@ const resolvedSamsaraApiKeys = Array.from(
 
 // Validate required environment variables up-front so we fail fast
 // with a clear error instead of crashing later at first use.
+// NOTE: only true secrets are required here. Non-secret config (group ids,
+// USDOT numbers, base URLs, feature flags, etc.) is hardcoded as defaults
+// below so it does not need to live in the Render environment. PORT is
+// injected automatically by Render.
 const requiredEnv = [
   'DATABASE_URL',
-  'MANAGEMENT_GROUP_ID',
   'JWT_SECRET',
-  'PORT',
   'BOT_TOKEN',
   'TELEGRAM_BOT_TOKEN',
   'FACEBOOK_TOKEN_ENCRYPTION_KEY',
@@ -32,7 +34,7 @@ if (missing.length > 0) {
 // MANAGEMENT_GROUP_ID must be a valid Telegram supergroup/channel id (-100…).
 // Telegram groups that are upgraded to supergroups get a new -100-prefixed id;
 // the env var MUST be updated at that point — we no longer silently override it.
-const managementGroupId = String(process.env.MANAGEMENT_GROUP_ID).trim();
+const managementGroupId = String(process.env.MANAGEMENT_GROUP_ID || '-1002997837889').trim();
 if (!/^-?\d+$/.test(managementGroupId)) {
   console.error(`[CONFIG] MANAGEMENT_GROUP_ID is not a numeric chat id: "${managementGroupId}"`);
   process.exit(1);
@@ -100,29 +102,29 @@ module.exports = {
   samsaraApiBase: process.env.SAMSARA_API_BASE || 'https://api.samsara.com',
   evoEldApiKey: process.env.EVO_ELD_API_KEY || '',
   evoEldProviderToken: process.env.EVO_ELD_PROVIDER_TOKEN || '',
-  evoEldUsdotNumber: process.env.EVO_ELD_USDOT_NUMBER || process.env.USDOT_NUMBER || '',
+  evoEldUsdotNumber: process.env.EVO_ELD_USDOT_NUMBER || process.env.USDOT_NUMBER || '3574434',
   evoEldApiBase: process.env.EVO_ELD_API_BASE || 'https://read.evoeld.com/api/v2',
   ttEldApiKey: process.env.TT_ELD_API_KEY || '',
   ttEldProviderToken: process.env.TT_ELD_PROVIDER_TOKEN || '',
-  ttEldUsdotNumber: process.env.TT_ELD_USDOT_NUMBER || process.env.USDOT_NUMBER || '',
+  ttEldUsdotNumber: process.env.TT_ELD_USDOT_NUMBER || process.env.USDOT_NUMBER || '3574434',
   ttEldApiBase: process.env.TT_ELD_API_BASE || 'https://read.tteld.com/api/externalservice',
-  dispatchEtaTestGroupId: String(process.env.DISPATCH_ETA_TEST_GROUP_ID || '').trim(),
+  dispatchEtaTestGroupId: String(process.env.DISPATCH_ETA_TEST_GROUP_ID || '-5289094495').trim(),
   googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   googleGeocodingApiBase: process.env.GOOGLE_GEOCODING_API_BASE || 'https://maps.googleapis.com/maps/api/geocode/json',
   googleRoutesApiBase: process.env.GOOGLE_ROUTES_API_BASE || 'https://routes.googleapis.com/directions/v2:computeRoutes',
-  employeeGroupId: process.env.EMPLOYEE_GROUP_ID,
+  employeeGroupId: process.env.EMPLOYEE_GROUP_ID || '-1003284808897',
   corsAllowedOrigins,
   // When true, CORS allows any origin (useful in local dev/testing).
   corsAllowAll: !corsAllowedOrigins.length || process.env.CORS_ALLOW_ALL === 'true',
   nodeEnv: process.env.NODE_ENV || 'development',
   renderExternalUrl: process.env.RENDER_EXTERNAL_URL || '',
-  metaAppId: String(process.env.META_APP_ID || metaAppCredentials.metaAppId || '').trim(),
+  metaAppId: String(process.env.META_APP_ID || metaAppCredentials.metaAppId || '1718688966164172').trim(),
   metaAppSecret: normalizeOptionalEnv(process.env.META_APP_SECRET || metaAppCredentials.metaAppSecret || ''),
-  metaLoginConfigId: normalizeOptionalEnv(process.env.META_LOGIN_CONFIG_ID),
+  metaLoginConfigId: normalizeOptionalEnv(process.env.META_LOGIN_CONFIG_ID) || '1295127102598424',
   metaGraphVersion: process.env.META_GRAPH_VERSION || 'v25.0',
   metaWebhookVerifyToken: process.env.WEBHOOK_VERIFY_TOKEN || '',
   metaRequestedPermissions: (process.env.META_REQUESTED_PERMISSIONS
-    || 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,pages_manage_ads,ads_management,pages_messaging,business_management')
+    || 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,pages_manage_ads,ads_management,pages_messaging')
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean),
@@ -132,20 +134,22 @@ module.exports = {
   facebookTokenEncryptionKey: process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY,
   leadsInternalSharedSecret: process.env.LEADS_INTERNAL_SHARED_SECRET,
   // Wenze Facebook Leads hub — auto-SMS mirrors + RC inbound forwards (same as leads-bot TELEGRAM_CHAT_ID)
-  leadsTelegramChatId: String(process.env.TELEGRAM_CHAT_ID || '').trim(),
+  leadsTelegramChatId: String(process.env.TELEGRAM_CHAT_ID || '-5231255301').trim(),
   // When false, load ingestion skips forwarding parse-failure hints to DISPATCH_ETA_TEST_GROUP_ID.
+  // Hardcoded default false (was set to false in the Render environment).
   loadIngestNotifyExtractionFailure:
-    process.env.LOAD_INGEST_NOTIFY_EXTRACTION_FAILURE !== 'false',
-  // Bitrix24 incoming webhook — optional dual delivery for Facebook leads
-  bitrix24Enabled: process.env.BITRIX24_ENABLED === 'true',
+    process.env.LOAD_INGEST_NOTIFY_EXTRACTION_FAILURE === 'true',
+  // Bitrix24 incoming webhook — dual delivery for Facebook leads (default on).
+  bitrix24Enabled: process.env.BITRIX24_ENABLED !== 'false',
   bitrix24WebhookUrl: normalizeOptionalEnv(process.env.BITRIX24_WEBHOOK_URL),
   bitrix24Entity: String(process.env.BITRIX24_ENTITY || 'lead').trim().toLowerCase() === 'deal'
     ? 'deal'
     : 'lead',
-  bitrix24AssignedById: String(process.env.BITRIX24_ASSIGNED_BY_ID || '').trim(),
+  // Hardcoded as-is per operator request (kept exactly as the env value).
+  bitrix24AssignedById: String(process.env.BITRIX24_ASSIGNED_BY_ID || 'Tom Robinson').trim(),
   bitrix24SourceId: normalizeOptionalEnv(process.env.BITRIX24_SOURCE_ID) || 'WEB',
   bitrix24SourceDescription:
-    normalizeOptionalEnv(process.env.BITRIX24_SOURCE_DESCRIPTION) || 'Facebook / bot-backend',
+    normalizeOptionalEnv(process.env.BITRIX24_SOURCE_DESCRIPTION) || 'WenzeLeadBots',
   bitrix24DealCategoryId: String(process.env.BITRIX24_DEAL_CATEGORY_ID || '').trim(),
   bitrix24DealStageId: String(process.env.BITRIX24_DEAL_STAGE_ID || '').trim(),
   bitrix24FieldMap: loadBitrixFieldMapConfig(),
