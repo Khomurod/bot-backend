@@ -11,7 +11,7 @@ const {
   normalizeMediaItems,
 } = require('./scheduledMessageUtils');
 
-const POLL_INTERVAL_MS = 30 * 1000; // 30 seconds
+const POLL_INTERVAL_MS = 60 * 1000; // 60 seconds
 // Hourly chat_logs retention pass (lightweight DELETE).
 const RETENTION_INTERVAL_MS = 60 * 60 * 1000;
 

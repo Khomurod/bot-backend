@@ -4,15 +4,12 @@ import LoginPage from "./pages/LoginPage";
 import GroupsPage from "./pages/GroupsPage";
 import QuestionsPage from "./pages/QuestionsPage";
 import BroadcastPage from "./pages/BroadcastPage";
-import AiFeaturesPage from "./pages/AiFeaturesPage";
 import ScheduledMessagesPage from "./pages/ScheduledMessagesPage";
 import EmployeeVotingPage from "./pages/EmployeeVotingPage";
-import ChatLogsPage from "./pages/ChatLogsPage";
 import MessageManagerPage from "./pages/MessageManagerPage";
 import CompanyBirthdaysPage from "./pages/CompanyBirthdaysPage";
 import DispatchPage from "./pages/DispatchPage";
 import FacebookLeadsPage from "./pages/FacebookLeadsPage";
-import AskDataPanel from "./pages/AskDataPanel";
 import MileageBonusPage from "./pages/MileageBonusPage";
 
 function getPageFromPath(pathname) {
@@ -118,12 +115,9 @@ export default function App() {
     broadcast: <BroadcastPage />,
     questions: <QuestionsPage />,
     voting: <EmployeeVotingPage />,
-    ai_insights: <AiFeaturesPage />,
-    ask: <AskDataPanel />,
     groups: <GroupsPage />,
     company_birthdays: <CompanyBirthdaysPage />,
     mileage_bonus: <MileageBonusPage />,
-    logs: <ChatLogsPage />,
     manager: <MessageManagerPage />,
     scheduled: <ScheduledMessagesPage />,
   };
@@ -147,14 +141,6 @@ export default function App() {
       ],
     },
     {
-      label: 'Insights',
-      color: '#f59e0b',
-      items: [
-        { key: 'ai_insights', icon: '🧠', label: 'AI Reports' },
-        { key: 'ask', icon: '🔍', label: 'Ask a Question' },
-      ],
-    },
-    {
       label: 'Team',
       color: '#a78bfa',
       items: [
@@ -166,7 +152,6 @@ export default function App() {
   ];
 
   const ADMIN_ITEMS = [
-    { key: 'logs', icon: '💬', label: 'Chat Monitor' },
     { key: 'manager', icon: '🛠️', label: 'Edit Message' },
     { key: 'scheduled', icon: '📅', label: 'Scheduled Messages' },
   ];

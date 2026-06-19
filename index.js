@@ -7,7 +7,6 @@ const { spawn } = require('child_process');
 const { bot, startBot, stopBot } = require('./bot/bot');
 const { startServer, stopServer } = require('./server/api');
 const { startScheduler, stopScheduler } = require('./services/schedulerService');
-const { startWeeklyReporter, stopWeeklyReporter } = require('./services/weeklyReportService');
 const { startBirthdayService, stopBirthdayService } = require('./services/birthdayService');
 const {
   startGroupStatusAiService,
@@ -17,10 +16,6 @@ const {
   startEmployeeBirthdayWishService,
   stopEmployeeBirthdayWishService,
 } = require('./services/employeeBirthdayWishService');
-const {
-  startBackgroundAnnotator,
-  stopBackgroundAnnotator,
-} = require('./services/aiAnnotationService');
 const {
   configureFacebookLeadTelegram,
   startFacebookWebhookWorker,
@@ -376,8 +371,6 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopBirthdayService(); } catch (err) { console.error('[SHUTDOWN] stopBirthdayService failed:', err.message); }
   try { stopEmployeeBirthdayWishService(); } catch (err) { console.error('[SHUTDOWN] stopEmployeeBirthdayWishService failed:', err.message); }
   try { stopGroupStatusAiService(); } catch (err) { console.error('[SHUTDOWN] stopGroupStatusAiService failed:', err.message); }
-  try { stopWeeklyReporter(); } catch (err) { console.error('[SHUTDOWN] stopWeeklyReporter failed:', err.message); }
-  try { stopBackgroundAnnotator(); } catch (err) { console.error('[SHUTDOWN] stopBackgroundAnnotator failed:', err.message); }
   try { stopMileageBonusService(); } catch (err) { console.error('[SHUTDOWN] stopMileageBonusService failed:', err.message); }
 
   await Promise.allSettled([
@@ -418,8 +411,6 @@ async function start() {
   startBirthdayService();
   startEmployeeBirthdayWishService();
   startGroupStatusAiService();
-  startWeeklyReporter();
-  startBackgroundAnnotator();
   startMileageBonusService();
   await startFacebookWebhookWorker();
   startLeadsBot();

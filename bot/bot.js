@@ -401,24 +401,17 @@ async function startBot() {
             });
           }
 
-          const text = ctx.message.text || ctx.message.caption;
-          const hasMedia =
-            Boolean(ctx.message?.document)
-            || (Array.isArray(ctx.message?.photo) && ctx.message.photo.length > 0);
-          const logText = (text && String(text).trim()) || (hasMedia ? '[attachment]' : '');
-
-          if (logText && group) {
-            const senderName = ctx.from.first_name || ctx.from.username || 'Unknown';
-            const telegramMessageId = ctx.message.message_id || null;
-            await db.logChatMessage(group.id, ctx.from.id, senderName, logText, telegramMessageId);
-          }
-
+          // General message logging is intentionally disabled: we no longer
+          // persist every group message to chat_logs. Only load-relevant
+          // messages are processed (below), which feeds /status and /load via
+          // group_recent_loads. Pinned-message snapshots are still captured
+          // above for the same reason.
           if (group && group.group_type === 'driver' && group.active && ctx.message) {
             scheduleLoadIngest(bot.telegram, group, ctx.message);
           }
         }
       } catch (err) {
-        console.error('[BOT] Error logging chat message:', err.message);
+        console.error('[BOT] Error processing group message:', err.message);
       }
       return next();
     });
