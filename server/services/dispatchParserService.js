@@ -19,10 +19,11 @@ const DISPATCH_GROQ_MODELS = [
 const MAX_INLINE_GEMINI_FILE_BYTES = 14 * 1024 * 1024;
 const PDF_OCR_MAX_PAGES = 3;
 // OCR (tesseract.js) loads a ~5MB language model and spikes memory on each
-// run. It stays ON by default so scanned/image rate confirmations still
-// parse; set ENABLE_OCR=false on a memory-constrained instance to skip it
-// (text-layer PDFs continue to work; image-only docs fall back to AI vision).
-const OCR_ENABLED = process.env.ENABLE_OCR !== 'false';
+// run, which is too heavy for the free 512MB instance. It is therefore OFF by
+// default; set ENABLE_OCR=true to turn it back on. Text-layer PDFs continue to
+// parse normally; only scanned/image-only docs lose OCR (they can still fall
+// back to AI vision where configured).
+const OCR_ENABLED = process.env.ENABLE_OCR === 'true';
 const DISPATCH_GEMINI_MODELS = GEMINI_DISPATCH_MODELS;
 const DISPATCH_WARNING_LINES = [
   '🛑MUST SECURE FREIGHT WITH STRAPS',
