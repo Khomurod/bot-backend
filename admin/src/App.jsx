@@ -10,6 +10,7 @@ import MessageManagerPage from "./pages/MessageManagerPage";
 import CompanyBirthdaysPage from "./pages/CompanyBirthdaysPage";
 import DispatchPage from "./pages/DispatchPage";
 import FacebookLeadsPage from "./pages/FacebookLeadsPage";
+import LeadsPage from "./pages/LeadsPage";
 import MileageBonusPage from "./pages/MileageBonusPage";
 
 function getPageFromPath(pathname) {
@@ -112,6 +113,7 @@ export default function App() {
   const pages = {
     dispatch: <DispatchPage />,
     facebook_leads: <FacebookLeadsPage />,
+    leads: <LeadsPage />,
     broadcast: <BroadcastPage />,
     questions: <QuestionsPage />,
     voting: <EmployeeVotingPage />,
@@ -128,6 +130,7 @@ export default function App() {
       color: '#22c55e',
       items: [
         { key: 'dispatch', icon: '🚚', label: 'Dispatch Center' },
+        { key: 'leads', icon: '📥', label: 'Leads' },
         { key: 'facebook_leads', icon: '👥', label: 'Customer Inquiries' },
       ],
     },

@@ -1031,3 +1031,25 @@ CREATE INDEX IF NOT EXISTS idx_mileage_bonus_runs_started
   ON mileage_bonus_runs(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mileage_bonus_runs_status
   ON mileage_bonus_runs(status, lease_expires_at, next_retry_at);
+
+-- Unified inbound leads (Facebook + Indeed) shown in the admin "Leads" tab.
+-- Each source dedupes on its own external id (Facebook leadgen id / Gmail
+-- message id) so retries never create duplicates.
+CREATE TABLE IF NOT EXISTS leads (
+  id SERIAL PRIMARY KEY,
+  source TEXT NOT NULL,                 -- 'facebook' | 'indeed'
+  external_id TEXT,                     -- leadgen id / gmail message id
+  full_name TEXT,
+  email TEXT,
+  phone TEXT,
+  job_title TEXT,
+  message TEXT,
+  bitrix_id TEXT,
+  bitrix_status TEXT DEFAULT 'pending', -- pending|created|skipped|disabled|failed
+  raw JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE (source, external_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_leads_created_at ON leads(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_leads_source_created ON leads(source, created_at DESC);

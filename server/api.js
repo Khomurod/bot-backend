@@ -13,6 +13,7 @@ const { generateDriverReport, generateCompanyReport, AI_REPORT_GENERATION_FAILED
 const { generateInsightReport } = require('../services/aiInsightsService');
 const { ensureAnnotationsForRange } = require('../services/aiAnnotationService');
 const { askData } = require('../services/aiAskService');
+const { ingestIndeedLead } = require('../services/indeedLeadService');
 const { inspectDatPageLayout } = require('../services/datUiInspectorService');
 const { renderInsightReportForTelegram } = require('../services/insightRenderer');
 const { buildTelegramMessageUrl } = require('../services/telegramUrl');
@@ -142,6 +143,28 @@ function proxyAuthGuard(req, res, next) {
     return res.status(401).json({ error: 'Invalid token' });
   }
 }
+// Indeed lead intake from the Gmail Apps Script. Registered BEFORE the global
+// 1mb JSON parser so a base64 résumé PDF (up to ~12mb) is accepted. Auth is the
+// same internal shared secret used by the Facebook internal webhook.
+app.post(
+  '/api/internal/indeed/lead',
+  express.json({ limit: '12mb' }),
+  internalSharedSecretGuard,
+  async (req, res) => {
+    try {
+      const { messageId, from, subject, body, resumePdfBase64 } = req.body || {};
+      if (!messageId) {
+        return res.status(400).json({ error: 'messageId is required' });
+      }
+      const result = await ingestIndeedLead({ messageId, from, subject, body, resumePdfBase64 });
+      return res.json({ status: 'accepted', ...result });
+    } catch (err) {
+      console.error('[API] Indeed lead ingest failed:', err.message);
+      return res.status(500).json({ error: 'Failed to ingest Indeed lead', detail: err.message });
+    }
+  }
+);
+
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
 
@@ -2080,6 +2103,21 @@ app.get('/api/chat-logs', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[API] Error fetching chat logs:', err.message);
     res.status(500).json({ error: 'Failed to fetch chat logs' });
+  }
+});
+
+// ─── Leads (Facebook + Indeed) for the admin "Leads" tab ───
+app.get('/api/leads', authMiddleware, async (req, res) => {
+  try {
+    const source = req.query.source === 'facebook' || req.query.source === 'indeed'
+      ? req.query.source
+      : null;
+    const limit = req.query.limit ? Number.parseInt(req.query.limit, 10) : 100;
+    const leads = await db.listLeads(limit, source);
+    res.json(leads);
+  } catch (err) {
+    console.error('[API] Error fetching leads:', err.message);
+    res.status(500).json({ error: 'Failed to fetch leads' });
   }
 });
 

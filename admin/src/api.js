@@ -649,6 +649,16 @@ export async function getChatLogs() {
   return res.json();
 }
 
+export async function getLeads(source = '') {
+  const params = new URLSearchParams({ t: String(Date.now()) });
+  if (source) params.set('source', source);
+  const res = await fetch(`${API_BASE}/leads?${params.toString()}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function getAiReports(type = 'driver', includeSent = false) {
   const res = await fetch(`${API_BASE}/ai-reports?type=${encodeURIComponent(type)}&includeSent=${includeSent ? 'true' : 'false'}`, { headers: getHeaders() });
   if (!res.ok) { await handleApiError(res); }
