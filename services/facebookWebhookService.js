@@ -133,9 +133,10 @@ async function processLeadEvent(eventRow) {
 
   await sendTelegramMessage(connection.telegram_group_id, formatLeadMessage(leadData));
 
+  let bitrixResult = null;
   try {
     const formId = String(payload.value?.form_id || payload.value?.formId || '');
-    const bitrixResult = await createCrmRecordFromLead({
+    bitrixResult = await createCrmRecordFromLead({
       fieldMap,
       leadData,
       connection,
@@ -147,6 +148,33 @@ async function processLeadEvent(eventRow) {
     }
   } catch (bitrixErr) {
     console.error('[Bitrix24] Lead sync error:', bitrixErr.message);
+  }
+
+  // Best-effort: record the lead for the admin "Leads" tab. Wrapped so it can
+  // never break the Facebook → Telegram/Bitrix/SMS flow.
+  try {
+    let bitrixStatus = 'skipped';
+    if (bitrixResult?.ok) bitrixStatus = 'created';
+    else if (bitrixResult?.reason === 'not_configured') bitrixStatus = 'disabled';
+    else if (bitrixResult) bitrixStatus = 'failed';
+    const recorded = await db.createLeadIfNew({
+      source: 'facebook',
+      externalId: leadgenId,
+      fullName,
+      email: fieldMap.email || null,
+      phone: phone || null,
+      jobTitle: fieldMap.job_title || null,
+      message: fieldMap.message || null,
+      raw: { page_name: connection.page_name, page_id: pageId },
+    });
+    if (recorded) {
+      await db.updateLeadBitrixResult(recorded.id, {
+        bitrixId: bitrixResult?.bitrixId || null,
+        status: bitrixStatus,
+      });
+    }
+  } catch (recordErr) {
+    console.error('[Leads] Failed to record Facebook lead:', recordErr.message);
   }
 
   let smsResult = { ok: false, reason: phone ? 'skipped' : 'no_phone' };
