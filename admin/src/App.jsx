@@ -14,6 +14,7 @@ import LeadsPage from "./pages/LeadsPage";
 import MileageBonusPage from "./pages/MileageBonusPage";
 import RaiseApprovalPage from "./pages/RaiseApprovalPage";
 import RaisePublicPage from "./pages/RaisePublicPage";
+import HomeTimePage from "./pages/HomeTimePage";
 
 function getPageFromPath(pathname) {
   if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) {
@@ -135,6 +136,7 @@ export default function App() {
     company_birthdays: <CompanyBirthdaysPage />,
     mileage_bonus: <MileageBonusPage />,
     raise_approval: <RaiseApprovalPage />,
+    home_time: <HomeTimePage />,
     manager: <MessageManagerPage />,
     scheduled: <ScheduledMessagesPage />,
   };
@@ -166,6 +168,7 @@ export default function App() {
         { key: 'company_birthdays', icon: '🎂', label: 'Birthdays' },
         { key: 'mileage_bonus', icon: '🏁', label: 'Mileage Bonuses' },
         { key: 'raise_approval', icon: '💵', label: 'Driver Raises' },
+        { key: 'home_time', icon: '🏠', label: 'Driver Home Time' },
       ],
     },
   ];
