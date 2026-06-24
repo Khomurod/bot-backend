@@ -64,6 +64,8 @@ services:
       - key: SAMSARA_API_BASE
         value: https://api.samsara.com
       # Driver Raise Approval (75¢/mile) — Gmail App Password OTP channel.
+      # Primary config is the admin panel (stored encrypted); these are an
+      # optional fallback used only when the panel has no credentials.
       - key: GMAIL_USER
         sync: false
       - key: GMAIL_APP_PASSWORD

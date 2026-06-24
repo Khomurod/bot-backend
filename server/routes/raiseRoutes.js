@@ -12,6 +12,15 @@ const jwt = require('jsonwebtoken');
 const config = require('../../config/config');
 const ra = require('../../database/raiseApproval');
 const raise = require('../../services/raiseApprovalService');
+const { encryptText } = require('../../services/facebookCrypto');
+const { normalizeDriverName } = require('../../services/mileageBonusConstants');
+
+// Strip secrets and expose only a "configured" flag for the Gmail App Password.
+function maskSettings(settings) {
+  if (!settings) return settings;
+  const { gmail_app_password_encrypted, ...rest } = settings;
+  return { ...rest, gmail_configured: Boolean(gmail_app_password_encrypted) };
+}
 
 const publicRouter = express.Router();
 const adminRouter = express.Router();
@@ -91,7 +100,7 @@ adminRouter.use(adminAuth);
 adminRouter.get('/settings', async (req, res) => {
   try {
     const settings = await ra.getRaiseSettings();
-    res.json({ settings, scheduleDescription: raise.describeSchedule(settings) });
+    res.json({ settings: maskSettings(settings), scheduleDescription: raise.describeSchedule(settings) });
   } catch (err) {
     sendServiceError(res, err, 'Failed to load settings.');
   }
@@ -128,10 +137,19 @@ adminRouter.put('/settings', async (req, res) => {
       if (!(h >= 1 && h <= 720)) return res.status(400).json({ error: 'link_ttl_hours must be 1-720' });
       patch.link_ttl_hours = h;
     }
+    // Gmail App Password channel, entered here in the admin panel. The address
+    // is stored as-is; the App Password is encrypted before storage and only a
+    // non-empty value replaces the existing one.
+    if (b.gmail_user !== undefined) patch.gmail_user = String(b.gmail_user).trim() || null;
+    if (typeof b.gmail_app_password === 'string' && b.gmail_app_password.trim()) {
+      patch.gmail_app_password_encrypted = encryptText(b.gmail_app_password.replace(/\s+/g, ''));
+    } else if (b.gmail_app_password === '' || b.gmail_clear_password === true) {
+      patch.gmail_app_password_encrypted = null;
+    }
     let settings = await ra.updateRaiseSettings(patch);
     // Re-arm the schedule when timing changed or it was just enabled.
     if (settings.schedule_enabled) settings = await raise.recomputeNextRun(settings).then(() => ra.getRaiseSettings());
-    res.json({ settings, scheduleDescription: raise.describeSchedule(settings) });
+    res.json({ settings: maskSettings(settings), scheduleDescription: raise.describeSchedule(settings) });
   } catch (err) {
     sendServiceError(res, err, 'Failed to save settings.');
   }
@@ -199,14 +217,20 @@ adminRouter.put('/teams/:id/drivers', async (req, res) => {
   try {
     const id = Number.parseInt(req.params.id, 10);
     const incoming = Array.isArray(req.body?.drivers) ? req.body.drivers : [];
-    const drivers = incoming
-      .filter((d) => d && d.driver_normalized_name && d.driver_name)
-      .map((d) => ({
+    // Drivers are entered manually by the admin; the normalized matching key is
+    // derived server-side from the typed name. De-dupe by normalized name.
+    const byNorm = new Map();
+    for (const d of incoming) {
+      const driverName = String(d?.driver_name || '').trim();
+      const normalized = normalizeDriverName(driverName);
+      if (!driverName || !normalized || byNorm.has(normalized)) continue;
+      byNorm.set(normalized, {
         driver_external_id: d.driver_external_id || null,
-        driver_normalized_name: String(d.driver_normalized_name),
-        driver_name: String(d.driver_name),
-      }));
-    res.json({ drivers: await ra.setTeamDrivers(id, drivers) });
+        driver_normalized_name: normalized,
+        driver_name: driverName,
+      });
+    }
+    res.json({ drivers: await ra.setTeamDrivers(id, [...byNorm.values()]) });
   } catch (err) {
     sendServiceError(res, err, 'Failed to save team drivers.');
   }

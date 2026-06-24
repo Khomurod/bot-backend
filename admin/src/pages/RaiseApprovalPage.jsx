@@ -16,13 +16,16 @@ export default function RaiseApprovalPage() {
   const [scheduleDescription, setScheduleDescription] = useState("");
   const [teams, setTeams] = useState([]);
   const [rounds, setRounds] = useState([]);
-  const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const [managingTeam, setManagingTeam] = useState(null); // team being assigned drivers
-  const [assignSelection, setAssignSelection] = useState(new Set());
+  const [driverList, setDriverList] = useState([]); // [{ driver_name }]
+  const [newDriverName, setNewDriverName] = useState("");
+  const [gmailUser, setGmailUser] = useState("");
+  const [gmailPassword, setGmailPassword] = useState("");
+  const [savingGmail, setSavingGmail] = useState(false);
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
   const [sending, setSending] = useState(false);
@@ -41,6 +44,7 @@ export default function RaiseApprovalPage() {
       ]);
       setSettings(s.settings);
       setScheduleDescription(s.scheduleDescription);
+      setGmailUser(s.settings.gmail_user || "");
       setTeams(t.teams || []);
       setRounds(r.rounds || []);
     } catch (err) {
@@ -103,38 +107,60 @@ export default function RaiseApprovalPage() {
     }
   };
 
+  const saveGmail = async () => {
+    if (!gmailUser.trim()) return flash("error", "Enter your Gmail address.");
+    setSavingGmail(true);
+    setStatus(null);
+    try {
+      const res = await api.updateRaiseSettings({
+        gmail_user: gmailUser.trim(),
+        ...(gmailPassword.trim() ? { gmail_app_password: gmailPassword.trim() } : {}),
+      });
+      setSettings(res.settings);
+      setScheduleDescription(res.scheduleDescription);
+      setGmailPassword("");
+      flash("success", "Email settings saved.");
+    } catch (err) {
+      flash("error", err.message);
+    } finally {
+      setSavingGmail(false);
+    }
+  };
+
   const openDriverManager = async (team) => {
     setStatus(null);
     try {
-      const [cand, assigned] = await Promise.all([
-        candidates.length ? Promise.resolve({ drivers: candidates }) : api.getRaiseCompanyDrivers(),
-        api.getRaiseTeamDrivers(team.id),
-      ]);
-      if (!candidates.length) setCandidates(cand.drivers || []);
-      setAssignSelection(new Set((assigned.drivers || []).map((d) => d.driver_normalized_name)));
+      const assigned = await api.getRaiseTeamDrivers(team.id);
+      setDriverList((assigned.drivers || []).map((d) => ({ driver_name: d.driver_name })));
+      setNewDriverName("");
       setManagingTeam(team);
     } catch (err) {
       flash("error", err.message);
     }
   };
 
-  const toggleAssign = (normName) => {
-    setAssignSelection((prev) => {
-      const next = new Set(prev);
-      if (next.has(normName)) next.delete(normName); else next.add(normName);
-      return next;
-    });
+  const addDriverToList = () => {
+    const name = newDriverName.trim();
+    if (!name) return;
+    if (driverList.some((d) => d.driver_name.toLowerCase() === name.toLowerCase())) {
+      return flash("error", "That driver is already in the list.");
+    }
+    setDriverList((prev) => [...prev, { driver_name: name }]);
+    setNewDriverName("");
+  };
+
+  const removeDriverFromList = (idx) => {
+    setDriverList((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const saveAssignments = async () => {
     if (!managingTeam) return;
-    const drivers = candidates.filter((c) => assignSelection.has(c.driver_normalized_name));
     try {
-      await api.setRaiseTeamDrivers(managingTeam.id, drivers);
+      await api.setRaiseTeamDrivers(managingTeam.id, driverList);
       const t = await api.getRaiseTeams();
       setTeams(t.teams || []);
       setManagingTeam(null);
-      flash("success", "Driver assignments saved.");
+      flash("success", "Driver list saved.");
     } catch (err) {
       flash("error", err.message);
     }
@@ -225,6 +251,45 @@ export default function RaiseApprovalPage() {
                 <option value="ringcentral">Text message (RingCentral SMS)</option>
               </select>
             </div>
+
+            {settings.otp_channel === "gmail" && (
+              <div style={{ border: "1px solid var(--border, #333)", borderRadius: 8, padding: 12, display: "grid", gap: 8 }}>
+                <div style={{ fontWeight: 600 }}>
+                  Gmail credentials{" "}
+                  <span style={{ fontWeight: 400, color: settings.gmail_configured ? "#16a34a" : "#dc2626" }}>
+                    {settings.gmail_configured ? "— configured ✓" : "— not configured"}
+                  </span>
+                </div>
+                <p style={{ color: "#888", margin: 0 }}>
+                  Use a Gmail <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer">App Password</a> (not
+                  your normal password). The password is encrypted before it is stored.
+                </p>
+                <div className="form-group">
+                  <label>Gmail address</label>
+                  <input
+                    type="email"
+                    placeholder="dispatch@company.com"
+                    value={gmailUser}
+                    onChange={(e) => setGmailUser(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>App Password</label>
+                  <input
+                    type="password"
+                    placeholder={settings.gmail_configured ? "Leave blank to keep current" : "16-character App Password"}
+                    value={gmailPassword}
+                    onChange={(e) => setGmailPassword(e.target.value)}
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div>
+                  <button className="btn btn-primary" onClick={saveGmail} disabled={savingGmail}>
+                    {savingGmail ? "Saving…" : "Save email settings"}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <label>
               <input
@@ -329,23 +394,32 @@ export default function RaiseApprovalPage() {
       {/* ─── Driver assignment modal ─── */}
       {managingTeam && (
         <div className="card" style={{ marginBottom: 20, border: "2px solid var(--primary, #6366f1)" }}>
-          <h3>Assign company drivers — {managingTeam.name}</h3>
-          <p style={{ color: "#888" }}>Tick the active company drivers this team is responsible for.</p>
+          <h3>Drivers — {managingTeam.name}</h3>
+          <p style={{ color: "#888" }}>
+            Type each company driver this team is responsible for. Names are matched
+            case- and spacing-insensitively when reading the weekly mileage report.
+          </p>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <input
+              placeholder="Driver full name (e.g. John Doe)"
+              value={newDriverName}
+              onChange={(e) => setNewDriverName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addDriverToList()}
+              style={{ flex: 1 }}
+            />
+            <button className="btn btn-primary" onClick={addDriverToList}>Add</button>
+          </div>
           <div style={{ maxHeight: 320, overflowY: "auto", display: "grid", gap: 4 }}>
-            {candidates.map((c) => (
-              <label key={c.driver_normalized_name} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  checked={assignSelection.has(c.driver_normalized_name)}
-                  onChange={() => toggleAssign(c.driver_normalized_name)}
-                />
-                {c.driver_name}
-              </label>
+            {driverList.map((d, idx) => (
+              <div key={`${d.driver_name}-${idx}`} style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
+                <span>{d.driver_name}</span>
+                <button className="btn btn-ghost btn-sm" onClick={() => removeDriverFromList(idx)}>Remove</button>
+              </div>
             ))}
-            {candidates.length === 0 && <p>No company drivers found in Datatruck.</p>}
+            {driverList.length === 0 && <p style={{ color: "#888" }}>No drivers added yet.</p>}
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <button className="btn btn-primary" onClick={saveAssignments}>Save assignments</button>
+            <button className="btn btn-primary" onClick={saveAssignments}>Save driver list</button>
             <button className="btn btn-ghost" onClick={() => setManagingTeam(null)}>Cancel</button>
           </div>
         </div>

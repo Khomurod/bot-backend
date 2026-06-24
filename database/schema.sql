@@ -1092,9 +1092,17 @@ CREATE TABLE IF NOT EXISTS raise_settings (
   rate_low NUMERIC(5,3) NOT NULL DEFAULT 0.720,
   rate_high NUMERIC(5,3) NOT NULL DEFAULT 0.750,
   link_ttl_hours INTEGER NOT NULL DEFAULT 48 CHECK (link_ttl_hours BETWEEN 1 AND 720),
+  -- Gmail App Password channel, entered in the admin panel. The address is
+  -- stored as-is; the App Password is stored encrypted (same scheme as
+  -- Facebook tokens — FACEBOOK_TOKEN_ENCRYPTION_KEY).
+  gmail_user TEXT NULL,
+  gmail_app_password_encrypted TEXT NULL,
   next_run_at TIMESTAMPTZ NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE raise_settings ADD COLUMN IF NOT EXISTS gmail_user TEXT NULL;
+ALTER TABLE raise_settings ADD COLUMN IF NOT EXISTS gmail_app_password_encrypted TEXT NULL;
 
 INSERT INTO raise_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 

@@ -23,6 +23,7 @@ const { safeSend } = require('./telegramHtml');
 const datatruck = require('./datatruckApiService');
 const { normalizeDriverName, BONUS_GROUP_CHAT_ID } = require('./mileageBonusConstants');
 const otp = require('./otpService');
+const { decryptText } = require('./facebookCrypto');
 const { computeNextWeeklyOccurrence, describeWeeklySchedule } = require('./scheduledMessageUtils');
 
 const POLL_MS = 60 * 1000;
@@ -70,6 +71,23 @@ function defaultPreviousWeek(timezone) {
 function formatRate(value) {
   const cents = Math.round(Number(value) * 100);
   return `${cents}¢`;
+}
+
+/** Resolve the Gmail credentials configured in the admin panel (decrypted). */
+function resolveGmailCredsFromSettings(settings) {
+  let gmailAppPassword = '';
+  if (settings?.gmail_app_password_encrypted) {
+    try {
+      gmailAppPassword = decryptText(settings.gmail_app_password_encrypted);
+    } catch (err) {
+      console.error('[RAISE] Could not decrypt Gmail App Password:', err.message);
+    }
+  }
+  return {
+    gmailUser: settings?.gmail_user || '',
+    gmailAppPassword,
+    gmailFrom: settings?.gmail_user || '',
+  };
 }
 
 // ─── Company-driver candidate list (Datatruck) ───
@@ -190,8 +208,9 @@ async function requestOtp({ token, teamId, contact }) {
 
   const settings = await ra.getRaiseSettings();
   const channel = settings.otp_channel;
-  if (!otp.isChannelConfigured(channel)) {
-    throw serviceError('CHANNEL_NOT_CONFIGURED', `The ${channel} code channel is not configured on the server.`, 409);
+  const gmailCreds = resolveGmailCredsFromSettings(settings);
+  if (!otp.isChannelConfigured(channel, gmailCreds)) {
+    throw serviceError('CHANNEL_NOT_CONFIGURED', `The ${channel} code channel is not configured yet. Add it in the admin panel.`, 409);
   }
 
   const normalizedContact = channel === 'ringcentral'
@@ -219,7 +238,7 @@ async function requestOtp({ token, teamId, contact }) {
     expiresAt,
   });
 
-  const delivery = await otp.sendCode(channel, normalizedContact, code);
+  const delivery = await otp.sendCode(channel, normalizedContact, code, gmailCreds);
   if (!delivery.ok) {
     throw serviceError('SEND_FAILED', `Could not send the code (${delivery.reason}).`, 502);
   }

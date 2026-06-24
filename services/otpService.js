@@ -13,6 +13,16 @@ const { sendSms } = require('./ringCentralSmsService');
 const CODE_LENGTH = 6;
 
 let cachedGmailTransport = null;
+let cachedGmailUser = null;
+
+/** Resolve Gmail creds: admin-panel values win, falling back to env. */
+function resolveGmailCreds(creds = {}) {
+  return {
+    user: creds.gmailUser || config.gmailUser || '',
+    pass: creds.gmailAppPassword || config.gmailAppPassword || '',
+    from: creds.gmailFrom || creds.gmailUser || config.gmailFrom || config.gmailUser || '',
+  };
+}
 
 /** Six-digit numeric passcode as a zero-padded string. */
 function generateCode() {
@@ -50,20 +60,26 @@ function normalizePhone(value) {
   return digits;
 }
 
-function getGmailTransport() {
-  if (cachedGmailTransport) return cachedGmailTransport;
-  if (!config.gmailUser || !config.gmailAppPassword) return null;
+function getGmailTransport(creds) {
+  const { user, pass } = resolveGmailCreds(creds);
+  if (!user || !pass) return null;
+  // Cache, but rebuild if the configured account changed.
+  if (cachedGmailTransport && cachedGmailUser === user) return cachedGmailTransport;
   // Lazy-require so environments without the email channel needn't load it.
   const nodemailer = require('nodemailer');
   cachedGmailTransport = nodemailer.createTransport({
     service: 'gmail',
-    auth: { user: config.gmailUser, pass: config.gmailAppPassword },
+    auth: { user, pass },
   });
+  cachedGmailUser = user;
   return cachedGmailTransport;
 }
 
-function isChannelConfigured(channel) {
-  if (channel === 'gmail') return Boolean(config.gmailUser && config.gmailAppPassword);
+function isChannelConfigured(channel, creds) {
+  if (channel === 'gmail') {
+    const { user, pass } = resolveGmailCreds(creds);
+    return Boolean(user && pass);
+  }
   if (channel === 'ringcentral') {
     return Boolean(process.env.RC_CLIENT_ID && process.env.RC_CLIENT_SECRET && process.env.RC_JWT_TOKEN);
   }
@@ -78,15 +94,16 @@ function contactTypeForChannel(channel) {
  * Deliver a passcode over the chosen channel. Returns { ok, contact, reason }.
  * `contact` is the normalized destination actually used.
  */
-async function sendCode(channel, rawContact, code) {
+async function sendCode(channel, rawContact, code, creds) {
   if (channel === 'gmail') {
     const contact = String(rawContact || '').trim();
     if (!isValidEmail(contact)) return { ok: false, reason: 'invalid_email' };
-    const transport = getGmailTransport();
+    const transport = getGmailTransport(creds);
     if (!transport) return { ok: false, reason: 'gmail_not_configured' };
+    const { from } = resolveGmailCreds(creds);
     const text = `Your Wenze driver-raise verification code is ${code}. It expires in 10 minutes.`;
     await transport.sendMail({
-      from: config.gmailFrom || config.gmailUser,
+      from,
       to: contact,
       subject: 'Your Wenze verification code',
       text,

@@ -18,7 +18,7 @@ async function getRaiseSettings() {
 const SETTINGS_COLUMNS = [
   'enabled', 'otp_channel', 'schedule_enabled', 'weekly_day_of_week',
   'weekly_time_local', 'schedule_timezone', 'rate_low', 'rate_high',
-  'link_ttl_hours', 'next_run_at',
+  'link_ttl_hours', 'next_run_at', 'gmail_user', 'gmail_app_password_encrypted',
 ];
 
 async function updateRaiseSettings(patch = {}) {
