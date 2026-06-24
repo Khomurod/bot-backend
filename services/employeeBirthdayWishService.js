@@ -5,7 +5,7 @@ const { DateTime } = require('luxon');
 const db = require('../database/db');
 const config = require('../config/config');
 const { bot } = require('../bot/bot');
-const { safeSend } = require('./telegramHtml');
+const { safeSend, sendTelegramHtmlChunks, sanitizeCompanyReportHtmlForTelegram } = require('./telegramHtml');
 const { generateEmployeeBirthdayMessage } = require('./employeeBirthdayMessage');
 
 const POLL_MS = 60 * 1000;
@@ -38,22 +38,36 @@ async function runEmployeeBirthdayWishes({ claimDailyRun = false, employeeIds = 
     return { sent: false, reason: 'no_birthdays', isoDate };
   }
 
+  // Claim the day FIRST so two overlapping ticks can never both send (no
+  // duplicates), but RELEASE the claim if delivery fails so the next tick
+  // retries later the same day instead of silently dropping the wish.
+  const runKey = `employee:${isoDate}`;
   if (claimDailyRun) {
-    const claimed = await db.claimServiceRun('birthday', `employee:${isoDate}`);
+    const claimed = await db.claimServiceRun('birthday', runKey);
     if (!claimed) {
       return { sent: false, reason: 'already_sent', isoDate, names: formatNamesList(employees) };
     }
   }
 
-  const { message, provider } = await generateEmployeeBirthdayMessage(
-    employees,
-    settings.ai_instructions,
-    settings.fallback_template
-  );
+  let message;
+  let provider;
+  try {
+    ({ message, provider } = await generateEmployeeBirthdayMessage(
+      employees,
+      settings.ai_instructions,
+      settings.fallback_template
+    ));
 
-  await safeSend(
-    () => bot.telegram.sendMessage(config.employeeGroupId, message, { parse_mode: 'HTML' })
-  );
+    // Sanitize to Telegram-safe HTML so an unsupported tag from the AI can
+    // never trigger a 400 parse error that would otherwise burn the day.
+    const safeMessage = sanitizeCompanyReportHtmlForTelegram(message);
+    await sendTelegramHtmlChunks(bot.telegram, config.employeeGroupId, safeMessage);
+  } catch (err) {
+    if (claimDailyRun) {
+      await db.unclaimServiceRun('birthday', runKey).catch(() => {});
+    }
+    throw err;
+  }
 
   const names = formatNamesList(employees);
   console.log(`[EMP-BIRTHDAY] Sent wish (${provider}) to employee group for: ${names}`);

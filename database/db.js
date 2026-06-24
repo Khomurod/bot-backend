@@ -2619,6 +2619,19 @@ async function hasServiceRun(serviceName, runKey) {
   return res.rows.length > 0;
 }
 
+// Release a previously-claimed run so it can be retried. Used when a job
+// claims a run and then fails to deliver: releasing the claim lets the next
+// scheduler tick retry that same day instead of treating the run as
+// permanently done (which previously silently dropped birthday wishes).
+// Returns `true` if a row was actually removed.
+async function unclaimServiceRun(serviceName, runKey) {
+  const res = await query(
+    'DELETE FROM service_runs WHERE service_name = $1 AND run_key = $2',
+    [serviceName, runKey]
+  );
+  return res.rowCount > 0;
+}
+
 // Simple DB liveness probe used by /api/health.
 async function ping() {
   const res = await query('SELECT 1 AS ok');
@@ -2772,5 +2785,6 @@ module.exports = {
   // Service run guard + health
   claimServiceRun,
   hasServiceRun,
+  unclaimServiceRun,
   ping,
 };

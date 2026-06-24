@@ -31,6 +31,7 @@ const db = {
     return true;
   },
   hasServiceRun: async (service, runKey) => claimedKeys.has(`${service}:${runKey}`),
+  unclaimServiceRun: async (service, runKey) => claimedKeys.delete(`${service}:${runKey}`),
 };
 
 const sentMessages = [];
@@ -50,9 +51,16 @@ require.cache[require.resolve('../bot/bot')] = {
     },
   },
 };
+let sendShouldFail = false;
 require.cache[require.resolve('../services/telegramHtml')] = {
   exports: {
     safeSend: async (fn) => fn(),
+    sanitizeCompanyReportHtmlForTelegram: (text) => text,
+    sendTelegramHtmlChunks: async (telegram, chatId, text) => {
+      if (sendShouldFail) throw new Error('simulated telegram failure');
+      await telegram.sendMessage(chatId, text);
+      return [{ message_id: 1 }];
+    },
   },
 };
 require.cache[require.resolve('../services/employeeBirthdayMessage')] = {
@@ -158,6 +166,41 @@ test('checkAndRunScheduled catches up after scheduled time when not yet claimed'
   assert.equal(sentMessages.length, 1);
 
   db.getEmployeeBirthdaySettings = origSettings;
+});
+
+test('failed send releases the claim so the next tick retries (no silent drop)', async () => {
+  claims.length = 0;
+  claimedKeys.clear();
+  sentMessages.length = 0;
+  const isoDate = DateTime.now().setZone('Asia/Tashkent').toISODate();
+
+  // First attempt: delivery fails -> must throw AND leave the run UNCLAIMED.
+  sendShouldFail = true;
+  await assert.rejects(() => runEmployeeBirthdayWishes({ claimDailyRun: true }));
+  assert.equal(claimedKeys.has(`birthday:employee:${isoDate}`), false);
+  assert.equal(sentMessages.length, 0);
+
+  // Retry the same day: delivery succeeds, claim is taken, message sent once.
+  sendShouldFail = false;
+  const retry = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+  assert.equal(retry.sent, true);
+  assert.equal(sentMessages.length, 1);
+  assert.equal(claimedKeys.has(`birthday:employee:${isoDate}`), true);
+});
+
+test('a successful send is not resent on a later tick', async () => {
+  claims.length = 0;
+  claimedKeys.clear();
+  sentMessages.length = 0;
+  sendShouldFail = false;
+
+  const first = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+  assert.equal(first.sent, true);
+  assert.equal(sentMessages.length, 1);
+
+  const second = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+  assert.equal(second.reason, 'already_sent');
+  assert.equal(sentMessages.length, 1);
 });
 
 test('checkAndRunScheduled skips when daily run already claimed', async () => {

@@ -12,10 +12,15 @@ import DispatchPage from "./pages/DispatchPage";
 import FacebookLeadsPage from "./pages/FacebookLeadsPage";
 import LeadsPage from "./pages/LeadsPage";
 import MileageBonusPage from "./pages/MileageBonusPage";
+import RaiseApprovalPage from "./pages/RaiseApprovalPage";
+import RaisePublicPage from "./pages/RaisePublicPage";
 
 function getPageFromPath(pathname) {
   if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) {
     return "dispatch";
+  }
+  if (pathname === "/raise" || pathname.startsWith("/raise/")) {
+    return "raise_public";
   }
   return "groups";
 }
@@ -31,6 +36,7 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [adminExpanded, setAdminExpanded] = useState(false);
   const isDispatchPage = page === "dispatch";
+  const isRaisePublicPage = page === "raise_public";
 
   useEffect(() => {
     const handlePopState = () => {
@@ -89,6 +95,14 @@ export default function App() {
     );
   }
 
+  if (isRaisePublicPage) {
+    return (
+      <main className="main-content" style={{ marginLeft: 0 }}>
+        <RaisePublicPage />
+      </main>
+    );
+  }
+
   if (checking) {
     return (
       <div className="loading" style={{ minHeight: "100vh" }}>
@@ -120,6 +134,7 @@ export default function App() {
     groups: <GroupsPage />,
     company_birthdays: <CompanyBirthdaysPage />,
     mileage_bonus: <MileageBonusPage />,
+    raise_approval: <RaiseApprovalPage />,
     manager: <MessageManagerPage />,
     scheduled: <ScheduledMessagesPage />,
   };
@@ -150,6 +165,7 @@ export default function App() {
         { key: 'groups', icon: '👷', label: 'Driver Groups' },
         { key: 'company_birthdays', icon: '🎂', label: 'Birthdays' },
         { key: 'mileage_bonus', icon: '🏁', label: 'Mileage Bonuses' },
+        { key: 'raise_approval', icon: '💵', label: 'Driver Raises' },
       ],
     },
   ];

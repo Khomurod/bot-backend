@@ -994,3 +994,134 @@ export async function disregardMileageBonusNotification(id) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+// ─── Driver Raise Approval (75¢/mile) — admin ───
+
+const RAISE_ADMIN = `${API_BASE}/raise/admin`;
+
+export async function getRaiseSettings() {
+  const res = await fetch(`${RAISE_ADMIN}/settings`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function updateRaiseSettings(patch) {
+  const res = await fetch(`${RAISE_ADMIN}/settings`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify(patch || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getRaiseCompanyDrivers() {
+  const res = await fetch(`${RAISE_ADMIN}/company-drivers`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getRaiseTeams() {
+  const res = await fetch(`${RAISE_ADMIN}/teams`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function createRaiseTeam(name) {
+  const res = await fetch(`${RAISE_ADMIN}/teams`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ name }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function updateRaiseTeam(id, patch) {
+  const res = await fetch(`${RAISE_ADMIN}/teams/${id}`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(patch || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function deleteRaiseTeam(id) {
+  const res = await fetch(`${RAISE_ADMIN}/teams/${id}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getRaiseTeamDrivers(id) {
+  const res = await fetch(`${RAISE_ADMIN}/teams/${id}/drivers`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function setRaiseTeamDrivers(id, drivers) {
+  const res = await fetch(`${RAISE_ADMIN}/teams/${id}/drivers`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ drivers }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function raiseSendNow(payload) {
+  const res = await fetch(`${RAISE_ADMIN}/send-now`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getRaiseRounds() {
+  const res = await fetch(`${RAISE_ADMIN}/rounds`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getRaiseRoundResults(id) {
+  const res = await fetch(`${RAISE_ADMIN}/rounds/${id}/results`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function closeRaiseRound(id) {
+  const res = await fetch(`${RAISE_ADMIN}/rounds/${id}/close`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+// ─── Driver Raise Approval — public (no auth, token-based) ───
+
+export async function getRaisePublicInfo(token) {
+  const res = await fetch(`${API_BASE}/raise/${token}`);
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function raiseRequestOtp(token, payload) {
+  const res = await fetch(`${API_BASE}/raise/${token}/request-otp`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function raiseVerifyOtp(token, payload) {
+  const res = await fetch(`${API_BASE}/raise/${token}/verify-otp`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function raiseSubmit(token, payload) {
+  const res = await fetch(`${API_BASE}/raise/${token}/submit`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
