@@ -411,10 +411,15 @@ async function startBot() {
             scheduleLoadIngest(bot.telegram, group, ctx.message);
           }
 
-          // Home-time tracker: watch every driver-group message for
-          // "Status: Home / Ready / Rolling". Runs regardless of active state so
-          // a status posted in a quiet group is never missed. Never throws.
+          // Bot-visibility diagnostic + home-time tracker for driver groups.
+          // Recording "we saw a message" proves the bot can read this group
+          // (admin / privacy off), powering the "Bot Group Access" admin view.
           if (group && group.group_type === 'driver' && ctx.message) {
+            const seenAtIso = Number.isFinite(ctx.message.date)
+              ? new Date(ctx.message.date * 1000).toISOString()
+              : new Date().toISOString();
+            db.recordGroupMessageSeen(group.id, seenAtIso).catch(() => {});
+            // Watch for "Status: Home / Ready / Rolling". Never throws.
             await handleDriverGroupStatus(bot.telegram, group, ctx.message);
           }
         }

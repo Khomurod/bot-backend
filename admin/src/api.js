@@ -1141,3 +1141,17 @@ export async function updateHomeTimeSettings(patch) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+export async function getGroupAccess() {
+  const res = await fetch(`${API_BASE}/home-time/group-access`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function recheckGroupAccess() {
+  const res = await fetch(`${API_BASE}/home-time/group-access/recheck`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
