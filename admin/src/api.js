@@ -1125,3 +1125,19 @@ export async function raiseSubmit(token, payload) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+// ─── Driver Home-Time Tracking ───
+
+export async function getHomeTimeOverview() {
+  const res = await fetch(`${API_BASE}/home-time/overview`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function updateHomeTimeSettings(patch) {
+  const res = await fetch(`${API_BASE}/home-time/settings`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify(patch || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

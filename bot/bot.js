@@ -24,6 +24,7 @@ const {
   registerDispatchStatusLookupHandlers,
 } = require('./dispatchStatusLookupHandlers');
 const { scheduleLoadIngest } = require('../services/loadIngestionService');
+const { handleDriverGroupStatus } = require('../services/homeTimeService');
 const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedContextService');
 const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
@@ -408,6 +409,13 @@ async function startBot() {
           // above for the same reason.
           if (group && group.group_type === 'driver' && group.active && ctx.message) {
             scheduleLoadIngest(bot.telegram, group, ctx.message);
+          }
+
+          // Home-time tracker: watch every driver-group message for
+          // "Status: Home / Ready / Rolling". Runs regardless of active state so
+          // a status posted in a quiet group is never missed. Never throws.
+          if (group && group.group_type === 'driver' && ctx.message) {
+            await handleDriverGroupStatus(bot.telegram, group, ctx.message);
           }
         }
       } catch (err) {

@@ -1170,3 +1170,52 @@ CREATE TABLE IF NOT EXISTS raise_otp (
 
 CREATE INDEX IF NOT EXISTS idx_raise_otp_lookup
   ON raise_otp(round_id, contact, created_at DESC);
+
+-- ───────────────────────── Driver Home-Time Tracking ─────────────────────────
+-- The bot reads each driver group's messages. The update specialist posts
+-- "Status: Home" while a driver is home and "Status: Ready"/"Status: Rolling"
+-- when they leave. Drivers get a set number of weeks on the road for free; each
+-- FULL extra week earns a fixed bonus. The clock resets every time a driver goes
+-- home. State is tracked per driver group; completed road trips are kept as a
+-- history with the computed bonus.
+
+CREATE TABLE IF NOT EXISTS home_time_settings (
+  id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  road_allowance_weeks INTEGER NOT NULL DEFAULT 4 CHECK (road_allowance_weeks BETWEEN 1 AND 52),
+  home_allowance_days INTEGER NOT NULL DEFAULT 4 CHECK (home_allowance_days BETWEEN 1 AND 60),
+  bonus_per_week NUMERIC(10,2) NOT NULL DEFAULT 100,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO home_time_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- Current home/road state for each driver group (one row per group).
+CREATE TABLE IF NOT EXISTS driver_home_status (
+  group_id INTEGER PRIMARY KEY REFERENCES groups(id) ON DELETE CASCADE,
+  telegram_group_id BIGINT,
+  state TEXT NOT NULL CHECK (state IN ('home', 'road')),
+  state_since TIMESTAMPTZ NOT NULL,
+  last_status_text TEXT,
+  last_status_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- One row per completed road trip (closed when the driver goes home).
+CREATE TABLE IF NOT EXISTS driver_road_history (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  driver_name TEXT,
+  unit_number TEXT,
+  road_started_at TIMESTAMPTZ NOT NULL,
+  home_arrived_at TIMESTAMPTZ NOT NULL,
+  days_on_road INTEGER NOT NULL,
+  exceeded_weeks INTEGER NOT NULL DEFAULT 0,
+  bonus_usd NUMERIC(10,2) NOT NULL DEFAULT 0,
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_driver_road_history_group
+  ON driver_road_history(group_id, home_arrived_at DESC);
+CREATE INDEX IF NOT EXISTS idx_driver_road_history_bonus
+  ON driver_road_history(home_arrived_at DESC) WHERE bonus_usd > 0;

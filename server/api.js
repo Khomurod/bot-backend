@@ -1084,6 +1084,10 @@ const { publicRouter: raisePublicRouter, adminRouter: raiseAdminRouter } = requi
 app.use('/api/raise/admin', raiseAdminRouter);
 app.use('/api/raise', raisePublicRouter);
 
+// ─── Driver Home-Time Tracking ───
+const { createHomeTimeRouter } = require('./routes/homeTimeRoutes');
+app.use('/api/home-time', createHomeTimeRouter({ authMiddleware }));
+
 // GET /api/groups
 app.get('/api/groups', authMiddleware, async (req, res) => {
   try {
