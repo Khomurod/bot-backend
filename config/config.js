@@ -163,4 +163,10 @@ module.exports = {
   // (e.g. "wenze" for https://wenze.datatruck.io).
   datatruckApiToken: normalizeOptionalEnv(process.env.DATATRUCK_API_TOKEN),
   datatruckCompany: String(process.env.DATATRUCK_COMPANY || 'wenze').trim().toLowerCase(),
+  // Gmail App Password channel for driver-raise OTP delivery (no third party).
+  // GMAIL_USER is the full address; GMAIL_APP_PASSWORD is a 16-char App Password
+  // created at https://myaccount.google.com/apppasswords (2FA required).
+  gmailUser: normalizeOptionalEnv(process.env.GMAIL_USER),
+  gmailAppPassword: String(process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, ''),
+  gmailFrom: normalizeOptionalEnv(process.env.GMAIL_FROM) || normalizeOptionalEnv(process.env.GMAIL_USER),
 };

@@ -63,6 +63,11 @@ services:
         sync: false
       - key: SAMSARA_API_BASE
         value: https://api.samsara.com
+      # Driver Raise Approval (75¢/mile) — Gmail App Password OTP channel.
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
       - key: NODE_OPTIONS
         # Main process heap cap. Kept well under the 512MB instance so the
         # spawned samsara (Node child) and leads-bot (Python child) have room.

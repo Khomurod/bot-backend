@@ -27,13 +27,16 @@ async function processDriverBirthdays(isoDate, month, day) {
     const birthdayGroups = await db.getGroupsWithBirthdayToday(month, day);
     if (birthdayGroups.length === 0) return;
 
-    const runKey = `driver:${isoDate}`;
-    const claimed = await db.claimServiceRun('birthday', runKey);
-    if (!claimed) return;
-
     console.log(`[BIRTHDAY] Found ${birthdayGroups.length} driver birthday(s) today`);
 
     for (const group of birthdayGroups) {
+      // Per-group idempotency: claim THIS group first (so concurrent ticks
+      // can't double-send), then release the claim if the send fails so a
+      // later tick the same day retries that group instead of dropping it.
+      const runKey = `driver:${group.id}:${isoDate}`;
+      const claimed = await db.claimServiceRun('birthday', runKey);
+      if (!claimed) continue; // already congratulated today
+
       const driverName = escapeHtml(extractDriverName(group.group_name));
       const message =
         `🥳🚛 <b>Happy Birthday, ${driverName}!</b> 🚛🥳\n\n` +
@@ -49,7 +52,8 @@ async function processDriverBirthdays(isoDate, month, day) {
         );
         console.log(`[BIRTHDAY] Sent wish to ${group.group_name}`);
       } catch (err) {
-        console.error(`[BIRTHDAY] Failed to send to ${group.group_name}:`, err.message);
+        await db.unclaimServiceRun('birthday', runKey).catch(() => {});
+        console.error(`[BIRTHDAY] Failed to send to ${group.group_name} (will retry):`, err.message);
       }
     }
   } catch (err) {
@@ -76,8 +80,10 @@ async function checkAndSendBirthdays() {
     const isoDate = now.toISODate();
 
     if (!isPastDriverBirthdaySchedule(now)) return;
-    if (await db.hasServiceRun('birthday', `driver:${isoDate}`)) return;
 
+    // Idempotency is now per-group (driver:<groupId>:<isoDate>) inside
+    // processDriverBirthdays, so a failed group retries next tick without a
+    // day-level guard blocking it.
     await processDriverBirthdays(isoDate, now.month, now.day);
   } catch (err) {
     console.error('[BIRTHDAY] Tick error:', err.message);

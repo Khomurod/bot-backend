@@ -1077,6 +1077,13 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
 app.use('/api/dispatch', dispatchRoutes);
 app.use('/api/facebook-leads', createFacebookLeadsRouter({ authMiddleware }));
 
+// ─── Driver Raise Approval (75¢/mile) ───
+// Admin router is mounted on the more specific path FIRST so /api/raise/admin/*
+// is never captured by the public router's /:token route.
+const { publicRouter: raisePublicRouter, adminRouter: raiseAdminRouter } = require('./routes/raiseRoutes');
+app.use('/api/raise/admin', raiseAdminRouter);
+app.use('/api/raise', raisePublicRouter);
+
 // GET /api/groups
 app.get('/api/groups', authMiddleware, async (req, res) => {
   try {
@@ -2813,7 +2820,7 @@ app.delete('/api/employee-birthdays/:id', authMiddleware, async (req, res) => {
 });
 
 // ─── Catch-all for admin SPA (/admin and public /dispatch share one build) ───
-app.get(['/admin', '/admin/*', '/dispatch', '/dispatch/*'], (req, res) => {
+app.get(['/admin', '/admin/*', '/dispatch', '/dispatch/*', '/raise', '/raise/*'], (req, res) => {
   if (!fs.existsSync(adminSpaIndexPath)) {
     return res.status(503).type('text/plain').send(
       'Admin UI build is missing (admin/build/index.html). '

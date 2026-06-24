@@ -4,6 +4,7 @@ const { DateTime } = require('luxon');
 
 const claimedRuns = new Set();
 const sentMessages = [];
+let sendShouldFail = false;
 const birthdayDb = {
   getGroupsWithBirthdayToday: async () => [{
     id: 1,
@@ -16,6 +17,7 @@ const birthdayDb = {
     claimedRuns.add(key);
     return true;
   },
+  unclaimServiceRun: async (serviceName, runKey) => claimedRuns.delete(`${serviceName}:${runKey}`),
 };
 
 require.cache[require.resolve('../database/db')] = { exports: birthdayDb };
@@ -24,6 +26,7 @@ require.cache[require.resolve('../bot/bot')] = {
     bot: {
       telegram: {
         sendMessage: async (...args) => {
+          if (sendShouldFail) throw new Error('simulated telegram failure');
           sentMessages.push(args);
           return { message_id: 10 };
         },
@@ -67,12 +70,31 @@ test('isPastDriverBirthdaySchedule is false before 8 AM and true at or after', (
 test('claimed birthday run is not resent after its Telegram message is deleted', async () => {
   claimedRuns.clear();
   sentMessages.length = 0;
+  sendShouldFail = false;
 
   await processDriverBirthdays('2026-06-14', 6, 14);
   assert.equal(sentMessages.length, 1);
-  assert.equal(claimedRuns.has('birthday:driver:2026-06-14'), true);
+  // Idempotency key is now per-group: driver:<groupId>:<isoDate>.
+  assert.equal(claimedRuns.has('birthday:driver:1:2026-06-14'), true);
 
   // Deleting the Telegram message does not remove or alter the service run.
   await processDriverBirthdays('2026-06-14', 6, 14);
   assert.equal(sentMessages.length, 1);
+});
+
+test('a failed driver send releases its per-group claim so the next tick retries', async () => {
+  claimedRuns.clear();
+  sentMessages.length = 0;
+
+  // First tick: send fails -> claim must be released, nothing sent.
+  sendShouldFail = true;
+  await processDriverBirthdays('2026-06-15', 6, 15);
+  assert.equal(sentMessages.length, 0);
+  assert.equal(claimedRuns.has('birthday:driver:1:2026-06-15'), false);
+
+  // Next tick same day: send succeeds -> claimed and sent exactly once.
+  sendShouldFail = false;
+  await processDriverBirthdays('2026-06-15', 6, 15);
+  assert.equal(sentMessages.length, 1);
+  assert.equal(claimedRuns.has('birthday:driver:1:2026-06-15'), true);
 });
