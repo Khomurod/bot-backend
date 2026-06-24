@@ -123,6 +123,12 @@ ALTER TABLE groups ADD COLUMN IF NOT EXISTS driver_birthday DATE;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS samsara_vehicle_id TEXT;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS status_source TEXT;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMP;
+-- Bot visibility diagnostics: when the bot last RECEIVED any message from the
+-- group (proves it can read it), and a cached snapshot of the bot's membership
+-- role in the group (queried from Telegram on demand).
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS last_message_seen_at TIMESTAMPTZ;
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS bot_member_status TEXT;
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS bot_access_checked_at TIMESTAMPTZ;
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS first_name TEXT;
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS last_name TEXT;
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS driver_type TEXT;

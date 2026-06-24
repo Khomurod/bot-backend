@@ -7,12 +7,37 @@
  */
 const express = require('express');
 const { DateTime } = require('luxon');
+const db = require('../../database/db');
 const ht = require('../../database/homeTime');
 const { computeRoadBonus, wholeDaysBetween } = require('../../services/homeTimeConstants');
+const groupAccess = require('../../services/groupAccessService');
 
 function displayName(row) {
   const name = [row.first_name, row.last_name].filter(Boolean).join(' ').trim();
   return name || row.group_name || `Group ${row.group_id}`;
+}
+
+/** Shape a driver-group access row for the admin view (adds the read verdict). */
+function shapeAccessRow(row, now) {
+  const verdict = groupAccess.computeReadingVerdict({
+    memberStatus: row.bot_member_status,
+    lastMessageSeenAt: row.last_message_seen_at,
+    now,
+  });
+  return {
+    group_id: row.group_id,
+    group_name: row.group_name,
+    driver_name: displayName(row),
+    unit_number: row.unit_number || null,
+    active: row.active,
+    bot_member_status: row.bot_member_status || null,
+    bot_access_checked_at: row.bot_access_checked_at,
+    last_message_seen_at: row.last_message_seen_at,
+    home_state: row.home_state || null,
+    reading: verdict.reading,
+    reading_level: verdict.level,
+    reading_label: verdict.label,
+  };
 }
 
 function createHomeTimeRouter({ authMiddleware }) {
@@ -88,6 +113,42 @@ function createHomeTimeRouter({ authMiddleware }) {
     } catch (err) {
       console.error('[HOME-TIME API] settings update failed:', err.message);
       res.status(500).json({ error: 'Failed to update settings.' });
+    }
+  });
+
+  // GET /group-access — which driver groups the bot can read, and which it can't.
+  router.get('/group-access', authMiddleware, async (req, res) => {
+    try {
+      const now = Date.now();
+      const rows = await db.listDriverGroupAccess();
+      const groups = rows.map((row) => shapeAccessRow(row, now));
+      const summary = groups.reduce((acc, g) => {
+        acc[g.reading_level] = (acc[g.reading_level] || 0) + 1;
+        return acc;
+      }, {});
+      const lastChecked = rows
+        .map((r) => r.bot_access_checked_at)
+        .filter(Boolean)
+        .sort()
+        .pop() || null;
+      res.json({ groups, summary, lastChecked });
+    } catch (err) {
+      console.error('[HOME-TIME API] group-access failed:', err.message);
+      res.status(500).json({ error: 'Failed to load group access.' });
+    }
+  });
+
+  // POST /group-access/recheck — ask Telegram for the bot's role in each group.
+  router.post('/group-access/recheck', authMiddleware, async (req, res) => {
+    try {
+      const result = await groupAccess.refreshDriverGroupBotAccess();
+      const now = Date.now();
+      const rows = await db.listDriverGroupAccess();
+      const groups = rows.map((row) => shapeAccessRow(row, now));
+      res.json({ ...result, groups });
+    } catch (err) {
+      console.error('[HOME-TIME API] group-access recheck failed:', err.message);
+      res.status(500).json({ error: 'Could not recheck group access.' });
     }
   });
 

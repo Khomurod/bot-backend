@@ -2638,10 +2638,67 @@ async function ping() {
   return res.rows[0]?.ok === 1;
 }
 
+// ─── Bot visibility diagnostics ───
+
+// Record that the bot RECEIVED a message from a group. This is the ground-truth
+// signal that the bot can actually read the group (privacy mode off / it is an
+// admin). Only advances the timestamp forward so out-of-order events are safe.
+async function recordGroupMessageSeen(groupId, seenAtIso) {
+  try {
+    await query(
+      `UPDATE groups
+       SET last_message_seen_at = $2
+       WHERE id = $1
+         AND (last_message_seen_at IS NULL OR last_message_seen_at < $2)`,
+      [groupId, seenAtIso]
+    );
+  } catch (err) {
+    // Non-fatal: this is a diagnostic signal, never block message handling.
+    console.error('[DB] recordGroupMessageSeen failed:', err.message);
+  }
+}
+
+// Cache the bot's membership role in a group (from Telegram getChatMember).
+async function updateGroupBotAccess(groupId, memberStatus, checkedAtIso) {
+  const res = await query(
+    `UPDATE groups
+     SET bot_member_status = $2, bot_access_checked_at = $3
+     WHERE id = $1 RETURNING id`,
+    [groupId, memberStatus || null, checkedAtIso]
+  );
+  return res.rows.length > 0;
+}
+
+// Driver groups with their bot-visibility signals, joined to the driver label
+// and the home-time state, for the admin "Bot Group Access" view.
+async function listDriverGroupAccess() {
+  const res = await query(
+    `SELECT g.id AS group_id,
+            g.group_name,
+            g.telegram_group_id,
+            g.active,
+            g.last_message_seen_at,
+            g.bot_member_status,
+            g.bot_access_checked_at,
+            dp.first_name, dp.last_name, dp.unit_number,
+            s.state AS home_state, s.last_status_at
+     FROM groups g
+     LEFT JOIN driver_profiles dp ON dp.group_id = g.id
+     LEFT JOIN driver_home_status s ON s.group_id = g.id
+     WHERE g.group_type = 'driver'
+     ORDER BY g.group_name ASC, g.id ASC`
+  );
+  return res.rows;
+}
+
 module.exports = {
   pool,
   query,
   initializeDatabase,
+  // Bot visibility diagnostics
+  recordGroupMessageSeen,
+  updateGroupBotAccess,
+  listDriverGroupAccess,
   // Leads (Facebook + Indeed)
   createLeadIfNew,
   updateLeadBitrixResult,
