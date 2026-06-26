@@ -25,6 +25,10 @@ const {
 } = require('./dispatchStatusLookupHandlers');
 const { scheduleLoadIngest } = require('../services/loadIngestionService');
 const { handleDriverGroupStatus } = require('../services/homeTimeService');
+const recentMessageBuffer = require('../services/recentMessageBuffer');
+const { handleApproverMention } = require('../services/homeTimeRequestService');
+const { messageMentionsApprovers } = require('../services/homeTimeRequestConstants');
+const { registerHomeTimeRequestHandlers } = require('./homeTimeRequestHandlers');
 const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedContextService');
 const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
@@ -333,6 +337,14 @@ async function startBot() {
           // Bot added (or re-added) — provisional active until AI/manual classification
           await db.reactivateGroupOnBotJoin(chat.id, chat.title);
           console.log(`[BOT] Added to group: ${chat.title} (${chat.id})`);
+          // Cache the bot's new role so the "Bot Group Access" view updates
+          // immediately after a super admin grants admin via the deep link.
+          try {
+            const grp = await db.getGroupByTelegramId(chat.id);
+            if (grp) await db.updateGroupBotAccess(grp.id, newStatus, new Date().toISOString());
+          } catch (accessErr) {
+            console.warn('[BOT] Could not cache bot role on join:', accessErr.message);
+          }
         } else if (
           (chat.type === 'group' || chat.type === 'supergroup') &&
           (newStatus === 'left' || newStatus === 'kicked')
@@ -421,6 +433,28 @@ async function startBot() {
             db.recordGroupMessageSeen(group.id, seenAtIso).catch(() => {});
             // Watch for "Status: Home / Ready / Rolling". Never throws.
             await handleDriverGroupStatus(bot.telegram, group, ctx.message);
+
+            // Keep a short rolling buffer of this group's chat so the home-time
+            // request feature has ~30 min of context for the AI.
+            const msgText = ctx.message.text || ctx.message.caption || '';
+            if (msgText && !ctx.from?.is_bot) {
+              const senderName = ctx.from?.username
+                ? `@${ctx.from.username}`
+                : [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(' ') || 'Driver';
+              recentMessageBuffer.recordMessage(group.telegram_group_id, {
+                sender: senderName,
+                text: msgText,
+                at: Number.isFinite(ctx.message.date) ? ctx.message.date * 1000 : Date.now(),
+              });
+            }
+
+            // A rep tagged an approver → maybe a home-time request. Runs detached
+            // (it makes a slow AI call) and never throws; it posts its own card.
+            if (messageMentionsApprovers(ctx.message)) {
+              handleApproverMention(bot.telegram, group, ctx.message).catch((err) => {
+                console.error('[BOT] handleApproverMention failed:', err.message);
+              });
+            }
           }
         }
       } catch (err) {
@@ -681,6 +715,9 @@ async function startBot() {
 
     // Mileage bonus Paid / Rejected buttons (accounting-only).
     registerMileageBonusHandlers(bot);
+
+    // Home-time request Approve / Do Not Approve buttons (approvers-only).
+    registerHomeTimeRequestHandlers(bot);
 
     // ── Handler: confirmation broadcast button clicks ──
     bot.action(/^bcast_(\d+)_(\d+)$/, async (ctx) => {

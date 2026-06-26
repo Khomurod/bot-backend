@@ -1225,3 +1225,50 @@ CREATE INDEX IF NOT EXISTS idx_driver_road_history_group
   ON driver_road_history(group_id, home_arrived_at DESC);
 CREATE INDEX IF NOT EXISTS idx_driver_road_history_bonus
   ON driver_road_history(home_arrived_at DESC) WHERE bonus_usd > 0;
+
+-- Home-time REQUESTS: every time a driver asks for home time (via the bot when a
+-- rep tags an approver, or entered manually in the admin panel). Keeping all of
+-- them lets us spot drivers who violate the policy (4 weeks on the road / 4 days
+-- home).
+CREATE TABLE IF NOT EXISTS home_time_requests (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
+  telegram_group_id BIGINT,
+  driver_name TEXT,
+  unit_number TEXT,
+  requested_by_user_id BIGINT,
+  requested_by_username TEXT,
+  requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  road_started_at TIMESTAMPTZ,
+  days_on_road INTEGER,
+  policy_met BOOLEAN,
+  home_from DATE,
+  home_to DATE,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'approved', 'denied', 'cancelled')),
+  source TEXT NOT NULL DEFAULT 'telegram'
+    CHECK (source IN ('telegram', 'manual')),
+  ai_reasoning TEXT,
+  telegram_chat_id BIGINT,
+  telegram_message_id BIGINT,
+  decided_by_username TEXT,
+  decided_by_user_id BIGINT,
+  decided_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_home_time_requests_group
+  ON home_time_requests(group_id, requested_at DESC);
+CREATE INDEX IF NOT EXISTS idx_home_time_requests_status
+  ON home_time_requests(status, requested_at DESC);
+
+-- Single-row settings for the "Bot Group Access" feature: the super admin whose
+-- Telegram account receives the "add me as admin" deep links.
+CREATE TABLE IF NOT EXISTS bot_access_settings (
+  id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  super_admin_telegram_id BIGINT,
+  super_admin_label TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO bot_access_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
