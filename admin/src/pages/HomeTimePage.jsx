@@ -31,6 +31,10 @@ export default function HomeTimePage() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(null);
   const [reg, setReg] = useState({ group_id: "", home_from: "", home_to: "", status: "approved", note: "" });
+  const [importFiles, setImportFiles] = useState([]);
+  const [importRows, setImportRows] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [applyingImport, setApplyingImport] = useState(false);
 
   const flash = (type, text) => setStatus({ type, text });
 
@@ -120,6 +124,43 @@ export default function HomeTimePage() {
     }
   };
 
+  const readScreenshots = async () => {
+    if (!importFiles.length) { flash("error", "Choose one or more screenshots first."); return; }
+    setImporting(true);
+    setStatus(null);
+    setImportRows(null);
+    try {
+      const res = await api.importHomeTimeScreenshots(importFiles);
+      const rows = (res.rows || []).map((r) => ({ ...r, _include: r.matched }));
+      setImportRows(rows);
+      flash("success", `Read ${res.total} drivers — ${res.matched} matched to groups, ${res.unmatched} unmatched.`);
+    } catch (err) {
+      flash("error", err.message);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const applyImport = async () => {
+    const rows = (importRows || []).filter((r) => r._include && r.group_id);
+    if (!rows.length) { flash("error", "No matched rows are selected to apply."); return; }
+    setApplyingImport(true);
+    setStatus(null);
+    try {
+      const report = await api.applyHomeTimeImport(rows);
+      flash("success",
+        `Applied: ${report.statusesUpdated} statuses set, ${report.historyAdded} home-times added`
+        + `${report.historySkipped ? `, ${report.historySkipped} duplicates skipped` : ""}.`);
+      setImportRows(null);
+      setImportFiles([]);
+      await load();
+    } catch (err) {
+      flash("error", err.message);
+    } finally {
+      setApplyingImport(false);
+    }
+  };
+
   if (loading) {
     return <div className="loading"><div className="spinner"></div> Loading...</div>;
   }
@@ -145,6 +186,64 @@ export default function HomeTimePage() {
       {status && (
         <div className={`alert alert-${status.type}`} style={{ marginBottom: 16 }}>{status.text}</div>
       )}
+
+      {/* ─── Import from screenshots ─── */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <h3>📸 Import from screenshots</h3>
+        <p style={{ color: "#888", marginTop: 0 }}>
+          Upload one or more screenshots of your home-time spreadsheet. AI reads every driver row — current status,
+          the date they left/returned, and their home-time history — matches each to a driver group, and (after you
+          review) fills the columns below.
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            onChange={(e) => setImportFiles(Array.from(e.target.files || []))}
+          />
+          <button className="btn btn-primary" onClick={readScreenshots} disabled={importing || !importFiles.length}>
+            {importing ? "Reading…" : "Read screenshots"}
+          </button>
+        </div>
+
+        {importRows && (
+          <div style={{ marginTop: 16 }}>
+            <table className="table">
+              <thead>
+                <tr><th>Use</th><th>Name (from image)</th><th>Matched driver</th><th>Status</th><th>Since</th><th>History</th><th>Notes</th></tr>
+              </thead>
+              <tbody>
+                {importRows.map((r, i) => (
+                  <tr key={i} style={!r.matched ? { background: "rgba(220,38,38,0.06)" } : undefined}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={r._include && r.matched}
+                        disabled={!r.matched}
+                        onChange={(e) => {
+                          const next = [...importRows];
+                          next[i] = { ...next[i], _include: e.target.checked };
+                          setImportRows(next);
+                        }}
+                      />
+                    </td>
+                    <td>{r.name}</td>
+                    <td>{r.matched ? r.driver_label : <span style={{ color: "#dc2626" }}>— no match —</span>}</td>
+                    <td>{r.status === "road" ? "🚚 Road" : r.status === "home" ? "🏠 Home" : "—"}</td>
+                    <td>{r.since_date || "—"}</td>
+                    <td>{r.history?.length ? `${r.history.length} period(s)` : "—"}</td>
+                    <td style={{ maxWidth: 220, whiteSpace: "normal" }}>{r.notes || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button className="btn btn-primary" onClick={applyImport} disabled={applyingImport} style={{ marginTop: 8 }}>
+              {applyingImport ? "Applying…" : `Apply ${importRows.filter((r) => r._include && r.group_id).length} matched rows`}
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* ─── Settings ─── */}
       <div className="card" style={{ marginBottom: 20 }}>
