@@ -232,6 +232,17 @@ async function setHomeTimeRequestMessage(id, telegramChatId, telegramMessageId) 
   return res.rows[0] || null;
 }
 
+/** Find a request with the exact same home window for a group (dedup on import). */
+async function findHomeTimeRequestByWindow(groupId, homeFrom, homeTo) {
+  const res = await query(
+    `SELECT * FROM home_time_requests
+     WHERE group_id = $1 AND home_from = $2 AND home_to = $3
+     LIMIT 1`,
+    [groupId, homeFrom, homeTo]
+  );
+  return res.rows[0] || null;
+}
+
 async function listHomeTimeRequests({ limit = 200 } = {}) {
   const res = await query(
     `SELECT r.*, g.group_name
@@ -280,6 +291,7 @@ module.exports = {
   getPendingHomeTimeRequestForGroup,
   decideHomeTimeRequest,
   setHomeTimeRequestMessage,
+  findHomeTimeRequestByWindow,
   listHomeTimeRequests,
   getBotAccessSettings,
   updateBotAccessSettings,

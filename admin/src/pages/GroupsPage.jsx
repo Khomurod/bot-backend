@@ -59,6 +59,7 @@ export default function GroupsPage() {
   const [message, setMessage] = useState(null);
   const [savingProfileId, setSavingProfileId] = useState(null);
   const [runningAi, setRunningAi] = useState(false);
+  const [aiParsing, setAiParsing] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const [statusSort, setStatusSort] = useState("active-first");
 
@@ -134,6 +135,27 @@ export default function GroupsPage() {
     }
   };
 
+  const handleAiParseProfiles = async () => {
+    if (!window.confirm(
+      "Let AI re-read every group name and fill First name, Last name, Unit number, and Type "
+      + "(company driver vs owner) from the group titles? This overwrites those fields."
+    )) return;
+    setAiParsing(true);
+    setMessage(null);
+    try {
+      const result = await api.aiParseDriverProfiles(true);
+      setMessage({
+        type: "success",
+        text: `AI parse finished: ${result.updated ?? 0} of ${result.total ?? 0} profiles updated from group names.`,
+      });
+      await fetchProfiles();
+    } catch (err) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setAiParsing(false);
+    }
+  };
+
   const tabCounts = useMemo(() => ({
     all: allProfiles.length,
     active: allProfiles.filter((p) => isDriverActive(p)).length,
@@ -147,14 +169,25 @@ export default function GroupsPage() {
           <h2>👥 Driver Groups</h2>
           <p>Driver profiles are now the source of truth. Edit status, unit, language, birthdays, and date of start here.</p>
         </div>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={handleRunAiClassification}
-          disabled={runningAi || loading}
-        >
-          {runningAi ? "⏳ Classifying..." : "🤖 Run AI classification now"}
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="btn"
+            onClick={handleAiParseProfiles}
+            disabled={aiParsing || runningAi || loading}
+            title="AI reads each group name and fills unit, first/last name, and company-driver vs owner"
+          >
+            {aiParsing ? "⏳ Parsing names…" : "🧩 AI: fill names, units & type"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleRunAiClassification}
+            disabled={runningAi || aiParsing || loading}
+          >
+            {runningAi ? "⏳ Classifying..." : "🤖 Run AI classification now"}
+          </button>
+        </div>
       </div>
 
       {message && (

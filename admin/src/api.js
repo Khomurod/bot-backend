@@ -99,6 +99,15 @@ export async function updateDriverProfile(profileId, payload) {
   return res.json();
 }
 
+export async function aiParseDriverProfiles(apply = false) {
+  const res = await fetch(`${API_BASE}/driver-profiles/ai-parse?apply=${apply ? 'true' : 'false'}`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 function appendTargetActiveFilter(body, targetType, targetActiveFilter) {
   if (targetType === 'all' || targetType === 'language_groups') {
     body.target_active_filter = targetActiveFilter || 'active';
@@ -1161,6 +1170,24 @@ export async function updateHomeTimeTrip(id, payload) {
 export async function deleteHomeTimeTrip(id) {
   const res = await fetch(`${API_BASE}/home-time/history/${id}`, {
     method: 'DELETE', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function importHomeTimeScreenshots(files) {
+  const fd = new FormData();
+  for (const f of files) fd.append('screenshots', f);
+  const res = await fetch(`${API_BASE}/home-time/import-screenshots`, {
+    method: 'POST', headers: getAuthHeader(), body: fd,
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function applyHomeTimeImport(rows) {
+  const res = await fetch(`${API_BASE}/home-time/import-screenshots/apply`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ rows }),
   });
   if (!res.ok) { await handleApiError(res); }
   return res.json();

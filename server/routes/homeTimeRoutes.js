@@ -6,12 +6,24 @@
  * dashboard (current statuses + bonus history) and the settings.
  */
 const express = require('express');
+const multer = require('multer');
 const { DateTime } = require('luxon');
 const db = require('../../database/db');
 const ht = require('../../database/homeTime');
 const { computeRoadBonus, wholeDaysBetween } = require('../../services/homeTimeConstants');
 const groupAccess = require('../../services/groupAccessService');
 const { buildAdminGrantPayload } = require('../../services/groupAccessConstants');
+const homeTimeImport = require('../../services/homeTimeImportService');
+
+const SCREENSHOT_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const screenshotUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024, files: 12 },
+  fileFilter: (req, file, cb) => {
+    if (SCREENSHOT_MIME_TYPES.includes(file.mimetype)) cb(null, true);
+    else cb(new Error(`Invalid file type: ${file.mimetype}. Allowed: jpg, png, webp`));
+  },
+});
 
 function displayName(row) {
   const name = [row.first_name, row.last_name].filter(Boolean).join(' ').trim();
@@ -176,6 +188,43 @@ function createHomeTimeRouter({ authMiddleware }) {
     } catch (err) {
       console.error('[HOME-TIME API] history delete failed:', err.message);
       res.status(500).json({ error: 'Failed to delete trip.' });
+    }
+  });
+
+  // POST /import-screenshots — AI vision reads uploaded screenshots and returns
+  // matched driver rows for the admin to review (no writes yet).
+  router.post('/import-screenshots', authMiddleware, (req, res) => {
+    screenshotUpload.array('screenshots', 12)(req, res, async (uploadErr) => {
+      if (uploadErr) {
+        if (uploadErr instanceof multer.MulterError && uploadErr.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ error: 'A screenshot is too large (max 8MB each).' });
+        }
+        return res.status(400).json({ error: uploadErr.message });
+      }
+      if (!req.files || !req.files.length) {
+        return res.status(400).json({ error: 'Upload at least one screenshot.' });
+      }
+      try {
+        const rows = await homeTimeImport.extractAndMatch(req.files);
+        const matched = rows.filter((r) => r.matched).length;
+        res.json({ rows, total: rows.length, matched, unmatched: rows.length - matched });
+      } catch (err) {
+        console.error('[HOME-TIME API] screenshot parse failed:', err.message);
+        res.status(err.status || 500).json({ error: err.message || 'Failed to read screenshots.' });
+      }
+    });
+  });
+
+  // POST /import-screenshots/apply — write the reviewed rows (state + history).
+  router.post('/import-screenshots/apply', authMiddleware, async (req, res) => {
+    try {
+      const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
+      if (!rows) return res.status(400).json({ error: 'rows array is required' });
+      const report = await homeTimeImport.applyRows(rows);
+      res.json({ applied: true, ...report });
+    } catch (err) {
+      console.error('[HOME-TIME API] screenshot apply failed:', err.message);
+      res.status(500).json({ error: 'Failed to apply imported rows.' });
     }
   });
 
