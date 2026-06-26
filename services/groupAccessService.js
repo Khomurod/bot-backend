@@ -59,7 +59,7 @@ async function refreshDriverGroupBotAccess() {
   const telegram = bot.telegram;
   const botId = await getBotId(telegram);
 
-  const groups = await db.listDriverGroupAccess();
+  const groups = await db.listAllGroupAccess();
   const checkedAt = new Date().toISOString();
   let reachable = 0;
   let notInGroup = 0;

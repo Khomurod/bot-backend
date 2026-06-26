@@ -165,9 +165,14 @@ export default function HomeTimePage() {
     return <div className="loading"><div className="spinner"></div> Loading...</div>;
   }
 
-  const onRoad = statuses.filter((s) => s.state === "road");
-  const atHome = statuses.filter((s) => s.state === "home");
+  // Inactive drivers (group marked INACTIVE / inactive profile) are excluded from
+  // the live counts and sorted to the very bottom of the list.
+  const activeStatuses = statuses.filter((s) => !s.inactive);
+  const onRoad = activeStatuses.filter((s) => s.state === "road");
+  const atHome = activeStatuses.filter((s) => s.state === "home");
   const overLimit = onRoad.filter((s) => s.over_limit);
+  const inactiveCount = statuses.filter((s) => s.inactive).length;
+  const sortedStatuses = [...statuses].sort((a, b) => (a.inactive ? 1 : 0) - (b.inactive ? 1 : 0));
 
   const STATUS_BADGE = {
     pending: { color: "#d97706", label: "Pending" },
@@ -300,6 +305,9 @@ export default function HomeTimePage() {
           <div style={{ color: overLimit.length ? "#dc2626" : "inherit" }}>
             <strong>{overLimit.length}</strong> over the limit (earning bonus)
           </div>
+          {inactiveCount > 0 && (
+            <div style={{ color: "#9ca3af" }}><strong>{inactiveCount}</strong> inactive (excluded)</div>
+          )}
         </div>
         <p style={{ color: "#888", marginTop: 0 }}>
           Edit the "Since" date to correct when a driver left for the road or came home. The day counters recalculate from it.
@@ -309,12 +317,20 @@ export default function HomeTimePage() {
             <tr><th>Driver</th><th>Unit</th><th>Status</th><th>Since (editable)</th><th>Days</th><th>Bonus building</th></tr>
           </thead>
           <tbody>
-            {statuses.map((s) => (
-              <tr key={s.group_id} style={s.over_limit ? { background: "rgba(220,38,38,0.08)" } : undefined}>
-                <td>{s.driver_name}</td>
+            {sortedStatuses.map((s) => (
+              <tr
+                key={s.group_id}
+                style={s.inactive
+                  ? { opacity: 0.55, background: "rgba(120,120,120,0.06)" }
+                  : (s.over_limit ? { background: "rgba(220,38,38,0.08)" } : undefined)}
+              >
+                <td>
+                  {s.driver_name}
+                  {s.inactive && <span style={{ color: "#9ca3af" }}> (inactive)</span>}
+                </td>
                 <td>{s.unit_number || "—"}</td>
                 <td>
-                  <span className={`badge ${s.state === "road" ? "" : "badge-muted"}`}>
+                  <span className={`badge ${s.state === "road" && !s.inactive ? "" : "badge-muted"}`}>
                     {s.state === "road" ? "🚚 On the road" : "🏠 Home"}
                   </span>
                 </td>

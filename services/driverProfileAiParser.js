@@ -10,14 +10,15 @@
  * AI misses or when the AI is unavailable, so the result is always complete.
  */
 const { callGeminiJson } = require('./geminiClient');
-const { parseDriverFromGroupName } = require('./driverProfileParse');
+const { parseDriverFromGroupName, stripStatusWords } = require('./driverProfileParse');
 
 function normalizeType(value) {
   return String(value || '').toLowerCase().includes('company') ? 'company_driver' : 'owner';
 }
 
+/** Trim, drop any appended status word ("INACTIVE"), and null out empties. */
 function cleanStr(value) {
-  const s = String(value == null ? '' : value).trim();
+  const s = stripStatusWords(String(value == null ? '' : value).trim());
   return s ? s : null;
 }
 
@@ -81,7 +82,9 @@ async function parseWithAi(list) {
       + `- driver_type: "company_driver" if the name marks them as a company driver `
       + `(e.g. it contains "COMPANY DRIVER" or "COMPANY DRIVERS"); otherwise "owner".\n`
       + `Company prefixes like "WENZE" are NOT part of the driver's name. If two names are joined `
-      + `(e.g. "ABDINASIR / IBRAHIM") keep them together in first_name.\n\n`
+      + `(e.g. "ABDINASIR / IBRAHIM") keep them together in first_name.\n`
+      + `IMPORTANT: the words "ACTIVE" and "INACTIVE" in a group name are status markers, NOT part of `
+      + `the driver's name — never include them in first_name or last_name.\n\n`
       + `Lines:\n${lines}\n\n`
       + `Respond with JSON only: {"drivers":[{"group_id":<id>,"unit_number":"","first_name":"","last_name":"","driver_type":"owner|company_driver"}]}`;
 

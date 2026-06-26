@@ -97,7 +97,7 @@ async function insertRoadHistory({
 async function listCurrentStatuses() {
   const res = await query(
     `SELECT s.*, g.group_name, g.active AS group_active,
-            dp.first_name, dp.last_name, dp.unit_number
+            dp.first_name, dp.last_name, dp.unit_number, dp.status AS driver_status
      FROM driver_home_status s
      JOIN groups g ON g.id = s.group_id
      LEFT JOIN driver_profiles dp ON dp.group_id = s.group_id

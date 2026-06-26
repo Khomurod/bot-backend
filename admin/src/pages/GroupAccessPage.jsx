@@ -52,6 +52,8 @@ export default function GroupAccessPage() {
   const [superAdminLabel, setSuperAdminLabel] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
   const [requesting, setRequesting] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("all"); // all | active | inactive
+  const [typeFilter, setTypeFilter] = useState("driver"); // all | driver | non_driver
 
   const load = async () => {
     try {
@@ -93,22 +95,38 @@ export default function GroupAccessPage() {
     }
   };
 
-  const noAccessGroups = groups.filter((g) => g.reading_level !== "ok");
+  const filteredGroups = groups.filter((g) => {
+    if (statusFilter === "active" && g.inactive) return false;
+    if (statusFilter === "inactive" && !g.inactive) return false;
+    if (typeFilter === "driver" && g.group_type !== "driver") return false;
+    if (typeFilter === "non_driver" && g.group_type === "driver") return false;
+    return true;
+  });
+
+  // "No access" within the current filter = bot can't read it (not ok). This is
+  // what the download exports — e.g. active driver groups where the bot is not admin.
+  const noAccessGroups = filteredGroups.filter((g) => g.reading_level !== "ok");
+
+  const filteredSummary = filteredGroups.reduce((acc, g) => {
+    acc[g.reading_level] = (acc[g.reading_level] || 0) + 1;
+    return acc;
+  }, {});
 
   const downloadNoAccessExcel = () => {
     const csvCell = (v) => {
       const s = String(v == null ? "" : v);
       return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const headers = ["Driver / Group", "Unit", "Bot role", "Reading status", "Last message seen", "Home state", "Active"];
+    const headers = ["Driver / Group", "Type", "Unit", "Bot role", "Reading status", "Last message seen", "Home state", "Active"];
     const rows = noAccessGroups.map((g) => [
       g.driver_name || "",
+      g.group_type === "driver" ? "Driver" : (g.group_type || ""),
       g.unit_number || "",
       roleLabel(g.bot_member_status),
       g.reading_label || "",
       g.last_message_seen_at ? new Date(g.last_message_seen_at).toISOString() : "never",
       g.home_state === "road" ? "On the road" : g.home_state === "home" ? "Home" : "",
-      g.active ? "yes" : "no",
+      g.inactive ? "no" : "yes",
     ]);
     const csv = [headers, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
     // BOM so Excel reads UTF-8 correctly.
@@ -209,10 +227,10 @@ export default function GroupAccessPage() {
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-            <div>🟢 <strong>{summary.ok || 0}</strong> reading</div>
-            <div>🟡 <strong>{summary.warn || 0}</strong> maybe blocked</div>
-            <div>🔴 <strong>{summary.bad || 0}</strong> not in group</div>
-            <div>⚪ <strong>{summary.unknown || 0}</strong> not checked</div>
+            <div>🟢 <strong>{filteredSummary.ok || 0}</strong> reading</div>
+            <div>🟡 <strong>{filteredSummary.warn || 0}</strong> maybe blocked</div>
+            <div>🔴 <strong>{filteredSummary.bad || 0}</strong> not in group</div>
+            <div>⚪ <strong>{filteredSummary.unknown || 0}</strong> not checked</div>
           </div>
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <span style={{ color: "#888" }}>Roles checked: {timeAgo(lastChecked)}</span>
@@ -234,6 +252,25 @@ export default function GroupAccessPage() {
           actually <strong>received messages</strong> recently. A group marked 🟡 means the bot is only a plain
           member and no messages have arrived — usually fixed by making the bot an admin in that group.
         </p>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end", marginTop: 12 }}>
+          <div className="form-group">
+            <label>Status</label>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="all">All</option>
+              <option value="active">Active only</option>
+              <option value="inactive">Inactive only</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Group type</label>
+            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+              <option value="all">All groups</option>
+              <option value="driver">Driver groups</option>
+              <option value="non_driver">Non-driver groups</option>
+            </select>
+          </div>
+          <span style={{ color: "#888" }}>Showing {filteredGroups.length} of {groups.length}</span>
+        </div>
       </div>
 
       <div className="card">
@@ -241,6 +278,7 @@ export default function GroupAccessPage() {
           <thead>
             <tr>
               <th>Driver / Group</th>
+              <th>Type</th>
               <th>Unit</th>
               <th>Bot role</th>
               <th>Reading messages?</th>
@@ -250,15 +288,16 @@ export default function GroupAccessPage() {
             </tr>
           </thead>
           <tbody>
-            {groups.map((g) => {
+            {filteredGroups.map((g) => {
               const style = LEVEL_STYLE[g.reading_level] || LEVEL_STYLE.unknown;
               const isAdmin = g.bot_member_status === "administrator" || g.bot_member_status === "creator";
               return (
                 <tr key={g.group_id} style={g.reading_level === "bad" ? { background: "rgba(220,38,38,0.08)" } : g.reading_level === "warn" ? { background: "rgba(217,119,6,0.08)" } : undefined}>
                   <td>
                     {g.driver_name}
-                    {!g.active && <span style={{ color: "#9ca3af" }}> (inactive)</span>}
+                    {g.inactive && <span style={{ color: "#9ca3af" }}> (inactive)</span>}
                   </td>
+                  <td>{g.group_type === "driver" ? "Driver" : (g.group_type || "—")}</td>
                   <td>{g.unit_number || "—"}</td>
                   <td>{roleLabel(g.bot_member_status)}</td>
                   <td style={{ color: style.color }}>
@@ -282,8 +321,8 @@ export default function GroupAccessPage() {
                 </tr>
               );
             })}
-            {groups.length === 0 && (
-              <tr><td colSpan={7} style={{ textAlign: "center", color: "#888" }}>No driver groups found.</td></tr>
+            {filteredGroups.length === 0 && (
+              <tr><td colSpan={8} style={{ textAlign: "center", color: "#888" }}>No groups match these filters.</td></tr>
             )}
           </tbody>
         </table>
