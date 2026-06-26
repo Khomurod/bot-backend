@@ -32,6 +32,40 @@ function isCompanyDriver(type) {
   return type === "company_driver";
 }
 
+const STATUS_FILTERS = [
+  { value: "active", label: "All active drivers" },
+  { value: "company", label: "Only company drivers" },
+  { value: "owner", label: "Only owner operators" },
+  { value: "inactive", label: "Only inactive drivers" },
+  { value: "road", label: "Only on the road drivers" },
+  { value: "home", label: "Only at home drivers" },
+  { value: "home_company", label: "Only at home company drivers" },
+  { value: "home_owner", label: "Only at home owner operators" },
+];
+
+function matchesStatusFilter(status, filter) {
+  switch (filter) {
+    case "active":
+      return !status.inactive;
+    case "company":
+      return !status.inactive && isCompanyDriver(status.driver_type);
+    case "owner":
+      return !status.inactive && status.driver_type === "owner";
+    case "inactive":
+      return status.inactive;
+    case "road":
+      return !status.inactive && status.state === "road";
+    case "home":
+      return !status.inactive && status.state === "home";
+    case "home_company":
+      return !status.inactive && status.state === "home" && isCompanyDriver(status.driver_type);
+    case "home_owner":
+      return !status.inactive && status.state === "home" && status.driver_type === "owner";
+    default:
+      return !status.inactive;
+  }
+}
+
 export default function HomeTimePage() {
   const [settings, setSettings] = useState(null);
   const [statuses, setStatuses] = useState([]);
@@ -45,6 +79,7 @@ export default function HomeTimePage() {
   const [importRows, setImportRows] = useState(null);
   const [importing, setImporting] = useState(false);
   const [applyingImport, setApplyingImport] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("active");
 
   const flash = (type, text) => setStatus({ type, text });
 
@@ -185,6 +220,8 @@ export default function HomeTimePage() {
   const companyCount = activeStatuses.filter((s) => isCompanyDriver(s.driver_type)).length;
   const ownerCount = activeStatuses.filter((s) => s.driver_type === "owner").length;
   const sortedStatuses = [...statuses].sort((a, b) => (a.inactive ? 1 : 0) - (b.inactive ? 1 : 0));
+  const filteredStatuses = sortedStatuses.filter((s) => matchesStatusFilter(s, statusFilter));
+  const selectedFilterLabel = STATUS_FILTERS.find((f) => f.value === statusFilter)?.label || "All active drivers";
 
   const STATUS_BADGE = {
     pending: { color: "#d97706", label: "Pending" },
@@ -327,12 +364,25 @@ export default function HomeTimePage() {
         <p style={{ color: "#888", marginTop: 0 }}>
           Edit the "Since" date to correct when a driver left for the road or came home. The day counters recalculate from it.
         </p>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 12 }}>
+          <div className="form-group" style={{ minWidth: 260, marginBottom: 0 }}>
+            <label>Filter drivers</label>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              {STATUS_FILTERS.map((filter) => (
+                <option key={filter.value} value={filter.value}>{filter.label}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ color: "#666", paddingBottom: 8 }}>
+            Showing <strong>{filteredStatuses.length}</strong> driver{filteredStatuses.length === 1 ? "" : "s"}: {selectedFilterLabel}
+          </div>
+        </div>
         <table className="table">
           <thead>
             <tr><th>Driver</th><th>Type</th><th>Unit</th><th>Status</th><th>Since (editable)</th><th>Days</th><th>Bonus building</th></tr>
           </thead>
           <tbody>
-            {sortedStatuses.map((s) => (
+            {filteredStatuses.map((s) => (
               <tr
                 key={s.group_id}
                 style={s.inactive
@@ -372,9 +422,9 @@ export default function HomeTimePage() {
                 </td>
               </tr>
             ))}
-            {statuses.length === 0 && (
+            {filteredStatuses.length === 0 && (
               <tr><td colSpan={7} style={{ textAlign: "center", color: "#888" }}>
-                No statuses tracked yet. They appear once the update specialist posts "Status: Home / Ready / Rolling" in a driver group.
+                No drivers match this filter.
               </td></tr>
             )}
           </tbody>
