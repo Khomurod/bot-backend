@@ -48,13 +48,23 @@ export default function GroupAccessPage() {
   const [loading, setLoading] = useState(true);
   const [rechecking, setRechecking] = useState(false);
   const [status, setStatus] = useState(null);
+  const [superAdminId, setSuperAdminId] = useState("");
+  const [superAdminLabel, setSuperAdminLabel] = useState("");
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [requesting, setRequesting] = useState(null);
 
   const load = async () => {
     try {
-      const res = await api.getGroupAccess();
+      const [res, settingsRes] = await Promise.all([
+        api.getGroupAccess(),
+        api.getBotAccessSettings().catch(() => ({ settings: null })),
+      ]);
       setGroups(res.groups || []);
       setSummary(res.summary || {});
       setLastChecked(res.lastChecked || null);
+      const s = settingsRes.settings || {};
+      setSuperAdminId(s.super_admin_telegram_id || "");
+      setSuperAdminLabel(s.super_admin_label || "");
     } catch (err) {
       setStatus({ type: "error", text: err.message });
     } finally {
@@ -63,6 +73,38 @@ export default function GroupAccessPage() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const saveSettings = async () => {
+    setSavingSettings(true);
+    setStatus(null);
+    try {
+      const res = await api.updateBotAccessSettings({
+        super_admin_telegram_id: superAdminId || null,
+        super_admin_label: superAdminLabel || null,
+      });
+      const s = res.settings || {};
+      setSuperAdminId(s.super_admin_telegram_id || "");
+      setSuperAdminLabel(s.super_admin_label || "");
+      setStatus({ type: "success", text: "Super admin saved." });
+    } catch (err) {
+      setStatus({ type: "error", text: err.message });
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const requestAdmin = async (groupId) => {
+    setRequesting(groupId);
+    setStatus(null);
+    try {
+      await api.requestGroupAdmin(groupId);
+      setStatus({ type: "success", text: "Admin request link sent to the super admin on Telegram." });
+    } catch (err) {
+      setStatus({ type: "error", text: err.message });
+    } finally {
+      setRequesting(null);
+    }
+  };
 
   const recheck = async () => {
     setRechecking(true);
@@ -103,6 +145,38 @@ export default function GroupAccessPage() {
       )}
 
       <div className="card" style={{ marginBottom: 20 }}>
+        <h3>Super admin</h3>
+        <p style={{ color: "#888", marginTop: 0 }}>
+          Enter the Telegram numeric ID of the super admin. That person must first press <strong>Start</strong> on the Wenze
+          Feedback bot. When you tap "Request admin" on a group below, the bot DMs them a link that adds it to the chosen
+          group as an admin so it can read every message.
+        </p>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div className="form-group">
+            <label>Super admin Telegram ID</label>
+            <input
+              type="text"
+              value={superAdminId}
+              placeholder="e.g. 123456789"
+              onChange={(e) => setSuperAdminId(e.target.value.trim())}
+            />
+          </div>
+          <div className="form-group">
+            <label>Label (optional)</label>
+            <input
+              type="text"
+              value={superAdminLabel}
+              placeholder="e.g. Tom"
+              onChange={(e) => setSuperAdminLabel(e.target.value)}
+            />
+          </div>
+          <button className="btn btn-primary" onClick={saveSettings} disabled={savingSettings}>
+            {savingSettings ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
             <div>🟢 <strong>{summary.ok || 0}</strong> reading</div>
@@ -134,11 +208,13 @@ export default function GroupAccessPage() {
               <th>Reading messages?</th>
               <th>Last message seen</th>
               <th>Home state</th>
+              <th>Grant access</th>
             </tr>
           </thead>
           <tbody>
             {groups.map((g) => {
               const style = LEVEL_STYLE[g.reading_level] || LEVEL_STYLE.unknown;
+              const isAdmin = g.bot_member_status === "administrator" || g.bot_member_status === "creator";
               return (
                 <tr key={g.group_id} style={g.reading_level === "bad" ? { background: "rgba(220,38,38,0.08)" } : g.reading_level === "warn" ? { background: "rgba(217,119,6,0.08)" } : undefined}>
                   <td>
@@ -152,11 +228,24 @@ export default function GroupAccessPage() {
                   </td>
                   <td>{timeAgo(g.last_message_seen_at)}</td>
                   <td>{g.home_state === "road" ? "🚚 On the road" : g.home_state === "home" ? "🏠 Home" : "—"}</td>
+                  <td>
+                    {isAdmin ? (
+                      <span style={{ color: "#16a34a" }}>✓ Admin</span>
+                    ) : (
+                      <button
+                        className="btn btn-sm"
+                        onClick={() => requestAdmin(g.group_id)}
+                        disabled={requesting === g.group_id}
+                      >
+                        {requesting === g.group_id ? "Sending…" : "Request admin"}
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             })}
             {groups.length === 0 && (
-              <tr><td colSpan={6} style={{ textAlign: "center", color: "#888" }}>No driver groups found.</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: "center", color: "#888" }}>No driver groups found.</td></tr>
             )}
           </tbody>
         </table>
