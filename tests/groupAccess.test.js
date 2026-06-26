@@ -1,6 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { computeReadingVerdict, RECENT_SEEN_DAYS } = require('../services/groupAccessConstants');
+const {
+  computeReadingVerdict,
+  RECENT_SEEN_DAYS,
+  buildAdminGrantPayload,
+  parseAdminGrantPayload,
+} = require('../services/groupAccessConstants');
 
 const NOW = Date.parse('2026-06-24T12:00:00Z');
 const daysAgo = (n) => new Date(NOW - n * 24 * 60 * 60 * 1000).toISOString();
@@ -51,4 +56,15 @@ test('unchecked group with no activity is unknown', () => {
   const v = computeReadingVerdict({ memberStatus: null, lastMessageSeenAt: null, now: NOW });
   assert.strictEqual(v.reading, 'unknown');
   assert.strictEqual(v.level, 'unknown');
+});
+
+test('admin-grant payload round-trips and rejects junk', () => {
+  assert.strictEqual(buildAdminGrantPayload(42), 'htadmin_42');
+  assert.strictEqual(parseAdminGrantPayload('htadmin_42'), 42);
+  assert.strictEqual(parseAdminGrantPayload(buildAdminGrantPayload(7)), 7);
+  assert.strictEqual(parseAdminGrantPayload('htadmin_0'), null);
+  assert.strictEqual(parseAdminGrantPayload('htadmin_abc'), null);
+  assert.strictEqual(parseAdminGrantPayload('other_5'), null);
+  assert.strictEqual(parseAdminGrantPayload(''), null);
+  assert.strictEqual(parseAdminGrantPayload(null), null);
 });

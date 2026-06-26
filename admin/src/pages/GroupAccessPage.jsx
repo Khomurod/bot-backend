@@ -93,6 +93,36 @@ export default function GroupAccessPage() {
     }
   };
 
+  const noAccessGroups = groups.filter((g) => g.reading_level !== "ok");
+
+  const downloadNoAccessExcel = () => {
+    const csvCell = (v) => {
+      const s = String(v == null ? "" : v);
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const headers = ["Driver / Group", "Unit", "Bot role", "Reading status", "Last message seen", "Home state", "Active"];
+    const rows = noAccessGroups.map((g) => [
+      g.driver_name || "",
+      g.unit_number || "",
+      roleLabel(g.bot_member_status),
+      g.reading_label || "",
+      g.last_message_seen_at ? new Date(g.last_message_seen_at).toISOString() : "never",
+      g.home_state === "road" ? "On the road" : g.home_state === "home" ? "Home" : "",
+      g.active ? "yes" : "no",
+    ]);
+    const csv = [headers, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
+    // BOM so Excel reads UTF-8 correctly.
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bot-no-access-drivers-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const requestAdmin = async (groupId) => {
     setRequesting(groupId);
     setStatus(null);
@@ -186,6 +216,14 @@ export default function GroupAccessPage() {
           </div>
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <span style={{ color: "#888" }}>Roles checked: {timeAgo(lastChecked)}</span>
+            <button
+              className="btn"
+              onClick={downloadNoAccessExcel}
+              disabled={noAccessGroups.length === 0}
+              title={noAccessGroups.length === 0 ? "Every group is readable" : "Download the no-access drivers as an Excel (CSV) file"}
+            >
+              ⬇️ Download no-access list ({noAccessGroups.length})
+            </button>
             <button className="btn btn-primary" onClick={recheck} disabled={rechecking}>
               {rechecking ? "Checking…" : "Recheck access"}
             </button>

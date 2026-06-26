@@ -38,10 +38,22 @@ function parseDriverStatus(text) {
   return 'road';
 }
 
+/**
+ * Coerce an ISO string, JS Date, epoch-millis number, or DateTime into a luxon
+ * DateTime. Postgres timestamptz columns arrive as JS Date objects via node-pg,
+ * so we must handle those — String(date) is NOT ISO and would parse as invalid.
+ */
+function toDateTime(value) {
+  if (value instanceof DateTime) return value;
+  if (value instanceof Date) return DateTime.fromJSDate(value);
+  if (typeof value === 'number') return DateTime.fromMillis(value);
+  return DateTime.fromISO(String(value));
+}
+
 /** Whole days between two ISO/Date timestamps (floored, never negative). */
 function wholeDaysBetween(startIso, endIso) {
-  const start = startIso instanceof DateTime ? startIso : DateTime.fromISO(String(startIso));
-  const end = endIso instanceof DateTime ? endIso : DateTime.fromISO(String(endIso));
+  const start = toDateTime(startIso);
+  const end = toDateTime(endIso);
   if (!start.isValid || !end.isValid) return 0;
   return Math.max(0, Math.floor(end.diff(start, 'days').days));
 }

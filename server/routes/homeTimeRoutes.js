@@ -11,6 +11,7 @@ const db = require('../../database/db');
 const ht = require('../../database/homeTime');
 const { computeRoadBonus, wholeDaysBetween } = require('../../services/homeTimeConstants');
 const groupAccess = require('../../services/groupAccessService');
+const { buildAdminGrantPayload } = require('../../services/groupAccessConstants');
 
 function displayName(row) {
   const name = [row.first_name, row.last_name].filter(Boolean).join(' ').trim();
@@ -366,14 +367,19 @@ function createHomeTimeRouter({ authMiddleware }) {
       if (!username) return res.status(502).json({ error: 'Could not resolve the bot username.' });
 
       // Admin rights requested so the bot can read all messages in the group.
+      // The start parameter tags the link with the intended group so the bot can
+      // verify the super admin picked the right one (Telegram cannot pre-select
+      // the group itself) and DM a confirmation afterward.
       const adminRights = 'change_info+delete_messages+restrict_members+pin_messages+invite_users+manage_video_chats';
-      const link = `https://t.me/${username}?startgroup&admin=${adminRights}`;
+      const payload = buildAdminGrantPayload(groupId);
+      const link = `https://t.me/${username}?startgroup=${payload}&admin=${adminRights}`;
       const groupLabel = displayName(group);
 
       const text = `🔐 <b>Admin access requested</b>\n`
         + `Please grant <b>@${escapeHtmlSafe(username)}</b> admin rights in this driver group:\n`
         + `<b>${escapeHtmlSafe(groupLabel)}</b>\n\n`
-        + `Tap the link below, then pick <b>${escapeHtmlSafe(group.group_name || groupLabel)}</b> from the list:\n`
+        + `Tap the link below, then pick <b>${escapeHtmlSafe(group.group_name || groupLabel)}</b> and confirm. `
+        + `I'll message you here to confirm it worked (or warn you if the wrong group was picked):\n`
         + `${link}`;
 
       try {
