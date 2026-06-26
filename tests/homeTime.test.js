@@ -30,6 +30,26 @@ test('wholeDaysBetween floors and never goes negative', () => {
   assert.strictEqual(wholeDaysBetween('2026-01-08T00:00:00Z', '2026-01-01T00:00:00Z'), 0);
 });
 
+test('wholeDaysBetween accepts JS Date inputs (Postgres timestamptz columns)', () => {
+  // node-pg returns timestamptz as Date objects; String(date) is not ISO, so
+  // these must be coerced via fromJSDate rather than fromISO. This is the bug
+  // that made every driver show "0d out" regardless of the Since date.
+  const start = new Date('2026-06-08T00:00:00Z');
+  const end = new Date('2026-06-26T00:00:00Z');
+  assert.strictEqual(wholeDaysBetween(start, end), 18);
+  // Mixed Date + ISO string also works.
+  assert.strictEqual(wholeDaysBetween(start, '2026-06-26T00:00:00Z'), 18);
+  // Epoch millis too.
+  assert.strictEqual(wholeDaysBetween(start.getTime(), end.getTime()), 18);
+});
+
+test('computeRoadBonus works with JS Date inputs', () => {
+  const start = new Date('2026-01-01T00:00:00Z');
+  const end = new Date('2026-02-05T00:00:00Z'); // 35 days
+  const r = computeRoadBonus(start, end, { roadAllowanceWeeks: 4, bonusPerWeek: 100 });
+  assert.deepStrictEqual([r.daysOnRoad, r.exceededWeeks, r.bonusUsd], [35, 1, 100]);
+});
+
 test('computeRoadBonus: only FULL extra weeks count (4-week / $100 default)', () => {
   const opts = { roadAllowanceWeeks: 4, bonusPerWeek: 100 };
 
