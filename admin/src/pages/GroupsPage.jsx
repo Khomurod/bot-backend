@@ -42,6 +42,8 @@ function profileToDraft(profile) {
   return {
     first_name: profile.first_name || "",
     last_name: profile.last_name || "",
+    secondary_first_name: profile.secondary_first_name || "",
+    secondary_last_name: profile.secondary_last_name || "",
     driver_type: profile.driver_type || "owner",
     status: profile.status || "active",
     unit_number: profile.unit_number || "",
@@ -52,14 +54,23 @@ function profileToDraft(profile) {
   };
 }
 
+function shouldShowTeamInputs(profile, draft) {
+  return Boolean(
+    profile.secondary_first_name
+    || profile.secondary_last_name
+    || draft.secondary_first_name
+    || draft.secondary_last_name
+    || String(profile.group_name || "").includes("/")
+  );
+}
+
 export default function GroupsPage() {
   const [allProfiles, setAllProfiles] = useState([]);
   const [draftsById, setDraftsById] = useState({});
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
   const [savingProfileId, setSavingProfileId] = useState(null);
-  const [runningAi, setRunningAi] = useState(false);
-  const [aiParsing, setAiParsing] = useState(false);
+  const [syncingAi, setSyncingAi] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const [statusSort, setStatusSort] = useState("active-first");
 
@@ -118,41 +129,24 @@ export default function GroupsPage() {
     setStatusSort((s) => (s === "active-first" ? "inactive-first" : "active-first"));
   };
 
-  const handleRunAiClassification = async () => {
-    setRunningAi(true);
-    setMessage(null);
-    try {
-      const result = await api.runGroupStatusAi();
-      setMessage({
-        type: "success",
-        text: `AI classification finished: ${result.updated ?? 0} of ${result.total ?? 0} groups updated.`,
-      });
-      await fetchProfiles();
-    } catch (err) {
-      setMessage({ type: "error", text: err.message });
-    } finally {
-      setRunningAi(false);
-    }
-  };
-
-  const handleAiParseProfiles = async () => {
+  const handleAiSync = async () => {
     if (!window.confirm(
-      "Let AI re-read every group name and fill First name, Last name, Unit number, and Type "
-      + "(company driver vs owner) from the group titles? This overwrites those fields."
+      "Run one smart AI pass that re-reads every driver group title, fills names, team-driver fields, unit number, type, "
+      + "and status where they are not manually locked?"
     )) return;
-    setAiParsing(true);
+    setSyncingAi(true);
     setMessage(null);
     try {
-      const result = await api.aiParseDriverProfiles(true);
+      const result = await api.runDriverProfilesAiSync(true);
       setMessage({
         type: "success",
-        text: `AI parse finished: ${result.updated ?? 0} of ${result.total ?? 0} profiles updated from group names.`,
+        text: `AI sync finished: ${result.updated ?? 0} of ${result.total ?? 0} driver groups enriched.`,
       });
       await fetchProfiles();
     } catch (err) {
       setMessage({ type: "error", text: err.message });
     } finally {
-      setAiParsing(false);
+      setSyncingAi(false);
     }
   };
 
@@ -167,25 +161,17 @@ export default function GroupsPage() {
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h2>👥 Driver Groups</h2>
-          <p>Driver profiles are now the source of truth. Edit status, unit, language, birthdays, and date of start here.</p>
+          <p>Driver Groups is the source of truth for driver identity, status, truck, and team-driver structure across Home Time and Bot Group Access.</p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             type="button"
-            className="btn"
-            onClick={handleAiParseProfiles}
-            disabled={aiParsing || runningAi || loading}
-            title="AI reads each group name and fills unit, first/last name, and company-driver vs owner"
-          >
-            {aiParsing ? "⏳ Parsing names…" : "🧩 AI: fill names, units & type"}
-          </button>
-          <button
-            type="button"
             className="btn btn-primary"
-            onClick={handleRunAiClassification}
-            disabled={runningAi || aiParsing || loading}
+            onClick={handleAiSync}
+            disabled={syncingAi || loading}
+            title="One smart AI pass fills names, team fields, unit, type, and status without overwriting manual corrections"
           >
-            {runningAi ? "⏳ Classifying..." : "🤖 Run AI classification now"}
+            {syncingAi ? "⏳ Running AI sync..." : "🤖 AI: enrich status + identity"}
           </button>
         </div>
       </div>
@@ -277,6 +263,7 @@ export default function GroupsPage() {
               {displayProfiles.map((profile) => {
                 const draft = draftsById[profile.id] || profileToDraft(profile);
                 const saving = savingProfileId === profile.id;
+                const teamInputs = shouldShowTeamInputs(profile, draft);
                 const daysUntil = draft.date_of_birth
                   ? getDaysUntilBirthday(draft.date_of_birth)
                   : null;
@@ -288,37 +275,83 @@ export default function GroupsPage() {
                       <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                         via {formatStatusSource(profile.status_source)}
                       </div>
+                      {profile.duplicate_conflict && (
+                        <div style={{ fontSize: 11, color: "#f59e0b" }}>
+                          Multiple active duplicates - review required
+                        </div>
+                      )}
+                      {!profile.duplicate_conflict && profile.duplicate_group_count > 1 && (
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                          Linked duplicate set ({profile.duplicate_group_count} groups)
+                        </div>
+                      )}
                     </td>
                     <td><code>{profile.telegram_group_id}</code></td>
                     <td>
-                      <input
-                        type="text"
-                        className="form-input"
-                        style={{ minWidth: 120, padding: "4px 8px" }}
-                        value={draft.first_name}
-                        disabled={saving}
-                        onChange={(e) => updateDraft(profile.id, { first_name: e.target.value })}
-                        onBlur={(e) => {
-                          const next = e.target.value.trim() || null;
-                          if ((profile.first_name || null) === next) return;
-                          saveProfilePatch(profile, { first_name: next }, "First name updated.");
-                        }}
-                      />
+                      <div style={{ display: "grid", gap: 6, minWidth: 120 }}>
+                        <input
+                          type="text"
+                          className="form-input"
+                          style={{ padding: "4px 8px" }}
+                          value={draft.first_name}
+                          disabled={saving}
+                          onChange={(e) => updateDraft(profile.id, { first_name: e.target.value })}
+                          onBlur={(e) => {
+                            const next = e.target.value.trim() || null;
+                            if ((profile.first_name || null) === next) return;
+                            saveProfilePatch(profile, { first_name: next }, "First name updated.");
+                          }}
+                        />
+                        {teamInputs && (
+                          <input
+                            type="text"
+                            className="form-input"
+                            style={{ padding: "4px 8px" }}
+                            value={draft.secondary_first_name}
+                            disabled={saving}
+                            placeholder="2nd first name"
+                            onChange={(e) => updateDraft(profile.id, { secondary_first_name: e.target.value })}
+                            onBlur={(e) => {
+                              const next = e.target.value.trim() || null;
+                              if ((profile.secondary_first_name || null) === next) return;
+                              saveProfilePatch(profile, { secondary_first_name: next }, "Secondary first name updated.");
+                            }}
+                          />
+                        )}
+                      </div>
                     </td>
                     <td>
-                      <input
-                        type="text"
-                        className="form-input"
-                        style={{ minWidth: 140, padding: "4px 8px" }}
-                        value={draft.last_name}
-                        disabled={saving}
-                        onChange={(e) => updateDraft(profile.id, { last_name: e.target.value })}
-                        onBlur={(e) => {
-                          const next = e.target.value.trim() || null;
-                          if ((profile.last_name || null) === next) return;
-                          saveProfilePatch(profile, { last_name: next }, "Last name updated.");
-                        }}
-                      />
+                      <div style={{ display: "grid", gap: 6, minWidth: 140 }}>
+                        <input
+                          type="text"
+                          className="form-input"
+                          style={{ padding: "4px 8px" }}
+                          value={draft.last_name}
+                          disabled={saving}
+                          onChange={(e) => updateDraft(profile.id, { last_name: e.target.value })}
+                          onBlur={(e) => {
+                            const next = e.target.value.trim() || null;
+                            if ((profile.last_name || null) === next) return;
+                            saveProfilePatch(profile, { last_name: next }, "Last name updated.");
+                          }}
+                        />
+                        {teamInputs && (
+                          <input
+                            type="text"
+                            className="form-input"
+                            style={{ padding: "4px 8px" }}
+                            value={draft.secondary_last_name}
+                            disabled={saving}
+                            placeholder="2nd last name"
+                            onChange={(e) => updateDraft(profile.id, { secondary_last_name: e.target.value })}
+                            onBlur={(e) => {
+                              const next = e.target.value.trim() || null;
+                              if ((profile.secondary_last_name || null) === next) return;
+                              saveProfilePatch(profile, { secondary_last_name: next }, "Secondary last name updated.");
+                            }}
+                          />
+                        )}
+                      </div>
                     </td>
                     <td>
                       <select
@@ -428,16 +461,16 @@ export default function GroupsPage() {
                       <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                         <input
                           type="checkbox"
-                          checked={draft.needs_review === true}
+                          checked={draft.needs_review === true || profile.duplicate_review_required === true}
                           disabled={saving}
                           onChange={(e) => {
                             const next = e.target.checked;
                             updateDraft(profile.id, { needs_review: next });
-                            if ((profile.needs_review === true) === next) return;
+                            if ((profile.needs_review === true) === next && profile.duplicate_review_required !== true) return;
                             saveProfilePatch(profile, { needs_review: next }, "Review flag updated.");
                           }}
                         />
-                        Review
+                        {profile.duplicate_review_required ? "Review required" : "Review"}
                       </label>
                     </td>
                   </tr>

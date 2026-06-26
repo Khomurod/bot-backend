@@ -108,6 +108,15 @@ export async function aiParseDriverProfiles(apply = false) {
   return res.json();
 }
 
+export async function runDriverProfilesAiSync(apply = true) {
+  const res = await fetch(`${API_BASE}/driver-profiles/ai-sync?apply=${apply ? 'true' : 'false'}`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 function appendTargetActiveFilter(body, targetType, targetActiveFilter) {
   if (targetType === 'all' || targetType === 'language_groups') {
     body.target_active_filter = targetActiveFilter || 'active';

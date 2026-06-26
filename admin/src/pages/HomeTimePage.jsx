@@ -531,7 +531,11 @@ export default function HomeTimePage() {
                     </td>
                     <td>
                       <div className="home-time-driver-name">{driver.driver_name}</div>
-                      <div className="home-time-subtext">{isSelected ? "Selected" : "Click row to inspect"}</div>
+                      <div className="home-time-subtext">
+                        {driver.duplicate_conflict
+                          ? "Duplicate active groups need review"
+                          : (isSelected ? "Selected" : "Click row to inspect")}
+                      </div>
                     </td>
                     <td>{driverTypeLabel(driver.driver_type)}</td>
                     <td>
@@ -746,6 +750,11 @@ export default function HomeTimePage() {
                 <p>
                   Truck {selectedStatus.unit_number || "--"} | {driverTypeLabel(selectedStatus.driver_type)}
                 </p>
+                {selectedStatus.duplicate_conflict && (
+                  <p className="home-time-muted" style={{ marginTop: 4 }}>
+                    Multiple active driver groups share this identity. Review Driver Groups before editing access/status assumptions.
+                  </p>
+                )}
               </div>
               <div className="home-time-modal-actions">
                 <span className={`badge ${selectedStatus.state === "road" ? "" : "badge-muted"}`}>

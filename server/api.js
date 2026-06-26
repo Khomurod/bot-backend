@@ -22,6 +22,8 @@ const {
   sanitizeCompanyReportHtmlForTelegram,
   sendTelegramHtmlChunks,
 } = require('../services/telegramHtml');
+const { listCanonicalDriverGroups } = require('../services/driverGroupDirectoryService');
+const { runUnifiedDriverGroupAiSync } = require('../services/driverGroupAiSyncService');
 const {
   createConnectSession,
   getSessionByToken,
@@ -1114,13 +1116,17 @@ app.get('/api/groups/manage', authMiddleware, async (req, res) => {
 function mapDriverProfileForApi(profile) {
   if (!profile) return null;
   return {
-    id: profile.id,
+    id: profile.profile_id || profile.id,
     group_id: profile.group_id,
     group_name: profile.group_name,
     telegram_group_id: profile.telegram_group_id,
     first_name: profile.first_name || null,
     last_name: profile.last_name || null,
-    full_name: profile.full_name || null,
+    secondary_first_name: profile.secondary_first_name || null,
+    secondary_last_name: profile.secondary_last_name || null,
+    full_name: profile.full_name || profile.display_name || null,
+    display_name: profile.display_name || profile.full_name || null,
+    normalized_driver_key: profile.normalized_driver_key || null,
     driver_type: profile.driver_type || 'owner',
     status: profile.status || 'active',
     unit_number: profile.unit_number || null,
@@ -1130,8 +1136,23 @@ function mapDriverProfileForApi(profile) {
     needs_review: profile.needs_review === true,
     backfill_confidence: profile.backfill_confidence,
     status_source: profile.status_source || null,
-    created_at: profile.created_at,
-    updated_at: profile.updated_at,
+    first_name_source: profile.first_name_source || null,
+    last_name_source: profile.last_name_source || null,
+    secondary_first_name_source: profile.secondary_first_name_source || null,
+    secondary_last_name_source: profile.secondary_last_name_source || null,
+    driver_type_source: profile.driver_type_source || null,
+    unit_number_source: profile.unit_number_source || null,
+    duplicate_group_count: profile.duplicate_group_count || 1,
+    duplicate_group_ids: profile.duplicate_group_ids || [],
+    duplicate_active_group_ids: profile.duplicate_active_group_ids || [],
+    duplicate_inactive_group_ids: profile.duplicate_inactive_group_ids || [],
+    duplicate_conflict: profile.duplicate_conflict === true,
+    duplicate_resolution: profile.duplicate_resolution || 'unique',
+    duplicate_review_required: profile.duplicate_review_required === true,
+    suppressed_duplicate: profile.suppressed_duplicate === true,
+    canonical_group_id: profile.canonical_group_id || profile.group_id,
+    created_at: profile.profile_created_at || profile.created_at,
+    updated_at: profile.profile_updated_at || profile.updated_at,
   };
 }
 
@@ -1141,7 +1162,14 @@ app.get('/api/driver-profiles', authMiddleware, async (req, res) => {
   try {
     const includeInactive = req.query.include_inactive !== 'false';
     const needsReviewOnly = req.query.needs_review_only === 'true';
-    const rows = await db.listDriverProfiles({ includeInactive, needsReviewOnly });
+    await db.listDriverProfiles({ includeInactive: true });
+    let rows = await listCanonicalDriverGroups({ operational: false, includeNonDrivers: false });
+    if (!includeInactive) {
+      rows = rows.filter((row) => row.inactive !== true);
+    }
+    if (needsReviewOnly) {
+      rows = rows.filter((row) => row.needs_review === true || row.duplicate_review_required === true);
+    }
     res.json(rows.map(mapDriverProfileForApi));
   } catch (err) {
     console.error('[API] Error fetching driver profiles:', err.message);
@@ -1191,22 +1219,26 @@ app.put('/api/driver-profiles/:id', authMiddleware, async (req, res) => {
       }
     }
 
-    const updated = await db.updateDriverProfile(id, {
-      first_name: body.first_name,
-      last_name: body.last_name,
-      driver_type: body.driver_type,
-      status: body.status,
-      unit_number: body.unit_number,
-      language: body.language,
+    const patch = {
+      ...(Object.prototype.hasOwnProperty.call(body, 'first_name') ? { first_name: body.first_name } : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'last_name') ? { last_name: body.last_name } : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'secondary_first_name') ? { secondary_first_name: body.secondary_first_name } : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'secondary_last_name') ? { secondary_last_name: body.secondary_last_name } : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'driver_type') ? { driver_type: body.driver_type } : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'status') ? { status: body.status } : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'unit_number') ? { unit_number: body.unit_number } : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'language') ? { language: body.language } : {}),
       ...(Object.prototype.hasOwnProperty.call(body, 'date_of_birth')
         ? { date_of_birth: body.date_of_birth || null }
         : {}),
       ...(Object.prototype.hasOwnProperty.call(body, 'date_of_start')
         ? { date_of_start: body.date_of_start || null }
         : {}),
-      needs_review: body.needs_review,
-      backfill_confidence: body.backfill_confidence,
-    });
+      ...(Object.prototype.hasOwnProperty.call(body, 'needs_review') ? { needs_review: body.needs_review } : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'backfill_confidence') ? { backfill_confidence: body.backfill_confidence } : {}),
+    };
+
+    const updated = await db.updateDriverProfile(id, patch);
     if (!updated) {
       return res.status(404).json({ error: 'Driver profile not found' });
     }
@@ -1214,6 +1246,17 @@ app.put('/api/driver-profiles/:id', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[API] Error updating driver profile:', err.message);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/driver-profiles/ai-sync', authMiddleware, async (req, res) => {
+  try {
+    const apply = req.query.apply !== 'false' && req.body?.apply !== false;
+    const result = await runUnifiedDriverGroupAiSync({ apply });
+    res.json(result);
+  } catch (err) {
+    console.error('[API] Driver profile AI sync failed:', err.message);
+    res.status(500).json({ error: 'AI sync failed', detail: err.message });
   }
 });
 

@@ -20,6 +20,7 @@ const { buildAdminGrantPayload } = require('../../services/groupAccessConstants'
 const homeTimeImport = require('../../services/homeTimeImportService');
 const { inferDriverType, isInactiveGroup } = require('../../services/driverProfileParse');
 const { homeTimePolicyApplies } = require('../../services/homeTimeConstants');
+const { listCanonicalDriverGroups } = require('../../services/driverGroupDirectoryService');
 
 const SCREENSHOT_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const screenshotUpload = multer({
@@ -32,12 +33,17 @@ const screenshotUpload = multer({
 });
 
 function displayName(row) {
+  if (row.display_name) return row.display_name;
   const name = [row.first_name, row.last_name].filter(Boolean).join(' ').trim();
   return name || row.group_name || `Group ${row.group_id}`;
 }
 
 function resolveDriverType(row) {
   return row?.driver_type || inferDriverType(row?.group_name || '');
+}
+
+function buildDirectoryIndex(rows) {
+  return new Map((rows || []).map((row) => [Number(row.group_id), row]));
 }
 
 /** Accept a YYYY-MM-DD or full ISO datetime; return a UTC ISO string or null. */
@@ -73,8 +79,14 @@ function shapeAccessRow(row, now) {
     group_type: row.group_type || null,
     driver_name: displayName(row),
     unit_number: row.unit_number || null,
-    active: row.active,
-    inactive: isInactiveGroup({ active: row.active, group_name: row.group_name, status: row.driver_status }),
+    active: row.active ?? row.group_active,
+    inactive: row.inactive ?? isInactiveGroup({
+      active: row.active ?? row.group_active,
+      group_name: row.group_name,
+      status: row.driver_status || row.status,
+    }),
+    duplicate_conflict: row.duplicate_conflict === true,
+    duplicate_resolution: row.duplicate_resolution || 'unique',
     bot_member_status: row.bot_member_status || null,
     bot_access_checked_at: row.bot_access_checked_at,
     last_message_seen_at: row.last_message_seen_at,
@@ -93,55 +105,65 @@ function createHomeTimeRouter({ authMiddleware }) {
   router.get('/overview', authMiddleware, async (req, res) => {
     try {
       const settings = await ht.getHomeTimeSettings();
-      const [rawStatuses, history] = await Promise.all([
+      const [rawStatuses, history, directory] = await Promise.all([
         ht.listCurrentStatuses(),
         ht.listRoadHistory({ limit: 100 }),
+        listCanonicalDriverGroups({ operational: true, includeNonDrivers: false }),
       ]);
+      const directoryByGroupId = buildDirectoryIndex(directory);
       const nowIso = DateTime.now().toUTC().toISO();
 
-      const statuses = rawStatuses.map((row) => {
-        const driverType = resolveDriverType(row);
-        const base = {
-          group_id: row.group_id,
-          driver_name: displayName(row),
-          driver_type: driverType,
-          unit_number: row.unit_number || null,
-          group_active: row.group_active,
-          inactive: isInactiveGroup({ active: row.group_active, group_name: row.group_name, status: row.driver_status }),
-          state: row.state,
-          state_since: row.state_since,
-          last_status_at: row.last_status_at,
-        };
-        if (row.state === 'road') {
-          const live = computeRoadBonus(row.state_since, nowIso, {
-            roadAllowanceWeeks: settings.road_allowance_weeks,
-            bonusPerWeek: Number(settings.bonus_per_week),
-            driverType,
-          });
-          const nextHome = computeNextEligibleHomeTime(row.state_since, {
-            roadAllowanceWeeks: settings.road_allowance_weeks,
-            driverType,
-          });
+      const statuses = rawStatuses
+        .map((row) => {
+          const identity = directoryByGroupId.get(Number(row.group_id)) || null;
+          if (identity && identity.operational_visible === false) return null;
+          const driverType = identity?.driver_type || resolveDriverType(row);
+          const base = {
+            group_id: row.group_id,
+            canonical_group_id: identity?.canonical_group_id || row.group_id,
+            driver_name: identity?.display_name || displayName(row),
+            driver_type: driverType,
+            unit_number: identity?.unit_number || row.unit_number || null,
+            group_active: identity?.group_active ?? row.group_active,
+            inactive: identity?.inactive ?? isInactiveGroup({ active: row.group_active, group_name: row.group_name, status: row.driver_status }),
+            duplicate_conflict: identity?.duplicate_conflict === true,
+            duplicate_resolution: identity?.duplicate_resolution || 'unique',
+            state: row.state,
+            state_since: row.state_since,
+            last_status_at: row.last_status_at,
+          };
+          if (row.state === 'road') {
+            const live = computeRoadBonus(row.state_since, nowIso, {
+              roadAllowanceWeeks: settings.road_allowance_weeks,
+              bonusPerWeek: Number(settings.bonus_per_week),
+              driverType,
+            });
+            const nextHome = computeNextEligibleHomeTime(row.state_since, {
+              roadAllowanceWeeks: settings.road_allowance_weeks,
+              driverType,
+            });
+            return {
+              ...base,
+              days_on_road: live.daysOnRoad,
+              policy_applies: live.policyApplies,
+              over_limit: live.overLimit,
+              pending_exceeded_weeks: live.exceededWeeks,
+              pending_bonus_usd: live.bonusUsd,
+              next_home_time_at: nextHome.eligibleAtIso,
+              next_home_time_date: nextHome.eligibleDate,
+            };
+          }
           return {
             ...base,
-            days_on_road: live.daysOnRoad,
-            policy_applies: live.policyApplies,
-            over_limit: live.overLimit,
-            pending_exceeded_weeks: live.exceededWeeks,
-            pending_bonus_usd: live.bonusUsd,
-            next_home_time_at: nextHome.eligibleAtIso,
-            next_home_time_date: nextHome.eligibleDate,
+            policy_applies: homeTimePolicyApplies(driverType),
+            days_home: wholeDaysBetween(row.state_since, nowIso),
           };
-        }
-        return {
-          ...base,
-          policy_applies: homeTimePolicyApplies(driverType),
-          days_home: wholeDaysBetween(row.state_since, nowIso),
-        };
-      });
+        })
+        .filter(Boolean);
 
       const adjustedHistory = history.map((row) => {
-        const driverType = resolveDriverType(row);
+        const identity = directoryByGroupId.get(Number(row.group_id)) || null;
+        const driverType = identity?.driver_type || resolveDriverType(row);
         const recalculated = computeRoadBonus(row.road_started_at, row.home_arrived_at, {
           roadAllowanceWeeks: settings.road_allowance_weeks,
           bonusPerWeek: Number(settings.bonus_per_week),
@@ -149,6 +171,10 @@ function createHomeTimeRouter({ authMiddleware }) {
         });
         return {
           ...row,
+          group_id: identity?.canonical_group_id || row.group_id,
+          source_group_id: row.group_id,
+          driver_name: identity?.display_name || row.driver_name || null,
+          unit_number: identity?.unit_number || row.unit_number || null,
           driver_type: driverType,
           policy_applies: recalculated.policyApplies,
           days_on_road: recalculated.daysOnRoad,
@@ -277,10 +303,20 @@ function createHomeTimeRouter({ authMiddleware }) {
   // GET /requests — every home-time request (for red-flag review).
   router.get('/requests', authMiddleware, async (req, res) => {
     try {
-      const requests = (await ht.listHomeTimeRequests({ limit: 200 })).map((row) => {
-        const driverType = resolveDriverType(row);
+      const [rows, directory] = await Promise.all([
+        ht.listHomeTimeRequests({ limit: 200 }),
+        listCanonicalDriverGroups({ operational: true, includeNonDrivers: false }),
+      ]);
+      const directoryByGroupId = buildDirectoryIndex(directory);
+      const requests = rows.map((row) => {
+        const identity = directoryByGroupId.get(Number(row.group_id)) || null;
+        const driverType = identity?.driver_type || resolveDriverType(row);
         return {
           ...row,
+          group_id: identity?.canonical_group_id || row.group_id,
+          source_group_id: row.group_id,
+          driver_name: identity?.display_name || row.driver_name || null,
+          unit_number: identity?.unit_number || row.unit_number || null,
           driver_type: driverType,
           policy_applies: homeTimePolicyApplies(driverType),
         };
@@ -386,7 +422,8 @@ function createHomeTimeRouter({ authMiddleware }) {
   router.get('/group-access', authMiddleware, async (req, res) => {
     try {
       const now = Date.now();
-      const rows = await db.listAllGroupAccess();
+      const rows = (await listCanonicalDriverGroups({ operational: true, includeNonDrivers: true }))
+        .filter((row) => row.group_type !== 'driver' || row.operational_visible !== false);
       const groups = rows.map((row) => shapeAccessRow(row, now));
       const summary = groups.reduce((acc, g) => {
         acc[g.reading_level] = (acc[g.reading_level] || 0) + 1;
@@ -409,7 +446,8 @@ function createHomeTimeRouter({ authMiddleware }) {
     try {
       const result = await groupAccess.refreshDriverGroupBotAccess();
       const now = Date.now();
-      const rows = await db.listAllGroupAccess();
+      const rows = (await listCanonicalDriverGroups({ operational: true, includeNonDrivers: true }))
+        .filter((row) => row.group_type !== 'driver' || row.operational_visible !== false);
       const groups = rows.map((row) => shapeAccessRow(row, now));
       res.json({ ...result, groups });
     } catch (err) {
@@ -464,7 +502,8 @@ function createHomeTimeRouter({ authMiddleware }) {
         return res.status(409).json({ error: 'Set the super admin Telegram id first.' });
       }
 
-      const rows = await db.listAllGroupAccess();
+      const rows = (await listCanonicalDriverGroups({ operational: true, includeNonDrivers: true }))
+        .filter((row) => row.group_type !== 'driver' || row.operational_visible !== false);
       const group = rows.find((g) => Number(g.group_id) === groupId);
       if (!group) return res.status(404).json({ error: 'Driver group not found' });
 

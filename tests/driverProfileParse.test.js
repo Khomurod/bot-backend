@@ -3,10 +3,13 @@ const assert = require('node:assert');
 const {
   inferDriverType,
   splitName,
+  splitDriverMembers,
   parseDriverFromGroupName,
   stripStatusWords,
   nameMarkedInactive,
   isInactiveGroup,
+  buildDriverDisplayName,
+  buildNormalizedDriverKey,
 } = require('../services/driverProfileParse');
 const { normalizeType } = require('../services/driverProfileAiParser');
 
@@ -28,11 +31,25 @@ test('splitName handles 0/1/many tokens', () => {
 test('parseDriverFromGroupName extracts unit, name, and type', () => {
   assert.deepStrictEqual(
     parseDriverFromGroupName('WENZE UNIT # 310 JAKHONGIR ABDUNABIEV'),
-    { unit_number: '310', first_name: 'JAKHONGIR', last_name: 'ABDUNABIEV', driver_type: 'owner' }
+    {
+      unit_number: '310',
+      first_name: 'JAKHONGIR',
+      last_name: 'ABDUNABIEV',
+      secondary_first_name: null,
+      secondary_last_name: null,
+      driver_type: 'owner',
+    }
   );
   assert.deepStrictEqual(
     parseDriverFromGroupName('WENZE UNIT # 2614 TERRELL DALTON (COMPANY DRIVER)'),
-    { unit_number: '2614', first_name: 'TERRELL', last_name: 'DALTON', driver_type: 'company_driver' }
+    {
+      unit_number: '2614',
+      first_name: 'TERRELL',
+      last_name: 'DALTON',
+      secondary_first_name: null,
+      secondary_last_name: null,
+      driver_type: 'company_driver',
+    }
   );
 });
 
@@ -47,11 +64,72 @@ test('stripStatusWords removes standalone ACTIVE/INACTIVE markers', () => {
 test('parseDriverFromGroupName drops the INACTIVE marker from the name', () => {
   assert.deepStrictEqual(
     parseDriverFromGroupName('WENZE UNIT # 6810 GOCHY GOCHYYEV INACTIVE'),
-    { unit_number: '6810', first_name: 'GOCHY', last_name: 'GOCHYYEV', driver_type: 'owner' }
+    {
+      unit_number: '6810',
+      first_name: 'GOCHY',
+      last_name: 'GOCHYYEV',
+      secondary_first_name: null,
+      secondary_last_name: null,
+      driver_type: 'owner',
+    }
   );
   assert.deepStrictEqual(
     parseDriverFromGroupName('WENZE UNIT # 4604 EMANUEL ENNIS (COMPANY DRIVER) INACTIVE'),
-    { unit_number: '4604', first_name: 'EMANUEL', last_name: 'ENNIS', driver_type: 'company_driver' }
+    {
+      unit_number: '4604',
+      first_name: 'EMANUEL',
+      last_name: 'ENNIS',
+      secondary_first_name: null,
+      secondary_last_name: null,
+      driver_type: 'company_driver',
+    }
+  );
+});
+
+test('splitDriverMembers and parseDriverFromGroupName capture team-driver fields', () => {
+  assert.deepStrictEqual(
+    splitDriverMembers('RUDOLPH FREDERIC / JOHN ELISEE'),
+    {
+      first_name: 'RUDOLPH',
+      last_name: 'FREDERIC',
+      secondary_first_name: 'JOHN',
+      secondary_last_name: 'ELISEE',
+    }
+  );
+  assert.deepStrictEqual(
+    parseDriverFromGroupName('WENZE UNIT # 1 RUDOLPH FREDERIC / JOHN ELISEE'),
+    {
+      unit_number: '1',
+      first_name: 'RUDOLPH',
+      last_name: 'FREDERIC',
+      secondary_first_name: 'JOHN',
+      secondary_last_name: 'ELISEE',
+      driver_type: 'owner',
+    }
+  );
+});
+
+test('buildDriverDisplayName and buildNormalizedDriverKey stay stable for noisy duplicates', () => {
+  assert.strictEqual(
+    buildDriverDisplayName({
+      first_name: 'ABDINASIR',
+      last_name: null,
+      secondary_first_name: 'IBRAHIM',
+      secondary_last_name: null,
+    }),
+    'ABDINASIR / IBRAHIM'
+  );
+  assert.strictEqual(
+    buildNormalizedDriverKey({
+      first_name: 'EL',
+      last_name: 'HADJI THIAM',
+      fallbackGroupName: 'WENZE UNIT # 008 EL HADJI THIAM (COMPANY DRIVER) INACTIVE',
+    }),
+    buildNormalizedDriverKey({
+      first_name: 'EL',
+      last_name: 'HADJI THIAM',
+      fallbackGroupName: 'WENZE UNIT # 007 EL HADJI THIAM (COMPANY DRIVER)',
+    })
   );
 });
 

@@ -6,6 +6,10 @@ const {
   parseGroupName,
   extractUnitFromGroupName,
 } = require('../services/driverGroupTitle');
+const {
+  parseDriverFromGroupName,
+  buildDriverDisplayName,
+} = require('../services/driverProfileParse');
 
 const pool = new Pool({
   connectionString: config.databaseUrl,
@@ -231,6 +235,10 @@ function normalizeProfileDriverType(driverType) {
   return driverType === 'company_driver' ? 'company_driver' : 'owner';
 }
 
+function normalizeProfileFieldSource(value) {
+  return ['bot', 'ai', 'manual'].includes(value) ? value : null;
+}
+
 function parseOptionalDate(value) {
   if (!value) return null;
   const d = new Date(value);
@@ -240,9 +248,17 @@ function parseOptionalDate(value) {
 
 function mapDriverProfileRow(row) {
   if (!row) return null;
+  const full_name = buildDriverDisplayName({
+    first_name: row.first_name,
+    last_name: row.last_name,
+    secondary_first_name: row.secondary_first_name,
+    secondary_last_name: row.secondary_last_name,
+    fallbackGroupName: row.group_name,
+  });
   return {
     ...row,
-    full_name: [row.first_name, row.last_name].filter(Boolean).join(' ').trim(),
+    full_name,
+    secondary_full_name: [row.secondary_first_name, row.secondary_last_name].filter(Boolean).join(' ').trim(),
   };
 }
 
@@ -264,18 +280,24 @@ function inferDriverTypeFromGroup(groupName) {
 }
 
 function buildDefaultProfileFromGroup(group) {
-  const parsed = parseGroupName(group.group_name || '');
-  const { first_name, last_name } = splitPersonName(parsed.driver || '');
-  const unit_number = extractUnitFromGroupName(group.group_name || '');
-  const hasGaps = !first_name || !unit_number;
+  const parsed = parseDriverFromGroupName(group.group_name || '');
+  const hasGaps = !parsed.first_name || !parsed.unit_number;
   const created = group.created_at ? new Date(group.created_at) : null;
   return {
     group_id: group.id,
-    first_name,
-    last_name,
-    driver_type: inferDriverTypeFromGroup(group.group_name || ''),
+    first_name: parsed.first_name,
+    last_name: parsed.last_name,
+    secondary_first_name: parsed.secondary_first_name,
+    secondary_last_name: parsed.secondary_last_name,
+    first_name_source: parsed.first_name ? 'bot' : null,
+    last_name_source: parsed.last_name ? 'bot' : null,
+    secondary_first_name_source: parsed.secondary_first_name ? 'bot' : null,
+    secondary_last_name_source: parsed.secondary_last_name ? 'bot' : null,
+    driver_type: parsed.driver_type || inferDriverTypeFromGroup(group.group_name || ''),
+    driver_type_source: 'bot',
     status: group.active === false ? 'inactive' : 'active',
-    unit_number,
+    unit_number: parsed.unit_number,
+    unit_number_source: parsed.unit_number ? 'bot' : null,
     language: normalizeProfileLanguage(group.language),
     date_of_birth: parseOptionalDate(group.driver_birthday),
     date_of_start: created && !Number.isNaN(created.getTime()) ? created.toISOString().slice(0, 10) : null,
@@ -284,17 +306,36 @@ function buildDefaultProfileFromGroup(group) {
   };
 }
 
-async function syncGroupFromDriverProfile(profileRow) {
+async function syncGroupFromDriverProfile(profileRow, opts = {}) {
   if (!profileRow?.group_id) return null;
+  const syncStatus = opts.syncStatus === true;
   const groupStatusActive = profileRow.status !== 'inactive';
+  const sets = [
+    'language = $1',
+    'driver_birthday = $2',
+  ];
+  const values = [
+    profileRow.language || 'en',
+    profileRow.date_of_birth || null,
+  ];
+
+  if (syncStatus) {
+    values.push(groupStatusActive);
+    sets.unshift(`active = $${values.length}`);
+    if (opts.groupStatusSource) {
+      values.push(opts.groupStatusSource);
+      sets.push(`status_source = $${values.length}`);
+      sets.push('status_updated_at = NOW()');
+    }
+  }
+
+  values.push(profileRow.group_id);
   const res = await query(
     `UPDATE groups
-     SET active = $1,
-         language = $2,
-         driver_birthday = $3
-     WHERE id = $4
+     SET ${sets.join(', ')}
+     WHERE id = $${values.length}
      RETURNING *`,
-    [groupStatusActive, profileRow.language || 'en', profileRow.date_of_birth || null, profileRow.group_id]
+    values
   );
   return res.rows[0] || null;
 }
@@ -362,12 +403,13 @@ async function listDriverProfiles(filters = {}) {
   const whereSql = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const res = await query(
     `SELECT
-       dp.*,
-       g.group_name,
-       g.telegram_group_id,
-       g.active AS group_active,
-       g.language AS group_language,
-       g.status_source
+      dp.*,
+      g.group_name,
+      g.telegram_group_id,
+      g.active AS group_active,
+      g.language AS group_language,
+      g.status_source,
+      g.created_at AS group_created_at
      FROM driver_profiles dp
      JOIN groups g ON g.id = dp.group_id
      ${whereSql}
@@ -382,9 +424,17 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
     group_id: Number(data.group_id),
     first_name: data.first_name ? String(data.first_name).trim() : null,
     last_name: data.last_name ? String(data.last_name).trim() : null,
+    secondary_first_name: data.secondary_first_name ? String(data.secondary_first_name).trim() : null,
+    secondary_last_name: data.secondary_last_name ? String(data.secondary_last_name).trim() : null,
+    first_name_source: normalizeProfileFieldSource(data.first_name_source),
+    last_name_source: normalizeProfileFieldSource(data.last_name_source),
+    secondary_first_name_source: normalizeProfileFieldSource(data.secondary_first_name_source),
+    secondary_last_name_source: normalizeProfileFieldSource(data.secondary_last_name_source),
     driver_type: normalizeProfileDriverType(data.driver_type),
+    driver_type_source: normalizeProfileFieldSource(data.driver_type_source),
     status: normalizeProfileStatus(data.status),
     unit_number: data.unit_number ? String(data.unit_number).trim() : null,
+    unit_number_source: normalizeProfileFieldSource(data.unit_number_source),
     language: normalizeProfileLanguage(data.language),
     date_of_birth: parseOptionalDate(data.date_of_birth),
     date_of_start: parseOptionalDate(data.date_of_start),
@@ -394,22 +444,34 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
 
   const res = await query(
     `INSERT INTO driver_profiles (
-       group_id, first_name, last_name, driver_type, status, unit_number,
+       group_id, first_name, last_name, secondary_first_name, secondary_last_name,
+       first_name_source, last_name_source, secondary_first_name_source, secondary_last_name_source,
+       driver_type, driver_type_source, status, unit_number, unit_number_source,
        language, date_of_birth, date_of_start, needs_review, backfill_confidence,
        created_at, updated_at
      )
      VALUES (
-       $1, $2, $3, $4, $5, $6,
-       $7, $8, $9, $10, $11,
+       $1, $2, $3, $4, $5,
+       $6, $7, $8, $9,
+       $10, $11, $12, $13, $14,
+       $15, $16, $17, $18, $19,
        NOW(), NOW()
      )
      ON CONFLICT (group_id)
      DO UPDATE SET
        first_name = EXCLUDED.first_name,
        last_name = EXCLUDED.last_name,
+       secondary_first_name = EXCLUDED.secondary_first_name,
+       secondary_last_name = EXCLUDED.secondary_last_name,
+       first_name_source = EXCLUDED.first_name_source,
+       last_name_source = EXCLUDED.last_name_source,
+       secondary_first_name_source = EXCLUDED.secondary_first_name_source,
+       secondary_last_name_source = EXCLUDED.secondary_last_name_source,
        driver_type = EXCLUDED.driver_type,
+       driver_type_source = EXCLUDED.driver_type_source,
        status = EXCLUDED.status,
        unit_number = EXCLUDED.unit_number,
+       unit_number_source = EXCLUDED.unit_number_source,
        language = EXCLUDED.language,
        date_of_birth = EXCLUDED.date_of_birth,
        date_of_start = EXCLUDED.date_of_start,
@@ -421,9 +483,17 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
       normalized.group_id,
       normalized.first_name,
       normalized.last_name,
+      normalized.secondary_first_name,
+      normalized.secondary_last_name,
+      normalized.first_name_source,
+      normalized.last_name_source,
+      normalized.secondary_first_name_source,
+      normalized.secondary_last_name_source,
       normalized.driver_type,
+      normalized.driver_type_source,
       normalized.status,
       normalized.unit_number,
+      normalized.unit_number_source,
       normalized.language,
       normalized.date_of_birth,
       normalized.date_of_start,
@@ -434,7 +504,10 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
   const row = res.rows[0] || null;
   if (!row) return null;
   if (opts.syncGroup !== false) {
-    await syncGroupFromDriverProfile(row);
+    await syncGroupFromDriverProfile(row, {
+      syncStatus: opts.syncStatus === true,
+      groupStatusSource: opts.groupStatusSource || null,
+    });
   }
   return getDriverProfileByGroupId(row.group_id);
 }
@@ -447,16 +520,40 @@ async function updateDriverProfile(id, data, opts = {}) {
     group_id: existing.group_id,
     first_name: hasOwn('first_name') ? data.first_name : existing.first_name,
     last_name: hasOwn('last_name') ? data.last_name : existing.last_name,
+    secondary_first_name: hasOwn('secondary_first_name') ? data.secondary_first_name : existing.secondary_first_name,
+    secondary_last_name: hasOwn('secondary_last_name') ? data.secondary_last_name : existing.secondary_last_name,
+    first_name_source: hasOwn('first_name_source') ? data.first_name_source : existing.first_name_source,
+    last_name_source: hasOwn('last_name_source') ? data.last_name_source : existing.last_name_source,
+    secondary_first_name_source: hasOwn('secondary_first_name_source') ? data.secondary_first_name_source : existing.secondary_first_name_source,
+    secondary_last_name_source: hasOwn('secondary_last_name_source') ? data.secondary_last_name_source : existing.secondary_last_name_source,
     driver_type: hasOwn('driver_type') ? data.driver_type : existing.driver_type,
+    driver_type_source: hasOwn('driver_type_source') ? data.driver_type_source : existing.driver_type_source,
     status: hasOwn('status') ? data.status : existing.status,
     unit_number: hasOwn('unit_number') ? data.unit_number : existing.unit_number,
+    unit_number_source: hasOwn('unit_number_source') ? data.unit_number_source : existing.unit_number_source,
     language: hasOwn('language') ? data.language : existing.language,
     date_of_birth: hasOwn('date_of_birth') ? data.date_of_birth : existing.date_of_birth,
     date_of_start: hasOwn('date_of_start') ? data.date_of_start : existing.date_of_start,
     needs_review: hasOwn('needs_review') ? data.needs_review : existing.needs_review,
     backfill_confidence: hasOwn('backfill_confidence') ? data.backfill_confidence : existing.backfill_confidence,
   };
-  return upsertDriverProfileByGroupId(merged, opts);
+  for (const [field, sourceField] of [
+    ['first_name', 'first_name_source'],
+    ['last_name', 'last_name_source'],
+    ['secondary_first_name', 'secondary_first_name_source'],
+    ['secondary_last_name', 'secondary_last_name_source'],
+    ['driver_type', 'driver_type_source'],
+    ['unit_number', 'unit_number_source'],
+  ]) {
+    if (hasOwn(field) && !hasOwn(sourceField)) {
+      merged[sourceField] = 'manual';
+    }
+  }
+  return upsertDriverProfileByGroupId(merged, {
+    ...opts,
+    syncStatus: hasOwn('status'),
+    groupStatusSource: hasOwn('status') ? (opts.groupStatusSource || 'manual') : (opts.groupStatusSource || null),
+  });
 }
 
 async function updateGroupSamsaraId(groupId, samsaraId) {
@@ -2669,6 +2766,57 @@ async function updateGroupBotAccess(groupId, memberStatus, checkedAtIso) {
   return res.rows.length > 0;
 }
 
+async function listGroupDirectorySourceRows({ includeNonDrivers = true } = {}) {
+  const typeClause = includeNonDrivers ? '' : `WHERE g.group_type = 'driver'`;
+  const res = await query(
+    `SELECT
+        g.id AS group_id,
+        g.group_name,
+        g.telegram_group_id,
+        g.group_type,
+        g.active AS group_active,
+        g.status_source,
+        g.status_updated_at,
+        g.language AS group_language,
+        g.driver_birthday AS group_driver_birthday,
+        g.created_at AS group_created_at,
+        g.last_message_seen_at,
+        g.bot_member_status,
+        g.bot_access_checked_at,
+        dp.id AS profile_id,
+        dp.first_name,
+        dp.last_name,
+        dp.secondary_first_name,
+        dp.secondary_last_name,
+        dp.first_name_source,
+        dp.last_name_source,
+        dp.secondary_first_name_source,
+        dp.secondary_last_name_source,
+        dp.driver_type,
+        dp.driver_type_source,
+        dp.status AS profile_status,
+        dp.unit_number,
+        dp.unit_number_source,
+        dp.language AS profile_language,
+        dp.date_of_birth,
+        dp.date_of_start,
+        dp.needs_review,
+        dp.backfill_confidence,
+        dp.created_at AS profile_created_at,
+        dp.updated_at AS profile_updated_at,
+        s.state AS home_state,
+        s.state_since,
+        s.last_status_text,
+        s.last_status_at
+     FROM groups g
+     LEFT JOIN driver_profiles dp ON dp.group_id = g.id
+     LEFT JOIN driver_home_status s ON s.group_id = g.id
+     ${typeClause}
+     ORDER BY g.group_name ASC, g.id ASC`
+  );
+  return res.rows;
+}
+
 // Driver groups with their bot-visibility signals, joined to the driver label
 // and the home-time state, for the admin "Bot Group Access" view.
 async function listDriverGroupAccess() {
@@ -2721,6 +2869,7 @@ module.exports = {
   // Bot visibility diagnostics
   recordGroupMessageSeen,
   updateGroupBotAccess,
+  listGroupDirectorySourceRows,
   listDriverGroupAccess,
   listAllGroupAccess,
   // Leads (Facebook + Indeed)

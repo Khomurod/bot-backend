@@ -16,9 +16,17 @@ CREATE TABLE IF NOT EXISTS driver_profiles (
   group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
   first_name TEXT,
   last_name TEXT,
+  secondary_first_name TEXT,
+  secondary_last_name TEXT,
+  first_name_source TEXT,
+  last_name_source TEXT,
+  secondary_first_name_source TEXT,
+  secondary_last_name_source TEXT,
   driver_type TEXT,
+  driver_type_source TEXT,
   status TEXT DEFAULT 'active',
   unit_number TEXT,
+  unit_number_source TEXT,
   language VARCHAR(5) DEFAULT 'en',
   date_of_birth DATE,
   date_of_start DATE,
@@ -131,9 +139,17 @@ ALTER TABLE groups ADD COLUMN IF NOT EXISTS bot_member_status TEXT;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS bot_access_checked_at TIMESTAMPTZ;
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS first_name TEXT;
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS last_name TEXT;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS secondary_first_name TEXT;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS secondary_last_name TEXT;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS first_name_source TEXT;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS last_name_source TEXT;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS secondary_first_name_source TEXT;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS secondary_last_name_source TEXT;
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS driver_type TEXT;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS driver_type_source TEXT;
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS unit_number TEXT;
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS unit_number_source TEXT;
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS language VARCHAR(5) DEFAULT 'en';
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS date_of_birth DATE;
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS date_of_start DATE;

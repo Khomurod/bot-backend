@@ -296,6 +296,11 @@ export default function GroupAccessPage() {
                   <td>
                     {g.driver_name}
                     {g.inactive && <span style={{ color: "#9ca3af" }}> (inactive)</span>}
+                    {g.duplicate_conflict && (
+                      <div style={{ fontSize: 11, color: "#f59e0b" }}>
+                        Duplicate active driver groups require review
+                      </div>
+                    )}
                   </td>
                   <td>{g.group_type === "driver" ? "Driver" : (g.group_type || "—")}</td>
                   <td>{g.unit_number || "—"}</td>

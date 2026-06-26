@@ -13,6 +13,7 @@
 const {
   extractUnitFromGroupName,
   extractDriverNameFromGroupTitle,
+  normalizePersonName,
 } = require('./driverGroupTitle');
 
 /** company_driver iff the name marks it as a company driver; else owner. */
@@ -54,6 +55,56 @@ function splitName(fullName) {
   return { first_name: tokens[0], last_name: tokens.slice(1).join(' ') };
 }
 
+function splitDriverMembers(fullName) {
+  const cleaned = stripStatusWords(fullName);
+  const segments = cleaned
+    .split(/\s*\/\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (segments.length >= 2) {
+    const primary = splitName(segments[0]);
+    const secondary = splitName(segments.slice(1).join(' / '));
+    return {
+      first_name: primary.first_name,
+      last_name: primary.last_name,
+      secondary_first_name: secondary.first_name,
+      secondary_last_name: secondary.last_name,
+    };
+  }
+
+  const primary = splitName(cleaned);
+  return {
+    first_name: primary.first_name,
+    last_name: primary.last_name,
+    secondary_first_name: null,
+    secondary_last_name: null,
+  };
+}
+
+function buildDriverDisplayName({
+  first_name,
+  last_name,
+  secondary_first_name,
+  secondary_last_name,
+  fallbackGroupName,
+} = {}) {
+  const primary = [first_name, last_name].filter(Boolean).join(' ').trim();
+  const secondary = [secondary_first_name, secondary_last_name].filter(Boolean).join(' ').trim();
+  const joined = [primary, secondary].filter(Boolean).join(' / ').trim();
+  if (joined) return joined;
+  return stripStatusWords(extractDriverNameFromGroupTitle(fallbackGroupName || '') || '') || '';
+}
+
+function buildNormalizedDriverKey(fields = {}) {
+  const primary = normalizePersonName([fields.first_name, fields.last_name].filter(Boolean).join(' '));
+  const secondary = normalizePersonName([fields.secondary_first_name, fields.secondary_last_name].filter(Boolean).join(' '));
+  const members = [primary, secondary].filter(Boolean).sort();
+  if (members.length) return members.join('|');
+  const fallback = normalizePersonName(buildDriverDisplayName(fields));
+  return fallback || null;
+}
+
 /**
  * Deterministic parse of a group name into profile fields.
  * @returns {{ unit_number, first_name, last_name, driver_type }}
@@ -61,11 +112,18 @@ function splitName(fullName) {
 function parseDriverFromGroupName(groupName) {
   const unit_number = extractUnitFromGroupName(groupName) || null;
   const driverName = stripStatusWords(extractDriverNameFromGroupTitle(groupName) || '');
-  const { first_name, last_name } = splitName(driverName);
+  const {
+    first_name,
+    last_name,
+    secondary_first_name,
+    secondary_last_name,
+  } = splitDriverMembers(driverName);
   return {
     unit_number,
     first_name,
     last_name,
+    secondary_first_name,
+    secondary_last_name,
     driver_type: inferDriverType(groupName),
   };
 }
@@ -73,8 +131,11 @@ function parseDriverFromGroupName(groupName) {
 module.exports = {
   inferDriverType,
   splitName,
+  splitDriverMembers,
   stripStatusWords,
   nameMarkedInactive,
   isInactiveGroup,
+  buildDriverDisplayName,
+  buildNormalizedDriverKey,
   parseDriverFromGroupName,
 };
