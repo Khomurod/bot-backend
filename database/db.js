@@ -2676,16 +2676,39 @@ async function listDriverGroupAccess() {
     `SELECT g.id AS group_id,
             g.group_name,
             g.telegram_group_id,
+            g.group_type,
             g.active,
             g.last_message_seen_at,
             g.bot_member_status,
             g.bot_access_checked_at,
-            dp.first_name, dp.last_name, dp.unit_number,
+            dp.first_name, dp.last_name, dp.unit_number, dp.status AS driver_status,
             s.state AS home_state, s.last_status_at
      FROM groups g
      LEFT JOIN driver_profiles dp ON dp.group_id = g.id
      LEFT JOIN driver_home_status s ON s.group_id = g.id
      WHERE g.group_type = 'driver'
+     ORDER BY g.group_name ASC, g.id ASC`
+  );
+  return res.rows;
+}
+
+// Same as listDriverGroupAccess but for EVERY group (driver + non-driver), so the
+// admin can filter the Bot Group Access view by type and active state.
+async function listAllGroupAccess() {
+  const res = await query(
+    `SELECT g.id AS group_id,
+            g.group_name,
+            g.telegram_group_id,
+            g.group_type,
+            g.active,
+            g.last_message_seen_at,
+            g.bot_member_status,
+            g.bot_access_checked_at,
+            dp.first_name, dp.last_name, dp.unit_number, dp.status AS driver_status,
+            s.state AS home_state, s.last_status_at
+     FROM groups g
+     LEFT JOIN driver_profiles dp ON dp.group_id = g.id
+     LEFT JOIN driver_home_status s ON s.group_id = g.id
      ORDER BY g.group_name ASC, g.id ASC`
   );
   return res.rows;
@@ -2699,6 +2722,7 @@ module.exports = {
   recordGroupMessageSeen,
   updateGroupBotAccess,
   listDriverGroupAccess,
+  listAllGroupAccess,
   // Leads (Facebook + Indeed)
   createLeadIfNew,
   updateLeadBitrixResult,

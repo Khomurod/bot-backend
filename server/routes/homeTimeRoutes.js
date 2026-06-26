@@ -14,6 +14,7 @@ const { computeRoadBonus, wholeDaysBetween } = require('../../services/homeTimeC
 const groupAccess = require('../../services/groupAccessService');
 const { buildAdminGrantPayload } = require('../../services/groupAccessConstants');
 const homeTimeImport = require('../../services/homeTimeImportService');
+const { isInactiveGroup } = require('../../services/driverProfileParse');
 
 const SCREENSHOT_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const screenshotUpload = multer({
@@ -60,9 +61,11 @@ function shapeAccessRow(row, now) {
   return {
     group_id: row.group_id,
     group_name: row.group_name,
+    group_type: row.group_type || null,
     driver_name: displayName(row),
     unit_number: row.unit_number || null,
     active: row.active,
+    inactive: isInactiveGroup({ active: row.active, group_name: row.group_name, status: row.driver_status }),
     bot_member_status: row.bot_member_status || null,
     bot_access_checked_at: row.bot_access_checked_at,
     last_message_seen_at: row.last_message_seen_at,
@@ -93,6 +96,7 @@ function createHomeTimeRouter({ authMiddleware }) {
           driver_name: displayName(row),
           unit_number: row.unit_number || null,
           group_active: row.group_active,
+          inactive: isInactiveGroup({ active: row.group_active, group_name: row.group_name, status: row.driver_status }),
           state: row.state,
           state_since: row.state_since,
           last_status_at: row.last_status_at,
@@ -328,7 +332,7 @@ function createHomeTimeRouter({ authMiddleware }) {
   router.get('/group-access', authMiddleware, async (req, res) => {
     try {
       const now = Date.now();
-      const rows = await db.listDriverGroupAccess();
+      const rows = await db.listAllGroupAccess();
       const groups = rows.map((row) => shapeAccessRow(row, now));
       const summary = groups.reduce((acc, g) => {
         acc[g.reading_level] = (acc[g.reading_level] || 0) + 1;
@@ -351,7 +355,7 @@ function createHomeTimeRouter({ authMiddleware }) {
     try {
       const result = await groupAccess.refreshDriverGroupBotAccess();
       const now = Date.now();
-      const rows = await db.listDriverGroupAccess();
+      const rows = await db.listAllGroupAccess();
       const groups = rows.map((row) => shapeAccessRow(row, now));
       res.json({ ...result, groups });
     } catch (err) {
@@ -406,7 +410,7 @@ function createHomeTimeRouter({ authMiddleware }) {
         return res.status(409).json({ error: 'Set the super admin Telegram id first.' });
       }
 
-      const rows = await db.listDriverGroupAccess();
+      const rows = await db.listAllGroupAccess();
       const group = rows.find((g) => Number(g.group_id) === groupId);
       if (!group) return res.status(404).json({ error: 'Driver group not found' });
 
