@@ -12,6 +12,7 @@
  * (default 4) days home.
  */
 const { DateTime } = require('luxon');
+const { homeTimePolicyApplies } = require('./homeTimeConstants');
 
 function csvValues(value) {
   return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
@@ -104,7 +105,8 @@ function weeksFromDays(days) {
  * Has the driver met the on-the-road requirement?
  * @returns {boolean|null} null when we cannot tell (no tracked road start).
  */
-function isPolicyMet(daysOnRoad, roadAllowanceWeeks = 4) {
+function isPolicyMet(daysOnRoad, roadAllowanceWeeks = 4, driverType = 'company_driver') {
+  if (!homeTimePolicyApplies(driverType)) return null;
   if (daysOnRoad == null || !Number.isFinite(Number(daysOnRoad))) return null;
   const allowanceDays = Math.max(0, Number(roadAllowanceWeeks) || 0) * DAYS_PER_WEEK;
   return Number(daysOnRoad) >= allowanceDays;
@@ -134,6 +136,7 @@ module.exports = {
   extractMentionUsernames,
   messageMentionsApprovers,
   weeksFromDays,
+  homeTimePolicyApplies,
   isPolicyMet,
   computeHomeWindow,
 };

@@ -58,6 +58,14 @@ function wholeDaysBetween(startIso, endIso) {
   return Math.max(0, Math.floor(end.diff(start, 'days').days));
 }
 
+function normalizeHomeTimeDriverType(driverType) {
+  return driverType === 'company_driver' ? 'company_driver' : 'owner';
+}
+
+function homeTimePolicyApplies(driverType) {
+  return normalizeHomeTimeDriverType(driverType) === 'company_driver';
+}
+
 /**
  * Bonus for one road trip.
  * Only FULL extra weeks count: allowance is `roadAllowanceWeeks × 7` days, and
@@ -68,13 +76,22 @@ function wholeDaysBetween(startIso, endIso) {
 function computeRoadBonus(roadStart, roadEnd, {
   roadAllowanceWeeks = DEFAULT_ROAD_ALLOWANCE_WEEKS,
   bonusPerWeek = DEFAULT_BONUS_PER_WEEK,
+  driverType = 'company_driver',
 } = {}) {
   const daysOnRoad = wholeDaysBetween(roadStart, roadEnd);
   const allowanceDays = Math.max(0, Number(roadAllowanceWeeks) || 0) * DAYS_PER_WEEK;
   const extraDays = Math.max(0, daysOnRoad - allowanceDays);
   const exceededWeeks = Math.floor(extraDays / DAYS_PER_WEEK);
-  const bonusUsd = exceededWeeks * (Number(bonusPerWeek) || 0);
-  return { daysOnRoad, exceededWeeks, bonusUsd };
+  const policyApplies = homeTimePolicyApplies(driverType);
+  const bonusUsd = policyApplies ? exceededWeeks * (Number(bonusPerWeek) || 0) : 0;
+  return {
+    daysOnRoad,
+    exceededWeeks,
+    bonusUsd,
+    driverType: normalizeHomeTimeDriverType(driverType),
+    policyApplies,
+    overLimit: policyApplies && exceededWeeks > 0,
+  };
 }
 
 module.exports = {
@@ -84,5 +101,7 @@ module.exports = {
   DAYS_PER_WEEK,
   parseDriverStatus,
   wholeDaysBetween,
+  normalizeHomeTimeDriverType,
+  homeTimePolicyApplies,
   computeRoadBonus,
 };

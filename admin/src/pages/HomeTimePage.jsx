@@ -22,6 +22,16 @@ function toDateInput(iso) {
   }
 }
 
+function driverTypeLabel(type) {
+  if (type === "company_driver") return "Company driver";
+  if (type === "owner") return "Owner operator";
+  return "Unknown";
+}
+
+function isCompanyDriver(type) {
+  return type === "company_driver";
+}
+
 export default function HomeTimePage() {
   const [settings, setSettings] = useState(null);
   const [statuses, setStatuses] = useState([]);
@@ -170,8 +180,10 @@ export default function HomeTimePage() {
   const activeStatuses = statuses.filter((s) => !s.inactive);
   const onRoad = activeStatuses.filter((s) => s.state === "road");
   const atHome = activeStatuses.filter((s) => s.state === "home");
-  const overLimit = onRoad.filter((s) => s.over_limit);
+  const overLimit = onRoad.filter((s) => isCompanyDriver(s.driver_type) && s.over_limit);
   const inactiveCount = statuses.filter((s) => s.inactive).length;
+  const companyCount = activeStatuses.filter((s) => isCompanyDriver(s.driver_type)).length;
+  const ownerCount = activeStatuses.filter((s) => s.driver_type === "owner").length;
   const sortedStatuses = [...statuses].sort((a, b) => (a.inactive ? 1 : 0) - (b.inactive ? 1 : 0));
 
   const STATUS_BADGE = {
@@ -185,7 +197,7 @@ export default function HomeTimePage() {
     <div>
       <div className="page-header">
         <h2>🏠 Driver Home Time</h2>
-        <p>Tracks how long each driver is on the road vs. home, logs every home-time request, and the bonus earned for extra weeks out.</p>
+        <p>Tracks how long each driver is on the road vs. home, logs every home-time request, and distinguishes company drivers from owner operators for policy and bonus handling.</p>
       </div>
 
       {status && (
@@ -288,9 +300,10 @@ export default function HomeTimePage() {
               </div>
             </div>
             <p style={{ color: "#888", margin: 0 }}>
-              Policy: at least {settings.road_allowance_weeks} weeks on the road, then {settings.home_allowance_days} days home.
-              A driver who stays out more than {settings.road_allowance_weeks} weeks earns
-              ${Number(settings.bonus_per_week).toFixed(0)} for each full extra week. The clock resets each time they go home.
+              Company-driver policy: at least {settings.road_allowance_weeks} weeks on the road, then {settings.home_allowance_days} days home.
+              A company driver who stays out more than {settings.road_allowance_weeks} weeks earns
+              ${Number(settings.bonus_per_week).toFixed(0)} for each full extra week. Owner operators are still tracked here for recordkeeping,
+              but they do not accrue the extra-week company bonus.
             </p>
           </div>
         )}
@@ -302,8 +315,10 @@ export default function HomeTimePage() {
         <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 12 }}>
           <div><strong>{onRoad.length}</strong> on the road</div>
           <div><strong>{atHome.length}</strong> home</div>
+          <div><strong>{companyCount}</strong> company drivers</div>
+          <div><strong>{ownerCount}</strong> owner operators</div>
           <div style={{ color: overLimit.length ? "#dc2626" : "inherit" }}>
-            <strong>{overLimit.length}</strong> over the limit (earning bonus)
+            <strong>{overLimit.length}</strong> company drivers over the limit
           </div>
           {inactiveCount > 0 && (
             <div style={{ color: "#9ca3af" }}><strong>{inactiveCount}</strong> inactive (excluded)</div>
@@ -314,7 +329,7 @@ export default function HomeTimePage() {
         </p>
         <table className="table">
           <thead>
-            <tr><th>Driver</th><th>Unit</th><th>Status</th><th>Since (editable)</th><th>Days</th><th>Bonus building</th></tr>
+            <tr><th>Driver</th><th>Type</th><th>Unit</th><th>Status</th><th>Since (editable)</th><th>Days</th><th>Bonus building</th></tr>
           </thead>
           <tbody>
             {sortedStatuses.map((s) => (
@@ -328,6 +343,7 @@ export default function HomeTimePage() {
                   {s.driver_name}
                   {s.inactive && <span style={{ color: "#9ca3af" }}> (inactive)</span>}
                 </td>
+                <td>{driverTypeLabel(s.driver_type)}</td>
                 <td>{s.unit_number || "—"}</td>
                 <td>
                   <span className={`badge ${s.state === "road" && !s.inactive ? "" : "badge-muted"}`}>
@@ -346,14 +362,18 @@ export default function HomeTimePage() {
                 </td>
                 <td>{s.state === "road" ? `${s.days_on_road}d out` : `${s.days_home}d home`}</td>
                 <td>
-                  {s.state === "road" && s.over_limit
-                    ? `${s.pending_exceeded_weeks} wk → $${Number(s.pending_bonus_usd).toFixed(0)}`
-                    : "—"}
+                  {s.state !== "road"
+                    ? "—"
+                    : !isCompanyDriver(s.driver_type)
+                      ? "Owner operator — no company bonus"
+                      : s.over_limit
+                        ? `${s.pending_exceeded_weeks} wk → $${Number(s.pending_bonus_usd).toFixed(0)}`
+                        : "—"}
                 </td>
               </tr>
             ))}
             {statuses.length === 0 && (
-              <tr><td colSpan={6} style={{ textAlign: "center", color: "#888" }}>
+              <tr><td colSpan={7} style={{ textAlign: "center", color: "#888" }}>
                 No statuses tracked yet. They appear once the update specialist posts "Status: Home / Ready / Rolling" in a driver group.
               </td></tr>
             )}
@@ -365,7 +385,7 @@ export default function HomeTimePage() {
       <div className="card" style={{ marginBottom: 20 }}>
         <h3>Home-time requests</h3>
         <p style={{ color: "#888", marginTop: 0 }}>
-          Every request the bot handled (or you registered manually). Use this to spot drivers who don't follow the 4-weeks-on / 4-days-home policy.
+          Every request the bot handled (or you registered manually). The 4-weeks-on / 4-days-home policy only applies to company drivers; owner operators stay visible here for tracking.
         </p>
 
         <form onSubmit={registerRequest} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 16 }}>
@@ -374,7 +394,7 @@ export default function HomeTimePage() {
             <select value={reg.group_id} onChange={(e) => setReg({ ...reg, group_id: e.target.value })}>
               <option value="">— select —</option>
               {statuses.map((s) => (
-                <option key={s.group_id} value={s.group_id}>{s.driver_name}{s.unit_number ? ` (${s.unit_number})` : ""}</option>
+                <option key={s.group_id} value={s.group_id}>{s.driver_name}{s.unit_number ? ` (${s.unit_number})` : ""} • {driverTypeLabel(s.driver_type)}</option>
               ))}
             </select>
           </div>
@@ -399,7 +419,7 @@ export default function HomeTimePage() {
 
         <table className="table">
           <thead>
-            <tr><th>Driver</th><th>Unit</th><th>Requested</th><th>Home window</th><th>Days out</th><th>Policy</th><th>Status</th><th>Decided by</th><th>Source</th></tr>
+            <tr><th>Driver</th><th>Type</th><th>Unit</th><th>Requested</th><th>Home window</th><th>Days out</th><th>Policy</th><th>Status</th><th>Decided by</th><th>Source</th></tr>
           </thead>
           <tbody>
             {requests.map((r) => {
@@ -407,11 +427,16 @@ export default function HomeTimePage() {
               return (
                 <tr key={r.id} style={r.policy_met === false ? { background: "rgba(220,38,38,0.06)" } : undefined}>
                   <td>{r.driver_name || r.group_name || "—"}</td>
+                  <td>{driverTypeLabel(r.driver_type)}</td>
                   <td>{r.unit_number || "—"}</td>
                   <td>{fmtDate(r.requested_at)}</td>
                   <td>{r.home_from ? `${fmtDate(r.home_from)} → ${fmtDate(r.home_to)}` : "—"}</td>
                   <td>{r.days_on_road != null ? `${r.days_on_road}d` : "—"}</td>
-                  <td>{r.policy_met === true ? "✅ met" : r.policy_met === false ? "⚠️ short" : "—"}</td>
+                  <td>
+                    {!isCompanyDriver(r.driver_type)
+                      ? "N/A (owner operator)"
+                      : r.policy_met === true ? "✅ met" : r.policy_met === false ? "⚠️ short" : "—"}
+                  </td>
                   <td style={{ color: badge.color, fontWeight: 600 }}>{badge.label}</td>
                   <td>{r.decided_by_username ? `@${r.decided_by_username}` : "—"}</td>
                   <td>{r.source}</td>
@@ -419,7 +444,7 @@ export default function HomeTimePage() {
               );
             })}
             {requests.length === 0 && (
-              <tr><td colSpan={9} style={{ textAlign: "center", color: "#888" }}>No home-time requests yet.</td></tr>
+              <tr><td colSpan={10} style={{ textAlign: "center", color: "#888" }}>No home-time requests yet.</td></tr>
             )}
           </tbody>
         </table>
@@ -428,15 +453,16 @@ export default function HomeTimePage() {
       {/* ─── Bonus history ─── */}
       <div className="card">
         <h3>Completed trips & bonuses</h3>
-        <p style={{ color: "#888", marginTop: 0 }}>Edit the Left / Home dates to fix history; the bonus recalculates automatically.</p>
+        <p style={{ color: "#888", marginTop: 0 }}>Edit the Left / Home dates to fix history; company-driver bonuses recalculate automatically, while owner operators remain tracked without the extra-week company bonus.</p>
         <table className="table">
           <thead>
-            <tr><th>Driver</th><th>Unit</th><th>Left</th><th>Home</th><th>Days out</th><th>Extra weeks</th><th>Bonus</th><th></th></tr>
+            <tr><th>Driver</th><th>Type</th><th>Unit</th><th>Left</th><th>Home</th><th>Days out</th><th>Extra weeks</th><th>Bonus</th><th></th></tr>
           </thead>
           <tbody>
             {history.map((h) => (
               <tr key={h.id}>
                 <td>{h.driver_name || h.group_name}</td>
+                <td>{driverTypeLabel(h.driver_type)}</td>
                 <td>{h.unit_number || "—"}</td>
                 <td>
                   <input
@@ -455,7 +481,9 @@ export default function HomeTimePage() {
                 <td>{h.days_on_road}</td>
                 <td>{h.exceeded_weeks}</td>
                 <td style={{ fontWeight: Number(h.bonus_usd) > 0 ? 600 : 400, color: Number(h.bonus_usd) > 0 ? "#16a34a" : "inherit" }}>
-                  ${Number(h.bonus_usd).toFixed(0)}
+                  {isCompanyDriver(h.driver_type)
+                    ? `$${Number(h.bonus_usd).toFixed(0)}`
+                    : "Owner operator — no company bonus"}
                 </td>
                 <td style={{ display: "flex", gap: 6 }}>
                   <button
@@ -467,7 +495,7 @@ export default function HomeTimePage() {
               </tr>
             ))}
             {history.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign: "center", color: "#888" }}>No completed trips yet.</td></tr>
+              <tr><td colSpan={9} style={{ textAlign: "center", color: "#888" }}>No completed trips yet.</td></tr>
             )}
           </tbody>
         </table>

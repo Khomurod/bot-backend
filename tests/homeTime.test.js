@@ -3,6 +3,7 @@ const assert = require('node:assert');
 const {
   parseDriverStatus,
   computeRoadBonus,
+  homeTimePolicyApplies,
   wholeDaysBetween,
 } = require('../services/homeTimeConstants');
 
@@ -31,21 +32,16 @@ test('wholeDaysBetween floors and never goes negative', () => {
 });
 
 test('wholeDaysBetween accepts JS Date inputs (Postgres timestamptz columns)', () => {
-  // node-pg returns timestamptz as Date objects; String(date) is not ISO, so
-  // these must be coerced via fromJSDate rather than fromISO. This is the bug
-  // that made every driver show "0d out" regardless of the Since date.
   const start = new Date('2026-06-08T00:00:00Z');
   const end = new Date('2026-06-26T00:00:00Z');
   assert.strictEqual(wholeDaysBetween(start, end), 18);
-  // Mixed Date + ISO string also works.
   assert.strictEqual(wholeDaysBetween(start, '2026-06-26T00:00:00Z'), 18);
-  // Epoch millis too.
   assert.strictEqual(wholeDaysBetween(start.getTime(), end.getTime()), 18);
 });
 
 test('computeRoadBonus works with JS Date inputs', () => {
   const start = new Date('2026-01-01T00:00:00Z');
-  const end = new Date('2026-02-05T00:00:00Z'); // 35 days
+  const end = new Date('2026-02-05T00:00:00Z');
   const r = computeRoadBonus(start, end, { roadAllowanceWeeks: 4, bonusPerWeek: 100 });
   assert.deepStrictEqual([r.daysOnRoad, r.exceededWeeks, r.bonusUsd], [35, 1, 100]);
 });
@@ -53,32 +49,44 @@ test('computeRoadBonus works with JS Date inputs', () => {
 test('computeRoadBonus: only FULL extra weeks count (4-week / $100 default)', () => {
   const opts = { roadAllowanceWeeks: 4, bonusPerWeek: 100 };
 
-  // 27 days out → under the 28-day limit → no bonus.
   let r = computeRoadBonus('2026-01-01T00:00:00Z', '2026-01-28T00:00:00Z', opts);
   assert.deepStrictEqual([r.daysOnRoad, r.exceededWeeks, r.bonusUsd], [27, 0, 0]);
 
-  // Exactly 28 days → at the limit → no bonus.
   r = computeRoadBonus('2026-01-01T00:00:00Z', '2026-01-29T00:00:00Z', opts);
   assert.deepStrictEqual([r.daysOnRoad, r.exceededWeeks, r.bonusUsd], [28, 0, 0]);
 
-  // 35 days → 1 full extra week → $100.
   r = computeRoadBonus('2026-01-01T00:00:00Z', '2026-02-05T00:00:00Z', opts);
   assert.deepStrictEqual([r.daysOnRoad, r.exceededWeeks, r.bonusUsd], [35, 1, 100]);
 
-  // 41 days → 13 extra days → still only 1 full week → $100.
   r = computeRoadBonus('2026-01-01T00:00:00Z', '2026-02-11T00:00:00Z', opts);
   assert.deepStrictEqual([r.daysOnRoad, r.exceededWeeks, r.bonusUsd], [41, 1, 100]);
 
-  // 42 days → 2 full extra weeks → $200.
   r = computeRoadBonus('2026-01-01T00:00:00Z', '2026-02-12T00:00:00Z', opts);
   assert.deepStrictEqual([r.daysOnRoad, r.exceededWeeks, r.bonusUsd], [42, 2, 200]);
 });
 
 test('computeRoadBonus respects custom allowance and bonus amount', () => {
-  // 2-week allowance, $150/week, out 29 days → 15 extra days → 2 full weeks → $300.
   const r = computeRoadBonus('2026-01-01T00:00:00Z', '2026-01-30T00:00:00Z', {
     roadAllowanceWeeks: 2,
     bonusPerWeek: 150,
   });
   assert.deepStrictEqual([r.daysOnRoad, r.exceededWeeks, r.bonusUsd], [29, 2, 300]);
+});
+
+test('homeTimePolicyApplies: company drivers only', () => {
+  assert.strictEqual(homeTimePolicyApplies('company_driver'), true);
+  assert.strictEqual(homeTimePolicyApplies('owner'), false);
+  assert.strictEqual(homeTimePolicyApplies(null), false);
+});
+
+test('computeRoadBonus tracks owner operators without awarding the company bonus', () => {
+  const r = computeRoadBonus('2026-01-01T00:00:00Z', '2026-02-12T00:00:00Z', {
+    roadAllowanceWeeks: 4,
+    bonusPerWeek: 100,
+    driverType: 'owner',
+  });
+  assert.deepStrictEqual(
+    [r.daysOnRoad, r.exceededWeeks, r.bonusUsd, r.policyApplies, r.overLimit],
+    [42, 2, 0, false, false]
+  );
 });

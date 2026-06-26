@@ -60,16 +60,21 @@ test('weeksFromDays converts and rounds to one decimal', () => {
 });
 
 test('isPolicyMet: met at/over allowance, short under it, null when unknown', () => {
-  assert.strictEqual(isPolicyMet(28, 4), true);  // exactly 4 weeks
+  assert.strictEqual(isPolicyMet(28, 4), true);
   assert.strictEqual(isPolicyMet(40, 4), true);
-  assert.strictEqual(isPolicyMet(27, 4), false); // one day short
+  assert.strictEqual(isPolicyMet(27, 4), false);
   assert.strictEqual(isPolicyMet(0, 4), false);
   assert.strictEqual(isPolicyMet(null, 4), null);
   assert.strictEqual(isPolicyMet(undefined, 4), null);
 });
 
+test('isPolicyMet returns null for owner operators because the company policy does not apply', () => {
+  assert.strictEqual(isPolicyMet(40, 4, 'owner'), null);
+  assert.strictEqual(isPolicyMet(10, 4, 'owner'), null);
+});
+
 test('computeHomeWindow returns an inclusive N-day window', () => {
   const w = computeHomeWindow('2026-06-01T12:00:00Z', 4, 'America/Chicago');
   assert.strictEqual(w.homeFrom, '2026-06-01');
-  assert.strictEqual(w.homeTo, '2026-06-04'); // 4 inclusive days: 1,2,3,4
+  assert.strictEqual(w.homeTo, '2026-06-04');
 });

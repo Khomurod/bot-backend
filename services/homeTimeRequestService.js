@@ -7,12 +7,12 @@
  *   2. Ask the AI whether this is actually a home-time request (reps get tagged
  *      for many reasons).
  *   3. If it is, work out how long the driver has been on the road (from the
- *      home-time tracker), write an AI note about the 4-week policy, and post it
- *      with "Approve" / "Do Not Approve" buttons that only the approvers can use.
+ *      home-time tracker), write an AI note about the policy, and post it with
+ *      "Approve" / "Do Not Approve" buttons that only the approvers can use.
  *   4. Record the request so the admin panel can flag policy violators later.
  *
  * The `telegram` instance is always passed in (never required) so this module
- * stays free of a require cycle with bot.js — same approach as homeTimeService.
+ * stays free of a require cycle with bot.js - same approach as homeTimeService.
  */
 const { DateTime } = require('luxon');
 const { Markup } = require('telegraf');
@@ -27,8 +27,10 @@ const {
   weeksFromDays,
   isPolicyMet,
   computeHomeWindow,
+  homeTimePolicyApplies,
 } = require('./homeTimeRequestConstants');
 const { wholeDaysBetween } = require('./homeTimeConstants');
+const { inferDriverType } = require('./driverProfileParse');
 
 const CALLBACK_PREFIX = 'htreq';
 
@@ -50,9 +52,14 @@ async function resolveDriverLabel(group) {
     return {
       driverName: name || group.group_name || `Group ${group.id}`,
       unitNumber: profile?.unit_number || null,
+      driverType: profile?.driver_type || inferDriverType(group.group_name || ''),
     };
   } catch (_) {
-    return { driverName: group.group_name || `Group ${group.id}`, unitNumber: null };
+    return {
+      driverName: group.group_name || `Group ${group.id}`,
+      unitNumber: null,
+      driverType: inferDriverType(group.group_name || ''),
+    };
   }
 }
 
@@ -81,7 +88,7 @@ async function classifyHomeTimeRequest(transcript) {
     };
   } catch (err) {
     console.warn('[HOME-TIME-REQ] AI classification failed, defaulting to request:', err.message);
-    return { isRequest: true, reason: 'AI unavailable — defaulted to request for human review.', aiUsed: false };
+    return { isRequest: true, reason: 'AI unavailable - defaulted to request for human review.', aiUsed: false };
   }
 }
 
@@ -90,12 +97,16 @@ async function classifyHomeTimeRequest(transcript) {
  * meaning when the AI is unavailable.
  */
 async function generateRequestText({
-  policyMet, daysOnRoad, allowanceWeeks, homeAllowanceDays, driverName,
+  policyMet, daysOnRoad, allowanceWeeks, homeAllowanceDays, driverName, driverType,
 }) {
   const weeks = daysOnRoad == null ? null : weeksFromDays(daysOnRoad);
+  const policyApplies = homeTimePolicyApplies(driverType);
 
   let situation;
-  if (policyMet === true) {
+  if (!policyApplies) {
+    situation = `The driver is an owner operator, so the company 4-week home-time policy and extra-week bonus do not apply. `
+      + `Say you logged the request for tracking, and that a human still needs to approve the dates.`;
+  } else if (policyMet === true) {
     situation = `The driver HAS been on the road about ${weeks} weeks (${daysOnRoad} days), which is at least `
       + `the required ${allowanceWeeks} weeks. Say you believe they are good to take ${homeAllowanceDays} days home, `
       + `but you are only a bot so a human must confirm.`;
@@ -120,13 +131,16 @@ async function generateRequestText({
     console.warn('[HOME-TIME-REQ] AI text generation failed, using fallback:', err.message);
   }
 
-  // Deterministic fallbacks (same meaning as the spec).
+  if (!policyApplies) {
+    return `I logged this owner operator home-time request for tracking. The company 4-week rule does not apply here, `
+      + `but I'm still a bot, so a human needs to approve the dates.`;
+  }
   if (policyMet === true) {
     return `I see it's been about ${weeks} weeks (${daysOnRoad} days) since you started driving, so I believe `
       + `you're good to have home time for ${homeAllowanceDays} days. But I'm still a bot, so I need a human's permission.`;
   }
   if (policyMet === false) {
-    return `I see it hasn't been ${allowanceWeeks} weeks since you started driving — only about ${weeks} weeks `
+    return `I see it hasn't been ${allowanceWeeks} weeks since you started driving - only about ${weeks} weeks `
       + `(${daysOnRoad} days). Per our agreement you should be on the road for at least ${allowanceWeeks} weeks. `
       + `I'm just a bot and can't decide on a human's behalf, so let the humans decide.`;
   }
@@ -135,19 +149,24 @@ async function generateRequestText({
 }
 
 function buildCardText({
-  driverName, unitNumber, text, daysOnRoad, policyMet, homeFrom, homeTo,
+  driverName, unitNumber, driverType, text, daysOnRoad, policyMet, homeFrom, homeTo,
 }) {
   const who = `${escapeHtml(driverName)}${unitNumber ? ` (Unit ${escapeHtml(unitNumber)})` : ''}`;
+  const policyApplies = homeTimePolicyApplies(driverType);
   const flag = policyMet === false ? '⚠️ ' : '';
   const lines = [
     `🏠 <b>Home-Time Request — ${who}</b>`,
     '',
     `${flag}${escapeHtml(text)}`,
     '',
+    `Driver type: <b>${policyApplies ? 'Company driver' : 'Owner operator'}</b>`,
     `Proposed home time: <b>${escapeHtml(homeFrom)} → ${escapeHtml(homeTo)}</b>`,
   ];
   if (daysOnRoad != null) {
     lines.push(`On the road: <b>${daysOnRoad} days</b> (~${weeksFromDays(daysOnRoad)} weeks)`);
+  }
+  if (!policyApplies) {
+    lines.push('Policy: <b>N/A</b> (owner operator)');
   }
   lines.push('', `Only ${approverTagLine()} can decide.`);
   return lines.join('\n');
@@ -170,7 +189,6 @@ async function handleApproverMention(telegram, group, message) {
   try {
     if (!group || group.group_type !== 'driver') return;
 
-    // One open card per group at a time.
     const existing = await ht.getPendingHomeTimeRequestForGroup(group.id);
     if (existing) return;
 
@@ -190,13 +208,18 @@ async function handleApproverMention(telegram, group, message) {
       roadStartedAt = homeStatus.state_since;
       daysOnRoad = wholeDaysBetween(homeStatus.state_since, nowIso);
     }
-    const policyMet = isPolicyMet(daysOnRoad, allowanceWeeks);
 
-    const { driverName, unitNumber } = await resolveDriverLabel(group);
+    const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
+    const policyMet = isPolicyMet(daysOnRoad, allowanceWeeks, driverType);
     const { homeFrom, homeTo } = computeHomeWindow(nowIso, homeAllowanceDays);
 
     const text = await generateRequestText({
-      policyMet, daysOnRoad, allowanceWeeks, homeAllowanceDays, driverName,
+      policyMet,
+      daysOnRoad,
+      allowanceWeeks,
+      homeAllowanceDays,
+      driverName,
+      driverType,
     });
 
     const fromUser = message?.from || {};
@@ -218,7 +241,14 @@ async function handleApproverMention(telegram, group, message) {
     });
 
     const cardText = buildCardText({
-      driverName, unitNumber, text, daysOnRoad, policyMet, homeFrom, homeTo,
+      driverName,
+      unitNumber,
+      driverType,
+      text,
+      daysOnRoad,
+      policyMet,
+      homeFrom,
+      homeTo,
     });
     const sent = await safeSend(() => telegram.sendMessage(group.telegram_group_id, cardText, {
       parse_mode: 'HTML',
@@ -227,7 +257,7 @@ async function handleApproverMention(telegram, group, message) {
     }));
     await ht.setHomeTimeRequestMessage(request.id, group.telegram_group_id, sent?.message_id || null);
 
-    console.log(`[HOME-TIME-REQ] Request #${request.id} posted for ${driverName} (policyMet=${policyMet}).`);
+    console.log(`[HOME-TIME-REQ] Request #${request.id} posted for ${driverName} (${driverType}, policyMet=${policyMet}).`);
   } catch (err) {
     console.error('[HOME-TIME-REQ] handleApproverMention error:', err.message);
   }

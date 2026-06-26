@@ -14,7 +14,8 @@ const { computeRoadBonus, wholeDaysBetween } = require('../../services/homeTimeC
 const groupAccess = require('../../services/groupAccessService');
 const { buildAdminGrantPayload } = require('../../services/groupAccessConstants');
 const homeTimeImport = require('../../services/homeTimeImportService');
-const { isInactiveGroup } = require('../../services/driverProfileParse');
+const { inferDriverType, isInactiveGroup } = require('../../services/driverProfileParse');
+const { homeTimePolicyApplies } = require('../../services/homeTimeConstants');
 
 const SCREENSHOT_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const screenshotUpload = multer({
@@ -29,6 +30,10 @@ const screenshotUpload = multer({
 function displayName(row) {
   const name = [row.first_name, row.last_name].filter(Boolean).join(' ').trim();
   return name || row.group_name || `Group ${row.group_id}`;
+}
+
+function resolveDriverType(row) {
+  return row?.driver_type || inferDriverType(row?.group_name || '');
 }
 
 /** Accept a YYYY-MM-DD or full ISO datetime; return a UTC ISO string or null. */
@@ -91,9 +96,11 @@ function createHomeTimeRouter({ authMiddleware }) {
       const nowIso = DateTime.now().toUTC().toISO();
 
       const statuses = rawStatuses.map((row) => {
+        const driverType = resolveDriverType(row);
         const base = {
           group_id: row.group_id,
           driver_name: displayName(row),
+          driver_type: driverType,
           unit_number: row.unit_number || null,
           group_active: row.group_active,
           inactive: isInactiveGroup({ active: row.group_active, group_name: row.group_name, status: row.driver_status }),
@@ -105,19 +112,42 @@ function createHomeTimeRouter({ authMiddleware }) {
           const live = computeRoadBonus(row.state_since, nowIso, {
             roadAllowanceWeeks: settings.road_allowance_weeks,
             bonusPerWeek: Number(settings.bonus_per_week),
+            driverType,
           });
           return {
             ...base,
             days_on_road: live.daysOnRoad,
-            over_limit: live.exceededWeeks > 0,
+            policy_applies: live.policyApplies,
+            over_limit: live.overLimit,
             pending_exceeded_weeks: live.exceededWeeks,
             pending_bonus_usd: live.bonusUsd,
           };
         }
-        return { ...base, days_home: wholeDaysBetween(row.state_since, nowIso) };
+        return {
+          ...base,
+          policy_applies: homeTimePolicyApplies(driverType),
+          days_home: wholeDaysBetween(row.state_since, nowIso),
+        };
       });
 
-      res.json({ settings, statuses, history });
+      const adjustedHistory = history.map((row) => {
+        const driverType = resolveDriverType(row);
+        const recalculated = computeRoadBonus(row.road_started_at, row.home_arrived_at, {
+          roadAllowanceWeeks: settings.road_allowance_weeks,
+          bonusPerWeek: Number(settings.bonus_per_week),
+          driverType,
+        });
+        return {
+          ...row,
+          driver_type: driverType,
+          policy_applies: recalculated.policyApplies,
+          days_on_road: recalculated.daysOnRoad,
+          exceeded_weeks: recalculated.exceededWeeks,
+          bonus_usd: recalculated.bonusUsd,
+        };
+      });
+
+      res.json({ settings, statuses, history: adjustedHistory });
     } catch (err) {
       console.error('[HOME-TIME API] overview failed:', err.message);
       res.status(500).json({ error: 'Failed to load home-time overview.' });
@@ -167,9 +197,11 @@ function createHomeTimeRouter({ authMiddleware }) {
       }
 
       const settings = await ht.getHomeTimeSettings();
+      const driverType = resolveDriverType(existing);
       const { daysOnRoad, exceededWeeks, bonusUsd } = computeRoadBonus(roadStartedAt, homeArrivedAt, {
         roadAllowanceWeeks: settings.road_allowance_weeks,
         bonusPerWeek: Number(settings.bonus_per_week),
+        driverType,
       });
       const updated = await ht.updateRoadHistory(id, {
         roadStartedAt, homeArrivedAt, daysOnRoad, exceededWeeks, bonusUsd,
@@ -235,7 +267,14 @@ function createHomeTimeRouter({ authMiddleware }) {
   // GET /requests — every home-time request (for red-flag review).
   router.get('/requests', authMiddleware, async (req, res) => {
     try {
-      const requests = await ht.listHomeTimeRequests({ limit: 200 });
+      const requests = (await ht.listHomeTimeRequests({ limit: 200 })).map((row) => {
+        const driverType = resolveDriverType(row);
+        return {
+          ...row,
+          driver_type: driverType,
+          policy_applies: homeTimePolicyApplies(driverType),
+        };
+      });
       res.json({ requests });
     } catch (err) {
       console.error('[HOME-TIME API] requests load failed:', err.message);
@@ -262,14 +301,19 @@ function createHomeTimeRouter({ authMiddleware }) {
       let driverName = b.driver_name || null;
       let unitNumber = b.unit_number || null;
       let telegramGroupId = null;
+      let driverType = null;
       if (groupId) {
         const profile = await db.getDriverProfileByGroupId(groupId).catch(() => null);
         if (profile) {
           driverName = driverName || [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim() || null;
           unitNumber = unitNumber || profile.unit_number || null;
           telegramGroupId = profile.telegram_group_id || null;
+          driverType = profile.driver_type || inferDriverType(profile.group_name || '');
         }
       }
+      const policyMet = homeTimePolicyApplies(driverType)
+        ? (typeof b.policy_met === 'boolean' ? b.policy_met : null)
+        : null;
 
       // Always insert as pending, then decide() so decided_by/decided_at are set
       // consistently for approved/denied manual entries.
@@ -279,7 +323,7 @@ function createHomeTimeRouter({ authMiddleware }) {
         driverName,
         unitNumber,
         requestedByUsername: req.admin?.username || null,
-        policyMet: typeof b.policy_met === 'boolean' ? b.policy_met : null,
+        policyMet,
         homeFrom,
         homeTo,
         status: 'pending',

@@ -16,6 +16,7 @@ const ht = require('../database/homeTime');
 const { safeSend } = require('./telegramHtml');
 const { BONUS_GROUP_CHAT_ID } = require('./mileageBonusConstants');
 const { parseDriverStatus, computeRoadBonus } = require('./homeTimeConstants');
+const { inferDriverType } = require('./driverProfileParse');
 
 function escapeHtml(text) {
   return String(text || '')
@@ -41,9 +42,14 @@ async function resolveDriverLabel(group) {
     return {
       driverName: name || group.group_name || `Group ${group.id}`,
       unitNumber: profile?.unit_number || null,
+      driverType: profile?.driver_type || inferDriverType(group.group_name || ''),
     };
   } catch (err) {
-    return { driverName: group.group_name || `Group ${group.id}`, unitNumber: null };
+    return {
+      driverName: group.group_name || `Group ${group.id}`,
+      unitNumber: null,
+      driverType: inferDriverType(group.group_name || ''),
+    };
   }
 }
 
@@ -113,15 +119,16 @@ async function handleDriverGroupStatus(telegram, group, message) {
     // ── A real transition ──
     if (current.state === 'road' && newState === 'home') {
       // Road trip just finished — close it and compute the bonus.
+      const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
       const { daysOnRoad, exceededWeeks, bonusUsd } = computeRoadBonus(
         current.state_since,
         eventAt,
         {
           roadAllowanceWeeks: settings.road_allowance_weeks,
           bonusPerWeek: Number(settings.bonus_per_week),
+          driverType,
         }
       );
-      const { driverName, unitNumber } = await resolveDriverLabel(group);
       await ht.insertRoadHistory({
         groupId: group.id,
         driverName,
@@ -138,7 +145,7 @@ async function handleDriverGroupStatus(telegram, group, message) {
           allowanceWeeks: settings.road_allowance_weeks,
         });
       }
-      console.log(`[HOME-TIME] ${driverName} home after ${daysOnRoad}d → $${bonusUsd} bonus`);
+      console.log(`[HOME-TIME] ${driverName} (${driverType}) home after ${daysOnRoad}d -> $${bonusUsd} bonus`);
     }
     // home → road needs no calculation; the clock simply starts.
 

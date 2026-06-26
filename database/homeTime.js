@@ -97,7 +97,7 @@ async function insertRoadHistory({
 async function listCurrentStatuses() {
   const res = await query(
     `SELECT s.*, g.group_name, g.active AS group_active,
-            dp.first_name, dp.last_name, dp.unit_number, dp.status AS driver_status
+            dp.first_name, dp.last_name, dp.unit_number, dp.status AS driver_status, dp.driver_type
      FROM driver_home_status s
      JOIN groups g ON g.id = s.group_id
      LEFT JOIN driver_profiles dp ON dp.group_id = s.group_id
@@ -110,9 +110,10 @@ async function listCurrentStatuses() {
 async function listRoadHistory({ limit = 100, bonusOnly = false } = {}) {
   const where = bonusOnly ? 'WHERE bonus_usd > 0' : '';
   const res = await query(
-    `SELECT h.*, g.group_name
+    `SELECT h.*, g.group_name, dp.driver_type
      FROM driver_road_history h
      JOIN groups g ON g.id = h.group_id
+     LEFT JOIN driver_profiles dp ON dp.group_id = h.group_id
      ${where}
      ORDER BY h.home_arrived_at DESC LIMIT $1`,
     [limit]
@@ -121,7 +122,14 @@ async function listRoadHistory({ limit = 100, bonusOnly = false } = {}) {
 }
 
 async function getRoadHistoryById(id) {
-  const res = await query('SELECT * FROM driver_road_history WHERE id = $1', [id]);
+  const res = await query(
+    `SELECT h.*, g.group_name, dp.driver_type
+     FROM driver_road_history h
+     JOIN groups g ON g.id = h.group_id
+     LEFT JOIN driver_profiles dp ON dp.group_id = h.group_id
+     WHERE h.id = $1`,
+    [id]
+  );
   return res.rows[0] || null;
 }
 
@@ -245,9 +253,10 @@ async function findHomeTimeRequestByWindow(groupId, homeFrom, homeTo) {
 
 async function listHomeTimeRequests({ limit = 200 } = {}) {
   const res = await query(
-    `SELECT r.*, g.group_name
+    `SELECT r.*, g.group_name, dp.driver_type
      FROM home_time_requests r
      LEFT JOIN groups g ON g.id = r.group_id
+     LEFT JOIN driver_profiles dp ON dp.group_id = r.group_id
      ORDER BY r.requested_at DESC LIMIT $1`,
     [limit]
   );
