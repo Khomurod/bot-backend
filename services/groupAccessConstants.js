@@ -35,4 +35,27 @@ function computeReadingVerdict({ memberStatus, lastMessageSeenAt, now = Date.now
   return { reading: 'unknown', level: 'unknown', label: 'Not checked yet — run "Recheck access"' };
 }
 
-module.exports = { RECENT_SEEN_DAYS, computeReadingVerdict };
+// Start-parameter used in the ?startgroup deep link so the bot can verify which
+// driver group the super admin chose (Telegram cannot pre-select the group, so
+// we tag the link and confirm the result instead).
+const ADMIN_GRANT_PREFIX = 'htadmin_';
+
+function buildAdminGrantPayload(groupId) {
+  return `${ADMIN_GRANT_PREFIX}${groupId}`;
+}
+
+/** Parse our admin-grant start payload → internal group id, or null. */
+function parseAdminGrantPayload(payload) {
+  const s = String(payload || '');
+  if (!s.startsWith(ADMIN_GRANT_PREFIX)) return null;
+  const id = Number.parseInt(s.slice(ADMIN_GRANT_PREFIX.length), 10);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+module.exports = {
+  RECENT_SEEN_DAYS,
+  computeReadingVerdict,
+  ADMIN_GRANT_PREFIX,
+  buildAdminGrantPayload,
+  parseAdminGrantPayload,
+};

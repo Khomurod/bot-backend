@@ -29,6 +29,7 @@ const recentMessageBuffer = require('../services/recentMessageBuffer');
 const { handleApproverMention } = require('../services/homeTimeRequestService');
 const { messageMentionsApprovers } = require('../services/homeTimeRequestConstants');
 const { registerHomeTimeRequestHandlers } = require('./homeTimeRequestHandlers');
+const { confirmAdminGrant } = require('../services/groupAccessService');
 const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedContextService');
 const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
@@ -621,6 +622,17 @@ async function startBot() {
     bot.start(async (ctx) => {
       const chatType = ctx.chat?.type;
       if (chatType === 'group' || chatType === 'supergroup') {
+        // Added to a group via the "Request admin" deep link → verify it landed
+        // in the intended group and DM the super admin a confirmation.
+        const payload = ctx.startPayload || '';
+        if (payload.startsWith('htadmin_')) {
+          await confirmAdminGrant(bot.telegram, {
+            chatTelegramId: ctx.chat.id,
+            chatTitle: ctx.chat.title || '',
+            payload,
+          });
+          return;
+        }
         await ctx.reply(
           'Wenze Feedback bot is active in this group for driver feedback, broadcasts, and ETA updates.',
         );
