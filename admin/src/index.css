@@ -423,6 +423,11 @@ tr:hover td {
   color: var(--danger);
 }
 
+.badge-muted {
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--text-secondary);
+}
+
 /* ─── Alerts ─── */
 .alert {
   padding: 14px 20px;
@@ -1863,5 +1868,212 @@ tr:hover td {
 
   .summary-cards {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Home Time */
+.home-time-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(340px, 1fr);
+  gap: 20px;
+  align-items: start;
+  margin-bottom: 20px;
+}
+
+.home-time-toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.home-time-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.home-time-summary-chip,
+.home-time-metric {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.home-time-summary-chip strong,
+.home-time-metric strong {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.home-time-summary-chip span,
+.home-time-metric span,
+.home-time-metric small,
+.home-time-muted,
+.home-time-subtext,
+.home-time-detail-header p,
+.home-time-section-head p {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.home-time-detail-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.home-time-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  flex-wrap: wrap;
+}
+
+.home-time-detail-header h3,
+.home-time-section h4 {
+  margin-bottom: 4px;
+}
+
+.home-time-detail-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.home-time-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.home-time-section {
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.home-time-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 14px;
+}
+
+.home-time-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.home-time-readonly {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+}
+
+.home-time-driver-name {
+  font-weight: 600;
+}
+
+.home-time-row-selected td {
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.home-time-row-selected:hover td {
+  background: rgba(99, 102, 241, 0.16);
+}
+
+.home-time-empty-cell,
+.home-time-empty-box {
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.home-time-empty-box {
+  padding: 32px 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.home-time-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.home-time-activity-item {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.home-time-activity-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 10px;
+}
+
+.home-time-status-pill {
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: rgba(148, 163, 184, 0.14);
+  white-space: nowrap;
+}
+
+.home-time-activity-meta {
+  display: flex;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.home-time-action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1024px) {
+  .home-time-workspace {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .home-time-summary-strip,
+  .home-time-metrics,
+  .home-time-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .home-time-activity-top {
+    flex-direction: column;
+  }
+
+  .home-time-toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
