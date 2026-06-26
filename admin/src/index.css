@@ -1872,14 +1872,6 @@ tr:hover td {
 }
 
 /* Home Time */
-.home-time-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(340px, 1fr);
-  gap: 20px;
-  align-items: start;
-  margin-bottom: 20px;
-}
-
 .home-time-toolbar {
   display: flex;
   gap: 12px;
@@ -1928,6 +1920,29 @@ tr:hover td {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.home-time-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.home-time-sort-button.active {
+  color: var(--text-primary);
+}
+
+.home-time-sort-arrow {
+  color: var(--text-secondary);
+  font-size: 11px;
 }
 
 .home-time-detail-header {
@@ -1987,6 +2002,67 @@ tr:hover td {
 
 .home-time-driver-name {
   font-weight: 600;
+}
+
+.home-time-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 6, 14, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 1000;
+}
+
+.home-time-modal-card {
+  width: min(1240px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-time-modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+.home-time-modal-kicker {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.home-time-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.home-time-modal-close {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.home-time-modal-body {
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .home-time-row-selected td {
@@ -2056,8 +2132,8 @@ tr:hover td {
 }
 
 @media (max-width: 1024px) {
-  .home-time-workspace {
-    grid-template-columns: 1fr;
+  .home-time-modal-card {
+    width: 100%;
   }
 }
 
@@ -2075,5 +2151,13 @@ tr:hover td {
   .home-time-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .home-time-modal-backdrop {
+    padding: 12px;
+  }
+
+  .home-time-modal-header {
+    flex-direction: column;
   }
 }

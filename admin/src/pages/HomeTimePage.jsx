@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import * as api from "../api";
 import {
+  HOME_TIME_SORT_COLUMNS,
   STATUS_FILTERS,
   buildDriverTimeline,
   buildHomeTimeViewModel,
@@ -85,6 +86,11 @@ function activityTitle(item) {
   return "Completed road cycle";
 }
 
+function sortArrow(active, direction) {
+  if (!active) return "<>";
+  return direction === "asc" ? "^" : "v";
+}
+
 export default function HomeTimePage() {
   const [settings, setSettings] = useState(null);
   const [statuses, setStatuses] = useState([]);
@@ -95,7 +101,10 @@ export default function HomeTimePage() {
   const [status, setStatus] = useState(null);
   const [statusFilter, setStatusFilter] = useState("active");
   const [driverQuery, setDriverQuery] = useState("");
+  const [sortKey, setSortKey] = useState("unit_number");
+  const [sortDirection, setSortDirection] = useState("asc");
   const [selectedGroupId, setSelectedGroupId] = useState(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [stateSinceDraft, setStateSinceDraft] = useState("");
   const [tripDrafts, setTripDrafts] = useState({});
   const [reg, setReg] = useState({
@@ -269,6 +278,8 @@ export default function HomeTimePage() {
     requests,
     statusFilter,
     searchQuery: driverQuery,
+    sortKey,
+    sortDirection,
   });
 
   const {
@@ -287,13 +298,24 @@ export default function HomeTimePage() {
   useEffect(() => {
     if (!filteredStatuses.length) {
       setSelectedGroupId(null);
+      setIsDetailOpen(false);
+      return;
+    }
+    if (selectedGroupId == null) {
+      setSelectedGroupId(filteredStatuses[0].group_id);
       return;
     }
     const hasSelection = filteredStatuses.some((row) => Number(row.group_id) === Number(selectedGroupId));
-    if (!hasSelection) setSelectedGroupId(filteredStatuses[0].group_id);
+    if (!hasSelection) {
+      setSelectedGroupId(filteredStatuses[0].group_id);
+      setIsDetailOpen(false);
+    }
   }, [filteredStatuses, selectedGroupId]);
 
-  const selectedStatus = filteredStatuses.find((row) => Number(row.group_id) === Number(selectedGroupId)) || null;
+  const selectedStatus =
+    filteredStatuses.find((row) => Number(row.group_id) === Number(selectedGroupId))
+    || statuses.find((row) => Number(row.group_id) === Number(selectedGroupId))
+    || null;
   const selectedRequests = selectedStatus ? (requestsByGroupId.get(Number(selectedStatus.group_id)) || []) : [];
   const selectedHistory = selectedStatus ? (historyByGroupId.get(Number(selectedStatus.group_id)) || []) : [];
   const selectedTimeline = buildDriverTimeline({
@@ -318,6 +340,22 @@ export default function HomeTimePage() {
     }));
   }, [selectedStatus]);
 
+  useEffect(() => {
+    if (!isDetailOpen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setIsDetailOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isDetailOpen]);
+
   const updateTripDraft = (tripId, field, value) => {
     setTripDrafts((current) => ({
       ...current,
@@ -331,6 +369,35 @@ export default function HomeTimePage() {
   const saveSelectedSince = async () => {
     if (!selectedStatus || !stateSinceDraft) return;
     await saveStatusSince(selectedStatus.group_id, stateSinceDraft);
+  };
+
+  const openDriverDetails = (groupId) => {
+    setSelectedGroupId(groupId);
+    setIsDetailOpen(true);
+  };
+
+  const toggleSort = (columnKey) => {
+    if (!HOME_TIME_SORT_COLUMNS.includes(columnKey)) return;
+    if (sortKey === columnKey) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(columnKey);
+    setSortDirection("asc");
+  };
+
+  const renderSortHeader = (label, columnKey) => {
+    const active = sortKey === columnKey;
+    return (
+      <button
+        type="button"
+        className={`home-time-sort-button${active ? " active" : ""}`}
+        onClick={() => toggleSort(columnKey)}
+      >
+        <span>{label}</span>
+        <span className="home-time-sort-arrow">{sortArrow(active, sortDirection)}</span>
+      </button>
+    );
   };
 
   if (loading) {
@@ -347,8 +414,8 @@ export default function HomeTimePage() {
       <div className="page-header">
         <h2>Driver Home Time</h2>
         <p>
-          One driver-centered workspace for current status, next company-driver home-time eligibility, request
-          tracking, and completed road-cycle history.
+          The main table now carries the operational view directly. Click any column header to sort, then click a row
+          to open the full driver popup.
         </p>
       </div>
 
@@ -358,194 +425,373 @@ export default function HomeTimePage() {
         </div>
       )}
 
-      <div className="home-time-workspace">
-        <div className="card">
-          <div className="home-time-section-head">
-            <div>
-              <h3>Driver list</h3>
-              <p>Use the list as the main control surface. Select a driver to inspect requests, history, and edit details.</p>
-            </div>
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="home-time-section-head">
+          <div>
+            <h3>Driver list</h3>
+            <p>
+              Truck number comes first, every main column sorts, and the detailed editor opens only when you need it.
+            </p>
           </div>
+        </div>
 
-          <div className="home-time-summary-strip">
-            <div className="home-time-summary-chip">
-              <strong>{onRoad.length}</strong>
-              <span>On the road</span>
-            </div>
-            <div className="home-time-summary-chip">
-              <strong>{atHome.length}</strong>
-              <span>At home</span>
-            </div>
-            <div className="home-time-summary-chip">
-              <strong>{companyCount}</strong>
-              <span>Company drivers</span>
-            </div>
-            <div className="home-time-summary-chip">
-              <strong>{ownerCount}</strong>
-              <span>Owner operators</span>
-            </div>
-            <div
-              className="home-time-summary-chip"
-              style={overLimit.length ? { borderColor: "rgba(239, 68, 68, 0.45)" } : undefined}
-            >
-              <strong>{overLimit.length}</strong>
-              <span>Over limit</span>
-            </div>
-            {inactiveCount > 0 && (
-              <div className="home-time-summary-chip">
-                <strong>{inactiveCount}</strong>
-                <span>Inactive</span>
-              </div>
-            )}
+        <div className="home-time-summary-strip">
+          <div className="home-time-summary-chip">
+            <strong>{onRoad.length}</strong>
+            <span>On the road</span>
           </div>
+          <div className="home-time-summary-chip">
+            <strong>{atHome.length}</strong>
+            <span>At home</span>
+          </div>
+          <div className="home-time-summary-chip">
+            <strong>{companyCount}</strong>
+            <span>Company drivers</span>
+          </div>
+          <div className="home-time-summary-chip">
+            <strong>{ownerCount}</strong>
+            <span>Owner operators</span>
+          </div>
+          <div
+            className="home-time-summary-chip"
+            style={overLimit.length ? { borderColor: "rgba(239, 68, 68, 0.45)" } : undefined}
+          >
+            <strong>{overLimit.length}</strong>
+            <span>Over limit</span>
+          </div>
+          {inactiveCount > 0 && (
+            <div className="home-time-summary-chip">
+              <strong>{inactiveCount}</strong>
+              <span>Inactive</span>
+            </div>
+          )}
+        </div>
 
-          <div className="home-time-toolbar">
-            <div className="form-group" style={{ marginBottom: 0, minWidth: 220, flex: 1 }}>
-              <label>Search driver</label>
+        <div className="home-time-toolbar">
+          <div className="form-group" style={{ marginBottom: 0, minWidth: 220, flex: 1 }}>
+            <label>Search driver</label>
+            <input
+              className="form-input"
+              type="text"
+              value={driverQuery}
+              onChange={(e) => setDriverQuery(e.target.value)}
+              placeholder="Name, truck, type"
+            />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0, minWidth: 260 }}>
+            <label>Filter drivers</label>
+            <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              {STATUS_FILTERS.map((filter) => (
+                <option key={filter.value} value={filter.value}>
+                  {filter.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <p className="home-time-muted">
+          Showing <strong>{filteredStatuses.length}</strong> driver{filteredStatuses.length === 1 ? "" : "s"}:{" "}
+          {selectedFilterLabel}. Click a row to open the popup.
+        </p>
+
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>{renderSortHeader("Truck #", "unit_number")}</th>
+                <th>{renderSortHeader("Driver", "driver_name")}</th>
+                <th>{renderSortHeader("Type", "driver_type")}</th>
+                <th>{renderSortHeader("Status", "state")}</th>
+                <th>{renderSortHeader("Days", "current_cycle_days")}</th>
+                <th>{renderSortHeader("Since", "state_since")}</th>
+                <th>{renderSortHeader("Next home time", "next_home_time_date")}</th>
+                <th>{renderSortHeader("Requests", "requests_count")}</th>
+                <th>{renderSortHeader("Trips", "completed_trips_count")}</th>
+                <th>{renderSortHeader("Bonus now", "pending_bonus_usd")}</th>
+                <th>{renderSortHeader("Lifetime bonus", "lifetime_bonus_usd")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredStatuses.map((driver) => {
+                const isSelected = Number(driver.group_id) === Number(selectedGroupId);
+                return (
+                  <tr
+                    key={driver.group_id}
+                    className={isSelected && isDetailOpen ? "home-time-row-selected" : undefined}
+                    onClick={() => openDriverDetails(driver.group_id)}
+                    style={{
+                      cursor: "pointer",
+                      opacity: driver.inactive ? 0.7 : 1,
+                    }}
+                  >
+                    <td>
+                      <div className="home-time-driver-name">{driver.unit_number || "--"}</div>
+                      <div className="home-time-subtext">{driver.inactive ? "Inactive group" : "Open details"}</div>
+                    </td>
+                    <td>
+                      <div className="home-time-driver-name">{driver.driver_name}</div>
+                      <div className="home-time-subtext">{isSelected ? "Selected" : "Click row to inspect"}</div>
+                    </td>
+                    <td>{driverTypeLabel(driver.driver_type)}</td>
+                    <td>
+                      <span className={`badge ${driver.state === "road" && !driver.inactive ? "" : "badge-muted"}`}>
+                        {driver.state === "road" ? "On the road" : "At home"}
+                      </span>
+                    </td>
+                    <td>
+                      <div>{currentCycleLabel(driver)}</div>
+                      <div className="home-time-subtext">{bonusProgressLabel(driver)}</div>
+                    </td>
+                    <td>{fmtDate(driver.state_since)}</td>
+                    <td>{nextHomeLabel(driver)}</td>
+                    <td>
+                      <div>{driver.requests_count}</div>
+                      <div className="home-time-subtext">{driver.pending_requests_count} pending</div>
+                    </td>
+                    <td>{driver.completed_trips_count}</td>
+                    <td>{driver.state === "road" ? money(driver.pending_bonus_usd) : "--"}</td>
+                    <td>{isCompanyDriver(driver.driver_type) ? money(driver.lifetime_bonus_usd) : "N/A"}</td>
+                  </tr>
+                );
+              })}
+              {filteredStatuses.length === 0 && (
+                <tr>
+                  <td colSpan={11} className="home-time-empty-cell">
+                    No drivers match this filter.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 20, marginBottom: 20 }}>
+        <h3>Settings</h3>
+        {settings && (
+          <div style={{ display: "grid", gap: 12, maxWidth: 560 }}>
+            <label>
               <input
-                className="form-input"
-                type="text"
-                value={driverQuery}
-                onChange={(e) => setDriverQuery(e.target.value)}
-                placeholder="Name, unit, type"
-              />
+                type="checkbox"
+                checked={settings.enabled}
+                onChange={(e) => saveSettings({ enabled: e.target.checked })}
+                disabled={saving}
+              />{" "}
+              Tracking enabled
+            </label>
+            <div className="home-time-form-grid">
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>Weeks allowed on the road</label>
+                <input
+                  className="form-input"
+                  type="number"
+                  min="1"
+                  max="52"
+                  defaultValue={settings.road_allowance_weeks}
+                  onBlur={(e) => saveSettings({ road_allowance_weeks: Number(e.target.value) })}
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>Days allowed at home</label>
+                <input
+                  className="form-input"
+                  type="number"
+                  min="1"
+                  max="60"
+                  defaultValue={settings.home_allowance_days}
+                  onBlur={(e) => saveSettings({ home_allowance_days: Number(e.target.value) })}
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>Bonus per extra week ($)</label>
+                <input
+                  className="form-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  defaultValue={settings.bonus_per_week}
+                  onBlur={(e) => saveSettings({ bonus_per_week: Number(e.target.value) })}
+                />
+              </div>
             </div>
-            <div className="form-group" style={{ marginBottom: 0, minWidth: 260 }}>
-              <label>Filter drivers</label>
-              <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                {STATUS_FILTERS.map((filter) => (
-                  <option key={filter.value} value={filter.value}>
-                    {filter.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <p className="home-time-muted" style={{ margin: 0 }}>
+              Company-driver policy: at least {settings.road_allowance_weeks} weeks on the road, then{" "}
+              {settings.home_allowance_days} days home. Each full extra road week earns{" "}
+              {money(settings.bonus_per_week)} for company drivers only. Owner operators stay visible for tracking but
+              do not accrue the company bonus.
+            </p>
           </div>
+        )}
+      </div>
 
-          <p className="home-time-muted">
-            Showing <strong>{filteredStatuses.length}</strong> driver{filteredStatuses.length === 1 ? "" : "s"}:{" "}
-            {selectedFilterLabel}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <h3>Import from screenshots</h3>
+        <p className="home-time-muted" style={{ marginTop: 0 }}>
+          Upload spreadsheet screenshots. The app reads current status, dates, and history, then lets you review the matched rows before applying them.
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            onChange={(e) => setImportFiles(Array.from(e.target.files || []))}
+          />
+          <button className="btn btn-primary" onClick={readScreenshots} disabled={importing || !importFiles.length}>
+            {importing ? "Reading..." : "Read screenshots"}
+          </button>
+        </div>
+
+        {importRows && (
+          <div style={{ marginTop: 16 }}>
+            <div className="table-container">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Use</th>
+                    <th>Name from image</th>
+                    <th>Matched driver</th>
+                    <th>Status</th>
+                    <th>Since</th>
+                    <th>History</th>
+                    <th>Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importRows.map((row, index) => (
+                    <tr
+                      key={index}
+                      style={!row.matched ? { background: "rgba(239, 68, 68, 0.08)" } : undefined}
+                    >
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={row._include && row.matched}
+                          disabled={!row.matched}
+                          onChange={(e) => {
+                            const next = [...importRows];
+                            next[index] = { ...next[index], _include: e.target.checked };
+                            setImportRows(next);
+                          }}
+                        />
+                      </td>
+                      <td>{row.name}</td>
+                      <td>{row.matched ? row.driver_label : <span style={{ color: "#ef4444" }}>No match</span>}</td>
+                      <td>{row.status === "road" ? "On the road" : row.status === "home" ? "At home" : "--"}</td>
+                      <td>{row.since_date || "--"}</td>
+                      <td>{row.history?.length ? `${row.history.length} period(s)` : "--"}</td>
+                      <td style={{ maxWidth: 220, whiteSpace: "normal" }}>{row.notes || "--"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button className="btn btn-primary" onClick={applyImport} disabled={applyingImport} style={{ marginTop: 8 }}>
+              {applyingImport
+                ? "Applying..."
+                : `Apply ${importRows.filter((row) => row._include && row.group_id).length} matched rows`}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {unlinkedActivity.length > 0 && (
+        <div className="card">
+          <h3>Unlinked activity</h3>
+          <p className="home-time-muted" style={{ marginTop: 0 }}>
+            These requests or completed trips do not point to a currently tracked driver status, so they stay visible here instead of disappearing.
           </p>
-
           <div className="table-container">
             <table className="table">
               <thead>
                 <tr>
+                  <th>Type</th>
                   <th>Driver</th>
-                  <th>Status</th>
-                  <th>Current cycle</th>
-                  <th>Next home time</th>
-                  <th>Activity</th>
-                  <th>Lifetime bonus</th>
+                  <th>Date</th>
+                  <th>Details</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredStatuses.map((driver) => {
-                  const driverRequests = requestsByGroupId.get(Number(driver.group_id)) || [];
-                  const driverHistory = historyByGroupId.get(Number(driver.group_id)) || [];
-                  const lifetimeBonus = driverHistory.reduce(
-                    (sum, row) => sum + Number(row.bonus_usd || 0),
-                    0
-                  );
-                  const isSelected = Number(driver.group_id) === Number(selectedGroupId);
-                  return (
-                    <tr
-                      key={driver.group_id}
-                      className={isSelected ? "home-time-row-selected" : undefined}
-                      onClick={() => setSelectedGroupId(driver.group_id)}
-                      style={{
-                        cursor: "pointer",
-                        opacity: driver.inactive ? 0.7 : 1,
-                      }}
-                    >
-                      <td>
-                        <div className="home-time-driver-name">{driver.driver_name}</div>
-                        <div className="home-time-subtext">
-                          {driverTypeLabel(driver.driver_type)}
-                          {driver.unit_number ? ` | Unit ${driver.unit_number}` : ""}
-                          {driver.inactive ? " | Inactive" : ""}
-                        </div>
-                      </td>
-                      <td>
-                        <span className={`badge ${driver.state === "road" && !driver.inactive ? "" : "badge-muted"}`}>
-                          {driver.state === "road" ? "On the road" : "At home"}
-                        </span>
-                      </td>
-                      <td>
-                        <div>{currentCycleLabel(driver)}</div>
-                        <div className="home-time-subtext">{fmtDate(driver.state_since)} since</div>
-                      </td>
-                      <td>
-                        <div>{nextHomeLabel(driver)}</div>
-                        <div className="home-time-subtext">{bonusProgressLabel(driver)}</div>
-                      </td>
-                      <td>
-                        <div>{driverRequests.length} request(s)</div>
-                        <div className="home-time-subtext">{driverHistory.length} completed trip(s)</div>
-                      </td>
-                      <td>{isCompanyDriver(driver.driver_type) ? money(lifetimeBonus) : "N/A"}</td>
-                    </tr>
-                  );
-                })}
-                {filteredStatuses.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="home-time-empty-cell">
-                      No drivers match this filter.
+                {unlinkedActivity.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.kind === "request" ? "Request" : "Trip"}</td>
+                    <td>
+                      <div className="home-time-driver-name">{item.driver_name}</div>
+                      <div className="home-time-subtext">
+                        {driverTypeLabel(item.driver_type)}
+                        {item.unit_number ? ` | Unit ${item.unit_number}` : ""}
+                      </div>
+                    </td>
+                    <td>{fmtDate(item.timestamp)}</td>
+                    <td>
+                      {item.kind === "request"
+                        ? `${requestStatusMeta(item.status).label} | ${fmtDate(item.home_from)} to ${fmtDate(item.home_to)} | ${item.source || "--"}`
+                        : `${fmtDate(item.road_started_at)} to ${fmtDate(item.home_arrived_at)} | ${money(item.bonus_usd)}`}
                     </td>
                   </tr>
-                )}
+                ))}
               </tbody>
             </table>
           </div>
         </div>
+      )}
 
-        <div className="card home-time-detail-card">
-          {selectedStatus ? (
-            <>
-              <div className="home-time-detail-header">
-                <div>
-                  <h3>{selectedStatus.driver_name}</h3>
-                  <p>
-                    {driverTypeLabel(selectedStatus.driver_type)}
-                    {selectedStatus.unit_number ? ` | Unit ${selectedStatus.unit_number}` : ""}
-                  </p>
-                </div>
-                <div className="home-time-detail-badges">
-                  <span className={`badge ${selectedStatus.state === "road" ? "" : "badge-muted"}`}>
-                    {selectedStatus.state === "road" ? "On the road" : "At home"}
-                  </span>
-                  {selectedStatus.inactive && <span className="badge badge-muted">Inactive</span>}
-                </div>
+      {isDetailOpen && selectedStatus && (
+        <div className="home-time-modal-backdrop" onClick={() => setIsDetailOpen(false)}>
+          <div className="card home-time-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="home-time-modal-header">
+              <div>
+                <div className="home-time-modal-kicker">Driver home-time details</div>
+                <h3>{selectedStatus.driver_name}</h3>
+                <p>
+                  Truck {selectedStatus.unit_number || "--"} | {driverTypeLabel(selectedStatus.driver_type)}
+                </p>
               </div>
-
-              <div className="home-time-metrics">
-                <div className="home-time-metric">
-                  <span>Current cycle</span>
-                  <strong>{currentCycleLabel(selectedStatus)}</strong>
-                </div>
-                <div className="home-time-metric">
-                  <span>State since</span>
-                  <strong>{fmtDate(selectedStatus.state_since)}</strong>
-                </div>
-                <div className="home-time-metric">
-                  <span>Next home time</span>
-                  <strong>{nextHomeLabel(selectedStatus)}</strong>
-                </div>
-                <div className="home-time-metric">
-                  <span>Requests</span>
-                  <strong>{selectedRequests.length}</strong>
-                  <small>{selectedPendingRequests} pending</small>
-                </div>
-                <div className="home-time-metric">
-                  <span>Completed trips</span>
-                  <strong>{selectedHistory.length}</strong>
-                </div>
-                <div className="home-time-metric">
-                  <span>Lifetime bonus</span>
-                  <strong>{isCompanyDriver(selectedStatus.driver_type) ? money(selectedLifetimeBonus) : "N/A"}</strong>
-                </div>
+              <div className="home-time-modal-actions">
+                <span className={`badge ${selectedStatus.state === "road" ? "" : "badge-muted"}`}>
+                  {selectedStatus.state === "road" ? "On the road" : "At home"}
+                </span>
+                {selectedStatus.inactive && <span className="badge badge-muted">Inactive</span>}
+                <button
+                  type="button"
+                  className="home-time-modal-close"
+                  onClick={() => setIsDetailOpen(false)}
+                  aria-label="Close driver details"
+                >
+                  x
+                </button>
               </div>
+            </div>
 
+            <div className="home-time-metrics">
+              <div className="home-time-metric">
+                <span>Current cycle</span>
+                <strong>{currentCycleLabel(selectedStatus)}</strong>
+              </div>
+              <div className="home-time-metric">
+                <span>State since</span>
+                <strong>{fmtDate(selectedStatus.state_since)}</strong>
+              </div>
+              <div className="home-time-metric">
+                <span>Next home time</span>
+                <strong>{nextHomeLabel(selectedStatus)}</strong>
+              </div>
+              <div className="home-time-metric">
+                <span>Requests</span>
+                <strong>{selectedRequests.length}</strong>
+                <small>{selectedPendingRequests} pending</small>
+              </div>
+              <div className="home-time-metric">
+                <span>Completed trips</span>
+                <strong>{selectedHistory.length}</strong>
+              </div>
+              <div className="home-time-metric">
+                <span>Lifetime bonus</span>
+                <strong>{isCompanyDriver(selectedStatus.driver_type) ? money(selectedLifetimeBonus) : "N/A"}</strong>
+              </div>
+            </div>
+
+            <div className="home-time-modal-body">
               <div className="home-time-section">
                 <div className="home-time-section-head">
                   <div>
@@ -787,180 +1033,7 @@ export default function HomeTimePage() {
                   </table>
                 </div>
               </div>
-            </>
-          ) : (
-            <div className="home-time-empty-box">
-              Select a driver from the list to view home-time details, requests, and completed trips.
             </div>
-          )}
-        </div>
-      </div>
-
-      <div className="card" style={{ marginTop: 20, marginBottom: 20 }}>
-        <h3>Settings</h3>
-        {settings && (
-          <div style={{ display: "grid", gap: 12, maxWidth: 560 }}>
-            <label>
-              <input
-                type="checkbox"
-                checked={settings.enabled}
-                onChange={(e) => saveSettings({ enabled: e.target.checked })}
-                disabled={saving}
-              />{" "}
-              Tracking enabled
-            </label>
-            <div className="home-time-form-grid">
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>Weeks allowed on the road</label>
-                <input
-                  className="form-input"
-                  type="number"
-                  min="1"
-                  max="52"
-                  defaultValue={settings.road_allowance_weeks}
-                  onBlur={(e) => saveSettings({ road_allowance_weeks: Number(e.target.value) })}
-                />
-              </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>Days allowed at home</label>
-                <input
-                  className="form-input"
-                  type="number"
-                  min="1"
-                  max="60"
-                  defaultValue={settings.home_allowance_days}
-                  onBlur={(e) => saveSettings({ home_allowance_days: Number(e.target.value) })}
-                />
-              </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>Bonus per extra week ($)</label>
-                <input
-                  className="form-input"
-                  type="number"
-                  min="0"
-                  step="1"
-                  defaultValue={settings.bonus_per_week}
-                  onBlur={(e) => saveSettings({ bonus_per_week: Number(e.target.value) })}
-                />
-              </div>
-            </div>
-            <p className="home-time-muted" style={{ margin: 0 }}>
-              Company-driver policy: at least {settings.road_allowance_weeks} weeks on the road, then{" "}
-              {settings.home_allowance_days} days home. Each full extra road week earns{" "}
-              {money(settings.bonus_per_week)} for company drivers only. Owner operators stay visible for tracking but
-              do not accrue the company bonus.
-            </p>
-          </div>
-        )}
-      </div>
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <h3>Import from screenshots</h3>
-        <p className="home-time-muted" style={{ marginTop: 0 }}>
-          Upload spreadsheet screenshots. The app reads current status, dates, and history, then lets you review the matched rows before applying them.
-        </p>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            multiple
-            onChange={(e) => setImportFiles(Array.from(e.target.files || []))}
-          />
-          <button className="btn btn-primary" onClick={readScreenshots} disabled={importing || !importFiles.length}>
-            {importing ? "Reading..." : "Read screenshots"}
-          </button>
-        </div>
-
-        {importRows && (
-          <div style={{ marginTop: 16 }}>
-            <div className="table-container">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Use</th>
-                    <th>Name from image</th>
-                    <th>Matched driver</th>
-                    <th>Status</th>
-                    <th>Since</th>
-                    <th>History</th>
-                    <th>Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {importRows.map((row, index) => (
-                    <tr
-                      key={index}
-                      style={!row.matched ? { background: "rgba(239, 68, 68, 0.08)" } : undefined}
-                    >
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={row._include && row.matched}
-                          disabled={!row.matched}
-                          onChange={(e) => {
-                            const next = [...importRows];
-                            next[index] = { ...next[index], _include: e.target.checked };
-                            setImportRows(next);
-                          }}
-                        />
-                      </td>
-                      <td>{row.name}</td>
-                      <td>{row.matched ? row.driver_label : <span style={{ color: "#ef4444" }}>No match</span>}</td>
-                      <td>{row.status === "road" ? "On the road" : row.status === "home" ? "At home" : "--"}</td>
-                      <td>{row.since_date || "--"}</td>
-                      <td>{row.history?.length ? `${row.history.length} period(s)` : "--"}</td>
-                      <td style={{ maxWidth: 220, whiteSpace: "normal" }}>{row.notes || "--"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <button className="btn btn-primary" onClick={applyImport} disabled={applyingImport} style={{ marginTop: 8 }}>
-              {applyingImport
-                ? "Applying..."
-                : `Apply ${importRows.filter((row) => row._include && row.group_id).length} matched rows`}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {unlinkedActivity.length > 0 && (
-        <div className="card">
-          <h3>Unlinked activity</h3>
-          <p className="home-time-muted" style={{ marginTop: 0 }}>
-            These requests or completed trips do not point to a currently tracked driver status, so they stay visible here instead of disappearing.
-          </p>
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Type</th>
-                  <th>Driver</th>
-                  <th>Date</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {unlinkedActivity.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.kind === "request" ? "Request" : "Trip"}</td>
-                    <td>
-                      <div className="home-time-driver-name">{item.driver_name}</div>
-                      <div className="home-time-subtext">
-                        {driverTypeLabel(item.driver_type)}
-                        {item.unit_number ? ` | Unit ${item.unit_number}` : ""}
-                      </div>
-                    </td>
-                    <td>{fmtDate(item.timestamp)}</td>
-                    <td>
-                      {item.kind === "request"
-                        ? `${requestStatusMeta(item.status).label} | ${fmtDate(item.home_from)} to ${fmtDate(item.home_to)} | ${item.source || "--"}`
-                        : `${fmtDate(item.road_started_at)} to ${fmtDate(item.home_arrived_at)} | ${money(item.bonus_usd)}`}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         </div>
       )}

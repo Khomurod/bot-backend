@@ -9,6 +9,20 @@ export const STATUS_FILTERS = [
   { value: "home_owner", label: "Only at home owner operators" },
 ];
 
+export const HOME_TIME_SORT_COLUMNS = [
+  "unit_number",
+  "driver_name",
+  "driver_type",
+  "state",
+  "current_cycle_days",
+  "state_since",
+  "next_home_time_date",
+  "requests_count",
+  "completed_trips_count",
+  "pending_bonus_usd",
+  "lifetime_bonus_usd",
+];
+
 export function driverTypeLabel(type) {
   if (type === "company_driver") return "Company driver";
   if (type === "owner") return "Owner operator";
@@ -47,6 +61,13 @@ function normalizeGroupId(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function normalizeUnitForSort(value) {
+  if (value == null || value === "") return null;
+  const digits = String(value).match(/\d+/);
+  if (!digits) return null;
+  return Number.parseInt(digits[0], 10);
+}
+
 function matchesDriverSearch(status, searchQuery) {
   if (!searchQuery) return true;
   const haystack = [
@@ -65,6 +86,83 @@ function compareDateDesc(a, b) {
   const aTime = a ? new Date(a).getTime() : 0;
   const bTime = b ? new Date(b).getTime() : 0;
   return bTime - aTime;
+}
+
+function compareNullableNumbers(a, b) {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return a - b;
+}
+
+function compareNullableStrings(a, b) {
+  const left = String(a || "");
+  const right = String(b || "");
+  if (!left && !right) return 0;
+  if (!left) return 1;
+  if (!right) return -1;
+  return left.localeCompare(right, undefined, { sensitivity: "base" });
+}
+
+function compareNullableDates(a, b) {
+  const left = a ? new Date(a).getTime() : Number.NaN;
+  const right = b ? new Date(b).getTime() : Number.NaN;
+  const leftValid = Number.isFinite(left);
+  const rightValid = Number.isFinite(right);
+  if (!leftValid && !rightValid) return 0;
+  if (!leftValid) return 1;
+  if (!rightValid) return -1;
+  return left - right;
+}
+
+function compareDriverRows(a, b, sortKey, sortDirection) {
+  let result = 0;
+  switch (sortKey) {
+    case "unit_number":
+      result = compareNullableNumbers(a.unit_number_sort, b.unit_number_sort);
+      if (result === 0) result = compareNullableStrings(a.unit_number, b.unit_number);
+      break;
+    case "driver_name":
+      result = compareNullableStrings(a.driver_name, b.driver_name);
+      break;
+    case "driver_type":
+      result = compareNullableStrings(a.driver_type, b.driver_type);
+      break;
+    case "state":
+      result = compareNullableStrings(a.state, b.state);
+      break;
+    case "current_cycle_days":
+      result = compareNullableNumbers(a.current_cycle_days, b.current_cycle_days);
+      break;
+    case "state_since":
+      result = compareNullableDates(a.state_since, b.state_since);
+      break;
+    case "next_home_time_date":
+      result = compareNullableDates(a.next_home_time_date, b.next_home_time_date);
+      break;
+    case "requests_count":
+      result = compareNullableNumbers(a.requests_count, b.requests_count);
+      break;
+    case "completed_trips_count":
+      result = compareNullableNumbers(a.completed_trips_count, b.completed_trips_count);
+      break;
+    case "pending_bonus_usd":
+      result = compareNullableNumbers(a.pending_bonus_usd, b.pending_bonus_usd);
+      break;
+    case "lifetime_bonus_usd":
+      result = compareNullableNumbers(a.lifetime_bonus_usd, b.lifetime_bonus_usd);
+      break;
+    default:
+      result = compareNullableNumbers(a.unit_number_sort, b.unit_number_sort);
+      if (result === 0) result = compareNullableStrings(a.driver_name, b.driver_name);
+      break;
+  }
+
+  if (result === 0) {
+    result = compareNullableStrings(a.driver_name, b.driver_name);
+  }
+
+  return sortDirection === "desc" ? result * -1 : result;
 }
 
 function groupRowsByGroupId(rows, dateField) {
@@ -121,12 +219,34 @@ function buildUnlinkedActivity(statuses, requests, history) {
   return items.sort((a, b) => compareDateDesc(a.timestamp, b.timestamp));
 }
 
+function buildDriverRows(statuses, requestsByGroupId, historyByGroupId) {
+  return (statuses || []).map((status) => {
+    const groupId = normalizeGroupId(status.group_id);
+    const driverRequests = requestsByGroupId.get(groupId) || [];
+    const driverHistory = historyByGroupId.get(groupId) || [];
+    const pendingRequestsCount = driverRequests.filter((row) => row.status === "pending").length;
+    const lifetimeBonusUsd = driverHistory.reduce((sum, row) => sum + Number(row.bonus_usd || 0), 0);
+    return {
+      ...status,
+      unit_number_sort: normalizeUnitForSort(status.unit_number),
+      current_cycle_days: status.state === "road" ? Number(status.days_on_road || 0) : Number(status.days_home || 0),
+      requests_count: driverRequests.length,
+      pending_requests_count: pendingRequestsCount,
+      completed_trips_count: driverHistory.length,
+      lifetime_bonus_usd: lifetimeBonusUsd,
+      pending_bonus_usd: Number(status.pending_bonus_usd || 0),
+    };
+  });
+}
+
 export function buildHomeTimeViewModel({
   statuses = [],
   history = [],
   requests = [],
   statusFilter = "active",
   searchQuery = "",
+  sortKey = "unit_number",
+  sortDirection = "asc",
 }) {
   const activeStatuses = statuses.filter((row) => !row.inactive);
   const onRoad = activeStatuses.filter((row) => row.state === "road");
@@ -135,17 +255,13 @@ export function buildHomeTimeViewModel({
   const inactiveCount = statuses.filter((row) => row.inactive).length;
   const companyCount = activeStatuses.filter((row) => isCompanyDriver(row.driver_type)).length;
   const ownerCount = activeStatuses.filter((row) => row.driver_type === "owner").length;
+  const requestsByGroupId = groupRowsByGroupId(requests, "requested_at");
+  const historyByGroupId = groupRowsByGroupId(history, "home_arrived_at");
+  const driverRows = buildDriverRows(statuses, requestsByGroupId, historyByGroupId);
 
-  const sortedStatuses = [...statuses].sort((a, b) => {
-    const inactiveDiff = (a.inactive ? 1 : 0) - (b.inactive ? 1 : 0);
-    if (inactiveDiff !== 0) return inactiveDiff;
-    if (a.state !== b.state) return a.state === "road" ? -1 : 1;
-    return String(a.driver_name || "").localeCompare(String(b.driver_name || ""));
-  });
-
-  const filteredStatuses = sortedStatuses.filter((row) => {
-    return matchesStatusFilter(row, statusFilter) && matchesDriverSearch(row, searchQuery);
-  });
+  const filteredStatuses = driverRows
+    .filter((row) => matchesStatusFilter(row, statusFilter) && matchesDriverSearch(row, searchQuery))
+    .sort((a, b) => compareDriverRows(a, b, sortKey, sortDirection));
 
   return {
     activeStatuses,
@@ -155,10 +271,9 @@ export function buildHomeTimeViewModel({
     inactiveCount,
     companyCount,
     ownerCount,
-    sortedStatuses,
     filteredStatuses,
-    requestsByGroupId: groupRowsByGroupId(requests, "requested_at"),
-    historyByGroupId: groupRowsByGroupId(history, "home_arrived_at"),
+    requestsByGroupId,
+    historyByGroupId,
     unlinkedActivity: buildUnlinkedActivity(statuses, requests, history),
   };
 }
