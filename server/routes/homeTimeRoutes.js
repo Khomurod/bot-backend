@@ -10,7 +10,11 @@ const multer = require('multer');
 const { DateTime } = require('luxon');
 const db = require('../../database/db');
 const ht = require('../../database/homeTime');
-const { computeRoadBonus, wholeDaysBetween } = require('../../services/homeTimeConstants');
+const {
+  computeNextEligibleHomeTime,
+  computeRoadBonus,
+  wholeDaysBetween,
+} = require('../../services/homeTimeConstants');
 const groupAccess = require('../../services/groupAccessService');
 const { buildAdminGrantPayload } = require('../../services/groupAccessConstants');
 const homeTimeImport = require('../../services/homeTimeImportService');
@@ -114,6 +118,10 @@ function createHomeTimeRouter({ authMiddleware }) {
             bonusPerWeek: Number(settings.bonus_per_week),
             driverType,
           });
+          const nextHome = computeNextEligibleHomeTime(row.state_since, {
+            roadAllowanceWeeks: settings.road_allowance_weeks,
+            driverType,
+          });
           return {
             ...base,
             days_on_road: live.daysOnRoad,
@@ -121,6 +129,8 @@ function createHomeTimeRouter({ authMiddleware }) {
             over_limit: live.overLimit,
             pending_exceeded_weeks: live.exceededWeeks,
             pending_bonus_usd: live.bonusUsd,
+            next_home_time_at: nextHome.eligibleAtIso,
+            next_home_time_date: nextHome.eligibleDate,
           };
         }
         return {

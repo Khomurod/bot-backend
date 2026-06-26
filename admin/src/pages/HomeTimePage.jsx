@@ -379,7 +379,7 @@ export default function HomeTimePage() {
         </div>
         <table className="table">
           <thead>
-            <tr><th>Driver</th><th>Type</th><th>Unit</th><th>Status</th><th>Since (editable)</th><th>Days</th><th>Bonus building</th></tr>
+            <tr><th>Driver</th><th>Type</th><th>Unit</th><th>Status</th><th>Since (editable)</th><th>Days</th><th>Next home time</th><th>Bonus building</th></tr>
           </thead>
           <tbody>
             {filteredStatuses.map((s) => (
@@ -412,6 +412,15 @@ export default function HomeTimePage() {
                 </td>
                 <td>{s.state === "road" ? `${s.days_on_road}d out` : `${s.days_home}d home`}</td>
                 <td>
+                  {s.state === "home"
+                    ? "Already home"
+                    : !isCompanyDriver(s.driver_type)
+                      ? "N/A (owner operator)"
+                      : s.next_home_time_date
+                        ? `${fmtDate(s.next_home_time_date)}${s.over_limit ? " (eligible now)" : ""}`
+                        : "—"}
+                </td>
+                <td>
                   {s.state !== "road"
                     ? "—"
                     : !isCompanyDriver(s.driver_type)
@@ -423,7 +432,7 @@ export default function HomeTimePage() {
               </tr>
             ))}
             {filteredStatuses.length === 0 && (
-              <tr><td colSpan={7} style={{ textAlign: "center", color: "#888" }}>
+              <tr><td colSpan={8} style={{ textAlign: "center", color: "#888" }}>
                 No drivers match this filter.
               </td></tr>
             )}

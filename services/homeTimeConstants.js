@@ -66,6 +66,25 @@ function homeTimePolicyApplies(driverType) {
   return normalizeHomeTimeDriverType(driverType) === 'company_driver';
 }
 
+function computeNextEligibleHomeTime(roadStart, {
+  roadAllowanceWeeks = DEFAULT_ROAD_ALLOWANCE_WEEKS,
+  driverType = 'company_driver',
+} = {}) {
+  if (!homeTimePolicyApplies(driverType)) {
+    return { eligibleAtIso: null, eligibleDate: null };
+  }
+  const start = toDateTime(roadStart);
+  if (!start.isValid) {
+    return { eligibleAtIso: null, eligibleDate: null };
+  }
+  const allowanceDays = Math.max(0, Number(roadAllowanceWeeks) || 0) * DAYS_PER_WEEK;
+  const eligibleAt = start.plus({ days: allowanceDays }).toUTC();
+  return {
+    eligibleAtIso: eligibleAt.toISO(),
+    eligibleDate: eligibleAt.toISODate(),
+  };
+}
+
 /**
  * Bonus for one road trip.
  * Only FULL extra weeks count: allowance is `roadAllowanceWeeks × 7` days, and
@@ -103,5 +122,6 @@ module.exports = {
   wholeDaysBetween,
   normalizeHomeTimeDriverType,
   homeTimePolicyApplies,
+  computeNextEligibleHomeTime,
   computeRoadBonus,
 };

@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const {
+  computeNextEligibleHomeTime,
   parseDriverStatus,
   computeRoadBonus,
   homeTimePolicyApplies,
@@ -88,5 +89,27 @@ test('computeRoadBonus tracks owner operators without awarding the company bonus
   assert.deepStrictEqual(
     [r.daysOnRoad, r.exceededWeeks, r.bonusUsd, r.policyApplies, r.overLimit],
     [42, 2, 0, false, false]
+  );
+});
+
+test('computeNextEligibleHomeTime returns the exact 4-week home-time date for company drivers', () => {
+  const r = computeNextEligibleHomeTime('2026-01-01T00:00:00Z', {
+    roadAllowanceWeeks: 4,
+    driverType: 'company_driver',
+  });
+  assert.deepStrictEqual(r, {
+    eligibleAtIso: '2026-01-29T00:00:00.000Z',
+    eligibleDate: '2026-01-29',
+  });
+});
+
+test('computeNextEligibleHomeTime returns null for owner operators and invalid dates', () => {
+  assert.deepStrictEqual(
+    computeNextEligibleHomeTime('2026-01-01T00:00:00Z', { roadAllowanceWeeks: 4, driverType: 'owner' }),
+    { eligibleAtIso: null, eligibleDate: null }
+  );
+  assert.deepStrictEqual(
+    computeNextEligibleHomeTime('not-a-date', { roadAllowanceWeeks: 4, driverType: 'company_driver' }),
+    { eligibleAtIso: null, eligibleDate: null }
   );
 });
