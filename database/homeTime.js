@@ -163,6 +163,23 @@ async function setDriverHomeStateSince(groupId, stateSince) {
   return res.rows[0] || null;
 }
 
+/**
+ * Admin override of the current state ('home' | 'road') and/or its start date.
+ * Each field is optional; a null leaves that column untouched (COALESCE). Used by
+ * the admin panel so a wrong/auto-detected state can be corrected by hand.
+ */
+async function setDriverHomeState(groupId, { state, stateSince } = {}) {
+  const res = await query(
+    `UPDATE driver_home_status
+       SET state = COALESCE($2, state),
+           state_since = COALESCE($3, state_since),
+           updated_at = NOW()
+     WHERE group_id = $1 RETURNING *`,
+    [groupId, state || null, stateSince || null]
+  );
+  return res.rows[0] || null;
+}
+
 // ─── Home-time requests ───
 
 async function insertHomeTimeRequest({
@@ -295,6 +312,7 @@ module.exports = {
   updateRoadHistory,
   deleteRoadHistory,
   setDriverHomeStateSince,
+  setDriverHomeState,
   insertHomeTimeRequest,
   getHomeTimeRequestById,
   getPendingHomeTimeRequestForGroup,

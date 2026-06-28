@@ -28,6 +28,8 @@ const {
   isPolicyMet,
   computeHomeWindow,
   homeTimePolicyApplies,
+  hasHomeTimeSignal,
+  buildHomeTimeClassificationPrompt,
 } = require('./homeTimeRequestConstants');
 const { wholeDaysBetween } = require('./homeTimeConstants');
 const { inferDriverType } = require('./driverProfileParse');
@@ -64,31 +66,62 @@ async function resolveDriverLabel(group) {
 }
 
 /**
- * Ask the AI: is the recent conversation a home-time request?
- * Falls back to `true` when the AI is unavailable so a real request is never
- * silently dropped (approver tags are rare and worth surfacing to a human).
+ * Ask the AI whether the recent conversation is a home-time request.
+ *
+ * Inputs:
+ *   - `transcript`  : the last ~30 minutes of the group's chat (for context).
+ *   - `triggerText` : the message that just tagged an approver (carries intent).
+ *
+ * Accuracy guards (an approver tag is usually NOT a home-time request — reps get
+ * tagged for oil changes, load problems, breakdowns, etc.):
+ *   - The AI returns a confidence. A low-confidence "yes" with no home-time
+ *     wording anywhere in the window is treated as "not a request".
+ *   - If the AI is unavailable we no longer blanket-default to "yes"; we fall
+ *     back to deterministic home-time language detection, which only surfaces a
+ *     card when the text actually mentions going home / time off.
+ *
+ * Accepts either an options object `{ transcript, triggerText }` or, for
+ * backward compatibility, a bare transcript string.
  */
-async function classifyHomeTimeRequest(transcript) {
-  const prompt = `You read a short Telegram transcript from a trucking company's driver group. `
-    + `A company representative just tagged a manager. Decide if the conversation is the driver `
-    + `ASKING FOR HOME TIME / time off / to go home (vs. tagged for any other reason such as a `
-    + `load problem, paperwork, breakdown, or general question).\n\n`
-    + `Transcript:\n"""\n${transcript || '(no recent messages)'}\n"""\n\n`
-    + `Respond with JSON only: {"is_home_time_request": true|false, "reason": "<short>"}`;
+async function classifyHomeTimeRequest(input) {
+  const { transcript, triggerText } = typeof input === 'string'
+    ? { transcript: input, triggerText: '' }
+    : (input || {});
+  const haystack = `${triggerText || ''}\n${transcript || ''}`;
+  const keywordSignal = hasHomeTimeSignal(haystack);
+
+  const prompt = buildHomeTimeClassificationPrompt({
+    transcript,
+    triggerText,
+    approvers: HOME_TIME_APPROVER_MENTIONS,
+  });
   try {
     const { parsed } = await callGeminiJson({
       userText: prompt,
       maxOutputTokens: 200,
       validateParsed: (p) => typeof p?.is_home_time_request === 'boolean',
     });
-    return {
-      isRequest: Boolean(parsed.is_home_time_request),
-      reason: String(parsed.reason || '').slice(0, 300),
-      aiUsed: true,
-    };
+    const confidence = String(parsed.confidence || '').toLowerCase();
+    let isRequest = Boolean(parsed.is_home_time_request);
+    let reason = String(parsed.reason || '').slice(0, 300);
+
+    // A low-confidence "yes" with no explicit home-time wording is most likely a
+    // misread of an ordinary tag — do not post a card for it.
+    if (isRequest && confidence === 'low' && !keywordSignal) {
+      isRequest = false;
+      reason = `Low-confidence AI guess with no home-time wording — skipped. ${reason}`.trim();
+    }
+    return { isRequest, reason, confidence: confidence || null, aiUsed: true };
   } catch (err) {
-    console.warn('[HOME-TIME-REQ] AI classification failed, defaulting to request:', err.message);
-    return { isRequest: true, reason: 'AI unavailable - defaulted to request for human review.', aiUsed: false };
+    console.warn('[HOME-TIME-REQ] AI classification failed, using keyword heuristic:', err.message);
+    return {
+      isRequest: keywordSignal,
+      reason: keywordSignal
+        ? 'AI unavailable — home-time wording detected, surfaced for human review.'
+        : 'AI unavailable — no home-time wording detected, not surfaced.',
+      confidence: null,
+      aiUsed: false,
+    };
   }
 }
 
@@ -192,8 +225,12 @@ async function handleApproverMention(telegram, group, message) {
     const existing = await ht.getPendingHomeTimeRequestForGroup(group.id);
     if (existing) return;
 
+    // The triggering message is passed explicitly (in addition to the rolling
+    // buffer) so the AI always sees the actual tag text, even right after a
+    // restart when the buffer has not warmed up yet.
+    const triggerText = message?.text || message?.caption || '';
     const transcript = recentBuffer.renderTranscript(group.telegram_group_id);
-    const verdict = await classifyHomeTimeRequest(transcript);
+    const verdict = await classifyHomeTimeRequest({ transcript, triggerText });
     if (!verdict.isRequest) return;
 
     const settings = await ht.getHomeTimeSettings();
@@ -237,7 +274,9 @@ async function handleApproverMention(telegram, group, message) {
       homeTo,
       status: 'pending',
       source: 'telegram',
-      aiReasoning: verdict.reason || null,
+      aiReasoning: verdict.confidence
+        ? `[confidence: ${verdict.confidence}] ${verdict.reason || ''}`.trim()
+        : (verdict.reason || null),
     });
 
     const cardText = buildCardText({
