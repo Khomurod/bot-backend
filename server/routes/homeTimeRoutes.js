@@ -190,19 +190,49 @@ function createHomeTimeRouter({ authMiddleware }) {
     }
   });
 
-  // PUT /status/:groupId — admin edit of the current state's start date (when the
-  // driver left for the road, or when they came home). Recomputed counters flow
-  // from this on the next overview load.
+  // PUT /status/:groupId — admin edit of the current state. Accepts the start
+  // date (`state_since`) and/or the state itself (`state`: 'home' | 'road'), so an
+  // auto-detected or wrong state can be corrected by hand. Recomputed counters
+  // flow from this on the next overview load. At least one field is required.
   router.put('/status/:groupId', authMiddleware, async (req, res) => {
     try {
       const groupId = Number.parseInt(req.params.groupId, 10);
       if (!(groupId > 0)) return res.status(400).json({ error: 'Invalid group id' });
-      const since = parseDateInput(req.body?.state_since);
-      if (!since) return res.status(400).json({ error: 'state_since must be a valid date' });
-      if (DateTime.fromISO(since) > DateTime.now()) {
-        return res.status(400).json({ error: 'state_since cannot be in the future' });
+
+      const body = req.body || {};
+      const hasState = body.state !== undefined && body.state !== null && body.state !== '';
+      const hasSince = body.state_since !== undefined && body.state_since !== null && body.state_since !== '';
+      if (!hasState && !hasSince) {
+        return res.status(400).json({ error: 'Provide state and/or state_since' });
       }
-      const updated = await ht.setDriverHomeStateSince(groupId, since);
+
+      let state = null;
+      if (hasState) {
+        state = String(body.state);
+        if (state !== 'home' && state !== 'road') {
+          return res.status(400).json({ error: "state must be 'home' or 'road'" });
+        }
+      }
+
+      let since = null;
+      if (hasSince) {
+        since = parseDateInput(body.state_since);
+        if (!since) return res.status(400).json({ error: 'state_since must be a valid date' });
+        if (DateTime.fromISO(since) > DateTime.now()) {
+          return res.status(400).json({ error: 'state_since cannot be in the future' });
+        }
+      }
+
+      const existing = await ht.getDriverHomeStatus(groupId);
+      if (!existing) return res.status(404).json({ error: 'No tracked status for this group' });
+
+      // Flipping the state with no explicit date starts a fresh cycle from now, so
+      // the on-road / at-home counters do not keep counting from the old date.
+      if (state && state !== existing.state && !since) {
+        since = DateTime.now().toUTC().toISO();
+      }
+
+      const updated = await ht.setDriverHomeState(groupId, { state, stateSince: since });
       if (!updated) return res.status(404).json({ error: 'No tracked status for this group' });
       res.json({ status: updated });
     } catch (err) {

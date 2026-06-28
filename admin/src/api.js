@@ -1160,12 +1160,16 @@ export async function updateHomeTimeSettings(patch) {
   return res.json();
 }
 
-export async function updateHomeTimeStatusSince(groupId, stateSince) {
+export async function updateHomeTimeStatus(groupId, patch) {
   const res = await fetch(`${API_BASE}/home-time/status/${groupId}`, {
-    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ state_since: stateSince }),
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify(patch || {}),
   });
   if (!res.ok) { await handleApiError(res); }
   return res.json();
+}
+
+export async function updateHomeTimeStatusSince(groupId, stateSince) {
+  return updateHomeTimeStatus(groupId, { state_since: stateSince });
 }
 
 export async function updateHomeTimeTrip(id, payload) {

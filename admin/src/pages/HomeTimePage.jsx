@@ -106,6 +106,7 @@ export default function HomeTimePage() {
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [stateSinceDraft, setStateSinceDraft] = useState("");
+  const [stateDraft, setStateDraft] = useState("");
   const [tripDrafts, setTripDrafts] = useState({});
   const [reg, setReg] = useState({
     group_id: "",
@@ -161,6 +162,24 @@ export default function HomeTimePage() {
     try {
       await api.updateHomeTimeStatusSince(groupId, dateStr);
       flash("success", "Start date updated.");
+      await load();
+    } catch (err) {
+      flash("error", err.message);
+    }
+  };
+
+  const saveSelectedState = async () => {
+    if (!selectedStatus || !stateDraft || stateDraft === selectedStatus.state) return;
+    setStatus(null);
+    try {
+      const payload = { state: stateDraft };
+      // When the date draft is explicitly edited too, send it so the new cycle
+      // starts from the chosen date instead of "now".
+      if (stateSinceDraft && stateSinceDraft !== toDateInput(selectedStatus.state_since)) {
+        payload.state_since = stateSinceDraft;
+      }
+      await api.updateHomeTimeStatus(selectedStatus.group_id, payload);
+      flash("success", "Current state updated.");
       await load();
     } catch (err) {
       flash("error", err.message);
@@ -330,9 +349,11 @@ export default function HomeTimePage() {
   useEffect(() => {
     if (!selectedStatus) {
       setStateSinceDraft("");
+      setStateDraft("");
       return;
     }
     setStateSinceDraft(toDateInput(selectedStatus.state_since));
+    setStateDraft(selectedStatus.state || "");
     setTripDrafts({});
     setReg((current) => ({
       ...current,
@@ -805,13 +826,34 @@ export default function HomeTimePage() {
                 <div className="home-time-section-head">
                   <div>
                     <h4>Current status</h4>
-                    <p>Edit the date that started the current road or home cycle. Counters recalculate from this date.</p>
+                    <p>
+                      Change the state (on the road / at home) or the date that started the current cycle. Counters
+                      recalculate from the start date. Flipping the state without picking a new date restarts the cycle
+                      from today.
+                    </p>
                   </div>
                 </div>
                 <div className="home-time-form-grid">
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label>Current state</label>
-                    <div className="home-time-readonly">{selectedStatus.state === "road" ? "On the road" : "At home"}</div>
+                    <select
+                      className="form-select"
+                      value={stateDraft}
+                      onChange={(e) => setStateDraft(e.target.value)}
+                    >
+                      <option value="road">On the road</option>
+                      <option value="home">At home</option>
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0, alignSelf: "end" }}>
+                    <button
+                      className="btn btn-primary"
+                      type="button"
+                      onClick={saveSelectedState}
+                      disabled={!stateDraft || stateDraft === selectedStatus.state}
+                    >
+                      Save state
+                    </button>
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label>Since</label>
