@@ -38,6 +38,10 @@ const {
   startRaiseApprovalService,
   stopRaiseApprovalService,
 } = require('./services/raiseApprovalService');
+const {
+  startFuelStopAlertService,
+  stopFuelStopAlertService,
+} = require('./services/fuelStopAlertService');
 const db = require('./database/db');
 
 const DB_DRAIN_TIMEOUT_MS = 5000;
@@ -257,7 +261,7 @@ function startSamsaraBot() {
   }
 
   const samsaraPort = Number.parseInt(process.env.SAMSARA_PORT || '3002', 10);
-  const heapLimit = Number.parseInt(process.env.SAMSARA_MAX_OLD_SPACE_MB || '64', 10);
+  const heapLimit = Number.parseInt(process.env.SAMSARA_MAX_OLD_SPACE_MB || '40', 10);
 
   try {
     const child = spawn(process.execPath, [
@@ -382,6 +386,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopMileageBonusService(); } catch (err) { console.error('[SHUTDOWN] stopMileageBonusService failed:', err.message); }
   try { stopDatatruckDocumentService(); } catch (err) { console.error('[SHUTDOWN] stopDatatruckDocumentService failed:', err.message); }
   try { stopRaiseApprovalService(); } catch (err) { console.error('[SHUTDOWN] stopRaiseApprovalService failed:', err.message); }
+  try { stopFuelStopAlertService(); } catch (err) { console.error('[SHUTDOWN] stopFuelStopAlertService failed:', err.message); }
 
   await Promise.allSettled([
     stopFacebookWebhookWorker(),
@@ -424,6 +429,7 @@ async function start() {
   startMileageBonusService();
   startDatatruckDocumentService();
   startRaiseApprovalService();
+  startFuelStopAlertService(bot.telegram);
   await startFacebookWebhookWorker();
   startLeadsBot();
   startSamsaraBot();

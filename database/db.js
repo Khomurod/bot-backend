@@ -15,7 +15,8 @@ const pool = new Pool({
   connectionString: config.databaseUrl,
   // Keep the pool modest: this app runs on a memory-constrained single
   // instance and most database providers' free tiers cap total connections.
-  max: Number.parseInt(process.env.PG_POOL_MAX || '10', 10),
+  // Lowered to 5 to free memory headroom on the 512MB free Render instance.
+  max: Number.parseInt(process.env.PG_POOL_MAX || '5', 10),
   idleTimeoutMillis: Number.parseInt(process.env.PG_IDLE_TIMEOUT_MS || '30000', 10),
   // Free-tier databases can be slow to open a fresh connection (cold start +
   // SSL handshake), so allow a generous window. Set 0 to wait indefinitely.
@@ -239,6 +240,16 @@ function normalizeProfileFieldSource(value) {
   return ['bot', 'ai', 'manual'].includes(value) ? value : null;
 }
 
+// Telegram usernames are case-insensitive and stored without the leading '@'.
+// Returns null for empty / invalid input.
+function normalizeTelegramUsername(value) {
+  if (value == null) return null;
+  const cleaned = String(value).trim().replace(/^@+/, '').toLowerCase();
+  if (!cleaned) return null;
+  // Telegram handles are 5-32 chars of [a-z0-9_]; be lenient but strip junk.
+  return /^[a-z0-9_]{3,32}$/.test(cleaned) ? cleaned : cleaned.replace(/[^a-z0-9_]/g, '') || null;
+}
+
 function parseOptionalDate(value) {
   if (!value) return null;
   const d = new Date(value);
@@ -440,6 +451,7 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
     date_of_start: parseOptionalDate(data.date_of_start),
     needs_review: data.needs_review === true,
     backfill_confidence: Number.isInteger(data.backfill_confidence) ? data.backfill_confidence : null,
+    telegram_username: normalizeTelegramUsername(data.telegram_username),
   };
 
   const res = await query(
@@ -448,14 +460,14 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
        first_name_source, last_name_source, secondary_first_name_source, secondary_last_name_source,
        driver_type, driver_type_source, status, unit_number, unit_number_source,
        language, date_of_birth, date_of_start, needs_review, backfill_confidence,
-       created_at, updated_at
+       telegram_username, created_at, updated_at
      )
      VALUES (
        $1, $2, $3, $4, $5,
        $6, $7, $8, $9,
        $10, $11, $12, $13, $14,
        $15, $16, $17, $18, $19,
-       NOW(), NOW()
+       $20, NOW(), NOW()
      )
      ON CONFLICT (group_id)
      DO UPDATE SET
@@ -477,6 +489,10 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
        date_of_start = EXCLUDED.date_of_start,
        needs_review = EXCLUDED.needs_review,
        backfill_confidence = EXCLUDED.backfill_confidence,
+       -- Never wipe an admin-entered username when other writers (AI sync,
+       -- backfill) upsert without one. Clearing is done via
+       -- setDriverTelegramUsername().
+       telegram_username = COALESCE(EXCLUDED.telegram_username, driver_profiles.telegram_username),
        updated_at = NOW()
      RETURNING *`,
     [
@@ -499,6 +515,7 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
       normalized.date_of_start,
       normalized.needs_review,
       normalized.backfill_confidence,
+      normalized.telegram_username,
     ]
   );
   const row = res.rows[0] || null;
@@ -554,6 +571,20 @@ async function updateDriverProfile(id, data, opts = {}) {
     syncStatus: hasOwn('status'),
     groupStatusSource: hasOwn('status') ? (opts.groupStatusSource || 'manual') : (opts.groupStatusSource || null),
   });
+}
+
+// Set or clear a driver's Telegram username for the Fuel Monitor. Direct
+// UPDATE (not the upsert merge) so the admin can explicitly clear it.
+async function setDriverTelegramUsername(groupId, username) {
+  const normalized = normalizeTelegramUsername(username);
+  const res = await query(
+    `UPDATE driver_profiles
+     SET telegram_username = $2, updated_at = NOW()
+     WHERE group_id = $1
+     RETURNING *`,
+    [Number(groupId), normalized]
+  );
+  return getDriverProfileByGroupId(Number(groupId)).catch(() => res.rows[0] || null);
 }
 
 async function updateGroupSamsaraId(groupId, samsaraId) {
@@ -1031,6 +1062,138 @@ async function completeDispatchEtaUpdateFailure({ id, nextRunAt, errorMessage })
     [id, String(errorMessage || 'Unknown ETA update error').slice(0, 1000), nextRunAt]
   );
   return res.rows[0] || null;
+}
+
+// ─── Fuel Monitor: gas-station proximity alerts ───
+
+// Create one "watching" row for a gas-station location posted in a driver
+// group. Skips if an identical un-finished watch already exists for the same
+// source message (idempotent against duplicate message handling).
+async function createFuelStopAlert({
+  groupId,
+  telegramGroupId,
+  sourceMessageId,
+  stationName = null,
+  stationAddress = null,
+  stationLat,
+  stationLng,
+  radiusMiles = 10,
+  expiresInHours = 24,
+}) {
+  if (!Number.isFinite(Number(stationLat)) || !Number.isFinite(Number(stationLng))) {
+    return null;
+  }
+  const existing = await query(
+    `SELECT id FROM fuel_stop_alerts
+     WHERE group_id = $1 AND source_message_id = $2 AND status = 'watching'
+     LIMIT 1`,
+    [Number(groupId), Number(sourceMessageId)]
+  );
+  if (existing.rows[0]) return existing.rows[0];
+
+  const res = await query(
+    `INSERT INTO fuel_stop_alerts (
+       group_id, telegram_group_id, source_message_id,
+       station_name, station_address, station_lat, station_lng,
+       radius_miles, status, expires_at
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'watching',
+             NOW() + ($9 || ' hours')::INTERVAL)
+     RETURNING *`,
+    [
+      Number(groupId),
+      String(telegramGroupId),
+      Number(sourceMessageId),
+      stationName ? String(stationName).slice(0, 300) : null,
+      stationAddress ? String(stationAddress).slice(0, 500) : null,
+      Number(stationLat),
+      Number(stationLng),
+      Number.isFinite(Number(radiusMiles)) ? Number(radiusMiles) : 10,
+      String(Math.max(1, Number(expiresInHours) || 24)),
+    ]
+  );
+  return res.rows[0] || null;
+}
+
+// Claim due watch rows for processing. Joins the group title (holds the unit #
+// used to resolve the truck) and the driver's saved Telegram username + name.
+async function claimDueFuelStopAlerts(limit = 20) {
+  const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 20;
+  const res = await query(
+    `WITH due AS (
+       SELECT id
+       FROM fuel_stop_alerts
+       WHERE status = 'watching'
+         AND (expires_at IS NULL OR expires_at > NOW())
+         AND (processing = FALSE OR processing_started_at < NOW() - INTERVAL '10 minutes')
+       ORDER BY created_at ASC
+       LIMIT $1
+       FOR UPDATE SKIP LOCKED
+     )
+     UPDATE fuel_stop_alerts f
+     SET processing = TRUE,
+         processing_started_at = NOW()
+     FROM due
+     WHERE f.id = due.id
+     RETURNING f.*,
+       (SELECT group_name FROM groups g WHERE g.id = f.group_id) AS group_name,
+       (SELECT telegram_username FROM driver_profiles dp WHERE dp.group_id = f.group_id) AS telegram_username,
+       (SELECT first_name FROM driver_profiles dp WHERE dp.group_id = f.group_id) AS first_name,
+       (SELECT last_name FROM driver_profiles dp WHERE dp.group_id = f.group_id) AS last_name`,
+    [safeLimit]
+  );
+  return res.rows;
+}
+
+// Finish a claimed row: 'notified' (fired once), 'watching' (still waiting),
+// 'expired', or 'error'.
+async function completeFuelStopAlert(id, { status, distanceMiles = null, error = null } = {}) {
+  const nextStatus = ['notified', 'watching', 'expired', 'error'].includes(status)
+    ? status
+    : 'watching';
+  const res = await query(
+    `UPDATE fuel_stop_alerts
+     SET processing = FALSE,
+         processing_started_at = NULL,
+         status = $2,
+         last_distance_miles = COALESCE($3, last_distance_miles),
+         last_checked_at = NOW(),
+         last_error = $4,
+         notified_at = CASE WHEN $2 = 'notified' THEN NOW() ELSE notified_at END
+     WHERE id = $1
+     RETURNING *`,
+    [
+      Number(id),
+      nextStatus,
+      distanceMiles == null ? null : Number(distanceMiles),
+      error ? String(error).slice(0, 1000) : null,
+    ]
+  );
+  return res.rows[0] || null;
+}
+
+// Mark watch rows past their expiry as expired (housekeeping; keeps the
+// working set small).
+async function expireOldFuelStopAlerts() {
+  const res = await query(
+    `UPDATE fuel_stop_alerts
+     SET status = 'expired', processing = FALSE, processing_started_at = NULL
+     WHERE status = 'watching' AND expires_at IS NOT NULL AND expires_at <= NOW()
+     RETURNING id`
+  );
+  return res.rowCount || 0;
+}
+
+// Currently-watching alerts, newest first — powers the admin "watching" view.
+async function listActiveFuelStopAlerts() {
+  const res = await query(
+    `SELECT f.*, g.group_name
+     FROM fuel_stop_alerts f
+     JOIN groups g ON g.id = f.group_id
+     WHERE f.status = 'watching'
+     ORDER BY f.created_at DESC`
+  );
+  return res.rows;
 }
 
 async function createScheduledMessage(data) {
@@ -2802,6 +2965,7 @@ async function listGroupDirectorySourceRows({ includeNonDrivers = true } = {}) {
         dp.date_of_start,
         dp.needs_review,
         dp.backfill_confidence,
+        dp.telegram_username,
         dp.created_at AS profile_created_at,
         dp.updated_at AS profile_updated_at,
         s.state AS home_state,
@@ -2912,6 +3076,13 @@ module.exports = {
   claimDueDispatchEtaUpdates,
   completeDispatchEtaUpdateSuccess,
   completeDispatchEtaUpdateFailure,
+  // Fuel Monitor (gas-station proximity alerts)
+  setDriverTelegramUsername,
+  createFuelStopAlert,
+  claimDueFuelStopAlerts,
+  completeFuelStopAlert,
+  expireOldFuelStopAlerts,
+  listActiveFuelStopAlerts,
   // Drivers
   upsertDriver,
   getDriverByTelegramId,

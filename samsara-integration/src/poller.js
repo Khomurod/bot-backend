@@ -27,7 +27,7 @@ const ENABLE_POLL_METRICS = process.env.SAMSARA_POLL_METRICS !== 'false';
 // Intentionally hardcoded for reliable late-event capture; no env override.
 const POLL_BOOTSTRAP_WINDOW_MS = 86_400_000; // 24 hours
 const POLL_WATERMARK_OVERLAP_MS = 7_200_000; // 2 hours
-const MAX_ALERT_QUEUE = parseInt(process.env.SAMSARA_QUEUE_MAX || '200', 10);
+const MAX_ALERT_QUEUE = parseInt(process.env.SAMSARA_QUEUE_MAX || '100', 10);
 
 // ── Rate-Limited Telegram Queue ─────────────────────────────────────────────
 // Telegram has limits (usually ~30 msgs/sec globally, and ~20 msgs/min per group).
@@ -43,7 +43,7 @@ let droppedAlertsCount = 0;
 const SEEN_IDS = new Set();
 // In-flight deliveries (picked up but not yet marked processed in DB).
 const PENDING_DELIVERY_IDS = new Set();
-const MAX_SEEN_IDS = 1000;
+const MAX_SEEN_IDS = parseInt(process.env.SAMSARA_SEEN_IDS_MAX || '500', 10);
 
 async function noteEventDelivered(eventId) {
     if (!eventId) return;

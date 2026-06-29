@@ -24,6 +24,7 @@ const {
   registerDispatchStatusLookupHandlers,
 } = require('./dispatchStatusLookupHandlers');
 const { scheduleLoadIngest } = require('../services/loadIngestionService');
+const { handleFuelStopMessage } = require('../services/fuelStopAlertService');
 const { handleDriverGroupStatus } = require('../services/homeTimeService');
 const recentMessageBuffer = require('../services/recentMessageBuffer');
 const { handleApproverMention, handleHomeTimeDateReply } = require('../services/homeTimeRequestService');
@@ -434,6 +435,15 @@ async function startBot() {
             db.recordGroupMessageSeen(group.id, seenAtIso).catch(() => {});
             // Watch for "Status: Home / Ready / Rolling". Never throws.
             await handleDriverGroupStatus(bot.telegram, group, ctx.message);
+
+            // Fuel Monitor: if this is a gas-station location, start watching the
+            // truck and remind the driver when within range. Detached + never
+            // throws; cheap pre-filter means most messages exit immediately.
+            if (group.active) {
+              handleFuelStopMessage(bot.telegram, group, ctx.message).catch((err) => {
+                console.error('[BOT] handleFuelStopMessage failed:', err.message);
+              });
+            }
 
             // Keep a short rolling buffer of this group's chat so the home-time
             // request feature has ~30 min of context for the AI.

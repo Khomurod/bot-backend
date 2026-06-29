@@ -1255,3 +1255,22 @@ export async function requestGroupAdmin(groupId) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+/** Fuel Monitor: active company drivers + their saved Telegram usernames. */
+export async function getFuelMonitor() {
+  const res = await fetch(`${API_BASE}/fuel-monitor`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return Array.isArray(data?.drivers) ? data.drivers : [];
+}
+
+/** Set or clear (empty string) a driver's Telegram username by group id. */
+export async function updateFuelMonitorUsername(groupId, telegramUsername) {
+  const res = await fetch(`${API_BASE}/fuel-monitor/${groupId}/username`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify({ telegram_username: telegramUsername }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

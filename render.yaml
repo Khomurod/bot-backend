@@ -73,7 +73,15 @@ services:
       - key: NODE_OPTIONS
         # Main process heap cap. Kept well under the 512MB instance so the
         # spawned samsara (Node child) and leads-bot (Python child) have room.
-        value: --max-old-space-size=300
+        # 256 (was 300) leaves more OS/GC headroom to avoid OOM kills.
+        value: --max-old-space-size=256
+      # Limit glibc malloc arenas to reduce native heap fragmentation in the
+      # main Node process (the Python child already sets this).
+      - key: MALLOC_ARENA_MAX
+        value: "2"
+      # Heap cap for the spawned Samsara Node child (it mostly polls).
+      - key: SAMSARA_MAX_OLD_SPACE_MB
+        value: "40"
 
   - type: web
     name: samsara-poller

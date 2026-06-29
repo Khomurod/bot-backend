@@ -47,6 +47,7 @@ function buildBaseDirectoryRow(row = {}) {
     driver_type_source: row.driver_type_source || null,
     status,
     inactive,
+    telegram_username: row.telegram_username || null,
     unit_number: row.unit_number || null,
     unit_number_source: row.unit_number_source || null,
     language: row.profile_language || row.group_language || 'en',

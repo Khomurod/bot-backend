@@ -1,7 +1,18 @@
-const { PDFParse } = require('pdf-parse');
-const { createWorker } = require('tesseract.js');
-
 require('dotenv').config();
+
+// Heavy deps — lazy-loaded on first use so they don't sit resident in memory
+// on the 512MB free instance. pdf-parse pulls in a large parser and
+// tesseract.js loads WASM + a ~5MB model; most requests never touch a PDF/OCR.
+let _PDFParse = null;
+function getPDFParse() {
+  if (!_PDFParse) ({ PDFParse: _PDFParse } = require('pdf-parse'));
+  return _PDFParse;
+}
+let _createWorker = null;
+function getCreateWorker() {
+  if (!_createWorker) ({ createWorker: _createWorker } = require('tesseract.js'));
+  return _createWorker;
+}
 
 const { callGroqWithFallback } = require('../../services/groqClient');
 const {
@@ -92,7 +103,7 @@ function isWeakDispatchRawText(rawText) {
 }
 
 async function extractTextFromPdf(buffer) {
-  const parser = new PDFParse({ data: buffer });
+  const parser = new (getPDFParse())({ data: buffer });
   try {
     const result = await parser.getText();
     const textLayer = String(result?.text || '').trim();
@@ -108,7 +119,7 @@ async function extractTextFromPdf(buffer) {
       const screenshots = await parser.getScreenshot({ scale: 2, imageDataUrl: false });
       const pages = Array.isArray(screenshots?.pages) ? screenshots.pages.slice(0, PDF_OCR_MAX_PAGES) : [];
       if (pages.length > 0) {
-        const worker = await createWorker('eng');
+        const worker = await getCreateWorker()('eng');
         try {
           const fragments = [];
           for (const page of pages) {
@@ -144,7 +155,7 @@ async function extractTextFromImage(buffer) {
   if (!OCR_ENABLED) {
     return { text: '', usedPdfOcr: false };
   }
-  const worker = await createWorker('eng');
+  const worker = await getCreateWorker()('eng');
   try {
     const result = await worker.recognize(buffer);
     return {

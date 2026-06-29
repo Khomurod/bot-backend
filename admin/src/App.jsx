@@ -16,6 +16,7 @@ import RaiseApprovalPage from "./pages/RaiseApprovalPage";
 import RaisePublicPage from "./pages/RaisePublicPage";
 import HomeTimePage from "./pages/HomeTimePage";
 import GroupAccessPage from "./pages/GroupAccessPage";
+import FuelMonitorPage from "./pages/FuelMonitorPage";
 
 function getPageFromPath(pathname) {
   if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) {
@@ -138,6 +139,7 @@ export default function App() {
     mileage_bonus: <MileageBonusPage />,
     raise_approval: <RaiseApprovalPage />,
     home_time: <HomeTimePage />,
+    fuel_monitor: <FuelMonitorPage />,
     group_access: <GroupAccessPage />,
     manager: <MessageManagerPage />,
     scheduled: <ScheduledMessagesPage />,
@@ -171,6 +173,7 @@ export default function App() {
         { key: 'mileage_bonus', icon: '🏁', label: 'Mileage Bonuses' },
         { key: 'raise_approval', icon: '💵', label: 'Driver Raises' },
         { key: 'home_time', icon: '🏠', label: 'Driver Home Time' },
+        { key: 'fuel_monitor', icon: '⛽', label: 'Fuel Monitor' },
         { key: 'group_access', icon: '🔍', label: 'Bot Group Access' },
       ],
     },
