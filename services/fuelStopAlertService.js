@@ -25,11 +25,13 @@ const POLL_INTERVAL_MS = 150 * 1000; // 2.5 min — gentle on memory + APIs.
 const ALERT_MAX_BATCH = 10;
 const DEFAULT_RADIUS_MILES = 10;
 
-// Keywords / patterns that mark a message as a possible fuel instruction.
-// Kept broad on purpose; the AI step (or regex fallback) confirms.
-const FUEL_KEYWORDS = /(\bfuel\b|fuel\s*up|fuel\s*station|gas\s*station|⛽|🛢|love'?s|pilot|flying\s*j|\bta\b|petro|speedway|sapp\s*bros|kwik|maverik|loves\s*travel)/i;
-const MAPS_LINK = /(maps\.app\.goo\.gl|google\.[a-z.]+\/maps|maps\.google\.|goo\.gl\/maps)/i;
-// Loose US street-address shape: "<number> <words>, <city>, ST <zip?>".
+// The ONLY trigger: the Fuel Monitoring team always opens their instruction
+// with the "FUEL MONITORING DEPARTMENT" banner (surrounded by emojis). We gate
+// strictly on this header so ordinary chatter and load-location updates (which
+// also contain addresses/maps links) are never mistaken for a fuel stop.
+const FUEL_HEADER_RE = /fuel\s*monitoring\s*department/i;
+// Loose US street-address shape: "<number> <words>, <city>, ST <zip?>" — used
+// only to pull the address OUT of a message already confirmed by the header.
 const ADDRESS_RE = /\d{1,6}\s+[A-Za-z0-9 .'\-/]+,\s*[A-Za-z .'\-]+,?\s*[A-Z]{2}\b(?:[, ]+\d{5}(?:-\d{4})?)?/;
 
 let schedulerStopped = false;
@@ -58,53 +60,83 @@ function milesLabel(distanceMiles) {
   return String(Math.round(distanceMiles));
 }
 
+/** The raw text of a message (text or caption), trimmed. */
+function messageText(message) {
+  return normalizeText(message?.text || message?.caption || '');
+}
+
 /**
- * Extract a station from a Telegram message, if it looks like a fuel stop.
+ * True only when the message STARTS with the Fuel Monitoring Department banner
+ * (its first non-empty line). Case-insensitive and tolerant of the surrounding
+ * emojis/whitespace. This is the sole trigger for the whole feature.
+ */
+function messageHasFuelHeader(text) {
+  const firstLine = (String(text || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.length > 0)) || '';
+  return FUEL_HEADER_RE.test(firstLine);
+}
+
+/**
+ * Pull a station name + street address out of an already-confirmed fuel
+ * message using regex only (no AI, no network). Returns { stationName, address }
+ * with empty strings when nothing is found.
+ */
+function extractStationFromText(text) {
+  const raw = String(text || '');
+  const addressMatch = raw.match(ADDRESS_RE);
+  const address = addressMatch ? normalizeText(addressMatch[0]) : '';
+
+  // Station name usually follows a "⛽: <name>" / ": <name>" line under the
+  // banner (e.g. "⛽ : Loves Travel Stop"). Best-effort only.
+  let stationName = '';
+  const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean);
+  for (let i = 1; i < lines.length; i += 1) {
+    const m = lines[i].match(/^[^A-Za-z0-9]*:?\s*([A-Za-z][A-Za-z0-9 '&./-]{2,60})$/);
+    if (m && !FUEL_HEADER_RE.test(lines[i]) && !/please|fuel up|good day|station/i.test(lines[i])) {
+      stationName = normalizeText(m[1]);
+      break;
+    }
+  }
+  return { stationName, address };
+}
+
+/** True when the driver profile is an active company driver (Fuel Monitor scope). */
+function isCompanyDriverProfile(profile) {
+  return Boolean(profile)
+    && profile.driver_type === 'company_driver'
+    && profile.status !== 'inactive';
+}
+
+/**
+ * Detect a fuel-stop instruction in a Telegram message.
  * Returns { latitude, longitude, stationName, stationAddress } or null.
- * No DB writes; safe to call on every group message.
+ * Gated on the FUEL MONITORING DEPARTMENT header so load-location updates,
+ * plain chatter, and stray location pins are ignored. No DB writes.
  */
 async function detectStationFromMessage(message) {
   if (!message) return null;
 
-  // 1. Telegram location pin / venue → coordinates are exact, no geocoding.
-  const venue = message.venue;
-  const pin = message.location || venue?.location;
-  if (pin && Number.isFinite(pin.latitude) && Number.isFinite(pin.longitude)) {
-    return {
-      latitude: pin.latitude,
-      longitude: pin.longitude,
-      stationName: normalizeText(venue?.title) || null,
-      stationAddress: normalizeText(venue?.address) || null,
-    };
-  }
+  // SOLE GATE: must start with the Fuel Monitoring Department banner.
+  const text = messageText(message);
+  if (!messageHasFuelHeader(text)) return null;
 
-  // 2. Text/caption: cheap pre-filter before any AI cost.
-  const text = normalizeText(message.text || message.caption || '');
-  if (!text) return null;
-  const looksFuelish = FUEL_KEYWORDS.test(text) || MAPS_LINK.test(text) || ADDRESS_RE.test(text);
-  if (!looksFuelish) return null;
-
-  // 3. AI confirm + extract the station name and address (best effort).
+  // AI confirm + extract the station name and address (best effort).
   let stationName = null;
   let address = null;
   try {
     const { parsed } = await callGeminiJson({
       systemText:
-        'You read Telegram messages posted in a truck driver\'s group. Decide if the message '
-        + 'instructs the driver to STOP and FUEL at a specific gas/fuel station, and if so extract '
-        + 'the station name and its full street address.',
+        'You read fuel-stop instructions posted by a Fuel Monitoring Department in a truck '
+        + 'driver\'s group. Extract the fuel station name and its full street address.',
       userText:
         `Message:\n"""${text.slice(0, 1200)}"""\n\n`
         + 'Respond ONLY with JSON: '
-        + '{"is_fuel_instruction": boolean, "station_name": string, "address": string}. '
-        + 'If it is not a fuel instruction set is_fuel_instruction=false and use empty strings.',
+        + '{"station_name": string, "address": string}. Use empty strings if unknown.',
       maxOutputTokens: 200,
-      validateParsed: (p) => typeof p?.is_fuel_instruction === 'boolean',
+      validateParsed: (p) => p && typeof p === 'object',
     });
-    if (parsed && parsed.is_fuel_instruction === false) {
-      // AI is confident this is not a fuel instruction → drop it.
-      return null;
-    }
     stationName = normalizeText(parsed?.station_name) || null;
     address = normalizeText(parsed?.address) || null;
   } catch (err) {
@@ -112,14 +144,18 @@ async function detectStationFromMessage(message) {
     console.warn('[FUEL-ALERT] AI extraction failed, using regex fallback:', err.message);
   }
 
-  // 4. Regex address fallback when AI gave nothing usable.
-  if (!address) {
-    const match = text.match(ADDRESS_RE);
-    address = match ? normalizeText(match[0]) : '';
+  // Regex fallback when AI gave nothing usable.
+  if (!address || !stationName) {
+    const extracted = extractStationFromText(text);
+    if (!address) address = extracted.address;
+    if (!stationName) stationName = extracted.stationName || null;
   }
-  if (!address) return null;
+  if (!address) {
+    console.warn('[FUEL-ALERT] Fuel header found but no address could be extracted.');
+    return null;
+  }
 
-  // 5. Geocode the address to coordinates (free Nominatim/Photon, optional Google).
+  // Geocode the address to coordinates (free Nominatim/Photon, optional Google).
   const geo = await geocodePlace(address).catch(() => null);
   if (!geo || !Number.isFinite(geo.latitude) || !Number.isFinite(geo.longitude)) {
     console.warn(`[FUEL-ALERT] Could not geocode fuel address: "${address.slice(0, 120)}"`);
@@ -143,6 +179,15 @@ async function handleFuelStopMessage(telegram, group, message) {
     if (!group || group.group_type !== 'driver' || !group.active) return;
     const messageId = message?.message_id;
     if (!messageId) return;
+
+    // Cheap string gate first — bail before any DB/AI/geocode work unless this
+    // message is an actual Fuel Monitoring Department instruction.
+    if (!messageHasFuelHeader(messageText(message))) return;
+
+    // Only company drivers are in the Fuel Monitor scope (matches the admin
+    // page's source of truth). Owner-operators / non-company groups are ignored.
+    const profile = await db.getDriverProfileByGroupId(group.id).catch(() => null);
+    if (!isCompanyDriverProfile(profile)) return;
 
     const station = await detectStationFromMessage(message);
     if (!station) return;
@@ -331,6 +376,10 @@ function stopFuelStopAlertService() {
 
 module.exports = {
   configureFuelStopTelegram,
+  messageHasFuelHeader,
+  messageText,
+  extractStationFromText,
+  isCompanyDriverProfile,
   detectStationFromMessage,
   handleFuelStopMessage,
   buildReminderBody,
