@@ -2,18 +2,19 @@
  * Datatruck BOL/POD document delivery — pure helpers (no network / DB / Telegram).
  *
  * The flow: poll the Datatruck OpenAPI for recently-delivered orders, look at
- * each order's `documents` array, and forward newly-uploaded Bill of Lading /
- * Proof of Delivery files to the matching driver's Telegram group. Everything
+ * each order's `documents` array, and forward newly-uploaded Bills of Lading
+ * and Proofs of Delivery to the matching driver's Telegram group. Everything
  * in this module is side-effect free so it can be unit-tested in isolation.
  */
 const { normalizePersonName } = require('./driverGroupTitle');
 
-// Datatruck document `file_type` values we forward, mapped to a human label.
-// Only these two are delivered to driver groups.
-const TRACKED_DOCUMENT_LABELS = {
-  bill_of_lading: { short: 'BOL', long: 'Bill of Lading' },
-  proof_of_delivery: { short: 'POD', long: 'Proof of Delivery' },
-};
+// The only Datatruck document types that may be delivered to driver groups.
+const BOL_FILE_TYPE = 'bill_of_lading';
+const POD_FILE_TYPE = 'proof_of_delivery';
+const TRACKED_DOCUMENT_LABELS = Object.freeze({
+  [BOL_FILE_TYPE]: Object.freeze({ short: 'BOL', long: 'Bill of Lading' }),
+  [POD_FILE_TYPE]: Object.freeze({ short: 'POD', long: 'Proof of Delivery' }),
+});
 
 function trackedDocumentTypes() {
   return Object.keys(TRACKED_DOCUMENT_LABELS);
@@ -67,6 +68,7 @@ function extractOrderUnit(order) {
 /** Primary + team driver names from the order or its trip. */
 function extractOrderDriverNames(order) {
   const names = [
+    order?.assigned_driver_n_truck?.driver_full_name,
     order?.driver__full_name,
     order?.trip?.driver__full_name,
     order?.team_driver__full_name,
@@ -83,6 +85,21 @@ function extractOrderDriverNames(order) {
     out.push(name);
   }
   return out;
+}
+
+/** Driver/uploader name attached to the Datatruck document, when available. */
+function extractDocumentUploaderName(doc) {
+  const value = doc?.uploaded_by;
+  if (value && typeof value === 'object') {
+    return String(
+      value.full_name
+      || value.driver_full_name
+      || value.name
+      || [value.first_name, value.last_name].filter(Boolean).join(' ')
+      || ''
+    ).trim() || null;
+  }
+  return String(value || '').trim() || null;
 }
 
 /**
@@ -102,7 +119,7 @@ function buildDocumentSignature({ orderId: id, fileType, uploadedAt, seq }) {
 }
 
 /**
- * Extract the tracked (BOL/POD) documents from one order, each annotated with a
+ * Extract BOL/POD documents from one order, each annotated with a
  * stable signature and the order's matching context. Returns [] when the order
  * has no tracked documents.
  */
@@ -127,7 +144,7 @@ function extractTrackedDocuments(order) {
       loadReference: orderLoadReference(order),
       fileType,
       fileLink,
-      uploadedBy: doc?.uploaded_by ? String(doc.uploaded_by) : null,
+      uploadedBy: extractDocumentUploaderName(doc),
       uploadedAt,
       uploadedAtMs: parseUploadedAtMs(uploadedAt),
       unitNumber: extractOrderUnit(order),
@@ -138,22 +155,18 @@ function extractTrackedDocuments(order) {
 }
 
 /**
- * Build lookup indexes from the canonical driver-group directory rows so an
- * order can be matched to its Telegram group by unit number (preferred) or
- * driver name (fallback). Only active, operationally-visible driver groups that
+ * Build a lookup index from canonical driver-group directory rows so a
+ * document can be matched to its Telegram group by driver name. Only active,
+ * operationally-visible driver groups that
  * the bot can actually message are indexed.
  */
 function buildGroupMatchIndex(directoryRows) {
-  const byUnit = new Map();
   const byNameKey = new Map();
   for (const row of Array.isArray(directoryRows) ? directoryRows : []) {
     if (row?.group_type !== 'driver') continue;
     if (row.inactive || row.group_active === false) continue;
     if (row.operational_visible === false) continue;
     if (!row.telegram_group_id) continue;
-
-    const unit = normalizeUnitNumber(row.unit_number);
-    if (unit && !byUnit.has(unit)) byUnit.set(unit, row);
 
     const key = row.normalized_driver_key;
     if (key) {
@@ -163,21 +176,23 @@ function buildGroupMatchIndex(directoryRows) {
       }
     }
   }
-  return { byUnit, byNameKey };
+  return { byNameKey };
 }
 
 /**
  * Match one document's order context to a driver group using the index.
- * @returns {{ group: object, matchedBy: 'unit'|'name' }|null}
+ * The uploader is tried first, then the order's assigned driver names.
+ * Truck/unit number is deliberately never considered.
+ * @returns {{ group: object, matchedBy: 'name' }|null}
  */
 function matchDocumentToGroup(doc, index) {
   if (!index) return null;
-  const unit = normalizeUnitNumber(doc?.unitNumber);
-  if (unit && index.byUnit.has(unit)) {
-    return { group: index.byUnit.get(unit), matchedBy: 'unit' };
-  }
-  for (const name of doc?.driverNames || []) {
+  const names = [doc?.uploadedBy, ...(doc?.driverNames || [])];
+  const seen = new Set();
+  for (const name of names) {
     const key = normalizePersonName(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
     if (key && index.byNameKey.has(key)) {
       return { group: index.byNameKey.get(key), matchedBy: 'name' };
     }
@@ -213,7 +228,7 @@ function formatUploadedAt(uploadedAt) {
 /** HTML caption for the forwarded document message. */
 function buildDocumentCaption(doc) {
   const label = documentLabel(doc?.fileType);
-  const emoji = doc?.fileType === 'proof_of_delivery' ? '📦' : '📄';
+  const emoji = doc?.fileType === POD_FILE_TYPE ? '📦' : '📄';
   const title = label ? `${label.long} (${label.short})` : 'Document';
   const lines = [`${emoji} <b>${escapeHtml(title)}</b>`];
   if (doc?.loadReference) lines.push(`Load #${escapeHtml(doc.loadReference)}`);
@@ -259,6 +274,8 @@ function guessFileExtension(fileLink) {
 }
 
 module.exports = {
+  BOL_FILE_TYPE,
+  POD_FILE_TYPE,
   TRACKED_DOCUMENT_LABELS,
   trackedDocumentTypes,
   isTrackedDocumentType,
@@ -269,6 +286,7 @@ module.exports = {
   orderLoadReference,
   extractOrderUnit,
   extractOrderDriverNames,
+  extractDocumentUploaderName,
   buildDocumentSignature,
   extractTrackedDocuments,
   buildGroupMatchIndex,

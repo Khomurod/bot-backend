@@ -165,7 +165,7 @@ module.exports = {
   datatruckCompany: String(process.env.DATATRUCK_COMPANY || 'wenze').trim().toLowerCase(),
   // Forward Bill of Lading / Proof of Delivery uploads from Datatruck to the
   // matching driver's Telegram group. Read-only polling of the Datatruck
-  // OpenAPI; matches each order to its group by unit number, then driver name.
+  // OpenAPI; matches each order to its group by driver name only.
   datatruckDocDeliveryEnabled: process.env.DATATRUCK_DOC_DELIVERY_ENABLED !== 'false',
   // How often to scan for new BOL/POD uploads (minutes).
   datatruckDocPollMinutes: Math.max(1, parseInt(process.env.DATATRUCK_DOC_POLL_MINUTES || '15', 10) || 15),

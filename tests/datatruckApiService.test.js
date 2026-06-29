@@ -49,3 +49,15 @@ test('Datatruck client does not retry permanent authentication failures', async 
   await assert.rejects(client.fetchAllPages('drivers/list/'), /Datatruck API 401/);
   assert.equal(calls, 1);
 });
+
+test('document scan merges pickup and delivery orders by id', () => {
+  const client = loadClient();
+  const pickup = [{ id: 1, source: 'pickup' }, { id: 2, source: 'pickup' }];
+  const delivery = [{ id: 2, source: 'delivery' }, { id: 3, source: 'delivery' }];
+
+  assert.deepEqual(client.mergeOrdersById(pickup, delivery), [
+    { id: 1, source: 'pickup' },
+    { id: 2, source: 'delivery' },
+    { id: 3, source: 'delivery' },
+  ]);
+});

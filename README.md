@@ -75,17 +75,18 @@ failed scheduled runs retry with exponential backoff.
 
 ## Datatruck BOL/POD delivery
 
-When a driver uploads a **Bill of Lading** or **Proof of Delivery** to
-Datatruck, the bot forwards the file to that driver's Telegram group. A polling
-service scans recently-delivered orders from the read-only Datatruck OpenAPI,
+When a driver uploads a **Bill of Lading** or **Proof of Delivery** to Datatruck,
+the bot forwards the file to that driver's Telegram group. A polling
+service scans recently-picked-up and recently-delivered orders from the read-only Datatruck OpenAPI,
 reads each order's inline `documents` array, matches the order to its driver
-group (by **unit number** first, then **driver name**), and posts the document
+group by **driver name only** (never truck/unit number), and posts the document
 with a short caption.
 
 - **Idempotent:** every (order, document) pair is delivered at most once,
   guarded by a UNIQUE signature in `datatruck_document_deliveries`.
 - **No backfill spam:** documents uploaded before the feature first activated
-  (or before `DATATRUCK_DOC_SINCE`) are recorded as suppressed and never sent.
+  are baselined as historical and never sent. `DATATRUCK_DOC_SINCE` can only
+  make this cutoff stricter; it cannot release older documents.
 - **Retryable:** a failed send, or a document whose group does not exist yet,
   stays eligible for a later scan up to an attempt cap.
 

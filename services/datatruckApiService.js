@@ -126,7 +126,7 @@ async function fetchOrdersByPickupWindow(startIso, endIso) {
 /**
  * All orders with delivery_time within [startIso, endIso] (UTC ISO strings).
  * Each row includes its inline `documents` array (BOL/POD/rate confirmation),
- * which powers BOL/POD forwarding to driver groups. Newest deliveries first so
+ * from which the delivery service selects BOLs and PODs. Newest deliveries first so
  * a partial/rate-limited scan still surfaces the most recent uploads.
  */
 async function fetchOrdersByDeliveryWindow(startIso, endIso) {
@@ -140,11 +140,36 @@ async function fetchOrdersByDeliveryWindow(startIso, endIso) {
   return fetchAllPages('orders/', { filter, ordering: '-delivery_time' });
 }
 
+/**
+ * Orders relevant to document uploads. Scanning both pickup and delivery
+ * windows catches BOLs uploaded on active loads as well as PODs uploaded at
+ * delivery. Datatruck currently ignores filters on documents.uploaded_at, so
+ * there is no reliable document-upload timestamp filter at the API level.
+ */
+function mergeOrdersById(...collections) {
+  const byId = new Map();
+  for (const order of collections.flat()) {
+    const key = order?.id != null ? `id:${order.id}` : `row:${byId.size}`;
+    byId.set(key, order);
+  }
+  return Array.from(byId.values());
+}
+
+async function fetchOrdersByDocumentWindow(startIso, endIso) {
+  const pickupOrders = await fetchOrdersByPickupWindow(startIso, endIso);
+  // Keep separate collection scans within the API's 20 request/minute limit.
+  await sleep(REQUEST_SPACING_MS);
+  const deliveryOrders = await fetchOrdersByDeliveryWindow(startIso, endIso);
+  return mergeOrdersById(pickupOrders, deliveryOrders);
+}
+
 module.exports = {
   isConfigured,
   fetchAllDrivers,
   fetchOrdersByPickupWindow,
   fetchOrdersByDeliveryWindow,
+  fetchOrdersByDocumentWindow,
+  mergeOrdersById,
   fetchAllPages,
   PAGE_SIZE,
   REQUEST_SPACING_MS,

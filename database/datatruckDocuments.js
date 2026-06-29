@@ -9,12 +9,14 @@
  */
 const { query } = require('./db');
 
-const SERVICE_NAME = 'datatruck_doc_delivery';
+// Versioned activation key: this rollout establishes a fresh "live uploads
+// only" boundary so documents already in Datatruck cannot be sent as new.
+const SERVICE_NAME = 'datatruck_doc_delivery_live_uploads_v1';
 const ACTIVATION_RUN_KEY = 'activation';
 
 /**
- * The durable moment this feature first went live. Documents uploaded before
- * this are treated as backfill and never blasted to groups. Stored once in
+ * The durable moment this live-upload rollout first went live. Documents
+ * uploaded before this are treated as backfill and never sent. Stored once in
  * service_runs so it survives restarts (process start time would not).
  * @returns {Promise<Date>}
  */

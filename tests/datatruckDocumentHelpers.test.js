@@ -7,6 +7,7 @@ const {
   normalizeUnitNumber,
   extractOrderUnit,
   extractOrderDriverNames,
+  extractDocumentUploaderName,
   buildDocumentSignature,
   extractTrackedDocuments,
   buildGroupMatchIndex,
@@ -35,10 +36,11 @@ test('normalizeUnitNumber strips leading zeros and non-digits', () => {
   assert.equal(normalizeUnitNumber(null), null);
 });
 
-test('extractOrderUnit / extractOrderDriverNames read order and trip', () => {
+test('extractOrderUnit / extractOrderDriverNames read documented and legacy order shapes', () => {
   const order = {
     truck__unit_number: null,
     driver__full_name: 'Terrell Dalton',
+    assigned_driver_n_truck: { driver_full_name: 'Primary Driver' },
     trip: {
       truck__unit_number: '2614',
       driver__full_name: 'Terrell Dalton',
@@ -46,7 +48,14 @@ test('extractOrderUnit / extractOrderDriverNames read order and trip', () => {
     },
   };
   assert.equal(extractOrderUnit(order), '2614');
-  assert.deepEqual(extractOrderDriverNames(order), ['Terrell Dalton', 'Sam Doe']);
+  assert.deepEqual(extractOrderDriverNames(order), ['Primary Driver', 'Terrell Dalton', 'Sam Doe']);
+});
+
+test('extractDocumentUploaderName supports string and object API shapes', () => {
+  assert.equal(extractDocumentUploaderName({ uploaded_by: 'Terrell Dalton' }), 'Terrell Dalton');
+  assert.equal(extractDocumentUploaderName({ uploaded_by: { full_name: 'Sam Doe' } }), 'Sam Doe');
+  assert.equal(extractDocumentUploaderName({ uploaded_by: { first_name: 'Jane', last_name: 'Driver' } }), 'Jane Driver');
+  assert.equal(extractDocumentUploaderName({ uploaded_by: null }), null);
 });
 
 test('extractTrackedDocuments filters to BOL/POD with stable signatures', () => {
@@ -80,8 +89,8 @@ test('documents with identical type+timestamp get distinct signatures via seq', 
   const order = {
     id: 7,
     documents: [
-      { file_type: 'proof_of_delivery', file_link: 'https://x/a.pdf', uploaded_at: '2026-06-03T08:30:00Z' },
-      { file_type: 'proof_of_delivery', file_link: 'https://x/b.pdf', uploaded_at: '2026-06-03T08:30:00Z' },
+      { file_type: 'bill_of_lading', file_link: 'https://x/a.pdf', uploaded_at: '2026-06-03T08:30:00Z' },
+      { file_type: 'bill_of_lading', file_link: 'https://x/b.pdf', uploaded_at: '2026-06-03T08:30:00Z' },
     ],
   };
   const docs = extractTrackedDocuments(order);
@@ -132,20 +141,17 @@ const directory = [
 
 test('buildGroupMatchIndex indexes only active reachable driver groups', () => {
   const index = buildGroupMatchIndex(directory);
-  assert.equal(index.byUnit.has('8'), true);
-  assert.equal(index.byUnit.has('2614'), true);
-  assert.equal(index.byUnit.has('999'), false); // inactive excluded
+  assert.equal(Object.prototype.hasOwnProperty.call(index, 'byUnit'), false);
   assert.equal(index.byNameKey.has('terrell dalton'), true);
   assert.equal(index.byNameKey.has('abdinasir'), true);
   assert.equal(index.byNameKey.has('old driver'), false);
 });
 
-test('matchDocumentToGroup prefers unit number, falls back to driver name', () => {
+test('matchDocumentToGroup uses uploader then assigned driver name, never unit number', () => {
   const index = buildGroupMatchIndex(directory);
 
-  const byUnit = matchDocumentToGroup({ unitNumber: '008', driverNames: ['Someone Else'] }, index);
-  assert.equal(byUnit.matchedBy, 'unit');
-  assert.equal(byUnit.group.group_id, 10);
+  const unitOnly = matchDocumentToGroup({ unitNumber: '008', driverNames: ['Someone Else'] }, index);
+  assert.equal(unitOnly, null);
 
   const byName = matchDocumentToGroup({ unitNumber: null, driverNames: ['Terrell Dalton'] }, index);
   assert.equal(byName.matchedBy, 'name');
@@ -154,8 +160,16 @@ test('matchDocumentToGroup prefers unit number, falls back to driver name', () =
   const teamMember = matchDocumentToGroup({ unitNumber: '', driverNames: ['Ibrahim'] }, index);
   assert.equal(teamMember.group.group_id, 10);
 
+  const uploaderWins = matchDocumentToGroup({
+    unitNumber: '008',
+    uploadedBy: 'Terrell Dalton',
+    driverNames: ['Abdinasir'],
+  }, index);
+  assert.equal(uploaderWins.group.group_id, 20);
+  assert.equal(uploaderWins.matchedBy, 'name');
+
   assert.equal(matchDocumentToGroup({ unitNumber: '777', driverNames: ['Nobody Here'] }, index), null);
-  // Inactive group is never matched even by exact unit.
+  // Inactive group is never matched even by exact name.
   assert.equal(matchDocumentToGroup({ unitNumber: '999', driverNames: ['Old Driver'] }, index), null);
 });
 
@@ -176,23 +190,30 @@ test('resolveDocumentUrl prepends the media base to relative keys', () => {
   assert.equal(resolveDocumentUrl(null, base), null);
 });
 
-test('caption and filename are well-formed and HTML-escaped', () => {
+test('BOL and POD captions and filenames are well-formed and HTML-escaped', () => {
   const caption = buildDocumentCaption({
-    fileType: 'proof_of_delivery',
+    fileType: 'bill_of_lading',
     loadReference: 'L-9 & 8',
     driverNames: ['Abdinasir', 'Ibrahim'],
     uploadedBy: 'Jane <ops>',
     uploadedAt: '2026-06-03T08:30:00Z',
   });
-  assert.match(caption, /Proof of Delivery \(POD\)/);
+  assert.match(caption, /Bill of Lading \(BOL\)/);
   assert.match(caption, /Load #L-9 &amp; 8/);
   assert.match(caption, /Abdinasir \/ Ibrahim/);
   assert.match(caption, /Jane &lt;ops&gt;/);
   assert.ok(!caption.includes('<ops>'));
 
+  const podCaption = buildDocumentCaption({ fileType: 'proof_of_delivery' });
+  assert.match(podCaption, /Proof of Delivery \(POD\)/);
+
   assert.equal(
     buildDocumentFilename({ fileType: 'bill_of_lading', loadReference: 'L-987', fileLink: 'https://x/file.pdf?sig=abc' }),
     'BOL_L-987.pdf'
+  );
+  assert.equal(
+    buildDocumentFilename({ fileType: 'proof_of_delivery', loadReference: 'L-987', fileLink: 'https://x/file.pdf' }),
+    'POD_L-987.pdf'
   );
   assert.equal(guessFileExtension('https://x/scan.PNG?token=1'), '.png');
   assert.equal(guessFileExtension('https://x/nofileext'), '.pdf');

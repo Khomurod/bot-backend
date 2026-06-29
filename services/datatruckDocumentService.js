@@ -1,9 +1,9 @@
 /**
  * Datatruck BOL/POD document delivery service.
  *
- * Polls the Datatruck OpenAPI for recently-delivered orders, finds newly
- * uploaded Bill of Lading / Proof of Delivery documents, matches each order to
- * its driver's Telegram group (by unit number, then driver name), and forwards
+ * Polls the Datatruck OpenAPI for recently-picked-up and recently-delivered orders, finds newly
+ * uploaded Bill of Lading and Proof of Delivery documents, matches each order to its driver's
+ * Telegram group by driver name only, and forwards
  * the file to that group with a short caption.
  *
  * Safety properties:
@@ -23,6 +23,7 @@ const datatruck = require('./datatruckApiService');
 const docsDb = require('../database/datatruckDocuments');
 const { listCanonicalDriverGroups } = require('./driverGroupDirectoryService');
 const {
+  isTrackedDocumentType,
   extractTrackedDocuments,
   buildGroupMatchIndex,
   matchDocumentToGroup,
@@ -85,6 +86,9 @@ async function downloadDocument(fileLink) {
  * falls back to downloading + uploading the bytes when Telegram cannot.
  */
 async function sendDocumentToGroup(telegramGroupId, doc) {
+  if (!isTrackedDocumentType(doc?.fileType)) {
+    throw new Error(`Refusing to send unsupported document type: ${doc?.fileType || 'unknown'}`);
+  }
   const caption = buildDocumentCaption(doc);
   const filename = buildDocumentFilename(doc);
   const fileUrl = resolveDocumentUrl(doc.fileLink, config.datatruckDocMediaBaseUrl);
@@ -122,11 +126,14 @@ function windowIso(referenceMs = Date.now()) {
  */
 async function resolveCutoffMs() {
   const activation = await docsDb.ensureActivationTime();
+  const activationMs = activation.getTime();
   if (config.datatruckDocSinceIso) {
     const sinceMs = Date.parse(config.datatruckDocSinceIso);
-    if (Number.isFinite(sinceMs)) return sinceMs;
+    // A configured cutoff may make suppression stricter, but it must never move
+    // before this rollout's activation and accidentally release historic docs.
+    if (Number.isFinite(sinceMs)) return Math.max(activationMs, sinceMs);
   }
-  return activation.getTime();
+  return activationMs;
 }
 
 /**
@@ -140,7 +147,7 @@ async function runOnce({ referenceMs = Date.now() } = {}) {
 
   const cutoffMs = await resolveCutoffMs();
   const { startIso, endIso } = windowIso(referenceMs);
-  const orders = await datatruck.fetchOrdersByDeliveryWindow(startIso, endIso);
+  const orders = await datatruck.fetchOrdersByDocumentWindow(startIso, endIso);
 
   const directory = await listCanonicalDriverGroups({ operational: true, includeNonDrivers: false });
   const index = buildGroupMatchIndex(directory);
@@ -287,4 +294,5 @@ module.exports = {
   // exported for tests
   windowIso,
   downloadDocument,
+  sendDocumentToGroup,
 };
