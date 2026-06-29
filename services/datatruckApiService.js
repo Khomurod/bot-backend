@@ -76,14 +76,16 @@ async function fetchJson(url) {
  * @param {string} path  e.g. 'orders/' or 'drivers/list/'
  * @param {object} [opts]
  * @param {string} [opts.filter] JSON-encoded Datatruck filter array.
+ * @param {string} [opts.ordering] ORM field path; prefix with '-' for descending.
  */
-async function fetchAllPages(path, { filter } = {}) {
+async function fetchAllPages(path, { filter, ordering } = {}) {
   if (!isConfigured()) {
     throw new Error('Datatruck API is not configured (DATATRUCK_API_TOKEN / DATATRUCK_COMPANY).');
   }
   const rows = [];
   const params = new URLSearchParams({ page: '1', page_size: String(PAGE_SIZE) });
   if (filter) params.set('filter', filter);
+  if (ordering) params.set('ordering', ordering);
   let url = `${baseUrl()}/${path}?${params.toString()}`;
   let pages = 0;
 
@@ -121,10 +123,28 @@ async function fetchOrdersByPickupWindow(startIso, endIso) {
   return fetchAllPages('orders/', { filter });
 }
 
+/**
+ * All orders with delivery_time within [startIso, endIso] (UTC ISO strings).
+ * Each row includes its inline `documents` array (BOL/POD/rate confirmation),
+ * which powers BOL/POD forwarding to driver groups. Newest deliveries first so
+ * a partial/rate-limited scan still surfaces the most recent uploads.
+ */
+async function fetchOrdersByDeliveryWindow(startIso, endIso) {
+  const filter = JSON.stringify([
+    {
+      column: 'delivery_time',
+      value: `${startIso},${endIso}`,
+      contains: 'between_datetime',
+    },
+  ]);
+  return fetchAllPages('orders/', { filter, ordering: '-delivery_time' });
+}
+
 module.exports = {
   isConfigured,
   fetchAllDrivers,
   fetchOrdersByPickupWindow,
+  fetchOrdersByDeliveryWindow,
   fetchAllPages,
   PAGE_SIZE,
   REQUEST_SPACING_MS,

@@ -1297,3 +1297,41 @@ CREATE TABLE IF NOT EXISTS bot_access_settings (
 );
 
 INSERT INTO bot_access_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- ─── Datatruck BOL/POD Document Delivery ──────────────────────────────────────
+-- When a driver uploads a Bill of Lading or Proof of Delivery to Datatruck, the
+-- bot forwards the file to that driver's Telegram group. One row per delivered
+-- (order, document) pair — the UNIQUE signature is the idempotency guard so a
+-- document is forwarded at most once no matter how often the poller scans it.
+-- `status` records what happened: sent, failed (retryable), suppressed_backfill
+-- (existed before the feature was activated — recorded, never sent), or
+-- skipped_no_group (no matching active driver group).
+CREATE TABLE IF NOT EXISTS datatruck_document_deliveries (
+  id BIGSERIAL PRIMARY KEY,
+  signature TEXT UNIQUE NOT NULL,
+  order_id TEXT,
+  load_reference TEXT,
+  file_type TEXT NOT NULL,
+  file_link TEXT,
+  uploaded_by TEXT,
+  uploaded_at TIMESTAMPTZ,
+  driver_name TEXT,
+  unit_number TEXT,
+  matched_by TEXT,
+  group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
+  telegram_group_id BIGINT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  telegram_message_id BIGINT,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT datatruck_document_deliveries_status_check CHECK (
+    status IN ('pending', 'sent', 'failed', 'suppressed_backfill', 'skipped_no_group')
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_datatruck_document_deliveries_status
+  ON datatruck_document_deliveries(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_datatruck_document_deliveries_group
+  ON datatruck_document_deliveries(group_id, created_at DESC);

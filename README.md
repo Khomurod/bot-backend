@@ -73,6 +73,30 @@ failed scheduled runs retry with exponential backoff.
 | `MILEAGE_BONUS_ACCOUNTING_USER_IDS` | Comma-separated Telegram numeric IDs allowed to decide cards |
 | `MILEAGE_BONUS_ACCOUNTING_USERNAMES` | Compatibility fallback usernames |
 
+## Datatruck BOL/POD delivery
+
+When a driver uploads a **Bill of Lading** or **Proof of Delivery** to
+Datatruck, the bot forwards the file to that driver's Telegram group. A polling
+service scans recently-delivered orders from the read-only Datatruck OpenAPI,
+reads each order's inline `documents` array, matches the order to its driver
+group (by **unit number** first, then **driver name**), and posts the document
+with a short caption.
+
+- **Idempotent:** every (order, document) pair is delivered at most once,
+  guarded by a UNIQUE signature in `datatruck_document_deliveries`.
+- **No backfill spam:** documents uploaded before the feature first activated
+  (or before `DATATRUCK_DOC_SINCE`) are recorded as suppressed and never sent.
+- **Retryable:** a failed send, or a document whose group does not exist yet,
+  stays eligible for a later scan up to an attempt cap.
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATATRUCK_DOC_DELIVERY_ENABLED` | `true` | Set `false` to disable forwarding |
+| `DATATRUCK_DOC_POLL_MINUTES` | `15` | How often to scan for new uploads |
+| `DATATRUCK_DOC_LOOKBACK_DAYS` | `7` | How far back (by delivery time) to scan |
+| `DATATRUCK_DOC_SINCE` | _(activation time)_ | ISO cutoff; documents uploaded before are treated as backfill |
+| `DATATRUCK_DOC_MAX_FILE_MB` | `45` | Max size to download+upload when Telegram cannot fetch the URL itself |
+
 ## Tech Stack
 
 - **Backend:** Node.js, Telegraf, Express.js
