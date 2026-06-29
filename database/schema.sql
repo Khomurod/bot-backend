@@ -157,6 +157,9 @@ ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS needs_review BOOLEAN DEFAUL
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS backfill_confidence SMALLINT;
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+-- Driver's Telegram @username, used by the Fuel Monitor to tag the driver in
+-- gas-station proximity reminders. Stored without the leading '@'.
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS telegram_username TEXT;
 
 DO $$
 BEGIN
@@ -1335,3 +1338,39 @@ CREATE INDEX IF NOT EXISTS idx_datatruck_document_deliveries_status
   ON datatruck_document_deliveries(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_datatruck_document_deliveries_group
   ON datatruck_document_deliveries(group_id, created_at DESC);
+
+-- ── Fuel Monitor: gas-station proximity reminders ──
+-- When the Fuel Monitoring team posts a gas-station location into a driver
+-- group, we create one "watching" row here. A background poller checks each
+-- watching row against the truck's live GPS and, when the truck is within
+-- radius_miles of the station, replies to the original message tagging the
+-- driver, then flips the row to 'notified' (fires once). Mirrors the
+-- watch/poll/claim shape of dispatch_eta_updates.
+CREATE TABLE IF NOT EXISTS fuel_stop_alerts (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  telegram_group_id BIGINT NOT NULL,
+  source_message_id BIGINT NOT NULL,
+  station_name TEXT NULL,
+  station_address TEXT NULL,
+  station_lat DOUBLE PRECISION NOT NULL,
+  station_lng DOUBLE PRECISION NOT NULL,
+  radius_miles DOUBLE PRECISION NOT NULL DEFAULT 10,
+  status TEXT NOT NULL DEFAULT 'watching',
+  processing BOOLEAN NOT NULL DEFAULT FALSE,
+  processing_started_at TIMESTAMP NULL,
+  last_distance_miles DOUBLE PRECISION NULL,
+  last_checked_at TIMESTAMP NULL,
+  notified_at TIMESTAMP NULL,
+  last_error TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMP NULL,
+  CONSTRAINT fuel_stop_alerts_status_check CHECK (
+    status IN ('watching', 'notified', 'expired', 'error')
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_fuel_stop_alerts_due
+  ON fuel_stop_alerts(status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_fuel_stop_alerts_group
+  ON fuel_stop_alerts(group_id, created_at DESC);

@@ -1091,6 +1091,9 @@ app.use('/api/raise', raisePublicRouter);
 const { createHomeTimeRouter } = require('./routes/homeTimeRoutes');
 app.use('/api/home-time', createHomeTimeRouter({ authMiddleware }));
 
+const { createFuelMonitorRouter } = require('./routes/fuelMonitorRoutes');
+app.use('/api/fuel-monitor', createFuelMonitorRouter({ authMiddleware }));
+
 // GET /api/groups
 app.get('/api/groups', authMiddleware, async (req, res) => {
   try {
@@ -1129,6 +1132,7 @@ function mapDriverProfileForApi(profile) {
     normalized_driver_key: profile.normalized_driver_key || null,
     driver_type: profile.driver_type || 'owner',
     status: profile.status || 'active',
+    telegram_username: profile.telegram_username || null,
     unit_number: profile.unit_number || null,
     language: profile.language || 'en',
     date_of_birth: profile.date_of_birth || null,
