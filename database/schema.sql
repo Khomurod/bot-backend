@@ -1365,12 +1365,24 @@ CREATE TABLE IF NOT EXISTS fuel_stop_alerts (
   last_error TEXT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMP NULL,
+  -- ETA-based scheduling: instead of polling every watch row constantly, each
+  -- row stores when it should next be evaluated (next_check_at) and the latest
+  -- estimate of when the truck will reach the 10-mile boundary.
+  next_check_at TIMESTAMP NULL,
+  eta_minutes DOUBLE PRECISION NULL,
+  eta_boundary_at TIMESTAMP NULL,
   CONSTRAINT fuel_stop_alerts_status_check CHECK (
     status IN ('watching', 'notified', 'expired', 'error')
   )
 );
 
+ALTER TABLE fuel_stop_alerts ADD COLUMN IF NOT EXISTS next_check_at TIMESTAMP NULL;
+ALTER TABLE fuel_stop_alerts ADD COLUMN IF NOT EXISTS eta_minutes DOUBLE PRECISION NULL;
+ALTER TABLE fuel_stop_alerts ADD COLUMN IF NOT EXISTS eta_boundary_at TIMESTAMP NULL;
+
 CREATE INDEX IF NOT EXISTS idx_fuel_stop_alerts_due
   ON fuel_stop_alerts(status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_fuel_stop_alerts_next_check
+  ON fuel_stop_alerts(status, next_check_at);
 CREATE INDEX IF NOT EXISTS idx_fuel_stop_alerts_group
   ON fuel_stop_alerts(group_id, created_at DESC);
