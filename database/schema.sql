@@ -1273,6 +1273,15 @@ CREATE TABLE IF NOT EXISTS home_time_requests (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 'awaiting_dates': the bot detected a home-time request but the driver did not
+-- give the dates, so it asked in the group and is waiting for the reply before
+-- posting the approval card.
+ALTER TABLE home_time_requests
+  DROP CONSTRAINT IF EXISTS home_time_requests_status_check;
+ALTER TABLE home_time_requests
+  ADD CONSTRAINT home_time_requests_status_check
+  CHECK (status IN ('pending', 'approved', 'denied', 'cancelled', 'awaiting_dates'));
+
 CREATE INDEX IF NOT EXISTS idx_home_time_requests_group
   ON home_time_requests(group_id, requested_at DESC);
 CREATE INDEX IF NOT EXISTS idx_home_time_requests_status

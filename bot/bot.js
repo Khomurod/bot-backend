@@ -26,7 +26,7 @@ const {
 const { scheduleLoadIngest } = require('../services/loadIngestionService');
 const { handleDriverGroupStatus } = require('../services/homeTimeService');
 const recentMessageBuffer = require('../services/recentMessageBuffer');
-const { handleApproverMention } = require('../services/homeTimeRequestService');
+const { handleApproverMention, handleHomeTimeDateReply } = require('../services/homeTimeRequestService');
 const { messageMentionsApprovers } = require('../services/homeTimeRequestConstants');
 const { registerHomeTimeRequestHandlers } = require('./homeTimeRequestHandlers');
 const { confirmAdminGrant } = require('../services/groupAccessService');
@@ -454,6 +454,13 @@ async function startBot() {
             if (messageMentionsApprovers(ctx.message)) {
               handleApproverMention(bot.telegram, group, ctx.message).catch((err) => {
                 console.error('[BOT] handleApproverMention failed:', err.message);
+              });
+            } else {
+              // Not an approver tag, but it may be the driver's reply to the bot's
+              // "what dates?" question for a request that is awaiting dates. Cheap
+              // no-op unless a request is actually waiting. Runs detached.
+              handleHomeTimeDateReply(bot.telegram, group, ctx.message).catch((err) => {
+                console.error('[BOT] handleHomeTimeDateReply failed:', err.message);
               });
             }
           }

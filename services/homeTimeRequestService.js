@@ -26,10 +26,14 @@ const {
   HOME_TIME_APPROVER_MENTIONS,
   weeksFromDays,
   isPolicyMet,
-  computeHomeWindow,
   homeTimePolicyApplies,
   hasHomeTimeSignal,
   buildHomeTimeClassificationPrompt,
+  buildHomeTimeDateReplyPrompt,
+  buildAskForDatesMessage,
+  looksLikeDateReply,
+  parseHomeTimeWindowText,
+  isReasonableHomeWindow,
 } = require('./homeTimeRequestConstants');
 const { wholeDaysBetween } = require('./homeTimeConstants');
 const { inferDriverType } = require('./driverProfileParse');
@@ -84,21 +88,23 @@ async function resolveDriverLabel(group) {
  * backward compatibility, a bare transcript string.
  */
 async function classifyHomeTimeRequest(input) {
-  const { transcript, triggerText } = typeof input === 'string'
-    ? { transcript: input, triggerText: '' }
+  const { transcript, triggerText, todayIso } = typeof input === 'string'
+    ? { transcript: input, triggerText: '', todayIso: null }
     : (input || {});
   const haystack = `${triggerText || ''}\n${transcript || ''}`;
   const keywordSignal = hasHomeTimeSignal(haystack);
+  const today = todayIso || DateTime.now().setZone('America/Chicago').toISODate();
 
   const prompt = buildHomeTimeClassificationPrompt({
     transcript,
     triggerText,
     approvers: HOME_TIME_APPROVER_MENTIONS,
+    todayLabel: today,
   });
   try {
     const { parsed } = await callGeminiJson({
       userText: prompt,
-      maxOutputTokens: 200,
+      maxOutputTokens: 250,
       validateParsed: (p) => typeof p?.is_home_time_request === 'boolean',
     });
     const confidence = String(parsed.confidence || '').toLowerCase();
@@ -111,15 +117,41 @@ async function classifyHomeTimeRequest(input) {
       isRequest = false;
       reason = `Low-confidence AI guess with no home-time wording — skipped. ${reason}`.trim();
     }
-    return { isRequest, reason, confidence: confidence || null, aiUsed: true };
+
+    // Only trust the extracted window if it parses and is sane; otherwise treat
+    // the dates as unspecified so the bot asks the driver.
+    let homeFrom = null;
+    let homeTo = null;
+    if (isRequest && parsed.dates_specified && parsed.home_from && parsed.home_to
+      && isReasonableHomeWindow(parsed.home_from, parsed.home_to, today)) {
+      homeFrom = String(parsed.home_from);
+      homeTo = String(parsed.home_to);
+    }
+
+    return {
+      isRequest,
+      reason,
+      confidence: confidence || null,
+      datesSpecified: Boolean(homeFrom && homeTo),
+      homeFrom,
+      homeTo,
+      aiUsed: true,
+    };
   } catch (err) {
     console.warn('[HOME-TIME-REQ] AI classification failed, using keyword heuristic:', err.message);
+    // Fallback: deterministic language + date parsing so an outage neither drops
+    // a real request nor invents a fake one.
+    const window = keywordSignal ? parseHomeTimeWindowText(haystack, today) : null;
+    const valid = window && isReasonableHomeWindow(window.homeFrom, window.homeTo, today);
     return {
       isRequest: keywordSignal,
       reason: keywordSignal
         ? 'AI unavailable — home-time wording detected, surfaced for human review.'
         : 'AI unavailable — no home-time wording detected, not surfaced.',
       confidence: null,
+      datesSpecified: Boolean(valid),
+      homeFrom: valid ? window.homeFrom : null,
+      homeTo: valid ? window.homeTo : null,
       aiUsed: false,
     };
   }
@@ -215,14 +247,57 @@ function buildDecisionButtons(requestId) {
 }
 
 /**
+ * Build the approval card text and post it with the decision buttons, then store
+ * the message id. Shared by the immediate path (dates already known) and the
+ * date-reply path (dates supplied later). All dates are passed as strings.
+ */
+async function postRequestCard(telegram, group, {
+  requestId, driverName, unitNumber, driverType, daysOnRoad, policyMet, homeFrom, homeTo, settings,
+}) {
+  const allowanceWeeks = settings?.road_allowance_weeks || 4;
+  const homeAllowanceDays = settings?.home_allowance_days || 4;
+  const text = await generateRequestText({
+    policyMet, daysOnRoad, allowanceWeeks, homeAllowanceDays, driverName, driverType,
+  });
+  const cardText = buildCardText({
+    driverName, unitNumber, driverType, text, daysOnRoad, policyMet, homeFrom, homeTo,
+  });
+  const sent = await safeSend(() => telegram.sendMessage(group.telegram_group_id, cardText, {
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+    ...buildDecisionButtons(requestId),
+  }));
+  await ht.setHomeTimeRequestMessage(requestId, group.telegram_group_id, sent?.message_id || null);
+  return sent;
+}
+
+/** Current road metrics for a driver group (road start + whole days on road). */
+async function resolveRoadMetrics(group, allowanceWeeks, driverType) {
+  const homeStatus = await ht.getDriverHomeStatus(group.id);
+  const nowIso = DateTime.now().toUTC().toISO();
+  let roadStartedAt = null;
+  let daysOnRoad = null;
+  if (homeStatus && homeStatus.state === 'road') {
+    roadStartedAt = homeStatus.state_since;
+    daysOnRoad = wholeDaysBetween(homeStatus.state_since, nowIso);
+  }
+  return { roadStartedAt, daysOnRoad, policyMet: isPolicyMet(daysOnRoad, allowanceWeeks, driverType) };
+}
+
+/**
  * Entry point from the bot. Safe to call on any approver-tag message in a driver
  * group. Never throws.
+ *
+ * If the driver already stated the dates, the approval card is posted right away
+ * with those dates. If not, the bot asks the group which dates are wanted and
+ * keeps the request open as 'awaiting_dates' until the driver replies (handled by
+ * handleHomeTimeDateReply).
  */
 async function handleApproverMention(telegram, group, message) {
   try {
     if (!group || group.group_type !== 'driver') return;
 
-    const existing = await ht.getPendingHomeTimeRequestForGroup(group.id);
+    const existing = await ht.getOpenHomeTimeRequestForGroup(group.id);
     if (existing) return;
 
     // The triggering message is passed explicitly (in addition to the rolling
@@ -230,37 +305,21 @@ async function handleApproverMention(telegram, group, message) {
     // restart when the buffer has not warmed up yet.
     const triggerText = message?.text || message?.caption || '';
     const transcript = recentBuffer.renderTranscript(group.telegram_group_id);
-    const verdict = await classifyHomeTimeRequest({ transcript, triggerText });
+    const todayIso = DateTime.now().setZone('America/Chicago').toISODate();
+    const verdict = await classifyHomeTimeRequest({ transcript, triggerText, todayIso });
     if (!verdict.isRequest) return;
 
     const settings = await ht.getHomeTimeSettings();
     const allowanceWeeks = settings?.road_allowance_weeks || 4;
-    const homeAllowanceDays = settings?.home_allowance_days || 4;
-
-    const homeStatus = await ht.getDriverHomeStatus(group.id);
-    const nowIso = DateTime.now().toUTC().toISO();
-    let roadStartedAt = null;
-    let daysOnRoad = null;
-    if (homeStatus && homeStatus.state === 'road') {
-      roadStartedAt = homeStatus.state_since;
-      daysOnRoad = wholeDaysBetween(homeStatus.state_since, nowIso);
-    }
 
     const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
-    const policyMet = isPolicyMet(daysOnRoad, allowanceWeeks, driverType);
-    const { homeFrom, homeTo } = computeHomeWindow(nowIso, homeAllowanceDays);
-
-    const text = await generateRequestText({
-      policyMet,
-      daysOnRoad,
-      allowanceWeeks,
-      homeAllowanceDays,
-      driverName,
-      driverType,
-    });
+    const { roadStartedAt, daysOnRoad, policyMet } = await resolveRoadMetrics(group, allowanceWeeks, driverType);
 
     const fromUser = message?.from || {};
-    const request = await ht.insertHomeTimeRequest({
+    const aiReasoning = verdict.confidence
+      ? `[confidence: ${verdict.confidence}] ${verdict.reason || ''}`.trim()
+      : (verdict.reason || null);
+    const baseInsert = {
       groupId: group.id,
       telegramGroupId: group.telegram_group_id,
       driverName,
@@ -270,35 +329,111 @@ async function handleApproverMention(telegram, group, message) {
       roadStartedAt,
       daysOnRoad,
       policyMet,
-      homeFrom,
-      homeTo,
-      status: 'pending',
       source: 'telegram',
-      aiReasoning: verdict.confidence
-        ? `[confidence: ${verdict.confidence}] ${verdict.reason || ''}`.trim()
-        : (verdict.reason || null),
-    });
+      aiReasoning,
+    };
 
-    const cardText = buildCardText({
-      driverName,
-      unitNumber,
-      driverType,
-      text,
-      daysOnRoad,
-      policyMet,
-      homeFrom,
-      homeTo,
-    });
-    const sent = await safeSend(() => telegram.sendMessage(group.telegram_group_id, cardText, {
-      parse_mode: 'HTML',
-      disable_web_page_preview: true,
-      ...buildDecisionButtons(request.id),
-    }));
-    await ht.setHomeTimeRequestMessage(request.id, group.telegram_group_id, sent?.message_id || null);
+    if (verdict.datesSpecified) {
+      const request = await ht.insertHomeTimeRequest({
+        ...baseInsert,
+        homeFrom: verdict.homeFrom,
+        homeTo: verdict.homeTo,
+        status: 'pending',
+      });
+      await postRequestCard(telegram, group, {
+        requestId: request.id,
+        driverName, unitNumber, driverType, daysOnRoad, policyMet,
+        homeFrom: verdict.homeFrom, homeTo: verdict.homeTo, settings,
+      });
+      console.log(`[HOME-TIME-REQ] Request #${request.id} posted for ${driverName} `
+        + `(${driverType}, policyMet=${policyMet}, ${verdict.homeFrom}→${verdict.homeTo}).`);
+      return;
+    }
 
-    console.log(`[HOME-TIME-REQ] Request #${request.id} posted for ${driverName} (${driverType}, policyMet=${policyMet}).`);
+    // No dates yet — ask the driver and wait for the reply.
+    const request = await ht.insertHomeTimeRequest({
+      ...baseInsert,
+      homeFrom: null,
+      homeTo: null,
+      status: 'awaiting_dates',
+    });
+    await safeSend(() => telegram.sendMessage(group.telegram_group_id, buildAskForDatesMessage()));
+    console.log(`[HOME-TIME-REQ] Request #${request.id} awaiting dates for ${driverName} (${driverType}).`);
   } catch (err) {
     console.error('[HOME-TIME-REQ] handleApproverMention error:', err.message);
+  }
+}
+
+/**
+ * Resolve a home-time window from a driver's free-text reply. AI first (handles
+ * "next Monday for 4 days"), deterministic parser as the fallback. Returns
+ * `{ homeFrom, homeTo }` strings or null.
+ */
+async function parseHomeTimeDates({ text, todayIso }) {
+  const today = todayIso || DateTime.now().setZone('America/Chicago').toISODate();
+  const prompt = buildHomeTimeDateReplyPrompt({ text, todayLabel: today });
+  try {
+    const { parsed } = await callGeminiJson({
+      userText: prompt,
+      maxOutputTokens: 120,
+      validateParsed: (p) => typeof p?.found === 'boolean',
+    });
+    if (parsed.found && parsed.home_from && parsed.home_to
+      && isReasonableHomeWindow(parsed.home_from, parsed.home_to, today)) {
+      return { homeFrom: String(parsed.home_from), homeTo: String(parsed.home_to) };
+    }
+  } catch (err) {
+    console.warn('[HOME-TIME-REQ] date-reply AI parse failed, using deterministic parser:', err.message);
+  }
+  const window = parseHomeTimeWindowText(text, today);
+  if (window && isReasonableHomeWindow(window.homeFrom, window.homeTo, today)) {
+    return { homeFrom: window.homeFrom, homeTo: window.homeTo };
+  }
+  return null;
+}
+
+/**
+ * Called for every driver-group message. When a request is waiting on dates and
+ * this message supplies them, fill the request and post the approval card. A
+ * no-op otherwise. Never throws.
+ */
+async function handleHomeTimeDateReply(telegram, group, message) {
+  try {
+    if (!group || group.group_type !== 'driver') return;
+    if (message?.from?.is_bot) return;
+    const text = message?.text || message?.caption || '';
+    if (!text || !looksLikeDateReply(text)) return; // cheap gate before any DB/AI work
+
+    const awaiting = await ht.getAwaitingDatesHomeTimeRequestForGroup(group.id);
+    if (!awaiting) return;
+
+    const todayIso = DateTime.now().setZone('America/Chicago').toISODate();
+    const dates = await parseHomeTimeDates({ text, todayIso });
+    if (!dates) return; // not a parseable date reply — keep waiting
+
+    const settings = await ht.getHomeTimeSettings();
+    const allowanceWeeks = settings?.road_allowance_weeks || 4;
+    const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
+    const { roadStartedAt, daysOnRoad, policyMet } = await resolveRoadMetrics(group, allowanceWeeks, driverType);
+
+    const fulfilled = await ht.fulfillAwaitingHomeTimeRequest(awaiting.id, {
+      homeFrom: dates.homeFrom,
+      homeTo: dates.homeTo,
+      roadStartedAt,
+      daysOnRoad,
+      policyMet,
+      aiReasoning: `Dates provided by driver reply: ${dates.homeFrom} → ${dates.homeTo}.`,
+    });
+    if (!fulfilled) return; // another reply already fulfilled it
+
+    await postRequestCard(telegram, group, {
+      requestId: fulfilled.id,
+      driverName, unitNumber, driverType, daysOnRoad, policyMet,
+      homeFrom: dates.homeFrom, homeTo: dates.homeTo, settings,
+    });
+    console.log(`[HOME-TIME-REQ] Request #${fulfilled.id} dates resolved (${dates.homeFrom} → ${dates.homeTo}).`);
+  } catch (err) {
+    console.error('[HOME-TIME-REQ] handleHomeTimeDateReply error:', err.message);
   }
 }
 
@@ -340,6 +475,9 @@ async function announceApproval(telegram, request) {
 module.exports = {
   CALLBACK_PREFIX,
   handleApproverMention,
+  handleHomeTimeDateReply,
+  parseHomeTimeDates,
+  postRequestCard,
   generateRequestText,
   classifyHomeTimeRequest,
   buildCardText,

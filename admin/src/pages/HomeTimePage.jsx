@@ -45,6 +45,8 @@ function requestStatusMeta(status) {
       return { label: "Denied", color: "#ef4444", background: "rgba(239, 68, 68, 0.14)" };
     case "cancelled":
       return { label: "Cancelled", color: "#94a3b8", background: "rgba(148, 163, 184, 0.14)" };
+    case "awaiting_dates":
+      return { label: "Awaiting dates", color: "#38bdf8", background: "rgba(56, 189, 248, 0.14)" };
     default:
       return { label: "Pending", color: "#f59e0b", background: "rgba(245, 158, 11, 0.14)" };
   }
