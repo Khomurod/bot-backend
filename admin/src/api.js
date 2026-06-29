@@ -1274,3 +1274,13 @@ export async function updateFuelMonitorUsername(groupId, telegramUsername) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+/** Manually send the fuel reminder to a driver's group now (auto reminder still runs). */
+export async function sendFuelReminder(groupId) {
+  const res = await fetch(`${API_BASE}/fuel-monitor/${groupId}/send-reminder`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

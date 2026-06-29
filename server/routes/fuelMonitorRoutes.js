@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../../database/db');
 const { listCanonicalDriverGroups } = require('../../services/driverGroupDirectoryService');
+const { sendManualFuelReminder } = require('../../services/fuelStopAlertService');
 
 // Telegram handles: 5–32 chars of [a-z0-9_]. We accept an optional leading '@'
 // and store it normalized (lowercase, no '@') via db.setDriverTelegramUsername.
@@ -46,6 +47,9 @@ function createFuelMonitorRouter({ authMiddleware }) {
           station_address: a.station_address,
           radius_miles: a.radius_miles,
           last_distance_miles: a.last_distance_miles,
+          eta_minutes: a.eta_minutes,
+          eta_boundary_at: a.eta_boundary_at,
+          next_check_at: a.next_check_at,
           created_at: a.created_at,
         });
         watchingByGroup.set(Number(a.group_id), list);
@@ -87,6 +91,27 @@ function createFuelMonitorRouter({ authMiddleware }) {
     } catch (err) {
       console.error('[FUEL-MONITOR API] update username failed:', err.message);
       res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // Manually send the fuel reminder to a driver's group now. The automatic
+  // 10-mile reminder still fires later (this does not change the watch status).
+  router.post('/:groupId/send-reminder', authMiddleware, async (req, res) => {
+    try {
+      const groupId = Number(req.params.groupId);
+      if (!Number.isInteger(groupId) || groupId <= 0) {
+        return res.status(400).json({ error: 'Invalid group id' });
+      }
+      const result = await sendManualFuelReminder(groupId);
+      if (!result.sent) {
+        return res.status(400).json({
+          error: 'No active fuel stop for this driver to remind about.',
+        });
+      }
+      res.json({ sent: true, station_name: result.station_name || null });
+    } catch (err) {
+      console.error('[FUEL-MONITOR API] send reminder failed:', err.message);
+      res.status(500).json({ error: 'Failed to send reminder' });
     }
   });
 

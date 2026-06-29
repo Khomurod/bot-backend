@@ -21,9 +21,22 @@ const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
 const { geocodePlace, haversineMiles } = require('./etaRoutingService');
 const { callGeminiJson, callGeminiText } = require('./geminiClient');
 
-const POLL_INTERVAL_MS = 150 * 1000; // 2.5 min — gentle on memory + APIs.
+const POLL_INTERVAL_MS = 150 * 1000; // due-scan cadence (cheap; most ticks no-op).
 const ALERT_MAX_BATCH = 10;
 const DEFAULT_RADIUS_MILES = 10;
+
+// ETA-based scheduling knobs. We estimate when the truck will reach the radius
+// from straight-line distance ÷ speed (no extra routing API), then wake up
+// ~PRE_ARRIVAL_LEAD_MIN before that, polling tightly only near arrival.
+const AVG_SPEED_MPH = 50;          // assumed when the truck is stopped / no speed
+const ROAD_FACTOR = 1.2;           // roads are longer than straight line
+const PRE_ARRIVAL_LEAD_MIN = 20;   // re-verify ~20 min before predicted arrival
+const NEAR_GAP_MIN = 3;            // tight polling once close to the boundary
+const MIN_GAP_MIN = 2;             // never schedule sooner than this
+const MAX_GAP_MIN = 360;           // never sleep longer than 6h between checks
+const RETRY_GAP_MIN = 5;           // truck offline / no GPS → retry soon
+const SPEED_MIN_MPH = 5;
+const SPEED_MAX_MPH = 75;
 
 // The ONLY trigger: the Fuel Monitoring team always opens their instruction
 // with the "FUEL MONITORING DEPARTMENT" banner (surrounded by emojis). We gate
@@ -58,6 +71,46 @@ function milesLabel(distanceMiles) {
   if (!Number.isFinite(distanceMiles)) return 'a few';
   if (distanceMiles < 1) return 'less than 1';
   return String(Math.round(distanceMiles));
+}
+
+function clamp(value, lo, hi) {
+  return Math.min(hi, Math.max(lo, value));
+}
+
+function minutesFromNowIso(minutes) {
+  return new Date(Date.now() + Math.max(0, minutes) * 60_000).toISOString();
+}
+
+/**
+ * Decide when to next evaluate a watch row, or that it is already within range.
+ * Pure (no I/O): pass nowMs. Returns either { withinRadius: true } or
+ * { minutesToBoundary, etaBoundaryAtMs, nextCheckAtMs }.
+ */
+function computeNextCheck({ distanceMiles, radiusMiles = DEFAULT_RADIUS_MILES, speedMph, nowMs }) {
+  const now = Number.isFinite(nowMs) ? nowMs : Date.now();
+  const radius = Number.isFinite(radiusMiles) ? radiusMiles : DEFAULT_RADIUS_MILES;
+  if (!(Number(distanceMiles) > radius)) {
+    return { withinRadius: true };
+  }
+  const milesBeyond = Number(distanceMiles) - radius;
+  const speed = (Number.isFinite(speedMph) && speedMph > SPEED_MIN_MPH)
+    ? clamp(speedMph, SPEED_MIN_MPH, SPEED_MAX_MPH)
+    : AVG_SPEED_MPH;
+  const minutesToBoundary = (milesBeyond * ROAD_FACTOR / speed) * 60;
+  const etaBoundaryAtMs = now + minutesToBoundary * 60_000;
+
+  // Far away → wake ~20 min before predicted arrival. Close → poll tightly.
+  let gapMin = minutesToBoundary > (PRE_ARRIVAL_LEAD_MIN + NEAR_GAP_MIN + 2)
+    ? minutesToBoundary - PRE_ARRIVAL_LEAD_MIN
+    : NEAR_GAP_MIN;
+  gapMin = clamp(gapMin, MIN_GAP_MIN, MAX_GAP_MIN);
+
+  return {
+    withinRadius: false,
+    minutesToBoundary,
+    etaBoundaryAtMs,
+    nextCheckAtMs: now + gapMin * 60_000,
+  };
 }
 
 /** The raw text of a message (text or caption), trimmed. */
@@ -208,6 +261,10 @@ async function handleFuelStopMessage(telegram, group, message) {
         + `${station.stationName ? `"${station.stationName}" ` : ''}`
         + `(${station.latitude.toFixed(4)}, ${station.longitude.toFixed(4)})`
       );
+      // Immediately compute the first ETA (and send right away if the truck is
+      // already within range). The claim re-fetches the join columns.
+      const claimed = await db.claimFuelStopAlertById(alert.id).catch(() => null);
+      if (claimed) await processFuelAlert(telegram, claimed);
     }
   } catch (err) {
     console.error('[FUEL-ALERT] handleFuelStopMessage failed:', err.message);
@@ -262,14 +319,20 @@ async function processFuelAlert(telegram, row) {
       resolved = await resolveLiveLocationForGroupTitle(title);
     } catch (err) {
       // No live location yet (offline truck, unit # not parseable, provider
-      // hiccup). Keep watching; the 24h expiry is the backstop.
-      await db.completeFuelStopAlert(row.id, { status: 'watching', error: err.message });
+      // hiccup). Re-check soon; the 24h expiry is the backstop.
+      await db.rescheduleFuelStopAlert(row.id, {
+        nextCheckAt: minutesFromNowIso(RETRY_GAP_MIN),
+        error: err.message,
+      });
       return { notified: false, reason: 'no_location' };
     }
 
     const loc = resolved?.location || {};
     if (!Number.isFinite(loc.latitude) || !Number.isFinite(loc.longitude)) {
-      await db.completeFuelStopAlert(row.id, { status: 'watching', error: 'No GPS coordinates' });
+      await db.rescheduleFuelStopAlert(row.id, {
+        nextCheckAt: minutesFromNowIso(RETRY_GAP_MIN),
+        error: 'No GPS coordinates',
+      });
       return { notified: false, reason: 'no_coords' };
     }
 
@@ -281,9 +344,27 @@ async function processFuelAlert(telegram, row) {
     );
     const radius = Number.isFinite(Number(row.radius_miles)) ? Number(row.radius_miles) : DEFAULT_RADIUS_MILES;
 
-    if (!(distanceMiles <= radius)) {
-      await db.completeFuelStopAlert(row.id, { status: 'watching', distanceMiles });
-      return { notified: false, reason: 'far', distanceMiles };
+    const sched = computeNextCheck({
+      distanceMiles,
+      radiusMiles: radius,
+      speedMph: loc.speedMilesPerHour,
+      nowMs: Date.now(),
+    });
+
+    if (!sched.withinRadius) {
+      // Still approaching → store ETA and schedule the next wake-up.
+      await db.rescheduleFuelStopAlert(row.id, {
+        distanceMiles,
+        etaMinutes: Math.round(sched.minutesToBoundary),
+        etaBoundaryAt: new Date(sched.etaBoundaryAtMs).toISOString(),
+        nextCheckAt: new Date(sched.nextCheckAtMs).toISOString(),
+      });
+      const inMin = Math.max(0, Math.round((sched.nextCheckAtMs - Date.now()) / 60_000));
+      console.log(
+        `[FUEL-ALERT] group ${row.group_id} ${distanceMiles.toFixed(1)}mi out; `
+        + `ETA ~${Math.round(sched.minutesToBoundary)}min, next check in ~${inMin}min`
+      );
+      return { notified: false, reason: 'scheduled', distanceMiles };
     }
 
     // Within range → build and send the reminder, replying to the original.
@@ -313,9 +394,58 @@ async function processFuelAlert(telegram, row) {
     return { notified: true, distanceMiles };
   } catch (err) {
     console.error(`[FUEL-ALERT] processFuelAlert failed for row ${row.id}:`, err.message);
-    await db.completeFuelStopAlert(row.id, { status: 'watching', error: err.message }).catch(() => {});
+    await db.rescheduleFuelStopAlert(row.id, {
+      nextCheckAt: minutesFromNowIso(RETRY_GAP_MIN),
+      error: err.message,
+    }).catch(() => {});
     return { notified: false, reason: 'error', error: err.message };
   }
+}
+
+/**
+ * Build the manual "Send reminder" message (admin-triggered). Plain, instant,
+ * no AI/GPS — just nudges the driver to their assigned fuel stop.
+ */
+function buildManualReminderText(alert) {
+  const username = normalizeText(alert?.telegram_username);
+  const tag = username ? `@${username}` : escapeHtml(buildDriverDisplayName(alert));
+  const station = normalizeText(alert?.station_name);
+  const address = normalizeText(alert?.station_address);
+  const where = station
+    ? `your assigned fuel stop (${station})`
+    : 'your assigned fuel stop';
+  const body = `reminder: please fuel up at ${where}${address ? ` — ${address}` : ''} as instructed.`;
+  return `⛽ ${tag} — ${escapeHtml(body)}`;
+}
+
+/**
+ * Manually send a fuel reminder to a driver's group for their current active
+ * fuel stop. Does NOT change the watch status, so the automatic 10-mile
+ * reminder still fires later. Returns { sent, reason? }.
+ */
+async function sendManualFuelReminder(groupId) {
+  if (!telegramClient) {
+    throw new Error('Fuel reminder Telegram client is not configured.');
+  }
+  const alert = await db.getActiveFuelStopAlertForGroup(groupId);
+  if (!alert) {
+    return { sent: false, reason: 'no_active_alert' };
+  }
+  const message = buildManualReminderText(alert);
+  try {
+    await telegramClient.sendMessage(alert.telegram_group_id, message, {
+      reply_to_message_id: Number(alert.source_message_id),
+      parse_mode: 'HTML',
+    });
+  } catch (err) {
+    if (/reply|message to be replied|not found/i.test(String(err?.message || ''))) {
+      await telegramClient.sendMessage(alert.telegram_group_id, message, { parse_mode: 'HTML' });
+    } else {
+      throw err;
+    }
+  }
+  console.log(`[FUEL-ALERT] Manual reminder sent for group ${groupId}`);
+  return { sent: true, station_name: alert.station_name || null };
 }
 
 let telegramClient = null;
@@ -380,9 +510,12 @@ module.exports = {
   messageText,
   extractStationFromText,
   isCompanyDriverProfile,
+  computeNextCheck,
   detectStationFromMessage,
   handleFuelStopMessage,
   buildReminderBody,
+  buildManualReminderText,
+  sendManualFuelReminder,
   processFuelAlert,
   tickFuelStopAlerts,
   startFuelStopAlertService,

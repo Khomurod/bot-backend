@@ -7,12 +7,21 @@ function normalizeUsernameInput(value) {
   return String(value || "").trim().replace(/^@+/, "");
 }
 
+// Short local time label for a predicted boundary-arrival timestamp.
+function formatEta(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export default function FuelMonitorPage() {
   const [drivers, setDrivers] = useState([]);
   const [draftsByGroup, setDraftsByGroup] = useState({});
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
   const [savingGroupId, setSavingGroupId] = useState(null);
+  const [sendingGroupId, setSendingGroupId] = useState(null);
   const [search, setSearch] = useState("");
 
   const fetchDrivers = useCallback(async () => {
@@ -74,6 +83,22 @@ export default function FuelMonitorPage() {
     }
   };
 
+  const sendReminder = async (driver) => {
+    setSendingGroupId(driver.group_id);
+    setMessage(null);
+    try {
+      await api.sendFuelReminder(driver.group_id);
+      setMessage({
+        type: "success",
+        text: `Reminder sent to ${driver.display_name || driver.group_name}'s group.`,
+      });
+    } catch (err) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setSendingGroupId(null);
+    }
+  };
+
   const watchingCount = useMemo(
     () => drivers.reduce((sum, d) => sum + (Array.isArray(d.watching) ? d.watching.length : 0), 0),
     [drivers]
@@ -124,13 +149,16 @@ export default function FuelMonitorPage() {
                 <th>Group Name</th>
                 <th>Unit</th>
                 <th>Telegram Username</th>
-                <th>Watching</th>
+                <th>Next Gas Station</th>
+                <th>Reminder</th>
               </tr>
             </thead>
             <tbody>
               {displayDrivers.map((driver) => {
                 const saving = savingGroupId === driver.group_id;
+                const sending = sendingGroupId === driver.group_id;
                 const watching = Array.isArray(driver.watching) ? driver.watching : [];
+                const nextStop = watching[0] || null;
                 return (
                   <tr key={driver.group_id}>
                     <td>{driver.display_name || driver.group_name || "—"}</td>
@@ -160,18 +188,37 @@ export default function FuelMonitorPage() {
                       </div>
                     </td>
                     <td>
-                      {watching.length === 0 ? (
-                        <span style={{ color: "var(--text-muted)" }}>—</span>
+                      {!nextStop ? (
+                        <span style={{ color: "var(--text-muted)" }}>— none picked up —</span>
                       ) : (
-                        watching.map((w) => (
-                          <div key={w.id} style={{ fontSize: 12 }}>
-                            {w.station_name || w.station_address || "Fuel stop"}
-                            {Number.isFinite(Number(w.last_distance_miles))
-                              ? ` · ${Math.round(Number(w.last_distance_miles))} mi away`
+                        <div style={{ fontSize: 12 }}>
+                          <div style={{ fontWeight: 600 }}>
+                            {nextStop.station_name || "Fuel stop"}
+                          </div>
+                          {nextStop.station_address && (
+                            <div style={{ color: "var(--text-muted)" }}>{nextStop.station_address}</div>
+                          )}
+                          <div style={{ color: "var(--text-muted)" }}>
+                            {Number.isFinite(Number(nextStop.last_distance_miles))
+                              ? `~${Math.round(Number(nextStop.last_distance_miles))} mi away`
+                              : "locating truck…"}
+                            {nextStop.eta_boundary_at
+                              ? ` · ETA ~${formatEta(nextStop.eta_boundary_at)}`
                               : ""}
                           </div>
-                        ))
+                        </div>
                       )}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={!nextStop || sending}
+                        title={nextStop ? "Send the fuel reminder to this group now" : "No active fuel stop to remind about"}
+                        onClick={() => sendReminder(driver)}
+                      >
+                        {sending ? "Sending…" : "Send reminder"}
+                      </button>
                     </td>
                   </tr>
                 );

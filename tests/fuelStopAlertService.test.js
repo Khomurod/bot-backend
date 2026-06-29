@@ -5,6 +5,7 @@ const {
   extractStationFromText,
   isCompanyDriverProfile,
   detectStationFromMessage,
+  computeNextCheck,
 } = require('../services/fuelStopAlertService');
 
 // Real fuel-monitoring instruction (screenshot 2). Always opens with the banner.
@@ -112,4 +113,51 @@ test('isCompanyDriverProfile only accepts active company drivers', () => {
   assert.equal(isCompanyDriverProfile({ driver_type: 'owner', status: 'active' }), false);
   assert.equal(isCompanyDriverProfile(null), false);
   assert.equal(isCompanyDriverProfile({}), false);
+});
+
+const NOW = 1_700_000_000_000; // fixed epoch for deterministic scheduling tests
+const MIN = 60_000;
+
+test('computeNextCheck: already within radius → withinRadius', () => {
+  assert.deepEqual(computeNextCheck({ distanceMiles: 9, radiusMiles: 10, speedMph: 55, nowMs: NOW }), { withinRadius: true });
+  // exactly on the radius counts as within (not "beyond")
+  assert.deepEqual(computeNextCheck({ distanceMiles: 10, radiusMiles: 10, speedMph: 55, nowMs: NOW }), { withinRadius: true });
+});
+
+test('computeNextCheck: far away wakes ~20 min before predicted arrival', () => {
+  // 200 mi out, r=10 → 190 mi beyond, ×1.2 / 50 mph × 60 = 273.6 min to boundary.
+  const r = computeNextCheck({ distanceMiles: 200, radiusMiles: 10, speedMph: 50, nowMs: NOW });
+  assert.equal(r.withinRadius, false);
+  assert.ok(Math.abs(r.minutesToBoundary - 273.6) < 0.01);
+  // next check = ETA − 20 min
+  const gapMin = (r.nextCheckAtMs - NOW) / MIN;
+  assert.ok(Math.abs(gapMin - (273.6 - 20)) < 0.01, `gap was ${gapMin}`);
+  assert.ok(Math.abs((r.etaBoundaryAtMs - NOW) / MIN - 273.6) < 0.01);
+});
+
+test('computeNextCheck: near the boundary polls tightly (~3 min)', () => {
+  // 12 mi out, r=10 → 2 mi beyond → ~2.9 min → tight polling gap.
+  const r = computeNextCheck({ distanceMiles: 12, radiusMiles: 10, speedMph: 50, nowMs: NOW });
+  assert.equal(r.withinRadius, false);
+  assert.equal((r.nextCheckAtMs - NOW) / MIN, 3);
+});
+
+test('computeNextCheck: missing/zero speed falls back to 50 mph', () => {
+  const a = computeNextCheck({ distanceMiles: 60, radiusMiles: 10, speedMph: 0, nowMs: NOW });
+  const b = computeNextCheck({ distanceMiles: 60, radiusMiles: 10, speedMph: undefined, nowMs: NOW });
+  // 50 mi beyond ×1.2 / 50 × 60 = 72 min
+  assert.ok(Math.abs(a.minutesToBoundary - 72) < 0.01);
+  assert.deepEqual(a, b);
+});
+
+test('computeNextCheck: absurd speed is clamped to 75 mph', () => {
+  const r = computeNextCheck({ distanceMiles: 85, radiusMiles: 10, speedMph: 500, nowMs: NOW });
+  // 75 mi beyond ×1.2 / 75 × 60 = 72 min (clamped speed)
+  assert.ok(Math.abs(r.minutesToBoundary - 72) < 0.01);
+});
+
+test('computeNextCheck: next check never sooner than 2 min or longer than 6h', () => {
+  // Extremely far → capped at 6h.
+  const far = computeNextCheck({ distanceMiles: 5000, radiusMiles: 10, speedMph: 50, nowMs: NOW });
+  assert.equal((far.nextCheckAtMs - NOW) / MIN, 360);
 });

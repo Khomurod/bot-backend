@@ -1095,10 +1095,10 @@ async function createFuelStopAlert({
     `INSERT INTO fuel_stop_alerts (
        group_id, telegram_group_id, source_message_id,
        station_name, station_address, station_lat, station_lng,
-       radius_miles, status, expires_at
+       radius_miles, status, expires_at, next_check_at
      )
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'watching',
-             NOW() + ($9 || ' hours')::INTERVAL)
+             NOW() + ($9 || ' hours')::INTERVAL, NOW())
      RETURNING *`,
     [
       Number(groupId),
@@ -1115,8 +1115,16 @@ async function createFuelStopAlert({
   return res.rows[0] || null;
 }
 
-// Claim due watch rows for processing. Joins the group title (holds the unit #
-// used to resolve the truck) and the driver's saved Telegram username + name.
+// Columns added to every claimed/returned alert row so the service can resolve
+// the truck (group title holds the unit #) and tag the driver.
+const FUEL_ALERT_JOIN_COLUMNS = `
+  (SELECT group_name FROM groups g WHERE g.id = f.group_id) AS group_name,
+  (SELECT telegram_username FROM driver_profiles dp WHERE dp.group_id = f.group_id) AS telegram_username,
+  (SELECT first_name FROM driver_profiles dp WHERE dp.group_id = f.group_id) AS first_name,
+  (SELECT last_name FROM driver_profiles dp WHERE dp.group_id = f.group_id) AS last_name`;
+
+// Claim watch rows that are DUE (next_check_at reached). Most ticks claim
+// nothing because rows schedule their own next check far in the future.
 async function claimDueFuelStopAlerts(limit = 20) {
   const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 20;
   const res = await query(
@@ -1125,8 +1133,9 @@ async function claimDueFuelStopAlerts(limit = 20) {
        FROM fuel_stop_alerts
        WHERE status = 'watching'
          AND (expires_at IS NULL OR expires_at > NOW())
+         AND (next_check_at IS NULL OR next_check_at <= NOW())
          AND (processing = FALSE OR processing_started_at < NOW() - INTERVAL '10 minutes')
-       ORDER BY created_at ASC
+       ORDER BY next_check_at ASC NULLS FIRST
        LIMIT $1
        FOR UPDATE SKIP LOCKED
      )
@@ -1135,14 +1144,74 @@ async function claimDueFuelStopAlerts(limit = 20) {
          processing_started_at = NOW()
      FROM due
      WHERE f.id = due.id
-     RETURNING f.*,
-       (SELECT group_name FROM groups g WHERE g.id = f.group_id) AS group_name,
-       (SELECT telegram_username FROM driver_profiles dp WHERE dp.group_id = f.group_id) AS telegram_username,
-       (SELECT first_name FROM driver_profiles dp WHERE dp.group_id = f.group_id) AS first_name,
-       (SELECT last_name FROM driver_profiles dp WHERE dp.group_id = f.group_id) AS last_name`,
+     RETURNING f.*, ${FUEL_ALERT_JOIN_COLUMNS}`,
     [safeLimit]
   );
   return res.rows;
+}
+
+// Claim a single row by id (for the immediate first-evaluation kickoff right
+// after a fuel message is detected). Returns null if already being processed.
+async function claimFuelStopAlertById(id) {
+  const res = await query(
+    `UPDATE fuel_stop_alerts f
+     SET processing = TRUE,
+         processing_started_at = NOW()
+     WHERE f.id = $1
+       AND f.status = 'watching'
+       AND (f.processing = FALSE OR f.processing_started_at < NOW() - INTERVAL '10 minutes')
+     RETURNING f.*, ${FUEL_ALERT_JOIN_COLUMNS}`,
+    [Number(id)]
+  );
+  return res.rows[0] || null;
+}
+
+// Release a claimed row back to 'watching' with an updated ETA + next check
+// time (the truck has not yet reached the radius).
+async function rescheduleFuelStopAlert(id, {
+  distanceMiles = null,
+  etaMinutes = null,
+  etaBoundaryAt = null,
+  nextCheckAt,
+  error = null,
+} = {}) {
+  const res = await query(
+    `UPDATE fuel_stop_alerts
+     SET processing = FALSE,
+         processing_started_at = NULL,
+         status = 'watching',
+         last_distance_miles = COALESCE($2, last_distance_miles),
+         last_checked_at = NOW(),
+         eta_minutes = $3,
+         eta_boundary_at = $4,
+         next_check_at = $5,
+         last_error = $6
+     WHERE id = $1
+     RETURNING *`,
+    [
+      Number(id),
+      distanceMiles == null ? null : Number(distanceMiles),
+      etaMinutes == null ? null : Number(etaMinutes),
+      etaBoundaryAt || null,
+      nextCheckAt || null,
+      error ? String(error).slice(0, 1000) : null,
+    ]
+  );
+  return res.rows[0] || null;
+}
+
+// Latest still-watching alert for a group (for the admin column + manual send),
+// with the driver tag fields joined in.
+async function getActiveFuelStopAlertForGroup(groupId) {
+  const res = await query(
+    `SELECT f.*, ${FUEL_ALERT_JOIN_COLUMNS}
+     FROM fuel_stop_alerts f
+     WHERE f.group_id = $1 AND f.status = 'watching'
+     ORDER BY f.created_at DESC
+     LIMIT 1`,
+    [Number(groupId)]
+  );
+  return res.rows[0] || null;
 }
 
 // Finish a claimed row: 'notified' (fired once), 'watching' (still waiting),
@@ -3080,6 +3149,9 @@ module.exports = {
   setDriverTelegramUsername,
   createFuelStopAlert,
   claimDueFuelStopAlerts,
+  claimFuelStopAlertById,
+  rescheduleFuelStopAlert,
+  getActiveFuelStopAlertForGroup,
   completeFuelStopAlert,
   expireOldFuelStopAlerts,
   listActiveFuelStopAlerts,
