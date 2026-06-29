@@ -31,6 +31,10 @@ const {
   stopMileageBonusService,
 } = require('./services/mileageBonusService');
 const {
+  startDatatruckDocumentService,
+  stopDatatruckDocumentService,
+} = require('./services/datatruckDocumentService');
+const {
   startRaiseApprovalService,
   stopRaiseApprovalService,
 } = require('./services/raiseApprovalService');
@@ -376,6 +380,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopEmployeeBirthdayWishService(); } catch (err) { console.error('[SHUTDOWN] stopEmployeeBirthdayWishService failed:', err.message); }
   try { stopGroupStatusAiService(); } catch (err) { console.error('[SHUTDOWN] stopGroupStatusAiService failed:', err.message); }
   try { stopMileageBonusService(); } catch (err) { console.error('[SHUTDOWN] stopMileageBonusService failed:', err.message); }
+  try { stopDatatruckDocumentService(); } catch (err) { console.error('[SHUTDOWN] stopDatatruckDocumentService failed:', err.message); }
   try { stopRaiseApprovalService(); } catch (err) { console.error('[SHUTDOWN] stopRaiseApprovalService failed:', err.message); }
 
   await Promise.allSettled([
@@ -417,6 +422,7 @@ async function start() {
   startEmployeeBirthdayWishService();
   startGroupStatusAiService();
   startMileageBonusService();
+  startDatatruckDocumentService();
   startRaiseApprovalService();
   await startFacebookWebhookWorker();
   startLeadsBot();

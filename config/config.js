@@ -163,6 +163,27 @@ module.exports = {
   // (e.g. "wenze" for https://wenze.datatruck.io).
   datatruckApiToken: normalizeOptionalEnv(process.env.DATATRUCK_API_TOKEN),
   datatruckCompany: String(process.env.DATATRUCK_COMPANY || 'wenze').trim().toLowerCase(),
+  // Forward Bill of Lading / Proof of Delivery uploads from Datatruck to the
+  // matching driver's Telegram group. Read-only polling of the Datatruck
+  // OpenAPI; matches each order to its group by unit number, then driver name.
+  datatruckDocDeliveryEnabled: process.env.DATATRUCK_DOC_DELIVERY_ENABLED !== 'false',
+  // How often to scan for new BOL/POD uploads (minutes).
+  datatruckDocPollMinutes: Math.max(1, parseInt(process.env.DATATRUCK_DOC_POLL_MINUTES || '15', 10) || 15),
+  // How far back (days) to scan delivered orders for newly-uploaded documents.
+  datatruckDocLookbackDays: Math.max(1, parseInt(process.env.DATATRUCK_DOC_LOOKBACK_DAYS || '7', 10) || 7),
+  // Documents uploaded before this ISO timestamp are treated as backfill and
+  // never sent. When unset, the feature's first-activation time is used.
+  datatruckDocSinceIso: normalizeOptionalEnv(process.env.DATATRUCK_DOC_SINCE),
+  // Max document size to download+forward when Telegram cannot fetch the URL
+  // itself (MB). Telegram bot upload limit is 50MB; default conservatively.
+  datatruckDocMaxFileMb: Math.max(1, parseInt(process.env.DATATRUCK_DOC_MAX_FILE_MB || '45', 10) || 45),
+  // Datatruck returns document `file_link` as a relative storage key
+  // (e.g. "2026/6/27/<uuid>/<file>.pdf"). Prepend this base to build the
+  // public, fetchable URL. Trailing slash is normalized at use.
+  datatruckDocMediaBaseUrl: String(
+    process.env.DATATRUCK_DOC_MEDIA_BASE_URL
+    || 'https://tms-datatruck.s3-accelerate.amazonaws.com/static/'
+  ).trim(),
   // Gmail App Password channel for driver-raise OTP delivery (no third party).
   // GMAIL_USER is the full address; GMAIL_APP_PASSWORD is a 16-char App Password
   // created at https://myaccount.google.com/apppasswords (2FA required).
