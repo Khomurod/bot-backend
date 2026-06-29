@@ -227,6 +227,60 @@ async function getPendingHomeTimeRequestForGroup(groupId) {
 }
 
 /**
+ * Most recent OPEN request for a group: either a posted card awaiting a decision
+ * ('pending') or one waiting for the driver to supply dates ('awaiting_dates').
+ * Used as the duplicate guard so a re-tag does not create a second flow.
+ */
+async function getOpenHomeTimeRequestForGroup(groupId) {
+  const res = await query(
+    `SELECT * FROM home_time_requests
+     WHERE group_id = $1 AND status IN ('pending', 'awaiting_dates')
+     ORDER BY requested_at DESC LIMIT 1`,
+    [groupId]
+  );
+  return res.rows[0] || null;
+}
+
+/** Most recent request for a group that is waiting on the driver's dates. */
+async function getAwaitingDatesHomeTimeRequestForGroup(groupId) {
+  const res = await query(
+    `SELECT * FROM home_time_requests
+     WHERE group_id = $1 AND status = 'awaiting_dates'
+     ORDER BY requested_at DESC LIMIT 1`,
+    [groupId]
+  );
+  return res.rows[0] || null;
+}
+
+/**
+ * Fill in the dates on an 'awaiting_dates' request and flip it to 'pending' so a
+ * card can be posted. Atomic status guard prevents two replies both winning.
+ */
+async function fulfillAwaitingHomeTimeRequest(id, {
+  homeFrom, homeTo, roadStartedAt, daysOnRoad, policyMet, aiReasoning,
+}) {
+  const res = await query(
+    `UPDATE home_time_requests
+       SET home_from = $2,
+           home_to = $3,
+           road_started_at = COALESCE($4, road_started_at),
+           days_on_road = $5,
+           policy_met = $6,
+           ai_reasoning = COALESCE($7, ai_reasoning),
+           status = 'pending'
+     WHERE id = $1 AND status = 'awaiting_dates'
+     RETURNING *`,
+    [
+      id, homeFrom || null, homeTo || null, roadStartedAt || null,
+      daysOnRoad == null ? null : daysOnRoad,
+      policyMet == null ? null : policyMet,
+      aiReasoning || null,
+    ]
+  );
+  return res.rows[0] || null;
+}
+
+/**
  * Decide a request, but only if it is still pending (atomic guard so two
  * approvers tapping at once cannot both win).
  */
@@ -316,6 +370,9 @@ module.exports = {
   insertHomeTimeRequest,
   getHomeTimeRequestById,
   getPendingHomeTimeRequestForGroup,
+  getOpenHomeTimeRequestForGroup,
+  getAwaitingDatesHomeTimeRequestForGroup,
+  fulfillAwaitingHomeTimeRequest,
   decideHomeTimeRequest,
   setHomeTimeRequestMessage,
   findHomeTimeRequestByWindow,

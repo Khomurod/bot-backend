@@ -7,6 +7,11 @@ const {
   messageMentionsApprovers,
   hasHomeTimeSignal,
   buildHomeTimeClassificationPrompt,
+  buildHomeTimeDateReplyPrompt,
+  buildAskForDatesMessage,
+  looksLikeDateReply,
+  parseHomeTimeWindowText,
+  isReasonableHomeWindow,
   weeksFromDays,
   isPolicyMet,
   computeHomeWindow,
@@ -93,6 +98,83 @@ test('buildHomeTimeClassificationPrompt tolerates missing trigger/transcript', (
   const prompt = buildHomeTimeClassificationPrompt({});
   assert.match(prompt, /\(unavailable\)/);
   assert.match(prompt, /no recent messages/);
+});
+
+test('buildHomeTimeClassificationPrompt asks for the requested window and anchors today', () => {
+  const prompt = buildHomeTimeClassificationPrompt({ todayLabel: '2026-06-29' });
+  assert.match(prompt, /Today is 2026-06-29/);
+  assert.match(prompt, /dates_specified/);
+  assert.match(prompt, /home_from/);
+  assert.match(prompt, /Do NOT guess or default to today/);
+});
+
+test('buildHomeTimeDateReplyPrompt + buildAskForDatesMessage produce sensible text', () => {
+  const prompt = buildHomeTimeDateReplyPrompt({ text: 'jul 2 to jul 8', todayLabel: '2026-06-29' });
+  assert.match(prompt, /Today is 2026-06-29/);
+  assert.match(prompt, /jul 2 to jul 8/);
+  assert.match(prompt, /"found"/);
+  assert.match(buildAskForDatesMessage(), /what dates/i);
+});
+
+test('looksLikeDateReply gates on plausible date tokens', () => {
+  assert.equal(looksLikeDateReply('july 2 to july 8'), true);
+  assert.equal(looksLikeDateReply('7/2 - 7/8'), true);
+  assert.equal(looksLikeDateReply('2026-07-02 to 2026-07-08'), true);
+  assert.equal(looksLikeDateReply('the 2nd through the 8th'), true);
+  assert.equal(looksLikeDateReply('next monday'), true);
+  assert.equal(looksLikeDateReply('ok sounds good boss'), false);
+  assert.equal(looksLikeDateReply(''), false);
+});
+
+test('parseHomeTimeWindowText reads explicit ranges in several formats', () => {
+  const ref = '2026-06-29T00:00:00Z';
+  assert.deepStrictEqual(
+    parseHomeTimeWindowText('from July 2 to July 8', ref),
+    { homeFrom: '2026-07-02', homeTo: '2026-07-08' }
+  );
+  assert.deepStrictEqual(
+    parseHomeTimeWindowText('2nd of July until 8th of July', ref),
+    { homeFrom: '2026-07-02', homeTo: '2026-07-08' }
+  );
+  assert.deepStrictEqual(
+    parseHomeTimeWindowText('7/2 - 7/8', ref),
+    { homeFrom: '2026-07-02', homeTo: '2026-07-08' }
+  );
+  assert.deepStrictEqual(
+    parseHomeTimeWindowText('2026-07-02 to 2026-07-08', ref),
+    { homeFrom: '2026-07-02', homeTo: '2026-07-08' }
+  );
+});
+
+test('parseHomeTimeWindowText orders dates and handles a single date', () => {
+  const ref = '2026-06-29T00:00:00Z';
+  // Reversed order is normalized to from <= to.
+  assert.deepStrictEqual(
+    parseHomeTimeWindowText('July 8 back from July 2', ref),
+    { homeFrom: '2026-07-02', homeTo: '2026-07-08' }
+  );
+  // A single date becomes a one-day window.
+  assert.deepStrictEqual(
+    parseHomeTimeWindowText('just July 4', ref),
+    { homeFrom: '2026-07-04', homeTo: '2026-07-04' }
+  );
+  assert.equal(parseHomeTimeWindowText('no dates here', ref), null);
+});
+
+test('parseHomeTimeWindowText rolls a past bare month/day to next year', () => {
+  // Reference late December; "Jan 5" with no year means next January.
+  const out = parseHomeTimeWindowText('Jan 5 to Jan 9', '2026-12-20T00:00:00Z');
+  assert.deepStrictEqual(out, { homeFrom: '2027-01-05', homeTo: '2027-01-09' });
+});
+
+test('isReasonableHomeWindow validates shape, order and range', () => {
+  const ref = '2026-06-29T00:00:00Z';
+  assert.equal(isReasonableHomeWindow('2026-07-02', '2026-07-08', ref), true);
+  assert.equal(isReasonableHomeWindow('2026-07-02', '2026-07-01', ref), false); // end before start
+  assert.equal(isReasonableHomeWindow('1999-01-01', '1999-01-05', ref), false); // far past
+  assert.equal(isReasonableHomeWindow('2030-01-01', '2030-01-05', ref), false); // beyond a year
+  assert.equal(isReasonableHomeWindow('July 2', 'July 8', ref), false); // not YYYY-MM-DD
+  assert.equal(isReasonableHomeWindow(null, null, ref), false);
 });
 
 test('weeksFromDays converts and rounds to one decimal', () => {

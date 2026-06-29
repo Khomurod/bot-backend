@@ -135,13 +135,21 @@ function hasHomeTimeSignal(text) {
  * network) so it can be unit-tested. The most recent / triggering message is
  * shown separately from the rolling 30-minute transcript because the trigger is
  * what carries the intent, while the transcript supplies the surrounding context.
+ *
+ * The model is also asked to extract the requested home-time WINDOW (start/end
+ * dates) when the driver stated it ("from July 2 to July 8", "home for 4 days
+ * starting Monday"). `todayLabel` anchors relative dates.
  */
-function buildHomeTimeClassificationPrompt({ transcript, triggerText, approvers } = {}) {
+function buildHomeTimeClassificationPrompt({
+  transcript, triggerText, approvers, todayLabel,
+} = {}) {
   const approverList = (Array.isArray(approvers) && approvers.length
     ? approvers
     : HOME_TIME_APPROVER_MENTIONS).join(', ');
+  const today = todayLabel || DateTime.now().setZone('America/Chicago').toISODate();
   return [
     'You are a strict classifier for a US trucking company dispatch group on Telegram.',
+    `Today is ${today} (America/Chicago). Use it to resolve relative dates like "next Monday" or "the 4th".`,
     `A company representative just tagged a manager (${approverList}). Managers get tagged for MANY`,
     'reasons: load problems, rate / PO questions, breakdowns, maintenance (oil change, tires, repairs),',
     'paperwork, detention, escalations, complaints, or general questions.',
@@ -150,9 +158,15 @@ function buildHomeTimeClassificationPrompt({ transcript, triggerText, approvers 
     'behalf — is asking to GO HOME, take home time, time off, days off, vacation, or PTO. Anything else',
     'is NOT a home-time request, even when a manager is tagged.',
     '',
+    'When it IS a home-time request, also extract the requested window:',
+    '- If the driver gives a start AND end date, return both as YYYY-MM-DD.',
+    '- If they give a start date plus a duration ("4 days from July 2"), compute the end date.',
+    '- If no specific dates are stated (e.g. "he wants to go home soon"), set dates_specified=false',
+    '  and home_from/home_to to null. Do NOT guess or default to today.',
+    '',
     'Examples that ARE home-time requests:',
     '- "Driver wants to go home next week, he has been out 5 weeks @manager"',
-    '- "Can he get some home time? @manager"',
+    '- "Can he get home time from July 2 to July 8? @manager"',
     '- "He is asking for a few days off at the house @manager"',
     '',
     'Examples that are NOT home-time requests:',
@@ -168,8 +182,158 @@ function buildHomeTimeClassificationPrompt({ transcript, triggerText, approvers 
     `"""\n${transcript || '(no recent messages)'}\n"""`,
     '',
     'Respond with JSON only:',
-    '{"is_home_time_request": true|false, "confidence": "high"|"medium"|"low", "reason": "<short>"}',
+    '{"is_home_time_request": true|false, "confidence": "high"|"medium"|"low",'
+      + ' "dates_specified": true|false, "home_from": "YYYY-MM-DD"|null,'
+      + ' "home_to": "YYYY-MM-DD"|null, "reason": "<short>"}',
   ].join('\n');
+}
+
+/**
+ * Prompt for parsing a driver's follow-up reply once the bot has asked which
+ * dates they want. Pure. `todayLabel` anchors relative dates.
+ */
+function buildHomeTimeDateReplyPrompt({ text, todayLabel } = {}) {
+  const today = todayLabel || DateTime.now().setZone('America/Chicago').toISODate();
+  return [
+    'A truck driver was asked which dates they want for home time. Read their reply and extract the',
+    `home-time window. Today is ${today} (America/Chicago); resolve relative dates against it.`,
+    '- If you find a start and end date, return both as YYYY-MM-DD.',
+    '- If only a start date plus a duration is given, compute the end date.',
+    '- If only a single date is given, use it for both start and end.',
+    '- If you cannot find any date, set found=false and the dates to null.',
+    '',
+    'Reply:',
+    `"""\n${String(text || '').slice(0, 600)}\n"""`,
+    '',
+    'Respond with JSON only:',
+    '{"found": true|false, "home_from": "YYYY-MM-DD"|null, "home_to": "YYYY-MM-DD"|null}',
+  ].join('\n');
+}
+
+/** Friendly group message asking the driver for their home-time dates. */
+function buildAskForDatesMessage() {
+  return 'Got it — I can put in a home-time request. What dates would you like to be home? '
+    + 'Please reply with a start and end date (for example: Jul 2 – Jul 8).';
+}
+
+const MONTHS = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12,
+};
+
+/**
+ * Quick gate: does this text plausibly contain a date? Used to avoid an AI call
+ * (and a DB lookup) on ordinary chatter while waiting for a date reply.
+ */
+function looksLikeDateReply(text) {
+  const str = String(text || '');
+  if (/\b\d{1,2}\s*[/-]\s*\d{1,2}\b/.test(str)) return true; // 7/2, 07-02
+  if (/\b\d{4}-\d{2}-\d{2}\b/.test(str)) return true; // ISO
+  if (/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b/i.test(str)) return true;
+  if (/\b\d{1,2}(?:st|nd|rd|th)\b/i.test(str)) return true; // 2nd, 8th
+  if (/\b(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(str)) return true;
+  return false;
+}
+
+/** Resolve a bare month/day (no year) to the nearest upcoming year. */
+function resolveYearForMonthDay(month, day, ref) {
+  let dt = DateTime.fromObject({ year: ref.year, month, day }, { zone: ref.zone });
+  if (!dt.isValid) return null;
+  // If the date already passed by more than a couple days, assume next year.
+  if (dt < ref.minus({ days: 2 })) {
+    dt = dt.plus({ years: 1 });
+  }
+  return dt;
+}
+
+/**
+ * Best-effort deterministic parser for an explicit date range in free text.
+ * Used as the fallback when the AI is unavailable. Returns ISO date strings
+ * `{ homeFrom, homeTo }` (oldest first) or null when no date is found.
+ */
+function parseHomeTimeWindowText(text, referenceIso, timezone = 'America/Chicago') {
+  const str = String(text || '');
+  if (!str.trim()) return null;
+  const ref = referenceIso
+    ? DateTime.fromISO(String(referenceIso), { zone: timezone })
+    : DateTime.now().setZone(timezone);
+  const refSafe = ref.isValid ? ref : DateTime.now().setZone(timezone);
+
+  const found = []; // { index, end, dt }
+  const accept = (index, end, dt) => {
+    if (!dt || !dt.isValid) return;
+    if (found.some((f) => index < f.end && end > f.index)) return; // overlaps an accepted span
+    found.push({ index, end, dt });
+  };
+
+  const monthAlt = 'jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec';
+
+  // ISO yyyy-mm-dd
+  for (const m of str.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) {
+    const dt = DateTime.fromObject(
+      { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) },
+      { zone: timezone }
+    );
+    accept(m.index, m.index + m[0].length, dt);
+  }
+  // Month name + day (+ optional year): "July 2", "jul 2nd, 2026"
+  for (const m of str.matchAll(new RegExp(`\\b(${monthAlt})[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`, 'gi'))) {
+    const month = MONTHS[m[1].toLowerCase().slice(0, m[1].toLowerCase().startsWith('sept') ? 4 : 3)];
+    const day = Number(m[2]);
+    const dt = m[3]
+      ? DateTime.fromObject({ year: Number(m[3]), month, day }, { zone: timezone })
+      : resolveYearForMonthDay(month, day, refSafe);
+    accept(m.index, m.index + m[0].length, dt);
+  }
+  // Day + month (+ optional year): "2nd of July", "8 July 2026"
+  for (const m of str.matchAll(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${monthAlt})[a-z]*\\.?(?:,?\\s*(\\d{4}))?`, 'gi'))) {
+    const month = MONTHS[m[2].toLowerCase().slice(0, m[2].toLowerCase().startsWith('sept') ? 4 : 3)];
+    const day = Number(m[1]);
+    const dt = m[3]
+      ? DateTime.fromObject({ year: Number(m[3]), month, day }, { zone: timezone })
+      : resolveYearForMonthDay(month, day, refSafe);
+    accept(m.index, m.index + m[0].length, dt);
+  }
+  // Numeric m/d (+ optional year): "7/2", "07/02/2026"
+  for (const m of str.matchAll(/\b(\d{1,2})[/](\d{1,2})(?:[/](\d{2,4}))?\b/g)) {
+    const month = Number(m[1]);
+    const day = Number(m[2]);
+    if (month < 1 || month > 12 || day < 1 || day > 31) continue;
+    let year = m[3] ? Number(m[3]) : null;
+    if (year != null && year < 100) year += 2000;
+    const dt = year != null
+      ? DateTime.fromObject({ year, month, day }, { zone: timezone })
+      : resolveYearForMonthDay(month, day, refSafe);
+    accept(m.index, m.index + m[0].length, dt);
+  }
+
+  if (!found.length) return null;
+  found.sort((a, b) => a.index - b.index);
+  let from = found[0].dt;
+  let to = found.length > 1 ? found[1].dt : found[0].dt;
+  if (to < from) [from, to] = [to, from];
+  return { homeFrom: from.toISODate(), homeTo: to.toISODate() };
+}
+
+/**
+ * Is `{homeFrom, homeTo}` a sane home-time window? Both must be valid YYYY-MM-DD,
+ * end on/after start, and start within [yesterday, +1 year] of the reference.
+ */
+function isReasonableHomeWindow(homeFrom, homeTo, referenceIso, timezone = 'America/Chicago') {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(homeFrom || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(homeTo || ''))) {
+    return false;
+  }
+  const from = DateTime.fromISO(String(homeFrom), { zone: timezone });
+  const to = DateTime.fromISO(String(homeTo), { zone: timezone });
+  if (!from.isValid || !to.isValid) return false;
+  if (to < from) return false;
+  const ref = referenceIso
+    ? DateTime.fromISO(String(referenceIso), { zone: timezone })
+    : DateTime.now().setZone(timezone);
+  const refSafe = ref.isValid ? ref : DateTime.now().setZone(timezone);
+  if (from < refSafe.minus({ days: 1 }).startOf('day')) return false;
+  if (from > refSafe.plus({ years: 1 })) return false;
+  return true;
 }
 
 /** Whole + fractional weeks for a day count (rounded to 1 decimal). */
@@ -214,6 +378,11 @@ module.exports = {
   messageMentionsApprovers,
   hasHomeTimeSignal,
   buildHomeTimeClassificationPrompt,
+  buildHomeTimeDateReplyPrompt,
+  buildAskForDatesMessage,
+  looksLikeDateReply,
+  parseHomeTimeWindowText,
+  isReasonableHomeWindow,
   weeksFromDays,
   homeTimePolicyApplies,
   isPolicyMet,
