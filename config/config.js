@@ -177,6 +177,13 @@ module.exports = {
   // Max document size to download+forward when Telegram cannot fetch the URL
   // itself (MB). Telegram bot upload limit is 50MB; default conservatively.
   datatruckDocMaxFileMb: Math.max(1, parseInt(process.env.DATATRUCK_DOC_MAX_FILE_MB || '45', 10) || 45),
+  // Datatruck returns document `file_link` as a relative storage key
+  // (e.g. "2026/6/27/<uuid>/<file>.pdf"). Prepend this base to build the
+  // public, fetchable URL. Trailing slash is normalized at use.
+  datatruckDocMediaBaseUrl: String(
+    process.env.DATATRUCK_DOC_MEDIA_BASE_URL
+    || 'https://tms-datatruck.s3-accelerate.amazonaws.com/static/'
+  ).trim(),
   // Gmail App Password channel for driver-raise OTP delivery (no third party).
   // GMAIL_USER is the full address; GMAIL_APP_PASSWORD is a 16-char App Password
   // created at https://myaccount.google.com/apppasswords (2FA required).

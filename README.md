@@ -96,6 +96,12 @@ with a short caption.
 | `DATATRUCK_DOC_LOOKBACK_DAYS` | `7` | How far back (by delivery time) to scan |
 | `DATATRUCK_DOC_SINCE` | _(activation time)_ | ISO cutoff; documents uploaded before are treated as backfill |
 | `DATATRUCK_DOC_MAX_FILE_MB` | `45` | Max size to download+upload when Telegram cannot fetch the URL itself |
+| `DATATRUCK_DOC_MEDIA_BASE_URL` | `https://tms-datatruck.s3-accelerate.amazonaws.com/static/` | Prepended to the relative `file_link` storage key to build the fetchable document URL |
+
+> Datatruck's API returns `file_link` as a **relative storage key** (e.g.
+> `2026/6/27/<uuid>/<file>.pdf`), not a full URL. The service resolves it
+> against `DATATRUCK_DOC_MEDIA_BASE_URL`; already-absolute links pass through
+> unchanged, so if Datatruck later returns full URLs no config change is needed.
 
 ## Tech Stack
 

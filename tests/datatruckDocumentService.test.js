@@ -34,6 +34,7 @@ function loadService({ config: cfg = {}, datatruck = {}, docsDb = {}, directory 
     datatruckDocLookbackDays: 60,
     datatruckDocSinceIso: '',
     datatruckDocMaxFileMb: 45,
+    datatruckDocMediaBaseUrl: 'https://tms-datatruck.s3-accelerate.amazonaws.com/static/',
     datatruckApiToken: 'token',
     datatruckCompany: 'wenze',
     ...cfg,
@@ -116,7 +117,7 @@ test('forwards a new POD to the matched driver group and marks it sent', async (
     datatruck: {
       async fetchOrdersByDeliveryWindow() {
         return [orderWith([
-          { file_type: 'proof_of_delivery', file_link: 'https://x/pod.pdf', uploaded_at: '2026-06-15T10:00:00Z', uploaded_by: 'Jane' },
+          { file_type: 'proof_of_delivery', file_link: '2026/6/15/uuid/pod_scan.pdf', uploaded_at: '2026-06-15T10:00:00Z', uploaded_by: 'Jane' },
         ])];
       },
     },
@@ -129,7 +130,11 @@ test('forwards a new POD to the matched driver group and marks it sent', async (
   assert.equal(calls.sent.length, 1);
   assert.equal(calls.sent[0].chatId, '-1002614');
   assert.equal(calls.sent[0].file.kind, 'url');
-  assert.equal(calls.sent[0].file.url, 'https://x/pod.pdf');
+  // Relative file_link is resolved against the configured media base.
+  assert.equal(
+    calls.sent[0].file.url,
+    'https://tms-datatruck.s3-accelerate.amazonaws.com/static/2026/6/15/uuid/pod_scan.pdf'
+  );
   assert.equal(calls.sent[0].extra.parse_mode, 'HTML');
   assert.match(calls.sent[0].extra.caption, /Proof of Delivery/);
   assert.equal(calls.markedSent.length, 1);

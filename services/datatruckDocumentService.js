@@ -28,6 +28,7 @@ const {
   matchDocumentToGroup,
   buildDocumentCaption,
   buildDocumentFilename,
+  resolveDocumentUrl,
 } = require('./datatruckDocumentHelpers');
 
 const CLAIM_OPTS = { staleMinutes: 60, maxAttempts: 6 };
@@ -86,17 +87,20 @@ async function downloadDocument(fileLink) {
 async function sendDocumentToGroup(telegramGroupId, doc) {
   const caption = buildDocumentCaption(doc);
   const filename = buildDocumentFilename(doc);
+  const fileUrl = resolveDocumentUrl(doc.fileLink, config.datatruckDocMediaBaseUrl);
+  if (!fileUrl) throw new Error('Document has no resolvable file URL.');
   const extra = { caption, parse_mode: 'HTML' };
   try {
     return await safeSend(() => bot.telegram.sendDocument(
       telegramGroupId,
-      Input.fromURL(doc.fileLink, filename),
+      Input.fromURL(fileUrl, filename),
       extra,
     ));
   } catch (err) {
     if (isPermanentSendError(err)) throw err;
-    // Telegram could not fetch/serve the URL — upload the bytes ourselves.
-    const buffer = await downloadDocument(doc.fileLink);
+    // Telegram could not fetch/serve the URL (e.g. file > 20MB URL limit) —
+    // download the bytes and upload them ourselves.
+    const buffer = await downloadDocument(fileUrl);
     return safeSend(() => bot.telegram.sendDocument(
       telegramGroupId,
       Input.fromBuffer(buffer, filename),

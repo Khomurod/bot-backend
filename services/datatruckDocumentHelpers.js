@@ -236,6 +236,21 @@ function buildDocumentFilename(doc) {
   return `${base}${ext}`;
 }
 
+/**
+ * Resolve a document's `file_link` into a fetchable absolute URL. Datatruck
+ * returns a relative storage key (e.g. "2026/6/27/<uuid>/<file>.pdf"); we
+ * prepend the configured media base. Already-absolute links pass through
+ * unchanged so the API can switch to full URLs without a code change.
+ */
+function resolveDocumentUrl(fileLink, baseUrl) {
+  const link = String(fileLink || '').trim();
+  if (!link) return null;
+  if (/^https?:\/\//i.test(link)) return link;
+  const base = String(baseUrl || '').trim();
+  if (!base) return link;
+  return `${base.replace(/\/+$/, '')}/${link.replace(/^\/+/, '')}`;
+}
+
 function guessFileExtension(fileLink) {
   const path = String(fileLink || '').split(/[?#]/)[0];
   const m = path.match(/\.([A-Za-z0-9]{1,5})$/);
@@ -260,6 +275,7 @@ module.exports = {
   matchDocumentToGroup,
   buildDocumentCaption,
   buildDocumentFilename,
+  resolveDocumentUrl,
   guessFileExtension,
   formatUploadedAt,
 };

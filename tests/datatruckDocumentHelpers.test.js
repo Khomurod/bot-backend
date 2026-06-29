@@ -13,6 +13,7 @@ const {
   matchDocumentToGroup,
   buildDocumentCaption,
   buildDocumentFilename,
+  resolveDocumentUrl,
   guessFileExtension,
 } = require('../services/datatruckDocumentHelpers');
 
@@ -156,6 +157,23 @@ test('matchDocumentToGroup prefers unit number, falls back to driver name', () =
   assert.equal(matchDocumentToGroup({ unitNumber: '777', driverNames: ['Nobody Here'] }, index), null);
   // Inactive group is never matched even by exact unit.
   assert.equal(matchDocumentToGroup({ unitNumber: '999', driverNames: ['Old Driver'] }, index), null);
+});
+
+test('resolveDocumentUrl prepends the media base to relative keys', () => {
+  const base = 'https://tms-datatruck.s3-accelerate.amazonaws.com/static/';
+  assert.equal(
+    resolveDocumentUrl('2026/6/27/abc/merged.pdf', base),
+    'https://tms-datatruck.s3-accelerate.amazonaws.com/static/2026/6/27/abc/merged.pdf'
+  );
+  // Tolerates a leading slash on the key and a missing trailing slash on base.
+  assert.equal(
+    resolveDocumentUrl('/2026/6/27/abc/merged.pdf', 'https://x/static'),
+    'https://x/static/2026/6/27/abc/merged.pdf'
+  );
+  // Already-absolute links pass through unchanged.
+  assert.equal(resolveDocumentUrl('https://x/doc.pdf', base), 'https://x/doc.pdf');
+  assert.equal(resolveDocumentUrl('', base), null);
+  assert.equal(resolveDocumentUrl(null, base), null);
 });
 
 test('caption and filename are well-formed and HTML-escaped', () => {
