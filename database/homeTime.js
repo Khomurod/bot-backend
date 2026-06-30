@@ -44,20 +44,27 @@ async function getDriverHomeStatus(groupId) {
   return res.rows[0] || null;
 }
 
-/** Insert or update the current state for a driver group. */
+/**
+ * Insert or update the current state for a driver group. Always resets
+ * weeks_bonus_notified to 0 — every call here represents a fresh leg (the
+ * first time we ever see the group, or a real home<->road transition), so any
+ * extra-week milestones already posted for the leg that just ended no longer
+ * apply.
+ */
 async function upsertDriverHomeStatus({
   groupId, telegramGroupId, state, stateSince, lastStatusText, lastStatusAt,
 }) {
   const res = await query(
     `INSERT INTO driver_home_status
-       (group_id, telegram_group_id, state, state_since, last_status_text, last_status_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       (group_id, telegram_group_id, state, state_since, last_status_text, last_status_at, weeks_bonus_notified, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, 0, NOW())
      ON CONFLICT (group_id) DO UPDATE SET
        telegram_group_id = EXCLUDED.telegram_group_id,
        state = EXCLUDED.state,
        state_since = EXCLUDED.state_since,
        last_status_text = EXCLUDED.last_status_text,
        last_status_at = EXCLUDED.last_status_at,
+       weeks_bonus_notified = 0,
        updated_at = NOW()
      RETURNING *`,
     [groupId, telegramGroupId != null ? String(telegramGroupId) : null, state, stateSince, lastStatusText || null, lastStatusAt]
@@ -91,6 +98,33 @@ async function insertRoadHistory({
       daysOnRoad, exceededWeeks, bonusUsd]
   );
   return res.rows[0];
+}
+
+/**
+ * Driver groups currently on the road, with their group/driver labels —
+ * feeds the periodic extra-week bonus check (postBonusToGroup happens while
+ * the driver is still out, not just when they come home).
+ */
+async function listOpenRoadStatuses() {
+  const res = await query(
+    `SELECT s.*, g.group_name, g.active AS group_active,
+            dp.first_name, dp.last_name, dp.unit_number, dp.driver_type
+     FROM driver_home_status s
+     JOIN groups g ON g.id = s.group_id
+     LEFT JOIN driver_profiles dp ON dp.group_id = s.group_id
+     WHERE s.state = 'road'`
+  );
+  return res.rows;
+}
+
+/** Record that extra-week milestones up to `weeksNotified` were posted for this group's current road leg. */
+async function setWeeksBonusNotified(groupId, weeksNotified) {
+  const res = await query(
+    `UPDATE driver_home_status SET weeks_bonus_notified = $2, updated_at = NOW()
+     WHERE group_id = $1 RETURNING *`,
+    [groupId, weeksNotified]
+  );
+  return res.rows[0] || null;
 }
 
 /** Current state of every tracked driver group, with the group/driver labels. */
@@ -166,13 +200,17 @@ async function setDriverHomeStateSince(groupId, stateSince) {
 /**
  * Admin override of the current state ('home' | 'road') and/or its start date.
  * Each field is optional; a null leaves that column untouched (COALESCE). Used by
- * the admin panel so a wrong/auto-detected state can be corrected by hand.
+ * the admin panel so a wrong/auto-detected state can be corrected by hand. An
+ * explicit state also resets weeks_bonus_notified — it marks the start of a new
+ * leg, so any extra-week milestones already posted for the leg that just ended
+ * no longer apply.
  */
 async function setDriverHomeState(groupId, { state, stateSince } = {}) {
   const res = await query(
     `UPDATE driver_home_status
        SET state = COALESCE($2, state),
            state_since = COALESCE($3, state_since),
+           weeks_bonus_notified = CASE WHEN $2 IS NOT NULL THEN 0 ELSE weeks_bonus_notified END,
            updated_at = NOW()
      WHERE group_id = $1 RETURNING *`,
     [groupId, state || null, stateSince || null]
@@ -360,6 +398,8 @@ module.exports = {
   upsertDriverHomeStatus,
   touchDriverHomeStatus,
   insertRoadHistory,
+  listOpenRoadStatuses,
+  setWeeksBonusNotified,
   listCurrentStatuses,
   listRoadHistory,
   getRoadHistoryById,

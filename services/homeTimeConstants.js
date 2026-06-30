@@ -113,6 +113,26 @@ function computeRoadBonus(roadStart, roadEnd, {
   };
 }
 
+/**
+ * Which extra-week milestones (1-based: 1 = the week right after the
+ * allowance, i.e. the 5th week on a 4-week allowance) are newly reached since
+ * the last notification.
+ *
+ * e.g. exceededWeeks=2, alreadyNotified=0 -> [1, 2] (two notifications owed —
+ * covers the case where a check was missed and the driver crossed more than
+ * one week since the last run).
+ *
+ * @returns {number[]}
+ */
+function newlyCrossedExtraWeeks(exceededWeeks, alreadyNotified) {
+  const exceeded = Math.max(0, Math.trunc(Number(exceededWeeks) || 0));
+  const notified = Math.max(0, Math.trunc(Number(alreadyNotified) || 0));
+  if (exceeded <= notified) return [];
+  const weeks = [];
+  for (let w = notified + 1; w <= exceeded; w += 1) weeks.push(w);
+  return weeks;
+}
+
 module.exports = {
   DEFAULT_ROAD_ALLOWANCE_WEEKS,
   DEFAULT_HOME_ALLOWANCE_DAYS,
@@ -124,4 +144,5 @@ module.exports = {
   homeTimePolicyApplies,
   computeNextEligibleHomeTime,
   computeRoadBonus,
+  newlyCrossedExtraWeeks,
 };

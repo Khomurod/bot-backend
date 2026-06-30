@@ -6,6 +6,7 @@ const {
   computeRoadBonus,
   homeTimePolicyApplies,
   wholeDaysBetween,
+  newlyCrossedExtraWeeks,
 } = require('../services/homeTimeConstants');
 
 test('parseDriverStatus reads Home / Ready / Rolling in many shapes', () => {
@@ -112,4 +113,24 @@ test('computeNextEligibleHomeTime returns null for owner operators and invalid d
     computeNextEligibleHomeTime('not-a-date', { roadAllowanceWeeks: 4, driverType: 'company_driver' }),
     { eligibleAtIso: null, eligibleDate: null }
   );
+});
+
+test('newlyCrossedExtraWeeks: nothing owed once notified catches up to exceeded', () => {
+  assert.deepStrictEqual(newlyCrossedExtraWeeks(0, 0), []);
+  assert.deepStrictEqual(newlyCrossedExtraWeeks(1, 1), []);
+  assert.deepStrictEqual(newlyCrossedExtraWeeks(2, 2), []);
+});
+
+test('newlyCrossedExtraWeeks: the 5th week (1st extra week) owes notification 1', () => {
+  assert.deepStrictEqual(newlyCrossedExtraWeeks(1, 0), [1]);
+});
+
+test('newlyCrossedExtraWeeks: catches up every week missed in one pass', () => {
+  assert.deepStrictEqual(newlyCrossedExtraWeeks(3, 0), [1, 2, 3]);
+  assert.deepStrictEqual(newlyCrossedExtraWeeks(3, 1), [2, 3]);
+});
+
+test('newlyCrossedExtraWeeks: never goes backwards or negative', () => {
+  assert.deepStrictEqual(newlyCrossedExtraWeeks(1, 3), []);
+  assert.deepStrictEqual(newlyCrossedExtraWeeks(-1, -1), []);
 });
