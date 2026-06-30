@@ -43,15 +43,31 @@ const fakeRa = {
     { driver_normalized_name: 'JANE ROE', driver_name: 'Jane Roe' },
   ],
   _verified: true,
+  // round_id:team_id -> submission row, simulating the UNIQUE(round_id, team_id) constraint.
+  _submissions: new Map(),
+  _nextSubmissionId: 1,
   getRaiseSettings: async () => fakeRa._settings,
   getDispatchTeam: async () => fakeRa._team,
+  listDispatchTeams: async () => [{ id: fakeRa._team.id, name: fakeRa._team.name }],
   listTeamDrivers: async () => fakeRa._assigned,
   getRoundByToken: async () => ({
     id: 11, status: 'open', expires_at: DateTime.now().plus({ hours: 5 }).toISO(),
     period_start: '2026-06-15', period_end: '2026-06-21', rate_low: 0.72, rate_high: 0.75,
   }),
   isContactVerified: async () => fakeRa._verified,
-  saveSubmissionWithPicks: async () => ({ id: 99 }),
+  getSubmissionForTeam: async (roundId, teamId) => fakeRa._submissions.get(`${roundId}:${teamId}`) || null,
+  listSubmittedTeamIds: async (roundId) => [...fakeRa._submissions.values()]
+    .filter((s) => s.round_id === roundId)
+    .map((s) => s.team_id),
+  // Mirrors the real ON CONFLICT DO NOTHING behavior: returns null if a
+  // submission already exists for this (round_id, team_id) pair.
+  saveSubmissionWithPicks: async ({ roundId, teamId }) => {
+    const key = `${roundId}:${teamId}`;
+    if (fakeRa._submissions.has(key)) return null;
+    const submission = { id: fakeRa._nextSubmissionId++, round_id: roundId, team_id: teamId };
+    fakeRa._submissions.set(key, submission);
+    return submission;
+  },
 };
 require.cache[require.resolve('../database/raiseApproval')] = { exports: fakeRa };
 
@@ -105,6 +121,7 @@ test('submitResponse rejects an incomplete pick set', async () => {
 
 test('submitResponse saves and posts a summary to the bonus group', async () => {
   sentMessages.length = 0;
+  fakeRa._submissions.clear();
   const result = await raise.submitResponse({
     token: 'tok', teamId: 7, dispatcherName: 'Sam', contact: 'sam@x.com',
     picks: [
@@ -118,7 +135,36 @@ test('submitResponse saves and posts a summary to the bonus group', async () => 
   assert.match(sentMessages[0].text, /John Doe/);
 });
 
+test('a second submitResponse for the same team/round is rejected and sends no further message', async () => {
+  sentMessages.length = 0;
+  await assert.rejects(
+    () => raise.submitResponse({
+      token: 'tok', teamId: 7, dispatcherName: 'Someone Else', contact: 'other@x.com',
+      picks: [
+        { driver_normalized_name: 'JOHN DOE', qualified: false },
+        { driver_normalized_name: 'JANE ROE', qualified: true },
+      ],
+    }),
+    /already submitted/i
+  );
+  assert.equal(sentMessages.length, 0, 'a duplicate submission must not post another message');
+});
+
+test('requestOtp refuses to issue a code once the team has already submitted', async () => {
+  await assert.rejects(
+    () => raise.requestOtp({ token: 'tok', teamId: 7, contact: 'other@x.com' }),
+    /already submitted/i
+  );
+});
+
+test('getPublicRoundInfo marks a team as submitted once it has responded', async () => {
+  const info = await raise.getPublicRoundInfo('tok');
+  const team = info.teams.find((t) => t.id === 7);
+  assert.equal(team.submitted, true);
+});
+
 test('submitResponse refuses when the dispatcher is not verified', async () => {
+  fakeRa._submissions.clear();
   fakeRa._verified = false;
   await assert.rejects(
     () => raise.submitResponse({

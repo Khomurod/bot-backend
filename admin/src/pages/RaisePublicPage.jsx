@@ -37,8 +37,13 @@ export default function RaisePublicPage() {
 
   const ratePct = (v) => `${Math.round(Number(v) * 100)}¢`;
 
+  const selectedTeam = info?.teams.find((t) => String(t.id) === String(teamId));
+
   const handleRequestCode = async () => {
     if (!teamId) return flash("error", "Please choose your dispatch team.");
+    if (selectedTeam?.submitted) {
+      return flash("error", "This team has already submitted a response for this pay period.");
+    }
     if (!name.trim()) return flash("error", "Please enter your name.");
     if (!contact.trim()) return flash("error", `Please enter your ${isEmail ? "email" : "phone number"}.`);
     setBusy(true);
@@ -136,9 +141,18 @@ export default function RaisePublicPage() {
               <label>Your dispatch team</label>
               <select value={teamId} onChange={(e) => setTeamId(e.target.value)}>
                 <option value="">— choose your team —</option>
-                {info.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {info.teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}{t.submitted ? " (already submitted)" : ""}
+                  </option>
+                ))}
               </select>
             </div>
+            {selectedTeam?.submitted && (
+              <div className="alert alert-error">
+                This team has already submitted a response for this pay period. Only one response per team is allowed.
+              </div>
+            )}
             <div className="form-group">
               <label>Your name</label>
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="First Last" />
@@ -152,7 +166,7 @@ export default function RaisePublicPage() {
                 placeholder={isEmail ? "you@company.com" : "+1 555 123 4567"}
               />
             </div>
-            <button className="btn btn-primary" onClick={handleRequestCode} disabled={busy}>
+            <button className="btn btn-primary" onClick={handleRequestCode} disabled={busy || selectedTeam?.submitted}>
               {busy ? "Sending…" : "Send me a code"}
             </button>
           </div>

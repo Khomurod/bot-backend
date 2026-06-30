@@ -175,6 +175,7 @@ async function getPublicRoundInfo(token) {
   assertRoundUsable(round);
   const settings = await ra.getRaiseSettings();
   const teams = await ra.listDispatchTeams({ includeInactive: false });
+  const submittedTeamIds = new Set(await ra.listSubmittedTeamIds(round.id));
   return {
     period_start: round.period_start,
     period_end: round.period_end,
@@ -182,7 +183,7 @@ async function getPublicRoundInfo(token) {
     rate_high: round.rate_high,
     otp_channel: settings.otp_channel,
     contact_type: otp.contactTypeForChannel(settings.otp_channel),
-    teams: teams.map((t) => ({ id: t.id, name: t.name })),
+    teams: teams.map((t) => ({ id: t.id, name: t.name, submitted: submittedTeamIds.has(t.id) })),
   };
 }
 
@@ -205,6 +206,9 @@ async function requestOtp({ token, teamId, contact }) {
   assertRoundUsable(round);
   const team = await ra.getDispatchTeam(teamId);
   if (!team || !team.active) throw serviceError('NO_TEAM', 'Dispatch team not found.', 404);
+  if (await ra.getSubmissionForTeam(round.id, teamId)) {
+    throw serviceError('ALREADY_SUBMITTED', 'This team has already submitted a response for this pay period.', 409);
+  }
 
   const settings = await ra.getRaiseSettings();
   const channel = settings.otp_channel;
@@ -280,6 +284,9 @@ async function submitResponse({
   assertRoundUsable(round);
   const team = await ra.getDispatchTeam(teamId);
   if (!team || !team.active) throw serviceError('NO_TEAM', 'Dispatch team not found.', 404);
+  if (await ra.getSubmissionForTeam(round.id, teamId)) {
+    throw serviceError('ALREADY_SUBMITTED', 'This team has already submitted a response for this pay period.', 409);
+  }
 
   const settings = await ra.getRaiseSettings();
   const channel = settings.otp_channel;
@@ -319,6 +326,12 @@ async function submitResponse({
     contactType: otp.contactTypeForChannel(channel),
     picks: cleanPicks,
   });
+  // Atomic guard against a race with another concurrent submit for the same
+  // team/round: the DB insert is a no-op on conflict, so a null result here
+  // means another request already claimed this team's one response.
+  if (!submission) {
+    throw serviceError('ALREADY_SUBMITTED', 'This team has already submitted a response for this pay period.', 409);
+  }
 
   await postSubmissionSummary({ round, team, name, picks: cleanPicks });
   return { submitted: true, submission_id: submission.id };
