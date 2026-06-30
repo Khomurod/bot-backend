@@ -1092,7 +1092,7 @@ const { createHomeTimeRouter } = require('./routes/homeTimeRoutes');
 app.use('/api/home-time', createHomeTimeRouter({ authMiddleware }));
 
 const { createFuelMonitorRouter } = require('./routes/fuelMonitorRoutes');
-app.use('/api/fuel-monitor', createFuelMonitorRouter({ authMiddleware }));
+app.use('/api/fuel-monitor', createFuelMonitorRouter({ authMiddleware, telegram: bot.telegram }));
 
 // GET /api/groups
 app.get('/api/groups', authMiddleware, async (req, res) => {
