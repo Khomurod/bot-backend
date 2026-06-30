@@ -42,6 +42,11 @@ const {
   startFuelStopAlertService,
   stopFuelStopAlertService,
 } = require('./services/fuelStopAlertService');
+const {
+  configureDriverLocationTelegram,
+  startDriverLocationMonitorService,
+  stopDriverLocationMonitorService,
+} = require('./services/driverLocationMonitorService');
 const db = require('./database/db');
 
 const DB_DRAIN_TIMEOUT_MS = 5000;
@@ -387,6 +392,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopDatatruckDocumentService(); } catch (err) { console.error('[SHUTDOWN] stopDatatruckDocumentService failed:', err.message); }
   try { stopRaiseApprovalService(); } catch (err) { console.error('[SHUTDOWN] stopRaiseApprovalService failed:', err.message); }
   try { stopFuelStopAlertService(); } catch (err) { console.error('[SHUTDOWN] stopFuelStopAlertService failed:', err.message); }
+  try { stopDriverLocationMonitorService(); } catch (err) { console.error('[SHUTDOWN] stopDriverLocationMonitorService failed:', err.message); }
 
   await Promise.allSettled([
     stopFacebookWebhookWorker(),
@@ -415,6 +421,7 @@ async function start() {
   await db.initializeDatabase();
 
   configureDispatchEtaTelegram(bot.telegram);
+  configureDriverLocationTelegram(bot.telegram);
   const { getLeadsTelegram } = require('./services/leadsTelegramClient');
   configureFacebookLeadTelegram(getLeadsTelegram());
   console.log('[BOOT] Facebook lead Telegram delivery uses TELEGRAM_BOT_TOKEN (WenzeLeadBots).');
@@ -430,6 +437,7 @@ async function start() {
   startDatatruckDocumentService();
   startRaiseApprovalService();
   startFuelStopAlertService(bot.telegram);
+  startDriverLocationMonitorService(bot.telegram);
   await startFacebookWebhookWorker();
   startLeadsBot();
   startSamsaraBot();

@@ -1,0 +1,128 @@
+/**
+ * Inline-button handlers for driver location check-in prompts.
+ *
+ * When the location monitor detects a truck within the check-in radius of its
+ * shipper/receiver, it posts a "Have you checked in?" message with Yes / No
+ * buttons (callback data `loccheck:yes:<id>` / `loccheck:no:<id>`). The driver's
+ * answer is recorded here, along with whether they were on time for that stop.
+ *
+ * Kept free of any require on the monitor *service* to avoid a circular
+ * dependency (the service is started from index.js and never imports the bot).
+ */
+const monitorsDb = require('../database/driverLocationMonitors');
+
+// Counted on-time if the driver reaches/answers within this grace of the
+// appointment (kept in sync with driverLocationMonitorService.APPOINTMENT_GRACE_MIN).
+const APPOINTMENT_GRACE_MIN = 15;
+const REPROMPT_AFTER_NO_MIN = 20;
+const ADVANCE_AFTER_YES_MIN = 3;
+
+function minutesFromNowIso(minutes) {
+  return new Date(Date.now() + Math.max(0, Number(minutes) || 0) * 60_000).toISOString();
+}
+
+/**
+ * On-time = the driver reached/answered at the stop no later than the
+ * appointment (plus a short grace). Null when no appointment is known.
+ */
+function computeOnTime(appointmentAt, nowMs = Date.now()) {
+  if (!appointmentAt) return null;
+  const apptMs = Date.parse(String(appointmentAt));
+  if (!Number.isFinite(apptMs)) return null;
+  const grace = APPOINTMENT_GRACE_MIN * 60_000;
+  return nowMs <= apptMs + grace;
+}
+
+function registerLocationCheckinHandlers(bot) {
+  bot.action(/^loccheck:(yes|no):(\d+)$/, async (ctx) => {
+    try {
+      const answer = ctx.match[1] === 'yes' ? 'yes' : 'no';
+      const checkinId = parseInt(ctx.match[2], 10);
+      const from = ctx.from || {};
+
+      const checkin = await monitorsDb.getCheckinById(checkinId);
+      if (!checkin) {
+        await ctx.answerCbQuery('This check-in is no longer available.');
+        return;
+      }
+
+      // Only accept the answer on the current prompt message in its own group.
+      const callbackChatId = ctx.callbackQuery?.message?.chat?.id;
+      const callbackMessageId = ctx.callbackQuery?.message?.message_id;
+      const isCurrentPrompt = String(callbackChatId) === String(checkin.telegram_group_id)
+        && (checkin.prompt_message_id == null
+          || String(callbackMessageId) === String(checkin.prompt_message_id));
+      if (!isCurrentPrompt) {
+        await ctx.answerCbQuery('This is an old check-in prompt.', { show_alert: true });
+        return;
+      }
+
+      const onTime = computeOnTime(checkin.appointment_at);
+      const { record, alreadyAnswered } = await monitorsDb.recordCheckinResponse(checkinId, {
+        response: answer,
+        username: from.username || null,
+        userId: from.id || null,
+        onTime,
+      });
+
+      if (!record) {
+        await ctx.answerCbQuery('This check-in is no longer available.');
+        return;
+      }
+      if (alreadyAnswered) {
+        const by = record.responded_by_username ? `@${record.responded_by_username}` : 'someone';
+        await ctx.answerCbQuery(`Already answered (${record.driver_response}) by ${by}.`);
+        return;
+      }
+
+      const stopLabel = checkin.stop_type === 'shipper' ? 'shipper' : 'receiver';
+      const punctuality = onTime === null ? '' : onTime ? ' • on time' : ' • late';
+      const footer = answer === 'yes'
+        ? `\n\n✅ Checked in at the ${stopLabel}${punctuality} — thank you!`
+        : `\n\n❌ Not checked in yet at the ${stopLabel}. We'll check again shortly.`;
+
+      // Append the outcome to the original prompt and remove the buttons.
+      const originalText = ctx.callbackQuery?.message?.text || '';
+      try {
+        await ctx.editMessageText(`${originalText}${footer}`);
+      } catch (err) {
+        // Fall back to just clearing the keyboard if the edit fails.
+        try { await ctx.editMessageReplyMarkup(); } catch (_) { /* ignore */ }
+      }
+
+      await ctx.answerCbQuery(answer === 'yes' ? '✅ Recorded — thank you!' : '❌ Recorded.');
+
+      // Advance the monitor: a confirmed stop moves the load to its next phase;
+      // a "No" re-checks after a short cooldown so we can re-prompt.
+      try {
+        if (answer === 'yes') {
+          await monitorsDb.clearMonitorTarget(checkin.monitor_id, {
+            nextRunAt: minutesFromNowIso(ADVANCE_AFTER_YES_MIN),
+            lastStatus: `checked_in_${stopLabel}`,
+          });
+        } else {
+          await monitorsDb.releaseMonitor(checkin.monitor_id, {
+            nextRunAt: minutesFromNowIso(REPROMPT_AFTER_NO_MIN),
+            lastStatus: `not_checked_in_${stopLabel}`,
+            activeCheckinId: null,
+          });
+        }
+      } catch (err) {
+        console.warn('[LOCATION-MONITOR] Could not advance monitor after answer:', err.message);
+      }
+
+      console.log(
+        `[LOCATION-MONITOR] Check-in ${checkinId} answered ${answer} `
+        + `(${stopLabel}${onTime === null ? '' : onTime ? ', on time' : ', late'}) by `
+        + `${from.username ? `@${from.username}` : from.id}`
+      );
+    } catch (err) {
+      console.error('[LOCATION-MONITOR] Check-in callback error:', err.message);
+      try { await ctx.answerCbQuery('An error occurred.'); } catch (_) { /* ignore */ }
+    }
+  });
+
+  console.log('[LOCATION-MONITOR] Check-in handlers registered.');
+}
+
+module.exports = { registerLocationCheckinHandlers };
