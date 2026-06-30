@@ -113,6 +113,10 @@ module.exports = {
   googleGeocodingApiBase: process.env.GOOGLE_GEOCODING_API_BASE || 'https://maps.googleapis.com/maps/api/geocode/json',
   googleRoutesApiBase: process.env.GOOGLE_ROUTES_API_BASE || 'https://routes.googleapis.com/directions/v2:computeRoutes',
   employeeGroupId: process.env.EMPLOYEE_GROUP_ID || '-1003284808897',
+  // Anonymous Feedback — private-chat flow that asks the sender whether they are
+  // an employee or a driver, then relays their complaint / request / inquiry to
+  // this group WITHOUT any identifying information (no username, name, or id).
+  anonymousFeedbackGroupId: String(process.env.ANONYMOUS_FEEDBACK_GROUP_ID || '-5275569828').trim(),
   corsAllowedOrigins,
   // When true, CORS allows any origin (useful in local dev/testing).
   corsAllowAll: !corsAllowedOrigins.length || process.env.CORS_ALLOW_ALL === 'true',
