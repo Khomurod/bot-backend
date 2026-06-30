@@ -38,6 +38,12 @@ const RETRY_GAP_MIN = 5;           // truck offline / no GPS → retry soon
 const SPEED_MIN_MPH = 5;
 const SPEED_MAX_MPH = 75;
 
+// Admin "Refresh" re-scans fuel messages the bot saw in this recent window and
+// retries any whose live detection failed. (The Telegram Bot API cannot fetch
+// older history, so the inbox table is the only record we can re-scan.)
+const REFRESH_WINDOW_HOURS = 12;
+const REFRESH_MAX_ROWS = 50;
+
 // The ONLY trigger: the Fuel Monitoring team always opens their instruction
 // with the "FUEL MONITORING DEPARTMENT" banner (surrounded by emojis). We gate
 // strictly on this header so ordinary chatter and load-location updates (which
@@ -316,7 +322,7 @@ async function handleFuelStopMessage(telegram, group, message) {
  */
 async function refreshFuelStopsFromInbox(telegram) {
   if (!telegram) return { scanned: 0, pickedUp: 0 };
-  const rows = await db.listPendingFuelInbox(24, 50).catch(() => []);
+  const rows = await db.listPendingFuelInbox(REFRESH_WINDOW_HOURS, REFRESH_MAX_ROWS).catch(() => []);
   let pickedUp = 0;
   for (const row of rows) {
     try {
