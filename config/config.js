@@ -116,7 +116,7 @@ module.exports = {
   // Anonymous Feedback — private-chat flow that asks the sender whether they are
   // an employee or a driver, then relays their complaint / request / inquiry to
   // this group WITHOUT any identifying information (no username, name, or id).
-  anonymousFeedbackGroupId: String(process.env.ANONYMOUS_FEEDBACK_GROUP_ID || '-5275569828').trim(),
+  anonymousFeedbackGroupId: String(process.env.ANONYMOUS_FEEDBACK_GROUP_ID || '-1002997837889').trim(),
   corsAllowedOrigins,
   // When true, CORS allows any origin (useful in local dev/testing).
   corsAllowAll: !corsAllowedOrigins.length || process.env.CORS_ALLOW_ALL === 'true',
