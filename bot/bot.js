@@ -36,6 +36,10 @@ const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
 const { registerLocationCheckinHandlers } = require('./locationCheckinHandlers');
 const { registerCreatorMessageManager } = require('./creatorMessageManager');
+const {
+  registerAnonymousFeedbackHandlers,
+  beginAnonymousFeedback,
+} = require('./anonymousFeedbackHandlers');
 const { installBotSentMessageTracking } = require('../services/botSentMessageRegistry');
 // config.js already validates DATABASE_URL, MANAGEMENT_GROUP_ID (BOT_TOKEN has a code default)
 // and exits on missing values — no need to re-check here.
@@ -656,11 +660,14 @@ async function startBot() {
         );
         return;
       }
-      await ctx.reply(
-        'Add me to your driver Telegram group to get started. '
-        + 'For Facebook lead alerts, use the WenzeLeadBots bot in your leads group.',
-      );
+      // Private chat → start the anonymous feedback flow (employee/driver → message).
+      await beginAnonymousFeedback(ctx);
     });
+
+    // Anonymous feedback flow (private chat only). Registered before the test-hub
+    // /status lookup so its private-chat /cancel and text handling take priority;
+    // it falls through (next) for group chats so group behavior is unchanged.
+    registerAnonymousFeedbackHandlers(bot);
 
     // Test hub: interactive driver lookup for /status (before driver-group /status).
     registerDispatchStatusLookupHandlers(bot);
