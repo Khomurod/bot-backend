@@ -34,6 +34,7 @@ const { confirmAdminGrant } = require('../services/groupAccessService');
 const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedContextService');
 const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
+const { registerLocationCheckinHandlers } = require('./locationCheckinHandlers');
 const { registerCreatorMessageManager } = require('./creatorMessageManager');
 const { installBotSentMessageTracking } = require('../services/botSentMessageRegistry');
 // config.js already validates DATABASE_URL, MANAGEMENT_GROUP_ID (BOT_TOKEN has a code default)
@@ -747,6 +748,9 @@ async function startBot() {
 
     // Home-time request Approve / Do Not Approve buttons (approvers-only).
     registerHomeTimeRequestHandlers(bot);
+
+    // Driver location check-in Yes / No buttons (driver answers).
+    registerLocationCheckinHandlers(bot);
 
     // ── Handler: confirmation broadcast button clicks ──
     bot.action(/^bcast_(\d+)_(\d+)$/, async (ctx) => {

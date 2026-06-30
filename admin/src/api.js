@@ -1294,3 +1294,43 @@ export async function refreshFuelMonitor() {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+// ─── Driver Location Monitoring ───
+
+/** List active driver groups with their location-monitor settings + on-time stats. */
+export async function getLocationMonitors() {
+  const res = await fetch(`${API_BASE}/location-monitor`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Enable/disable + configure interval/radius for one driver group's monitor. */
+export async function updateLocationMonitor(groupId, payload) {
+  const res = await fetch(`${API_BASE}/location-monitor/${groupId}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Bulk enable/disable location monitoring across all active driver groups. */
+export async function updateAllLocationMonitors(payload) {
+  const res = await fetch(`${API_BASE}/location-monitor/toggle-all`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Recent check-in history (Yes/No answers + on-time) for one driver group. */
+export async function getLocationCheckins(groupId, limit = 50) {
+  const res = await fetch(`${API_BASE}/location-monitor/${groupId}/checkins?limit=${encodeURIComponent(limit)}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

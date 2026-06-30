@@ -163,12 +163,90 @@ async function fetchOrdersByDocumentWindow(startIso, endIso) {
   return mergeOrdersById(pickupOrders, deliveryOrders);
 }
 
+/** digits/letters lowercased, collapsed whitespace — for tolerant name matching. */
+function normalizeNameForMatch(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Driver-name candidates carried on an order (assigned + team driver). */
+function orderDriverCandidates(order) {
+  const trip = order?.trip || {};
+  return [
+    trip.driver__full_name,
+    trip.team_driver__full_name,
+    order?.assigned_driver,
+    order?.driver_name,
+  ].filter(Boolean);
+}
+
+/**
+ * Find the single most relevant in-progress order for a driver by name.
+ *
+ * Scans orders whose pickup OR delivery falls inside a window around now
+ * (default -2d … +5d), matches the assigned/team driver by normalized name,
+ * and returns the best candidate: the order whose next un-passed appointment
+ * (pickup if still upcoming, else delivery) is soonest. Returns null when no
+ * order matches — the location monitor then falls back to AI-parsed load
+ * context.
+ *
+ * Read-only; paced by the shared rate limiter. Datatruck order location field
+ * names are not fully documented, so the caller passes the raw order to AI for
+ * pickup/delivery extraction rather than relying on fixed field names here.
+ */
+async function fetchActiveOrderForDriver(driverName, {
+  lookbackDays = 2,
+  lookaheadDays = 5,
+  nowMs = Date.now(),
+} = {}) {
+  const target = normalizeNameForMatch(driverName);
+  if (!target) return null;
+
+  const startIso = new Date(nowMs - lookbackDays * 86_400_000).toISOString();
+  const endIso = new Date(nowMs + lookaheadDays * 86_400_000).toISOString();
+  const orders = await fetchOrdersByDocumentWindow(startIso, endIso);
+
+  const matched = orders.filter((order) => orderDriverCandidates(order)
+    .some((candidate) => {
+      const norm = normalizeNameForMatch(candidate);
+      return norm && norm === target;
+    }));
+  if (!matched.length) return null;
+
+  function appointmentMs(order, kind) {
+    const iso = kind === 'pickup'
+      ? (order?.pickup_time || order?.pickup_appointment_time)
+      : (order?.delivery_time || order?.delivery_appointment_time);
+    const ms = iso ? Date.parse(iso) : NaN;
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  // Rank by the soonest still-relevant appointment: a not-yet-reached pickup
+  // wins over delivery; an order entirely in the past sinks to the bottom.
+  function sortKey(order) {
+    const pu = appointmentMs(order, 'pickup');
+    const del = appointmentMs(order, 'delivery');
+    if (pu != null && pu >= nowMs) return pu;          // heading to pickup
+    if (del != null && del >= nowMs) return del;        // heading to delivery
+    return Math.max(pu || 0, del || 0) + 1e15;          // already past → deprioritize
+  }
+
+  matched.sort((a, b) => sortKey(a) - sortKey(b));
+  return matched[0] || null;
+}
+
 module.exports = {
   isConfigured,
   fetchAllDrivers,
   fetchOrdersByPickupWindow,
   fetchOrdersByDeliveryWindow,
   fetchOrdersByDocumentWindow,
+  fetchActiveOrderForDriver,
+  normalizeNameForMatch,
+  orderDriverCandidates,
   mergeOrdersById,
   fetchAllPages,
   PAGE_SIZE,

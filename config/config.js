@@ -190,4 +190,9 @@ module.exports = {
   gmailUser: normalizeOptionalEnv(process.env.GMAIL_USER),
   gmailAppPassword: String(process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, ''),
   gmailFrom: normalizeOptionalEnv(process.env.GMAIL_FROM) || normalizeOptionalEnv(process.env.GMAIL_USER),
+  // Driver Location Monitoring — per-group toggle feature that tracks a driver's
+  // active load, decides shipper vs. receiver, watches the ETA, and sends a
+  // Yes/No check-in prompt when the truck enters the check-in radius. Disable
+  // the background poller entirely by setting DRIVER_LOCATION_MONITOR_ENABLED=false.
+  driverLocationMonitorEnabled: process.env.DRIVER_LOCATION_MONITOR_ENABLED !== 'false',
 };
