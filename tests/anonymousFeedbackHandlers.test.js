@@ -86,7 +86,7 @@ test('awaiting_description text is relayed anonymously to the group with NO iden
   // Exactly one relay to the group.
   assert.equal(ctx._sent.length, 1);
   const relayed = ctx._sent[0];
-  assert.equal(String(relayed.chatId), '-5275569828');
+  assert.equal(String(relayed.chatId), '-1002997837889');
 
   // Role and message present.
   assert.match(relayed.body, /Driver/);
