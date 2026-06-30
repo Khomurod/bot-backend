@@ -186,9 +186,20 @@ async function getSubmissionForTeam(roundId, teamId) {
   return res.rows[0] || null;
 }
 
+/** IDs of the teams that have already submitted a response for this round. */
+async function listSubmittedTeamIds(roundId) {
+  const res = await query(
+    'SELECT team_id FROM raise_round_submissions WHERE round_id = $1',
+    [roundId]
+  );
+  return res.rows.map((r) => r.team_id);
+}
+
 /**
- * Save (or replace) a team's submission for a round, plus its per-driver picks.
- * Returns the persisted submission row.
+ * Save a team's one-and-only submission for a round, plus its per-driver picks.
+ * A team may submit at most once per round: if a submission already exists for
+ * (round_id, team_id), the insert is skipped and `null` is returned so the
+ * caller can refuse the request instead of overwriting the original response.
  */
 async function saveSubmissionWithPicks({
   roundId, teamId, dispatcherName, dispatcherContact, contactType, picks,
@@ -200,16 +211,15 @@ async function saveSubmissionWithPicks({
       `INSERT INTO raise_round_submissions
          (round_id, team_id, dispatcher_name, dispatcher_contact, contact_type)
        VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (round_id, team_id) DO UPDATE SET
-         dispatcher_name = EXCLUDED.dispatcher_name,
-         dispatcher_contact = EXCLUDED.dispatcher_contact,
-         contact_type = EXCLUDED.contact_type,
-         submitted_at = NOW()
+       ON CONFLICT (round_id, team_id) DO NOTHING
        RETURNING *`,
       [roundId, teamId, dispatcherName, dispatcherContact, contactType]
     );
     const submission = subRes.rows[0];
-    await client.query('DELETE FROM raise_round_picks WHERE submission_id = $1', [submission.id]);
+    if (!submission) {
+      await client.query('ROLLBACK');
+      return null;
+    }
     for (const p of picks) {
       await client.query(
         `INSERT INTO raise_round_picks
@@ -327,6 +337,7 @@ module.exports = {
   listRounds,
   closeRound,
   getSubmissionForTeam,
+  listSubmittedTeamIds,
   saveSubmissionWithPicks,
   getRoundResults,
   createOtp,
