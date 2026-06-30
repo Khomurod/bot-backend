@@ -1265,6 +1265,66 @@ async function listActiveFuelStopAlerts() {
   return res.rows;
 }
 
+// ─── Fuel Monitor inbox ────────────────────────────────────────────────────
+
+// Record a fuel-header message so Refresh can retry it if detection fails.
+// ON CONFLICT DO NOTHING — duplicate live deliveries are silently ignored.
+async function recordFuelInboxMessage({ groupId, telegramGroupId, messageId, messageText }) {
+  const res = await query(
+    `INSERT INTO fuel_monitor_inbox (group_id, telegram_group_id, message_id, message_text)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (group_id, message_id) DO NOTHING
+     RETURNING *`,
+    [
+      Number(groupId),
+      String(telegramGroupId),
+      Number(messageId),
+      String(messageText || '').slice(0, 4000),
+    ]
+  );
+  return res.rows[0] || null;
+}
+
+// Pending inbox rows created in the last `hours` hours, oldest first (so
+// Refresh processes messages in the order the team sent them).
+async function listPendingFuelInbox(hours = 24, limit = 50) {
+  const safeHours = Math.max(1, Number(hours) || 24);
+  const safeLimit = Math.max(1, Number(limit) || 50);
+  const res = await query(
+    `SELECT i.*, g.group_name
+     FROM fuel_monitor_inbox i
+     JOIN groups g ON g.id = i.group_id
+     WHERE i.status = 'pending'
+       AND i.created_at >= NOW() - ($1 || ' hours')::INTERVAL
+     ORDER BY i.created_at ASC
+     LIMIT $2`,
+    [String(safeHours), safeLimit]
+  );
+  return res.rows;
+}
+
+// Mark an inbox row as picked_up (detection + alert creation succeeded).
+async function markFuelInboxPickedUp(id, alertId = null) {
+  const res = await query(
+    `UPDATE fuel_monitor_inbox
+     SET status = 'picked_up', alert_id = $2, processed_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [Number(id), alertId ? Number(alertId) : null]
+  );
+  return res.rows[0] || null;
+}
+
+// Remove inbox rows older than `days` days (called during housekeeping tick).
+async function deleteOldFuelInbox(days = 3) {
+  const res = await query(
+    `DELETE FROM fuel_monitor_inbox
+     WHERE created_at < NOW() - ($1 || ' days')::INTERVAL`,
+    [String(Math.max(1, Number(days) || 3))]
+  );
+  return res.rowCount || 0;
+}
+
 async function createScheduledMessage(data) {
   const mediaItems = Array.isArray(data.media_items) && data.media_items.length > 0
     ? data.media_items
@@ -3155,6 +3215,10 @@ module.exports = {
   completeFuelStopAlert,
   expireOldFuelStopAlerts,
   listActiveFuelStopAlerts,
+  recordFuelInboxMessage,
+  listPendingFuelInbox,
+  markFuelInboxPickedUp,
+  deleteOldFuelInbox,
   // Drivers
   upsertDriver,
   getDriverByTelegramId,

@@ -6,6 +6,7 @@ const {
   isCompanyDriverProfile,
   detectStationFromMessage,
   computeNextCheck,
+  reactToFuelMessage,
 } = require('../services/fuelStopAlertService');
 
 // Real fuel-monitoring instruction (screenshot 2). Always opens with the banner.
@@ -160,4 +161,59 @@ test('computeNextCheck: next check never sooner than 2 min or longer than 6h', (
   // Extremely far → capped at 6h.
   const far = computeNextCheck({ distanceMiles: 5000, radiusMiles: 10, speedMph: 50, nowMs: NOW });
   assert.equal((far.nextCheckAtMs - NOW) / MIN, 360);
+});
+
+// ─── reactToFuelMessage ────────────────────────────────────────────────────
+
+test('reactToFuelMessage calls setMessageReaction when available', async () => {
+  const calls = [];
+  const telegram = {
+    setMessageReaction: async (chatId, messageId, reaction) => {
+      calls.push({ chatId, messageId, reaction });
+    },
+  };
+  await reactToFuelMessage(telegram, -100123, 42);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].chatId, -100123);
+  assert.equal(calls[0].messageId, 42);
+  assert.deepEqual(calls[0].reaction, [{ type: 'emoji', emoji: '👍' }]);
+});
+
+test('reactToFuelMessage falls back to callApi when setMessageReaction is absent', async () => {
+  const calls = [];
+  const telegram = {
+    callApi: async (method, params) => {
+      calls.push({ method, params });
+    },
+  };
+  await reactToFuelMessage(telegram, -100456, 99);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, 'setMessageReaction');
+  assert.equal(calls[0].params.chat_id, -100456);
+  assert.equal(calls[0].params.message_id, 99);
+  assert.deepEqual(calls[0].params.reaction, [{ type: 'emoji', emoji: '👍' }]);
+});
+
+test('reactToFuelMessage never throws when the telegram call rejects', async () => {
+  const telegram = {
+    setMessageReaction: async () => { throw new Error('Forbidden'); },
+  };
+  // Must not throw
+  await reactToFuelMessage(telegram, -100789, 7);
+});
+
+test('reactToFuelMessage is a no-op for missing telegram/chatId/messageId', async () => {
+  // None of these should throw
+  await reactToFuelMessage(null, -100, 1);
+  await reactToFuelMessage({ setMessageReaction: async () => {} }, null, 1);
+  await reactToFuelMessage({ setMessageReaction: async () => {} }, -100, null);
+});
+
+test('reactToFuelMessage supports a custom emoji', async () => {
+  const calls = [];
+  const telegram = {
+    setMessageReaction: async (chatId, messageId, reaction) => { calls.push(reaction); },
+  };
+  await reactToFuelMessage(telegram, -1, 1, '✅');
+  assert.deepEqual(calls[0], [{ type: 'emoji', emoji: '✅' }]);
 });

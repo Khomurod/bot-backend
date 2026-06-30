@@ -1386,3 +1386,28 @@ CREATE INDEX IF NOT EXISTS idx_fuel_stop_alerts_next_check
   ON fuel_stop_alerts(status, next_check_at);
 CREATE INDEX IF NOT EXISTS idx_fuel_stop_alerts_group
   ON fuel_stop_alerts(group_id, created_at DESC);
+
+-- ── Fuel Monitor: inbox of fuel-header messages seen by the bot ──
+-- Every time the bot sees a "⛽FUEL MONITORING DEPARTMENT⛽" message in a
+-- company-driver group, we record it here. The detection/geocode pipeline runs
+-- immediately; if it fails (transient geocode error, AI quota) the row stays
+-- 'pending' and the admin "Refresh" button can retry it later. Rows that were
+-- successfully turned into fuel_stop_alerts are marked 'picked_up'.
+-- Note: the Telegram Bot API cannot retrieve past history, so this table is the
+-- only durable record of messages the bot has observed.
+CREATE TABLE IF NOT EXISTS fuel_monitor_inbox (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  telegram_group_id BIGINT NOT NULL,
+  message_id BIGINT NOT NULL,
+  message_text TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',  -- pending | picked_up
+  alert_id INTEGER REFERENCES fuel_stop_alerts(id) ON DELETE SET NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  processed_at TIMESTAMP NULL,
+  UNIQUE (group_id, message_id),
+  CONSTRAINT fuel_monitor_inbox_status_check CHECK (status IN ('pending', 'picked_up'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_fuel_monitor_inbox_status_created
+  ON fuel_monitor_inbox(status, created_at DESC);

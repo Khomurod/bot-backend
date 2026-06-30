@@ -1284,3 +1284,13 @@ export async function sendFuelReminder(groupId) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+/** Re-scan the fuel message inbox; pick up any pending fuel messages from the last 24 h. */
+export async function refreshFuelMonitor() {
+  const res = await fetch(`${API_BASE}/fuel-monitor/refresh`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

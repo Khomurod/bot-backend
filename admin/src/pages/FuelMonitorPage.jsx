@@ -22,6 +22,7 @@ export default function FuelMonitorPage() {
   const [message, setMessage] = useState(null);
   const [savingGroupId, setSavingGroupId] = useState(null);
   const [sendingGroupId, setSendingGroupId] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
 
   const fetchDrivers = useCallback(async () => {
@@ -99,6 +100,27 @@ export default function FuelMonitorPage() {
     }
   };
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setMessage(null);
+    try {
+      const result = await api.refreshFuelMonitor();
+      const picked = result.picked_up ?? 0;
+      const scanned = result.scanned ?? 0;
+      setMessage({
+        type: "success",
+        text: picked > 0
+          ? `Picked up ${picked} new fuel stop${picked !== 1 ? "s" : ""} from ${scanned} recent message${scanned !== 1 ? "s" : ""}.`
+          : `Scanned ${scanned} recent message${scanned !== 1 ? "s" : ""} — no new fuel stops found.`,
+      });
+      await fetchDrivers();
+    } catch (err) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const watchingCount = useMemo(
     () => drivers.reduce((sum, d) => sum + (Array.isArray(d.watching) ? d.watching.length : 0), 0),
     [drivers]
@@ -120,13 +142,24 @@ export default function FuelMonitorPage() {
       )}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
-        <input
-          type="text"
-          placeholder="Search driver, group, or unit…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ maxWidth: 320 }}
-        />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="text"
+            placeholder="Search driver, group, or unit…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ maxWidth: 320 }}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={refreshing}
+            title="Re-scan recently seen fuel messages and pick up any that were missed"
+            onClick={handleRefresh}
+          >
+            {refreshing ? "Refreshing…" : "⟳ Refresh"}
+          </button>
+        </div>
         <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
           {drivers.length} active company drivers · {watchingCount} fuel stop(s) being watched
         </span>

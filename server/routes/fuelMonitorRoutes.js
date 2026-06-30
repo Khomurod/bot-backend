@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../../database/db');
 const { listCanonicalDriverGroups } = require('../../services/driverGroupDirectoryService');
-const { sendManualFuelReminder } = require('../../services/fuelStopAlertService');
+const { sendManualFuelReminder, refreshFuelStopsFromInbox } = require('../../services/fuelStopAlertService');
 
 // Telegram handles: 5–32 chars of [a-z0-9_]. We accept an optional leading '@'
 // and store it normalized (lowercase, no '@') via db.setDriverTelegramUsername.
@@ -12,7 +12,7 @@ const USERNAME_RE = /^@?[A-Za-z0-9_]{3,32}$/;
  *  - GET  /                      → active company drivers + saved usernames
  *  - PUT  /:groupId/username     → set/clear a driver's Telegram username
  */
-function createFuelMonitorRouter({ authMiddleware }) {
+function createFuelMonitorRouter({ authMiddleware, telegram }) {
   const router = express.Router();
 
   router.get('/', authMiddleware, async (req, res) => {
@@ -91,6 +91,18 @@ function createFuelMonitorRouter({ authMiddleware }) {
     } catch (err) {
       console.error('[FUEL-MONITOR API] update username failed:', err.message);
       res.status(500).json({ error: 'Server error' });
+    }
+  });
+
+  // Re-scan the fuel-message inbox: retry detection on pending rows from the
+  // last 24 h. Returns { scanned, picked_up } shown in the admin banner.
+  router.post('/refresh', authMiddleware, async (req, res) => {
+    try {
+      const result = await refreshFuelStopsFromInbox(telegram);
+      res.json({ scanned: result.scanned, picked_up: result.pickedUp });
+    } catch (err) {
+      console.error('[FUEL-MONITOR API] refresh failed:', err.message);
+      res.status(500).json({ error: 'Failed to refresh fuel monitor inbox' });
     }
   });
 
