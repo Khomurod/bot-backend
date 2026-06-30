@@ -22,6 +22,7 @@ export default function FuelMonitorPage() {
   const [message, setMessage] = useState(null);
   const [savingGroupId, setSavingGroupId] = useState(null);
   const [sendingGroupId, setSendingGroupId] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
 
   const fetchDrivers = useCallback(async () => {
@@ -99,6 +100,28 @@ export default function FuelMonitorPage() {
     }
   };
 
+  const refreshFromHistory = async () => {
+    setRefreshing(true);
+    setMessage(null);
+    try {
+      const summary = await api.refreshFuelMonitor();
+      const activated = Number(summary?.activated) || 0;
+      const already = Number(summary?.alreadyActive) || 0;
+      const scanned = Number(summary?.scanned) || 0;
+      setMessage({
+        type: "success",
+        text:
+          `Scanned ${scanned} group(s) from the last 12 hours: ` +
+          `${activated} new recommendation(s) activated, ${already} already active.`,
+      });
+      await fetchDrivers();
+    } catch (err) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const watchingCount = useMemo(
     () => drivers.reduce((sum, d) => sum + (Array.isArray(d.watching) ? d.watching.length : 0), 0),
     [drivers]
@@ -127,9 +150,20 @@ export default function FuelMonitorPage() {
           onChange={(e) => setSearch(e.target.value)}
           style={{ maxWidth: 320 }}
         />
-        <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          {drivers.length} active company drivers · {watchingCount} fuel stop(s) being watched
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            {drivers.length} active company drivers · {watchingCount} fuel stop(s) being watched
+          </span>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={refreshing || loading}
+            title="Re-scan the last 12 hours of driver-group messages and activate the latest gas-station recommendation per driver"
+            onClick={refreshFromHistory}
+          >
+            {refreshing ? "Refreshing…" : "↻ Refresh"}
+          </button>
+        </div>
       </div>
 
       {loading ? (

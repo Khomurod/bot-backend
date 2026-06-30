@@ -1265,6 +1265,88 @@ async function listActiveFuelStopAlerts() {
   return res.rows;
 }
 
+// ─── Fuel Monitor: stored fuel-header messages (history for the Refresh button) ───
+
+// Persist a Fuel Monitoring Department message seen live in a driver group, so
+// the Refresh button can re-scan recent history (the Bot API can't fetch chat
+// history). Idempotent per (group_id, message_id); keeps the newest sent_at.
+async function recordFuelStopMessage({
+  groupId,
+  telegramGroupId,
+  messageId,
+  messageText,
+  sentAt = null,
+}) {
+  if (!Number.isFinite(Number(groupId)) || !Number.isFinite(Number(messageId))) {
+    return null;
+  }
+  const text = String(messageText || '').trim();
+  if (!text) return null;
+  const res = await query(
+    `INSERT INTO fuel_stop_messages (group_id, telegram_group_id, message_id, message_text, sent_at)
+     VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, NOW()))
+     ON CONFLICT (group_id, message_id)
+     DO UPDATE SET message_text = EXCLUDED.message_text,
+                   sent_at = EXCLUDED.sent_at
+     RETURNING *`,
+    [
+      Number(groupId),
+      String(telegramGroupId),
+      Number(messageId),
+      text.slice(0, 4000),
+      sentAt || null,
+    ]
+  );
+  return res.rows[0] || null;
+}
+
+// The most recent stored fuel message for each driver group within the lookback
+// window (default 12h). When groupId is given, restricts to that one group.
+// Used by the Refresh flow to (re)activate the latest recommendation per driver.
+async function getLatestFuelStopMessagesPerGroup({ sinceHours = 12, groupId = null } = {}) {
+  const hours = Math.max(1, Number(sinceHours) || 12);
+  const params = [String(hours)];
+  let groupFilter = '';
+  if (Number.isFinite(Number(groupId)) && Number(groupId) > 0) {
+    params.push(Number(groupId));
+    groupFilter = `AND m.group_id = $${params.length}`;
+  }
+  const res = await query(
+    `SELECT DISTINCT ON (m.group_id)
+       m.group_id, m.telegram_group_id, m.message_id, m.message_text, m.sent_at
+     FROM fuel_stop_messages m
+     WHERE m.sent_at >= NOW() - ($1 || ' hours')::INTERVAL
+       ${groupFilter}
+     ORDER BY m.group_id, m.sent_at DESC, m.message_id DESC`,
+    params
+  );
+  return res.rows;
+}
+
+// Housekeeping: drop stored fuel messages older than the retention window so
+// the table stays tiny (we only ever look back 12h on refresh).
+async function pruneOldFuelStopMessages(retentionHours = 48) {
+  const hours = Math.max(12, Number(retentionHours) || 48);
+  const res = await query(
+    `DELETE FROM fuel_stop_messages
+     WHERE sent_at < NOW() - ($1 || ' hours')::INTERVAL`,
+    [String(hours)]
+  );
+  return res.rowCount || 0;
+}
+
+// Expire every still-watching alert for a group except keepId, so the latest
+// gas-station recommendation becomes the single active one. Returns the count.
+async function supersedeOtherWatchingFuelStopAlerts(groupId, keepId) {
+  const res = await query(
+    `UPDATE fuel_stop_alerts
+     SET status = 'expired', processing = FALSE, processing_started_at = NULL
+     WHERE group_id = $1 AND status = 'watching' AND id <> $2`,
+    [Number(groupId), Number(keepId)]
+  );
+  return res.rowCount || 0;
+}
+
 async function createScheduledMessage(data) {
   const mediaItems = Array.isArray(data.media_items) && data.media_items.length > 0
     ? data.media_items
@@ -3155,6 +3237,10 @@ module.exports = {
   completeFuelStopAlert,
   expireOldFuelStopAlerts,
   listActiveFuelStopAlerts,
+  recordFuelStopMessage,
+  getLatestFuelStopMessagesPerGroup,
+  pruneOldFuelStopMessages,
+  supersedeOtherWatchingFuelStopAlerts,
   // Drivers
   upsertDriver,
   getDriverByTelegramId,

@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../../database/db');
 const { listCanonicalDriverGroups } = require('../../services/driverGroupDirectoryService');
-const { sendManualFuelReminder } = require('../../services/fuelStopAlertService');
+const { sendManualFuelReminder, refreshFuelStopsFromHistory } = require('../../services/fuelStopAlertService');
 
 // Telegram handles: 5–32 chars of [a-z0-9_]. We accept an optional leading '@'
 // and store it normalized (lowercase, no '@') via db.setDriverTelegramUsername.
@@ -112,6 +112,24 @@ function createFuelMonitorRouter({ authMiddleware }) {
     } catch (err) {
       console.error('[FUEL-MONITOR API] send reminder failed:', err.message);
       res.status(500).json({ error: 'Failed to send reminder' });
+    }
+  });
+
+  // Re-scan the last 12 hours of fuel-monitoring messages the bot saw in driver
+  // groups and (re)activate the latest gas-station recommendation per driver.
+  // Groups the bot can't read keep being watched live (nothing to re-scan).
+  router.post('/refresh', authMiddleware, async (req, res) => {
+    try {
+      const rawGroupId = req.body?.group_id;
+      const groupId = rawGroupId == null ? null : Number(rawGroupId);
+      if (groupId != null && (!Number.isInteger(groupId) || groupId <= 0)) {
+        return res.status(400).json({ error: 'Invalid group id' });
+      }
+      const summary = await refreshFuelStopsFromHistory({ groupId });
+      res.json(summary);
+    } catch (err) {
+      console.error('[FUEL-MONITOR API] refresh failed:', err.message);
+      res.status(500).json({ error: 'Failed to refresh fuel stops from history' });
     }
   });
 

@@ -1284,3 +1284,18 @@ export async function sendFuelReminder(groupId) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+/**
+ * Re-scan the last 12 hours of fuel-monitoring messages the bot saw in driver
+ * groups and (re)activate the latest gas-station recommendation per driver.
+ * Pass a groupId to refresh a single driver; omit to refresh all.
+ */
+export async function refreshFuelMonitor(groupId = null) {
+  const res = await fetch(`${API_BASE}/fuel-monitor/refresh`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(groupId ? { group_id: groupId } : {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

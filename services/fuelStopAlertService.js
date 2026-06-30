@@ -237,6 +237,23 @@ async function handleFuelStopMessage(telegram, group, message) {
     // message is an actual Fuel Monitoring Department instruction.
     if (!messageHasFuelHeader(messageText(message))) return;
 
+    // Persist the fuel message so the admin "Refresh" button can re-scan the
+    // last 12h and (re)activate the latest recommendation even if live
+    // processing below fails (geocode hiccup, driver not yet company, etc.).
+    // The Bot API can't read chat history, so this live capture IS the history.
+    const sentAtIso = Number.isFinite(message.date)
+      ? new Date(message.date * 1000).toISOString()
+      : new Date().toISOString();
+    await db.recordFuelStopMessage({
+      groupId: group.id,
+      telegramGroupId: group.telegram_group_id,
+      messageId,
+      messageText: messageText(message),
+      sentAt: sentAtIso,
+    }).catch((err) => {
+      console.warn('[FUEL-ALERT] Failed to persist fuel message:', err.message);
+    });
+
     // Only company drivers are in the Fuel Monitor scope (matches the admin
     // page's source of truth). Owner-operators / non-company groups are ignored.
     const profile = await db.getDriverProfileByGroupId(group.id).catch(() => null);
@@ -448,6 +465,116 @@ async function sendManualFuelReminder(groupId) {
   return { sent: true, station_name: alert.station_name || null };
 }
 
+const HISTORY_LOOKBACK_HOURS = 12;
+
+/**
+ * Admin "Refresh" action for the Fuel Monitor tab.
+ *
+ * Re-scans the last 12 hours of fuel-monitoring messages the bot saw in driver
+ * groups (persisted in fuel_stop_messages — the Bot API cannot fetch chat
+ * history, so this live capture IS the history). For each company-driver group
+ * it takes the MOST RECENT fuel message, detects the gas station, and makes
+ * that the single active recommendation (superseding any older watch). Groups
+ * the bot can't read have nothing stored here and keep being watched live.
+ *
+ * Returns a summary: { scanned, activated, alreadyActive, skipped, details }.
+ */
+async function refreshFuelStopsFromHistory({ groupId = null } = {}) {
+  if (!telegramClient) {
+    throw new Error('Fuel reminder Telegram client is not configured.');
+  }
+
+  await db.pruneOldFuelStopMessages().catch(() => {});
+
+  const rows = await db.getLatestFuelStopMessagesPerGroup({
+    sinceHours: HISTORY_LOOKBACK_HOURS,
+    groupId: groupId || null,
+  });
+
+  const summary = {
+    scanned: rows.length,
+    activated: 0,
+    alreadyActive: 0,
+    skipped: 0,
+    details: [],
+  };
+
+  for (const row of rows) {
+    const gid = Number(row.group_id);
+    try {
+      // Stay in the Fuel Monitor scope: active company drivers only.
+      const profile = await db.getDriverProfileByGroupId(gid).catch(() => null);
+      if (!isCompanyDriverProfile(profile)) {
+        summary.skipped += 1;
+        summary.details.push({ group_id: gid, result: 'not_company_driver' });
+        continue;
+      }
+
+      // If the latest message already drives the active watch, just re-confirm
+      // it's the only active one and move on (no duplicate geocode/AI work).
+      const existingActive = await db.getActiveFuelStopAlertForGroup(gid).catch(() => null);
+      if (existingActive && Number(existingActive.source_message_id) === Number(row.message_id)) {
+        await db.supersedeOtherWatchingFuelStopAlerts(gid, existingActive.id).catch(() => {});
+        summary.alreadyActive += 1;
+        summary.details.push({ group_id: gid, result: 'already_active', message_id: row.message_id });
+        continue;
+      }
+
+      const station = await detectStationFromMessage({
+        text: row.message_text,
+        message_id: row.message_id,
+      });
+      if (!station) {
+        summary.skipped += 1;
+        summary.details.push({ group_id: gid, result: 'no_station_detected', message_id: row.message_id });
+        continue;
+      }
+
+      const alert = await db.createFuelStopAlert({
+        groupId: gid,
+        telegramGroupId: row.telegram_group_id,
+        sourceMessageId: row.message_id,
+        stationName: station.stationName,
+        stationAddress: station.stationAddress,
+        stationLat: station.latitude,
+        stationLng: station.longitude,
+        radiusMiles: DEFAULT_RADIUS_MILES,
+      });
+      if (!alert) {
+        summary.skipped += 1;
+        summary.details.push({ group_id: gid, result: 'create_failed', message_id: row.message_id });
+        continue;
+      }
+
+      // The latest message wins: drop any older watches for this group.
+      await db.supersedeOtherWatchingFuelStopAlerts(gid, alert.id).catch(() => {});
+
+      // Immediately evaluate (sends now if already within range; otherwise
+      // schedules the next ETA-based check).
+      const claimed = await db.claimFuelStopAlertById(alert.id).catch(() => null);
+      if (claimed) await processFuelAlert(telegramClient, claimed);
+
+      summary.activated += 1;
+      summary.details.push({
+        group_id: gid,
+        result: 'activated',
+        message_id: row.message_id,
+        station_name: station.stationName || null,
+      });
+    } catch (err) {
+      summary.skipped += 1;
+      summary.details.push({ group_id: gid, result: 'error', error: err.message });
+      console.error(`[FUEL-ALERT] refresh failed for group ${gid}:`, err.message);
+    }
+  }
+
+  console.log(
+    `[FUEL-ALERT] Refresh scanned ${summary.scanned} group(s): `
+    + `${summary.activated} activated, ${summary.alreadyActive} already active, ${summary.skipped} skipped`
+  );
+  return summary;
+}
+
 let telegramClient = null;
 
 function configureFuelStopTelegram(telegram) {
@@ -459,6 +586,7 @@ async function tickFuelStopAlerts() {
   tickRunning = true;
   try {
     await db.expireOldFuelStopAlerts().catch(() => {});
+    await db.pruneOldFuelStopMessages().catch(() => {});
     if (!telegramClient) return;
 
     const due = await db.claimDueFuelStopAlerts(ALERT_MAX_BATCH);
@@ -516,6 +644,7 @@ module.exports = {
   buildReminderBody,
   buildManualReminderText,
   sendManualFuelReminder,
+  refreshFuelStopsFromHistory,
   processFuelAlert,
   tickFuelStopAlerts,
   startFuelStopAlertService,

@@ -1,3 +1,11 @@
+// Provide harmless defaults so config.js (which exits on missing env) and the
+// db module load without a real environment. ||= leaves real CI values intact.
+process.env.BOT_TOKEN ||= 'test-bot-token';
+process.env.TELEGRAM_BOT_TOKEN ||= 'test-telegram-bot-token';
+process.env.DATABASE_URL ||= 'postgresql://user:password@localhost:5432/test';
+process.env.JWT_SECRET ||= 'test-jwt-secret';
+process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY ||= '0'.repeat(64);
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
@@ -6,6 +14,7 @@ const {
   isCompanyDriverProfile,
   detectStationFromMessage,
   computeNextCheck,
+  refreshFuelStopsFromHistory,
 } = require('../services/fuelStopAlertService');
 
 // Real fuel-monitoring instruction (screenshot 2). Always opens with the banner.
@@ -113,6 +122,15 @@ test('isCompanyDriverProfile only accepts active company drivers', () => {
   assert.equal(isCompanyDriverProfile({ driver_type: 'owner', status: 'active' }), false);
   assert.equal(isCompanyDriverProfile(null), false);
   assert.equal(isCompanyDriverProfile({}), false);
+});
+
+test('refreshFuelStopsFromHistory is exported and guards a missing Telegram client', async () => {
+  assert.equal(typeof refreshFuelStopsFromHistory, 'function');
+  // With no Telegram client configured it must fail fast, before any DB work.
+  await assert.rejects(
+    () => refreshFuelStopsFromHistory(),
+    /Telegram client is not configured/
+  );
 });
 
 const NOW = 1_700_000_000_000; // fixed epoch for deterministic scheduling tests

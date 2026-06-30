@@ -1386,3 +1386,26 @@ CREATE INDEX IF NOT EXISTS idx_fuel_stop_alerts_next_check
   ON fuel_stop_alerts(status, next_check_at);
 CREATE INDEX IF NOT EXISTS idx_fuel_stop_alerts_group
   ON fuel_stop_alerts(group_id, created_at DESC);
+
+-- TABLE: fuel_stop_messages
+-- A short-lived persistent log of Fuel Monitoring Department messages seen in
+-- driver groups. The Telegram Bot API cannot fetch a chat's history (even for
+-- an admin bot), so we record each fuel-header message as it arrives live. The
+-- Fuel Monitor "Refresh" button then re-scans the last 12 hours of these rows
+-- to (re)activate the latest gas-station recommendation per driver — useful
+-- when the live detection missed/failed at receipt time (geocode hiccup, driver
+-- not yet marked company, bot restart, etc.). Groups the bot cannot read post
+-- nothing here and simply keep being watched live, unchanged.
+CREATE TABLE IF NOT EXISTS fuel_stop_messages (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  telegram_group_id BIGINT NOT NULL,
+  message_id BIGINT NOT NULL,
+  message_text TEXT NOT NULL,
+  sent_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT fuel_stop_messages_group_message_unique UNIQUE (group_id, message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_fuel_stop_messages_group_sent
+  ON fuel_stop_messages(group_id, sent_at DESC);
