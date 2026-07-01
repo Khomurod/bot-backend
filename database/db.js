@@ -1763,6 +1763,108 @@ async function markBotSentMessageDeleted(telegramChatId, telegramMessageId) {
   return res.rows[0] || null;
 }
 
+/**
+ * Admin registry browser: newest bot-sent messages first, with optional
+ * chat / free-text / date-range filters and pagination. Returns the page of
+ * rows plus the total row count so the UI can paginate. Each row carries the
+ * matching group_name (when known) as chat_title.
+ */
+async function listBotSentMessages({
+  chatId = null,
+  search = null,
+  dateFrom = null,
+  dateTo = null,
+  includeDeleted = true,
+  limit = 50,
+  offset = 0,
+} = {}) {
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
+  const safeOffset = Math.max(parseInt(offset, 10) || 0, 0);
+
+  const where = [];
+  const params = [];
+  if (chatId != null && String(chatId).trim() !== '') {
+    params.push(String(chatId).trim());
+    where.push(`b.telegram_chat_id = $${params.length}`);
+  }
+  if (search != null && String(search).trim() !== '') {
+    params.push(`%${String(search).trim()}%`);
+    where.push(`b.message_text ILIKE $${params.length}`);
+  }
+  if (dateFrom) {
+    params.push(dateFrom);
+    where.push(`b.sent_at >= $${params.length}::timestamptz`);
+  }
+  if (dateTo) {
+    params.push(dateTo);
+    where.push(`b.sent_at <= $${params.length}::timestamptz`);
+  }
+  if (!includeDeleted) where.push('b.deleted_at IS NULL');
+  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const countRes = await query(
+    `SELECT COUNT(*)::int AS total FROM bot_sent_messages b ${whereClause}`,
+    params
+  );
+  const total = countRes.rows[0]?.total || 0;
+
+  params.push(safeLimit);
+  const limitIdx = params.length;
+  params.push(safeOffset);
+  const offsetIdx = params.length;
+
+  const res = await query(
+    `SELECT b.*,
+            (
+              SELECT g.group_name FROM groups g
+              WHERE g.telegram_group_id = b.telegram_chat_id
+              LIMIT 1
+            ) AS chat_title
+       FROM bot_sent_messages b
+       ${whereClause}
+      ORDER BY b.sent_at DESC NULLS LAST, b.id DESC
+      LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+    params
+  );
+  return { messages: res.rows, total, limit: safeLimit, offset: safeOffset };
+}
+
+async function getBotSentMessageById(id) {
+  const res = await query(
+    `SELECT b.*,
+            (
+              SELECT g.group_name FROM groups g
+              WHERE g.telegram_group_id = b.telegram_chat_id
+              LIMIT 1
+            ) AS chat_title
+       FROM bot_sent_messages b
+      WHERE b.id = $1
+      LIMIT 1`,
+    [id]
+  );
+  return res.rows[0] || null;
+}
+
+/**
+ * Record an admin edit: store the replacement text as the current text and in
+ * last_edit_text, and stamp edited_at. Keyed by (chat, message) so the service
+ * can call it right after a successful Telegram edit.
+ */
+async function markBotSentMessageEdited(telegramChatId, telegramMessageId, newText) {
+  const res = await query(
+    `UPDATE bot_sent_messages
+        SET message_text = $3,
+            last_edit_text = $3,
+            edited_at = NOW(),
+            updated_at = NOW()
+      WHERE telegram_chat_id = $1
+        AND telegram_message_id = $2
+      RETURNING *`,
+    [telegramChatId, telegramMessageId, newText]
+  );
+  return res.rows[0] || null;
+}
+
 async function upsertGroupPinnedMessageSnapshot({
   groupId,
   telegramGroupId,
@@ -3284,6 +3386,9 @@ module.exports = {
   findBotSentMessagesForForward,
   updateBotSentMessageContent,
   markBotSentMessageDeleted,
+  listBotSentMessages,
+  getBotSentMessageById,
+  markBotSentMessageEdited,
   upsertGroupPinnedMessageSnapshot,
   getGroupPinnedMessageSnapshot,
   getGroupRecentLoads,
