@@ -3,6 +3,14 @@
 This guide is written so **anyone** can follow it — no coding needed. Just click
 the buttons in the order shown.
 
+> ✅ **STATUS: DONE.** The Samsara feature has already been moved into its own
+> repository (**github.com/Khomurod/samsara-integration**) and is deployed as
+> its own Render service, and it has been fully removed from this main repo.
+> Sections 4–5 below are kept as a record of how it was done. The parts that
+> still matter day-to-day are **Section 2** (why it fixes the memory),
+> **Section 3** (how the two services keep talking), and **Section 6** (turning
+> off the old copy) + the **Section 8** checklist.
+
 ---
 
 ## 1. What we did, in one sentence
@@ -96,6 +104,10 @@ where to paste them.)
 
 ## 4. Button-by-button: put the folder into its own GitHub repository
 
+> ✅ Already completed — the folder now lives at
+> **github.com/Khomurod/samsara-integration** and is no longer in this repo.
+> Kept below only as a record of how it was done.
+
 You will do this **once**. Take your time; you can't break anything by going slow.
 
 ### Step A — Get the folder onto your computer
@@ -175,23 +187,28 @@ Your new repository now holds the Samsara feature. 🎉
 
 ---
 
-## 6. Turn off the OLD copy so it stops using memory (and stops double-sending)
+## 6. Make the OLD copy stop running (fixes the `409 Conflict` error)
 
-Your main app was updated so it **no longer starts** the Samsara program inside
-itself. You just need to redeploy the main app so that change takes effect:
+The Samsara program has been **completely removed** from the main app's code, so
+the main app can no longer start it. You just need to **redeploy the main app**
+so it picks up that cleaned-up code:
 
 1. In Render, open your **driver-feedback-bot** service.
 2. Click **Manual Deploy** (top-right) → **Deploy latest commit**.
-3. Once it finishes, the main app is now lighter and should stop running out of
-   memory.
+3. Wait until it says **live**. The main app is now lighter, and the repeating
+   `409 Conflict: terminated by other getUpdates request` errors in the
+   Samsara service's log will **stop** (they were caused by the old copy and the
+   new service both using the Samsara bot at the same time).
 
-> If your main app's Environment still has a leftover variable called
-> `ENABLE_SAMSARA_BOT` or `SAMSARA_MAX_OLD_SPACE_MB`, you can delete them — they
-> are no longer used. (Leaving them does no harm either.)
+> Optional tidy-up on the **main** app → **Environment**: the variable
+> `SAMSARA_BOT_TOKEN` is no longer used by the main app (only the new Samsara
+> service needs it now), so you may delete it. Leaving it does no harm.
+> **Do NOT** delete `SAMSARA_API_KEY`, `SAMSARA_API_KEYS`, `SAMSARA_API_BASE`,
+> or `TELEGRAM_BOT_TOKEN` — the main app still needs those (live truck-location
+> and the leads bot).
 
-If you had a **second** Render service running Samsara from the *old* repo
-(sometimes named `samsara-poller` already), **delete that old one** so you don't
-run two copies:
+If you ever had a **second** Render service running Samsara from the *old* repo,
+**delete that old one** so you don't run two copies:
 1. Open that old service → **Settings** (bottom) → **Delete Service**.
 
 ---
