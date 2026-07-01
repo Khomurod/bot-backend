@@ -1226,6 +1226,13 @@ CREATE TABLE IF NOT EXISTS driver_home_status (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- How many full extra-week milestones have already been posted to the Bonus
+-- Penalty group for the CURRENT road leg (reset to 0 every time a new leg
+-- starts, home->road or road->home). Lets the periodic check notify each new
+-- extra week exactly once while the driver is still out, instead of waiting
+-- for them to come home.
+ALTER TABLE driver_home_status ADD COLUMN IF NOT EXISTS weeks_bonus_notified INTEGER NOT NULL DEFAULT 0;
+
 -- One row per completed road trip (closed when the driver goes home).
 CREATE TABLE IF NOT EXISTS driver_road_history (
   id SERIAL PRIMARY KEY,

@@ -31,6 +31,10 @@ const {
   stopMileageBonusService,
 } = require('./services/mileageBonusService');
 const {
+  startHomeTimeBonusScheduler,
+  stopHomeTimeBonusScheduler,
+} = require('./services/homeTimeService');
+const {
   startDatatruckDocumentService,
   stopDatatruckDocumentService,
 } = require('./services/datatruckDocumentService');
@@ -292,6 +296,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopEmployeeBirthdayWishService(); } catch (err) { console.error('[SHUTDOWN] stopEmployeeBirthdayWishService failed:', err.message); }
   try { stopGroupStatusAiService(); } catch (err) { console.error('[SHUTDOWN] stopGroupStatusAiService failed:', err.message); }
   try { stopMileageBonusService(); } catch (err) { console.error('[SHUTDOWN] stopMileageBonusService failed:', err.message); }
+  try { stopHomeTimeBonusScheduler(); } catch (err) { console.error('[SHUTDOWN] stopHomeTimeBonusScheduler failed:', err.message); }
   try { stopDatatruckDocumentService(); } catch (err) { console.error('[SHUTDOWN] stopDatatruckDocumentService failed:', err.message); }
   try { stopRaiseApprovalService(); } catch (err) { console.error('[SHUTDOWN] stopRaiseApprovalService failed:', err.message); }
   try { stopFuelStopAlertService(); } catch (err) { console.error('[SHUTDOWN] stopFuelStopAlertService failed:', err.message); }
@@ -336,6 +341,7 @@ async function start() {
   startEmployeeBirthdayWishService();
   startGroupStatusAiService();
   startMileageBonusService();
+  startHomeTimeBonusScheduler(bot.telegram);
   startDatatruckDocumentService();
   startRaiseApprovalService();
   startFuelStopAlertService(bot.telegram);
