@@ -1,6 +1,7 @@
 const config = require('../config/config');
 const db = require('../database/db');
 const { readLoadContextWithFallbacks, choosePinnedMessageCandidate } = require('./dispatchPinnedContextService');
+const datatruckLoadService = require('./datatruckLoadService');
 const { calculateEtaToDestination } = require('./etaRoutingService');
 const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
 const { getLiveLocationForGroupTitle } = require('./samsaraLocationService');
@@ -238,26 +239,6 @@ function buildEtaSection(eta, error) {
   };
 }
 
-function mapRecentLoadsForAdmin(rows) {
-  if (!Array.isArray(rows)) return [];
-  return rows.map((r) => ({
-    id: r.id,
-    telegramMessageId: r.telegram_message_id,
-    createdAt: r.created_at || null,
-    sourceMessageAt: r.source_message_at || null,
-    loadIdentifier: r.load_identifier || null,
-    pickupSummary: r.pickup_summary || '',
-    deliverySummary: r.delivery_summary || '',
-    destinationQuery: r.destination_query || '',
-    pickupWindowStart: r.pickup_window_start || null,
-    pickupWindowEnd: r.pickup_window_end || null,
-    deliveryWindowStart: r.delivery_window_start || null,
-    deliveryWindowEnd: r.delivery_window_end || null,
-    captionPreview: r.caption_preview || '',
-    aiModel: r.ai_model || '',
-  }));
-}
-
 function mapSetting(settingRow) {
   const interval = Number(settingRow?.interval_minutes || 60) || 60;
   const targetMode = String(settingRow?.target_mode || 'driver').trim().toLowerCase() === 'test'
@@ -289,11 +270,11 @@ async function buildDispatchTestingGroupDetails({ telegram, groupId }) {
   }
 
   const liveGroupTitle = String(group.group_name || '').trim();
-  const [settingRow, pinned, providerStatuses, recentLoadRows] = await Promise.all([
+  const [settingRow, pinned, providerStatuses, recentLoads] = await Promise.all([
     db.getDispatchEtaSettingByGroupId(groupId),
     buildPinnedSection({ telegram, group }),
     checkProviderStatuses(liveGroupTitle),
-    db.getGroupRecentLoads(groupId, 2),
+    datatruckLoadService.getAdminRecentLoadsForGroup(group).catch(() => []),
   ]);
 
   let resolvedLocation = null;
@@ -336,7 +317,7 @@ async function buildDispatchTestingGroupDetails({ telegram, groupId }) {
     providers: providerStatuses,
     eta: buildEtaSection(eta, etaError),
     settings: mapSetting(settingRow),
-    recentLoads: mapRecentLoadsForAdmin(recentLoadRows),
+    recentLoads,
   };
 }
 

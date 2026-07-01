@@ -21,6 +21,7 @@ const { DateTime } = require('luxon');
 const config = require('../config/config');
 const monitorsDb = require('../database/driverLocationMonitors');
 const datatruck = require('./datatruckApiService');
+const datatruckLoadService = require('./datatruckLoadService');
 const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
 const { calculateEtaToDestination, geocodePlace, haversineMiles } = require('./etaRoutingService');
 const { readLoadContextWithFallbacks } = require('./dispatchPinnedContextService');
@@ -80,58 +81,12 @@ function parseIsoMs(iso) {
 // ─── Load resolution ───
 
 /**
- * Use AI to normalize a raw Datatruck order into structured stop fields. The
- * order's location field names are not fully documented, so we let the model
- * read the whole object and pull out what it needs. Falls back to a best-effort
- * field pluck if AI is unavailable.
+ * Normalize a raw Datatruck order into structured stop fields. Delegates to the
+ * shared datatruckLoadService field-pluck (no AI, no OCR — structured JSON in,
+ * structured stops out).
  */
-async function extractStopsFromOrder(order) {
-  const fieldPluck = () => ({
-    pickupAddress: normalizeText(order?.pickup_location || order?.pickup_address || order?.origin || ''),
-    deliveryAddress: normalizeText(order?.delivery_location || order?.delivery_address || order?.destination || ''),
-    pickupTime: order?.pickup_time || order?.pickup_appointment_time || null,
-    deliveryTime: order?.delivery_time || order?.delivery_appointment_time || null,
-    shipperName: normalizeText(order?.shipper || order?.shipper_name || ''),
-    receiverName: normalizeText(order?.receiver || order?.consignee || order?.receiver_name || ''),
-  });
-
-  if (!geminiClient || !geminiClient.GEMINI_API_KEY) {
-    return fieldPluck();
-  }
-
-  try {
-    const prompt = [
-      'You are a trucking dispatch assistant. From the Datatruck order JSON below, extract the pickup (shipper) and delivery (receiver) stops.',
-      'Return JSON only with keys: pickup_address, pickup_time, delivery_address, delivery_time, shipper_name, receiver_name.',
-      'Rules:',
-      '- Addresses should be the best geocodable text (street + city/state/zip when present).',
-      '- Times should be ISO 8601 if present, else empty string.',
-      '- If unknown, use an empty string. No markdown, no explanation.',
-      '',
-      'Order JSON:',
-      JSON.stringify(order).slice(0, 12000),
-    ].join('\n');
-
-    const { parsed } = await geminiClient.callGeminiJson({
-      userText: prompt,
-      maxOutputTokens: 500,
-      maxRetryWaitMs: 6000,
-    });
-    if (parsed && typeof parsed === 'object') {
-      const plucked = fieldPluck();
-      return {
-        pickupAddress: normalizeText(parsed.pickup_address) || plucked.pickupAddress,
-        deliveryAddress: normalizeText(parsed.delivery_address) || plucked.deliveryAddress,
-        pickupTime: normalizeText(parsed.pickup_time) || plucked.pickupTime,
-        deliveryTime: normalizeText(parsed.delivery_time) || plucked.deliveryTime,
-        shipperName: normalizeText(parsed.shipper_name) || plucked.shipperName,
-        receiverName: normalizeText(parsed.receiver_name) || plucked.receiverName,
-      };
-    }
-  } catch (err) {
-    console.warn('[LOCATION-MONITOR] AI order extraction failed:', err.message);
-  }
-  return fieldPluck();
+function extractStopsFromOrder(order) {
+  return datatruckLoadService.extractStopsFromOrder(order);
 }
 
 /**
@@ -143,16 +98,18 @@ async function resolveLoad({ driverName, telegram, telegramGroupId, groupId }) {
   // 1) Datatruck active order (primary source of truth).
   if (datatruck.isConfigured() && driverName) {
     try {
-      const order = await datatruck.fetchActiveOrderForDriver(driverName);
-      if (order) {
-        const stops = await extractStopsFromOrder(order);
-        if (stops.pickupAddress || stops.deliveryAddress) {
-          return {
-            source: 'datatruck',
-            orderId: order.id != null ? String(order.id) : null,
-            ...stops,
-          };
-        }
+      const load = await datatruckLoadService.resolveActiveLoadForDriver(driverName);
+      if (load && (load.pickupAddress || load.deliveryAddress)) {
+        return {
+          source: 'datatruck',
+          orderId: load.orderId,
+          pickupAddress: load.pickupAddress,
+          deliveryAddress: load.deliveryAddress,
+          pickupTime: load.pickupTime,
+          deliveryTime: load.deliveryTime,
+          shipperName: load.shipperName,
+          receiverName: load.receiverName,
+        };
       }
     } catch (err) {
       console.warn('[LOCATION-MONITOR] Datatruck load lookup failed:', err.message);
