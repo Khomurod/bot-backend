@@ -2,9 +2,11 @@
  * Inline-button handlers for driver location check-in prompts.
  *
  * When the location monitor detects a truck within the check-in radius of its
- * shipper/receiver, it posts a "Have you checked in?" message with Yes / No
- * buttons (callback data `loccheck:yes:<id>` / `loccheck:no:<id>`). The driver's
- * answer is recorded here, along with whether they were on time for that stop.
+ * shipper/receiver, it posts a "report your status" message with
+ * Checked In / Checked Out buttons (callback data `loccheck:in:<id>` /
+ * `loccheck:out:<id>`). Both are terminal answers for that stop: the driver's
+ * response is recorded here (along with whether they were on time), and the
+ * stop is never prompted again. The monitor then advances to the next stop.
  *
  * Kept free of any require on the monitor *service* to avoid a circular
  * dependency (the service is started from index.js and never imports the bot).
@@ -14,8 +16,10 @@ const monitorsDb = require('../database/driverLocationMonitors');
 // Counted on-time if the driver reaches/answers within this grace of the
 // appointment (kept in sync with driverLocationMonitorService.APPOINTMENT_GRACE_MIN).
 const APPOINTMENT_GRACE_MIN = 15;
-const REPROMPT_AFTER_NO_MIN = 20;
-const ADVANCE_AFTER_YES_MIN = 3;
+const ADVANCE_AFTER_ANSWER_MIN = 3;
+
+// Map the two inline buttons to their stored terminal response values.
+const RESPONSE_BY_ACTION = { in: 'checked_in', out: 'checked_out' };
 
 function minutesFromNowIso(minutes) {
   return new Date(Date.now() + Math.max(0, Number(minutes) || 0) * 60_000).toISOString();
@@ -34,9 +38,10 @@ function computeOnTime(appointmentAt, nowMs = Date.now()) {
 }
 
 function registerLocationCheckinHandlers(bot) {
-  bot.action(/^loccheck:(yes|no):(\d+)$/, async (ctx) => {
+  bot.action(/^loccheck:(in|out):(\d+)$/, async (ctx) => {
     try {
-      const answer = ctx.match[1] === 'yes' ? 'yes' : 'no';
+      const action = ctx.match[1];
+      const answer = RESPONSE_BY_ACTION[action] || 'checked_in';
       const checkinId = parseInt(ctx.match[2], 10);
       const from = ctx.from || {};
 
@@ -77,9 +82,9 @@ function registerLocationCheckinHandlers(bot) {
 
       const stopLabel = checkin.stop_type === 'shipper' ? 'shipper' : 'receiver';
       const punctuality = onTime === null ? '' : onTime ? ' • on time' : ' • late';
-      const footer = answer === 'yes'
+      const footer = answer === 'checked_in'
         ? `\n\n✅ Checked in at the ${stopLabel}${punctuality} — thank you!`
-        : `\n\n❌ Not checked in yet at the ${stopLabel}. We'll check again shortly.`;
+        : `\n\n🚪 Checked out at the ${stopLabel}${punctuality} — thank you!`;
 
       // Append the outcome to the original prompt and remove the buttons.
       const originalText = ctx.callbackQuery?.message?.text || '';
@@ -90,23 +95,16 @@ function registerLocationCheckinHandlers(bot) {
         try { await ctx.editMessageReplyMarkup(); } catch (_) { /* ignore */ }
       }
 
-      await ctx.answerCbQuery(answer === 'yes' ? '✅ Recorded — thank you!' : '❌ Recorded.');
+      await ctx.answerCbQuery(answer === 'checked_in' ? '✅ Recorded — thank you!' : '🚪 Recorded — thank you!');
 
-      // Advance the monitor: a confirmed stop moves the load to its next phase;
-      // a "No" re-checks after a short cooldown so we can re-prompt.
+      // Both answers are terminal for this stop. Clear the cached target so the
+      // monitor advances to the next stop (pickup → delivery); it will never
+      // re-prompt this stop (the one-prompt-per-stop guard blocks that).
       try {
-        if (answer === 'yes') {
-          await monitorsDb.clearMonitorTarget(checkin.monitor_id, {
-            nextRunAt: minutesFromNowIso(ADVANCE_AFTER_YES_MIN),
-            lastStatus: `checked_in_${stopLabel}`,
-          });
-        } else {
-          await monitorsDb.releaseMonitor(checkin.monitor_id, {
-            nextRunAt: minutesFromNowIso(REPROMPT_AFTER_NO_MIN),
-            lastStatus: `not_checked_in_${stopLabel}`,
-            activeCheckinId: null,
-          });
-        }
+        await monitorsDb.clearMonitorTarget(checkin.monitor_id, {
+          nextRunAt: minutesFromNowIso(ADVANCE_AFTER_ANSWER_MIN),
+          lastStatus: `${answer}_${stopLabel}`,
+        });
       } catch (err) {
         console.warn('[LOCATION-MONITOR] Could not advance monitor after answer:', err.message);
       }

@@ -1526,11 +1526,44 @@ CREATE TABLE IF NOT EXISTS driver_location_checkins (
   CONSTRAINT driver_location_checkin_stop_type_check CHECK (stop_type IN ('shipper', 'receiver')),
   CONSTRAINT driver_location_checkin_status_check CHECK (status IN ('awaiting_response', 'answered', 'expired')),
   CONSTRAINT driver_location_checkin_response_check CHECK (
-    driver_response IS NULL OR driver_response IN ('yes', 'no')
+    driver_response IS NULL OR driver_response IN ('yes', 'no', 'checked_in', 'checked_out')
   )
 );
+
+-- One-prompt-per-stop idempotency key. Stable per (group, order|address, stop_type)
+-- so a given order's shipper stop (and its receiver stop) is prompted at most once,
+-- and null-order fallback loads dedupe on the target address instead. The UNIQUE
+-- partial index below makes a concurrent double-claim insert fail (23505) rather
+-- than send a second prompt.
+ALTER TABLE driver_location_checkins ADD COLUMN IF NOT EXISTS dedupe_key TEXT NULL;
+
+-- The buttons became "Checked In"/"Checked Out" (was Yes/No); widen the allowed
+-- responses on pre-existing deployments without dropping historic 'yes'/'no' rows.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE constraint_name = 'driver_location_checkin_response_check'
+      AND table_name = 'driver_location_checkins'
+  ) THEN
+    ALTER TABLE driver_location_checkins DROP CONSTRAINT driver_location_checkin_response_check;
+  END IF;
+END
+$$;
+
+ALTER TABLE driver_location_checkins
+  ADD CONSTRAINT driver_location_checkin_response_check
+  CHECK (driver_response IS NULL OR driver_response IN ('yes', 'no', 'checked_in', 'checked_out'));
 
 CREATE INDEX IF NOT EXISTS idx_driver_location_checkins_group_created
   ON driver_location_checkins(group_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_driver_location_checkins_monitor
   ON driver_location_checkins(monitor_id, created_at DESC);
+
+-- At-most-once prompt per stop signature. Concurrent claims racing to prompt the
+-- same stop collide on this index; the loser catches the unique violation and
+-- treats the stop as already prompted (no duplicate message).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_driver_location_checkins_stop_once
+  ON driver_location_checkins(dedupe_key)
+  WHERE dedupe_key IS NOT NULL;

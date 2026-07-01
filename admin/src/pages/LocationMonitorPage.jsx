@@ -13,8 +13,9 @@ const STATUS_PILL = {
   awaiting_checkin: "info",
   checked_in_shipper: "success",
   checked_in_receiver: "success",
-  not_checked_in_shipper: "warning",
-  not_checked_in_receiver: "warning",
+  checked_out_shipper: "success",
+  checked_out_receiver: "success",
+  already_prompted: "neutral",
   no_load: "neutral",
   no_location: "neutral",
   no_coords: "neutral",
@@ -240,8 +241,8 @@ export default function LocationMonitorPage() {
         <p>
           Toggle live load tracking per driver. When on, the bot pulls the driver's current load from
           Datatruck, decides whether they're heading to the shipper or receiver, watches the ETA, and
-          asks the driver to confirm check-in (Yes/No) when they reach the stop — building an on-time
-          history for every shipper and receiver.
+          asks the driver to report their status (Checked In / Checked Out) once when they reach the
+          stop — building an on-time history for every shipper and receiver.
         </p>
       </div>
 
@@ -362,7 +363,7 @@ export default function LocationMonitorPage() {
                 {row.stats && row.stats.answered > 0 && (
                   <div style={{ display: "flex", gap: "14px", flexWrap: "wrap", fontSize: "13px", color: "var(--text-secondary)" }}>
                     <span>✅ Checked in: {row.stats.checked_in}</span>
-                    <span>❌ Not yet: {row.stats.not_checked_in}</span>
+                    <span>🚪 Checked out: {row.stats.checked_out}</span>
                     <span>⏱️ On time: {row.stats.on_time}</span>
                     <span>🐢 Late: {row.stats.late}</span>
                   </div>
@@ -445,7 +446,7 @@ export default function LocationMonitorPage() {
                                 <td style={{ padding: "4px 8px" }}>{formatDateTime(c.created_at)}</td>
                                 <td style={{ padding: "4px 8px", textTransform: "capitalize" }}>{c.stop_type}</td>
                                 <td style={{ padding: "4px 8px" }}>
-                                  {c.driver_response === "yes" ? "✅ Yes" : c.driver_response === "no" ? "❌ No" : c.status === "expired" ? "⌛ Expired" : "… waiting"}
+                                  {(c.driver_response === "checked_in" || c.driver_response === "yes") ? "✅ Checked In" : (c.driver_response === "checked_out" || c.driver_response === "no") ? "🚪 Checked Out" : c.status === "expired" ? "⌛ Expired" : "… waiting"}
                                 </td>
                                 <td style={{ padding: "4px 8px" }}>
                                   {c.on_time === true ? "On time" : c.on_time === false ? "Late" : "—"}

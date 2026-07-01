@@ -8,11 +8,14 @@
  *      receiver (delivery) — using AI, with a time-based heuristic fallback;
  *   3. tracks the live ETA to that stop (reusing the routing/geocoding stack);
  *   4. polls adaptively — loosely when far, tightly as the truck closes in;
- *   5. when the truck enters the check-in radius, sends a Yes/No "have you
- *      checked in at the shipper/receiver?" prompt to the driver group.
+ *   5. when the truck enters the check-in radius, sends a "report your status
+ *      at the shipper/receiver" prompt with Checked In / Checked Out buttons to
+ *      the driver group — exactly once per (load, stop_type).
  *
  * The driver's answer (recorded by bot/locationCheckinHandlers.js) builds the
- * shipper/receiver on-time performance history.
+ * shipper/receiver on-time performance history. A durable one-prompt-per-stop
+ * guard (hasCheckinForStop + a UNIQUE index) prevents the duplicate spam that
+ * re-asking on every pass used to cause.
  *
  * Read-only against Datatruck and the GPS/ELD providers. Mirrors the
  * claim/poll/reschedule shape of dispatchEtaUpdateService + fuelStopAlertService.
@@ -233,12 +236,12 @@ function buildCheckinMessageFallback({ driverTag, stopType, locationLabel, miles
   const whereUz = stopType === 'shipper' ? 'yuk yuklovchi (pickup)' : 'yuk qabul qiluvchi (delivery)';
   const place = locationLabel ? ` (${escapeHtml(locationLabel)})` : '';
   if (language === 'ru') {
-    return `📍 ${driverTag} — вы примерно в ${milesText} миль(ях) от ${whereRu}${place}. Вы уже отметились (check in)?`;
+    return `📍 ${driverTag} — вы примерно в ${milesText} миль(ях) от ${whereRu}${place}. Сообщите статус кнопкой ниже: «Отметился» (Checked In) или «Выехал» (Checked Out).`;
   }
   if (language === 'uz') {
-    return `📍 ${driverTag} — siz ${whereUz}${place}dan taxminan ${milesText} mil uzoqdasiz. Check in qildingizmi?`;
+    return `📍 ${driverTag} — siz ${whereUz}${place}dan taxminan ${milesText} mil uzoqdasiz. Quyidagi tugma orqali holatingizni bildiring: «Checked In» yoki «Checked Out».`;
   }
-  return `📍 ${driverTag} — you're about ${milesText} miles from the ${where}${place}. Have you checked in at the ${stopType}?`;
+  return `📍 ${driverTag} — you're about ${milesText} miles from the ${where}${place}. Report your status at the ${stopType} using the buttons below: Checked In or Checked Out.`;
 }
 
 /** Word the check-in prompt with AI when available; fall back to templates. */
@@ -255,7 +258,7 @@ async function buildCheckinMessage({ driverTag, stopType, locationLabel, distanc
     const prompt = [
       `Write a short, friendly Telegram message in ${langLabel} to a truck driver.`,
       `The driver is about ${milesText} miles from the ${stopType === 'shipper' ? 'shipper (pickup location)' : 'receiver (delivery location)'}${locationLabel ? ` at ${locationLabel}` : ''}.`,
-      `Ask whether they have checked in at the ${stopType}. Keep it to one sentence. Start with "${driverTag}" exactly (it is a mention). Do not add buttons or quotes.`,
+      `Ask them to report their status at the ${stopType} using the two buttons below the message: "Checked In" or "Checked Out". Keep it to one sentence. Start with "${driverTag}" exactly (it is a mention). Do not add buttons or quotes.`,
     ].join('\n');
     const { text } = await geminiClient.callGeminiText({
       userText: prompt,
@@ -274,8 +277,8 @@ async function buildCheckinMessage({ driverTag, stopType, locationLabel, distanc
 function buildKeyboard(checkinId) {
   return {
     inline_keyboard: [[
-      { text: '✅ Yes', callback_data: `loccheck:yes:${checkinId}` },
-      { text: '❌ No', callback_data: `loccheck:no:${checkinId}` },
+      { text: '✅ Checked In', callback_data: `loccheck:in:${checkinId}` },
+      { text: '🚪 Checked Out', callback_data: `loccheck:out:${checkinId}` },
     ]],
   };
 }
@@ -419,8 +422,10 @@ async function processMonitorJob(job) {
 
     // If a prompt is still awaiting an answer, don't send another — just
     // refresh state and re-check after a cooldown. If the open prompt was
-    // answered (handler already advanced us) or expired, clear it and fall
-    // through so we can re-evaluate / re-prompt.
+    // answered (handler already advanced us) or expired, clear active_checkin_id
+    // and fall through. We do NOT re-prompt the same stop: the
+    // hasCheckinForStop guard below blocks a second message regardless of
+    // whether the driver answered, reported "checked out", or never answered.
     if (job.active_checkin_id) {
       const openCheckin = await monitorsDb.getCheckinById(job.active_checkin_id);
       if (openCheckin && openCheckin.status === 'awaiting_response') {
@@ -436,6 +441,27 @@ async function processMonitorJob(job) {
       job.active_checkin_id = null;
     }
 
+    // One-prompt-per-stop guard: if this order+stop (or, for null-order fallback
+    // loads, this group+address+stop) was ever prompted, never prompt it again.
+    // This is the fix for the duplicate/spam reports — a stop is asked at most
+    // once whether or not the driver answered.
+    const alreadyPrompted = await monitorsDb.hasCheckinForStop({
+      groupId: job.group_id,
+      orderId: load.orderId,
+      stopType,
+      targetAddress,
+    });
+    if (alreadyPrompted) {
+      await monitorsDb.releaseMonitor(job.id, {
+        ...baseState,
+        nextRunAt: minutesFromNowIso(intervalCap),
+        lastStatus: 'already_prompted',
+        lastError: null,
+        activeCheckinId: null,
+      });
+      return { ok: true, reason: 'already_prompted' };
+    }
+
     // 5) Within radius → send the check-in prompt.
     if (Number.isFinite(distanceMiles) && distanceMiles <= radius) {
       const checkin = await monitorsDb.createCheckin({
@@ -449,6 +475,19 @@ async function processMonitorJob(job) {
         etaAt: etaAtIso,
         distanceMilesAtPrompt: distanceMiles,
       });
+
+      // Lost the race to a concurrent claim (unique-violation on the stop
+      // signature) → another worker is sending this prompt; don't duplicate it.
+      if (!checkin || checkin.duplicate) {
+        await monitorsDb.releaseMonitor(job.id, {
+          ...baseState,
+          nextRunAt: minutesFromNowIso(intervalCap),
+          lastStatus: 'already_prompted',
+          lastError: null,
+          activeCheckinId: null,
+        });
+        return { ok: true, reason: 'already_prompted' };
+      }
 
       const username = normalizeText(job.telegram_username);
       const driverTag = username

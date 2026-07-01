@@ -95,3 +95,342 @@ test('orderDriverCandidates is safe on empty orders', () => {
   assert.deepEqual(orderDriverCandidates({}), []);
   assert.deepEqual(orderDriverCandidates({ trip: {} }), []);
 });
+
+// ─── One-prompt-per-stop dedup + Checked In/Out buttons ───
+
+const path = require('node:path');
+
+const SERVICE_PATH = path.resolve(__dirname, '../services/driverLocationMonitorService.js');
+const DB_MONITORS_PATH = path.resolve(__dirname, '../database/driverLocationMonitors.js');
+const DB_PATH = path.resolve(__dirname, '../database/db.js');
+const DATATRUCK_API_PATH = path.resolve(__dirname, '../services/datatruckApiService.js');
+const DATATRUCK_LOAD_PATH = path.resolve(__dirname, '../services/datatruckLoadService.js');
+const LIVE_LOCATION_PATH = path.resolve(__dirname, '../services/liveLocationResolver.js');
+const ETA_ROUTING_PATH = path.resolve(__dirname, '../services/etaRoutingService.js');
+const PINNED_CTX_PATH = path.resolve(__dirname, '../services/dispatchPinnedContextService.js');
+const MENTION_PATH = path.resolve(__dirname, '../services/telegramMention.js');
+const GROUP_TITLE_PATH = path.resolve(__dirname, '../services/driverGroupTitle.js');
+const GEMINI_PATH = path.resolve(__dirname, '../services/geminiClient.js');
+const HANDLERS_PATH = path.resolve(__dirname, '../bot/locationCheckinHandlers.js');
+
+// A default Datatruck load: pickup appointment in the future → heading to the
+// shipper by the time heuristic.
+function defaultLoad(overrides = {}) {
+  const now = Date.now();
+  return {
+    orderId: 'ORD-1',
+    pickupAddress: '100 Shipper St, Dallas, TX',
+    deliveryAddress: '200 Receiver Ave, Memphis, TN',
+    pickupTime: new Date(now + 3600_000).toISOString(),
+    deliveryTime: new Date(now + 7200_000).toISOString(),
+    shipperName: 'ACME',
+    receiverName: 'BETA',
+    ...overrides,
+  };
+}
+
+function loadMonitorServiceWithMocks({ monitorsMock, load = defaultLoad(), etaMock } = {}) {
+  for (const p of [
+    SERVICE_PATH, DB_MONITORS_PATH, DB_PATH, DATATRUCK_API_PATH, DATATRUCK_LOAD_PATH,
+    LIVE_LOCATION_PATH, ETA_ROUTING_PATH, PINNED_CTX_PATH, MENTION_PATH, GROUP_TITLE_PATH,
+    GEMINI_PATH,
+  ]) {
+    delete require.cache[p];
+  }
+
+  require.cache[DB_PATH] = { id: DB_PATH, exports: { query: async () => ({ rows: [], rowCount: 0 }) } };
+  require.cache[DB_MONITORS_PATH] = { id: DB_MONITORS_PATH, exports: monitorsMock };
+  require.cache[DATATRUCK_API_PATH] = {
+    id: DATATRUCK_API_PATH,
+    exports: { isConfigured: () => true },
+  };
+  require.cache[DATATRUCK_LOAD_PATH] = {
+    id: DATATRUCK_LOAD_PATH,
+    exports: {
+      extractStopsFromOrder: () => ({}),
+      resolveActiveLoadForDriver: async () => load,
+    },
+  };
+  require.cache[LIVE_LOCATION_PATH] = {
+    id: LIVE_LOCATION_PATH,
+    exports: {
+      resolveLiveLocationForGroupTitle: async () => ({
+        location: { latitude: 32.9, longitude: -96.9, address: '5 mi out, TX' },
+        source: 'Test ELD',
+      }),
+    },
+  };
+  require.cache[ETA_ROUTING_PATH] = {
+    id: ETA_ROUTING_PATH,
+    exports: {
+      calculateEtaToDestination: async () => (etaMock !== undefined ? etaMock : {
+        remainingMiles: 3,
+        etaMinutes: 6,
+        destination: { latitude: 32.8, longitude: -96.8, displayName: 'Target' },
+      }),
+      geocodePlace: async () => null,
+      haversineMiles: () => 3,
+    },
+  };
+  require.cache[PINNED_CTX_PATH] = {
+    id: PINNED_CTX_PATH,
+    exports: { readLoadContextWithFallbacks: async () => { throw Object.assign(new Error('none'), { code: 'LOAD_CONTEXT_NOT_FOUND' }); } },
+  };
+  require.cache[MENTION_PATH] = {
+    id: MENTION_PATH,
+    exports: {
+      buildMention: () => '@driver',
+      createMentionResolver: () => ({ mentionForName: async () => '@driver', mentionForTelegramId: async () => '@driver' }),
+    },
+  };
+  require.cache[GROUP_TITLE_PATH] = {
+    id: GROUP_TITLE_PATH,
+    exports: { extractDriverNameFromGroupTitle: () => 'John Doe' },
+  };
+  require.cache[GEMINI_PATH] = { id: GEMINI_PATH, exports: {} }; // no GEMINI_API_KEY → template/heuristic
+
+  return require(SERVICE_PATH);
+}
+
+function makeJob(overrides = {}) {
+  return {
+    id: 1,
+    group_id: 42,
+    telegram_group_id: '-100999',
+    group_name: 'WENZE UNIT # 07 John Doe',
+    group_language: 'en',
+    telegram_username: 'driverjohn',
+    first_name: 'John',
+    last_name: 'Doe',
+    interval_minutes: 30,
+    checkin_radius_miles: 8,
+    active_checkin_id: null,
+    load_phase: null,
+    ...overrides,
+  };
+}
+
+// Base monitors-db mock: nothing exists yet; records calls.
+function makeMonitorsMock(overrides = {}) {
+  const calls = { createCheckin: [], releaseMonitor: [], setCheckinPromptMessageId: [], hasCheckinForStop: [] };
+  const base = {
+    _calls: calls,
+    hasCheckinForStop: async (args) => { calls.hasCheckinForStop.push(args); return false; },
+    createCheckin: async (args) => { calls.createCheckin.push(args); return { id: 555, ...args }; },
+    setCheckinPromptMessageId: async (id, m) => { calls.setCheckinPromptMessageId.push([id, m]); return null; },
+    getCheckinById: async () => null,
+    releaseMonitor: async (id, state) => { calls.releaseMonitor.push([id, state]); return { id, ...state }; },
+    clearMonitorTarget: async () => null,
+    recordCheckinResponse: async () => ({ record: {}, alreadyAnswered: false }),
+  };
+  return Object.assign(base, overrides);
+}
+
+function fakeTelegram(sentSink) {
+  return {
+    getChat: async () => ({ title: 'WENZE UNIT # 07 John Doe' }),
+    sendMessage: async (chatId, text, opts) => {
+      sentSink.push({ chatId, text, opts });
+      return { message_id: 7001 };
+    },
+  };
+}
+
+test('within radius with no prior check-in → exactly ONE prompt with Checked In/Out buttons', async () => {
+  const monitors = makeMonitorsMock();
+  const service = loadMonitorServiceWithMocks({ monitorsMock: monitors });
+  const sent = [];
+  service.configureDriverLocationTelegram(fakeTelegram(sent));
+
+  const result = await service.processMonitorJob(makeJob());
+
+  assert.equal(result.reason, 'checkin_sent');
+  assert.equal(monitors._calls.createCheckin.length, 1);
+  assert.equal(monitors._calls.createCheckin[0].stopType, 'shipper');
+  assert.equal(sent.length, 1);
+
+  const kb = sent[0].opts.reply_markup.inline_keyboard[0];
+  assert.equal(kb[0].text, '✅ Checked In');
+  assert.equal(kb[1].text, '🚪 Checked Out');
+  assert.equal(kb[0].callback_data, 'loccheck:in:555');
+  assert.equal(kb[1].callback_data, 'loccheck:out:555');
+
+  const [, state] = monitors._calls.releaseMonitor.at(-1);
+  assert.equal(state.lastStatus, 'checkin_sent');
+  assert.equal(state.activeCheckinId, 555);
+});
+
+test('second pass for the same (order, stop_type) → NO second prompt, even after an answer cleared active_checkin_id', async () => {
+  const monitors = makeMonitorsMock({
+    // Simulate the durable guard: a prior check-in already exists for this stop.
+    hasCheckinForStop: async () => true,
+  });
+  const service = loadMonitorServiceWithMocks({ monitorsMock: monitors });
+  const sent = [];
+  service.configureDriverLocationTelegram(fakeTelegram(sent));
+
+  const result = await service.processMonitorJob(makeJob({ active_checkin_id: null }));
+
+  assert.equal(result.reason, 'already_prompted');
+  assert.equal(monitors._calls.createCheckin.length, 0);
+  assert.equal(sent.length, 0);
+  const [, state] = monitors._calls.releaseMonitor.at(-1);
+  assert.equal(state.lastStatus, 'already_prompted');
+});
+
+test('concurrent claim (unique-violation on insert) → still only one prompt', async () => {
+  const monitors = makeMonitorsMock({
+    hasCheckinForStop: async () => false, // race: guard passes...
+    createCheckin: async () => ({ duplicate: true }), // ...but the unique index catches it
+  });
+  const service = loadMonitorServiceWithMocks({ monitorsMock: monitors });
+  const sent = [];
+  service.configureDriverLocationTelegram(fakeTelegram(sent));
+
+  const result = await service.processMonitorJob(makeJob());
+
+  assert.equal(result.reason, 'already_prompted');
+  assert.equal(sent.length, 0);
+});
+
+test('shipper already prompted, truck heading to receiver → receiver gets its own single prompt', async () => {
+  // Pickup appointment in the past → heuristic heads to delivery (receiver).
+  const now = Date.now();
+  const load = defaultLoad({
+    pickupTime: new Date(now - 7200_000).toISOString(),
+    deliveryTime: new Date(now + 3600_000).toISOString(),
+  });
+  const seen = [];
+  const monitors = makeMonitorsMock({
+    hasCheckinForStop: async (args) => { seen.push(args.stopType); return false; },
+  });
+  const service = loadMonitorServiceWithMocks({ monitorsMock: monitors, load });
+  const sent = [];
+  service.configureDriverLocationTelegram(fakeTelegram(sent));
+
+  const result = await service.processMonitorJob(makeJob());
+
+  assert.equal(result.reason, 'checkin_sent');
+  assert.equal(monitors._calls.createCheckin.length, 1);
+  assert.equal(monitors._calls.createCheckin[0].stopType, 'receiver');
+  assert.deepEqual(seen, ['receiver']);
+});
+
+test('still far from the stop → tracking, no prompt', async () => {
+  const monitors = makeMonitorsMock();
+  const service = loadMonitorServiceWithMocks({
+    monitorsMock: monitors,
+    etaMock: { remainingMiles: 50, etaMinutes: 60, destination: { latitude: 1, longitude: 2 } },
+  });
+  const sent = [];
+  service.configureDriverLocationTelegram(fakeTelegram(sent));
+
+  const result = await service.processMonitorJob(makeJob());
+
+  assert.equal(result.reason, 'tracking');
+  assert.equal(monitors._calls.createCheckin.length, 0);
+  assert.equal(sent.length, 0);
+});
+
+test('no active load → no prompt', async () => {
+  const monitors = makeMonitorsMock();
+  const service = loadMonitorServiceWithMocks({ monitorsMock: monitors, load: null });
+  const sent = [];
+  service.configureDriverLocationTelegram(fakeTelegram(sent));
+
+  const result = await service.processMonitorJob(makeJob());
+
+  assert.equal(result.reason, 'no_load');
+  assert.equal(monitors._calls.createCheckin.length, 0);
+  assert.equal(sent.length, 0);
+});
+
+// ─── DB dedupe-key helper ───
+
+test('buildStopDedupeKey is stable per stop and distinguishes shipper/receiver and order/address', () => {
+  delete require.cache[DB_PATH];
+  delete require.cache[DB_MONITORS_PATH];
+  require.cache[DB_PATH] = { id: DB_PATH, exports: { query: async () => ({ rows: [], rowCount: 0 }) } };
+  const { buildStopDedupeKey } = require(DB_MONITORS_PATH);
+
+  assert.equal(buildStopDedupeKey({ groupId: 42, orderId: 'ORD-1', stopType: 'shipper' }),
+    buildStopDedupeKey({ groupId: 42, orderId: 'ORD-1', stopType: 'shipper' }));
+  assert.notEqual(buildStopDedupeKey({ groupId: 42, orderId: 'ORD-1', stopType: 'shipper' }),
+    buildStopDedupeKey({ groupId: 42, orderId: 'ORD-1', stopType: 'receiver' }));
+  // null-order fallback loads dedupe on the normalized address instead.
+  const a = buildStopDedupeKey({ groupId: 42, orderId: null, stopType: 'shipper', targetAddress: '  100 Main   ST ' });
+  const b = buildStopDedupeKey({ groupId: 42, orderId: null, stopType: 'shipper', targetAddress: '100 main st' });
+  assert.equal(a, b);
+  assert.ok(a.includes('g42'));
+});
+
+// ─── Answer handler ───
+
+function loadHandlersWithMocks(monitorsMock) {
+  delete require.cache[HANDLERS_PATH];
+  delete require.cache[DB_MONITORS_PATH];
+  delete require.cache[DB_PATH];
+  require.cache[DB_PATH] = { id: DB_PATH, exports: { query: async () => ({ rows: [], rowCount: 0 }) } };
+  require.cache[DB_MONITORS_PATH] = { id: DB_MONITORS_PATH, exports: monitorsMock };
+  return require(HANDLERS_PATH);
+}
+
+function registerAndGetAction(handlers, monitorsMock) {
+  let actionFn = null;
+  let actionRe = null;
+  const bot = { action: (re, fn) => { actionRe = re; actionFn = fn; } };
+  handlers.registerLocationCheckinHandlers(bot);
+  return { actionFn, actionRe };
+}
+
+function makeCtx(action, checkinId, edited) {
+  return {
+    match: [`loccheck:${action}:${checkinId}`, action, String(checkinId)],
+    from: { id: 123, username: 'driverjohn' },
+    callbackQuery: { message: { chat: { id: -100999 }, message_id: 7001, text: 'prompt body' } },
+    editMessageText: async (t) => { edited.text = t; },
+    editMessageReplyMarkup: async () => { edited.clearedMarkup = true; },
+    answerCbQuery: async (t) => { edited.cbq = t; },
+  };
+}
+
+async function runHandlerAnswer(action) {
+  const calls = { clearMonitorTarget: [], releaseMonitor: [], recordCheckinResponse: [] };
+  const monitors = {
+    getCheckinById: async () => ({
+      id: 555, monitor_id: 9, stop_type: 'shipper', telegram_group_id: -100999,
+      prompt_message_id: 7001, appointment_at: null,
+    }),
+    recordCheckinResponse: async (id, args) => {
+      calls.recordCheckinResponse.push([id, args]);
+      return { record: { id, driver_response: args.response }, alreadyAnswered: false };
+    },
+    clearMonitorTarget: async (id, args) => { calls.clearMonitorTarget.push([id, args]); return {}; },
+    releaseMonitor: async (id, args) => { calls.releaseMonitor.push([id, args]); return {}; },
+  };
+  const handlers = loadHandlersWithMocks(monitors);
+  const { actionFn, actionRe } = registerAndGetAction(handlers, monitors);
+  assert.equal(actionRe.test(`loccheck:${action}:555`), true);
+  assert.equal(actionRe.test('loccheck:yes:555'), false); // old callbacks no longer match
+  const edited = {};
+  await actionFn(makeCtx(action, 555, edited));
+  return { calls, edited };
+}
+
+test('handler: "in" records checked_in, edits footer, advances (no re-prompt)', async () => {
+  const { calls, edited } = await runHandlerAnswer('in');
+  assert.equal(calls.recordCheckinResponse[0][1].response, 'checked_in');
+  assert.match(edited.text, /Checked in at the shipper/);
+  assert.equal(calls.clearMonitorTarget.length, 1);
+  assert.equal(calls.releaseMonitor.length, 0); // no re-prompt scheduling
+  assert.equal(calls.clearMonitorTarget[0][1].lastStatus, 'checked_in_shipper');
+});
+
+test('handler: "out" records checked_out, edits footer, advances (no re-prompt)', async () => {
+  const { calls, edited } = await runHandlerAnswer('out');
+  assert.equal(calls.recordCheckinResponse[0][1].response, 'checked_out');
+  assert.match(edited.text, /Checked out at the shipper/);
+  assert.equal(calls.clearMonitorTarget.length, 1);
+  assert.equal(calls.releaseMonitor.length, 0);
+  assert.equal(calls.clearMonitorTarget[0][1].lastStatus, 'checked_out_shipper');
+});
