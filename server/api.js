@@ -2934,6 +2934,76 @@ app.delete('/api/employee-birthdays/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// ─── Roast feature (employee group banter) ───
+const { sendManualRoast } = require('../services/roastService');
+
+function mapRoastSettings(row) {
+  if (!row) return null;
+  return {
+    enabled: row.enabled,
+    groupId: row.group_id,
+    targetUsername: row.target_username,
+    aiInstructions: row.ai_instructions,
+    updatedAt: row.updated_at,
+  };
+}
+
+app.get('/api/roast/settings', authMiddleware, async (req, res) => {
+  try {
+    const settings = await db.getRoastSettings();
+    res.json(mapRoastSettings(settings));
+  } catch (err) {
+    console.error('[API] Error loading roast settings:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.put('/api/roast/settings', authMiddleware, async (req, res) => {
+  try {
+    const {
+      enabled,
+      groupId,
+      targetUsername,
+      aiInstructions,
+    } = req.body || {};
+
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled must be a boolean' });
+    }
+    if (!/^-?\d+$/.test(String(groupId ?? '').trim())) {
+      return res.status(400).json({ error: 'groupId must be a numeric Telegram chat id' });
+    }
+    const username = String(targetUsername || '').trim().replace(/^@/, '');
+    if (!username) {
+      return res.status(400).json({ error: 'targetUsername is required' });
+    }
+    if (typeof aiInstructions !== 'string' || !aiInstructions.trim()) {
+      return res.status(400).json({ error: 'aiInstructions is required' });
+    }
+
+    const updated = await db.updateRoastSettings({
+      enabled,
+      groupId: String(groupId).trim(),
+      targetUsername: username,
+      aiInstructions: aiInstructions.trim().slice(0, 2000),
+    });
+    res.json(mapRoastSettings(updated));
+  } catch (err) {
+    console.error('[API] Error updating roast settings:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/roast/send-now', authMiddleware, async (req, res) => {
+  try {
+    const result = await sendManualRoast(bot.telegram);
+    res.json(result);
+  } catch (err) {
+    console.error('[API] Error sending manual roast:', err.message);
+    res.status(400).json({ error: err.message || 'Failed to send roast' });
+  }
+});
+
 // ─── Catch-all for admin SPA (/admin and public /dispatch share one build) ───
 app.get(['/admin', '/admin/*', '/dispatch', '/dispatch/*', '/raise', '/raise/*'], (req, res) => {
   if (!fs.existsSync(adminSpaIndexPath)) {

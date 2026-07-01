@@ -1517,3 +1517,20 @@ CREATE INDEX IF NOT EXISTS idx_driver_location_checkins_group_created
   ON driver_location_checkins(group_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_driver_location_checkins_monitor
   ON driver_location_checkins(monitor_id, created_at DESC);
+
+-- ─── roast_settings ──────────────────────────────────────────────
+-- Toggleable "roast" feature: in a single configured group, the bot fires
+-- back an AI-written, witty (never rude) Uzbek roast whenever someone
+-- replies to one of its messages or @-mentions it. @target_username gets
+-- singled out by name in the prompt; everyone else gets the same playful
+-- tone aimed at them instead.
+CREATE TABLE IF NOT EXISTS roast_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  group_id BIGINT NOT NULL DEFAULT -1003802484933,
+  target_username TEXT NOT NULL DEFAULT 'Ellaaccounting',
+  ai_instructions TEXT NOT NULL DEFAULT 'Javoblaring aqlli, ziyoli va o''tkir bo''lsin — hech qachon qo''pol yoki haqoratli so''zlar ishlatma. Yengil hazil va kesatiq bilan javob qaytar.',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO roast_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
