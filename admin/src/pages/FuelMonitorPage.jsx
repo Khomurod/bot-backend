@@ -1,12 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import * as api from "../api";
 
-// Strip a leading '@' and lowercase for display/compare; storage is handled
-// server-side. Empty string clears the username.
-function normalizeUsernameInput(value) {
-  return String(value || "").trim().replace(/^@+/, "");
-}
-
 // Short local time label for a predicted boundary-arrival timestamp.
 function formatEta(iso) {
   if (!iso) return "";
@@ -17,10 +11,8 @@ function formatEta(iso) {
 
 export default function FuelMonitorPage() {
   const [drivers, setDrivers] = useState([]);
-  const [draftsByGroup, setDraftsByGroup] = useState({});
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
-  const [savingGroupId, setSavingGroupId] = useState(null);
   const [sendingGroupId, setSendingGroupId] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
@@ -29,13 +21,7 @@ export default function FuelMonitorPage() {
     setLoading(true);
     try {
       const data = await api.getFuelMonitor();
-      const list = Array.isArray(data) ? data : [];
-      setDrivers(list);
-      const nextDrafts = {};
-      for (const d of list) {
-        nextDrafts[d.group_id] = d.telegram_username || "";
-      }
-      setDraftsByGroup(nextDrafts);
+      setDrivers(Array.isArray(data) ? data : []);
     } catch (err) {
       setMessage({ type: "error", text: err.message });
     } finally {
@@ -61,28 +47,6 @@ export default function FuelMonitorPage() {
         .some((v) => String(v).toLowerCase().includes(q))
     );
   }, [drivers, search]);
-
-  const saveUsername = async (driver) => {
-    const draft = normalizeUsernameInput(draftsByGroup[driver.group_id]);
-    const current = driver.telegram_username || "";
-    if (draft === current) return; // no change
-    setSavingGroupId(driver.group_id);
-    setMessage(null);
-    try {
-      await api.updateFuelMonitorUsername(driver.group_id, draft);
-      setMessage({
-        type: "success",
-        text: draft
-          ? `Saved @${draft} for ${driver.display_name || driver.group_name}.`
-          : `Cleared username for ${driver.display_name || driver.group_name}.`,
-      });
-      await fetchDrivers();
-    } catch (err) {
-      setMessage({ type: "error", text: err.message });
-    } finally {
-      setSavingGroupId(null);
-    }
-  };
 
   const sendReminder = async (driver) => {
     setSendingGroupId(driver.group_id);
@@ -131,9 +95,10 @@ export default function FuelMonitorPage() {
       <div className="page-header">
         <h2>⛽ Fuel Monitor</h2>
         <p>
-          Active company drivers (from Driver Groups, the source of truth). Set each driver's
-          Telegram username so the bot can tag them when their truck comes within 10 miles of a
-          gas station posted in their group.
+          Active company drivers (from Driver Groups, the source of truth). The bot tags each
+          driver using the Telegram member linked on the Driver Groups page — drivers without an
+          @username are tagged via an inline mention — when their truck approaches a gas station
+          posted in their group.
         </p>
       </div>
 
@@ -181,45 +146,27 @@ export default function FuelMonitorPage() {
                 <th>Driver</th>
                 <th>Group Name</th>
                 <th>Unit</th>
-                <th>Telegram Username</th>
                 <th>Next Gas Station</th>
                 <th>Reminder</th>
               </tr>
             </thead>
             <tbody>
               {displayDrivers.map((driver) => {
-                const saving = savingGroupId === driver.group_id;
                 const sending = sendingGroupId === driver.group_id;
                 const watching = Array.isArray(driver.watching) ? driver.watching : [];
                 const nextStop = watching[0] || null;
                 return (
                   <tr key={driver.group_id}>
-                    <td>{driver.display_name || driver.group_name || "—"}</td>
+                    <td>
+                      {driver.display_name || driver.group_name || "—"}
+                      {driver.telegram_username && (
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                          @{driver.telegram_username}
+                        </div>
+                      )}
+                    </td>
                     <td>{driver.group_name || "—"}</td>
                     <td>{driver.unit_number || "—"}</td>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ color: "var(--text-muted)" }}>@</span>
-                        <input
-                          type="text"
-                          value={draftsByGroup[driver.group_id] ?? ""}
-                          placeholder="username"
-                          disabled={saving}
-                          onChange={(e) =>
-                            setDraftsByGroup((prev) => ({
-                              ...prev,
-                              [driver.group_id]: normalizeUsernameInput(e.target.value),
-                            }))
-                          }
-                          onBlur={() => saveUsername(driver)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") e.currentTarget.blur();
-                          }}
-                          style={{ maxWidth: 200 }}
-                        />
-                        {saving && <span className="spinner" style={{ width: 14, height: 14 }} />}
-                      </div>
-                    </td>
                     <td>
                       {!nextStop ? (
                         <span style={{ color: "var(--text-muted)" }}>— none picked up —</span>

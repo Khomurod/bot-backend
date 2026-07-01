@@ -59,6 +59,23 @@ CREATE TABLE IF NOT EXISTS drivers (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- TABLE: group_members — which Telegram users the bot has SEEN in each group.
+-- The Bot API cannot enumerate a group's full member list (only getChatMember
+-- for one known user, getChatAdministrators, and getChatMemberCount), so this
+-- table is populated opportunistically from every update the bot receives
+-- (senders, added/removed members, reply authors). Silent members who never
+-- interact will NOT appear here. It powers the "Driver Username" dropdown in
+-- the admin Driver Groups popup.
+CREATE TABLE IF NOT EXISTS group_members (
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  telegram_user_id BIGINT NOT NULL,
+  username TEXT,
+  first_name TEXT,
+  last_name TEXT,
+  last_seen_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (group_id, telegram_user_id)
+);
+
 -- TABLE: questions
 CREATE TABLE IF NOT EXISTS questions (
   id SERIAL PRIMARY KEY,
@@ -157,9 +174,16 @@ ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS needs_review BOOLEAN DEFAUL
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS backfill_confidence SMALLINT;
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
--- Driver's Telegram @username, used by the Fuel Monitor to tag the driver in
--- gas-station proximity reminders. Stored without the leading '@'.
+-- Driver's Telegram @username, used to tag the driver in gas-station proximity
+-- and check-in reminders. Stored without the leading '@'.
 ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS telegram_username TEXT;
+-- Driver's numeric Telegram user id — the single source of truth for tagging,
+-- selected in the admin Driver Groups popup from the group_members the bot has
+-- captured. Lets buildMention() ping a driver WITHOUT an @username via an
+-- inline <a href="tg://user?id=ID"> mention. Note the Telegram limitation:
+-- such an inline mention only reliably notifies a user the bot has already
+-- "seen" interact, which is why ids are captured broadly in bot/bot.js.
+ALTER TABLE driver_profiles ADD COLUMN IF NOT EXISTS telegram_user_id BIGINT;
 
 DO $$
 BEGIN

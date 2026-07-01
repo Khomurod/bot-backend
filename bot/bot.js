@@ -93,8 +93,18 @@ async function captureTelegramUser(user) {
  * Capture every distinct user that appears anywhere in an update: the actor
  * (ctx.from), members added to a group, a user removed from a group, and the
  * author of a replied-to message. De-duplicates by id so we upsert each once.
+ *
+ * When the update happened inside a registered group (`group` is the DB row),
+ * the same users are also recorded in `group_members` — the group linkage that
+ * powers the admin "Driver Username" dropdown. This opportunistic capture is
+ * the ONLY membership signal available: the Bot API cannot enumerate a group's
+ * members (only getChatMember for one known user, getChatAdministrators, and
+ * getChatMemberCount), so silent members who never interact will not appear,
+ * and a tg://user?id inline mention only reliably notifies a user the bot has
+ * seen this way. A user Telegram reports as having left is dropped from the
+ * group linkage (their global `drivers` row is kept for mentions elsewhere).
  */
-async function captureUsersFromUpdate(ctx) {
+async function captureUsersFromUpdate(ctx, group = null) {
   const seen = new Set();
   const users = [];
   const add = (u) => {
@@ -105,6 +115,9 @@ async function captureUsersFromUpdate(ctx) {
 
   add(ctx.from);
   const msg = ctx.message || ctx.editedMessage || ctx.callbackQuery?.message;
+  const leftUser = msg?.left_chat_member && !msg.left_chat_member.is_bot
+    ? msg.left_chat_member
+    : null;
   if (msg) {
     if (Array.isArray(msg.new_chat_members)) msg.new_chat_members.forEach(add);
     add(msg.left_chat_member);
@@ -113,6 +126,19 @@ async function captureUsersFromUpdate(ctx) {
   if (ctx.myChatMember?.from) add(ctx.myChatMember.from);
 
   await Promise.all(users.map(captureTelegramUser));
+
+  if (group?.id) {
+    await Promise.all(users
+      .filter((u) => !u.is_bot && (!leftUser || u.id !== leftUser.id))
+      .map((u) => db.upsertGroupMember(group.id, u).catch((err) => {
+        console.error('[BOT] Failed to record group member', u.id, err.message);
+      })));
+    if (leftUser) {
+      await db.removeGroupMember(group.id, leftUser.id).catch((err) => {
+        console.error('[BOT] Failed to remove group member', leftUser.id, err.message);
+      });
+    }
+  }
 }
 const BOT_LAUNCH_RETRY_MS = 5000;
 const BOT_LAUNCH_MAX_RETRY_MS = 30000;
@@ -419,14 +445,16 @@ async function startBot() {
     bot.use(async (ctx, next) => {
       try {
         // Auto-register the group if not already in DB
+        let group = null;
         if (ctx.chat && (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup')) {
-          await db.upsertGroup(ctx.chat.id, ctx.chat.title || 'Unknown');
+          group = await db.upsertGroup(ctx.chat.id, ctx.chat.title || 'Unknown');
         }
         // Register every user this update touched — the sender, plus any
-        // new/removed members and the author of a replied-to message. This
+        // new/removed members and the author of a replied-to message — and,
+        // inside a group, record them as seen members of that group. This
         // widens id capture beyond message senders so username-less users can
         // still be @-tagged later via a tg://user?id inline mention.
-        await captureUsersFromUpdate(ctx);
+        await captureUsersFromUpdate(ctx, group);
       } catch (err) {
         console.error('[BOT] Error registering driver/group:', err.message);
       }

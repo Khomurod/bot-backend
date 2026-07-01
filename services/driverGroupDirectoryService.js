@@ -48,6 +48,7 @@ function buildBaseDirectoryRow(row = {}) {
     status,
     inactive,
     telegram_username: row.telegram_username || null,
+    telegram_user_id: row.telegram_user_id != null ? String(row.telegram_user_id) : null,
     unit_number: row.unit_number || null,
     unit_number_source: row.unit_number_source || null,
     language: row.profile_language || row.group_language || 'en',

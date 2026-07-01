@@ -64,6 +64,18 @@ function shouldShowTeamInputs(profile, draft) {
   );
 }
 
+function driverLabel(profile) {
+  const primary = [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim();
+  const secondary = [profile.secondary_first_name, profile.secondary_last_name].filter(Boolean).join(" ").trim();
+  if (primary && secondary) return `${primary} / ${secondary}`;
+  return primary || secondary || profile.display_name || profile.full_name || "";
+}
+
+function memberOptionLabel(member) {
+  const name = member.display_name || `User ${member.telegram_user_id}`;
+  return member.username ? `${name} (@${member.username})` : `${name} (no @username)`;
+}
+
 export default function GroupsPage() {
   const [allProfiles, setAllProfiles] = useState([]);
   const [draftsById, setDraftsById] = useState({});
@@ -73,6 +85,9 @@ export default function GroupsPage() {
   const [syncingAi, setSyncingAi] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const [statusSort, setStatusSort] = useState("active-first");
+  const [openProfileId, setOpenProfileId] = useState(null);
+  // Per-group cache of members the bot has captured: { list, loading, error }.
+  const [membersByGroup, setMembersByGroup] = useState({});
 
   const fetchProfiles = useCallback(async () => {
     setLoading(true);
@@ -100,6 +115,34 @@ export default function GroupsPage() {
     () => prepareDisplayProfiles(allProfiles, activeTab, activeTab === "all" ? statusSort : null),
     [allProfiles, activeTab, statusSort],
   );
+
+  const openProfile = useMemo(
+    () => allProfiles.find((p) => p.id === openProfileId) || null,
+    [allProfiles, openProfileId],
+  );
+
+  const loadGroupMembers = useCallback(async (groupId) => {
+    setMembersByGroup((prev) => ({
+      ...prev,
+      [groupId]: { ...(prev[groupId] || {}), loading: true, error: null },
+    }));
+    try {
+      const list = await api.getGroupMembers(groupId);
+      setMembersByGroup((prev) => ({
+        ...prev,
+        [groupId]: { list, loading: false, error: null },
+      }));
+    } catch (err) {
+      setMembersByGroup((prev) => ({
+        ...prev,
+        [groupId]: { list: [], loading: false, error: err.message },
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (openProfile?.group_id) loadGroupMembers(openProfile.group_id);
+  }, [openProfile?.group_id, loadGroupMembers]);
 
   const updateDraft = (profileId, patch) => {
     setDraftsById((prev) => ({
@@ -150,18 +193,270 @@ export default function GroupsPage() {
     }
   };
 
+  // Selecting a captured member makes them the single source of truth for the
+  // driver: BOTH their numeric telegram_user_id and username are stored on the
+  // driver_profiles row (empty selection clears both).
+  const handleMemberSelect = (profile, memberId) => {
+    const cache = membersByGroup[profile.group_id];
+    const member = (cache?.list || []).find((m) => m.telegram_user_id === memberId) || null;
+    saveProfilePatch(
+      profile,
+      {
+        telegram_user_id: member ? member.telegram_user_id : null,
+        telegram_username: member ? member.username : null,
+      },
+      member
+        ? `Driver linked to ${memberOptionLabel(member)}.`
+        : "Driver Telegram link cleared.",
+    );
+  };
+
   const tabCounts = useMemo(() => ({
     all: allProfiles.length,
     active: allProfiles.filter((p) => isDriverActive(p)).length,
     inactive: allProfiles.filter((p) => !isDriverActive(p)).length,
   }), [allProfiles]);
 
+  const renderDriverModal = () => {
+    const profile = openProfile;
+    if (!profile) return null;
+    const draft = draftsById[profile.id] || profileToDraft(profile);
+    const saving = savingProfileId === profile.id;
+    const teamInputs = shouldShowTeamInputs(profile, draft);
+    const daysUntil = draft.date_of_birth ? getDaysUntilBirthday(draft.date_of_birth) : null;
+    const membersState = membersByGroup[profile.group_id] || { list: [], loading: true, error: null };
+    const members = Array.isArray(membersState.list) ? membersState.list : [];
+    const selectedId = profile.telegram_user_id || "";
+    // The stored selection may predate the member cache (or the member stopped
+    // interacting) — keep it selectable instead of silently showing "not linked".
+    const selectedMissing = selectedId && !members.some((m) => m.telegram_user_id === selectedId);
+
+    const fieldLabelStyle = { fontSize: 12, color: "var(--text-muted)", marginBottom: 4, display: "block" };
+
+    return (
+      <div className="home-time-modal-backdrop" onClick={() => setOpenProfileId(null)}>
+        <div
+          className="card home-time-modal-card"
+          style={{ width: "min(680px, 100%)" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="home-time-modal-header">
+            <div>
+              <div className="home-time-modal-kicker">Driver details</div>
+              <h3>{driverLabel(profile) || profile.group_name || "Driver"}</h3>
+              <p style={{ color: "var(--text-muted)" }}>
+                {profile.group_name || "Unknown group"} · Telegram ID <code>{profile.telegram_group_id}</code>
+              </p>
+            </div>
+            <div className="home-time-modal-actions">
+              {saving && <span className="spinner" style={{ width: 16, height: 16 }} />}
+              <button
+                type="button"
+                className="home-time-modal-close"
+                onClick={() => setOpenProfileId(null)}
+                aria-label="Close driver details"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+
+          <div className="home-time-modal-body">
+            <div style={{ display: "grid", gap: 14 }}>
+              <div>
+                <label style={fieldLabelStyle}>Driver Username (Telegram member seen in this group)</label>
+                <select
+                  className="form-input"
+                  value={selectedId}
+                  disabled={saving || membersState.loading}
+                  onChange={(e) => handleMemberSelect(profile, e.target.value)}
+                >
+                  <option value="">
+                    {membersState.loading ? "Loading members…" : "— not linked —"}
+                  </option>
+                  {selectedMissing && (
+                    <option value={selectedId}>
+                      {profile.telegram_username
+                        ? `@${profile.telegram_username} (id ${selectedId})`
+                        : `User ${selectedId}`}
+                    </option>
+                  )}
+                  {members.map((m) => (
+                    <option key={m.telegram_user_id} value={m.telegram_user_id}>
+                      {memberOptionLabel(m)}
+                    </option>
+                  ))}
+                </select>
+                {membersState.error && (
+                  <div style={{ fontSize: 12, color: "#ef4444", marginTop: 4 }}>{membersState.error}</div>
+                )}
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                  Selecting a member stores their Telegram user id + username as the source of truth
+                  for tagging (Fuel Monitor, check-ins) — drivers without an @username are tagged via
+                  an inline mention. Telegram bots cannot list all group members, so only people the
+                  bot has seen interact here appear; a silent member shows up after their first
+                  message in the group.
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={fieldLabelStyle}>First Name</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={draft.first_name}
+                    disabled={saving}
+                    onChange={(e) => updateDraft(profile.id, { first_name: e.target.value })}
+                    onBlur={(e) => {
+                      const next = e.target.value.trim() || null;
+                      if ((profile.first_name || null) === next) return;
+                      saveProfilePatch(profile, { first_name: next }, "First name updated.");
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={fieldLabelStyle}>Last Name</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={draft.last_name}
+                    disabled={saving}
+                    onChange={(e) => updateDraft(profile.id, { last_name: e.target.value })}
+                    onBlur={(e) => {
+                      const next = e.target.value.trim() || null;
+                      if ((profile.last_name || null) === next) return;
+                      saveProfilePatch(profile, { last_name: next }, "Last name updated.");
+                    }}
+                  />
+                </div>
+              </div>
+
+              {teamInputs && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={fieldLabelStyle}>2nd First Name (team driver)</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={draft.secondary_first_name}
+                      disabled={saving}
+                      placeholder="2nd first name"
+                      onChange={(e) => updateDraft(profile.id, { secondary_first_name: e.target.value })}
+                      onBlur={(e) => {
+                        const next = e.target.value.trim() || null;
+                        if ((profile.secondary_first_name || null) === next) return;
+                        saveProfilePatch(profile, { secondary_first_name: next }, "Secondary first name updated.");
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={fieldLabelStyle}>2nd Last Name (team driver)</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={draft.secondary_last_name}
+                      disabled={saving}
+                      placeholder="2nd last name"
+                      onChange={(e) => updateDraft(profile.id, { secondary_last_name: e.target.value })}
+                      onBlur={(e) => {
+                        const next = e.target.value.trim() || null;
+                        if ((profile.secondary_last_name || null) === next) return;
+                        saveProfilePatch(profile, { secondary_last_name: next }, "Secondary last name updated.");
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={fieldLabelStyle}>Language</label>
+                  <select
+                    className="form-input"
+                    value={draft.language}
+                    disabled={saving}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      updateDraft(profile.id, { language: next });
+                      if ((profile.language || "en") === next) return;
+                      saveProfilePatch(profile, { language: next }, "Language updated.");
+                    }}
+                  >
+                    <option value="en">🇺🇸 English</option>
+                    <option value="ru">🇷🇺 Russian</option>
+                    <option value="uz">🇺🇿 Uzbek</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={fieldLabelStyle}>Review</label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, minHeight: 38 }}>
+                    <input
+                      type="checkbox"
+                      checked={draft.needs_review === true || profile.duplicate_review_required === true}
+                      disabled={saving}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        updateDraft(profile.id, { needs_review: next });
+                        if ((profile.needs_review === true) === next && profile.duplicate_review_required !== true) return;
+                        saveProfilePatch(profile, { needs_review: next }, "Review flag updated.");
+                      }}
+                    />
+                    {profile.duplicate_review_required ? "Review required" : "Needs review"}
+                  </label>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={fieldLabelStyle}>Date of Birth</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={draft.date_of_birth}
+                    disabled={saving}
+                    onChange={(e) => updateDraft(profile.id, { date_of_birth: e.target.value })}
+                    onBlur={(e) => {
+                      const next = e.target.value || null;
+                      if (formatDateValue(profile.date_of_birth) === (next || "")) return;
+                      saveProfilePatch(profile, { date_of_birth: next }, "Date of birth updated.");
+                    }}
+                  />
+                  {draft.date_of_birth && daysUntil !== null && daysUntil <= 7 && (
+                    <span className="badge badge-active" style={{ marginTop: 6, display: "inline-block" }}>
+                      birthday in {daysUntil}d
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <label style={fieldLabelStyle}>Date of Start</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={draft.date_of_start}
+                    disabled={saving}
+                    onChange={(e) => updateDraft(profile.id, { date_of_start: e.target.value })}
+                    onBlur={(e) => {
+                      const next = e.target.value || null;
+                      if (formatDateValue(profile.date_of_start) === (next || "")) return;
+                      saveProfilePatch(profile, { date_of_start: next }, "Date of start updated.");
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h2>👥 Driver Groups</h2>
-          <p>Driver Groups is the source of truth for driver identity, status, truck, and team-driver structure across Home Time and Bot Group Access.</p>
+          <p>Driver Groups is the source of truth for driver identity, status, truck, and team-driver structure across Home Time and Bot Group Access. Click a driver name to edit all details.</p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
@@ -220,9 +515,7 @@ export default function GroupsPage() {
             <thead>
               <tr>
                 <th>Group Name</th>
-                <th>Telegram ID</th>
-                <th>First Name</th>
-                <th>Last Name</th>
+                <th>Driver</th>
                 <th>Type</th>
                 <th>
                   {activeTab === "all" ? (
@@ -252,21 +545,14 @@ export default function GroupsPage() {
                     "Status"
                   )}
                 </th>
-                <th>Unit Number</th>
-                <th>Language</th>
-                <th>Date of Birth</th>
-                <th>Date of Start</th>
-                <th>Review</th>
+                <th>Unit</th>
               </tr>
             </thead>
             <tbody>
               {displayProfiles.map((profile) => {
                 const draft = draftsById[profile.id] || profileToDraft(profile);
                 const saving = savingProfileId === profile.id;
-                const teamInputs = shouldShowTeamInputs(profile, draft);
-                const daysUntil = draft.date_of_birth
-                  ? getDaysUntilBirthday(draft.date_of_birth)
-                  : null;
+                const name = driverLabel(profile);
 
                 return (
                   <tr key={profile.id}>
@@ -286,72 +572,33 @@ export default function GroupsPage() {
                         </div>
                       )}
                     </td>
-                    <td><code>{profile.telegram_group_id}</code></td>
                     <td>
-                      <div style={{ display: "grid", gap: 6, minWidth: 120 }}>
-                        <input
-                          type="text"
-                          className="form-input"
-                          style={{ padding: "4px 8px" }}
-                          value={draft.first_name}
-                          disabled={saving}
-                          onChange={(e) => updateDraft(profile.id, { first_name: e.target.value })}
-                          onBlur={(e) => {
-                            const next = e.target.value.trim() || null;
-                            if ((profile.first_name || null) === next) return;
-                            saveProfilePatch(profile, { first_name: next }, "First name updated.");
-                          }}
-                        />
-                        {teamInputs && (
-                          <input
-                            type="text"
-                            className="form-input"
-                            style={{ padding: "4px 8px" }}
-                            value={draft.secondary_first_name}
-                            disabled={saving}
-                            placeholder="2nd first name"
-                            onChange={(e) => updateDraft(profile.id, { secondary_first_name: e.target.value })}
-                            onBlur={(e) => {
-                              const next = e.target.value.trim() || null;
-                              if ((profile.secondary_first_name || null) === next) return;
-                              saveProfilePatch(profile, { secondary_first_name: next }, "Secondary first name updated.");
-                            }}
-                          />
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ display: "grid", gap: 6, minWidth: 140 }}>
-                        <input
-                          type="text"
-                          className="form-input"
-                          style={{ padding: "4px 8px" }}
-                          value={draft.last_name}
-                          disabled={saving}
-                          onChange={(e) => updateDraft(profile.id, { last_name: e.target.value })}
-                          onBlur={(e) => {
-                            const next = e.target.value.trim() || null;
-                            if ((profile.last_name || null) === next) return;
-                            saveProfilePatch(profile, { last_name: next }, "Last name updated.");
-                          }}
-                        />
-                        {teamInputs && (
-                          <input
-                            type="text"
-                            className="form-input"
-                            style={{ padding: "4px 8px" }}
-                            value={draft.secondary_last_name}
-                            disabled={saving}
-                            placeholder="2nd last name"
-                            onChange={(e) => updateDraft(profile.id, { secondary_last_name: e.target.value })}
-                            onBlur={(e) => {
-                              const next = e.target.value.trim() || null;
-                              if ((profile.secondary_last_name || null) === next) return;
-                              saveProfilePatch(profile, { secondary_last_name: next }, "Secondary last name updated.");
-                            }}
-                          />
-                        )}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setOpenProfileId(profile.id)}
+                        title="Open driver details (name, birthday, language, Telegram link, review)"
+                        style={{
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          font: "inherit",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          color: "var(--primary, #6366f1)",
+                          textDecoration: "underline",
+                          textAlign: "left",
+                        }}
+                      >
+                        {name || "— set driver —"}
+                      </button>
+                      {(profile.needs_review === true || profile.duplicate_review_required === true) && (
+                        <div style={{ fontSize: 11, color: "#f59e0b" }}>Needs review</div>
+                      )}
+                      {profile.telegram_username ? (
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>@{profile.telegram_username}</div>
+                      ) : profile.telegram_user_id ? (
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>linked (no @username)</div>
+                      ) : null}
                     </td>
                     <td>
                       <select
@@ -402,77 +649,6 @@ export default function GroupsPage() {
                         }}
                       />
                     </td>
-                    <td>
-                      <select
-                        className="form-input"
-                        style={{ width: "auto", padding: "4px 8px" }}
-                        value={draft.language}
-                        disabled={saving}
-                        onChange={(e) => {
-                          const next = e.target.value;
-                          updateDraft(profile.id, { language: next });
-                          if ((profile.language || "en") === next) return;
-                          saveProfilePatch(profile, { language: next }, "Language updated.");
-                        }}
-                      >
-                        <option value="en">🇺🇸 English</option>
-                        <option value="ru">🇷🇺 Russian</option>
-                        <option value="uz">🇺🇿 Uzbek</option>
-                      </select>
-                    </td>
-                    <td>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 160 }}>
-                        <input
-                          type="date"
-                          className="form-input"
-                          style={{ padding: "4px 8px" }}
-                          value={draft.date_of_birth}
-                          disabled={saving}
-                          onChange={(e) => updateDraft(profile.id, { date_of_birth: e.target.value })}
-                          onBlur={(e) => {
-                            const next = e.target.value || null;
-                            if (formatDateValue(profile.date_of_birth) === (next || "")) return;
-                            saveProfilePatch(profile, { date_of_birth: next }, "Date of birth updated.");
-                          }}
-                        />
-                        {draft.date_of_birth && daysUntil !== null && daysUntil <= 7 && (
-                          <span className="badge badge-active" style={{ alignSelf: "flex-start" }}>
-                            in {daysUntil}d
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      <input
-                        type="date"
-                        className="form-input"
-                        style={{ padding: "4px 8px", minWidth: 160 }}
-                        value={draft.date_of_start}
-                        disabled={saving}
-                        onChange={(e) => updateDraft(profile.id, { date_of_start: e.target.value })}
-                        onBlur={(e) => {
-                          const next = e.target.value || null;
-                          if (formatDateValue(profile.date_of_start) === (next || "")) return;
-                          saveProfilePatch(profile, { date_of_start: next }, "Date of start updated.");
-                        }}
-                      />
-                    </td>
-                    <td>
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                        <input
-                          type="checkbox"
-                          checked={draft.needs_review === true || profile.duplicate_review_required === true}
-                          disabled={saving}
-                          onChange={(e) => {
-                            const next = e.target.checked;
-                            updateDraft(profile.id, { needs_review: next });
-                            if ((profile.needs_review === true) === next && profile.duplicate_review_required !== true) return;
-                            saveProfilePatch(profile, { needs_review: next }, "Review flag updated.");
-                          }}
-                        />
-                        {profile.duplicate_review_required ? "Review required" : "Review"}
-                      </label>
-                    </td>
                   </tr>
                 );
               })}
@@ -480,6 +656,8 @@ export default function GroupsPage() {
           </table>
         </div>
       )}
+
+      {renderDriverModal()}
     </div>
   );
 }
