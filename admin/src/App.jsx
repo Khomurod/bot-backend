@@ -7,6 +7,7 @@ import BroadcastPage from "./pages/BroadcastPage";
 import ScheduledMessagesPage from "./pages/ScheduledMessagesPage";
 import EmployeeVotingPage from "./pages/EmployeeVotingPage";
 import MessageManagerPage from "./pages/MessageManagerPage";
+import BotMessagesPage from "./pages/BotMessagesPage";
 import CompanyBirthdaysPage from "./pages/CompanyBirthdaysPage";
 import DispatchPage from "./pages/DispatchPage";
 import FacebookLeadsPage from "./pages/FacebookLeadsPage";
@@ -144,6 +145,7 @@ export default function App() {
     location_monitor: <LocationMonitorPage />,
     group_access: <GroupAccessPage />,
     manager: <MessageManagerPage />,
+    bot_messages: <BotMessagesPage />,
     scheduled: <ScheduledMessagesPage />,
   };
 
@@ -184,6 +186,7 @@ export default function App() {
 
   const ADMIN_ITEMS = [
     { key: 'manager', icon: '🛠️', label: 'Edit Message' },
+    { key: 'bot_messages', icon: '📨', label: 'Bot Messages' },
     { key: 'scheduled', icon: '📅', label: 'Scheduled Messages' },
   ];
 

@@ -396,9 +396,17 @@ CREATE TABLE IF NOT EXISTS bot_sent_messages (
   UNIQUE (telegram_chat_id, telegram_message_id)
 );
 
+-- Keeps the admin-supplied replacement text distinct from message_text so we
+-- can show what the last edit set the message to, even if content_kind changes.
+ALTER TABLE bot_sent_messages ADD COLUMN IF NOT EXISTS last_edit_text TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_bot_sent_messages_forward_lookup
   ON bot_sent_messages (sent_at DESC, telegram_chat_id)
   WHERE deleted_at IS NULL;
+
+-- Newest-first admin listing / pagination of the whole registry.
+CREATE INDEX IF NOT EXISTS idx_bot_sent_messages_recent
+  ON bot_sent_messages (sent_at DESC NULLS LAST, id DESC);
 
 -- TABLE: group_pinned_messages
 -- Stores the latest pinned-message snapshot we observed in updates for each
