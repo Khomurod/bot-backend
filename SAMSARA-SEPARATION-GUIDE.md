@@ -227,6 +227,39 @@ safe thing to do.
 
 ---
 
+## 7b. If the MAIN app's build fails with "samsara-integration/package.json … ENOENT"
+
+If, after the folder was removed, your **driver-feedback-bot** deploy fails with:
+
+```
+npm error path /opt/render/project/src/samsara-integration/package.json
+npm error enoent Could not read package.json … samsara-integration/package.json
+==> Build failed 😞
+```
+
+…this is **not a code problem** — the code builds fine. It means the service's
+saved **Build Command** in the Render dashboard still has a leftover step that
+tries to install the (now-deleted) Samsara folder, e.g.
+`npm install && npm ci --prefix samsara-integration`.
+
+**Fix it (30 seconds):**
+
+1. In Render, open your **driver-feedback-bot** service.
+2. Left menu → **Settings** → scroll to **Build** → **Build Command** → **Edit**.
+3. Delete everything in the box and type exactly:
+   ```
+   npm install
+   ```
+   (That's all it needs — `npm install` automatically builds the admin panel.)
+4. Click **Save Changes**.
+5. Top-right **Manual Deploy** → **Deploy latest commit**. The build now succeeds. ✅
+
+> Why: this service's Build Command was set by hand, so it overrides the
+> `render.yaml` in the repo. The repo's own build command is already correct
+> (`npm install`); the dashboard just had an old extra step that must be removed.
+
+---
+
 ## 8. Quick "did it work?" checklist
 
 - [ ] New repo created and files uploaded (Section 4).
