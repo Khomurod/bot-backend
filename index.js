@@ -62,11 +62,12 @@ const MAX_RAPID_CRASHES = 5;
 const RAPID_CRASH_WINDOW_MS = 3 * 60_000; // 3 minutes
 
 // NOTE: The Samsara safety-event poller used to be spawned here as a Node child
-// process. It now lives in its own repository and runs as a separate Render
-// service (see samsara-integration/README.md). Removing the child frees the
-// memory that was causing OOM kills on the free instance. The two services
-// still cooperate through the shared PostgreSQL database (the `groups` table)
-// and the shared Telegram bot tokens — no in-process link is required.
+// process. It has been moved out of this repository entirely and now runs from
+// its own repository (github.com/Khomurod/samsara-integration) as a separate
+// Render service. Removing the child freed the memory that was causing OOM
+// kills on the free instance. The two services still cooperate through the
+// shared PostgreSQL database (the `groups` table) and the shared Telegram bot
+// tokens — no in-process link is required.
 let leadsProcess = null;
 let leadsRestartTimer = null;
 let leadsRestartDelayMs = CHILD_RESTART_BASE_MS;

@@ -73,9 +73,9 @@ services:
       - key: NODE_OPTIONS
         # Main process heap cap. Kept well under the 512MB instance so the
         # leads-bot (Python child) has room. The Samsara safety-event poller
-        # is NO LONGER spawned here — it runs as its own separate Render
-        # service from its own repository (see samsara-integration/README.md),
-        # which is what freed the memory that used to cause OOM kills.
+        # is NO LONGER part of this repo — it runs as its own separate Render
+        # service from github.com/Khomurod/samsara-integration, which is what
+        # freed the memory that used to cause OOM kills.
         # 256 (was 300) leaves more OS/GC headroom to avoid OOM kills.
         value: --max-old-space-size=256
       # Limit glibc malloc arenas to reduce native heap fragmentation in the
@@ -84,9 +84,9 @@ services:
         value: "2"
 
   # NOTE: The `samsara-poller` service that used to live here has moved to its
-  # own repository. Deploy it from that repo using samsara-integration/render.yaml.
-  # It talks to this hub only through the shared DATABASE_URL (the `groups`
-  # table) and the shared Telegram bot tokens — no in-repo link is needed.
+  # own repository (github.com/Khomurod/samsara-integration) and is deployed
+  # from there. It talks to this hub only through the shared DATABASE_URL (the
+  # `groups` table) and the shared Telegram bot tokens — no in-repo link needed.
 
   - type: web
     name: facebook-leads-engine

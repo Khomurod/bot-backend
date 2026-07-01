@@ -6,10 +6,7 @@ admin/build/
 __pycache__/
 *.pyc
 *.pyo
-samsara-integration/node_modules/
-samsara-integration/data/
 .env
 .env.*
 !.env.example
-samsara-integration/.env
 scratch/datatruck-driver-*

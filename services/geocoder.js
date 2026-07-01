@@ -3,11 +3,11 @@
  * Performs reverse geocoding to convert GPS coordinates to "City, State".
  * Uses the free BigDataCloud Reverse Geocode API.
  *
- * NOTE: This is the main app's own copy. It used to be imported from
- * ../samsara-integration/src/geocoder, but the Samsara poller now lives in a
- * separate repository/service, so the main app keeps a local copy to avoid a
- * cross-repo dependency. Live-location features (dispatch ETA, fuel stop
- * alerts, driver location monitor, EVO/TT ELD) rely on this.
+ * NOTE: This is the main app's own copy. It was previously borrowed from the
+ * Samsara poller, which has since moved to its own repository/service, so the
+ * main app keeps this local copy to stay fully self-contained. Live-location
+ * features (dispatch ETA, fuel stop alerts, driver location monitor, EVO/TT
+ * ELD) rely on this.
  */
 
 async function reverseGeocode(lat, lon) {
