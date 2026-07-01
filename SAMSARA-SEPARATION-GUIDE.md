@@ -246,17 +246,27 @@ tries to install the (now-deleted) Samsara folder, e.g.
 
 1. In Render, open your **driver-feedback-bot** service.
 2. Left menu → **Settings** → scroll to **Build** → **Build Command** → **Edit**.
-3. Delete everything in the box and type exactly:
+3. In the box, find and delete **only** the leftover Samsara piece — it looks
+   like one of these (delete the ` && ` in front of it too):
    ```
-   npm install
+   && npm ci --prefix samsara-integration
+   && cd samsara-integration && npm install
    ```
-   (That's all it needs — `npm install` automatically builds the admin panel.)
+   **Keep everything else**, especially any `pip install ... leads-bot` and
+   `npm install` parts — the main app still needs those (it runs the Python
+   leads-bot). If you'd rather just replace the whole box with a known-good
+   command, use exactly this:
+   ```
+   pip install -r leads-bot/requirements.txt && npm install
+   ```
+   (`npm install` automatically builds the admin panel via the postinstall
+   script; the `pip install` line keeps the leads-bot working.)
 4. Click **Save Changes**.
 5. Top-right **Manual Deploy** → **Deploy latest commit**. The build now succeeds. ✅
 
 > Why: this service's Build Command was set by hand, so it overrides the
-> `render.yaml` in the repo. The repo's own build command is already correct
-> (`npm install`); the dashboard just had an old extra step that must be removed.
+> `render.yaml` in the repo. Only the trailing Samsara step needs to go — it
+> points at a folder that no longer exists in this repo.
 
 ---
 
