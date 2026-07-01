@@ -70,8 +70,16 @@ async function handleRoastMessage(ctx) {
   if (from?.is_bot) return { handled: false, reason: 'from_bot' };
 
   const settings = await db.getRoastSettings();
-  if (!settings?.enabled) return { handled: false, reason: 'disabled' };
-  if (String(chat.id) !== String(settings.group_id)) return { handled: false, reason: 'wrong_group' };
+  const inConfiguredGroup = settings?.group_id != null && String(chat.id) === String(settings.group_id);
+  if (!inConfiguredGroup) return { handled: false, reason: 'wrong_group' };
+
+  if (!settings.enabled) {
+    // Logged (not silently swallowed) because this is the one group where an
+    // admin expects a reply — an unexpectedly-off toggle should be visible in
+    // server logs, not just a silent no-op.
+    console.log(`[ROAST] Skipped in chat ${chat.id}: feature is disabled in admin settings.`);
+    return { handled: false, reason: 'disabled' };
+  }
 
   const botId = ctx.botInfo?.id;
   const botUsername = ctx.botInfo?.username || ctx.me;
@@ -79,7 +87,10 @@ async function handleRoastMessage(ctx) {
     return { handled: false, reason: 'not_a_trigger' };
   }
 
-  if (isRateLimited(chat.id)) return { handled: false, reason: 'rate_limited' };
+  if (isRateLimited(chat.id)) {
+    console.log(`[ROAST] Skipped in chat ${chat.id}: hourly rate limit reached.`);
+    return { handled: false, reason: 'rate_limited' };
+  }
 
   const isTarget = isFromTargetUser(from, settings.target_username);
   const triggerText = getMessageText(message);
