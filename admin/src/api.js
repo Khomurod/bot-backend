@@ -873,31 +873,6 @@ export async function sendEmployeeBirthdayRequest() {
   return res.json();
 }
 
-export async function getRoastSettings() {
-  const res = await fetch(`${API_BASE}/roast/settings`, { headers: getHeaders() });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
-export async function updateRoastSettings(data) {
-  const res = await fetch(`${API_BASE}/roast/settings`, {
-    method: 'PUT',
-    headers: getHeaders(),
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
-export async function sendRoastNow() {
-  const res = await fetch(`${API_BASE}/roast/send-now`, {
-    method: 'POST',
-    headers: getHeaders(),
-  });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
 export async function createEmployeeBirthday(data) {
   const res = await fetch(`${API_BASE}/submit-employee-birthday`, {
     method: 'POST', headers: getHeaders(),

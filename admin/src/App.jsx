@@ -18,7 +18,6 @@ import HomeTimePage from "./pages/HomeTimePage";
 import GroupAccessPage from "./pages/GroupAccessPage";
 import FuelMonitorPage from "./pages/FuelMonitorPage";
 import LocationMonitorPage from "./pages/LocationMonitorPage";
-import RoastPage from "./pages/RoastPage";
 
 function getPageFromPath(pathname) {
   if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) {
@@ -138,7 +137,6 @@ export default function App() {
     voting: <EmployeeVotingPage />,
     groups: <GroupsPage />,
     company_birthdays: <CompanyBirthdaysPage />,
-    roast: <RoastPage />,
     mileage_bonus: <MileageBonusPage />,
     raise_approval: <RaiseApprovalPage />,
     home_time: <HomeTimePage />,
@@ -174,7 +172,6 @@ export default function App() {
       items: [
         { key: 'groups', icon: '👷', label: 'Driver Groups' },
         { key: 'company_birthdays', icon: '🎂', label: 'Birthdays' },
-        { key: 'roast', icon: '😏', label: 'Roast Bot' },
         { key: 'mileage_bonus', icon: '🏁', label: 'Mileage Bonuses' },
         { key: 'raise_approval', icon: '💵', label: 'Driver Raises' },
         { key: 'home_time', icon: '🏠', label: 'Driver Home Time' },
