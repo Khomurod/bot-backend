@@ -125,6 +125,13 @@ test('computeNextCheck: already within radius → withinRadius', () => {
   assert.deepEqual(computeNextCheck({ distanceMiles: 10, radiusMiles: 10, speedMph: 55, nowMs: NOW }), { withinRadius: true });
 });
 
+test('computeNextCheck: default radius (no radiusMiles) is 50 miles', () => {
+  // 45 mi out with no explicit radius → inside the new 50-mile default.
+  assert.deepEqual(computeNextCheck({ distanceMiles: 45, speedMph: 55, nowMs: NOW }), { withinRadius: true });
+  // 60 mi out → still approaching under the 50-mile default.
+  assert.equal(computeNextCheck({ distanceMiles: 60, speedMph: 55, nowMs: NOW }).withinRadius, false);
+});
+
 test('computeNextCheck: far away wakes ~20 min before predicted arrival', () => {
   // 200 mi out, r=10 → 190 mi beyond, ×1.2 / 50 mph × 60 = 273.6 min to boundary.
   const r = computeNextCheck({ distanceMiles: 200, radiusMiles: 10, speedMph: 50, nowMs: NOW });

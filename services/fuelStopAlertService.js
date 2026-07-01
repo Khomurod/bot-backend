@@ -23,7 +23,9 @@ const { callGeminiJson, callGeminiText } = require('./geminiClient');
 
 const POLL_INTERVAL_MS = 150 * 1000; // due-scan cadence (cheap; most ticks no-op).
 const ALERT_MAX_BATCH = 10;
-const DEFAULT_RADIUS_MILES = 10;
+// Notify the driver when the truck comes within 50 miles of the assigned fuel
+// stop (was 10) so they get the heads-up with enough road left to plan the stop.
+const DEFAULT_RADIUS_MILES = 50;
 
 // ETA-based scheduling knobs. We estimate when the truck will reach the radius
 // from straight-line distance ÷ speed (no extra routing API), then wake up
@@ -504,7 +506,7 @@ function buildManualReminderText(alert) {
 
 /**
  * Manually send a fuel reminder to a driver's group for their current active
- * fuel stop. Does NOT change the watch status, so the automatic 10-mile
+ * fuel stop. Does NOT change the watch status, so the automatic 50-mile
  * reminder still fires later. Returns { sent, reason? }.
  */
 async function sendManualFuelReminder(groupId) {

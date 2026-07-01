@@ -44,25 +44,71 @@ async function getDriverHomeStatus(groupId) {
   return res.rows[0] || null;
 }
 
-/** Insert or update the current state for a driver group. */
+/**
+ * Insert or update the current state for a driver group.
+ *
+ * `roadBonusWeeksNotified` resets the extra-week notification watermark. Every
+ * real state transition (home→road, road→home, first observation) starts a
+ * fresh leg, so callers pass 0 there; the periodic notifier advances it later
+ * via setRoadBonusWeeksNotified() without disturbing the state.
+ */
 async function upsertDriverHomeStatus({
   groupId, telegramGroupId, state, stateSince, lastStatusText, lastStatusAt,
+  roadBonusWeeksNotified = 0,
 }) {
   const res = await query(
     `INSERT INTO driver_home_status
-       (group_id, telegram_group_id, state, state_since, last_status_text, last_status_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       (group_id, telegram_group_id, state, state_since, last_status_text, last_status_at, road_bonus_weeks_notified, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
      ON CONFLICT (group_id) DO UPDATE SET
        telegram_group_id = EXCLUDED.telegram_group_id,
        state = EXCLUDED.state,
        state_since = EXCLUDED.state_since,
        last_status_text = EXCLUDED.last_status_text,
        last_status_at = EXCLUDED.last_status_at,
+       road_bonus_weeks_notified = EXCLUDED.road_bonus_weeks_notified,
        updated_at = NOW()
      RETURNING *`,
-    [groupId, telegramGroupId != null ? String(telegramGroupId) : null, state, stateSince, lastStatusText || null, lastStatusAt]
+    [groupId, telegramGroupId != null ? String(telegramGroupId) : null, state, stateSince,
+      lastStatusText || null, lastStatusAt, Math.max(0, Number(roadBonusWeeksNotified) || 0)]
   );
   return res.rows[0];
+}
+
+/**
+ * Advance (or reset) the extra-week notification watermark for a group without
+ * touching its state. Called by the periodic road-bonus notifier after it posts
+ * newly-completed weeks, so the same milestone is never posted twice.
+ */
+async function setRoadBonusWeeksNotified(groupId, weeksNotified) {
+  const res = await query(
+    `UPDATE driver_home_status
+       SET road_bonus_weeks_notified = $2, updated_at = NOW()
+     WHERE group_id = $1 RETURNING *`,
+    [groupId, Math.max(0, Number(weeksNotified) || 0)]
+  );
+  return res.rows[0] || null;
+}
+
+/**
+ * Every driver group currently ON THE ROAD, with the labels + driver type
+ * needed to compute and post extra-week bonus milestones. Used by the periodic
+ * notifier; owner-operator filtering happens in the service (driver_type can be
+ * null here and is then inferred from the group name).
+ */
+async function listOnRoadStatuses() {
+  const res = await query(
+    `SELECT s.group_id, s.telegram_group_id, s.state, s.state_since,
+            s.road_bonus_weeks_notified,
+            g.group_name, g.active AS group_active,
+            dp.first_name, dp.last_name, dp.unit_number, dp.driver_type
+     FROM driver_home_status s
+     JOIN groups g ON g.id = s.group_id
+     LEFT JOIN driver_profiles dp ON dp.group_id = s.group_id
+     WHERE s.state = 'road'
+     ORDER BY s.state_since ASC`
+  );
+  return res.rows;
 }
 
 /** Touch only the "last seen status" fields without changing the state. */
@@ -358,6 +404,8 @@ module.exports = {
   updateHomeTimeSettings,
   getDriverHomeStatus,
   upsertDriverHomeStatus,
+  setRoadBonusWeeksNotified,
+  listOnRoadStatuses,
   touchDriverHomeStatus,
   insertRoadHistory,
   listCurrentStatuses,

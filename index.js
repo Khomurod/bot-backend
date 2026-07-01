@@ -47,6 +47,10 @@ const {
   startDriverLocationMonitorService,
   stopDriverLocationMonitorService,
 } = require('./services/driverLocationMonitorService');
+const {
+  startRoadBonusNotifierService,
+  stopRoadBonusNotifierService,
+} = require('./services/roadBonusNotifierService');
 const db = require('./database/db');
 
 const DB_DRAIN_TIMEOUT_MS = 5000;
@@ -296,6 +300,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopRaiseApprovalService(); } catch (err) { console.error('[SHUTDOWN] stopRaiseApprovalService failed:', err.message); }
   try { stopFuelStopAlertService(); } catch (err) { console.error('[SHUTDOWN] stopFuelStopAlertService failed:', err.message); }
   try { stopDriverLocationMonitorService(); } catch (err) { console.error('[SHUTDOWN] stopDriverLocationMonitorService failed:', err.message); }
+  try { stopRoadBonusNotifierService(); } catch (err) { console.error('[SHUTDOWN] stopRoadBonusNotifierService failed:', err.message); }
 
   await Promise.allSettled([
     stopFacebookWebhookWorker(),
@@ -340,6 +345,7 @@ async function start() {
   startRaiseApprovalService();
   startFuelStopAlertService(bot.telegram);
   startDriverLocationMonitorService(bot.telegram);
+  startRoadBonusNotifierService(bot.telegram);
   await startFacebookWebhookWorker();
   startLeadsBot();
 }

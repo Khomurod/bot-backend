@@ -1223,8 +1223,17 @@ CREATE TABLE IF NOT EXISTS driver_home_status (
   state_since TIMESTAMPTZ NOT NULL,
   last_status_text TEXT,
   last_status_at TIMESTAMPTZ NOT NULL,
+  -- Watermark: how many FULL extra-week milestones (beyond the road allowance)
+  -- have already been posted to the Bonus Penalty group for the CURRENT road
+  -- leg. Reset to 0 whenever a new road leg begins so the same week is never
+  -- double-posted. See services/roadBonusNotifierService.js.
+  road_bonus_weeks_notified INTEGER NOT NULL DEFAULT 0,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Older deployments created driver_home_status before the watermark existed.
+ALTER TABLE driver_home_status
+  ADD COLUMN IF NOT EXISTS road_bonus_weeks_notified INTEGER NOT NULL DEFAULT 0;
 
 -- One row per completed road trip (closed when the driver goes home).
 CREATE TABLE IF NOT EXISTS driver_road_history (

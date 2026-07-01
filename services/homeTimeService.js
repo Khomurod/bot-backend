@@ -3,19 +3,26 @@
  *
  * Event-driven: the bot's group-message handler calls handleDriverGroupStatus()
  * for every message in a driver group. We look for "Status: Home / Ready /
- * Rolling", keep a simple home/road state machine per driver group, and — when
- * a driver comes home after more than the allowed weeks on the road — record the
- * trip and post the earned bonus to the "Bonus Penalty For Drivers" group.
+ * Rolling" and keep a simple home/road state machine per driver group.
  *
- * No timers or scheduler: there is nothing to poll. The settings row is seeded
- * by schema.sql, so there is no startup step either.
+ * Extra-week bonuses are NO LONGER posted here on the road→home transition.
+ * They are posted week-by-week WHILE the driver is still out, by the periodic
+ * services/roadBonusNotifierService.js. On this transition we only:
+ *   - record the completed trip (with its computed bonus, for the admin/history)
+ *   - reset the per-leg notification watermark, and
+ *   - post a recognition-only (no dollar amounts) message to the EMPLOYEE group
+ *     when the driver came home after exceeding the allowance — for morale
+ *     visibility, not accounting.
+ *
+ * No timers or scheduler here: the settings row is seeded by schema.sql, so
+ * there is no startup step either.
  */
 const { DateTime } = require('luxon');
 const db = require('../database/db');
 const ht = require('../database/homeTime');
+const config = require('../config/config');
 const { safeSend } = require('./telegramHtml');
-const { BONUS_GROUP_CHAT_ID } = require('./mileageBonusConstants');
-const { parseDriverStatus, computeRoadBonus } = require('./homeTimeConstants');
+const { parseDriverStatus, computeRoadBonus, DAYS_PER_WEEK } = require('./homeTimeConstants');
 const { inferDriverType } = require('./driverProfileParse');
 
 function escapeHtml(text) {
@@ -53,21 +60,30 @@ async function resolveDriverLabel(group) {
   }
 }
 
-async function postBonusToGroup(telegram, {
-  driverName, unitNumber, daysOnRoad, exceededWeeks, bonusUsd, allowanceWeeks,
+/**
+ * Recognition-only homecoming post to the EMPLOYEE group. No dollar amounts —
+ * this is morale visibility, not accounting. Only sent when a driver came home
+ * after exceeding the road allowance. Non-fatal on failure.
+ */
+async function postHomecomingRecognition(telegram, {
+  driverName, unitNumber, daysOnRoad,
 }) {
+  const employeeGroupId = config.employeeGroupId;
+  if (!employeeGroupId) return;
   const who = `${escapeHtml(driverName)}${unitNumber ? ` (Unit ${escapeHtml(unitNumber)})` : ''}`;
-  const text = `🏠 <b>${who} is home.</b>\n`
-    + `On the road for <b>${daysOnRoad} days</b> — that's <b>${exceededWeeks} full week(s)</b> over the ${allowanceWeeks}-week limit.\n`
-    + `Qualifies for a <b>$${Number(bonusUsd).toFixed(0)} bonus</b>.`;
+  const weeksOnRoad = Math.floor(Number(daysOnRoad) / DAYS_PER_WEEK);
+  const weekLabel = weeksOnRoad === 1 ? 'week' : 'weeks';
+  const text = `🏠🎉 <b>${who} is home!</b>\n`
+    + `Off the road after <b>${weeksOnRoad} ${weekLabel}</b> (${daysOnRoad} days) of keeping us rolling.\n`
+    + 'Thank you for the dedication out there — welcome back! 👏';
   try {
-    await safeSend(() => telegram.sendMessage(BONUS_GROUP_CHAT_ID, text, {
+    await safeSend(() => telegram.sendMessage(employeeGroupId, text, {
       parse_mode: 'HTML',
       disable_web_page_preview: true,
     }));
   } catch (err) {
-    // Non-fatal: the trip + bonus are already saved and visible in the admin panel.
-    console.error('[HOME-TIME] Failed to post bonus to group:', err.message);
+    // Non-fatal: the trip is already saved and visible in the admin panel.
+    console.error('[HOME-TIME] Failed to post homecoming recognition:', err.message);
   }
 }
 
@@ -102,6 +118,7 @@ async function handleDriverGroupStatus(telegram, group, message) {
         stateSince: eventAt,
         lastStatusText: text.slice(0, 500),
         lastStatusAt: eventAt,
+        roadBonusWeeksNotified: 0,
       });
       return;
     }
@@ -120,7 +137,7 @@ async function handleDriverGroupStatus(telegram, group, message) {
     if (current.state === 'road' && newState === 'home') {
       // Road trip just finished — close it and compute the bonus.
       const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
-      const { daysOnRoad, exceededWeeks, bonusUsd } = computeRoadBonus(
+      const { daysOnRoad, exceededWeeks, bonusUsd, overLimit } = computeRoadBonus(
         current.state_since,
         eventAt,
         {
@@ -139,16 +156,21 @@ async function handleDriverGroupStatus(telegram, group, message) {
         exceededWeeks,
         bonusUsd,
       });
-      if (bonusUsd > 0) {
-        await postBonusToGroup(telegram, {
-          driverName, unitNumber, daysOnRoad, exceededWeeks, bonusUsd,
-          allowanceWeeks: settings.road_allowance_weeks,
-        });
+      // Extra-week bonuses were already posted to the Bonus Penalty group WHILE
+      // the driver was out (roadBonusNotifierService). We no longer post any
+      // dollar amount here. Instead, when a COMPANY driver went over the
+      // allowance, congratulate them in the employee group (recognition only).
+      // `overLimit` is already gated on company_driver, so owner-operators never
+      // trigger the recognition post.
+      if (overLimit) {
+        await postHomecomingRecognition(telegram, { driverName, unitNumber, daysOnRoad });
       }
-      console.log(`[HOME-TIME] ${driverName} (${driverType}) home after ${daysOnRoad}d -> $${bonusUsd} bonus`);
+      console.log(`[HOME-TIME] ${driverName} (${driverType}) home after ${daysOnRoad}d (${exceededWeeks} extra wk, $${bonusUsd} recorded)`);
     }
     // home → road needs no calculation; the clock simply starts.
 
+    // Every transition starts a fresh leg → reset the extra-week watermark so
+    // the notifier re-counts from zero for the new road trip.
     await ht.upsertDriverHomeStatus({
       groupId: group.id,
       telegramGroupId: group.telegram_group_id,
@@ -156,6 +178,7 @@ async function handleDriverGroupStatus(telegram, group, message) {
       stateSince: eventAt,
       lastStatusText: text.slice(0, 500),
       lastStatusAt: eventAt,
+      roadBonusWeeksNotified: 0,
     });
   } catch (err) {
     console.error('[HOME-TIME] handleDriverGroupStatus error:', err.message);
