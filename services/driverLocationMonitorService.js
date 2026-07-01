@@ -25,6 +25,12 @@ const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
 const { calculateEtaToDestination, geocodePlace, haversineMiles } = require('./etaRoutingService');
 const { readLoadContextWithFallbacks } = require('./dispatchPinnedContextService');
 const { extractDriverNameFromGroupTitle } = require('./driverGroupTitle');
+const db = require('../database/db');
+const { buildMention, createMentionResolver } = require('./telegramMention');
+
+// Resolve a username-less driver to a tg://user?id inline mention by looking
+// their captured id up by name, so the check-in ping still notifies them.
+const mentionResolver = createMentionResolver(db);
 
 let geminiClient = null;
 try {
@@ -488,7 +494,11 @@ async function processMonitorJob(job) {
       });
 
       const username = normalizeText(job.telegram_username);
-      const driverTag = username ? `@${username}` : escapeHtml(buildDriverDisplayName(job));
+      const driverTag = username
+        ? buildMention({ username })
+        : await mentionResolver.mentionForName(buildDriverDisplayName(job), {
+            fallbackName: buildDriverDisplayName(job),
+          });
       const language = normalizeText(job.group_language) || 'en';
       const text = await buildCheckinMessage({
         driverTag,

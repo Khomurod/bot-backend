@@ -635,6 +635,32 @@ async function getDriverByTelegramId(telegramUserId) {
   return res.rows[0];
 }
 
+// Look up a captured user by username or (first/last) name so callers can build
+// an inline mention for someone referenced only by name. Username matches win
+// over name matches; ties break toward the most recently created row.
+async function findDriverByName(name) {
+  const cleaned = String(name || '').trim().replace(/^@+/, '');
+  if (!cleaned) return undefined;
+  const full = cleaned.replace(/\s+/g, ' ');
+  const res = await query(
+    `SELECT *,
+            CASE
+              WHEN LOWER(username) = LOWER($1) THEN 0
+              WHEN LOWER(TRIM(CONCAT_WS(' ', first_name, last_name))) = LOWER($1) THEN 1
+              WHEN LOWER(first_name) = LOWER($1) THEN 2
+              ELSE 3
+            END AS match_rank
+       FROM drivers
+      WHERE LOWER(username) = LOWER($1)
+         OR LOWER(TRIM(CONCAT_WS(' ', first_name, last_name))) = LOWER($1)
+         OR LOWER(first_name) = LOWER($1)
+      ORDER BY match_rank ASC, created_at DESC
+      LIMIT 1`,
+    [full]
+  );
+  return res.rows[0];
+}
+
 // ─── Questions ───
 
 async function createQuestion(translations, options, mediaItems, mediaPosition) {
@@ -3222,6 +3248,7 @@ module.exports = {
   // Drivers
   upsertDriver,
   getDriverByTelegramId,
+  findDriverByName,
   // Questions
   createQuestion,
   getActiveQuestions,

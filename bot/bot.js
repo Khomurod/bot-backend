@@ -41,6 +41,7 @@ const {
   beginAnonymousFeedback,
 } = require('./anonymousFeedbackHandlers');
 const { installBotSentMessageTracking } = require('../services/botSentMessageRegistry');
+const { buildMention } = require('../services/telegramMention');
 // config.js already validates DATABASE_URL, MANAGEMENT_GROUP_ID (BOT_TOKEN has a code default)
 // and exits on missing values — no need to re-check here.
 
@@ -64,6 +65,56 @@ function debugLog(location, message, data, hypothesisId) {
 }
 // #endregion
 const MANAGEMENT_GROUP_ID = config.managementGroupId;
+
+/**
+ * Persist a single Telegram user object (from any update field) into `drivers`,
+ * refreshing username/first/last each time — a username can appear or change
+ * long after we first saw the id. Skips bots and id-less objects. Never throws.
+ *
+ * Capturing ids as broadly as possible is what makes tg://user?id inline
+ * mentions work: Telegram only reliably notifies a user the bot has already
+ * "seen", and it can only build the fallback mention once the numeric id is
+ * on file. So we upsert from every place a user surfaces — not just senders.
+ */
+async function captureTelegramUser(user) {
+  if (!user || !user.id || user.is_bot) return;
+  try {
+    await db.upsertDriver(
+      user.id,
+      user.username || null,
+      user.first_name || null,
+      user.last_name || null
+    );
+  } catch (err) {
+    console.error('[BOT] Failed to capture user', user.id, err.message);
+  }
+}
+
+/**
+ * Capture every distinct user that appears anywhere in an update: the actor
+ * (ctx.from), members added to a group, a user removed from a group, and the
+ * author of a replied-to message. De-duplicates by id so we upsert each once.
+ */
+async function captureUsersFromUpdate(ctx) {
+  const seen = new Set();
+  const users = [];
+  const add = (u) => {
+    if (!u || !u.id || seen.has(u.id)) return;
+    seen.add(u.id);
+    users.push(u);
+  };
+
+  add(ctx.from);
+  const msg = ctx.message || ctx.editedMessage || ctx.callbackQuery?.message;
+  if (msg) {
+    if (Array.isArray(msg.new_chat_members)) msg.new_chat_members.forEach(add);
+    add(msg.left_chat_member);
+    add(msg.reply_to_message?.from);
+  }
+  if (ctx.myChatMember?.from) add(ctx.myChatMember.from);
+
+  await Promise.all(users.map(captureTelegramUser));
+}
 const BOT_LAUNCH_RETRY_MS = 5000;
 const BOT_LAUNCH_MAX_RETRY_MS = 30000;
 const STATUS_TOGGLE_CALLBACK_PREFIX = 'status_toggle';
@@ -372,15 +423,11 @@ async function startBot() {
         if (ctx.chat && (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup')) {
           await db.upsertGroup(ctx.chat.id, ctx.chat.title || 'Unknown');
         }
-        // Register the driver
-        if (ctx.from && ctx.from.id && !ctx.from.is_bot) {
-          await db.upsertDriver(
-            ctx.from.id,
-            ctx.from.username || null,
-            ctx.from.first_name || null,
-            ctx.from.last_name || null
-          );
-        }
+        // Register every user this update touched — the sender, plus any
+        // new/removed members and the author of a replied-to message. This
+        // widens id capture beyond message senders so username-less users can
+        // still be @-tagged later via a tg://user?id inline mention.
+        await captureUsersFromUpdate(ctx);
       } catch (err) {
         console.error('[BOT] Error registering driver/group:', err.message);
       }
@@ -905,9 +952,9 @@ async function reportToManagement(driver, group, questionId, optionId) {
       }
     }
 
-    const driverHandle = driver.username
-      ? `@${escapeHtml(driver.username)}`
-      : escapeHtml(`${driver.first_name || ''} ${driver.last_name || ''}`.trim());
+    // Prefer @username; otherwise a tg://user?id inline mention so the driver
+    // is still tagged (we have their captured id on the drivers row here).
+    const driverHandle = buildMention(driver, { fallbackName: 'Driver' });
 
     const message = `📋 <b>Driver Feedback</b>\n\n` +
       `<b>Group:</b> ${escapeHtml(group.group_name)}\n` +
