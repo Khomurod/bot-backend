@@ -489,9 +489,15 @@ async function processMonitorJob(job) {
         return { ok: true, reason: 'already_prompted' };
       }
 
+      // Prefer the Telegram identity selected in Driver Groups (username
+      // and/or numeric id — the id alone yields a tg://user?id inline mention
+      // for username-less drivers); fall back to a name lookup of captured ids.
       const username = normalizeText(job.telegram_username);
-      const driverTag = username
-        ? buildMention({ username })
+      const driverTag = username || job.telegram_user_id != null
+        ? buildMention(
+            { username, telegram_user_id: job.telegram_user_id },
+            { fallbackName: buildDriverDisplayName(job) }
+          )
         : await mentionResolver.mentionForName(buildDriverDisplayName(job), {
             fallbackName: buildDriverDisplayName(job),
           });

@@ -3,14 +3,13 @@ const db = require('../../database/db');
 const { listCanonicalDriverGroups } = require('../../services/driverGroupDirectoryService');
 const { sendManualFuelReminder, refreshFuelStopsFromInbox } = require('../../services/fuelStopAlertService');
 
-// Telegram handles: 5–32 chars of [a-z0-9_]. We accept an optional leading '@'
-// and store it normalized (lowercase, no '@') via db.setDriverTelegramUsername.
-const USERNAME_RE = /^@?[A-Za-z0-9_]{3,32}$/;
-
 /**
  * Fuel Monitor admin API.
- *  - GET  /                      → active company drivers + saved usernames
- *  - PUT  /:groupId/username     → set/clear a driver's Telegram username
+ *  - GET  /                      → active company drivers + watched fuel stops
+ *
+ * The driver's Telegram identity (username + numeric user id) is NOT edited
+ * here anymore: Driver Groups (driver_profiles) is the single source of
+ * truth, set from the member dropdown in the Driver Groups popup.
  */
 function createFuelMonitorRouter({ authMiddleware, telegram }) {
   const router = express.Router();
@@ -62,35 +61,6 @@ function createFuelMonitorRouter({ authMiddleware, telegram }) {
     } catch (err) {
       console.error('[FUEL-MONITOR API] list failed:', err.message);
       res.status(500).json({ error: 'Failed to load fuel monitor data' });
-    }
-  });
-
-  router.put('/:groupId/username', authMiddleware, async (req, res) => {
-    try {
-      const groupId = Number(req.params.groupId);
-      if (!Number.isInteger(groupId) || groupId <= 0) {
-        return res.status(400).json({ error: 'Invalid group id' });
-      }
-      const raw = req.body?.telegram_username;
-      // Allow empty string / null to clear the username.
-      const isClear = raw == null || String(raw).trim() === '';
-      if (!isClear && !USERNAME_RE.test(String(raw).trim())) {
-        return res.status(400).json({
-          error: 'Username must be 3–32 characters: letters, numbers, or underscore.',
-        });
-      }
-
-      const updated = await db.setDriverTelegramUsername(groupId, isClear ? null : raw);
-      if (!updated) {
-        return res.status(404).json({ error: 'Driver profile not found for this group' });
-      }
-      res.json({
-        group_id: groupId,
-        telegram_username: updated.telegram_username || null,
-      });
-    } catch (err) {
-      console.error('[FUEL-MONITOR API] update username failed:', err.message);
-      res.status(500).json({ error: 'Server error' });
     }
   });
 

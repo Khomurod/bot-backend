@@ -29,14 +29,21 @@ const mentionResolver = createMentionResolver(db);
 
 /**
  * Best mention for the driver on a fuel-alert / driver-profile row. Prefers the
- * stored @username; when there is none, tries to resolve the captured numeric
- * id by name so username-less drivers still get pinged via an inline mention.
- * Falls back to the plain escaped name if the driver was never captured.
+ * stored @username; a username-less driver whose numeric telegram_user_id was
+ * selected in Driver Groups still gets pinged via a tg://user?id inline
+ * mention (Telegram only reliably notifies users the bot has seen — see
+ * services/telegramMention.js). Without either, tries to resolve the captured
+ * id by name, falling back to the plain escaped name if never captured.
  */
 async function buildDriverTag(row) {
   const username = normalizeText(row?.telegram_username);
-  if (username) return buildMention({ username });
   const name = buildDriverDisplayName(row);
+  if (username || row?.telegram_user_id != null) {
+    return buildMention(
+      { username, telegram_user_id: row?.telegram_user_id },
+      { fallbackName: name }
+    );
+  }
   return mentionResolver.mentionForName(name, { fallbackName: name });
 }
 
@@ -610,6 +617,7 @@ function stopFuelStopAlertService() {
 
 module.exports = {
   configureFuelStopTelegram,
+  buildDriverTag,
   messageHasFuelHeader,
   messageText,
   extractStationFromText,

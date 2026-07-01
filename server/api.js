@@ -1100,6 +1100,12 @@ app.use('/api/location-monitor', createLocationMonitorRouter({ authMiddleware })
 const { createBotMessagesRouter } = require('./routes/botMessagesRoutes');
 app.use('/api/bot-messages', createBotMessagesRouter({ authMiddleware, telegram: bot.telegram }));
 
+// GET /api/groups/:groupId/members — users the bot has seen in a group, for
+// the Driver Groups "Driver Username" dropdown. Only defines /:groupId/members,
+// so the inline /api/groups routes below still match everything else.
+const { createGroupMembersRouter } = require('./routes/groupMembersRoutes');
+app.use('/api/groups', createGroupMembersRouter({ authMiddleware }));
+
 // GET /api/groups
 app.get('/api/groups', authMiddleware, async (req, res) => {
   try {
@@ -1139,6 +1145,7 @@ function mapDriverProfileForApi(profile) {
     driver_type: profile.driver_type || 'owner',
     status: profile.status || 'active',
     telegram_username: profile.telegram_username || null,
+    telegram_user_id: profile.telegram_user_id != null ? String(profile.telegram_user_id) : null,
     unit_number: profile.unit_number || null,
     language: profile.language || 'en',
     date_of_birth: profile.date_of_birth || null,
@@ -1229,6 +1236,23 @@ app.put('/api/driver-profiles/:id', authMiddleware, async (req, res) => {
       }
     }
 
+    // Telegram user ids can exceed 2^53, so accept a number or digit string
+    // and pass it through as a string (null / '' clears the selection).
+    if (
+      body.telegram_user_id != null
+      && body.telegram_user_id !== ''
+      && !/^[1-9]\d*$/.test(String(body.telegram_user_id).trim())
+    ) {
+      return res.status(400).json({ error: 'telegram_user_id must be a positive integer or null' });
+    }
+    if (
+      body.telegram_username != null
+      && body.telegram_username !== ''
+      && !/^@?[A-Za-z0-9_]{3,32}$/.test(String(body.telegram_username).trim())
+    ) {
+      return res.status(400).json({ error: 'telegram_username must be 3–32 characters: letters, numbers, or underscore' });
+    }
+
     const patch = {
       ...(Object.prototype.hasOwnProperty.call(body, 'first_name') ? { first_name: body.first_name } : {}),
       ...(Object.prototype.hasOwnProperty.call(body, 'last_name') ? { last_name: body.last_name } : {}),
@@ -1246,6 +1270,12 @@ app.put('/api/driver-profiles/:id', authMiddleware, async (req, res) => {
         : {}),
       ...(Object.prototype.hasOwnProperty.call(body, 'needs_review') ? { needs_review: body.needs_review } : {}),
       ...(Object.prototype.hasOwnProperty.call(body, 'backfill_confidence') ? { backfill_confidence: body.backfill_confidence } : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'telegram_user_id')
+        ? { telegram_user_id: body.telegram_user_id || null }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'telegram_username')
+        ? { telegram_username: body.telegram_username || null }
+        : {}),
     };
 
     const updated = await db.updateDriverProfile(id, patch);

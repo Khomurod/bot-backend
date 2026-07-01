@@ -32,6 +32,7 @@ const MONITOR_JOIN_COLUMNS = `
   (SELECT telegram_group_id FROM groups g WHERE g.id = m.group_id) AS telegram_group_id,
   (SELECT language FROM groups g WHERE g.id = m.group_id) AS group_language,
   (SELECT telegram_username FROM driver_profiles dp WHERE dp.group_id = m.group_id) AS telegram_username,
+  (SELECT telegram_user_id FROM driver_profiles dp WHERE dp.group_id = m.group_id) AS telegram_user_id,
   (SELECT first_name FROM driver_profiles dp WHERE dp.group_id = m.group_id) AS first_name,
   (SELECT last_name FROM driver_profiles dp WHERE dp.group_id = m.group_id) AS last_name`;
 

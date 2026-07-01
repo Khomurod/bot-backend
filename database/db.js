@@ -250,6 +250,15 @@ function normalizeTelegramUsername(value) {
   return /^[a-z0-9_]{3,32}$/.test(cleaned) ? cleaned : cleaned.replace(/[^a-z0-9_]/g, '') || null;
 }
 
+// Telegram numeric user ids can exceed 2^53, so they are kept as canonical
+// digit strings end-to-end (pg returns BIGINT as string too). Returns null for
+// empty / non-numeric input.
+function normalizeTelegramUserId(value) {
+  if (value == null) return null;
+  const s = String(value).trim();
+  return /^[1-9]\d*$/.test(s) ? s : null;
+}
+
 function parseOptionalDate(value) {
   if (!value) return null;
   const d = new Date(value);
@@ -452,6 +461,7 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
     needs_review: data.needs_review === true,
     backfill_confidence: Number.isInteger(data.backfill_confidence) ? data.backfill_confidence : null,
     telegram_username: normalizeTelegramUsername(data.telegram_username),
+    telegram_user_id: normalizeTelegramUserId(data.telegram_user_id),
   };
 
   const res = await query(
@@ -460,14 +470,14 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
        first_name_source, last_name_source, secondary_first_name_source, secondary_last_name_source,
        driver_type, driver_type_source, status, unit_number, unit_number_source,
        language, date_of_birth, date_of_start, needs_review, backfill_confidence,
-       telegram_username, created_at, updated_at
+       telegram_username, telegram_user_id, created_at, updated_at
      )
      VALUES (
        $1, $2, $3, $4, $5,
        $6, $7, $8, $9,
        $10, $11, $12, $13, $14,
        $15, $16, $17, $18, $19,
-       $20, NOW(), NOW()
+       $20, $21, NOW(), NOW()
      )
      ON CONFLICT (group_id)
      DO UPDATE SET
@@ -489,10 +499,11 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
        date_of_start = EXCLUDED.date_of_start,
        needs_review = EXCLUDED.needs_review,
        backfill_confidence = EXCLUDED.backfill_confidence,
-       -- Never wipe an admin-entered username when other writers (AI sync,
-       -- backfill) upsert without one. Clearing is done via
-       -- setDriverTelegramUsername().
+       -- Never wipe the admin-selected Telegram identity when other writers
+       -- (AI sync, backfill) upsert without one. Setting/clearing is done via
+       -- setDriverProfileTelegramIdentity().
        telegram_username = COALESCE(EXCLUDED.telegram_username, driver_profiles.telegram_username),
+       telegram_user_id = COALESCE(EXCLUDED.telegram_user_id, driver_profiles.telegram_user_id),
        updated_at = NOW()
      RETURNING *`,
     [
@@ -516,6 +527,7 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
       normalized.needs_review,
       normalized.backfill_confidence,
       normalized.telegram_username,
+      normalized.telegram_user_id,
     ]
   );
   const row = res.rows[0] || null;
@@ -566,23 +578,34 @@ async function updateDriverProfile(id, data, opts = {}) {
       merged[sourceField] = 'manual';
     }
   }
-  return upsertDriverProfileByGroupId(merged, {
+  const saved = await upsertDriverProfileByGroupId(merged, {
     ...opts,
     syncStatus: hasOwn('status'),
     groupStatusSource: hasOwn('status') ? (opts.groupStatusSource || 'manual') : (opts.groupStatusSource || null),
   });
+  // The upsert COALESCE-preserves the Telegram identity so AI sync/backfill
+  // can never wipe it; an explicit set/clear therefore goes through the
+  // direct UPDATE below.
+  if (saved && (hasOwn('telegram_user_id') || hasOwn('telegram_username'))) {
+    return setDriverProfileTelegramIdentity(saved.group_id, {
+      telegramUserId: hasOwn('telegram_user_id') ? data.telegram_user_id : saved.telegram_user_id,
+      telegramUsername: hasOwn('telegram_username') ? data.telegram_username : saved.telegram_username,
+    });
+  }
+  return saved;
 }
 
-// Set or clear a driver's Telegram username for the Fuel Monitor. Direct
-// UPDATE (not the upsert merge) so the admin can explicitly clear it.
-async function setDriverTelegramUsername(groupId, username) {
-  const normalized = normalizeTelegramUsername(username);
+// Set or clear a driver's Telegram identity (numeric user id + username) —
+// the single source of truth used to tag the driver in fuel/check-in
+// reminders. Direct UPDATE (not the upsert merge) so the admin can
+// explicitly clear it.
+async function setDriverProfileTelegramIdentity(groupId, { telegramUserId, telegramUsername } = {}) {
   const res = await query(
     `UPDATE driver_profiles
-     SET telegram_username = $2, updated_at = NOW()
+     SET telegram_user_id = $2, telegram_username = $3, updated_at = NOW()
      WHERE group_id = $1
      RETURNING *`,
-    [Number(groupId), normalized]
+    [Number(groupId), normalizeTelegramUserId(telegramUserId), normalizeTelegramUsername(telegramUsername)]
   );
   return getDriverProfileByGroupId(Number(groupId)).catch(() => res.rows[0] || null);
 }
@@ -633,6 +656,53 @@ async function getDriverByTelegramId(telegramUserId) {
     [telegramUserId]
   );
   return res.rows[0];
+}
+
+// ─── Group members (users the bot has SEEN in each group) ───
+// The Bot API cannot enumerate a group's member list, so these rows are the
+// only "membership" we have: every user an update touches is recorded here
+// alongside the global `drivers` upsert. They power the admin "Driver
+// Username" dropdown on the Driver Groups popup.
+
+async function upsertGroupMember(groupId, user) {
+  const telegramUserId = normalizeTelegramUserId(user?.id ?? user?.telegram_user_id);
+  const gid = Number(groupId);
+  if (!Number.isInteger(gid) || gid <= 0 || !telegramUserId) return null;
+  const res = await query(
+    `INSERT INTO group_members (group_id, telegram_user_id, username, first_name, last_name, last_seen_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
+     ON CONFLICT (group_id, telegram_user_id)
+     DO UPDATE SET username = EXCLUDED.username,
+                   first_name = EXCLUDED.first_name,
+                   last_name = EXCLUDED.last_name,
+                   last_seen_at = NOW()
+     RETURNING *`,
+    [gid, telegramUserId, user?.username || null, user?.first_name || null, user?.last_name || null]
+  );
+  return res.rows[0] || null;
+}
+
+// Drop the membership row when Telegram tells us the user left the group (the
+// global `drivers` row is kept — their id is still useful for mentions).
+async function removeGroupMember(groupId, telegramUserId) {
+  const id = normalizeTelegramUserId(telegramUserId);
+  const gid = Number(groupId);
+  if (!Number.isInteger(gid) || gid <= 0 || !id) return;
+  await query(
+    'DELETE FROM group_members WHERE group_id = $1 AND telegram_user_id = $2',
+    [gid, id]
+  );
+}
+
+async function listGroupMembers(groupId) {
+  const res = await query(
+    `SELECT group_id, telegram_user_id, username, first_name, last_name, last_seen_at
+     FROM group_members
+     WHERE group_id = $1
+     ORDER BY last_seen_at DESC, telegram_user_id ASC`,
+    [Number(groupId)]
+  );
+  return res.rows;
 }
 
 // Look up a captured user by username or (first/last) name so callers can build
@@ -1146,6 +1216,7 @@ async function createFuelStopAlert({
 const FUEL_ALERT_JOIN_COLUMNS = `
   (SELECT group_name FROM groups g WHERE g.id = f.group_id) AS group_name,
   (SELECT telegram_username FROM driver_profiles dp WHERE dp.group_id = f.group_id) AS telegram_username,
+  (SELECT telegram_user_id FROM driver_profiles dp WHERE dp.group_id = f.group_id) AS telegram_user_id,
   (SELECT first_name FROM driver_profiles dp WHERE dp.group_id = f.group_id) AS first_name,
   (SELECT last_name FROM driver_profiles dp WHERE dp.group_id = f.group_id) AS last_name`;
 
@@ -3223,6 +3294,7 @@ async function listGroupDirectorySourceRows({ includeNonDrivers = true } = {}) {
         dp.needs_review,
         dp.backfill_confidence,
         dp.telegram_username,
+        dp.telegram_user_id,
         dp.created_at AS profile_created_at,
         dp.updated_at AS profile_updated_at,
         s.state AS home_state,
@@ -3334,7 +3406,7 @@ module.exports = {
   completeDispatchEtaUpdateSuccess,
   completeDispatchEtaUpdateFailure,
   // Fuel Monitor (gas-station proximity alerts)
-  setDriverTelegramUsername,
+  setDriverProfileTelegramIdentity,
   createFuelStopAlert,
   claimDueFuelStopAlerts,
   claimFuelStopAlertById,
@@ -3351,6 +3423,10 @@ module.exports = {
   upsertDriver,
   getDriverByTelegramId,
   findDriverByName,
+  // Group members (users the bot has seen per group)
+  upsertGroupMember,
+  removeGroupMember,
+  listGroupMembers,
   // Questions
   createQuestion,
   getActiveQuestions,

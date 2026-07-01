@@ -1264,15 +1264,16 @@ export async function getFuelMonitor() {
   return Array.isArray(data?.drivers) ? data.drivers : [];
 }
 
-/** Set or clear (empty string) a driver's Telegram username by group id. */
-export async function updateFuelMonitorUsername(groupId, telegramUsername) {
-  const res = await fetch(`${API_BASE}/fuel-monitor/${groupId}/username`, {
-    method: 'PUT',
-    headers: getHeaders(),
-    body: JSON.stringify({ telegram_username: telegramUsername }),
-  });
+/**
+ * Members the bot has seen interact in a group, for the Driver Groups
+ * "Driver Username" dropdown. Telegram bots cannot enumerate a group's full
+ * member list, so silent members won't appear until they interact.
+ */
+export async function getGroupMembers(groupId) {
+  const res = await fetch(`${API_BASE}/groups/${groupId}/members`, { headers: getHeaders() });
   if (!res.ok) { await handleApiError(res); }
-  return res.json();
+  const data = await res.json();
+  return Array.isArray(data?.members) ? data.members : [];
 }
 
 /** Manually send the fuel reminder to a driver's group now (auto reminder still runs). */
