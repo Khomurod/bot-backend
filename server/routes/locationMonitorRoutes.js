@@ -78,12 +78,12 @@ function createLocationMonitorRouter({ authMiddleware }) {
           row.stats = {
             answered: Number(stats.answered) || 0,
             checked_in: Number(stats.checked_in) || 0,
-            not_checked_in: Number(stats.not_checked_in) || 0,
+            checked_out: Number(stats.checked_out) || 0,
             on_time: Number(stats.on_time) || 0,
             late: Number(stats.late) || 0,
           };
         } catch (_) {
-          row.stats = { answered: 0, checked_in: 0, not_checked_in: 0, on_time: 0, late: 0 };
+          row.stats = { answered: 0, checked_in: 0, checked_out: 0, on_time: 0, late: 0 };
         }
       }
       res.json({ groups: mapped });
@@ -209,7 +209,7 @@ function createLocationMonitorRouter({ authMiddleware }) {
         stats: {
           answered: Number(stats.answered) || 0,
           checked_in: Number(stats.checked_in) || 0,
-          not_checked_in: Number(stats.not_checked_in) || 0,
+          checked_out: Number(stats.checked_out) || 0,
           on_time: Number(stats.on_time) || 0,
           late: Number(stats.late) || 0,
         },

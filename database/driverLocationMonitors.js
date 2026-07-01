@@ -265,6 +265,48 @@ async function clearMonitorTarget(id, { nextRunAt, lastStatus = null } = {}) {
 
 // ─── Check-ins ───
 
+/**
+ * Stable one-prompt-per-stop signature. Keyed on the group plus either the
+ * order id (Datatruck loads) or the normalized target address (null-order
+ * fallback loads), plus the stop type — so a pickup and a delivery each get
+ * their own key and are prompted independently, but never twice.
+ */
+function normalizeAddressForKey(addr) {
+  return String(addr || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .slice(0, 300);
+}
+
+function buildStopDedupeKey({ groupId, orderId, stopType, targetAddress }) {
+  const g = Number(groupId);
+  const st = String(stopType || '');
+  const oid = orderId != null ? String(orderId).trim() : '';
+  if (oid) return `g${g}:o${oid}:${st}`;
+  return `g${g}:a${normalizeAddressForKey(targetAddress)}:${st}`;
+}
+
+/**
+ * True if a check-in prompt has EVER been created for this stop signature
+ * (any status: awaiting/answered/expired). Used to guarantee at-most-once
+ * prompting per (group, order|address, stop_type).
+ */
+async function hasCheckinForStop({ groupId, orderId, stopType, targetAddress }) {
+  const key = buildStopDedupeKey({ groupId, orderId, stopType, targetAddress });
+  const res = await query(
+    `SELECT 1 FROM driver_location_checkins WHERE dedupe_key = $1 LIMIT 1`,
+    [key]
+  );
+  return res.rowCount > 0;
+}
+
+/**
+ * Insert a check-in prompt row. Stamps the one-prompt-per-stop dedupe_key so
+ * the UNIQUE partial index blocks a second prompt for the same stop. On a
+ * unique violation (a concurrent claim already inserted), returns
+ * { duplicate: true } instead of throwing so the caller can skip sending.
+ */
 async function createCheckin({
   monitorId,
   groupId,
@@ -276,25 +318,39 @@ async function createCheckin({
   etaAt = null,
   distanceMilesAtPrompt = null,
 }) {
-  const res = await query(
-    `INSERT INTO driver_location_checkins
-       (monitor_id, group_id, telegram_group_id, order_id, stop_type,
-        location_address, appointment_at, eta_at, distance_miles_at_prompt, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'awaiting_response')
-     RETURNING *`,
-    [
-      Number(monitorId),
-      Number(groupId),
-      String(telegramGroupId),
-      orderId != null ? String(orderId) : null,
-      stopType,
-      locationAddress ? String(locationAddress).slice(0, 500) : null,
-      appointmentAt || null,
-      etaAt || null,
-      Number.isFinite(Number(distanceMilesAtPrompt)) ? Number(distanceMilesAtPrompt) : null,
-    ]
-  );
-  return res.rows[0] || null;
+  const dedupeKey = buildStopDedupeKey({
+    groupId,
+    orderId,
+    stopType,
+    targetAddress: locationAddress,
+  });
+  try {
+    const res = await query(
+      `INSERT INTO driver_location_checkins
+         (monitor_id, group_id, telegram_group_id, order_id, stop_type,
+          location_address, appointment_at, eta_at, distance_miles_at_prompt, dedupe_key, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'awaiting_response')
+       RETURNING *`,
+      [
+        Number(monitorId),
+        Number(groupId),
+        String(telegramGroupId),
+        orderId != null ? String(orderId) : null,
+        stopType,
+        locationAddress ? String(locationAddress).slice(0, 500) : null,
+        appointmentAt || null,
+        etaAt || null,
+        Number.isFinite(Number(distanceMilesAtPrompt)) ? Number(distanceMilesAtPrompt) : null,
+        dedupeKey,
+      ]
+    );
+    return res.rows[0] || null;
+  } catch (err) {
+    if (err && err.code === '23505') {
+      return { duplicate: true };
+    }
+    throw err;
+  }
 }
 
 async function setCheckinPromptMessageId(id, messageId) {
@@ -372,15 +428,15 @@ async function getCheckinStatsForGroup(groupId) {
   const res = await query(
     `SELECT
        COUNT(*) FILTER (WHERE status = 'answered')                          AS answered,
-       COUNT(*) FILTER (WHERE driver_response = 'yes')                      AS checked_in,
-       COUNT(*) FILTER (WHERE driver_response = 'no')                       AS not_checked_in,
+       COUNT(*) FILTER (WHERE driver_response IN ('yes', 'checked_in'))     AS checked_in,
+       COUNT(*) FILTER (WHERE driver_response IN ('no', 'checked_out'))     AS checked_out,
        COUNT(*) FILTER (WHERE on_time = TRUE)                               AS on_time,
        COUNT(*) FILTER (WHERE on_time = FALSE)                              AS late
      FROM driver_location_checkins
      WHERE group_id = $1`,
     [Number(groupId)]
   );
-  return res.rows[0] || { answered: 0, checked_in: 0, not_checked_in: 0, on_time: 0, late: 0 };
+  return res.rows[0] || { answered: 0, checked_in: 0, checked_out: 0, on_time: 0, late: 0 };
 }
 
 /** Expire stale awaiting prompts so the monitor can re-prompt later if needed. */
@@ -404,6 +460,8 @@ module.exports = {
   claimDueMonitors,
   releaseMonitor,
   clearMonitorTarget,
+  buildStopDedupeKey,
+  hasCheckinForStop,
   createCheckin,
   setCheckinPromptMessageId,
   getCheckinById,
