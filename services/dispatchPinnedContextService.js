@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const { extractRateConRawTextFromFile } = require('../server/services/dispatchParserService');
 const { pickStoredLoadForContext } = require('./recentLoadSelection');
 const { isLoadLikeChatMessage } = require('./loadTextPatterns');
+const datatruckLoadService = require('./datatruckLoadService');
 
 const { callGroqWithFallback, INTERACTIVE_MAX_RETRY_WAIT_MS } = require('./groqClient');
 const {
@@ -751,9 +752,53 @@ async function readStoredRecentLoadContext({
   };
 }
 
+/**
+ * Primary source of truth: the driver's active load straight from the Datatruck
+ * OpenAPI (matched by driver name). Returns the load-context shape, or null when
+ * Datatruck is unconfigured / no order matches so the caller falls through to the
+ * legacy stored/pinned/chat fallbacks. Never throws.
+ */
+async function readDatatruckLoadContext({ group = null, chatId = null }) {
+  if (!datatruckLoadService.isConfigured()) return null;
+  let resolvedGroup = group;
+  try {
+    if (!resolvedGroup && chatId != null) {
+      const db = require('../database/db');
+      resolvedGroup = await db.getGroupByTelegramId(chatId);
+    }
+    if (!resolvedGroup) return null;
+    const load = await datatruckLoadService.resolveActiveLoadForGroup(resolvedGroup);
+    if (!load) return null;
+    return {
+      pinnedMessageId: null,
+      pinnedSignature: load.orderId ? `datatruck:${load.orderId}` : '',
+      pickupSummary: normalizeLine(load.pickupSummary),
+      deliverySummary: normalizeLine(load.deliverySummary),
+      destinationQuery: normalizeLine(load.destinationQuery),
+      source: 'datatruck',
+      pinnedText: '',
+      aiModel: '',
+      extractedRawText: '',
+      orderId: load.orderId,
+      loadIdentifier: load.loadIdentifier,
+      status: load.status,
+      miles: load.miles,
+      loadInfoComplete: isLoadContextComplete({
+        pickupSummary: load.pickupSummary,
+        deliverySummary: load.deliverySummary,
+        destinationQuery: load.destinationQuery,
+      }),
+    };
+  } catch (err) {
+    console.warn('[DISPATCH-ETA] Datatruck load lookup failed:', err.message);
+    return null;
+  }
+}
+
 async function readLoadContextWithFallbacks({
   telegram,
   chatId,
+  group = null,
   groupId = null,
   previousSignature = '',
   cachedDestinationQuery = '',
@@ -763,6 +808,21 @@ async function readLoadContextWithFallbacks({
 }) {
   const attempts = [];
   let firstContext = null;
+
+  // 1) Datatruck active order (primary source — no Telegram/OCR/AI parsing).
+  const datatruckContext = await readDatatruckLoadContext({ group, chatId });
+  if (datatruckContext) {
+    attempts.push('datatruck');
+    if (isLoadContextComplete(datatruckContext)) {
+      return {
+        ...datatruckContext,
+        loadInfoComplete: true,
+        fallbackLevel: 0,
+        fallbackAttempts: attempts,
+      };
+    }
+    firstContext = datatruckContext;
+  }
 
   try {
     const storedContext = await readStoredRecentLoadContext({
@@ -870,6 +930,7 @@ module.exports = {
   isLoadContextComplete,
   isLoadLikeChatMessage,
   NO_CURRENT_LOAD_INFO_MESSAGE,
+  readDatatruckLoadContext,
   readLoadContextWithFallbacks,
   readPinnedLoadContext,
   readStoredRecentLoadContext,

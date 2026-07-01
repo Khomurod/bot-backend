@@ -205,6 +205,7 @@ async function resolveDispatchEtaSnapshotForGroup({
     context = await readLoadContextWithFallbacks({
       telegram,
       chatId: group.telegram_group_id,
+      group,
       groupId: group.id,
       previousSignature,
       cachedDestinationQuery,

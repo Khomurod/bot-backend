@@ -23,7 +23,6 @@ const {
   handleTestHubStatusCommand,
   registerDispatchStatusLookupHandlers,
 } = require('./dispatchStatusLookupHandlers');
-const { scheduleLoadIngest } = require('../services/loadIngestionService');
 const { handleFuelStopMessage } = require('../services/fuelStopAlertService');
 const { handleDriverGroupStatus } = require('../services/homeTimeService');
 const recentMessageBuffer = require('../services/recentMessageBuffer');
@@ -422,13 +421,12 @@ async function startBot() {
           }
 
           // General message logging is intentionally disabled: we no longer
-          // persist every group message to chat_logs. Only load-relevant
-          // messages are processed (below), which feeds /status and /load via
-          // group_recent_loads. Pinned-message snapshots are still captured
-          // above for the same reason.
-          if (group && group.group_type === 'driver' && group.active && ctx.message) {
-            scheduleLoadIngest(bot.telegram, group, ctx.message);
-          }
+          // persist every group message to chat_logs. Load details are no longer
+          // scraped from Telegram messages/attachments either — /status and /load
+          // now source the active load from the Datatruck OpenAPI (see
+          // services/datatruckLoadService.js). Pinned-message snapshots are still
+          // captured above so the pinned load context remains available as a
+          // fallback when Datatruck is unconfigured or has no matching order.
 
           // Bot-visibility diagnostic + home-time tracker for driver groups.
           // Recording "we saw a message" proves the bot can read this group
@@ -522,6 +520,7 @@ async function startBot() {
         const context = await readLoadContextWithFallbacks({
           telegram: bot.telegram,
           chatId: ctx.chat.id,
+          group,
           groupId: group.id,
         });
 
