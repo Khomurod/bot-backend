@@ -1,21 +1,8 @@
 /**
  * Friendly driver-group captions for Samsara safety alerts (Groq → Gemini → standard text).
  */
-const path = require('path');
-const { callGroqWithFallback, isAuthOrConfigError } = require(path.join(
-  __dirname,
-  '..',
-  '..',
-  'services',
-  'groqClient',
-));
-const { callGeminiText, GEMINI_API_KEY } = require(path.join(
-  __dirname,
-  '..',
-  '..',
-  'services',
-  'geminiClient',
-));
+const { callGroqWithFallback, isAuthOrConfigError } = require('./groqClient');
+const { callGeminiText, GEMINI_API_KEY } = require('./geminiClient');
 
 const SYSTEM_TEXT =
   'You write short Telegram messages to truck drivers at Wenze Investments LLC. '

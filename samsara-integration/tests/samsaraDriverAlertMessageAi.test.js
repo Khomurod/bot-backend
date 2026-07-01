@@ -8,7 +8,7 @@ const {
   extractUnitNumber,
   buildDriverAlertPrompt,
   resolveDriverCaption,
-} = require('../samsara-integration/src/driverAlertMessageAi');
+} = require('../src/driverAlertMessageAi');
 
 test('shouldUseFriendlyCaption returns false for crash', () => {
   assert.equal(shouldUseFriendlyCaption({ isCrash: true }, 'unit'), false);

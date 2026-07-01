@@ -143,11 +143,46 @@ next poll simply runs on the next tick without crashing or retrying in a tight l
 
 ---
 
+## Running as its OWN separate repository / Render service
+
+This folder is fully self-contained and is designed to be lifted out of the
+main `bot-backend` repo into its own GitHub repository and run as its own
+Render web service. It no longer imports anything from the main app.
+
+**How the two services still talk to each other after the split** — they do
+NOT call each other directly. They cooperate through two shared things:
+
+1. **The same PostgreSQL database (`DATABASE_URL`).** This service reads the
+   `groups` table (managed by the main app's admin panel) to find which driver
+   Telegram group belongs to each truck unit number. That is how a safety
+   video reaches the correct drivers group.
+2. **The same Telegram bot tokens.** `BOT_TOKEN` (the main feedback bot) posts
+   the video + friendly caption into the driver group; `TELEGRAM_BOT_TOKEN`
+   (the Samsara bot) sends the Samsara notification group / subscribers.
+
+So as long as this service is given the **same `DATABASE_URL` and same
+`BOT_TOKEN`** as the main hub, every feature keeps working exactly as before.
+
+### Deploy steps (summary)
+
+1. Copy the **contents** of this folder to the root of a new GitHub repo.
+2. On Render: **New → Blueprint**, pick that repo. It reads `render.yaml`.
+3. Fill in the environment variables (see `.env.example`). Use the SAME
+   `DATABASE_URL` and `BOT_TOKEN` as the main hub.
+4. Deploy. The `/health` endpoint confirms it is running.
+
+A full plain-language, button-by-button walkthrough lives in
+`SAMSARA-SEPARATION-GUIDE.md` at the root of the main repo.
+
+---
+
 ## ⚠️ Credentials Notice
 
-> The `.env` file exists in the repository for development convenience.
-> **Before any wider deployment, rotate the Telegram bot token and Samsara API key.**
-> Remove `.env` from version control and inject secrets via environment variables only.
+> A local `.env` file may exist for development convenience. It is now listed in
+> `.gitignore` so it will **not** be committed to the new repository.
+> **Before deploying, rotate the Telegram bot tokens and Samsara API key** if
+> they were ever committed anywhere. Inject secrets via environment variables
+> only — never paste real secrets into a public repo.
 
 ---
 

@@ -11,7 +11,7 @@ const {
   inferVideoRetrievalParams,
   pollRetrievedVideoUrls,
   DEFAULT_DELAY_MS,
-} = require('../samsara-integration/src/videoRetryDelivery');
+} = require('../src/videoRetryDelivery');
 
 const origRetryEnabled = process.env.SAMSARA_VIDEO_RETRY_ENABLED;
 const origRetryDelay = process.env.SAMSARA_VIDEO_RETRY_DELAY_MS;

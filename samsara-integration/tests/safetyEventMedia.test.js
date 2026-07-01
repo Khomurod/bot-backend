@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const {
   extractVideoUrlsFromSafetyEvent,
   mergeSafetyEventDetail,
-} = require('../samsara-integration/src/safetyEventMedia');
+} = require('../src/safetyEventMedia');
 
 test('detectedStreams supplies forward URL when media is empty', () => {
   const event = {

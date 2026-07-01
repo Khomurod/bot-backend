@@ -1,13 +1,13 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const { sendDriverGroupAlert } = require('../samsara-integration/src/driverGroupDelivery');
+const { sendDriverGroupAlert } = require('../src/driverGroupDelivery');
 const {
   appendDriverMissingNote,
   isDriverMembershipAccessError,
   shouldRetryDelivery,
-} = require('../samsara-integration/src/deliveryWarnings');
-const poller = require('../samsara-integration/src/poller');
+} = require('../src/deliveryWarnings');
+const poller = require('../src/poller');
 
 test.afterEach(() => {
   poller._forTest.resetDeliveryStateForTest();

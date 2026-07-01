@@ -10,7 +10,7 @@ const { extractDriverNameFromGroupTitle } = require('./driverGroupTitle');
 
 let reverseGeocode = null;
 try {
-  ({ reverseGeocode } = require('../samsara-integration/src/geocoder'));
+  ({ reverseGeocode } = require('./geocoder'));
 } catch (_) {
   reverseGeocode = null;
 }

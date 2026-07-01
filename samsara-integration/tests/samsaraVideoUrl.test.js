@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { parseTrustedVideoUrl } = require('../samsara-integration/src/videoUrl');
+const { parseTrustedVideoUrl } = require('../src/videoUrl');
 
 test('parseTrustedVideoUrl accepts api.samsara.com URLs', () => {
   const url = parseTrustedVideoUrl('https://api.samsara.com/media/v1/foo.mp4');

@@ -12,7 +12,7 @@ const MAX_PAGES = 20;
 
 let reverseGeocode = null;
 try {
-  ({ reverseGeocode } = require('../samsara-integration/src/geocoder'));
+  ({ reverseGeocode } = require('./geocoder'));
 } catch (_) {
   reverseGeocode = null;
 }

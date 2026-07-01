@@ -61,16 +61,17 @@ const CHILD_RESTART_MAX_MS = 60_000;
 const MAX_RAPID_CRASHES = 5;
 const RAPID_CRASH_WINDOW_MS = 3 * 60_000; // 3 minutes
 
+// NOTE: The Samsara safety-event poller used to be spawned here as a Node child
+// process. It now lives in its own repository and runs as a separate Render
+// service (see samsara-integration/README.md). Removing the child frees the
+// memory that was causing OOM kills on the free instance. The two services
+// still cooperate through the shared PostgreSQL database (the `groups` table)
+// and the shared Telegram bot tokens — no in-process link is required.
 let leadsProcess = null;
-let samsaraProcess = null;
 let leadsRestartTimer = null;
-let samsaraRestartTimer = null;
 let leadsRestartDelayMs = CHILD_RESTART_BASE_MS;
-let samsaraRestartDelayMs = CHILD_RESTART_BASE_MS;
 const leadsCrashTimestamps = [];
-const samsaraCrashTimestamps = [];
 let leadsCircuitOpen = false;
-let samsaraCircuitOpen = false;
 let isShuttingDown = false;
 
 function isCircuitBroken(timestamps, label) {
@@ -109,12 +110,6 @@ function assertDistinctTelegramPollingTokens() {
       enabled: isEnabled('ENABLE_LEADS_BOT', true),
       envName: 'TELEGRAM_BOT_TOKEN',
       token: String(process.env.TELEGRAM_BOT_TOKEN || '').trim(),
-    },
-    {
-      service: 'Samsara bot',
-      enabled: isEnabled('ENABLE_SAMSARA_BOT', true),
-      envName: 'SAMSARA_BOT_TOKEN',
-      token: String(process.env.SAMSARA_BOT_TOKEN || '').trim(),
     },
   ].filter(({ enabled }) => enabled);
 
@@ -158,22 +153,6 @@ function scheduleLeadsRestart(reason) {
     startLeadsBot();
   }, delay);
   leadsRestartTimer.unref?.();
-}
-
-function scheduleSamsaraRestart(reason) {
-  if (isShuttingDown || !isEnabled('ENABLE_SAMSARA_BOT', true) || samsaraRestartTimer || samsaraCircuitOpen) return;
-  if (isCircuitBroken(samsaraCrashTimestamps, 'SAMSARA')) {
-    samsaraCircuitOpen = true;
-    return;
-  }
-  const delay = samsaraRestartDelayMs;
-  samsaraRestartDelayMs = Math.min(samsaraRestartDelayMs * 2, CHILD_RESTART_MAX_MS);
-  console.warn(`[SAMSARA] Restart scheduled in ${delay}ms (${reason})`);
-  samsaraRestartTimer = setTimeout(() => {
-    samsaraRestartTimer = null;
-    startSamsaraBot();
-  }, delay);
-  samsaraRestartTimer.unref?.();
 }
 
 function startLeadsBot() {
@@ -248,82 +227,6 @@ function startLeadsBot() {
   }
 }
 
-function startSamsaraBot() {
-  if (
-    isShuttingDown
-    || !isEnabled('ENABLE_SAMSARA_BOT', true)
-    || (samsaraProcess && samsaraProcess.exitCode === null)
-  ) {
-    return;
-  }
-
-  const samsaraDir = path.join(__dirname, 'samsara-integration');
-  const scriptPath = path.join(samsaraDir, 'index.js');
-  if (!fs.existsSync(scriptPath)) {
-    console.error(`[SAMSARA] Missing entry point: ${scriptPath}`);
-    scheduleSamsaraRestart('entry point missing');
-    return;
-  }
-
-  const samsaraPort = Number.parseInt(process.env.SAMSARA_PORT || '3002', 10);
-  const heapLimit = Number.parseInt(process.env.SAMSARA_MAX_OLD_SPACE_MB || '40', 10);
-
-  try {
-    const child = spawn(process.execPath, [
-      `--max-old-space-size=${heapLimit}`,
-      '--optimize-for-size',
-      '--gc-global',
-      scriptPath,
-    ], {
-      cwd: samsaraDir,
-      env: {
-        ...process.env,
-        PORT: String(samsaraPort),
-        BOT_TOKEN: process.env.BOT_TOKEN,
-        TELEGRAM_BOT_TOKEN: process.env.SAMSARA_BOT_TOKEN,
-        NODE_OPTIONS: '',
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
-
-    samsaraProcess = child;
-    console.log(`[SAMSARA] Started PID ${child.pid}`);
-    writeChildOutput('SAMSARA', child.stdout, console.log);
-    writeChildOutput('SAMSARA', child.stderr, console.error);
-
-    const stableTimer = setTimeout(() => {
-      if (samsaraProcess === child && child.exitCode === null) {
-        samsaraRestartDelayMs = CHILD_RESTART_BASE_MS;
-      }
-    }, 30_000);
-    stableTimer.unref?.();
-
-    child.once('error', (error) => {
-      clearTimeout(stableTimer);
-      if (samsaraProcess === child) samsaraProcess = null;
-      console.error('[SAMSARA] Process error:', error);
-      scheduleSamsaraRestart(error.message);
-    });
-
-    child.once('exit', (code, signal) => {
-      clearTimeout(stableTimer);
-      if (samsaraProcess === child) samsaraProcess = null;
-      if (isShuttingDown) return;
-      if (code === 78) {
-        console.error('[SAMSARA] Exited with EX_CONFIG (78) — permanent config error, will NOT restart.');
-        samsaraCircuitOpen = true;
-        return;
-      }
-      scheduleSamsaraRestart(`exit code=${code} signal=${signal || 'none'}`);
-    });
-  } catch (error) {
-    samsaraProcess = null;
-    console.error('[SAMSARA] Failed to spawn:', error);
-    scheduleSamsaraRestart(error.message);
-  }
-}
-
 function killWithEscalation(child, label) {
   return new Promise((resolve) => {
     if (!child || child.exitCode !== null) {
@@ -379,7 +282,6 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   if (isShuttingDown) return;
   isShuttingDown = true;
   if (leadsRestartTimer) clearTimeout(leadsRestartTimer);
-  if (samsaraRestartTimer) clearTimeout(samsaraRestartTimer);
 
   console.log(`[SHUTDOWN] Graceful shutdown initiated (${signal})...`);
 
@@ -399,7 +301,6 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
     Promise.resolve().then(() => stopBot(signal)),
     stopServer(),
     killWithEscalation(leadsProcess, 'LEADS'),
-    killWithEscalation(samsaraProcess, 'SAMSARA'),
   ]);
 
   try {
@@ -440,7 +341,6 @@ async function start() {
   startDriverLocationMonitorService(bot.telegram);
   await startFacebookWebhookWorker();
   startLeadsBot();
-  startSamsaraBot();
 }
 
 process.once('SIGINT', () => {
