@@ -72,48 +72,21 @@ services:
         sync: false
       - key: NODE_OPTIONS
         # Main process heap cap. Kept well under the 512MB instance so the
-        # spawned samsara (Node child) and leads-bot (Python child) have room.
+        # leads-bot (Python child) has room. The Samsara safety-event poller
+        # is NO LONGER spawned here — it runs as its own separate Render
+        # service from its own repository (see samsara-integration/README.md),
+        # which is what freed the memory that used to cause OOM kills.
         # 256 (was 300) leaves more OS/GC headroom to avoid OOM kills.
         value: --max-old-space-size=256
       # Limit glibc malloc arenas to reduce native heap fragmentation in the
       # main Node process (the Python child already sets this).
       - key: MALLOC_ARENA_MAX
         value: "2"
-      # Heap cap for the spawned Samsara Node child (it mostly polls).
-      - key: SAMSARA_MAX_OLD_SPACE_MB
-        value: "40"
 
-  - type: web
-    name: samsara-poller
-    env: node
-    buildCommand: cd samsara-integration && npm install
-    startCommand: cd samsara-integration && node index.js
-    healthCheckPath: /health
-    envVars:
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: BOT_TOKEN
-        sync: false
-      - key: SAMSARA_API_KEY
-        sync: false
-      - key: SAMSARA_API_BASE
-        value: https://api.samsara.com
-      - key: DATABASE_URL
-        sync: false
-      - key: MANAGEMENT_GROUP_ID
-        sync: false
-      - key: EMPLOYEE_GROUP_ID
-        sync: false
-      - key: GROQ_API_KEY
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: UPSTASH_REDIS_REST_URL
-        sync: false
-      - key: UPSTASH_REDIS_REST_TOKEN
-        sync: false
-      - key: NODE_OPTIONS
-        value: --max-old-space-size=400
+  # NOTE: The `samsara-poller` service that used to live here has moved to its
+  # own repository. Deploy it from that repo using samsara-integration/render.yaml.
+  # It talks to this hub only through the shared DATABASE_URL (the `groups`
+  # table) and the shared Telegram bot tokens — no in-repo link is needed.
 
   - type: web
     name: facebook-leads-engine

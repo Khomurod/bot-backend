@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const {
   resolveGroupByUnitAndName,
   determineTargetGroup,
-} = require('../samsara-integration/src/routing');
+} = require('../src/routing');
 
 test('routes to specific group when unit is shared and name matches', async () => {
   const candidates = [

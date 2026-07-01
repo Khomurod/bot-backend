@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
-const speedPoller = require('../samsara-integration/src/speedingPoller');
+const speedPoller = require('../src/speedingPoller');
 
 const { transformV2SpeedEvent, tryRetrieveSpeedingVideo } = speedPoller._forTest;
 
