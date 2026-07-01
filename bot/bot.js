@@ -33,7 +33,6 @@ const { registerHomeTimeRequestHandlers } = require('./homeTimeRequestHandlers')
 const { confirmAdminGrant } = require('../services/groupAccessService');
 const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedContextService');
 const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
-const { registerRoastHandlers } = require('./roastHandlers');
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
 const { registerLocationCheckinHandlers } = require('./locationCheckinHandlers');
 const { registerCreatorMessageManager } = require('./creatorMessageManager');
@@ -488,7 +487,6 @@ async function startBot() {
     });
 
     registerDatatruckPeerHandlers(bot);
-    registerRoastHandlers(bot);
     registerCreatorMessageManager(bot);
 
     // Summarize resolved load context (stored recent loads → pin → chat history). No GPS.

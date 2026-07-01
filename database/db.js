@@ -3155,37 +3155,10 @@ async function listAllGroupAccess() {
   return res.rows;
 }
 
-async function getRoastSettings() {
-  const res = await query('SELECT * FROM roast_settings WHERE id = 1');
-  return res.rows[0];
-}
-
-async function updateRoastSettings({
-  enabled,
-  groupId,
-  targetUsername,
-  aiInstructions,
-}) {
-  const res = await query(
-    `UPDATE roast_settings
-     SET enabled = $1,
-         group_id = $2,
-         target_username = $3,
-         ai_instructions = $4,
-         updated_at = NOW()
-     WHERE id = 1
-     RETURNING *`,
-    [enabled, groupId, targetUsername, aiInstructions]
-  );
-  return res.rows[0];
-}
-
 module.exports = {
   pool,
   query,
   initializeDatabase,
-  getRoastSettings,
-  updateRoastSettings,
   // Bot visibility diagnostics
   recordGroupMessageSeen,
   updateGroupBotAccess,
