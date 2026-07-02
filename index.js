@@ -48,6 +48,10 @@ const {
   stopDriverLocationMonitorService,
 } = require('./services/driverLocationMonitorService');
 const {
+  startRecruiterCallSyncService,
+  stopRecruiterCallSyncService,
+} = require('./services/recruiterCallSyncService');
+const {
   startRoadBonusNotifierService,
   stopRoadBonusNotifierService,
 } = require('./services/roadBonusNotifierService');
@@ -300,6 +304,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopRaiseApprovalService(); } catch (err) { console.error('[SHUTDOWN] stopRaiseApprovalService failed:', err.message); }
   try { stopFuelStopAlertService(); } catch (err) { console.error('[SHUTDOWN] stopFuelStopAlertService failed:', err.message); }
   try { stopDriverLocationMonitorService(); } catch (err) { console.error('[SHUTDOWN] stopDriverLocationMonitorService failed:', err.message); }
+  try { stopRecruiterCallSyncService(); } catch (err) { console.error('[SHUTDOWN] stopRecruiterCallSyncService failed:', err.message); }
   try { stopRoadBonusNotifierService(); } catch (err) { console.error('[SHUTDOWN] stopRoadBonusNotifierService failed:', err.message); }
 
   await Promise.allSettled([
@@ -345,6 +350,7 @@ async function start() {
   startRaiseApprovalService();
   startFuelStopAlertService(bot.telegram);
   startDriverLocationMonitorService(bot.telegram);
+  startRecruiterCallSyncService();
   startRoadBonusNotifierService(bot.telegram);
   await startFacebookWebhookWorker();
   startLeadsBot();

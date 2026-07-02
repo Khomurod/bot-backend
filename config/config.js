@@ -108,6 +108,12 @@ module.exports = {
   driveHosProviderKey: process.env.DRIVEHOS_PROVIDER_KEY || '',
   factorEldCompanyKey: process.env.FACTOR_ELD_COMPANY_KEY || '',
   leaderEldCompanyKey: process.env.LEADER_ELD_COMPANY_KEY || '',
+  // RingCentral recruiter-call KPIs. Env fallbacks only; the admin Settings tab
+  // (ringcentral_settings) is the primary, runtime-editable source.
+  rcClientId: process.env.RC_CLIENT_ID || '',
+  rcClientSecret: process.env.RC_CLIENT_SECRET || '',
+  rcJwtToken: process.env.RC_JWT_TOKEN || '',
+  rcApiBase: process.env.RC_API_BASE || 'https://platform.ringcentral.com',
   dispatchEtaTestGroupId: String(process.env.DISPATCH_ETA_TEST_GROUP_ID || '-5289094495').trim(),
   googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   googleGeocodingApiBase: process.env.GOOGLE_GEOCODING_API_BASE || 'https://maps.googleapis.com/maps/api/geocode/json',
