@@ -1494,3 +1494,21 @@ export async function getRecruiterStats(date) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+/** Quick per-number connectivity test (auth + own call-log read). */
+export async function testRecruiterConnection(id, payload) {
+  const res = await fetch(`${API_BASE}/recruiters/${id}/test`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Stepwise per-number diagnostic (creds → auth → identity → call log). */
+export async function diagnoseRecruiter(id, payload) {
+  const res = await fetch(`${API_BASE}/recruiters/${id}/diagnose`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

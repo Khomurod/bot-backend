@@ -72,7 +72,69 @@ async function getAccessToken(cfg) {
   }
 }
 
-async function fetchCallLogPage({ cfg, accessToken, dateFrom, dateTo, page }) {
+async function rcGet({ cfg, accessToken, path }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${cfg.apiBase}${path}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    let payload = null;
+    try { payload = text ? JSON.parse(text) : {}; } catch (_) { payload = null; }
+    if (!response.ok) {
+      const msg = payload?.errorCode || payload?.message || text.slice(0, 300) || `HTTP ${response.status}`;
+      const err = new Error(`RingCentral ${path} ${response.status}: ${msg}`);
+      err.code = 'RC_API_ERROR';
+      err.status = response.status;
+      throw err;
+    }
+    return payload || {};
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      const e = new Error('RingCentral request timed out.');
+      e.code = 'RC_TIMEOUT';
+      throw e;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Identity of the user the JWT belongs to: extension name/number plus the
+ * direct phone numbers on that extension. Used by the per-number Diagnose
+ * button to confirm the JWT actually matches the recruiter's assigned number.
+ */
+async function getExtensionInfo(cfg) {
+  const accessToken = await getAccessToken(cfg);
+  const ext = await rcGet({ cfg, accessToken, path: '/restapi/v1.0/account/~/extension/~' });
+  let phoneNumbers = [];
+  try {
+    const numbers = await rcGet({
+      cfg, accessToken,
+      path: '/restapi/v1.0/account/~/extension/~/phone-number?perPage=100',
+    });
+    phoneNumbers = (numbers.records || [])
+      .map((r) => r.phoneNumber)
+      .filter(Boolean);
+  } catch (err) {
+    // Phone-number read may not be granted; the extension identity is enough.
+    console.warn('[RC] extension phone-number read failed:', err.message);
+  }
+  return {
+    extensionId: ext?.id != null ? String(ext.id) : null,
+    extensionNumber: ext?.extensionNumber || null,
+    name: ext?.name || ext?.contact?.firstName || null,
+    status: ext?.status || null,
+    phoneNumbers,
+  };
+}
+
+async function fetchCallLogPage({ cfg, accessToken, dateFrom, dateTo, page, scope = 'account' }) {
   const params = new URLSearchParams({
     view: 'Simple',
     type: 'Voice',
@@ -82,11 +144,15 @@ async function fetchCallLogPage({ cfg, accessToken, dateFrom, dateTo, page }) {
   });
   if (dateTo) params.set('dateTo', dateTo);
 
+  const basePath = scope === 'extension'
+    ? '/restapi/v1.0/account/~/extension/~/call-log'
+    : '/restapi/v1.0/account/~/call-log';
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(
-      `${cfg.apiBase}/restapi/v1.0/account/~/call-log?${params.toString()}`,
+      `${cfg.apiBase}${basePath}?${params.toString()}`,
       {
         method: 'GET',
         headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
@@ -116,15 +182,11 @@ async function fetchCallLogPage({ cfg, accessToken, dateFrom, dateTo, page }) {
   }
 }
 
-/**
- * Fetch all Voice call-log records in [dateFrom, dateTo] (ISO 8601 strings).
- * Returns a flat array of raw RingCentral records.
- */
-async function fetchAccountCallLog({ cfg, dateFrom, dateTo }) {
+async function fetchAllCallLogPages({ cfg, dateFrom, dateTo, scope }) {
   const accessToken = await getAccessToken(cfg);
   const all = [];
   for (let page = 1; page <= MAX_PAGES; page += 1) {
-    const payload = await fetchCallLogPage({ cfg, accessToken, dateFrom, dateTo, page });
+    const payload = await fetchCallLogPage({ cfg, accessToken, dateFrom, dateTo, page, scope });
     const records = Array.isArray(payload.records) ? payload.records : [];
     all.push(...records);
     const totalPages = Number(payload?.paging?.totalPages || 0);
@@ -135,7 +197,25 @@ async function fetchAccountCallLog({ cfg, dateFrom, dateTo }) {
   return all;
 }
 
+/**
+ * Fetch all company-wide Voice call-log records in [dateFrom, dateTo]
+ * (ISO 8601 strings). Requires an admin-role JWT with Read Call Log.
+ */
+async function fetchAccountCallLog({ cfg, dateFrom, dateTo }) {
+  return fetchAllCallLogPages({ cfg, dateFrom, dateTo, scope: 'account' });
+}
+
+/**
+ * Fetch the JWT user's OWN extension call log — the per-number path. Any user
+ * can read their own log, so this works without an admin-role JWT.
+ */
+async function fetchExtensionCallLog({ cfg, dateFrom, dateTo }) {
+  return fetchAllCallLogPages({ cfg, dateFrom, dateTo, scope: 'extension' });
+}
+
 module.exports = {
   getAccessToken,
+  getExtensionInfo,
   fetchAccountCallLog,
+  fetchExtensionCallLog,
 };
