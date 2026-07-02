@@ -1711,6 +1711,14 @@ INSERT INTO ringcentral_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 -- One row per recruiter, with the single dedicated RingCentral direct number
 -- (E.164) whose inbound/outbound calls roll up to them. Number is unique.
+--
+-- Credentials model: each number has its OWN RingCentral JWT token (JWTs are
+-- per-user). The Client ID / Client Secret are usually shared across numbers
+-- (one RC app) and come from ringcentral_settings; a recruiter row may override
+-- them with its own pair when a number lives under a different RC app. All
+-- three are stored encrypted (AES-256-GCM, same scheme as the other secrets).
+-- When a recruiter has a JWT, the sync reads that user's OWN extension call
+-- log (direct attribution); without one it falls back to company-log matching.
 CREATE TABLE IF NOT EXISTS recruiters (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
@@ -1718,9 +1726,16 @@ CREATE TABLE IF NOT EXISTS recruiters (
   -- Digits-only form of phone_number for tolerant matching against call legs.
   phone_number_normalized TEXT NOT NULL UNIQUE,
   active BOOLEAN NOT NULL DEFAULT TRUE,
+  jwt_token_encrypted TEXT NULL,
+  client_id_encrypted TEXT NULL,
+  client_secret_encrypted TEXT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE recruiters ADD COLUMN IF NOT EXISTS jwt_token_encrypted TEXT NULL;
+ALTER TABLE recruiters ADD COLUMN IF NOT EXISTS client_id_encrypted TEXT NULL;
+ALTER TABLE recruiters ADD COLUMN IF NOT EXISTS client_secret_encrypted TEXT NULL;
 
 -- Raw call-log records, deduped by the RingCentral record id. Kept so KPIs are
 -- always recomputable; each poll upserts (a call's duration/result may finalize

@@ -1,18 +1,28 @@
 /**
  * Recruiter call-KPI sync service.
  *
- * Polls the RingCentral company Call Log, attributes each Voice call to a
- * recruiter by matching the recruiter's dedicated direct number (from-number for
- * outbound, to-number for inbound), and upserts the raw records. KPIs are then
- * computed on demand from the stored records (see database/ringcentral.js).
+ * Credentials are per-number: each recruiter's RingCentral number has its OWN
+ * JWT token (JWTs are per-user), optionally with its own Client ID/Secret when
+ * the number lives under a different RC app (otherwise the shared pair from
+ * Settings is used).
+ *
+ * Sync strategy, per active recruiter:
+ *   • has a JWT  → read that user's OWN extension call log and attribute every
+ *     record to the recruiter directly (no number matching needed; works
+ *     without an admin-role JWT).
+ *   • no JWT     → covered by ONE company call-log pass using the shared
+ *     credentials, attributing by number match (from=outbound, to=inbound).
+ *     In that pass, JWT-holding recruiters are excluded from attribution so the
+ *     same call is never counted twice (extension and company views assign
+ *     different record ids to the same call).
  *
  * Each poll re-fetches from the start of the current day (in the configured
- * timezone) so in-progress calls that finalize later are corrected, and the
- * rollup for "today" is always complete. Upserts are idempotent (dedup by RC id).
+ * timezone) so in-progress calls that finalize later are corrected. Upserts are
+ * idempotent (dedup by RC record id).
  */
 const { DateTime } = require('luxon');
 const rc = require('../database/ringcentral');
-const { fetchAccountCallLog } = require('./ringCentralCallService');
+const { fetchAccountCallLog, fetchExtensionCallLog } = require('./ringCentralCallService');
 
 let schedulerTimer = null;
 let schedulerStopped = true;
@@ -62,38 +72,113 @@ function attributeCalls(records, recruiters) {
 }
 
 /**
- * Run one sync pass. Returns { synced, attributed } or throws.
- * `sinceStartOfDay` (default true) fetches from midnight in the configured tz.
+ * Map records from a recruiter's OWN extension call log — every record belongs
+ * to that recruiter, so attribution is direct. Pure function for tests.
+ */
+function mapExtensionCalls(records, recruiter) {
+  const rows = [];
+  for (const rec of Array.isArray(records) ? records : []) {
+    if (rec?.type && rec.type !== 'Voice') continue;
+    rows.push({
+      id: rec.id,
+      sessionId: rec.sessionId || null,
+      recruiterId: recruiter.id,
+      recruiterNumberNormalized: recruiter.phone_number_normalized || null,
+      direction: rec.direction || null,
+      result: rec.result || null,
+      fromNumber: pickPhone(rec?.from),
+      toNumber: pickPhone(rec?.to),
+      durationSeconds: Number.isFinite(rec.duration) ? rec.duration : 0,
+      callTime: rec.startTime || null,
+    });
+  }
+  return rows;
+}
+
+async function upsertRows(rows) {
+  let synced = 0;
+  let attributed = 0;
+  for (const row of rows) {
+    if (!row.id || !row.callTime) continue;
+    await rc.upsertCall(row);
+    synced += 1;
+    if (row.recruiterId) attributed += 1;
+  }
+  return { synced, attributed };
+}
+
+/**
+ * Run one sync pass. Returns { synced, attributed, perRecruiter, errors }.
+ * `full` widens the window to 7 days (manual backfill).
  */
 async function syncNow({ full = false } = {}) {
   const cfg = await rc.getRcConfig();
   if (!cfg.enabled) return { skipped: 'disabled' };
-  if (!cfg.clientId || !cfg.clientSecret || !cfg.jwtToken) return { skipped: 'not_configured' };
 
   const tz = cfg.timezone || 'America/Chicago';
   const now = DateTime.now().setZone(tz);
-  // `full` widens the window to 7 days (used by a manual backfill button).
   const start = full ? now.minus({ days: 7 }).startOf('day') : now.startOf('day');
   const dateFrom = start.toUTC().toISO();
   const dateTo = now.toUTC().toISO();
 
-  try {
-    const records = await fetchAccountCallLog({ cfg, dateFrom, dateTo });
-    const recruiters = await rc.listRecruiters({ includeInactive: true });
-    const rows = attributeCalls(records, recruiters);
+  const recruiters = await rc.listRecruiters({ includeInactive: false });
+  const withJwt = recruiters.filter((r) => r.jwt_token_encrypted);
+  const withoutJwt = recruiters.filter((r) => !r.jwt_token_encrypted);
 
-    let attributed = 0;
-    for (const row of rows) {
-      if (!row.id || !row.callTime) continue;
-      await rc.upsertCall(row);
-      if (row.recruiterId) attributed += 1;
+  let synced = 0;
+  let attributed = 0;
+  const perRecruiter = [];
+  const errors = [];
+
+  // ── Per-number pass: each recruiter's own extension call log ──
+  for (const recruiter of withJwt) {
+    const auth = rc.resolveRecruiterRcAuth(recruiter, cfg);
+    if (!auth.clientId || !auth.clientSecret || !auth.jwtToken) {
+      const msg = `${recruiter.name}: credentials incomplete (missing ${!auth.jwtToken ? 'JWT' : 'Client ID/Secret'}).`;
+      errors.push(msg);
+      perRecruiter.push({ id: recruiter.id, name: recruiter.name, error: msg });
+      continue;
     }
-    await rc.markSyncResult({ error: null });
-    return { synced: rows.length, attributed };
-  } catch (err) {
-    await rc.markSyncResult({ error: err.message }).catch(() => {});
-    throw err;
+    try {
+      const records = await fetchExtensionCallLog({ cfg: auth, dateFrom, dateTo });
+      const rows = mapExtensionCalls(records, recruiter);
+      const result = await upsertRows(rows);
+      synced += result.synced;
+      attributed += result.attributed;
+      perRecruiter.push({ id: recruiter.id, name: recruiter.name, synced: result.synced });
+    } catch (err) {
+      errors.push(`${recruiter.name}: ${err.message}`);
+      perRecruiter.push({ id: recruiter.id, name: recruiter.name, error: err.message });
+    }
   }
+
+  // ── Fallback pass: company log for numbers without their own JWT ──
+  // JWT-holding recruiters are excluded from attribution here so the same call
+  // (different record id in the account view) is never double-counted.
+  if (withoutJwt.length) {
+    if (cfg.clientId && cfg.clientSecret && cfg.jwtToken) {
+      try {
+        const records = await fetchAccountCallLog({ cfg, dateFrom, dateTo });
+        const rows = attributeCalls(records, withoutJwt);
+        const jwtIds = new Set(withJwt.map((r) => r.id));
+        const result = await upsertRows(rows.filter((row) => !jwtIds.has(row.recruiterId)));
+        synced += result.synced;
+        attributed += result.attributed;
+      } catch (err) {
+        errors.push(`Company log: ${err.message}`);
+      }
+    } else {
+      errors.push(
+        `${withoutJwt.length} recruiter(s) have no JWT and the shared company credentials are incomplete.`
+      );
+    }
+  }
+
+  if (!withJwt.length && !withoutJwt.length) return { skipped: 'no_recruiters' };
+
+  const errorSummary = errors.length ? errors.join(' | ') : null;
+  await rc.markSyncResult({ error: errorSummary }).catch(() => {});
+  return { synced, attributed, perRecruiter, errors };
 }
 
 async function tick() {
@@ -102,7 +187,8 @@ async function tick() {
   try {
     const result = await syncNow();
     if (result?.synced != null) {
-      console.log(`[RC-SYNC] Synced ${result.synced} call(s), ${result.attributed} attributed.`);
+      const errNote = result.errors?.length ? ` (${result.errors.length} error(s))` : '';
+      console.log(`[RC-SYNC] Synced ${result.synced} call(s), ${result.attributed} attributed${errNote}.`);
     }
   } catch (err) {
     console.warn('[RC-SYNC] tick failed:', err.message);
@@ -139,6 +225,7 @@ function stopRecruiterCallSyncService() {
 
 module.exports = {
   attributeCalls,
+  mapExtensionCalls,
   syncNow,
   startRecruiterCallSyncService,
   stopRecruiterCallSyncService,

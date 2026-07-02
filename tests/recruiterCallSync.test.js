@@ -57,3 +57,31 @@ test('missing duration defaults to 0', () => {
   ], recruiters);
   assert.equal(rows[0].durationSeconds, 0);
 });
+
+// ─── Per-number (extension call-log) mapping ───
+
+const { mapExtensionCalls } = require('../services/recruiterCallSyncService');
+
+test('mapExtensionCalls attributes every Voice record to the recruiter directly', () => {
+  const recruiter = { id: 9, name: 'Jane', phone_number_normalized: '4704804679' };
+  const rows = mapExtensionCalls([
+    { id: 'x1', direction: 'Outbound', duration: 120, type: 'Voice', result: 'Accepted',
+      from: { phoneNumber: '+14704804679' }, to: { phoneNumber: '+15551230000' }, startTime: '2026-07-02T16:00:00Z' },
+    { id: 'x2', direction: 'Inbound', duration: 45, type: 'Voice', result: 'Missed',
+      from: { phoneNumber: '+15559990000' }, to: { phoneNumber: '+14704804679' }, startTime: '2026-07-02T16:05:00Z' },
+    { id: 'x3', type: 'Fax', direction: 'Outbound', startTime: '2026-07-02T16:06:00Z' },
+  ], recruiter);
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((r) => r.recruiterId === 9));
+  assert.equal(rows[0].recruiterNumberNormalized, '4704804679');
+  assert.equal(rows[1].result, 'Missed');
+});
+
+test('mapExtensionCalls defaults missing duration to 0 and keeps record ids', () => {
+  const rows = mapExtensionCalls(
+    [{ id: 'x9', direction: 'Outbound', type: 'Voice', from: {}, to: {}, startTime: '2026-07-02T16:10:00Z' }],
+    { id: 3, phone_number_normalized: '1112223333' }
+  );
+  assert.equal(rows[0].durationSeconds, 0);
+  assert.equal(rows[0].id, 'x9');
+});
