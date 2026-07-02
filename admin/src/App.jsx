@@ -19,6 +19,7 @@ import HomeTimePage from "./pages/HomeTimePage";
 import GroupAccessPage from "./pages/GroupAccessPage";
 import FuelMonitorPage from "./pages/FuelMonitorPage";
 import LocationMonitorPage from "./pages/LocationMonitorPage";
+import UsersPage from "./pages/UsersPage";
 
 function getPageFromPath(pathname) {
   if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) {
@@ -143,6 +144,7 @@ export default function App() {
     home_time: <HomeTimePage />,
     fuel_monitor: <FuelMonitorPage />,
     location_monitor: <LocationMonitorPage />,
+    users: <UsersPage />,
     group_access: <GroupAccessPage />,
     manager: <MessageManagerPage />,
     bot_messages: <BotMessagesPage />,
@@ -179,6 +181,7 @@ export default function App() {
         { key: 'home_time', icon: '🏠', label: 'Driver Home Time' },
         { key: 'fuel_monitor', icon: '⛽', label: 'Fuel Monitor' },
         { key: 'location_monitor', icon: '📡', label: 'Location Monitor' },
+        { key: 'users', icon: '👤', label: 'Users' },
         { key: 'group_access', icon: '🔍', label: 'Bot Group Access' },
       ],
     },

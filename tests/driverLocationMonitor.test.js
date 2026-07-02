@@ -364,18 +364,22 @@ test('buildStopDedupeKey is stable per stop and distinguishes shipper/receiver a
   assert.ok(a.includes('g42'));
 });
 
-// ─── Answer handler ───
+// ─── Answer handler (two-phase: Checked In on arrival → Checked Out on departure) ───
 
-function loadHandlersWithMocks(monitorsMock) {
+const BOT_USERS_PATH = path.resolve(__dirname, '../database/botUsers.js');
+
+function loadHandlersWithMocks(monitorsMock, botUsersMock) {
   delete require.cache[HANDLERS_PATH];
   delete require.cache[DB_MONITORS_PATH];
+  delete require.cache[BOT_USERS_PATH];
   delete require.cache[DB_PATH];
   require.cache[DB_PATH] = { id: DB_PATH, exports: { query: async () => ({ rows: [], rowCount: 0 }) } };
   require.cache[DB_MONITORS_PATH] = { id: DB_MONITORS_PATH, exports: monitorsMock };
+  require.cache[BOT_USERS_PATH] = { id: BOT_USERS_PATH, exports: botUsersMock };
   return require(HANDLERS_PATH);
 }
 
-function registerAndGetAction(handlers, monitorsMock) {
+function registerAndGetAction(handlers) {
   let actionFn = null;
   let actionRe = null;
   const bot = { action: (re, fn) => { actionRe = re; actionFn = fn; } };
@@ -386,30 +390,47 @@ function registerAndGetAction(handlers, monitorsMock) {
 function makeCtx(action, checkinId, edited) {
   return {
     match: [`loccheck:${action}:${checkinId}`, action, String(checkinId)],
-    from: { id: 123, username: 'driverjohn' },
+    from: { id: 123, username: 'driverjohn', first_name: 'John', last_name: 'Doe' },
     callbackQuery: { message: { chat: { id: -100999 }, message_id: 7001, text: 'prompt body' } },
-    editMessageText: async (t) => { edited.text = t; },
-    editMessageReplyMarkup: async () => { edited.clearedMarkup = true; },
+    editMessageText: async (t, extra) => { edited.text = t; edited.extra = extra; },
+    editMessageReplyMarkup: async (markup) => { edited.replacedMarkup = markup ?? null; },
     answerCbQuery: async (t) => { edited.cbq = t; },
   };
 }
 
-async function runHandlerAnswer(action) {
-  const calls = { clearMonitorTarget: [], releaseMonitor: [], recordCheckinResponse: [] };
+// Shared harness: run one tap against a check-in row in the given status.
+async function runHandlerTap(action, { checkinStatus = 'awaiting_response', dwellMinutes = null } = {}) {
+  const calls = { clearMonitorTarget: [], releaseMonitor: [], arrivals: [], departures: [], userTaps: [] };
   const monitors = {
     getCheckinById: async () => ({
-      id: 555, monitor_id: 9, stop_type: 'shipper', telegram_group_id: -100999,
-      prompt_message_id: 7001, appointment_at: null,
+      id: 555, monitor_id: 9, group_id: 42, stop_type: 'shipper', telegram_group_id: -100999,
+      prompt_message_id: 7001, appointment_at: null, status: checkinStatus,
     }),
-    recordCheckinResponse: async (id, args) => {
-      calls.recordCheckinResponse.push([id, args]);
-      return { record: { id, driver_response: args.response }, alreadyAnswered: false };
+    recordCheckinArrival: async (id, args) => {
+      calls.arrivals.push([id, args]);
+      if (checkinStatus !== 'awaiting_response') {
+        return { record: { id, status: checkinStatus, checked_in_by_username: 'someoneelse' }, alreadyDone: true };
+      }
+      return { record: { id, status: 'checked_in', driver_response: 'checked_in' }, alreadyDone: false };
+    },
+    recordCheckinDeparture: async (id, args) => {
+      calls.departures.push([id, args]);
+      if (checkinStatus === 'completed') {
+        return { record: { id, status: 'completed', checked_out_by_username: 'someoneelse' }, alreadyDone: true };
+      }
+      return {
+        record: { id, status: 'completed', driver_response: 'checked_out', dwell_minutes: dwellMinutes },
+        alreadyDone: false,
+      };
     },
     clearMonitorTarget: async (id, args) => { calls.clearMonitorTarget.push([id, args]); return {}; },
     releaseMonitor: async (id, args) => { calls.releaseMonitor.push([id, args]); return {}; },
   };
-  const handlers = loadHandlersWithMocks(monitors);
-  const { actionFn, actionRe } = registerAndGetAction(handlers, monitors);
+  const botUsers = {
+    recordBotUserInteraction: async (args) => { calls.userTaps.push(args); return args; },
+  };
+  const handlers = loadHandlersWithMocks(monitors, botUsers);
+  const { actionFn, actionRe } = registerAndGetAction(handlers);
   assert.equal(actionRe.test(`loccheck:${action}:555`), true);
   assert.equal(actionRe.test('loccheck:yes:555'), false); // old callbacks no longer match
   const edited = {};
@@ -417,20 +438,96 @@ async function runHandlerAnswer(action) {
   return { calls, edited };
 }
 
-test('handler: "in" records checked_in, edits footer, advances (no re-prompt)', async () => {
-  const { calls, edited } = await runHandlerAnswer('in');
-  assert.equal(calls.recordCheckinResponse[0][1].response, 'checked_in');
+test('handler: "Checked In" records arrival, keeps ONLY the Checked Out button, and advances the monitor', async () => {
+  const { calls, edited } = await runHandlerTap('in');
+
+  assert.equal(calls.arrivals.length, 1);
+  assert.equal(calls.arrivals[0][1].username, 'driverjohn');
+  assert.equal(calls.arrivals[0][1].userId, 123);
+
+  // The message is edited to show the check-in footer with just Checked Out left.
   assert.match(edited.text, /Checked in at the shipper/);
+  const buttons = edited.extra?.reply_markup?.inline_keyboard?.flat() || [];
+  assert.equal(buttons.length, 1);
+  assert.equal(buttons[0].text, '🚪 Checked Out');
+  assert.equal(buttons[0].callback_data, 'loccheck:out:555');
+
+  // Monitor advances to the next stop; no re-prompt scheduling for this one.
   assert.equal(calls.clearMonitorTarget.length, 1);
-  assert.equal(calls.releaseMonitor.length, 0); // no re-prompt scheduling
   assert.equal(calls.clearMonitorTarget[0][1].lastStatus, 'checked_in_shipper');
+  assert.equal(calls.releaseMonitor.length, 0);
 });
 
-test('handler: "out" records checked_out, edits footer, advances (no re-prompt)', async () => {
-  const { calls, edited } = await runHandlerAnswer('out');
-  assert.equal(calls.recordCheckinResponse[0][1].response, 'checked_out');
-  assert.match(edited.text, /Checked out at the shipper/);
-  assert.equal(calls.clearMonitorTarget.length, 1);
+test('handler: "Checked Out" after check-in records departure with dwell and removes the keyboard', async () => {
+  const { calls, edited } = await runHandlerTap('out', { checkinStatus: 'checked_in', dwellMinutes: 135 });
+
+  assert.equal(calls.departures.length, 1);
+  assert.equal(calls.departures[0][1].username, 'driverjohn');
+  assert.equal(calls.departures[0][1].userId, 123);
+
+  // Footer reports the stay length; no keyboard remains on the message.
+  assert.match(edited.text, /Checked out of the shipper/);
+  assert.match(edited.text, /stayed 2h 15m/);
+  assert.equal(edited.extra, undefined);
+
+  // The monitor already advanced at check-in — checkout must not reset it.
+  assert.equal(calls.clearMonitorTarget.length, 0);
   assert.equal(calls.releaseMonitor.length, 0);
+});
+
+test('handler: "Checked Out" straight from the prompt (skipped arrival) completes and advances the monitor', async () => {
+  const { calls, edited } = await runHandlerTap('out', { checkinStatus: 'awaiting_response' });
+
+  assert.equal(calls.departures.length, 1);
+  assert.match(edited.text, /Checked out of the shipper/);
+  assert.doesNotMatch(edited.text, /stayed/); // no dwell without an arrival tap
+  assert.equal(calls.clearMonitorTarget.length, 1);
   assert.equal(calls.clearMonitorTarget[0][1].lastStatus, 'checked_out_shipper');
+});
+
+test('handler: every tap saves the user (username + user id) for the admin Users tab', async () => {
+  const inTap = await runHandlerTap('in');
+  assert.equal(inTap.calls.userTaps.length, 1);
+  assert.deepEqual(inTap.calls.userTaps[0], {
+    telegramUserId: 123,
+    username: 'driverjohn',
+    firstName: 'John',
+    lastName: 'Doe',
+    action: 'loccheck:in',
+    groupId: 42,
+  });
+
+  const outTap = await runHandlerTap('out', { checkinStatus: 'checked_in' });
+  assert.equal(outTap.calls.userTaps.length, 1);
+  assert.equal(outTap.calls.userTaps[0].action, 'loccheck:out');
+});
+
+test('handler: duplicate taps are idempotent and never re-prompt', async () => {
+  // Second "in" tap on an already-checked-in row → toast only, no state changes.
+  const dupIn = await runHandlerTap('in', { checkinStatus: 'checked_in' });
+  assert.match(dupIn.edited.cbq, /Already checked in/);
+  assert.equal(dupIn.edited.text, undefined);
+  assert.equal(dupIn.calls.clearMonitorTarget.length, 0);
+
+  // Second "out" tap on a completed row → toast only.
+  const dupOut = await runHandlerTap('out', { checkinStatus: 'completed' });
+  assert.match(dupOut.edited.cbq, /Already checked out/);
+  assert.equal(dupOut.edited.text, undefined);
+  assert.equal(dupOut.calls.clearMonitorTarget.length, 0);
+});
+
+test('formatDwell renders minutes as h/m labels', () => {
+  delete require.cache[HANDLERS_PATH];
+  delete require.cache[DB_MONITORS_PATH];
+  delete require.cache[BOT_USERS_PATH];
+  delete require.cache[DB_PATH];
+  require.cache[DB_PATH] = { id: DB_PATH, exports: { query: async () => ({ rows: [], rowCount: 0 }) } };
+  require.cache[DB_MONITORS_PATH] = { id: DB_MONITORS_PATH, exports: {} };
+  require.cache[BOT_USERS_PATH] = { id: BOT_USERS_PATH, exports: {} };
+  const { formatDwell } = require(HANDLERS_PATH);
+  assert.equal(formatDwell(135), '2h 15m');
+  assert.equal(formatDwell(45), '45m');
+  assert.equal(formatDwell(0), '0m');
+  assert.equal(formatDwell(null), null);
+  assert.equal(formatDwell(-5), null);
 });

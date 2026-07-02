@@ -1561,6 +1561,37 @@ CREATE TABLE IF NOT EXISTS driver_location_checkins (
 -- than send a second prompt.
 ALTER TABLE driver_location_checkins ADD COLUMN IF NOT EXISTS dedupe_key TEXT NULL;
 
+-- Two-phase check-in flow: the driver taps "Checked In" on arrival (that button
+-- disappears, "Checked Out" stays) and "Checked Out" on departure. Both moments
+-- are stamped so checked_out_at - checked_in_at gives the facility dwell time,
+-- building the dataset that will later predict how long drivers stay at a given
+-- facility (grouped by location_address). Who tapped is stored per phase.
+ALTER TABLE driver_location_checkins ADD COLUMN IF NOT EXISTS checked_in_at TIMESTAMPTZ NULL;
+ALTER TABLE driver_location_checkins ADD COLUMN IF NOT EXISTS checked_out_at TIMESTAMPTZ NULL;
+ALTER TABLE driver_location_checkins ADD COLUMN IF NOT EXISTS checked_in_by_username TEXT NULL;
+ALTER TABLE driver_location_checkins ADD COLUMN IF NOT EXISTS checked_in_by_user_id BIGINT NULL;
+ALTER TABLE driver_location_checkins ADD COLUMN IF NOT EXISTS checked_out_by_username TEXT NULL;
+ALTER TABLE driver_location_checkins ADD COLUMN IF NOT EXISTS checked_out_by_user_id BIGINT NULL;
+
+-- Status now walks awaiting_response → checked_in (at the facility) → completed.
+-- 'answered' and 'expired' remain for legacy rows / stale prompts.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE constraint_name = 'driver_location_checkin_status_check'
+      AND table_name = 'driver_location_checkins'
+  ) THEN
+    ALTER TABLE driver_location_checkins DROP CONSTRAINT driver_location_checkin_status_check;
+  END IF;
+END
+$$;
+
+ALTER TABLE driver_location_checkins
+  ADD CONSTRAINT driver_location_checkin_status_check
+  CHECK (status IN ('awaiting_response', 'answered', 'checked_in', 'completed', 'expired'));
+
 -- The buttons became "Checked In"/"Checked Out" (was Yes/No); widen the allowed
 -- responses on pre-existing deployments without dropping historic 'yes'/'no' rows.
 DO $$
@@ -1591,3 +1622,22 @@ CREATE INDEX IF NOT EXISTS idx_driver_location_checkins_monitor
 CREATE UNIQUE INDEX IF NOT EXISTS idx_driver_location_checkins_stop_once
   ON driver_location_checkins(dedupe_key)
   WHERE dedupe_key IS NOT NULL;
+
+-- TABLE: bot_users — every Telegram user who has interacted with the bot's
+-- inline buttons (check-in prompts etc.), upserted on each tap. Powers the
+-- admin panel's Users tab. Distinct from group_members (passively-seen users):
+-- these are users who actively pressed a button.
+CREATE TABLE IF NOT EXISTS bot_users (
+  telegram_user_id BIGINT PRIMARY KEY,
+  username TEXT NULL,
+  first_name TEXT NULL,
+  last_name TEXT NULL,
+  interactions INTEGER NOT NULL DEFAULT 0,
+  last_action TEXT NULL,
+  last_group_id INTEGER NULL,
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_interaction_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_bot_users_last_interaction
+  ON bot_users(last_interaction_at DESC);

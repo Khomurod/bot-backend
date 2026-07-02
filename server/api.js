@@ -1097,6 +1097,9 @@ app.use('/api/fuel-monitor', createFuelMonitorRouter({ authMiddleware, telegram:
 const { createLocationMonitorRouter } = require('./routes/locationMonitorRoutes');
 app.use('/api/location-monitor', createLocationMonitorRouter({ authMiddleware }));
 
+const { createBotUsersRouter } = require('./routes/botUsersRoutes');
+app.use('/api/bot-users', createBotUsersRouter({ authMiddleware }));
+
 const { createBotMessagesRouter } = require('./routes/botMessagesRoutes');
 app.use('/api/bot-messages', createBotMessagesRouter({ authMiddleware, telegram: bot.telegram }));
 
