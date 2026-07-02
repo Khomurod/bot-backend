@@ -77,7 +77,7 @@ test('resolveDispatchEtaSnapshotForGroup returns partial snapshot when route ETA
           speedMilesPerHour: 52,
           pingAgeMinutes: 2,
         },
-        source: 'EVO ELD (fallback)',
+        source: 'Factor ELD (fallback)',
       }),
     },
     pinnedContextMock: {
@@ -106,7 +106,7 @@ test('resolveDispatchEtaSnapshotForGroup returns partial snapshot when route ETA
   });
 
   assert.equal(snapshot.context.destinationQuery, '5151 E RAINES RD, Memphis, TN 38118');
-  assert.equal(snapshot.source, 'EVO ELD (fallback)');
+  assert.equal(snapshot.source, 'Factor ELD (fallback)');
   assert.equal(snapshot.eta, null);
   assert.match(snapshot.etaError, /Could not calculate route ETA/i);
 });
@@ -125,7 +125,7 @@ test('resolveDispatchEtaSnapshotForGroup falls back to cached load context when 
           speedMilesPerHour: 0,
           pingAgeMinutes: 4,
         },
-        source: 'TT ELD (fallback)',
+        source: 'Leader ELD (fallback)',
       }),
     },
     pinnedContextMock: {

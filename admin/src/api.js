@@ -1383,3 +1383,40 @@ export async function deleteBotMessage(id) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+// ─── Settings: live-location (ELD) provider credentials ───
+
+/** Masked ELD provider settings (never returns raw secrets). */
+export async function getEldSettings() {
+  const res = await fetch(`${API_BASE}/settings/eld`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.settings;
+}
+
+/** Update ELD provider settings. Omit a secret field to leave it unchanged. */
+export async function updateEldSettings(payload) {
+  const res = await fetch(`${API_BASE}/settings/eld`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.settings;
+}
+
+/**
+ * Live connectivity test for one provider ('samsara' | 'factor' | 'leader').
+ * Optional candidate keys let you verify BEFORE saving; optional groupTitle
+ * checks a specific unit. Returns { connected, message }.
+ */
+export async function testEldProvider(payload) {
+  const res = await fetch(`${API_BASE}/settings/eld/test`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

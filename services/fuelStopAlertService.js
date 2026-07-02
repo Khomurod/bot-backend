@@ -8,7 +8,7 @@
  * original message tagging the driver and reminding them to fuel there.
  *
  * Reuses existing building blocks:
- *   - resolveLiveLocationForGroupTitle()  — live truck GPS (Samsara/EVO/TT)
+ *   - resolveLiveLocationForGroupTitle()  — live truck GPS (Samsara/Factor/Leader)
  *   - geocodePlace()                      — address → lat/lng (free providers)
  *   - haversineMiles()                    — straight-line distance (the radius)
  *   - callGeminiJson()/callGeminiText()   — detect + word the reminder

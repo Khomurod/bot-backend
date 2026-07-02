@@ -1,12 +1,11 @@
-const config = require('../config/config');
 const db = require('../database/db');
 const { readLoadContextWithFallbacks, choosePinnedMessageCandidate } = require('./dispatchPinnedContextService');
 const datatruckLoadService = require('./datatruckLoadService');
 const { calculateEtaToDestination } = require('./etaRoutingService');
 const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
 const { getLiveLocationForGroupTitle } = require('./samsaraLocationService');
-const { getLiveLocationForGroupTitleFromEvo } = require('./evoEldService');
-const { getLiveLocationForGroupTitleFromTt } = require('./ttEldService');
+const { getLiveLocationForGroupTitleFromDriveHos } = require('./driveHosEldService');
+const { getEldConfig } = require('../database/eldSettings');
 
 function normalizeErrorMessage(err) {
   return String(err?.message || 'Unknown error').replace(/\s+/g, ' ').trim();
@@ -42,25 +41,22 @@ function toProviderStatus(label, location, error) {
 
 async function checkProviderStatuses(groupTitle) {
   const providerStatuses = [];
+  const cfg = await getEldConfig();
 
+  // ── Primary: Samsara ──
   let samsaraLocation = null;
   let samsaraError = null;
-  const samsaraKeys = Array.from(
-    new Set([
-      ...(Array.isArray(config.samsaraApiKeys) ? config.samsaraApiKeys : []),
-      config.samsaraApiKey,
-    ].filter(Boolean))
-  );
-
-  if (!samsaraKeys.length) {
+  if (!cfg.samsaraEnabled) {
+    samsaraError = new Error('Samsara is disabled in Settings.');
+  } else if (!cfg.samsaraApiKeys.length) {
     samsaraError = new Error('Samsara API key is not configured.');
   } else {
-    for (const apiKey of samsaraKeys) {
+    for (const apiKey of cfg.samsaraApiKeys) {
       try {
         samsaraLocation = await getLiveLocationForGroupTitle({
           groupTitle,
           apiKey,
-          apiBase: config.samsaraApiBase,
+          apiBase: cfg.samsaraApiBase,
         });
         if (samsaraLocation) break;
       } catch (err) {
@@ -68,46 +64,38 @@ async function checkProviderStatuses(groupTitle) {
       }
     }
   }
-
   providerStatuses.push(toProviderStatus('Samsara', samsaraLocation, samsaraError));
 
-  let evoLocation = null;
-  let evoError = null;
-  try {
-    evoLocation = await getLiveLocationForGroupTitleFromEvo({
-      groupTitle,
-      usdotNumber: config.evoEldUsdotNumber,
-      apiKey: config.evoEldApiKey,
-      providerToken: config.evoEldProviderToken,
-      apiBase: config.evoEldApiBase,
-    });
-  } catch (err) {
-    evoError = err;
-  }
-  providerStatuses.push(toProviderStatus('EVO ELD', evoLocation, evoError));
+  // ── Fallbacks: Factor ELD → Leader ELD (Drive HoS) ──
+  const driveHosProviders = [
+    { label: 'Factor ELD', enabled: cfg.factorEnabled, companyKey: cfg.factorCompanyKey },
+    { label: 'Leader ELD', enabled: cfg.leaderEnabled, companyKey: cfg.leaderCompanyKey },
+  ];
 
-  let ttLocation = null;
-  let ttError = null;
-  const ttApiKeys = Array.from(new Set([config.ttEldApiKey, config.evoEldApiKey].filter(Boolean)));
-  if (!ttApiKeys.length) {
-    ttError = new Error('TT ELD API key is not configured.');
-  } else {
-    for (const apiKey of ttApiKeys) {
+  for (const provider of driveHosProviders) {
+    let location = null;
+    let error = null;
+    if (!provider.enabled) {
+      error = new Error(`${provider.label} is disabled in Settings.`);
+    } else if (!cfg.driveHosProviderKey) {
+      error = new Error('Drive HoS provider key is not configured.');
+    } else if (!provider.companyKey) {
+      error = new Error(`${provider.label} company key is not configured.`);
+    } else {
       try {
-        ttLocation = await getLiveLocationForGroupTitleFromTt({
+        location = await getLiveLocationForGroupTitleFromDriveHos({
           groupTitle,
-          usdotNumber: config.ttEldUsdotNumber,
-          apiKey,
-          providerToken: config.ttEldProviderToken,
-          apiBase: config.ttEldApiBase,
+          providerKey: cfg.driveHosProviderKey,
+          companyKey: provider.companyKey,
+          apiBase: cfg.driveHosApiBase,
+          providerLabel: provider.label,
         });
-        if (ttLocation) break;
       } catch (err) {
-        ttError = err;
+        error = err;
       }
     }
+    providerStatuses.push(toProviderStatus(provider.label, location, error));
   }
-  providerStatuses.push(toProviderStatus('TT ELD', ttLocation, ttError));
 
   return providerStatuses;
 }
