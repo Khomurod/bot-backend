@@ -10,11 +10,15 @@
  *   • has a JWT  → read that user's OWN extension call log and attribute every
  *     record to the recruiter directly (no number matching needed; works
  *     without an admin-role JWT).
- *   • no JWT     → covered by ONE company call-log pass using the shared
- *     credentials, attributing by number match (from=outbound, to=inbound).
- *     In that pass, JWT-holding recruiters are excluded from attribution so the
- *     same call is never counted twice (extension and company views assign
- *     different record ids to the same call).
+ *   • no JWT     → covered by ONE shared-credential pass, attributing by number
+ *     match (from=outbound, to=inbound). That pass prefers the company call log
+ *     (admin-role JWT); when the shared JWT is NOT an admin (403
+ *     InsufficientPermissions) it falls back to the shared JWT's own extension
+ *     call log — RingCentral extensions can own several direct numbers, so
+ *     number matching still attributes those calls to the right recruiters.
+ *     JWT-holding recruiters are excluded from this pass so the same call is
+ *     never counted twice (extension and company views assign different record
+ *     ids to the same call).
  *
  * Each poll re-fetches from the start of the current day (in the configured
  * timezone) so in-progress calls that finalize later are corrected. Upserts are
@@ -158,14 +162,25 @@ async function syncNow({ full = false } = {}) {
   if (withoutJwt.length) {
     if (cfg.clientId && cfg.clientSecret && cfg.jwtToken) {
       try {
-        const records = await fetchAccountCallLog({ cfg, dateFrom, dateTo });
+        let records;
+        try {
+          records = await fetchAccountCallLog({ cfg, dateFrom, dateTo });
+        } catch (err) {
+          if (err.status !== 403) throw err;
+          // Shared JWT lacks the admin role for the company log — read the
+          // shared JWT's OWN extension log instead. Its extension may own
+          // several direct numbers, so number matching below still attributes
+          // correctly for every recruiter whose number lives on that extension.
+          console.warn('[RC-SYNC] Company log denied (not admin); using the shared JWT\'s extension log.');
+          records = await fetchExtensionCallLog({ cfg, dateFrom, dateTo });
+        }
         const rows = attributeCalls(records, withoutJwt);
         const jwtIds = new Set(withJwt.map((r) => r.id));
         const result = await upsertRows(rows.filter((row) => !jwtIds.has(row.recruiterId)));
         synced += result.synced;
         attributed += result.attributed;
       } catch (err) {
-        errors.push(`Company log: ${err.message}`);
+        errors.push(`Shared-credential pass: ${err.message}`);
       }
     } else {
       errors.push(

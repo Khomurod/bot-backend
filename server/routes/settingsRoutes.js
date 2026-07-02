@@ -11,7 +11,12 @@ const {
 } = require('../../services/driveHosEldService');
 const { getLiveLocationForGroupTitle } = require('../../services/samsaraLocationService');
 const rc = require('../../database/ringcentral');
-const { getAccessToken, fetchAccountCallLog } = require('../../services/ringCentralCallService');
+const {
+  getAccessToken,
+  getExtensionInfo,
+  fetchAccountCallLog,
+  fetchExtensionCallLog,
+} = require('../../services/ringCentralCallService');
 const { DateTime } = require('luxon');
 
 /**
@@ -141,16 +146,25 @@ function createSettingsRouter({ authMiddleware }) {
         return res.json({ connected: false, message: 'RingCentral credentials are incomplete.' });
       }
       await getAccessToken(cfg);
-      // Confirm call-log read scope by pulling the last hour.
+      // Confirm call-log read scope by pulling the last 24h. Prefer the
+      // company log; when the shared JWT isn't an admin (403) fall back to its
+      // own extension log — the same strategy the background sync uses.
       const now = DateTime.now();
-      const records = await fetchAccountCallLog({
-        cfg,
-        dateFrom: now.minus({ hours: 1 }).toUTC().toISO(),
-        dateTo: now.toUTC().toISO(),
-      });
+      const window = { dateFrom: now.minus({ hours: 24 }).toUTC().toISO(), dateTo: now.toUTC().toISO() };
+      let scopeNote = 'company-wide call log';
+      let records;
+      try {
+        records = await fetchAccountCallLog({ cfg, ...window });
+      } catch (err) {
+        if (err.status !== 403) throw err;
+        records = await fetchExtensionCallLog({ cfg, ...window });
+        const ext = await getExtensionInfo(cfg).catch(() => null);
+        const owns = ext?.phoneNumbers?.length ? ` — this JWT covers ${ext.phoneNumbers.join(', ')}` : '';
+        scopeNote = `this JWT's own extension only (not an admin)${owns}. Recruiters on other numbers need their own JWT`;
+      }
       return res.json({
         connected: true,
-        message: `Authenticated and read the call log (${records.length} call(s) in the last hour).`,
+        message: `Authenticated. Read ${records.length} call(s) from the last 24h via ${scopeNote}.`,
       });
     } catch (err) {
       console.error('[SETTINGS API] RC test failed:', err.message);
