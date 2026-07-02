@@ -15,6 +15,7 @@ A Telegram bot-based feedback and communication system for trucking companies. C
 - **Facebook Self-Serve Connect** — `/connect` in a leads Telegram group (WenzeLeadBots only) opens Facebook login, lets an admin choose Pages, and routes new leads into that group
 - **Admin Panel** — React-based web interface for groups, questions, broadcasts, voting, and responses
 - **JWT Auth** — Secure admin panel with bcrypt + JWT
+- **Recruiter Call KPIs (RingCentral)** — per-number JWT credentials in Settings → RingCentral, background call-log sync, admin "Recruiter KPIs" dashboard, and a public gamified daily leaderboard at `/recruiters` (today-only, names + call counts, no phone numbers)
 - **Dispatch ETA (Wenze Feedback)** — `/location`, `/status`, `/load`, `/update` in driver groups; test hub interactive `/status` when `DISPATCH_ETA_TEST_GROUP_ID` is set
 
 ## Driver group commands (Wenze Feedback / `BOT_TOKEN`)
