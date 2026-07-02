@@ -63,6 +63,17 @@ services:
         sync: false
       - key: SAMSARA_API_BASE
         value: https://api.samsara.com
+      # Drive HoS ELD fallbacks (Factor ELD, then Leader ELD). Primary config is
+      # the admin panel's Settings tab (stored encrypted); these are an optional
+      # fallback used only when the panel has no value.
+      - key: DRIVEHOS_API_BASE
+        value: https://api.drivehos.app
+      - key: DRIVEHOS_PROVIDER_KEY
+        sync: false
+      - key: FACTOR_ELD_COMPANY_KEY
+        sync: false
+      - key: LEADER_ELD_COMPANY_KEY
+        sync: false
       # Driver Raise Approval (75¢/mile) — Gmail App Password OTP channel.
       # Primary config is the admin panel (stored encrypted); these are an
       # optional fallback used only when the panel has no credentials.

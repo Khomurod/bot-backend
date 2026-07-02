@@ -20,6 +20,7 @@ import GroupAccessPage from "./pages/GroupAccessPage";
 import FuelMonitorPage from "./pages/FuelMonitorPage";
 import LocationMonitorPage from "./pages/LocationMonitorPage";
 import UsersPage from "./pages/UsersPage";
+import SettingsPage from "./pages/SettingsPage";
 
 function getPageFromPath(pathname) {
   if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) {
@@ -149,6 +150,7 @@ export default function App() {
     manager: <MessageManagerPage />,
     bot_messages: <BotMessagesPage />,
     scheduled: <ScheduledMessagesPage />,
+    settings: <SettingsPage />,
   };
 
   const NAV_SECTIONS = [
@@ -191,6 +193,7 @@ export default function App() {
     { key: 'manager', icon: '🛠️', label: 'Edit Message' },
     { key: 'bot_messages', icon: '📨', label: 'Bot Messages' },
     { key: 'scheduled', icon: '📅', label: 'Scheduled Messages' },
+    { key: 'settings', icon: '⚙️', label: 'Settings' },
   ];
 
   return (

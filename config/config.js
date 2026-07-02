@@ -100,14 +100,14 @@ module.exports = {
   samsaraApiKey: process.env.SAMSARA_API_KEY || resolvedSamsaraApiKeys[0] || '',
   samsaraApiKeys: resolvedSamsaraApiKeys,
   samsaraApiBase: process.env.SAMSARA_API_BASE || 'https://api.samsara.com',
-  evoEldApiKey: process.env.EVO_ELD_API_KEY || '',
-  evoEldProviderToken: process.env.EVO_ELD_PROVIDER_TOKEN || '',
-  evoEldUsdotNumber: process.env.EVO_ELD_USDOT_NUMBER || process.env.USDOT_NUMBER || '3574434',
-  evoEldApiBase: process.env.EVO_ELD_API_BASE || 'https://read.evoeld.com/api/v2',
-  ttEldApiKey: process.env.TT_ELD_API_KEY || '',
-  ttEldProviderToken: process.env.TT_ELD_PROVIDER_TOKEN || '',
-  ttEldUsdotNumber: process.env.TT_ELD_USDOT_NUMBER || process.env.USDOT_NUMBER || '3574434',
-  ttEldApiBase: process.env.TT_ELD_API_BASE || 'https://read.tteld.com/api/externalservice',
+  // Drive HoS ELD platform — powers the Factor ELD and Leader ELD live-location
+  // fallbacks (replacing the retired TT ELD / EVO ELD integrations). These are
+  // env fallbacks only; the admin Settings tab (eld_settings) is the primary,
+  // runtime-editable source of these credentials.
+  driveHosApiBase: process.env.DRIVEHOS_API_BASE || 'https://api.drivehos.app',
+  driveHosProviderKey: process.env.DRIVEHOS_PROVIDER_KEY || '',
+  factorEldCompanyKey: process.env.FACTOR_ELD_COMPANY_KEY || '',
+  leaderEldCompanyKey: process.env.LEADER_ELD_COMPANY_KEY || '',
   dispatchEtaTestGroupId: String(process.env.DISPATCH_ETA_TEST_GROUP_ID || '-5289094495').trim(),
   googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   googleGeocodingApiBase: process.env.GOOGLE_GEOCODING_API_BASE || 'https://maps.googleapis.com/maps/api/geocode/json',

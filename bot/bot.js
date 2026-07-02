@@ -642,7 +642,7 @@ async function startBot() {
             return;
           }
           console.error('[BOT] /location provider chain failed:', err.message);
-          await ctx.reply('Could not fetch live location from Samsara, EVO ELD, or TT ELD right now.');
+          await ctx.reply('Could not fetch live location from Samsara, Factor ELD, or Leader ELD right now.');
           return;
         }
         const { location, source } = resolved;
