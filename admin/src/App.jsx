@@ -21,6 +21,7 @@ import FuelMonitorPage from "./pages/FuelMonitorPage";
 import LocationMonitorPage from "./pages/LocationMonitorPage";
 import UsersPage from "./pages/UsersPage";
 import SettingsPage from "./pages/SettingsPage";
+import RecruiterKpiPage from "./pages/RecruiterKpiPage";
 
 function getPageFromPath(pathname) {
   if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) {
@@ -151,6 +152,7 @@ export default function App() {
     bot_messages: <BotMessagesPage />,
     scheduled: <ScheduledMessagesPage />,
     settings: <SettingsPage />,
+    recruiter_kpis: <RecruiterKpiPage />,
   };
 
   const NAV_SECTIONS = [
@@ -161,6 +163,7 @@ export default function App() {
         { key: 'dispatch', icon: '🚚', label: 'Dispatch Center' },
         { key: 'leads', icon: '📥', label: 'Leads' },
         { key: 'facebook_leads', icon: '👥', label: 'Customer Inquiries' },
+        { key: 'recruiter_kpis', icon: '📞', label: 'Recruiter KPIs' },
       ],
     },
     {

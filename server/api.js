@@ -1103,6 +1103,9 @@ app.use('/api/bot-users', createBotUsersRouter({ authMiddleware }));
 const { createSettingsRouter } = require('./routes/settingsRoutes');
 app.use('/api/settings', createSettingsRouter({ authMiddleware }));
 
+const { createRecruiterRouter } = require('./routes/recruiterRoutes');
+app.use('/api/recruiters', createRecruiterRouter({ authMiddleware }));
+
 const { createBotMessagesRouter } = require('./routes/botMessagesRoutes');
 app.use('/api/bot-messages', createBotMessagesRouter({ authMiddleware, telegram: bot.telegram }));
 

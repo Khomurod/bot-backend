@@ -1420,3 +1420,77 @@ export async function testEldProvider(payload) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+// ─── Settings: RingCentral recruiter-call KPIs ───
+
+export async function getRingCentralSettings() {
+  const res = await fetch(`${API_BASE}/settings/ringcentral`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.settings;
+}
+
+export async function updateRingCentralSettings(payload) {
+  const res = await fetch(`${API_BASE}/settings/ringcentral`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.settings;
+}
+
+export async function testRingCentral(payload) {
+  const res = await fetch(`${API_BASE}/settings/ringcentral/test`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+// ─── Recruiters + call KPIs ───
+
+export async function getRecruiters() {
+  const res = await fetch(`${API_BASE}/recruiters`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return Array.isArray(data.recruiters) ? data.recruiters : [];
+}
+
+export async function createRecruiter(payload) {
+  const res = await fetch(`${API_BASE}/recruiters`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function updateRecruiter(id, payload) {
+  const res = await fetch(`${API_BASE}/recruiters/${id}`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function deleteRecruiter(id) {
+  const res = await fetch(`${API_BASE}/recruiters/${id}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function syncRecruiterCalls(full = false) {
+  const res = await fetch(`${API_BASE}/recruiters/sync${full ? '?full=1' : ''}`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getRecruiterStats(date) {
+  const qs = date ? `?date=${encodeURIComponent(date)}` : '';
+  const res = await fetch(`${API_BASE}/recruiters/stats${qs}`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

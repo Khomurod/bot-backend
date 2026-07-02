@@ -10,6 +10,9 @@ const {
   getLiveLocationForGroupTitleFromDriveHos,
 } = require('../../services/driveHosEldService');
 const { getLiveLocationForGroupTitle } = require('../../services/samsaraLocationService');
+const rc = require('../../database/ringcentral');
+const { getAccessToken, fetchAccountCallLog } = require('../../services/ringCentralCallService');
+const { DateTime } = require('luxon');
 
 /**
  * Admin Settings API — manage live-location provider credentials.
@@ -97,6 +100,60 @@ function createSettingsRouter({ authMiddleware }) {
       return res.status(400).json({ error: 'Unknown provider. Use samsara, factor, or leader.' });
     } catch (err) {
       console.error(`[SETTINGS API] test ${provider} failed:`, err.message);
+      return res.json({ connected: false, message: err.message });
+    }
+  });
+
+  // ─── RingCentral settings (credentials + KPI targets/thresholds) ───
+
+  router.get('/ringcentral', authMiddleware, async (req, res) => {
+    try {
+      const settings = await rc.getRcSettingsForAdmin();
+      res.json({ settings });
+    } catch (err) {
+      console.error('[SETTINGS API] RC load failed:', err.message);
+      res.status(500).json({ error: 'Failed to load RingCentral settings' });
+    }
+  });
+
+  router.put('/ringcentral', authMiddleware, async (req, res) => {
+    try {
+      const settings = await rc.updateRcSettings(req.body || {});
+      res.json({ settings });
+    } catch (err) {
+      console.error('[SETTINGS API] RC update failed:', err.message);
+      res.status(500).json({ error: 'Failed to save RingCentral settings' });
+    }
+  });
+
+  // Live auth + call-log read test. Uses candidate creds from the body when
+  // supplied (verify before saving), otherwise the stored creds.
+  router.post('/ringcentral/test', authMiddleware, async (req, res) => {
+    try {
+      const stored = await rc.getRcConfig();
+      const cfg = {
+        apiBase: (String(req.body?.apiBase || '').trim() || stored.apiBase).replace(/\/+$/, ''),
+        clientId: String(req.body?.clientId || '').trim() || stored.clientId,
+        clientSecret: String(req.body?.clientSecret || '').trim() || stored.clientSecret,
+        jwtToken: String(req.body?.jwtToken || '').trim() || stored.jwtToken,
+      };
+      if (!cfg.clientId || !cfg.clientSecret || !cfg.jwtToken) {
+        return res.json({ connected: false, message: 'RingCentral credentials are incomplete.' });
+      }
+      await getAccessToken(cfg);
+      // Confirm call-log read scope by pulling the last hour.
+      const now = DateTime.now();
+      const records = await fetchAccountCallLog({
+        cfg,
+        dateFrom: now.minus({ hours: 1 }).toUTC().toISO(),
+        dateTo: now.toUTC().toISO(),
+      });
+      return res.json({
+        connected: true,
+        message: `Authenticated and read the call log (${records.length} call(s) in the last hour).`,
+      });
+    } catch (err) {
+      console.error('[SETTINGS API] RC test failed:', err.message);
       return res.json({ connected: false, message: err.message });
     }
   });
