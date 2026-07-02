@@ -234,6 +234,26 @@ function createRecruiterRouter({ authMiddleware }) {
     }
   });
 
+  // Public (unauthenticated) TODAY-only stats for the gamified /recruiters
+  // leaderboard the recruiting team keeps open on a screen. Deliberately
+  // limited: today only, names + KPI numbers — no phone numbers, no settings.
+  router.get('/public-stats', async (req, res) => {
+    try {
+      const cfg = await rc.getRcConfig();
+      const stats = await rc.getRecruiterStats(null, cfg);
+      res.json({
+        date: stats.date,
+        timezone: stats.timezone,
+        targets: stats.targets,
+        thresholds: stats.thresholds,
+        recruiters: stats.recruiters.map(({ phoneNumber, ...rest }) => rest),
+      });
+    } catch (err) {
+      console.error('[RECRUITER API] public stats failed:', err.message);
+      res.status(500).json({ error: 'Failed to load recruiter stats' });
+    }
+  });
+
   return router;
 }
 

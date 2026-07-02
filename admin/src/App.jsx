@@ -22,6 +22,7 @@ import LocationMonitorPage from "./pages/LocationMonitorPage";
 import UsersPage from "./pages/UsersPage";
 import SettingsPage from "./pages/SettingsPage";
 import RecruiterKpiPage from "./pages/RecruiterKpiPage";
+import RecruitersPublicPage from "./pages/RecruitersPublicPage";
 
 function getPageFromPath(pathname) {
   if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) {
@@ -29,6 +30,9 @@ function getPageFromPath(pathname) {
   }
   if (pathname === "/raise" || pathname.startsWith("/raise/")) {
     return "raise_public";
+  }
+  if (pathname === "/recruiters" || pathname.startsWith("/recruiters/")) {
+    return "recruiters_public";
   }
   return "groups";
 }
@@ -45,6 +49,7 @@ export default function App() {
   const [adminExpanded, setAdminExpanded] = useState(false);
   const isDispatchPage = page === "dispatch";
   const isRaisePublicPage = page === "raise_public";
+  const isRecruitersPublicPage = page === "recruiters_public";
 
   useEffect(() => {
     const handlePopState = () => {
@@ -109,6 +114,11 @@ export default function App() {
         <RaisePublicPage />
       </main>
     );
+  }
+
+  // Full-bleed public leaderboard — no admin chrome, no auth.
+  if (isRecruitersPublicPage) {
+    return <RecruitersPublicPage />;
   }
 
   if (checking) {

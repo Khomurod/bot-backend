@@ -2977,7 +2977,7 @@ app.delete('/api/employee-birthdays/:id', authMiddleware, async (req, res) => {
 });
 
 // ─── Catch-all for admin SPA (/admin and public /dispatch share one build) ───
-app.get(['/admin', '/admin/*', '/dispatch', '/dispatch/*', '/raise', '/raise/*'], (req, res) => {
+app.get(['/admin', '/admin/*', '/dispatch', '/dispatch/*', '/raise', '/raise/*', '/recruiters', '/recruiters/*'], (req, res) => {
   if (!fs.existsSync(adminSpaIndexPath)) {
     return res.status(503).type('text/plain').send(
       'Admin UI build is missing (admin/build/index.html). '

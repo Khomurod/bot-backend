@@ -1512,3 +1512,10 @@ export async function diagnoseRecruiter(id, payload) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+/** Public (no-auth) today-only recruiter stats for the /recruiters leaderboard. */
+export async function getPublicRecruiterStats() {
+  const res = await fetch(`${API_BASE}/recruiters/public-stats`);
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
