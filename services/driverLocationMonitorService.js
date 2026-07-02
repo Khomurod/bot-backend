@@ -236,12 +236,12 @@ function buildCheckinMessageFallback({ driverTag, stopType, locationLabel, miles
   const whereUz = stopType === 'shipper' ? 'yuk yuklovchi (pickup)' : 'yuk qabul qiluvchi (delivery)';
   const place = locationLabel ? ` (${escapeHtml(locationLabel)})` : '';
   if (language === 'ru') {
-    return `📍 ${driverTag} — вы примерно в ${milesText} миль(ях) от ${whereRu}${place}. Сообщите статус кнопкой ниже: «Отметился» (Checked In) или «Выехал» (Checked Out).`;
+    return `📍 ${driverTag} — вы примерно в ${milesText} миль(ях) от ${whereRu}${place}. Нажмите «Checked In», когда отметитесь по прибытии, и «Checked Out», когда выедете.`;
   }
   if (language === 'uz') {
-    return `📍 ${driverTag} — siz ${whereUz}${place}dan taxminan ${milesText} mil uzoqdasiz. Quyidagi tugma orqali holatingizni bildiring: «Checked In» yoki «Checked Out».`;
+    return `📍 ${driverTag} — siz ${whereUz}${place}dan taxminan ${milesText} mil uzoqdasiz. Yetib borib ro'yxatdan o'tganingizda «Checked In», chiqib ketayotganingizda «Checked Out» tugmasini bosing.`;
   }
-  return `📍 ${driverTag} — you're about ${milesText} miles from the ${where}${place}. Report your status at the ${stopType} using the buttons below: Checked In or Checked Out.`;
+  return `📍 ${driverTag} — you're about ${milesText} miles from the ${where}${place}. Tap Checked In when you check in at the ${stopType}, then Checked Out when you leave.`;
 }
 
 /** Word the check-in prompt with AI when available; fall back to templates. */
@@ -258,7 +258,7 @@ async function buildCheckinMessage({ driverTag, stopType, locationLabel, distanc
     const prompt = [
       `Write a short, friendly Telegram message in ${langLabel} to a truck driver.`,
       `The driver is about ${milesText} miles from the ${stopType === 'shipper' ? 'shipper (pickup location)' : 'receiver (delivery location)'}${locationLabel ? ` at ${locationLabel}` : ''}.`,
-      `Ask them to report their status at the ${stopType} using the two buttons below the message: "Checked In" or "Checked Out". Keep it to one sentence. Start with "${driverTag}" exactly (it is a mention). Do not add buttons or quotes.`,
+      `Ask them to tap the "Checked In" button below the message when they check in at the ${stopType}, and the "Checked Out" button when they leave. Keep it to one sentence. Start with "${driverTag}" exactly (it is a mention). Do not add buttons or quotes.`,
     ].join('\n');
     const { text } = await geminiClient.callGeminiText({
       userText: prompt,

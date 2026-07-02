@@ -1327,9 +1327,19 @@ export async function updateAllLocationMonitors(payload) {
   return res.json();
 }
 
-/** Recent check-in history (Yes/No answers + on-time) for one driver group. */
+/** Recent check-in history (arrival/departure taps + dwell) for one driver group. */
 export async function getLocationCheckins(groupId, limit = 50) {
   const res = await fetch(`${API_BASE}/location-monitor/${groupId}/checkins?limit=${encodeURIComponent(limit)}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+// ─── Bot Users (everyone who has tapped the bot's inline buttons) ───
+
+export async function getBotUsers(limit = 200) {
+  const res = await fetch(`${API_BASE}/bot-users?limit=${encodeURIComponent(limit)}`, {
     headers: getHeaders(),
   });
   if (!res.ok) { await handleApiError(res); }

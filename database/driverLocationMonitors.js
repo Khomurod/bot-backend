@@ -4,8 +4,9 @@
  *
  * Two tables back this feature:
  *   - driver_location_monitors   : per-group toggle + scheduler/load state
- *   - driver_location_checkins   : one row per "are you checked in?" prompt,
- *                                  recording the Yes/No answer and on-time flag
+ *   - driver_location_checkins   : one row per check-in prompt, recording the
+ *                                  Checked In / Checked Out taps (arrival and
+ *                                  departure times → facility dwell) + on-time
  *
  * The claim/poll/reschedule shape mirrors dispatch_eta_updates and
  * fuel_stop_alerts: rows schedule their own next wake-up, and a concurrent-safe
@@ -374,48 +375,95 @@ async function getCheckinById(id) {
 }
 
 /**
- * Record the driver's Yes/No answer. Idempotent: only the first answer for a
- * still-awaiting row wins (returns { record, alreadyAnswered }). on_time is
- * computed by the caller (it depends on appointment vs. answer time) and passed
- * in.
+ * Record the driver tapping "Checked In" (arrival at the facility). Idempotent:
+ * only the first tap on a still-awaiting row wins — a second tap (or a tap
+ * after checkout) returns { record, alreadyDone: true }. on_time is computed by
+ * the caller (it depends on appointment vs. arrival time) and passed in.
  */
-async function recordCheckinResponse(id, {
-  response,
+async function recordCheckinArrival(id, {
   username = null,
   userId = null,
   onTime = null,
 }) {
   const res = await query(
     `UPDATE driver_location_checkins
-     SET status = 'answered',
-         driver_response = $2,
-         responded_by_username = $3,
-         responded_by_user_id = $4,
+     SET status = 'checked_in',
+         driver_response = 'checked_in',
+         checked_in_at = NOW(),
+         checked_in_by_username = $2,
+         checked_in_by_user_id = $3,
+         responded_by_username = $2,
+         responded_by_user_id = $3,
          responded_at = NOW(),
-         on_time = $5
+         on_time = $4
      WHERE id = $1
        AND status = 'awaiting_response'
      RETURNING *`,
     [
       Number(id),
-      response,
       username ? String(username).slice(0, 64) : null,
       userId != null ? Number(userId) : null,
       typeof onTime === 'boolean' ? onTime : null,
     ]
   );
   if (res.rows[0]) {
-    return { record: res.rows[0], alreadyAnswered: false };
+    return { record: res.rows[0], alreadyDone: false };
   }
   const current = await getCheckinById(id);
-  return { record: current, alreadyAnswered: true };
+  return { record: current, alreadyDone: true };
 }
 
-/** Recent check-ins for a group (admin history view). */
+/**
+ * Record the driver tapping "Checked Out" (departure). Accepted from
+ * 'checked_in' (normal flow — dwell = checked_out_at - checked_in_at) and from
+ * 'awaiting_response' (driver skipped the Checked In tap; no dwell known).
+ * Idempotent: a second tap returns { record, alreadyDone: true }.
+ */
+async function recordCheckinDeparture(id, {
+  username = null,
+  userId = null,
+  onTime = null,
+}) {
+  const res = await query(
+    `UPDATE driver_location_checkins
+     SET status = 'completed',
+         driver_response = 'checked_out',
+         checked_out_at = NOW(),
+         checked_out_by_username = $2,
+         checked_out_by_user_id = $3,
+         responded_by_username = COALESCE(responded_by_username, $2),
+         responded_by_user_id = COALESCE(responded_by_user_id, $3),
+         responded_at = COALESCE(responded_at, NOW()),
+         on_time = COALESCE(on_time, $4)
+     WHERE id = $1
+       AND status IN ('awaiting_response', 'checked_in')
+     RETURNING *,
+       CASE WHEN checked_in_at IS NOT NULL
+            THEN ROUND(EXTRACT(EPOCH FROM (checked_out_at - checked_in_at)) / 60)::INTEGER
+            ELSE NULL END AS dwell_minutes`,
+    [
+      Number(id),
+      username ? String(username).slice(0, 64) : null,
+      userId != null ? Number(userId) : null,
+      typeof onTime === 'boolean' ? onTime : null,
+    ]
+  );
+  if (res.rows[0]) {
+    return { record: res.rows[0], alreadyDone: false };
+  }
+  const current = await getCheckinById(id);
+  return { record: current, alreadyDone: true };
+}
+
+/** Recent check-ins for a group (admin history view), with computed dwell. */
 async function listCheckinsForGroup(groupId, limit = 50) {
   const safeLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : 50;
   const res = await query(
-    `SELECT * FROM driver_location_checkins
+    `SELECT *,
+       CASE WHEN checked_in_at IS NOT NULL AND checked_out_at IS NOT NULL
+            THEN ROUND(EXTRACT(EPOCH FROM (checked_out_at - checked_in_at)) / 60)::INTEGER
+            ELSE NULL END AS dwell_minutes
+     FROM driver_location_checkins
      WHERE group_id = $1
      ORDER BY created_at DESC
      LIMIT $2`,
@@ -424,23 +472,33 @@ async function listCheckinsForGroup(groupId, limit = 50) {
   return res.rows;
 }
 
-/** Per-group on-time summary (counts), used for the admin dashboard cards. */
+/** Per-group summary (counts + average facility dwell) for the admin cards. */
 async function getCheckinStatsForGroup(groupId) {
   const res = await query(
     `SELECT
-       COUNT(*) FILTER (WHERE status = 'answered')                          AS answered,
-       COUNT(*) FILTER (WHERE driver_response IN ('yes', 'checked_in'))     AS checked_in,
-       COUNT(*) FILTER (WHERE driver_response IN ('no', 'checked_out'))     AS checked_out,
-       COUNT(*) FILTER (WHERE on_time = TRUE)                               AS on_time,
-       COUNT(*) FILTER (WHERE on_time = FALSE)                              AS late
+       COUNT(*) FILTER (WHERE status IN ('answered', 'checked_in', 'completed'))       AS answered,
+       COUNT(*) FILTER (WHERE checked_in_at IS NOT NULL
+                           OR driver_response IN ('yes', 'checked_in'))                AS checked_in,
+       COUNT(*) FILTER (WHERE checked_out_at IS NOT NULL
+                           OR driver_response IN ('no', 'checked_out'))                AS checked_out,
+       COUNT(*) FILTER (WHERE on_time = TRUE)                                          AS on_time,
+       COUNT(*) FILTER (WHERE on_time = FALSE)                                         AS late,
+       ROUND(AVG(EXTRACT(EPOCH FROM (checked_out_at - checked_in_at)) / 60)
+             FILTER (WHERE checked_in_at IS NOT NULL AND checked_out_at IS NOT NULL))  AS avg_dwell_minutes
      FROM driver_location_checkins
      WHERE group_id = $1`,
     [Number(groupId)]
   );
-  return res.rows[0] || { answered: 0, checked_in: 0, checked_out: 0, on_time: 0, late: 0 };
+  return res.rows[0] || {
+    answered: 0, checked_in: 0, checked_out: 0, on_time: 0, late: 0, avg_dwell_minutes: null,
+  };
 }
 
-/** Expire stale awaiting prompts so the monitor can re-prompt later if needed. */
+/**
+ * Expire stale never-tapped prompts so the monitor stops treating them as open.
+ * Rows already 'checked_in' are left alone — the driver is at the facility and
+ * the Checked Out button must keep working however long they stay.
+ */
 async function expireStaleCheckins(olderThanHours = 12) {
   const res = await query(
     `UPDATE driver_location_checkins
@@ -466,7 +524,8 @@ module.exports = {
   createCheckin,
   setCheckinPromptMessageId,
   getCheckinById,
-  recordCheckinResponse,
+  recordCheckinArrival,
+  recordCheckinDeparture,
   listCheckinsForGroup,
   getCheckinStatsForGroup,
   expireStaleCheckins,

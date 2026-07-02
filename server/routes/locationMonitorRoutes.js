@@ -81,9 +81,10 @@ function createLocationMonitorRouter({ authMiddleware }) {
             checked_out: Number(stats.checked_out) || 0,
             on_time: Number(stats.on_time) || 0,
             late: Number(stats.late) || 0,
+            avg_dwell_minutes: stats.avg_dwell_minutes != null ? Number(stats.avg_dwell_minutes) : null,
           };
         } catch (_) {
-          row.stats = { answered: 0, checked_in: 0, checked_out: 0, on_time: 0, late: 0 };
+          row.stats = { answered: 0, checked_in: 0, checked_out: 0, on_time: 0, late: 0, avg_dwell_minutes: null };
         }
       }
       res.json({ groups: mapped });
@@ -203,6 +204,11 @@ function createLocationMonitorRouter({ authMiddleware }) {
           driver_response: c.driver_response,
           responded_by_username: c.responded_by_username,
           responded_at: c.responded_at,
+          checked_in_at: c.checked_in_at || null,
+          checked_out_at: c.checked_out_at || null,
+          checked_in_by_username: c.checked_in_by_username || null,
+          checked_out_by_username: c.checked_out_by_username || null,
+          dwell_minutes: c.dwell_minutes != null ? Number(c.dwell_minutes) : null,
           on_time: c.on_time,
           created_at: c.created_at,
         })),
@@ -212,6 +218,7 @@ function createLocationMonitorRouter({ authMiddleware }) {
           checked_out: Number(stats.checked_out) || 0,
           on_time: Number(stats.on_time) || 0,
           late: Number(stats.late) || 0,
+          avg_dwell_minutes: stats.avg_dwell_minutes != null ? Number(stats.avg_dwell_minutes) : null,
         },
       });
     } catch (err) {

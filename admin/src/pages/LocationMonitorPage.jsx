@@ -241,8 +241,9 @@ export default function LocationMonitorPage() {
         <p>
           Toggle live load tracking per driver. When on, the bot pulls the driver's current load from
           Datatruck, decides whether they're heading to the shipper or receiver, watches the ETA, and
-          asks the driver to report their status (Checked In / Checked Out) once when they reach the
-          stop — building an on-time history for every shipper and receiver.
+          prompts the driver once when they reach the stop: they tap Checked In on arrival and
+          Checked Out when they leave — building an on-time history and facility dwell times for
+          every shipper and receiver.
         </p>
       </div>
 
@@ -366,6 +367,9 @@ export default function LocationMonitorPage() {
                     <span>🚪 Checked out: {row.stats.checked_out}</span>
                     <span>⏱️ On time: {row.stats.on_time}</span>
                     <span>🐢 Late: {row.stats.late}</span>
+                    {row.stats.avg_dwell_minutes != null && (
+                      <span>🏭 Avg time at facility: {formatEtaMinutes(row.stats.avg_dwell_minutes)}</span>
+                    )}
                   </div>
                 )}
 
@@ -435,7 +439,10 @@ export default function LocationMonitorPage() {
                             <tr style={{ textAlign: "left", color: "var(--text-secondary)" }}>
                               <th style={{ padding: "4px 8px" }}>When</th>
                               <th style={{ padding: "4px 8px" }}>Stop</th>
-                              <th style={{ padding: "4px 8px" }}>Answer</th>
+                              <th style={{ padding: "4px 8px" }}>Status</th>
+                              <th style={{ padding: "4px 8px" }}>Checked in</th>
+                              <th style={{ padding: "4px 8px" }}>Checked out</th>
+                              <th style={{ padding: "4px 8px" }}>Time at facility</th>
                               <th style={{ padding: "4px 8px" }}>On time</th>
                               <th style={{ padding: "4px 8px" }}>By</th>
                             </tr>
@@ -446,7 +453,14 @@ export default function LocationMonitorPage() {
                                 <td style={{ padding: "4px 8px" }}>{formatDateTime(c.created_at)}</td>
                                 <td style={{ padding: "4px 8px", textTransform: "capitalize" }}>{c.stop_type}</td>
                                 <td style={{ padding: "4px 8px" }}>
-                                  {(c.driver_response === "checked_in" || c.driver_response === "yes") ? "✅ Checked In" : (c.driver_response === "checked_out" || c.driver_response === "no") ? "🚪 Checked Out" : c.status === "expired" ? "⌛ Expired" : "… waiting"}
+                                  {c.status === "completed" || c.driver_response === "checked_out" || c.driver_response === "no" ? "🚪 Checked Out"
+                                    : c.status === "checked_in" || c.driver_response === "checked_in" || c.driver_response === "yes" ? "✅ Checked In"
+                                    : c.status === "expired" ? "⌛ Expired" : "… waiting"}
+                                </td>
+                                <td style={{ padding: "4px 8px" }}>{formatDateTime(c.checked_in_at)}</td>
+                                <td style={{ padding: "4px 8px" }}>{formatDateTime(c.checked_out_at)}</td>
+                                <td style={{ padding: "4px 8px" }}>
+                                  {c.dwell_minutes != null ? formatEtaMinutes(c.dwell_minutes) : "—"}
                                 </td>
                                 <td style={{ padding: "4px 8px" }}>
                                   {c.on_time === true ? "On time" : c.on_time === false ? "Late" : "—"}
