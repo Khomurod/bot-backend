@@ -3,6 +3,9 @@ dist/
 admin/node_modules/
 admin/dist/
 admin/build/
+fleet/node_modules/
+fleet/dist/
+fleet/build/
 __pycache__/
 *.pyc
 *.pyo
