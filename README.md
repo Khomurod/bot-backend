@@ -148,7 +148,7 @@ Optional variables:
 | `EMPLOYEE_GROUP_ID` | Telegram employee group ID (employee birthdays, home-time notices, raise-approval announcements) |
 | `MEDIA_STORAGE_CHAT_ID` | Optional storage chat used to upload media and capture reusable `file_id`s |
 | `OPENAI_API_KEY` | OpenAI API key (enables auto-translation) |
-| `GROQ_API_KEY` | Groq API key (AI reports, insights, Ask Data, chat annotation, dispatch parsing) |
+| `GROQ_API_KEY` | Groq API key (AI reports, insights, chat annotation, dispatch parsing) |
 | `GROQ_AI_MODEL` | Optional Groq model for reports/insights (default: `llama-3.3-70b-versatile`) |
 | `GROQ_AI_FAST_MODEL` | Optional fast Groq model for annotation batches (default: `llama-3.1-8b-instant`) |
 | `GROQ_AI_FALLBACK_MODELS` | Comma-separated Groq models to try when one hits rate limits (limits are **per model**) |

@@ -74,30 +74,6 @@ async function main() {
 
     const token = login.json.token;
 
-    console.log('\n=== POST /api/ai-ask (Groq plan + SQL + narrative) ===');
-    const ask = await httpJson(
-      base,
-      'POST',
-      '/api/ai-ask',
-      {
-        question:
-          'In the last 30 days, which senders had the most messages with intent home_time_request? Show top 5 as a count per sender_name.',
-      },
-      token
-    );
-    console.log('status:', ask.status);
-    if (ask.status !== 200) {
-      console.log('body:', JSON.stringify(ask.json, null, 2).slice(0, 2500));
-    } else {
-      console.log('row_count:', ask.json.row_count);
-      console.log('plan:', JSON.stringify(ask.json.plan, null, 2)?.slice(0, 1500));
-      console.log('sql (truncated):', String(ask.json.sql || '').slice(0, 600));
-      console.log('answer_html (first 1200 chars):\n', String(ask.json.answer_html || '').slice(0, 1200));
-      if (Array.isArray(ask.json.rows) && ask.json.rows.length) {
-        console.log('sample row[0]:', JSON.stringify(ask.json.rows[0], null, 2));
-      }
-    }
-
     if (SKIP_GENERATE) {
       console.log('\n[E2E] E2E_SKIP_GENERATE=1 — skipping /api/ai-insights/generate');
       return;

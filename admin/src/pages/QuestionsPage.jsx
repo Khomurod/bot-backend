@@ -155,5 +155,3 @@ export default function QuestionsPage() {
     </div>
   );
 }
-
-// ─────────────── Chat Logs Page ───────────────

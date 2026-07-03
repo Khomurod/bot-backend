@@ -13,14 +13,12 @@
 
 1. **Reliability over novelty.** The best change is the smallest safe one.
 2. **Structured API data first**, AI/OCR fallback second.
-3. **AI never touches raw SQL.** Ask-the-Data uses a whitelisted JSON query
-   plan compiled server-side (`services/aiAskService.js`).
-4. **Untrusted driver text is fenced** before being sent to any model
+3. **Untrusted driver text is fenced** before being sent to any model
    (`services/aiAnalysisService.js`, `services/aiAnnotationService.js`).
-5. **Idempotency is preserved** for every external send (Telegram, RingCentral,
+4. **Idempotency is preserved** for every external send (Telegram, RingCentral,
    Bitrix24, Meta webhook, Datatruck). See the idempotency ledgers below.
-6. **Retries stay safe**, with exponential backoff where already used.
-7. This is a **modular monolith**, not microservices. One repo, one main
+5. **Retries stay safe**, with exponential backoff where already used.
+6. This is a **modular monolith**, not microservices. One repo, one main
    deployment, plus two already-justified separate processes:
    - the **Python leads-bot** child process (`leads-bot/`), and
    - the **Samsara safety poller** in its own repo
@@ -104,7 +102,7 @@ organization should converge toward.
 
 | Concern | Current files |
 |---|---|
-| Feedback surveys (multilingual) | `bot/anonymousFeedbackHandlers.js`, questions/options/responses in `database/db.js`, `services/translationService.js`, admin `QuestionsPage.jsx`, `ChatLogsPage.jsx` |
+| Feedback surveys (multilingual) | `bot/anonymousFeedbackHandlers.js`, questions/options/responses in `database/db.js`, `services/translationService.js`, admin `QuestionsPage.jsx` |
 | Broadcasts & scheduled messages | `services/schedulerService.js`, `scheduledMessageUtils.js`, `broadcastTargetService.js`, `broadcastTemplateService.js`, `bot/creatorMessageManager.js`, admin `BroadcastPage.jsx`, `ScheduledMessagesPage.jsx`, `MessageManagerPage.jsx` |
 | BOL/POD document delivery (idempotent) | `services/datatruckDocumentService.js`, `datatruckDocumentHelpers.js`, `database/datatruckDocuments.js` (`datatruck_document_deliveries`) |
 | Fuel-stop reminders | `services/fuelStopAlertService.js`, `server/routes/fuelMonitorRoutes.js`, `fuel_stop_alerts` + `fuel_monitor_inbox`, admin `FuelMonitorPage.jsx` |
@@ -135,17 +133,16 @@ organization should converge toward.
 | Concern | Current files |
 |---|---|
 | LLM clients (with per-provider model fallback) | `services/groqClient.js` (primary), `services/geminiClient.js` (cross-provider fallback) |
-| AI management insights & rendering | `services/aiInsightsService.js`, `services/insightRenderer.js`, `services/aiAnalysisService.js` (weekly company/driver reports), `services/aiAnnotationService.js` (message classifier), admin `AiFeaturesPage.jsx`, `AskDataPanel.jsx` |
-| **Ask-the-Data** — whitelisted JSON query plan → server-compiled SQL | `services/aiAskService.js` **(single implementer)** |
+| AI management insights & rendering | `services/aiInsightsService.js`, `services/insightRenderer.js`, `services/aiAnalysisService.js` (weekly company/driver reports), `services/aiAnnotationService.js` (message classifier), admin `AiFeaturesPage.jsx` |
 | **Prompt-injection protection / untrusted-text fencing** | `services/aiAnalysisService.js` (`<driver_transcript>` fence + `sanitizeTranscriptLine`), `services/aiAnnotationService.js` (`sanitizeForPrompt`) |
+| Live Locations — map of all active units (location + load + ETA) | `services/liveLocationsService.js`, `server/routes/liveLocationsRoutes.js`, admin `LiveLocationsPage.jsx`; reuses `liveLocationResolver`/`samsaraLocationService`/`driveHosEldService`/`datatruckLoadService`/`etaRoutingService`/`geocoder`. See `docs/architecture/live-locations.md`. |
 | Driver safety captions | **External** (`samsara-integration`), not in this repo |
 
+> **Retired:** "Ask-the-Data" (`aiAskService.js`, `AskDataPanel.jsx`, `POST /api/ai-ask`)
+> and "Chat Monitor" (`ChatLogsPage.jsx`, `GET /api/chat-logs`) were fully removed.
+> See `docs/architecture/retired-ai-ask-chat-monitor.md`.
+
 **AI safety invariants — verify before any AI change:**
-- `aiAskService.js` compiles a strict JSON plan into **one parameterized SELECT**
-  over the `v_annotated_messages` view with whitelisted fields/operators/aggs and
-  a hard `LIMIT 200`. Header comment: *"Nothing here constructs SQL from model
-  free-text. Plans that violate the whitelist are rejected."* The model is told
-  *"Never return SQL. Never return code fences."* Covered by `tests/aiAsk.test.js`.
 - Untrusted driver transcripts are wrapped in fences and sanitized before the
   model sees them; the system prompt says to treat fenced content as data, never
   instructions. Covered by `tests/aiTranscriptFence.test.js`.
@@ -196,7 +193,6 @@ organization should converge toward.
 | Area | Risk | Guidance |
 |---|---|---|
 | `bot/bot.js` | Central Telegraf wiring; handler order matters (specific `bot.action` before generic `callback_query`). | Never reorder handlers casually. Add new handlers next to related ones. |
-| `services/aiAskService.js` | Any loosening of the whitelist becomes a SQL-injection surface. | Never let model output build SQL. Keep `LIMIT`, param binding, and field whitelist. |
 | `aiAnalysisService.js` / `aiAnnotationService.js` fencing | Removing the fence exposes prompt injection from driver chat. | Keep the `<driver_transcript>` fence + sanitizers. |
 | `index.js` orchestration | Ordering/backoff/circuit-breaker prevent OOM restart loops. | Do not remove the circuit breaker or `--max-old-space-size` caps. |
 | `database/db.js` (~3,500 lines) | Huge shared query surface used everywhere. | Split *by moving functions into existing per-feature `database/*.js` files one at a time*, re-exporting from `db.js` to preserve imports; run tests after each move. |
@@ -221,7 +217,7 @@ public function renames.
    `services/` folder works fine today.
 
 **What should NOT be touched yet:** `bot/bot.js` internals, `index.js`
-orchestration, `aiAskService.js` whitelist, the AI fencing, any idempotency
+orchestration, the AI fencing, any idempotency
 ledger, `schema.sql` table definitions, and the Samsara separation.
 
 ## How to run / test / build (verified from `package.json`)

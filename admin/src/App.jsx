@@ -21,8 +21,7 @@ import UsersPage from "./pages/UsersPage";
 import SettingsPage from "./pages/SettingsPage";
 import RecruiterKpiPage from "./pages/RecruiterKpiPage";
 import RecruitersPublicPage from "./pages/RecruitersPublicPage";
-import AskDataPanel from "./pages/AskDataPanel";
-import ChatLogsPage from "./pages/ChatLogsPage";
+import LiveLocationsPage from "./pages/LiveLocationsPage";
 
 function getPageFromPath(pathname) {
   if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) {
@@ -165,8 +164,7 @@ export default function App() {
     scheduled: <ScheduledMessagesPage />,
     settings: <SettingsPage />,
     recruiter_kpis: <RecruiterKpiPage />,
-    ask_data: <AskDataPanel />,
-    chat_logs: <ChatLogsPage />,
+    live_locations: <LiveLocationsPage />,
   };
 
   const NAV_SECTIONS = [
@@ -175,6 +173,7 @@ export default function App() {
       color: '#22c55e',
       items: [
         { key: 'dispatch', icon: '🚚', label: 'Dispatch Center' },
+        { key: 'live_locations', icon: '📍', label: 'Live Locations' },
         { key: 'leads', icon: '📥', label: 'Leads' },
         { key: 'facebook_leads', icon: '👥', label: 'Customer Inquiries' },
         { key: 'recruiter_kpis', icon: '📞', label: 'Recruiter KPIs' },
@@ -186,14 +185,6 @@ export default function App() {
       items: [
         { key: 'broadcast', icon: '📢', label: 'Send Message' },
         { key: 'questions', icon: '📝', label: 'Surveys' },
-      ],
-    },
-    {
-      label: 'Insights',
-      color: '#f59e0b',
-      items: [
-        { key: 'ask_data', icon: '🔍', label: 'Ask the Data' },
-        { key: 'chat_logs', icon: '💬', label: 'Chat Monitor' },
       ],
     },
     {
