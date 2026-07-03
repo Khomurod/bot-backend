@@ -43,11 +43,6 @@ const {
   stopFuelStopAlertService,
 } = require('./services/fuelStopAlertService');
 const {
-  configureDriverLocationTelegram,
-  startDriverLocationMonitorService,
-  stopDriverLocationMonitorService,
-} = require('./services/driverLocationMonitorService');
-const {
   startRecruiterCallSyncService,
   stopRecruiterCallSyncService,
 } = require('./services/recruiterCallSyncService');
@@ -303,7 +298,6 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopDatatruckDocumentService(); } catch (err) { console.error('[SHUTDOWN] stopDatatruckDocumentService failed:', err.message); }
   try { stopRaiseApprovalService(); } catch (err) { console.error('[SHUTDOWN] stopRaiseApprovalService failed:', err.message); }
   try { stopFuelStopAlertService(); } catch (err) { console.error('[SHUTDOWN] stopFuelStopAlertService failed:', err.message); }
-  try { stopDriverLocationMonitorService(); } catch (err) { console.error('[SHUTDOWN] stopDriverLocationMonitorService failed:', err.message); }
   try { stopRecruiterCallSyncService(); } catch (err) { console.error('[SHUTDOWN] stopRecruiterCallSyncService failed:', err.message); }
   try { stopRoadBonusNotifierService(); } catch (err) { console.error('[SHUTDOWN] stopRoadBonusNotifierService failed:', err.message); }
 
@@ -333,7 +327,6 @@ async function start() {
   await db.initializeDatabase();
 
   configureDispatchEtaTelegram(bot.telegram);
-  configureDriverLocationTelegram(bot.telegram);
   const { getLeadsTelegram } = require('./services/leadsTelegramClient');
   configureFacebookLeadTelegram(getLeadsTelegram());
   console.log('[BOOT] Facebook lead Telegram delivery uses TELEGRAM_BOT_TOKEN (WenzeLeadBots).');
@@ -349,7 +342,6 @@ async function start() {
   startDatatruckDocumentService();
   startRaiseApprovalService();
   startFuelStopAlertService(bot.telegram);
-  startDriverLocationMonitorService(bot.telegram);
   startRecruiterCallSyncService();
   startRoadBonusNotifierService(bot.telegram);
   await startFacebookWebhookWorker();

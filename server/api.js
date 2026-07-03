@@ -1090,8 +1090,6 @@ app.use('/api/home-time', createHomeTimeRouter({ authMiddleware }));
 const { createFuelMonitorRouter } = require('./routes/fuelMonitorRoutes');
 app.use('/api/fuel-monitor', createFuelMonitorRouter({ authMiddleware, telegram: bot.telegram }));
 
-const { createLocationMonitorRouter } = require('./routes/locationMonitorRoutes');
-app.use('/api/location-monitor', createLocationMonitorRouter({ authMiddleware }));
 
 const { createBotUsersRouter } = require('./routes/botUsersRoutes');
 app.use('/api/bot-users', createBotUsersRouter({ authMiddleware }));
