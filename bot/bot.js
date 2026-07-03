@@ -599,12 +599,18 @@ async function startBot() {
           groupId: group.id,
         });
 
-        const lines = [
+        const lines = [];
+        // When Datatruck is the source, lead with the load number + status it now
+        // provides (the shared current-load service). Other fallback sources have
+        // no structured load id, so these lines are simply omitted for them.
+        if (context.loadIdentifier) lines.push(`Load #: ${context.loadIdentifier}`);
+        if (context.status) lines.push(`Status: ${context.status}`);
+        lines.push(
           `Resolved from: ${context.source}`,
           `Pickup: ${context.pickupSummary || '—'}`,
           `Delivery: ${context.deliverySummary || '—'}`,
           `Destination (routing): ${context.destinationQuery || '—'}`,
-        ];
+        );
         await ctx.reply(lines.join('\n'));
       } catch (err) {
         if (err?.code === 'LOAD_CONTEXT_NOT_FOUND') {

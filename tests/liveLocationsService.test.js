@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   computeNextStop,
   indexOrdersByDriver,
+  indexOrdersByUnit,
   orderSortKey,
   resolveLocationForUnit,
   buildLocationFromSamsaraVehicle,
@@ -61,6 +62,31 @@ test('indexOrdersByDriver keys the best order by normalized driver name', () => 
   ];
   const idx = indexOrdersByDriver(orders, now);
   assert.equal(idx.get('john doe').id, 2); // upcoming pickup wins the tie
+});
+
+test('indexOrdersByUnit matches the unit token inside trip.truck__unit_number', () => {
+  const now = Date.now();
+  const orders = [
+    { id: 10, trip: { truck__unit_number: '771 JAFAR' }, pickup_time: new Date(now + 3_600_000).toISOString() },
+    { id: 11, trip: { truck__unit_number: '#314 CMP' }, pickup_time: new Date(now + 7_200_000).toISOString() },
+  ];
+  const idx = indexOrdersByUnit(orders, now);
+  assert.equal(idx.get('771').id, 10);
+  assert.equal(idx.get('314').id, 11); // "#314 CMP" normalizes to 314
+});
+
+test('computeNextStop carries structured coordinates through to the next stop', () => {
+  const now = Date.now();
+  const stop = computeNextStop({
+    pickupAddress: '1 Origin St',
+    deliveryAddress: '2 Dest Ave',
+    pickupWindowEnd: new Date(now + 3_600_000).toISOString(),
+    pickupLat: 41, pickupLng: -87,
+    deliveryLat: 40, deliveryLng: -75,
+  }, now);
+  assert.equal(stop.nextStopType, 'pickup');
+  assert.equal(stop.nextStopLat, 41);
+  assert.equal(stop.nextStopLng, -87);
 });
 
 // ─── unit enumeration fallback ─────────────────────────────────────────────────

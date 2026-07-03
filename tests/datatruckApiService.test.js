@@ -50,6 +50,29 @@ test('Datatruck client does not retry permanent authentication failures', async 
   assert.equal(calls, 1);
 });
 
+test('normalizeUnitForMatch handles the common unit label styles', () => {
+  const client = loadClient();
+  const n = client.normalizeUnitForMatch;
+  // #562, Unit 562, TRUCK-562, plain 562, zero-padded — all normalize to "562".
+  assert.equal(n('562'), '562');
+  assert.equal(n('#562'), '562');
+  assert.equal(n('Unit 562'), '562');
+  assert.equal(n('TRUCK-562'), '562');
+  assert.equal(n('0562'), '562');
+  assert.equal(n('562 - Driver Name'), '562');
+  assert.equal(n('DISPATCH'), null);
+});
+
+test('orderUnitCandidates extracts the unit token from trip.truck__unit_number', () => {
+  const client = loadClient();
+  const cands = client.orderUnitCandidates({ trip: { truck__unit_number: '771 JAFAR' } });
+  const normalized = cands.map((c) => client.normalizeUnitForMatch(c));
+  assert.ok(normalized.includes('771'));
+  // assigned_driver_n_truck fallback is also read.
+  const cands2 = client.orderUnitCandidates({ assigned_driver_n_truck: { truck_unit_number: '#314' } });
+  assert.ok(cands2.map((c) => client.normalizeUnitForMatch(c)).includes('314'));
+});
+
 test('document scan merges pickup and delivery orders by id', () => {
   const client = loadClient();
   const pickup = [{ id: 1, source: 'pickup' }, { id: 2, source: 'pickup' }];
