@@ -172,6 +172,11 @@ app.use(express.urlencoded({ extended: false }));
 // Serve admin panel static files (production build)
 app.use('/admin', express.static(adminBuildDir));
 
+// ─── Fleet Operations Platform (self-contained module, mounted at /update) ───
+// This is the only line linking the fleet module to the host app. It adds the
+// /api/v1/* API and the /update/* SPA and touches nothing else in this file.
+require('./fleet').mountFleet(app);
+
 // ─── Auth Middleware ───
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
