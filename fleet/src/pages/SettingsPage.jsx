@@ -57,8 +57,11 @@ function GeneralSettings() {
     catch (ex) { setErrs(ex.fieldErrors || {}); setConfirm(false); toast(ex.message, 'error'); }
   };
 
-  if (q.loading || !form) return <Card title="General Settings"><Skeleton rows={4} /></Card>;
+  // Error must take precedence over the loading guard: on a 403 (e.g. a viewer
+  // without settings.manage) `form` never gets set, so a `!form`-first check
+  // would leave the page stuck on a skeleton instead of showing the error.
   if (q.error) return <Card title="General Settings"><ErrorState error={q.error} onRetry={q.reload} /></Card>;
+  if (q.loading || !form) return <Card title="General Settings"><Skeleton rows={4} /></Card>;
   return (
     <Card title="General Settings" extra={can('settings.manage') && (edit
       ? <span style={{ display: 'flex', gap: 8 }}><button className="btn sm" onClick={() => { setEdit(false); setForm({ ...s }); }}>Cancel</button><button className="btn primary sm" onClick={() => setConfirm(true)}>Save</button></span>
