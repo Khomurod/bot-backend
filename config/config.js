@@ -118,6 +118,12 @@ module.exports = {
   googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   googleGeocodingApiBase: process.env.GOOGLE_GEOCODING_API_BASE || 'https://maps.googleapis.com/maps/api/geocode/json',
   googleRoutesApiBase: process.env.GOOGLE_ROUTES_API_BASE || 'https://routes.googleapis.com/directions/v2:computeRoutes',
+  // Live Locations map tiles. Served only to authenticated admins via
+  // GET /api/live-locations/config, so no map key is baked into the frontend
+  // bundle. Leave unset to use OpenStreetMap tiles (fine for low-volume internal
+  // admin use); set a MapTiler/Mapbox raster tile URL for production scale.
+  mapTileUrl: process.env.MAP_TILE_URL || '',
+  mapTileAttribution: process.env.MAP_TILE_ATTRIBUTION || '',
   employeeGroupId: process.env.EMPLOYEE_GROUP_ID || '-1003284808897',
   // Anonymous Feedback — private-chat flow that asks the sender whether they are
   // an employee or a driver, then relays their complaint / request / inquiry to

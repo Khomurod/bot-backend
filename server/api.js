@@ -12,7 +12,6 @@ const { translateBatch } = require('../services/translationService');
 const { generateDriverReport, generateCompanyReport, AI_REPORT_GENERATION_FAILED, callGroq } = require('../services/aiAnalysisService');
 const { generateInsightReport } = require('../services/aiInsightsService');
 const { ensureAnnotationsForRange } = require('../services/aiAnnotationService');
-const { askData } = require('../services/aiAskService');
 const driverProfileAiParser = require('../services/driverProfileAiParser');
 const { ingestIndeedLead } = require('../services/indeedLeadService');
 const { inspectDatPageLayout } = require('../services/datUiInspectorService');
@@ -1091,6 +1090,9 @@ app.use('/api/home-time', createHomeTimeRouter({ authMiddleware }));
 
 const { createFuelMonitorRouter } = require('./routes/fuelMonitorRoutes');
 app.use('/api/fuel-monitor', createFuelMonitorRouter({ authMiddleware, telegram: bot.telegram }));
+
+const { createLiveLocationsRouter } = require('./routes/liveLocationsRoutes');
+app.use('/api/live-locations', createLiveLocationsRouter({ authMiddleware }));
 
 
 const { createBotUsersRouter } = require('./routes/botUsersRoutes');
@@ -2255,17 +2257,6 @@ app.put('/api/scheduled-messages/:id/send-now', authMiddleware, async (req, res)
   }
 });
 
-// ─── Chat Logs Route ───
-app.get('/api/chat-logs', authMiddleware, async (req, res) => {
-  try {
-    const logs = await db.getRecentChatLogs(50);
-    res.json(logs);
-  } catch (err) {
-    console.error('[API] Error fetching chat logs:', err.message);
-    res.status(500).json({ error: 'Failed to fetch chat logs' });
-  }
-});
-
 // ─── Leads (Facebook + Indeed) for the admin "Leads" tab ───
 app.get('/api/leads', authMiddleware, async (req, res) => {
   try {
@@ -2626,19 +2617,6 @@ app.post('/api/ai-insights/annotate', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[API] Annotation backfill failed:', err.message);
     res.status(500).json({ error: 'Annotation backfill failed', detail: err.message });
-  }
-});
-
-// ─── Ask the Data (natural-language → plan → SQL → narrative) ────
-app.post('/api/ai-ask', authMiddleware, async (req, res) => {
-  try {
-    const question = typeof req.body?.question === 'string' ? req.body.question : '';
-    if (!question.trim()) return res.status(400).json({ error: 'question is required' });
-    const result = await askData(question);
-    res.json(result);
-  } catch (err) {
-    console.error('[API] Ask the data failed:', err.message);
-    res.status(500).json({ error: 'Ask the data failed', detail: err.message });
   }
 });
 

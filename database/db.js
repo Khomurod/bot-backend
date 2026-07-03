@@ -2160,19 +2160,6 @@ async function deleteOldChatLogs(daysOld) {
   return res.rowCount || 0;
 }
 
-async function getRecentChatLogs(limit = 50) {
-  const res = await query(
-    `SELECT c.id, c.sender_name, c.message_text, c.created_at, c.telegram_message_id,
-            g.group_name, g.telegram_group_id
-     FROM chat_logs c
-     JOIN groups g ON c.group_id = g.id
-     ORDER BY c.created_at DESC
-     LIMIT $1`,
-    [limit]
-  );
-  return res.rows;
-}
-
 // ─── AI Reports ───
 async function saveAiReport(groupId, reportText, reportType = 'driver') {
   const normalizedType = reportType === 'company' ? 'company' : 'driver';
@@ -3474,7 +3461,6 @@ module.exports = {
   getChatLogsForGroup,
   getChatLogsForActiveDriverGroups,
   deleteOldChatLogs,
-  getRecentChatLogs,
   // AI Reports
   saveAiReport,
   getPendingAiReports,

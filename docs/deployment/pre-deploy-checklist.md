@@ -139,10 +139,11 @@ after deploy on the live service.
 
 | # | What / Why | How to check |
 |---|---|---|
-| H1 | Ask-the-Data returns only whitelisted JSON query plans. | **[AUTO]** `aiAsk.test.js`. |
-| H2 | **LLM never receives permission to run raw SQL.** | **[MANUAL]** Read `aiAskService.js` — plan is whitelisted & param-bound; model told "Never return SQL". |
-| H3 | Query plan is compiled **server-side only**. | **[MANUAL]** `compilePlan()` builds the single parameterized SELECT; no model text becomes SQL. |
 | H4 | **Untrusted driver text is fenced** before AI. | **[AUTO]** `aiTranscriptFence.test.js`; fencing in `aiAnalysisService.js` / `aiAnnotationService.js`. |
+
+> **Retired (checks removed):** H1–H3 covered the "Ask-the-Data" feature
+> (`aiAskService.js`, `POST /api/ai-ask`, `aiAsk.test.js`), which was fully
+> removed. See `docs/architecture/retired-ai-ask-chat-monitor.md`.
 | H5 | Groq → Gemini fallback works. | **[AUTO]** `groqClient.test.js`; **[MANUAL]** with Groq key removed, Gemini serves. |
 | H6 | If the AI provider fails, the app does not crash. | **[AUTO]** services fall back to plain text / structured data on AI error. |
 | H7 | Driver-facing messages are never raw unsafe AI output. | **[AUTO]** response parsers strip fences, bound length; **[MANUAL]** spot-check. |

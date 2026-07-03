@@ -4,7 +4,6 @@
 //   - aiAnalysisService.js   (legacy company / driver reports)
 //   - aiAnnotationService.js (per-message classifier)
 //   - aiInsightsService.js   (narrative generation)
-//   - aiAskService.js        ("Ask the Data" plan + narrative)
 //   - datUiInspectorService.js (DAT layout inspector)
 //   - dispatchPinnedContextService.js / dispatchParserService.js
 //

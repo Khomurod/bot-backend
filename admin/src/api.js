@@ -601,14 +601,6 @@ export async function getBroadcastButtonClicks(broadcastId) {
 // Alias for App.jsx compatibility
 export const getConfirmationClicks = getBroadcastButtonClicks;
 
-export async function getChatLogs() {
-  const res = await fetch(`${API_BASE}/chat-logs?t=${Date.now()}`, {
-    headers: getHeaders(),
-  });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
 export async function getLeads(source = '') {
   const params = new URLSearchParams({ t: String(Date.now()) });
   if (source) params.set('source', source);
@@ -721,16 +713,6 @@ export async function backfillAnnotations(daysBack = 30) {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify({ daysBack }),
-  });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
-export async function askTheData(question) {
-  const res = await fetch(`${API_BASE}/ai-ask`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify({ question }),
   });
   if (!res.ok) { await handleApiError(res); }
   return res.json();
@@ -1418,6 +1400,32 @@ export async function diagnoseRecruiter(id, payload) {
 /** Public (no-auth) today-only recruiter stats for the /recruiters leaderboard. */
 export async function getPublicRecruiterStats() {
   const res = await fetch(`${API_BASE}/recruiters/public-stats`);
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+// ─── Live Locations (map of all active units) ───
+
+/** Map tile provider config (tile URL/attribution live server-side, admin-only). */
+export async function getLiveLocationsConfig() {
+  const res = await fetch(`${API_BASE}/live-locations/config`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Normalized, map-ready snapshot of all active units (location + load + ETA). */
+export async function getLiveLocationsSnapshot({ force = false } = {}) {
+  const qs = force ? '?force=1' : '';
+  const res = await fetch(`${API_BASE}/live-locations/snapshot${qs}`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Precise routed ETA + route line for one selected unit. */
+export async function getLiveLocationRoute(unit) {
+  const res = await fetch(`${API_BASE}/live-locations/route?unit=${encodeURIComponent(unit)}`, {
+    headers: getHeaders(),
+  });
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
