@@ -39,6 +39,22 @@ function extractUnitNumberFromVehicleName(name) {
   return firstNumber ? firstNumber[0] : null;
 }
 
+/**
+ * Practical unit ↔ vehicle matching. A Samsara vehicle label is free-form
+ * ("2908 NIKE AUGUSTE", "UNIT # 305", "2021 Freightliner 305 - John"), so we do
+ * NOT rely on the unit being the first number. We accept a match when:
+ *   - any standalone numeric token in the name normalizes to the target, or
+ *   - the digits-only form of the name contains the padded/unpadded unit as a
+ *     token (covers "#305", "305A" style labels).
+ */
+function vehicleNameMatchesUnit(name, normalizedTarget) {
+  if (!normalizedTarget) return false;
+  const raw = String(name || '');
+  if (!raw) return false;
+  const tokens = raw.match(/\d+/g) || [];
+  return tokens.some((token) => normalizeUnitNumber(token) === normalizedTarget);
+}
+
 function normalizeUnitNumber(value) {
   const digits = String(value || '').replace(/\D/g, '');
   if (!digits) return null;
@@ -144,10 +160,12 @@ function findVehicleByUnit(vehicles, unitNumber, opts = {}) {
 
   const driverNameHint = String(opts.driverNameHint || '').trim();
 
-  const matches = vehicles.filter((vehicle) => {
-    const vehicleUnit = extractUnitNumberFromVehicleName(vehicle?.name);
-    return normalizeUnitNumber(vehicleUnit) === target;
-  });
+  const matches = vehicles.filter((vehicle) => (
+    vehicleNameMatchesUnit(vehicle?.name, target)
+    // Some fleets carry the unit in dedicated fields rather than the label.
+    || normalizeUnitNumber(vehicle?.externalIds?.['samsara.serial']) === target
+    || normalizeUnitNumber(vehicle?.licensePlate) === target
+  ));
 
   if (!matches.length) return null;
   if (matches.length === 1) return matches[0];
@@ -252,6 +270,7 @@ async function getLiveLocationForGroupTitle({ groupTitle, apiKey, apiBase }) {
 module.exports = {
   extractUnitNumberFromGroupName,
   extractUnitNumberFromVehicleName,
+  vehicleNameMatchesUnit,
   normalizeUnitNumber,
   computePingAgeMinutes,
   findVehicleByUnit,

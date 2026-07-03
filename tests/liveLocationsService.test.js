@@ -8,6 +8,7 @@ const {
   resolveLocationForUnit,
   buildLocationFromSamsaraVehicle,
   buildLocationFromDriveHosVehicle,
+  unitNumberForRow,
   STALE_MINUTES,
 } = require('../services/liveLocationsService');
 
@@ -60,6 +61,20 @@ test('indexOrdersByDriver keys the best order by normalized driver name', () => 
   ];
   const idx = indexOrdersByDriver(orders, now);
   assert.equal(idx.get('john doe').id, 2); // upcoming pickup wins the tie
+});
+
+// ─── unit enumeration fallback ─────────────────────────────────────────────────
+test('unitNumberForRow prefers the stored column', () => {
+  assert.equal(unitNumberForRow({ unit_number: '0305', group_name: 'WENZE UNIT # 999 X' }), '305');
+});
+
+test('unitNumberForRow falls back to parsing the group title when column is empty', () => {
+  assert.equal(unitNumberForRow({ unit_number: null, raw_group_title: 'WENZE UNIT # 2614 JOHN DOE' }), '2614');
+  assert.equal(unitNumberForRow({ unit_number: '', group_name: 'WENZE # 008 PRODNET LUBIN' }), '8');
+});
+
+test('unitNumberForRow returns null when no unit can be derived', () => {
+  assert.equal(unitNumberForRow({ unit_number: null, group_name: 'DISPATCH TEAM' }), null);
 });
 
 // ─── location normalization + provider priority ───────────────────────────────

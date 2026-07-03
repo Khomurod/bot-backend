@@ -18,7 +18,10 @@ const FILTERS = [
   { key: "leader", label: "Leader ELD" },
 ];
 
-const PROVIDER_LABEL = { samsara: "Samsara", factor: "Factor ELD", leader: "Leader ELD" };
+const PROVIDER_LABEL = {
+  samsara: "Samsara", factor: "Factor ELD", leader: "Leader ELD",
+  datatruck: "Datatruck (loads)", snapshot: "Snapshot",
+};
 
 function statusColor(unit) {
   if (!unit.location) return "#94a3b8";        // no GPS — slate
@@ -105,6 +108,8 @@ export default function LiveLocationsPage() {
   const [filter, setFilter] = useState("all");
   const [selectedUnit, setSelectedUnit] = useState(null);
   const [mapReady, setMapReady] = useState(false);
+  const [mapError, setMapError] = useState(null);
+  const [tileError, setTileError] = useState(false);
 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -115,6 +120,7 @@ export default function LiveLocationsPage() {
 
   const units = snapshot?.units || [];
   const summary = snapshot?.summary || null;
+  const providerErrors = snapshot?.errors || [];
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -162,11 +168,21 @@ export default function LiveLocationsPage() {
   }, [autoRefresh, load]);
 
   // ── Map init ──
+  // The map must initialize independently of GPS/load/route data — it only needs
+  // the container in the DOM. The container is always rendered (see JSX), so this
+  // runs once on mount. Any real Leaflet failure is captured in `mapError` with a
+  // human-readable reason; tile-fetch failures are non-fatal (`tileError`).
   useEffect(() => {
     let cancelled = false;
     (async () => {
       if (mapRef.current || !mapContainerRef.current) return;
-      let cfg = { tileUrl: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", attribution: "&copy; OpenStreetMap contributors", maxZoom: 19 };
+      // Default to OpenStreetMap; the backend /config may override with a
+      // production tile provider (MAP_TILE_URL / MAP_TILE_ATTRIBUTION).
+      let cfg = {
+        tileUrl: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
+      };
       try {
         const remote = await api.getLiveLocationsConfig();
         if (remote && remote.tileUrl) cfg = remote;
@@ -174,7 +190,12 @@ export default function LiveLocationsPage() {
       if (cancelled || mapRef.current || !mapContainerRef.current) return;
       try {
         const map = L.map(mapContainerRef.current, { zoomControl: true }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
-        L.tileLayer(cfg.tileUrl, { attribution: cfg.attribution, maxZoom: cfg.maxZoom || 19 }).addTo(map);
+        const tiles = L.tileLayer(cfg.tileUrl, { attribution: cfg.attribution, maxZoom: cfg.maxZoom || 19 });
+        // A tile that fails to load is a provider/network problem, NOT a map
+        // failure — keep the map (and unit list) usable and just warn.
+        tiles.on("tileerror", () => { if (!cancelled) setTileError(true); });
+        tiles.on("load", () => { if (!cancelled) setTileError(false); });
+        tiles.addTo(map);
         markerLayerRef.current = L.layerGroup().addTo(map);
         routeLayerRef.current = L.layerGroup().addTo(map);
         mapRef.current = map;
@@ -192,10 +213,15 @@ export default function LiveLocationsPage() {
             });
           }
         });
-        setTimeout(() => map.invalidateSize(), 200);
+        // Container starts at 620px tall, but invalidate once painted so Leaflet
+        // picks up the real size (fixes grey tiles when mounted while hidden).
+        setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 200);
         setMapReady(true);
-      } catch (_) {
+        setMapError(null);
+      } catch (err) {
+        // Genuine Leaflet initialization failure — surface the real reason.
         setMapReady(false);
+        setMapError(err && err.message ? err.message : "Map library failed to initialize.");
       }
     })();
     return () => { cancelled = true; };
@@ -235,7 +261,7 @@ export default function LiveLocationsPage() {
       marker.addTo(layer);
       markersByUnit.current.set(u.unit, marker);
     });
-  }, [filtered, selectedUnit]);
+  }, [filtered, selectedUnit, mapReady]);
 
   // ── Route line for the selected unit ──
   useEffect(() => {
@@ -261,7 +287,7 @@ export default function LiveLocationsPage() {
       } catch (_) { /* routing failure must not break the page */ }
     })();
     return () => { cancelled = true; };
-  }, [selectedUnit]);
+  }, [selectedUnit, mapReady]);
 
   const fitAll = useCallback(() => {
     const map = mapRef.current;
@@ -326,6 +352,21 @@ export default function LiveLocationsPage() {
         </div>
       )}
 
+      {/* Provider errors, shown SEPARATELY so a Factor/Leader/Datatruck failure
+          never hides the providers (e.g. Samsara) that are working. */}
+      {providerErrors.length > 0 && (
+        <div className="alert alert-error" style={{ marginTop: 0 }}>
+          <strong>Some providers had errors</strong> (other providers still work):
+          <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+            {providerErrors.map((e, i) => (
+              <li key={i} style={{ fontSize: 13 }}>
+                <strong>{PROVIDER_LABEL[e.provider] || e.provider}:</strong> {e.message || e.code || "error"}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Status cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12, marginBottom: 16 }}>
         {cards.map((c) => (
@@ -336,16 +377,36 @@ export default function LiveLocationsPage() {
         ))}
       </div>
 
-      {loading ? (
-        <div className="loading"><div className="spinner"></div> Loading live locations…</div>
-      ) : (
+      {/* The map + unit list always render. The map initializes independently of
+          GPS/load data, so it loads (centered on the US) even with zero markers.
+          Only a true Leaflet failure shows a "map unavailable" message. */}
+      {(
         <div style={{ display: "flex", gap: 16, alignItems: "stretch", flexWrap: "wrap" }}>
           {/* Map */}
           <div className="card" style={{ flex: "1 1 480px", minWidth: 320, padding: 0, overflow: "hidden", position: "relative" }}>
             <div ref={mapContainerRef} style={{ height: 620, width: "100%", background: "var(--bg-secondary)" }} />
-            {!mapReady && (
+            {tileError && mapReady && (
+              <div style={{ position: "absolute", top: 8, left: 8, right: 8, zIndex: 500, background: "rgba(245,158,11,0.95)", color: "#1e293b", padding: "6px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
+                ⚠️ Map tiles failed to load (tile provider unreachable). The map and unit list still work.
+              </div>
+            )}
+            {mapError && (
+              <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", padding: 16, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>Map failed to initialize</div>
+                  <div style={{ marginBottom: 6 }}>{mapError}</div>
+                  <div>The unit list is still usable →</div>
+                </div>
+              </div>
+            )}
+            {!mapReady && !mapError && (
               <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", color: "var(--text-muted)", fontSize: 13 }}>
-                Map unavailable — unit list is still usable →
+                <div><div className="spinner" style={{ margin: "0 auto 8px" }}></div>Loading map…</div>
+              </div>
+            )}
+            {loading && mapReady && (
+              <div style={{ position: "absolute", top: 8, right: 8, zIndex: 500, background: "var(--bg-secondary)", padding: "4px 8px", borderRadius: 6, fontSize: 11, color: "var(--text-muted)" }}>
+                Refreshing…
               </div>
             )}
           </div>
@@ -374,8 +435,11 @@ export default function LiveLocationsPage() {
             <div style={{ overflowY: "auto", flex: 1, margin: "0 -8px" }}>
               {filtered.length === 0 ? (
                 <div className="empty-state" style={{ padding: 20 }}>
-                  <div className="icon">📭</div>
-                  <p>No units match.</p>
+                  {loading && !snapshot ? (
+                    <><div className="spinner"></div><p>Loading live locations…</p></>
+                  ) : (
+                    <><div className="icon">📭</div><p>No units match.</p></>
+                  )}
                 </div>
               ) : filtered.map((u) => (
                 <button

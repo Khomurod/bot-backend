@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { findVehicleByUnit } = require('../services/driveHosEldService');
+const { findVehicleByUnit, extractVehicleArray } = require('../services/driveHosEldService');
 
 test('findVehicleByUnit matches normalized unit numbers on the `number` field', () => {
   const vehicles = [
@@ -27,4 +27,25 @@ test('findVehicleByUnit returns null when no unit matches', () => {
   assert.equal(findVehicleByUnit(vehicles, '999'), null);
   assert.equal(findVehicleByUnit([], '100'), null);
   assert.equal(findVehicleByUnit(null, '100'), null);
+});
+
+test('findVehicleByUnit falls back to a unit token inside a free-form label', () => {
+  const vehicles = [{ name: 'Truck 305 - Freightliner', timestamp: '2026-04-28T10:00:00Z' }];
+  assert.equal(findVehicleByUnit(vehicles, '305').name, 'Truck 305 - Freightliner');
+});
+
+test('extractVehicleArray accepts the documented and alternate response shapes', () => {
+  const rows = [{ number: '1' }];
+  assert.deepEqual(extractVehicleArray(rows), rows);                 // bare array
+  assert.deepEqual(extractVehicleArray({ data: rows }), rows);       // { data }
+  assert.deepEqual(extractVehicleArray({ vehicles: rows }), rows);   // { vehicles }
+  assert.deepEqual(extractVehicleArray({ result: rows }), rows);     // { result }
+  assert.deepEqual(extractVehicleArray({ results: rows }), rows);    // { results }
+  assert.deepEqual(extractVehicleArray({ data: { vehicles: rows } }), rows); // nested
+});
+
+test('extractVehicleArray returns null when no array can be found', () => {
+  assert.equal(extractVehicleArray({ message: 'ok', total: 0 }), null);
+  assert.equal(extractVehicleArray('nope'), null);
+  assert.equal(extractVehicleArray(null), null);
 });

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   extractUnitNumberFromGroupName,
   extractUnitNumberFromVehicleName,
+  vehicleNameMatchesUnit,
   normalizeUnitNumber,
   computePingAgeMinutes,
   findVehicleByUnit,
@@ -75,6 +76,24 @@ test('findVehicleByUnit prefers name-matching vehicle when driver hint provided'
   const hint = extractDriverNameFromGroupTitle('WENZE UNIT # 2908 TESFAMARIAM YOSIEF');
   const match = findVehicleByUnit(vehicles, '2908', { driverNameHint: hint });
   assert.equal(match.id, 'v-current');
+});
+
+test('vehicleNameMatchesUnit matches a unit token anywhere in the label', () => {
+  assert.equal(vehicleNameMatchesUnit('008 PRODNET LUBIN', '8'), true);
+  // unit is NOT the first number (year prefix) — old first-token logic missed this
+  assert.equal(vehicleNameMatchesUnit('2021 Freightliner 305', '305'), true);
+  assert.equal(vehicleNameMatchesUnit('UNIT # 305', '305'), true);
+  assert.equal(vehicleNameMatchesUnit('311 JEAN WALKENS', '305'), false);
+  assert.equal(vehicleNameMatchesUnit('', '305'), false);
+});
+
+test('findVehicleByUnit matches when the unit is not the first number in the name', () => {
+  const vehicles = [
+    { id: 'year-first', name: '2021 Freightliner 305', gps: { time: '2026-04-27T20:00:00Z' } },
+  ];
+  const match = findVehicleByUnit(vehicles, '305');
+  assert.ok(match);
+  assert.equal(match.id, 'year-first');
 });
 
 test('findVehicleByUnit with single mismatch still returns vehicle', () => {
