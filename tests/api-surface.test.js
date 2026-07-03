@@ -19,7 +19,6 @@ function loadAppWithDb(dbMock) {
   const configPath = path.resolve(__dirname, '../config/config.js');
   const translationPath = path.resolve(__dirname, '../services/translationService.js');
   const aiPath = path.resolve(__dirname, '../services/aiAnalysisService.js');
-  const employeeVotingPath = path.resolve(__dirname, '../server/employeeVotingApi.js');
   const urlHelperPath = path.resolve(__dirname, '../services/telegramUrl.js');
 
   delete require.cache[apiPath];
@@ -28,7 +27,6 @@ function loadAppWithDb(dbMock) {
   delete require.cache[configPath];
   delete require.cache[translationPath];
   delete require.cache[aiPath];
-  delete require.cache[employeeVotingPath];
   delete require.cache[urlHelperPath];
 
   require.cache[dbPath] = { exports: dbMock };
@@ -64,7 +62,6 @@ function loadAppWithDb(dbMock) {
       callGroq: async () => '',
     },
   };
-  require.cache[employeeVotingPath] = { exports: (req, res, next) => next() };
   require.cache[urlHelperPath] = { exports: { buildTelegramMessageUrl: () => 'https://t.me/c/123/1' } };
 
   return require(apiPath).app;

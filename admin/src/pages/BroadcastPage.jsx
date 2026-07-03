@@ -1068,5 +1068,3 @@ export default function BroadcastPage() {
     </div>
   );
 }
-
-// ─────────────── Employee Voting Page ───────────────

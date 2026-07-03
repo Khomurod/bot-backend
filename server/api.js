@@ -54,7 +54,6 @@ const {
   listBroadcastPlaceholders,
   validateBroadcastTemplate,
 } = require('../services/broadcastTemplateService');
-const employeeVotingRoutes = require('./employeeVotingApi');
 const dispatchRoutes = require('./routes/dispatchRoutes');
 const { createFacebookLeadsRouter } = require('./routes/facebookLeadsRoutes');
 
@@ -173,9 +172,6 @@ app.use(express.urlencoded({ extended: false }));
 
 // Serve admin panel static files (production build)
 app.use('/admin', express.static(adminBuildDir));
-
-// ─── Employee Voting Routes (isolated) ───
-app.use(employeeVotingRoutes);
 
 // ─── Auth Middleware ───
 function authMiddleware(req, res, next) {

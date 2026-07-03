@@ -353,8 +353,6 @@ export async function uploadMedia(file) {
   };
 }
 
-// ─── Employee Voting API ───
-
 export async function parseDispatchRateCon(file) {
   const formData = new FormData();
   formData.append('file', file);
@@ -419,58 +417,6 @@ export async function updateAllDispatchTestingGroups(payload) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload || {}),
-  });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
-export async function getDriverUnits() {
-  const res = await fetch(`${API_BASE}/voting/units`, { headers: getHeaders() });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
-export async function getVotingPolls() {
-  const res = await fetch(`${API_BASE}/voting/polls`, { headers: getHeaders() });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
-export async function createVotingPoll(question) {
-  const res = await fetch(`${API_BASE}/voting/polls`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify({ question }),
-  });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
-export async function getPollResults(pollId) {
-  const res = await fetch(`${API_BASE}/voting/polls/${pollId}/results`, { headers: getHeaders() });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
-export async function getPollVoters(pollId) {
-  const res = await fetch(`${API_BASE}/voting/polls/${pollId}/voters`, { headers: getHeaders() });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
-export async function closePoll(pollId) {
-  const res = await fetch(`${API_BASE}/voting/polls/${pollId}/close`, {
-    method: 'PUT',
-    headers: getHeaders(),
-  });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
-export async function resetPoll(pollId) {
-  const res = await fetch(`${API_BASE}/voting/polls/${pollId}/reset`, {
-    method: 'PUT',
-    headers: getHeaders(),
   });
   if (!res.ok) { await handleApiError(res); }
   return res.json();
