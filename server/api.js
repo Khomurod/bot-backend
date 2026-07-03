@@ -1073,7 +1073,9 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
 
 // ─── Groups Routes ───
 
-app.use('/api/dispatch', dispatchRoutes);
+// Dispatch routes expose live GPS, Telegram group IDs, and send-to-Telegram
+// actions — they must never be reachable without an admin token.
+app.use('/api/dispatch', authMiddleware, dispatchRoutes);
 app.use('/api/facebook-leads', createFacebookLeadsRouter({ authMiddleware }));
 
 // ─── Driver Raise Approval (75¢/mile) ───

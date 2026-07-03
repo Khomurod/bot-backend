@@ -89,6 +89,60 @@ function formatOptionalDateTime(value, { future = false } = {}) {
   return timeAgo(value);
 }
 
+// Small pill-style switch used for the driver/test ETA toggles below.
+function ToggleSwitch({ label, checked, onToggle, disabled, saving, title, ariaLabel }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      onClick={onToggle}
+      disabled={disabled}
+      title={title}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "8px",
+        border: "none",
+        background: "transparent",
+        color: "var(--text-secondary)",
+        cursor: disabled ? "not-allowed" : "pointer",
+        padding: 0,
+        opacity: disabled && !saving ? 0.6 : 1,
+      }}
+    >
+      <span style={{ fontSize: "12px" }}>{label}</span>
+      <span
+        style={{
+          width: "42px",
+          height: "24px",
+          borderRadius: "999px",
+          background: checked ? "var(--success)" : "var(--border)",
+          position: "relative",
+          transition: "background 150ms ease",
+          opacity: saving ? 0.7 : 1,
+        }}
+      >
+        <span
+          style={{
+            position: "absolute",
+            top: "3px",
+            left: checked ? "21px" : "3px",
+            width: "18px",
+            height: "18px",
+            borderRadius: "50%",
+            background: "#fff",
+            boxShadow: "0 1px 2px rgba(0,0,0,0.25)",
+            transition: "left 150ms ease",
+          }}
+        />
+      </span>
+      {saving && checked ? "Saving..." : (checked ? "On" : "Off")}
+    </button>
+  );
+}
+
 export default function DispatchPage() {
   const [activeTab, setActiveTab] = useState("assistant");
   const [loading, setLoading] = useState(false);
@@ -755,100 +809,23 @@ export default function DispatchPage() {
                     >
                       {expanded ? "📋 Hide" : "📋 Details"}
                     </button>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={driverEnabled}
-                      aria-label={`Toggle driver-group ETA updates for ${row.group_name}`}
-                      onClick={() => handleTestingToggle(row, "driver", !driverEnabled)}
+                    <ToggleSwitch
+                      label="Driver group"
+                      checked={driverEnabled}
+                      saving={saving}
                       disabled={saving}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        border: "none",
-                        background: "transparent",
-                        color: "var(--text-secondary)",
-                        cursor: saving ? "not-allowed" : "pointer",
-                        padding: 0,
-                      }}
-                    >
-                      <span style={{ fontSize: "12px" }}>Driver group</span>
-                      <span
-                        style={{
-                          width: "42px",
-                          height: "24px",
-                          borderRadius: "999px",
-                          background: driverEnabled ? "var(--success)" : "var(--border)",
-                          position: "relative",
-                          transition: "background 150ms ease",
-                          opacity: saving ? 0.7 : 1,
-                        }}
-                      >
-                        <span
-                          style={{
-                            position: "absolute",
-                            top: "3px",
-                            left: driverEnabled ? "21px" : "3px",
-                            width: "18px",
-                            height: "18px",
-                            borderRadius: "50%",
-                            background: "#fff",
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.25)",
-                            transition: "left 150ms ease",
-                          }}
-                        />
-                      </span>
-                      {saving && driverEnabled ? "Saving..." : (driverEnabled ? "On" : "Off")}
-                    </button>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={testEnabled}
-                      aria-label={`Toggle test-group ETA updates for ${row.group_name}`}
-                      onClick={() => handleTestingToggle(row, "test", !testEnabled)}
+                      onToggle={() => handleTestingToggle(row, "driver", !driverEnabled)}
+                      ariaLabel={`Toggle driver-group ETA updates for ${row.group_name}`}
+                    />
+                    <ToggleSwitch
+                      label="Test group"
+                      checked={testEnabled}
+                      saving={saving}
                       disabled={saving || !dispatchEtaTestGroupId}
+                      onToggle={() => handleTestingToggle(row, "test", !testEnabled)}
                       title={dispatchEtaTestGroupId ? `Test group: ${dispatchEtaTestGroupId}` : "DISPATCH_ETA_TEST_GROUP_ID not configured"}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        border: "none",
-                        background: "transparent",
-                        color: "var(--text-secondary)",
-                        cursor: saving || !dispatchEtaTestGroupId ? "not-allowed" : "pointer",
-                        padding: 0,
-                        opacity: dispatchEtaTestGroupId ? 1 : 0.6,
-                      }}
-                    >
-                      <span style={{ fontSize: "12px" }}>Test group</span>
-                      <span
-                        style={{
-                          width: "42px",
-                          height: "24px",
-                          borderRadius: "999px",
-                          background: testEnabled ? "var(--success)" : "var(--border)",
-                          position: "relative",
-                          transition: "background 150ms ease",
-                          opacity: saving ? 0.7 : 1,
-                        }}
-                      >
-                        <span
-                          style={{
-                            position: "absolute",
-                            top: "3px",
-                            left: testEnabled ? "21px" : "3px",
-                            width: "18px",
-                            height: "18px",
-                            borderRadius: "50%",
-                            background: "#fff",
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.25)",
-                            transition: "left 150ms ease",
-                          }}
-                        />
-                      </span>
-                      {saving && testEnabled ? "Saving..." : (testEnabled ? "On" : "Off")}
-                    </button>
+                      ariaLabel={`Toggle test-group ETA updates for ${row.group_name}`}
+                    />
                   </div>
                 </div>
 
