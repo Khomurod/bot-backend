@@ -105,11 +105,12 @@ export default function RaisePublicPage() {
     }
   };
 
-  const wrap = { maxWidth: 560, margin: "40px auto", padding: "0 16px" };
+  const STEP_ORDER = ["identify", "verify", "pick", "done"];
+  const stepIndex = STEP_ORDER.indexOf(step);
 
   if (loadError) {
     return (
-      <div style={wrap}>
+      <div className="raise-public-wrap">
         <div className="card">
           <h2>Link unavailable</h2>
           <p>{loadError}</p>
@@ -123,13 +124,22 @@ export default function RaisePublicPage() {
   }
 
   return (
-    <div style={wrap}>
+    <div className="raise-public-wrap">
       <div className="card">
         <h2>💵 Driver Raise Review</h2>
         <p>
           Pay period <b>{info.period_start} → {info.period_end}</b>. Mark which company drivers
           earned <b>{ratePct(info.rate_high)}/mile</b> (instead of {ratePct(info.rate_low)}/mile) for this week.
         </p>
+
+        <div className="raise-steps" aria-hidden="true">
+          {STEP_ORDER.slice(0, 3).map((s, i) => (
+            <div
+              key={s}
+              className={`raise-step ${i < stepIndex ? "completed" : i === stepIndex ? "active" : ""}`}
+            />
+          ))}
+        </div>
 
         {status && (
           <div className={`alert alert-${status.type}`} style={{ marginBottom: 16 }}>{status.text}</div>
@@ -139,7 +149,7 @@ export default function RaisePublicPage() {
           <div style={{ display: "grid", gap: 12 }}>
             <div className="form-group">
               <label>Your dispatch team</label>
-              <select value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+              <select className="form-select" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
                 <option value="">— choose your team —</option>
                 {info.teams.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -155,18 +165,19 @@ export default function RaisePublicPage() {
             )}
             <div className="form-group">
               <label>Your name</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="First Last" />
+              <input className="form-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="First Last" />
             </div>
             <div className="form-group">
               <label>Your {isEmail ? "email" : "phone number"}</label>
               <input
+                className="form-input"
                 type={isEmail ? "email" : "tel"}
                 value={contact}
                 onChange={(e) => setContact(e.target.value)}
                 placeholder={isEmail ? "you@company.com" : "+1 555 123 4567"}
               />
             </div>
-            <button className="btn btn-primary" onClick={handleRequestCode} disabled={busy || selectedTeam?.submitted}>
+            <button className="btn btn-primary btn-block" onClick={handleRequestCode} disabled={busy || selectedTeam?.submitted}>
               {busy ? "Sending…" : "Send me a code"}
             </button>
           </div>
@@ -177,15 +188,17 @@ export default function RaisePublicPage() {
             <div className="form-group">
               <label>Enter the 6-digit code we sent to {contact}</label>
               <input
+                className="form-input raise-otp-input"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 inputMode="numeric"
+                autoComplete="one-time-code"
                 maxLength={6}
-                placeholder="123456"
+                placeholder="••••••"
               />
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn btn-primary" onClick={handleVerify} disabled={busy}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleVerify} disabled={busy}>
                 {busy ? "Checking…" : "Verify"}
               </button>
               <button className="btn btn-ghost" onClick={() => setStep("identify")} disabled={busy}>Back</button>
@@ -200,15 +213,9 @@ export default function RaisePublicPage() {
               {drivers.map((d) => {
                 const v = picks[d.driver_normalized_name];
                 return (
-                  <div
-                    key={d.driver_normalized_name}
-                    style={{
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                      gap: 8, padding: "8px 0", borderBottom: "1px solid var(--border, #eee)",
-                    }}
-                  >
-                    <span>{d.driver_name}</span>
-                    <div style={{ display: "flex", gap: 6 }}>
+                  <div key={d.driver_normalized_name} className="raise-driver-row">
+                    <span className="raise-driver-name">{d.driver_name}</span>
+                    <div className="raise-driver-actions">
                       <button
                         className={`btn btn-sm ${v === true ? "btn-primary" : "btn-ghost"}`}
                         onClick={() => setPick(d.driver_normalized_name, true)}
@@ -228,7 +235,7 @@ export default function RaisePublicPage() {
               {drivers.length === 0 && <p>Your team has no assigned drivers. Please contact the admin.</p>}
             </div>
             <button
-              className="btn btn-primary"
+              className="btn btn-primary btn-block"
               style={{ marginTop: 16 }}
               onClick={handleSubmit}
               disabled={busy || !allMarked || drivers.length === 0}
@@ -236,15 +243,16 @@ export default function RaisePublicPage() {
               {busy ? "Submitting…" : "Submit"}
             </button>
             {!allMarked && drivers.length > 0 && (
-              <p style={{ color: "#888", marginTop: 8 }}>Mark every driver to enable submit.</p>
+              <p style={{ color: "var(--text-muted)", marginTop: 8, fontSize: 13 }}>Mark every driver to enable submit.</p>
             )}
           </div>
         )}
 
         {step === "done" && (
-          <div>
-            <h3>✅ Thank you!</h3>
-            <p>Your response was recorded and sent to management. You can close this page.</p>
+          <div className="raise-success">
+            <div className="raise-success-icon">✅</div>
+            <h3 style={{ marginBottom: 8 }}>Thank you!</h3>
+            <p style={{ marginBottom: 0 }}>Your response was recorded and sent to management. You can close this page.</p>
           </div>
         )}
       </div>

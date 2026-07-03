@@ -786,7 +786,7 @@ export default function BroadcastPage() {
                   )}
                 </div>
 
-                <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+                <div style={{ display: 'flex', gap: 12, marginTop: 24, flexWrap: 'wrap' }}>
                   <button className="btn btn-primary" onClick={() => setShowSendConfirm('regular')} disabled={sending || !message.trim() || message.length > 4096 || regularUnknownTokens.length > 0}>
                     {sending ? '⏳ Sending...' : targetType === 'all' ? '📤 Send to All Groups' : '📤 Send to Selected'}
                   </button>
@@ -824,7 +824,7 @@ export default function BroadcastPage() {
               : regularHistory.length === 0 ? <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No broadcasts sent yet.</div>
               : regularHistory.map(b => (
                 <div key={b.id} className="broadcast-history-item">
-                  <div className="broadcast-history-header" onClick={() => toggleRegularDeliveries(b.id)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div className="broadcast-history-header" onClick={() => toggleRegularDeliveries(b.id)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                     <div>
                       <span style={{ fontSize: 13, fontWeight: 600 }}>{formatDate(b.created_at)}</span>
                       <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-muted)' }}>{truncate(b.message_text_en, 60)}</span>
@@ -943,7 +943,7 @@ export default function BroadcastPage() {
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+                <div style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
                   <button className="btn btn-primary" onClick={() => setShowSendConfirm('confirmation')} disabled={confSending || !confMessage.trim() || confMessage.length > 4096 || confirmationUnknownTokens.length > 0}>
                     {confSending ? '⏳ Sending...' : '📤 Send Broadcast'}
                   </button>
@@ -978,7 +978,7 @@ export default function BroadcastPage() {
               : confHistory.length === 0 ? <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No confirmation broadcasts sent yet.</div>
               : confHistory.map(b => (
                 <div key={b.id} className="broadcast-history-item">
-                  <div className="broadcast-history-header" style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => toggleConfDeliveries(b.id)}>
+                  <div className="broadcast-history-header" style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }} onClick={() => toggleConfDeliveries(b.id)}>
                     <div>
                       <span style={{ fontSize: 13, fontWeight: 600 }}>{formatDate(b.created_at)}</span>
                       <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-muted)' }}>{truncate(b.message_text_en, 60)}</span>

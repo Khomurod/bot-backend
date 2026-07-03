@@ -5,6 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('fs');
+const jwt = require('jsonwebtoken');
 
 process.env.BOT_TOKEN ||= 'test-bot-token';
 process.env.DATABASE_URL ||= 'postgresql://user:password@localhost:5432/test';
@@ -74,9 +75,9 @@ async function httpText(server, method, pathname) {
   return { status: res.status, text, headers: res.headers };
 }
 
-async function httpJson(server, method, pathname) {
+async function httpJson(server, method, pathname, headers = {}) {
   const base = `http://127.0.0.1:${server.address().port}`;
-  const res = await fetch(`${base}${pathname}`, { method });
+  const res = await fetch(`${base}${pathname}`, { method, headers });
   const json = res.headers.get('content-type')?.includes('application/json')
     ? await res.json()
     : null;
@@ -130,7 +131,15 @@ test('GET /api/health, /health, HEAD; dispatch /groups; admin SPA', async () => 
     assert.equal(degraded.json.db, false);
 
     shared.dbOk = true;
-    const dispatch = await httpJson(server, 'GET', '/api/dispatch/groups');
+    // Dispatch API exposes GPS/group data — must reject anonymous requests…
+    const dispatchAnon = await httpJson(server, 'GET', '/api/dispatch/groups');
+    assert.equal(dispatchAnon.status, 401);
+
+    // …and still work with a valid admin JWT.
+    const adminToken = jwt.sign({ id: 1, username: 'admin' }, 'test-secret', { algorithm: 'HS256' });
+    const dispatch = await httpJson(server, 'GET', '/api/dispatch/groups', {
+      Authorization: `Bearer ${adminToken}`,
+    });
     assert.equal(dispatch.status, 200);
     assert.equal(dispatch.json.managementGroupId, '-1001');
     assert.equal(dispatch.json.groups.length, 1);

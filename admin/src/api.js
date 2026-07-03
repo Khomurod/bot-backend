@@ -55,10 +55,7 @@ export function logout() {
 }
 
 export async function getGroups() {
-  const token = localStorage.getItem('token');
-  const endpoint = token ? `${API_BASE}/groups` : `${API_BASE}/dispatch/groups`;
-  const headers = token ? getHeaders() : {};
-  const res = await fetch(endpoint, { headers });
+  const res = await fetch(`${API_BASE}/groups`, { headers: getHeaders() });
   if (!res.ok) { await handleApiError(res); }
   const data = await res.json();
   return Array.isArray(data) ? data : (data?.groups ?? []);
@@ -368,6 +365,7 @@ export async function parseDispatchRateCon(file) {
 export async function sendDispatchToTelegram(formData) {
   const res = await fetch(`${API_BASE}/dispatch/send-to-telegram`, {
     method: 'POST',
+    headers: getAuthHeader(),
     body: formData,
   });
   if (!res.ok) { await handleApiError(res); }
@@ -375,7 +373,9 @@ export async function sendDispatchToTelegram(formData) {
 }
 
 export async function getDispatchTestingGroups() {
-  const res = await fetch(`${API_BASE}/dispatch/testing-feature/groups`);
+  const res = await fetch(`${API_BASE}/dispatch/testing-feature/groups`, {
+    headers: getAuthHeader(),
+  });
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
@@ -383,9 +383,7 @@ export async function getDispatchTestingGroups() {
 export async function saveDispatchEtaGlobalIntervals(payload) {
   const res = await fetch(`${API_BASE}/dispatch/testing-feature/global-intervals`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getHeaders(),
     body: JSON.stringify(payload || {}),
   });
   if (!res.ok) { await handleApiError(res); }
@@ -393,7 +391,9 @@ export async function saveDispatchEtaGlobalIntervals(payload) {
 }
 
 export async function getDispatchTestingGroupDetails(groupId) {
-  const res = await fetch(`${API_BASE}/dispatch/testing-feature/groups/${groupId}/details`);
+  const res = await fetch(`${API_BASE}/dispatch/testing-feature/groups/${groupId}/details`, {
+    headers: getAuthHeader(),
+  });
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
@@ -401,9 +401,7 @@ export async function getDispatchTestingGroupDetails(groupId) {
 export async function updateDispatchTestingGroup(groupId, payload) {
   const res = await fetch(`${API_BASE}/dispatch/testing-feature/groups/${groupId}`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getHeaders(),
     body: JSON.stringify(payload || {}),
   });
   if (!res.ok) { await handleApiError(res); }
@@ -413,9 +411,7 @@ export async function updateDispatchTestingGroup(groupId, payload) {
 export async function updateAllDispatchTestingGroups(payload) {
   const res = await fetch(`${API_BASE}/dispatch/testing-feature/groups/toggle-all`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getHeaders(),
     body: JSON.stringify(payload || {}),
   });
   if (!res.ok) { await handleApiError(res); }

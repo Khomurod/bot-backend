@@ -21,6 +21,8 @@ import UsersPage from "./pages/UsersPage";
 import SettingsPage from "./pages/SettingsPage";
 import RecruiterKpiPage from "./pages/RecruiterKpiPage";
 import RecruitersPublicPage from "./pages/RecruitersPublicPage";
+import AskDataPanel from "./pages/AskDataPanel";
+import ChatLogsPage from "./pages/ChatLogsPage";
 
 function getPageFromPath(pathname) {
   if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) {
@@ -98,14 +100,6 @@ export default function App() {
     }
   };
 
-  if (isDispatchPage) {
-    return (
-      <main className="main-content" style={{ marginLeft: 0 }}>
-        <DispatchPage />
-      </main>
-    );
-  }
-
   if (isRaisePublicPage) {
     return (
       <main className="main-content" style={{ marginLeft: 0 }}>
@@ -128,6 +122,8 @@ export default function App() {
   }
 
   if (!authed) {
+    // Covers /dispatch too: after login, getPageFromPath restores the
+    // originally requested page, so the user lands back on Dispatch Center.
     return (
       <LoginPage
         onLogin={() => {
@@ -135,6 +131,16 @@ export default function App() {
           setPage(getPageFromPath(window.location.pathname));
         }}
       />
+    );
+  }
+
+  // Dispatch Center keeps its dedicated full-width layout (no sidebar), but
+  // only renders once the admin token has been verified above.
+  if (isDispatchPage) {
+    return (
+      <main className="main-content" style={{ marginLeft: 0 }}>
+        <DispatchPage />
+      </main>
     );
   }
 
@@ -159,6 +165,8 @@ export default function App() {
     scheduled: <ScheduledMessagesPage />,
     settings: <SettingsPage />,
     recruiter_kpis: <RecruiterKpiPage />,
+    ask_data: <AskDataPanel />,
+    chat_logs: <ChatLogsPage />,
   };
 
   const NAV_SECTIONS = [
@@ -178,6 +186,14 @@ export default function App() {
       items: [
         { key: 'broadcast', icon: '📢', label: 'Send Message' },
         { key: 'questions', icon: '📝', label: 'Surveys' },
+      ],
+    },
+    {
+      label: 'Insights',
+      color: '#f59e0b',
+      items: [
+        { key: 'ask_data', icon: '🔍', label: 'Ask the Data' },
+        { key: 'chat_logs', icon: '💬', label: 'Chat Monitor' },
       ],
     },
     {

@@ -466,13 +466,13 @@ export function useFormattingToolbar(textareaRef, value, onChange) {
 
   const toolbar = (
     <div className="formatting-toolbar">
-      <button type="button" onClick={() => insertTag("<b>", "</b>")} title="Bold (Ctrl+B)"><b>B</b></button>
-      <button type="button" onClick={() => insertTag("<i>", "</i>")} title="Italic (Ctrl+I)"><i>I</i></button>
-      <button type="button" onClick={() => insertTag("<u>", "</u>")} title="Underline (Ctrl+U)"><u>U</u></button>
-      <button type="button" onClick={() => insertTag("<s>", "</s>")} title="Strikethrough"><s>S</s></button>
-      <div className="divider" />
-      <button type="button" onClick={() => insertLink()} title="Link (Ctrl+K)">link</button>
-      <button type="button" onClick={() => insertTag("<tg-spoiler>", "</tg-spoiler>")} title="Spoiler">spoiler</button>
+      <button type="button" className="fmt-btn" onClick={() => insertTag("<b>", "</b>")} title="Bold (Ctrl+B)"><b>B</b></button>
+      <button type="button" className="fmt-btn" onClick={() => insertTag("<i>", "</i>")} title="Italic (Ctrl+I)"><i>I</i></button>
+      <button type="button" className="fmt-btn" onClick={() => insertTag("<u>", "</u>")} title="Underline (Ctrl+U)"><u>U</u></button>
+      <button type="button" className="fmt-btn" onClick={() => insertTag("<s>", "</s>")} title="Strikethrough"><s>S</s></button>
+      <div className="fmt-sep" />
+      <button type="button" className="fmt-btn" onClick={() => insertLink()} title="Link (Ctrl+K)">Link</button>
+      <button type="button" className="fmt-btn" onClick={() => insertTag("<tg-spoiler>", "</tg-spoiler>")} title="Spoiler">Spoiler</button>
     </div>
   );
 
