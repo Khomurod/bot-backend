@@ -1460,14 +1460,22 @@ CREATE TABLE IF NOT EXISTS fuel_monitor_inbox (
 CREATE INDEX IF NOT EXISTS idx_fuel_monitor_inbox_status_created
   ON fuel_monitor_inbox(status, created_at DESC);
 
--- ─── Driver Location Monitoring ──────────────────────────────────────
--- Per-driver-group toggle + scheduler state for the location monitoring
--- feature. When enabled, a poller resolves the driver's active load (from
--- Datatruck, with AI-parsed load context as fallback), decides whether the
--- truck is heading to the shipper (pickup) or receiver (delivery), tracks the
--- live ETA, and — when the truck enters the check-in radius — sends a Yes/No
--- "are you checked in?" prompt to the driver group. Mirrors the
--- claim/poll/reschedule shape of dispatch_eta_updates + fuel_stop_alerts.
+-- ─── Driver Location Monitoring — RETIRED ────────────────────────────
+-- The pickup/delivery "Checked In / Checked Out" location-monitor feature was
+-- RETIRED (2026-07). The poller, callback handlers, admin API/UI, and DB helper
+-- module were removed; see docs/architecture/retired-checkin-checkout-feature.md.
+-- These two tables (driver_location_monitors, driver_location_checkins) are
+-- INTENTIONALLY RETAINED so historical check-in/dwell data is preserved and a
+-- fresh init-db still succeeds. No application code references them any more.
+-- They may be dropped manually AFTER a backup if the data is no longer needed;
+-- do not add an automatic destructive migration.
+--
+-- (Original description) Per-driver-group toggle + scheduler state: a poller
+-- resolved the driver's active load (Datatruck, with AI-parsed load context as
+-- fallback), decided shipper (pickup) vs receiver (delivery), tracked the live
+-- ETA, and — when the truck entered the check-in radius — sent the check-in
+-- prompt to the driver group. Mirrored the claim/poll/reschedule shape of
+-- dispatch_eta_updates + fuel_stop_alerts.
 CREATE TABLE IF NOT EXISTS driver_location_monitors (
   id SERIAL PRIMARY KEY,
   group_id INTEGER NOT NULL UNIQUE REFERENCES groups(id) ON DELETE CASCADE,
