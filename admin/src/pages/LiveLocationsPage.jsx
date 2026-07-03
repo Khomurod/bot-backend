@@ -8,6 +8,22 @@ const AUTO_REFRESH_MS = 45000;
 const DEFAULT_CENTER = [39.5, -98.35]; // continental US
 const DEFAULT_ZOOM = 4;
 
+// Module-level cache of the last successful snapshot. It lives outside the
+// component so navigating away from Live Locations and back does NOT cold-start
+// the page: on remount we render this immediately and refresh quietly in the
+// background. Kept tiny (one snapshot, not GPS history) and never persisted to
+// disk, so it holds no secrets beyond the current page's own data.
+let lastGoodSnapshot = null;
+let lastGoodAt = null;
+
+function clockTime(date) {
+  try {
+    return new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  } catch (_) {
+    return "";
+  }
+}
+
 const FILTERS = [
   { key: "all", label: "All" },
   { key: "active_load", label: "Active load" },
@@ -97,12 +113,68 @@ function popupHtml(unit) {
   return `<div style="min-width:210px;font-size:13px;line-height:1.5">${rows.join("")}</div>`;
 }
 
+/**
+ * Admin-only diagnostics: exactly the secret-free counts the backend already
+ * computes on every snapshot build (services/liveLocationsService.js `debug`),
+ * plus cache freshness. Lets the owner see WHY the map looks the way it does —
+ * how many vehicles each provider returned, how many units matched, how many
+ * loads matched (and by driver vs unit), provider errors, and whether the data
+ * on screen is fresh or a cached/stale snapshot.
+ */
+function DiagnosticsPanel({ snapshot, lastUpdated, providerErrors }) {
+  const d = snapshot?.debug || {};
+  const pv = d.providerVehiclesReturned || {};
+  const rows = [
+    ["Snapshot generated", snapshot?.generatedAt ? clockTime(snapshot.generatedAt) : "—"],
+    ["Served from cache", snapshot ? String(Boolean(snapshot.servedFromCache)) : "—"],
+    ["Stale snapshot", snapshot ? String(Boolean(snapshot.isStale)) : "—"],
+    ["Cache age (s)", snapshot?.cacheAgeSeconds != null ? snapshot.cacheAgeSeconds : "—"],
+    ["Samsara vehicles fetched", pv.samsara == null ? "— (off)" : pv.samsara],
+    ["Factor vehicles fetched", pv.factor == null ? "— (off)" : pv.factor],
+    ["Leader vehicles fetched", pv.leader == null ? "— (off)" : pv.leader],
+    ["App units considered", d.unitsTotal ?? "—"],
+    ["Units matched to GPS", d.unitsWithGps ?? "—"],
+    ["  · via Samsara", d.matchedByProvider?.samsara ?? "—"],
+    ["  · via Factor", d.matchedByProvider?.factor ?? "—"],
+    ["  · via Leader", d.matchedByProvider?.leader ?? "—"],
+    ["Units with no GPS", d.unitsNoGps ?? "—"],
+    ["Units stale GPS", d.unitsStaleGps ?? "—"],
+    ["Datatruck loads fetched", d.loadsFetched ?? "—"],
+    ["Datatruck loads matched", d.loadsMatched ?? "—"],
+    ["  · by driver name", d.loadsMatchedByDriver ?? "—"],
+    ["  · by unit number", d.loadsMatchedByUnit ?? "—"],
+  ];
+  return (
+    <div className="card" style={{ marginBottom: 16, padding: "12px 16px" }}>
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>🩺 Live Locations diagnostics</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "2px 24px" }}>
+        {rows.map(([label, value]) => (
+          <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "2px 0", fontFamily: "var(--font-mono, monospace)" }}>
+            <span style={{ color: "var(--text-muted)", whiteSpace: "pre" }}>{label}</span>
+            <span style={{ fontWeight: 600 }}>{String(value)}</span>
+          </div>
+        ))}
+      </div>
+      {providerErrors && providerErrors.length > 0 && (
+        <div style={{ marginTop: 8, fontSize: 12, color: "#ef4444" }}>
+          Provider errors: {providerErrors.map((e) => `${e.provider} (${e.code || "error"})`).join(", ")}
+        </div>
+      )}
+      <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)" }}>
+        GPS provider unavailable = Samsara/ELD problem · No active load = Datatruck/load problem · ETA unavailable = routing/next-stop problem. These are independent.
+      </div>
+    </div>
+  );
+}
+
 export default function LiveLocationsPage() {
-  const [snapshot, setSnapshot] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Seed from the module cache so a remount shows the last good data instantly
+  // (no cold "Loading…" state) and just refreshes in the background.
+  const [snapshot, setSnapshot] = useState(lastGoodSnapshot);
+  const [loading, setLoading] = useState(!lastGoodSnapshot);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
-  const [lastUpdated, setLastUpdated] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(lastGoodAt);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -110,6 +182,7 @@ export default function LiveLocationsPage() {
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(null);
   const [tileError, setTileError] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -142,12 +215,19 @@ export default function LiveLocationsPage() {
   }, [units, search, filter]);
 
   // ── Data loading ──
+  // `initial` only means "cold start" when there is NO cached snapshot to show.
+  // When we already have data (module cache or a prior refresh) every fetch is a
+  // quiet background refresh that never blanks the map/list.
   const load = useCallback(async ({ initial = false, force = false } = {}) => {
-    if (initial) setLoading(true); else setRefreshing(true);
+    const haveData = Boolean(lastGoodSnapshot);
+    if (initial && !haveData) setLoading(true); else setRefreshing(true);
     try {
       const data = await api.getLiveLocationsSnapshot({ force });
+      const at = new Date();
+      lastGoodSnapshot = data;
+      lastGoodAt = at;
       setSnapshot(data);
-      setLastUpdated(new Date());
+      setLastUpdated(at);
       setError(null);
     } catch (err) {
       // Keep the previously loaded snapshot visible; just surface a banner.
@@ -159,6 +239,15 @@ export default function LiveLocationsPage() {
   }, []);
 
   useEffect(() => { load({ initial: true }); }, [load]);
+
+  // If the selected unit vanishes from a fresh snapshot, drop the selection so
+  // we don't hold a stale route/highlight; otherwise keep it across refreshes.
+  useEffect(() => {
+    if (!selectedUnit || !snapshot) return;
+    if (!(snapshot.units || []).some((u) => u.unit === selectedUnit)) {
+      setSelectedUnit(null);
+    }
+  }, [snapshot, selectedUnit]);
 
   // Auto-refresh
   useEffect(() => {
@@ -327,7 +416,11 @@ export default function LiveLocationsPage() {
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {refreshing ? "Refreshing…" : lastUpdated ? `Updated ${timeAgo(lastUpdated.toISOString())}` : ""}
+            {refreshing && snapshot
+              ? `Showing last updated data from ${clockTime(lastUpdated || Date.now())} — refreshing…`
+              : refreshing
+                ? "Refreshing…"
+                : lastUpdated ? `Updated ${timeAgo(new Date(lastUpdated).toISOString())}` : ""}
           </span>
           <button className="btn btn-ghost btn-sm" onClick={() => load({ force: true })} disabled={refreshing}>🔄 Refresh</button>
           <button
@@ -338,19 +431,31 @@ export default function LiveLocationsPage() {
             {autoRefresh ? "⏱ Auto: On" : "⏱ Auto: Off"}
           </button>
           <button className="btn btn-ghost btn-sm" onClick={fitAll}>🗺 Fit all</button>
+          <button
+            className={`btn btn-sm ${showDiagnostics ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => setShowDiagnostics((v) => !v)}
+            title="Show provider/match/cache diagnostics"
+          >
+            🩺 Diagnostics
+          </button>
         </div>
       </div>
 
+      {/* A failed background refresh keeps the last good data on screen. */}
       {error && (
         <div className="alert alert-error" style={{ marginTop: 0 }}>
-          ⚠️ {error}{snapshot ? " — showing last known data." : ""}
+          ⚠️ {snapshot
+            ? "Could not refresh live data. Showing last successful snapshot."
+            : error}
         </div>
       )}
-      {snapshot?.stale && !error && (
+      {snapshot?.isStale && !error && (
         <div className="alert alert-error" style={{ marginTop: 0 }}>
-          ⚠️ Live data source is temporarily unavailable — showing last known snapshot.
+          ⚠️ {snapshot.warning || "Live data source is temporarily unavailable — showing last successful snapshot."}
         </div>
       )}
+
+      {showDiagnostics && <DiagnosticsPanel snapshot={snapshot} lastUpdated={lastUpdated} providerErrors={providerErrors} />}
 
       {/* Provider errors, shown SEPARATELY so a Factor/Leader/Datatruck failure
           never hides the providers (e.g. Samsara) that are working. */}

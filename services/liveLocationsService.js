@@ -248,6 +248,30 @@ function indexOrdersByDriver(orders, now) {
   return byDriver;
 }
 
+/**
+ * Index active orders by normalized unit/truck number so a unit whose driver
+ * name does not match (or is missing on the group row) can still be matched to
+ * its load via `trip.truck__unit_number`. Keyed to the best (soonest-relevant)
+ * order per unit, same ranking as the driver index.
+ */
+function indexOrdersByUnit(orders, now) {
+  const byUnit = new Map(); // normalizedUnit -> best order
+  for (const order of orders) {
+    const units = new Set(
+      datatruck.orderUnitCandidates(order)
+        .map((c) => datatruck.normalizeUnitForMatch(c))
+        .filter(Boolean)
+    );
+    for (const unit of units) {
+      const existing = byUnit.get(unit);
+      if (!existing || orderSortKey(order, now) < orderSortKey(existing, now)) {
+        byUnit.set(unit, order);
+      }
+    }
+  }
+  return byUnit;
+}
+
 function computeNextStop(load, now) {
   if (!load) return null;
   const pickupEndMs = load.pickupWindowEnd ? Date.parse(load.pickupWindowEnd) : NaN;
@@ -266,6 +290,10 @@ function computeNextStop(load, now) {
     nextStopType: type,
     nextStopName: (isPickup ? load.shipperName : load.receiverName) || null,
     nextStopAddress: (isPickup ? load.pickupAddress : load.deliveryAddress) || null,
+    // Coordinates come straight from Datatruck's structured stop when present, so
+    // ETA can skip geocoding entirely (faster + no dependency on the geocoder).
+    nextStopLat: (isPickup ? load.pickupLat : load.deliveryLat) ?? null,
+    nextStopLng: (isPickup ? load.pickupLng : load.deliveryLng) ?? null,
     appointmentStart: toIso(isPickup ? load.pickupWindowStart : load.deliveryWindowStart),
     appointmentEnd: toIso(isPickup ? load.pickupWindowEnd : load.deliveryWindowEnd),
   };
@@ -289,14 +317,21 @@ async function geocodeStop(address, now) {
   }
 }
 
-/** Fast straight-line ETA for the snapshot. Precise routing is in getRouteForUnit. */
-async function computeStraightLineEta(unit, location, nextStopAddress, now) {
-  if (!location || !nextStopAddress) return { status: 'unavailable' };
-  const cacheKey = `${unit}|${normalizeAddressKey(nextStopAddress)}|${location.lat.toFixed(2)}|${location.lng.toFixed(2)}`;
+/**
+ * Fast straight-line ETA for the snapshot. Precise routing is in getRouteForUnit.
+ * When the caller already has destination coordinates (Datatruck structured
+ * stop), they are used directly and geocoding is skipped.
+ */
+async function computeStraightLineEta(unit, location, nextStopAddress, now, destCoords = null) {
+  if (!location || (!nextStopAddress && !destCoords)) return { status: 'unavailable' };
+  const destKey = destCoords
+    ? `${destCoords.lat.toFixed(3)},${destCoords.lng.toFixed(3)}`
+    : normalizeAddressKey(nextStopAddress);
+  const cacheKey = `${unit}|${destKey}|${location.lat.toFixed(2)}|${location.lng.toFixed(2)}`;
   const cached = etaCache.get(cacheKey);
   if (cached && now - cached.at < ETA_TTL_MS) return cached.eta;
 
-  const dest = await geocodeStop(nextStopAddress, now);
+  const dest = destCoords || await geocodeStop(nextStopAddress, now);
   let result;
   if (!dest) {
     result = { status: 'unavailable' };
@@ -385,6 +420,8 @@ async function buildSnapshot() {
   if (orderResult.error) errors.push(orderResult.error);
 
   const ordersByDriver = indexOrdersByDriver(orderResult.orders || [], now);
+  const ordersByUnit = indexOrdersByUnit(orderResult.orders || [], now);
+  let loadsMatchedByUnit = 0; // loads matched via unit number where the name missed
 
   const built = units.map((row) => {
     const unitNumber = unitNumberForRow(row);
@@ -394,8 +431,17 @@ async function buildSnapshot() {
 
     const { provider, location } = resolveLocationForUnit(fleets, unitNumber, driverNameHint);
 
+    // Load matching: driver name first (most specific), then unit number as a
+    // fallback so a group whose row has no/'different' driver name still gets its
+    // load via trip.truck__unit_number.
     const normDriver = datatruck.normalizeNameForMatch(driverName);
-    const order = normDriver ? ordersByDriver.get(normDriver) : null;
+    let order = normDriver ? ordersByDriver.get(normDriver) : null;
+    let matchedBy = order ? 'driver' : null;
+    if (!order) {
+      const normUnit = datatruck.normalizeUnitForMatch(unitNumber);
+      order = normUnit ? ordersByUnit.get(normUnit) : null;
+      if (order) { matchedBy = 'unit'; loadsMatchedByUnit += 1; }
+    }
     const rawLoad = order ? datatruckLoads.extractLoadFromOrder(order) : null;
 
     let load = null;
@@ -404,11 +450,14 @@ async function buildSnapshot() {
       load = {
         loadId: rawLoad.loadIdentifier,
         status: rawLoad.status,
+        matchedBy,
         nextStopType: nextStop ? nextStop.nextStopType : null,
         nextStopName: nextStop ? nextStop.nextStopName : null,
         nextStopAddress: nextStop ? nextStop.nextStopAddress : null,
-        nextStopLat: null,
-        nextStopLng: null,
+        // Prefer Datatruck's structured stop coordinates; the ETA pass falls back
+        // to geocoding the address only when these are absent.
+        nextStopLat: nextStop ? nextStop.nextStopLat : null,
+        nextStopLng: nextStop ? nextStop.nextStopLng : null,
         appointmentStart: nextStop ? nextStop.appointmentStart : null,
         appointmentEnd: nextStop ? nextStop.appointmentEnd : null,
       };
@@ -421,15 +470,25 @@ async function buildSnapshot() {
 
   // ETA pass (bounded concurrency); straight-line only for units with a stop.
   await mapWithConcurrency(built, ETA_CONCURRENCY, async (entry) => {
-    if (!entry.location || !entry.load || !entry.load.nextStopAddress) {
+    const load = entry.load;
+    const hasStop = load && (load.nextStopAddress
+      || (load.nextStopLat != null && load.nextStopLng != null));
+    if (!entry.location || !hasStop) {
       entry.eta = { status: 'unavailable' };
       return;
     }
-    const e = await computeStraightLineEta(entry.unitNumber, entry.location, entry.load.nextStopAddress, now);
+    const destCoords = (load.nextStopLat != null && load.nextStopLng != null)
+      ? { lat: load.nextStopLat, lng: load.nextStopLng }
+      : null;
+    const e = await computeStraightLineEta(
+      entry.unitNumber, entry.location, load.nextStopAddress, now, destCoords
+    );
     entry.eta = e;
     if (e.status === 'ok') {
-      entry.load.nextStopLat = e.destLat ?? null;
-      entry.load.nextStopLng = e.destLng ?? null;
+      // Keep the coords used for the ETA on the load (geocoded ones fill in when
+      // Datatruck did not already supply structured coordinates).
+      if (load.nextStopLat == null) load.nextStopLat = e.destLat ?? null;
+      if (load.nextStopLng == null) load.nextStopLng = e.destLng ?? null;
     }
   });
 
@@ -504,6 +563,8 @@ async function buildSnapshot() {
     // Datatruck load matching
     loadsFetched,
     loadsMatched: activeLoads,
+    loadsMatchedByUnit,
+    loadsMatchedByDriver: Math.max(0, activeLoads - loadsMatchedByUnit),
     loadsUnmatched: Math.max(0, loadsFetched - activeLoads),
     // provider error codes only (messages may contain HTTP snippets, kept out here)
     providerErrors: providerErrors.map((e) => ({ provider: e.provider, code: e.code })),
@@ -514,6 +575,13 @@ async function buildSnapshot() {
   return {
     generatedAt: new Date(now).toISOString(),
     ttlSeconds: Math.round(SNAPSHOT_TTL_MS / 1000),
+    // Cache-status fields are finalized in getSnapshot() (which knows whether the
+    // caller got a freshly-built or a cached/stale snapshot). Defaults here
+    // describe a fresh build so buildSnapshot() alone is still self-consistent.
+    servedFromCache: false,
+    isStale: false,
+    cacheAgeSeconds: 0,
+    lastSuccessfulRefreshAt: new Date(now).toISOString(),
     summary: {
       totalUnits: unitsOut.length,
       activeLoads,
@@ -533,28 +601,60 @@ async function buildSnapshot() {
  * Concurrent callers share one in-flight build. On build failure the last good
  * snapshot is returned, flagged `stale: true`.
  */
+function decorateCacheStatus(data, { cachedAtMs, servedFromCache, isStale, warning }) {
+  const ageSeconds = Math.max(0, Math.round((nowMs() - cachedAtMs) / 1000));
+  const decorated = {
+    ...data,
+    servedFromCache,
+    isStale,
+    stale: isStale, // kept for backward compatibility with existing consumers
+    cacheAgeSeconds: ageSeconds,
+    lastSuccessfulRefreshAt: data.generatedAt || null,
+  };
+  if (warning) decorated.warning = warning;
+  return decorated;
+}
+
 async function getSnapshot({ force = false } = {}) {
   const now = nowMs();
+  // Fresh cached snapshot within TTL — served from cache, single API budget.
   if (!force && snapshotCache && now - snapshotCache.at < SNAPSHOT_TTL_MS) {
-    return snapshotCache.data;
+    return decorateCacheStatus(snapshotCache.data, {
+      cachedAtMs: snapshotCache.at,
+      servedFromCache: true,
+      isStale: false,
+    });
   }
+  // A build is already running (single-flight) — every concurrent caller shares
+  // it, so two admins opening the page together trigger only one provider fetch.
   if (snapshotInFlight) return snapshotInFlight;
 
   snapshotInFlight = (async () => {
     try {
       const data = await buildSnapshot();
       snapshotCache = { at: nowMs(), data };
-      return data;
+      return decorateCacheStatus(data, {
+        cachedAtMs: snapshotCache.at,
+        servedFromCache: false,
+        isStale: false,
+      });
     } catch (err) {
+      // Build failed — return the last successful snapshot, flagged stale, with a
+      // clear warning. Nothing is wiped; the page keeps showing the last good data.
       if (snapshotCache) {
-        return {
+        const withError = {
           ...snapshotCache.data,
-          stale: true,
           errors: [
             ...(snapshotCache.data.errors || []),
             { provider: 'snapshot', code: 'BUILD_FAILED', message: err.message },
           ],
         };
+        return decorateCacheStatus(withError, {
+          cachedAtMs: snapshotCache.at,
+          servedFromCache: true,
+          isStale: true,
+          warning: 'Live provider refresh failed. Showing last successful snapshot.',
+        });
       }
       throw err;
     } finally {
@@ -642,6 +742,7 @@ module.exports = {
   // exported for unit tests
   computeNextStop,
   indexOrdersByDriver,
+  indexOrdersByUnit,
   orderSortKey,
   resolveLocationForUnit,
   buildLocationFromSamsaraVehicle,

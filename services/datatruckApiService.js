@@ -183,6 +183,35 @@ function orderDriverCandidates(order) {
   ].filter(Boolean);
 }
 
+/** Digits-only unit number with leading zeros stripped (e.g. "771 JAFAR" → "771"). */
+function normalizeUnitForMatch(value) {
+  const digits = String(value == null ? '' : value).replace(/\D/g, '');
+  if (!digits) return null;
+  return digits.replace(/^0+(?=\d)/, '');
+}
+
+/**
+ * Unit/truck-number candidates carried on an order. The live API puts the unit
+ * on `trip.truck__unit_number` (e.g. "771 JAFAR"); older/simple shapes may use
+ * `assigned_driver_n_truck.truck_unit_number` or a flat field. We return every
+ * numeric token so a label like "771 JAFAR" matches unit 771.
+ */
+function orderUnitCandidates(order) {
+  const trip = order?.trip || {};
+  const raw = [
+    trip.truck__unit_number,
+    order?.assigned_driver_n_truck?.truck_unit_number,
+    order?.truck_unit_number,
+    order?.unit_number,
+  ].filter(Boolean);
+  const tokens = [];
+  for (const label of raw) {
+    tokens.push(String(label));
+    for (const t of String(label).match(/\d+/g) || []) tokens.push(t);
+  }
+  return tokens;
+}
+
 /**
  * Find the single most relevant in-progress order for a driver by name.
  *
@@ -238,6 +267,47 @@ async function fetchActiveOrderForDriver(driverName, {
   return matched[0] || null;
 }
 
+/**
+ * Find the single most relevant in-progress order for a UNIT/truck number.
+ * Mirrors fetchActiveOrderForDriver but matches on the order's unit label
+ * (`trip.truck__unit_number`) instead of the driver name — used when the app
+ * knows a unit number but not (or not reliably) the driver name. Returns null
+ * when no order matches.
+ */
+async function fetchActiveOrderForUnit(unitNumber, {
+  lookbackDays = 2,
+  lookaheadDays = 5,
+  nowMs = Date.now(),
+} = {}) {
+  const target = normalizeUnitForMatch(unitNumber);
+  if (!target) return null;
+
+  const startIso = new Date(nowMs - lookbackDays * 86_400_000).toISOString();
+  const endIso = new Date(nowMs + lookaheadDays * 86_400_000).toISOString();
+  const orders = await fetchOrdersByDocumentWindow(startIso, endIso);
+
+  const matched = orders.filter((order) => orderUnitCandidates(order)
+    .some((candidate) => normalizeUnitForMatch(candidate) === target));
+  if (!matched.length) return null;
+
+  function appointmentMs(order, kind) {
+    const iso = kind === 'pickup'
+      ? (order?.pickup_time || order?.pickup_appointment_time)
+      : (order?.delivery_time || order?.delivery_appointment_time);
+    const ms = iso ? Date.parse(iso) : NaN;
+    return Number.isFinite(ms) ? ms : null;
+  }
+  function sortKey(order) {
+    const pu = appointmentMs(order, 'pickup');
+    const del = appointmentMs(order, 'delivery');
+    if (pu != null && pu >= nowMs) return pu;
+    if (del != null && del >= nowMs) return del;
+    return Math.max(pu || 0, del || 0) + 1e15;
+  }
+  matched.sort((a, b) => sortKey(a) - sortKey(b));
+  return matched[0] || null;
+}
+
 module.exports = {
   isConfigured,
   fetchAllDrivers,
@@ -245,8 +315,11 @@ module.exports = {
   fetchOrdersByDeliveryWindow,
   fetchOrdersByDocumentWindow,
   fetchActiveOrderForDriver,
+  fetchActiveOrderForUnit,
   normalizeNameForMatch,
+  normalizeUnitForMatch,
   orderDriverCandidates,
+  orderUnitCandidates,
   mergeOrdersById,
   fetchAllPages,
   PAGE_SIZE,
