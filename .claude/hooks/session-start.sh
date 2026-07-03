@@ -1,30 +1,18 @@
 #!/bin/bash
 # SessionStart hook for Claude Code on the web.
 #
-# Installs all dependencies needed to build the admin portal and run the
-# test suite. Paths are resolved from this script's own location so the hook
-# works no matter what the current working directory is when it runs
-# (the previous external setup script failed because it ran
-# `pip install -r leads-bot/requirements.txt` from the wrong directory).
-set -euo pipefail
+# Installs everything needed to build the admin portal and run the test suite.
+# All logic lives in the CWD-independent repo setup script (../../setup.sh) so
+# there is ONE source of truth and setup can never fail from the wrong working
+# directory (the historical cause of
+#   "Could not open requirements file: 'leads-bot/requirements.txt'").
+#
+# NOTE: this hook runs during "Start Claude Code". The earlier "Ran setup
+# script" step is the ENVIRONMENT's own setup script, configured in the web
+# environment settings — point that at `bash bot-backend/setup.sh` (or leave it
+# blank) so it uses this same safe script instead of a brittle relative path.
 
-# Absolute path to the repository root (.claude/hooks/ -> repo root).
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$REPO_DIR"
-
-echo "[session-start] Repo: $REPO_DIR"
-
-# Node dependencies for the backend. The "postinstall" script also runs
-# `npm ci --prefix admin && npm run build --prefix admin`, which installs the
-# admin portal's deps and produces the production build.
-echo "[session-start] Installing Node dependencies (backend + admin build)..."
-npm install
-
-# Python dependencies for the leads-bot service, exercised by `npm test`
-# (python -m unittest discover -s leads-bot).
-if [ -f leads-bot/requirements.txt ] && command -v pip3 >/dev/null 2>&1; then
-  echo "[session-start] Installing leads-bot Python dependencies..."
-  pip3 install -r leads-bot/requirements.txt
-fi
-
-echo "[session-start] Done."
+bash "$REPO_DIR/setup.sh"
+# Never let setup failures block the session from starting.
+exit 0
