@@ -104,12 +104,51 @@ function LocationProvidersTab() {
     finally { setSaving(false); }
   };
 
+  // A base URL that points at Swagger/interactive docs instead of the real API
+  // host — mirrors the backend check so we can warn before a doomed test call.
+  const baseUrlLooksLikeDocs = (url) => {
+    const s = String(url || "").toLowerCase();
+    if (!s) return false;
+    return s.includes("/swagger") || s.includes("/index.html") || s.includes("#")
+      || s.includes("/api-docs") || s.includes("/redoc");
+  };
+  const effectiveApiBase = (form.driveHosApiBase || settings?.driveHosApiBase || "").trim();
+  const apiBaseIsDocs = baseUrlLooksLikeDocs(effectiveApiBase);
+
   const runTest = async (provider, candidate = {}) => {
+    // Client-side field validation for Drive HoS providers with clear messages.
+    if (provider === "factor" || provider === "leader") {
+      const label = provider === "factor" ? "Factor ELD" : "Leader ELD";
+      const providerKeySet = form.driveHosProviderKey.trim() || settings?.driveHosProviderKeySet;
+      const companyKeySet = provider === "factor"
+        ? (form.factorCompanyKey.trim() || settings?.factorCompanyKeySet)
+        : (form.leaderCompanyKey.trim() || settings?.leaderCompanyKeySet);
+      if (!providerKeySet) {
+        setTestResults((r) => ({ ...r, [provider]: { connected: false, message: `Provider Key is required before testing ${label}.` } }));
+        return;
+      }
+      if (!effectiveApiBase) {
+        setTestResults((r) => ({ ...r, [provider]: { connected: false, message: `API Base URL is required before testing ${label}.` } }));
+        return;
+      }
+      if (apiBaseIsDocs) {
+        setTestResults((r) => ({ ...r, [provider]: { connected: false, message: "This looks like a documentation URL, not the actual API base URL." } }));
+        return;
+      }
+      if (!companyKeySet) {
+        const ck = provider === "factor" ? "Factor Company Key" : "Leader Company Key";
+        setTestResults((r) => ({ ...r, [provider]: { connected: false, message: `${ck} is required before testing ${label}.` } }));
+        return;
+      }
+    }
     setTesting((t) => ({ ...t, [provider]: true }));
     setTestResults((r) => ({ ...r, [provider]: null }));
     try {
       const groupTitle = testUnit.trim() ? `UNIT # ${testUnit.trim()}` : "";
-      const result = await api.testEldProvider({ provider, groupTitle, ...candidate });
+      // Pass the (possibly edited) API base so the operator can verify a corrected
+      // URL before saving it.
+      const apiBase = effectiveApiBase || undefined;
+      const result = await api.testEldProvider({ provider, groupTitle, apiBase, ...candidate });
       setTestResults((r) => ({ ...r, [provider]: result }));
     } catch (err) {
       setTestResults((r) => ({ ...r, [provider]: { connected: false, message: err.message } }));
@@ -165,6 +204,14 @@ function LocationProvidersTab() {
         <div className="form-group">
           <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>API Base URL</label>
           <input className="form-input" value={form.driveHosApiBase} placeholder="https://api.drivehos.app" onChange={(e) => setField("driveHosApiBase", e.target.value)} />
+          <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
+            The real API host (e.g. <code>https://api.drivehos.app</code>) — <strong>not</strong> the Swagger/documentation page.
+          </div>
+          {apiBaseIsDocs && (
+            <div style={{ fontSize: 12, color: "#f87171", marginTop: 6, fontWeight: 600 }}>
+              ⚠️ This looks like a documentation URL, not the actual API base URL. Requests will fail until this points at the real API host.
+            </div>
+          )}
         </div>
       </div>
 

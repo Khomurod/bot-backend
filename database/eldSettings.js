@@ -23,6 +23,23 @@ function invalidateCache() {
   cacheExpiresAt = 0;
 }
 
+const DEFAULT_DRIVEHOS_API_BASE = 'https://api.drivehos.app';
+
+/**
+ * A Drive HoS API base URL that points at Swagger / interactive docs rather than
+ * the actual API host. Live API calls against these fail, so we detect them,
+ * refuse to use them for requests, and surface a clear warning in the admin UI.
+ */
+function looksLikeDocsUrl(url) {
+  const s = String(url || '').toLowerCase();
+  if (!s) return false;
+  return s.includes('/swagger')
+    || s.includes('/index.html')
+    || s.includes('#')
+    || s.includes('/api-docs')
+    || s.includes('/redoc');
+}
+
 function safeDecrypt(payload) {
   if (!payload) return '';
   try {
@@ -65,8 +82,17 @@ async function getEldConfig() {
     samsaraApiKeys,
     samsaraApiBase: config.samsaraApiBase,
 
-    driveHosApiBase: (row?.drivehos_api_base || config.driveHosApiBase || 'https://api.drivehos.app')
+    // What the operator configured (DB row → env → default), used for display.
+    driveHosApiBaseConfigured: (row?.drivehos_api_base || config.driveHosApiBase || DEFAULT_DRIVEHOS_API_BASE)
       .replace(/\/+$/, ''),
+    // What we actually call: never a Swagger/docs URL — fall back to the real
+    // API host so a mis-pasted documentation URL cannot silently break lookups.
+    driveHosApiBase: (() => {
+      const configured = (row?.drivehos_api_base || config.driveHosApiBase || DEFAULT_DRIVEHOS_API_BASE)
+        .replace(/\/+$/, '');
+      return looksLikeDocsUrl(configured) ? DEFAULT_DRIVEHOS_API_BASE : configured;
+    })(),
+    driveHosApiBaseLooksLikeDocs: looksLikeDocsUrl(row?.drivehos_api_base || config.driveHosApiBase || ''),
     driveHosProviderKey: safeDecrypt(row?.drivehos_provider_key_encrypted) || config.driveHosProviderKey || '',
 
     factorEnabled: row ? row.factor_enabled !== false : true,
@@ -101,7 +127,8 @@ async function getEldSettingsForAdmin() {
     samsaraApiKeyMasked: maskKey(cfg.samsaraApiKeys[0]),
     samsaraFromEnv: !row?.samsara_api_key_encrypted && Boolean(cfg.samsaraApiKeys.length),
 
-    driveHosApiBase: cfg.driveHosApiBase,
+    driveHosApiBase: cfg.driveHosApiBaseConfigured,
+    driveHosApiBaseLooksLikeDocs: cfg.driveHosApiBaseLooksLikeDocs,
     driveHosProviderKeySet: Boolean(cfg.driveHosProviderKey),
     driveHosProviderKeyMasked: maskKey(cfg.driveHosProviderKey),
     driveHosProviderFromEnv: !row?.drivehos_provider_key_encrypted && Boolean(cfg.driveHosProviderKey),
@@ -186,4 +213,6 @@ module.exports = {
   getEldSettingsForAdmin,
   updateEldSettings,
   invalidateCache,
+  looksLikeDocsUrl,
+  DEFAULT_DRIVEHOS_API_BASE,
 };

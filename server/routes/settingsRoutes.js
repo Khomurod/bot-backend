@@ -3,6 +3,8 @@ const {
   getEldSettingsForAdmin,
   updateEldSettings,
   getEldConfig,
+  looksLikeDocsUrl,
+  DEFAULT_DRIVEHOS_API_BASE,
 } = require('../../database/eldSettings');
 const { fetchAllVehicleStats } = require('../../services/samsaraLocationService');
 const {
@@ -75,22 +77,42 @@ function createSettingsRouter({ authMiddleware }) {
       }
 
       if (provider === 'factor' || provider === 'leader') {
+        const label = provider === 'factor' ? 'Factor ELD' : 'Leader ELD';
+        const companyKeyLabel = provider === 'factor' ? 'Factor Company Key' : 'Leader Company Key';
         const providerKey = String(req.body?.providerKey || '').trim() || cfg.driveHosProviderKey || '';
         const companyKey = String(req.body?.companyKey || '').trim()
           || (provider === 'factor' ? cfg.factorCompanyKey : cfg.leaderCompanyKey) || '';
-        const label = provider === 'factor' ? 'Factor ELD' : 'Leader ELD';
+
+        // The base URL comes from the body override (verify-before-save) or the
+        // stored value. Reject a Swagger/docs URL up front — it will never work.
+        const configuredBase = (String(req.body?.apiBase || '').trim() || cfg.driveHosApiBaseConfigured || '')
+          .replace(/\/+$/, '');
+
+        // Field-level validation with clear, specific messages.
         if (!providerKey) {
-          return res.json({ connected: false, message: 'No Drive HoS provider key set.' });
+          return res.json({ connected: false, message: `Provider Key is required before testing ${label}.` });
+        }
+        if (!configuredBase) {
+          return res.json({ connected: false, message: `API Base URL is required before testing ${label}.` });
+        }
+        if (looksLikeDocsUrl(configuredBase)) {
+          return res.json({
+            connected: false,
+            message: 'This looks like a documentation URL, not the actual API base URL. '
+              + `Set the API Base URL to the real API host (e.g. ${DEFAULT_DRIVEHOS_API_BASE}).`,
+          });
         }
         if (!companyKey) {
-          return res.json({ connected: false, message: `No ${label} company key set.` });
+          return res.json({ connected: false, message: `${companyKeyLabel} is required before testing ${label}.` });
         }
+
+        const apiBase = configuredBase;
         if (groupTitle) {
           const loc = await getLiveLocationForGroupTitleFromDriveHos({
             groupTitle,
             providerKey,
             companyKey,
-            apiBase: cfg.driveHosApiBase,
+            apiBase,
             providerLabel: label,
           });
           return res.json({
@@ -98,7 +120,7 @@ function createSettingsRouter({ authMiddleware }) {
             message: `Found unit ${loc.unitNumber} at ${loc.address || `${loc.latitude}, ${loc.longitude}`}.`,
           });
         }
-        const vehicles = await fetchAllLatestVehicleStatuses({ providerKey, companyKey, apiBase: cfg.driveHosApiBase });
+        const vehicles = await fetchAllLatestVehicleStatuses({ providerKey, companyKey, apiBase });
         return res.json({ connected: true, message: `Connected. ${vehicles.length} vehicle(s) visible.` });
       }
 

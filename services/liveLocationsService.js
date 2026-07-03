@@ -335,13 +335,28 @@ async function mapWithConcurrency(items, limit, fn) {
 }
 
 // ─── Unit enumeration ─────────────────────────────────────────────────────────
+
+/**
+ * The unit number for a group row. Prefer the stored `unit_number` column, but
+ * fall back to parsing it out of the group title (e.g. "WENZE UNIT # 305 …") —
+ * the same source the working bot /location path uses. Without this fallback a
+ * group whose unit_number column was never backfilled would silently drop out
+ * of the snapshot even though Samsara has its GPS.
+ */
+function unitNumberForRow(row) {
+  const fromColumn = samsara.normalizeUnitNumber(row.unit_number);
+  if (fromColumn) return fromColumn;
+  const title = row.raw_group_title || row.group_name || '';
+  return samsara.normalizeUnitNumber(samsara.extractUnitNumberFromGroupName(title));
+}
+
 async function listActiveUnits() {
   const rows = await listCanonicalDriverGroups({ operational: true, includeNonDrivers: false });
   return rows.filter((r) => r
     && r.group_type === 'driver'
     && !r.inactive
     && r.operational_visible !== false
-    && samsara.normalizeUnitNumber(r.unit_number) != null);
+    && unitNumberForRow(r) != null);
 }
 
 function driverNameForGroupRow(row) {
@@ -372,7 +387,7 @@ async function buildSnapshot() {
   const ordersByDriver = indexOrdersByDriver(orderResult.orders || [], now);
 
   const built = units.map((row) => {
-    const unitNumber = samsara.normalizeUnitNumber(row.unit_number);
+    const unitNumber = unitNumberForRow(row);
     const groupTitle = row.raw_group_title || row.group_name || '';
     const driverName = driverNameForGroupRow(row);
     const driverNameHint = extractDriverNameFromGroupTitle(groupTitle) || driverName;
@@ -421,17 +436,23 @@ async function buildSnapshot() {
   let activeLoads = 0;
   let staleGps = 0;
   let noActiveLoad = 0;
+  let withGps = 0;
 
   const unitsOut = built.map((entry) => {
     const warnings = [];
+    // GPS and load are independent: a unit with GPS but no load still shows on
+    // the map, and "no GPS" is reported as exactly that — NOT as
+    // "provider unavailable" just because an unrelated fallback (Factor/Leader)
+    // errored. Provider errors are surfaced separately in `errors`/`summary`.
     if (!entry.location) {
-      warnings.push(providerErrors.length ? 'provider_unavailable' : 'no_gps');
+      warnings.push('no_gps');
     } else if (entry.location.isStale) {
       warnings.push('stale_gps');
     }
     if (!entry.load) warnings.push('no_active_load');
 
     if (entry.load) activeLoads += 1; else noActiveLoad += 1;
+    if (entry.location) withGps += 1;
     if (entry.location && entry.location.isStale) staleGps += 1;
 
     const row = entry.row;
@@ -457,6 +478,39 @@ async function buildSnapshot() {
     };
   });
 
+  // ─── Developer-safe debug summary (no secrets, no coordinates) ──────────────
+  // Makes it obvious at a glance how each stage performed: how many vehicles
+  // each provider returned, how many units matched GPS, and how loads matched.
+  const providerVehiclesReturned = {
+    samsara: fleets.samsara ? fleets.samsara.length : null,
+    factor: fleets.factor ? fleets.factor.length : null,
+    leader: fleets.leader ? fleets.leader.length : null,
+  };
+  const matchedByProvider = { samsara: 0, factor: 0, leader: 0 };
+  for (const entry of built) {
+    if (entry.provider && matchedByProvider[entry.provider] != null) matchedByProvider[entry.provider] += 1;
+  }
+  const loadsFetched = (orderResult.orders || []).length;
+  const debug = {
+    // vehicles each provider returned (null = provider disabled/not called)
+    providerVehiclesReturned,
+    // units enumerated from the driver directory
+    unitsTotal: unitsOut.length,
+    // units matched to GPS, split by which provider supplied it
+    unitsWithGps: withGps,
+    unitsNoGps: unitsOut.length - withGps,
+    unitsStaleGps: staleGps,
+    matchedByProvider,
+    // Datatruck load matching
+    loadsFetched,
+    loadsMatched: activeLoads,
+    loadsUnmatched: Math.max(0, loadsFetched - activeLoads),
+    // provider error codes only (messages may contain HTTP snippets, kept out here)
+    providerErrors: providerErrors.map((e) => ({ provider: e.provider, code: e.code })),
+  };
+  // One-line, secret-free breadcrumb in the server logs on every rebuild.
+  console.log('[LIVE-LOCATIONS] snapshot built:', JSON.stringify(debug));
+
   return {
     generatedAt: new Date(now).toISOString(),
     ttlSeconds: Math.round(SNAPSHOT_TTL_MS / 1000),
@@ -465,8 +519,10 @@ async function buildSnapshot() {
       activeLoads,
       staleGps,
       noActiveLoad,
+      withGps,
       providerErrors: providerErrors.length,
     },
+    debug,
     units: unitsOut,
     errors,
   };
@@ -590,6 +646,7 @@ module.exports = {
   resolveLocationForUnit,
   buildLocationFromSamsaraVehicle,
   buildLocationFromDriveHosVehicle,
+  unitNumberForRow,
   SNAPSHOT_TTL_MS,
   STALE_MINUTES,
 };

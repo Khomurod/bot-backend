@@ -56,20 +56,52 @@ function pickTruckNumber(vehicle) {
     ?? null;
 }
 
+/**
+ * Pull the vehicle array out of whatever envelope the API returns. Drive HoS
+ * documents `{ data: [...] }`, but we stay tolerant of the shapes seen across
+ * ELD APIs so a contract tweak does not blank the whole fallback:
+ *   [...]  |  { data }  |  { vehicles }  |  { result(s) }  |  { items }  |
+ *   nested { data: { vehicles: [...] } }.
+ * Returns null only when no array can be found anywhere.
+ */
+function extractVehicleArray(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== 'object') return null;
+  const arrayKeys = ['data', 'vehicles', 'result', 'results', 'items', 'records', 'rows'];
+  for (const key of arrayKeys) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+  for (const key of ['data', 'result', 'response', 'payload']) {
+    if (payload[key] && typeof payload[key] === 'object' && !Array.isArray(payload[key])) {
+      const nested = extractVehicleArray(payload[key]);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
 function findVehicleByUnit(vehicles, unitNumber) {
   const target = normalizeUnitNumber(unitNumber);
   if (!target || !Array.isArray(vehicles)) return null;
 
-  const matches = vehicles.filter((vehicle) => (
-    normalizeUnitNumber(pickTruckNumber(vehicle)) === target
-  ));
-  if (!matches.length) return null;
-
-  return matches.sort((a, b) => {
+  const byFreshness = (list) => list.sort((a, b) => {
     const aTs = Date.parse(a?.timestamp || 0) || 0;
     const bTs = Date.parse(b?.timestamp || 0) || 0;
     return bTs - aTs;
   })[0];
+
+  // Primary: the dedicated unit/number field normalizes to the target.
+  const exact = vehicles.filter((vehicle) => (
+    normalizeUnitNumber(pickTruckNumber(vehicle)) === target
+  ));
+  if (exact.length) return byFreshness(exact);
+
+  // Fallback: a free-form label that contains the unit number as a token.
+  const contains = vehicles.filter((vehicle) => {
+    const tokens = String(pickTruckNumber(vehicle) || '').match(/\d+/g) || [];
+    return tokens.some((token) => normalizeUnitNumber(token) === target);
+  });
+  return contains.length ? byFreshness(contains) : null;
 }
 
 async function resolveAddressFromCoordinates(coords) {
@@ -115,11 +147,16 @@ async function fetchLatestVehicleStatusPage({ providerKey, companyKey, apiBase, 
       throw err;
     }
 
-    const data = Array.isArray(payload?.data)
-      ? payload.data
-      : (Array.isArray(payload) ? payload : null);
+    const data = extractVehicleArray(payload);
     if (!data) {
-      const err = new Error('Drive HoS response did not include a data array.');
+      // Log ONLY the top-level key names (never values) to help diagnose an
+      // unexpected shape without leaking any credentials or vehicle data.
+      const keySample = payload && typeof payload === 'object'
+        ? Object.keys(payload).slice(0, 20).join(', ')
+        : typeof payload;
+      const err = new Error(
+        `Drive HoS response did not contain a recognizable vehicle array (top-level keys: ${keySample || 'none'}).`
+      );
       err.code = 'DRIVEHOS_INVALID_RESPONSE';
       throw err;
     }
@@ -142,7 +179,9 @@ async function fetchAllLatestVehicleStatuses({ providerKey, companyKey, apiBase 
     const { data, payload } = await fetchLatestVehicleStatusPage({ providerKey, companyKey, apiBase, page });
     all.push(...data);
 
-    const totalPages = Number(payload?.total_pages || 0);
+    const totalPages = Number(
+      payload?.total_pages ?? payload?.totalPages ?? payload?.pagination?.total_pages ?? 0
+    );
     if (data.length < PAGE_LIMIT) break;
     if (totalPages && page >= totalPages) break;
   }
@@ -216,6 +255,7 @@ async function getLiveLocationForGroupTitleFromDriveHos({
 
 module.exports = {
   DEFAULT_DRIVEHOS_API_BASE,
+  extractVehicleArray,
   fetchAllLatestVehicleStatuses,
   findVehicleByUnit,
   getLiveLocationForGroupTitleFromDriveHos,
