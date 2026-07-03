@@ -245,7 +245,14 @@ BEGIN
 END
 $$;
 
--- ─── Employee Voting System (isolated) ───
+-- ─── Employee Voting System — RETIRED ───
+-- The "Driver of the Week" employee voting feature was removed from the
+-- application code (bot handlers, API routes, and admin page all deleted).
+-- These tables are INTENTIONALLY RETAINED so existing historical vote data is
+-- preserved and a fresh `init-db` run does not error. No application code
+-- references them any more. They can be dropped manually AFTER a database
+-- backup if the historical data is no longer needed; do not add an automatic
+-- destructive migration.
 
 CREATE TABLE IF NOT EXISTS employee_votes_polls (
   id SERIAL PRIMARY KEY,

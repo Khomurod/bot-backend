@@ -819,11 +819,6 @@ async function startBot() {
       }
     });
 
-    // Register employee voting handlers BEFORE generic callback_query handler
-    // so bot.action(/vote_unit_/) fires first for voting callbacks
-    const { registerVotingHandlers } = require('./employeeVoting');
-    registerVotingHandlers(bot);
-
     // Mileage bonus Paid / Rejected buttons (accounting-only).
     registerMileageBonusHandlers(bot);
 

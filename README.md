@@ -1,6 +1,6 @@
 # 🚛 Telegram Driver Feedback System
 
-A Telegram bot-based feedback and communication system for trucking companies. Collects driver feedback, broadcasts announcements, runs employee voting polls, and processes Facebook leads (via a separate WenzeLeadBots token) — all managed through a web admin panel.
+A Telegram bot-based feedback and communication system for trucking companies. Collects driver feedback, broadcasts announcements, and processes Facebook leads (via a separate WenzeLeadBots token) — all managed through a web admin panel.
 
 ## Features
 
@@ -9,11 +9,10 @@ A Telegram bot-based feedback and communication system for trucking companies. C
 - **Multilingual** — English, Russian, Uzbek with AI-powered auto-translation (OpenAI)
 - **Broadcast Messages** — Send announcements to all driver groups with multilingual support
 - **Scheduled Broadcasts** — One-time or weekly recurring sends in Central Time
-- **Employee Voting** — "Driver of the Week" polls sent to employee group with inline buttons
 - **Media Support** — Photo/video attachments (single or albums), above/below positioning
 - **Leads-Bot (WenzeLeadBots)** — Facebook/Meta lead capture, auto-SMS, and RingCentral reply forwarding (Python verifier + Node worker on `TELEGRAM_BOT_TOKEN`)
 - **Facebook Self-Serve Connect** — `/connect` in a leads Telegram group (WenzeLeadBots only) opens Facebook login, lets an admin choose Pages, and routes new leads into that group
-- **Admin Panel** — React-based web interface for groups, questions, broadcasts, voting, and responses
+- **Admin Panel** — React-based web interface for groups, questions, broadcasts, and responses
 - **JWT Auth** — Secure admin panel with bcrypt + JWT
 - **Recruiter Call KPIs (RingCentral)** — per-number JWT credentials in Settings → RingCentral, background call-log sync, admin "Recruiter KPIs" dashboard, and a public gamified daily leaderboard at `/recruiters` (today-only, names + call counts, no phone numbers)
 - **Dispatch ETA (Wenze Feedback)** — `/location`, `/status`, `/load`, `/update` in driver groups; test hub interactive `/status` when `DISPATCH_ETA_TEST_GROUP_ID` is set
@@ -146,7 +145,7 @@ Optional variables:
 
 | Variable | Description |
 |---|---|
-| `EMPLOYEE_GROUP_ID` | Telegram employee group ID (enables voting) |
+| `EMPLOYEE_GROUP_ID` | Telegram employee group ID (employee birthdays, home-time notices, raise-approval announcements) |
 | `MEDIA_STORAGE_CHAT_ID` | Optional storage chat used to upload media and capture reusable `file_id`s |
 | `OPENAI_API_KEY` | OpenAI API key (enables auto-translation) |
 | `GROQ_API_KEY` | Groq API key (AI reports, insights, Ask Data, chat annotation, dispatch parsing) |
@@ -232,15 +231,12 @@ cd admin && npm run dev
 ├── bot/
 │   ├── bot.js                   # Telegram bot (Telegraf) — surveys, broadcasts
 │   ├── dispatchStatusLookupHandlers.js  # Test hub interactive /status
-│   ├── dispatchStatusLookupSession.js   # In-memory lookup sessions
-│   └── employeeVoting.js        # Employee voting bot handlers
+│   └── dispatchStatusLookupSession.js   # In-memory lookup sessions
 ├── server/
 │   ├── api.js                   # Express API server + leads-bot proxy
 │   └── routes/facebookLeadsRoutes.js  # Admin API for lead auto-SMS config
-│   └── employeeVotingApi.js     # Voting API routes
 ├── database/
 │   ├── db.js                    # Database helpers (groups, drivers, questions)
-│   ├── employeeVoting.js        # Voting database helpers
 │   └── schema.sql               # PostgreSQL schema (auto-migrates on startup)
 ├── services/
 │   └── translationService.js    # OpenAI translation service
@@ -317,17 +313,6 @@ cd admin && npm run dev
 | GET | `/api/scheduled-messages` | Yes | List scheduled broadcasts and next run times |
 | PUT | `/api/scheduled-messages/:id/send-now` | Yes | Send a scheduled broadcast immediately |
 | PUT | `/api/scheduled-messages/:id/cancel` | Yes | Cancel a pending scheduled broadcast |
-
-### Employee Voting
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| GET | `/api/voting/units` | Yes | List driver units |
-| GET | `/api/voting/polls` | Yes | List all polls |
-| POST | `/api/voting/polls` | Yes | Create and send new poll |
-| GET | `/api/voting/polls/:id/results` | Yes | Get poll results |
-| GET | `/api/voting/polls/:id/voters` | Yes | Get voter list |
-| PUT | `/api/voting/polls/:id/close` | Yes | Close active poll |
-| PUT | `/api/voting/polls/:id/reset` | Yes | Reset all votes |
 
 ### Leads-Bot Proxy
 | Method | Endpoint | Auth | Description |

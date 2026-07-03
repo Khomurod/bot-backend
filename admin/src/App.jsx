@@ -5,7 +5,6 @@ import GroupsPage from "./pages/GroupsPage";
 import QuestionsPage from "./pages/QuestionsPage";
 import BroadcastPage from "./pages/BroadcastPage";
 import ScheduledMessagesPage from "./pages/ScheduledMessagesPage";
-import EmployeeVotingPage from "./pages/EmployeeVotingPage";
 import MessageManagerPage from "./pages/MessageManagerPage";
 import BotMessagesPage from "./pages/BotMessagesPage";
 import CompanyBirthdaysPage from "./pages/CompanyBirthdaysPage";
@@ -148,7 +147,6 @@ export default function App() {
     leads: <LeadsPage />,
     broadcast: <BroadcastPage />,
     questions: <QuestionsPage />,
-    voting: <EmployeeVotingPage />,
     groups: <GroupsPage />,
     company_birthdays: <CompanyBirthdaysPage />,
     mileage_bonus: <MileageBonusPage />,
@@ -182,7 +180,6 @@ export default function App() {
       items: [
         { key: 'broadcast', icon: '📢', label: 'Send Message' },
         { key: 'questions', icon: '📝', label: 'Surveys' },
-        { key: 'voting', icon: '🏆', label: 'Driver Polls' },
       ],
     },
     {

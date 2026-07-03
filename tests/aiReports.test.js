@@ -10,7 +10,6 @@ function loadApiWithMocks(dbMock, aiMock) {
   const configPath = path.resolve(__dirname, '../config/config.js');
   const translationPath = path.resolve(__dirname, '../services/translationService.js');
   const aiPath = path.resolve(__dirname, '../services/aiAnalysisService.js');
-  const employeeVotingPath = path.resolve(__dirname, '../server/employeeVotingApi.js');
   const urlHelperPath = path.resolve(__dirname, '../services/telegramUrl.js');
 
   delete require.cache[apiPath];
@@ -19,7 +18,6 @@ function loadApiWithMocks(dbMock, aiMock) {
   delete require.cache[configPath];
   delete require.cache[translationPath];
   delete require.cache[aiPath];
-  delete require.cache[employeeVotingPath];
   delete require.cache[urlHelperPath];
 
   require.cache[dbPath] = { exports: dbMock };
@@ -46,7 +44,6 @@ function loadApiWithMocks(dbMock, aiMock) {
   };
   require.cache[translationPath] = { exports: { translateBatch: async () => [] } };
   require.cache[aiPath] = { exports: aiMock };
-  require.cache[employeeVotingPath] = { exports: (req, res, next) => next() };
   require.cache[urlHelperPath] = { exports: { buildTelegramMessageUrl: () => 'https://t.me/c/123/1' } };
 
   const apiModule = require(apiPath);
