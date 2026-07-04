@@ -1098,13 +1098,12 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
         caption: 'Upload staging for file_id capture.',
       });
 
-      // Extract file_id
+      // Extract file_id (highest-resolution photo size is last).
       let fileId;
       if (isVideo) {
         fileId = sentMessage.video?.file_id;
       } else {
         const photos = sentMessage.photo;
-        // Use highest resolution
         fileId = photos && photos.length > 0 ? photos[photos.length - 1].file_id : null;
       }
 
