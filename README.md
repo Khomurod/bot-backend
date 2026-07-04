@@ -30,27 +30,38 @@ A Telegram bot-based feedback and communication system for trucking companies. C
 
 Set `DISPATCH_ETA_TEST_GROUP_ID` to the Telegram chat id of **Automatic updating (Test)** (example production value: `-5289094495`).
 
-## Creator-only broadcast from Telegram (Wenze Support Bot / `BOT_TOKEN`)
+## Creator-only messaging panel from Telegram (Wenze Support Bot / `BOT_TOKEN`)
 
-The bot exposes a broadcast flow that **only the single authorized creator** may
-use, so announcements can be sent from Telegram itself without opening the admin
-panel.
+The bot exposes a control panel that **only the single authorized creator** may
+use, so messages can be sent from Telegram itself without opening the admin
+panel. Handlers live in `bot/creatorBroadcastHandlers.js`.
 
 | Command | Where | Description |
 |---|---|---|
-| `/broadcast` | Private chat with the bot | Opens the broadcast flow: pick a receiver-group set, then send text or a photo/video (optional caption). |
-| `/cancel` | Private chat (during a broadcast) | Aborts the in-progress broadcast. |
+| `/panel` (also `/start`, `/broadcast`) | Private chat with the bot | Opens the panel: two buttons — **📢 Send Broadcast Message** and **✉️ Send Single Message**. |
+| `/cancel` | Private chat (mid-flow) | Aborts the in-progress flow. |
 
+**📢 Send Broadcast Message** — pick one audience, then send any message:
+- 🚚 Active drivers · 🇺🇸 English · 🇷🇺 Russian · 🇺🇿 Uzbek drivers · 🌐 All groups
+  · 🧑‍💼 Employee group · 🏢 Other company groups.
+
+**✉️ Send Single Message** — type part of a group's name, pick the matching
+group, then send any message to just that one group.
+
+- **Delivery is verbatim.** Whatever the creator sends — text, photo, video,
+  document, audio, voice, animation — is copied to the target group(s) in its
+  exact original format (same media, caption, and formatting) via Telegram's
+  `copyMessage`, with no "forwarded from" header.
 - **Authorization is by numeric Telegram user id only** — never by username, which
-  can change. The authorized id is `2117922421`, shared with the existing
-  creator-only message manager via the `CREATOR_USER_ID` constant in
+  can change. The authorized id is `2117922421`, shared with the creator-only
+  message manager via the `CREATOR_USER_ID` constant in
   `bot/creatorMessageManager.js` (single source of truth; no new env var). To
   change the authorized creator, update that constant.
-- Any other user (group admins, drivers, dispatchers) is politely denied.
-- The flow reuses the same targeting (`resolveBroadcastTargetGroups`) and send
-  (`sendBroadcastToGroups`) helpers as the admin panel, so bot-side broadcasts
-  behave exactly like admin broadcasts and support the same receiver groups
-  (all driver groups, or a single language group).
+- Any other user (group admins, drivers, dispatchers) is politely denied; for
+  non-creators `/start` falls through to the normal private-chat flow.
+- Audiences resolve through the shared `resolveBroadcastTargetGroups` targeting
+  service (`services/broadcastTargetService.js`), the same one the admin panel
+  and scheduler use.
 
 ## Datatruck peer bot (Wenze Feedback / `BOT_TOKEN`)
 

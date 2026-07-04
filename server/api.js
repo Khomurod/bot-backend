@@ -7,6 +7,7 @@ const path = require('path');
 const multer = require('multer');
 const { Telegram } = require('telegraf');
 const config = require('../config/config');
+const { telegramClientOptions } = require('../services/telegramAgent');
 const db = require('../database/db');
 const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcastTest, sendBroadcastToGroups, sendConfirmationBroadcast, sendConfirmationBroadcastTest } = require('../bot/bot');
 const { translateBatch } = require('../services/translationService');
@@ -78,18 +79,22 @@ const MAX_PHOTO_SIZE_BYTES = 10 * 1024 * 1024;
 //     genuinely cancelled — a Promise.race timeout would leave the zombie
 //     upload running, still consuming the instance's limited bandwidth and
 //     competing with the retry.
-const stagingTelegram = new Telegram(config.botToken);
+// The IPv4-pinned agent (telegramClientOptions) is the actual upload-stall fix:
+// without it the upload can ride a broken IPv6 route and hang regardless of the
+// retry/timeout machinery above.
+const stagingTelegram = new Telegram(config.botToken, telegramClientOptions);
 const MEDIA_UPLOAD_ATTEMPT_TIMEOUT_MS = 40 * 1000;
 const MEDIA_UPLOAD_MAX_ATTEMPTS = 2;
 
 async function callStagingApiWithRetry(method, payload) {
+  let workingPayload = payload;
   let lastErr;
   for (let attempt = 1; attempt <= MEDIA_UPLOAD_MAX_ATTEMPTS; attempt += 1) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), MEDIA_UPLOAD_ATTEMPT_TIMEOUT_MS);
     const startedAt = Date.now();
     try {
-      const result = await stagingTelegram.callApi(method, payload, { signal: controller.signal });
+      const result = await stagingTelegram.callApi(method, workingPayload, { signal: controller.signal });
       console.log(`[API] Telegram staging ${method} OK in ${Date.now() - startedAt}ms (attempt ${attempt})`);
       return result;
     } catch (err) {
@@ -99,8 +104,18 @@ async function callStagingApiWithRetry(method, payload) {
         ? new Error(`Telegram upload stalled and was aborted after ${Math.round(elapsed / 1000)}s (attempt ${attempt}/${MEDIA_UPLOAD_MAX_ATTEMPTS})`)
         : err;
       console.error(`[API] Telegram staging ${method} failed in ${elapsed}ms (attempt ${attempt}/${MEDIA_UPLOAD_MAX_ATTEMPTS}):`, lastErr.message);
-      // Telegram 4xx responses are permanent (bad file, bad chat, too big) —
-      // retrying identical input is pointless. Only retry stalls/network/5xx.
+
+      // Supergroup migration: the staging chat was upgraded to a supergroup and
+      // its id changed. Retry against the new id Telegram hands back.
+      const migrateTo = err?.response?.parameters?.migrate_to_chat_id;
+      if (migrateTo) {
+        console.warn(`[API] Staging chat migrated to supergroup ${migrateTo}; retrying.`);
+        workingPayload = { ...workingPayload, chat_id: migrateTo };
+        continue;
+      }
+
+      // Telegram 4xx responses are otherwise permanent (bad file, bad chat, too
+      // big) — retrying identical input is pointless. Only retry stalls/network/5xx.
       const apiCode = err?.response?.error_code;
       if (apiCode && apiCode < 500) throw err;
     } finally {
@@ -1132,13 +1147,22 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
       res.json({ file_id: fileId, media_type: mediaType, type: mediaType, url: null });
     } catch (uploadErr) {
       // Surface the actual Telegram error so operators see the real cause
-      // (e.g. "too big for a photo", "chat not found", a timeout) instead of a
-      // one-size-fits-all "check bot permissions" that is usually wrong.
+      // instead of a one-size-fits-all "check bot permissions" that is usually
+      // wrong. Map the common causes to an actionable hint.
       const detail = uploadErr?.response?.description || uploadErr?.message || 'unknown error';
       console.error('[API] Media upload error:', detail);
-      const friendly = /too big for a photo/i.test(detail)
-        ? 'Photo is too large for Telegram (max 10MB). Please compress or resize the image, or send it as an MP4 video.'
-        : `Failed to upload media to Telegram: ${detail}`;
+      let friendly;
+      if (/too big for a photo/i.test(detail)) {
+        friendly = 'Photo is too large for Telegram (max 10MB). Please compress or resize the image, or send it as an MP4 video.';
+      } else if (/chat not found/i.test(detail)) {
+        friendly = 'Telegram could not find the media staging chat. Check that MEDIA_STORAGE_CHAT_ID '
+          + `is a chat the bot belongs to. (${detail})`;
+      } else if (/not enough rights|CHAT_SEND_.*FORBIDDEN|have no rights|need administrator/i.test(detail)) {
+        friendly = 'The bot is not allowed to post media in the staging chat. Make the bot an admin there '
+          + `(or allow media messages) and try again. (${detail})`;
+      } else {
+        friendly = `Failed to upload media to Telegram: ${detail}`;
+      }
       res.status(502).json({ error: friendly });
     }
   });
@@ -3069,7 +3093,9 @@ function stopServer() {
   });
 }
 
-module.exports = { app, startServer, stopServer };
+// `stagingTelegram` is exported so tests can stub its `callApi` to drive the
+// upload route without touching the network.
+module.exports = { app, startServer, stopServer, stagingTelegram };
 
 
 

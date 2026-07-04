@@ -1,6 +1,7 @@
 const { Telegraf } = require('telegraf');
 const { leadsBotToken } = require('../config/telegramBotTokens');
 const { safeSend } = require('./telegramHtml');
+const { telegramClientOptions } = require('./telegramAgent');
 
 let leadsBot = null;
 
@@ -21,7 +22,7 @@ function ensureLeadsBotToken() {
 
 function getLeadsTelegram() {
   if (!leadsBot) {
-    leadsBot = new Telegraf(ensureLeadsBotToken());
+    leadsBot = new Telegraf(ensureLeadsBotToken(), { telegram: telegramClientOptions });
   }
   return leadsBot.telegram;
 }
