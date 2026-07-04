@@ -247,6 +247,9 @@ export const MediaUploader = React.memo(function MediaUploader({ onAdd, onRemove
   const fileInputRef = useRef(null);
   const itemsRef = useRef(items);
   const MAX_VIDEO_UPLOAD_MB = 20;
+  // Telegram rejects photos larger than 10MB via sendPhoto, so stop them here
+  // rather than uploading multiple MB only to have Telegram reject them.
+  const MAX_PHOTO_UPLOAD_MB = 10;
 
   useEffect(() => {
     itemsRef.current = items;
@@ -279,6 +282,13 @@ export const MediaUploader = React.memo(function MediaUploader({ onAdd, onRemove
         const type = file.type.startsWith("video/") ? "video" : "photo";
         if (type === "video" && file.size > MAX_VIDEO_UPLOAD_MB * 1024 * 1024) {
           throw new Error(`Video ${file.name} exceeds ${MAX_VIDEO_UPLOAD_MB}MB limit for bots.`);
+        }
+        if (type === "photo" && file.size > MAX_PHOTO_UPLOAD_MB * 1024 * 1024) {
+          const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+          throw new Error(
+            `Photo ${file.name} is ${sizeMb}MB — Telegram allows photos up to ${MAX_PHOTO_UPLOAD_MB}MB. `
+            + `Please compress or resize the image, or send it as an MP4 video.`
+          );
         }
         const data = await api.uploadMedia(file);
         const normalizedType = data.type || data.media_type || type;
