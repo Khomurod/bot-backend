@@ -47,23 +47,10 @@ const { buildMention } = require('../services/telegramMention');
 
 const bot = new Telegraf(config.botToken);
 installBotSentMessageTracking(bot.telegram, db);
-// #region agent log
-function debugLog(location, message, data, hypothesisId) {
-  fetch('http://127.0.0.1:7869/ingest/5069c10b-4d7b-4b84-95eb-05813bc92a8b', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'b5ce42' },
-    body: JSON.stringify({
-      sessionId: 'b5ce42',
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-      hypothesisId,
-      runId: 'pre-fix',
-    }),
-  }).catch(() => {});
-}
-// #endregion
+// Disabled leftover debug instrumentation. This previously POSTed to a
+// hardcoded localhost agent-ingest endpoint on every command, which is a dead
+// port in production. Kept as a no-op so existing call sites stay valid.
+function debugLog() {}
 const MANAGEMENT_GROUP_ID = config.managementGroupId;
 
 /**

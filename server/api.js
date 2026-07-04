@@ -59,6 +59,16 @@ const { createFacebookLeadsRouter } = require('./routes/facebookLeadsRoutes');
 // ─── Multer: memory storage for media uploads ───
 const MEDIA_UPLOAD_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime'];
 const MAX_FILE_SIZE_MB = 20;
+// Telegram's Bot API rejects any photo larger than 10 MB via sendPhoto
+// ("file of size … is too big for a photo; the maximum size is 10485760 bytes").
+// The overall multer cap above (20 MB) is fine for videos, but photos must be
+// checked against this stricter limit — otherwise an 10–20 MB image uploads all
+// the way to Telegram, gets rejected, and the failure surfaces as a confusing
+// generic error. Reject early instead so it fails fast with a clear message.
+const MAX_PHOTO_SIZE_BYTES = 10 * 1024 * 1024;
+// Bound the Telegram staging round-trip so a stalled upload can't hang the
+// admin request indefinitely.
+const MEDIA_UPLOAD_TIMEOUT_MS = 60 * 1000;
 const uploadStorage = multer.memoryStorage();
 const uploadLimits = { fileSize: MAX_FILE_SIZE_MB * 1024 * 1024 };
 
@@ -1021,23 +1031,44 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
       return res.status(400).json({ error: 'No file provided' });
     }
 
+    const isVideo = req.file.mimetype.startsWith('video/');
+    const mediaType = isVideo ? 'video' : 'photo';
+
+    // Fail fast on oversize photos: Telegram caps sendPhoto at 10 MB, so an
+    // 10–20 MB image would otherwise upload fully, stall, and then be rejected.
+    if (!isVideo && req.file.size > MAX_PHOTO_SIZE_BYTES) {
+      const sizeMb = (req.file.size / (1024 * 1024)).toFixed(1);
+      return res.status(400).json({
+        error: `Photo is too large (${sizeMb}MB). Telegram allows photos up to 10MB — `
+          + 'please compress or resize the image, or send it as an MP4 video.',
+      });
+    }
+
     try {
-      const isVideo = req.file.mimetype.startsWith('video/');
-      const mediaType = isVideo ? 'video' : 'photo';
       const fileSource = { source: req.file.buffer, filename: req.file.originalname };
       const mediaStorageChatId = config.mediaStorageChatId;
 
+      // Wrap the Telegram round-trip in a timeout so a stalled upload surfaces a
+      // clear error quickly instead of leaving the admin waiting indefinitely.
+      const withTimeout = (promise) => Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(
+          () => reject(new Error(`Timed out after ${MEDIA_UPLOAD_TIMEOUT_MS / 1000}s uploading to Telegram`)),
+          MEDIA_UPLOAD_TIMEOUT_MS,
+        )),
+      ]);
+
       let sentMessage;
       if (isVideo) {
-        sentMessage = await bot.telegram.sendVideo(mediaStorageChatId, fileSource, {
+        sentMessage = await withTimeout(bot.telegram.sendVideo(mediaStorageChatId, fileSource, {
           disable_notification: true,
           caption: 'Upload staging for file_id capture.',
-        });
+        }));
       } else {
-        sentMessage = await bot.telegram.sendPhoto(mediaStorageChatId, fileSource, {
+        sentMessage = await withTimeout(bot.telegram.sendPhoto(mediaStorageChatId, fileSource, {
           disable_notification: true,
           caption: 'Upload staging for file_id capture.',
-        });
+        }));
       }
 
       // Extract file_id
@@ -1074,8 +1105,15 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
       console.log(`[API] Media uploaded: type=${mediaType}, file_id=${fileId}`);
       res.json({ file_id: fileId, media_type: mediaType, type: mediaType, url: null });
     } catch (uploadErr) {
-      console.error('[API] Media upload error:', uploadErr.message);
-      res.status(500).json({ error: 'Failed to upload media to Telegram. Check bot permissions.' });
+      // Surface the actual Telegram error so operators see the real cause
+      // (e.g. "too big for a photo", "chat not found", a timeout) instead of a
+      // one-size-fits-all "check bot permissions" that is usually wrong.
+      const detail = uploadErr?.response?.description || uploadErr?.message || 'unknown error';
+      console.error('[API] Media upload error:', detail);
+      const friendly = /too big for a photo/i.test(detail)
+        ? 'Photo is too large for Telegram (max 10MB). Please compress or resize the image, or send it as an MP4 video.'
+        : `Failed to upload media to Telegram: ${detail}`;
+      res.status(502).json({ error: friendly });
     }
   });
 });
