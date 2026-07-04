@@ -50,11 +50,19 @@ function installBotSentMessageTracking(telegram, db, logger = console) {
   telegram.callApi = async (method, payload, ...rest) => {
     const result = await originalCallApi(method, payload, ...rest);
     if (shouldRecordMethod(method)) {
+      const startedAt = Date.now();
       try {
         await recordResult(db, method, payload, result);
       } catch (err) {
         // Never turn a successful Telegram send into a retry and duplicate.
         logger.warn('[BOT-MESSAGE-REGISTRY] Failed to record sent message:', err.message);
+      }
+      // This await sits INSIDE every send's promise — a slow DB write directly
+      // delays whatever awaited the send. Surface that in the logs so a stall
+      // can be attributed to the DB leg vs the Telegram leg.
+      const took = Date.now() - startedAt;
+      if (took > 2000) {
+        logger.warn(`[BOT-MESSAGE-REGISTRY] Slow DB record for ${method}: ${took}ms`);
       }
     }
     return result;
