@@ -108,6 +108,29 @@ inject('services/liveLocationsService.js', {
   },
 });
 
+// DataTruck adapter stub (shapes mirror the live-verified API mapping output).
+const DT_ORDER = {
+  id: 'dt_order_1', external_id: '1', load_number: 'DT-010357', trip_number: 'T1',
+  status: 'in_transit', raw_status: 'in_transit', driver_name: 'John Smith', team_driver_name: null,
+  dispatcher_name: 'Team Alpha', broker_name: 'Acme Logistics', mc_name: null,
+  truck_unit: '305', trailer_unit: null, origin_label: 'Chicago, IL', destination_label: 'Dallas, TX',
+  shipper_name: null, receiver_name: null, hauling_rate: 250000, total_pay: 255000,
+  assigned_rate: null, rate_savings: null, rpm: 2.5, planned_distance_miles: 1000,
+  pickup_window_start: '2026-07-03T08:00:00Z', delivery_window_start: '2026-07-05T08:00:00Z',
+  paperwork_state: null, pinned: false, eta: null, previous_eta: null, location: null, eld_state: null,
+  source: 'datatruck',
+};
+inject('server/fleet/dataTruckAdapter.js', {
+  isConfigured: () => true,
+  getRecentOrders: async () => [DT_ORDER],
+  getTrucks: async () => [{ id: 'dt_truck_1', external_id: '1', type: 'truck', unit_number: '305', vin: '1XKAD49X1KJ000000', make: 'Kenworth', model: 'T680', year: 2022, license_plate: 'P123', jurisdiction: 'IL', fuel_type: '', registered_weight: null, operated_by: 'John Smith', status: 'available', eld_provider: null, conflict: false, source: 'datatruck' }],
+  getTrailers: async () => [{ id: 'dt_trailer_1', external_id: '9', type: 'trailer', unit_number: 'T77', vin: '1UYVS2530XX000000', make: 'Utility', model: '', year: 2021, license_plate: '', jurisdiction: '', fuel_type: '', registered_weight: null, operated_by: null, status: 'available', eld_provider: null, conflict: false, source: 'datatruck' }],
+  getDriversFull: async () => [{ id: 'dt_drv_1', external_id: '11', display_name: 'John Smith', position: 'company_driver', truck_unit: '305', trailer_unit: null, phone_e164: '+15550001111', email: null, dispatcher_name: 'Team Alpha', status: 'active', hire_date: null, source: 'datatruck' }],
+  refreshAll: async () => ({ trucks: 1, trailers: 1, drivers: 1, orders: 1 }),
+  lastSyncAt: () => '2026-07-03T18:00:00Z',
+  clearCache: () => {},
+});
+
 // 4) Now load the router (picks up real mode + stubs).
 const fleetRouter = require('../server/fleet/router');
 const express = require('express');
@@ -200,40 +223,61 @@ test('real: dispatch-map returns real markers + no-location list', async () => {
   assert.strictEqual(r.json.data.noLocation[0].unit, '999');
 });
 
-test('real: drivers from driver_profiles; search over real rows', async () => {
+test('real: drivers from DataTruck roster (primary source); search over real rows', async () => {
   const token = await adminToken();
   const d = await req('/drivers', { token });
-  assert.strictEqual(d.json.meta.source, 'driver_profiles');
+  assert.strictEqual(d.json.meta.source, 'datatruck');
   assert.strictEqual(d.json.data[0].display_name, 'John Smith');
+  assert.strictEqual(d.json.data[0].dispatcher_name, 'Team Alpha');
+  assert.strictEqual(d.json.data[0].phone_e164, '+15550001111');
   const s = await req('/search?q=305', { token });
   assert.ok(s.json.trucks.some((x) => x.label === 'Unit 305'));
 });
 
-test('real: dispatch-board groups real teams; rates honestly null', async () => {
+test('real: dispatch-board has real hauling/RPM from orders; settlement honestly null', async () => {
   const r = await req('/dispatch-board', { token: await adminToken() });
   const group = r.json.data.find((g) => g.dispatcher === 'Team Alpha');
   assert.ok(group);
   const drv = group.drivers.find((d) => d.name === 'John Smith');
   assert.ok(drv.loads.length === 1 && drv.loads[0].load_number === 'DT-010357');
-  assert.strictEqual(drv.stats.hauling, null);
-  assert.strictEqual(r.json.summary.total_hauling, null);
+  assert.strictEqual(drv.stats.hauling, 250000); // real TMS revenue (cents)
+  assert.strictEqual(drv.stats.rpm, 2.5);
+  assert.strictEqual(drv.stats.assigned, null); // settlement not exposed → honest null
+  assert.strictEqual(r.json.summary.total_hauling, 250000);
   assert.strictEqual(r.json.summary.enroute, 1);
 });
 
-test('real: equipment lists real units; trailers honest not-connected', async () => {
+test('real: equipment lists real trucks AND trailers with VIN/make/year', async () => {
   const token = await adminToken();
   const trucks = await req('/equipments?type=truck', { token });
   const u = trucks.json.data.find((e) => e.unit_number === '305');
-  assert.ok(u && u.operated_by === 'John Smith' && u.status === 'in_transit');
+  assert.ok(u);
+  assert.strictEqual(u.vin, '1XKAD49X1KJ000000');
+  assert.strictEqual(u.make, 'Kenworth');
+  assert.strictEqual(u.year, 2022);
+  assert.strictEqual(u.status, 'in_transit'); // live-layer join upgrades status
   const trailers = await req('/equipments?type=trailer', { token });
-  assert.strictEqual(trailers.json.meta.connected, false);
+  assert.strictEqual(trailers.json.data.length, 1);
+  assert.strictEqual(trailers.json.data[0].unit_number, 'T77');
 });
 
-test('real: brokers are actual shipper/receiver customers, no fabricated contacts', async () => {
+test('real: brokers are actual TMS customers, no fabricated contacts', async () => {
   const r = await req('/brokers', { token: await adminToken() });
-  const names = r.json.data.map((b) => b.display_name);
-  assert.ok(names.includes('Acme Distribution') && names.includes('Global Foods DC'));
+  assert.strictEqual(r.json.data[0].display_name, 'Acme Logistics');
+  assert.strictEqual(r.json.data[0].loads_in_window, 1);
   assert.ok(r.json.data.every((b) => b.email === '' && b.phone_e164 === ''));
+});
+
+test('real: loads list carries real TMS rates and RPM', async () => {
+  const r = await req('/loads', { token: await adminToken() });
+  assert.strictEqual(r.json.meta.source, 'datatruck-orders');
+  const l = r.json.data.find((x) => x.load_number === 'DT-010357');
+  assert.ok(l);
+  assert.strictEqual(l.hauling_rate, 250000);
+  assert.strictEqual(l.rpm, 2.5);
+  assert.strictEqual(l.broker_name, 'Acme Logistics');
+  // live join attached location/ETA from the snapshot (unit 305 matches)
+  assert.ok(l.location && l.location.latitude === 41.8);
 });
 
 test('real: users list = existing admins; companies = single Wenze', async () => {
@@ -318,6 +362,9 @@ test('real: manual sync records a fleet_sync_runs row and mutates nothing extern
   assert.strictEqual(snapshotForceCount, before + 1); // read refresh only
   const runs = await req('/sync/runs', { token });
   assert.ok(runs.json.data.some((x) => x.source === 'locations' && x.status === 'success'));
+  const dt = await req('/sync/datatruck', { method: 'POST', token });
+  assert.strictEqual(dt.json.data.status, 'success');
+  assert.strictEqual(dt.json.data.records_fetched, 4); // trucks+trailers+drivers+orders
   const bogus = await req('/sync/nope', { method: 'POST', token });
   assert.strictEqual(bogus.status, 400);
 });

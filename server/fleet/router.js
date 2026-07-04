@@ -129,7 +129,9 @@ router.use((req, res, next) => {
   if (!isReal()) return next();
   const mutating = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method);
   if (!mutating) return next();
-  const allowed = [...REAL_WRITE_ALLOW].some((p) => req.path === p || req.path.startsWith(`${p}/`));
+  const allowed = [...REAL_WRITE_ALLOW].some((p) => req.path === p || req.path.startsWith(`${p}/`))
+    // health-check performs a READ against the provider; disconnect stays blocked
+    || /^\/settings\/integrations\/[a-z]+\/health-check$/.test(req.path);
   if (allowed) return next();
   return D.apiError(res, 501, 'READ_ONLY_MODE', 'FleetView real mode is read-only toward external systems. This write action is not yet enabled.', { retryable: false });
 });
@@ -1028,7 +1030,30 @@ router.get('/settings/integrations', requirePermission('integrations.manage'), a
   if (isReal()) return res.json(await realProvider.integrationsStatus());
   res.json(D.envelope(scoped(req, 'integrations')));
 });
-router.post('/settings/integrations/:type/health-check', requirePermission('integrations.manage'), (req, res) => {
+router.post('/settings/integrations/:type/health-check', requirePermission('integrations.manage'), async (req, res) => {
+  if (isReal()) {
+    // Live READ-ONLY probe of the actual provider. Never mutates anything.
+    const type = req.params.type;
+    const result = { id: `int_${type}`, type, last_health_check_at: new Date().toISOString() };
+    try {
+      if (type === 'tms') {
+        const rows = await require('./dataTruckAdapter').getDriversFull();
+        result.state = 'connected'; result.detail = `${rows.length} drivers readable`;
+      } else if (type === 'eld') {
+        const eld = await require('../../database/eldSettings').getEldConfig();
+        const any = (eld.samsaraEnabled && (eld.samsaraApiKeys || []).length > 0) || (eld.factorEnabled && !!eld.factorCompanyKey) || (eld.leaderEnabled && !!eld.leaderCompanyKey);
+        result.state = any ? 'connected' : 'disconnected';
+        result.detail = any ? 'ELD credentials configured' : 'No ELD credentials configured';
+      } else {
+        return D.apiError(res, 400, 'VALIDATION', 'Health check supports tms and eld.');
+      }
+      audit(req, 'integration.health_check', 'integration', type, null, { state: result.state });
+      return res.json({ data: result });
+    } catch (e) {
+      result.state = 'error'; result.error_message = String(e.message).slice(0, 200);
+      return res.json({ data: result });
+    }
+  }
   const intg = scoped(req, 'integrations').find((i) => i.type === req.params.type);
   if (!intg) return D.apiError(res, 404, 'NOT_FOUND', 'Integration not found.');
   intg.last_health_check_at = new Date().toISOString();
@@ -1083,7 +1108,7 @@ router.get('/settings/permissions-catalog', requirePermission('roles.manage'), (
 router.post('/sync/:source', requirePermission('integrations.manage'), async (req, res) => {
   if (!isReal()) return D.apiError(res, 400, 'DEMO_MODE', 'Sync is available in real mode only.');
   const source = String(req.params.source || '');
-  if (!['locations', 'drivers'].includes(source)) return D.apiError(res, 400, 'VALIDATION', 'Unknown sync source. Use locations or drivers.');
+  if (!['locations', 'drivers', 'datatruck'].includes(source)) return D.apiError(res, 400, 'VALIDATION', 'Unknown sync source. Use locations, drivers, or datatruck.');
   try {
     const result = await realProvider.runSync(req.auth.tenantId, source, req.auth.user.id);
     audit(req, 'sync.run', 'sync', result.runId, null, result);

@@ -23,6 +23,9 @@ const { REAL_TENANT, REAL_COMPANY } = require('./config');
 // ── lazy service handles ─────────────────────────────────────────────────────
 function liveLocations() { return require('../../services/liveLocationsService'); }
 function coreDb() { return require('../../database/db'); }
+function dtAdapter() { return require('./dataTruckAdapter'); }
+
+const normKey = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 function meta(extra = {}) {
   return {
@@ -162,59 +165,115 @@ async function dispatchMap(condition) {
   return { data: { markers, noLocation: noLoc }, meta: meta({ stale: !!snap.isStale, source: 'samsara/eld', lastSuccessfulSyncAt: snap.lastSuccessfulRefreshAt || null }) };
 }
 
-async function loadsList({ status, search }) {
-  const snap = await snapshot().catch(() => null);
-  if (!snap) return { data: [], page: 1, pageSize: 0, total: 0, meta: meta({ stale: true, error: 'Loads source unavailable' }) };
-  const dispMap = await loadDispatcherMap();
-  let rows = (snap.units || []).filter((u) => u.load).map((u) => unitToLoad(u, dispMap));
-  if (status && status !== 'all') rows = rows.filter((l) => l.status === status);
-  const q = String(search || '').toLowerCase();
-  if (q) rows = rows.filter((l) => [l.load_number, l.driver_name].some((v) => String(v || '').toLowerCase().includes(q)));
-  return { data: rows, page: 1, pageSize: rows.length, total: rows.length, meta: meta({ stale: !!snap.isStale, source: 'datatruck', lastSuccessfulSyncAt: snap.lastSuccessfulRefreshAt || null }) };
+// Loads = DataTruck orders (±7-day window) enriched with live location/ETA from
+// the shared snapshot (matched by truck unit, then driver name). One source of
+// truth for every page. Falls back to the snapshot's active loads when the
+// orders fetch fails, and reports stale honestly.
+// Live layer join is best-effort: never let a slow/unavailable location stack
+// block the orders list. Rows simply lack location/ETA when it can't answer.
+async function liveRowsBestEffort(ms = 12_000) {
+  try {
+    return await Promise.race([
+      realRows(),
+      new Promise((resolve) => setTimeout(() => resolve(null), ms)),
+    ]);
+  } catch (e) { return null; }
 }
 
-async function loadsKpis() {
-  const snap = await snapshot().catch(() => null);
-  if (!snap) return { delayed: 0, exceptions: 0, inTransit: 0, delivered: 0, meta: meta({ stale: true }) };
-  const rows = (snap.units || []).map((u) => unitToLoad(u, new Map()));
+async function ordersWithLive() {
+  const orders = await dtAdapter().getRecentOrders();
+  let snapRows = []; let snapMeta = { isStale: false, lastSuccessfulRefreshAt: null };
+  const rr = await liveRowsBestEffort();
+  if (rr) { snapRows = rr.rows; snapMeta = rr.snap; }
+  const byUnit = new Map(snapRows.filter((r) => r.truck_unit).map((r) => [normKey(r.truck_unit), r]));
+  const byDriver = new Map(snapRows.filter((r) => r.driver_name).map((r) => [normKey(r.driver_name), r]));
+  const joined = orders.map((o) => {
+    const live = (o.truck_unit && byUnit.get(normKey(o.truck_unit))) || (o.driver_name && byDriver.get(normKey(o.driver_name))) || null;
+    return live ? { ...o, eta: live.eta, location: live.location, eld_state: live.eld_state, trailer_unit: o.trailer_unit || live.trailer_unit } : o;
+  });
+  return { rows: joined, snapMeta };
+}
+
+async function loadsList({ status, search }) {
+  let rows; let snapMeta = {};
+  try { ({ rows, snapMeta } = await ordersWithLive()); }
+  catch (e) {
+    // Orders unavailable → fall back to the live snapshot's current loads only.
+    const snap = await snapshot().catch(() => null);
+    if (!snap) return { data: [], page: 1, pageSize: 0, total: 0, meta: meta({ stale: true, error: 'Loads source unavailable' }) };
+    const dispMap = await loadDispatcherMap();
+    rows = (snap.units || []).filter((u) => u.load).map((u) => unitToLoad(u, dispMap));
+    snapMeta = snap;
+  }
+  if (status && status !== 'all') rows = rows.filter((l) => l.status === status);
+  const q = String(search || '').toLowerCase();
+  if (q) rows = rows.filter((l) => [l.load_number, l.driver_name, l.broker_name, l.truck_unit].some((v) => String(v || '').toLowerCase().includes(q)));
   return {
-    delayed: rows.filter((l) => l.eta && l.eta.timing_state === 'late').length,
-    exceptions: rows.filter((l) => l.location && l.location.freshness === 'stale').length,
-    inTransit: rows.filter((l) => l.status === 'in_transit').length,
-    delivered: 0, // no delivered-history source in real mode yet
+    data: rows, page: 1, pageSize: rows.length, total: rows.length,
+    meta: meta({ stale: !!snapMeta.isStale, source: 'datatruck-orders', lastSuccessfulSyncAt: dtAdapter().lastSyncAt('orders') || snapMeta.lastSuccessfulRefreshAt || null }),
   };
 }
 
-async function drivers({ search }) {
-  let rows;
+async function loadsKpis() {
   try {
-    const res = await coreDb().query(
-      `SELECT dp.first_name, dp.last_name, dp.driver_type, dp.status, dp.unit_number, g.group_name
-         FROM driver_profiles dp JOIN groups g ON g.id = dp.group_id
-        WHERE dp.status = 'active' ORDER BY dp.last_name NULLS LAST, dp.first_name NULLS LAST`,
-    );
-    rows = res.rows;
-  } catch (e) {
-    return { data: [], page: 1, pageSize: 0, total: 0, meta: meta({ error: 'Driver roster unavailable', stale: true }) };
-  }
-  const dispMap = await loadDispatcherMap();
-  let out = rows.map((r, i) => {
-    const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || r.group_name || 'Driver';
-    const nname = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const { rows } = await ordersWithLive();
     return {
-      id: `drv_${i}_${nname}`,
-      display_name: name,
-      position: r.driver_type === 'owner' ? 'owner_operator' : 'company_driver',
-      truck_unit: r.unit_number || null,
-      phone_e164: null, email: null,
-      dispatcher_name: dispMap.get(nname) || null,
-      hired_company_name: REAL_COMPANY.name,
-      status: r.status === 'active' ? 'active' : 'inactive',
+      delayed: rows.filter((l) => l.eta && l.eta.timing_state === 'late').length,
+      exceptions: rows.filter((l) => l.location && l.location.freshness === 'stale').length,
+      inTransit: rows.filter((l) => l.status === 'in_transit').length,
+      delivered: rows.filter((l) => l.status === 'delivered').length,
     };
-  });
+  } catch (e) {
+    const snap = await snapshot().catch(() => null);
+    if (!snap) return { delayed: 0, exceptions: 0, inTransit: 0, delivered: 0, meta: meta({ stale: true }) };
+    const rows = (snap.units || []).map((u) => unitToLoad(u, new Map()));
+    return {
+      delayed: rows.filter((l) => l.eta && l.eta.timing_state === 'late').length,
+      exceptions: rows.filter((l) => l.location && l.location.freshness === 'stale').length,
+      inTransit: rows.filter((l) => l.status === 'in_transit').length,
+      delivered: 0,
+    };
+  }
+}
+
+async function drivers({ search }) {
+  // Primary: the DataTruck roster (authoritative dispatcher/truck/trailer
+  // assignment + contact). Fallback: the Telegram-derived driver_profiles.
+  let out = null; let source = 'datatruck';
+  try {
+    out = (await dtAdapter().getDriversFull()).map((d) => ({ ...d, hired_company_name: REAL_COMPANY.name }));
+  } catch (e) { out = null; }
+  if (!out) {
+    source = 'driver_profiles';
+    let rows;
+    try {
+      const res = await coreDb().query(
+        `SELECT dp.first_name, dp.last_name, dp.driver_type, dp.status, dp.unit_number, g.group_name
+           FROM driver_profiles dp JOIN groups g ON g.id = dp.group_id
+          WHERE dp.status = 'active' ORDER BY dp.last_name NULLS LAST, dp.first_name NULLS LAST`,
+      );
+      rows = res.rows;
+    } catch (e) {
+      return { data: [], page: 1, pageSize: 0, total: 0, meta: meta({ error: 'Driver roster unavailable', stale: true }) };
+    }
+    const dispMap = await loadDispatcherMap();
+    out = rows.map((r, i) => {
+      const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || r.group_name || 'Driver';
+      return {
+        id: `drv_${i}_${normKey(name)}`,
+        display_name: name,
+        position: r.driver_type === 'owner' ? 'owner_operator' : 'company_driver',
+        truck_unit: r.unit_number || null,
+        phone_e164: null, email: null,
+        dispatcher_name: dispMap.get(normKey(name)) || null,
+        hired_company_name: REAL_COMPANY.name,
+        status: r.status === 'active' ? 'active' : 'inactive',
+      };
+    });
+  }
   const q = String(search || '').toLowerCase();
-  if (q) out = out.filter((d) => d.display_name.toLowerCase().includes(q) || String(d.truck_unit || '').toLowerCase().includes(q));
-  return { data: out, page: 1, pageSize: out.length, total: out.length, meta: meta({ source: 'driver_profiles' }) };
+  if (q) out = out.filter((d) => d.display_name.toLowerCase().includes(q) || String(d.truck_unit || '').toLowerCase().includes(q) || String(d.dispatcher_name || '').toLowerCase().includes(q));
+  return { data: out, page: 1, pageSize: out.length, total: out.length, meta: meta({ source, lastSuccessfulSyncAt: dtAdapter().lastSyncAt('drivers') }) };
 }
 
 async function dashboardLoads({ segment, search }) {
@@ -231,8 +290,15 @@ async function realRows() {
 
 async function loadById(id) {
   try {
-    const { rows } = await realRows();
-    const l = rows.find((r) => r.id === id);
+    let l = null;
+    if (String(id).startsWith('dt_order_')) {
+      const { rows } = await ordersWithLive();
+      l = rows.find((r) => r.id === id) || null;
+    }
+    if (!l) {
+      const { rows } = await realRows();
+      l = rows.find((r) => r.id === id) || null;
+    }
     if (!l) return null;
     return {
       ...l,
@@ -258,103 +324,131 @@ async function search(q) {
   return { loads, drivers: drvs, trucks };
 }
 
-// Dispatch Board: real teams (dispatch_teams) × current loads. Weekly load
-// history and rates are not available from the connected sources → honest nulls.
+// Dispatch Board: DataTruck orders grouped by real dispatcher, with real
+// hauling revenue and RPM (load_pay / per_mile_revenue). Driver settlement is
+// not exposed by the order list → assigned/savings stay honestly null.
 async function dispatchBoard(weekStart) {
-  let snap; let rows;
-  try { ({ snap, rows } = await realRows()); } catch (e) {
-    return { data: [], weekStart, summary: { enroute: 0, total_hauling: null, total_assigned: null, total_rate_savings: null, avg_rpm: null }, meta: meta({ stale: true, error: 'Live data unavailable' }) };
-  }
-  const byDriver = new Map(rows.map((r) => [String(r.driver_name || '').toLowerCase().replace(/[^a-z0-9]/g, ''), r]));
-  const groups = new Map();
-  // roster grouped by dispatch team; drivers without a team go to "Unassigned"
+  let orders = [];
+  try { orders = await dtAdapter().getRecentOrders(); } catch (e) { orders = []; }
+  let live = []; let snapMeta = { isStale: false, lastSuccessfulRefreshAt: null };
+  const rr = await liveRowsBestEffort();
+  if (rr) { live = rr.rows; snapMeta = rr.snap; }
+  const liveByDriver = new Map(live.map((r) => [normKey(r.driver_name), r]));
   let roster = [];
   try { roster = (await drivers({})).data; } catch (e) { roster = []; }
+
+  if (!orders.length && !roster.length) {
+    return { data: [], weekStart, summary: { enroute: 0, total_hauling: null, total_assigned: null, total_rate_savings: null, avg_rpm: null }, meta: meta({ stale: true, error: 'Dispatch data unavailable' }) };
+  }
+
+  const ordersByDriver = new Map();
+  orders.forEach((o) => {
+    const k = normKey(o.driver_name);
+    if (!k) return;
+    if (!ordersByDriver.has(k)) ordersByDriver.set(k, []);
+    ordersByDriver.get(k).push(o);
+  });
+
+  const groups = new Map();
   roster.forEach((d) => {
     const team = d.dispatcher_name || 'Unassigned';
     if (!groups.has(team)) groups.set(team, { team_lead: null, dispatcher: team, drivers: [] });
-    const nname = d.display_name.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const cur = byDriver.get(nname) || null;
+    const k = normKey(d.display_name);
+    const cur = liveByDriver.get(k) || null;
+    const myOrders = ordersByDriver.get(k) || [];
+    const hauling = myOrders.reduce((s, o) => s + (o.hauling_rate || 0), 0);
+    const miles = myOrders.reduce((s, o) => s + (o.planned_distance_miles || 0), 0);
     groups.get(team).drivers.push({
-      id: d.id, name: d.display_name, position: d.position, unit: d.truck_unit || (cur && cur.truck_unit) || null,
+      id: d.id, name: d.display_name, position: d.position,
+      unit: d.truck_unit || (cur && cur.truck_unit) || null,
       condition: cur && cur.location ? (cur.eld_state.stationary ? 'Stationary' : 'Healthy') : 'ELD Not Connected',
-      loads: cur && cur.load_number ? [{
-        id: cur.id, load_number: cur.load_number,
-        route: `${cur.origin_label || '?'} → ${cur.destination_label || '?'}`,
-        status: cur.status, pickup: null, delivery: cur.eta ? cur.eta.eta_utc : null,
-      }] : [],
-      stats: { hauling: null, assigned: null, rate_savings: null, rpm: null },
+      loads: myOrders.map((o) => ({
+        id: o.id, load_number: o.load_number,
+        route: `${o.origin_label || '?'} → ${o.destination_label || '?'}`,
+        status: o.status, pickup: o.pickup_window_start, delivery: o.delivery_window_start,
+      })),
+      stats: {
+        hauling: myOrders.length ? hauling : null,
+        assigned: null, rate_savings: null,
+        rpm: hauling && miles ? D.rpm(hauling, miles) : null,
+      },
     });
   });
+
+  const totalHauling = orders.reduce((s, o) => s + (o.hauling_rate || 0), 0);
+  const totalMiles = orders.reduce((s, o) => s + (o.planned_distance_miles || 0), 0);
   return {
     data: [...groups.values()],
     weekStart,
     summary: {
-      enroute: rows.filter((r) => r.status === 'in_transit').length,
-      total_hauling: null, total_assigned: null, total_rate_savings: null, avg_rpm: null,
+      enroute: orders.filter((o) => o.status === 'in_transit').length,
+      total_hauling: orders.length ? totalHauling : null,
+      total_assigned: null, total_rate_savings: null,
+      avg_rpm: totalHauling && totalMiles ? D.rpm(totalHauling, totalMiles) : null,
     },
-    meta: meta({ stale: !!snap.isStale, source: 'datatruck+eld', lastSuccessfulSyncAt: snap.lastSuccessfulRefreshAt || null, note: 'Rates and weekly load history are not available from the connected TMS.' }),
+    meta: meta({ stale: !!snapMeta.isStale, source: 'datatruck-orders', lastSuccessfulSyncAt: dtAdapter().lastSyncAt('orders'), note: 'Hauling/RPM are real TMS figures; driver settlement (assigned rate) is not exposed by the order list.' }),
   };
 }
 
-// Equipment: real truck units from the live snapshot + driver roster.
+// Equipment: real trucks/trailers from the DataTruck fleet endpoints (VIN,
+// plate, make/model/year, status, assigned driver). Live location provider is
+// merged onto trucks by unit number. Snapshot-only fallback if orders API fails.
 async function equipments({ type, search: q }) {
-  if (type === 'trailer') return notConnected('Trailer data is not available from the connected TMS');
-  let rows = []; let roster = [];
-  try { rows = (await realRows()).rows; } catch (e) { rows = []; }
-  try { roster = (await drivers({})).data; } catch (e) { roster = []; }
-  const units = new Map();
-  rows.forEach((l) => {
-    if (!l.truck_unit) return;
-    units.set(String(l.truck_unit), {
+  let out = null;
+  try {
+    out = type === 'trailer' ? await dtAdapter().getTrailers() : await dtAdapter().getTrucks();
+    if (type !== 'trailer') {
+      const rr = await liveRowsBestEffort();
+      const live = rr ? rr.rows : [];
+      const byUnit = new Map(live.filter((r) => r.truck_unit).map((r) => [normKey(r.truck_unit), r]));
+      out = out.map((t) => {
+        const l = t.unit_number ? byUnit.get(normKey(t.unit_number)) : null;
+        return l ? { ...t, eld_provider: l.location ? l.location.source : null, last_seen_at: l.location ? l.location.observed_at : null, status: l.status === 'in_transit' ? 'in_transit' : t.status } : t;
+      });
+    }
+  } catch (e) {
+    if (type === 'trailer') return notConnected('Trailer list unavailable from the TMS right now.');
+    // fallback: units visible in the live snapshot only
+    let rows = [];
+    try { rows = (await realRows()).rows; } catch (e2) { rows = []; }
+    out = rows.filter((l) => l.truck_unit).map((l) => ({
       id: `unit_${l.truck_unit}`, type: 'truck', unit_number: l.truck_unit,
       vin: '', make: '', model: '', year: null, license_plate: '', jurisdiction: '',
       fuel_type: '', registered_weight: null, operated_by: l.driver_name || null,
-      status: l.status === 'in_transit' ? 'in_transit' : (l.load_number ? 'assigned' : 'available'),
+      status: l.status === 'in_transit' ? 'in_transit' : 'assigned',
       eld_provider: l.location ? l.location.source : null, conflict: false,
-      last_seen_at: l.location ? l.location.observed_at : null,
-    });
-  });
-  roster.forEach((d) => {
-    if (!d.truck_unit || units.has(String(d.truck_unit))) return;
-    units.set(String(d.truck_unit), {
-      id: `unit_${d.truck_unit}`, type: 'truck', unit_number: d.truck_unit,
-      vin: '', make: '', model: '', year: null, license_plate: '', jurisdiction: '',
-      fuel_type: '', registered_weight: null, operated_by: d.display_name,
-      status: 'available', eld_provider: null, conflict: false, last_seen_at: null,
-    });
-  });
-  let out = [...units.values()].sort((a, b) => String(a.unit_number).localeCompare(String(b.unit_number), undefined, { numeric: true }));
+      last_seen_at: l.location ? l.location.observed_at : null, source: 'snapshot-fallback',
+    }));
+  }
+  out = out.sort((a, b) => String(a.unit_number).localeCompare(String(b.unit_number), undefined, { numeric: true }));
   const s = String(q || '').toLowerCase();
-  if (s) out = out.filter((e) => String(e.unit_number).toLowerCase().includes(s) || String(e.operated_by || '').toLowerCase().includes(s));
-  return { data: out, page: 1, pageSize: out.length, total: out.length, meta: meta({ source: 'datatruck+driver_profiles', note: 'VIN/plate/trailer details are not exposed by the connected TMS.' }) };
+  if (s) out = out.filter((e) => [e.unit_number, e.operated_by, e.vin, e.license_plate].some((v) => String(v || '').toLowerCase().includes(s)));
+  return { data: out, page: 1, pageSize: out.length, total: out.length, meta: meta({ source: 'datatruck', lastSuccessfulSyncAt: dtAdapter().lastSyncAt(type === 'trailer' ? 'trailers' : 'trucks') }) };
 }
 
-// Brokers/customers: DataTruck exposes shipper/receiver names per order only.
-// Real partial data — normalized, deduped, nothing fabricated.
+// Brokers/customers: real `customer__company_name` (and carrier MC name) from
+// DataTruck orders — actual customer entities, deduped, no fabricated contacts.
 async function brokers({ search: q }) {
-  let rows = [];
-  try { rows = (await realRows()).rows; } catch (e) { rows = []; }
+  let orders = [];
+  try { orders = await dtAdapter().getRecentOrders(); } catch (e) { orders = []; }
   const seen = new Map();
-  rows.forEach((l) => {
-    // Only actual customer names from the order (shipper/receiver) — never
-    // route/city labels, and never fabricated contact details.
-    const raw = [l.shipper_name, l.receiver_name];
-    raw.forEach((name) => {
-      if (!name) return;
-      const key = String(name).toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (!key || seen.has(key)) return;
-      seen.set(key, {
-        id: `cust_${key}`, display_name: name, legal_name: '', mc_number: '',
-        email: '', phone_e164: '', address: '', status: 'active',
-        source: 'datatruck order (customer name only)',
-      });
+  orders.forEach((o) => {
+    const name = o.broker_name;
+    if (!name) return;
+    const key = normKey(name);
+    if (!key) return;
+    const existing = seen.get(key);
+    if (existing) { existing.loads_in_window += 1; return; }
+    seen.set(key, {
+      id: `cust_${key}`, display_name: name, legal_name: '', mc_number: '',
+      email: '', phone_e164: '', address: '', status: 'active',
+      loads_in_window: 1, source: 'datatruck order customer',
     });
   });
-  let out = [...seen.values()];
+  let out = [...seen.values()].sort((a, b) => b.loads_in_window - a.loads_in_window);
   const s = String(q || '').toLowerCase();
   if (s) out = out.filter((b) => b.display_name.toLowerCase().includes(s));
-  return { data: out, page: 1, pageSize: out.length, total: out.length, meta: meta({ source: 'datatruck', note: 'Customer names from active orders. Contact details are not available from the TMS.' }) };
+  return { data: out, page: 1, pageSize: out.length, total: out.length, meta: meta({ source: 'datatruck', lastSuccessfulSyncAt: dtAdapter().lastSyncAt('orders'), note: 'Customers from orders in the ±7-day window. Contact details are not exposed by the TMS.' }) };
 }
 
 // Integration cards: REAL availability of the main app's existing integrations.
@@ -368,9 +462,15 @@ async function integrationsStatus() {
     error_message: configured ? null : (note || 'Not configured in the main application'),
   });
   try {
-    const dt = require('../../services/currentLoadService');
-    const cfg = require('../../config/config');
-    push('tms', 'DataTruck', !!dt.isConfigured(), cfg.datatruckCompany || '');
+    const adapter = dtAdapter();
+    const configured = adapter.isConfigured();
+    cards.push({
+      id: 'int_tms', tenant_id: REAL_TENANT.id, type: 'tms', provider: 'DataTruck',
+      masked_account_label: 'wenze', state: configured ? 'connected' : 'disconnected',
+      last_health_check_at: null,
+      last_successful_sync_at: adapter.lastSyncAt('orders') || adapter.lastSyncAt('trucks'),
+      error_message: configured ? null : 'Not configured in the main application',
+    });
   } catch (e) { push('tms', 'DataTruck', false, '', 'Config unavailable'); }
   try {
     const eld = await require('../../database/eldSettings').getEldConfig();
@@ -454,6 +554,9 @@ async function runSync(tenantId, source, triggeredBy) {
       fetched = (snap.units || []).length;
     } else if (source === 'drivers') {
       fetched = ((await drivers({})).data || []).length;
+    } else if (source === 'datatruck') {
+      const counts = await dtAdapter().refreshAll();
+      fetched = counts.trucks + counts.trailers + counts.drivers + counts.orders;
     } else {
       throw new Error(`Unknown sync source: ${source}`);
     }
