@@ -35,6 +35,7 @@ const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
 const { registerLocationCheckinHandlers } = require('./locationCheckinHandlers');
 const { registerCreatorMessageManager } = require('./creatorMessageManager');
+const { registerCreatorBroadcast } = require('./creatorBroadcastHandlers');
 const {
   registerAnonymousFeedbackHandlers,
   beginAnonymousFeedback,
@@ -561,6 +562,12 @@ async function startBot() {
 
     registerDatatruckPeerHandlers(bot);
     registerCreatorMessageManager(bot);
+    // Creator-only (user id 2117922421) broadcast controls, restricted to the
+    // bot's private chat. Reuses the shared broadcast send + targeting helpers.
+    registerCreatorBroadcast(bot, {
+      sendBroadcastToGroups,
+      createBroadcast: (payload) => db.createBroadcast(payload),
+    });
 
     // Summarize resolved load context (stored recent loads → pin → chat history). No GPS.
     bot.command('load', async (ctx) => {
