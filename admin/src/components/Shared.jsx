@@ -242,11 +242,48 @@ export const TelegramPreview = React.memo(function TelegramPreview({ text, butto
   );
 });
 
+// Telegram re-compresses every photo to at most ~2560px JPEG on its side, so
+// uploading a multi-MB original gains nothing — it just makes the upload slow
+// (browser → server → Telegram, full size both legs) and prone to timeouts on
+// the small production instance. Downscale in the browser first: identical
+// final quality in Telegram, ~10-50x less data to move.
+const PHOTO_COMPRESS_THRESHOLD_BYTES = 1.5 * 1024 * 1024;
+const PHOTO_MAX_DIMENSION = 2560;
+const PHOTO_JPEG_QUALITY = 0.85;
+
+async function compressPhotoForTelegram(file) {
+  try {
+    if (!file.type.startsWith("image/")) return file;
+    if (file.size <= PHOTO_COMPRESS_THRESHOLD_BYTES) return file;
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, PHOTO_MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, width, height);
+    if (bitmap.close) bitmap.close();
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", PHOTO_JPEG_QUALITY));
+    // Only swap in the compressed copy when it actually helps.
+    if (!blob || blob.size >= file.size) return file;
+    const baseName = (file.name || "photo").replace(/\.[^.]+$/, "");
+    return new File([blob], `${baseName}.jpg`, { type: "image/jpeg" });
+  } catch (err) {
+    // Decode failure (odd format, huge image, etc.) — fall back to the original
+    // and let the server-side size check handle it.
+    return file;
+  }
+}
+
 export const MediaUploader = React.memo(function MediaUploader({ onAdd, onRemove, items }) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
   const itemsRef = useRef(items);
   const MAX_VIDEO_UPLOAD_MB = 20;
+  // Telegram rejects photos larger than 10MB via sendPhoto, so stop them here
+  // rather than uploading multiple MB only to have Telegram reject them.
+  const MAX_PHOTO_UPLOAD_MB = 10;
 
   useEffect(() => {
     itemsRef.current = items;
@@ -275,10 +312,21 @@ export const MediaUploader = React.memo(function MediaUploader({ onAdd, onRemove
     const createdUrls = [];
     try {
       const results = [];
-      for (const file of files) {
-        const type = file.type.startsWith("video/") ? "video" : "photo";
-        if (type === "video" && file.size > MAX_VIDEO_UPLOAD_MB * 1024 * 1024) {
-          throw new Error(`Video ${file.name} exceeds ${MAX_VIDEO_UPLOAD_MB}MB limit for bots.`);
+      for (const rawFile of files) {
+        const type = rawFile.type.startsWith("video/") ? "video" : "photo";
+        if (type === "video" && rawFile.size > MAX_VIDEO_UPLOAD_MB * 1024 * 1024) {
+          throw new Error(`Video ${rawFile.name} exceeds ${MAX_VIDEO_UPLOAD_MB}MB limit for bots.`);
+        }
+        // Downscale large photos in the browser before uploading — Telegram
+        // recompresses photos anyway, so this is lossless in practice and makes
+        // the upload fast instead of timing out.
+        const file = type === "photo" ? await compressPhotoForTelegram(rawFile) : rawFile;
+        if (type === "photo" && file.size > MAX_PHOTO_UPLOAD_MB * 1024 * 1024) {
+          const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+          throw new Error(
+            `Photo ${rawFile.name} is ${sizeMb}MB even after compression — Telegram allows photos up to `
+            + `${MAX_PHOTO_UPLOAD_MB}MB. Please resize the image, or send it as an MP4 video.`
+          );
         }
         const data = await api.uploadMedia(file);
         const normalizedType = data.type || data.media_type || type;

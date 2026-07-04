@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const { Telegram } = require('telegraf');
 const config = require('../config/config');
 const db = require('../database/db');
 const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcastTest, sendBroadcastToGroups, sendConfirmationBroadcast, sendConfirmationBroadcastTest } = require('../bot/bot');
@@ -59,6 +60,55 @@ const { createFacebookLeadsRouter } = require('./routes/facebookLeadsRoutes');
 // ─── Multer: memory storage for media uploads ───
 const MEDIA_UPLOAD_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime'];
 const MAX_FILE_SIZE_MB = 20;
+// Telegram's Bot API rejects any photo larger than 10 MB via sendPhoto
+// ("file of size … is too big for a photo; the maximum size is 10485760 bytes").
+// The overall multer cap above (20 MB) is fine for videos, but photos must be
+// checked against this stricter limit — otherwise an 10–20 MB image uploads all
+// the way to Telegram, gets rejected, and the failure surfaces as a confusing
+// generic error. Reject early instead so it fails fast with a clear message.
+const MAX_PHOTO_SIZE_BYTES = 10 * 1024 * 1024;
+
+// ─── Telegram staging client for media uploads ───
+// A dedicated raw client (same BOT_TOKEN) rather than the shared bot.telegram:
+//  1. bot.telegram is wrapped by the sent-message registry, which couples an
+//     awaited DB insert into every send — a slow DB write must never be able
+//     to stall a media upload (and staged messages are deleted right away, so
+//     recording them was pointless anyway);
+//  2. the raw callApi lets us pass an AbortSignal, so a stalled upload is
+//     genuinely cancelled — a Promise.race timeout would leave the zombie
+//     upload running, still consuming the instance's limited bandwidth and
+//     competing with the retry.
+const stagingTelegram = new Telegram(config.botToken);
+const MEDIA_UPLOAD_ATTEMPT_TIMEOUT_MS = 40 * 1000;
+const MEDIA_UPLOAD_MAX_ATTEMPTS = 2;
+
+async function callStagingApiWithRetry(method, payload) {
+  let lastErr;
+  for (let attempt = 1; attempt <= MEDIA_UPLOAD_MAX_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), MEDIA_UPLOAD_ATTEMPT_TIMEOUT_MS);
+    const startedAt = Date.now();
+    try {
+      const result = await stagingTelegram.callApi(method, payload, { signal: controller.signal });
+      console.log(`[API] Telegram staging ${method} OK in ${Date.now() - startedAt}ms (attempt ${attempt})`);
+      return result;
+    } catch (err) {
+      const elapsed = Date.now() - startedAt;
+      const aborted = err?.name === 'AbortError' || err?.type === 'aborted';
+      lastErr = aborted
+        ? new Error(`Telegram upload stalled and was aborted after ${Math.round(elapsed / 1000)}s (attempt ${attempt}/${MEDIA_UPLOAD_MAX_ATTEMPTS})`)
+        : err;
+      console.error(`[API] Telegram staging ${method} failed in ${elapsed}ms (attempt ${attempt}/${MEDIA_UPLOAD_MAX_ATTEMPTS}):`, lastErr.message);
+      // Telegram 4xx responses are permanent (bad file, bad chat, too big) —
+      // retrying identical input is pointless. Only retry stalls/network/5xx.
+      const apiCode = err?.response?.error_code;
+      if (apiCode && apiCode < 500) throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastErr;
+}
 const uploadStorage = multer.memoryStorage();
 const uploadLimits = { fileSize: MAX_FILE_SIZE_MB * 1024 * 1024 };
 
@@ -1023,38 +1073,30 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
 
     const isVideo = req.file.mimetype.startsWith('video/');
     const mediaType = isVideo ? 'video' : 'photo';
-    const fileSource = { source: req.file.buffer, filename: req.file.originalname };
 
-    // Stage the upload in a Telegram chat the bot can post to so Telegram
-    // returns a reusable file_id. Returns the sent message or throws.
-    const stageMedia = (chatId) => {
-      const opts = { disable_notification: true, caption: 'Upload staging for file_id capture.' };
-      return isVideo
-        ? bot.telegram.sendVideo(chatId, fileSource, opts)
-        : bot.telegram.sendPhoto(chatId, fileSource, opts);
-    };
+    // Fail fast on oversize photos: Telegram caps sendPhoto at 10 MB, so an
+    // 10–20 MB image would otherwise upload fully, stall, and then be rejected.
+    if (!isVideo && req.file.size > MAX_PHOTO_SIZE_BYTES) {
+      const sizeMb = (req.file.size / (1024 * 1024)).toFixed(1);
+      return res.status(400).json({
+        error: `Photo is too large (${sizeMb}MB). Telegram allows photos up to 10MB — `
+          + 'please compress or resize the image, or send it as an MP4 video.',
+      });
+    }
 
-    let mediaStorageChatId = config.mediaStorageChatId;
-    let sentMessage;
     try {
-      try {
-        sentMessage = await stageMedia(mediaStorageChatId);
-      } catch (firstErr) {
-        // Telegram returns a new chat id when a group is upgraded to a
-        // supergroup. Retry once against the new id so a stale
-        // MEDIA_STORAGE_CHAT_ID doesn't break uploads, and flag it for the admin.
-        const migratedTo = firstErr?.response?.parameters?.migrate_to_chat_id;
-        if (migratedTo) {
-          console.warn(
-            `[API] Media storage chat ${mediaStorageChatId} was upgraded to supergroup ${migratedTo}. `
-            + 'Update MEDIA_STORAGE_CHAT_ID to the new id to silence this warning.'
-          );
-          mediaStorageChatId = migratedTo;
-          sentMessage = await stageMedia(mediaStorageChatId);
-        } else {
-          throw firstErr;
-        }
-      }
+      const fileSource = { source: req.file.buffer, filename: req.file.originalname };
+      const mediaStorageChatId = config.mediaStorageChatId;
+      console.log(
+        `[API] Media upload started: type=${mediaType}, size=${(req.file.size / (1024 * 1024)).toFixed(2)}MB, name=${req.file.originalname}`
+      );
+
+      const sentMessage = await callStagingApiWithRetry(isVideo ? 'sendVideo' : 'sendPhoto', {
+        chat_id: mediaStorageChatId,
+        [isVideo ? 'video' : 'photo']: fileSource,
+        disable_notification: true,
+        caption: 'Upload staging for file_id capture.',
+      });
 
       // Extract file_id (highest-resolution photo size is last).
       let fileId;
@@ -1066,11 +1108,11 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
       }
 
       try {
-        await bot.telegram.deleteMessage(mediaStorageChatId, sentMessage.message_id);
+        await stagingTelegram.deleteMessage(mediaStorageChatId, sentMessage.message_id);
       } catch (deleteErr) {
         console.warn('[API] Failed to delete staged media message:', deleteErr.message);
         try {
-          await bot.telegram.editMessageCaption(
+          await stagingTelegram.editMessageCaption(
             mediaStorageChatId,
             sentMessage.message_id,
             undefined,
@@ -1089,22 +1131,15 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
       console.log(`[API] Media uploaded: type=${mediaType}, file_id=${fileId}`);
       res.json({ file_id: fileId, media_type: mediaType, type: mediaType, url: null });
     } catch (uploadErr) {
-      // Surface the real Telegram reason (never a token) so the failure is
-      // actionable instead of an opaque "check bot permissions".
-      const reason = uploadErr?.response?.description || uploadErr?.description || uploadErr?.message || 'Unknown error';
-      const lower = String(reason).toLowerCase();
-      let hint;
-      if (lower.includes('chat not found')) {
-        hint = `The media storage chat (${mediaStorageChatId}) was not found. Add the bot to that chat and set MEDIA_STORAGE_CHAT_ID to its current id.`;
-      } else if (lower.includes('not enough rights') || lower.includes('need administrator') || lower.includes("can't send")) {
-        hint = `The bot cannot post media in the media storage chat (${mediaStorageChatId}). Make it an admin there, or allow media messages.`;
-      } else if (lower.includes('kicked') || lower.includes('blocked') || lower.includes('not a member') || lower.includes('bot is not a member')) {
-        hint = `The bot is not a member of the media storage chat (${mediaStorageChatId}). Add it to that group.`;
-      } else {
-        hint = `Media storage chat: ${mediaStorageChatId}.`;
-      }
-      console.error(`[API] Media upload to Telegram failed (chat ${mediaStorageChatId}): ${reason}`);
-      res.status(502).json({ error: `Failed to upload media to Telegram: ${reason}. ${hint}` });
+      // Surface the actual Telegram error so operators see the real cause
+      // (e.g. "too big for a photo", "chat not found", a timeout) instead of a
+      // one-size-fits-all "check bot permissions" that is usually wrong.
+      const detail = uploadErr?.response?.description || uploadErr?.message || 'unknown error';
+      console.error('[API] Media upload error:', detail);
+      const friendly = /too big for a photo/i.test(detail)
+        ? 'Photo is too large for Telegram (max 10MB). Please compress or resize the image, or send it as an MP4 video.'
+        : `Failed to upload media to Telegram: ${detail}`;
+      res.status(502).json({ error: friendly });
     }
   });
 });
