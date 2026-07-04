@@ -14,8 +14,12 @@
 'use strict';
 
 function dataMode() {
-  const m = String(process.env.FLEETVIEW_DATA_MODE || 'demo').trim().toLowerCase();
-  return m === 'real' ? 'real' : 'demo';
+  const explicit = String(process.env.FLEETVIEW_DATA_MODE || '').trim().toLowerCase();
+  if (explicit === 'real' || explicit === 'demo') return explicit;
+  // No explicit setting: production deployments run REAL (no new Render env var
+  // needed — Render always sets RENDER=true); local dev and tests default to demo.
+  if (process.env.RENDER || process.env.NODE_ENV === 'production') return 'real';
+  return 'demo';
 }
 function isReal() { return dataMode() === 'real'; }
 function isDemo() { return dataMode() === 'demo'; }

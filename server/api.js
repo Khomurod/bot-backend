@@ -173,9 +173,14 @@ app.use(express.urlencoded({ extended: false }));
 app.use('/admin', express.static(adminBuildDir));
 
 // ─── Fleet Operations Platform (self-contained module, mounted at /update) ───
-// This is the only line linking the fleet module to the host app. It adds the
+// This is the only place linking the fleet module to the host app. It adds the
 // /api/v1/* API and the /update/* SPA and touches nothing else in this file.
-require('./fleet').mountFleet(app);
+// A FleetView initialization failure must never take down the main app.
+try {
+  require('./fleet').mountFleet(app);
+} catch (fleetMountError) {
+  console.error('[FLEET] mount failed — main app continues without FleetView:', fleetMountError);
+}
 
 // ─── Auth Middleware ───
 function authMiddleware(req, res, next) {

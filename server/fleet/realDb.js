@@ -98,6 +98,32 @@ CREATE TABLE IF NOT EXISTS fleet_sync_log (
   error_reason TEXT,
   correlation_id TEXT
 );
+
+CREATE TABLE IF NOT EXISTS fleet_sync_runs (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  source TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'running',
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at TIMESTAMPTZ,
+  records_fetched INTEGER DEFAULT 0,
+  records_created INTEGER DEFAULT 0,
+  records_updated INTEGER DEFAULT 0,
+  records_skipped INTEGER DEFAULT 0,
+  conflicts INTEGER DEFAULT 0,
+  error_reason TEXT,
+  correlation_id TEXT,
+  triggered_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_fleet_sync_runs_tenant ON fleet_sync_runs (tenant_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS fleet_settings (
+  tenant_id TEXT PRIMARY KEY,
+  data JSONB NOT NULL DEFAULT '{}',
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by TEXT
+);
 `;
 
 async function ensureSchema() {
@@ -126,4 +152,50 @@ async function insertAudit(row) {
   );
 }
 
-module.exports = { ensureSchema, query, insertAudit, pool };
+function newId(prefix) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
+}
+
+// ── settings (single row per tenant, JSONB payload) ──────────────────────────
+async function getSettings(tenantId) {
+  const { rows } = await query('SELECT data, version, updated_at, updated_by FROM fleet_settings WHERE tenant_id = $1', [tenantId]);
+  return rows[0] || null;
+}
+async function putSettings(tenantId, data, version, updatedBy) {
+  await query(
+    `INSERT INTO fleet_settings (tenant_id, data, version, updated_at, updated_by)
+     VALUES ($1, $2, $3, NOW(), $4)
+     ON CONFLICT (tenant_id) DO UPDATE SET data = $2, version = $3, updated_at = NOW(), updated_by = $4`,
+    [tenantId, JSON.stringify(data), version, updatedBy],
+  );
+}
+
+// ── sync runs ────────────────────────────────────────────────────────────────
+async function startSyncRun(tenantId, source, triggeredBy) {
+  const id = newId('syn');
+  const correlationId = `cid_${Date.now().toString(36)}`;
+  await query(
+    'INSERT INTO fleet_sync_runs (id, tenant_id, source, status, correlation_id, triggered_by) VALUES ($1,$2,$3,$4,$5,$6)',
+    [id, tenantId, source, 'running', correlationId, triggeredBy],
+  );
+  return { id, correlationId };
+}
+async function finishSyncRun(id, { status, fetched = 0, created = 0, updated = 0, skipped = 0, conflicts = 0, error = null }) {
+  await query(
+    `UPDATE fleet_sync_runs SET status=$2, finished_at=NOW(), records_fetched=$3, records_created=$4,
+       records_updated=$5, records_skipped=$6, conflicts=$7, error_reason=$8 WHERE id=$1`,
+    [id, status, fetched, created, updated, skipped, conflicts, error],
+  );
+}
+async function listSyncRuns(tenantId, limit = 50) {
+  const { rows } = await query(
+    'SELECT * FROM fleet_sync_runs WHERE tenant_id = $1 ORDER BY started_at DESC LIMIT $2',
+    [tenantId, limit],
+  );
+  return rows;
+}
+
+module.exports = {
+  ensureSchema, query, insertAudit, pool, newId,
+  getSettings, putSettings, startSyncRun, finishSyncRun, listSyncRuns,
+};
