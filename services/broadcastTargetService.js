@@ -40,6 +40,14 @@ async function resolveBroadcastTargetGroups(body) {
     return source.filter((g) => g.group_name && g.group_name.includes('(COMPANY DRIVER)'));
   }
 
+  if (tt === 'employee') {
+    return db.getGroupsByType('employee', { activeOnly: filter !== 'all' });
+  }
+
+  if (tt === 'other_company') {
+    return db.getOtherCompanyGroups({ activeOnly: filter !== 'all' });
+  }
+
   if (filter === 'active') {
     return db.getAllDriverGroups();
   }

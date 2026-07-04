@@ -1,5 +1,6 @@
 const { Telegraf, Markup } = require('telegraf');
 const config = require('../config/config');
+const { telegramClientOptions } = require('../services/telegramAgent');
 const db = require('../database/db');
 const { safeSend, isPermanentSendError: isPermanentSendErrorFromHtml } = require('../services/telegramHtml');
 const { normalizeMediaItems } = require('../services/scheduledMessageUtils');
@@ -35,7 +36,7 @@ const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
 const { registerLocationCheckinHandlers } = require('./locationCheckinHandlers');
 const { registerCreatorMessageManager } = require('./creatorMessageManager');
-const { registerCreatorBroadcast } = require('./creatorBroadcastHandlers');
+const { registerCreatorControlPanel } = require('./creatorBroadcastHandlers');
 const {
   registerAnonymousFeedbackHandlers,
   beginAnonymousFeedback,
@@ -45,7 +46,7 @@ const { buildMention } = require('../services/telegramMention');
 // config.js already validates DATABASE_URL, MANAGEMENT_GROUP_ID (BOT_TOKEN has a code default)
 // and exits on missing values — no need to re-check here.
 
-const bot = new Telegraf(config.botToken);
+const bot = new Telegraf(config.botToken, { telegram: telegramClientOptions });
 installBotSentMessageTracking(bot.telegram, db);
 // Disabled leftover debug instrumentation. This previously POSTed to a
 // hardcoded localhost agent-ingest endpoint on every command, which is a dead
@@ -549,12 +550,11 @@ async function startBot() {
 
     registerDatatruckPeerHandlers(bot);
     registerCreatorMessageManager(bot);
-    // Creator-only (user id 2117922421) broadcast controls, restricted to the
-    // bot's private chat. Reuses the shared broadcast send + targeting helpers.
-    registerCreatorBroadcast(bot, {
-      sendBroadcastToGroups,
-      createBroadcast: (payload) => db.createBroadcast(payload),
-    });
+    // Creator-only (user id 2117922421) messaging panel, restricted to the
+    // bot's private chat: "Send Broadcast Message" (pick an audience) and
+    // "Send Single Message" (pick one group). Delivers any content verbatim
+    // via copyMessage. Reuses the shared broadcast targeting service.
+    registerCreatorControlPanel(bot);
 
     // Summarize resolved load context (stored recent loads → pin → chat history). No GPS.
     bot.command('load', async (ctx) => {

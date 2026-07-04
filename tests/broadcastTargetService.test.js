@@ -36,6 +36,14 @@ const db = {
     if (filter === 'all') return [ACTIVE, INACTIVE, INACTIVE_RU];
     return [ACTIVE];
   },
+  getGroupsByType: async (type, opts) => {
+    calls.push(['getGroupsByType', type, opts]);
+    return [{ id: 9, group_name: 'Employees', group_type: 'employee', active: true }];
+  },
+  getOtherCompanyGroups: async (opts) => {
+    calls.push(['getOtherCompanyGroups', opts]);
+    return [{ id: 10, group_name: 'Dispatch Office', group_type: 'office', active: true }];
+  },
 };
 
 require.cache[require.resolve('../database/db')] = { exports: db };
@@ -104,4 +112,24 @@ test('legacy group_ids path still uses active-only getGroupsByIds', async () => 
   calls.length = 0;
   await resolveBroadcastTargetGroups({ group_ids: [1] });
   assert.deepEqual(calls, [['getGroupsByIds', [1]]]);
+});
+
+test('employee target resolves the employee group (active only)', async () => {
+  calls.length = 0;
+  const groups = await resolveBroadcastTargetGroups({ target_type: 'employee' });
+  assert.equal(groups[0].group_type, 'employee');
+  assert.deepEqual(calls, [['getGroupsByType', 'employee', { activeOnly: true }]]);
+});
+
+test('employee target with all filter includes inactive', async () => {
+  calls.length = 0;
+  await resolveBroadcastTargetGroups({ target_type: 'employee', target_active_filter: 'all' });
+  assert.deepEqual(calls, [['getGroupsByType', 'employee', { activeOnly: false }]]);
+});
+
+test('other_company target resolves non-driver, non-employee groups', async () => {
+  calls.length = 0;
+  const groups = await resolveBroadcastTargetGroups({ target_type: 'other_company' });
+  assert.equal(groups[0].group_name, 'Dispatch Office');
+  assert.deepEqual(calls, [['getOtherCompanyGroups', { activeOnly: true }]]);
 });

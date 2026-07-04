@@ -195,6 +195,58 @@ async function getGroupByTelegramId(telegramGroupId) {
   return res.rows[0];
 }
 
+/**
+ * Groups of a given group_type (e.g. 'employee'). Active-only by default.
+ * Used by the creator broadcast panel to target the employee group and any
+ * non-driver company groups without hardcoding chat ids.
+ */
+async function getGroupsByType(groupType, { activeOnly = true } = {}) {
+  const activeClause = activeOnly ? ' AND active = TRUE' : '';
+  const res = await query(
+    `SELECT * FROM groups WHERE group_type = $1${activeClause} ORDER BY id`,
+    [groupType]
+  );
+  return res.rows;
+}
+
+/**
+ * Non-driver, non-employee company groups (e.g. dispatch/office groups the bot
+ * was added to). Active-only. Powers the "other company groups" broadcast preset.
+ */
+async function getOtherCompanyGroups({ activeOnly = true } = {}) {
+  const activeClause = activeOnly ? ' AND active = TRUE' : '';
+  const res = await query(
+    `SELECT * FROM groups
+      WHERE group_type NOT IN ('driver', 'employee')${activeClause}
+      ORDER BY id`
+  );
+  return res.rows;
+}
+
+/**
+ * Case-insensitive search across ALL group types by name — used by the creator
+ * "Send Single Message" flow to let the creator pick one specific group.
+ */
+async function searchGroupsByName(text, limit = 8) {
+  const term = String(text || '').trim();
+  if (!term) return [];
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 8, 1), 25);
+  const res = await query(
+    `SELECT * FROM groups
+      WHERE group_name ILIKE $1
+      ORDER BY active DESC, id
+      LIMIT $2`,
+    [`%${term}%`, safeLimit]
+  );
+  return res.rows;
+}
+
+/** Fetch a single group by primary key, regardless of type/active state. */
+async function getGroupByIdAnyType(id) {
+  const res = await query('SELECT * FROM groups WHERE id = $1 LIMIT 1', [id]);
+  return res.rows[0] || null;
+}
+
 async function getGroupBySamsaraId(samsaraId) {
   if (!samsaraId) return null;
   const res = await query(
@@ -3369,6 +3421,10 @@ module.exports = {
   getDriverGroupsByLanguagesAndActiveFilter,
   getDriverGroupsWithDispatchEtaSettings,
   getGroupByTelegramId,
+  getGroupsByType,
+  getOtherCompanyGroups,
+  searchGroupsByName,
+  getGroupByIdAnyType,
   getGroupBySamsaraId,
   getDriverProfileByGroupId,
   getDriverProfileById,

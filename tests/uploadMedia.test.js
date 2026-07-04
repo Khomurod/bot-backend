@@ -12,26 +12,27 @@ const assert = require('node:assert');
 const http = require('node:http');
 const jwt = require('jsonwebtoken');
 
-const { bot } = require('../bot/bot');
+const { app, stagingTelegram } = require('../server/api');
 
-// Per-test control over what Telegram does.
-let photoBehavior = null;
+// The upload route uses the dedicated staging client's callApi (with an
+// AbortSignal + IPv4 agent). Drive it here per-test. It also calls
+// deleteMessage/editMessageCaption on the same client for cleanup.
+let sendBehavior = null;
 const sendCalls = [];
-bot.telegram.sendPhoto = async (chatId, file, opts) => {
-  sendCalls.push({ chatId, file, opts });
-  return photoBehavior(chatId);
+stagingTelegram.callApi = async (method, payload) => {
+  sendCalls.push({ method, chatId: payload.chat_id });
+  return sendBehavior(payload.chat_id);
 };
-bot.telegram.deleteMessage = async () => true;
-bot.telegram.editMessageCaption = async () => true;
+stagingTelegram.deleteMessage = async () => true;
+stagingTelegram.editMessageCaption = async () => true;
 
-const { app } = require('../server/api');
 const token = jwt.sign({ username: 'admin' }, process.env.JWT_SECRET, { algorithm: 'HS256', expiresIn: '1h' });
 
-function uploadPhoto(server) {
+function uploadPhoto(server, photoBytes) {
   return new Promise((resolve) => {
     const port = server.address().port;
     const boundary = '----test-boundary-xyz';
-    const png = Buffer.from('89504e470d0a1a0a', 'hex');
+    const png = photoBytes || Buffer.from('89504e470d0a1a0a', 'hex');
     const body = Buffer.concat([
       Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="media"; filename="a.png"\r\nContent-Type: image/png\r\n\r\n`),
       png,
@@ -61,7 +62,7 @@ test.after(() => new Promise((r) => server.close(r)));
 test.beforeEach(() => { sendCalls.length = 0; });
 
 test('successful upload returns highest-resolution file_id', async () => {
-  photoBehavior = () => ({ message_id: 1, photo: [{ file_id: 'low' }, { file_id: 'HIGH' }] });
+  sendBehavior = () => ({ message_id: 1, photo: [{ file_id: 'low' }, { file_id: 'HIGH' }] });
   const res = await uploadPhoto(server);
   assert.equal(res.status, 200);
   assert.equal(res.body.file_id, 'HIGH');
@@ -69,7 +70,7 @@ test('successful upload returns highest-resolution file_id', async () => {
 });
 
 test('"chat not found" surfaces an actionable error, not a generic one', async () => {
-  photoBehavior = () => {
+  sendBehavior = () => {
     const err = new Error('400: Bad Request: chat not found');
     err.response = { error_code: 400, description: 'Bad Request: chat not found' };
     throw err;
@@ -81,9 +82,9 @@ test('"chat not found" surfaces an actionable error, not a generic one', async (
 });
 
 test('missing send permission surfaces a permissions hint', async () => {
-  photoBehavior = () => {
+  sendBehavior = () => {
     const err = new Error('bad rights');
-    err.response = { error_code: 400, description: "Bad Request: not enough rights to send photos to the chat" };
+    err.response = { error_code: 400, description: 'Bad Request: not enough rights to send photos to the chat' };
     throw err;
   };
   const res = await uploadPhoto(server);
@@ -91,10 +92,19 @@ test('missing send permission surfaces a permissions hint', async () => {
   assert.match(res.body.error, /admin|allow media/i);
 });
 
+test('oversize photo (>10MB) is rejected fast and never reaches Telegram', async () => {
+  sendBehavior = () => ({ message_id: 1, photo: [{ file_id: 'X' }] });
+  const bigPhoto = Buffer.alloc(11 * 1024 * 1024, 1); // 11MB > Telegram's 10MB photo cap
+  const res = await uploadPhoto(server, bigPhoto);
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /too large|10MB/i);
+  assert.equal(sendCalls.length, 0, 'must not call Telegram for an oversize photo');
+});
+
 test('supergroup migration auto-retries against the new chat id', async () => {
   const NEW_ID = -1009999999999;
   let attempt = 0;
-  photoBehavior = (chatId) => {
+  sendBehavior = () => {
     attempt += 1;
     if (attempt === 1) {
       const err = new Error('group upgraded');
