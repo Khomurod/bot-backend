@@ -30,6 +30,28 @@ A Telegram bot-based feedback and communication system for trucking companies. C
 
 Set `DISPATCH_ETA_TEST_GROUP_ID` to the Telegram chat id of **Automatic updating (Test)** (example production value: `-5289094495`).
 
+## Creator-only broadcast from Telegram (Wenze Support Bot / `BOT_TOKEN`)
+
+The bot exposes a broadcast flow that **only the single authorized creator** may
+use, so announcements can be sent from Telegram itself without opening the admin
+panel.
+
+| Command | Where | Description |
+|---|---|---|
+| `/broadcast` | Private chat with the bot | Opens the broadcast flow: pick a receiver-group set, then send text or a photo/video (optional caption). |
+| `/cancel` | Private chat (during a broadcast) | Aborts the in-progress broadcast. |
+
+- **Authorization is by numeric Telegram user id only** — never by username, which
+  can change. The authorized id is `2117922421`, shared with the existing
+  creator-only message manager via the `CREATOR_USER_ID` constant in
+  `bot/creatorMessageManager.js` (single source of truth; no new env var). To
+  change the authorized creator, update that constant.
+- Any other user (group admins, drivers, dispatchers) is politely denied.
+- The flow reuses the same targeting (`resolveBroadcastTargetGroups`) and send
+  (`sendBroadcastToGroups`) helpers as the admin panel, so bot-side broadcasts
+  behave exactly like admin broadcasts and support the same receiver groups
+  (all driver groups, or a single language group).
+
 ## Datatruck peer bot (Wenze Feedback / `BOT_TOKEN`)
 
 When `@datatruck_driver_bot` posts in an **active driver group**, `@wenzefeedback_bot` can:

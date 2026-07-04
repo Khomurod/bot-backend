@@ -1760,9 +1760,19 @@ app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
       storedDriverIds = req.body.group_ids;
     }
 
-    const primaryText = (messages && messages.en) || message_text;
-    if (!primaryText || !primaryText.trim()) {
-      return res.status(400).json({ error: 'Message text is required' });
+    // Parse media first so photo/video-only broadcasts (no caption) are allowed.
+    let mediaItems = null;
+    const mediaPosition = req.body.media_position || 'above';
+    try {
+      mediaItems = getNormalizedMediaItemsFromBody(req.body);
+    } catch (mediaErr) {
+      return res.status(400).json({ error: mediaErr.message });
+    }
+    const hasMedia = Array.isArray(mediaItems) && mediaItems.length > 0;
+
+    const primaryText = ((messages && messages.en) || message_text || '').trim();
+    if (!primaryText && !hasMedia) {
+      return res.status(400).json({ error: 'Add a message or at least one photo/video before sending.' });
     }
     if (primaryText.length > 4096) {
       return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
@@ -1776,14 +1786,6 @@ app.post('/api/broadcast/send', authMiddleware, async (req, res) => {
     }
 
     const mode = ['HTML', 'MarkdownV2'].includes(parse_mode) ? parse_mode : 'HTML';
-
-    let mediaItems = null;
-    const mediaPosition = req.body.media_position || 'above';
-    try {
-      mediaItems = getNormalizedMediaItemsFromBody(req.body);
-    } catch (mediaErr) {
-      return res.status(400).json({ error: mediaErr.message });
-    }
 
     const targetGroups = await resolveBroadcastTargetGroups({
       ...req.body,
@@ -1834,9 +1836,19 @@ app.post('/api/broadcast/test', authMiddleware, async (req, res) => {
   try {
     const { message_text, parse_mode, messages, force_language } = req.body;
 
-    const primaryText = (messages && messages.en) || message_text;
-    if (!primaryText || !primaryText.trim()) {
-      return res.status(400).json({ error: 'Message text is required' });
+    // Parse media first so photo/video-only test broadcasts (no caption) are allowed.
+    let mediaItems = null;
+    const mediaPosition = req.body.media_position || 'above';
+    try {
+      mediaItems = getNormalizedMediaItemsFromBody(req.body);
+    } catch (mediaErr) {
+      return res.status(400).json({ error: mediaErr.message });
+    }
+    const hasMedia = Array.isArray(mediaItems) && mediaItems.length > 0;
+
+    const primaryText = ((messages && messages.en) || message_text || '').trim();
+    if (!primaryText && !hasMedia) {
+      return res.status(400).json({ error: 'Add a message or at least one photo/video before sending.' });
     }
     if (primaryText.length > 4096) {
       return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
@@ -1850,14 +1862,6 @@ app.post('/api/broadcast/test', authMiddleware, async (req, res) => {
     }
 
     const mode = ['HTML', 'MarkdownV2'].includes(parse_mode) ? parse_mode : 'HTML';
-
-    let mediaItems = null;
-    const mediaPosition = req.body.media_position || 'above';
-    try {
-      mediaItems = getNormalizedMediaItemsFromBody(req.body);
-    } catch (mediaErr) {
-      return res.status(400).json({ error: mediaErr.message });
-    }
 
     await sendBroadcastTest(
       primaryText.trim(),
@@ -2090,11 +2094,21 @@ app.post('/api/scheduled-messages', authMiddleware, async (req, res) => {
       weekly_day_of_week, weekly_time_chicago,
     } = req.body;
 
-    // Validation
-    if (!message_text_en || !message_text_en.trim()) {
-      return res.status(400).json({ error: 'English message text is required' });
+    // Parse media first so photo/video-only scheduled messages (no caption) are allowed.
+    let mediaItems = null;
+    try {
+      mediaItems = getNormalizedMediaItemsFromBody(req.body);
+    } catch (mediaErr) {
+      return res.status(400).json({ error: mediaErr.message });
     }
-    if (message_text_en.length > 4096) {
+    const hasMedia = Array.isArray(mediaItems) && mediaItems.length > 0;
+
+    // Validation
+    const trimmedEn = (message_text_en || '').trim();
+    if (!trimmedEn && !hasMedia) {
+      return res.status(400).json({ error: 'Add a message or at least one photo/video before scheduling.' });
+    }
+    if (trimmedEn.length > 4096) {
       return res.status(400).json({ error: 'Message exceeds 4096 character limit' });
     }
     const templateProblems = validateBroadcastTemplates({
@@ -2173,15 +2187,10 @@ app.post('/api/scheduled-messages', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Invalid force_language' });
     }
 
-    let mediaItems = null;
-    try {
-      mediaItems = getNormalizedMediaItemsFromBody(req.body);
-    } catch (mediaErr) {
-      return res.status(400).json({ error: mediaErr.message });
-    }
+    // mediaItems already parsed and validated above.
 
     const msg = await db.createScheduledMessage({
-      message_text_en: message_text_en.trim(),
+      message_text_en: trimmedEn,
       message_text_ru: message_text_ru?.trim() || null,
       message_text_uz: message_text_uz?.trim() || null,
       media_items: mediaItems,

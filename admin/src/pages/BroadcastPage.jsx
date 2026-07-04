@@ -367,7 +367,10 @@ export default function BroadcastPage() {
   };
 
   const handleSend = async () => {
-    if (!message.trim()) return;
+    if (!message.trim() && broadcastMediaItems.length === 0) {
+      setStatus({ type: 'error', text: 'Add a message or at least one photo/video before sending.' });
+      return;
+    }
     if (regularUnknownTokens.length > 0) {
       setStatus({
         type: 'error',
@@ -404,7 +407,10 @@ export default function BroadcastPage() {
   };
 
   const handleTest = async () => {
-    if (!message.trim()) return;
+    if (!message.trim() && broadcastMediaItems.length === 0) {
+      setStatus({ type: 'error', text: 'Add a message or at least one photo/video before testing.' });
+      return;
+    }
     if (regularUnknownTokens.length > 0) {
       setStatus({
         type: 'error',
@@ -433,7 +439,10 @@ export default function BroadcastPage() {
   };
 
   const handleSchedule = async () => {
-    if (!message.trim()) return;
+    if (!message.trim() && broadcastMediaItems.length === 0) {
+      setStatus({ type: 'error', text: 'Add a message or at least one photo/video before scheduling.' });
+      return;
+    }
     if (regularUnknownTokens.length > 0) {
       setStatus({
         type: 'error',
@@ -787,13 +796,13 @@ export default function BroadcastPage() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 12, marginTop: 24, flexWrap: 'wrap' }}>
-                  <button className="btn btn-primary" onClick={() => setShowSendConfirm('regular')} disabled={sending || !message.trim() || message.length > 4096 || regularUnknownTokens.length > 0}>
+                  <button className="btn btn-primary" onClick={() => setShowSendConfirm('regular')} disabled={sending || (!message.trim() && broadcastMediaItems.length === 0) || message.length > 4096 || regularUnknownTokens.length > 0}>
                     {sending ? '⏳ Sending...' : targetType === 'all' ? '📤 Send to All Groups' : '📤 Send to Selected'}
                   </button>
-                  <button className="btn btn-ghost" onClick={handleTest} disabled={testing || !message.trim() || regularUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
+                  <button className="btn btn-ghost" onClick={handleTest} disabled={testing || (!message.trim() && broadcastMediaItems.length === 0) || regularUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
                     {testing ? '⏳ Testing...' : '🧪 Test (Management Group)'}
                   </button>
-                  <button className="btn btn-ghost" onClick={handleSchedule} disabled={scheduling || !message.trim() || message.length > 4096 || regularUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
+                  <button className="btn btn-ghost" onClick={handleSchedule} disabled={scheduling || (!message.trim() && broadcastMediaItems.length === 0) || message.length > 4096 || regularUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
                     {scheduling ? 'Scheduling...' : '⏰ Schedule'}
                   </button>
                 </div>
