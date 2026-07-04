@@ -536,6 +536,21 @@ function build() {
   return db;
 }
 
-const DB = build();
+// In real mode the synthetic dataset is NEVER built — every collection is empty
+// so no demo record can ever leak through a not-yet-wired endpoint. Real data
+// is served exclusively by realProvider; unwired reads return honest-empty.
+function emptyDb() {
+  return {
+    tenants: [], companies: [], users: [], roles: [], drivers: [], equipment: [],
+    brokers: [], loads: [], loadStops: [], assignments: [], loadStatusHistory: [],
+    vehicleLocations: [], etaSnapshots: [], eldStatus: [], tasks: [], taskComments: [],
+    taskLabels: [], taskActivity: [], emailAccounts: [], emailThreads: [], emailMessages: [],
+    notifications: [], notificationRules: [], companySettings: [], integrations: [],
+    fuelPrices: [], reportTargets: [], auditLog: [], sessions: {},
+  };
+}
+
+const { isDemo } = require('./config');
+const DB = isDemo() ? build() : emptyDb();
 
 module.exports = { DB, PERMISSIONS, DEPARTMENTS, ROLE_TEMPLATES, uid, isoDaysFromNow };

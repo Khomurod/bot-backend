@@ -11,10 +11,15 @@
 const express = require('express');
 const { DB } = require('./store');
 const D = require('./domain');
-const { login, issueToken, authenticate, requirePermission, scoped, audit, permissionsForUser } = require('./auth');
+const { login, loginReal, issueToken, authenticate, requirePermission, scoped, audit, permissionsForUser } = require('./auth');
+const { isReal, isDemo, dataMode, REAL_TENANT, REAL_COMPANY } = require('./config');
+const realProvider = require('./realProvider');
 
 const router = express.Router();
 router.use(express.json({ limit: '2mb' }));
+
+// Public: lets the SPA know whether it is showing demo or real data.
+router.get('/mode', (req, res) => res.json({ mode: dataMode() }));
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function paginate(rows, req) {
@@ -92,23 +97,51 @@ function enrichLoad(tid, load) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Auth (public)
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { email, password } = req.body || {};
-  const result = login(email, password);
-  if (!result) return D.apiError(res, 401, 'INVALID_CREDENTIALS', 'Incorrect email or password.');
-  const { user, token, activeCompanyId } = result;
-  res.json({
-    token,
-    user: { id: user.id, name: user.display_name, email: user.email },
-    activeCompanyId,
-  });
+  try {
+    const result = isReal() ? await loginReal(email, password) : login(email, password);
+    if (!result) return D.apiError(res, 401, 'INVALID_CREDENTIALS', 'Incorrect email or password.');
+    const { user, token, activeCompanyId } = result;
+    return res.json({
+      token,
+      user: { id: user.id, name: user.display_name, email: user.email },
+      activeCompanyId,
+    });
+  } catch (e) {
+    return D.apiError(res, 500, 'AUTH_UNAVAILABLE', 'Authentication is not configured.');
+  }
 });
 
 // Everything below requires authentication.
 router.use(authenticate);
 
+// Real mode is READ-FIRST (safety rule): no write reaches real systems or the
+// fleet store until write actions are explicitly built, gated, and audited.
+// Blocks mutations with an honest 501; a small allow-list covers session ops.
+const REAL_WRITE_ALLOW = new Set(['/session/active-company', '/logout', '/notifications']);
+router.use((req, res, next) => {
+  if (!isReal()) return next();
+  const mutating = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method);
+  if (!mutating) return next();
+  const allowed = [...REAL_WRITE_ALLOW].some((p) => req.path === p || req.path.startsWith(`${p}/`));
+  if (allowed) return next();
+  return D.apiError(res, 501, 'READ_ONLY_MODE', 'FleetView real mode is read-only in this phase. Write actions are not yet enabled.', { retryable: false });
+});
+
 router.get('/me', (req, res) => {
   const { user, tenantId, companyId } = req.auth;
+  if (isReal()) {
+    return res.json({
+      id: user.id, name: user.display_name, email: user.email, department: 'Fleet',
+      tenant: { id: REAL_TENANT.id, name: REAL_TENANT.name, plan: 'operational' },
+      activeCompanyId: REAL_COMPANY.id,
+      companies: [{ id: REAL_COMPANY.id, name: REAL_COMPANY.name }],
+      roles: ['Administrator'],
+      permissions: req.auth.permissions,
+      dataMode: 'real',
+    });
+  }
   const tenant = DB.tenants.find((t) => t.id === tenantId);
   res.json({
     id: user.id, name: user.display_name, email: user.email, department: user.department,
@@ -194,7 +227,8 @@ router.get('/dashboard/task-chart', (req, res) => {
   res.json({ data: series });
 });
 
-router.get('/dashboard/loads', (req, res) => {
+router.get('/dashboard/loads', async (req, res) => {
+  if (isReal()) return res.json(await realProvider.dashboardLoads({ segment: req.query.segment || 'all', search: req.query.search }));
   const seg = req.query.segment || 'all';
   const q = String(req.query.search || '').trim().toLowerCase();
   let rows = scoped(req, 'loads');
@@ -368,7 +402,8 @@ router.post('/tasks/:id/restore', requirePermission('tasks.archive'), (req, res)
 // ─────────────────────────────────────────────────────────────────────────────
 // Loads (§10.3)
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/loads', requirePermission('loads.read'), (req, res) => {
+router.get('/loads', requirePermission('loads.read'), async (req, res) => {
+  if (isReal()) return res.json(await realProvider.loadsList({ status: req.query.status, search: req.query.search }));
   const tid = req.auth.tenantId;
   let rows = scoped(req, 'loads');
   const { status, dispatcher, driver, broker, paperwork, search, warning } = req.query;
@@ -391,7 +426,8 @@ router.get('/loads', requirePermission('loads.read'), (req, res) => {
   res.json(D.envelope(slice, { page, pageSize, total }));
 });
 
-router.get('/loads/kpis', requirePermission('loads.read'), (req, res) => {
+router.get('/loads/kpis', requirePermission('loads.read'), async (req, res) => {
+  if (isReal()) return res.json(await realProvider.loadsKpis());
   const tid = req.auth.tenantId;
   const enriched = scoped(req, 'loads').map((l) => enrichLoad(tid, l));
   res.json({
@@ -540,7 +576,8 @@ router.delete('/assignments/:id', requirePermission('drivers.assign'), (req, res
 // ─────────────────────────────────────────────────────────────────────────────
 // Boards & Map (§10.4–10.6)
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/update-board', requirePermission('loads.read'), (req, res) => {
+router.get('/update-board', requirePermission('loads.read'), async (req, res) => {
+  if (isReal()) return res.json(await realProvider.updateBoard(req.query.segment || 'active', req.query.search));
   const tid = req.auth.tenantId;
   const seg = req.query.segment || 'active';
   let loads = scoped(req, 'loads').filter((l) => ['dispatched', 'in_transit'].includes(l.status));
@@ -593,7 +630,8 @@ router.get('/dispatch-board', requirePermission('loads.read'), (req, res) => {
   });
 });
 
-router.get('/dispatch-map', requirePermission('location.read'), (req, res) => {
+router.get('/dispatch-map', requirePermission('location.read'), async (req, res) => {
+  if (isReal()) return res.json(await realProvider.dispatchMap(req.query.condition || 'all'));
   const tid = req.auth.tenantId;
   const condition = req.query.condition || 'all';
   const active = scoped(req, 'loads').filter((l) => ['dispatched', 'in_transit'].includes(l.status)).map((l) => enrichLoad(tid, l));
@@ -620,7 +658,13 @@ router.post('/data-refresh', requirePermission('integrations.manage'), (req, res
 // Master data (§10.10–10.15)
 // ─────────────────────────────────────────────────────────────────────────────
 function crudList(collection, permission, enrich) {
-  router.get(`/${collection}`, requirePermission(permission), (req, res) => {
+  router.get(`/${collection}`, requirePermission(permission), async (req, res) => {
+    if (isReal()) {
+      // Drivers come from the real roster; other master-data lists are not wired
+      // to a real source yet → honest empty (never synthetic).
+      if (collection === 'drivers') return res.json(await realProvider.drivers({ search: req.query.search }));
+      return res.json(realProvider.notConnected(`${collection} not yet wired to a real source`));
+    }
     const tid = req.auth.tenantId;
     let rows = scoped(req, collection === 'equipments' ? 'equipment' : collection);
     const q = String(req.query.search || '').toLowerCase();
