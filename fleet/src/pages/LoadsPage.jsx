@@ -80,7 +80,7 @@ export default function LoadsPage() {
                         <td><StatusTag status={l.status} /></td>
                         <td>{l.driver_name || '—'}</td><td>{l.dispatcher_name || '—'}</td>
                         <td>{l.origin_label} → {l.destination_label}</td>
-                        <td className="stack"><div className="a">{money(l.hauling_rate)}</div><div className="b">RPM ${l.rpm.toFixed(2)}</div></td>
+                        <td className="stack"><div className="a">{money(l.hauling_rate)}</div><div className="b">RPM {l.rpm != null ? `$${l.rpm.toFixed(2)}` : '—'}</div></td>
                         <td>{l.eta ? fmtTime(l.eta.eta_utc) : '—'}</td>
                         <td><TimingTag eta={l.eta} /></td>
                         <td><StatusTag status={l.paperwork_state} /></td>

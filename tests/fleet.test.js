@@ -8,6 +8,9 @@
 
 'use strict';
 
+// Demo suite: pin the mode explicitly (production defaults to real).
+process.env.FLEETVIEW_DATA_MODE = 'demo';
+
 const test = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');

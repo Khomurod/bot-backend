@@ -34,8 +34,8 @@ export default function DispatchBoard() {
         <Kpi t="ENROUTE" v={s.enroute ?? '…'} tip="Count of loads currently in transit" />
         <Kpi t="Total Hauling Rate" v={money(s.total_hauling)} tip="Sum of hauling_rate across week loads" />
         <Kpi t="Total Assign Rate" v={money(s.total_assigned)} tip="Sum of assigned_rate across week loads" />
-        <Kpi t={s.total_rate_savings < 0 ? 'Total Loss' : 'Total Rate Savings'} v={money(Math.abs(s.total_rate_savings || 0))} tip="hauling − assigned" neg={s.total_rate_savings < 0} />
-        <Kpi t="Average RPM" v={s.avg_rpm != null ? `$${s.avg_rpm.toFixed(2)}` : '…'} tip="total hauling ($) ÷ total planned miles" />
+        <Kpi t={(s.total_rate_savings ?? 0) < 0 ? 'Total Loss' : 'Total Rate Savings'} v={s.total_rate_savings != null ? money(Math.abs(s.total_rate_savings)) : '—'} tip="hauling − assigned" neg={(s.total_rate_savings ?? 0) < 0} />
+        <Kpi t="Average RPM" v={s.avg_rpm != null ? `$${s.avg_rpm.toFixed(2)}` : '—'} tip="total hauling ($) ÷ total planned miles" />
       </div>
 
       {q.loading ? <Skeleton rows={8} /> : q.error ? <ErrorState error={q.error} onRetry={q.reload} /> : groups.length === 0
@@ -77,8 +77,10 @@ export default function DispatchBoard() {
                       <td style={{ minWidth: 130, fontSize: 11 }}>
                         <div>Hauling: {money(dr.stats.hauling)}</div>
                         <div>Assigned: {money(dr.stats.assigned)}</div>
-                        <div style={{ color: dr.stats.rate_savings < 0 ? 'var(--red)' : 'var(--green)' }}>{dr.stats.rate_savings < 0 ? 'Loss' : 'Savings'}: {money(Math.abs(dr.stats.rate_savings))}</div>
-                        <div>RPM: ${dr.stats.rpm.toFixed(2)}</div>
+                        {dr.stats.rate_savings != null
+                          ? <div style={{ color: dr.stats.rate_savings < 0 ? 'var(--red)' : 'var(--green)' }}>{dr.stats.rate_savings < 0 ? 'Loss' : 'Savings'}: {money(Math.abs(dr.stats.rate_savings))}</div>
+                          : <div>Savings: —</div>}
+                        <div>RPM: {dr.stats.rpm != null ? `$${dr.stats.rpm.toFixed(2)}` : '—'}</div>
                       </td>
                     </tr>
                   ))}

@@ -53,7 +53,9 @@ export default function EmailsPage() {
               style={{ width: '100%', height: 32, padding: '0 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)' }} />
           </div>
           {threads.loading ? <Skeleton rows={6} /> : threads.error ? <ErrorState error={threads.error} onRetry={threads.reload} /> : list.length === 0
-            ? <EmptyState title="No emails" hint={dq ? `Nothing matches “${dq}”.` : 'This category is empty.'} />
+            ? <EmptyState
+                title={threads.data && threads.data.meta && threads.data.meta.connected === false ? 'Email integration is not connected' : 'No emails'}
+                hint={threads.data && threads.data.meta && threads.data.meta.connected === false ? 'Connect an email account in the main application to see messages here.' : (dq ? `Nothing matches “${dq}”.` : 'This category is empty.')} />
             : list.map((t) => (
               <div key={t.id} className={`email-row${t.unread ? ' unread' : ''}${selectedId === t.id ? ' active' : ''}`} onClick={() => setSelectedId(t.id)} role="button" tabIndex={0}
                 onKeyDown={(e) => { if (e.key === 'Enter') setSelectedId(t.id); }}>

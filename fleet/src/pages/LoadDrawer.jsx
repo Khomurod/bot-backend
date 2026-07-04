@@ -68,9 +68,9 @@ export default function LoadDrawer({ id, onClose, onChanged }) {
         <>
           <Row k="Hauling rate" v={money(load.hauling_rate)} />
           <Row k="Assigned rate" v={money(load.assigned_rate)} />
-          <Row k={savings < 0 ? 'Loss/Over assignment' : 'Rate savings'} v={<b style={{ color: savings < 0 ? 'var(--red)' : 'var(--green)' }}>{money(Math.abs(savings))}</b>} />
-          <Row k="RPM" v={`$${load.rpm.toFixed(2)}`} />
-          <Row k="Planned distance" v={`${load.planned_distance_miles} mi`} />
+          {savings != null && <Row k={savings < 0 ? 'Loss/Over assignment' : 'Rate savings'} v={<b style={{ color: savings < 0 ? 'var(--red)' : 'var(--green)' }}>{money(Math.abs(savings))}</b>} />}
+          <Row k="RPM" v={load.rpm != null ? `$${load.rpm.toFixed(2)}` : '—'} />
+          <Row k="Planned distance" v={load.planned_distance_miles != null ? `${load.planned_distance_miles} mi` : '—'} />
         </>
       )}
 

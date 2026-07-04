@@ -224,7 +224,7 @@ function PlatformNotifications() {
 
 function EmailSettings() {
   const { toast } = useApp();
-  const [items, setItems] = useState(['@wenzel.example.com', 'noreply@']);
+  const [items, setItems] = useState([]);
   const [val, setVal] = useState('');
   const add = () => {
     if (!/^(@[\w.-]+\.\w+|[^@\s]+@[\w.-]+\.\w+)$/.test(val)) { toast('Enter a valid email or @domain', 'error'); return; }

@@ -11,10 +11,15 @@
 const express = require('express');
 const { DB } = require('./store');
 const D = require('./domain');
-const { login, issueToken, authenticate, requirePermission, scoped, audit, permissionsForUser } = require('./auth');
+const { login, loginReal, issueToken, authenticate, requirePermission, scoped, audit, permissionsForUser } = require('./auth');
+const { isReal, isDemo, dataMode, REAL_TENANT, REAL_COMPANY } = require('./config');
+const realProvider = require('./realProvider');
 
 const router = express.Router();
 router.use(express.json({ limit: '2mb' }));
+
+// Public: lets the SPA know whether it is showing demo or real data.
+router.get('/mode', (req, res) => res.json({ mode: dataMode() }));
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function paginate(rows, req) {
@@ -92,23 +97,58 @@ function enrichLoad(tid, load) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Auth (public)
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { email, password } = req.body || {};
-  const result = login(email, password);
-  if (!result) return D.apiError(res, 401, 'INVALID_CREDENTIALS', 'Incorrect email or password.');
-  const { user, token, activeCompanyId } = result;
-  res.json({
-    token,
-    user: { id: user.id, name: user.display_name, email: user.email },
-    activeCompanyId,
-  });
+  try {
+    const result = isReal() ? await loginReal(email, password) : login(email, password);
+    if (!result) return D.apiError(res, 401, 'INVALID_CREDENTIALS', 'Incorrect email or password.');
+    const { user, token, activeCompanyId } = result;
+    return res.json({
+      token,
+      user: { id: user.id, name: user.display_name, email: user.email },
+      activeCompanyId,
+    });
+  } catch (e) {
+    return D.apiError(res, 500, 'AUTH_UNAVAILABLE', 'Authentication is not configured.');
+  }
 });
 
 // Everything below requires authentication.
 router.use(authenticate);
 
+// Real mode is READ-FIRST toward external systems: FleetView may write ONLY to
+// its own fleet_* tables (tasks, settings, sync runs, support/audit records).
+// Every other mutation — loads, assignments, imports, master data, anything
+// that would touch DataTruck/Samsara/Telegram/Bitrix/etc. — returns an honest
+// 501 until a specific write is approved, gated, and audited.
+const REAL_WRITE_ALLOW = new Set([
+  '/session/active-company', '/logout', '/notifications',
+  '/tasks', '/settings/general', '/sync', '/support/tickets',
+]);
+router.use((req, res, next) => {
+  if (!isReal()) return next();
+  const mutating = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method);
+  if (!mutating) return next();
+  const allowed = [...REAL_WRITE_ALLOW].some((p) => req.path === p || req.path.startsWith(`${p}/`))
+    // health-check performs a READ against the provider; disconnect stays blocked
+    || /^\/settings\/integrations\/[a-z]+\/health-check$/.test(req.path);
+  if (allowed) return next();
+  return D.apiError(res, 501, 'READ_ONLY_MODE', 'FleetView real mode is read-only toward external systems. This write action is not yet enabled.', { retryable: false });
+});
+
 router.get('/me', (req, res) => {
   const { user, tenantId, companyId } = req.auth;
+  if (isReal()) {
+    return res.json({
+      id: user.id, name: user.display_name, email: user.email, department: 'Fleet',
+      tenant: { id: REAL_TENANT.id, name: REAL_TENANT.name, plan: 'operational' },
+      activeCompanyId: REAL_COMPANY.id,
+      companies: [{ id: REAL_COMPANY.id, name: REAL_COMPANY.name }],
+      roles: ['Administrator'],
+      permissions: req.auth.permissions,
+      dataMode: 'real',
+    });
+  }
   const tenant = DB.tenants.find((t) => t.id === tenantId);
   res.json({
     id: user.id, name: user.display_name, email: user.email, department: user.department,
@@ -140,7 +180,8 @@ router.post('/session/active-company', (req, res) => {
 router.post('/logout', (req, res) => res.json({ ok: true }));
 
 // ── Global search (§9.1) ──
-router.get('/search', (req, res) => {
+router.get('/search', async (req, res) => {
+  if (isReal()) return res.json(await realProvider.search(req.query.q));
   const q = String(req.query.q || '').trim().toLowerCase();
   const tid = req.auth.tenantId;
   if (!q) return res.json({ loads: [], drivers: [], trucks: [] });
@@ -171,7 +212,8 @@ router.post('/notifications/:id/read', (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Dashboard (§10.1)
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/dashboard/task-summary', (req, res) => {
+router.get('/dashboard/task-summary', async (req, res) => {
+  if (isReal()) return res.json(await realProvider.taskSummary(req.auth.tenantId));
   const tasks = scoped(req, 'tasks').filter((t) => t.company_scoped !== false);
   const today = '2026-07-03';
   res.json({
@@ -182,7 +224,8 @@ router.get('/dashboard/task-summary', (req, res) => {
   });
 });
 
-router.get('/dashboard/task-chart', (req, res) => {
+router.get('/dashboard/task-chart', async (req, res) => {
+  if (isReal()) return res.json(await realProvider.taskChart(req.auth.tenantId));
   const tasks = scoped(req, 'tasks');
   const depts = ['Fleet', 'Dispatcher', 'Safety', 'HR', 'Accounting'];
   const series = depts.map((dept) => ({
@@ -194,7 +237,8 @@ router.get('/dashboard/task-chart', (req, res) => {
   res.json({ data: series });
 });
 
-router.get('/dashboard/loads', (req, res) => {
+router.get('/dashboard/loads', async (req, res) => {
+  if (isReal()) return res.json(await realProvider.dashboardLoads({ segment: req.query.segment || 'all', search: req.query.search }));
   const seg = req.query.segment || 'all';
   const q = String(req.query.search || '').trim().toLowerCase();
   let rows = scoped(req, 'loads');
@@ -228,7 +272,19 @@ function enrichTask(tid, t) {
   };
 }
 
-router.get('/tasks', requirePermission('tasks.read'), (req, res) => {
+router.get('/tasks', requirePermission('tasks.read'), async (req, res) => {
+  if (isReal()) {
+    try {
+      let rows = await require('./realTasks').list(req.auth.tenantId);
+      const { department, priority, search } = req.query;
+      if (department) rows = rows.filter((t) => t.department_id === department);
+      if (priority) rows = rows.filter((t) => t.priority === priority);
+      if (search) rows = rows.filter((t) => t.title.toLowerCase().includes(String(search).toLowerCase()));
+      return res.json(D.envelope(rows, { total: rows.length, pageSize: rows.length }));
+    } catch (e) {
+      return D.apiError(res, 503, 'STORE_UNAVAILABLE', 'Task store unavailable.', { retryable: true });
+    }
+  }
   const tid = req.auth.tenantId;
   let rows = scoped(req, 'tasks');
   const { department, priority, assignee, driver, dispatcher, label, search } = req.query;
@@ -253,7 +309,7 @@ router.get('/tasks', requirePermission('tasks.read'), (req, res) => {
   res.json(D.envelope(rows.map((t) => enrichTask(tid, t)), { total: rows.length, pageSize: rows.length }));
 });
 
-router.post('/tasks', requirePermission('tasks.create'), (req, res) => {
+router.post('/tasks', requirePermission('tasks.create'), async (req, res) => {
   const { title, description, department, priority, assignee_id, related_load_id, label_ids, due_at } = req.body || {};
   const fieldErrors = {};
   if (!title || title.trim().length < 3 || title.length > 200) fieldErrors.title = 'Title must be 3–200 characters.';
@@ -261,6 +317,17 @@ router.post('/tasks', requirePermission('tasks.create'), (req, res) => {
   if (!priority) fieldErrors.priority = 'Priority is required.';
   if (description && description.length > 10000) fieldErrors.description = 'Max 10,000 characters.';
   if (Object.keys(fieldErrors).length) return D.apiError(res, 400, 'VALIDATION', 'Please correct the highlighted fields.', { fieldErrors });
+  if (isReal()) {
+    try {
+      const task = await require('./realTasks').create(req.auth.tenantId, req.auth.companyId, req.auth.user.id, {
+        title: title.trim(), description, department, priority, assignee_id, related_load_id, label_ids, due_at,
+      });
+      audit(req, 'task.create', 'task', task.id, null, task);
+      return res.status(201).json({ data: task });
+    } catch (e) {
+      return D.apiError(res, 503, 'STORE_UNAVAILABLE', 'Task store unavailable.', { retryable: true });
+    }
+  }
   const { uid } = require('./store');
   const now = new Date().toISOString();
   const task = {
@@ -277,13 +344,34 @@ router.post('/tasks', requirePermission('tasks.create'), (req, res) => {
   res.status(201).json({ data: enrichTask(req.auth.tenantId, task), auditId: `aud_${DB.auditLog.length}` });
 });
 
-router.get('/tasks/:id', requirePermission('tasks.read'), (req, res) => {
+router.get('/tasks/:id', requirePermission('tasks.read'), async (req, res) => {
+  if (isReal()) {
+    const t = await require('./realTasks').get(req.params.id, req.auth.tenantId).catch(() => null);
+    if (!t) return D.apiError(res, 404, 'NOT_FOUND', 'Task not found.');
+    return res.json({ data: t });
+  }
   const t = byId('tasks', req.params.id, req.auth.tenantId);
   if (!t) return D.apiError(res, 404, 'NOT_FOUND', 'Task not found.');
   res.json({ data: enrichTask(req.auth.tenantId, t) });
 });
 
-router.patch('/tasks/:id', requirePermission('tasks.create', 'tasks.comment'), (req, res) => {
+router.patch('/tasks/:id', requirePermission('tasks.create', 'tasks.comment'), async (req, res) => {
+  if (isReal()) {
+    const realTasks = require('./realTasks');
+    const t = await realTasks.get(req.params.id, req.auth.tenantId).catch(() => null);
+    if (!t) return D.apiError(res, 404, 'NOT_FOUND', 'Task not found.');
+    const { version, status, priority, assignee_id } = req.body || {};
+    if (version != null && version !== t.version) {
+      return D.apiError(res, 409, 'VERSION_CONFLICT', 'This task changed since you opened it. Refresh and retry.');
+    }
+    if (status && status !== t.status && !D.canTransitionTask(t.status, status)) {
+      return D.apiError(res, 409, 'ILLEGAL_TRANSITION', `Cannot move task from ${t.status} to ${status}.`);
+    }
+    const updated = await realTasks.update(req.auth.tenantId, t.id, { status, priority, assignee_id });
+    if (status && status !== t.status) await realTasks.activity(req.auth.tenantId, t.id, 'status_changed', req.auth.user.id, `${t.status} → ${status}`);
+    audit(req, 'task.update', 'task', t.id, t, updated);
+    return res.json({ data: updated });
+  }
   const t = byId('tasks', req.params.id, req.auth.tenantId);
   if (!t) return D.apiError(res, 404, 'NOT_FOUND', 'Task not found.');
   const { version, status, priority, assignee_id } = req.body || {};
@@ -306,24 +394,39 @@ router.patch('/tasks/:id', requirePermission('tasks.create', 'tasks.comment'), (
   res.json({ data: enrichTask(req.auth.tenantId, t) });
 });
 
-router.post('/tasks/:id/comments', requirePermission('tasks.comment'), (req, res) => {
-  const t = byId('tasks', req.params.id, req.auth.tenantId);
-  if (!t) return D.apiError(res, 404, 'NOT_FOUND', 'Task not found.');
+router.post('/tasks/:id/comments', requirePermission('tasks.comment'), async (req, res) => {
   const body = String((req.body || {}).body || '').trim();
   if (!body) return D.apiError(res, 400, 'VALIDATION', 'Comment cannot be empty.', { fieldErrors: { body: 'Required.' } });
+  if (isReal()) {
+    const realTasks = require('./realTasks');
+    const t = await realTasks.get(req.params.id, req.auth.tenantId).catch(() => null);
+    if (!t) return D.apiError(res, 404, 'NOT_FOUND', 'Task not found.');
+    const c = await realTasks.addComment(req.auth.tenantId, t.id, req.auth.user.id, body);
+    return res.status(201).json({ data: c });
+  }
+  const t = byId('tasks', req.params.id, req.auth.tenantId);
+  if (!t) return D.apiError(res, 404, 'NOT_FOUND', 'Task not found.');
   const { uid } = require('./store');
   const c = { id: uid('cmt'), tenant_id: t.tenant_id, task_id: t.id, body, author_id: req.auth.user.id, mentions: (req.body.mentions || []), created_at: new Date().toISOString() };
   DB.taskComments.push(c);
   res.status(201).json({ data: { ...c, author_name: nameOfUser(t.tenant_id, c.author_id) } });
 });
 
-router.get('/tasks/:id/comments', requirePermission('tasks.read'), (req, res) => {
+router.get('/tasks/:id/comments', requirePermission('tasks.read'), async (req, res) => {
+  if (isReal()) {
+    const rows = await require('./realTasks').listComments(req.auth.tenantId, req.params.id).catch(() => []);
+    return res.json(D.envelope(rows));
+  }
   const rows = scoped(req, 'taskComments').filter((c) => c.task_id === req.params.id)
     .map((c) => ({ ...c, author_name: nameOfUser(req.auth.tenantId, c.author_id) }));
   res.json(D.envelope(rows));
 });
 
-router.get('/tasks/:id/activity', requirePermission('tasks.read'), (req, res) => {
+router.get('/tasks/:id/activity', requirePermission('tasks.read'), async (req, res) => {
+  if (isReal()) {
+    const rows = await require('./realTasks').listActivity(req.auth.tenantId, req.params.id).catch(() => []);
+    return res.json(D.envelope(rows));
+  }
   const rows = scoped(req, 'taskActivity').filter((a) => a.task_id === req.params.id)
     .map((a) => ({ ...a, actor_name: nameOfUser(req.auth.tenantId, a.actor) }));
   res.json(D.envelope(rows));
@@ -348,27 +451,34 @@ router.get('/tasks/:id/broker-mail-history', requirePermission('tasks.read'), (r
   res.json(D.envelope(threads));
 });
 
-router.post('/tasks/:id/archive', requirePermission('tasks.archive'), (req, res) => {
+async function taskLifecycle(req, res, toStatus, action) {
+  if (isReal()) {
+    const realTasks = require('./realTasks');
+    const t = await realTasks.get(req.params.id, req.auth.tenantId).catch(() => null);
+    if (!t) return D.apiError(res, 404, 'NOT_FOUND', 'Task not found.');
+    if (toStatus === 'archived' && !D.canTransitionTask(t.status, 'archived')) {
+      return D.apiError(res, 409, 'ILLEGAL_TRANSITION', 'Cannot archive from current state.');
+    }
+    const updated = await realTasks.update(req.auth.tenantId, t.id, { status: toStatus });
+    await realTasks.activity(req.auth.tenantId, t.id, action, req.auth.user.id, `${t.status} → ${toStatus}`);
+    audit(req, `task.${action}`, 'task', t.id, t, updated, (req.body || {}).reason);
+    return res.json({ data: updated });
+  }
   const t = byId('tasks', req.params.id, req.auth.tenantId);
   if (!t) return D.apiError(res, 404, 'NOT_FOUND', 'Task not found.');
-  if (!D.canTransitionTask(t.status, 'archived')) return D.apiError(res, 409, 'ILLEGAL_TRANSITION', 'Cannot archive from current state.');
-  const before = { ...t }; t.status = 'archived'; t.version += 1;
-  audit(req, 'task.archive', 'task', t.id, before, t, (req.body || {}).reason);
-  res.json({ data: enrichTask(req.auth.tenantId, t) });
-});
-
-router.post('/tasks/:id/restore', requirePermission('tasks.archive'), (req, res) => {
-  const t = byId('tasks', req.params.id, req.auth.tenantId);
-  if (!t) return D.apiError(res, 404, 'NOT_FOUND', 'Task not found.');
-  const before = { ...t }; t.status = 'todo'; t.version += 1;
-  audit(req, 'task.restore', 'task', t.id, before, t);
-  res.json({ data: enrichTask(req.auth.tenantId, t) });
-});
+  if (toStatus === 'archived' && !D.canTransitionTask(t.status, 'archived')) return D.apiError(res, 409, 'ILLEGAL_TRANSITION', 'Cannot archive from current state.');
+  const before = { ...t }; t.status = toStatus; t.version += 1;
+  audit(req, `task.${action}`, 'task', t.id, before, t, (req.body || {}).reason);
+  return res.json({ data: enrichTask(req.auth.tenantId, t) });
+}
+router.post('/tasks/:id/archive', requirePermission('tasks.archive'), (req, res) => taskLifecycle(req, res, 'archived', 'archive'));
+router.post('/tasks/:id/restore', requirePermission('tasks.archive'), (req, res) => taskLifecycle(req, res, 'todo', 'restore'));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Loads (§10.3)
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/loads', requirePermission('loads.read'), (req, res) => {
+router.get('/loads', requirePermission('loads.read'), async (req, res) => {
+  if (isReal()) return res.json(await realProvider.loadsList({ status: req.query.status, search: req.query.search }));
   const tid = req.auth.tenantId;
   let rows = scoped(req, 'loads');
   const { status, dispatcher, driver, broker, paperwork, search, warning } = req.query;
@@ -391,7 +501,8 @@ router.get('/loads', requirePermission('loads.read'), (req, res) => {
   res.json(D.envelope(slice, { page, pageSize, total }));
 });
 
-router.get('/loads/kpis', requirePermission('loads.read'), (req, res) => {
+router.get('/loads/kpis', requirePermission('loads.read'), async (req, res) => {
+  if (isReal()) return res.json(await realProvider.loadsKpis());
   const tid = req.auth.tenantId;
   const enriched = scoped(req, 'loads').map((l) => enrichLoad(tid, l));
   res.json({
@@ -431,7 +542,12 @@ router.post('/loads', requirePermission('loads.create'), (req, res) => {
   res.status(201).json({ data: enrichLoad(req.auth.tenantId, load), auditId: `aud_${DB.auditLog.length}` });
 });
 
-router.get('/loads/:id', requirePermission('loads.read'), (req, res) => {
+router.get('/loads/:id', requirePermission('loads.read'), async (req, res) => {
+  if (isReal()) {
+    const l = await realProvider.loadById(req.params.id);
+    if (!l) return D.apiError(res, 404, 'NOT_FOUND', 'Load not found.');
+    return res.json({ data: l });
+  }
   const l = byId('loads', req.params.id, req.auth.tenantId);
   if (!l) return D.apiError(res, 404, 'NOT_FOUND', 'Load not found.');
   const stops = scoped(req, 'loadStops').filter((s) => s.load_id === l.id).sort((a, b) => a.sequence - b.sequence);
@@ -540,7 +656,8 @@ router.delete('/assignments/:id', requirePermission('drivers.assign'), (req, res
 // ─────────────────────────────────────────────────────────────────────────────
 // Boards & Map (§10.4–10.6)
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/update-board', requirePermission('loads.read'), (req, res) => {
+router.get('/update-board', requirePermission('loads.read'), async (req, res) => {
+  if (isReal()) return res.json(await realProvider.updateBoard(req.query.segment || 'active', req.query.search));
   const tid = req.auth.tenantId;
   const seg = req.query.segment || 'active';
   let loads = scoped(req, 'loads').filter((l) => ['dispatched', 'in_transit'].includes(l.status));
@@ -555,7 +672,8 @@ router.get('/update-board', requirePermission('loads.read'), (req, res) => {
   res.json(D.envelope(rows, { total: rows.length, pageSize: rows.length }));
 });
 
-router.get('/dispatch-board', requirePermission('loads.read'), (req, res) => {
+router.get('/dispatch-board', requirePermission('loads.read'), async (req, res) => {
+  if (isReal()) return res.json(await realProvider.dispatchBoard(req.query.weekStart || null));
   const tid = req.auth.tenantId;
   const drivers = scoped(req, 'drivers').filter((d) => d.status === 'active');
   const groups = {};
@@ -593,7 +711,8 @@ router.get('/dispatch-board', requirePermission('loads.read'), (req, res) => {
   });
 });
 
-router.get('/dispatch-map', requirePermission('location.read'), (req, res) => {
+router.get('/dispatch-map', requirePermission('location.read'), async (req, res) => {
+  if (isReal()) return res.json(await realProvider.dispatchMap(req.query.condition || 'all'));
   const tid = req.auth.tenantId;
   const condition = req.query.condition || 'all';
   const active = scoped(req, 'loads').filter((l) => ['dispatched', 'in_transit'].includes(l.status)).map((l) => enrichLoad(tid, l));
@@ -620,7 +739,15 @@ router.post('/data-refresh', requirePermission('integrations.manage'), (req, res
 // Master data (§10.10–10.15)
 // ─────────────────────────────────────────────────────────────────────────────
 function crudList(collection, permission, enrich) {
-  router.get(`/${collection}`, requirePermission(permission), (req, res) => {
+  router.get(`/${collection}`, requirePermission(permission), async (req, res) => {
+    if (isReal()) {
+      // Real sources per collection; never synthetic.
+      if (collection === 'drivers') return res.json(await realProvider.drivers({ search: req.query.search }));
+      if (collection === 'brokers') return res.json(await realProvider.brokers({ search: req.query.search }));
+      if (collection === 'users') return res.json(await realProvider.usersList());
+      if (collection === 'companies') return res.json(realProvider.companiesList());
+      return res.json(realProvider.notConnected(`${collection} not yet wired to a real source`));
+    }
     const tid = req.auth.tenantId;
     let rows = scoped(req, collection === 'equipments' ? 'equipment' : collection);
     const q = String(req.query.search || '').toLowerCase();
@@ -644,7 +771,8 @@ crudList('users', 'users.manage', (tid, u) => ({
 crudList('companies', 'settings.manage');
 
 // Equipment with truck/trailer tabs
-router.get('/equipments', requirePermission('equipment.read'), (req, res) => {
+router.get('/equipments', requirePermission('equipment.read'), async (req, res) => {
+  if (isReal()) return res.json(await realProvider.equipments({ type: req.query.type || 'truck', search: req.query.search }));
   const tid = req.auth.tenantId;
   const type = req.query.type || 'truck';
   let rows = scoped(req, 'equipment').filter((e) => e.type === type);
@@ -712,6 +840,9 @@ router.post('/companies', requirePermission('settings.manage'), (req, res) => {
 // Email (§10.7)
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/email/categories', requirePermission('email.read'), (req, res) => {
+  if (isReal()) {
+    return res.json({ data: [{ key: 'all', label: 'All Emails', count: 0 }], meta: { connected: false, note: 'Email integration is not connected.' } });
+  }
   const threads = scoped(req, 'emailThreads');
   const cats = ['Rate Cons', 'Update Request', 'Critical', 'Charges', 'Claim', 'New Load Offer'];
   res.json({
@@ -720,6 +851,7 @@ router.get('/email/categories', requirePermission('email.read'), (req, res) => {
   });
 });
 router.get('/email/threads', requirePermission('email.read'), (req, res) => {
+  if (isReal()) return res.json({ ...realProvider.notConnected('Email integration is not connected.'), account: null });
   let rows = scoped(req, 'emailThreads');
   if (req.query.category && req.query.category !== 'all') rows = rows.filter((t) => t.category === req.query.category);
   const q = String(req.query.search || '').toLowerCase();
@@ -747,6 +879,7 @@ router.get('/email/attachments/:id/preview-url', requirePermission('email.read')
 // Reports (§10.8, §10.9)
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/reports/rate-savings', requirePermission('reports.read'), (req, res) => {
+  if (isReal()) return res.json(realProvider.reportsUnavailable('Rate savings'));
   const tid = req.auth.tenantId;
   const status = req.query.status || 'all';
   let drivers = scoped(req, 'drivers');
@@ -773,6 +906,7 @@ router.post('/reports/rate-savings/:driverId/adjust', requirePermission('reports
 });
 
 router.get('/reports/cancellations', requirePermission('reports.read'), (req, res) => {
+  if (isReal()) return res.json(realProvider.reportsUnavailable('Cancellations'));
   const tid = req.auth.tenantId;
   const canceled = scoped(req, 'loads').filter((l) => l.status === 'canceled').map((l) => enrichLoad(tid, l));
   const dispatchers = new Set(canceled.map((l) => l.dispatcher_id));
@@ -780,6 +914,7 @@ router.get('/reports/cancellations', requirePermission('reports.read'), (req, re
 });
 
 router.get('/reports/gross-board', requirePermission('reports.read'), (req, res) => {
+  if (isReal()) return res.json(realProvider.reportsUnavailable('Gross Board'));
   const tid = req.auth.tenantId;
   const targets = scoped(req, 'reportTargets')[0] || { solo_gross: 1000000, team_gross: 1500000, rpm: 240 };
   const leads = scoped(req, 'users').filter((u) => (u.role_ids || []).some((rid) => (DB.roles.find((r) => r.id === rid) || {}).name === 'Team Lead'));
@@ -807,6 +942,7 @@ router.get('/reports/gross-board', requirePermission('reports.read'), (req, res)
 });
 
 router.get('/reports/targets', requirePermission('reports.read'), (req, res) => {
+  if (isReal()) return res.json({ data: null, meta: { note: 'Targets require persisted load history.' } });
   res.json({ data: scoped(req, 'reportTargets')[0] || null });
 });
 router.put('/reports/targets', requirePermission('reports.adjust'), (req, res) => {
@@ -822,6 +958,7 @@ router.put('/reports/targets', requirePermission('reports.adjust'), (req, res) =
 // Fuel & Tolls (§10.14)
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/fuel-prices', requirePermission('loads.read'), (req, res) => {
+  if (isReal()) return res.json(realProvider.notConnected('No fuel price source is connected.'));
   let rows = scoped(req, 'fuelPrices');
   if (req.query.state) rows = rows.filter((r) => r.state === req.query.state);
   if (req.query.city) rows = rows.filter((r) => r.city.toLowerCase() === String(req.query.city).toLowerCase());
@@ -831,17 +968,38 @@ router.get('/fuel-prices', requirePermission('loads.read'), (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Settings (§10.16)
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/settings/general', requirePermission('settings.manage'), (req, res) => {
+router.get('/settings/general', requirePermission('settings.manage'), async (req, res) => {
+  if (isReal()) {
+    try {
+      const row = await require('./realDb').getSettings(req.auth.tenantId);
+      const data = row ? { ...realProvider.SETTINGS_DEFAULTS, ...row.data, version: row.version, updated_at: row.updated_at, updated_by: row.updated_by }
+        : { ...realProvider.SETTINGS_DEFAULTS, version: 1, updated_at: null, updated_by: null };
+      return res.json({ data });
+    } catch (e) { return D.apiError(res, 503, 'STORE_UNAVAILABLE', 'Settings store unavailable.', { retryable: true }); }
+  }
   const s = scoped(req, 'companySettings').find((x) => x.company_id === req.auth.companyId) || scoped(req, 'companySettings')[0];
   res.json({ data: s });
 });
-router.put('/settings/general', requirePermission('settings.manage'), (req, res) => {
-  const s = scoped(req, 'companySettings').find((x) => x.company_id === req.auth.companyId) || scoped(req, 'companySettings')[0];
-  if (!s) return D.apiError(res, 404, 'NOT_FOUND', 'Settings not found.');
+router.put('/settings/general', requirePermission('settings.manage'), async (req, res) => {
   const b = req.body || {};
   const fieldErrors = {};
   if (b.check_in_radius_miles != null && (b.check_in_radius_miles < 0.1 || b.check_in_radius_miles > 5.0)) fieldErrors.check_in_radius_miles = 'Must be between 0.1 and 5.0 miles.';
   if (Object.keys(fieldErrors).length) return D.apiError(res, 400, 'VALIDATION', 'Please correct the highlighted fields.', { fieldErrors });
+  if (isReal()) {
+    try {
+      const realDb = require('./realDb');
+      const existing = await realDb.getSettings(req.auth.tenantId);
+      const beforeData = existing ? existing.data : { ...realProvider.SETTINGS_DEFAULTS };
+      const data = { ...realProvider.SETTINGS_DEFAULTS, ...beforeData };
+      ['check_in_radius_miles', 'eld_inspection_expiration_days', 'detention_threshold_minutes', 'auto_create_detention_task', 'stale_location_minutes'].forEach((k) => { if (b[k] !== undefined) data[k] = b[k]; });
+      const version = (existing ? existing.version : 0) + 1;
+      await realDb.putSettings(req.auth.tenantId, data, version, req.auth.user.id);
+      audit(req, 'settings.general.update', 'fleet_settings', req.auth.tenantId, beforeData, data);
+      return res.json({ data: { ...data, version, updated_at: new Date().toISOString(), updated_by: req.auth.user.id } });
+    } catch (e) { return D.apiError(res, 503, 'STORE_UNAVAILABLE', 'Settings store unavailable.', { retryable: true }); }
+  }
+  const s = scoped(req, 'companySettings').find((x) => x.company_id === req.auth.companyId) || scoped(req, 'companySettings')[0];
+  if (!s) return D.apiError(res, 404, 'NOT_FOUND', 'Settings not found.');
   const before = { ...s };
   ['check_in_radius_miles', 'eld_inspection_expiration_days', 'detention_threshold_minutes', 'auto_create_detention_task'].forEach((k) => { if (b[k] !== undefined) s[k] = b[k]; });
   s.version += 1; s.updated_at = new Date().toISOString(); s.updated_by = req.auth.user.id;
@@ -850,6 +1008,7 @@ router.put('/settings/general', requirePermission('settings.manage'), (req, res)
 });
 
 router.get('/settings/bot/logs', requirePermission('settings.manage'), (req, res) => {
+  if (isReal()) return res.json(realProvider.notConnected('Bot logs live in the main application admin panel.'));
   res.json(D.envelope([
     { id: 'bl1', timestamp: '2026-07-03T17:00:00Z', event_type: 'check_in', actor: 'driver', message: 'Check-in recorded at pickup', status: 'ok', correlation_id: 'cid_abc' },
     { id: 'bl2', timestamp: '2026-07-03T16:30:00Z', event_type: 'paperwork', actor: 'bot', message: 'BOL analyzed — 2 pages', status: 'ok', correlation_id: 'cid_def' },
@@ -857,6 +1016,7 @@ router.get('/settings/bot/logs', requirePermission('settings.manage'), (req, res
   ]));
 });
 router.get('/settings/bot/permissions', requirePermission('settings.manage'), (req, res) => {
+  if (isReal()) return res.json({ data: [], meta: { connected: false, note: 'Bot permissions are managed by the main application.' } });
   res.json({ data: [
     { key: 'ticket_create', label: 'Ticket create', enabled: true },
     { key: 'task_paraphrase', label: 'Task paraphrase', enabled: true },
@@ -866,10 +1026,34 @@ router.get('/settings/bot/permissions', requirePermission('settings.manage'), (r
     { key: 'photo_pdf', label: 'Photo PDF', enabled: true },
   ] });
 });
-router.get('/settings/integrations', requirePermission('integrations.manage'), (req, res) => {
+router.get('/settings/integrations', requirePermission('integrations.manage'), async (req, res) => {
+  if (isReal()) return res.json(await realProvider.integrationsStatus());
   res.json(D.envelope(scoped(req, 'integrations')));
 });
-router.post('/settings/integrations/:type/health-check', requirePermission('integrations.manage'), (req, res) => {
+router.post('/settings/integrations/:type/health-check', requirePermission('integrations.manage'), async (req, res) => {
+  if (isReal()) {
+    // Live READ-ONLY probe of the actual provider. Never mutates anything.
+    const type = req.params.type;
+    const result = { id: `int_${type}`, type, last_health_check_at: new Date().toISOString() };
+    try {
+      if (type === 'tms') {
+        const rows = await require('./dataTruckAdapter').getDriversFull();
+        result.state = 'connected'; result.detail = `${rows.length} drivers readable`;
+      } else if (type === 'eld') {
+        const eld = await require('../../database/eldSettings').getEldConfig();
+        const any = (eld.samsaraEnabled && (eld.samsaraApiKeys || []).length > 0) || (eld.factorEnabled && !!eld.factorCompanyKey) || (eld.leaderEnabled && !!eld.leaderCompanyKey);
+        result.state = any ? 'connected' : 'disconnected';
+        result.detail = any ? 'ELD credentials configured' : 'No ELD credentials configured';
+      } else {
+        return D.apiError(res, 400, 'VALIDATION', 'Health check supports tms and eld.');
+      }
+      audit(req, 'integration.health_check', 'integration', type, null, { state: result.state });
+      return res.json({ data: result });
+    } catch (e) {
+      result.state = 'error'; result.error_message = String(e.message).slice(0, 200);
+      return res.json({ data: result });
+    }
+  }
   const intg = scoped(req, 'integrations').find((i) => i.type === req.params.type);
   if (!intg) return D.apiError(res, 404, 'NOT_FOUND', 'Integration not found.');
   intg.last_health_check_at = new Date().toISOString();
@@ -883,12 +1067,26 @@ router.post('/settings/integrations/:type/disconnect', requirePermission('integr
   res.json({ data: intg });
 });
 router.get('/settings/roles', requirePermission('roles.manage'), (req, res) => {
+  if (isReal()) {
+    const { PERMISSIONS } = require('./store');
+    return res.json(D.envelope([{ id: 'role_admin', name: 'Administrator', description: 'Federated from the main application admin login', permissions: PERMISSIONS, permission_count: PERMISSIONS.length, system: true }]));
+  }
   res.json(D.envelope(scoped(req, 'roles').map((r) => ({ ...r, permission_count: r.permissions.length }))));
 });
 router.get('/settings/labels', requirePermission('settings.manage'), (req, res) => {
+  if (isReal()) {
+    // Default label config (not synthetic data) until label management persists.
+    return res.json(D.envelope([
+      { id: 'lbl_detention', name: 'Detention', color: '#d4380d', active: true },
+      { id: 'lbl_paperwork', name: 'Paperwork', color: '#d48806', active: true },
+      { id: 'lbl_urgent', name: 'Urgent', color: '#cf1322', active: true },
+      { id: 'lbl_followup', name: 'Follow-up', color: '#1677ff', active: true },
+    ]));
+  }
   res.json(D.envelope(scoped(req, 'taskLabels')));
 });
 router.get('/settings/notification-rules', requirePermission('settings.manage'), (req, res) => {
+  if (isReal()) return res.json({ ...realProvider.notConnected('Outbound notifications are disabled until sending is explicitly approved.'), data: [] });
   res.json(D.envelope(scoped(req, 'notificationRules')));
 });
 router.put('/settings/notification-rules/:id', requirePermission('settings.manage'), (req, res) => {
@@ -905,19 +1103,54 @@ router.get('/settings/permissions-catalog', requirePermission('roles.manage'), (
   res.json({ data: PERMISSIONS });
 });
 
+// ── Sync layer (admin-only, read-first: refreshes read caches, mutates nothing
+//    external, records a fleet_sync_runs row) ──
+router.post('/sync/:source', requirePermission('integrations.manage'), async (req, res) => {
+  if (!isReal()) return D.apiError(res, 400, 'DEMO_MODE', 'Sync is available in real mode only.');
+  const source = String(req.params.source || '');
+  if (!['locations', 'drivers', 'datatruck'].includes(source)) return D.apiError(res, 400, 'VALIDATION', 'Unknown sync source. Use locations, drivers, or datatruck.');
+  try {
+    const result = await realProvider.runSync(req.auth.tenantId, source, req.auth.user.id);
+    audit(req, 'sync.run', 'sync', result.runId, null, result);
+    return res.json({ data: result });
+  } catch (e) {
+    return D.apiError(res, 503, 'SYNC_FAILED', 'Sync could not be started.', { retryable: true });
+  }
+});
+router.get('/sync/runs', requirePermission('integrations.manage'), async (req, res) => {
+  if (!isReal()) return res.json(D.envelope([]));
+  try {
+    const rows = await require('./realDb').listSyncRuns(req.auth.tenantId);
+    return res.json(D.envelope(rows));
+  } catch (e) { return D.apiError(res, 503, 'STORE_UNAVAILABLE', 'Sync history unavailable.', { retryable: true }); }
+});
+
 // ── Audit viewer (§21) ──
-router.get('/audit', requirePermission('audit.read'), (req, res) => {
+router.get('/audit', requirePermission('audit.read'), async (req, res) => {
+  if (isReal()) {
+    try {
+      const { rows } = await require('./realDb').query(
+        'SELECT * FROM fleet_audit_log WHERE tenant_id = $1 ORDER BY timestamp DESC LIMIT 200',
+        [req.auth.tenantId],
+      );
+      return res.json(D.envelope(rows, { total: rows.length, pageSize: 200 }));
+    } catch (e) { return D.apiError(res, 503, 'STORE_UNAVAILABLE', 'Audit store unavailable.', { retryable: true }); }
+  }
   let rows = scoped(req, 'auditLog').sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   if (req.query.action) rows = rows.filter((r) => r.action.includes(req.query.action));
   res.json(D.envelope(rows.slice(0, 200), { total: rows.length, pageSize: 200 }));
 });
 
-// ── Contact support (§10.17) ──
+// ── Contact support (§10.17) — recorded internally; nothing is sent externally.
 router.post('/support/tickets', (req, res) => {
   const { subject, description, category } = req.body || {};
   if (!subject || !description) return D.apiError(res, 400, 'VALIDATION', 'Subject and description are required.');
   const id = `SUP-${Math.floor(Math.random() * 90000) + 10000}`;
-  res.status(201).json({ data: { ticketNumber: id, category, destination: 'FleetView Support (support@fleetview.example.com)' } });
+  if (isReal()) {
+    audit(req, 'support.ticket', 'support', id, null, { subject, category });
+    return res.status(201).json({ data: { ticketNumber: id, category, destination: 'Recorded internally (audit log) — no external delivery is configured.' } });
+  }
+  res.status(201).json({ data: { ticketNumber: id, category, destination: 'FleetView Support (internal demo)' } });
 });
 
 // 404 for unknown API routes (tenant-safe)
