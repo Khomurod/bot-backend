@@ -1021,32 +1021,47 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
       return res.status(400).json({ error: 'No file provided' });
     }
 
-    try {
-      const isVideo = req.file.mimetype.startsWith('video/');
-      const mediaType = isVideo ? 'video' : 'photo';
-      const fileSource = { source: req.file.buffer, filename: req.file.originalname };
-      const mediaStorageChatId = config.mediaStorageChatId;
+    const isVideo = req.file.mimetype.startsWith('video/');
+    const mediaType = isVideo ? 'video' : 'photo';
+    const fileSource = { source: req.file.buffer, filename: req.file.originalname };
 
-      let sentMessage;
-      if (isVideo) {
-        sentMessage = await bot.telegram.sendVideo(mediaStorageChatId, fileSource, {
-          disable_notification: true,
-          caption: 'Upload staging for file_id capture.',
-        });
-      } else {
-        sentMessage = await bot.telegram.sendPhoto(mediaStorageChatId, fileSource, {
-          disable_notification: true,
-          caption: 'Upload staging for file_id capture.',
-        });
+    // Stage the upload in a Telegram chat the bot can post to so Telegram
+    // returns a reusable file_id. Returns the sent message or throws.
+    const stageMedia = (chatId) => {
+      const opts = { disable_notification: true, caption: 'Upload staging for file_id capture.' };
+      return isVideo
+        ? bot.telegram.sendVideo(chatId, fileSource, opts)
+        : bot.telegram.sendPhoto(chatId, fileSource, opts);
+    };
+
+    let mediaStorageChatId = config.mediaStorageChatId;
+    let sentMessage;
+    try {
+      try {
+        sentMessage = await stageMedia(mediaStorageChatId);
+      } catch (firstErr) {
+        // Telegram returns a new chat id when a group is upgraded to a
+        // supergroup. Retry once against the new id so a stale
+        // MEDIA_STORAGE_CHAT_ID doesn't break uploads, and flag it for the admin.
+        const migratedTo = firstErr?.response?.parameters?.migrate_to_chat_id;
+        if (migratedTo) {
+          console.warn(
+            `[API] Media storage chat ${mediaStorageChatId} was upgraded to supergroup ${migratedTo}. `
+            + 'Update MEDIA_STORAGE_CHAT_ID to the new id to silence this warning.'
+          );
+          mediaStorageChatId = migratedTo;
+          sentMessage = await stageMedia(mediaStorageChatId);
+        } else {
+          throw firstErr;
+        }
       }
 
-      // Extract file_id
+      // Extract file_id (highest-resolution photo size is last).
       let fileId;
       if (isVideo) {
         fileId = sentMessage.video?.file_id;
       } else {
         const photos = sentMessage.photo;
-        // Use highest resolution
         fileId = photos && photos.length > 0 ? photos[photos.length - 1].file_id : null;
       }
 
@@ -1074,8 +1089,22 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
       console.log(`[API] Media uploaded: type=${mediaType}, file_id=${fileId}`);
       res.json({ file_id: fileId, media_type: mediaType, type: mediaType, url: null });
     } catch (uploadErr) {
-      console.error('[API] Media upload error:', uploadErr.message);
-      res.status(500).json({ error: 'Failed to upload media to Telegram. Check bot permissions.' });
+      // Surface the real Telegram reason (never a token) so the failure is
+      // actionable instead of an opaque "check bot permissions".
+      const reason = uploadErr?.response?.description || uploadErr?.description || uploadErr?.message || 'Unknown error';
+      const lower = String(reason).toLowerCase();
+      let hint;
+      if (lower.includes('chat not found')) {
+        hint = `The media storage chat (${mediaStorageChatId}) was not found. Add the bot to that chat and set MEDIA_STORAGE_CHAT_ID to its current id.`;
+      } else if (lower.includes('not enough rights') || lower.includes('need administrator') || lower.includes("can't send")) {
+        hint = `The bot cannot post media in the media storage chat (${mediaStorageChatId}). Make it an admin there, or allow media messages.`;
+      } else if (lower.includes('kicked') || lower.includes('blocked') || lower.includes('not a member') || lower.includes('bot is not a member')) {
+        hint = `The bot is not a member of the media storage chat (${mediaStorageChatId}). Add it to that group.`;
+      } else {
+        hint = `Media storage chat: ${mediaStorageChatId}.`;
+      }
+      console.error(`[API] Media upload to Telegram failed (chat ${mediaStorageChatId}): ${reason}`);
+      res.status(502).json({ error: `Failed to upload media to Telegram: ${reason}. ${hint}` });
     }
   });
 });
