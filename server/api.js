@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const { Telegram } = require('telegraf');
 const config = require('../config/config');
 const db = require('../database/db');
 const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcastTest, sendBroadcastToGroups, sendConfirmationBroadcast, sendConfirmationBroadcastTest } = require('../bot/bot');
@@ -66,9 +67,48 @@ const MAX_FILE_SIZE_MB = 20;
 // the way to Telegram, gets rejected, and the failure surfaces as a confusing
 // generic error. Reject early instead so it fails fast with a clear message.
 const MAX_PHOTO_SIZE_BYTES = 10 * 1024 * 1024;
-// Bound the Telegram staging round-trip so a stalled upload can't hang the
-// admin request indefinitely.
-const MEDIA_UPLOAD_TIMEOUT_MS = 60 * 1000;
+
+// ─── Telegram staging client for media uploads ───
+// A dedicated raw client (same BOT_TOKEN) rather than the shared bot.telegram:
+//  1. bot.telegram is wrapped by the sent-message registry, which couples an
+//     awaited DB insert into every send — a slow DB write must never be able
+//     to stall a media upload (and staged messages are deleted right away, so
+//     recording them was pointless anyway);
+//  2. the raw callApi lets us pass an AbortSignal, so a stalled upload is
+//     genuinely cancelled — a Promise.race timeout would leave the zombie
+//     upload running, still consuming the instance's limited bandwidth and
+//     competing with the retry.
+const stagingTelegram = new Telegram(config.botToken);
+const MEDIA_UPLOAD_ATTEMPT_TIMEOUT_MS = 40 * 1000;
+const MEDIA_UPLOAD_MAX_ATTEMPTS = 2;
+
+async function callStagingApiWithRetry(method, payload) {
+  let lastErr;
+  for (let attempt = 1; attempt <= MEDIA_UPLOAD_MAX_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), MEDIA_UPLOAD_ATTEMPT_TIMEOUT_MS);
+    const startedAt = Date.now();
+    try {
+      const result = await stagingTelegram.callApi(method, payload, { signal: controller.signal });
+      console.log(`[API] Telegram staging ${method} OK in ${Date.now() - startedAt}ms (attempt ${attempt})`);
+      return result;
+    } catch (err) {
+      const elapsed = Date.now() - startedAt;
+      const aborted = err?.name === 'AbortError' || err?.type === 'aborted';
+      lastErr = aborted
+        ? new Error(`Telegram upload stalled and was aborted after ${Math.round(elapsed / 1000)}s (attempt ${attempt}/${MEDIA_UPLOAD_MAX_ATTEMPTS})`)
+        : err;
+      console.error(`[API] Telegram staging ${method} failed in ${elapsed}ms (attempt ${attempt}/${MEDIA_UPLOAD_MAX_ATTEMPTS}):`, lastErr.message);
+      // Telegram 4xx responses are permanent (bad file, bad chat, too big) —
+      // retrying identical input is pointless. Only retry stalls/network/5xx.
+      const apiCode = err?.response?.error_code;
+      if (apiCode && apiCode < 500) throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastErr;
+}
 const uploadStorage = multer.memoryStorage();
 const uploadLimits = { fileSize: MAX_FILE_SIZE_MB * 1024 * 1024 };
 
@@ -1047,29 +1087,16 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
     try {
       const fileSource = { source: req.file.buffer, filename: req.file.originalname };
       const mediaStorageChatId = config.mediaStorageChatId;
+      console.log(
+        `[API] Media upload started: type=${mediaType}, size=${(req.file.size / (1024 * 1024)).toFixed(2)}MB, name=${req.file.originalname}`
+      );
 
-      // Wrap the Telegram round-trip in a timeout so a stalled upload surfaces a
-      // clear error quickly instead of leaving the admin waiting indefinitely.
-      const withTimeout = (promise) => Promise.race([
-        promise,
-        new Promise((_, reject) => setTimeout(
-          () => reject(new Error(`Timed out after ${MEDIA_UPLOAD_TIMEOUT_MS / 1000}s uploading to Telegram`)),
-          MEDIA_UPLOAD_TIMEOUT_MS,
-        )),
-      ]);
-
-      let sentMessage;
-      if (isVideo) {
-        sentMessage = await withTimeout(bot.telegram.sendVideo(mediaStorageChatId, fileSource, {
-          disable_notification: true,
-          caption: 'Upload staging for file_id capture.',
-        }));
-      } else {
-        sentMessage = await withTimeout(bot.telegram.sendPhoto(mediaStorageChatId, fileSource, {
-          disable_notification: true,
-          caption: 'Upload staging for file_id capture.',
-        }));
-      }
+      const sentMessage = await callStagingApiWithRetry(isVideo ? 'sendVideo' : 'sendPhoto', {
+        chat_id: mediaStorageChatId,
+        [isVideo ? 'video' : 'photo']: fileSource,
+        disable_notification: true,
+        caption: 'Upload staging for file_id capture.',
+      });
 
       // Extract file_id
       let fileId;
@@ -1082,11 +1109,11 @@ app.post('/api/upload-media', authMiddleware, (req, res) => {
       }
 
       try {
-        await bot.telegram.deleteMessage(mediaStorageChatId, sentMessage.message_id);
+        await stagingTelegram.deleteMessage(mediaStorageChatId, sentMessage.message_id);
       } catch (deleteErr) {
         console.warn('[API] Failed to delete staged media message:', deleteErr.message);
         try {
-          await bot.telegram.editMessageCaption(
+          await stagingTelegram.editMessageCaption(
             mediaStorageChatId,
             sentMessage.message_id,
             undefined,
