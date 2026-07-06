@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useApi, Async, Kpi, Card, Segmented, StatusTag, TimingTag, Skeleton, EmptyState, ErrorState, Pagination, money, relTime, fmtTime } from '../components.jsx';
+import { useApi, usePolledApi, Async, Kpi, Card, Segmented, StatusTag, TimingTag, Skeleton, EmptyState, ErrorState, FreshnessBar, Pagination, money, relTime, fmtTime } from '../components.jsx';
 import { api, qs } from '../api';
 import LoadDrawer from './LoadDrawer.jsx';
 
@@ -15,7 +15,8 @@ export default function Dashboard() {
   const [focus, setFocus] = useState(null);
 
   React.useEffect(() => { const t = setTimeout(() => { setDq(search); setPage(1); }, 300); return () => clearTimeout(t); }, [search]);
-  const loads = useApi(`/dashboard/loads${qs({ segment, search: dq, page, pageSize: 10 })}`, [segment, dq, page]);
+  // Cached snapshot read; auto-refreshes every 30s without blocking the UI.
+  const loads = usePolledApi(`/dashboard/loads${qs({ segment, search: dq, page, pageSize: 10 })}`, [segment, dq, page], { intervalMs: 30000 });
 
   const s = summary.data || {};
   return (
@@ -63,7 +64,7 @@ export default function Dashboard() {
           <div className="search-inline"><span className="ico">🔍</span><input placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search loads" /></div>
         </div>
       }>
-        {loads.meta && loads.meta.stale && <div className="stale-banner" style={{ margin: 12 }}>Showing cached data — last sync {fmtTime(loads.meta.lastSuccessfulSyncAt)}</div>}
+        <div style={{ padding: '4px 12px 0' }}><FreshnessBar meta={loads.meta} refreshing={loads.refreshing} lastUpdated={loads.lastUpdated} onRefresh={loads.reload} /></div>
         <LoadTable query={loads} onRow={setFocus} onPage={setPage} search={dq} />
       </Card>
 

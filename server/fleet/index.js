@@ -37,6 +37,20 @@ function mountFleet(app) {
     res.sendFile(FLEET_SPA_INDEX);
   });
 
+  // FleetView owns its own background snapshot sync (no-op unless real mode).
+  // Started here — the single guarded mount — so the isolation invariant holds
+  // (nothing outside server/fleet references FleetView). Self-registers a
+  // shutdown hook so it stops cleanly without the main app importing it.
+  try {
+    const { startFleetviewSyncJob, stopFleetviewSyncJob } = require('./syncJob');
+    startFleetviewSyncJob();
+    const stop = () => { try { stopFleetviewSyncJob(); } catch (e) { /* noop */ } };
+    process.once('SIGTERM', stop);
+    process.once('SIGINT', stop);
+  } catch (e) {
+    console.error('[FLEET] Background sync job failed to start:', e.message);
+  }
+
   console.log('[FLEET] Operations platform mounted at /update (API: /api/v1).');
 }
 

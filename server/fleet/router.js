@@ -879,7 +879,7 @@ router.get('/email/attachments/:id/preview-url', requirePermission('email.read')
 // Reports (§10.8, §10.9)
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/reports/rate-savings', requirePermission('reports.read'), (req, res) => {
-  if (isReal()) return res.json(realProvider.reportsUnavailable('Rate savings'));
+  if (isReal()) return res.json(realProvider.rateSavingsUnavailable());
   const tid = req.auth.tenantId;
   const status = req.query.status || 'all';
   let drivers = scoped(req, 'drivers');
@@ -905,16 +905,16 @@ router.post('/reports/rate-savings/:driverId/adjust', requirePermission('reports
   res.json({ data: { driverId: req.params.driverId, amount, reason, auditId: `aud_${DB.auditLog.length}` } });
 });
 
-router.get('/reports/cancellations', requirePermission('reports.read'), (req, res) => {
-  if (isReal()) return res.json(realProvider.reportsUnavailable('Cancellations'));
+router.get('/reports/cancellations', requirePermission('reports.read'), async (req, res) => {
+  if (isReal()) return res.json(await realProvider.cancellations({ period: req.query.period, from: req.query.from, to: req.query.to }));
   const tid = req.auth.tenantId;
   const canceled = scoped(req, 'loads').filter((l) => l.status === 'canceled').map((l) => enrichLoad(tid, l));
   const dispatchers = new Set(canceled.map((l) => l.dispatcher_id));
   res.json({ data: canceled, summary: { dispatcher_count: dispatchers.size, canceled_load_count: canceled.length } });
 });
 
-router.get('/reports/gross-board', requirePermission('reports.read'), (req, res) => {
-  if (isReal()) return res.json(realProvider.reportsUnavailable('Gross Board'));
+router.get('/reports/gross-board', requirePermission('reports.read'), async (req, res) => {
+  if (isReal()) return res.json(await realProvider.grossBoard({ period: req.query.period, from: req.query.from, to: req.query.to }));
   const tid = req.auth.tenantId;
   const targets = scoped(req, 'reportTargets')[0] || { solo_gross: 1000000, team_gross: 1500000, rpm: 240 };
   const leads = scoped(req, 'users').filter((u) => (u.role_ids || []).some((rid) => (DB.roles.find((r) => r.id === rid) || {}).name === 'Team Lead'));
@@ -1108,7 +1108,7 @@ router.get('/settings/permissions-catalog', requirePermission('roles.manage'), (
 router.post('/sync/:source', requirePermission('integrations.manage'), async (req, res) => {
   if (!isReal()) return D.apiError(res, 400, 'DEMO_MODE', 'Sync is available in real mode only.');
   const source = String(req.params.source || '');
-  if (!['locations', 'drivers', 'datatruck'].includes(source)) return D.apiError(res, 400, 'VALIDATION', 'Unknown sync source. Use locations, drivers, or datatruck.');
+  if (!['locations', 'drivers', 'datatruck', 'fleetview'].includes(source)) return D.apiError(res, 400, 'VALIDATION', 'Unknown sync source. Use locations, drivers, datatruck, or fleetview.');
   try {
     const result = await realProvider.runSync(req.auth.tenantId, source, req.auth.user.id);
     audit(req, 'sync.run', 'sync', result.runId, null, result);
@@ -1117,6 +1117,16 @@ router.post('/sync/:source', requirePermission('integrations.manage'), async (re
     return D.apiError(res, 503, 'SYNC_FAILED', 'Sync could not be started.', { retryable: true });
   }
 });
+// Per-source integration/sync health for the FleetView freshness UI (last
+// success/failure, status, error summary, duration, records). Read-only.
+router.get('/sync/status', requirePermission('integrations.manage'), async (req, res) => {
+  if (!isReal()) return res.json({ data: [], meta: { note: 'Sync status is available in real mode only.' } });
+  try {
+    const rows = await require('./snapshotRepository').readSyncStatus(req.auth.tenantId);
+    return res.json({ data: rows, meta: { generatedAt: new Date().toISOString() } });
+  } catch (e) { return D.apiError(res, 503, 'STORE_UNAVAILABLE', 'Sync status unavailable.', { retryable: true }); }
+});
+
 router.get('/sync/runs', requirePermission('integrations.manage'), async (req, res) => {
   if (!isReal()) return res.json(D.envelope([]));
   try {

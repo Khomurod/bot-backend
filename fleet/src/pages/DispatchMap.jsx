@@ -1,17 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import L from 'leaflet';
 import { api } from '../api';
-import { useApi, Segmented, Skeleton, EmptyState, ErrorState, fmtTime, relTime } from '../components.jsx';
+import { usePolledApi, Segmented, Skeleton, EmptyState, ErrorState, FreshnessBar, fmtTime, relTime, agoLabel } from '../components.jsx';
 
 const CONDITION_COLOR = { loaded: '#722ed1', finishing: '#d48806', empty: '#16a34a', stale: '#8a94a4' };
 
 export default function DispatchMap() {
   const [condition, setCondition] = useState('all');
   const [radius, setRadius] = useState(300);
-  const q = useApi(`/dispatch-map?condition=${condition}`, [condition]);
+  // Reads the cached snapshot from the backend and auto-refreshes every 30s.
+  const q = usePolledApi(`/dispatch-map?condition=${condition}`, [condition], { intervalMs: 30000 });
+  useEffect(() => { fittedRef.current = false; }, [condition]);
   const mapRef = useRef(null);
   const mapObj = useRef(null);
   const layerRef = useRef(null);
+  const fittedRef = useRef(false);
 
   const markers = (q.data && q.data.data && q.data.data.markers) || [];
   const noLoc = (q.data && q.data.data && q.data.data.noLocation) || [];
@@ -33,8 +36,8 @@ export default function DispatchMap() {
       const marker = L.circleMarker([m.latitude, m.longitude], { radius: 8, color, fillColor: color, fillOpacity: 0.85, weight: 2 });
       marker.bindPopup(
         `<b>${m.driver_name || 'Driver'}</b> · Unit ${m.unit || '—'}<br/>`
-        + `Load ${m.load_number} · ${m.status}<br/>`
-        + `${m.freshness === 'stale' ? `<span style="color:#d48806">Stale — last seen ${relTime(m.observed_at)}</span>` : `Last seen ${relTime(m.observed_at)}`}<br/>`
+        + `${m.loaded_label || (m.loaded ? 'Loaded' : 'Empty')}${m.load_number ? ` · Load ${m.load_number}` : ''} · ${m.status}<br/>`
+        + `${m.freshness === 'stale' ? `<span style="color:#d48806">Stale — last seen ${agoLabel(m.observed_at) || relTime(m.observed_at)}</span>` : `Last seen ${agoLabel(m.observed_at) || relTime(m.observed_at)}`}<br/>`
         + `Speed ${m.speed_mph} mph · ${m.source}<br/>`
         + (m.remaining_miles != null ? `Remaining ${m.remaining_miles} mi · ${m.eta_label || ''}` : ''),
       );
@@ -42,9 +45,12 @@ export default function DispatchMap() {
       marker.options.alt = `${m.driver_name}, unit ${m.unit}, ${m.condition}, ${m.freshness}`;
       layerRef.current.addLayer(marker);
     });
-    if (markers.length) {
+    // Only auto-fit once (or when the condition filter changes) so a 30s poll
+    // doesn't keep yanking the operator's zoom/pan back.
+    if (markers.length && !fittedRef.current) {
       const bounds = L.latLngBounds(markers.map((m) => [m.latitude, m.longitude]));
       mapObj.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 6 });
+      fittedRef.current = true;
     }
   }, [q.data]);
 
@@ -64,7 +70,8 @@ export default function DispatchMap() {
         <button className="btn" aria-label="Refresh displayed locations" onClick={q.reload}>⟳ Refresh</button>
       </div>
 
-      {stale && <div className="stale-banner">Live locations unavailable; showing last known positions.</div>}
+      <FreshnessBar meta={q.meta} refreshing={q.refreshing} lastUpdated={q.lastUpdated} onRefresh={q.reload} />
+      {stale && <div className="stale-banner">Live locations may be stale; showing the last successfully synced positions.</div>}
 
       <div className="map-layout">
         <div className="map-list">

@@ -299,9 +299,30 @@ test('real: emails / fuel / reports show honest unconnected, never fake', async 
   assert.strictEqual(threads.json.data.length, 0);
   const fuel = await req('/fuel-prices', { token });
   assert.strictEqual(fuel.json.meta.connected, false);
-  const gross = await req('/reports/gross-board', { token });
-  assert.strictEqual(gross.json.meta.connected, false);
-  assert.strictEqual(gross.json.data.length, 0);
+  // Rate Savings is still honestly unavailable (no settlement-rate source).
+  const rate = await req('/reports/rate-savings', { token });
+  assert.strictEqual(rate.json.meta.connected, false);
+});
+
+// ── statistics now computed from real DataTruck orders ───────────────────────
+test('real: gross board is computed per-driver from DataTruck orders over a period', async () => {
+  const token = await adminToken();
+  // Explicit period covers the stub order's pickup date (clock-independent).
+  const gross = await req('/reports/gross-board?from=2026-07-01&to=2026-07-31', { token });
+  assert.strictEqual(gross.json.groupBy, 'driver');
+  const drv = gross.json.data.find((d) => d.name === 'John Smith');
+  assert.ok(drv, 'expected John Smith gross row');
+  assert.strictEqual(drv.gross, 250000); // real TMS hauling revenue (cents)
+  assert.strictEqual(drv.loads, 1);
+  assert.strictEqual(gross.json.summary.total_gross, 250000);
+  assert.strictEqual(gross.json.summary.drivers, 1);
+});
+
+test('real: cancellations report reads canceled orders in the period (none here)', async () => {
+  const token = await adminToken();
+  const c = await req('/reports/cancellations?from=2026-07-01&to=2026-07-31', { token });
+  assert.ok(Array.isArray(c.json.data));
+  assert.strictEqual(c.json.summary.canceled_load_count, 0); // stub order is in_transit
 });
 
 // ── fleet-owned persistence ──────────────────────────────────────────────────
