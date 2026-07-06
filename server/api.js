@@ -709,6 +709,22 @@ app.get('/favicon.ico', (req, res) => {
   res.status(204).end();
 });
 
+// ─── Public product presentation (/presentation) ───
+// A self-contained, static marketing/overview page describing the whole
+// platform. It has no dependencies, exposes no data, and is fully isolated —
+// serving one file means direct browser access and refresh both work in
+// production regardless of the admin/fleet SPA builds.
+const presentationHtmlPath = path.join(__dirname, 'presentation', 'index.html');
+function presentationHandler(req, res) {
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  if (!fs.existsSync(presentationHtmlPath)) {
+    return res.status(404).type('text/plain').send('Presentation page not found.');
+  }
+  return res.sendFile(presentationHtmlPath);
+}
+app.get('/presentation', presentationHandler);
+app.get('/presentation/', presentationHandler);
+
 function renderMetaCompliancePage(title, bodyHtml) {
   return `<!DOCTYPE html>
 <html lang="en">
