@@ -19,6 +19,50 @@ export function useApi(path, deps = [], { enabled = true } = {}) {
   return { ...state, reload };
 }
 
+// ── Auto-refreshing data hook ────────────────────────────────────────────────
+// Polls an internal cached FleetView endpoint on an interval. Keeps the previous
+// data visible while refreshing, only shows the skeleton on the very first load
+// or an explicit manual refresh, aborts the in-flight request on unmount, and
+// never stacks duplicate intervals. It talks ONLY to the internal API (which
+// serves the database snapshot) — never to DataTruck/Samsara directly.
+export function usePolledApi(path, deps = [], { enabled = true, intervalMs = 30000 } = {}) {
+  const [state, setState] = useState({ loading: true, refreshing: false, error: null, data: null, meta: null, lastUpdated: null });
+  const [tick, setTick] = useState(0);
+  const reload = useCallback(() => setTick((t) => t + 1), []);
+  const firstLoad = useRef(true);
+
+  useEffect(() => {
+    if (!enabled || !path) { setState((s) => ({ ...s, loading: false, refreshing: false })); return undefined; }
+    let alive = true;
+    const controller = new AbortController();
+    let timer = null;
+
+    const fetchOnce = async () => {
+      if (!alive) return;
+      setState((s) => (firstLoad.current ? { ...s, loading: true } : { ...s, refreshing: true }));
+      try {
+        const res = await api(path, { signal: controller.signal });
+        if (!alive) return;
+        firstLoad.current = false;
+        setState({ loading: false, refreshing: false, error: null, data: res, meta: res && res.meta, lastUpdated: new Date().toISOString() });
+      } catch (err) {
+        if (!alive || err.name === 'AbortError') return;
+        firstLoad.current = false;
+        // Keep the previous data on a refresh error; only surface the error hard
+        // when we have nothing to show yet.
+        setState((s) => ({ ...s, loading: false, refreshing: false, error: s.data ? s.error : err }));
+      }
+    };
+
+    fetchOnce();
+    if (intervalMs > 0) timer = setInterval(fetchOnce, intervalMs);
+    return () => { alive = false; controller.abort(); if (timer) clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, tick, enabled, intervalMs, ...deps]);
+
+  return { ...state, reload };
+}
+
 // ── State renderers ──────────────────────────────────────────────────────────
 export function Skeleton({ rows = 5 }) {
   return (
@@ -52,6 +96,39 @@ export function ErrorState({ error, onRetry }) {
 export function StaleBanner({ meta }) {
   if (!meta || !meta.stale) return null;
   return <div className="stale-banner">⚠ Showing cached data. Last successful sync: {fmtTime(meta.lastSuccessfulSyncAt)}.</div>;
+}
+
+// Real-clock "x ago" (relTime is pinned to the demo date; this is for real
+// freshness). Returns null for missing timestamps.
+export function agoLabel(iso) {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  const diff = Math.max(0, (Date.now() - t) / 1000);
+  if (diff < 45) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+// Freshness/refresh strip for cached FleetView sections. Shows when the snapshot
+// was last synced, a live "refreshing…" hint, a stale/error warning, and a
+// manual refresh button that re-requests the cached endpoint (no live API spam).
+export function FreshnessBar({ meta, refreshing, lastUpdated, onRefresh }) {
+  const synced = (meta && (meta.lastSuccessfulSyncAt || meta.generatedAt)) || lastUpdated;
+  const stale = !!(meta && meta.stale);
+  const err = meta && meta.error;
+  const ago = agoLabel(synced);
+  return (
+    <div className={`freshness-bar${stale ? ' stale' : ''}`} role="status"
+      style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: stale ? 'var(--amber)' : 'var(--text-3)', padding: '4px 0' }}>
+      <span style={{ width: 8, height: 8, borderRadius: '50%', background: stale ? 'var(--amber)' : 'var(--green)', display: 'inline-block' }} />
+      {refreshing ? <span>Refreshing…</span> : stale
+        ? <span>Data may be stale — last synced {ago || '—'}{err ? ` · ${String(err).slice(0, 80)}` : ''}</span>
+        : <span>Last synced {ago || '—'}</span>}
+      {onRefresh && <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={onRefresh} disabled={refreshing} aria-label="Refresh data">⟳ Refresh</button>}
+    </div>
+  );
 }
 
 // Wraps common query rendering: skeleton / error / empty / content.

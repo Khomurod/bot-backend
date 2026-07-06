@@ -19,10 +19,11 @@ export class ApiError extends Error {
   }
 }
 
-export async function api(path, { method = 'GET', body, headers = {} } = {}) {
+export async function api(path, { method = 'GET', body, headers = {}, signal } = {}) {
   const token = getToken();
   const res = await fetch(BASE + path, {
     method,
+    signal,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

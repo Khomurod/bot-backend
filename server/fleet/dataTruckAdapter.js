@@ -190,14 +190,11 @@ function orderToLoad(o) {
     source: 'datatruck',
   };
 }
+// Canonical status vocabulary lives in the centralized normalizer. Unknown
+// DataTruck statuses fall back to 'dispatched' (treated as the driver's current
+// load) to preserve historic behavior.
 function mapOrderStatus(raw) {
-  const s = String(raw || '').toLowerCase();
-  if (s.includes('deliver') || s.includes('complete')) return 'delivered';
-  if (s.includes('transit') || s.includes('enroute') || s.includes('en route') || s.includes('picked')) return 'in_transit';
-  if (s.includes('cancel')) return 'canceled';
-  if (s.includes('dispatch') || s.includes('assign') || s.includes('booked') || s.includes('cover')) return 'dispatched';
-  if (s.includes('pend') || s.includes('open') || s.includes('avail')) return 'upcoming';
-  return 'dispatched';
+  return require('./statusNormalizer').normalizeLoadStatus(raw, { fallback: 'dispatched' });
 }
 function normalizeUnit(v) {
   if (v == null) return null;
