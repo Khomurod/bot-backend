@@ -1,6 +1,8 @@
 const express = require('express');
 const config = require('../../config/config');
 const liveLocations = require('../../services/liveLocationsService');
+const dupReports = require('../../database/duplicateUnitReports');
+const duplicateUnitCheck = require('../../services/duplicateUnitCheckService');
 
 /**
  * Live Locations admin API (admin-auth required on every route):
@@ -50,6 +52,40 @@ function createLiveLocationsRouter({ authMiddleware }) {
       attribution,
       maxZoom: 19,
     });
+  });
+
+  // ─── Duplicate truck-number sanity check (admin review) ───
+
+  router.get('/duplicate-reports', authMiddleware, async (req, res) => {
+    try {
+      const status = typeof req.query.status === 'string' ? req.query.status : 'open';
+      const reports = await dupReports.listDuplicateUnitReports({ status });
+      res.json({ reports });
+    } catch (err) {
+      console.error('[LIVE-LOCATIONS API] duplicate-reports failed:', err.message);
+      res.status(500).json({ error: 'Failed to load duplicate unit reports' });
+    }
+  });
+
+  // Run the scan on demand (in addition to the 15-minute schedule).
+  router.post('/duplicate-reports/scan', authMiddleware, async (req, res) => {
+    try {
+      const summary = await duplicateUnitCheck.runDuplicateUnitCheck();
+      res.json({ summary });
+    } catch (err) {
+      console.error('[LIVE-LOCATIONS API] duplicate scan failed:', err.message);
+      res.status(500).json({ error: 'Failed to run duplicate unit scan' });
+    }
+  });
+
+  router.post('/duplicate-reports/:id/resolve', authMiddleware, async (req, res) => {
+    try {
+      const report = await dupReports.resolveDuplicateUnitReport(parseInt(req.params.id, 10));
+      if (!report) return res.status(404).json({ error: 'Report not found' });
+      return res.json({ report });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
   });
 
   return router;

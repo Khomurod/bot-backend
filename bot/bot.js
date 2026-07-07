@@ -641,6 +641,18 @@ async function startBot() {
             await ctx.reply('Could not find a unit number in this group title.');
             return;
           }
+          if (err.code === 'AMBIGUOUS_UNIT_MATCH') {
+            const who = err.assignedDriverName ? ` for this driver (${err.assignedDriverName})` : '';
+            const candidates = Array.isArray(err.candidates) && err.candidates.length
+              ? `\nVehicles sharing unit ${err.unitNumber}: ${err.candidates.join(', ')}.` : '';
+            await ctx.reply(
+              `⚠️ Multiple trucks share unit ${err.unitNumber} and I can't tell which one is this truck${who}. `
+              + 'To avoid sending the wrong location I did not post one.'
+              + candidates
+              + '\nPlease fix the duplicate unit number, or rename the vehicle in Samsara to match the driver.'
+            );
+            return;
+          }
           console.error('[BOT] /location provider chain failed:', err.message);
           await ctx.reply('Could not fetch live location from Samsara, Factor ELD, or Leader ELD right now.');
           return;

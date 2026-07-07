@@ -8,6 +8,7 @@ const {
   normalizeUnitNumber,
   computePingAgeMinutes,
   findVehicleByUnit,
+  selectVehicleByUnit,
 } = require('../services/samsaraLocationService');
 const { extractDriverNameFromGroupTitle } = require('../services/driverGroupTitle');
 
@@ -104,4 +105,50 @@ test('findVehicleByUnit with single mismatch still returns vehicle', () => {
     driverNameHint: 'TESFAMARIAM YOSIEF',
   });
   assert.equal(match.id, 'v1');
+});
+
+// ── selectVehicleByUnit: duplicate unit-number disambiguation ──
+
+const DUP_UNIT_VEHICLES = [
+  { id: 'v-nike', name: '2908 NIKE AUGUSTE', gps: { time: '2026-05-19T16:05:00Z' } }, // fresher
+  { id: 'v-tesfa', name: '2908 TESFAMARIAM YOSIEF', gps: { time: '2026-05-19T15:00:00Z' } },
+];
+
+test('selectVehicleByUnit: single unit match is never ambiguous', () => {
+  const sel = selectVehicleByUnit([DUP_UNIT_VEHICLES[0]], '2908', { driverNameHint: 'NIKE AUGUSTE' });
+  assert.equal(sel.ambiguous, false);
+  assert.equal(sel.vehicle.id, 'v-nike');
+  assert.equal(sel.reason, 'unique_unit');
+});
+
+test('selectVehicleByUnit: duplicate unit + matching group driver selects the right vehicle', () => {
+  const sel = selectVehicleByUnit(DUP_UNIT_VEHICLES, '2908', { driverNameHint: 'TESFAMARIAM YOSIEF' });
+  assert.equal(sel.ambiguous, false);
+  assert.equal(sel.vehicle.id, 'v-tesfa'); // NOT the fresher NIKE truck
+  assert.equal(sel.reason, 'group_driver_match');
+});
+
+test('selectVehicleByUnit: duplicate unit + no matching group driver is AMBIGUOUS', () => {
+  const sel = selectVehicleByUnit(DUP_UNIT_VEHICLES, '2908', { driverNameHint: 'SOMEONE ELSE' });
+  assert.equal(sel.ambiguous, true);
+  assert.equal(sel.vehicle, null);
+  assert.equal(sel.candidates.length, 2);
+});
+
+test('selectVehicleByUnit: duplicate unit + no group driver hint is AMBIGUOUS (never freshest-GPS guess)', () => {
+  const sel = selectVehicleByUnit(DUP_UNIT_VEHICLES, '2908');
+  assert.equal(sel.ambiguous, true);
+  assert.equal(sel.vehicle, null);
+  assert.equal(sel.reason, 'duplicate_unit_no_group_driver');
+});
+
+test('selectVehicleByUnit: same driver appearing twice (stale + fresh) picks freshest, not ambiguous', () => {
+  const vehicles = [
+    { id: 'v-old', name: '008 PRODNET LUBIN', gps: { time: '2026-04-27T20:30:00Z' } },
+    { id: 'v-new', name: '8 PRODNET LUBIN', gps: { time: '2026-04-27T20:48:12Z' } },
+  ];
+  const sel = selectVehicleByUnit(vehicles, '0008');
+  assert.equal(sel.ambiguous, false);
+  assert.equal(sel.vehicle.id, 'v-new');
+  assert.equal(sel.reason, 'same_driver_duplicate');
 });
