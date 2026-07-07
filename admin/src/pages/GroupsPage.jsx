@@ -390,11 +390,20 @@ export default function GroupsPage() {
                 </div>
                 <div>
                   <label style={fieldLabelStyle}>Review</label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, minHeight: 38 }}>
+                  <label
+                    style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, minHeight: 38 }}
+                    title={
+                      "Advisory flag only — it never blocks status sync, live location, home-time or any automated behavior. "
+                      + "It just marks this profile for a human to check and powers the “Needs review only” filter. "
+                      + "It is set automatically when key fields are missing (name / unit) or a team name is unresolved, "
+                      + "and is auto-checked while the driver has a duplicate/identity conflict (see below). "
+                      + "You can tick it by hand to queue a profile for review, or untick it once you've checked it."
+                    }
+                  >
                     <input
                       type="checkbox"
                       checked={draft.needs_review === true || profile.duplicate_review_required === true}
-                      disabled={saving}
+                      disabled={saving || profile.duplicate_review_required === true}
                       onChange={(e) => {
                         const next = e.target.checked;
                         updateDraft(profile.id, { needs_review: next });
@@ -404,6 +413,13 @@ export default function GroupsPage() {
                     />
                     {profile.duplicate_review_required ? "Review required" : "Needs review"}
                   </label>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, maxWidth: 260 }}>
+                    {profile.duplicate_review_required
+                      ? (profile.duplicate_conflict
+                        ? "Auto-flagged: more than one active group for this driver. Resolve the duplicate (deactivate the wrong group) to clear it."
+                        : "Auto-flagged: this profile can't be matched to a unique driver. Fix the name/unit to clear it.")
+                      : "Manual flag: mark a profile for a human to double-check. Doesn't affect any automated behavior."}
+                  </div>
                 </div>
               </div>
 

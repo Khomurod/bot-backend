@@ -198,6 +198,32 @@ test('handleApproverMention: no-op when an open request already exists', async (
   assert.equal(sends.length, 0);
 });
 
+test('handleApproverMention: driver already home → no card, no ask, no AI call', async () => {
+  const { service, telegram, inserts, sends, messageLinks, geminiCalls } = loadService({
+    homeStatus: { state: 'home', state_since: '2026-06-20T00:00:00Z' },
+    // Even if the AI would classify this as a request, the already-home guard
+    // short-circuits before any classification.
+    gemini: { json: { is_home_time_request: true, confidence: 'high', dates_specified: true, home_from: FROM, home_to: TO } },
+  });
+  await service.handleApproverMention(telegram, GROUP, { text: `can he be home ${FROM} to ${TO} @tomr_robins0n`, from: { id: 1, username: 'rep' } });
+  assert.equal(inserts.length, 0, 'no request row created');
+  assert.equal(sends.length, 0, 'no message posted to the driver group');
+  assert.equal(messageLinks.length, 0);
+  assert.equal(geminiCalls.json.length, 0, 'short-circuits before the AI classification');
+});
+
+test('handleApproverMention: on-road driver still gets the normal request flow', async () => {
+  // Sanity: the already-home guard does not affect the ordinary on-road path.
+  const { service, telegram, inserts, sends } = loadService({
+    homeStatus: { state: 'road', state_since: '2026-05-01T00:00:00Z' },
+    gemini: { json: { is_home_time_request: true, confidence: 'high', dates_specified: true, home_from: FROM, home_to: TO, reason: 'wants home' } },
+  });
+  await service.handleApproverMention(telegram, GROUP, { text: `home ${FROM} to ${TO} @tomr_robins0n`, from: { id: 1, username: 'rep' } });
+  assert.equal(inserts.length, 1);
+  assert.equal(inserts[0].status, 'pending');
+  assert.equal(sends.length, 1);
+});
+
 // ── handleHomeTimeDateReply ──
 
 test('handleHomeTimeDateReply: no awaiting request → no-op', async () => {

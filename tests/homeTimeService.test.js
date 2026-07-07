@@ -198,3 +198,22 @@ test('every transition resets the road-bonus watermark to 0', async () => {
   assert.equal(upserts[0].state, 'road');
   assert.equal(upserts[0].roadBonusWeeksNotified, 0);
 });
+
+test('road→home transition records state=home with state_since = the home start time', async () => {
+  const { service, telegram, upserts } = loadService({
+    profile: { first_name: 'C', last_name: 'D', unit_number: '2', driver_type: 'company_driver' },
+    currentStatus: { state: 'road', state_since: '2026-01-01T00:00:00Z' },
+  });
+
+  const homeAtSecs = Math.floor(Date.parse('2026-01-20T15:30:00Z') / 1000);
+  await service.handleDriverGroupStatus(
+    telegram,
+    { id: 11, telegram_group_id: '-1011', group_type: 'driver', group_name: 'WENZE UNIT # 2 COMPANY DRIVER' },
+    { text: 'Status: Home', date: homeAtSecs }
+  );
+
+  assert.equal(upserts.length, 1);
+  assert.equal(upserts[0].state, 'home');
+  // state_since becomes the moment the driver reported home — the home start date.
+  assert.equal(upserts[0].stateSince, new Date(homeAtSecs * 1000).toISOString());
+});
