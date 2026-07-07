@@ -300,6 +300,22 @@ async function handleApproverMention(telegram, group, message) {
     const existing = await ht.getOpenHomeTimeRequestForGroup(group.id);
     if (existing) return;
 
+    // Already home? An approval card asking to send the driver home makes no
+    // sense — they're not asking to go home, they ARE home. Their home time
+    // already started when the status became home (driver_home_status.state_since
+    // is the home start date). Quietly skip the card so the driver group is not
+    // spammed; leave an internal note for admins. We short-circuit before the AI
+    // classification since a home-time request card is never appropriate here.
+    const homeStatus = await ht.getDriverHomeStatus(group.id);
+    if (homeStatus && homeStatus.state === 'home') {
+      console.log(
+        `[HOME-TIME-REQ] ${group.group_name || `Group ${group.id}`} is already home `
+        + `since ${homeStatus.state_since} — home time already in effect; `
+        + 'no request card posted to the driver group.'
+      );
+      return;
+    }
+
     // The triggering message is passed explicitly (in addition to the rolling
     // buffer) so the AI always sees the actual tag text, even right after a
     // restart when the buffer has not warmed up yet.
