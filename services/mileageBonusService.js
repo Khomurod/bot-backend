@@ -19,8 +19,8 @@ const { bot } = require('../bot/bot');
 const { safeSend } = require('./telegramHtml');
 const datatruck = require('./datatruckApiService');
 const { buildBonusCardText } = require('./mileageBonusMessages');
+const messageGroups = require('../database/messageRoutingSettings');
 const {
-  BONUS_GROUP_CHAT_ID,
   PROGRAM_START_ISO,
   SCHEDULE_TIMEZONE,
   INCLUDE_EMPTY_MILES,
@@ -182,7 +182,7 @@ function buildKeyboard(notificationId) {
  * unique constraint guarantees a single business record). Failed delivery is
  * retained and made retryable without deleting the audit record.
  */
-async function sendBonusNotification(driver, tier, { trigger, periodEndDate }) {
+async function sendBonusNotification(driver, tier, { trigger, periodEndDate, chatId }) {
   if (!(await mb.isDriverActive(driver.normalizedName))) {
     return { skipped: true, reason: 'driver_inactive' };
   }
@@ -209,11 +209,11 @@ async function sendBonusNotification(driver, tier, { trigger, periodEndDate }) {
   });
 
   try {
-    const sent = await safeSend(() => bot.telegram.sendMessage(BONUS_GROUP_CHAT_ID, text, {
+    const sent = await safeSend(() => bot.telegram.sendMessage(chatId, text, {
       parse_mode: 'HTML',
       reply_markup: buildKeyboard(claimed.id),
     }));
-    await mb.setBonusNotificationMessage(claimed.id, BONUS_GROUP_CHAT_ID, sent?.message_id || null);
+    await mb.setBonusNotificationMessage(claimed.id, chatId, sent?.message_id || null);
     return { sent: true, id: claimed.id };
   } catch (err) {
     // Preserve the business-key claim. A later run can reclaim a known failed
@@ -284,12 +284,41 @@ async function runMileageBonusCheck({
     const errors = [];
     let qualifyingDrivers = 0;
 
+    // The destination is admin-configured (Settings → Telegram Groups). With no
+    // configured group we do NOT fall back to any old hardcoded default — we
+    // skip the send entirely and surface a clear configuration error. Progress
+    // is still persisted above, and no notification rows are claimed, so a later
+    // run (once configured) sends the still-owed milestone cards.
+    const chatId = await messageGroups.getGroupId('mileageBonus');
+    if (!chatId) {
+      const configError = messageGroups.missingGroupMessage('mileageBonus');
+      const qualifying = drivers.filter((d) => d.tiersReached.length).length;
+      console.error(`[MILEAGE-BONUS] ${configError} Not sending ${qualifying} qualifying driver notification(s).`);
+      const summary = {
+        configured: true,
+        mode: 'notify',
+        trigger,
+        periodStart: PROGRAM_START_ISO,
+        periodEnd: periodEndDate,
+        companyDrivers: drivers.length,
+        qualifyingDrivers: qualifying,
+        notificationsSent: [],
+        notificationsSentCount: 0,
+        groupConfigured: false,
+        configError,
+        errors: [],
+        ranAt: DateTime.now().toISO(),
+      };
+      lastRunSummary = summary;
+      return summary;
+    }
+
     for (const driver of drivers) {
       if (!driver.tiersReached.length) continue;
       qualifyingDrivers += 1;
       for (const tier of driver.tiersReached) {
         try {
-          const result = await sendBonusNotification(driver, tier, { trigger, periodEndDate });
+          const result = await sendBonusNotification(driver, tier, { trigger, periodEndDate, chatId });
           if (result.sent) {
             notificationsSent.push({ driver: driver.name, miles: tier.miles, amount: tier.amount });
           }
@@ -313,6 +342,7 @@ async function runMileageBonusCheck({
       qualifyingDrivers,
       notificationsSent,
       notificationsSentCount: notificationsSent.length,
+      groupConfigured: true,
       errors,
       ranAt: DateTime.now().toISO(),
     };
@@ -416,18 +446,23 @@ async function resendBonusNotification(notificationId, { username } = {}) {
     throw serviceError('DRIVER_INACTIVE', 'Activate this driver before resending a bonus.', 409);
   }
 
+  const chatId = await messageGroups.getGroupId('mileageBonus');
+  if (!chatId) {
+    throw serviceError('NO_GROUP', messageGroups.missingGroupMessage('mileageBonus'), 409);
+  }
+
   const claimed = await mb.claimNotificationAction(notificationId, 'resending');
   if (!claimed) throw serviceError('ACTION_BUSY', 'This notification is already being updated.', 409);
 
   let sent = null;
   try {
     const text = buildBonusCardText(claimed);
-    sent = await safeSend(() => bot.telegram.sendMessage(BONUS_GROUP_CHAT_ID, text, {
+    sent = await safeSend(() => bot.telegram.sendMessage(chatId, text, {
       parse_mode: 'HTML',
       reply_markup: buildKeyboard(claimed.id),
     }));
     const updated = await mb.finalizeNotificationResend(claimed.id, {
-      chatId: BONUS_GROUP_CHAT_ID,
+      chatId,
       messageId: sent.message_id,
       username,
     });
@@ -440,7 +475,7 @@ async function resendBonusNotification(notificationId, { username } = {}) {
     return { notification: updated, cleanup };
   } catch (err) {
     if (sent?.message_id) {
-      await bot.telegram.deleteMessage(BONUS_GROUP_CHAT_ID, sent.message_id).catch(() => {});
+      await bot.telegram.deleteMessage(chatId, sent.message_id).catch(() => {});
     }
     await mb.releaseNotificationAction(claimed.id, err.message).catch(() => {});
     throw err;

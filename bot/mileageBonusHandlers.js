@@ -8,9 +8,9 @@
  */
 const mb = require('../database/mileageBonus');
 const { safeSend } = require('../services/telegramHtml');
+const messageGroups = require('../database/messageRoutingSettings');
 const {
   isAccountingUser,
-  BONUS_GROUP_CHAT_ID,
   BONUS_STATUS,
 } = require('../services/mileageBonusConstants');
 const {
@@ -40,8 +40,14 @@ function registerMileageBonusHandlers(bot) {
       }
       const callbackChatId = ctx.callbackQuery?.message?.chat?.id;
       const callbackMessageId = ctx.callbackQuery?.message?.message_id;
-      const isCurrentCard = String(callbackChatId) === String(BONUS_GROUP_CHAT_ID)
-        && String(callbackChatId) === String(current.telegram_chat_id)
+      // The card must live in the currently-configured mileage bonus group AND
+      // match the stored chat/message of this exact notification. The stored
+      // chat is authoritative (a card sent before the group was changed still
+      // decides correctly); the configured group is an extra guard against acting
+      // on a card copied into some other chat.
+      const configuredGroupId = await messageGroups.getGroupId('mileageBonus');
+      const isCurrentCard = String(callbackChatId) === String(current.telegram_chat_id)
+        && (!configuredGroupId || String(callbackChatId) === String(configuredGroupId))
         && String(callbackMessageId) === String(current.telegram_message_id);
       if (!isCurrentCard) {
         await ctx.answerCbQuery('This is an old or invalid bonus card.', { show_alert: true });

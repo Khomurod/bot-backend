@@ -9,14 +9,20 @@ function deferred() {
   return { promise, resolve };
 }
 
-function loadService({ mb: mbOverrides = {}, telegram: telegramOverrides = {}, datatruck: dtOverrides = {} } = {}) {
+const MILEAGE_GROUP_ID = '-100777';
+
+function loadService({
+  mb: mbOverrides = {}, telegram: telegramOverrides = {}, datatruck: dtOverrides = {},
+  mileageGroupId = MILEAGE_GROUP_ID,
+} = {}) {
   const servicePath = path.resolve(__dirname, '../services/mileageBonusService.js');
   const mbPath = path.resolve(__dirname, '../database/mileageBonus.js');
   const botPath = path.resolve(__dirname, '../bot/bot.js');
   const htmlPath = path.resolve(__dirname, '../services/telegramHtml.js');
   const datatruckPath = path.resolve(__dirname, '../services/datatruckApiService.js');
+  const mgPath = path.resolve(__dirname, '../database/messageRoutingSettings.js');
 
-  for (const p of [servicePath, mbPath, botPath, htmlPath, datatruckPath]) delete require.cache[p];
+  for (const p of [servicePath, mbPath, botPath, htmlPath, datatruckPath, mgPath]) delete require.cache[p];
 
   const mb = {
     async withMileageRunLock(fn) { return { acquired: true, result: await fn() }; },
@@ -60,6 +66,12 @@ function loadService({ mb: mbOverrides = {}, telegram: telegramOverrides = {}, d
   require.cache[botPath] = { exports: { bot: { telegram } } };
   require.cache[htmlPath] = { exports: { safeSend: async (fn) => fn() } };
   require.cache[datatruckPath] = { exports: datatruck };
+  require.cache[mgPath] = {
+    exports: {
+      async getGroupId(category) { return category === 'mileageBonus' ? (mileageGroupId || null) : null; },
+      missingGroupMessage() { return 'Mileage bonus group ID is not configured.'; },
+    },
+  };
 
   return { service: require(servicePath), mb, telegram, datatruck };
 }
@@ -226,6 +238,68 @@ test('disregard remains authoritative when Telegram is too old to delete', async
   assert.equal(completed.deleted, false);
   assert.equal(completed.buttonsRemoved, true);
   assert.match(completed.error, /could not delete/);
+});
+
+test('mileage bonus cards are sent to the configured group ID (not a hardcoded default)', async () => {
+  const sends = [];
+  const messaged = [];
+  const { service } = loadService({
+    mb: {
+      async claimBonusNotification() { return { id: 42 }; },
+      async setBonusNotificationMessage(id, chatId) { messaged.push({ id, chatId }); },
+    },
+    telegram: { async sendMessage(chatId, text) { sends.push({ chatId, text }); return { message_id: 7 }; } },
+    datatruck: {
+      async fetchAllDrivers() {
+        return [{ id: 1, driver_type: 'company_driver', hire_date: '2026-04-01', account: { full_name: 'Jane Driver' } }];
+      },
+      async fetchOrdersByPickupWindow() {
+        return [{ pickup_time: '2026-05-01T12:00:00Z', trip: { driver__full_name: 'Jane Driver', mile: '11000', empty_mile: '0' } }];
+      },
+    },
+  });
+
+  const res = await service.runMileageBonusCheck({ trigger: 'manual', runKey: 'send-key' });
+  assert.equal(res.notificationsSentCount, 1);
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].chatId, MILEAGE_GROUP_ID);
+  assert.notEqual(String(sends[0].chatId), '-5170359585');
+  assert.equal(messaged[0].chatId, MILEAGE_GROUP_ID);
+});
+
+test('a missing mileage bonus group ID prevents sending and reports a clear error', async () => {
+  const sends = [];
+  const claims = [];
+  const { service } = loadService({
+    mileageGroupId: null,
+    mb: { async claimBonusNotification() { claims.push(1); return { id: 1 }; } },
+    telegram: { async sendMessage(chatId, text) { sends.push({ chatId, text }); return { message_id: 1 }; } },
+    datatruck: {
+      async fetchAllDrivers() {
+        return [{ id: 1, driver_type: 'company_driver', hire_date: '2026-04-01', account: { full_name: 'Jane Driver' } }];
+      },
+      async fetchOrdersByPickupWindow() {
+        return [{ pickup_time: '2026-05-01T12:00:00Z', trip: { driver__full_name: 'Jane Driver', mile: '11000', empty_mile: '0' } }];
+      },
+    },
+  });
+
+  const res = await service.runMileageBonusCheck({ trigger: 'manual', runKey: 'no-group-key' });
+  assert.equal(res.groupConfigured, false);
+  assert.match(res.configError, /not configured/i);
+  assert.equal(sends.length, 0);
+  assert.equal(claims.length, 0); // nothing claimed → future run (once configured) delivers it
+});
+
+test('resend fails clearly when the mileage bonus group ID is missing', async () => {
+  const { service } = loadService({
+    mileageGroupId: null,
+    mb: {
+      async getBonusNotificationById() { return notification(); },
+      async isDriverActive() { return true; },
+    },
+  });
+  await assert.rejects(service.resendBonusNotification(7), /not configured/i);
 });
 
 test('deactivating a driver disregards all open notifications', async () => {

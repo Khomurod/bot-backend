@@ -10,14 +10,15 @@ function loadService({ profile, currentStatus, settings, telegramOverrides = {} 
   const dbPath = path.resolve(__dirname, '../database/db.js');
   const htPath = path.resolve(__dirname, '../database/homeTime.js');
   const htmlPath = path.resolve(__dirname, '../services/telegramHtml.js');
-  const bonusPath = path.resolve(__dirname, '../services/mileageBonusConstants.js');
+  const roadBonusPath = path.resolve(__dirname, '../services/roadBonusNotifierService.js');
   const configPath = path.resolve(__dirname, '../config/config.js');
 
-  for (const p of [servicePath, dbPath, htPath, htmlPath, bonusPath, configPath]) delete require.cache[p];
+  for (const p of [servicePath, dbPath, htPath, htmlPath, roadBonusPath, configPath]) delete require.cache[p];
 
   const inserts = [];
   const sends = [];
   const upserts = [];
+  const roadBonusPosts = [];
 
   require.cache[dbPath] = {
     exports: {
@@ -42,13 +43,23 @@ function loadService({ profile, currentStatus, settings, telegramOverrides = {} 
         return null;
       },
       async insertRoadHistory(payload) {
-        inserts.push(payload);
-        return payload;
+        const row = { id: inserts.length + 1, ...payload };
+        inserts.push(row);
+        return row;
       },
     },
   };
   require.cache[htmlPath] = { exports: { safeSend: async (fn) => fn() } };
-  require.cache[bonusPath] = { exports: { BONUS_GROUP_CHAT_ID: BONUS_GROUP_ID } };
+  // The extra-week bonus summary is delegated to roadBonusNotifierService; mock
+  // it so we can assert it was invoked without exercising its DB/telegram path.
+  require.cache[roadBonusPath] = {
+    exports: {
+      async postCompletedRoadLeg(telegram, historyRow, opts) {
+        roadBonusPosts.push({ historyRow, opts });
+        return { posted: true };
+      },
+    },
+  };
   require.cache[configPath] = { exports: { employeeGroupId: EMPLOYEE_GROUP_ID } };
 
   const telegram = {
@@ -65,11 +76,14 @@ function loadService({ profile, currentStatus, settings, telegramOverrides = {} 
     inserts,
     sends,
     upserts,
+    roadBonusPosts,
   };
 }
 
 test('owner operator road trip is recorded but posts nothing anywhere', async () => {
-  const { service, telegram, inserts, sends } = loadService({
+  const {
+    service, telegram, inserts, sends, roadBonusPosts,
+  } = loadService({
     profile: {
       first_name: 'Owner',
       last_name: 'Operator',
@@ -92,13 +106,15 @@ test('owner operator road trip is recorded but posts nothing anywhere', async ()
   assert.equal(inserts[0].daysOnRoad, 42);
   assert.equal(inserts[0].exceededWeeks, 2);
   assert.equal(inserts[0].bonusUsd, 0);
-  // Owner-operators never trigger any post (exceededWeeks bonus is 0, and the
-  // recognition is gated on exceededWeeks which computeRoadBonus reports as 0).
+  // Owner-operators never trigger any post — no recognition and no bonus summary.
   assert.equal(sends.length, 0);
+  assert.equal(roadBonusPosts.length, 0);
 });
 
 test('company driver home after over-allowance posts recognition to EMPLOYEE group with no dollar amount', async () => {
-  const { service, telegram, inserts, sends } = loadService({
+  const {
+    service, telegram, inserts, sends, roadBonusPosts,
+  } = loadService({
     profile: {
       first_name: 'Company',
       last_name: 'Driver',
@@ -128,10 +144,19 @@ test('company driver home after over-allowance posts recognition to EMPLOYEE gro
   // No dollar amounts in the recognition message.
   assert.doesNotMatch(sends[0].text, /\$/);
   assert.match(sends[0].text, /6 weeks/); // 42 days on road
+
+  // The single extra-week bonus summary is delegated to the road bonus notifier,
+  // for the configured Extra Week / Road Bonus group.
+  assert.equal(roadBonusPosts.length, 1);
+  assert.equal(roadBonusPosts[0].historyRow.bonusUsd, 200);
+  assert.equal(roadBonusPosts[0].historyRow.driver_type, 'company_driver');
+  assert.equal(roadBonusPosts[0].opts.allowanceWeeks, 4);
 });
 
 test('company driver home WITHIN allowance posts nothing', async () => {
-  const { service, telegram, inserts, sends } = loadService({
+  const {
+    service, telegram, inserts, sends, roadBonusPosts,
+  } = loadService({
     profile: {
       first_name: 'Company',
       last_name: 'Driver',
@@ -154,6 +179,7 @@ test('company driver home WITHIN allowance posts nothing', async () => {
   assert.equal(inserts.length, 1);
   assert.equal(inserts[0].exceededWeeks, 0);
   assert.equal(sends.length, 0);
+  assert.equal(roadBonusPosts.length, 0);
 });
 
 test('every transition resets the road-bonus watermark to 0', async () => {

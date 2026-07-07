@@ -152,6 +152,55 @@ async function listCurrentStatuses() {
   return res.rows;
 }
 
+/**
+ * Completed road legs that earned an extra-week bonus but whose one-time summary
+ * has NOT yet been posted to the Extra Week / Road Bonus group. Oldest first so
+ * catch-up posts keep chronological order. Backs the idempotent road→home
+ * summary flow (services/roadBonusNotifierService.js).
+ */
+async function listUnpostedRoadBonuses({ limit = 100 } = {}) {
+  const res = await query(
+    `SELECT h.*, g.group_name, g.telegram_group_id, dp.driver_type
+     FROM driver_road_history h
+     JOIN groups g ON g.id = h.group_id
+     LEFT JOIN driver_profiles dp ON dp.group_id = h.group_id
+     WHERE h.bonus_usd > 0 AND h.bonus_posted_at IS NULL
+     ORDER BY h.home_arrived_at ASC
+     LIMIT $1`,
+    [limit]
+  );
+  return res.rows;
+}
+
+/**
+ * Atomically claim a completed leg for its bonus summary post: stamps
+ * bonus_posted_at only if it was still NULL. Returns the row when THIS caller won
+ * the claim, or null if it was already posted/claimed — the idempotency guard
+ * that prevents duplicate summaries across restarts, syncs and status updates.
+ */
+async function claimRoadBonusPost(id) {
+  const res = await query(
+    `UPDATE driver_road_history
+       SET bonus_posted_at = NOW()
+     WHERE id = $1 AND bonus_posted_at IS NULL
+     RETURNING *`,
+    [id]
+  );
+  return res.rows[0] || null;
+}
+
+/** Release a claim (e.g. the Telegram send failed) so a later pass retries it. */
+async function unclaimRoadBonusPost(id) {
+  const res = await query(
+    `UPDATE driver_road_history
+       SET bonus_posted_at = NULL
+     WHERE id = $1
+     RETURNING *`,
+    [id]
+  );
+  return res.rows[0] || null;
+}
+
 /** Recent completed road trips (most recent first). */
 async function listRoadHistory({ limit = 100, bonusOnly = false } = {}) {
   const where = bonusOnly ? 'WHERE bonus_usd > 0' : '';
@@ -408,6 +457,9 @@ module.exports = {
   listOnRoadStatuses,
   touchDriverHomeStatus,
   insertRoadHistory,
+  listUnpostedRoadBonuses,
+  claimRoadBonusPost,
+  unclaimRoadBonusPost,
   listCurrentStatuses,
   listRoadHistory,
   getRoadHistoryById,

@@ -24,9 +24,9 @@ function csvValues(value) {
   return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
 }
 
-// "Bonus Penalty For Drivers" group. The fallback preserves the current
-// deployment while allowing staging/test environments to stay isolated.
-const BONUS_GROUP_CHAT_ID = Number(process.env.MILEAGE_BONUS_GROUP_CHAT_ID || -5170359585);
+// NOTE: the destination group for mileage bonus cards is no longer a hardcoded
+// constant. It is resolved at send time from the admin-configured
+// message_group_settings.mileage_bonus_group_id (see database/messageRoutingSettings).
 
 // Only these usernames may approve/reject a bonus card (case-insensitive,
 // stored without the leading @).
@@ -145,7 +145,6 @@ function nextTier(miles) {
 
 module.exports = {
   MILEAGE_BONUS_TIERS,
-  BONUS_GROUP_CHAT_ID,
   ACCOUNTING_USERNAMES,
   ACCOUNTING_USER_IDS,
   ACCOUNTING_MENTIONS,

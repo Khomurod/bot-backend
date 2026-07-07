@@ -1305,6 +1305,28 @@ export async function testEldProvider(payload) {
   return res.json();
 }
 
+// ─── Settings: message routing (Telegram group per message category) ───
+
+/** Telegram group IDs per bonus / review category (not secret — plaintext). */
+export async function getMessageGroupSettings() {
+  const res = await fetch(`${API_BASE}/settings/message-groups`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.settings;
+}
+
+/** Update the Telegram group ID for one or more message categories. */
+export async function updateMessageGroupSettings(payload) {
+  const res = await fetch(`${API_BASE}/settings/message-groups`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.settings;
+}
+
 // ─── Settings: RingCentral recruiter-call KPIs ───
 
 export async function getRingCentralSettings() {
