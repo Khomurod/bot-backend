@@ -1925,3 +1925,36 @@ CREATE TABLE IF NOT EXISTS route_monitor_events (
 
 CREATE INDEX IF NOT EXISTS idx_route_monitor_events_assignment
   ON route_monitor_events(assignment_id, created_at DESC);
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- Duplicate unit-number reports (Samsara / provider ↔ driver-group mismatches).
+--
+-- When two active driver groups carry the same truck/unit number, or a provider
+-- vehicle label lists a different driver than the group it is matched to, the bot
+-- can pick the wrong truck in /location and live tracking. A 15-minute sanity
+-- check records these situations here for admin review instead of guessing. Rows
+-- are keyed by (unit_number, report_type) and reopened/refreshed each run; issues
+-- that disappear are auto-resolved.
+CREATE TABLE IF NOT EXISTS duplicate_unit_reports (
+  id SERIAL PRIMARY KEY,
+  unit_number TEXT NOT NULL,
+  -- duplicate_unit  = same unit across >1 active driver group
+  -- name_mismatch   = provider vehicle label's driver ≠ the group's driver
+  -- ambiguous_match = duplicate unit AND no confident driver-name winner
+  report_type TEXT NOT NULL CHECK (report_type IN ('duplicate_unit', 'name_mismatch', 'ambiguous_match')),
+  group_ids INTEGER[] NOT NULL DEFAULT '{}',
+  group_names TEXT[] NOT NULL DEFAULT '{}',
+  group_driver_name TEXT,
+  provider TEXT,
+  provider_driver_name TEXT,
+  detail TEXT,
+  severity TEXT NOT NULL DEFAULT 'info' CHECK (severity IN ('info', 'warning', 'serious')),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ NULL,
+  UNIQUE (unit_number, report_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_duplicate_unit_reports_open
+  ON duplicate_unit_reports(status, last_seen_at DESC) WHERE status = 'open';

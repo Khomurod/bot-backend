@@ -54,6 +54,10 @@ const {
   startRouteControlService,
   stopRouteControlService,
 } = require('./services/routeControlService');
+const {
+  startDuplicateUnitCheckService,
+  stopDuplicateUnitCheckService,
+} = require('./services/duplicateUnitCheckService');
 const db = require('./database/db');
 
 const DB_DRAIN_TIMEOUT_MS = 5000;
@@ -305,6 +309,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopRecruiterCallSyncService(); } catch (err) { console.error('[SHUTDOWN] stopRecruiterCallSyncService failed:', err.message); }
   try { stopRoadBonusNotifierService(); } catch (err) { console.error('[SHUTDOWN] stopRoadBonusNotifierService failed:', err.message); }
   try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }
+  try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
 
   await Promise.allSettled([
     stopFacebookWebhookWorker(),
@@ -350,6 +355,7 @@ async function start() {
   startRecruiterCallSyncService();
   startRoadBonusNotifierService(bot.telegram);
   startRouteControlService(bot.telegram);
+  startDuplicateUnitCheckService();
   await startFacebookWebhookWorker();
   startLeadsBot();
 }

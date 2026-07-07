@@ -164,28 +164,36 @@ function buildLocationFromDriveHosVehicle(vehicle) {
 
 /** Resolve GPS for one unit against the pre-fetched fleets, in priority order. */
 function resolveLocationForUnit(fleets, unitNumber, driverNameHint) {
+  let ambiguous = false;
+  let matchWarning = null;
   if (fleets.samsara) {
-    const v = samsara.findVehicleByUnit(fleets.samsara, unitNumber, { driverNameHint });
-    if (v) {
-      const loc = buildLocationFromSamsaraVehicle(v);
-      if (loc) return { provider: 'samsara', location: loc };
+    const selection = samsara.selectVehicleByUnit(fleets.samsara, unitNumber, { driverNameHint });
+    if (selection.vehicle) {
+      const loc = buildLocationFromSamsaraVehicle(selection.vehicle);
+      if (loc) return { provider: 'samsara', location: loc, ambiguous: false, matchWarning: null };
+    } else if (selection.ambiguous) {
+      // Duplicate unit number with no confident driver-name winner: do NOT use a
+      // (possibly wrong) Samsara truck. Flag it and let the fallbacks try.
+      ambiguous = true;
+      matchWarning = `Duplicate unit ${unitNumber}: ${selection.candidates.length} Samsara vehicles share it `
+        + `and none clearly matches "${driverNameHint || 'this driver'}".`;
     }
   }
   if (fleets.factor) {
     const v = driveHos.findVehicleByUnit(fleets.factor, unitNumber);
     if (v) {
       const loc = buildLocationFromDriveHosVehicle(v);
-      if (loc) return { provider: 'factor', location: loc };
+      if (loc) return { provider: 'factor', location: loc, ambiguous, matchWarning };
     }
   }
   if (fleets.leader) {
     const v = driveHos.findVehicleByUnit(fleets.leader, unitNumber);
     if (v) {
       const loc = buildLocationFromDriveHosVehicle(v);
-      if (loc) return { provider: 'leader', location: loc };
+      if (loc) return { provider: 'leader', location: loc, ambiguous, matchWarning };
     }
   }
-  return { provider: null, location: null };
+  return { provider: null, location: null, ambiguous, matchWarning };
 }
 
 // ─── Loads: one Datatruck order-window fetch, matched locally ─────────────────
@@ -429,7 +437,9 @@ async function buildSnapshot() {
     const driverName = driverNameForGroupRow(row);
     const driverNameHint = extractDriverNameFromGroupTitle(groupTitle) || driverName;
 
-    const { provider, location } = resolveLocationForUnit(fleets, unitNumber, driverNameHint);
+    const {
+      provider, location, ambiguous, matchWarning,
+    } = resolveLocationForUnit(fleets, unitNumber, driverNameHint);
 
     // Load matching: driver name first (most specific), then unit number as a
     // fallback so a group whose row has no/'different' driver name still gets its
@@ -464,7 +474,7 @@ async function buildSnapshot() {
     }
 
     return {
-      row, unitNumber, provider, location, driverName, load,
+      row, unitNumber, provider, location, driverName, load, ambiguous, matchWarning,
     };
   });
 
@@ -509,6 +519,8 @@ async function buildSnapshot() {
       warnings.push('stale_gps');
     }
     if (!entry.load) warnings.push('no_active_load');
+    // Duplicate unit number the provider couldn't disambiguate by driver name.
+    if (entry.ambiguous) warnings.push('duplicate_unit_ambiguous');
 
     if (entry.load) activeLoads += 1; else noActiveLoad += 1;
     if (entry.location) withGps += 1;
@@ -534,6 +546,7 @@ async function buildSnapshot() {
         routeGeometry: null,
       },
       warnings,
+      matchWarning: entry.matchWarning || null,
     };
   });
 

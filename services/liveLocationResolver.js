@@ -60,8 +60,10 @@ async function resolveLiveLocationForGroupTitle(groupTitle) {
           break;
         }
       } catch (err) {
-        // A group title we cannot parse will never resolve on any provider.
-        if (err.code === 'UNIT_NOT_FOUND_IN_GROUP_TITLE') throw err;
+        // A group title we cannot parse will never resolve on any provider; an
+        // ambiguous duplicate-unit match must be surfaced, not silently retried
+        // on another provider (which could return the wrong truck too).
+        if (err.code === 'UNIT_NOT_FOUND_IN_GROUP_TITLE' || err.code === 'AMBIGUOUS_UNIT_MATCH') throw err;
         errors.push(err);
       }
     }

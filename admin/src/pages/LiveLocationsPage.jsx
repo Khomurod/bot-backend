@@ -575,9 +575,12 @@ export default function LiveLocationsPage() {
                       : "no active load"}
                   </div>
                   {u.warnings && u.warnings.length > 0 && (
-                    <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 2 }}>
+                    <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 2 }} title={u.matchWarning || undefined}>
                       ⚠ {u.warnings.map((w) => w.replace(/_/g, " ")).join(", ")}
                     </div>
+                  )}
+                  {u.matchWarning && (
+                    <div style={{ fontSize: 11, color: "#f87171", marginTop: 2 }}>{u.matchWarning}</div>
                   )}
                 </button>
               ))}
