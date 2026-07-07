@@ -131,12 +131,18 @@ function RouteRow({ a, onChanged, onMessage }) {
           {a.unit_number && <span style={{ color: "#94a3b8", marginLeft: 8, fontFamily: "monospace" }}>Unit {a.unit_number}</span>}
           <span className={`badge ${statusBadge}`} style={{ marginLeft: 8 }}>{a.status}</span>
           {!a.encoded_polyline && <span className="badge badge-inactive" style={{ marginLeft: 6 }}>geometry pending</span>}
+          {a.source === "telegram" && <span className="badge" style={{ marginLeft: 6 }}>📲 from Telegram</span>}
           <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
             {a.origin_text || "?"} → {a.destination_text || "?"}
             {a.original_url && a.original_url.startsWith("http") && (
               <> · <a href={a.original_url} target="_blank" rel="noreferrer">link</a></>
             )}
           </div>
+          {a.assigned_by && (
+            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+              Assigned by {a.assigned_by}{a.source === "telegram" ? " (Telegram)" : ""}
+            </div>
+          )}
           <div style={{ fontSize: 12, marginTop: 4 }}>
             Last check: <span style={{ color: result.color }}>{result.text}</span>
             {" · "}Deviation: {fmtMeters(a.last_deviation_meters)}

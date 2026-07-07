@@ -16,23 +16,50 @@ async function createRouteAssignment({
   originText, destinationText, waypoints,
   originLat, originLng, destinationLat, destinationLng,
   encodedPolyline, distanceMeters, durationSeconds, assignedBy,
+  source = 'admin', assignedByUserId = null, telegramChatId = null, telegramMessageId = null,
 }) {
   const res = await query(
     `INSERT INTO route_assignments
        (group_id, driver_profile_id, driver_label, unit_number, original_url,
         origin_text, destination_text, waypoints,
         origin_lat, origin_lng, destination_lat, destination_lng,
-        encoded_polyline, distance_meters, duration_seconds, assigned_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16)
+        encoded_polyline, distance_meters, duration_seconds, assigned_by,
+        source, assigned_by_user_id, telegram_chat_id, telegram_message_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
      RETURNING *`,
     [
       groupId || null, driverProfileId || null, driverLabel || null, unitNumber || null,
       originalUrl, originText || null, destinationText || null, toJson(waypoints),
       originLat ?? null, originLng ?? null, destinationLat ?? null, destinationLng ?? null,
       encodedPolyline || null, distanceMeters ?? null, durationSeconds ?? null, assignedBy || null,
+      source || 'admin', assignedByUserId ?? null, telegramChatId ?? null, telegramMessageId ?? null,
     ]
   );
   return res.rows[0];
+}
+
+/** The current active assignment for a driver group (most recent), if any. */
+async function getActiveRouteAssignmentByGroupId(groupId) {
+  const res = await query(
+    `SELECT r.*, g.group_name, g.telegram_group_id, g.active AS group_active
+       FROM route_assignments r
+       LEFT JOIN groups g ON g.id = r.group_id
+      WHERE r.group_id = $1 AND r.status = 'active'
+      ORDER BY r.updated_at DESC LIMIT 1`,
+    [groupId]
+  );
+  return res.rows[0] || null;
+}
+
+/** Restart-safe dedupe: has this exact Telegram message already produced an assignment? */
+async function findRouteAssignmentByTelegramMessage(telegramChatId, telegramMessageId) {
+  if (telegramChatId == null || telegramMessageId == null) return null;
+  const res = await query(
+    `SELECT * FROM route_assignments
+      WHERE telegram_chat_id = $1 AND telegram_message_id = $2 LIMIT 1`,
+    [telegramChatId, telegramMessageId]
+  );
+  return res.rows[0] || null;
 }
 
 async function getRouteAssignment(id) {
@@ -163,6 +190,8 @@ async function listRouteMonitorEvents(assignmentId, { limit = 50 } = {}) {
 module.exports = {
   createRouteAssignment,
   getRouteAssignment,
+  getActiveRouteAssignmentByGroupId,
+  findRouteAssignmentByTelegramMessage,
   listRouteAssignments,
   listMonitorableAssignments,
   setRouteAssignmentGeometry,

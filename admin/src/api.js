@@ -1005,6 +1005,68 @@ export async function setRaiseTeamDrivers(id, drivers) {
   return res.json();
 }
 
+export async function getRaiseAssignableDrivers({ includeInactive = false, search = '' } = {}) {
+  const params = new URLSearchParams();
+  if (includeInactive) params.set('include_inactive', 'true');
+  if (search) params.set('search', search);
+  const qs = params.toString();
+  const res = await fetch(`${RAISE_ADMIN}/assignable-drivers${qs ? `?${qs}` : ''}`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+// Assign (or move, with force) a driver to a team. On a 409 conflict returns
+// { conflict: true, error, conflictTeam } so the UI can offer "Move".
+export async function assignRaiseDriver(teamId, { groupId, driverProfileId, force = false }) {
+  const res = await fetch(`${RAISE_ADMIN}/teams/${teamId}/assign-driver`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ groupId, driverProfileId, force }),
+  });
+  if (res.status === 409) {
+    const body = await res.json().catch(() => ({}));
+    return { conflict: true, ...body };
+  }
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function removeRaiseTeamDriver(driverId) {
+  const res = await fetch(`${RAISE_ADMIN}/team-drivers/${driverId}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getRaiseTeamMembers(teamId) {
+  const res = await fetch(`${RAISE_ADMIN}/teams/${teamId}/members`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function createRaiseTeamMember(teamId, member) {
+  const res = await fetch(`${RAISE_ADMIN}/teams/${teamId}/members`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(member || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function updateRaiseTeamMember(memberId, patch) {
+  const res = await fetch(`${RAISE_ADMIN}/members/${memberId}`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify(patch || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function deleteRaiseTeamMember(memberId) {
+  const res = await fetch(`${RAISE_ADMIN}/members/${memberId}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function raiseSendNow(payload) {
   const res = await fetch(`${RAISE_ADMIN}/send-now`, {
     method: 'POST', headers: getHeaders(), body: JSON.stringify(payload || {}),

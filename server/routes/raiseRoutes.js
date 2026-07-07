@@ -236,6 +236,89 @@ adminRouter.put('/teams/:id/drivers', async (req, res) => {
   }
 });
 
+// Assignable drivers, sourced from Driver Groups / driver_profiles (the source
+// of truth) — company-drivers only by default (the 72–75 CPM business rule).
+adminRouter.get('/assignable-drivers', async (req, res) => {
+  try {
+    const includeInactive = req.query.include_inactive === 'true' || req.query.includeInactive === 'true';
+    const companyOnly = !(req.query.company_only === 'false' || req.query.companyOnly === 'false');
+    const search = req.query.search ? String(req.query.search) : '';
+    const drivers = await raise.listAssignableDrivers({ companyOnly, includeInactive, search });
+    res.json({ drivers });
+  } catch (err) {
+    sendServiceError(res, err, 'Failed to load assignable drivers.');
+  }
+});
+
+// Assign a driver (by Driver-Groups group_id or driver_profile_id) to a team.
+// 409 DRIVER_ON_OTHER_TEAM (with conflictTeam) unless force=true (a move).
+adminRouter.post('/teams/:id/assign-driver', async (req, res) => {
+  try {
+    const teamId = Number.parseInt(req.params.id, 10);
+    const result = await raise.assignDriverToTeamFromGroups({
+      teamId,
+      groupId: req.body?.groupId != null ? Number.parseInt(req.body.groupId, 10) : null,
+      driverProfileId: req.body?.driverProfileId != null ? Number.parseInt(req.body.driverProfileId, 10) : null,
+      force: Boolean(req.body?.force),
+    });
+    res.json(result);
+  } catch (err) {
+    if (err.code === 'DRIVER_ON_OTHER_TEAM') {
+      return res.status(409).json({ error: err.message, code: err.code, conflictTeam: err.conflictTeam });
+    }
+    return sendServiceError(res, err, 'Failed to assign driver.');
+  }
+});
+
+// Remove a single driver assignment from a team.
+adminRouter.delete('/team-drivers/:driverId', async (req, res) => {
+  try {
+    const ok = await ra.removeTeamDriver(Number.parseInt(req.params.driverId, 10));
+    if (!ok) return res.status(404).json({ error: 'Assignment not found' });
+    res.json({ success: true });
+  } catch (err) {
+    sendServiceError(res, err, 'Failed to remove driver.');
+  }
+});
+
+// ── Dispatch team members (dispatchers with Telegram usernames) ──
+adminRouter.get('/teams/:id/members', async (req, res) => {
+  try {
+    res.json({ members: await ra.listTeamMembers(Number.parseInt(req.params.id, 10)) });
+  } catch (err) {
+    sendServiceError(res, err, 'Failed to load team members.');
+  }
+});
+
+adminRouter.post('/teams/:id/members', async (req, res) => {
+  try {
+    const member = await raise.createTeamMember(Number.parseInt(req.params.id, 10), req.body || {});
+    res.status(201).json({ member });
+  } catch (err) {
+    sendServiceError(res, err, 'Failed to add team member.');
+  }
+});
+
+adminRouter.patch('/members/:memberId', async (req, res) => {
+  try {
+    const member = await raise.updateTeamMember(Number.parseInt(req.params.memberId, 10), req.body || {});
+    if (!member) return res.status(404).json({ error: 'Member not found' });
+    res.json({ member });
+  } catch (err) {
+    sendServiceError(res, err, 'Failed to update team member.');
+  }
+});
+
+adminRouter.delete('/members/:memberId', async (req, res) => {
+  try {
+    const ok = await ra.deleteTeamMember(Number.parseInt(req.params.memberId, 10));
+    if (!ok) return res.status(404).json({ error: 'Member not found' });
+    res.json({ success: true });
+  } catch (err) {
+    sendServiceError(res, err, 'Failed to remove team member.');
+  }
+});
+
 adminRouter.post('/send-now', async (req, res) => {
   try {
     const periodStart = req.body?.periodStart || null;

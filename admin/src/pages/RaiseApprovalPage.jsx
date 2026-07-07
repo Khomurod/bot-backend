@@ -20,9 +20,15 @@ export default function RaiseApprovalPage() {
   const [status, setStatus] = useState(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
-  const [managingTeam, setManagingTeam] = useState(null); // team being assigned drivers
-  const [driverList, setDriverList] = useState([]); // [{ driver_name }]
-  const [newDriverName, setNewDriverName] = useState("");
+  const [managingTeam, setManagingTeam] = useState(null); // team being managed
+  const [panelMode, setPanelMode] = useState(null); // 'drivers' | 'members'
+  const [assignedDrivers, setAssignedDrivers] = useState([]); // team's current drivers
+  const [candidates, setCandidates] = useState([]); // assignable drivers (Driver Groups)
+  const [candidateSearch, setCandidateSearch] = useState("");
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [pendingConflict, setPendingConflict] = useState(null); // { candidate, conflictTeam }
+  const [members, setMembers] = useState([]);
+  const [memberForm, setMemberForm] = useState({ name: "", telegram_username: "", role: "" });
   const [gmailUser, setGmailUser] = useState("");
   const [gmailPassword, setGmailPassword] = useState("");
   const [savingGmail, setSavingGmail] = useState(false);
@@ -127,43 +133,141 @@ export default function RaiseApprovalPage() {
     }
   };
 
+  const refreshTeams = async () => {
+    const t = await api.getRaiseTeams();
+    setTeams(t.teams || []);
+  };
+
+  const loadCandidates = async (search = "") => {
+    setCandidatesLoading(true);
+    try {
+      const res = await api.getRaiseAssignableDrivers({ search });
+      setCandidates(res.drivers || []);
+    } catch (err) {
+      flash("error", err.message);
+    } finally {
+      setCandidatesLoading(false);
+    }
+  };
+
   const openDriverManager = async (team) => {
     setStatus(null);
+    setPendingConflict(null);
     try {
       const assigned = await api.getRaiseTeamDrivers(team.id);
-      setDriverList((assigned.drivers || []).map((d) => ({ driver_name: d.driver_name })));
-      setNewDriverName("");
+      setAssignedDrivers(assigned.drivers || []);
       setManagingTeam(team);
+      setPanelMode("drivers");
+      setCandidateSearch("");
+      await loadCandidates("");
     } catch (err) {
       flash("error", err.message);
     }
   };
 
-  const addDriverToList = () => {
-    const name = newDriverName.trim();
-    if (!name) return;
-    if (driverList.some((d) => d.driver_name.toLowerCase() === name.toLowerCase())) {
-      return flash("error", "That driver is already in the list.");
-    }
-    setDriverList((prev) => [...prev, { driver_name: name }]);
-    setNewDriverName("");
+  const refreshDriverPanel = async () => {
+    if (!managingTeam) return;
+    const assigned = await api.getRaiseTeamDrivers(managingTeam.id);
+    setAssignedDrivers(assigned.drivers || []);
+    await loadCandidates(candidateSearch);
+    await refreshTeams();
   };
 
-  const removeDriverFromList = (idx) => {
-    setDriverList((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const saveAssignments = async () => {
+  const assignCandidate = async (candidate, force = false) => {
     if (!managingTeam) return;
     try {
-      await api.setRaiseTeamDrivers(managingTeam.id, driverList);
-      const t = await api.getRaiseTeams();
-      setTeams(t.teams || []);
-      setManagingTeam(null);
-      flash("success", "Driver list saved.");
+      const res = await api.assignRaiseDriver(managingTeam.id, {
+        groupId: candidate.group_id,
+        driverProfileId: candidate.driver_profile_id,
+        force,
+      });
+      if (res.conflict) {
+        setPendingConflict({ candidate, conflictTeam: res.conflictTeam });
+        return;
+      }
+      setPendingConflict(null);
+      await refreshDriverPanel();
+      flash("success", res.moved
+        ? `Moved ${candidate.driver_name} to ${managingTeam.name}.`
+        : `Assigned ${candidate.driver_name}.`);
     } catch (err) {
       flash("error", err.message);
     }
+  };
+
+  const removeAssignedDriver = async (driver) => {
+    try {
+      await api.removeRaiseTeamDriver(driver.id);
+      await refreshDriverPanel();
+      flash("success", `Removed ${driver.driver_name}.`);
+    } catch (err) {
+      flash("error", err.message);
+    }
+  };
+
+  const openMembersManager = async (team) => {
+    setStatus(null);
+    try {
+      const res = await api.getRaiseTeamMembers(team.id);
+      setMembers(res.members || []);
+      setMemberForm({ name: "", telegram_username: "", role: "" });
+      setManagingTeam(team);
+      setPanelMode("members");
+    } catch (err) {
+      flash("error", err.message);
+    }
+  };
+
+  const refreshMembers = async () => {
+    if (!managingTeam) return;
+    const res = await api.getRaiseTeamMembers(managingTeam.id);
+    setMembers(res.members || []);
+    await refreshTeams();
+  };
+
+  const addMember = async () => {
+    if (!managingTeam) return;
+    if (!memberForm.name.trim() && !memberForm.telegram_username.trim()) {
+      return flash("error", "Enter a name or a Telegram username.");
+    }
+    try {
+      await api.createRaiseTeamMember(managingTeam.id, {
+        name: memberForm.name.trim() || null,
+        telegramUsername: memberForm.telegram_username.trim() || null,
+        role: memberForm.role || null,
+      });
+      setMemberForm({ name: "", telegram_username: "", role: "" });
+      await refreshMembers();
+      flash("success", "Member added.");
+    } catch (err) {
+      flash("error", err.message);
+    }
+  };
+
+  const toggleMemberActive = async (member) => {
+    try {
+      await api.updateRaiseTeamMember(member.id, { active: !member.active });
+      await refreshMembers();
+    } catch (err) {
+      flash("error", err.message);
+    }
+  };
+
+  const removeMember = async (member) => {
+    if (!window.confirm("Remove this team member?")) return;
+    try {
+      await api.deleteRaiseTeamMember(member.id);
+      await refreshMembers();
+      flash("success", "Member removed.");
+    } catch (err) {
+      flash("error", err.message);
+    }
+  };
+
+  const closePanel = () => {
+    setManagingTeam(null);
+    setPanelMode(null);
+    setPendingConflict(null);
   };
 
   const handleSendNow = async () => {
@@ -363,20 +467,22 @@ export default function RaiseApprovalPage() {
 
         <table className="table">
           <thead>
-            <tr><th>Team</th><th>Drivers</th><th>Status</th><th></th></tr>
+            <tr><th>Team</th><th>Drivers</th><th>Members</th><th>Status</th><th></th></tr>
           </thead>
           <tbody>
             {teams.map((team) => (
               <tr key={team.id}>
                 <td>{team.name}</td>
                 <td>{team.driver_count}</td>
+                <td>{team.member_count ?? 0}</td>
                 <td>
                   <span className={`badge ${team.active ? "" : "badge-muted"}`}>
                     {team.active ? "Active" : "Inactive"}
                   </span>
                 </td>
-                <td style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                <td style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
                   <button className="btn btn-ghost btn-sm" onClick={() => openDriverManager(team)}>Drivers</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => openMembersManager(team)}>Members</button>
                   <button className="btn btn-ghost btn-sm" onClick={() => toggleTeamActive(team)}>
                     {team.active ? "Disable" : "Enable"}
                   </button>
@@ -385,42 +491,148 @@ export default function RaiseApprovalPage() {
               </tr>
             ))}
             {teams.length === 0 && (
-              <tr><td colSpan={4} style={{ textAlign: "center", color: "#888" }}>No teams yet.</td></tr>
+              <tr><td colSpan={5} style={{ textAlign: "center", color: "#888" }}>No teams yet.</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
-      {/* ─── Driver assignment modal ─── */}
-      {managingTeam && (
+      {/* ─── Driver assignment panel (source of truth: Driver Groups) ─── */}
+      {managingTeam && panelMode === "drivers" && (
         <div className="card" style={{ marginBottom: 20, border: "2px solid var(--primary, #6366f1)" }}>
-          <h3>Drivers — {managingTeam.name}</h3>
-          <p style={{ color: "#888" }}>
-            Type each company driver this team is responsible for. Names are matched
-            case- and spacing-insensitively when reading the weekly mileage report.
-          </p>
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            <input
-              placeholder="Driver full name (e.g. John Doe)"
-              value={newDriverName}
-              onChange={(e) => setNewDriverName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addDriverToList()}
-              style={{ flex: 1 }}
-            />
-            <button className="btn btn-primary" onClick={addDriverToList}>Add</button>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3>Drivers — {managingTeam.name}</h3>
+            <button className="btn btn-ghost btn-sm" onClick={closePanel}>Close</button>
           </div>
-          <div style={{ maxHeight: 320, overflowY: "auto", display: "grid", gap: 4 }}>
-            {driverList.map((d, idx) => (
-              <div key={`${d.driver_name}-${idx}`} style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
-                <span>{d.driver_name}</span>
-                <button className="btn btn-ghost btn-sm" onClick={() => removeDriverFromList(idx)}>Remove</button>
+          <p style={{ color: "#888" }}>
+            Drivers come from <strong>Driver Groups</strong> (the source of truth). A driver can
+            belong to only one active team — assigning one already on another team asks you to move them.
+          </p>
+
+          {pendingConflict && (
+            <div className="alert alert-warning" style={{ marginBottom: 12 }}>
+              <strong>{pendingConflict.candidate.driver_name}</strong> is already assigned to{" "}
+              <strong>{pendingConflict.conflictTeam?.name}</strong>.
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button className="btn btn-primary btn-sm" onClick={() => assignCandidate(pendingConflict.candidate, true)}>
+                  Move to {managingTeam.name}
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setPendingConflict(null)}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          <h4 style={{ marginBottom: 6 }}>Assigned drivers ({assignedDrivers.length})</h4>
+          <div style={{ maxHeight: 220, overflowY: "auto", display: "grid", gap: 4, marginBottom: 16 }}>
+            {assignedDrivers.map((d) => (
+              <div key={d.id} style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
+                <span>
+                  {d.driver_name}
+                  {d.unit_number ? ` — Unit ${d.unit_number}` : ""}
+                  {d.needs_review && <span className="badge badge-muted" style={{ marginLeft: 8 }}>Needs review</span>}
+                  {!d.driver_profile_id && <span className="badge badge-muted" style={{ marginLeft: 8 }}>Legacy</span>}
+                </span>
+                <button className="btn btn-ghost btn-sm" onClick={() => removeAssignedDriver(d)}>Remove</button>
               </div>
             ))}
-            {driverList.length === 0 && <p style={{ color: "#888" }}>No drivers added yet.</p>}
+            {assignedDrivers.length === 0 && <p style={{ color: "#888" }}>No drivers assigned yet.</p>}
           </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <button className="btn btn-primary" onClick={saveAssignments}>Save driver list</button>
-            <button className="btn btn-ghost" onClick={() => setManagingTeam(null)}>Cancel</button>
+
+          <h4 style={{ marginBottom: 6 }}>Add from Driver Groups</h4>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            <input
+              placeholder="Search by name, unit, or group…"
+              value={candidateSearch}
+              onChange={(e) => setCandidateSearch(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && loadCandidates(candidateSearch)}
+              style={{ flex: 1 }}
+            />
+            <button className="btn btn-ghost" onClick={() => loadCandidates(candidateSearch)} disabled={candidatesLoading}>
+              {candidatesLoading ? "…" : "Search"}
+            </button>
+          </div>
+          <div style={{ maxHeight: 340, overflowY: "auto", display: "grid", gap: 4 }}>
+            {candidates.map((c) => {
+              const onThisTeam = c.assigned_team_id === managingTeam.id;
+              const onOtherTeam = c.assigned_team_id && !onThisTeam;
+              return (
+                <div key={c.group_id} style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", padding: "2px 0" }}>
+                  <span style={{ flex: 1 }}>
+                    <strong>{c.driver_name || "(no name)"}</strong>
+                    {c.unit_number ? ` — Unit ${c.unit_number}` : ""}
+                    {c.driver_type ? ` — ${c.driver_type === "company_driver" ? "Company Driver" : c.driver_type}` : ""}
+                    <span style={{ color: "#888" }}>{c.group_name ? ` — ${c.group_name}` : ""}</span>
+                    {c.warnings?.includes("missing_unit") && <span className="badge badge-muted" style={{ marginLeft: 6 }}>no unit</span>}
+                    {c.warnings?.includes("missing_name") && <span className="badge badge-muted" style={{ marginLeft: 6 }}>no name</span>}
+                    {c.warnings?.includes("inactive_group") && <span className="badge badge-muted" style={{ marginLeft: 6 }}>inactive</span>}
+                    {onOtherTeam && <span className="badge" style={{ marginLeft: 6 }}>on {c.assigned_team_name}</span>}
+                  </span>
+                  {onThisTeam ? (
+                    <span className="badge">Assigned</span>
+                  ) : (
+                    <button className="btn btn-primary btn-sm" onClick={() => assignCandidate(c, false)}>
+                      {onOtherTeam ? "Move here" : "Assign"}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+            {candidates.length === 0 && !candidatesLoading && <p style={{ color: "#888" }}>No matching drivers.</p>}
+          </div>
+        </div>
+      )}
+
+      {/* ─── Team members panel ─── */}
+      {managingTeam && panelMode === "members" && (
+        <div className="card" style={{ marginBottom: 20, border: "2px solid var(--primary, #6366f1)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3>Members — {managingTeam.name}</h3>
+            <button className="btn btn-ghost btn-sm" onClick={closePanel}>Close</button>
+          </div>
+          <p style={{ color: "#888" }}>
+            Dispatchers on this team. Their <strong>Telegram username</strong> authorizes them to
+            assign routes from Telegram for this team's driver groups.
+          </p>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+            <input
+              placeholder="Name"
+              value={memberForm.name}
+              onChange={(e) => setMemberForm((f) => ({ ...f, name: e.target.value }))}
+              style={{ flex: "1 1 140px" }}
+            />
+            <input
+              placeholder="@telegram_username"
+              value={memberForm.telegram_username}
+              onChange={(e) => setMemberForm((f) => ({ ...f, telegram_username: e.target.value }))}
+              onKeyDown={(e) => e.key === "Enter" && addMember()}
+              style={{ flex: "1 1 160px" }}
+            />
+            <select value={memberForm.role} onChange={(e) => setMemberForm((f) => ({ ...f, role: e.target.value }))}>
+              <option value="">Role…</option>
+              <option value="dispatcher">Dispatcher</option>
+              <option value="lead_dispatcher">Lead dispatcher</option>
+              <option value="manager">Manager</option>
+            </select>
+            <button className="btn btn-primary" onClick={addMember}>Add member</button>
+          </div>
+          <div style={{ maxHeight: 320, overflowY: "auto", display: "grid", gap: 4 }}>
+            {members.map((m) => (
+              <div key={m.id} style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
+                <span>
+                  {m.name || <em style={{ color: "#888" }}>(no name)</em>}
+                  {m.telegram_username ? ` — @${m.telegram_username}` : <span style={{ color: "#888" }}> — no @username</span>}
+                  {m.role ? <span className="badge badge-muted" style={{ marginLeft: 6 }}>{m.role.replace("_", " ")}</span> : null}
+                  {!m.active && <span className="badge badge-muted" style={{ marginLeft: 6 }}>inactive</span>}
+                </span>
+                <span style={{ display: "flex", gap: 6 }}>
+                  <button className="btn btn-ghost btn-sm" onClick={() => toggleMemberActive(m)}>
+                    {m.active ? "Disable" : "Enable"}
+                  </button>
+                  <button className="btn btn-danger btn-sm" onClick={() => removeMember(m)}>Remove</button>
+                </span>
+              </div>
+            ))}
+            {members.length === 0 && <p style={{ color: "#888" }}>No members yet.</p>}
           </div>
         </div>
       )}
