@@ -39,6 +39,29 @@ function isShortLinkHost(host) {
 const LATLNG_RE = /^(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)$/;
 
 /**
+ * True when a `/maps/dir/` path segment is a Google Maps *place* (origin,
+ * waypoint, or destination) rather than a map-state control token.
+ *
+ * Google appends non-place control segments to the directions path:
+ *   - `@40.22,-87.17,6z`  — map center/zoom
+ *   - `data=!3m1!4b1…`    — opaque protobuf state blob
+ *   - `am=t`, `dir_action=navigate`, `entry=ttu` — `key=value` map flags
+ *
+ * The last group was previously not filtered, so a link like
+ * `/dir/Origin/Destination/@…/am=t/data=…` treated `am=t` as the final place
+ * (the destination) and demoted the real destination to a waypoint — which then
+ * failed to geocode ("Routes API returned no route"). Real place segments are
+ * addresses or "lat,lng" and never take the leading `key=value` form, so
+ * rejecting that shape is safe.
+ */
+function isDirPlaceSegment(seg) {
+  if (!seg || seg === 'dir') return false;
+  if (seg.startsWith('@')) return false;
+  if (/^[a-z0-9_]+=/i.test(seg)) return false;
+  return true;
+}
+
+/**
  * Classify one point token as coordinates or a place string.
  * @returns {{ raw:string, lat:(number|null), lng:(number|null) }}
  */
@@ -118,7 +141,7 @@ function parseDirectionsUrl(input) {
     const segments = url.pathname
       .split('/')
       .slice(dirIndex + 1)
-      .filter((seg) => seg && !seg.startsWith('@') && !seg.startsWith('data=') && seg !== 'dir');
+      .filter(isDirPlaceSegment);
     const points = segments.map(classifyPoint).filter((p) => p.raw);
     if (points.length >= 2) {
       return {
