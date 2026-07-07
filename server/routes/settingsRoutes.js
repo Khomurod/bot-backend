@@ -14,6 +14,8 @@ const {
 const { getLiveLocationForGroupTitle } = require('../../services/samsaraLocationService');
 const rc = require('../../database/ringcentral');
 const messageGroups = require('../../database/messageRoutingSettings');
+const gmaps = require('../../database/gmapsSettings');
+const googleMapsClient = require('../../services/googleMapsClient');
 const {
   getAccessToken,
   getExtensionInfo,
@@ -215,6 +217,43 @@ function createSettingsRouter({ authMiddleware }) {
     } catch (err) {
       console.error('[SETTINGS API] message-groups update failed:', err.message);
       res.status(500).json({ error: 'Failed to save message group settings' });
+    }
+  });
+
+  // ─── Google Maps Platform settings (Route Control) ───
+  // The server API key is a secret: masked on GET, encrypted at rest, never
+  // returned raw. Group IDs above are not secrets; the Google key is.
+
+  router.get('/gmaps', authMiddleware, async (req, res) => {
+    try {
+      const settings = await gmaps.getGmapsSettingsForAdmin();
+      res.json({ settings });
+    } catch (err) {
+      console.error('[SETTINGS API] gmaps load failed:', err.message);
+      res.status(500).json({ error: 'Failed to load Google Maps settings' });
+    }
+  });
+
+  router.put('/gmaps', authMiddleware, async (req, res) => {
+    try {
+      const settings = await gmaps.updateGmapsSettings(req.body || {});
+      res.json({ settings });
+    } catch (err) {
+      console.error('[SETTINGS API] gmaps update failed:', err.message);
+      res.status(500).json({ error: 'Failed to save Google Maps settings' });
+    }
+  });
+
+  // Live "Test connection" — uses a candidate key from the body (verify before
+  // saving) or the stored key. Never echoes the key back.
+  router.post('/gmaps/test', authMiddleware, async (req, res) => {
+    try {
+      const apiKey = String(req.body?.apiKey || '').trim() || undefined;
+      const result = await googleMapsClient.testConnection({ apiKey });
+      res.json(result);
+    } catch (err) {
+      console.error('[SETTINGS API] gmaps test failed:', err.message);
+      res.json({ connected: false, message: err.message });
     }
   });
 

@@ -1268,6 +1268,94 @@ export async function deleteBotMessage(id) {
   return res.json();
 }
 
+// ─── Settings: Google Maps Platform (Route Control) ───
+
+/** Masked Google Maps settings (never returns the raw API key). */
+export async function getGmapsSettings() {
+  const res = await fetch(`${API_BASE}/settings/gmaps`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.settings;
+}
+
+/** Update Google Maps settings. Omit the key to leave it unchanged. */
+export async function updateGmapsSettings(payload) {
+  const res = await fetch(`${API_BASE}/settings/gmaps`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.settings;
+}
+
+/** Test the Google Maps API key (candidate key optional). Returns { connected, message }. */
+export async function testGmapsConnection(apiKey) {
+  const res = await fetch(`${API_BASE}/settings/gmaps/test`, {
+    method: 'POST', headers: getHeaders(),
+    body: JSON.stringify(apiKey ? { apiKey } : {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+// ─── Route Control ───
+
+export async function getRouteAssignments(status) {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+  const res = await fetch(`${API_BASE}/route-control${qs}`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.assignments;
+}
+
+export async function getRouteAssignment(id) {
+  const res = await fetch(`${API_BASE}/route-control/${id}`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Test-parse a Google Maps link without storing anything. Throws on unparseable. */
+export async function parseRouteLink(url) {
+  const res = await fetch(`${API_BASE}/route-control/parse`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ url }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.parsed;
+}
+
+export async function assignRoute(payload) {
+  const res = await fetch(`${API_BASE}/route-control`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function computeRouteGeometry(id) {
+  const res = await fetch(`${API_BASE}/route-control/${id}/compute`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function cancelRoute(id) {
+  const res = await fetch(`${API_BASE}/route-control/${id}/cancel`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function completeRoute(id) {
+  const res = await fetch(`${API_BASE}/route-control/${id}/complete`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 // ─── Settings: live-location (ELD) provider credentials ───
 
 /** Masked ELD provider settings (never returns raw secrets). */

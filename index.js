@@ -50,6 +50,10 @@ const {
   startRoadBonusNotifierService,
   stopRoadBonusNotifierService,
 } = require('./services/roadBonusNotifierService');
+const {
+  startRouteControlService,
+  stopRouteControlService,
+} = require('./services/routeControlService');
 const db = require('./database/db');
 
 const DB_DRAIN_TIMEOUT_MS = 5000;
@@ -300,6 +304,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopFuelStopAlertService(); } catch (err) { console.error('[SHUTDOWN] stopFuelStopAlertService failed:', err.message); }
   try { stopRecruiterCallSyncService(); } catch (err) { console.error('[SHUTDOWN] stopRecruiterCallSyncService failed:', err.message); }
   try { stopRoadBonusNotifierService(); } catch (err) { console.error('[SHUTDOWN] stopRoadBonusNotifierService failed:', err.message); }
+  try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }
 
   await Promise.allSettled([
     stopFacebookWebhookWorker(),
@@ -344,6 +349,7 @@ async function start() {
   startFuelStopAlertService(bot.telegram);
   startRecruiterCallSyncService();
   startRoadBonusNotifierService(bot.telegram);
+  startRouteControlService(bot.telegram);
   await startFacebookWebhookWorker();
   startLeadsBot();
 }
