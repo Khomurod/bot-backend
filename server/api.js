@@ -1215,6 +1215,9 @@ app.use('/api/bot-users', createBotUsersRouter({ authMiddleware }));
 const { createSettingsRouter } = require('./routes/settingsRoutes');
 app.use('/api/settings', createSettingsRouter({ authMiddleware }));
 
+const { createRouteControlRouter } = require('./routes/routeControlRoutes');
+app.use('/api/route-control', createRouteControlRouter({ authMiddleware }));
+
 const { createRecruiterRouter } = require('./routes/recruiterRoutes');
 app.use('/api/recruiters', createRecruiterRouter({ authMiddleware }));
 

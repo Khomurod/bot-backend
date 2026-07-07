@@ -1,0 +1,95 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+
+const RAW_KEY = 'AIzaSyFakeSecretKey1234';
+
+/**
+ * Load database/gmapsSettings with a mutable fake db, a reversible fake crypto,
+ * and a controllable config, injected via require.cache.
+ */
+function loadModule({ config = {} } = {}) {
+  const modPath = path.resolve(__dirname, '../database/gmapsSettings.js');
+  const dbPath = path.resolve(__dirname, '../database/db.js');
+  const cryptoPath = path.resolve(__dirname, '../services/facebookCrypto.js');
+  const configPath = path.resolve(__dirname, '../config/config.js');
+  for (const p of [modPath, dbPath, cryptoPath, configPath]) delete require.cache[p];
+
+  const store = { id: 1, updated_at: null };
+  require.cache[dbPath] = {
+    exports: {
+      async query(sql, values = []) {
+        if (/UPDATE gmaps_settings/.test(sql)) {
+          const assigns = sql.slice(sql.indexOf('SET') + 3, sql.indexOf('WHERE')).split(',');
+          for (const clause of assigns) {
+            const m = clause.match(/(\w+)\s*=\s*(\$(\d+)|NULL|NOW\(\))/);
+            if (!m) continue;
+            const col = m[1];
+            if (m[2] === 'NULL') store[col] = null;
+            else if (m[2] === 'NOW()') store[col] = new Date().toISOString();
+            else store[col] = values[Number(m[3]) - 1];
+          }
+          return { rows: [] };
+        }
+        if (/SELECT \* FROM gmaps_settings/.test(sql)) return { rows: [{ ...store }] };
+        return { rows: [] };
+      },
+    },
+  };
+  // Reversible fake crypto so we can assert round-tripping without a real key.
+  require.cache[cryptoPath] = {
+    exports: {
+      encryptText: (s) => `enc:${s}`,
+      decryptText: (s) => String(s).replace(/^enc:/, ''),
+    },
+  };
+  require.cache[configPath] = { exports: { googleMapsApiKey: '', ...config } };
+
+  return { mod: require(modPath), store };
+}
+
+test('saving the API key stores it encrypted, not in plaintext', async () => {
+  const { mod, store } = loadModule();
+  await mod.updateGmapsSettings({ serverApiKey: RAW_KEY, enabled: true });
+  assert.equal(store.server_api_key_encrypted, `enc:${RAW_KEY}`);
+  assert.notEqual(store.server_api_key_encrypted, RAW_KEY);
+});
+
+test('the admin view masks the key and never returns the raw value', async () => {
+  const { mod } = loadModule();
+  await mod.updateGmapsSettings({ serverApiKey: RAW_KEY, enabled: true });
+  const view = await mod.getGmapsSettingsForAdmin();
+  assert.equal(view.serverApiKeySet, true);
+  assert.equal(view.serverApiKeyMasked, '••••1234');
+  assert.equal(view.enabled, true);
+  // The raw key must not appear anywhere in the admin payload.
+  assert.doesNotMatch(JSON.stringify(view), new RegExp(RAW_KEY));
+});
+
+test('the effective server-side config decrypts the key for API calls', async () => {
+  const { mod } = loadModule();
+  await mod.updateGmapsSettings({ serverApiKey: RAW_KEY });
+  const cfg = await mod.getGmapsConfig();
+  assert.equal(cfg.serverApiKey, RAW_KEY);
+  assert.equal(cfg.serverApiKeyFromEnv, false);
+});
+
+test('an empty stored key falls back to the GOOGLE_MAPS_API_KEY env value', async () => {
+  const { mod } = loadModule({ config: { googleMapsApiKey: 'ENV-KEY-9999' } });
+  const cfg = await mod.getGmapsConfig();
+  assert.equal(cfg.serverApiKey, 'ENV-KEY-9999');
+  assert.equal(cfg.serverApiKeyFromEnv, true);
+  const view = await mod.getGmapsSettingsForAdmin();
+  assert.equal(view.serverApiKeyFromEnv, true);
+  assert.equal(view.serverApiKeyMasked, '••••9999');
+});
+
+test('numeric tunables round-trip and default sanely', async () => {
+  const { mod } = loadModule();
+  const view = await mod.updateGmapsSettings({ deviationThresholdMeters: 500, offRouteGraceChecks: 4 });
+  assert.equal(view.deviationThresholdMeters, 500);
+  assert.equal(view.offRouteGraceChecks, 4);
+  // Untouched fields keep their defaults.
+  assert.equal(view.warningCooldownMinutes, 30);
+  assert.equal(view.staleGpsMinutes, 15);
+});

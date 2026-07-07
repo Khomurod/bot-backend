@@ -1829,3 +1829,99 @@ CREATE INDEX IF NOT EXISTS idx_ringcentral_calls_recruiter_time
   ON ringcentral_calls(recruiter_id, call_time DESC);
 CREATE INDEX IF NOT EXISTS idx_ringcentral_calls_time
   ON ringcentral_calls(call_time DESC);
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- Route Control + Google Maps Platform.
+--
+-- A dispatcher assigns a Google Maps directions link to a driver group; the bot
+-- computes/stores the route geometry (Google Routes API) and periodically checks
+-- the driver's live GPS against it, warning the driver group when they drift off
+-- the planned route. All Google API calls are server-side; the API key is stored
+-- encrypted (AES-256-GCM, same scheme as the other credentials) and never
+-- returned to the frontend. The feature is OFF until an admin enables it and
+-- enters a key in Settings → GMaps.
+
+-- Single-row Google Maps Platform settings + monitoring tunables.
+CREATE TABLE IF NOT EXISTS gmaps_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Google Maps Platform server key (encrypted). Overrides GOOGLE_MAPS_API_KEY.
+  server_api_key_encrypted TEXT NULL,
+  routes_api_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  roads_api_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Optional separate Geocoding key; when empty the server key is used.
+  geocoding_api_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  geocoding_api_key_encrypted TEXT NULL,
+  -- Monitoring tunables.
+  deviation_threshold_meters INTEGER NOT NULL DEFAULT 250
+    CHECK (deviation_threshold_meters BETWEEN 10 AND 20000),
+  check_interval_seconds INTEGER NOT NULL DEFAULT 300
+    CHECK (check_interval_seconds BETWEEN 30 AND 3600),
+  off_route_grace_checks INTEGER NOT NULL DEFAULT 3
+    CHECK (off_route_grace_checks BETWEEN 1 AND 20),
+  warning_cooldown_minutes INTEGER NOT NULL DEFAULT 30
+    CHECK (warning_cooldown_minutes BETWEEN 1 AND 1440),
+  stale_gps_minutes INTEGER NOT NULL DEFAULT 15
+    CHECK (stale_gps_minutes BETWEEN 1 AND 240),
+  parked_speed_mph INTEGER NOT NULL DEFAULT 5
+    CHECK (parked_speed_mph BETWEEN 0 AND 60),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO gmaps_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- One assigned route per row. group_id ties it to a driver group so the monitor
+-- can resolve that driver's live GPS (via the same resolver as /location).
+CREATE TABLE IF NOT EXISTS route_assignments (
+  id SERIAL PRIMARY KEY,
+  group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
+  driver_profile_id INTEGER NULL,
+  driver_label TEXT NULL,
+  unit_number TEXT NULL,
+  original_url TEXT NOT NULL,
+  origin_text TEXT NULL,
+  destination_text TEXT NULL,
+  waypoints JSONB NOT NULL DEFAULT '[]'::jsonb,
+  origin_lat DOUBLE PRECISION NULL,
+  origin_lng DOUBLE PRECISION NULL,
+  destination_lat DOUBLE PRECISION NULL,
+  destination_lng DOUBLE PRECISION NULL,
+  -- Google encoded polyline for the computed route (NULL until computed).
+  encoded_polyline TEXT NULL,
+  distance_meters DOUBLE PRECISION NULL,
+  duration_seconds DOUBLE PRECISION NULL,
+  status TEXT NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active', 'completed', 'cancelled')),
+  assigned_by TEXT NULL,
+  -- Live monitoring state.
+  last_checked_at TIMESTAMPTZ NULL,
+  last_latitude DOUBLE PRECISION NULL,
+  last_longitude DOUBLE PRECISION NULL,
+  last_deviation_meters DOUBLE PRECISION NULL,
+  last_check_result TEXT NULL,
+  consecutive_off_route INTEGER NOT NULL DEFAULT 0,
+  last_notification_at TIMESTAMPTZ NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_route_assignments_active
+  ON route_assignments(status, updated_at DESC) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS idx_route_assignments_group
+  ON route_assignments(group_id, created_at DESC);
+
+-- Audit trail of monitoring checks + notifications for one assignment.
+CREATE TABLE IF NOT EXISTS route_monitor_events (
+  id SERIAL PRIMARY KEY,
+  assignment_id INTEGER NOT NULL REFERENCES route_assignments(id) ON DELETE CASCADE,
+  event_type TEXT NOT NULL,
+  result TEXT NULL,
+  latitude DOUBLE PRECISION NULL,
+  longitude DOUBLE PRECISION NULL,
+  deviation_meters DOUBLE PRECISION NULL,
+  detail TEXT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_route_monitor_events_assignment
+  ON route_monitor_events(assignment_id, created_at DESC);
