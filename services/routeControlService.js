@@ -165,6 +165,7 @@ async function parseRouteLink(url) {
  */
 async function assignRoute({
   groupId, url, assignedBy, manual = null,
+  source = 'admin', assignedByUserId = null, telegramChatId = null, telegramMessageId = null,
 }) {
   if (!groupId) throw serviceError('NO_GROUP', 'Select a driver group for this route.', 400);
   if (!url && !manual) throw serviceError('NO_URL', 'Paste a Google Maps directions link.', 400);
@@ -220,11 +221,18 @@ async function assignRoute({
     distanceMeters: computed?.distanceMeters || null,
     durationSeconds: computed?.durationSeconds || null,
     assignedBy,
+    source,
+    assignedByUserId,
+    telegramChatId,
+    telegramMessageId,
   });
+  const originDetail = source === 'telegram'
+    ? `assigned from Telegram${assignedBy ? ` by ${assignedBy}` : ''}`
+    : 'assigned';
   await rc.insertRouteMonitorEvent({
     assignmentId: assignment.id,
     eventType: 'assigned',
-    detail: computed ? 'route computed' : 'parsed only — GMaps not configured, geometry pending',
+    detail: `${originDetail} — ${computed ? 'route computed' : 'GMaps not configured, geometry pending'}`,
   });
 
   return {
@@ -232,6 +240,28 @@ async function assignRoute({
     computed: Boolean(computed),
     geometryPending: !computed,
   };
+}
+
+/**
+ * Cancel every active assignment for a driver group and record a 'cancelled'
+ * event on each (used when a new Telegram route replaces the current one).
+ * @returns {Promise<number>} how many were cancelled
+ */
+async function cancelActiveRoutesForGroup(groupId, { detail } = {}) {
+  let cancelled = 0;
+  for (;;) {
+    const active = await rc.getActiveRouteAssignmentByGroupId(groupId);
+    if (!active) break;
+    await rc.setRouteAssignmentStatus(active.id, 'cancelled');
+    await rc.insertRouteMonitorEvent({
+      assignmentId: active.id,
+      eventType: 'cancelled',
+      detail: detail || 'cancelled',
+    });
+    cancelled += 1;
+    if (cancelled > 25) break; // safety valve — should only ever be 1
+  }
+  return cancelled;
 }
 
 /** Compute (or recompute) geometry for an existing assignment. */
@@ -364,6 +394,7 @@ module.exports = {
   evaluateAssignment,
   parseRouteLink,
   assignRoute,
+  cancelActiveRoutesForGroup,
   computeGeometryForAssignment,
   runRouteMonitorCheck,
   buildOffRouteMessage,

@@ -33,6 +33,7 @@ const { registerHomeTimeRequestHandlers } = require('./homeTimeRequestHandlers')
 const { confirmAdminGrant } = require('../services/groupAccessService');
 const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedContextService');
 const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
+const { registerRouteControlHandlers } = require('./routeControlHandlers');
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
 const { registerLocationCheckinHandlers } = require('./locationCheckinHandlers');
 const { registerCreatorMessageManager } = require('./creatorMessageManager');
@@ -549,6 +550,10 @@ async function startBot() {
     });
 
     registerDatatruckPeerHandlers(bot);
+    // Detect Google Maps route links from authorized dispatchers in driver
+    // groups → create/update the Route Control assignment. Registered before the
+    // callback_query catch-all so its Replace/Ignore buttons are handled.
+    registerRouteControlHandlers(bot);
     registerCreatorMessageManager(bot);
     // Creator-only (user id 2117922421) messaging panel, restricted to the
     // bot's private chat: "Send Broadcast Message" (pick an audience) and
