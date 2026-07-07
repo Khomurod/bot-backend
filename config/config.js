@@ -125,6 +125,15 @@ module.exports = {
   mapTileUrl: process.env.MAP_TILE_URL || '',
   mapTileAttribution: process.env.MAP_TILE_ATTRIBUTION || '',
   employeeGroupId: process.env.EMPLOYEE_GROUP_ID || '-1003284808897',
+  // Telegram destinations for the bonus / CPM-review message categories. These
+  // are OPTIONAL, backwards-compatible env fallbacks only — the primary,
+  // runtime-editable source of truth is the admin Settings → Telegram Groups tab
+  // (message_group_settings). Deliberately NO hardcoded group-id default: when a
+  // category has neither a DB value nor an env value, its message is not sent
+  // and a clear configuration error is logged (never a silent old default).
+  mileageBonusGroupId: String(process.env.MILEAGE_BONUS_GROUP_CHAT_ID || '').trim(),
+  roadBonusGroupId: String(process.env.ROAD_BONUS_GROUP_CHAT_ID || '').trim(),
+  dispatchReviewGroupId: String(process.env.DISPATCH_REVIEW_GROUP_CHAT_ID || '').trim(),
   // Anonymous Feedback — private-chat flow that asks the sender whether they are
   // an employee or a driver, then relays their complaint / request / inquiry to
   // this group WITHOUT any identifying information (no username, name, or id).

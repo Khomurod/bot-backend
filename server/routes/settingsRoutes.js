@@ -13,6 +13,7 @@ const {
 } = require('../../services/driveHosEldService');
 const { getLiveLocationForGroupTitle } = require('../../services/samsaraLocationService');
 const rc = require('../../database/ringcentral');
+const messageGroups = require('../../database/messageRoutingSettings');
 const {
   getAccessToken,
   getExtensionInfo,
@@ -191,6 +192,29 @@ function createSettingsRouter({ authMiddleware }) {
     } catch (err) {
       console.error('[SETTINGS API] RC test failed:', err.message);
       return res.json({ connected: false, message: err.message });
+    }
+  });
+
+  // ─── Message routing (Telegram group per bonus / review category) ───
+  // Telegram group IDs are not secrets — returned in plaintext for hand-editing.
+
+  router.get('/message-groups', authMiddleware, async (req, res) => {
+    try {
+      const settings = await messageGroups.getMessageGroupSettingsForAdmin();
+      res.json({ settings });
+    } catch (err) {
+      console.error('[SETTINGS API] message-groups load failed:', err.message);
+      res.status(500).json({ error: 'Failed to load message group settings' });
+    }
+  });
+
+  router.put('/message-groups', authMiddleware, async (req, res) => {
+    try {
+      const settings = await messageGroups.updateMessageGroupSettings(req.body || {});
+      res.json({ settings });
+    } catch (err) {
+      console.error('[SETTINGS API] message-groups update failed:', err.message);
+      res.status(500).json({ error: 'Failed to save message group settings' });
     }
   });
 

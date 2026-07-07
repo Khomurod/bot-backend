@@ -21,7 +21,8 @@ const config = require('../config/config');
 const { bot } = require('../bot/bot');
 const { safeSend } = require('./telegramHtml');
 const datatruck = require('./datatruckApiService');
-const { normalizeDriverName, BONUS_GROUP_CHAT_ID } = require('./mileageBonusConstants');
+const { normalizeDriverName } = require('./mileageBonusConstants');
+const messageGroups = require('../database/messageRoutingSettings');
 const otp = require('./otpService');
 const { decryptText } = require('./facebookCrypto');
 const { computeNextWeeklyOccurrence, describeWeeklySchedule } = require('./scheduledMessageUtils');
@@ -59,11 +60,22 @@ function roundLink(token) {
   return base ? `${base}/raise/${token}` : `/raise/${token}`;
 }
 
-/** Default pay period = most recently completed Monday–Sunday week. */
-function defaultPreviousWeek(timezone) {
-  const ref = DateTime.now().setZone(timezone || 'America/Chicago').startOf('day');
+/**
+ * Default pay period = the most recently completed Monday–Sunday week.
+ *
+ * On a Sunday (the default schedule day) this is the Monday→Sunday week that
+ * ends on THAT SAME Sunday: daysSinceSunday is 0, so periodEnd is today and
+ * periodStart is the Monday six days earlier. On any other day it is the prior
+ * completed week (ending the most recent Sunday).
+ *
+ * @param {string} [timezone='America/Chicago']
+ * @param {DateTime} [reference]  injectable "now" for testing; defaults to now.
+ */
+function defaultPreviousWeek(timezone, reference) {
+  const base = reference || DateTime.now();
+  const ref = base.setZone(timezone || 'America/Chicago').startOf('day');
   const daysSinceSunday = ref.weekday % 7; // Sun(7)->0, Mon(1)->1, ...
-  const periodEnd = ref.minus({ days: daysSinceSunday }); // last Sunday
+  const periodEnd = ref.minus({ days: daysSinceSunday }); // this/last Sunday
   const periodStart = periodEnd.minus({ days: 6 }); // Monday before
   return { periodStart: periodStart.toISODate(), periodEnd: periodEnd.toISODate() };
 }
@@ -118,8 +130,12 @@ async function fetchCompanyDriverCandidates() {
 async function openRoundAndPost({ periodStart, periodEnd, requestedBy = null } = {}) {
   const settings = await ra.getRaiseSettings();
   if (!settings) throw serviceError('NO_SETTINGS', 'Raise settings are not initialized.', 500);
-  if (!config.employeeGroupId) {
-    throw serviceError('NO_EMPLOYEE_GROUP', 'EMPLOYEE_GROUP_ID is not configured.', 409);
+  // The 72–75 CPM review request goes to the admin-configured Dispatch Rate
+  // Review group — never a hardcoded employee group ID. No configured group ⇒
+  // don't send; surface a clear configuration error.
+  const reviewGroupId = await messageGroups.getGroupId('dispatchReview');
+  if (!reviewGroupId) {
+    throw serviceError('NO_DISPATCH_GROUP', messageGroups.missingGroupMessage('dispatchReview'), 409);
   }
   if (!periodStart || !periodEnd) {
     const def = defaultPreviousWeek(settings.schedule_timezone);
@@ -151,11 +167,11 @@ async function openRoundAndPost({ periodStart, periodEnd, requestedBy = null } =
     + `👉 <a href="${escapeHtml(link)}">Open the review form</a>\n\n`
     + `<i>The link expires in ${settings.link_ttl_hours || 48} hours.</i>`;
 
-  const sent = await safeSend(() => bot.telegram.sendMessage(config.employeeGroupId, text, {
+  const sent = await safeSend(() => bot.telegram.sendMessage(reviewGroupId, text, {
     parse_mode: 'HTML',
     disable_web_page_preview: true,
   }));
-  await ra.setRoundEmployeeMessage(round.id, config.employeeGroupId, sent?.message_id || null);
+  await ra.setRoundEmployeeMessage(round.id, reviewGroupId, sent?.message_id || null);
 
   return { round, link };
 }
@@ -351,7 +367,12 @@ async function postSubmissionSummary({ round, team, name, picks }) {
     + `❌ <b>Stay at ${formatRate(round.rate_low)}/mile</b>\n${list(notQualified)}`;
 
   try {
-    await safeSend(() => bot.telegram.sendMessage(BONUS_GROUP_CHAT_ID, text, {
+    const reviewGroupId = await messageGroups.getGroupId('dispatchReview');
+    if (!reviewGroupId) {
+      console.error(`[RAISE] ${messageGroups.missingGroupMessage('dispatchReview')} Submission summary not posted.`);
+      return;
+    }
+    await safeSend(() => bot.telegram.sendMessage(reviewGroupId, text, {
       parse_mode: 'HTML',
       disable_web_page_preview: true,
     }));

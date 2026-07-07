@@ -5,14 +5,16 @@
  * for every message in a driver group. We look for "Status: Home / Ready /
  * Rolling" and keep a simple home/road state machine per driver group.
  *
- * Extra-week bonuses are NO LONGER posted here on the road→home transition.
- * They are posted week-by-week WHILE the driver is still out, by the periodic
- * services/roadBonusNotifierService.js. On this transition we only:
+ * The extra-week bonus is posted as ONE summary on the road→home transition —
+ * never week-by-week while the driver is still out. On this transition we:
  *   - record the completed trip (with its computed bonus, for the admin/history)
- *   - reset the per-leg notification watermark, and
+ *   - reset the per-leg notification watermark
+ *   - post the single extra-week bonus summary (total extra weeks + total bonus)
+ *     to the configured Extra Week / Road Bonus group when a COMPANY driver came
+ *     home over the allowance (via roadBonusNotifierService.postCompletedRoadLeg,
+ *     idempotent + restart-safe; a background poller re-posts if the send fails)
  *   - post a recognition-only (no dollar amounts) message to the EMPLOYEE group
- *     when the driver came home after exceeding the allowance — for morale
- *     visibility, not accounting.
+ *     for the same case — for morale visibility, not accounting.
  *
  * No timers or scheduler here: the settings row is seeded by schema.sql, so
  * there is no startup step either.
@@ -24,6 +26,7 @@ const config = require('../config/config');
 const { safeSend } = require('./telegramHtml');
 const { parseDriverStatus, computeRoadBonus, DAYS_PER_WEEK } = require('./homeTimeConstants');
 const { inferDriverType } = require('./driverProfileParse');
+const roadBonus = require('./roadBonusNotifierService');
 
 function escapeHtml(text) {
   return String(text || '')
@@ -146,7 +149,7 @@ async function handleDriverGroupStatus(telegram, group, message) {
           driverType,
         }
       );
-      await ht.insertRoadHistory({
+      const historyRow = await ht.insertRoadHistory({
         groupId: group.id,
         driverName,
         unitNumber,
@@ -156,13 +159,24 @@ async function handleDriverGroupStatus(telegram, group, message) {
         exceededWeeks,
         bonusUsd,
       });
-      // Extra-week bonuses were already posted to the Bonus Penalty group WHILE
-      // the driver was out (roadBonusNotifierService). We no longer post any
-      // dollar amount here. Instead, when a COMPANY driver went over the
-      // allowance, congratulate them in the employee group (recognition only).
-      // `overLimit` is already gated on company_driver, so owner-operators never
-      // trigger the recognition post.
+      // When a COMPANY driver went over the road allowance, post ONE extra-week
+      // bonus summary to the configured Extra Week / Road Bonus group (the total
+      // extra weeks + total bonus for this completed leg). This replaces the old
+      // week-by-week posting: nothing is posted while the driver is still out.
+      // Idempotent + restart-safe via the leg's bonus_posted_at claim; the
+      // roadBonusNotifierService poller re-posts if this send fails. `overLimit`
+      // is gated on company_driver, so owner-operators never trigger a post.
       if (overLimit) {
+        try {
+          await roadBonus.postCompletedRoadLeg(
+            telegram,
+            { ...historyRow, driver_type: driverType, group_name: group.group_name },
+            { allowanceWeeks: settings.road_allowance_weeks }
+          );
+        } catch (err) {
+          console.error('[HOME-TIME] Road bonus summary post failed (poller will retry):', err.message);
+        }
+        // Recognition-only morale post to the EMPLOYEE group (no dollar amounts).
         await postHomecomingRecognition(telegram, { driverName, unitNumber, daysOnRoad });
       }
       console.log(`[HOME-TIME] ${driverName} (${driverType}) home after ${daysOnRoad}d (${exceededWeeks} extra wk, $${bonusUsd} recorded)`);

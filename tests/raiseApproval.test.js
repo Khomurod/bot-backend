@@ -34,8 +34,24 @@ require.cache[require.resolve('../services/datatruckApiService')] = {
   },
 };
 
+// The 72–75 CPM / dispatch review destination is admin-configured. Mutable so a
+// test can simulate the "not configured" case.
+const fakeGroups = {
+  _dispatchReview: '-100200300',
+  async getGroupId(category) {
+    return category === 'dispatchReview' ? fakeGroups._dispatchReview : null;
+  },
+  missingGroupMessage() { return 'Dispatch rate review group ID is not configured.'; },
+};
+require.cache[require.resolve('../database/messageRoutingSettings')] = { exports: fakeGroups };
+
 // Mutable fake of the raiseApproval DB layer.
 const fakeRa = {
+  _rounds: [],
+  getOpenRound: async () => null,
+  closeRound: async () => null,
+  createRound: async (args) => ({ id: 99, ...args }),
+  setRoundEmployeeMessage: async () => {},
   _settings: { otp_channel: 'gmail', rate_low: 0.72, rate_high: 0.75, link_ttl_hours: 48 },
   _team: { id: 7, name: 'Team A', active: true },
   _assigned: [
@@ -177,4 +193,43 @@ test('submitResponse refuses when the dispatcher is not verified', async () => {
     /verify/i
   );
   fakeRa._verified = true;
+});
+
+// ─── schedule default pay period + configured destination ───
+
+test('defaultPreviousWeek on a Sunday uses the Mon→Sun week ending that same Sunday', () => {
+  // Any Sunday (2 PM Central is the default schedule time).
+  const sunday = DateTime.fromISO('2026-07-15', { zone: 'America/Chicago' })
+    .set({ weekday: 7 }).set({ hour: 14 });
+  const { periodStart, periodEnd } = raise.defaultPreviousWeek('America/Chicago', sunday);
+  assert.equal(periodEnd, sunday.toISODate(), 'period ends on that same Sunday');
+  assert.equal(DateTime.fromISO(periodEnd).weekday, 7, 'end is Sunday');
+  assert.equal(DateTime.fromISO(periodStart).weekday, 1, 'start is Monday');
+  assert.equal(
+    DateTime.fromISO(periodEnd).diff(DateTime.fromISO(periodStart), 'days').days, 6
+  );
+});
+
+test('the CPM review request is posted to the configured dispatch review group', async () => {
+  sentMessages.length = 0;
+  fakeGroups._dispatchReview = '-100200300';
+  const { round, link } = await raise.openRoundAndPost({
+    periodStart: '2026-06-29', periodEnd: '2026-07-05', requestedBy: 'test',
+  });
+  assert.equal(round.id, 99);
+  assert.match(link, /\/raise\//);
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].chatId, '-100200300');
+  assert.match(sentMessages[0].text, /Driver Raise Review/);
+});
+
+test('openRoundAndPost fails clearly when the dispatch review group is not configured', async () => {
+  sentMessages.length = 0;
+  fakeGroups._dispatchReview = null;
+  await assert.rejects(
+    () => raise.openRoundAndPost({ periodStart: '2026-06-29', periodEnd: '2026-07-05' }),
+    /not configured/i
+  );
+  assert.equal(sentMessages.length, 0, 'no message sent without a configured group');
+  fakeGroups._dispatchReview = '-100200300';
 });

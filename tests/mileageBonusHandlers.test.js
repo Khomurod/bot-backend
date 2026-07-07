@@ -1,17 +1,28 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { BONUS_GROUP_CHAT_ID } = require('../services/mileageBonusConstants');
+
+// The destination group is now admin-configured (message_group_settings), not a
+// hardcoded constant. Mock it so the handler validates against this ID.
+const BONUS_GROUP_CHAT_ID = '-100777';
 
 function loadHandler(mb) {
   const handlerPath = path.resolve(__dirname, '../bot/mileageBonusHandlers.js');
   const mbPath = path.resolve(__dirname, '../database/mileageBonus.js');
   const htmlPath = path.resolve(__dirname, '../services/telegramHtml.js');
+  const mgPath = path.resolve(__dirname, '../database/messageRoutingSettings.js');
   delete require.cache[handlerPath];
   delete require.cache[mbPath];
   delete require.cache[htmlPath];
+  delete require.cache[mgPath];
   require.cache[mbPath] = { exports: mb };
   require.cache[htmlPath] = { exports: { safeSend: async (fn) => fn() } };
+  require.cache[mgPath] = {
+    exports: {
+      async getGroupId(category) { return category === 'mileageBonus' ? BONUS_GROUP_CHAT_ID : null; },
+      missingGroupMessage() { return 'Mileage bonus group ID is not configured.'; },
+    },
+  };
   return require(handlerPath);
 }
 

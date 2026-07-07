@@ -1,40 +1,46 @@
 /**
  * Road Bonus Notifier service.
  *
- * Posts the extra-week bonus to the "Bonus Penalty For Drivers" group WHILE the
- * driver is still on the road — not when they get home. The moment a company
- * driver completes a FULL extra week beyond the road allowance (e.g. finishes
- * their 5th week when the allowance is 4), we post a message saying they need a
- * $100 bonus for that additional week. Every subsequent full extra week (6th,
- * 7th, …) is posted too, for as long as they stay out.
+ * Posts the extra-week bonus as a SINGLE SUMMARY when a driver's road leg ends —
+ * i.e. when their status transitions road → home — NOT week-by-week while they
+ * are still out. While a driver stays on the road nothing is posted; the extra
+ * weeks are simply accumulated. The moment they come home, one message goes to
+ * the configured "Extra Week / Road Bonus" group stating how many FULL extra
+ * weeks (beyond the road allowance) they completed and the total bonus owed.
  *
- * Idempotent + catch-up: each driver group carries a per-leg watermark
- * (driver_home_status.road_bonus_weeks_notified) of how many extra-week
- * milestones have already been posted. On each pass we compute how many full
- * extra weeks have elapsed as of now and post exactly the ones above the
- * watermark — so a delayed/missed check catches up all the missed weeks in one
- * pass, and a repeated check posts nothing. The watermark resets to 0 whenever a
- * new road leg starts (see homeTimeService.js).
+ * Scope: company_driver only (owner-operators earn $0, so they never qualify)
+ * and only while home_time_settings.enabled.
  *
- * Scope: company_driver only (never owner-operators) and only while
- * home_time_settings.enabled. Modelled on the other setInterval pollers
- * (mileageBonusService, etc.): a tickRunning guard prevents overlapping ticks
- * and bot.telegram is passed in to avoid a require cycle with bot/bot.js.
+ * Idempotent + restart-safe (DB-side): each completed leg lives in
+ * driver_road_history and carries a bonus_posted_at stamp. postCompletedRoadLeg
+ * atomically claims a leg (stamps bonus_posted_at only if still NULL) before
+ * sending, so the same completed leg is never announced twice — across restarts,
+ * repeated syncs or repeated status updates. The leg summary is posted:
+ *   1. immediately at the road → home transition (homeTimeService calls
+ *      postCompletedRoadLeg), and
+ *   2. as a safety net by this poller, which sweeps any qualifying legs still
+ *      un-posted (e.g. Telegram was down at the transition, or the group ID was
+ *      only configured afterwards).
+ *
+ * Destination is admin-configured (Settings → Telegram Groups). With no
+ * configured group we do NOT fall back to any old hardcoded default — we skip
+ * the send and log a clear configuration error, leaving the leg un-posted so it
+ * is delivered once the group is set.
  */
 const { DateTime } = require('luxon');
 const ht = require('../database/homeTime');
 const { safeSend } = require('./telegramHtml');
-const { BONUS_GROUP_CHAT_ID } = require('./mileageBonusConstants');
+const messageGroups = require('../database/messageRoutingSettings');
 const {
-  computeRoadBonus, homeTimePolicyApplies, DEFAULT_BONUS_PER_WEEK,
+  homeTimePolicyApplies, DEFAULT_ROAD_ALLOWANCE_WEEKS, DAYS_PER_WEEK,
 } = require('./homeTimeConstants');
 const { inferDriverType } = require('./driverProfileParse');
 
-// Check hourly. Extra-week milestones only tick once every seven days per
-// driver, so there is no value in polling tightly; hourly keeps the catch-up
-// latency small after a sleep without any load.
-const POLL_MS = 60 * 60 * 1000;
-const FIRST_TICK_DELAY_MS = 15 * 1000;
+// Safety-net sweep cadence. The primary post happens at the transition; this
+// only catches legs the transition could not deliver, so a relaxed interval is
+// plenty and keeps load negligible.
+const POLL_MS = 10 * 60 * 1000;
+const FIRST_TICK_DELAY_MS = 20 * 1000;
 
 let serviceTimer = null;
 let serviceStopped = false;
@@ -48,112 +54,117 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;');
 }
 
-function driverLabelFromRow(row) {
-  const name = [row?.first_name, row?.last_name].filter(Boolean).join(' ').trim();
-  return name || row?.group_name || `Group ${row?.group_id}`;
-}
-
 function driverTypeFromRow(row) {
   return row?.driver_type || inferDriverType(row?.group_name || '');
 }
 
 /**
- * Build the "needs a $X bonus for the additional week" message for one
- * newly-completed extra week.
+ * Build the single road→home summary for one completed leg.
  *
- * @param {number} extraWeekIndex  1 for the first extra week, 2 for the second…
- * @param {number} allowanceWeeks  the free road allowance in weeks
- * @param {number} bonusPerWeek    dollars per extra week
+ * @param {object} p
+ * @param {string} p.driverName
+ * @param {string} [p.unitNumber]
+ * @param {number} p.exceededWeeks  full extra weeks beyond the allowance
+ * @param {number} p.allowanceWeeks the free road allowance in weeks
+ * @param {number} p.daysOnRoad
+ * @param {number} p.bonusUsd       total bonus owed for this leg
  */
-function buildExtraWeekMessage({
-  driverName, unitNumber, extraWeekIndex, allowanceWeeks, bonusPerWeek,
+function buildRoadLegSummary({
+  driverName, unitNumber, exceededWeeks, allowanceWeeks, daysOnRoad, bonusUsd,
 }) {
   const who = `${escapeHtml(driverName)}${unitNumber ? ` (Unit ${escapeHtml(unitNumber)})` : ''}`;
-  const weekOnRoad = Number(allowanceWeeks) + Number(extraWeekIndex);
-  const bonus = Number(bonusPerWeek) || 0;
-  return `🚚 <b>${who}</b> has completed <b>week ${weekOnRoad}</b> on the road — `
-    + `1 full week beyond the ${allowanceWeeks}-week allowance `
-    + `(extra week #${extraWeekIndex}).\n`
-    + `Needs a <b>$${bonus.toFixed(0)} bonus</b> for the additional week on the road.`;
+  const weeksOnRoad = Math.floor(Number(daysOnRoad) / DAYS_PER_WEEK);
+  const extra = Number(exceededWeeks) || 0;
+  const extraLabel = extra === 1 ? 'extra week' : 'extra weeks';
+  const bonus = Number(bonusUsd) || 0;
+  return `🏠🚚 <b>${who} is home.</b>\n`
+    + `Completed <b>${weeksOnRoad} week(s)</b> on the road (${daysOnRoad} days) — `
+    + `<b>${extra} ${extraLabel}</b> beyond the ${allowanceWeeks}-week allowance.\n`
+    + `Needs a <b>total bonus of $${bonus.toFixed(0)}</b> for the extra week(s) on the road.`;
 }
 
 /**
- * One driver group: post any extra-week milestones that have completed since the
- * watermark, then advance the watermark. Never throws.
+ * Post the summary for ONE completed road leg, exactly once. Atomically claims
+ * the leg first; if the claim is lost (already posted) it returns without
+ * sending. Missing group configuration is surfaced as a clear error and the leg
+ * is left un-posted for a later pass. On send failure the claim is released so
+ * the leg is retried.
  *
- * @returns {{ posted:number, exceededWeeks:number }|null}
+ * @param {object} telegram  bot.telegram instance
+ * @param {object} historyRow  a driver_road_history row (needs id + labels + totals)
+ * @param {object} [opts]
+ * @param {number} [opts.allowanceWeeks]  road allowance (falls back to default)
+ * @returns {{ posted:boolean, reason?:string }}
  */
-async function processRoadDriver(telegram, row, settings, now) {
-  const driverType = driverTypeFromRow(row);
-  if (!homeTimePolicyApplies(driverType)) return null; // owner-operators excluded
+async function postCompletedRoadLeg(telegram, historyRow, { allowanceWeeks } = {}) {
+  if (!historyRow || !(Number(historyRow.bonus_usd) > 0)) {
+    return { posted: false, reason: 'no_bonus' };
+  }
+  const driverType = driverTypeFromRow(historyRow);
+  if (!homeTimePolicyApplies(driverType)) return { posted: false, reason: 'owner_operator' };
 
-  const allowanceWeeks = Number(settings.road_allowance_weeks);
-  const bonusPerWeek = settings.bonus_per_week == null
-    ? DEFAULT_BONUS_PER_WEEK
-    : Number(settings.bonus_per_week);
+  const chatId = await messageGroups.getGroupId('roadBonus');
+  if (!chatId) {
+    console.error(`[ROAD-BONUS] ${messageGroups.missingGroupMessage('roadBonus')} Leg #${historyRow.id} not posted.`);
+    return { posted: false, reason: 'no_group' };
+  }
 
-  const { exceededWeeks } = computeRoadBonus(row.state_since, now, {
-    roadAllowanceWeeks: allowanceWeeks,
-    bonusPerWeek,
-    driverType,
+  // Atomic claim — only one caller (transition or poller) ever posts a leg.
+  const claimed = await ht.claimRoadBonusPost(historyRow.id);
+  if (!claimed) return { posted: false, reason: 'already_posted' };
+
+  const text = buildRoadLegSummary({
+    driverName: claimed.driver_name || historyRow.driver_name || `Group ${claimed.group_id}`,
+    unitNumber: claimed.unit_number || historyRow.unit_number || null,
+    exceededWeeks: claimed.exceeded_weeks,
+    allowanceWeeks: allowanceWeeks == null ? DEFAULT_ROAD_ALLOWANCE_WEEKS : allowanceWeeks,
+    daysOnRoad: claimed.days_on_road,
+    bonusUsd: claimed.bonus_usd,
   });
 
-  const alreadyNotified = Math.max(0, Number(row.road_bonus_weeks_notified) || 0);
-  if (exceededWeeks <= alreadyNotified) return { posted: 0, exceededWeeks };
-
-  const driverName = driverLabelFromRow(row);
-  const unitNumber = row.unit_number || null;
-
-  let posted = 0;
-  for (let week = alreadyNotified + 1; week <= exceededWeeks; week += 1) {
-    const text = buildExtraWeekMessage({
-      driverName, unitNumber, extraWeekIndex: week, allowanceWeeks, bonusPerWeek,
-    });
-    // eslint-disable-next-line no-await-in-loop
-    await safeSend(() => telegram.sendMessage(BONUS_GROUP_CHAT_ID, text, {
+  try {
+    await safeSend(() => telegram.sendMessage(chatId, text, {
       parse_mode: 'HTML',
       disable_web_page_preview: true,
     }));
-    posted += 1;
+    console.log(`[ROAD-BONUS] Posted road→home summary for leg #${claimed.id} ($${claimed.bonus_usd}).`);
+    return { posted: true };
+  } catch (err) {
+    // Release the claim so the leg is retried on the next transition/poll.
+    await ht.unclaimRoadBonusPost(historyRow.id).catch(() => {});
+    throw err;
   }
-
-  // Advance the watermark only after the posts succeeded. If a send threw, we
-  // stop before updating so the un-posted weeks are retried next pass.
-  await ht.setRoadBonusWeeksNotified(row.group_id, exceededWeeks);
-  console.log(
-    `[ROAD-BONUS] ${driverName} on road ${exceededWeeks} extra week(s); posted ${posted} new`
-  );
-  return { posted, exceededWeeks };
 }
 
 /**
- * One full pass over every on-road driver. Pure-ish: pass `telegram` and an
- * optional `now` (DateTime|ISO) so it can be unit-tested deterministically.
+ * One safety-net pass: post any completed legs still awaiting their summary.
+ * Pure-ish — pass `telegram` (and it reads settings for the allowance) so it can
+ * be unit-tested deterministically.
  *
- * @returns {{ enabled:boolean, drivers:number, notificationsSent:number, errors:number }}
+ * @returns {{ enabled:boolean, legs:number, notificationsSent:number, errors:number }}
  */
-async function runRoadBonusCheck(telegram, { now } = {}) {
+async function runRoadBonusCheck(telegram) {
   const settings = await ht.getHomeTimeSettings();
   if (!settings || !settings.enabled) {
-    return { enabled: false, drivers: 0, notificationsSent: 0, errors: 0 };
+    return { enabled: false, legs: 0, notificationsSent: 0, errors: 0 };
   }
-  const asOf = now || DateTime.now().toUTC().toISO();
+  const allowanceWeeks = Number(settings.road_allowance_weeks);
 
-  const rows = await ht.listOnRoadStatuses();
+  const rows = await ht.listUnpostedRoadBonuses();
   let notificationsSent = 0;
   let errors = 0;
   for (const row of rows) {
     try {
       // eslint-disable-next-line no-await-in-loop
-      const result = await processRoadDriver(telegram, row, settings, asOf);
-      if (result) notificationsSent += result.posted;
+      const result = await postCompletedRoadLeg(telegram, row, { allowanceWeeks });
+      if (result.posted) notificationsSent += 1;
     } catch (err) {
       errors += 1;
-      console.error(`[ROAD-BONUS] Failed for group ${row.group_id}:`, err.message);
+      console.error(`[ROAD-BONUS] Failed to post leg #${row.id}:`, err.message);
     }
   }
   return {
-    enabled: true, drivers: rows.length, notificationsSent, errors,
+    enabled: true, legs: rows.length, notificationsSent, errors,
   };
 }
 
@@ -172,7 +183,7 @@ async function tick() {
 function startRoadBonusNotifierService(telegram) {
   if (telegram) telegramClient = telegram;
   serviceStopped = false;
-  console.log(`[ROAD-BONUS] Service started — checking on-road drivers every ${POLL_MS / 60000}min`);
+  console.log(`[ROAD-BONUS] Service started — sweeping unposted completed legs every ${POLL_MS / 60000}min`);
   setTimeout(() => { if (!serviceStopped) tick(); }, FIRST_TICK_DELAY_MS).unref?.();
   serviceTimer = setInterval(() => { if (!serviceStopped) tick(); }, POLL_MS);
   serviceTimer.unref?.();
@@ -190,7 +201,7 @@ module.exports = {
   startRoadBonusNotifierService,
   stopRoadBonusNotifierService,
   runRoadBonusCheck,
-  processRoadDriver,
-  buildExtraWeekMessage,
+  postCompletedRoadLeg,
+  buildRoadLegSummary,
   tick,
 };
