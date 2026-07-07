@@ -44,6 +44,21 @@ test('parses the /maps/dir/ path form and ignores @/data segments', () => {
   assert.equal(p.waypoints[0].raw, 'Orlando, FL');
 });
 
+test('path form ignores the am=t / entry / dir_action map-state segments (regression)', () => {
+  // Real expanded shape of maps.app.goo.gl/ELB6VP2bJcQSZXj37: a 2-stop route
+  // whose path carries an @center, an `am=t` flag, and a `data=` blob. The
+  // `am=t` segment must NOT be read as the destination.
+  const url = 'https://www.google.com/maps/dir/'
+    + '5910+Dylan+Dr,+South+Bend,+IN+46628,+%D0%A1%D0%A8%D0%90/'
+    + '43035+John+Mosby+Hwy,+Chantilly,+VA+20152,+%D0%A1%D0%A8%D0%90/'
+    + '@40.2215688,-87.179762,6z/am=t/data=!3m1!4b1!4m14?entry=tts';
+  const p = parseDirectionsUrl(url);
+  assert.equal(p.parseable, true);
+  assert.equal(p.origin.raw, '5910 Dylan Dr, South Bend, IN 46628, США');
+  assert.equal(p.destination.raw, '43035 John Mosby Hwy, Chantilly, VA 20152, США');
+  assert.equal(p.waypoints.length, 0);
+});
+
 test('flags a shortened Google Maps link (not parseable, must be expanded)', () => {
   const p = parseDirectionsUrl('https://maps.app.goo.gl/AbCdEf123');
   assert.equal(p.parseable, false);
