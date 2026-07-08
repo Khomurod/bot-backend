@@ -227,13 +227,10 @@ module.exports = {
   // Max size (MB) of a single attached file the intake will accept/download.
   datatruckDocIntakeMaxFileMb: Math.min(50, Math.max(1,
     parseInt(process.env.DATATRUCK_DOC_INTAKE_MAX_FILE_MB || '20', 10) || 20)),
-  // Extra usernames / numeric ids allowed to press the Yes/No/Disregard upload
-  // buttons, on top of the built-in dispatch/accounting/global admins. Stored
-  // lowercased, '@' stripped; numeric entries compared as ids.
-  datatruckDocUploadApprovers: String(process.env.DATATRUCK_DOC_UPLOAD_APPROVERS || '')
-    .split(',')
-    .map((v) => v.trim().replace(/^@+/, '').toLowerCase())
-    .filter(Boolean),
+  // NOTE: the Yes/No/Disregard confirmation buttons are group-open — anyone who
+  // can see the card may press them — so there is no approver/authorization
+  // config. Duplicate uploads are prevented by the atomic upload claim, not by
+  // gating who may click.
   // Gmail App Password channel for driver-raise OTP delivery (no third party).
   // GMAIL_USER is the full address; GMAIL_APP_PASSWORD is a 16-char App Password
   // created at https://myaccount.google.com/apppasswords (2FA required).
