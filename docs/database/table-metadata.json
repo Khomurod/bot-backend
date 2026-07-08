@@ -1,0 +1,106 @@
+{
+  "_comment": "Human-authored context merged into docs/database/schema-current.md by scripts/generate-db-docs.js. Keys: purpose, status (active|legacy|retired|historical), service (which app/service uses it), sourceOfTruth, danger (data-safety note). Tables not listed here are documented from structure + schema.sql comments alone and default to status 'active'. Update this when you add/retire a table.",
+  "tables": {
+    "groups": {
+      "purpose": "Every Telegram group the bot manages — driver groups, dispatch/office groups, etc. Internal integer `id` is the FK target used everywhere; `telegram_group_id` (bigint) is the real Telegram chat id. `group_type='driver'` + a unit number in `group_name` is how the Samsara integration routes safety-event videos to the right driver group.",
+      "status": "active",
+      "service": "bot, admin, samsara-integration (read for routing)",
+      "sourceOfTruth": "This table (mastered here).",
+      "danger": "Core table referenced by ~30 FKs. Never delete rows to 'clean up' — deactivate with active=false instead. Deleting a group cascades to its chat logs, members, driver profile, etc."
+    },
+    "drivers": {
+      "purpose": "Driver identity records keyed by Telegram user id.",
+      "status": "active",
+      "service": "bot, admin",
+      "danger": "Contains driver PII. Do not delete; deletions cascade to responses."
+    },
+    "driver_profiles": {
+      "purpose": "Per-driver-group profile (one active profile per driver group).",
+      "status": "active",
+      "service": "bot, admin",
+      "danger": "Contains driver PII."
+    },
+    "bot_users": {
+      "purpose": "Everyone who has interacted with the bot (Telegram user id, last seen, etc.).",
+      "status": "active",
+      "service": "bot, admin"
+    },
+    "eld_settings": {
+      "purpose": "Single-row (id=1) ELD/telematics provider credentials (Samsara, Drive HoS, Factor, Leader). Secrets stored AES-256-GCM encrypted.",
+      "status": "active",
+      "service": "admin (Settings → Live Location), eld services"
+    },
+    "gmaps_settings": {
+      "purpose": "Single-row (id=1) Google Maps Platform config for Route Control. Server key encrypted at rest.",
+      "status": "active",
+      "service": "admin (Settings → GMaps), routeControlService"
+    },
+    "message_group_settings": {
+      "purpose": "Single-row (id=1) map of message category → destination Telegram group id (stored as text). Telegram group ids are not secrets.",
+      "status": "active",
+      "service": "admin (Settings → Telegram Groups), bonus/review senders"
+    },
+    "ringcentral_settings": {
+      "purpose": "Single-row (id=1) RingCentral call-KPI credentials + thresholds. Secrets encrypted.",
+      "status": "active",
+      "service": "admin (Settings → RingCentral), recruiterCallSyncService"
+    },
+    "safety_event_music_assets": {
+      "purpose": "Uploaded background-music clips for the driver-group speeding-video overlay. Bytes are stored in Postgres BYTEA (storage_kind='db_bytea') because the samsara-integration poller runs as a SEPARATE process with a DIFFERENT Telegram bot and Telegram file_ids are bot-scoped. Exactly one row is active at a time (partial unique index).",
+      "status": "active",
+      "service": "admin (Settings → Safety Event Music, writes), samsara-integration (reads active clip bytes)",
+      "sourceOfTruth": "This table (mastered by bot-backend).",
+      "danger": "Do not hard-delete the active clip — the app refuses it. Deactivate first. The BYTEA is the only copy of the uploaded music."
+    },
+    "safety_event_video_settings": {
+      "purpose": "Single-row (id=1) config for the driver-group music overlay: enable flags, active music asset, volume, fades, mix-vs-replace, loop behaviour, and a max-video-length cap. `samsara_notification_group_original_video_enabled` documents (and never overrides) the invariant that the notifications group always gets the original video.",
+      "status": "active",
+      "service": "admin (Settings → Safety Event Music, writes), samsara-integration (reads)"
+    },
+    "safety_event_video_jobs": {
+      "purpose": "Best-effort observability ledger: one row per driver-group music-overlay attempt (pending→processing→sent/failed/fallback_sent/skipped). Written by the samsara-integration poller.",
+      "status": "active",
+      "service": "samsara-integration (writes), admin (future: read)",
+      "danger": "Never store signed media URLs here — only an opaque/masked reference (video_reference)."
+    },
+    "samsara_processed_events": {
+      "purpose": "Durable dedup set of Samsara safety/speeding event ids already handled, so restarts/redeploys never re-broadcast.",
+      "status": "active",
+      "service": "samsara-integration (owns/creates this table)",
+      "sourceOfTruth": "samsara-integration."
+    },
+    "samsara_poll_state": {
+      "purpose": "Key/value poll watermarks + pagination cursors for the two Samsara pollers.",
+      "status": "active",
+      "service": "samsara-integration (owns/creates this table)"
+    },
+    "samsara_event_deliveries": {
+      "purpose": "Per-(event, target_chat_id) idempotent delivery ledger — the source of truth for 'already sent, do not resend'. status ∈ delivered|permanent; a delivered row is never downgraded.",
+      "status": "active",
+      "service": "samsara-integration (owns/creates this table)"
+    },
+    "driver_location_checkins": {
+      "purpose": "Driver location check-in records.",
+      "status": "legacy",
+      "service": "bot (check-in/out flow)",
+      "danger": "Related to the retired check-in/check-out feature (see docs/architecture/retired-checkin-checkout-feature.md). Retained for history; verify usage before removing."
+    },
+    "driver_location_monitors": {
+      "purpose": "Per-group location-monitor scheduler rows.",
+      "status": "legacy",
+      "service": "bot (check-in/out flow)",
+      "danger": "Related to the retired check-in/check-out feature. Retained for history; verify usage before removing."
+    },
+    "chat_logs": {
+      "purpose": "Captured Telegram group messages used for AI insights/annotations.",
+      "status": "active",
+      "service": "bot, ai services",
+      "danger": "Contains message content (potential PII). Large table — index-sensitive."
+    },
+    "leads": {
+      "purpose": "Recruiting leads ingested from external sources (Facebook, Indeed, Bitrix).",
+      "status": "active",
+      "service": "leads services, admin"
+    }
+  }
+}
