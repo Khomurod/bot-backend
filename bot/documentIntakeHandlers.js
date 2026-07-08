@@ -210,15 +210,25 @@ async function handleIntakeCallback(ctx) {
     return true;
   }
 
-  await ctx.answerCbQuery(result.alert ? result.reply : undefined, result.alert ? { show_alert: true } : undefined).catch(() => {});
-  if (result.handled || result.reply) {
-    // Replace the card with the outcome (drops the buttons).
-    const text = `📄 ${result.reply}`;
-    await safeSend(() => ctx.editMessageText(text, { parse_mode: 'HTML' })).catch(async () => {
-      const chatId = ctx.callbackQuery?.message?.chat?.id || ctx.chat?.id;
-      if (chatId) await safeSend(() => ctx.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' })).catch(() => {});
-    });
+  if (result.alert) {
+    // Unauthorized / hard stop → alert only, leave the card so an authorized
+    // user can still act on it.
+    await ctx.answerCbQuery(result.reply, { show_alert: true }).catch(() => {});
+    return true;
   }
+  if (!result.handled) {
+    // e.g. "Already handled." (double-click / late click) — toast, don't touch
+    // the card (another click already replaced it or it's terminal).
+    await ctx.answerCbQuery(result.reply || undefined).catch(() => {});
+    return true;
+  }
+  // Handled outcome → ack and replace the card with the result (drops buttons).
+  await ctx.answerCbQuery().catch(() => {});
+  const text = `📄 ${result.reply}`;
+  await safeSend(() => ctx.editMessageText(text, { parse_mode: 'HTML' })).catch(async () => {
+    const chatId = ctx.callbackQuery?.message?.chat?.id || ctx.chat?.id;
+    if (chatId) await safeSend(() => ctx.telegram.sendMessage(chatId, text, { parse_mode: 'HTML' })).catch(() => {});
+  });
   return true;
 }
 

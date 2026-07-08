@@ -84,6 +84,20 @@ test('pod but no load found → no_match', async () => {
   assert.equal(docs._batch.status, 'no_match');
 });
 
+test('mismatch confidence → needs_review (no one-click upload to a wrong load)', async () => {
+  const docs = makeDocs();
+  const res = await svc.processCollectedBatch(1, {
+    docs, downloadFile,
+    classifier: { classifyBatch: async () => ({ type: 'pod', confidence: 0.8, summary: 'POD' }) },
+    matcher: { matchLoadForBatch: async () => ({ confidence: 'mismatch', orderId: '13367', loadReference: 'L1', reasons: ['load number does not match'] }) },
+    config: { datatruckDocUploadDryRun: true },
+  });
+  assert.equal(res.action, 'needs_review');
+  assert.equal(docs._batch.status, 'needs_review');
+  assert.equal(res.keyboard, undefined);
+  assert.match(res.message, /DIFFERENT load/i);
+});
+
 test('Yes (dry-run) uploads via orchestrator and marks uploaded', async () => {
   const docs = makeDocs({ status: 'waiting_confirmation', detected_doc_type: 'pod', datatruck_order_id: '13367', datatruck_load_reference: '9188060' });
   let called = false;

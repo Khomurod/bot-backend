@@ -47,7 +47,14 @@ function loadHandlerWithFakes({ enabled = true, group = { id: 10, group_type: 'd
     datatruckDocUploadApprovers: [],
   };
   const dbFake = { async getGroupByTelegramId() { return group; }, async getDriverProfileByGroupId() { return null; } };
-  const intakeFake = { async processCollectedBatch() { return { message: null }; }, async handleConfirmation() { return { handled: true, reply: 'ok' }; } };
+  const intakeFake = {
+    async processCollectedBatch() { return { message: null }; },
+    async handleConfirmation({ action, authorized }) {
+      if (action === 'yes' && !authorized) return { handled: false, alert: true, reply: 'You are not authorized to upload documents to Datatruck.' };
+      if (action === 'disc') return { handled: true, reply: 'Disregarded.' };
+      return { handled: true, reply: 'ok' };
+    },
+  };
 
   const resolve = (p) => require.resolve(path.resolve(__dirname, p));
   const set = (p, exports) => { require.cache[resolve(p)] = { id: resolve(p), filename: resolve(p), loaded: true, exports }; };
@@ -117,4 +124,41 @@ test('a text-only message (no attachment) does nothing', async () => {
   const { handler, state } = loadHandlerWithFakes();
   await handler.handleIntakeMessage(ctxWith({ message_id: 8, text: 'hello dispatch' }));
   assert.equal(state.batches.length, 0);
+});
+
+function callbackCtx(data, from = { id: 5, username: 'rando' }) {
+  const calls = { answered: [], edited: [] };
+  const ctx = {
+    callbackQuery: { data, message: { chat: { id: -100777 }, message_id: 50 } },
+    chat: { id: -100777 },
+    from,
+    telegram: { async getChatAdministrators() { return []; } },
+    async answerCbQuery(text, extra) { calls.answered.push({ text, extra }); },
+    async editMessageText(text) { calls.edited.push(text); },
+  };
+  return { ctx, calls };
+}
+
+test('unauthorized Yes → alert only, the card is NOT edited (buttons remain)', async () => {
+  const { handler } = loadHandlerWithFakes();
+  const { ctx, calls } = callbackCtx('dtdoc:yes:1');
+  await handler.handleIntakeCallback(ctx);
+  assert.equal(calls.edited.length, 0, 'card must remain for an authorized user');
+  assert.equal(calls.answered.length, 1);
+  assert.equal(calls.answered[0].extra?.show_alert, true);
+});
+
+test('Disregard → card replaced with the outcome', async () => {
+  const { handler } = loadHandlerWithFakes();
+  const { ctx, calls } = callbackCtx('dtdoc:disc:1');
+  await handler.handleIntakeCallback(ctx);
+  assert.equal(calls.edited.length, 1);
+  assert.match(calls.edited[0], /Disregarded/);
+});
+
+test('a non-dtdoc callback is ignored by the intake handler', async () => {
+  const { handler } = loadHandlerWithFakes();
+  const { ctx } = callbackCtx('mbonus:paid:1');
+  const handled = await handler.handleIntakeCallback(ctx);
+  assert.equal(handled, false);
 });

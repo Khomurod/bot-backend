@@ -87,6 +87,10 @@ async function processCollectedBatch(batchId, deps = {}) {
     action = 'needs_review'; status = 'needs_review';
   } else if (!match.orderId) {
     action = 'no_match'; status = 'no_match';
+  } else if (match.confidence === 'mismatch') {
+    // The document looks like it belongs to a DIFFERENT load — never offer a
+    // one-click upload to the matched order. A human must resolve the mismatch.
+    action = 'needs_review'; status = 'needs_review';
   } else {
     action = 'confirm'; status = 'waiting_confirmation';
   }
@@ -118,7 +122,9 @@ async function processCollectedBatch(batchId, deps = {}) {
   } else if (action === 'no_match') {
     result.message = `📄 A ${helpers.DOC_TYPE_LABEL[docType] || 'document'} was detected from ${helpers.escapeHtml(driverName || 'the driver')}, but it could not be confidently matched to a Datatruck load. Set the driver's current load and resend, or handle it manually.`;
   } else if (action === 'needs_review') {
-    result.message = `📄 A document was detected but the type is ${helpers.escapeHtml(helpers.DOC_TYPE_LABEL[docType] || 'unclear')} — needs a human to review before any upload.`;
+    result.message = match.confidence === 'mismatch'
+      ? `📄 A ${helpers.escapeHtml(helpers.DOC_TYPE_LABEL[docType] || 'document')} was detected from ${helpers.escapeHtml(driverName || 'the driver')}, but it looks like it belongs to a DIFFERENT load than the current one — a dispatcher should review before any upload. ${helpers.escapeHtml(reason.slice(0, 300))}`
+      : `📄 A document was detected but the type is ${helpers.escapeHtml(helpers.DOC_TYPE_LABEL[docType] || 'unclear')} — needs a human to review before any upload.`;
   }
   return result;
 }
