@@ -1,17 +1,21 @@
 /**
  * Telegram wiring for the smart BOL/POD intake.
  *
- * Registers (only meaningful when config.datatruckDocUploadEnabled):
- *   - a message handler that detects PDF/image attachments in DRIVER groups,
- *     groups the files of an album / quick burst into one batch (debounced),
- *     then classifies → matches → posts an inline Yes/No/Disregard card;
- *   - a callback handler for those buttons.
+ * Two independent modes share the same detection/batching machinery:
+ *   1. Upload pipeline (config.datatruckDocUploadEnabled) — posts the inline
+ *      Yes/No/Disregard card in the driver group and, on Yes, uploads to
+ *      Datatruck (dry-run by default). Unchanged existing behavior.
+ *   2. Silent test monitor (DB setting, admin Settings → BOL/POD Monitor) — runs
+ *      the SAME detect→classify→match, but sends a diagnostic report (and
+ *      optionally the files) to a configured TEST group ONLY. It never replies
+ *      in the driver group, shows no buttons, and NEVER uploads to Datatruck.
  *
- * Follows the repo conventions: takes `bot` as a param (no require('./bot') —
- * avoids the circular dep), resolves the group via db.getGroupByTelegramId,
- * guards group_type==='driver' && active, downloads via telegram.getFileLink,
- * and is registered BEFORE the callback_query catch-all in bot.js. Never throws
- * out of a handler (intake must never break normal message processing).
+ * The message handler runs when EITHER mode is active. Follows repo conventions:
+ * takes `bot` as a param (no require('./bot') — avoids the circular dep),
+ * resolves the group via db.getGroupByTelegramId, guards group_type==='driver'
+ * && active, downloads via telegram.getFileLink, and is registered BEFORE the
+ * callback_query catch-all in bot.js. Never throws out of a handler (intake must
+ * never break normal message processing).
  */
 const config = require('../config/config');
 const db = require('../database/db');
@@ -19,6 +23,8 @@ const docsDb = require('../database/telegramDocuments');
 const intake = require('../services/documentIntakeService');
 const helpers = require('../services/documentIntakeHelpers');
 const { safeSend } = require('../services/telegramHtml');
+const monitorSettingsService = require('../services/bolPodMonitorSettingsService');
+const testMonitor = require('../services/bolPodTestMonitorService');
 
 // Debounce timers keyed by batch id (in-memory; a restart is covered by the
 // expires_at housekeeping sweep + collecting-batch expiry).
@@ -54,7 +60,20 @@ async function getContext(batch) {
   return { group, driverProfile };
 }
 
-/** Finalize a collected batch: classify → match → post the card. */
+/** Download every file of a batch to Buffers (for the silent monitor). */
+async function downloadBatchFiles(telegram, batchId) {
+  const rows = await docsDb.listBatchFiles(batchId).catch(() => []);
+  const files = [];
+  for (const row of rows || []) {
+    try {
+      const buffer = await downloadTelegramFile(telegram, row.telegram_file_id);
+      if (buffer && buffer.length) files.push({ buffer, mimeType: row.mime_type, fileName: row.file_name });
+    } catch { /* skip a file we couldn't fetch */ }
+  }
+  return files;
+}
+
+/** Finalize a collected batch: classify → match → (monitor report and/or card). */
 async function finalizeBatch(telegram, batchId) {
   debounceTimers.delete(batchId);
   try {
@@ -64,6 +83,29 @@ async function finalizeBatch(telegram, batchId) {
       downloadFile: (fileId) => downloadTelegramFile(telegram, fileId),
       config,
     });
+
+    // ── Silent test monitor (independent of the upload pipeline) ──
+    // Reports to the configured TEST group only; never touches the driver group
+    // and never uploads to Datatruck.
+    try {
+      const monitorSettings = await monitorSettingsService.getEffectiveSettings();
+      if (monitorSettings.enabled && result?.batch && result.action !== 'gone' && result.action !== 'noop') {
+        const { group, driverProfile } = await getContext(result.batch);
+        await testMonitor.reportDetection({
+          telegram,
+          result,
+          settings: monitorSettings,
+          group,
+          driverProfile,
+          loadFiles: () => downloadBatchFiles(telegram, batchId),
+        });
+      }
+    } catch (err) {
+      console.error(`[DOC-INTAKE] monitor ${batchId} error:`, err.message);
+    }
+
+    // ── Driver-group confirmation card — ONLY when the upload pipeline is on ──
+    if (!config.datatruckDocUploadEnabled) return;
     if (!result?.message) return;
     const batch = result.batch;
     const chatId = batch?.telegram_chat_id;
@@ -74,10 +116,8 @@ async function finalizeBatch(telegram, batchId) {
     if (sent?.message_id && result.action === 'confirm') {
       await docsDb.updateBatch(batchId, { confirmation_chat_id: chatId, confirmation_message_id: sent.message_id }).catch(() => {});
     }
-    if (config.datatruckDocUploadEnabled) {
-      console.log(`[DOC-INTAKE] Batch ${batchId}: ${result.action} (type=${result.docType}, match=${result.match?.confidence})`
-        + (config.datatruckDocUploadDryRun ? ' [DRY-RUN]' : ''));
-    }
+    console.log(`[DOC-INTAKE] Batch ${batchId}: ${result.action} (type=${result.docType}, match=${result.match?.confidence})`
+      + (config.datatruckDocUploadDryRun ? ' [DRY-RUN]' : ''));
   } catch (err) {
     console.error(`[DOC-INTAKE] finalizeBatch ${batchId} error:`, err.message);
     await docsDb.updateBatch(batchId, { status: 'failed' }).catch(() => {});
@@ -110,6 +150,17 @@ async function handleIntakeMessage(ctx) {
   let group = null;
   try { group = await db.getGroupByTelegramId(chat.id); } catch { return; }
   if (!group || group.group_type !== 'driver' || group.active === false) return;
+
+  // Mode gate: process only when EITHER the upload pipeline is enabled OR the
+  // silent test monitor is enabled. Reading the monitor setting is cached +
+  // fail-safe and only happens for real PDF/image messages in a driver group.
+  const uploadEnabled = config.datatruckDocUploadEnabled === true;
+  let monitorEnabled = false;
+  if (!uploadEnabled) {
+    try { monitorEnabled = (await monitorSettingsService.getEffectiveSettings()).enabled === true; }
+    catch { monitorEnabled = false; }
+  }
+  if (!uploadEnabled && !monitorEnabled) return;
 
   const from = ctx.from || {};
   const expiresAt = new Date(Date.now() + Math.max(30, config.datatruckDocIntakeBatchWaitSeconds + 30) * 1000).toISOString();
@@ -212,7 +263,10 @@ async function handleIntakeCallback(ctx) {
 function registerDocumentIntakeHandlers(bot) {
   bot.on('message', async (ctx, next) => {
     try {
-      if (config.datatruckDocUploadEnabled) await handleIntakeMessage(ctx);
+      // handleIntakeMessage decides internally whether either mode (upload
+      // pipeline or silent test monitor) is active — so the monitor can run even
+      // when the upload pipeline is off.
+      await handleIntakeMessage(ctx);
     } catch (err) {
       console.error('[DOC-INTAKE] message handler error:', err.message);
     }
@@ -230,8 +284,9 @@ function registerDocumentIntakeHandlers(bot) {
 
   console.log('[DOC-INTAKE] Telegram BOL/POD intake handlers registered'
     + (config.datatruckDocUploadEnabled
-      ? (config.datatruckDocUploadDryRun ? ' (enabled, DRY-RUN)' : ' (enabled, LIVE)')
-      : ' (disabled)'));
+      ? (config.datatruckDocUploadDryRun ? ' (upload: enabled, DRY-RUN)' : ' (upload: enabled, LIVE)')
+      : ' (upload: disabled)')
+    + ' (silent test monitor: DB-controlled via admin Settings)');
 }
 
 module.exports = {
@@ -240,6 +295,7 @@ module.exports = {
   handleIntakeMessage,
   handleIntakeCallback,
   downloadTelegramFile,
+  downloadBatchFiles,
   finalizeBatch,
   getContext,
 };

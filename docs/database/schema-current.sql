@@ -41,6 +41,19 @@ CREATE TABLE ai_reports (
   sent_at timestamp without time zone
 );
 
+CREATE TABLE bol_pod_monitor_settings (
+  id integer NOT NULL,
+  test_monitor_enabled boolean DEFAULT false NOT NULL,
+  test_group_id bigint DEFAULT '-5289094495'::bigint NOT NULL,
+  test_send_unrelated boolean DEFAULT true NOT NULL,
+  test_send_unclear boolean DEFAULT true NOT NULL,
+  test_send_files boolean DEFAULT true NOT NULL,
+  last_report_at timestamp with time zone,
+  report_count bigint DEFAULT 0 NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  updated_by text
+);
+
 CREATE TABLE bot_access_settings (
   id integer DEFAULT 1 NOT NULL,
   super_admin_telegram_id bigint,

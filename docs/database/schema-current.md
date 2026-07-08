@@ -167,6 +167,30 @@ Generated from an introspected database (76 tables). Structure only — no row d
   - `CREATE INDEX idx_ai_reports_group_id ON public.ai_reports USING btree (group_id)`
   - `CREATE INDEX idx_ai_reports_status_generated_at ON public.ai_reports USING btree (status, generated_at DESC)`
 
+## bol_pod_monitor_settings
+
+- **Status:** 🟢 active
+- **Used by:** admin (Settings → BOL/POD Monitor), documentIntakeHandlers (silent monitor), bolPodTestMonitorService
+- **Purpose:** Single-row (id=1) config for the SILENT BOL/POD test monitor: enable flag, test Telegram group id (default -5289094495 = Automatic updating (Test)), and send-unrelated / send-unclear / send-files toggles, plus last_report_at / report_count audit stats. When enabled the bot watches active driver groups, classifies + matches documents, and posts a diagnostic report (and optionally files) to the test group ONLY — never replies in the driver group and NEVER uploads to Datatruck. Values are not secrets.
+- **Source of truth:** This table (DB is authoritative — no Render env vars for these values).
+
+| Column | Type | Nullability |
+|---|---|---|
+| `id` | `integer` | NOT NULL |
+| `test_monitor_enabled` | `boolean` | NOT NULL default `false` |
+| `test_group_id` | `bigint` | NOT NULL default `'-5289094495'::bigint` |
+| `test_send_unrelated` | `boolean` | NOT NULL default `true` |
+| `test_send_unclear` | `boolean` | NOT NULL default `true` |
+| `test_send_files` | `boolean` | NOT NULL default `true` |
+| `last_report_at` | `timestamp with time zone` | null |
+| `report_count` | `bigint` | NOT NULL default `0` |
+| `updated_at` | `timestamp with time zone` | NOT NULL default `now()` |
+| `updated_by` | `text` | null |
+
+- **Primary key:** `PRIMARY KEY (id)`
+- **Checks:**
+  - `CHECK ((id = 1))`
+
 ## bot_access_settings
 
 - **Status:** 🟢 active
