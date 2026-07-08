@@ -145,6 +145,17 @@ async function captureUsersFromUpdate(ctx, group = null) {
         telegramUserId: from.id,
         username: from.username,
       }).catch(() => {});
+      // Backfill the stable numeric id onto a driver profile that the admin
+      // linked by @username only, the first time that username actually texts
+      // in its own group. Scoped to this group, and only fills a NULL id, so it
+      // can never mislabel the driver.
+      if (group?.id) {
+        db.backfillDriverProfileTelegramUserId({
+          groupId: group.id,
+          telegramUserId: from.id,
+          username: from.username,
+        }).catch(() => {});
+      }
     }
   }
 

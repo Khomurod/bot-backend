@@ -51,7 +51,19 @@ function profileToDraft(profile) {
     date_of_birth: formatDateValue(profile.date_of_birth),
     date_of_start: formatDateValue(profile.date_of_start),
     needs_review: profile.needs_review === true,
+    telegram_username: profile.telegram_username || "",
   };
+}
+
+// Client-side mirror of the server's Telegram username rule (letters, digits,
+// underscore; a single optional leading '@'). The server is still the
+// authority and normalizes/stores without the '@'.
+function normalizeManualUsername(value) {
+  return String(value == null ? "" : value).trim().replace(/^@+/, "");
+}
+function isValidManualUsername(value) {
+  const cleaned = normalizeManualUsername(value);
+  return /^[A-Za-z0-9_]{3,32}$/.test(cleaned);
 }
 
 function shouldShowTeamInputs(profile, draft) {
@@ -211,6 +223,45 @@ export default function GroupsPage() {
     );
   };
 
+  // Manual @username entry — for a driver the bot has not seen text yet. Saves
+  // the username only (the server stores it normalized, without the '@'). A
+  // numeric id is NOT required; when the username differs from any stored
+  // selection we drop the old numeric id so a stale id can't tag the wrong
+  // person — the bot re-links the id automatically the next time that username
+  // texts in the group (see db.backfillDriverProfileTelegramUserId).
+  const handleManualUsernameSave = (profile, rawValue) => {
+    const cleaned = normalizeManualUsername(rawValue);
+    if (!cleaned) {
+      setMessage({ type: "error", text: "Enter a Telegram username first." });
+      return;
+    }
+    if (!isValidManualUsername(cleaned)) {
+      setMessage({
+        type: "error",
+        text: "Username must be 3–32 characters: letters, numbers, or underscore.",
+      });
+      return;
+    }
+    const sameAsStored = String(profile.telegram_username || "").toLowerCase() === cleaned.toLowerCase();
+    saveProfilePatch(
+      profile,
+      {
+        telegram_username: cleaned,
+        // Keep an already-linked id only when it belongs to this same username.
+        ...(sameAsStored ? {} : { telegram_user_id: null }),
+      },
+      `Driver username set to @${cleaned}.`,
+    );
+  };
+
+  const handleClearTelegram = (profile) => {
+    saveProfilePatch(
+      profile,
+      { telegram_user_id: null, telegram_username: null },
+      "Driver Telegram link cleared.",
+    );
+  };
+
   const tabCounts = useMemo(() => ({
     all: allProfiles.length,
     active: allProfiles.filter((p) => isDriverActive(p)).length,
@@ -296,6 +347,62 @@ export default function GroupsPage() {
                   an inline mention. Telegram bots cannot list all group members, so only people the
                   bot has seen interact here appear; a silent member shows up after their first
                   message in the group.
+                </div>
+              </div>
+
+              <div>
+                <label style={fieldLabelStyle}>Or enter username manually</label>
+                <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="@john_driver"
+                    value={draft.telegram_username}
+                    disabled={saving}
+                    style={{ flex: 1 }}
+                    onChange={(e) => updateDraft(profile.id, { telegram_username: e.target.value })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleManualUsernameSave(profile, draft.telegram_username);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={saving || !normalizeManualUsername(draft.telegram_username)}
+                    onClick={() => handleManualUsernameSave(profile, draft.telegram_username)}
+                  >
+                    Save username
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={saving || (!profile.telegram_user_id && !profile.telegram_username)}
+                    onClick={() => handleClearTelegram(profile)}
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
+                  {profile.telegram_user_id ? (
+                    <>
+                      Active: <b>inline mention via Telegram user id</b> (<code>{profile.telegram_user_id}</code>)
+                      {profile.telegram_username
+                        ? <> — <b>@{profile.telegram_username}</b> kept as a fallback.</>
+                        : <>.</>}
+                      {" "}The dropdown selection takes priority over a manually typed username.
+                    </>
+                  ) : profile.telegram_username ? (
+                    <>
+                      Active: <b>@{profile.telegram_username}</b> (manual). No numeric id yet — it links
+                      automatically the first time this username texts in the group, upgrading to the
+                      more reliable id mention.
+                    </>
+                  ) : (
+                    <>Not linked — the driver is addressed by their plain name.</>
+                  )}
                 </div>
               </div>
 
