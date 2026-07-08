@@ -33,11 +33,26 @@ function fmtTime(iso) {
   return iso ? new Date(iso).toLocaleString() : "—";
 }
 
+/** Split waypoints entered comma- OR newline-separated into a clean array. */
+function parseWaypoints(raw) {
+  return String(raw || "")
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 function AssignForm({ groups, onAssigned, onMessage }) {
   const [groupId, setGroupId] = useState("");
   const [url, setUrl] = useState("");
+  const [origin, setOrigin] = useState("");
+  const [destination, setDestination] = useState("");
+  const [waypoints, setWaypoints] = useState("");
   const [parsed, setParsed] = useState(null);
   const [busy, setBusy] = useState(false);
+
+  const resetInputs = () => {
+    setUrl(""); setOrigin(""); setDestination(""); setWaypoints(""); setParsed(null);
+  };
 
   const testParse = async () => {
     setBusy(true); setParsed(null);
@@ -45,17 +60,47 @@ function AssignForm({ groups, onAssigned, onMessage }) {
       const result = await api.parseRouteLink(url.trim());
       setParsed(result);
       onMessage({ type: "success", text: "Link parsed. Review the origin/destination below, then assign." });
-    } catch (err) { onMessage({ type: "error", text: err.message }); }
-    finally { setBusy(false); }
+    } catch (err) {
+      // Surface the exact backend message and point at the manual fallback.
+      onMessage({
+        type: "error",
+        text: `${err.message} You can also enter Origin and Destination below and assign manually.`,
+      });
+    } finally { setBusy(false); }
   };
 
   const assign = async () => {
     if (!groupId) { onMessage({ type: "error", text: "Pick a driver group." }); return; }
-    if (!url.trim()) { onMessage({ type: "error", text: "Paste a Google Maps directions link." }); return; }
+    const hasManual = origin.trim() && destination.trim();
+    if (!url.trim() && !hasManual) {
+      onMessage({ type: "error", text: "Paste a Google Maps directions link, or enter Origin and Destination." });
+      return;
+    }
     setBusy(true);
     try {
-      const result = await api.assignRoute({ groupId: Number(groupId), url: url.trim() });
-      setUrl(""); setParsed(null);
+      let result;
+      // Prefer a link that actually parses; otherwise fall back to manual entry.
+      if (url.trim() && !hasManual) {
+        result = await api.assignRoute({ groupId: Number(groupId), url: url.trim() });
+      } else if (!url.trim() && hasManual) {
+        result = await api.assignRoute({
+          groupId: Number(groupId),
+          manual: { origin: origin.trim(), destination: destination.trim(), waypoints: parseWaypoints(waypoints) },
+        });
+      } else {
+        // Both provided: try the link first, fall back to manual on a parse failure.
+        try {
+          result = await api.assignRoute({ groupId: Number(groupId), url: url.trim() });
+        } catch (linkErr) {
+          onMessage({ type: "error", text: `${linkErr.message} Falling back to the Origin/Destination you entered…` });
+          result = await api.assignRoute({
+            groupId: Number(groupId),
+            url: url.trim(),
+            manual: { origin: origin.trim(), destination: destination.trim(), waypoints: parseWaypoints(waypoints) },
+          });
+        }
+      }
+      resetInputs();
       onMessage({
         type: "success",
         text: result.geometryPending
@@ -83,6 +128,25 @@ function AssignForm({ groups, onAssigned, onMessage }) {
           <input className="form-input" value={url} placeholder="https://www.google.com/maps/dir/…" onChange={(e) => setUrl(e.target.value)} />
         </div>
       </div>
+
+      <div style={{ fontSize: 12, color: "#94a3b8", margin: "12px 0 6px" }}>
+        Or enter the route manually (used when the link is a place/map view or can't be read):
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" }}>
+        <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: 200 }}>
+          <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>Origin</label>
+          <input className="form-input" value={origin} placeholder="e.g. Chicago, IL" onChange={(e) => setOrigin(e.target.value)} />
+        </div>
+        <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: 200 }}>
+          <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>Destination</label>
+          <input className="form-input" value={destination} placeholder="e.g. Dallas, TX" onChange={(e) => setDestination(e.target.value)} />
+        </div>
+        <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: 200 }}>
+          <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>Waypoints (comma or newline separated)</label>
+          <textarea className="form-input" value={waypoints} rows={2} placeholder="e.g. St. Louis, MO, Little Rock, AR" onChange={(e) => setWaypoints(e.target.value)} />
+        </div>
+      </div>
+
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <button className="btn btn-ghost btn-sm" onClick={testParse} disabled={busy || !url.trim()}>Test parse route</button>
         <button className="btn btn-primary btn-sm" onClick={assign} disabled={busy}>Assign route</button>
@@ -97,7 +161,8 @@ function AssignForm({ groups, onAssigned, onMessage }) {
       )}
       <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 10 }}>
         Paste a Google Maps <strong>Directions</strong> link (with a start and end). Shortened <code>maps.app.goo.gl</code>
-        links are expanded automatically; if a link can't be read you'll get a clear error asking for origin/destination.
+        links are expanded automatically. A place/map-view link (e.g. <code>/maps/@lat,lng</code>) can't become a route —
+        in that case enter Origin and Destination above and assign manually.
       </div>
     </div>
   );

@@ -1721,10 +1721,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_driver_location_checkins_stop_once
   ON driver_location_checkins(dedupe_key)
   WHERE dedupe_key IS NOT NULL;
 
--- TABLE: bot_users — every Telegram user who has interacted with the bot's
--- inline buttons (check-in prompts etc.), upserted on each tap. Powers the
--- admin panel's Users tab. Distinct from group_members (passively-seen users):
--- these are users who actively pressed a button.
+-- TABLE: bot_users — every Telegram user the bot sees, keyed by stable
+-- telegram_user_id. Originally only inline-button tappers (interactions); now
+-- ALSO everyone who texts in a group the bot is in (message_count), so the
+-- admin Users tab shows anyone the bot has observed. Distinct from
+-- group_members (per-group membership snapshots).
 CREATE TABLE IF NOT EXISTS bot_users (
   telegram_user_id BIGINT PRIMARY KEY,
   username TEXT NULL,
@@ -1736,6 +1737,18 @@ CREATE TABLE IF NOT EXISTS bot_users (
   first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_interaction_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Enrichment columns (safe, additive migrations). last_seen_chat_id is the raw
+-- Telegram chat id; last_group_name a nullable snapshot of the group title;
+-- message_count counts messages seen (interactions still counts button taps);
+-- source is a coarse role guess (driver|dispatcher|admin|unknown). NO message
+-- text is ever stored.
+ALTER TABLE bot_users ADD COLUMN IF NOT EXISTS last_seen_chat_id BIGINT;
+ALTER TABLE bot_users ADD COLUMN IF NOT EXISTS last_group_name TEXT;
+ALTER TABLE bot_users ADD COLUMN IF NOT EXISTS language_code TEXT;
+ALTER TABLE bot_users ADD COLUMN IF NOT EXISTS is_bot BOOLEAN DEFAULT FALSE;
+ALTER TABLE bot_users ADD COLUMN IF NOT EXISTS message_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE bot_users ADD COLUMN IF NOT EXISTS source TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_bot_users_last_interaction
   ON bot_users(last_interaction_at DESC);

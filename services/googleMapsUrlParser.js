@@ -158,6 +158,21 @@ function parseDirectionsUrl(input) {
     }
   }
 
+  // No /dir/ segment at all: this is a place pin or a bare map view
+  // (`/maps/@lat,lng,zoom`, `/maps/place/…`, or a `?q=` query). These carry no
+  // origin/destination and can never become a route — say so specifically so
+  // the caller can steer the user to Directions or manual entry.
+  const path = url.pathname || '';
+  const isMapView = /\/maps\/@/.test(path) || /\/@[-0-9.]+,[-0-9.]+/.test(path);
+  const isPlace = path.includes('/place/') || Boolean(params.get('q'));
+  if (isMapView || isPlace) {
+    return makeError(
+      'This Google Maps link is a place/map view, not a directions route. Open Directions in '
+      + 'Google Maps and share that link, or enter origin and destination manually.',
+      { placeOrMapView: true }
+    );
+  }
+
   return makeError('Could not read origin and destination from this Google Maps link. '
     + 'Paste a Directions link, or enter origin, destination and waypoints manually.');
 }

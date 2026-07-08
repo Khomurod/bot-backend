@@ -21,7 +21,7 @@
       "danger": "Contains driver PII."
     },
     "bot_users": {
-      "purpose": "Everyone who has interacted with the bot (Telegram user id, last seen, etc.).",
+      "purpose": "Everyone the bot sees — button tappers (interactions) and anyone who texts in a group the bot is in (message_count). Keyed by a stable Telegram user id; enriched with last-seen group/chat, language, source, and linked dispatch team. No message text stored.",
       "status": "active",
       "service": "bot, admin"
     },

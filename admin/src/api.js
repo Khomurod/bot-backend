@@ -1284,8 +1284,12 @@ export async function refreshFuelMonitor() {
 
 // ─── Bot Users (everyone who has tapped the bot's inline buttons) ───
 
-export async function getBotUsers(limit = 200) {
-  const res = await fetch(`${API_BASE}/bot-users?limit=${encodeURIComponent(limit)}`, {
+export async function getBotUsers({ limit = 200, filter, search } = {}) {
+  const params = new URLSearchParams();
+  params.set('limit', String(limit));
+  if (filter && filter !== 'all') params.set('filter', filter);
+  if (search) params.set('search', search);
+  const res = await fetch(`${API_BASE}/bot-users?${params.toString()}`, {
     headers: getHeaders(),
   });
   if (!res.ok) { await handleApiError(res); }

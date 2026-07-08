@@ -21,6 +21,7 @@ const { normalizeTelegramUsername, formatTelegramUsername } = require('../servic
 const { isGlobalRouteAdmin } = require('../services/routeControlConstants');
 const {
   detectRouteAssignment,
+  extractGoogleMapsLinks,
   shouldReplyOnUnparseable,
   authorizeRouteAssigner,
 } = require('../services/routeMessageDetection');
@@ -31,12 +32,34 @@ const MSG = {
     + 'is pending. Monitoring will start after geometry is computed.',
   unparseable: '⚠️ I could not read this route link. Please send a full Google Maps directions '
     + 'link with origin and destination, or assign it manually from Admin → Route Control.',
+  apiError: '⚠️ Route Control: I could not compute this route right now (Google Maps error). '
+    + 'Please try again shortly, or assign it manually from Admin → Route Control.',
   unauthorized: '⚠️ Route Control: only authorized dispatch/admin users can assign a route.',
   alreadyActive: '⚠️ This driver already has an active route. Replace it with the new route?',
   replaced: '✅ Route Control: route replaced. I will monitor the new route.',
   ignored: '👍 Route Control: kept the current route. The new route was ignored.',
   expired: '⚠️ This route confirmation expired. Please send the route link again.',
 };
+
+/**
+ * Structured, MASKED one-line log for a Route Control event. Never logs the
+ * full URL (short links carry opaque tokens); only the host + classified kind.
+ * @param {string} event  one of ignored-fuel | ignored-place | candidate-detected
+ *   | assignment-accepted | assignment-rejected-unauthorized | parse-failed | api-error
+ * @param {{ chatId?:(number|string), url?:string, kind?:string, reason?:string }} fields
+ */
+function logRouteEvent(event, { chatId, url, kind, reason } = {}) {
+  let host = null;
+  if (url) {
+    try { host = new URL(url).hostname; } catch (_) { host = null; }
+  }
+  const parts = [`[ROUTE-CONTROL] event=${event}`];
+  if (chatId != null) parts.push(`chat=${chatId}`);
+  if (host) parts.push(`host=${host}`);
+  if (kind) parts.push(`kind=${kind}`);
+  if (reason) parts.push(`reason=${reason}`);
+  console.log(parts.join(' '));
+}
 
 // ── In-memory rate limit + dedupe + pending confirmations (per-process) ──
 const ONE_HOUR_MS = 60 * 60 * 1000;
@@ -125,10 +148,21 @@ async function handleRouteMessage(ctx) {
   if (!text) return { handled: false };
 
   const detection = detectRouteAssignment(text);
-  if (!detection.isCandidate) return { handled: false };
+  if (!detection.isCandidate) {
+    // Masked logs for the two "we saw a link but deliberately did nothing" cases
+    // so the separation from Fuel Monitoring is auditable without leaking URLs.
+    if (detection.reason === 'fuel_or_non_route') {
+      logRouteEvent('ignored-fuel', { chatId: chat.id, reason: detection.reason });
+    } else if (extractGoogleMapsLinks(text).length) {
+      logRouteEvent('ignored-place', { chatId: chat.id, reason: 'no_route_keyword' });
+    }
+    return { handled: false };
+  }
 
   const group = await db.getGroupByTelegramId(chat.id);
   if (!group || group.group_type !== 'driver' || !group.active) return { handled: false };
+
+  logRouteEvent('candidate-detected', { chatId: chat.id, url: detection.url, kind: detection.linkKind });
 
   const messageId = ctx.message?.message_id;
   // Restart-safe dedupe: this exact message already produced an assignment.
@@ -140,6 +174,9 @@ async function handleRouteMessage(ctx) {
 
   const auth = await resolveAuthorization(ctx.from || {}, group.id);
   if (!auth.authorized) {
+    logRouteEvent('assignment-rejected-unauthorized', {
+      chatId: chat.id, kind: detection.linkKind, reason: auth.reason,
+    });
     await replyToChat(ctx, MSG.unauthorized);
     return { handled: true, reason: `unauthorized:${auth.reason}` };
   }
@@ -151,6 +188,9 @@ async function handleRouteMessage(ctx) {
   try {
     await routeControl.parseRouteLink(detection.url);
   } catch (err) {
+    logRouteEvent('parse-failed', {
+      chatId: chat.id, url: detection.url, kind: detection.linkKind, reason: err.code || 'unparseable',
+    });
     if (shouldReplyOnUnparseable(detection)) await replyToChat(ctx, MSG.unparseable);
     return { handled: true, reason: 'unparseable' };
   }
@@ -175,14 +215,29 @@ async function handleRouteMessage(ctx) {
     return { handled: true, reason: 'needs_confirmation' };
   }
 
-  const result = await routeControl.assignRoute({
-    groupId: group.id,
-    url: detection.url,
-    assignedBy,
-    source: 'telegram',
-    assignedByUserId: ctx.from?.id != null ? Number(ctx.from.id) : null,
-    telegramChatId: chat.id,
-    telegramMessageId: messageId,
+  let result;
+  try {
+    result = await routeControl.assignRoute({
+      groupId: group.id,
+      url: detection.url,
+      assignedBy,
+      source: 'telegram',
+      assignedByUserId: ctx.from?.id != null ? Number(ctx.from.id) : null,
+      telegramChatId: chat.id,
+      telegramMessageId: messageId,
+    });
+  } catch (err) {
+    // Google API (or other assignment) failure — reply once, never crash, and
+    // never store a geometry-less route row (assignRoute computes before insert).
+    logRouteEvent('api-error', {
+      chatId: chat.id, kind: detection.linkKind, reason: err.code || 'assign_failed',
+    });
+    await replyToChat(ctx, MSG.apiError);
+    return { handled: true, reason: 'api_error' };
+  }
+  logRouteEvent('assignment-accepted', {
+    chatId: chat.id, kind: detection.linkKind,
+    reason: result.geometryPending ? 'geometry_pending' : 'computed',
   });
   await replyToChat(ctx, result.geometryPending ? MSG.geometryPending : MSG.success);
   return { handled: true, reason: result.geometryPending ? 'assigned_pending' : 'assigned' };

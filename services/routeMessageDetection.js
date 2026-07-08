@@ -6,36 +6,77 @@
  * telegram calls live here — the bot handler gathers the inputs (group row,
  * dispatch-team membership, global-admin flag) and feeds them in.
  *
- * A plain Google Maps *location pin* is deliberately NOT treated as a route.
+ * Route Control must react ONLY to real route assignments. In particular:
+ *   - Fuel Monitoring department messages (which routinely carry a Google Maps
+ *     pin of the fuel stop) must NEVER be treated as a route — a fuel/non-route
+ *     guard rejects them up front.
+ *   - A plain location pin / place link is NOT a route.
+ *   - A bare shortened maps.app.goo.gl link (with no route wording) is NOT a
+ *     route — most shared shorts are place pins, not directions.
+ *
  * We only act on a message that either:
- *   - contains a Google Maps DIRECTIONS link (origin + destination), or a
- *     shortened maps.app.goo.gl link (which is expanded later), OR
- *   - contains any Google Maps link AND a clear route keyword.
+ *   - contains a Google Maps DIRECTIONS link (real origin + destination or a
+ *     `/maps/dir/` path), regardless of wording, OR
+ *   - contains a shortened / place / other Google Maps link AND a clear route
+ *     keyword phrase (the short link is expanded later to prove it is really a
+ *     directions route).
  */
 const { isGoogleMapsHost, isShortLinkHost } = require('./googleMapsUrlParser');
 
-// Clear "this is a route" phrases. `route` alone counts but only on a word
-// boundary so words like "en route to" still match while "reroute"/"router" do
-// not accidentally trigger on unrelated text.
+// Clear "this is a route" phrases. A bare single word "route" is deliberately
+// NOT enough — fuel / status / chit-chat messages say "route" constantly ("on
+// your route or not", "en route", "reroute") and were the main source of false
+// Route Control replies. Only these strong, intentful phrases count.
 const ROUTE_KEYWORDS = [
+  'assign route',
   'assigned route',
-  'take this route',
-  'follow this route',
-  'driver route',
-  'please use this route',
-  'use this route',
   'route control',
+  'follow this route',
+  'take this route',
+  'use this route',
+  'please use this route',
+  'driver route',
   'planned route',
+  'new route for driver',
+  'route for this driver',
 ];
 
-const SINGLE_WORD_ROUTE_RE = /\broute\b/i;
+// Phrases that mark a message as Fuel Monitoring or another non-route context.
+// Any of these → the message is never a Route Control candidate. Kept lowercase
+// for case-insensitive substring matching.
+const FUEL_OR_NON_ROUTE_PHRASES = [
+  'fuel monitoring department',
+  'fuel department',
+  'please fuel up',
+  'fuel level',
+  'fuel up',
+  'do not use different location',
+  '$250 charge',
+  '250 charge',
+  'travel stop',
+  'flying j',
+  'loves travel stop',
+  "love's travel stop",
+  'pilot',
+  'gas station',
+];
+
 // Matches http(s) URLs; hosts are validated separately via isGoogleMapsHost.
 const URL_RE = /https?:\/\/[^\s<>()]+/gi;
 
+/**
+ * True when the message is clearly a Fuel Monitoring / non-route message that
+ * must never trigger Route Control (even though it often carries a Google Maps
+ * pin of the fuel stop). Case-insensitive substring match.
+ */
+function looksLikeFuelOrNonRoute(text) {
+  const lower = String(text || '').toLowerCase();
+  return FUEL_OR_NON_ROUTE_PHRASES.some((phrase) => lower.includes(phrase));
+}
+
 function hasRouteKeyword(text) {
   const lower = String(text || '').toLowerCase();
-  if (ROUTE_KEYWORDS.some((k) => lower.includes(k))) return true;
-  return SINGLE_WORD_ROUTE_RE.test(lower);
+  return ROUTE_KEYWORDS.some((k) => lower.includes(k));
 }
 
 /** All Google Maps URLs found in the text (trailing punctuation trimmed). */
@@ -80,23 +121,38 @@ function classifyMapsLink(url) {
 
 /**
  * Decide whether a message is a route-assignment attempt.
- * @returns {{ isCandidate:boolean, url?:string, linkKind?:string, hasKeyword?:boolean }}
+ *
+ * @returns {{ isCandidate:boolean, url?:string, linkKind?:string,
+ *             hasKeyword?:boolean, reason?:string }}
  */
 function detectRouteAssignment(text) {
+  // Guard first: fuel / non-route messages are never route candidates, even if
+  // they carry a Google Maps link.
+  if (looksLikeFuelOrNonRoute(text)) {
+    return { isCandidate: false, reason: 'fuel_or_non_route' };
+  }
+
   const links = extractGoogleMapsLinks(text);
   if (!links.length) return { isCandidate: false };
   const hasKeyword = hasRouteKeyword(text);
 
   const classified = links.map((url) => ({ url, kind: classifyMapsLink(url) }));
-  // Prefer an explicit directions link, then a shortened link, then (only when
-  // a route keyword is present) a place/other link.
+
+  // A real directions link is always a route (origin + destination present).
   const directions = classified.find((l) => l.kind === 'directions');
-  if (directions) return { isCandidate: true, url: directions.url, linkKind: 'directions', hasKeyword };
-  const short = classified.find((l) => l.kind === 'short');
-  if (short) return { isCandidate: true, url: short.url, linkKind: 'short', hasKeyword };
+  if (directions) {
+    return { isCandidate: true, url: directions.url, linkKind: 'directions', hasKeyword };
+  }
+
+  // A shortened link is only a candidate WITH a route keyword — expansion later
+  // proves whether it is really directions. A bare shared short link is ignored.
+  // A place / other link likewise needs a clear route keyword.
   if (hasKeyword) {
+    const short = classified.find((l) => l.kind === 'short');
+    if (short) return { isCandidate: true, url: short.url, linkKind: 'short', hasKeyword: true };
     return { isCandidate: true, url: classified[0].url, linkKind: classified[0].kind, hasKeyword: true };
   }
+
   return { isCandidate: false };
 }
 
@@ -127,6 +183,7 @@ function authorizeRouteAssigner({ isGlobalAdmin = false, memberTeamIds = [], gro
 
 module.exports = {
   ROUTE_KEYWORDS,
+  looksLikeFuelOrNonRoute,
   hasRouteKeyword,
   extractGoogleMapsLinks,
   classifyMapsLink,

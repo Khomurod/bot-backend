@@ -211,7 +211,7 @@ Generated from an introspected database (76 tables). Structure only — no row d
 
 - **Status:** 🟢 active
 - **Used by:** bot, admin
-- **Purpose:** Everyone who has interacted with the bot (Telegram user id, last seen, etc.).
+- **Purpose:** Everyone the bot sees — button tappers (interactions) AND anyone who texts in a group the bot is in (message_count). Keyed by a stable Telegram user id. No message text is stored.
 
 | Column | Type | Nullability |
 |---|---|---|
@@ -224,6 +224,12 @@ Generated from an introspected database (76 tables). Structure only — no row d
 | `last_group_id` | `integer` | null |
 | `first_seen_at` | `timestamp with time zone` | NOT NULL default `now()` |
 | `last_interaction_at` | `timestamp with time zone` | NOT NULL default `now()` |
+| `last_seen_chat_id` | `bigint` | null |
+| `last_group_name` | `text` | null |
+| `language_code` | `text` | null |
+| `is_bot` | `boolean` | null default `false` |
+| `message_count` | `integer` | NOT NULL default `0` |
+| `source` | `text` | null |
 
 - **Primary key:** `PRIMARY KEY (telegram_user_id)`
 - **Indexes:**

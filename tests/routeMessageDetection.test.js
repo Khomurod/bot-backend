@@ -4,6 +4,7 @@ const {
   detectRouteAssignment,
   classifyMapsLink,
   hasRouteKeyword,
+  looksLikeFuelOrNonRoute,
   shouldReplyOnUnparseable,
   authorizeRouteAssigner,
 } = require('../services/routeMessageDetection');
@@ -12,7 +13,7 @@ test('classifyMapsLink distinguishes directions / short / place', () => {
   assert.equal(classifyMapsLink('https://www.google.com/maps/dir/A/B/@1,2,7z'), 'directions');
   assert.equal(classifyMapsLink('https://www.google.com/maps/dir/?api=1&origin=A&destination=B'), 'directions');
   assert.equal(classifyMapsLink('https://maps.app.goo.gl/AbCdEf123'), 'short');
-  assert.equal(classifyMapsLink('https://www.google.com/maps/place/Pilot+Travel+Center'), 'place');
+  assert.equal(classifyMapsLink('https://www.google.com/maps/place/SomeStore'), 'place');
   assert.equal(classifyMapsLink('https://maps.google.com/?q=41.7,-86.3'), 'place');
 });
 
@@ -22,19 +23,41 @@ test('a full directions link is a route candidate (no keyword needed)', () => {
   assert.equal(d.linkKind, 'directions');
 });
 
-test('a shortened maps.app.goo.gl link is a candidate (expanded later)', () => {
-  const d = detectRouteAssignment('please follow https://maps.app.goo.gl/ELB6VP2bJcQSZXj37');
+test('a real /maps/dir/ directions link is a candidate', () => {
+  const d = detectRouteAssignment(
+    'https://www.google.com/maps/dir/Atlanta,GA/Miami,FL/@28.5,-81.3,7z/data=!4m2'
+  );
   assert.equal(d.isCandidate, true);
-  assert.equal(d.linkKind, 'short');
+  assert.equal(d.linkKind, 'directions');
 });
 
-test('a plain location pin WITHOUT a route keyword is ignored', () => {
-  const d = detectRouteAssignment('here is the truck stop https://www.google.com/maps/place/Loves');
+test('a shortened maps.app.goo.gl link ALONE (no keyword) is NOT a candidate', () => {
+  const d = detectRouteAssignment('here you go https://maps.app.goo.gl/ELB6VP2bJcQSZXj37');
   assert.equal(d.isCandidate, false);
 });
 
+test('a shortened link WITH "use this route" is a candidate', () => {
+  const d = detectRouteAssignment('please use this route https://maps.app.goo.gl/ELB6VP2bJcQSZXj37');
+  assert.equal(d.isCandidate, true);
+  assert.equal(d.linkKind, 'short');
+  assert.equal(d.hasKeyword, true);
+});
+
+test('a plain place / pin link WITHOUT a route keyword is ignored', () => {
+  const d = detectRouteAssignment('here is the spot https://www.google.com/maps/place/SomeStore');
+  assert.equal(d.isCandidate, false);
+});
+
+test('"route control please use this route" + link is a candidate', () => {
+  const d = detectRouteAssignment(
+    'route control please use this route https://maps.app.goo.gl/ELB6VP2bJcQSZXj37'
+  );
+  assert.equal(d.isCandidate, true);
+  assert.equal(d.hasKeyword, true);
+});
+
 test('a location pin WITH a route keyword becomes a candidate', () => {
-  const d = detectRouteAssignment('take this route https://www.google.com/maps/place/Loves');
+  const d = detectRouteAssignment('take this route https://www.google.com/maps/place/SomeStore');
   assert.equal(d.isCandidate, true);
   assert.equal(d.hasKeyword, true);
 });
@@ -44,9 +67,43 @@ test('a non-Google link is never a candidate', () => {
   assert.equal(detectRouteAssignment('no link at all, just route talk').isCandidate, false);
 });
 
-test('hasRouteKeyword matches phrases and the word "route"', () => {
+test('the word "route" ALONE (no strong phrase, no link) is not a candidate', () => {
+  assert.equal(detectRouteAssignment('are you on your route or not?').isCandidate, false);
+});
+
+// ── Fuel / non-route guard ──
+
+test('a Fuel Monitoring message with a maps.app.goo.gl pin is NOT a route candidate', () => {
+  const d = detectRouteAssignment(
+    'Fuel Monitoring Department\nplease fuel up here whether on your route or not '
+    + 'https://maps.app.goo.gl/nfC9vyrCuCddTqJT6'
+  );
+  assert.equal(d.isCandidate, false);
+  assert.equal(d.reason, 'fuel_or_non_route');
+});
+
+test('a screenshot-style fuel message (header + $250 charge + short link) is NOT a candidate', () => {
+  const d = detectRouteAssignment(
+    'Fuel Monitoring Department\nUse this fuel stop. Do not use different location '
+    + 'or a $250 charge applies. https://maps.app.goo.gl/nfC9vyrCuCddTqJT6'
+  );
+  assert.equal(d.isCandidate, false);
+  assert.equal(d.reason, 'fuel_or_non_route');
+});
+
+test('looksLikeFuelOrNonRoute catches fuel + travel-stop wording, ignores plain route talk', () => {
+  assert.equal(looksLikeFuelOrNonRoute('Fuel Monitoring Department'), true);
+  assert.equal(looksLikeFuelOrNonRoute('please fuel up at the Flying J'), true);
+  assert.equal(looksLikeFuelOrNonRoute('loves travel stop exit 12'), true);
+  assert.equal(looksLikeFuelOrNonRoute('$250 charge if you skip it'), true);
+  assert.equal(looksLikeFuelOrNonRoute('please use this route'), false);
+});
+
+test('hasRouteKeyword matches strong phrases only (not the bare word "route")', () => {
   assert.equal(hasRouteKeyword('please use this route'), true);
   assert.equal(hasRouteKeyword('DRIVER ROUTE below'), true);
+  assert.equal(hasRouteKeyword('route control'), true);
+  assert.equal(hasRouteKeyword('are you on your route or not?'), false);
   assert.equal(hasRouteKeyword('reroute the router'), false);
   assert.equal(hasRouteKeyword('fuel stop here'), false);
 });
