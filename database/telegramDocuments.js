@@ -242,10 +242,13 @@ async function findUploadedAttempt({ orderId, documentType, sha256 = null }) {
  */
 async function findBotOriginatedUpload({ orderId, documentType, withinHours = 72 }) {
   if (orderId == null || !documentType) return null;
+  // Only a LIVE 'uploaded' row created a real Datatruck document that could be
+  // re-forwarded — a dry_run created nothing, so it must never suppress a
+  // genuine external upload.
   const res = await query(
     `SELECT * FROM datatruck_upload_attempts
       WHERE order_id = $1 AND document_type = $2
-        AND status IN ('uploaded','dry_run')
+        AND status = 'uploaded'
         AND created_at > NOW() - ($3 * INTERVAL '1 hour')
       ORDER BY created_at DESC LIMIT 1`,
     [String(orderId), documentType, withinHours]

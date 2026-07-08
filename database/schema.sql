@@ -1461,9 +1461,28 @@ CREATE TABLE IF NOT EXISTS datatruck_document_deliveries (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT datatruck_document_deliveries_status_check CHECK (
-    status IN ('pending', 'sent', 'failed', 'suppressed_backfill', 'skipped_no_group')
+    status IN ('pending', 'sent', 'failed', 'suppressed_backfill', 'skipped_no_group', 'suppressed_bot_upload')
   )
 );
+
+-- Additive migration for existing databases: allow the loop-prevention status
+-- 'suppressed_bot_upload' (documents our own intake bot uploaded, which the
+-- forwarder must not push back into the driver group).
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'datatruck_document_deliveries_status_check'
+      AND conrelid = 'datatruck_document_deliveries'::regclass
+  ) THEN
+    ALTER TABLE datatruck_document_deliveries
+      DROP CONSTRAINT datatruck_document_deliveries_status_check;
+  END IF;
+  ALTER TABLE datatruck_document_deliveries
+    ADD CONSTRAINT datatruck_document_deliveries_status_check
+    CHECK (status IN ('pending', 'sent', 'failed', 'suppressed_backfill', 'skipped_no_group', 'suppressed_bot_upload'));
+END
+$$;
 
 CREATE INDEX IF NOT EXISTS idx_datatruck_document_deliveries_status
   ON datatruck_document_deliveries(status, created_at DESC);
