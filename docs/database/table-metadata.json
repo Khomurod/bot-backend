@@ -101,6 +101,25 @@
       "purpose": "Recruiting leads ingested from external sources (Facebook, Indeed, Bitrix).",
       "status": "active",
       "service": "leads services, admin"
+    },
+    "telegram_document_batches": {
+      "purpose": "Smart BOL/POD intake: one row per batch of related PDF/image attachments a driver sends in their Telegram group. Tracks pipeline lifecycle, AI-detected doc type + confidence, matched Datatruck order/load + match confidence, the inline-confirmation message, and who decided. Restart-safe and idempotent.",
+      "status": "active",
+      "service": "bot (intake handler), admin (status view)",
+      "sourceOfTruth": "This table (mastered here).",
+      "danger": "No destructive migrations. A batch's files cascade-delete with it."
+    },
+    "telegram_document_files": {
+      "purpose": "Smart BOL/POD intake: one row per attached file in a batch. UNIQUE telegram_file_unique_id is the dedup guard; sha256 is the content hash for duplicate-upload prevention and loop detection; sort_order preserves Telegram message order for merged PDFs.",
+      "status": "active",
+      "service": "bot (intake handler)",
+      "danger": "Cascade-deletes with its parent batch."
+    },
+    "datatruck_upload_attempts": {
+      "purpose": "Smart BOL/POD intake: one row per attempt to upload a confirmed BOL/POD to Datatruck. Records dry-run vs live, returned Datatruck document id, and content hash — used for duplicate-upload prevention and so the Datatruck->Telegram forwarding poller can recognise a bot-originated upload and suppress re-forwarding (loop prevention).",
+      "status": "active",
+      "service": "bot (intake handler), datatruckDocumentService (loop-prevention read)",
+      "sourceOfTruth": "This table (mastered here)."
     }
   }
 }
