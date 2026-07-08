@@ -27,6 +27,10 @@ after deploy on the live service.
   (`git status`; `.env` is git-ignored — keep it that way).
 - ☐ **[MANUAL]** You read `docs/architecture/module-map.md` for the feature you
   touched, including its "Risks / Do NOT touch yet" notes.
+- ☐ **[AUTO]** **Schema changes update the DB docs.** If this change touched
+  `database/schema.sql` (or added/retired any table), you ran `npm run db:docs`
+  and committed the regenerated `docs/database/*`, and updated
+  `docs/database/table-metadata.json` for any new/retired table.
 
 ---
 

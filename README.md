@@ -220,6 +220,16 @@ Optional variables:
 npm run init-db
 ```
 
+The database structure is documented in [`docs/database/`](docs/database/) and is
+generated from the live schema. **After any schema change, refresh the docs:**
+
+```bash
+DATABASE_URL='postgresql://…' npm run db:docs   # read-only introspection; masks secrets, no row data
+```
+
+See [`docs/database/README.md`](docs/database/README.md). **Every schema-changing
+PR must run `npm run db:docs` and commit the regenerated `docs/database/*`.**
+
 ### 4. Seed admin user
 
 ```bash
