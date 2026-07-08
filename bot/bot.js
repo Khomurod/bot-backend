@@ -2,6 +2,7 @@ const { Telegraf, Markup } = require('telegraf');
 const config = require('../config/config');
 const { telegramClientOptions } = require('../services/telegramAgent');
 const db = require('../database/db');
+const botUsers = require('../database/botUsers');
 const { safeSend, isPermanentSendError: isPermanentSendErrorFromHtml } = require('../services/telegramHtml');
 const { normalizeMediaItems } = require('../services/scheduledMessageUtils');
 const { resolveLiveLocationForGroupTitle } = require('../services/liveLocationResolver');
@@ -116,6 +117,36 @@ async function captureUsersFromUpdate(ctx, group = null) {
   if (ctx.myChatMember?.from) add(ctx.myChatMember.from);
 
   await Promise.all(users.map(captureTelegramUser));
+
+  // Register the human sender of ANY message in a group into bot_users so the
+  // admin Users tab shows everyone the bot sees texting (not only button
+  // tappers). Detached + swallowed so it never slows or breaks processing, and
+  // opportunistically backfill a matching dispatch member's telegram_user_id.
+  const chat = ctx.chat;
+  const from = ctx.from;
+  const hasMessage = Boolean(ctx.message || ctx.editedMessage);
+  if (
+    hasMessage && from && from.id != null && !from.is_bot
+    && chat && (chat.type === 'group' || chat.type === 'supergroup')
+  ) {
+    botUsers.recordBotUserSeen({
+      telegramUserId: from.id,
+      username: from.username || null,
+      firstName: from.first_name || null,
+      lastName: from.last_name || null,
+      languageCode: from.language_code || null,
+      isBot: Boolean(from.is_bot),
+      groupId: group?.id ?? null,
+      chatId: chat.id,
+      groupName: chat.title || null,
+    }).catch(() => {});
+    if (from.username) {
+      botUsers.backfillDispatchMemberUserId({
+        telegramUserId: from.id,
+        username: from.username,
+      }).catch(() => {});
+    }
+  }
 
   if (group?.id) {
     await Promise.all(users

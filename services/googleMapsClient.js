@@ -154,6 +154,17 @@ async function testConnection({ apiKey, fetchImpl = fetch } = {}) {
     if (res.ok) return { connected: true, message: 'Routes API reachable and the key works.' };
     let detail = '';
     try { detail = (await res.json())?.error?.message || ''; } catch (_) { /* ignore */ }
+    // A 403 (or a PERMISSION_DENIED / "not been used"/"disabled" detail) almost
+    // always means the Routes API is simply not enabled for this key — say so
+    // explicitly so the admin knows exactly what to turn on in Google Cloud.
+    const looksDisabled = res.status === 403
+      || /permission_denied|not been used|is disabled|not enabled|api_key_service_blocked/i.test(detail);
+    if (looksDisabled) {
+      return {
+        connected: false,
+        message: `Routes API is not enabled for this key. ${detail}`.trim(),
+      };
+    }
     return { connected: false, message: `Routes API returned ${res.status}. ${detail}`.trim() };
   } catch (err) {
     return { connected: false, message: err.message };

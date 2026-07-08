@@ -153,7 +153,11 @@ async function parseRouteLink(url) {
     }
   }
   if (!parsed.parseable) {
-    throw serviceError('UNPARSEABLE_LINK', parsed.reason, 422);
+    // A place pin / bare map view (e.g. a shortened link that redirects to
+    // `/maps/@lat,lng`) is a distinct, common case — give it its own code so the
+    // UI can point the user at Directions or manual origin/destination entry.
+    const code = parsed.placeOrMapView ? 'PLACE_OR_MAP_VIEW' : 'UNPARSEABLE_LINK';
+    throw serviceError(code, parsed.reason, 422);
   }
   return parsed;
 }

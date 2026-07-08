@@ -72,7 +72,13 @@ CREATE TABLE bot_users (
   last_action text,
   last_group_id integer,
   first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
-  last_interaction_at timestamp with time zone DEFAULT now() NOT NULL
+  last_interaction_at timestamp with time zone DEFAULT now() NOT NULL,
+  last_seen_chat_id bigint,
+  last_group_name text,
+  language_code text,
+  is_bot boolean DEFAULT false,
+  message_count integer DEFAULT 0 NOT NULL,
+  source text
 );
 
 CREATE TABLE broadcast_button_clicks (

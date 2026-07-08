@@ -24,6 +24,31 @@ function loadService() {
   return require(servicePath);
 }
 
+/**
+ * Load the service with custom stubs for the modules a test cares about (merged
+ * over sensible defaults). Returns a fresh service instance bound to the stubs.
+ */
+function loadServiceWith(overrides = {}) {
+  const servicePath = path.resolve(__dirname, '../services/routeControlService.js');
+  const stubs = {
+    '../database/db.js': { async getDriverProfileByGroupId() { return null; } },
+    '../database/routeControl.js': {
+      async createRouteAssignment(a) { return { id: 1, ...a }; },
+      async insertRouteMonitorEvent() { return null; },
+    },
+    '../database/gmapsSettings.js': { async getGmapsConfig() { return {}; } },
+    '../services/googleMapsClient.js': {},
+    '../services/liveLocationResolver.js': { async resolveLiveLocationForGroupTitle() { return { location: null }; } },
+    '../services/telegramHtml.js': { safeSend: async (fn) => fn() },
+    ...overrides,
+  };
+  delete require.cache[servicePath];
+  for (const [rel, exports] of Object.entries(stubs)) {
+    require.cache[path.resolve(__dirname, rel)] = { exports };
+  }
+  return require(servicePath);
+}
+
 const service = loadService();
 const { evaluateAssignment } = service;
 
@@ -170,6 +195,60 @@ test('parseRouteLink resolves a standard directions link', async () => {
 test('parseRouteLink throws a clear error for an unreadable link', async () => {
   await assert.rejects(
     () => service.parseRouteLink('https://www.google.com/maps/@33.7,-84.3,12z'),
-    /manually|origin and destination/i
+    /manually|origin and destination|place\/map view/i
   );
+});
+
+test('parseRouteLink throws the specific place/map-view error for a /maps/@ link', async () => {
+  await assert.rejects(
+    () => service.parseRouteLink('https://www.google.com/maps/@44.94,-93.07,13z'),
+    (err) => {
+      assert.equal(err.code, 'PLACE_OR_MAP_VIEW');
+      assert.match(err.message, /place\/map view/i);
+      return true;
+    }
+  );
+});
+
+// ── assignRoute manual fallback ──
+
+test('assignRoute with manual origin/destination computes geometry when GMaps is enabled', async () => {
+  let computeArgs = null;
+  const svc = loadServiceWith({
+    '../database/gmapsSettings.js': {
+      async getGmapsConfig() { return { enabled: true, routesApiEnabled: true, serverApiKey: 'k' }; },
+    },
+    '../services/googleMapsClient.js': {
+      async computeRoute(args) {
+        computeArgs = args;
+        return { encodedPolyline: 'abc', distanceMeters: 1000, durationSeconds: 600 };
+      },
+    },
+  });
+  const result = await svc.assignRoute({
+    groupId: 7,
+    manual: { origin: 'Atlanta, GA', destination: 'Miami, FL', waypoints: ['Orlando, FL'] },
+  });
+  assert.equal(result.computed, true);
+  assert.equal(result.geometryPending, false);
+  assert.equal(computeArgs.origin.raw, 'Atlanta, GA');
+  assert.equal(computeArgs.destination.raw, 'Miami, FL');
+  assert.equal(computeArgs.waypoints[0].raw, 'Orlando, FL');
+  assert.equal(result.assignment.encodedPolyline, 'abc');
+});
+
+test('assignRoute with manual origin/destination stores geometry pending when GMaps is disabled', async () => {
+  const svc = loadServiceWith({
+    '../database/gmapsSettings.js': { async getGmapsConfig() { return { enabled: false }; } },
+    '../services/googleMapsClient.js': {
+      async computeRoute() { throw new Error('should not be called when GMaps is disabled'); },
+    },
+  });
+  const result = await svc.assignRoute({
+    groupId: 7,
+    manual: { origin: 'Atlanta, GA', destination: 'Miami, FL' },
+  });
+  assert.equal(result.computed, false);
+  assert.equal(result.geometryPending, true);
+  assert.equal(result.assignment.encodedPolyline, null);
 });

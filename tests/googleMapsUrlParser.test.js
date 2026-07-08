@@ -67,11 +67,52 @@ test('flags a shortened Google Maps link (not parseable, must be expanded)', () 
   assert.equal(isShortLinkHost('maps.app.goo.gl'), true);
 });
 
-test('returns a clear error for an opaque link with no directions', () => {
+test('parses a desktop /maps/dir/ directions link', () => {
+  const p = parseDirectionsUrl('https://www.google.com/maps/dir/Chicago,+IL/Dallas,+TX/');
+  assert.equal(p.parseable, true);
+  assert.equal(p.origin.raw, 'Chicago, IL');
+  assert.equal(p.destination.raw, 'Dallas, TX');
+});
+
+test('parses a mobile maps.google.com directions link', () => {
+  const p = parseDirectionsUrl(
+    'https://maps.google.com/maps/dir/?api=1&origin=Chicago,IL&destination=Dallas,TX'
+  );
+  assert.equal(p.parseable, true);
+  assert.equal(p.origin.raw, 'Chicago,IL');
+  assert.equal(p.destination.raw, 'Dallas,TX');
+});
+
+test('returns the specific place/map-view error for a bare /maps/@ map view', () => {
   const p = parseDirectionsUrl('https://www.google.com/maps/@33.7,-84.3,12z');
   assert.equal(p.parseable, false);
   assert.equal(p.isShortLink, false);
-  assert.match(p.reason, /origin and destination|directions/i);
+  assert.equal(p.placeOrMapView, true);
+  assert.match(p.reason, /place\/map view/i);
+});
+
+test('returns the specific place/map-view error for a /maps/place link', () => {
+  const p = parseDirectionsUrl('https://www.google.com/maps/place/Somewhere/@33.7,-84.3,12z');
+  assert.equal(p.parseable, false);
+  assert.equal(p.placeOrMapView, true);
+  assert.match(p.reason, /place\/map view|manually/i);
+});
+
+test('a short link expanding to a /maps/@ map view is rejected clearly (mock fetchImpl)', async () => {
+  // Mirrors the real maps.app.goo.gl/nfC9… case: 302 → a bare map view with no
+  // origin/destination. Expansion succeeds but parsing must reject specifically.
+  const mapView = 'https://www.google.com/maps/@44.94,-93.07,4666a,13.1y/data=abc';
+  const fetchImpl = async () => ({
+    status: 302,
+    url: 'https://maps.app.goo.gl/nfC9vyrCuCddTqJT6',
+    headers: { get: (h) => (h === 'location' ? mapView : null) },
+  });
+  const expanded = await expandShortLink('https://maps.app.goo.gl/nfC9vyrCuCddTqJT6', { fetchImpl });
+  assert.equal(expanded, mapView);
+  const p = parseDirectionsUrl(expanded);
+  assert.equal(p.parseable, false);
+  assert.equal(p.placeOrMapView, true);
+  assert.match(p.reason, /place\/map view/i);
 });
 
 test('rejects a non-Google URL with a clear error', () => {
