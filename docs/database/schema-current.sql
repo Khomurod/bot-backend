@@ -1425,3 +1425,75 @@ CREATE INDEX idx_safety_event_video_jobs_status_created ON public.safety_event_v
 CREATE INDEX idx_scheduled_messages_pending_due ON public.scheduled_messages USING btree (scheduled_at) WHERE (status = 'pending'::text);
 CREATE INDEX idx_service_runs_ran_at ON public.service_runs USING btree (ran_at DESC);
 
+
+-- ── Smart BOL/POD intake from driver Telegram groups ──
+CREATE TABLE public.telegram_document_batches (
+    id bigint NOT NULL,
+    telegram_chat_id bigint NOT NULL,
+    group_id integer,
+    telegram_user_id bigint,
+    sender_username text,
+    media_group_id text,
+    status text DEFAULT 'collecting'::text NOT NULL,
+    detected_doc_type text,
+    datatruck_order_id text,
+    datatruck_load_reference text,
+    match_confidence text,
+    confidence double precision,
+    ai_summary text,
+    confirmation_chat_id bigint,
+    confirmation_message_id bigint,
+    decided_by_user_id bigint,
+    decided_by_username text,
+    claimed_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    expires_at timestamp with time zone,
+    CONSTRAINT telegram_document_batches_status_check CHECK ((status = ANY (ARRAY['collecting'::text, 'classifying'::text, 'waiting_confirmation'::text, 'uploading'::text, 'uploaded'::text, 'ignored'::text, 'failed'::text, 'needs_review'::text, 'duplicate'::text, 'no_match'::text]))),
+    CONSTRAINT telegram_document_batches_doc_type_check CHECK (((detected_doc_type IS NULL) OR (detected_doc_type = ANY (ARRAY['bol'::text, 'pod'::text, 'both'::text, 'unrelated'::text, 'unclear'::text])))),
+    CONSTRAINT telegram_document_batches_pkey PRIMARY KEY (id),
+    CONSTRAINT telegram_document_batches_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.groups(id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX idx_tg_doc_batches_media_group ON public.telegram_document_batches USING btree (media_group_id) WHERE (media_group_id IS NOT NULL);
+CREATE INDEX idx_tg_doc_batches_open ON public.telegram_document_batches USING btree (telegram_chat_id, telegram_user_id, created_at DESC) WHERE (status = 'collecting'::text);
+CREATE INDEX idx_tg_doc_batches_status ON public.telegram_document_batches USING btree (status, created_at DESC);
+
+CREATE TABLE public.telegram_document_files (
+    id bigint NOT NULL,
+    batch_id bigint NOT NULL,
+    telegram_file_id text,
+    telegram_file_unique_id text,
+    telegram_message_id bigint,
+    file_name text,
+    mime_type text,
+    file_size bigint,
+    kind text,
+    local_path text,
+    sha256 text,
+    sort_order integer DEFAULT 0 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT telegram_document_files_pkey PRIMARY KEY (id),
+    CONSTRAINT telegram_document_files_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.telegram_document_batches(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX idx_tg_doc_files_unique_id ON public.telegram_document_files USING btree (telegram_file_unique_id) WHERE (telegram_file_unique_id IS NOT NULL);
+CREATE INDEX idx_tg_doc_files_batch ON public.telegram_document_files USING btree (batch_id, sort_order, id);
+
+CREATE TABLE public.datatruck_upload_attempts (
+    id bigint NOT NULL,
+    batch_id bigint,
+    order_id text,
+    load_reference text,
+    document_type text,
+    sha256 text,
+    status text DEFAULT 'pending'::text NOT NULL,
+    dry_run boolean DEFAULT false NOT NULL,
+    datatruck_document_id text,
+    error_message text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT datatruck_upload_attempts_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'uploaded'::text, 'skipped_duplicate'::text, 'dry_run'::text, 'failed'::text]))),
+    CONSTRAINT datatruck_upload_attempts_pkey PRIMARY KEY (id),
+    CONSTRAINT datatruck_upload_attempts_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.telegram_document_batches(id) ON DELETE SET NULL
+);
+CREATE INDEX idx_dt_upload_attempts_order ON public.datatruck_upload_attempts USING btree (order_id, document_type, status);
+CREATE INDEX idx_dt_upload_attempts_sha ON public.datatruck_upload_attempts USING btree (sha256) WHERE (sha256 IS NOT NULL);

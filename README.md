@@ -137,6 +137,59 @@ with a short caption.
 > against `DATATRUCK_DOC_MEDIA_BASE_URL`; already-absolute links pass through
 > unchanged, so if Datatruck later returns full URLs no config change is needed.
 
+## Smart BOL/POD intake (driver → Datatruck upload)
+
+The reverse direction: when a **driver** sends BOL/POD documents **in their
+driver Telegram group**, the bot detects them, classifies them with AI, matches
+them to the correct Datatruck load, and — only after an inline-button
+confirmation from an authorized person — uploads them to that load. **Off by
+default**, and **dry-run by default** even once enabled.
+
+Flow: detect PDF/image attachment(s) → group an album / quick burst into one
+batch (debounced) → AI classifies (BOL / POD / both / unrelated / unclear,
+conservatively) → match to the driver's active Datatruck load (group → unit →
+active order, load numbers/addresses, and GPS: near pickup ⇒ BOL, near delivery
+⇒ POD) → post a **✅ Yes / ❌ No / 🗑 Disregard** card → on Yes, merge the files
+into one PDF and upload.
+
+Safety properties:
+
+- **Never auto-uploads.** An upload always requires a human Yes. Unrelated →
+  ignored; unclear/both → human review; no load or a **mismatch** → human review
+  (no one-click upload to a possibly-wrong load).
+- **Authorized clickers only** — dispatch/accounting/global admins, the group's
+  Telegram admins, and a configurable approver list. Random chatter cannot upload.
+- **Idempotent** — an atomic `waiting_confirmation → uploading` claim plus a
+  content-hash duplicate check mean double-clicks and re-sends never upload twice.
+- **No loops** — files forwarded from a bot are ignored on intake, and the
+  Datatruck→Telegram forwarder suppresses re-forwarding a document our own bot
+  uploaded.
+- **Merging** is in-memory (pdf-lib): multiple images/PDFs → one PDF in message
+  order; oversized/unsupported inputs are refused, never uploaded broken.
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATATRUCK_DOC_UPLOAD_ENABLED` | `false` | Master switch for the whole intake pipeline |
+| `DATATRUCK_DOC_UPLOAD_DRY_RUN` | `true` | Do everything except the real upload (simulate + log); set `false` for live |
+| `DATATRUCK_DOC_INTAKE_BATCH_WAIT_SECONDS` | `6` | Debounce window to collect an album / burst |
+| `DATATRUCK_DOC_INTAKE_MAX_FILES` | `12` | Max files in one batch |
+| `DATATRUCK_DOC_INTAKE_MAX_FILE_MB` | `20` | Max size of a single accepted file |
+| `DATATRUCK_DOC_UPLOAD_APPROVERS` | _(none)_ | Extra approvers (usernames and/or numeric ids, comma-separated) |
+| `DATATRUCK_DOC_UPLOAD_PATH` | `orders/{orderId}/documents/` | Upload endpoint path (see note) |
+| `DATATRUCK_DOC_UPLOAD_FILE_FIELD` | `file` | Multipart file field name |
+| `GEMINI_API_KEY` | _(none)_ | Enables AI classification (vision). Without it, everything is routed to human review |
+
+Ops status: `GET /api/datatruck-docs/status` (admin auth) reports enabled/dry-run,
+AI/Datatruck readiness, batch status counts, and recent detected batches.
+
+> ⚠️ **Upload endpoint is unverified against the public docs.** Datatruck's
+> public OpenAPI documents *reading* an order's `documents` array but does **not**
+> document an upload endpoint. The client posts `multipart/form-data` to the
+> conventional `orders/{orderId}/documents/` path with a `file_type` field; the
+> path and file field are overridable via the env vars above so the exact,
+> Datatruck-confirmed values can be set without a code change. **Keep dry-run on
+> until the live endpoint is confirmed.**
+
 ## Tech Stack
 
 - **Backend:** Node.js, Telegraf, Express.js

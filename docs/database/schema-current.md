@@ -21,6 +21,7 @@ Generated from an introspected database (76 tables). Structure only — no row d
 - [`chat_logs`](#chat_logs) — 🟢 active — Captured Telegram group messages used for AI insights/annotations.
 - [`chat_message_annotations`](#chat_message_annotations) — 🟢 active
 - [`datatruck_document_deliveries`](#datatruck_document_deliveries) — 🟢 active
+- [`datatruck_upload_attempts`](#datatruck_upload_attempts) — 🟢 active
 - [`dispatch_eta_global_settings`](#dispatch_eta_global_settings) — 🟢 active
 - [`dispatch_eta_updates`](#dispatch_eta_updates) — 🟢 active
 - [`dispatch_team_drivers`](#dispatch_team_drivers) — 🟢 active
@@ -85,6 +86,8 @@ Generated from an introspected database (76 tables). Structure only — no row d
 - [`scheduled_messages`](#scheduled_messages) — 🟢 active
 - [`sender_role_consensus`](#sender_role_consensus) — 🟢 active
 - [`service_runs`](#service_runs) — 🟢 active
+- [`telegram_document_batches`](#telegram_document_batches) — 🟢 active
+- [`telegram_document_files`](#telegram_document_files) — 🟢 active
 
 ## admins
 
@@ -400,6 +403,35 @@ Generated from an introspected database (76 tables). Structure only — no row d
 - **Indexes:**
   - `CREATE INDEX idx_datatruck_document_deliveries_group ON public.datatruck_document_deliveries USING btree (group_id, created_at DESC)`
   - `CREATE INDEX idx_datatruck_document_deliveries_status ON public.datatruck_document_deliveries USING btree (status, created_at DESC)`
+
+## datatruck_upload_attempts
+
+- **Status:** 🟢 active
+- **Purpose:** One row per attempt to upload a confirmed BOL/POD to Datatruck (smart intake pipeline). Records dry-run vs live, the returned Datatruck document id, and the content hash — used both for duplicate-upload prevention and so the Datatruck→Telegram forwarding poller can recognise a bot-originated upload and suppress re-forwarding it (loop prevention).
+
+| Column | Type | Nullability |
+|---|---|---|
+| `id` | `bigint` | NOT NULL default `nextval('datatruck_upload_attempts_id_seq'::regclass)` |
+| `batch_id` | `bigint` | null |
+| `order_id` | `text` | null |
+| `load_reference` | `text` | null |
+| `document_type` | `text` | null |
+| `sha256` | `text` | null |
+| `status` | `text` | NOT NULL default `'pending'::text` |
+| `dry_run` | `boolean` | NOT NULL default `false` |
+| `datatruck_document_id` | `text` | null |
+| `error_message` | `text` | null |
+| `created_at` | `timestamp with time zone` | NOT NULL default `now()` |
+| `updated_at` | `timestamp with time zone` | NOT NULL default `now()` |
+
+- **Primary key:** `PRIMARY KEY (id)`
+- **Foreign keys:**
+  - `FOREIGN KEY (batch_id) REFERENCES telegram_document_batches(id) ON DELETE SET NULL`
+- **Checks:**
+  - `CHECK ((status = ANY (ARRAY['pending'::text, 'uploaded'::text, 'skipped_duplicate'::text, 'dry_run'::text, 'failed'::text])))`
+- **Indexes:**
+  - `CREATE INDEX idx_dt_upload_attempts_order ON public.datatruck_upload_attempts USING btree (order_id, document_type, status)`
+  - `CREATE INDEX idx_dt_upload_attempts_sha ON public.datatruck_upload_attempts USING btree (sha256) WHERE (sha256 IS NOT NULL)`
 
 ## dispatch_eta_global_settings
 
@@ -2135,4 +2167,72 @@ Wishing you a fantastic day and a great year ahead!
   - `UNIQUE (service_name, run_key)`
 - **Indexes:**
   - `CREATE INDEX idx_service_runs_ran_at ON public.service_runs USING btree (ran_at DESC)`
+
+## telegram_document_batches
+
+- **Status:** 🟢 active
+- **Purpose:** Smart BOL/POD intake — one row per batch of related PDF/image attachments a driver sends in their Telegram group. Tracks the pipeline lifecycle (collecting → classifying → waiting_confirmation → uploading → uploaded/ignored/…), the AI-detected doc type + confidence, the matched Datatruck order/load + match confidence, the inline-confirmation message, and who decided. Makes intake restart-safe and idempotent.
+
+| Column | Type | Nullability |
+|---|---|---|
+| `id` | `bigint` | NOT NULL default `nextval('telegram_document_batches_id_seq'::regclass)` |
+| `telegram_chat_id` | `bigint` | NOT NULL |
+| `group_id` | `integer` | null |
+| `telegram_user_id` | `bigint` | null |
+| `sender_username` | `text` | null |
+| `media_group_id` | `text` | null |
+| `status` | `text` | NOT NULL default `'collecting'::text` |
+| `detected_doc_type` | `text` | null |
+| `datatruck_order_id` | `text` | null |
+| `datatruck_load_reference` | `text` | null |
+| `match_confidence` | `text` | null |
+| `confidence` | `double precision` | null |
+| `ai_summary` | `text` | null |
+| `confirmation_chat_id` | `bigint` | null |
+| `confirmation_message_id` | `bigint` | null |
+| `decided_by_user_id` | `bigint` | null |
+| `decided_by_username` | `text` | null |
+| `claimed_at` | `timestamp with time zone` | null |
+| `created_at` | `timestamp with time zone` | NOT NULL default `now()` |
+| `updated_at` | `timestamp with time zone` | NOT NULL default `now()` |
+| `expires_at` | `timestamp with time zone` | null |
+
+- **Primary key:** `PRIMARY KEY (id)`
+- **Foreign keys:**
+  - `FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE SET NULL`
+- **Checks:**
+  - `CHECK (status IN ('collecting','classifying','waiting_confirmation','uploading','uploaded','ignored','failed','needs_review','duplicate','no_match'))`
+  - `CHECK (detected_doc_type IS NULL OR detected_doc_type IN ('bol','pod','both','unrelated','unclear'))`
+- **Indexes:**
+  - `CREATE UNIQUE INDEX idx_tg_doc_batches_media_group ON public.telegram_document_batches USING btree (media_group_id) WHERE (media_group_id IS NOT NULL)`
+  - `CREATE INDEX idx_tg_doc_batches_open ON public.telegram_document_batches USING btree (telegram_chat_id, telegram_user_id, created_at DESC) WHERE (status = 'collecting'::text)`
+  - `CREATE INDEX idx_tg_doc_batches_status ON public.telegram_document_batches USING btree (status, created_at DESC)`
+
+## telegram_document_files
+
+- **Status:** 🟢 active
+- **Purpose:** Smart BOL/POD intake — one row per attached file within a batch. The UNIQUE `telegram_file_unique_id` is the dedup guard (a resent/echoed file is ignored). `sha256` is the content hash used for duplicate-upload prevention and loop detection. Ordered by `sort_order` (Telegram message order) so merged PDFs keep page order.
+
+| Column | Type | Nullability |
+|---|---|---|
+| `id` | `bigint` | NOT NULL default `nextval('telegram_document_files_id_seq'::regclass)` |
+| `batch_id` | `bigint` | NOT NULL |
+| `telegram_file_id` | `text` | null |
+| `telegram_file_unique_id` | `text` | null |
+| `telegram_message_id` | `bigint` | null |
+| `file_name` | `text` | null |
+| `mime_type` | `text` | null |
+| `file_size` | `bigint` | null |
+| `kind` | `text` | null |
+| `local_path` | `text` | null |
+| `sha256` | `text` | null |
+| `sort_order` | `integer` | NOT NULL default `0` |
+| `created_at` | `timestamp with time zone` | NOT NULL default `now()` |
+
+- **Primary key:** `PRIMARY KEY (id)`
+- **Foreign keys:**
+  - `FOREIGN KEY (batch_id) REFERENCES telegram_document_batches(id) ON DELETE CASCADE`
+- **Indexes:**
+  - `CREATE UNIQUE INDEX idx_tg_doc_files_unique_id ON public.telegram_document_files USING btree (telegram_file_unique_id) WHERE (telegram_file_unique_id IS NOT NULL)`
+  - `CREATE INDEX idx_tg_doc_files_batch ON public.telegram_document_files USING btree (batch_id, sort_order, id)`
 

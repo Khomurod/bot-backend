@@ -662,6 +662,35 @@ async function setDriverProfileTelegramIdentity(groupId, { telegramUserId, teleg
   return getDriverProfileByGroupId(Number(groupId)).catch(() => res.rows[0] || null);
 }
 
+/**
+ * Opportunistically backfill a driver profile's telegram_user_id the first time
+ * the bot sees the admin-entered @username actually texting in that driver's
+ * group. Enables the more reliable tg://user?id mention for drivers linked by
+ * manual username only. Safe by construction:
+ *   - fills a NULL telegram_user_id ONLY (never overwrites an admin selection);
+ *   - scoped to the driver_profile of the group the message came from, so a
+ *     same-username user texting in a different group can never hijack the id;
+ *   - matches case-insensitively against the stored (normalized) username.
+ * Best-effort; callers ignore failure.
+ * @returns {Promise<boolean>} true when a row's id was filled.
+ */
+async function backfillDriverProfileTelegramUserId({ groupId, telegramUserId, username } = {}) {
+  const gid = Number(groupId);
+  const id = normalizeTelegramUserId(telegramUserId);
+  const uname = normalizeTelegramUsername(username);
+  if (!Number.isInteger(gid) || gid <= 0 || !id || !uname) return false;
+  const res = await query(
+    `UPDATE driver_profiles
+        SET telegram_user_id = $2, updated_at = NOW()
+      WHERE group_id = $1
+        AND telegram_user_id IS NULL
+        AND telegram_username IS NOT NULL
+        AND LOWER(telegram_username) = $3`,
+    [gid, id, uname]
+  );
+  return (res.rowCount || 0) > 0;
+}
+
 async function updateGroupSamsaraId(groupId, samsaraId) {
   const normalized = samsaraId ? String(samsaraId).trim() : null;
   const res = await query(
@@ -3450,6 +3479,7 @@ module.exports = {
   completeDispatchEtaUpdateFailure,
   // Fuel Monitor (gas-station proximity alerts)
   setDriverProfileTelegramIdentity,
+  backfillDriverProfileTelegramUserId,
   createFuelStopAlert,
   claimDueFuelStopAlerts,
   claimFuelStopAlertById,

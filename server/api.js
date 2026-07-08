@@ -1318,6 +1318,51 @@ app.get('/api/driver-profiles', authMiddleware, async (req, res) => {
   }
 });
 
+// Smart BOL/POD intake — read-only status/ops surface: whether the feature is
+// on, dry-run vs live, AI/Datatruck readiness, and recent detected batches
+// (waiting/uploaded/ignored/failed/duplicate). Supportable without overbuilding.
+app.get('/api/datatruck-docs/status', authMiddleware, async (req, res) => {
+  try {
+    const telegramDocs = require('../database/telegramDocuments');
+    const datatruck = require('../services/datatruckApiService');
+    const classifier = require('../services/documentClassifierService');
+    const [counts, recent] = await Promise.all([
+      telegramDocs.batchStatusCounts().catch(() => ({})),
+      telegramDocs.listRecentBatches(50).catch(() => []),
+    ]);
+    res.json({
+      feature: {
+        intakeEnabled: config.datatruckDocUploadEnabled,
+        mode: config.datatruckDocUploadDryRun ? 'dry_run' : 'live',
+        batchWaitSeconds: config.datatruckDocIntakeBatchWaitSeconds,
+        maxFiles: config.datatruckDocIntakeMaxFiles,
+        maxFileMb: config.datatruckDocIntakeMaxFileMb,
+        approverCount: (config.datatruckDocUploadApprovers || []).length,
+      },
+      services: {
+        datatruckConfigured: datatruck.isConfigured(),
+        aiClassifierConfigured: classifier.isConfigured(),
+        forwardingEnabled: config.datatruckDocDeliveryEnabled,
+      },
+      counts,
+      recentBatches: (recent || []).map((b) => ({
+        id: b.id,
+        status: b.status,
+        doc_type: b.detected_doc_type,
+        load: b.datatruck_load_reference,
+        match_confidence: b.match_confidence,
+        ai_confidence: b.confidence,
+        files: Number(b.file_count) || 0,
+        created_at: b.created_at,
+        updated_at: b.updated_at,
+      })),
+    });
+  } catch (err) {
+    console.error('[API] datatruck-docs status error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 app.put('/api/driver-profiles/:id', authMiddleware, async (req, res) => {
   try {
     const id = Number(req.params.id);

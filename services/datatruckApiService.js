@@ -108,6 +108,106 @@ async function fetchAllDrivers() {
   return fetchAllPages('drivers/list/');
 }
 
+/** Never let a token leak into a log/error string. */
+function maskToken(text) {
+  const token = config.datatruckApiToken;
+  if (!token) return String(text == null ? '' : text);
+  return String(text == null ? '' : text).split(token).join('***');
+}
+
+/**
+ * Fetch a single order by id (read-only). Returns the full order object,
+ * including its inline `documents` array. Used for duplicate-document checks
+ * before an upload.
+ */
+async function fetchOrderById(orderId) {
+  if (!isConfigured()) {
+    throw new Error('Datatruck API is not configured (DATATRUCK_API_TOKEN / DATATRUCK_COMPANY).');
+  }
+  const id = encodeURIComponent(String(orderId));
+  return fetchJson(`${baseUrl()}/orders/${id}/`);
+}
+
+/**
+ * List the documents already attached to an order (read-only). Each row has
+ * { file_type, file_link, uploaded_at, uploaded_by }. Returns [] when the order
+ * has none or cannot be read.
+ */
+async function listOrderDocuments(orderId) {
+  const order = await fetchOrderById(orderId).catch(() => null);
+  return Array.isArray(order?.documents) ? order.documents : [];
+}
+
+// Document-upload wiring. IMPORTANT: the public Datatruck OpenAPI (apidocs.
+// datatruck.io) documents reading documents inline on an order but does NOT
+// document an upload endpoint. The path + field name below follow the standard
+// Django-REST convention and are overridable via env so ops can set the exact,
+// Datatruck-confirmed values WITHOUT a code change. Live upload stays gated
+// behind DATATRUCK_DOC_UPLOAD_DRY_RUN (default dry-run) precisely because this
+// endpoint is unverified against the public docs.
+function uploadPathFor(orderId) {
+  const tmpl = String(process.env.DATATRUCK_DOC_UPLOAD_PATH || 'orders/{orderId}/documents/');
+  return tmpl.replace('{orderId}', encodeURIComponent(String(orderId)));
+}
+
+/**
+ * Upload one document to an order (multipart/form-data). Low-level: no dry-run,
+ * no duplicate check, no DB — the caller (intake pipeline) owns that policy.
+ * Never logs the API token.
+ *
+ * @param {object} p
+ * @param {string|number} p.orderId
+ * @param {string} p.documentType  bill_of_lading | proof_of_delivery
+ * @param {Buffer} p.fileBuffer
+ * @param {string} p.filename
+ * @param {string} [p.mimeType]
+ * @returns {Promise<{documentId:(string|null), fileLink:(string|null), raw:object}>}
+ */
+async function uploadOrderDocument({ orderId, documentType, fileBuffer, filename, mimeType = 'application/pdf' }) {
+  if (!isConfigured()) {
+    throw new Error('Datatruck API is not configured (DATATRUCK_API_TOKEN / DATATRUCK_COMPANY).');
+  }
+  if (!orderId) throw new Error('uploadOrderDocument: orderId is required.');
+  if (!Buffer.isBuffer(fileBuffer) || fileBuffer.length === 0) {
+    throw new Error('uploadOrderDocument: a non-empty fileBuffer is required.');
+  }
+  const fileField = String(process.env.DATATRUCK_DOC_UPLOAD_FILE_FIELD || 'file');
+  const form = new FormData();
+  form.set('file_type', String(documentType));
+  form.set(
+    fileField,
+    new Blob([fileBuffer], { type: mimeType }),
+    filename || 'document.pdf'
+  );
+
+  const url = `${baseUrl()}/${uploadPathFor(orderId)}`;
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      // Only the auth header — do NOT set Content-Type so fetch adds the
+      // multipart boundary itself.
+      headers: { Authorization: `Token ${config.datatruckApiToken}` },
+      body: form,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch (err) {
+    throw new Error(`Datatruck upload request failed: ${maskToken(err.message)}`);
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    const err = new Error(`Datatruck upload ${res.status}: ${maskToken(body).slice(0, 300)}`);
+    err.status = res.status;
+    throw err;
+  }
+  const raw = await res.json().catch(() => ({}));
+  return {
+    documentId: raw?.id != null ? String(raw.id) : null,
+    fileLink: raw?.file_link || null,
+    raw,
+  };
+}
+
 /**
  * All orders with pickup_time within [startIso, endIso] (UTC ISO strings),
  * including trip mileage and assigned/team driver names.
@@ -311,6 +411,10 @@ async function fetchActiveOrderForUnit(unitNumber, {
 module.exports = {
   isConfigured,
   fetchAllDrivers,
+  fetchOrderById,
+  listOrderDocuments,
+  uploadOrderDocument,
+  maskToken,
   fetchOrdersByPickupWindow,
   fetchOrdersByDeliveryWindow,
   fetchOrdersByDocumentWindow,

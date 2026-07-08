@@ -36,6 +36,7 @@ const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedCont
 const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
 const { registerRouteControlHandlers } = require('./routeControlHandlers');
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
+const { registerDocumentIntakeHandlers } = require('./documentIntakeHandlers');
 const { registerLocationCheckinHandlers } = require('./locationCheckinHandlers');
 const { registerCreatorMessageManager } = require('./creatorMessageManager');
 const { registerCreatorControlPanel } = require('./creatorBroadcastHandlers');
@@ -145,6 +146,17 @@ async function captureUsersFromUpdate(ctx, group = null) {
         telegramUserId: from.id,
         username: from.username,
       }).catch(() => {});
+      // Backfill the stable numeric id onto a driver profile that the admin
+      // linked by @username only, the first time that username actually texts
+      // in its own group. Scoped to this group, and only fills a NULL id, so it
+      // can never mislabel the driver.
+      if (group?.id) {
+        db.backfillDriverProfileTelegramUserId({
+          groupId: group.id,
+          telegramUserId: from.id,
+          username: from.username,
+        }).catch(() => {});
+      }
     }
   }
 
@@ -875,6 +887,11 @@ async function startBot() {
 
     // Driver location check-in Yes / No buttons (driver answers).
     registerLocationCheckinHandlers(bot);
+
+    // Smart BOL/POD intake: detect driver-sent documents, classify, and
+    // confirm upload to Datatruck via Yes/No/Disregard buttons. Registered
+    // before the callback_query catch-all so its dtdoc: actions are handled.
+    registerDocumentIntakeHandlers(bot);
 
     // ── Handler: confirmation broadcast button clicks ──
     bot.action(/^bcast_(\d+)_(\d+)$/, async (ctx) => {
