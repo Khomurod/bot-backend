@@ -36,6 +36,7 @@ const { readLoadContextWithFallbacks } = require('../services/dispatchPinnedCont
 const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
 const { registerRouteControlHandlers } = require('./routeControlHandlers');
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
+const { registerDocumentIntakeHandlers } = require('./documentIntakeHandlers');
 const { registerLocationCheckinHandlers } = require('./locationCheckinHandlers');
 const { registerCreatorMessageManager } = require('./creatorMessageManager');
 const { registerCreatorControlPanel } = require('./creatorBroadcastHandlers');
@@ -886,6 +887,11 @@ async function startBot() {
 
     // Driver location check-in Yes / No buttons (driver answers).
     registerLocationCheckinHandlers(bot);
+
+    // Smart BOL/POD intake: detect driver-sent documents, classify, and
+    // confirm upload to Datatruck via Yes/No/Disregard buttons. Registered
+    // before the callback_query catch-all so its dtdoc: actions are handled.
+    registerDocumentIntakeHandlers(bot);
 
     // ── Handler: confirmation broadcast button clicks ──
     bot.action(/^bcast_(\d+)_(\d+)$/, async (ctx) => {
