@@ -1,4 +1,3 @@
-const OpenAI = require('openai');
 const config = require('../config/config');
 
 let openai = null;
@@ -8,6 +7,10 @@ function getClient() {
     if (!config.openaiApiKey) {
       throw new Error('OPENAI_API_KEY is not configured');
     }
+    // Lazy-require: the OpenAI SDK costs ~3 MB RSS at require time and this
+    // module is imported by server/api.js at boot, so the SDK only loads when
+    // a translation is actually requested.
+    const OpenAI = require('openai');
     openai = new OpenAI({ apiKey: config.openaiApiKey });
   }
   return openai;

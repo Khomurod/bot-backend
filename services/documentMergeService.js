@@ -10,8 +10,16 @@
  * in-memory with pdf-lib (pure JS, no native deps) — there are no temp files to
  * leak or clean up. If any input can't be embedded, we throw rather than upload
  * a broken/partial file.
+ *
+ * pdf-lib costs ~6 MB RSS just to require, and this module sits on the bot's
+ * boot path (bot.js → documentIntakeHandlers → bolPodTestMonitorService), so
+ * the library is loaded lazily on first merge instead of at startup.
  */
-const { PDFDocument } = require('pdf-lib');
+let _PDFDocument = null;
+function getPDFDocument() {
+  if (!_PDFDocument) ({ PDFDocument: _PDFDocument } = require('pdf-lib'));
+  return _PDFDocument;
+}
 
 const JPEG = Buffer.from([0xff, 0xd8, 0xff]);
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
@@ -66,6 +74,7 @@ async function mergeToPdf(files, { maxOutputBytes = 45 * 1024 * 1024 } = {}) {
   const list = (files || []).filter((f) => f && Buffer.isBuffer(f.buffer) && f.buffer.length > 0);
   if (!list.length) throw new Error('mergeToPdf: no files to merge.');
 
+  const PDFDocument = getPDFDocument();
   const out = await PDFDocument.create();
   for (const f of list) {
     const kind = detectKind(f.buffer, f.mimeType);

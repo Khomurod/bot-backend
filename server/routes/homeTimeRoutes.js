@@ -23,6 +23,10 @@ const { homeTimePolicyApplies } = require('../../services/homeTimeConstants');
 const { listCanonicalDriverGroups } = require('../../services/driverGroupDirectoryService');
 
 const SCREENSHOT_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+// Screenshots are held in memory (multer.memoryStorage) while AI vision reads
+// them, so besides the per-file cap the whole batch is bounded: 12 × 8MB could
+// otherwise stack 96MB in RAM on a 256MB-heap instance.
+const MAX_SCREENSHOT_BATCH_BYTES = 40 * 1024 * 1024;
 const screenshotUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024, files: 12 },
@@ -305,6 +309,13 @@ function createHomeTimeRouter({ authMiddleware }) {
       }
       if (!req.files || !req.files.length) {
         return res.status(400).json({ error: 'Upload at least one screenshot.' });
+      }
+      const totalBytes = req.files.reduce((sum, f) => sum + (f.size || 0), 0);
+      if (totalBytes > MAX_SCREENSHOT_BATCH_BYTES) {
+        return res.status(400).json({
+          error: `Screenshot batch is too large (${(totalBytes / 1024 / 1024).toFixed(0)}MB > `
+            + `${MAX_SCREENSHOT_BATCH_BYTES / 1024 / 1024}MB total). Upload fewer/smaller screenshots.`,
+        });
       }
       try {
         const rows = await homeTimeImport.extractAndMatch(req.files);
