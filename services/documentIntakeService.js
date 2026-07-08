@@ -7,15 +7,18 @@
  * Two entry points:
  *   processCollectedBatch(batchId, deps) — download files → classify → match →
  *     decide the next state and produce the message/keyboard the bot should send.
- *   handleConfirmation({ batchId, action, user, authorized }, deps) — react to a
+ *   handleConfirmation({ batchId, action, user }, deps) — react to a
  *     Yes/No/Disregard button press, atomically and idempotently.
  *
  * Safety invariants enforced here:
  *   - An upload confirmation (Yes buttons) is only ever offered for a concrete
  *     bol/pod type WITH a matched Datatruck order. Unrelated → ignored; unclear
  *     or "both" → needs_review; no load → no_match. None of those can upload.
- *   - Yes requires authorization AND an atomic claim, so an unauthorized user or
- *     a double-click can never cause an upload (or a second upload).
+ *   - The buttons are GROUP-OPEN: anyone who can see the card may press them (no
+ *     uploader authorization). Duplicate uploads are still impossible because Yes
+ *     depends on an atomic waiting_confirmation→uploading claim, so a double-click
+ *     or two simultaneous clickers still upload at most once. Who clicked is
+ *     recorded (decided_by_*) for audit only, never for permission.
  */
 const helpers = require('./documentIntakeHelpers');
 const classifierDefault = require('./documentClassifierService');
@@ -130,16 +133,18 @@ async function processCollectedBatch(batchId, deps = {}) {
 }
 
 /**
- * Handle a Yes/No/Disregard press. `authorized` is precomputed by the caller
- * (dispatch/accounting/global admins + configured approvers + group admins).
- * Returns { handled, reply, alert?, status } — reply is what to show the user.
+ * Handle a Yes/No/Disregard press. The buttons are group-open — anyone who can
+ * see the card may press them, so there is no authorization check. Who clicked is
+ * recorded (decided_by_*) for audit only. Returns { handled, reply, status } —
+ * reply is what to show the user.
  */
-async function handleConfirmation({ batchId, action, user = {}, authorized = false }, deps = {}) {
+async function handleConfirmation({ batchId, action, user = {} }, deps = {}) {
   const docs = deps.docs || require('../database/telegramDocuments');
   const uploader = deps.uploader || require('./datatruckUploadService');
   const downloadFile = deps.downloadFile;
 
-  const decidedBy = { decidedByUserId: user.id != null ? String(user.id) : null, decidedByUsername: user.username || null };
+  // Audit only: who pressed the button (never used for permission).
+  const decidedBy = helpers.describeClicker(user);
 
   const batch = await docs.getBatchById(batchId);
   if (!batch) return { handled: false, reply: 'This document request is no longer available.' };
@@ -157,10 +162,9 @@ async function handleConfirmation({ batchId, action, user = {}, authorized = fal
   }
 
   if (action === 'yes') {
-    if (!authorized) {
-      return { handled: false, alert: true, reply: 'You are not authorized to upload documents to Datatruck.' };
-    }
-    // Atomic claim: only the first Yes transitions waiting_confirmation→uploading.
+    // No authorization gate — anyone in the group may confirm. Duplicate uploads
+    // are prevented by the atomic claim below (waiting_confirmation→uploading):
+    // only the first Yes wins; every other click sees "Already handled."
     const claimed = await docs.claimBatchForUpload(batchId, decidedBy);
     if (!claimed) return { handled: false, reply: 'Already handled.' };
 

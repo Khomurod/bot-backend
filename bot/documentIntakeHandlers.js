@@ -19,8 +19,6 @@ const docsDb = require('../database/telegramDocuments');
 const intake = require('../services/documentIntakeService');
 const helpers = require('../services/documentIntakeHelpers');
 const { safeSend } = require('../services/telegramHtml');
-const { isAccountingUser } = require('../services/mileageBonusConstants');
-const { isGlobalRouteAdmin } = require('../services/routeControlConstants');
 
 // Debounce timers keyed by batch id (in-memory; a restart is covered by the
 // expires_at housekeeping sweep + collecting-batch expiry).
@@ -169,37 +167,22 @@ async function handleIntakeMessage(ctx) {
   scheduleFinalize(ctx.telegram, batch.id);
 }
 
-/** Compute whether the clicking user may approve an upload. */
-async function resolveUploaderAuthorization(ctx) {
-  const from = ctx.from || {};
-  const privileged = Boolean(isAccountingUser(from) || isGlobalRouteAdmin(from));
-  let groupAdminIds = [];
-  try {
-    const admins = await ctx.telegram.getChatAdministrators(ctx.chat.id);
-    groupAdminIds = (admins || []).map((a) => a.user?.id).filter((id) => id != null);
-  } catch { /* best effort */ }
-  return helpers.authorizeUploader(from, {
-    approvers: config.datatruckDocUploadApprovers,
-    groupAdminIds,
-    privileged,
-  });
-}
-
 async function handleIntakeCallback(ctx) {
   const parsed = helpers.parseCallbackData(ctx.callbackQuery?.data);
   if (!parsed) return false; // not ours — let the catch-all ack it
   const { action, batchId } = parsed;
 
-  let authorized = false;
-  if (action === 'yes') {
-    const auth = await resolveUploaderAuthorization(ctx);
-    authorized = auth.allowed;
-  }
+  // Group-open buttons: anyone who can see the card may press Yes/No/Disregard.
+  // There is no authorization gate; duplicate uploads are still prevented by the
+  // atomic claim in the service. Record who clicked for audit/history only.
+  const from = ctx.from || {};
+  const name = [from.first_name, from.last_name].filter(Boolean).join(' ').trim() || '—';
+  console.log(`[DOC-INTAKE] Batch ${batchId}: '${action}' pressed by user ${from.id ?? '—'} (@${from.username || '—'}, ${name})`);
 
   let result;
   try {
     result = await intake.handleConfirmation({
-      batchId, action, user: ctx.from || {}, authorized,
+      batchId, action, user: from,
     }, {
       docs: docsDb,
       downloadFile: (fileId) => downloadTelegramFile(ctx.telegram, fileId),
@@ -210,12 +193,6 @@ async function handleIntakeCallback(ctx) {
     return true;
   }
 
-  if (result.alert) {
-    // Unauthorized / hard stop → alert only, leave the card so an authorized
-    // user can still act on it.
-    await ctx.answerCbQuery(result.reply, { show_alert: true }).catch(() => {});
-    return true;
-  }
   if (!result.handled) {
     // e.g. "Already handled." (double-click / late click) — toast, don't touch
     // the card (another click already replaced it or it's terminal).
@@ -262,7 +239,6 @@ module.exports = {
   // exported for tests / reuse
   handleIntakeMessage,
   handleIntakeCallback,
-  resolveUploaderAuthorization,
   downloadTelegramFile,
   finalizeBatch,
   getContext,

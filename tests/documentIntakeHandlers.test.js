@@ -17,7 +17,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 function loadHandlerWithFakes({ enabled = true, group = { id: 10, group_type: 'driver', active: true } } = {}) {
-  const state = { batches: [], files: [], seenUnique: new Set(), scheduled: [] };
+  const state = { batches: [], files: [], seenUnique: new Set(), scheduled: [], confirmCalls: [] };
   const docsFake = {
     async createBatch(b) { const row = { id: state.batches.length + 1, status: 'collecting', ...b, telegram_chat_id: b.telegramChatId, group_id: b.groupId, telegram_user_id: b.telegramUserId }; state.batches.push(row); return row; },
     async getOrCreateBatchForMediaGroup(b) {
@@ -44,13 +44,16 @@ function loadHandlerWithFakes({ enabled = true, group = { id: 10, group_type: 'd
     datatruckDocIntakeBatchWaitSeconds: 6,
     datatruckDocIntakeMaxFiles: 12,
     datatruckDocIntakeMaxFileMb: 20,
-    datatruckDocUploadApprovers: [],
   };
   const dbFake = { async getGroupByTelegramId() { return group; }, async getDriverProfileByGroupId() { return null; } };
+  // Group-open buttons: handleConfirmation no longer takes an `authorized` flag.
+  // Record every call so tests can assert the clicking user is passed through.
   const intakeFake = {
     async processCollectedBatch() { return { message: null }; },
-    async handleConfirmation({ action, authorized }) {
-      if (action === 'yes' && !authorized) return { handled: false, alert: true, reply: 'You are not authorized to upload documents to Datatruck.' };
+    async handleConfirmation({ batchId, action, user }) {
+      state.confirmCalls.push({ batchId, action, user });
+      if (action === 'yes') return { handled: true, reply: '✅ Test mode: feature is working.' };
+      if (action === 'no') return { handled: true, reply: '❌ Not uploaded. Marked for review.' };
       if (action === 'disc') return { handled: true, reply: 'Disregarded.' };
       return { handled: true, reply: 'ok' };
     },
@@ -126,26 +129,36 @@ test('a text-only message (no attachment) does nothing', async () => {
   assert.equal(state.batches.length, 0);
 });
 
-function callbackCtx(data, from = { id: 5, username: 'rando' }) {
+// Default clicker is a plain, non-admin group member — the whole point is that
+// no authorization is required for them.
+function callbackCtx(data, from = { id: 4242, username: 'random_driver', first_name: 'Random', last_name: 'Driver' }) {
   const calls = { answered: [], edited: [] };
   const ctx = {
     callbackQuery: { data, message: { chat: { id: -100777 }, message_id: 50 } },
     chat: { id: -100777 },
     from,
-    telegram: { async getChatAdministrators() { return []; } },
+    telegram: {},
     async answerCbQuery(text, extra) { calls.answered.push({ text, extra }); },
     async editMessageText(text) { calls.edited.push(text); },
   };
   return { ctx, calls };
 }
 
-test('unauthorized Yes → alert only, the card is NOT edited (buttons remain)', async () => {
+test('any (non-admin) user clicking Yes → card replaced with the outcome, no unauthorized alert', async () => {
   const { handler } = loadHandlerWithFakes();
   const { ctx, calls } = callbackCtx('dtdoc:yes:1');
   await handler.handleIntakeCallback(ctx);
-  assert.equal(calls.edited.length, 0, 'card must remain for an authorized user');
-  assert.equal(calls.answered.length, 1);
-  assert.equal(calls.answered[0].extra?.show_alert, true);
+  assert.equal(calls.edited.length, 1, 'card is replaced with the outcome for anyone');
+  assert.match(calls.edited[0], /Test mode/i);
+  assert.notEqual(calls.answered[0]?.extra?.show_alert, true, 'no "not authorized" alert');
+});
+
+test('any (non-admin) user clicking No → card replaced with the review outcome', async () => {
+  const { handler } = loadHandlerWithFakes();
+  const { ctx, calls } = callbackCtx('dtdoc:no:1');
+  await handler.handleIntakeCallback(ctx);
+  assert.equal(calls.edited.length, 1);
+  assert.match(calls.edited[0], /Marked for review/i);
 });
 
 test('Disregard → card replaced with the outcome', async () => {
@@ -154,6 +167,17 @@ test('Disregard → card replaced with the outcome', async () => {
   await handler.handleIntakeCallback(ctx);
   assert.equal(calls.edited.length, 1);
   assert.match(calls.edited[0], /Disregarded/);
+});
+
+test('the handler passes the clicking user through for audit recording', async () => {
+  const { handler, state } = loadHandlerWithFakes();
+  const { ctx } = callbackCtx('dtdoc:yes:9', { id: 777, username: 'clicky', first_name: 'Click', last_name: 'User' });
+  await handler.handleIntakeCallback(ctx);
+  assert.equal(state.confirmCalls.length, 1);
+  assert.deepEqual(
+    { batchId: state.confirmCalls[0].batchId, action: state.confirmCalls[0].action, id: state.confirmCalls[0].user.id, username: state.confirmCalls[0].user.username },
+    { batchId: 9, action: 'yes', id: 777, username: 'clicky' }
+  );
 });
 
 test('a non-dtdoc callback is ignored by the intake handler', async () => {

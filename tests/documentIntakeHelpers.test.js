@@ -1,7 +1,9 @@
 /**
  * Tests for services/documentIntakeHelpers.js — attachment detection, ignore
- * rules (bot/self/forwarded-from-bot loop prevention, non-doc types),
- * authorization, and the confirmation message/keyboard/callback plumbing.
+ * rules (bot/self/forwarded-from-bot loop prevention, non-doc types), the
+ * who-clicked audit descriptor, and the confirmation message/keyboard/callback
+ * plumbing. The confirmation buttons are group-open, so there is no
+ * authorization helper to test.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -56,19 +58,29 @@ test('size limit gate', () => {
   assert.equal(h.sizeWithinLimit(null, 2000), true); // unknown until download
 });
 
-test('authorization: privileged admin allowed; random user rejected', () => {
-  assert.equal(h.authorizeUploader({ id: 1 }, { privileged: true }).allowed, true);
-  assert.equal(h.authorizeUploader({ id: 2, username: 'rando' }, { approvers: ['dispatch_lead'] }).allowed, false);
+test('there is no uploader-authorization helper (buttons are group-open)', () => {
+  assert.equal(typeof h.authorizeUploader, 'undefined');
 });
 
-test('authorization: configured approver by username or id; group admin', () => {
-  assert.equal(h.authorizeUploader({ id: 2, username: 'Dispatch_Lead' }, { approvers: ['dispatch_lead'] }).allowed, true);
-  assert.equal(h.authorizeUploader({ id: 123 }, { approvers: ['123'] }).allowed, true);
-  assert.equal(h.authorizeUploader({ id: 55 }, { groupAdminIds: [55, 66] }).allowed, true);
+test('describeClicker records id + username for audit', () => {
+  const d = h.describeClicker({ id: 42, username: 'rando', first_name: 'Randy', last_name: 'Chatter' });
+  assert.equal(d.decidedByUserId, '42');
+  assert.equal(d.decidedByUsername, 'rando');
+  assert.equal(d.displayName, 'Randy Chatter');
 });
 
-test('authorization: no user rejected', () => {
-  assert.equal(h.authorizeUploader(null, { privileged: true }).allowed, false);
+test('describeClicker falls back to the display name when there is no username', () => {
+  const d = h.describeClicker({ id: 7, first_name: 'Joe', last_name: 'Driver' });
+  assert.equal(d.decidedByUserId, '7');
+  assert.equal(d.decidedByUsername, 'Joe Driver'); // identifiable even without @username
+  assert.equal(d.displayName, 'Joe Driver');
+});
+
+test('describeClicker is null-safe for a missing user', () => {
+  const d = h.describeClicker({});
+  assert.equal(d.decidedByUserId, null);
+  assert.equal(d.decidedByUsername, null);
+  assert.equal(d.displayName, null);
 });
 
 test('callback data round-trips through keyboard + parser', () => {

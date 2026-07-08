@@ -1,7 +1,12 @@
 /**
  * Pure helpers for the smart BOL/POD intake — attachment detection, ignore
- * rules, uploader authorization, and confirmation-message/keyboard building.
- * No Telegram, DB, or network here, so all of it is unit-testable.
+ * rules, and confirmation-message/keyboard building. No Telegram, DB, or network
+ * here, so all of it is unit-testable.
+ *
+ * NOTE: the confirmation buttons are group-open — anyone who can see the card
+ * may press Yes / No / Disregard. There is intentionally no uploader
+ * authorization helper here anymore; duplicate-upload safety is enforced by the
+ * atomic claim in the DB layer, not by gating who may click.
  */
 const CALLBACK_PREFIX = 'dtdoc';
 
@@ -84,23 +89,19 @@ function sizeWithinLimit(fileSize, maxBytes) {
 }
 
 /**
- * Authorize a user to press the upload buttons. `privileged` is computed by the
- * caller from the app's existing dispatch/accounting/global-admin helpers; on
- * top of that an explicit approver list and the group's Telegram admins are
- * allowed. Everyone else is rejected — random group chatter can never upload.
+ * Describe the user who clicked a confirmation button, for audit/history only
+ * (never for permission gating — the buttons are group-open). Returns the
+ * numeric id (as a string), the @username when present, and a best-effort human
+ * display name built from first/last name. `decidedByUsername` falls back to the
+ * display name so a click is still identifiable when the user has no @username.
  */
-function authorizeUploader(user, {
-  approvers = [], groupAdminIds = [], privileged = false,
-} = {}) {
-  if (!user || user.id == null) return { allowed: false, reason: 'no user' };
-  if (privileged) return { allowed: true, reason: 'privileged admin' };
-  const uname = String(user.username || '').replace(/^@+/, '').toLowerCase();
-  const idStr = String(user.id);
-  const approverList = (approvers || []).map((a) => String(a).replace(/^@+/, '').toLowerCase());
-  if (uname && approverList.includes(uname)) return { allowed: true, reason: 'configured approver (username)' };
-  if (approverList.includes(idStr)) return { allowed: true, reason: 'configured approver (id)' };
-  if ((groupAdminIds || []).map(String).includes(idStr)) return { allowed: true, reason: 'group admin' };
-  return { allowed: false, reason: 'not authorized' };
+function describeClicker(user = {}) {
+  const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim() || null;
+  return {
+    decidedByUserId: user.id != null ? String(user.id) : null,
+    decidedByUsername: user.username || displayName || null,
+    displayName,
+  };
 }
 
 function escapeHtml(text) {
@@ -158,7 +159,7 @@ module.exports = {
   detectAttachment,
   isIgnorableMessage,
   sizeWithinLimit,
-  authorizeUploader,
+  describeClicker,
   buildConfirmationMessage,
   buildConfirmationKeyboard,
   parseCallbackData,

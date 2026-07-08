@@ -1337,7 +1337,8 @@ app.get('/api/datatruck-docs/status', authMiddleware, async (req, res) => {
         batchWaitSeconds: config.datatruckDocIntakeBatchWaitSeconds,
         maxFiles: config.datatruckDocIntakeMaxFiles,
         maxFileMb: config.datatruckDocIntakeMaxFileMb,
-        approverCount: (config.datatruckDocUploadApprovers || []).length,
+        // Confirmation buttons are group-open (no approver list).
+        confirmationButtons: 'group-open',
       },
       services: {
         datatruckConfigured: datatruck.isConfigured(),
