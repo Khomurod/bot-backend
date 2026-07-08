@@ -30,6 +30,12 @@
       "status": "active",
       "service": "admin (Settings → Live Location), eld services"
     },
+    "bol_pod_monitor_settings": {
+      "purpose": "Single-row (id=1) config for the SILENT BOL/POD test monitor: enable flag, test Telegram group id (default -5289094495 = Automatic updating (Test)), and send-unrelated / send-unclear / send-files toggles, plus last_report_at / report_count audit stats. When enabled the bot watches active driver groups, classifies + matches documents, and posts a diagnostic report (and optionally files) to the test group ONLY — never replies in the driver group and NEVER uploads to Datatruck. Values are not secrets.",
+      "status": "active",
+      "service": "admin (Settings → BOL/POD Monitor), documentIntakeHandlers (silent monitor), bolPodTestMonitorService",
+      "sourceOfTruth": "This table (DB is authoritative — no Render env vars for these values)."
+    },
     "gmaps_settings": {
       "purpose": "Single-row (id=1) Google Maps Platform config for Route Control. Server key encrypted at rest.",
       "status": "active",

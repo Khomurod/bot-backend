@@ -1583,6 +1583,31 @@ CREATE INDEX IF NOT EXISTS idx_dt_upload_attempts_order
 CREATE INDEX IF NOT EXISTS idx_dt_upload_attempts_sha
   ON datatruck_upload_attempts(sha256) WHERE sha256 IS NOT NULL;
 
+-- ── Silent BOL/POD test monitor (admin Settings → BOL/POD Monitor) ──
+-- Single-row (id=1) settings that control a SILENT monitor: when enabled the bot
+-- watches active driver groups, runs the existing detect→classify→match logic,
+-- and posts a diagnostic report (and optionally the files) to a configured TEST
+-- Telegram group ONLY. It never replies in the driver group, never shows the
+-- Yes/No/Disregard card there, and NEVER uploads to Datatruck. Controlled from
+-- the admin panel (DB is the source of truth — no Render env vars required).
+CREATE TABLE IF NOT EXISTS bol_pod_monitor_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  test_monitor_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  test_group_id BIGINT NOT NULL DEFAULT -5289094495,
+  test_send_unrelated BOOLEAN NOT NULL DEFAULT TRUE,
+  test_send_unclear BOOLEAN NOT NULL DEFAULT TRUE,
+  test_send_files BOOLEAN NOT NULL DEFAULT TRUE,
+  last_report_at TIMESTAMPTZ NULL,
+  report_count BIGINT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by TEXT NULL
+);
+-- Additive migrations for existing databases (safe to run every boot).
+ALTER TABLE bol_pod_monitor_settings ADD COLUMN IF NOT EXISTS last_report_at TIMESTAMPTZ NULL;
+ALTER TABLE bol_pod_monitor_settings ADD COLUMN IF NOT EXISTS report_count BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE bol_pod_monitor_settings ADD COLUMN IF NOT EXISTS updated_by TEXT NULL;
+INSERT INTO bol_pod_monitor_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
 -- ── Fuel Monitor: gas-station proximity reminders ──
 -- When the Fuel Monitoring team posts a gas-station location into a driver
 -- group, we create one "watching" row here. A background poller checks each

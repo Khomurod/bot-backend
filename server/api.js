@@ -1213,7 +1213,7 @@ const { createBotUsersRouter } = require('./routes/botUsersRoutes');
 app.use('/api/bot-users', createBotUsersRouter({ authMiddleware }));
 
 const { createSettingsRouter } = require('./routes/settingsRoutes');
-app.use('/api/settings', createSettingsRouter({ authMiddleware }));
+app.use('/api/settings', createSettingsRouter({ authMiddleware, telegram: bot.telegram }));
 
 const { createRouteControlRouter } = require('./routes/routeControlRoutes');
 app.use('/api/route-control', createRouteControlRouter({ authMiddleware, telegram: bot.telegram }));
