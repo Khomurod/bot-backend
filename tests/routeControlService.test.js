@@ -252,3 +252,126 @@ test('assignRoute with manual origin/destination stores geometry pending when GM
   assert.equal(result.geometryPending, true);
   assert.equal(result.assignment.encodedPolyline, null);
 });
+
+// ── buildDriverGroupRouteMessage (pure) ──
+
+test('buildDriverGroupRouteMessage escapes place text and href, keeps the mention', () => {
+  const msg = service.buildDriverGroupRouteMessage(
+    {
+      original_url: 'https://maps.google.com/dir?a=1&b=2',
+      origin_text: 'A & B',
+      destination_text: 'C <x>',
+      waypoints: [{ raw: 'W & Z' }],
+    },
+    { mentionHtml: '<a href="tg://user?id=9">Bob</a>' }
+  );
+  assert.match(msg, /🚚 <b>Route assigned<\/b>/);
+  assert.match(msg, /tg:\/\/user\?id=9/);
+  assert.match(msg, /Origin: A &amp; B/);
+  assert.match(msg, /Destination: C &lt;x&gt;/);
+  assert.match(msg, /Waypoints: W &amp; Z/);
+  assert.match(msg, /href="https:\/\/maps\.google\.com\/dir\?a=1&amp;b=2"/);
+  // No raw unescaped ampersand from the place text leaks into the body.
+  assert.ok(!/A & B/.test(msg));
+});
+
+test('buildDriverGroupRouteMessage omits the link line for a manual (non-http) entry', () => {
+  const msg = service.buildDriverGroupRouteMessage(
+    { original_url: '(manual entry)', origin_text: 'A', destination_text: 'B', waypoints: [] },
+    { mentionHtml: 'Bob' }
+  );
+  assert.ok(!/Open route in Google Maps/.test(msg));
+  assert.match(msg, /Origin: A/);
+});
+
+// ── sendDriverGroupRouteMessage ──
+
+function loadServiceForSend({ assignment, profile = null, telegramExtra = {} } = {}) {
+  const captured = { chatId: null, body: null, extra: null, recorded: null, event: null };
+  const svc = loadServiceWith({
+    '../database/db.js': {
+      async getDriverProfileByGroupId() { return profile; },
+    },
+    '../database/routeControl.js': {
+      async getRouteAssignment() { return assignment; },
+      async recordDriverGroupMessageSent(id, opts) { captured.recorded = { id, opts }; return { id }; },
+      async insertRouteMonitorEvent(e) { captured.event = e; return e; },
+    },
+  });
+  const telegram = {
+    async sendMessage(chatId, body, extra) {
+      captured.chatId = chatId; captured.body = body; captured.extra = extra;
+      return { message_id: 4242, ...telegramExtra };
+    },
+  };
+  return { svc, telegram, captured };
+}
+
+test('sendDriverGroupRouteMessage sends to the driver group and records history', async () => {
+  const { svc, telegram, captured } = loadServiceForSend({
+    assignment: {
+      id: 5, group_id: 7, telegram_group_id: -100200,
+      original_url: 'https://maps.google.com/dir?a=1', origin_text: 'A', destination_text: 'B', waypoints: [],
+    },
+    profile: { telegram_user_id: 999, full_name: 'Bob Driver', group_name: 'G' },
+  });
+  const res = await svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram, sentBy: 'admin' });
+
+  assert.equal(captured.chatId, -100200); // correct group — never a wrong chat id
+  assert.equal(res.messageId, 4242);
+  assert.equal(res.mentionConfidence, 'high');
+  assert.equal(captured.extra.parse_mode, 'HTML');
+  assert.match(captured.body, /tg:\/\/user\?id=999/);
+  assert.equal(captured.recorded.id, 5);
+  assert.equal(captured.recorded.opts.telegramMessageId, 4242);
+  assert.equal(captured.recorded.opts.sentBy, 'admin');
+  assert.equal(captured.event.eventType, 'driver_group_message_sent');
+});
+
+test('sendDriverGroupRouteMessage tags by @username when no id is known', async () => {
+  const { svc, telegram, captured } = loadServiceForSend({
+    assignment: { id: 5, group_id: 7, telegram_group_id: -100200, original_url: '(manual entry)', waypoints: [] },
+    profile: { telegram_user_id: null, telegram_username: 'jd', full_name: 'Jane', group_name: 'G' },
+  });
+  const res = await svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram });
+  assert.equal(res.mentionConfidence, 'medium');
+  assert.match(captured.body, /@jd/);
+});
+
+test('sendDriverGroupRouteMessage uses the plain name when no Telegram account is known', async () => {
+  const { svc, telegram, captured } = loadServiceForSend({
+    assignment: { id: 5, group_id: 7, telegram_group_id: -100200, original_url: '(manual entry)', waypoints: [] },
+    profile: { telegram_user_id: null, telegram_username: null, full_name: 'Jane Doe', group_name: 'G' },
+  });
+  const res = await svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram });
+  assert.equal(res.mentionConfidence, 'low');
+  assert.match(captured.body, /Driver: Jane Doe/);
+});
+
+test('sendDriverGroupRouteMessage escapes a custom message and still sends it', async () => {
+  const { svc, telegram, captured } = loadServiceForSend({
+    assignment: { id: 5, group_id: 7, telegram_group_id: -100200, original_url: '(manual entry)', waypoints: [] },
+    profile: { telegram_user_id: 999, full_name: 'Bob', group_name: 'G' },
+  });
+  await svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram, customMessage: '<b>hi</b> & bye' });
+  assert.equal(captured.body, '&lt;b&gt;hi&lt;/b&gt; &amp; bye');
+});
+
+test('sendDriverGroupRouteMessage rejects clearly when the group has no Telegram chat id', async () => {
+  const { svc, telegram, captured } = loadServiceForSend({
+    assignment: { id: 5, group_id: 7, telegram_group_id: null, waypoints: [] },
+  });
+  await assert.rejects(
+    () => svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram }),
+    (err) => { assert.equal(err.code, 'NO_TELEGRAM_GROUP'); return true; }
+  );
+  assert.equal(captured.chatId, null); // nothing was sent anywhere
+});
+
+test('sendDriverGroupRouteMessage rejects a missing assignment with 404', async () => {
+  const { svc, telegram } = loadServiceForSend({ assignment: null });
+  await assert.rejects(
+    () => svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram }),
+    (err) => { assert.equal(err.code, 'NOT_FOUND'); assert.equal(err.status, 404); return true; }
+  );
+});

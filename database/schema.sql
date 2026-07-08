@@ -1980,6 +1980,12 @@ ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFA
 ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS assigned_by_user_id BIGINT NULL;
 ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT NULL;
 ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS telegram_message_id BIGINT NULL;
+-- Admin → "Send route message to driver group" delivery tracking. sent_at is the
+-- last successful send; message_id the Telegram message id (for a link/edit);
+-- sent_by the admin username/name that triggered it.
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_sent_at TIMESTAMPTZ NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_id BIGINT NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_sent_by TEXT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_route_assignments_active
   ON route_assignments(status, updated_at DESC) WHERE status = 'active';

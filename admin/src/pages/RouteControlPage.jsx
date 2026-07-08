@@ -1,12 +1,14 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "../api";
+import { buildGroupOptions, filterGroupOptions } from "./routeControlGroupSearch.mjs";
 
 /**
  * Route Control — assign a Google Maps directions route to a driver group and
  * watch whether the driver follows it. Routes are monitored server-side against
  * the driver's live GPS; the driver group is warned when they drift off route.
  * Google Maps must be configured in Settings → GMaps for geometry to compute and
- * monitoring to run.
+ * monitoring to run. The admin can also push the assigned route straight into the
+ * driver's Telegram group (tagging the driver when we know their Telegram id/handle).
  */
 
 const RESULT_LABELS = {
@@ -20,7 +22,8 @@ const RESULT_LABELS = {
 
 function Banner({ message }) {
   if (!message) return null;
-  return <div className={`alert alert-${message.type === "error" ? "error" : "success"}`}>{message.text}</div>;
+  const type = message.type === "error" ? "error" : message.type === "warning" ? "warning" : "success";
+  return <div className={`alert alert-${type}`}>{message.text}</div>;
 }
 
 function fmtMeters(m) {
@@ -41,12 +44,111 @@ function parseWaypoints(raw) {
     .filter(Boolean);
 }
 
-function AssignForm({ groups, onAssigned, onMessage }) {
+/**
+ * Searchable single-select combobox: type to filter driver groups by unit
+ * number, driver name, group title or driver type. Keyboard + mouse friendly.
+ */
+function SearchableGroupSelect({ options, value, onChange, disabled }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const wrapRef = useRef(null);
+
+  const selected = useMemo(
+    () => options.find((o) => o.groupId === Number(value)) || null,
+    [options, value]
+  );
+
+  const filtered = useMemo(() => filterGroupOptions(options, query), [options, query]);
+
+  useEffect(() => {
+    function onDocClick(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  useEffect(() => { setHighlight(0); }, [query, open]);
+
+  const choose = (opt) => {
+    if (!opt) return;
+    onChange(String(opt.groupId));
+    setQuery("");
+    setOpen(false);
+  };
+
+  const onKeyDown = (e) => {
+    if (!open && (e.key === "ArrowDown" || e.key === "Enter")) { setOpen(true); return; }
+    if (e.key === "ArrowDown") { e.preventDefault(); setHighlight((h) => Math.min(h + 1, filtered.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setHighlight((h) => Math.max(h - 1, 0)); }
+    else if (e.key === "Enter") { e.preventDefault(); choose(filtered[highlight]); }
+    else if (e.key === "Escape") { setOpen(false); }
+  };
+
+  const displayText = open ? query : (selected ? selected.label : "");
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <input
+        className="form-input"
+        role="combobox"
+        aria-expanded={open}
+        aria-label="Search driver group"
+        disabled={disabled}
+        placeholder={selected ? selected.label : "Search unit #, driver name or group…"}
+        value={displayText}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={onKeyDown}
+      />
+      {selected && !open && (
+        <span
+          onClick={() => !disabled && onChange("")}
+          title="Clear selection"
+          style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", cursor: "pointer", color: "#94a3b8" }}
+        >×</span>
+      )}
+      {open && (
+        <div
+          style={{
+            position: "absolute", zIndex: 20, top: "calc(100% + 4px)", left: 0, right: 0,
+            maxHeight: 280, overflowY: "auto", background: "var(--card-bg, #0f172a)",
+            border: "1px solid var(--border, rgba(148,163,184,0.3))", borderRadius: 8,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+          }}
+        >
+          {filtered.length === 0 ? (
+            <div style={{ padding: "10px 12px", fontSize: 13, color: "#94a3b8" }}>No matching driver groups.</div>
+          ) : (
+            filtered.slice(0, 100).map((o, i) => (
+              <div
+                key={o.groupId}
+                onMouseDown={(e) => { e.preventDefault(); choose(o); }}
+                onMouseEnter={() => setHighlight(i)}
+                style={{
+                  padding: "8px 12px", fontSize: 13, cursor: "pointer",
+                  background: i === highlight ? "rgba(59,130,246,0.18)" : "transparent",
+                  color: o.groupId === Number(value) ? "#60a5fa" : "inherit",
+                }}
+              >
+                {o.label}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssignForm({ options, onAssigned, onMessage }) {
   const [groupId, setGroupId] = useState("");
   const [url, setUrl] = useState("");
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [waypoints, setWaypoints] = useState("");
+  const [sendToGroup, setSendToGroup] = useState(true);
   const [parsed, setParsed] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -61,12 +163,29 @@ function AssignForm({ groups, onAssigned, onMessage }) {
       setParsed(result);
       onMessage({ type: "success", text: "Link parsed. Review the origin/destination below, then assign." });
     } catch (err) {
-      // Surface the exact backend message and point at the manual fallback.
       onMessage({
         type: "error",
         text: `${err.message} You can also enter Origin and Destination below and assign manually.`,
       });
     } finally { setBusy(false); }
+  };
+
+  /** Report the outcome, distinguishing full success from partial (send failed). */
+  const reportResult = (result) => {
+    const base = result.geometryPending
+      ? "Route saved. Geometry is pending — enable Google Maps in Settings → GMaps, then Compute."
+      : "Route assigned and geometry computed. Monitoring is active.";
+    if (result.driverMessage && result.driverMessage.sent === false) {
+      onMessage({
+        type: "warning",
+        text: `${base} However, the route message could NOT be sent to the driver group: `
+          + `${result.driverMessage.error || "unknown error"}. Use “Send route message” on the route below to retry.`,
+      });
+    } else if (result.driverMessage && result.driverMessage.sent) {
+      onMessage({ type: "success", text: `${base} Route message sent to the driver group.` });
+    } else {
+      onMessage({ type: "success", text: base });
+    }
   };
 
   const assign = async () => {
@@ -78,35 +197,29 @@ function AssignForm({ groups, onAssigned, onMessage }) {
     }
     setBusy(true);
     try {
+      const payloadBase = { groupId: Number(groupId), sendToDriverGroup: sendToGroup };
       let result;
-      // Prefer a link that actually parses; otherwise fall back to manual entry.
       if (url.trim() && !hasManual) {
-        result = await api.assignRoute({ groupId: Number(groupId), url: url.trim() });
+        result = await api.assignRoute({ ...payloadBase, url: url.trim() });
       } else if (!url.trim() && hasManual) {
         result = await api.assignRoute({
-          groupId: Number(groupId),
+          ...payloadBase,
           manual: { origin: origin.trim(), destination: destination.trim(), waypoints: parseWaypoints(waypoints) },
         });
       } else {
-        // Both provided: try the link first, fall back to manual on a parse failure.
         try {
-          result = await api.assignRoute({ groupId: Number(groupId), url: url.trim() });
+          result = await api.assignRoute({ ...payloadBase, url: url.trim() });
         } catch (linkErr) {
           onMessage({ type: "error", text: `${linkErr.message} Falling back to the Origin/Destination you entered…` });
           result = await api.assignRoute({
-            groupId: Number(groupId),
+            ...payloadBase,
             url: url.trim(),
             manual: { origin: origin.trim(), destination: destination.trim(), waypoints: parseWaypoints(waypoints) },
           });
         }
       }
       resetInputs();
-      onMessage({
-        type: "success",
-        text: result.geometryPending
-          ? "Route saved. Geometry is pending — enable Google Maps in Settings → GMaps, then Compute."
-          : "Route assigned and geometry computed. Monitoring is active.",
-      });
+      reportResult(result);
       await onAssigned();
     } catch (err) { onMessage({ type: "error", text: err.message }); }
     finally { setBusy(false); }
@@ -116,12 +229,9 @@ function AssignForm({ groups, onAssigned, onMessage }) {
     <div className="card" style={{ marginBottom: 20 }}>
       <h3 style={{ marginTop: 0 }}>➕ Assign a route</h3>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
-        <div className="form-group" style={{ marginBottom: 0, minWidth: 220 }}>
+        <div className="form-group" style={{ marginBottom: 0, minWidth: 280, flex: 1 }}>
           <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>Driver group</label>
-          <select className="form-input" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-            <option value="">Select a group…</option>
-            {groups.map((g) => <option key={g.id} value={g.id}>{g.group_name}</option>)}
-          </select>
+          <SearchableGroupSelect options={options} value={groupId} onChange={setGroupId} disabled={busy} />
         </div>
         <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: 280 }}>
           <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>Google Maps directions link</label>
@@ -146,6 +256,11 @@ function AssignForm({ groups, onAssigned, onMessage }) {
           <textarea className="form-input" value={waypoints} rows={2} placeholder="e.g. St. Louis, MO, Little Rock, AR" onChange={(e) => setWaypoints(e.target.value)} />
         </div>
       </div>
+
+      <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 13, cursor: "pointer" }}>
+        <input type="checkbox" checked={sendToGroup} onChange={(e) => setSendToGroup(e.target.checked)} />
+        Send route message to driver group
+      </label>
 
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <button className="btn btn-ghost btn-sm" onClick={testParse} disabled={busy || !url.trim()}>Test parse route</button>
@@ -179,6 +294,22 @@ function RouteRow({ a, onChanged, onMessage }) {
     finally { setBusy(false); }
   };
 
+  const sendRouteMessage = async () => {
+    setBusy(true);
+    try {
+      const send = await api.sendRouteDriverMessage(a.id);
+      const tagged = send.mentionConfidence === "high"
+        ? " Driver tagged by Telegram ID."
+        : send.mentionConfidence === "medium"
+          ? " Driver tagged by @username."
+          : " Sent with the driver's name (no Telegram account on file).";
+      onMessage({ type: "success", text: `Route message sent to the driver group.${tagged}` });
+      await onChanged();
+    } catch (err) {
+      onMessage({ type: "error", text: `Could not send the route message: ${err.message}` });
+    } finally { setBusy(false); }
+  };
+
   const viewDetails = async () => {
     if (details) { setDetails(null); return; }
     try { setDetails(await api.getRouteAssignment(a.id)); }
@@ -197,6 +328,7 @@ function RouteRow({ a, onChanged, onMessage }) {
           <span className={`badge ${statusBadge}`} style={{ marginLeft: 8 }}>{a.status}</span>
           {!a.encoded_polyline && <span className="badge badge-inactive" style={{ marginLeft: 6 }}>geometry pending</span>}
           {a.source === "telegram" && <span className="badge" style={{ marginLeft: 6 }}>📲 from Telegram</span>}
+          {a.driver_group_message_sent_at && <span className="badge" style={{ marginLeft: 6 }}>✅ sent to group</span>}
           <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
             {a.origin_text || "?"} → {a.destination_text || "?"}
             {a.original_url && a.original_url.startsWith("http") && (
@@ -208,6 +340,11 @@ function RouteRow({ a, onChanged, onMessage }) {
               Assigned by {a.assigned_by}{a.source === "telegram" ? " (Telegram)" : ""}
             </div>
           )}
+          <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+            Route message: {a.driver_group_message_sent_at
+              ? `sent ${fmtTime(a.driver_group_message_sent_at)}${a.driver_group_message_sent_by ? ` by ${a.driver_group_message_sent_by}` : ""}`
+              : "not sent yet"}
+          </div>
           <div style={{ fontSize: 12, marginTop: 4 }}>
             Last check: <span style={{ color: result.color }}>{result.text}</span>
             {" · "}Deviation: {fmtMeters(a.last_deviation_meters)}
@@ -217,6 +354,11 @@ function RouteRow({ a, onChanged, onMessage }) {
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-start" }}>
           <button className="btn btn-ghost btn-sm" onClick={viewDetails}>{details ? "Hide" : "Details"}</button>
+          {a.status === "active" && (
+            <button className="btn btn-ghost btn-sm" onClick={sendRouteMessage} disabled={busy}>
+              {a.driver_group_message_sent_at ? "Re-send route message" : "Send route message"}
+            </button>
+          )}
           {!a.encoded_polyline && a.status === "active" && (
             <button className="btn btn-ghost btn-sm" onClick={() => act(() => api.computeRouteGeometry(a.id), "Geometry computed.")} disabled={busy}>Compute</button>
           )}
@@ -253,7 +395,7 @@ function RouteRow({ a, onChanged, onMessage }) {
 }
 
 export default function RouteControlPage() {
-  const [groups, setGroups] = useState([]);
+  const [options, setOptions] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [statusFilter, setStatusFilter] = useState("active");
   const [loading, setLoading] = useState(true);
@@ -266,8 +408,9 @@ export default function RouteControlPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [g] = await Promise.all([api.getDriverGroups()]);
-      setGroups(Array.isArray(g) ? g : (g.groups || []));
+      // Driver profiles carry unit/name/type so the group picker is searchable.
+      const profiles = await api.getDriverProfiles({ includeInactive: false });
+      setOptions(buildGroupOptions(profiles));
       await loadAssignments();
     } catch (err) { setMessage({ type: "error", text: err.message }); }
     finally { setLoading(false); }
@@ -280,14 +423,14 @@ export default function RouteControlPage() {
     <div>
       <div className="page-header">
         <h2>🧭 Route Control</h2>
-        <p>Assign a planned Google Maps route to a driver and get warned in their group if they go off route.</p>
+        <p>Assign a planned Google Maps route to a driver, push it into their Telegram group, and get warned in that group if they go off route.</p>
       </div>
       <Banner message={message} />
       {loading ? (
         <div className="loading"><div className="spinner"></div> Loading…</div>
       ) : (
         <>
-          <AssignForm groups={groups} onAssigned={loadAssignments} onMessage={setMessage} />
+          <AssignForm options={options} onAssigned={loadAssignments} onMessage={setMessage} />
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             {["active", "completed", "cancelled", "all"].map((s) => (
               <button key={s} className={`btn btn-sm ${statusFilter === s ? "btn-primary" : "btn-ghost"}`} onClick={() => setStatusFilter(s)}>

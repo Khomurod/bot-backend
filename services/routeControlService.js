@@ -19,6 +19,7 @@ const { safeSend } = require('./telegramHtml');
 const { parseDirectionsUrl, expandShortLink } = require('./googleMapsUrlParser');
 const { decodePolyline, distancePointToPolylineMeters } = require('./routeGeometry');
 const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
+const { resolveDriverMentionForGroup, escapeHtml } = require('./driverMention');
 
 const POLL_MS_MIN = 30 * 1000;
 let serviceTimer = null;
@@ -268,6 +269,107 @@ async function cancelActiveRoutesForGroup(groupId, { detail } = {}) {
   return cancelled;
 }
 
+/** Escape a URL for use inside an HTML href attribute (Telegram HTML mode). */
+function escapeHref(url) {
+  return escapeHtml(url).replace(/"/g, '&quot;');
+}
+
+/**
+ * PURE. Build the Telegram-HTML route message sent to a driver group.
+ * All user/place-derived text is HTML-escaped; the driver mention is injected
+ * verbatim (already-safe HTML from buildDriverMention).
+ *
+ * @param {object} assignment  a route_assignments row (with group_name etc.)
+ * @param {{ mentionHtml:string }} mention
+ * @returns {string} HTML body for parse_mode:'HTML'
+ */
+function buildDriverGroupRouteMessage(assignment, mention) {
+  const lines = ['🚚 <b>Route assigned</b>', ''];
+  lines.push(`Driver: ${mention?.mentionHtml || 'driver'}`);
+  lines.push('Please follow this route:');
+
+  const url = assignment?.original_url;
+  if (url && /^https?:\/\//i.test(url)) {
+    lines.push('');
+    lines.push(`🔗 <a href="${escapeHref(url)}">Open route in Google Maps</a>`);
+  }
+
+  const details = [];
+  if (assignment?.origin_text) details.push(`Origin: ${escapeHtml(assignment.origin_text)}`);
+  if (assignment?.destination_text) details.push(`Destination: ${escapeHtml(assignment.destination_text)}`);
+  const waypoints = Array.isArray(assignment?.waypoints) ? assignment.waypoints : [];
+  const wpText = waypoints.map((w) => (w && w.raw ? String(w.raw) : '')).filter(Boolean);
+  if (wpText.length) details.push(`Waypoints: ${escapeHtml(wpText.join(', '))}`);
+  if (details.length) {
+    lines.push('');
+    lines.push(...details);
+  }
+
+  lines.push('');
+  lines.push(
+    'Route Control is now monitoring this route. Please stay on the assigned route '
+    + 'and notify dispatch if anything changes.'
+  );
+  return lines.join('\n');
+}
+
+/**
+ * Send (or re-send) the assigned route message to the driver group's Telegram
+ * chat. Tags the driver when a Telegram id/username is known, else uses the
+ * plain name. Records the send on the assignment + an audit event. Throws a
+ * CLEAR error when the group has no Telegram chat id or the send fails — the
+ * caller decides how to surface it, and NEVER rolls back the assignment.
+ *
+ * @param {{ assignmentId:number, telegram:object, sentBy?:string,
+ *           customMessage?:string }} p
+ * @returns {Promise<{ sent:boolean, sentAt:string, messageId:(number|null),
+ *                     chatId:number, mentionSource:string, mentionConfidence:string }>}
+ */
+async function sendDriverGroupRouteMessage({ assignmentId, telegram, sentBy = null, customMessage = null }) {
+  const assignment = await rc.getRouteAssignment(assignmentId);
+  if (!assignment) throw serviceError('NOT_FOUND', 'Route assignment not found.', 404);
+  if (!assignment.group_id) {
+    throw serviceError('NO_GROUP', 'This route is not tied to a driver group.', 400);
+  }
+  const chatId = assignment.telegram_group_id;
+  if (chatId == null) {
+    throw serviceError('NO_TELEGRAM_GROUP',
+      'This driver group has no Telegram chat id, so the route message cannot be sent.', 400);
+  }
+  if (!telegram || typeof telegram.sendMessage !== 'function') {
+    throw serviceError('NO_TELEGRAM', 'Telegram client is unavailable right now.', 503);
+  }
+
+  const mention = await resolveDriverMentionForGroup(assignment.group_id);
+  const body = customMessage && String(customMessage).trim()
+    ? escapeHtml(String(customMessage).trim())
+    : buildDriverGroupRouteMessage(assignment, mention);
+
+  const sent = await safeSend(() => telegram.sendMessage(chatId, body, {
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+  }));
+  const messageId = sent?.message_id ?? null;
+
+  await rc.recordDriverGroupMessageSent(assignmentId, { telegramMessageId: messageId, sentBy });
+  await rc.insertRouteMonitorEvent({
+    assignmentId,
+    eventType: 'driver_group_message_sent',
+    detail: `route message sent to driver group${sentBy ? ` by ${sentBy}` : ''}`
+      + `${messageId ? ` (telegram msg ${messageId})` : ''}`
+      + ` [mention:${mention.source}/${mention.confidence}]`,
+  });
+
+  return {
+    sent: true,
+    sentAt: new Date().toISOString(),
+    messageId,
+    chatId,
+    mentionSource: mention.source,
+    mentionConfidence: mention.confidence,
+  };
+}
+
 /** Compute (or recompute) geometry for an existing assignment. */
 async function computeGeometryForAssignment(id) {
   const assignment = await rc.getRouteAssignment(id);
@@ -400,6 +502,8 @@ module.exports = {
   assignRoute,
   cancelActiveRoutesForGroup,
   computeGeometryForAssignment,
+  buildDriverGroupRouteMessage,
+  sendDriverGroupRouteMessage,
   runRouteMonitorCheck,
   buildOffRouteMessage,
   monitorSettingsFromConfig,

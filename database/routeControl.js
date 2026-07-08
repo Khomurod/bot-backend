@@ -163,6 +163,20 @@ async function setRouteAssignmentStatus(id, status) {
   return res.rows[0] || null;
 }
 
+/** Record a successful "route message sent to driver group" delivery. */
+async function recordDriverGroupMessageSent(id, { telegramMessageId = null, sentBy = null } = {}) {
+  const res = await query(
+    `UPDATE route_assignments
+       SET driver_group_message_sent_at = NOW(),
+           driver_group_message_id = $2,
+           driver_group_message_sent_by = $3,
+           updated_at = NOW()
+     WHERE id = $1 RETURNING *`,
+    [id, telegramMessageId ?? null, sentBy ? String(sentBy).slice(0, 128) : null]
+  );
+  return res.rows[0] || null;
+}
+
 async function insertRouteMonitorEvent({
   assignmentId, eventType, result, latitude, longitude, deviationMeters, detail,
 }) {
@@ -197,6 +211,7 @@ module.exports = {
   setRouteAssignmentGeometry,
   updateRouteAssignmentMonitorState,
   setRouteAssignmentStatus,
+  recordDriverGroupMessageSent,
   insertRouteMonitorEvent,
   listRouteMonitorEvents,
 };
