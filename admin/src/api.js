@@ -1406,6 +1406,16 @@ export async function computeRouteGeometry(id) {
   return res.json();
 }
 
+/** Send (or re-send) the route message to the driver's Telegram group. */
+export async function sendRouteDriverMessage(id, { message } = {}) {
+  const res = await fetch(`${API_BASE}/route-control/${id}/send-driver-message`, {
+    method: 'POST', headers: getHeaders(),
+    body: JSON.stringify(message ? { message } : {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function cancelRoute(id) {
   const res = await fetch(`${API_BASE}/route-control/${id}/cancel`, {
     method: 'POST', headers: getHeaders(),

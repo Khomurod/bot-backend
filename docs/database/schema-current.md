@@ -1884,6 +1884,9 @@ Wishing you a fantastic day and a great year ahead!
 | `assigned_by_user_id` | `bigint` | null |
 | `telegram_chat_id` | `bigint` | null |
 | `telegram_message_id` | `bigint` | null |
+| `driver_group_message_sent_at` | `timestamp with time zone` | null |
+| `driver_group_message_id` | `bigint` | null |
+| `driver_group_message_sent_by` | `text` | null |
 
 - **Primary key:** `PRIMARY KEY (id)`
 - **Foreign keys:**

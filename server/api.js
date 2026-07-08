@@ -1216,7 +1216,7 @@ const { createSettingsRouter } = require('./routes/settingsRoutes');
 app.use('/api/settings', createSettingsRouter({ authMiddleware }));
 
 const { createRouteControlRouter } = require('./routes/routeControlRoutes');
-app.use('/api/route-control', createRouteControlRouter({ authMiddleware }));
+app.use('/api/route-control', createRouteControlRouter({ authMiddleware, telegram: bot.telegram }));
 
 const { createRecruiterRouter } = require('./routes/recruiterRoutes');
 app.use('/api/recruiters', createRecruiterRouter({ authMiddleware }));

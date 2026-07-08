@@ -967,7 +967,10 @@ CREATE TABLE route_assignments (
   source text DEFAULT 'admin'::text NOT NULL,
   assigned_by_user_id bigint,
   telegram_chat_id bigint,
-  telegram_message_id bigint
+  telegram_message_id bigint,
+  driver_group_message_sent_at timestamp with time zone,
+  driver_group_message_id bigint,
+  driver_group_message_sent_by text
 );
 
 CREATE TABLE route_monitor_events (

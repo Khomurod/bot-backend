@@ -4,16 +4,22 @@ const routeControl = require('../../services/routeControlService');
 
 /**
  * Route Control admin API.
- *   GET    /                 → list route assignments (?status=active|completed|cancelled)
- *   GET    /:id              → one assignment + its recent monitor events
- *   POST   /                 → assign a route { groupId, url, manual? }
- *   POST   /parse            → test-parse a Google Maps link (no store) { url }
- *   POST   /:id/compute      → compute/recompute geometry for an assignment
- *   POST   /:id/cancel       → mark cancelled
- *   POST   /:id/complete     → mark completed
+ *   GET    /                        → list route assignments (?status=active|completed|cancelled)
+ *   GET    /:id                     → one assignment + its recent monitor events
+ *   POST   /                        → assign a route { groupId, url, manual?, sendToDriverGroup? }
+ *   POST   /parse                   → test-parse a Google Maps link (no store) { url }
+ *   POST   /:id/compute             → compute/recompute geometry for an assignment
+ *   POST   /:id/send-driver-message → send/re-send the route message to the driver group
+ *   POST   /:id/cancel              → mark cancelled
+ *   POST   /:id/complete            → mark completed
  */
-function createRouteControlRouter({ authMiddleware }) {
+function createRouteControlRouter({ authMiddleware, telegram = null }) {
   const router = express.Router();
+
+  /** Admin display name for audit trails (never an internal id). */
+  function adminName(req) {
+    return req.admin?.username || req.admin?.email || 'admin';
+  }
 
   router.get('/', authMiddleware, async (req, res) => {
     try {
@@ -50,15 +56,52 @@ function createRouteControlRouter({ authMiddleware }) {
 
   router.post('/', authMiddleware, async (req, res) => {
     try {
+      const by = adminName(req);
       const result = await routeControl.assignRoute({
         groupId: req.body?.groupId,
         url: req.body?.url,
         manual: req.body?.manual || null,
-        assignedBy: req.user?.username || req.user?.email || 'admin',
+        assignedBy: by,
       });
+
+      // Optional send-on-assign. A Telegram send failure must NOT fail the
+      // assignment — return partial success so the UI can say "assigned, but not
+      // sent" and offer a manual re-send.
+      if (req.body?.sendToDriverGroup && result?.assignment?.id) {
+        try {
+          const send = await routeControl.sendDriverGroupRouteMessage({
+            assignmentId: result.assignment.id,
+            telegram,
+            sentBy: by,
+          });
+          result.driverMessage = { ...send };
+        } catch (sendErr) {
+          console.error('[ROUTE-CONTROL API] send-on-assign failed:', sendErr.message);
+          result.driverMessage = {
+            sent: false,
+            error: sendErr.message,
+            code: sendErr.code || 'SEND_ERROR',
+          };
+        }
+      }
       res.json(result);
     } catch (err) {
       res.status(err.status || 400).json({ error: err.message, code: err.code || 'ASSIGN_ERROR' });
+    }
+  });
+
+  router.post('/:id/send-driver-message', authMiddleware, async (req, res) => {
+    try {
+      const send = await routeControl.sendDriverGroupRouteMessage({
+        assignmentId: parseInt(req.params.id, 10),
+        telegram,
+        sentBy: adminName(req),
+        customMessage: req.body?.message ? String(req.body.message) : null,
+      });
+      res.json(send);
+    } catch (err) {
+      console.error('[ROUTE-CONTROL API] send-driver-message failed:', err.message);
+      res.status(err.status || 400).json({ error: err.message, code: err.code || 'SEND_ERROR' });
     }
   });
 
