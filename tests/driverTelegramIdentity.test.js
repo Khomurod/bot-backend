@@ -42,8 +42,14 @@ function loadDbWithFakePg() {
   }
   const pgPath = require.resolve('pg');
   require.cache[pgPath] = { id: pgPath, filename: pgPath, loaded: true, exports: { Pool: FakePool } };
+  // The Pool is created in database/pool.js and shared by every feature module
+  // under database/, so clear the whole directory from the cache — otherwise a
+  // previous load's pool (bound to a previous FakePool + calls array) survives.
+  const databaseDir = path.resolve(__dirname, '../database') + path.sep;
+  for (const key of Object.keys(require.cache)) {
+    if (key.startsWith(databaseDir)) delete require.cache[key];
+  }
   const dbPath = require.resolve(path.resolve(__dirname, '../database/db.js'));
-  delete require.cache[dbPath];
   const db = require(dbPath);
   return {
     db,
