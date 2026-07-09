@@ -211,7 +211,19 @@ async function handleIntakeMessage(ctx) {
       sortOrder: message.message_id || existingFiles.length,
     });
   } catch (err) {
-    console.error('[DOC-INTAKE] addFileToBatch error:', err.message);
+    // A failure here means the file row never landed, so finalizeBatch is never
+    // scheduled and no classification/match/monitor report happens — the exact
+    // symptom of the "silent monitor does nothing" bug. Log enough to tell an
+    // ON CONFLICT / unique-index mismatch apart from an ordinary insert failure,
+    // WITHOUT leaking any file bytes or secrets (ids/codes only).
+    const pgCode = err && err.code ? ` [pg ${err.code}]` : '';
+    const conflictHint = /ON CONFLICT/i.test(err?.message || '')
+      ? ' (likely ON CONFLICT / unique-index mismatch — check addFileToBatch vs schema.sql idx_tg_doc_files_unique_id)'
+      : '';
+    console.error(
+      `[DOC-INTAKE] addFileToBatch error for batch ${batch.id}`
+      + `${pgCode}: ${err.message}${conflictHint}`
+    );
     return;
   }
 

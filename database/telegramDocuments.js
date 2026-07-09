@@ -78,11 +78,22 @@ async function findOpenBatchForSender({ telegramChatId, telegramUserId, windowSe
  */
 async function addFileToBatch(batchId, file) {
   const res = await query(
+    // NOTE: the dedup guard is the PARTIAL unique index idx_tg_doc_files_unique_id
+    // (schema.sql), defined WHERE telegram_file_unique_id IS NOT NULL. Postgres
+    // will NOT infer a partial index from a bare column list, so
+    // `ON CONFLICT (telegram_file_unique_id)` raises
+    //   "there is no unique or exclusion constraint matching the ON CONFLICT
+    //    specification"
+    // and the whole insert throws. We use the un-targeted `ON CONFLICT DO
+    // NOTHING`, which matches ANY unique/exclusion violation on the row. This
+    // table's only unique constraint is that partial index, so duplicate
+    // protection is unchanged — a resent/echoed file still yields no row
+    // (returns null) instead of a duplicate insert.
     `INSERT INTO telegram_document_files
        (batch_id, telegram_file_id, telegram_file_unique_id, telegram_message_id,
         file_name, mime_type, file_size, kind, local_path, sha256, sort_order)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-     ON CONFLICT (telegram_file_unique_id) DO NOTHING
+     ON CONFLICT DO NOTHING
      RETURNING *`,
     [
       batchId,
