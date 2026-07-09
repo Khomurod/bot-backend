@@ -2125,6 +2125,42 @@ ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_sent
 ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_id BIGINT NULL;
 ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_sent_by TEXT NULL;
 
+-- Tracking start controls. `status` stays the route LIFECYCLE (active/completed/
+-- cancelled); `tracking_status` is the MONITORING state layered on top:
+--   pending → the start condition has not been met yet (mode decides which)
+--   active  → the monitor compares live GPS against the route
+-- Existing rows default to active/immediate so the migration changes nothing
+-- for routes that are already being monitored. tracking_hold_reason is a short
+-- machine-readable reason shown in the admin UI while pending
+-- (waiting_for_message | waiting_for_time | waiting_for_location).
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_start_mode TEXT NOT NULL DEFAULT 'immediate';
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_start_at TIMESTAMPTZ NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_started_at TIMESTAMPTZ NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_start_lat DOUBLE PRECISION NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_start_lng DOUBLE PRECISION NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_start_location_text TEXT NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_start_radius_miles DOUBLE PRECISION NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_hold_reason TEXT NULL;
+
+-- Route screenshots (admin-attached images sent with the driver-group route
+-- message). A SEPARATE table so no existing `SELECT r.*` query ever drags image
+-- bytes into list views; bytes are only read by the dedicated fetch used for
+-- Telegram sends and the auth-gated preview endpoint. One screenshot per
+-- assignment (replaced on re-upload).
+CREATE TABLE IF NOT EXISTS route_assignment_attachments (
+  id SERIAL PRIMARY KEY,
+  assignment_id INTEGER NOT NULL REFERENCES route_assignments(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL DEFAULT 'route_screenshot',
+  mime_type TEXT NOT NULL,
+  file_size_bytes INTEGER NOT NULL,
+  file_data BYTEA NOT NULL,
+  uploaded_by TEXT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_route_assignment_attachments_assignment
+  ON route_assignment_attachments(assignment_id, kind);
+
 CREATE INDEX IF NOT EXISTS idx_route_assignments_active
   ON route_assignments(status, updated_at DESC) WHERE status = 'active';
 CREATE INDEX IF NOT EXISTS idx_route_assignments_group
@@ -2281,7 +2317,7 @@ CREATE TABLE IF NOT EXISTS safety_event_video_jobs (
   music_asset_id INTEGER NULL
     REFERENCES safety_event_music_assets(id) ON DELETE SET NULL,
   status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending','processing','sent','failed','fallback_sent','skipped')),
+    CHECK (status IN ('pending','processing','sent','compressed_sent','failed','fallback_sent','skipped','failed_too_large')),
   video_source TEXT NULL
     CHECK (video_source IS NULL OR video_source IN ('immediate','backfill')),
   video_reference TEXT NULL,            -- MASKED/opaque ref (never a signed URL)
@@ -2298,3 +2334,13 @@ CREATE INDEX IF NOT EXISTS idx_safety_event_video_jobs_event
   ON safety_event_video_jobs(samsara_event_id);
 CREATE INDEX IF NOT EXISTS idx_safety_event_video_jobs_status_created
   ON safety_event_video_jobs(status, created_at DESC);
+
+-- Additive migration for DBs created before the telegram-size compression
+-- statuses existed: widen the status CHECK to allow 'compressed_sent' (overlay
+-- output was re-encoded under Telegram's 50MB cap) and 'failed_too_large'
+-- (even the original exceeds the cap — delivery falls back to text).
+ALTER TABLE safety_event_video_jobs
+  DROP CONSTRAINT IF EXISTS safety_event_video_jobs_status_check;
+ALTER TABLE safety_event_video_jobs
+  ADD CONSTRAINT safety_event_video_jobs_status_check
+  CHECK (status IN ('pending','processing','sent','compressed_sent','failed','fallback_sent','skipped','failed_too_large'));

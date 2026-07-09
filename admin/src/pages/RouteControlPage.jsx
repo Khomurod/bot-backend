@@ -142,6 +142,16 @@ function SearchableGroupSelect({ options, value, onChange, disabled }) {
   );
 }
 
+const SCREENSHOT_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const SCREENSHOT_MAX_MB = 8;
+
+const TRACKING_MODES = [
+  { value: "after_message_sent", label: "After route message is sent (default)" },
+  { value: "immediate", label: "Immediately" },
+  { value: "scheduled_time", label: "At a scheduled time" },
+  { value: "start_location", label: "When the truck reaches a start location" },
+];
+
 function AssignForm({ options, onAssigned, onMessage }) {
   const [groupId, setGroupId] = useState("");
   const [url, setUrl] = useState("");
@@ -151,9 +161,57 @@ function AssignForm({ options, onAssigned, onMessage }) {
   const [sendToGroup, setSendToGroup] = useState(true);
   const [parsed, setParsed] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Route screenshot (upload / drag-drop / Ctrl+V paste) with local preview.
+  const [screenshot, setScreenshot] = useState(null);
+  const [screenshotPreview, setScreenshotPreview] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  // Tracking start controls.
+  const [startMode, setStartMode] = useState("after_message_sent");
+  const [startAt, setStartAt] = useState("");
+  const [startLocation, setStartLocation] = useState("");
+  const [startRadius, setStartRadius] = useState("2");
+  const fileInputRef = useRef(null);
+
+  const clearScreenshot = useCallback(() => {
+    setScreenshot(null);
+    setScreenshotPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  const acceptScreenshot = useCallback((file) => {
+    if (!file) return;
+    if (!SCREENSHOT_TYPES.includes(file.type)) {
+      onMessage({ type: "error", text: `Screenshot must be PNG, JPG or WEBP (got ${file.type || "unknown type"}).` });
+      return;
+    }
+    if (file.size > SCREENSHOT_MAX_MB * 1024 * 1024) {
+      onMessage({ type: "error", text: `Screenshot is too large (${(file.size / 1048576).toFixed(1)} MB). The limit is ${SCREENSHOT_MAX_MB} MB.` });
+      return;
+    }
+    setScreenshot(file);
+    setScreenshotPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
+  }, [onMessage]);
+
+  // Ctrl+V anywhere on the page attaches a pasted image as the route screenshot.
+  useEffect(() => {
+    const onPaste = (e) => {
+      const items = e.clipboardData?.items || [];
+      for (const item of items) {
+        if (item.kind === "file" && item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) { acceptScreenshot(file); e.preventDefault(); }
+          return;
+        }
+      }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [acceptScreenshot]);
 
   const resetInputs = () => {
     setUrl(""); setOrigin(""); setDestination(""); setWaypoints(""); setParsed(null);
+    clearScreenshot();
+    setStartMode("after_message_sent"); setStartAt(""); setStartLocation(""); setStartRadius("2");
   };
 
   const testParse = async () => {
@@ -172,9 +230,12 @@ function AssignForm({ options, onAssigned, onMessage }) {
 
   /** Report the outcome, distinguishing full success from partial (send failed). */
   const reportResult = (result) => {
+    const trackingNote = result.trackingStatus === "pending"
+      ? " Tracking is pending until its start condition is met."
+      : " Monitoring is active.";
     const base = result.geometryPending
       ? "Route saved. Geometry is pending — enable Google Maps in Settings → GMaps, then Compute."
-      : "Route assigned and geometry computed. Monitoring is active.";
+      : `Route assigned and geometry computed.${trackingNote}`;
     if (result.driverMessage && result.driverMessage.sent === false) {
       onMessage({
         type: "warning",
@@ -195,23 +256,41 @@ function AssignForm({ options, onAssigned, onMessage }) {
       onMessage({ type: "error", text: "Paste a Google Maps directions link, or enter Origin and Destination." });
       return;
     }
+    if (startMode === "scheduled_time" && !startAt) {
+      onMessage({ type: "error", text: "Pick the date/time tracking should start." });
+      return;
+    }
+    if (startMode === "start_location" && !startLocation.trim()) {
+      onMessage({ type: "error", text: "Enter the start location as coordinates (lat, lng)." });
+      return;
+    }
     setBusy(true);
     try {
-      const payloadBase = { groupId: Number(groupId), sendToDriverGroup: sendToGroup };
+      const tracking = { startMode };
+      if (startMode === "scheduled_time") tracking.startAt = new Date(startAt).toISOString();
+      if (startMode === "start_location") {
+        tracking.startLocation = startLocation.trim();
+        tracking.startRadiusMiles = Number(startRadius) || 2;
+      }
+      const payloadBase = { groupId: Number(groupId), sendToDriverGroup: sendToGroup, tracking };
+      // With a screenshot the payload goes multipart; otherwise plain JSON (unchanged).
+      const submit = (payload) => (screenshot
+        ? api.assignRouteWithScreenshot(payload, screenshot)
+        : api.assignRoute(payload));
       let result;
       if (url.trim() && !hasManual) {
-        result = await api.assignRoute({ ...payloadBase, url: url.trim() });
+        result = await submit({ ...payloadBase, url: url.trim() });
       } else if (!url.trim() && hasManual) {
-        result = await api.assignRoute({
+        result = await submit({
           ...payloadBase,
           manual: { origin: origin.trim(), destination: destination.trim(), waypoints: parseWaypoints(waypoints) },
         });
       } else {
         try {
-          result = await api.assignRoute({ ...payloadBase, url: url.trim() });
+          result = await submit({ ...payloadBase, url: url.trim() });
         } catch (linkErr) {
           onMessage({ type: "error", text: `${linkErr.message} Falling back to the Origin/Destination you entered…` });
-          result = await api.assignRoute({
+          result = await submit({
             ...payloadBase,
             url: url.trim(),
             manual: { origin: origin.trim(), destination: destination.trim(), waypoints: parseWaypoints(waypoints) },
@@ -257,6 +336,100 @@ function AssignForm({ options, onAssigned, onMessage }) {
         </div>
       </div>
 
+      {/* Route screenshot: click, drag/drop, or Ctrl+V paste. */}
+      <div style={{ marginTop: 14 }}>
+        <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
+          Route screenshot (optional — sent to the driver group with the route message)
+        </label>
+        <div
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => { e.preventDefault(); setDragOver(false); acceptScreenshot(e.dataTransfer?.files?.[0]); }}
+          style={{
+            border: `1.5px dashed ${dragOver ? "#60a5fa" : "rgba(148,163,184,0.4)"}`,
+            borderRadius: 8, padding: screenshotPreview ? 8 : 18, cursor: "pointer",
+            background: dragOver ? "rgba(59,130,246,0.08)" : "rgba(148,163,184,0.04)",
+            textAlign: "center",
+          }}
+        >
+          {screenshotPreview ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left" }}>
+              <img src={screenshotPreview} alt="Route screenshot preview" style={{ maxHeight: 120, maxWidth: 220, borderRadius: 6 }} />
+              <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                <div>{screenshot?.name || "pasted image"} · {(screenshot?.size / 1048576).toFixed(1)} MB</div>
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                  >Replace</button>
+                  <button
+                    className="btn btn-danger btn-sm"
+                    onClick={(e) => { e.stopPropagation(); clearScreenshot(); }}
+                  >Remove</button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: "#94a3b8" }}>
+              Click to choose an image, drag &amp; drop it here, or press <strong>Ctrl+V</strong> to paste a screenshot.
+              <div style={{ fontSize: 11, marginTop: 4 }}>PNG, JPG or WEBP · up to {SCREENSHOT_MAX_MB} MB</div>
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={SCREENSHOT_TYPES.join(",")}
+            style={{ display: "none" }}
+            onChange={(e) => acceptScreenshot(e.target.files?.[0])}
+          />
+        </div>
+      </div>
+
+      {/* Tracking start controls. */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end", marginTop: 14 }}>
+        <div className="form-group" style={{ marginBottom: 0, minWidth: 280 }}>
+          <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>Tracking starts</label>
+          <select className="form-input" value={startMode} onChange={(e) => setStartMode(e.target.value)}>
+            {TRACKING_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
+        </div>
+        {startMode === "scheduled_time" && (
+          <div className="form-group" style={{ marginBottom: 0, minWidth: 220 }}>
+            <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>Start at</label>
+            <input className="form-input" type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
+          </div>
+        )}
+        {startMode === "start_location" && (
+          <>
+            <div className="form-group" style={{ marginBottom: 0, minWidth: 240 }}>
+              <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>Start location (lat, lng)</label>
+              <input
+                className="form-input" value={startLocation} placeholder="e.g. 35.2331, -85.7095"
+                onChange={(e) => setStartLocation(e.target.value)}
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0, width: 130 }}>
+              <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>Radius (miles)</label>
+              <input
+                className="form-input" type="number" min="0.25" max="100" step="0.25"
+                value={startRadius} onChange={(e) => setStartRadius(e.target.value)}
+              />
+            </div>
+          </>
+        )}
+      </div>
+      {startMode === "after_message_sent" && (
+        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+          Tracking stays pending until the route message is successfully sent to the driver group.
+        </div>
+      )}
+      {startMode === "start_location" && (
+        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+          Right-click the spot in Google Maps and copy the coordinates. Tracking starts when the truck is within the radius.
+        </div>
+      )}
+
       <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 13, cursor: "pointer" }}>
         <input type="checkbox" checked={sendToGroup} onChange={(e) => setSendToGroup(e.target.checked)} />
         Send route message to driver group
@@ -283,6 +456,29 @@ function AssignForm({ options, onAssigned, onMessage }) {
   );
 }
 
+/** Human label + colour for the tracking state shown in the route list. */
+function trackingBadge(a) {
+  if (a.status !== "active") return null;
+  if (a.tracking_status !== "pending") return { text: "Tracking: Active", color: "#22c55e" };
+  const hold = a.tracking_hold_reason
+    || (a.tracking_start_mode === "after_message_sent" ? "waiting_for_message"
+      : a.tracking_start_mode === "scheduled_time" ? "waiting_for_time"
+        : a.tracking_start_mode === "start_location" ? "waiting_for_location" : null);
+  switch (hold) {
+    case "waiting_for_message":
+      return { text: "Tracking: Waiting for route message", color: "#f59e0b" };
+    case "waiting_for_time":
+      return { text: `Tracking: Starts ${fmtTime(a.tracking_start_at)}`, color: "#f59e0b" };
+    case "waiting_for_location":
+      return {
+        text: `Tracking: Waiting for truck to reach start location${a.tracking_start_radius_miles ? ` (${a.tracking_start_radius_miles} mi radius)` : ""}`,
+        color: "#f59e0b",
+      };
+    default:
+      return { text: "Tracking: Pending", color: "#f59e0b" };
+  }
+}
+
 function RouteRow({ a, onChanged, onMessage }) {
   const [busy, setBusy] = useState(false);
   const [details, setDetails] = useState(null);
@@ -303,7 +499,11 @@ function RouteRow({ a, onChanged, onMessage }) {
         : send.mentionConfidence === "medium"
           ? " Driver tagged by @username."
           : " Sent with the driver's name (no Telegram account on file).";
-      onMessage({ type: "success", text: `Route message sent to the driver group.${tagged}` });
+      const extras = [
+        send.withScreenshot ? " Screenshot attached." : "",
+        send.trackingActivated ? " Tracking is now active." : "",
+      ].join("");
+      onMessage({ type: "success", text: `Route message sent to the driver group.${tagged}${extras}` });
       await onChanged();
     } catch (err) {
       onMessage({ type: "error", text: `Could not send the route message: ${err.message}` });
@@ -316,8 +516,20 @@ function RouteRow({ a, onChanged, onMessage }) {
     catch (err) { onMessage({ type: "error", text: err.message }); }
   };
 
+  const startTracking = async () => {
+    setBusy(true);
+    try {
+      await api.startRouteTracking(a.id);
+      onMessage({ type: "success", text: "Tracking started." });
+      await onChanged();
+    } catch (err) {
+      onMessage({ type: "error", text: `Could not start tracking: ${err.message}` });
+    } finally { setBusy(false); }
+  };
+
   const result = RESULT_LABELS[a.last_check_result] || { text: a.last_check_result || "—", color: "#94a3b8" };
   const statusBadge = a.status === "active" ? "badge-active" : "badge-inactive";
+  const tracking = trackingBadge(a);
 
   return (
     <div className="card" style={{ marginBottom: 10 }}>
@@ -329,6 +541,12 @@ function RouteRow({ a, onChanged, onMessage }) {
           {!a.encoded_polyline && <span className="badge badge-inactive" style={{ marginLeft: 6 }}>geometry pending</span>}
           {a.source === "telegram" && <span className="badge" style={{ marginLeft: 6 }}>📲 from Telegram</span>}
           {a.driver_group_message_sent_at && <span className="badge" style={{ marginLeft: 6 }}>✅ sent to group</span>}
+          {a.has_screenshot && <span className="badge" style={{ marginLeft: 6 }}>📷 screenshot</span>}
+          {tracking && (
+            <span className="badge" style={{ marginLeft: 6, color: tracking.color, borderColor: tracking.color }}>
+              {tracking.text}
+            </span>
+          )}
           <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
             {a.origin_text || "?"} → {a.destination_text || "?"}
             {a.original_url && a.original_url.startsWith("http") && (
@@ -357,6 +575,11 @@ function RouteRow({ a, onChanged, onMessage }) {
           {a.status === "active" && (
             <button className="btn btn-ghost btn-sm" onClick={sendRouteMessage} disabled={busy}>
               {a.driver_group_message_sent_at ? "Re-send route message" : "Send route message"}
+            </button>
+          )}
+          {a.status === "active" && a.tracking_status === "pending" && (
+            <button className="btn btn-ghost btn-sm" onClick={startTracking} disabled={busy}>
+              Start tracking now
             </button>
           )}
           {!a.encoded_polyline && a.status === "active" && (

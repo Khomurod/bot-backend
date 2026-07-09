@@ -1398,6 +1398,41 @@ export async function assignRoute(payload) {
   return res.json();
 }
 
+/**
+ * Assign a route WITH a screenshot: multipart with the JSON payload in a
+ * `payload` field. No Content-Type header — the browser sets the boundary.
+ */
+export async function assignRouteWithScreenshot(payload, screenshotFile) {
+  const formData = new FormData();
+  formData.append('payload', JSON.stringify(payload || {}));
+  formData.append('screenshot', screenshotFile);
+  const res = await fetch(`${API_BASE}/route-control`, {
+    method: 'POST', headers: getAuthHeader(), body: formData,
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Upload/replace the route screenshot on an existing assignment. */
+export async function uploadRouteScreenshot(id, screenshotFile) {
+  const formData = new FormData();
+  formData.append('screenshot', screenshotFile);
+  const res = await fetch(`${API_BASE}/route-control/${id}/screenshot`, {
+    method: 'POST', headers: getAuthHeader(), body: formData,
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Manually start tracking for a pending route. */
+export async function startRouteTracking(id) {
+  const res = await fetch(`${API_BASE}/route-control/${id}/start-tracking`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function computeRouteGeometry(id) {
   const res = await fetch(`${API_BASE}/route-control/${id}/compute`, {
     method: 'POST', headers: getHeaders(),

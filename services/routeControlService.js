@@ -16,12 +16,17 @@ const rc = require('../database/routeControl');
 const gmaps = require('../database/gmapsSettings');
 const googleClient = require('./googleMapsClient');
 const { safeSend } = require('./telegramHtml');
-const { parseDirectionsUrl, expandShortLink } = require('./googleMapsUrlParser');
-const { decodePolyline, distancePointToPolylineMeters } = require('./routeGeometry');
+const { parseDirectionsUrl, expandShortLink, classifyPoint } = require('./googleMapsUrlParser');
+const { decodePolyline, distancePointToPolylineMeters, haversineMeters } = require('./routeGeometry');
 const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
 const { resolveDriverMentionForGroup, escapeHtml } = require('./driverMention');
 
 const POLL_MS_MIN = 30 * 1000;
+// Telegram caps photo captions at 1024 chars and text messages at 4096.
+const TELEGRAM_CAPTION_MAX = 1024;
+const TELEGRAM_TEXT_SAFE_MAX = 3900;
+const TRACKING_START_MODES = ['immediate', 'after_message_sent', 'scheduled_time', 'start_location'];
+const DEFAULT_START_RADIUS_MILES = 2;
 let serviceTimer = null;
 let serviceStopped = false;
 let tickRunning = false;
@@ -58,6 +63,145 @@ function monitorSettingsFromConfig(cfg) {
   };
 }
 
+// Google Maps often returns addresses with a localized country suffix (the
+// admin's Google session may be Russian → "…, TN 37356, США"). Drivers read
+// English; the country adds nothing for US routes — strip it entirely.
+const COUNTRY_SUFFIX_RE = new RegExp(
+  '(?:,\\s*)?(?:'
+  + 'США|Соединённые\\s+Штаты(?:\\s+Америки)?|Соединенные\\s+Штаты(?:\\s+Америки)?'
+  + '|USA|U\\.S\\.A\\.|United\\s+States(?:\\s+of\\s+America)?'
+  + ')\\s*\\.?\\s*$', 'i'
+);
+
+/**
+ * PURE. Clean a Google/Maps-derived address for driver-facing display: trims,
+ * strips trailing country labels (both Cyrillic "США"/"Соединенные Штаты" and
+ * English "USA"/"United States"), and drops leftover trailing punctuation.
+ */
+function cleanAddressText(text) {
+  let s = String(text || '').replace(/\s+/g, ' ').trim();
+  for (let i = 0; i < 3; i += 1) {
+    const before = s;
+    s = s.replace(COUNTRY_SUFFIX_RE, '').trim();
+    s = s.replace(/[\s,;]+$/, '');
+    if (s === before) break;
+  }
+  return s;
+}
+
+/**
+ * PURE. Validate + normalize the tracking start options for a new assignment.
+ * Defaults: Telegram-assigned routes keep the legacy immediate start; admin
+ * assignments start only after the route message reaches the driver group
+ * (regardless of whether "send now" was checked — an unsent message simply
+ * holds tracking as pending until a later manual send).
+ *
+ * @returns {{ trackingStatus:'active'|'pending', trackingStartMode:string,
+ *             trackingStartAt:(string|null), trackingStartLat:(number|null),
+ *             trackingStartLng:(number|null), trackingStartLocationText:(string|null),
+ *             trackingStartRadiusMiles:(number|null), trackingHoldReason:(string|null) }}
+ */
+function normalizeTrackingOptions({ tracking = null, source = 'admin' } = {}) {
+  const t = tracking || {};
+  let mode = String(t.startMode || '').trim();
+  if (mode && !TRACKING_START_MODES.includes(mode)) {
+    throw serviceError('BAD_TRACKING_MODE',
+      `Unknown tracking start mode "${mode}". Use one of: ${TRACKING_START_MODES.join(', ')}.`, 400);
+  }
+  if (!mode) mode = source === 'telegram' ? 'immediate' : 'after_message_sent';
+
+  const out = {
+    trackingStatus: mode === 'immediate' ? 'active' : 'pending',
+    trackingStartMode: mode,
+    trackingStartAt: null,
+    trackingStartLat: null,
+    trackingStartLng: null,
+    trackingStartLocationText: null,
+    trackingStartRadiusMiles: null,
+    trackingHoldReason: null,
+  };
+
+  if (mode === 'after_message_sent') {
+    out.trackingHoldReason = 'waiting_for_message';
+  } else if (mode === 'scheduled_time') {
+    const at = new Date(String(t.startAt || ''));
+    if (!t.startAt || Number.isNaN(at.getTime())) {
+      throw serviceError('BAD_TRACKING_TIME',
+        'Scheduled tracking start needs a valid date/time.', 400);
+    }
+    out.trackingStartAt = at.toISOString();
+    out.trackingHoldReason = 'waiting_for_time';
+  } else if (mode === 'start_location') {
+    const raw = String(t.startLocation || '').trim();
+    if (!raw) {
+      throw serviceError('BAD_TRACKING_LOCATION',
+        'Start-location tracking needs a location.', 400);
+    }
+    const point = classifyPoint(raw);
+    if (!Number.isFinite(point?.lat) || !Number.isFinite(point?.lng)) {
+      throw serviceError('START_LOCATION_NEEDS_COORDS',
+        'Enter the start location as coordinates — e.g. "35.2331, -85.7095" '
+        + '(right-click the spot in Google Maps and copy the lat, lng).', 400);
+    }
+    out.trackingStartLat = point.lat;
+    out.trackingStartLng = point.lng;
+    out.trackingStartLocationText = raw;
+    const radius = Number(t.startRadiusMiles);
+    out.trackingStartRadiusMiles = Number.isFinite(radius) && radius > 0
+      ? Math.min(100, Math.max(0.25, radius))
+      : DEFAULT_START_RADIUS_MILES;
+    out.trackingHoldReason = 'waiting_for_location';
+  }
+  return out;
+}
+
+/**
+ * PURE. Decide whether a PENDING assignment's tracking should start now.
+ * @returns {{ shouldStart:boolean, holdReason:(string|null), reason:string }}
+ */
+function evaluateTrackingStart({ assignment, location = null, now = new Date() }) {
+  if (!assignment || assignment.tracking_status !== 'pending') {
+    return { shouldStart: false, holdReason: null, reason: 'tracking is not pending' };
+  }
+  const mode = assignment.tracking_start_mode || 'immediate';
+  if (mode === 'immediate') {
+    return { shouldStart: true, holdReason: null, reason: 'immediate start mode' };
+  }
+  if (mode === 'after_message_sent') {
+    if (assignment.driver_group_message_sent_at) {
+      return { shouldStart: true, holdReason: null, reason: 'route message delivered to the driver group' };
+    }
+    return { shouldStart: false, holdReason: 'waiting_for_message', reason: 'waiting for the route message to be sent to the driver group' };
+  }
+  if (mode === 'scheduled_time') {
+    const at = assignment.tracking_start_at ? new Date(assignment.tracking_start_at).getTime() : NaN;
+    const nowMs = (now instanceof Date ? now : new Date(now)).getTime();
+    if (Number.isFinite(at) && nowMs >= at) {
+      return { shouldStart: true, holdReason: null, reason: 'scheduled start time reached' };
+    }
+    return { shouldStart: false, holdReason: 'waiting_for_time', reason: 'waiting for the scheduled start time' };
+  }
+  if (mode === 'start_location') {
+    const lat = Number(assignment.tracking_start_lat);
+    const lng = Number(assignment.tracking_start_lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return { shouldStart: false, holdReason: 'waiting_for_location', reason: 'start location has no coordinates' };
+    }
+    if (!location || location.latitude == null || location.longitude == null) {
+      return { shouldStart: false, holdReason: 'waiting_for_location', reason: 'waiting for GPS to reach the start location' };
+    }
+    const radiusMiles = Number(assignment.tracking_start_radius_miles) > 0
+      ? Number(assignment.tracking_start_radius_miles) : DEFAULT_START_RADIUS_MILES;
+    const meters = haversineMeters([location.latitude, location.longitude], [lat, lng]);
+    if (meters != null && meters <= radiusMiles * 1609.34) {
+      return { shouldStart: true, holdReason: null, reason: `driver is within ${radiusMiles} mi of the start location` };
+    }
+    return { shouldStart: false, holdReason: 'waiting_for_location', reason: 'driver has not reached the start location yet' };
+  }
+  // Unknown mode (future value?) — fail open so a route is never silently stuck.
+  return { shouldStart: true, holdReason: null, reason: `unknown start mode "${mode}" — starting tracking` };
+}
+
 /**
  * PURE. Decide the outcome of one monitoring check for an assignment.
  *
@@ -72,6 +216,11 @@ function evaluateAssignment({ assignment, location, settings, now = new Date() }
   // Completed / cancelled routes are never monitored.
   if (assignment?.status && assignment.status !== 'active') {
     return { ...base, result: 'not_monitored', reason: `route is ${assignment.status}` };
+  }
+  // Tracking hasn't started yet (waiting for message / time / location) —
+  // deviation checks are skipped until the start condition is met.
+  if (assignment?.tracking_status === 'pending') {
+    return { ...base, result: 'not_monitored', reason: 'tracking has not started yet' };
   }
   const polyline = decodePolyline(assignment?.encoded_polyline || '');
   if (!polyline.length) {
@@ -171,15 +320,19 @@ async function parseRouteLink(url) {
 async function assignRoute({
   groupId, url, assignedBy, manual = null,
   source = 'admin', assignedByUserId = null, telegramChatId = null, telegramMessageId = null,
+  tracking = null,
 }) {
   if (!groupId) throw serviceError('NO_GROUP', 'Select a driver group for this route.', 400);
   if (!url && !manual) throw serviceError('NO_URL', 'Paste a Google Maps directions link.', 400);
+
+  // Validate tracking options FIRST so a bad mode/time/location fails the
+  // request before anything is stored.
+  const trackingOpts = normalizeTrackingOptions({ tracking, source });
 
   let origin;
   let destination;
   let waypoints = [];
   if (manual && manual.origin && manual.destination) {
-    const { classifyPoint } = require('./googleMapsUrlParser');
     origin = classifyPoint(manual.origin);
     destination = classifyPoint(manual.destination);
     waypoints = (manual.waypoints || []).map(classifyPoint);
@@ -230,6 +383,7 @@ async function assignRoute({
     assignedByUserId,
     telegramChatId,
     telegramMessageId,
+    ...trackingOpts,
   });
   const originDetail = source === 'telegram'
     ? `assigned from Telegram${assignedBy ? ` by ${assignedBy}` : ''}`
@@ -239,12 +393,56 @@ async function assignRoute({
     eventType: 'assigned',
     detail: `${originDetail} — ${computed ? 'route computed' : 'GMaps not configured, geometry pending'}`,
   });
+  if (trackingOpts.trackingStatus === 'pending') {
+    await rc.insertRouteMonitorEvent({
+      assignmentId: assignment.id,
+      eventType: 'tracking_pending',
+      detail: `tracking will start: ${describeTrackingStartCondition(assignment)}`,
+    });
+  }
 
   return {
     assignment,
     computed: Boolean(computed),
     geometryPending: !computed,
+    trackingStatus: assignment.tracking_status,
+    trackingStartMode: assignment.tracking_start_mode,
   };
+}
+
+/** PURE. Short English description of when tracking will start (for events/UI). */
+function describeTrackingStartCondition(assignment) {
+  switch (assignment?.tracking_start_mode) {
+    case 'after_message_sent':
+      return 'after the route message is sent to the driver group';
+    case 'scheduled_time':
+      return `at the scheduled time (${formatCentralTime(assignment.tracking_start_at)})`;
+    case 'start_location': {
+      const radius = Number(assignment.tracking_start_radius_miles) > 0
+        ? Number(assignment.tracking_start_radius_miles) : DEFAULT_START_RADIUS_MILES;
+      const where = cleanAddressText(assignment.tracking_start_location_text)
+        || `${assignment.tracking_start_lat}, ${assignment.tracking_start_lng}`;
+      return `when the truck reaches ${where} (within ${radius} mi)`;
+    }
+    default:
+      return 'immediately';
+  }
+}
+
+/** Format a timestamp for drivers/dispatch (fleet convention: US Central time). */
+function formatCentralTime(value) {
+  if (!value) return 'unknown time';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return 'unknown time';
+  try {
+    return `${d.toLocaleString('en-US', {
+      timeZone: 'America/Chicago',
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true,
+    })} CST`;
+  } catch (_) {
+    return d.toISOString();
+  }
 }
 
 /**
@@ -274,43 +472,86 @@ function escapeHref(url) {
   return escapeHtml(url).replace(/"/g, '&quot;');
 }
 
+/** PURE. Driver-facing line describing when Route Control starts monitoring. */
+function buildTrackingSection(assignment) {
+  switch (assignment?.tracking_start_mode) {
+    case 'scheduled_time':
+      return `Route Control will start monitoring at ${escapeHtml(formatCentralTime(assignment.tracking_start_at))}.`;
+    case 'start_location': {
+      const radius = Number(assignment.tracking_start_radius_miles) > 0
+        ? Number(assignment.tracking_start_radius_miles) : DEFAULT_START_RADIUS_MILES;
+      const where = cleanAddressText(assignment.tracking_start_location_text)
+        || `${assignment.tracking_start_lat}, ${assignment.tracking_start_lng}`;
+      return `Route Control will start monitoring when the truck reaches ${escapeHtml(where)} (within ${radius} mi).`;
+    }
+    case 'after_message_sent':
+      // By the time the driver reads this, the message HAS been delivered.
+      return 'Route Control starts monitoring this route once this message is delivered.';
+    default:
+      return 'Route Control is now monitoring this route.';
+  }
+}
+
 /**
  * PURE. Build the Telegram-HTML route message sent to a driver group.
- * All user/place-derived text is HTML-escaped; the driver mention is injected
- * verbatim (already-safe HTML from buildDriverMention).
+ *
+ * Clean, English-only format: localized country suffixes from Google (e.g.
+ * Cyrillic "США") are stripped, waypoints are numbered one per line, and the
+ * total length is kept under Telegram's text limit (waypoints past the budget
+ * collapse into "… and N more stops"). All place-derived text is HTML-escaped;
+ * the driver mention is injected verbatim (already-safe HTML).
  *
  * @param {object} assignment  a route_assignments row (with group_name etc.)
  * @param {{ mentionHtml:string }} mention
  * @returns {string} HTML body for parse_mode:'HTML'
  */
 function buildDriverGroupRouteMessage(assignment, mention) {
-  const lines = ['🚚 <b>Route assigned</b>', ''];
-  lines.push(`Driver: ${mention?.mentionHtml || 'driver'}`);
-  lines.push('Please follow this route:');
+  const waypoints = (Array.isArray(assignment?.waypoints) ? assignment.waypoints : [])
+    .map((w) => cleanAddressText(w && w.raw))
+    .filter(Boolean);
 
-  const url = assignment?.original_url;
-  if (url && /^https?:\/\//i.test(url)) {
+  const build = (wpCount) => {
+    const lines = ['🚚 <b>Route Assigned</b>', ''];
+    lines.push(`<b>Driver:</b> ${mention?.mentionHtml || 'driver'}`);
     lines.push('');
-    lines.push(`🔗 <a href="${escapeHref(url)}">Open route in Google Maps</a>`);
-  }
+    lines.push('Please follow the assigned route below.');
 
-  const details = [];
-  if (assignment?.origin_text) details.push(`Origin: ${escapeHtml(assignment.origin_text)}`);
-  if (assignment?.destination_text) details.push(`Destination: ${escapeHtml(assignment.destination_text)}`);
-  const waypoints = Array.isArray(assignment?.waypoints) ? assignment.waypoints : [];
-  const wpText = waypoints.map((w) => (w && w.raw ? String(w.raw) : '')).filter(Boolean);
-  if (wpText.length) details.push(`Waypoints: ${escapeHtml(wpText.join(', '))}`);
-  if (details.length) {
-    lines.push('');
-    lines.push(...details);
-  }
+    const url = assignment?.original_url;
+    if (url && /^https?:\/\//i.test(url)) {
+      lines.push('');
+      lines.push(`🔗 <a href="${escapeHref(url)}">Open route in Google Maps</a>`);
+    }
 
-  lines.push('');
-  lines.push(
-    'Route Control is now monitoring this route. Please stay on the assigned route '
-    + 'and notify dispatch if anything changes.'
-  );
-  return lines.join('\n');
+    const origin = cleanAddressText(assignment?.origin_text);
+    if (origin) {
+      lines.push('', '<b>Origin</b>', escapeHtml(origin));
+    }
+    const destination = cleanAddressText(assignment?.destination_text);
+    if (destination) {
+      lines.push('', '<b>Destination</b>', escapeHtml(destination));
+    }
+
+    if (waypoints.length) {
+      lines.push('', '<b>Stops / Waypoints</b>');
+      waypoints.slice(0, wpCount).forEach((w, i) => lines.push(`${i + 1}. ${escapeHtml(w)}`));
+      if (wpCount < waypoints.length) {
+        lines.push(`… and ${waypoints.length - wpCount} more stops (see the map link).`);
+      }
+    }
+
+    lines.push('', '<b>Tracking</b>', buildTrackingSection(assignment));
+    lines.push('', 'Please stay on the assigned route and notify dispatch if anything changes.');
+    return lines.join('\n');
+  };
+
+  // Fit within Telegram's text limit by dropping trailing waypoints if needed.
+  let wpCount = waypoints.length;
+  let text = build(wpCount);
+  while (text.length > TELEGRAM_TEXT_SAFE_MAX && wpCount > 0) {
+    wpCount -= 1;
+    text = build(wpCount);
+  }
+  return text;
 }
 
 /**
@@ -345,11 +586,50 @@ async function sendDriverGroupRouteMessage({ assignmentId, telegram, sentBy = nu
     ? escapeHtml(String(customMessage).trim())
     : buildDriverGroupRouteMessage(assignment, mention);
 
-  const sent = await safeSend(() => telegram.sendMessage(chatId, body, {
-    parse_mode: 'HTML',
-    disable_web_page_preview: true,
-  }));
-  const messageId = sent?.message_id ?? null;
+  // Attach the route screenshot when one is stored. A photo-send failure must
+  // never lose the route text: fall back to the plain text message. When the
+  // full message exceeds Telegram's 1024-char photo caption, the photo goes
+  // first with a short caption and the details follow as a separate message.
+  let screenshot = null;
+  try {
+    screenshot = await rc.getRouteScreenshot(assignmentId);
+  } catch (_) { screenshot = null; /* screenshots are optional — never block the send */ }
+
+  let messageId = null;
+  let sentVia = 'text';
+  if (screenshot?.file_data) {
+    try {
+      if (body.length <= TELEGRAM_CAPTION_MAX) {
+        const sent = await safeSend(() => telegram.sendPhoto(chatId, { source: screenshot.file_data }, {
+          caption: body,
+          parse_mode: 'HTML',
+        }));
+        messageId = sent?.message_id ?? null;
+        sentVia = 'photo';
+      } else {
+        const sentPhoto = await safeSend(() => telegram.sendPhoto(chatId, { source: screenshot.file_data }, {
+          caption: '🚚 <b>Route Assigned</b> — details below.',
+          parse_mode: 'HTML',
+        }));
+        const sentText = await safeSend(() => telegram.sendMessage(chatId, body, {
+          parse_mode: 'HTML',
+          disable_web_page_preview: true,
+        }));
+        messageId = sentText?.message_id ?? sentPhoto?.message_id ?? null;
+        sentVia = 'photo+text';
+      }
+    } catch (photoErr) {
+      console.error(`[ROUTE-CONTROL] Screenshot send failed for assignment #${assignmentId} (falling back to text):`, photoErr.message);
+      sentVia = 'text';
+    }
+  }
+  if (sentVia === 'text') {
+    const sent = await safeSend(() => telegram.sendMessage(chatId, body, {
+      parse_mode: 'HTML',
+      disable_web_page_preview: true,
+    }));
+    messageId = sent?.message_id ?? null;
+  }
 
   await rc.recordDriverGroupMessageSent(assignmentId, { telegramMessageId: messageId, sentBy });
   await rc.insertRouteMonitorEvent({
@@ -357,17 +637,57 @@ async function sendDriverGroupRouteMessage({ assignmentId, telegram, sentBy = nu
     eventType: 'driver_group_message_sent',
     detail: `route message sent to driver group${sentBy ? ` by ${sentBy}` : ''}`
       + `${messageId ? ` (telegram msg ${messageId})` : ''}`
-      + ` [mention:${mention.source}/${mention.confidence}]`,
+      + ` [via:${sentVia}] [mention:${mention.source}/${mention.confidence}]`,
   });
+
+  // After-message start mode: a successful send is the start condition.
+  let trackingActivated = false;
+  if (assignment.tracking_start_mode === 'after_message_sent' && assignment.tracking_status === 'pending') {
+    const activated = await rc.activateTracking(assignmentId);
+    if (activated) {
+      trackingActivated = true;
+      await rc.insertRouteMonitorEvent({
+        assignmentId,
+        eventType: 'tracking_started',
+        detail: 'route message sent — tracking is now active',
+      });
+    }
+  }
 
   return {
     sent: true,
     sentAt: new Date().toISOString(),
     messageId,
     chatId,
+    sentVia,
+    withScreenshot: sentVia !== 'text',
+    trackingActivated,
     mentionSource: mention.source,
     mentionConfidence: mention.confidence,
   };
+}
+
+/**
+ * Manually start tracking for a pending assignment ("Start tracking now" in the
+ * admin UI). Only active (lifecycle) routes can start; already-active tracking
+ * is a no-op.
+ */
+async function startTrackingNow(assignmentId, startedBy = null) {
+  const assignment = await rc.getRouteAssignment(assignmentId);
+  if (!assignment) throw serviceError('NOT_FOUND', 'Route assignment not found.', 404);
+  if (assignment.status !== 'active') {
+    throw serviceError('NOT_ACTIVE', `Tracking cannot start on a ${assignment.status} route.`, 400);
+  }
+  if (assignment.tracking_status === 'active') {
+    return { alreadyActive: true, assignment };
+  }
+  const updated = await rc.activateTracking(assignmentId);
+  await rc.insertRouteMonitorEvent({
+    assignmentId,
+    eventType: 'tracking_started',
+    detail: `tracking started manually${startedBy ? ` by ${startedBy}` : ''}`,
+  });
+  return { alreadyActive: false, assignment: updated || assignment };
 }
 
 /** Compute (or recompute) geometry for an existing assignment. */
@@ -413,6 +733,48 @@ async function runRouteMonitorCheck(telegram, { now = new Date() } = {}) {
   if (!cfg.enabled) return { enabled: false, checked: 0, notified: 0 };
   const settings = monitorSettingsFromConfig(cfg);
 
+  // Phase 1 — PENDING tracking: evaluate start conditions instead of running
+  // deviation checks. Live GPS is only resolved for the start-location mode.
+  // Hold-reason events are recorded once per reason change, never per tick.
+  let activated = 0;
+  let pending = [];
+  try {
+    pending = await rc.listPendingTrackingAssignments();
+  } catch (_) { pending = []; /* pre-migration DB — skip the phase */ }
+  for (const assignment of pending) {
+    try {
+      let location = null;
+      if (assignment.tracking_start_mode === 'start_location') {
+        try {
+          const resolved = await resolveLiveLocationForGroupTitle(assignment.group_name || '');
+          location = resolved.location;
+        } catch (_) { location = null; }
+      }
+      const startVerdict = evaluateTrackingStart({ assignment, location, now });
+      if (startVerdict.shouldStart) {
+        await rc.activateTracking(assignment.id);
+        await rc.insertRouteMonitorEvent({
+          assignmentId: assignment.id,
+          eventType: 'tracking_started',
+          latitude: location?.latitude,
+          longitude: location?.longitude,
+          detail: startVerdict.reason,
+        });
+        activated += 1;
+      } else if ((assignment.tracking_hold_reason || null) !== (startVerdict.holdReason || null)) {
+        await rc.setTrackingHoldReason(assignment.id, startVerdict.holdReason);
+        await rc.insertRouteMonitorEvent({
+          assignmentId: assignment.id,
+          eventType: `tracking_start_${startVerdict.holdReason || 'pending'}`,
+          detail: startVerdict.reason,
+        });
+      }
+    } catch (err) {
+      console.error(`[ROUTE-CONTROL] Tracking-start check failed for assignment #${assignment.id}:`, err.message);
+    }
+  }
+
+  // Phase 2 — ACTIVE tracking: the original deviation checks.
   const assignments = await rc.listMonitorableAssignments();
   let checked = 0;
   let notified = 0;
@@ -459,7 +821,7 @@ async function runRouteMonitorCheck(telegram, { now = new Date() } = {}) {
       console.error(`[ROUTE-CONTROL] Check failed for assignment #${assignment.id}:`, err.message);
     }
   }
-  return { enabled: true, checked, notified };
+  return { enabled: true, checked, notified, activated };
 }
 
 async function tick() {
@@ -498,12 +860,17 @@ function stopRouteControlService() {
 
 module.exports = {
   evaluateAssignment,
+  evaluateTrackingStart,
+  normalizeTrackingOptions,
+  cleanAddressText,
+  describeTrackingStartCondition,
   parseRouteLink,
   assignRoute,
   cancelActiveRoutesForGroup,
   computeGeometryForAssignment,
   buildDriverGroupRouteMessage,
   sendDriverGroupRouteMessage,
+  startTrackingNow,
   runRouteMonitorCheck,
   buildOffRouteMessage,
   monitorSettingsFromConfig,

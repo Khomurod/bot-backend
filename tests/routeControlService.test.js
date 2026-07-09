@@ -265,11 +265,12 @@ test('buildDriverGroupRouteMessage escapes place text and href, keeps the mentio
     },
     { mentionHtml: '<a href="tg://user?id=9">Bob</a>' }
   );
-  assert.match(msg, /🚚 <b>Route assigned<\/b>/);
+  assert.match(msg, /🚚 <b>Route Assigned<\/b>/);
   assert.match(msg, /tg:\/\/user\?id=9/);
-  assert.match(msg, /Origin: A &amp; B/);
-  assert.match(msg, /Destination: C &lt;x&gt;/);
-  assert.match(msg, /Waypoints: W &amp; Z/);
+  assert.match(msg, /<b>Origin<\/b>\nA &amp; B/);
+  assert.match(msg, /<b>Destination<\/b>\nC &lt;x&gt;/);
+  // Waypoints are numbered, one per line.
+  assert.match(msg, /<b>Stops \/ Waypoints<\/b>\n1\. W &amp; Z/);
   assert.match(msg, /href="https:\/\/maps\.google\.com\/dir\?a=1&amp;b=2"/);
   // No raw unescaped ampersand from the place text leaks into the body.
   assert.ok(!/A & B/.test(msg));
@@ -281,7 +282,7 @@ test('buildDriverGroupRouteMessage omits the link line for a manual (non-http) e
     { mentionHtml: 'Bob' }
   );
   assert.ok(!/Open route in Google Maps/.test(msg));
-  assert.match(msg, /Origin: A/);
+  assert.match(msg, /<b>Origin<\/b>\nA/);
 });
 
 // ── sendDriverGroupRouteMessage ──
@@ -345,7 +346,7 @@ test('sendDriverGroupRouteMessage uses the plain name when no Telegram account i
   });
   const res = await svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram });
   assert.equal(res.mentionConfidence, 'low');
-  assert.match(captured.body, /Driver: Jane Doe/);
+  assert.match(captured.body, /<b>Driver:<\/b> Jane Doe/);
 });
 
 test('sendDriverGroupRouteMessage escapes a custom message and still sends it', async () => {
@@ -374,4 +375,455 @@ test('sendDriverGroupRouteMessage rejects a missing assignment with 404', async 
     () => svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram }),
     (err) => { assert.equal(err.code, 'NOT_FOUND'); assert.equal(err.status, 404); return true; }
   );
+});
+
+// ── Tracking start controls ──────────────────────────────────────────────────
+
+test('assignRoute (admin, no tracking options) defaults to pending / after_message_sent', async () => {
+  let created = null;
+  const svc = loadServiceWith({
+    '../database/routeControl.js': {
+      async createRouteAssignment(a) { created = a; return { id: 1, tracking_status: a.trackingStatus, tracking_start_mode: a.trackingStartMode }; },
+      async insertRouteMonitorEvent() { return null; },
+    },
+  });
+  const res = await svc.assignRoute({ groupId: 7, manual: { origin: 'A', destination: 'B' }, assignedBy: 'admin' });
+  assert.equal(created.trackingStatus, 'pending');
+  assert.equal(created.trackingStartMode, 'after_message_sent');
+  assert.equal(created.trackingHoldReason, 'waiting_for_message');
+  assert.equal(res.trackingStatus, 'pending');
+});
+
+test('assignRoute from Telegram keeps the legacy immediate start', async () => {
+  let created = null;
+  const svc = loadServiceWith({
+    '../database/routeControl.js': {
+      async createRouteAssignment(a) { created = a; return { id: 1 }; },
+      async insertRouteMonitorEvent() { return null; },
+    },
+  });
+  await svc.assignRoute({
+    groupId: 7, manual: { origin: 'A', destination: 'B' }, assignedBy: 'disp', source: 'telegram',
+  });
+  assert.equal(created.trackingStatus, 'active');
+  assert.equal(created.trackingStartMode, 'immediate');
+});
+
+test('assignRoute with explicit immediate mode starts active', async () => {
+  let created = null;
+  const svc = loadServiceWith({
+    '../database/routeControl.js': {
+      async createRouteAssignment(a) { created = a; return { id: 1 }; },
+      async insertRouteMonitorEvent() { return null; },
+    },
+  });
+  await svc.assignRoute({
+    groupId: 7, manual: { origin: 'A', destination: 'B' }, tracking: { startMode: 'immediate' },
+  });
+  assert.equal(created.trackingStatus, 'active');
+  assert.equal(created.trackingHoldReason, null);
+});
+
+test('assignRoute scheduled_time requires a valid time and stores it', async () => {
+  let created = null;
+  const svc = loadServiceWith({
+    '../database/routeControl.js': {
+      async createRouteAssignment(a) { created = a; return { id: 1 }; },
+      async insertRouteMonitorEvent() { return null; },
+    },
+  });
+  await assert.rejects(
+    () => svc.assignRoute({ groupId: 7, manual: { origin: 'A', destination: 'B' }, tracking: { startMode: 'scheduled_time' } }),
+    (err) => { assert.equal(err.code, 'BAD_TRACKING_TIME'); return true; }
+  );
+  await svc.assignRoute({
+    groupId: 7, manual: { origin: 'A', destination: 'B' },
+    tracking: { startMode: 'scheduled_time', startAt: '2026-08-01T15:00:00Z' },
+  });
+  assert.equal(created.trackingStatus, 'pending');
+  assert.equal(created.trackingStartAt, '2026-08-01T15:00:00.000Z');
+  assert.equal(created.trackingHoldReason, 'waiting_for_time');
+});
+
+test('assignRoute start_location parses lat,lng, applies the default radius, and rejects plain addresses', async () => {
+  let created = null;
+  const svc = loadServiceWith({
+    '../database/routeControl.js': {
+      async createRouteAssignment(a) { created = a; return { id: 1 }; },
+      async insertRouteMonitorEvent() { return null; },
+    },
+  });
+  await assert.rejects(
+    () => svc.assignRoute({
+      groupId: 7, manual: { origin: 'A', destination: 'B' },
+      tracking: { startMode: 'start_location', startLocation: 'Monteagle, TN' },
+    }),
+    (err) => { assert.equal(err.code, 'START_LOCATION_NEEDS_COORDS'); return true; }
+  );
+  await svc.assignRoute({
+    groupId: 7, manual: { origin: 'A', destination: 'B' },
+    tracking: { startMode: 'start_location', startLocation: '35.2331, -85.7095', startRadiusMiles: 900 },
+  });
+  assert.equal(created.trackingStatus, 'pending');
+  assert.equal(created.trackingStartLat, 35.2331);
+  assert.equal(created.trackingStartLng, -85.7095);
+  assert.equal(created.trackingStartRadiusMiles, 100, 'radius is clamped');
+  assert.equal(created.trackingHoldReason, 'waiting_for_location');
+});
+
+test('assignRoute rejects an unknown tracking mode', async () => {
+  const svc = loadServiceWith({});
+  await assert.rejects(
+    () => svc.assignRoute({ groupId: 7, manual: { origin: 'A', destination: 'B' }, tracking: { startMode: 'whenever' } }),
+    (err) => { assert.equal(err.code, 'BAD_TRACKING_MODE'); return true; }
+  );
+});
+
+test('evaluateTrackingStart: after_message_sent waits for the send, then starts', () => {
+  const base = { tracking_status: 'pending', tracking_start_mode: 'after_message_sent' };
+  const waiting = service.evaluateTrackingStart({ assignment: { ...base, driver_group_message_sent_at: null } });
+  assert.equal(waiting.shouldStart, false);
+  assert.equal(waiting.holdReason, 'waiting_for_message');
+  const started = service.evaluateTrackingStart({ assignment: { ...base, driver_group_message_sent_at: '2026-07-07T11:00:00Z' } });
+  assert.equal(started.shouldStart, true);
+});
+
+test('evaluateTrackingStart: scheduled_time starts only once the time passes', () => {
+  const base = { tracking_status: 'pending', tracking_start_mode: 'scheduled_time', tracking_start_at: '2026-07-07T13:00:00Z' };
+  const early = service.evaluateTrackingStart({ assignment: base, now: new Date('2026-07-07T12:59:00Z') });
+  assert.equal(early.shouldStart, false);
+  assert.equal(early.holdReason, 'waiting_for_time');
+  const due = service.evaluateTrackingStart({ assignment: base, now: new Date('2026-07-07T13:00:01Z') });
+  assert.equal(due.shouldStart, true);
+});
+
+test('evaluateTrackingStart: start_location starts only inside the radius', () => {
+  const base = {
+    tracking_status: 'pending', tracking_start_mode: 'start_location',
+    tracking_start_lat: 35.2331, tracking_start_lng: -85.7095, tracking_start_radius_miles: 2,
+  };
+  const noGps = service.evaluateTrackingStart({ assignment: base, location: null });
+  assert.equal(noGps.shouldStart, false);
+  assert.equal(noGps.holdReason, 'waiting_for_location');
+  const far = service.evaluateTrackingStart({
+    assignment: base, location: { latitude: 36.2, longitude: -86.7 },
+  });
+  assert.equal(far.shouldStart, false);
+  const near = service.evaluateTrackingStart({
+    assignment: base, location: { latitude: 35.24, longitude: -85.71 },
+  });
+  assert.equal(near.shouldStart, true);
+});
+
+test('evaluateAssignment skips deviation checks while tracking is pending', () => {
+  const verdict = evaluateAssignment({
+    assignment: assignment({ tracking_status: 'pending' }),
+    location: offRoute, settings: SETTINGS, now: NOW,
+  });
+  assert.equal(verdict.result, 'not_monitored');
+  assert.match(verdict.reason, /not started/);
+});
+
+test('runRouteMonitorCheck activates a pending route once its message was sent', async () => {
+  const events = [];
+  let activatedId = null;
+  const svc = loadServiceWith({
+    '../database/gmapsSettings.js': {
+      async getGmapsConfig() {
+        return {
+          enabled: true, deviationThresholdMeters: 250, offRouteGraceChecks: 3,
+          warningCooldownMinutes: 30, staleGpsMinutes: 15, parkedSpeedMph: 5, checkIntervalSeconds: 300,
+        };
+      },
+    },
+    '../database/routeControl.js': {
+      async listPendingTrackingAssignments() {
+        return [{
+          id: 11, status: 'active', tracking_status: 'pending',
+          tracking_start_mode: 'after_message_sent',
+          driver_group_message_sent_at: '2026-07-07T11:00:00Z',
+          group_name: 'G', telegram_group_id: -1,
+        }];
+      },
+      async listMonitorableAssignments() { return []; },
+      async activateTracking(id) { activatedId = id; return { id }; },
+      async setTrackingHoldReason() { throw new Error('should not be called'); },
+      async insertRouteMonitorEvent(e) { events.push(e); return e; },
+      async updateRouteAssignmentMonitorState() { return null; },
+    },
+  });
+  const res = await svc.runRouteMonitorCheck(null, { now: NOW });
+  assert.equal(activatedId, 11);
+  assert.equal(res.activated, 1);
+  assert.equal(events[0].eventType, 'tracking_started');
+});
+
+test('runRouteMonitorCheck records a hold-reason event once, not on every tick', async () => {
+  const events = [];
+  let holdSet = null;
+  const rcMock = {
+    async listPendingTrackingAssignments() {
+      return [{
+        id: 12, status: 'active', tracking_status: 'pending',
+        tracking_start_mode: 'scheduled_time', tracking_start_at: '2027-01-01T00:00:00Z',
+        tracking_hold_reason: null, group_name: 'G', telegram_group_id: -1,
+      }];
+    },
+    async listMonitorableAssignments() { return []; },
+    async activateTracking() { throw new Error('should not activate'); },
+    async setTrackingHoldReason(id, reason) { holdSet = { id, reason }; return { id }; },
+    async insertRouteMonitorEvent(e) { events.push(e); return e; },
+    async updateRouteAssignmentMonitorState() { return null; },
+  };
+  const gmapsMock = {
+    async getGmapsConfig() {
+      return {
+        enabled: true, deviationThresholdMeters: 250, offRouteGraceChecks: 3,
+        warningCooldownMinutes: 30, staleGpsMinutes: 15, parkedSpeedMph: 5, checkIntervalSeconds: 300,
+      };
+    },
+  };
+  const svc = loadServiceWith({
+    '../database/gmapsSettings.js': gmapsMock,
+    '../database/routeControl.js': rcMock,
+  });
+  await svc.runRouteMonitorCheck(null, { now: NOW });
+  assert.deepEqual(holdSet, { id: 12, reason: 'waiting_for_time' });
+  assert.equal(events[0].eventType, 'tracking_start_waiting_for_time');
+
+  // Second tick with the SAME hold reason already stored → no new event.
+  events.length = 0; holdSet = null;
+  const svc2 = loadServiceWith({
+    '../database/gmapsSettings.js': gmapsMock,
+    '../database/routeControl.js': {
+      ...rcMock,
+      async listPendingTrackingAssignments() {
+        return [{
+          id: 12, status: 'active', tracking_status: 'pending',
+          tracking_start_mode: 'scheduled_time', tracking_start_at: '2027-01-01T00:00:00Z',
+          tracking_hold_reason: 'waiting_for_time', group_name: 'G', telegram_group_id: -1,
+        }];
+      },
+    },
+  });
+  await svc2.runRouteMonitorCheck(null, { now: NOW });
+  assert.equal(holdSet, null, 'hold reason unchanged — not rewritten');
+  assert.equal(events.length, 0, 'no repeat event spam');
+});
+
+test('runRouteMonitorCheck activates a start-location route when GPS enters the radius', async () => {
+  const events = [];
+  let activatedId = null;
+  const svc = loadServiceWith({
+    '../database/gmapsSettings.js': {
+      async getGmapsConfig() {
+        return {
+          enabled: true, deviationThresholdMeters: 250, offRouteGraceChecks: 3,
+          warningCooldownMinutes: 30, staleGpsMinutes: 15, parkedSpeedMph: 5, checkIntervalSeconds: 300,
+        };
+      },
+    },
+    '../services/liveLocationResolver.js': {
+      async resolveLiveLocationForGroupTitle() {
+        return { location: { latitude: 35.235, longitude: -85.71 } };
+      },
+    },
+    '../database/routeControl.js': {
+      async listPendingTrackingAssignments() {
+        return [{
+          id: 13, status: 'active', tracking_status: 'pending',
+          tracking_start_mode: 'start_location',
+          tracking_start_lat: 35.2331, tracking_start_lng: -85.7095, tracking_start_radius_miles: 2,
+          group_name: 'G', telegram_group_id: -1,
+        }];
+      },
+      async listMonitorableAssignments() { return []; },
+      async activateTracking(id) { activatedId = id; return { id }; },
+      async setTrackingHoldReason() { return null; },
+      async insertRouteMonitorEvent(e) { events.push(e); return e; },
+      async updateRouteAssignmentMonitorState() { return null; },
+    },
+  });
+  const res = await svc.runRouteMonitorCheck(null, { now: NOW });
+  assert.equal(activatedId, 13);
+  assert.equal(res.activated, 1);
+  assert.equal(events[0].eventType, 'tracking_started');
+});
+
+// ── Screenshot delivery + after-send activation ──────────────────────────────
+
+function loadServiceForScreenshotSend({ assignment, screenshot = null, sendPhotoImpl = null } = {}) {
+  const captured = {
+    photos: [], texts: [], recorded: null, events: [], activated: null,
+  };
+  const svc = loadServiceWith({
+    '../database/db.js': {
+      async getDriverProfileByGroupId() { return { telegram_user_id: 999, full_name: 'Bob', group_name: 'G' }; },
+    },
+    '../database/routeControl.js': {
+      async getRouteAssignment() { return assignment; },
+      async getRouteScreenshot() { return screenshot; },
+      async recordDriverGroupMessageSent(id, opts) { captured.recorded = { id, opts }; return { id }; },
+      async insertRouteMonitorEvent(e) { captured.events.push(e); return e; },
+      async activateTracking(id) { captured.activated = id; return { id }; },
+    },
+  });
+  const telegram = {
+    async sendPhoto(chatId, photo, extra) {
+      if (sendPhotoImpl) return sendPhotoImpl(chatId, photo, extra);
+      captured.photos.push({ chatId, photo, extra });
+      return { message_id: 71 };
+    },
+    async sendMessage(chatId, body, extra) {
+      captured.texts.push({ chatId, body, extra });
+      return { message_id: 72 };
+    },
+  };
+  return { svc, telegram, captured };
+}
+
+const SEND_ASSIGNMENT = {
+  id: 5, group_id: 7, telegram_group_id: -100200,
+  original_url: 'https://maps.google.com/dir?a=1', origin_text: 'A', destination_text: 'B', waypoints: [],
+  tracking_start_mode: 'after_message_sent', tracking_status: 'pending',
+};
+
+test('sendDriverGroupRouteMessage sends the screenshot as a photo with the route caption', async () => {
+  const { svc, telegram, captured } = loadServiceForScreenshotSend({
+    assignment: SEND_ASSIGNMENT,
+    screenshot: { file_data: Buffer.from('PNG'), mime_type: 'image/png' },
+  });
+  const res = await svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram, sentBy: 'admin' });
+  assert.equal(captured.photos.length, 1);
+  assert.equal(captured.texts.length, 0, 'short message fits the caption — no separate text');
+  assert.equal(captured.photos[0].chatId, -100200);
+  assert.match(captured.photos[0].extra.caption, /Route Assigned/);
+  assert.equal(res.withScreenshot, true);
+  assert.equal(res.sentVia, 'photo');
+  assert.equal(res.messageId, 71);
+});
+
+test('sendDriverGroupRouteMessage splits photo + text when the message exceeds the caption limit', async () => {
+  const longWaypoints = Array.from({ length: 30 }, (_, i) => ({ raw: `Stop number ${i} — Some Very Long Warehouse Name, 12345 Extremely Long Industrial Parkway Blvd, Suite ${i}, Springfield` }));
+  const { svc, telegram, captured } = loadServiceForScreenshotSend({
+    assignment: { ...SEND_ASSIGNMENT, waypoints: longWaypoints },
+    screenshot: { file_data: Buffer.from('PNG'), mime_type: 'image/png' },
+  });
+  const res = await svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram });
+  assert.equal(captured.photos.length, 1);
+  assert.equal(captured.texts.length, 1, 'details follow as a separate message');
+  assert.match(captured.photos[0].extra.caption, /details below/);
+  assert.ok(captured.texts[0].body.length > 1024);
+  assert.equal(res.sentVia, 'photo+text');
+});
+
+test('sendDriverGroupRouteMessage falls back to text when the photo send fails', async () => {
+  const { svc, telegram, captured } = loadServiceForScreenshotSend({
+    assignment: SEND_ASSIGNMENT,
+    screenshot: { file_data: Buffer.from('PNG'), mime_type: 'image/png' },
+    sendPhotoImpl: async () => { const e = new Error('photo boom'); e.response = { error_code: 400 }; throw e; },
+  });
+  const res = await svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram });
+  assert.equal(captured.texts.length, 1, 'text route message still sent');
+  assert.equal(res.sent, true);
+  assert.equal(res.sentVia, 'text');
+  assert.equal(res.withScreenshot, false);
+});
+
+test('sendDriverGroupRouteMessage activates after_message_sent tracking on success', async () => {
+  const { svc, telegram, captured } = loadServiceForScreenshotSend({ assignment: SEND_ASSIGNMENT });
+  const res = await svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram });
+  assert.equal(captured.activated, 5);
+  assert.equal(res.trackingActivated, true);
+  assert.ok(captured.events.some((e) => e.eventType === 'tracking_started'));
+});
+
+test('sendDriverGroupRouteMessage does NOT activate tracking for other start modes', async () => {
+  const { svc, telegram, captured } = loadServiceForScreenshotSend({
+    assignment: { ...SEND_ASSIGNMENT, tracking_start_mode: 'scheduled_time' },
+  });
+  const res = await svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram });
+  assert.equal(captured.activated, null);
+  assert.equal(res.trackingActivated, false);
+});
+
+test('startTrackingNow activates a pending route and refuses non-active lifecycles', async () => {
+  const events = [];
+  let activated = null;
+  const svc = loadServiceWith({
+    '../database/routeControl.js': {
+      async getRouteAssignment(id) {
+        return id === 1
+          ? { id: 1, status: 'active', tracking_status: 'pending' }
+          : { id: 2, status: 'cancelled', tracking_status: 'pending' };
+      },
+      async activateTracking(id) { activated = id; return { id, tracking_status: 'active' }; },
+      async insertRouteMonitorEvent(e) { events.push(e); return e; },
+    },
+  });
+  const res = await svc.startTrackingNow(1, 'admin');
+  assert.equal(res.alreadyActive, false);
+  assert.equal(activated, 1);
+  assert.equal(events[0].eventType, 'tracking_started');
+  await assert.rejects(() => svc.startTrackingNow(2), (err) => {
+    assert.equal(err.code, 'NOT_ACTIVE'); return true;
+  });
+});
+
+// ── Clean English route message ──────────────────────────────────────────────
+
+test('cleanAddressText strips Cyrillic and English country suffixes', () => {
+  assert.equal(service.cleanAddressText('400 Oldfield Blvd, Pittston, PA 18640, США'), '400 Oldfield Blvd, Pittston, PA 18640');
+  assert.equal(service.cleanAddressText('Monteagle, TN 37356, Соединенные Штаты Америки'), 'Monteagle, TN 37356');
+  assert.equal(service.cleanAddressText('Hanahan, SC 29410, Соединённые Штаты'), 'Hanahan, SC 29410');
+  assert.equal(service.cleanAddressText('Dillon, SC 29536, USA'), 'Dillon, SC 29536');
+  assert.equal(service.cleanAddressText('Dallas, TX, United States of America'), 'Dallas, TX');
+  assert.equal(service.cleanAddressText('  Chicago,   IL  '), 'Chicago, IL');
+});
+
+test('buildDriverGroupRouteMessage removes США from every section and numbers the stops', () => {
+  const msg = service.buildDriverGroupRouteMessage({
+    original_url: 'https://maps.app.goo.gl/x',
+    origin_text: '32.956089, -80.005777',
+    destination_text: '400 Oldfield Blvd, Pittston, PA 18640, США',
+    waypoints: [
+      { raw: 'Expeditors International — 1017 N Pointe Industrial Blvd, Hanahan, SC 29410, США' },
+      { raw: 'Trade Zone Blvd, Summerville, SC 29486, Соединенные Штаты' },
+      { raw: 'C.H. Robinson — 1911 SC-34, Dillon, SC 29536, USA' },
+    ],
+    tracking_start_mode: 'immediate', tracking_status: 'active',
+  }, { mentionHtml: '@driver' });
+  assert.ok(!/США|Соединенн|Соединённ/.test(msg), 'no Cyrillic country labels remain');
+  assert.match(msg, /1\. Expeditors International — 1017 N Pointe Industrial Blvd, Hanahan, SC 29410/);
+  assert.match(msg, /2\. Trade Zone Blvd, Summerville, SC 29486/);
+  assert.match(msg, /3\. C\.H\. Robinson — 1911 SC-34, Dillon, SC 29536/);
+  assert.match(msg, /<b>Tracking<\/b>/);
+  assert.match(msg, /Route Control is now monitoring/);
+});
+
+test('buildDriverGroupRouteMessage stays under the Telegram text limit with huge waypoint lists', () => {
+  const waypoints = Array.from({ length: 120 }, (_, i) => ({
+    raw: `Stop ${i + 1} — Warehouse With A Really Long Name, 12345 Industrial Parkway Boulevard, Suite ${i + 1}, Some City, ST 00000`,
+  }));
+  const msg = service.buildDriverGroupRouteMessage({
+    original_url: 'https://maps.google.com/dir?x=1',
+    origin_text: 'A', destination_text: 'B', waypoints,
+  }, { mentionHtml: '@driver' });
+  assert.ok(msg.length <= 4096, `message must fit Telegram text limit (got ${msg.length})`);
+  assert.match(msg, /… and \d+ more stops/);
+});
+
+test('buildDriverGroupRouteMessage describes scheduled and start-location tracking', () => {
+  const scheduled = service.buildDriverGroupRouteMessage({
+    original_url: '(manual entry)', origin_text: 'A', destination_text: 'B', waypoints: [],
+    tracking_start_mode: 'scheduled_time', tracking_start_at: '2026-08-01T15:00:00Z', tracking_status: 'pending',
+  }, { mentionHtml: '@d' });
+  assert.match(scheduled, /will start monitoring at .*CST/);
+
+  const byLocation = service.buildDriverGroupRouteMessage({
+    original_url: '(manual entry)', origin_text: 'A', destination_text: 'B', waypoints: [],
+    tracking_start_mode: 'start_location', tracking_start_location_text: '35.2331, -85.7095',
+    tracking_start_radius_miles: 3, tracking_status: 'pending',
+  }, { mentionHtml: '@d' });
+  assert.match(byLocation, /when the truck reaches 35\.2331, -85\.7095 \(within 3 mi\)/);
 });
