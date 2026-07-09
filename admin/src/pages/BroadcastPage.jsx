@@ -29,6 +29,15 @@ function extractUnknownTokens(text, allowedKeys) {
   return [...unknown];
 }
 
+// Auto-translate runs on the app's integrated AI (no Send-Message-specific
+// provider). When the backend reports the AI is unconfigured, show its message
+// verbatim so the admin knows to configure the integrated AI settings.
+function translateErrorText(err, fallbackPrefix) {
+  const message = err?.message || 'Unknown error';
+  if (message.includes('AI is not configured')) return message;
+  return `${fallbackPrefix}: ${message}`;
+}
+
 function PlaceholderChips({ placeholders, onInsert }) {
   if (!Array.isArray(placeholders) || placeholders.length === 0) return null;
   return (
@@ -282,7 +291,7 @@ export default function BroadcastPage() {
       setMessageRu(ru);
       setMessageUz(uz);
     } catch (err) {
-      setStatus({ type: 'error', text: 'Translation failed: ' + err.message });
+      setStatus({ type: 'error', text: translateErrorText(err, 'Translation failed') });
     } finally {
       setTranslating(false);
     }
@@ -296,7 +305,7 @@ export default function BroadcastPage() {
       setConfMessageRu(ru);
       setConfMessageUz(uz);
     } catch (err) {
-      setConfStatus({ type: 'error', text: 'Translation failed: ' + err.message });
+      setConfStatus({ type: 'error', text: translateErrorText(err, 'Translation failed') });
     } finally {
       setConfTranslating(false);
     }
@@ -312,7 +321,7 @@ export default function BroadcastPage() {
       }));
       setConfirmationButtons(updated);
     } catch (err) {
-      setConfStatus({ type: 'error', text: 'Button translation failed: ' + err.message });
+      setConfStatus({ type: 'error', text: translateErrorText(err, 'Button translation failed') });
     } finally {
       setConfBtnTranslating(false);
     }

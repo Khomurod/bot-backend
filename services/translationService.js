@@ -1,20 +1,17 @@
-const config = require('../config/config');
+/**
+ * Translation service for the admin "Send Message" (broadcast) composer.
+ *
+ * Runs on the app's integrated AI stack — the shared Groq client with a
+ * Gemini fallback, configured by the same GROQ_API_KEY / GEMINI_API_KEY every
+ * other AI feature uses. There is no Send-Message-specific provider, key, or
+ * model: this module only builds translation prompts and delegates the actual
+ * calls to services/groqClient.js and services/geminiClient.js.
+ */
+const { callGroqWithFallback, GROQ_API_KEY } = require('./groqClient');
+const { callGeminiJson, GEMINI_API_KEY } = require('./geminiClient');
 
-let openai = null;
-
-function getClient() {
-  if (!openai) {
-    if (!config.openaiApiKey) {
-      throw new Error('OPENAI_API_KEY is not configured');
-    }
-    // Lazy-require: the OpenAI SDK costs ~3 MB RSS at require time and this
-    // module is imported by server/api.js at boot, so the SDK only loads when
-    // a translation is actually requested.
-    const OpenAI = require('openai');
-    openai = new OpenAI({ apiKey: config.openaiApiKey });
-  }
-  return openai;
-}
+const AI_NOT_CONFIGURED_MESSAGE =
+  'AI is not configured. Configure the app’s integrated AI settings first.';
 
 const LANGUAGE_NAMES = {
   ru: 'Russian',
@@ -22,7 +19,7 @@ const LANGUAGE_NAMES = {
   en: 'English',
 };
 
-const SYSTEM_PROMPT = `You are a professional translator specializing in the trucking and transportation industry. 
+const SYSTEM_PROMPT = `You are a professional translator specializing in the trucking and transportation industry.
 You translate text for truck drivers who work in the US.
 Key requirements:
 - Translate naturally for truck drivers
@@ -32,50 +29,16 @@ Key requirements:
 - Return ONLY the translated text
 - For trucking terms like dispatch, deadhead, broker, lane, load — use the most commonly understood terms in the target language`;
 
-/**
- * Translate a single text block to a target language.
- * @param {string} text - The English source text
- * @param {string} targetLanguage - Language code: 'ru' or 'uz'
- * @returns {Promise<string>} Translated text
- */
-async function translateText(text, targetLanguage) {
-  if (!text || !text.trim()) return '';
-  if (text.length > 4096) {
-    throw new Error('Text exceeds 4096 character limit');
-  }
+/** True when the app's integrated AI (Groq and/or Gemini) has a key set. */
+function isTranslationAiConfigured() {
+  return Boolean(GROQ_API_KEY || GEMINI_API_KEY);
+}
 
-  const langName = LANGUAGE_NAMES[targetLanguage];
-  if (!langName) {
-    throw new Error(`Unsupported target language: ${targetLanguage}`);
-  }
-
-  console.log(`[Translation] translation_requested: lang=${targetLanguage}, length=${text.length}`);
-
-  try {
-    const client = getClient();
-    const response = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      temperature: 0.3,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: `Translate the following text from English into ${langName}.\nKeep formatting and HTML tags intact.\nReturn only the translated text.\n\nText:\n${text}`,
-        },
-      ],
-    });
-
-    const translated = response.choices[0]?.message?.content?.trim();
-    if (!translated) {
-      throw new Error('Empty response from translation API');
-    }
-
-    console.log(`[Translation] translation_completed: lang=${targetLanguage}, length=${translated.length}`);
-    return translated;
-  } catch (err) {
-    console.error(`[Translation] translation_failed: lang=${targetLanguage}, error=${err.message}`);
-    throw err;
-  }
+function notConfiguredError() {
+  const err = new Error(AI_NOT_CONFIGURED_MESSAGE);
+  err.code = 'AI_NOT_CONFIGURED';
+  err.statusCode = 503;
+  return err;
 }
 
 /**
@@ -114,9 +77,55 @@ function parseBatchResponse(rawResponse, expectedCount) {
   return arr.map((t) => (typeof t === 'string' ? t.trim() : String(t ?? '')));
 }
 
+function buildBatchPrompt(textsArray, langName) {
+  const userPayload = {
+    target_language: langName,
+    items: textsArray,
+  };
+  return (
+    `Translate each string in "items" from English into ${langName}. ` +
+    `Preserve HTML tags and links exactly. Return ONLY a JSON object with ` +
+    `this exact shape:\n\n` +
+    `{ "translations": ["<translation of items[0]>", "<translation of items[1]>", ...] }\n\n` +
+    `The translations array MUST have exactly ${textsArray.length} entries in the same order.\n\n` +
+    `Input:\n${JSON.stringify(userPayload)}`
+  );
+}
+
+async function translateViaGroq(prompt, expectedCount) {
+  const { text } = await callGroqWithFallback(prompt, {
+    systemText: SYSTEM_PROMPT,
+    temperature: 0.3,
+    maxTokens: 4000,
+    responseFormat: { type: 'json_object' },
+    validateResult: (raw) => {
+      try {
+        parseBatchResponse(raw, expectedCount);
+        return true;
+      } catch (err) {
+        return { message: err.message };
+      }
+    },
+  });
+  return parseBatchResponse(text, expectedCount);
+}
+
+async function translateViaGemini(prompt, expectedCount) {
+  const { text } = await callGeminiJson({
+    systemText: SYSTEM_PROMPT,
+    userText: prompt,
+    maxOutputTokens: 4000,
+    generationConfig: { temperature: 0.3 },
+    validateParsed: (parsed) =>
+      Array.isArray(parsed?.translations) && parsed.translations.length === expectedCount,
+  });
+  return parseBatchResponse(text, expectedCount);
+}
+
 /**
- * Translate an array of text blocks to a target language in a single API
- * call. Uses JSON response mode so parsing is unambiguous.
+ * Translate an array of text blocks to a target language in a single AI
+ * call (Groq first, Gemini fallback). Uses JSON response mode so parsing is
+ * unambiguous.
  *
  * @param {string[]} textsArray - Array of English source texts
  * @param {string} targetLanguage - Language code: 'ru' or 'uz'
@@ -135,43 +144,31 @@ async function translateBatch(textsArray, targetLanguage) {
     throw new Error(`Unsupported target language: ${targetLanguage}`);
   }
 
-  if (textsArray.length === 1) {
-    const result = await translateText(textsArray[0], targetLanguage);
-    return [result];
+  if (!isTranslationAiConfigured()) {
+    throw notConfiguredError();
   }
 
   console.log(
     `[Translation] translation_requested: lang=${targetLanguage}, batch_size=${textsArray.length}`
   );
 
+  const prompt = buildBatchPrompt(textsArray, langName);
+
   try {
-    const client = getClient();
-    const userPayload = {
-      target_language: langName,
-      items: textsArray,
-    };
-
-    const response = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      temperature: 0.3,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content:
-            `Translate each string in "items" from English into ${langName}. ` +
-            `Preserve HTML tags and links exactly. Return ONLY a JSON object with ` +
-            `this exact shape:\n\n` +
-            `{ "translations": ["<translation of items[0]>", "<translation of items[1]>", ...] }\n\n` +
-            `The translations array MUST have exactly ${textsArray.length} entries in the same order.\n\n` +
-            `Input:\n${JSON.stringify(userPayload)}`,
-        },
-      ],
-    });
-
-    const rawResponse = response.choices[0]?.message?.content;
-    const results = parseBatchResponse(rawResponse, textsArray.length);
+    let results;
+    if (GROQ_API_KEY) {
+      try {
+        results = await translateViaGroq(prompt, textsArray.length);
+      } catch (groqErr) {
+        if (!GEMINI_API_KEY) throw groqErr;
+        console.warn(
+          `[Translation] Groq failed, trying Gemini: ${String(groqErr.message || groqErr).slice(0, 200)}`
+        );
+        results = await translateViaGemini(prompt, textsArray.length);
+      }
+    } else {
+      results = await translateViaGemini(prompt, textsArray.length);
+    }
 
     console.log(
       `[Translation] translation_completed: lang=${targetLanguage}, batch_size=${results.length}`
@@ -185,8 +182,25 @@ async function translateBatch(textsArray, targetLanguage) {
   }
 }
 
+/**
+ * Translate a single text block to a target language.
+ * @param {string} text - The English source text
+ * @param {string} targetLanguage - Language code: 'ru' or 'uz'
+ * @returns {Promise<string>} Translated text
+ */
+async function translateText(text, targetLanguage) {
+  if (!text || !text.trim()) return '';
+  if (text.length > 4096) {
+    throw new Error('Text exceeds 4096 character limit');
+  }
+  const [translated] = await translateBatch([text], targetLanguage);
+  return translated || '';
+}
+
 module.exports = {
   translateText,
   translateBatch,
   parseBatchResponse,
+  isTranslationAiConfigured,
+  AI_NOT_CONFIGURED_MESSAGE,
 };

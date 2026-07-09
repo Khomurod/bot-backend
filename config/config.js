@@ -95,7 +95,6 @@ module.exports = {
   mediaStorageChatId,
   jwtSecret: process.env.JWT_SECRET || '',
   port: process.env.PORT || 3001,
-  openaiApiKey: process.env.OPENAI_API_KEY,
   openrouterApiKey: process.env.OPENROUTER_API_KEY,
   samsaraApiKey: process.env.SAMSARA_API_KEY || resolvedSamsaraApiKeys[0] || '',
   samsaraApiKeys: resolvedSamsaraApiKeys,
