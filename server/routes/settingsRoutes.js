@@ -303,6 +303,19 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
     }
   });
 
+  // Diagnostics: settings + active-music presence + recent overlay job rows +
+  // last failure/fallback reason. Lets an admin see WHY the driver-group music
+  // overlay is (or isn't) happening without reading the samsara Render logs.
+  router.get('/safety-events/status', authMiddleware, async (req, res) => {
+    try {
+      const status = await safetyVideo.getSafetyEventVideoStatusForAdmin({ jobLimit: 25 });
+      res.json(status);
+    } catch (err) {
+      console.error('[SETTINGS API] safety-events status failed:', err.message);
+      res.status(500).json({ error: 'Failed to load safety-event overlay status' });
+    }
+  });
+
   // Upload a music clip. Multer errors (wrong type / too big) surface as 400.
   router.post('/safety-events/music', authMiddleware, (req, res) => {
     musicUpload.single('file')(req, res, async (uploadErr) => {

@@ -78,32 +78,58 @@ test('POD report is sent to the test group', async () => {
   assert.match(tg.calls.messages[0].text, /Detected type:<\/b> POD/);
 });
 
-test('unrelated obeys sendUnrelated=false (suppressed)', async () => {
+// ── STRICT policy: only confirmed BOL/POD reach the Automatic Update group ──
+
+test('unrelated is suppressed regardless of legacy sendUnrelated toggle', async () => {
+  for (const sendUnrelated of [false, true]) {
+    const tg = fakeTelegram();
+    const r = await monitor.reportDetection({ telegram: tg, result: result('unrelated'), settings: settings({ sendUnrelated }) }, deps);
+    assert.equal(r.sent, false, `unrelated must never be sent (sendUnrelated=${sendUnrelated})`);
+    assert.equal(r.reason, 'not_confirmed_bol_pod');
+    assert.equal(tg.calls.messages.length, 0);
+  }
+});
+
+test('unclear is suppressed regardless of legacy sendUnclear toggle', async () => {
+  for (const sendUnclear of [false, true]) {
+    const tg = fakeTelegram();
+    const r = await monitor.reportDetection({ telegram: tg, result: result('unclear'), settings: settings({ sendUnclear }) }, deps);
+    assert.equal(r.sent, false, `unclear must never be sent (sendUnclear=${sendUnclear})`);
+    assert.equal(r.reason, 'not_confirmed_bol_pod');
+    assert.equal(tg.calls.messages.length, 0);
+  }
+});
+
+test('both (BOL+POD) is suppressed under strict policy', async () => {
   const tg = fakeTelegram();
-  const r = await monitor.reportDetection({ telegram: tg, result: result('unrelated'), settings: settings({ sendUnrelated: false }) }, deps);
+  const r = await monitor.reportDetection({ telegram: tg, result: result('both'), settings: settings() }, deps);
   assert.equal(r.sent, false);
-  assert.equal(r.reason, 'suppressed_by_toggle');
+  assert.equal(r.reason, 'not_confirmed_bol_pod');
   assert.equal(tg.calls.messages.length, 0);
 });
 
-test('unrelated obeys sendUnrelated=true (sent)', async () => {
+test('mismatch-only / no-load BOL is still sent when docType is a confirmed BOL', async () => {
+  // Strict policy keys off the AI docType (bol/pod), NOT the load-match outcome.
   const tg = fakeTelegram();
-  const r = await monitor.reportDetection({ telegram: tg, result: result('unrelated'), settings: settings({ sendUnrelated: true }) }, deps);
+  const r = await monitor.reportDetection({
+    telegram: tg,
+    result: result('bol', { match: { confidence: 'mismatch', orderId: null, loadReference: null, reasons: ['no load matched'] } }),
+    settings: settings(),
+  }, deps);
   assert.equal(r.sent, true);
-  assert.match(tg.calls.messages[0].text, /Unrelated/);
+  assert.match(tg.calls.messages[0].text, /Detected type:<\/b> BOL/);
 });
 
-test('unclear obeys sendUnclear=false (suppressed)', async () => {
+test('unclear from unconfigured Gemini is NOT sent', async () => {
   const tg = fakeTelegram();
-  const r = await monitor.reportDetection({ telegram: tg, result: result('unclear'), settings: settings({ sendUnclear: false }) }, deps);
+  const r = await monitor.reportDetection({
+    telegram: tg,
+    result: result('unclear', { classification: { type: 'unclear', confidence: 0, summary: 'AI classifier not configured', configured: false } }),
+    settings: settings(),
+  }, deps);
   assert.equal(r.sent, false);
-  assert.equal(r.reason, 'suppressed_by_toggle');
-});
-
-test('unclear obeys sendUnclear=true (sent)', async () => {
-  const tg = fakeTelegram();
-  const r = await monitor.reportDetection({ telegram: tg, result: result('unclear'), settings: settings({ sendUnclear: true }) }, deps);
-  assert.equal(r.sent, true);
+  assert.equal(r.reason, 'not_confirmed_bol_pod');
+  assert.equal(tg.calls.messages.length, 0);
 });
 
 test('sendFiles=false → no document sent, only report text', async () => {

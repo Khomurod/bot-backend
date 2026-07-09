@@ -13,10 +13,16 @@
  *   - It never replies in the driver group (the caller decides that separately).
  *   - It never throws to its caller (a monitor failure must not break intake).
  *
- * Toggle behavior (PART 8):
- *   - type 'unrelated' → reported only when settings.sendUnrelated
- *   - type 'unclear'   → reported only when settings.sendUnclear
- *   - bol / pod / both / mismatch / no-load → always reported when enabled
+ * Reporting policy (STRICT):
+ *   - ONLY an AI-confirmed single-type BOL or POD is forwarded to the Automatic
+ *     Update (test) group.
+ *   - Everything else is suppressed SILENTLY: unrelated, unclear, both,
+ *     mismatch-only, no-load, needs_review — and, importantly, the 'unclear'
+ *     result produced when Gemini is not configured. This makes the test group a
+ *     clean feed of confirmed BOL/POD detections only.
+ *   - The legacy per-type send toggles (sendUnrelated / sendUnclear) no longer
+ *     gate reporting; they are retained in settings for backward compatibility
+ *     but have no effect under the strict policy.
  */
 const helpers = require('./documentIntakeHelpers');
 const mergeDefault = require('./documentMergeService');
@@ -30,11 +36,13 @@ const CONFIDENCE_LABEL = helpers.CONFIDENCE_LABEL;
 // Guard so a very large single file can't blow past Telegram's bot upload limit.
 const MAX_SEND_BYTES = 45 * 1024 * 1024;
 
-/** Should a document of this classified type be reported, per the toggles? */
-function shouldReport(docType, settings) {
-  if (docType === 'unrelated') return settings.sendUnrelated === true;
-  if (docType === 'unclear') return settings.sendUnclear === true;
-  return true; // bol / pod / both / anything with a real match outcome
+/**
+ * STRICT policy: only an AI-confirmed BOL or POD is reported. `both`,
+ * `unrelated`, `unclear`, and anything else are suppressed. `settings` is
+ * accepted for signature stability but no longer influences the decision.
+ */
+function shouldReport(docType /* , settings */) {
+  return docType === 'bol' || docType === 'pod';
 }
 
 function pct(conf) {
@@ -202,8 +210,10 @@ async function reportDetection({ telegram, result, settings, group = null, drive
 
     const classification = result.classification || {};
     const docType = result.docType || classification.type || 'unclear';
-    if (!shouldReport(docType, settings)) {
-      return { sent: false, reason: 'suppressed_by_toggle', docType };
+    if (!shouldReport(docType)) {
+      // Silent suppression: only confirmed BOL/POD reach the test group. Low-noise
+      // reason for callers that log it; the caller does NOT print this by default.
+      return { sent: false, reason: 'not_confirmed_bol_pod', docType };
     }
 
     // Optionally attach the file(s) — only load/download them when asked.

@@ -38,6 +38,20 @@ fakeModule('../database/safetyEventVideoSettings.js', {
   ALLOWED_AUDIO_MIME_TYPES: ['audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/aac'],
   MAX_MUSIC_BYTES: 20 * 1024 * 1024,
   async getSafetyEventVideoSettingsForAdmin() { return state.view; },
+  async getSafetyEventVideoStatusForAdmin() {
+    return {
+      settings: state.view.settings,
+      activeMusic: state.view.activeMusic,
+      activeMusicPresent: Boolean(state.view.activeMusic),
+      overlayConfigured: false,
+      recentJobs: [
+        { id: 2, status: 'fallback_sent', video_source: 'immediate', music_trim_mode: null, video_duration_seconds: 12, error_message: 'ffmpeg unavailable', created_at: '2026-07-09T00:00:00Z', finished_at: '2026-07-09T00:00:01Z' },
+        { id: 1, status: 'sent', video_source: 'backfill', music_trim_mode: 'trim', video_duration_seconds: 10, error_message: null, created_at: '2026-07-08T00:00:00Z' },
+      ],
+      jobStatusCounts: { sent: 1, fallback_sent: 1 },
+      lastFailure: { at: '2026-07-09T00:00:01Z', status: 'fallback_sent', source: 'immediate', reason: 'ffmpeg unavailable' },
+    };
+  },
   async updateSafetyEventVideoSettings(payload) { state.lastUpdate = payload; return state.view; },
   async insertMusicAsset(args) { state.lastUpload = args; return { id: 1, isActive: true }; },
   async setActiveMusicAsset(id) { return id === 999 ? null : { id, isActive: true }; },
@@ -88,6 +102,19 @@ test('GET /api/settings/safety-events returns the settings view', async () => {
     const json = JSON.parse(res.body);
     assert.equal(json.settings.speedingMusicEnabled, true);
     assert.ok(Array.isArray(json.musicAssets));
+  } finally { server.close(); }
+});
+
+test('GET /api/settings/safety-events/status returns diagnostics (jobs + last failure)', async () => {
+  const server = makeServer();
+  try {
+    const res = await request(server, { method: 'GET', path: '/api/settings/safety-events/status' });
+    assert.equal(res.status, 200);
+    const json = JSON.parse(res.body);
+    assert.equal(json.overlayConfigured, false);
+    assert.equal(json.recentJobs.length, 2);
+    assert.equal(json.jobStatusCounts.fallback_sent, 1);
+    assert.equal(json.lastFailure.reason, 'ffmpeg unavailable');
   } finally { server.close(); }
 });
 

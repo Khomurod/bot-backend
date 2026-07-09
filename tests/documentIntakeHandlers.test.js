@@ -16,7 +16,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-function loadHandlerWithFakes({ enabled = true, group = { id: 10, group_type: 'driver', active: true } } = {}) {
+function loadHandlerWithFakes({ enabled = true, group = { id: 10, group_type: 'driver', active: true }, driverProfile = null } = {}) {
   const state = { batches: [], files: [], seenUnique: new Set(), scheduled: [], confirmCalls: [] };
   const docsFake = {
     async createBatch(b) { const row = { id: state.batches.length + 1, status: 'collecting', ...b, telegram_chat_id: b.telegramChatId, group_id: b.groupId, telegram_user_id: b.telegramUserId }; state.batches.push(row); return row; },
@@ -45,7 +45,7 @@ function loadHandlerWithFakes({ enabled = true, group = { id: 10, group_type: 'd
     datatruckDocIntakeMaxFiles: 12,
     datatruckDocIntakeMaxFileMb: 20,
   };
-  const dbFake = { async getGroupByTelegramId() { return group; }, async getDriverProfileByGroupId() { return null; } };
+  const dbFake = { async getGroupByTelegramId() { return group; }, async getDriverProfileByGroupId() { return driverProfile; } };
   // Group-open buttons: handleConfirmation no longer takes an `authorized` flag.
   // Record every call so tests can assert the clicking user is passed through.
   const intakeFake = {
@@ -127,6 +127,46 @@ test('a text-only message (no attachment) does nothing', async () => {
   const { handler, state } = loadHandlerWithFakes();
   await handler.handleIntakeMessage(ctxWith({ message_id: 8, text: 'hello dispatch' }));
   assert.equal(state.batches.length, 0);
+});
+
+// ── Wired-driver sender gate (Part 5) ──
+
+test('wired driver (telegram_user_id match) → document IS scanned', async () => {
+  const { handler, state } = loadHandlerWithFakes({ driverProfile: { telegram_user_id: '5', telegram_username: null } });
+  await handler.handleIntakeMessage(ctxWith(
+    { message_id: 20, document: { file_id: 'F', file_unique_id: 'UWD1', mime_type: 'application/pdf', file_name: 'bol.pdf' } },
+    { id: -100777, type: 'supergroup' }, { id: 5, is_bot: false, username: 'joe' },
+  ));
+  assert.equal(state.batches.length, 1);
+  assert.equal(state.files.length, 1);
+});
+
+test('non-wired sender (telegram_user_id mismatch) → document is ignored silently', async () => {
+  const { handler, state } = loadHandlerWithFakes({ driverProfile: { telegram_user_id: '5', telegram_username: 'driverx' } });
+  await handler.handleIntakeMessage(ctxWith(
+    { message_id: 21, document: { file_id: 'F', file_unique_id: 'UWD2', mime_type: 'application/pdf', file_name: 'bol.pdf' } },
+    { id: -100777, type: 'supergroup' },
+    { id: 8888, is_bot: false, username: 'driverx' }, // username matches but id does not → still ignored
+  ));
+  assert.equal(state.batches.length, 0, 'a wired user_id mismatch blocks scanning even if the username matches');
+  assert.equal(state.files.length, 0);
+});
+
+test('wired driver by username only → matching sender IS scanned, others ignored', async () => {
+  const wired = { driverProfile: { telegram_user_id: null, telegram_username: 'driverx' } };
+  const ok = loadHandlerWithFakes(wired);
+  await ok.handler.handleIntakeMessage(ctxWith(
+    { message_id: 22, document: { file_id: 'F', file_unique_id: 'UWD3', mime_type: 'application/pdf', file_name: 'bol.pdf' } },
+    { id: -100777, type: 'supergroup' }, { id: 42, is_bot: false, username: 'DriverX' },
+  ));
+  assert.equal(ok.state.batches.length, 1, 'case-insensitive username match is scanned');
+
+  const nope = loadHandlerWithFakes(wired);
+  await nope.handler.handleIntakeMessage(ctxWith(
+    { message_id: 23, document: { file_id: 'F', file_unique_id: 'UWD4', mime_type: 'application/pdf', file_name: 'bol.pdf' } },
+    { id: -100777, type: 'supergroup' }, { id: 43, is_bot: false, username: 'intruder' },
+  ));
+  assert.equal(nope.state.batches.length, 0, 'a different username is ignored');
 });
 
 // Default clicker is a plain, non-admin group member — the whole point is that

@@ -311,6 +311,77 @@ async function getSafetyEventVideoSettingsForAdmin() {
   };
 }
 
+/**
+ * Recent rows from the safety_event_video_jobs observability ledger (written by
+ * the samsara-integration overlay process). Never leaks bytes or signed URLs —
+ * video_reference is intentionally omitted. Resilient to a missing table on a
+ * fresh DB (returns []).
+ */
+async function listRecentVideoJobs(limit = 20) {
+  const n = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  try {
+    const res = await query(
+      `SELECT id, samsara_event_id, telegram_group_id, music_asset_id, status,
+              video_source, music_trim_mode, video_duration_seconds, error_message,
+              created_at, started_at, finished_at
+         FROM safety_event_video_jobs
+        ORDER BY created_at DESC
+        LIMIT $1`,
+      [n],
+    );
+    return res.rows;
+  } catch {
+    return [];
+  }
+}
+
+/** Counts by job status for the admin diagnostics panel. Resilient to no table. */
+async function getVideoJobStatusCounts() {
+  try {
+    const res = await query(
+      'SELECT status, COUNT(*)::int AS count FROM safety_event_video_jobs GROUP BY status',
+    );
+    const out = {};
+    for (const row of res.rows) out[row.status] = row.count;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Admin diagnostic/status surface for the music overlay: settings, whether
+ * active music is present, whether the overlay is fully enabled, recent job
+ * rows, status counts, and the most recent failure/fallback reason. This lets an
+ * admin see WHY overlay is/ isn't happening without reading Render logs.
+ */
+async function getSafetyEventVideoStatusForAdmin({ jobLimit = 20 } = {}) {
+  const base = await getSafetyEventVideoSettingsForAdmin();
+  const [recentJobs, jobStatusCounts] = await Promise.all([
+    listRecentVideoJobs(jobLimit),
+    getVideoJobStatusCounts(),
+  ]);
+  const lastFailure = recentJobs.find((j) => j.status === 'fallback_sent' || j.status === 'failed') || null;
+  return {
+    settings: base.settings,
+    activeMusic: base.activeMusic,
+    activeMusicPresent: Boolean(base.activeMusic),
+    // "Fully wired" from the hub's perspective: master switch on + active music
+    // selected. ffmpeg availability is only known to the samsara process.
+    overlayConfigured: base.settings.driverGroupMusicEnabled === true && Boolean(base.activeMusic),
+    recentJobs,
+    jobStatusCounts,
+    lastFailure: lastFailure
+      ? {
+        at: lastFailure.finished_at || lastFailure.created_at,
+        status: lastFailure.status,
+        source: lastFailure.video_source,
+        reason: lastFailure.error_message || null,
+      }
+      : null,
+  };
+}
+
 /** Update the single settings row via a dynamic SET builder (mirrors gmaps). */
 async function updateSafetyEventVideoSettings(payload = {}) {
   const sets = [];
@@ -364,6 +435,9 @@ module.exports = {
   MAX_MUSIC_BYTES,
   getSafetyEventVideoConfig,
   getSafetyEventVideoSettingsForAdmin,
+  getSafetyEventVideoStatusForAdmin,
+  listRecentVideoJobs,
+  getVideoJobStatusCounts,
   updateSafetyEventVideoSettings,
   listMusicAssets,
   getMusicAssetById,

@@ -127,6 +127,8 @@ export default function BolPodMonitorTab() {
         <p>
           Silently watch active driver groups, classify BOL/POD documents, match the load, and send a
           diagnostic report (and optionally the files) to a <strong>test Telegram group only</strong>.
+          <strong> Only AI-confirmed BOL or POD files are forwarded to the test group</strong> —
+          unclear, unrelated, and mixed (BOL+POD) documents are ignored silently.
           Driver groups receive <strong>no messages</strong> and <strong>nothing is uploaded to Datatruck</strong>.
           Controlled here — no Render environment variables required. Changes take effect within ~15 seconds; no redeploy needed.
         </p>
@@ -169,9 +171,12 @@ export default function BolPodMonitorTab() {
         </div>
 
         <div style={{ marginTop: 8 }}>
-          <ToggleRow label="Send unrelated files to test group" hint="Report documents the AI classifies as unrelated (fuel receipts, etc.)." checked={form.sendUnrelated} onChange={(v) => setField("sendUnrelated", v)} />
-          <ToggleRow label="Send unclear files to test group" hint="Report documents the AI could not confidently classify." checked={form.sendUnclear} onChange={(v) => setField("sendUnclear", v)} />
-          <ToggleRow label="Send / attach files to test group" hint="Attach the detected file(s) (merged into one PDF when there are several)." checked={form.sendFiles} onChange={(v) => setField("sendFiles", v)} />
+          <div style={{ fontSize: 12, color: "#94a3b8", padding: "8px 0", borderTop: "1px solid #1e293b" }}>
+            The Automatic Update group receives <strong>only AI-confirmed BOL or POD</strong> detections.
+            Unrelated, unclear, and mixed (BOL+POD) documents are suppressed automatically — the old
+            “send unrelated / unclear” toggles no longer apply.
+          </div>
+          <ToggleRow label="Send / attach files to test group" hint="Attach the detected BOL/POD file(s) (merged into one PDF when there are several)." checked={form.sendFiles} onChange={(v) => setField("sendFiles", v)} />
         </div>
 
         <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 16, flexWrap: "wrap" }}>

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../api";
-import { Banner } from "./fields";
+import { NumField, Banner } from "./fields";
 
 
 // ──────────────────────── Safety-event music overlay tab ─────────────────────
@@ -26,6 +26,8 @@ export default function SafetyEventsTab() {
   const [message, setMessage] = useState(null);
   const [file, setFile] = useState(null);
   const [name, setName] = useState("");
+  const [status, setStatus] = useState(null);
+  const [statusLoading, setStatusLoading] = useState(false);
   const [form, setForm] = useState({
     driverGroupMusicEnabled: false, speedingMusicEnabled: true, preserveOriginalAudio: true,
     loopMusicWhenVideoLonger: true, musicVolume: 0.35, fadeInSeconds: 0, fadeOutSeconds: 1.5,
@@ -46,13 +48,20 @@ export default function SafetyEventsTab() {
     }));
   }, []);
 
+  const loadStatus = useCallback(async () => {
+    setStatusLoading(true);
+    try { setStatus(await api.getSafetyEventStatus()); }
+    catch { /* diagnostics are best-effort; ignore */ }
+    finally { setStatusLoading(false); }
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try { applyView(await api.getSafetyEventSettings()); }
     catch (err) { setMessage({ type: "error", text: err.message }); }
     finally { setLoading(false); }
   }, [applyView]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); loadStatus(); }, [load, loadStatus]);
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -188,6 +197,73 @@ export default function SafetyEventsTab() {
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
         <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save settings"}</button>
         {data?.settings?.updatedAt && <span style={{ fontSize: 12, color: "#94a3b8" }}>Last updated {new Date(data.settings.updatedAt).toLocaleString()}</span>}
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3 style={{ margin: 0 }}>🩺 Overlay diagnostics</h3>
+          <button className="btn btn-ghost btn-sm" onClick={loadStatus} disabled={statusLoading}>{statusLoading ? "Refreshing…" : "Refresh"}</button>
+        </div>
+        <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 6 }}>
+          The overlay itself runs in the separate <strong>samsara-integration</strong> service. These rows come from the
+          shared <code>safety_event_video_jobs</code> ledger — use them to see whether overlay is happening and why a
+          clip fell back to the original. <strong>ffmpeg availability is only known to that service</strong> (check its
+          startup logs for the <code>[SafetyVideo] Readiness</code> lines).
+        </p>
+        {status ? (
+          <>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 13, marginBottom: 10 }}>
+              <span className={`badge ${status.overlayConfigured ? "badge-active" : "badge-inactive"}`}>
+                {status.overlayConfigured ? "Configured (enabled + active music)" : "Not fully configured"}
+              </span>
+              <span className={`badge ${status.activeMusicPresent ? "badge-active" : "badge-inactive"}`}>
+                {status.activeMusicPresent ? "Active music present" : "No active music"}
+              </span>
+              {Object.entries(status.jobStatusCounts || {}).map(([k, v]) => (
+                <span key={k} className="badge badge-muted">{k}: {v}</span>
+              ))}
+            </div>
+            {status.lastFailure && (
+              <div className="alert alert-warning" style={{ fontSize: 12 }}>
+                Last fallback/failure ({status.lastFailure.status}{status.lastFailure.source ? `, ${status.lastFailure.source}` : ""})
+                {status.lastFailure.at ? ` at ${new Date(status.lastFailure.at).toLocaleString()}` : ""}
+                {status.lastFailure.reason ? `: ${status.lastFailure.reason}` : ""}
+              </div>
+            )}
+            {status.recentJobs?.length ? (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse", minWidth: 520 }}>
+                  <thead>
+                    <tr style={{ textAlign: "left", color: "#94a3b8" }}>
+                      <th style={{ padding: "4px 6px" }}>When</th>
+                      <th style={{ padding: "4px 6px" }}>Status</th>
+                      <th style={{ padding: "4px 6px" }}>Source</th>
+                      <th style={{ padding: "4px 6px" }}>Trim</th>
+                      <th style={{ padding: "4px 6px" }}>Video</th>
+                      <th style={{ padding: "4px 6px" }}>Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {status.recentJobs.map((j) => (
+                      <tr key={j.id} style={{ borderTop: "1px solid rgba(148,163,184,0.15)" }}>
+                        <td style={{ padding: "4px 6px", whiteSpace: "nowrap" }}>{j.created_at ? new Date(j.created_at).toLocaleString() : "—"}</td>
+                        <td style={{ padding: "4px 6px" }}>{j.status}</td>
+                        <td style={{ padding: "4px 6px" }}>{j.video_source || "—"}</td>
+                        <td style={{ padding: "4px 6px" }}>{j.music_trim_mode || "—"}</td>
+                        <td style={{ padding: "4px 6px" }}>{fmtDuration(j.video_duration_seconds)}</td>
+                        <td style={{ padding: "4px 6px", color: "#94a3b8" }}>{j.error_message || ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: "#94a3b8" }}>No overlay jobs recorded yet.</div>
+            )}
+          </>
+        ) : (
+          <div style={{ fontSize: 13, color: "#94a3b8" }}>{statusLoading ? "Loading diagnostics…" : "Diagnostics unavailable."}</div>
+        )}
       </div>
     </div>
   );

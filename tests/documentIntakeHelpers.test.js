@@ -83,6 +83,60 @@ test('describeClicker is null-safe for a missing user', () => {
   assert.equal(d.displayName, null);
 });
 
+// ── shouldProcessSenderForDriverProfile — wired-driver document gate ──
+
+test('no identity wired → process any sender (fallback)', () => {
+  assert.equal(h.shouldProcessSenderForDriverProfile({ id: 123, username: 'someone' }, null).allow, true);
+  assert.equal(h.shouldProcessSenderForDriverProfile({ id: 123 }, { telegram_user_id: null, telegram_username: null }).allow, true);
+});
+
+test('telegram_user_id wired + sender id matches → process', () => {
+  const r = h.shouldProcessSenderForDriverProfile({ id: 555, username: 'whatever' }, { telegram_user_id: '555' });
+  assert.equal(r.allow, true);
+  assert.equal(r.reason, 'user_id_match');
+});
+
+test('telegram_user_id wired + sender id does NOT match → ignore', () => {
+  const r = h.shouldProcessSenderForDriverProfile({ id: 999, username: 'whatever' }, { telegram_user_id: '555' });
+  assert.equal(r.allow, false);
+  assert.equal(r.reason, 'user_id_mismatch');
+});
+
+test('telegram_username wired + sender username matches case-insensitively → process', () => {
+  const r = h.shouldProcessSenderForDriverProfile({ id: 1, username: '@DriverX' }, { telegram_username: 'driverx' });
+  assert.equal(r.allow, true);
+  assert.equal(r.reason, 'username_match');
+});
+
+test('telegram_username wired + sender username does NOT match → ignore', () => {
+  const r = h.shouldProcessSenderForDriverProfile({ id: 1, username: 'someone_else' }, { telegram_username: 'driverx' });
+  assert.equal(r.allow, false);
+  assert.equal(r.reason, 'username_mismatch');
+});
+
+test('username missing on sender while username wired → ignore', () => {
+  const r = h.shouldProcessSenderForDriverProfile({ id: 1 }, { telegram_username: 'driverx' });
+  assert.equal(r.allow, false);
+});
+
+test('user_id is authoritative: id mismatch is ignored even if username matches (anti-spoof)', () => {
+  const r = h.shouldProcessSenderForDriverProfile(
+    { id: 999, username: 'driverx' },
+    { telegram_user_id: '555', telegram_username: 'driverx' },
+  );
+  assert.equal(r.allow, false, 'a wired user_id that mismatches blocks the sender regardless of username');
+  assert.equal(r.reason, 'user_id_mismatch');
+});
+
+test('both wired + id matches → process', () => {
+  const r = h.shouldProcessSenderForDriverProfile(
+    { id: 555, username: 'renamed' },
+    { telegram_user_id: '555', telegram_username: 'driverx' },
+  );
+  assert.equal(r.allow, true);
+  assert.equal(r.reason, 'user_id_match');
+});
+
 test('callback data round-trips through keyboard + parser', () => {
   const kb = h.buildConfirmationKeyboard(77);
   const yes = kb.inline_keyboard[0][0].callback_data;

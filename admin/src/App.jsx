@@ -3,30 +3,72 @@ import * as api from "./api";
 // LoginPage stays eager: it is the auth gate and must render instantly.
 import LoginPage from "./pages/LoginPage";
 
+// After a deployment the hashed chunk filenames change, so a browser still
+// running the OLD index.html asks for a chunk that no longer exists → the
+// dynamic import rejects. `lazyWithRetry` recovers automatically: on the first
+// failure it forces ONE full page reload (fetching the fresh index.html with the
+// new hashes). A sessionStorage flag prevents an infinite reload loop — if the
+// import still fails after we've already reloaded once, the error propagates to
+// ChunkErrorBoundary so the user gets a manual Reload button instead.
+const CHUNK_RELOAD_FLAG = "adminChunkReloadedOnce";
+function lazyWithRetry(importer) {
+  return lazy(async () => {
+    try {
+      const mod = await importer();
+      // Loaded cleanly — clear the guard so a future stale deploy can retry too.
+      try { window.sessionStorage.removeItem(CHUNK_RELOAD_FLAG); } catch { /* ignore */ }
+      return mod;
+    } catch (err) {
+      let alreadyReloaded = false;
+      try { alreadyReloaded = window.sessionStorage.getItem(CHUNK_RELOAD_FLAG) === "1"; } catch { /* ignore */ }
+      if (!alreadyReloaded) {
+        try { window.sessionStorage.setItem(CHUNK_RELOAD_FLAG, "1"); } catch { /* ignore */ }
+        // Cache-busting hard reload: re-request index.html so the new chunk
+        // hashes are picked up. Return a never-settling promise so nothing
+        // renders (and the error boundary does not flash) before the reload.
+        hardReload();
+        return new Promise(() => {});
+      }
+      throw err; // second failure → let ChunkErrorBoundary show the Reload UI
+    }
+  });
+}
+
+/** Force a fresh index.html fetch, defeating an intermediate/browser cache. */
+function hardReload() {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set("_r", String(Date.now()));
+    window.location.replace(url.toString());
+  } catch {
+    window.location.reload();
+  }
+}
+
 // Every other page is lazy-loaded so its code is fetched only when the page
 // is opened — the initial admin bundle stays small.
-const GroupsPage = lazy(() => import("./pages/GroupsPage"));
-const QuestionsPage = lazy(() => import("./pages/QuestionsPage"));
-const BroadcastPage = lazy(() => import("./pages/BroadcastPage"));
-const ScheduledMessagesPage = lazy(() => import("./pages/ScheduledMessagesPage"));
-const MessageManagerPage = lazy(() => import("./pages/MessageManagerPage"));
-const BotMessagesPage = lazy(() => import("./pages/BotMessagesPage"));
-const CompanyBirthdaysPage = lazy(() => import("./pages/CompanyBirthdaysPage"));
-const DispatchPage = lazy(() => import("./pages/DispatchPage"));
-const FacebookLeadsPage = lazy(() => import("./pages/FacebookLeadsPage"));
-const LeadsPage = lazy(() => import("./pages/LeadsPage"));
-const MileageBonusPage = lazy(() => import("./pages/MileageBonusPage"));
-const RaiseApprovalPage = lazy(() => import("./pages/RaiseApprovalPage"));
-const RaisePublicPage = lazy(() => import("./pages/RaisePublicPage"));
-const HomeTimePage = lazy(() => import("./pages/HomeTimePage"));
-const GroupAccessPage = lazy(() => import("./pages/GroupAccessPage"));
-const FuelMonitorPage = lazy(() => import("./pages/FuelMonitorPage"));
-const UsersPage = lazy(() => import("./pages/UsersPage"));
-const SettingsPage = lazy(() => import("./pages/SettingsPage"));
-const RecruiterKpiPage = lazy(() => import("./pages/RecruiterKpiPage"));
-const RecruitersPublicPage = lazy(() => import("./pages/RecruitersPublicPage"));
-const LiveLocationsPage = lazy(() => import("./pages/LiveLocationsPage"));
-const RouteControlPage = lazy(() => import("./pages/RouteControlPage"));
+const GroupsPage = lazyWithRetry(() => import("./pages/GroupsPage"));
+const QuestionsPage = lazyWithRetry(() => import("./pages/QuestionsPage"));
+const BroadcastPage = lazyWithRetry(() => import("./pages/BroadcastPage"));
+const ScheduledMessagesPage = lazyWithRetry(() => import("./pages/ScheduledMessagesPage"));
+const MessageManagerPage = lazyWithRetry(() => import("./pages/MessageManagerPage"));
+const BotMessagesPage = lazyWithRetry(() => import("./pages/BotMessagesPage"));
+const CompanyBirthdaysPage = lazyWithRetry(() => import("./pages/CompanyBirthdaysPage"));
+const DispatchPage = lazyWithRetry(() => import("./pages/DispatchPage"));
+const FacebookLeadsPage = lazyWithRetry(() => import("./pages/FacebookLeadsPage"));
+const LeadsPage = lazyWithRetry(() => import("./pages/LeadsPage"));
+const MileageBonusPage = lazyWithRetry(() => import("./pages/MileageBonusPage"));
+const RaiseApprovalPage = lazyWithRetry(() => import("./pages/RaiseApprovalPage"));
+const RaisePublicPage = lazyWithRetry(() => import("./pages/RaisePublicPage"));
+const HomeTimePage = lazyWithRetry(() => import("./pages/HomeTimePage"));
+const GroupAccessPage = lazyWithRetry(() => import("./pages/GroupAccessPage"));
+const FuelMonitorPage = lazyWithRetry(() => import("./pages/FuelMonitorPage"));
+const UsersPage = lazyWithRetry(() => import("./pages/UsersPage"));
+const SettingsPage = lazyWithRetry(() => import("./pages/SettingsPage"));
+const RecruiterKpiPage = lazyWithRetry(() => import("./pages/RecruiterKpiPage"));
+const RecruitersPublicPage = lazyWithRetry(() => import("./pages/RecruitersPublicPage"));
+const LiveLocationsPage = lazyWithRetry(() => import("./pages/LiveLocationsPage"));
+const RouteControlPage = lazyWithRetry(() => import("./pages/RouteControlPage"));
 
 const pageLoadingFallback = (
   <div className="loading">
@@ -51,7 +93,15 @@ class ChunkErrorBoundary extends React.Component {
       return (
         <div className="loading" style={{ flexDirection: "column", gap: 12 }}>
           <div>Could not load this page (a new version may have been deployed).</div>
-          <button className="btn btn-primary" onClick={() => window.location.reload()}>
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              // Clear the one-shot guard so the button's reload is allowed to
+              // try the auto-recovery path again with a fresh index.html.
+              try { window.sessionStorage.removeItem(CHUNK_RELOAD_FLAG); } catch { /* ignore */ }
+              hardReload();
+            }}
+          >
             Reload
           </button>
         </div>

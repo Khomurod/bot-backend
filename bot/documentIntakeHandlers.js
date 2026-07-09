@@ -163,6 +163,23 @@ async function handleIntakeMessage(ctx) {
   if (!uploadEnabled && !monitorEnabled) return;
 
   const from = ctx.from || {};
+
+  // Wired-driver gate: if this driver group has a Telegram identity wired on its
+  // driver profile (telegram_user_id and/or telegram_username), ONLY that
+  // driver's documents are scanned. Everyone else's files are ignored silently —
+  // BEFORE any batch is created, before the file is downloaded, and before the
+  // AI ever sees it. When no identity is wired we keep the previous behavior and
+  // process any sender in the group.
+  let driverProfile = null;
+  try { driverProfile = await db.getDriverProfileByGroupId(group.id); } catch { driverProfile = null; }
+  const gate = helpers.shouldProcessSenderForDriverProfile(from, driverProfile);
+  if (!gate.allow) {
+    // Low-noise: a single debug line, no PII beyond the numeric sender id, no
+    // file contents. Helps confirm the filter is active without spamming logs.
+    console.debug?.(`[DOC-INTAKE] ignoring document from non-wired sender ${from.id ?? '—'} in group ${group.id} (${gate.reason})`);
+    return;
+  }
+
   const expiresAt = new Date(Date.now() + Math.max(30, config.datatruckDocIntakeBatchWaitSeconds + 30) * 1000).toISOString();
 
   // Resolve the batch: album → one batch; else reuse an open sender batch, or start one.

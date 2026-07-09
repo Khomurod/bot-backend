@@ -1680,6 +1680,13 @@ export async function updateSafetyEventSettings(payload) {
   return res.json();
 }
 
+/** Overlay diagnostics: settings + active-music presence + recent jobs + last failure. */
+export async function getSafetyEventStatus() {
+  const res = await fetch(`${API_BASE}/settings/safety-events/status`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 /** Upload a music clip (multipart). Returns the refreshed settings view. */
 export async function uploadSafetyEventMusic(file, { name, description } = {}) {
   const formData = new FormData();

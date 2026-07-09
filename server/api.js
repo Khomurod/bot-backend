@@ -95,8 +95,21 @@ app.use(createLeadsProxyRoutes({ internalSharedSecretGuard }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
 
-// Serve admin panel static files (production build)
-app.use('/admin', express.static(adminBuildDir));
+// Serve admin panel static files (production build).
+// Cache policy that prevents the post-deploy "chunk not found" error:
+//   • index.html          → no-cache, so a returning browser always revalidates
+//     and picks up the new hashed chunk names right after a deploy.
+//   • /assets/* (hashed)   → immutable, long cache; the content hash in the name
+//     makes them safe to cache forever, so navigation stays fast.
+app.use('/admin', express.static(adminBuildDir, {
+  setHeaders(res, filePath) {
+    if (/[\\/]index\.html$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-cache');
+    } else if (/[\\/]assets[\\/]/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  },
+}));
 
 // ─── Fleet Operations Platform (self-contained module, mounted at /update) ───
 // This is the only place linking the fleet module to the host app. It adds the
@@ -225,6 +238,9 @@ app.get(['/admin', '/admin/*', '/dispatch', '/dispatch/*', '/raise', '/raise/*',
       + 'On Render, use the Blueprint buildCommand in render.yaml or equivalent.',
     );
   }
+  // The SPA entry document must never be cached, or a returning browser keeps
+  // requesting chunk hashes from a previous deploy.
+  res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(adminSpaIndexPath);
 });
 

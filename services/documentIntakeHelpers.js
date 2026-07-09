@@ -104,6 +104,56 @@ function describeClicker(user = {}) {
   };
 }
 
+// Local, dependency-free normalizers (mirror database/driverProfileNormalizers
+// so this pure helper stays decoupled from the DB layer).
+function normUserId(value) {
+  if (value == null) return null;
+  const s = String(value).trim();
+  return /^[1-9]\d*$/.test(s) ? s : null;
+}
+function normUsername(value) {
+  if (value == null) return null;
+  const s = String(value).trim().replace(/^@+/, '').toLowerCase();
+  return s || null;
+}
+
+/**
+ * Decide whether a document sender should be scanned, given the driver group's
+ * wired Telegram identity (from driver_profiles).
+ *
+ * Policy (safest — see PART 5 of the spec):
+ *   - telegram_user_id is the STRONGEST identity (a Telegram numeric id cannot be
+ *     spoofed). When it is wired it is AUTHORITATIVE: the sender is allowed ONLY
+ *     if their id matches, and the username is NOT consulted. This deliberately
+ *     prevents a username-spoof bypass when a user_id is present but mismatches.
+ *   - Otherwise, if only telegram_username is wired, match the sender's @username
+ *     case-insensitively (leading '@' stripped, trimmed).
+ *   - If NO identity is wired for the group, keep the current fallback behavior
+ *     and allow processing (return true).
+ *
+ * @param {object} from            ctx.from (Telegram sender: { id, username })
+ * @param {object|null} driverProfile  driver_profiles row (telegram_user_id, telegram_username)
+ * @returns {{ allow:boolean, reason:string }}
+ */
+function shouldProcessSenderForDriverProfile(from = {}, driverProfile = null) {
+  const wiredId = normUserId(driverProfile?.telegram_user_id);
+  const wiredUsername = normUsername(driverProfile?.telegram_username);
+
+  if (!wiredId && !wiredUsername) return { allow: true, reason: 'no_identity_wired' };
+
+  if (wiredId) {
+    // Authoritative: id must match; username is ignored to block spoofing.
+    return normUserId(from?.id) === wiredId
+      ? { allow: true, reason: 'user_id_match' }
+      : { allow: false, reason: 'user_id_mismatch' };
+  }
+
+  // Only a username is wired.
+  return normUsername(from?.username) === wiredUsername
+    ? { allow: true, reason: 'username_match' }
+    : { allow: false, reason: 'username_mismatch' };
+}
+
 function escapeHtml(text) {
   return String(text == null ? '' : text)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -160,6 +210,7 @@ module.exports = {
   isIgnorableMessage,
   sizeWithinLimit,
   describeClicker,
+  shouldProcessSenderForDriverProfile,
   buildConfirmationMessage,
   buildConfirmationKeyboard,
   parseCallbackData,
