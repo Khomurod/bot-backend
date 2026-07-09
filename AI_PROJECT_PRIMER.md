@@ -100,9 +100,11 @@ These are reachable without login — **be careful changing them**:
   Access is **per-driver token based**: `GET /api/raise/:token`, plus
   OTP verify (`/api/raise/:token/request-otp`, `/verify-otp`, `/submit`) in
   `server/routes/raiseRoutes.js` (`publicRouter`).
-- **`/recruiters`** → `RecruitersPublicPage.jsx` — public gamified daily call
-  leaderboard, backed by `GET /api/recruiters/public-stats` (names + today's
-  call counts only; no phone numbers).
+- **`/recruiters`** → `RecruitersPublicPage.jsx` — public gamified call
+  leaderboard, backed by `GET /api/recruiters/public-stats` (names + KPI
+  numbers only; no phone numbers). Main KPI: 2h30m real call duration/day
+  (calls under 30s don't count); secondary: 150 outbound/day. Supports
+  `?date=` (one day) and `?start=&end=` (range, max 31 days).
 - **`/employee-birthday-form`** + `POST /api/submit-employee-birthday` —
   public birthday collection form.
 - **`/`, `/health`, `/api/health`** — health/status. `/privacy-policy.html`,
