@@ -1526,52 +1526,6 @@ export async function updateMessageGroupSettings(payload) {
   return data.settings;
 }
 
-// ─── Settings: BOL/POD silent test monitor ───
-
-export async function getBolPodMonitorSettings() {
-  const res = await fetch(`${API_BASE}/settings/bol-pod-monitor`, { headers: getHeaders() });
-  if (!res.ok) { await handleApiError(res); }
-  const data = await res.json();
-  return data.settings;
-}
-
-export async function updateBolPodMonitorSettings(payload) {
-  const res = await fetch(`${API_BASE}/settings/bol-pod-monitor`, {
-    method: 'PUT',
-    headers: getHeaders(),
-    body: JSON.stringify(payload || {}),
-  });
-  if (!res.ok) { await handleApiError(res); }
-  const data = await res.json();
-  return data.settings;
-}
-
-export async function getBolPodMonitorStatus() {
-  const res = await fetch(`${API_BASE}/settings/bol-pod-monitor/status`, { headers: getHeaders() });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
-export async function sendBolPodMonitorTestMessage(testGroupId) {
-  const res = await fetch(`${API_BASE}/settings/bol-pod-monitor/test-message`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify(testGroupId ? { test_group_id: testGroupId } : {}),
-  });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
-export async function checkBolPodMonitorAccess(testGroupId) {
-  const res = await fetch(`${API_BASE}/settings/bol-pod-monitor/check-access`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify(testGroupId ? { test_group_id: testGroupId } : {}),
-  });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
 // ─── Settings: RingCentral recruiter-call KPIs ───
 
 export async function getRingCentralSettings() {
