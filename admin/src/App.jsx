@@ -1,28 +1,74 @@
-import React, { useEffect, useState } from "react";
+import React, { Suspense, lazy, useEffect, useState } from "react";
 import * as api from "./api";
+// LoginPage stays eager: it is the auth gate and must render instantly.
 import LoginPage from "./pages/LoginPage";
-import GroupsPage from "./pages/GroupsPage";
-import QuestionsPage from "./pages/QuestionsPage";
-import BroadcastPage from "./pages/BroadcastPage";
-import ScheduledMessagesPage from "./pages/ScheduledMessagesPage";
-import MessageManagerPage from "./pages/MessageManagerPage";
-import BotMessagesPage from "./pages/BotMessagesPage";
-import CompanyBirthdaysPage from "./pages/CompanyBirthdaysPage";
-import DispatchPage from "./pages/DispatchPage";
-import FacebookLeadsPage from "./pages/FacebookLeadsPage";
-import LeadsPage from "./pages/LeadsPage";
-import MileageBonusPage from "./pages/MileageBonusPage";
-import RaiseApprovalPage from "./pages/RaiseApprovalPage";
-import RaisePublicPage from "./pages/RaisePublicPage";
-import HomeTimePage from "./pages/HomeTimePage";
-import GroupAccessPage from "./pages/GroupAccessPage";
-import FuelMonitorPage from "./pages/FuelMonitorPage";
-import UsersPage from "./pages/UsersPage";
-import SettingsPage from "./pages/SettingsPage";
-import RecruiterKpiPage from "./pages/RecruiterKpiPage";
-import RecruitersPublicPage from "./pages/RecruitersPublicPage";
-import LiveLocationsPage from "./pages/LiveLocationsPage";
-import RouteControlPage from "./pages/RouteControlPage";
+
+// Every other page is lazy-loaded so its code is fetched only when the page
+// is opened — the initial admin bundle stays small.
+const GroupsPage = lazy(() => import("./pages/GroupsPage"));
+const QuestionsPage = lazy(() => import("./pages/QuestionsPage"));
+const BroadcastPage = lazy(() => import("./pages/BroadcastPage"));
+const ScheduledMessagesPage = lazy(() => import("./pages/ScheduledMessagesPage"));
+const MessageManagerPage = lazy(() => import("./pages/MessageManagerPage"));
+const BotMessagesPage = lazy(() => import("./pages/BotMessagesPage"));
+const CompanyBirthdaysPage = lazy(() => import("./pages/CompanyBirthdaysPage"));
+const DispatchPage = lazy(() => import("./pages/DispatchPage"));
+const FacebookLeadsPage = lazy(() => import("./pages/FacebookLeadsPage"));
+const LeadsPage = lazy(() => import("./pages/LeadsPage"));
+const MileageBonusPage = lazy(() => import("./pages/MileageBonusPage"));
+const RaiseApprovalPage = lazy(() => import("./pages/RaiseApprovalPage"));
+const RaisePublicPage = lazy(() => import("./pages/RaisePublicPage"));
+const HomeTimePage = lazy(() => import("./pages/HomeTimePage"));
+const GroupAccessPage = lazy(() => import("./pages/GroupAccessPage"));
+const FuelMonitorPage = lazy(() => import("./pages/FuelMonitorPage"));
+const UsersPage = lazy(() => import("./pages/UsersPage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const RecruiterKpiPage = lazy(() => import("./pages/RecruiterKpiPage"));
+const RecruitersPublicPage = lazy(() => import("./pages/RecruitersPublicPage"));
+const LiveLocationsPage = lazy(() => import("./pages/LiveLocationsPage"));
+const RouteControlPage = lazy(() => import("./pages/RouteControlPage"));
+
+const pageLoadingFallback = (
+  <div className="loading">
+    <div className="spinner"></div> Loading...
+  </div>
+);
+
+/**
+ * A failed lazy chunk (deploy replaced the hashed file, network hiccup) must
+ * never leave a blank screen — offer a reload instead.
+ */
+class ChunkErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { failed: false };
+  }
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="loading" style={{ flexDirection: "column", gap: 12 }}>
+          <div>Could not load this page (a new version may have been deployed).</div>
+          <button className="btn btn-primary" onClick={() => window.location.reload()}>
+            Reload
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/** Shared wrapper: chunk-failure boundary + suspense fallback for lazy pages. */
+function LazyPage({ children }) {
+  return (
+    <ChunkErrorBoundary>
+      <Suspense fallback={pageLoadingFallback}>{children}</Suspense>
+    </ChunkErrorBoundary>
+  );
+}
 
 function getPageFromPath(pathname) {
   if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) {
@@ -103,14 +149,14 @@ export default function App() {
   if (isRaisePublicPage) {
     return (
       <main className="main-content" style={{ marginLeft: 0 }}>
-        <RaisePublicPage />
+        <LazyPage><RaisePublicPage /></LazyPage>
       </main>
     );
   }
 
   // Full-bleed public leaderboard — no admin chrome, no auth.
   if (isRecruitersPublicPage) {
-    return <RecruitersPublicPage />;
+    return <LazyPage><RecruitersPublicPage /></LazyPage>;
   }
 
   if (checking) {
@@ -139,7 +185,7 @@ export default function App() {
   if (isDispatchPage) {
     return (
       <main className="main-content" style={{ marginLeft: 0 }}>
-        <DispatchPage />
+        <LazyPage><DispatchPage /></LazyPage>
       </main>
     );
   }
@@ -278,7 +324,7 @@ export default function App() {
             ☰
           </button>
         </div>
-        {pages[page] || pages.dispatch}
+        <LazyPage>{pages[page] || pages.dispatch}</LazyPage>
       </main>
     </div>
   );

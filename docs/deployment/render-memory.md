@@ -53,16 +53,28 @@ upload burst first; then consider lowering `DATATRUCK_DOC_INTAKE_MAX_FILES` /
 
 All uploads use `multer.memoryStorage()` (buffers live in RAM until handled):
 
-| Route | Per-file cap | Batch cap |
-|---|---|---|
-| `POST /api/upload-media` (broadcast media) | 20 MB (photos 10 MB) | single file |
-| Dispatch document routes | 20 MB | single file |
-| `POST /api/home-time/import-screenshots` | 8 MB × 12 files | 40 MB total |
+Full audit of every `multer.memoryStorage()` route (all uploads are held in a
+RAM buffer only for the duration of one request, then released):
 
-**Future improvement (not yet implemented):** the 20MB single-file routes are
-fine in memory, but if larger videos are ever needed, switch those two routes
-to `multer.diskStorage()` + streamed forwarding to Telegram instead of raising
-the in-memory cap.
+| Route | File | Per-file cap | Count | Mime filter | Feature | Memory risk |
+|---|---|---|---|---|---|---|
+| `POST /api/upload-media` | `server/routes/mediaUploadRoutes.js` | 20 MB (photos rejected early at 10 MB) | 1 | jpg/png/webp/mp4/mov | Broadcast media staged to Telegram for a `file_id` | Low — single buffer, admin-only (JWT) |
+| `POST /api/dispatch/parse-rate-con` | `server/routes/dispatchRoutes.js` | 20 MB | 1 | pdf/jpg/png/webp | Rate-con AI parse (PDF/OCR runs on the buffer) | Low/Medium — parse allocs on top of the buffer; admin-only |
+| `POST /api/dispatch/send-to-telegram` | `server/routes/dispatchRoutes.js` | 20 MB | 1 | **any** (intentional — dispatchers forward arbitrary documents to driver groups) | Dispatch document forward | Low — buffer streamed straight to Telegram; admin-only |
+| `POST /api/home-time/import-screenshots` | `server/routes/homeTimeRoutes.js` | 8 MB | 12 (40 MB batch cap) | jpg/png/webp | AI-vision home-time import | Low — batch-bounded since PR #91; admin-only |
+| `POST /api/settings/safety-events/music` | `server/routes/settingsRoutes.js` | 20 MB (`MAX_MUSIC_BYTES`) | 1 | audio | Safety-event music overlay asset | Low — rare one-off admin upload |
+
+Every route is JWT-protected, rejects oversize files with a clear message
+before processing, and holds at most one bounded buffer per request. Worst
+plausible case (a few concurrent 20 MB admin uploads) is a transient
+40–60 MB spike — within the 256 MB heap budget.
+
+**Future improvement (deliberately NOT implemented — behavior risk outweighs
+the gain at current sizes):** if larger videos are ever needed, switch the
+20 MB single-file routes to `multer.diskStorage()` + streamed forwarding to
+Telegram (with temp-file cleanup on success AND failure paths) instead of
+raising the in-memory cap. Do not raise any cap above 20 MB while uploads are
+memory-buffered.
 
 ## Background services
 

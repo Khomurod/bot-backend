@@ -54,7 +54,7 @@ test('classifyGroupHeuristic keeps active driver titles active', () => {
 
 test('upsertGroup ON CONFLICT does not force active = TRUE', () => {
   const dbSrc = fs.readFileSync(
-    path.join(__dirname, '../database/db.js'),
+    path.join(__dirname, '../database/groups.js'),
     'utf8'
   );
   const upsertMatch = dbSrc.match(

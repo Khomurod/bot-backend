@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const dbSrc = fs.readFileSync(
-  path.join(__dirname, '../database/db.js'),
+  path.join(__dirname, '../database/groups.js'),
   'utf8'
 );
 
