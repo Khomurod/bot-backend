@@ -184,6 +184,11 @@ function createQuestionsRoutes({
 
       res.json(result);
     } catch (err) {
+      // The integrated AI (Groq/Gemini) has no key configured — tell the admin
+      // exactly what to fix instead of a generic failure.
+      if (err.code === 'AI_NOT_CONFIGURED') {
+        return res.status(503).json({ error: err.message });
+      }
       console.error('[API] Translation error:', err.message);
       res.status(500).json({ error: 'Translation failed. Please try again.' });
     }

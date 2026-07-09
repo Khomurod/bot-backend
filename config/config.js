@@ -95,7 +95,6 @@ module.exports = {
   mediaStorageChatId,
   jwtSecret: process.env.JWT_SECRET || '',
   port: process.env.PORT || 3001,
-  openaiApiKey: process.env.OPENAI_API_KEY,
   openrouterApiKey: process.env.OPENROUTER_API_KEY,
   samsaraApiKey: process.env.SAMSARA_API_KEY || resolvedSamsaraApiKeys[0] || '',
   samsaraApiKeys: resolvedSamsaraApiKeys,
@@ -209,28 +208,6 @@ module.exports = {
     process.env.DATATRUCK_DOC_MEDIA_BASE_URL
     || 'https://tms-datatruck.s3-accelerate.amazonaws.com/static/'
   ).trim(),
-  // ── Smart BOL/POD intake (driver Telegram group → AI classify → confirm →
-  // upload to Datatruck). OFF by default: the whole intake pipeline only runs
-  // when explicitly enabled, so it can ship dark and be turned on per-fleet.
-  datatruckDocUploadEnabled: process.env.DATATRUCK_DOC_UPLOAD_ENABLED === 'true',
-  // Dry-run by default even once enabled: the bot detects, classifies, matches,
-  // and confirms, but the final Datatruck upload is simulated (logged, recorded
-  // as dry_run) instead of performed. Flip to 'false' only after verification.
-  datatruckDocUploadDryRun: process.env.DATATRUCK_DOC_UPLOAD_DRY_RUN !== 'false',
-  // Debounce window (seconds) for collecting the files of one album / burst
-  // before classifying. Kept short so intake stays fast.
-  datatruckDocIntakeBatchWaitSeconds: Math.min(30, Math.max(2,
-    parseInt(process.env.DATATRUCK_DOC_INTAKE_BATCH_WAIT_SECONDS || '6', 10) || 6)),
-  // Max files in a single intake batch (oversized batches are rejected).
-  datatruckDocIntakeMaxFiles: Math.min(50, Math.max(1,
-    parseInt(process.env.DATATRUCK_DOC_INTAKE_MAX_FILES || '12', 10) || 12)),
-  // Max size (MB) of a single attached file the intake will accept/download.
-  datatruckDocIntakeMaxFileMb: Math.min(50, Math.max(1,
-    parseInt(process.env.DATATRUCK_DOC_INTAKE_MAX_FILE_MB || '20', 10) || 20)),
-  // NOTE: the Yes/No/Disregard confirmation buttons are group-open — anyone who
-  // can see the card may press them — so there is no approver/authorization
-  // config. Duplicate uploads are prevented by the atomic upload claim, not by
-  // gating who may click.
   // Gmail App Password channel for driver-raise OTP delivery (no third party).
   // GMAIL_USER is the full address; GMAIL_APP_PASSWORD is a 16-char App Password
   // created at https://myaccount.google.com/apppasswords (2FA required).

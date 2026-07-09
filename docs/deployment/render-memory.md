@@ -22,8 +22,6 @@ Heavy libraries are lazy-loaded and cost nothing until first use:
 
 - `pdf-parse` (~20 MB RSS) — loads on first PDF text extraction.
 - `tesseract.js` + `eng.traineddata` — loads on first OCR.
-- `pdf-lib` (~6 MB) — loads on first BOL/POD merge (`documentMergeService`).
-- `openai` SDK (~3 MB) — loads on first translation (`translationService`).
 - `nodemailer` — loads on first OTP email.
 
 Runtime memory pressure therefore comes from *work*, not boot: PDF/OCR jobs,
@@ -45,9 +43,8 @@ and escalates to a warning when RSS ≥ 450MB or heapUsed ≥ 200MB. A sustained
 episode re-warns at most once per hour, so it cannot flood the logs. The
 watchdog allocates nothing per tick and its timer is unref()'d.
 
-**If RSS trends above ~450MB:** check for a stuck document batch or an unusual
-upload burst first; then consider lowering `DATATRUCK_DOC_INTAKE_MAX_FILES` /
-`…_MAX_FILE_MB`, and restart the service to clear fragmentation.
+**If RSS trends above ~450MB:** check for an unusual upload burst first; then
+restart the service to clear fragmentation.
 
 ### Recommended rollout on Render
 

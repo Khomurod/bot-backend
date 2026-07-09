@@ -7,7 +7,7 @@
  *
  * Moved verbatim from bot/bot.js. bot.js registers this LAST among callback
  * handlers so the feature-specific action handlers (route control, mileage
- * bonus, document intake…) match first and are never swallowed.
+ * bonus…) match first and are never swallowed.
  */
 const config = require('../../config/config');
 const db = require('../../database/db');

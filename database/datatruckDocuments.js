@@ -64,37 +64,6 @@ async function recordBackfillSuppressed(meta) {
 }
 
 /**
- * Record a document as suppressed because OUR bot uploaded it (loop
- * prevention): the Datatruck→Telegram forwarder must not push a file the intake
- * pipeline just uploaded back into the same driver group. Terminal, like
- * backfill suppression — a later scan sees the signature and skips it. No-op if
- * the signature already exists.
- * @returns {Promise<boolean>} true when a new suppression row was inserted.
- */
-async function recordSuppressedBotUpload(meta) {
-  const res = await query(
-    `INSERT INTO datatruck_document_deliveries
-       (signature, order_id, load_reference, file_type, file_link, uploaded_by,
-        uploaded_at, driver_name, unit_number, status, attempt_count)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'suppressed_bot_upload', 0)
-     ON CONFLICT (signature) DO NOTHING
-     RETURNING id`,
-    [
-      meta.signature,
-      meta.orderId || null,
-      meta.loadReference || null,
-      meta.fileType,
-      meta.fileLink || null,
-      meta.uploadedBy || null,
-      meta.uploadedAt || null,
-      meta.driverName || null,
-      meta.unitNumber || null,
-    ]
-  );
-  return res.rows.length > 0;
-}
-
-/**
  * Claim a document for delivery. Inserts a fresh pending row, or re-claims a
  * previously failed / no-group / stale-pending row (within the attempt cap).
  * Returns the claimed row, or null when there is nothing to do (already sent,
@@ -193,7 +162,6 @@ module.exports = {
   SERVICE_NAME,
   ensureActivationTime,
   recordBackfillSuppressed,
-  recordSuppressedBotUpload,
   claimDocumentDelivery,
   markSent,
   markFailed,

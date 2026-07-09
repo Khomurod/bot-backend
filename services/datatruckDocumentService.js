@@ -21,7 +21,6 @@ const { bot } = require('../bot/bot');
 const { safeSend, isPermanentSendError } = require('./telegramHtml');
 const datatruck = require('./datatruckApiService');
 const docsDb = require('../database/datatruckDocuments');
-const uploadsDb = require('../database/telegramDocuments');
 const { listCanonicalDriverGroups } = require('./driverGroupDirectoryService');
 const {
   isTrackedDocumentType,
@@ -155,7 +154,6 @@ async function runOnce({ referenceMs = Date.now() } = {}) {
 
   let scanned = 0;
   let backfillSuppressed = 0;
-  let suppressedBotUpload = 0;
   let sent = 0;
   let skippedNoGroup = 0;
   let failed = 0;
@@ -181,28 +179,6 @@ async function runOnce({ referenceMs = Date.now() } = {}) {
       if (doc.uploadedAtMs == null || doc.uploadedAtMs < cutoffMs) {
         if (await docsDb.recordBackfillSuppressed(meta)) backfillSuppressed += 1;
         continue;
-      }
-
-      // Loop prevention: if OUR intake bot just uploaded this (order, doc type)
-      // to Datatruck, do not forward that same file back into the driver group.
-      if (doc.orderId) {
-        let botUpload = null;
-        try {
-          botUpload = await uploadsDb.findBotOriginatedUpload({
-            orderId: doc.orderId,
-            documentType: doc.fileType,
-          });
-        } catch (_) { botUpload = null; /* best-effort; fall through to normal delivery */ }
-        if (botUpload) {
-          if (await docsDb.recordSuppressedBotUpload(meta)) {
-            suppressedBotUpload += 1;
-            console.log(
-              `[DATATRUCK-DOCS] Suppressed re-forward of bot-uploaded ${doc.fileType} `
-              + `for load ${doc.loadReference || doc.orderId} (loop prevention)`
-            );
-          }
-          continue;
-        }
       }
 
       const claimed = await docsDb.claimDocumentDelivery(meta, CLAIM_OPTS);
@@ -251,7 +227,6 @@ async function runOnce({ referenceMs = Date.now() } = {}) {
     documentsScanned: scanned,
     sent,
     backfillSuppressed,
-    suppressedBotUpload,
     skippedNoGroup,
     failed,
     errors,
@@ -260,7 +235,7 @@ async function runOnce({ referenceMs = Date.now() } = {}) {
   lastRunSummary = summary;
   console.log(
     `[DATATRUCK-DOCS] Scan complete: ${orders.length} orders, ${scanned} BOL/POD docs, `
-    + `${sent} sent, ${backfillSuppressed} backfill, ${suppressedBotUpload} bot-upload-suppressed, `
+    + `${sent} sent, ${backfillSuppressed} backfill, `
     + `${skippedNoGroup} no-group, ${failed} failed`
   );
   return summary;

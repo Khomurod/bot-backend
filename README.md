@@ -137,70 +137,12 @@ with a short caption.
 > against `DATATRUCK_DOC_MEDIA_BASE_URL`; already-absolute links pass through
 > unchanged, so if Datatruck later returns full URLs no config change is needed.
 
-## Smart BOL/POD intake (driver → Datatruck upload)
-
-The reverse direction: when a **driver** sends BOL/POD documents **in their
-driver Telegram group**, the bot detects them, classifies them with AI, matches
-them to the correct Datatruck load, and — only after an inline-button
-confirmation — uploads them to that load. The confirmation card is
-**group-open**: anyone who can see it (any driver, dispatcher, or group member)
-can press Yes, No, or Disregard. **Off by default**, and **dry-run by default**
-even once enabled.
-
-Flow: detect PDF/image attachment(s) → group an album / quick burst into one
-batch (debounced) → AI classifies (BOL / POD / both / unrelated / unclear,
-conservatively) → match to the driver's active Datatruck load (group → unit →
-active order, load numbers/addresses, and GPS: near pickup ⇒ BOL, near delivery
-⇒ POD) → post a **✅ Yes / ❌ No / 🗑 Disregard** card → on Yes, merge the files
-into one PDF and upload.
-
-Safety properties:
-
-- **Never auto-uploads.** An upload always requires a human Yes. Unrelated →
-  ignored; unclear/both → human review; no load or a **mismatch** → human review
-  (no one-click upload to a possibly-wrong load).
-- **Group-open confirmation** — anyone who can see the Telegram confirmation
-  card can handle it (press Yes, No, or Disregard); no authorization is required.
-  The system still **records who clicked** (`decided_by_user_id` /
-  `decided_by_username`) for audit, and still **prevents duplicate uploads**.
-- **Idempotent** — an atomic `waiting_confirmation → uploading` claim plus a
-  content-hash duplicate check mean double-clicks, two people clicking at once,
-  and re-sends never upload twice. Whoever clicks first handles the batch; every
-  later click sees "Already handled."
-- **No loops** — files forwarded from a bot are ignored on intake, and the
-  Datatruck→Telegram forwarder suppresses re-forwarding a document our own bot
-  uploaded.
-- **Merging** is in-memory (pdf-lib): multiple images/PDFs → one PDF in message
-  order; oversized/unsupported inputs are refused, never uploaded broken.
-
-| Variable | Default | Description |
-|---|---|---|
-| `DATATRUCK_DOC_UPLOAD_ENABLED` | `false` | Master switch for the whole intake pipeline |
-| `DATATRUCK_DOC_UPLOAD_DRY_RUN` | `true` | Do everything except the real upload (simulate + log); set `false` for live |
-| `DATATRUCK_DOC_INTAKE_BATCH_WAIT_SECONDS` | `6` | Debounce window to collect an album / burst |
-| `DATATRUCK_DOC_INTAKE_MAX_FILES` | `12` | Max files in one batch |
-| `DATATRUCK_DOC_INTAKE_MAX_FILE_MB` | `20` | Max size of a single accepted file |
-| `DATATRUCK_DOC_UPLOAD_PATH` | `orders/{orderId}/documents/` | Upload endpoint path (see note) |
-| `DATATRUCK_DOC_UPLOAD_FILE_FIELD` | `file` | Multipart file field name |
-| `GEMINI_API_KEY` | _(none)_ | Enables AI classification (vision). Without it, everything is routed to human review |
-
-Ops status: `GET /api/datatruck-docs/status` (admin auth) reports enabled/dry-run,
-AI/Datatruck readiness, batch status counts, and recent detected batches.
-
-> ⚠️ **Upload endpoint is unverified against the public docs.** Datatruck's
-> public OpenAPI documents *reading* an order's `documents` array but does **not**
-> document an upload endpoint. The client posts `multipart/form-data` to the
-> conventional `orders/{orderId}/documents/` path with a `file_type` field; the
-> path and file field are overridable via the env vars above so the exact,
-> Datatruck-confirmed values can be set without a code change. **Keep dry-run on
-> until the live endpoint is confirmed.**
-
 ## Tech Stack
 
 - **Backend:** Node.js, Telegraf, Express.js
 - **Database:** PostgreSQL (Supabase / Neon compatible)
 - **Frontend:** React + Vite
-- **Translation:** OpenAI GPT-4o-mini
+- **Translation:** integrated AI (Groq with Gemini fallback)
 - **Leads-Bot:** Python, FastAPI
 
 ## Quick Start
@@ -238,14 +180,13 @@ Optional variables:
 |---|---|
 | `EMPLOYEE_GROUP_ID` | Telegram employee group ID (employee birthdays, home-time notices, raise-approval announcements) |
 | `MEDIA_STORAGE_CHAT_ID` | Optional storage chat used to upload media and capture reusable `file_id`s |
-| `OPENAI_API_KEY` | OpenAI API key (enables auto-translation) |
-| `GROQ_API_KEY` | Groq API key (AI reports, insights, chat annotation, dispatch parsing) |
+| `GROQ_API_KEY` | Groq API key (AI reports, insights, chat annotation, dispatch parsing, broadcast auto-translation) |
 | `GROQ_AI_MODEL` | Optional Groq model for reports/insights (default: `llama-3.3-70b-versatile`) |
 | `GROQ_AI_FAST_MODEL` | Optional fast Groq model for annotation batches (default: `llama-3.1-8b-instant`) |
 | `GROQ_AI_FALLBACK_MODELS` | Comma-separated Groq models to try when one hits rate limits (limits are **per model**) |
 | `ANNOTATOR_GROQ_MODELS` | Optional annotator-only Groq chain (defaults to fast model + `GROQ_AI_FALLBACK_MODELS`) |
 | `ANNOTATOR_RATE_LIMIT_COOLDOWN_MS` | Pause between annotator batches when all Groq models return 429 (default: `15000`) |
-| `GEMINI_API_KEY` | Google Gemini key (dispatch parsing, pinned-context; annotator fallback if Groq exhausted) |
+| `GEMINI_API_KEY` | Google Gemini key (dispatch parsing, pinned-context; fallback for annotation and broadcast auto-translation when Groq is unavailable) |
 | `GEMINI_TEXT_MODELS` | Gemini model chain, highest free-tier quota first (default starts with `gemini-3.1-flash-lite`) |
 | `LOCATION_DRIVER_NAME_STRICT` | If `true`, `/location` blocks when Telegram group driver name does not match Samsara vehicle label (default: warn and still send pin) |
 | `DISPATCH_ETA_TEST_GROUP_ID` | Telegram chat id for **Automatic updating (Test)** — receives test-mode ETA posts and interactive `/status` lookups |

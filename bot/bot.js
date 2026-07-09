@@ -15,7 +15,6 @@ const { registerHomeTimeRequestHandlers } = require('./homeTimeRequestHandlers')
 const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
 const { registerRouteControlHandlers } = require('./routeControlHandlers');
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
-const { registerDocumentIntakeHandlers } = require('./documentIntakeHandlers');
 const { registerLocationCheckinHandlers } = require('./locationCheckinHandlers');
 const { registerCreatorMessageManager } = require('./creatorMessageManager');
 const { registerCreatorControlPanel } = require('./creatorBroadcastHandlers');
@@ -265,11 +264,6 @@ async function startBot() {
 
     // Driver location check-in Yes / No buttons (driver answers).
     registerLocationCheckinHandlers(bot);
-
-    // Smart BOL/POD intake: detect driver-sent documents, classify, and
-    // confirm upload to Datatruck via Yes/No/Disregard buttons. Registered
-    // before the callback_query catch-all so its dtdoc: actions are handled.
-    registerDocumentIntakeHandlers(bot);
 
     // Broadcast buttons + the survey-answer callback_query catch-all. MUST be
     // last so it never swallows the feature-specific callbacks above.

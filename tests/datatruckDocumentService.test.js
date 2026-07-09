@@ -11,7 +11,6 @@ function loadService({
   config: cfg = {},
   datatruck = {},
   docsDb = {},
-  uploadsDb = {},
   directory = [],
   telegram = {},
   permanentSendError = false,
@@ -23,7 +22,6 @@ function loadService({
   const htmlPath = path.resolve(__dirname, '../services/telegramHtml.js');
   const datatruckPath = path.resolve(__dirname, '../services/datatruckApiService.js');
   const docsDbPath = path.resolve(__dirname, '../database/datatruckDocuments.js');
-  const uploadsDbPath = path.resolve(__dirname, '../database/telegramDocuments.js');
   const directoryPath = path.resolve(__dirname, '../services/driverGroupDirectoryService.js');
 
   for (const p of [servicePath]) delete require.cache[p];
@@ -35,7 +33,6 @@ function loadService({
     markedSent: [],
     markedFailed: [],
     markedSkipped: [],
-    suppressedBotUpload: [],
   };
 
   const configMock = {
@@ -66,15 +63,7 @@ function loadService({
     async markSent(id, info) { calls.markedSent.push({ id, info }); return { id }; },
     async markFailed(id, error) { calls.markedFailed.push({ id, error }); return { id }; },
     async markSkippedNoGroup(id, info) { calls.markedSkipped.push({ id, info }); return { id }; },
-    async recordSuppressedBotUpload(meta) { calls.suppressedBotUpload.push(meta); return true; },
     ...docsDb,
-  };
-
-  // Loop-prevention lookup: default "not a bot upload" so existing behavior is
-  // unchanged; a test can override to simulate our own prior upload.
-  const uploadsDbMock = {
-    async findBotOriginatedUpload() { return null; },
-    ...uploadsDb,
   };
 
   const telegramMock = {
@@ -103,7 +92,6 @@ function loadService({
   };
   require.cache[datatruckPath] = { exports: datatruckMock };
   require.cache[docsDbPath] = { exports: docsDbMock };
-  require.cache[uploadsDbPath] = { exports: uploadsDbMock };
   require.cache[directoryPath] = {
     exports: { listCanonicalDriverGroups: async () => directory },
   };
@@ -392,35 +380,9 @@ test('runOnce reports not configured when Datatruck is off', async () => {
   assert.equal(summary.configured, false);
 });
 
-test('loop prevention: a document our bot uploaded is suppressed, not re-forwarded', async () => {
+test('an uploaded document forwards normally', async () => {
   const { service, calls } = loadService({
     directory: [driverGroup],
-    uploadsDb: {
-      // Simulate our intake bot having uploaded this POD to this order.
-      async findBotOriginatedUpload({ orderId, documentType }) {
-        return orderId === '500' && documentType === 'proof_of_delivery' ? { id: 1 } : null;
-      },
-    },
-    datatruck: {
-      async fetchOrdersByDeliveryWindow() {
-        return [orderWith([
-          { file_type: 'proof_of_delivery', file_link: 'https://x/pod.pdf', uploaded_at: '2026-06-15T10:00:00Z', uploaded_by: 'Bot' },
-        ])];
-      },
-    },
-  });
-
-  const summary = await service.runOnce({ referenceMs: Date.parse('2026-06-20T00:00:00Z') });
-  assert.equal(summary.suppressedBotUpload, 1);
-  assert.equal(calls.sent.length, 0, 'must NOT re-forward our own upload');
-  assert.equal(calls.claimed.length, 0, 'suppressed before claiming for delivery');
-  assert.equal(calls.suppressedBotUpload.length, 1);
-});
-
-test('external upload still forwards normally when no bot upload matches', async () => {
-  const { service, calls } = loadService({
-    directory: [driverGroup],
-    // Default uploadsDb.findBotOriginatedUpload → null (no bot upload).
     datatruck: {
       async fetchOrdersByDeliveryWindow() {
         return [orderWith([
@@ -431,6 +393,6 @@ test('external upload still forwards normally when no bot upload matches', async
   });
 
   const summary = await service.runOnce({ referenceMs: Date.parse('2026-06-20T00:00:00Z') });
-  assert.equal(summary.suppressedBotUpload, 0);
-  assert.equal(calls.sent.length, 1, 'external upload is forwarded as before');
+  assert.equal(summary.sent, 1);
+  assert.equal(calls.sent.length, 1, 'upload is forwarded as before');
 });

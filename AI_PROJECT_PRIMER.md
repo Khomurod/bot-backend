@@ -388,9 +388,9 @@ For each: config location → main files → data flow → dependents → failur
 
 ### AI providers
 - **Groq** (`GROQ_API_KEY`, `services/groqClient.js`, primary) with **Gemini**
-  cross-provider fallback (`GEMINI_API_KEY`, `geminiClient.js`); **OpenAI**
-  (`OPENAI_API_KEY`) for translations (`translationService.js`);
-  `OPENROUTER_API_KEY` also present. Consumers: weekly AI reports
+  cross-provider fallback (`GEMINI_API_KEY`, `geminiClient.js`) — the single
+  integrated AI stack; broadcast auto-translation (`translationService.js`)
+  runs on it too. `OPENROUTER_API_KEY` also present. Consumers: weekly AI reports
   (`aiAnalysisService.js`), insights (`aiInsightsService.js` +
   `insightRenderer.js`), message annotation (`aiAnnotationService.js`), group
   status classification (`groupStatusAiService.js`), driver-profile parsing
@@ -556,8 +556,7 @@ For each: config location → main files → data flow → dependents → failur
   `ringcentral_settings`).
 - **Datatruck**: `DATATRUCK_API_TOKEN`, `DATATRUCK_COMPANY`, doc-delivery
   knobs (`DATATRUCK_DOC_*`).
-- **AI**: `GROQ_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`,
-  `OPENROUTER_API_KEY`.
+- **AI**: `GROQ_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`.
 - **Maps/Email**: `GOOGLE_MAPS_API_KEY`, `GMAIL_USER`, `GMAIL_APP_PASSWORD`.
 - **Workflow gates**: `MILEAGE_BONUS_GROUP_CHAT_ID`,
   `MILEAGE_BONUS_ACCOUNTING_USER_IDS`, `HOME_TIME_APPROVER_USER_IDS`.

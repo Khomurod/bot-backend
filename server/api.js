@@ -151,7 +151,7 @@ const { createBotUsersRouter } = require('./routes/botUsersRoutes');
 app.use('/api/bot-users', createBotUsersRouter({ authMiddleware }));
 
 const { createSettingsRouter } = require('./routes/settingsRoutes');
-app.use('/api/settings', createSettingsRouter({ authMiddleware, telegram: bot.telegram }));
+app.use('/api/settings', createSettingsRouter({ authMiddleware }));
 
 const { createRouteControlRouter } = require('./routes/routeControlRoutes');
 app.use('/api/route-control', createRouteControlRouter({ authMiddleware, telegram: bot.telegram }));
@@ -170,7 +170,7 @@ app.use('/api/groups', createGroupMembersRouter({ authMiddleware }));
 
 // ─── Feature route modules (full paths, mounted at the app root) ───
 app.use(createDriverGroupsRoutes({ db, authMiddleware }));
-app.use(createDriverProfilesRoutes({ db, config, authMiddleware }));
+app.use(createDriverProfilesRoutes({ db, authMiddleware }));
 app.use(createMileageBonusRoutes({ authMiddleware }));
 app.use(createQuestionsRoutes({
   db,

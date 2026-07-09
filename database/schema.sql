@@ -1465,9 +1465,9 @@ CREATE TABLE IF NOT EXISTS datatruck_document_deliveries (
   )
 );
 
--- Additive migration for existing databases: allow the loop-prevention status
--- 'suppressed_bot_upload' (documents our own intake bot uploaded, which the
--- forwarder must not push back into the driver group).
+-- Additive migration for existing databases: allow the legacy status
+-- 'suppressed_bot_upload'. It was written by the retired BOL/POD intake
+-- pipeline's loop prevention; historical rows may still carry it.
 DO $$
 BEGIN
   IF EXISTS (
@@ -1489,124 +1489,15 @@ CREATE INDEX IF NOT EXISTS idx_datatruck_document_deliveries_status
 CREATE INDEX IF NOT EXISTS idx_datatruck_document_deliveries_group
   ON datatruck_document_deliveries(group_id, created_at DESC);
 
--- ── Smart BOL/POD intake from driver Telegram groups ──
--- When a driver sends PDF/image documents in their group the bot collects the
--- related attachments into a batch, classifies them with AI, matches them to a
--- Datatruck load, and (only after inline-button confirmation) uploads BOL/POD
--- files to Datatruck. These tables make the pipeline restart-safe and
--- idempotent, and — together with datatruck_upload_attempts — let the existing
--- Datatruck→Telegram forwarding poller recognise a document our own bot
--- uploaded so it is never forwarded back into the group (loop prevention).
-CREATE TABLE IF NOT EXISTS telegram_document_batches (
-  id BIGSERIAL PRIMARY KEY,
-  telegram_chat_id BIGINT NOT NULL,
-  group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
-  telegram_user_id BIGINT,
-  sender_username TEXT,
-  media_group_id TEXT,
-  status TEXT NOT NULL DEFAULT 'collecting',
-  detected_doc_type TEXT,
-  datatruck_order_id TEXT,
-  datatruck_load_reference TEXT,
-  match_confidence TEXT,          -- high | medium | low | mismatch | none
-  confidence DOUBLE PRECISION,    -- AI classification confidence, 0..1
-  ai_summary TEXT,
-  confirmation_chat_id BIGINT,
-  confirmation_message_id BIGINT,
-  decided_by_user_id BIGINT,
-  decided_by_username TEXT,
-  claimed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  expires_at TIMESTAMPTZ,
-  CONSTRAINT telegram_document_batches_status_check CHECK (
-    status IN ('collecting','classifying','waiting_confirmation','uploading',
-               'uploaded','ignored','failed','needs_review','duplicate','no_match')
-  ),
-  CONSTRAINT telegram_document_batches_doc_type_check CHECK (
-    detected_doc_type IS NULL
-    OR detected_doc_type IN ('bol','pod','both','unrelated','unclear')
-  )
-);
--- One batch per Telegram album (media_group_id is globally unique per album).
-CREATE UNIQUE INDEX IF NOT EXISTS idx_tg_doc_batches_media_group
-  ON telegram_document_batches(media_group_id) WHERE media_group_id IS NOT NULL;
--- Fast lookup of the still-open batch for a sender (quick consecutive files).
-CREATE INDEX IF NOT EXISTS idx_tg_doc_batches_open
-  ON telegram_document_batches(telegram_chat_id, telegram_user_id, created_at DESC)
-  WHERE status = 'collecting';
-CREATE INDEX IF NOT EXISTS idx_tg_doc_batches_status
-  ON telegram_document_batches(status, created_at DESC);
-
-CREATE TABLE IF NOT EXISTS telegram_document_files (
-  id BIGSERIAL PRIMARY KEY,
-  batch_id BIGINT NOT NULL REFERENCES telegram_document_batches(id) ON DELETE CASCADE,
-  telegram_file_id TEXT,
-  telegram_file_unique_id TEXT,
-  telegram_message_id BIGINT,
-  file_name TEXT,
-  mime_type TEXT,
-  file_size BIGINT,
-  kind TEXT,                      -- 'pdf' | 'image'
-  local_path TEXT,
-  sha256 TEXT,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
--- Telegram's stable per-file id is the dedup guard: a resent/echoed file is
--- ignored rather than processed or uploaded twice.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_tg_doc_files_unique_id
-  ON telegram_document_files(telegram_file_unique_id)
-  WHERE telegram_file_unique_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_tg_doc_files_batch
-  ON telegram_document_files(batch_id, sort_order ASC, id ASC);
-
-CREATE TABLE IF NOT EXISTS datatruck_upload_attempts (
-  id BIGSERIAL PRIMARY KEY,
-  batch_id BIGINT REFERENCES telegram_document_batches(id) ON DELETE SET NULL,
-  order_id TEXT,
-  load_reference TEXT,
-  document_type TEXT,             -- bill_of_lading | proof_of_delivery
-  sha256 TEXT,
-  status TEXT NOT NULL DEFAULT 'pending',
-  dry_run BOOLEAN NOT NULL DEFAULT FALSE,
-  datatruck_document_id TEXT,
-  error_message TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT datatruck_upload_attempts_status_check CHECK (
-    status IN ('pending','uploaded','skipped_duplicate','dry_run','failed')
-  )
-);
-CREATE INDEX IF NOT EXISTS idx_dt_upload_attempts_order
-  ON datatruck_upload_attempts(order_id, document_type, status);
-CREATE INDEX IF NOT EXISTS idx_dt_upload_attempts_sha
-  ON datatruck_upload_attempts(sha256) WHERE sha256 IS NOT NULL;
-
--- ── Silent BOL/POD test monitor (admin Settings → BOL/POD Monitor) ──
--- Single-row (id=1) settings that control a SILENT monitor: when enabled the bot
--- watches active driver groups, runs the existing detect→classify→match logic,
--- and posts a diagnostic report (and optionally the files) to a configured TEST
--- Telegram group ONLY. It never replies in the driver group, never shows the
--- Yes/No/Disregard card there, and NEVER uploads to Datatruck. Controlled from
--- the admin panel (DB is the source of truth — no Render env vars required).
-CREATE TABLE IF NOT EXISTS bol_pod_monitor_settings (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  test_monitor_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-  test_group_id BIGINT NOT NULL DEFAULT -5289094495,
-  test_send_unrelated BOOLEAN NOT NULL DEFAULT TRUE,
-  test_send_unclear BOOLEAN NOT NULL DEFAULT TRUE,
-  test_send_files BOOLEAN NOT NULL DEFAULT TRUE,
-  last_report_at TIMESTAMPTZ NULL,
-  report_count BIGINT NOT NULL DEFAULT 0,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_by TEXT NULL
-);
--- Additive migrations for existing databases (safe to run every boot).
-ALTER TABLE bol_pod_monitor_settings ADD COLUMN IF NOT EXISTS last_report_at TIMESTAMPTZ NULL;
-ALTER TABLE bol_pod_monitor_settings ADD COLUMN IF NOT EXISTS report_count BIGINT NOT NULL DEFAULT 0;
-ALTER TABLE bol_pod_monitor_settings ADD COLUMN IF NOT EXISTS updated_by TEXT NULL;
-INSERT INTO bol_pod_monitor_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+-- ── Retired: Smart BOL/POD intake + silent BOL/POD test monitor ──
+-- The Telegram→Datatruck BOL/POD intake pipeline and the admin "BOL/POD
+-- Monitor" test monitor were removed. Their tables are no longer created here.
+-- Retired BOL/POD monitor tables retained for historical safety; no runtime
+-- code uses them. Existing databases may still contain:
+--   telegram_document_batches, telegram_document_files,
+--   datatruck_upload_attempts, bol_pod_monitor_settings
+-- They are harmless and may be dropped manually once their history is no
+-- longer needed (no automatic DROP is performed).
 
 -- ── Fuel Monitor: gas-station proximity reminders ──
 -- When the Fuel Monitoring team posts a gas-station location into a driver
