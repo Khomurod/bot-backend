@@ -49,6 +49,33 @@ watchdog allocates nothing per tick and its timer is unref()'d.
 upload burst first; then consider lowering `DATATRUCK_DOC_INTAKE_MAX_FILES` /
 `…_MAX_FILE_MB`, and restart the service to clear fragmentation.
 
+### Recommended rollout on Render
+
+The watchdog is deliberately off by default. To validate real-world headroom
+after a deploy (set the env vars in the Render dashboard by hand — nothing
+sets them automatically):
+
+1. **Enable it for one week** after any significant deploy:
+   `MEMORY_WATCHDOG_ENABLED=true` (the other three vars can stay at their
+   defaults shown above).
+2. **Watch the Render logs** for the periodic `[MEMORY]` lines — one every
+   15 minutes, so ~96/day. Warnings are prefixed `WARNING:` and rate-limited
+   to at most one per hour per sustained episode.
+3. **Interpret the numbers:**
+   - RSS steadily **below 350–400 MB** → healthy headroom on the 512 MB
+     instance; the app is fine.
+   - RSS **repeatedly above 450 MB** → investigate, in this order: an upload
+     burst (multer buffers), PDF/OCR jobs (`pdf-parse`/`tesseract` load ~20 MB+
+     on first use), safety-event video handling, then the Python leads-bot
+     child's share of the instance (`ps`/Render metrics — it lives outside the
+     Node heap cap).
+   - `heapUsed` near **200 MB** → the Node heap cap
+     (`--max-old-space-size=256`) is the binding limit; look for large
+     in-process allocations before anything else.
+4. **After the week:** the log volume is low-noise, so either keep it enabled
+   permanently (recommended — it is the only early-warning signal before an
+   OOM kill) or set `MEMORY_WATCHDOG_ENABLED=false` again.
+
 ## Upload memory bounds
 
 All uploads use `multer.memoryStorage()` (buffers live in RAM until handled):
