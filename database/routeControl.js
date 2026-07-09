@@ -17,6 +17,11 @@ async function createRouteAssignment({
   originLat, originLng, destinationLat, destinationLng,
   encodedPolyline, distanceMeters, durationSeconds, assignedBy,
   source = 'admin', assignedByUserId = null, telegramChatId = null, telegramMessageId = null,
+  // Tracking start controls (see schema comments). Defaults preserve the
+  // pre-feature behaviour: monitoring starts immediately.
+  trackingStatus = 'active', trackingStartMode = 'immediate', trackingStartAt = null,
+  trackingStartLat = null, trackingStartLng = null, trackingStartLocationText = null,
+  trackingStartRadiusMiles = null, trackingHoldReason = null,
 }) {
   const res = await query(
     `INSERT INTO route_assignments
@@ -24,8 +29,15 @@ async function createRouteAssignment({
         origin_text, destination_text, waypoints,
         origin_lat, origin_lng, destination_lat, destination_lng,
         encoded_polyline, distance_meters, duration_seconds, assigned_by,
-        source, assigned_by_user_id, telegram_chat_id, telegram_message_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+        source, assigned_by_user_id, telegram_chat_id, telegram_message_id,
+        tracking_status, tracking_start_mode, tracking_start_at,
+        tracking_started_at,
+        tracking_start_lat, tracking_start_lng, tracking_start_location_text,
+        tracking_start_radius_miles, tracking_hold_reason)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+             $21,$22,$23,
+             CASE WHEN $21 = 'active' THEN NOW() ELSE NULL END,
+             $24,$25,$26,$27,$28)
      RETURNING *`,
     [
       groupId || null, driverProfileId || null, driverLabel || null, unitNumber || null,
@@ -33,6 +45,9 @@ async function createRouteAssignment({
       originLat ?? null, originLng ?? null, destinationLat ?? null, destinationLng ?? null,
       encodedPolyline || null, distanceMeters ?? null, durationSeconds ?? null, assignedBy || null,
       source || 'admin', assignedByUserId ?? null, telegramChatId ?? null, telegramMessageId ?? null,
+      trackingStatus || 'active', trackingStartMode || 'immediate', trackingStartAt ?? null,
+      trackingStartLat ?? null, trackingStartLng ?? null, trackingStartLocationText ?? null,
+      trackingStartRadiusMiles ?? null, trackingHoldReason ?? null,
     ]
   );
   return res.rows[0];
@@ -62,9 +77,16 @@ async function findRouteAssignmentByTelegramMessage(telegramChatId, telegramMess
   return res.rows[0] || null;
 }
 
+// Flags whether a route screenshot exists WITHOUT selecting its bytes.
+const HAS_SCREENSHOT_SQL = `EXISTS(
+      SELECT 1 FROM route_assignment_attachments att
+       WHERE att.assignment_id = r.id AND att.kind = 'route_screenshot'
+    ) AS has_screenshot`;
+
 async function getRouteAssignment(id) {
   const res = await query(
-    `SELECT r.*, g.group_name, g.telegram_group_id, g.active AS group_active
+    `SELECT r.*, g.group_name, g.telegram_group_id, g.active AS group_active,
+            ${HAS_SCREENSHOT_SQL}
      FROM route_assignments r
      LEFT JOIN groups g ON g.id = r.group_id
      WHERE r.id = $1`,
@@ -81,7 +103,8 @@ async function listRouteAssignments({ status = null, limit = 200 } = {}) {
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   values.push(limit);
   const res = await query(
-    `SELECT r.*, g.group_name, g.telegram_group_id, g.active AS group_active
+    `SELECT r.*, g.group_name, g.telegram_group_id, g.active AS group_active,
+            ${HAS_SCREENSHOT_SQL}
      FROM route_assignments r
      LEFT JOIN groups g ON g.id = r.group_id
      ${where}
@@ -92,16 +115,105 @@ async function listRouteAssignments({ status = null, limit = 200 } = {}) {
   return res.rows;
 }
 
-/** Active assignments that carry route geometry — the ones the monitor checks. */
+/**
+ * Store (or replace) the route screenshot for an assignment. One screenshot per
+ * assignment: any previous one is deleted in the same transaction-free pass
+ * (worst case a failed insert leaves no screenshot, never two).
+ */
+async function saveRouteScreenshot(assignmentId, { mimeType, data, uploadedBy = null }) {
+  if (!Buffer.isBuffer(data) || data.length === 0) throw new Error('screenshot data buffer is required');
+  await query(
+    `DELETE FROM route_assignment_attachments WHERE assignment_id = $1 AND kind = 'route_screenshot'`,
+    [assignmentId]
+  );
+  const res = await query(
+    `INSERT INTO route_assignment_attachments
+       (assignment_id, kind, mime_type, file_size_bytes, file_data, uploaded_by)
+     VALUES ($1, 'route_screenshot', $2, $3, $4, $5)
+     RETURNING id, assignment_id, kind, mime_type, file_size_bytes, uploaded_by, created_at`,
+    [assignmentId, String(mimeType || 'image/png'), data.length, data, uploadedBy ? String(uploadedBy).slice(0, 128) : null]
+  );
+  return res.rows[0];
+}
+
+/** Fetch the route screenshot WITH bytes (Telegram send / auth-gated preview only). */
+async function getRouteScreenshot(assignmentId) {
+  const res = await query(
+    `SELECT id, assignment_id, mime_type, file_size_bytes, file_data, uploaded_by, created_at
+       FROM route_assignment_attachments
+      WHERE assignment_id = $1 AND kind = 'route_screenshot'
+      ORDER BY created_at DESC LIMIT 1`,
+    [assignmentId]
+  );
+  return res.rows[0] || null;
+}
+
+/** Remove the route screenshot (admin "remove" action). */
+async function deleteRouteScreenshot(assignmentId) {
+  const res = await query(
+    `DELETE FROM route_assignment_attachments
+      WHERE assignment_id = $1 AND kind = 'route_screenshot'`,
+    [assignmentId]
+  );
+  return { deleted: res.rowCount > 0 };
+}
+
+/**
+ * Active assignments that carry route geometry AND whose tracking has started —
+ * the ones the monitor runs deviation checks against.
+ */
 async function listMonitorableAssignments() {
   const res = await query(
     `SELECT r.*, g.group_name, g.telegram_group_id, g.active AS group_active
      FROM route_assignments r
      JOIN groups g ON g.id = r.group_id
      WHERE r.status = 'active' AND r.encoded_polyline IS NOT NULL
+       AND r.tracking_status = 'active'
      ORDER BY r.updated_at ASC`
   );
   return res.rows;
+}
+
+/**
+ * Active assignments whose tracking is still PENDING — the monitor evaluates
+ * their start condition (message sent / scheduled time / start location) each
+ * pass instead of running deviation checks.
+ */
+async function listPendingTrackingAssignments() {
+  const res = await query(
+    `SELECT r.*, g.group_name, g.telegram_group_id, g.active AS group_active
+     FROM route_assignments r
+     JOIN groups g ON g.id = r.group_id
+     WHERE r.status = 'active' AND r.tracking_status = 'pending'
+     ORDER BY r.updated_at ASC`
+  );
+  return res.rows;
+}
+
+/** Flip tracking to active (idempotent) and stamp when it started. */
+async function activateTracking(id) {
+  const res = await query(
+    `UPDATE route_assignments
+       SET tracking_status = 'active',
+           tracking_started_at = COALESCE(tracking_started_at, NOW()),
+           tracking_hold_reason = NULL,
+           updated_at = NOW()
+     WHERE id = $1 AND tracking_status <> 'active'
+     RETURNING *`,
+    [id]
+  );
+  return res.rows[0] || null;
+}
+
+/** Update the machine-readable reason an assignment's tracking is on hold. */
+async function setTrackingHoldReason(id, reason) {
+  const res = await query(
+    `UPDATE route_assignments
+       SET tracking_hold_reason = $2, updated_at = NOW()
+     WHERE id = $1 RETURNING *`,
+    [id, reason ? String(reason).slice(0, 64) : null]
+  );
+  return res.rows[0] || null;
 }
 
 /** Persist a computed route onto an existing assignment. */
@@ -208,10 +320,16 @@ module.exports = {
   findRouteAssignmentByTelegramMessage,
   listRouteAssignments,
   listMonitorableAssignments,
+  listPendingTrackingAssignments,
+  activateTracking,
+  setTrackingHoldReason,
   setRouteAssignmentGeometry,
   updateRouteAssignmentMonitorState,
   setRouteAssignmentStatus,
   recordDriverGroupMessageSent,
   insertRouteMonitorEvent,
   listRouteMonitorEvents,
+  saveRouteScreenshot,
+  getRouteScreenshot,
+  deleteRouteScreenshot,
 };

@@ -1,15 +1,49 @@
 const express = require('express');
+const multer = require('multer');
 const rc = require('../../database/routeControl');
 const routeControl = require('../../services/routeControlService');
+
+// Route screenshots: common image types only, held in memory (they go straight
+// to Postgres BYTEA / Telegram) and capped at 8 MB — Telegram's sendPhoto
+// rejects photos over 10 MB anyway.
+const SCREENSHOT_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const SCREENSHOT_MAX_BYTES = 8 * 1024 * 1024;
+const screenshotUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: SCREENSHOT_MAX_BYTES, files: 1 },
+  fileFilter: (req, file, cb) => {
+    if (SCREENSHOT_MIME_TYPES.includes(file.mimetype)) cb(null, true);
+    else cb(new Error(`Invalid screenshot type: ${file.mimetype}. Allowed: jpg, png, webp.`));
+  },
+});
+
+/** Wrap a multer middleware so its errors become clean JSON (not a 500 page). */
+function uploadErrorsAsJson(middleware) {
+  return (req, res, next) => middleware(req, res, (err) => {
+    if (!err) return next();
+    const tooLarge = err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE';
+    return res.status(tooLarge ? 413 : 400).json({
+      error: tooLarge
+        ? `Screenshot is too large — the limit is ${Math.round(SCREENSHOT_MAX_BYTES / (1024 * 1024))} MB.`
+        : err.message,
+      code: tooLarge ? 'SCREENSHOT_TOO_LARGE' : 'SCREENSHOT_INVALID',
+    });
+  });
+}
 
 /**
  * Route Control admin API.
  *   GET    /                        → list route assignments (?status=active|completed|cancelled)
  *   GET    /:id                     → one assignment + its recent monitor events
- *   POST   /                        → assign a route { groupId, url, manual?, sendToDriverGroup? }
+ *   POST   /                        → assign a route { groupId, url, manual?, sendToDriverGroup?, tracking? }
+ *                                     JSON, or multipart with a `screenshot` file + a `payload` JSON field
  *   POST   /parse                   → test-parse a Google Maps link (no store) { url }
  *   POST   /:id/compute             → compute/recompute geometry for an assignment
- *   POST   /:id/send-driver-message → send/re-send the route message to the driver group
+ *   POST   /:id/send-driver-message → send/re-send the route message (+ screenshot) to the driver group
+ *   POST   /:id/screenshot          → upload/replace the route screenshot (multipart `screenshot`)
+ *   GET    /:id/screenshot          → the stored screenshot bytes (auth-gated preview)
+ *   DELETE /:id/screenshot          → remove the stored screenshot
+ *   POST   /:id/start-tracking      → manually start tracking for a pending route
  *   POST   /:id/cancel              → mark cancelled
  *   POST   /:id/complete            → mark completed
  */
@@ -54,20 +88,48 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
     }
   });
 
-  router.post('/', authMiddleware, async (req, res) => {
+  router.post('/', authMiddleware, uploadErrorsAsJson(screenshotUpload.single('screenshot')), async (req, res) => {
     try {
       const by = adminName(req);
+      // JSON body (unchanged legacy path), or multipart: the JSON payload rides
+      // in a `payload` field next to the `screenshot` file.
+      let body = req.body || {};
+      if (req.file && typeof body.payload === 'string') {
+        try {
+          body = JSON.parse(body.payload);
+        } catch (_) {
+          return res.status(400).json({ error: 'Invalid multipart payload JSON.', code: 'BAD_PAYLOAD' });
+        }
+      }
+
       const result = await routeControl.assignRoute({
-        groupId: req.body?.groupId,
-        url: req.body?.url,
-        manual: req.body?.manual || null,
+        groupId: body?.groupId,
+        url: body?.url,
+        manual: body?.manual || null,
+        tracking: body?.tracking || null,
         assignedBy: by,
       });
+
+      // Store the screenshot BEFORE the optional send so send-on-assign already
+      // attaches it. A screenshot-store failure must not fail the assignment.
+      if (req.file && result?.assignment?.id) {
+        try {
+          await rc.saveRouteScreenshot(result.assignment.id, {
+            mimeType: req.file.mimetype,
+            data: req.file.buffer,
+            uploadedBy: by,
+          });
+          result.screenshot = { stored: true, sizeBytes: req.file.size };
+        } catch (shotErr) {
+          console.error('[ROUTE-CONTROL API] screenshot store failed:', shotErr.message);
+          result.screenshot = { stored: false, error: shotErr.message };
+        }
+      }
 
       // Optional send-on-assign. A Telegram send failure must NOT fail the
       // assignment — return partial success so the UI can say "assigned, but not
       // sent" and offer a manual re-send.
-      if (req.body?.sendToDriverGroup && result?.assignment?.id) {
+      if (body?.sendToDriverGroup && result?.assignment?.id) {
         try {
           const send = await routeControl.sendDriverGroupRouteMessage({
             assignmentId: result.assignment.id,
@@ -87,6 +149,59 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
       res.json(result);
     } catch (err) {
       res.status(err.status || 400).json({ error: err.message, code: err.code || 'ASSIGN_ERROR' });
+    }
+  });
+
+  // Upload/replace the route screenshot for an existing assignment.
+  router.post('/:id/screenshot', authMiddleware, uploadErrorsAsJson(screenshotUpload.single('screenshot')), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!req.file) return res.status(400).json({ error: 'Attach a screenshot file.', code: 'NO_FILE' });
+      const assignment = await rc.getRouteAssignment(id);
+      if (!assignment) return res.status(404).json({ error: 'Route assignment not found' });
+      const saved = await rc.saveRouteScreenshot(id, {
+        mimeType: req.file.mimetype,
+        data: req.file.buffer,
+        uploadedBy: adminName(req),
+      });
+      return res.json({ stored: true, sizeBytes: saved.file_size_bytes, mimeType: saved.mime_type });
+    } catch (err) {
+      console.error('[ROUTE-CONTROL API] screenshot upload failed:', err.message);
+      return res.status(500).json({ error: 'Failed to store the screenshot' });
+    }
+  });
+
+  // Auth-gated screenshot preview (bytes are never exposed publicly).
+  router.get('/:id/screenshot', authMiddleware, async (req, res) => {
+    try {
+      const shot = await rc.getRouteScreenshot(parseInt(req.params.id, 10));
+      if (!shot) return res.status(404).json({ error: 'No screenshot for this route' });
+      res.setHeader('Content-Type', shot.mime_type || 'image/png');
+      res.setHeader('Cache-Control', 'private, max-age=60');
+      return res.end(shot.file_data);
+    } catch (err) {
+      console.error('[ROUTE-CONTROL API] screenshot fetch failed:', err.message);
+      return res.status(500).json({ error: 'Failed to load the screenshot' });
+    }
+  });
+
+  router.delete('/:id/screenshot', authMiddleware, async (req, res) => {
+    try {
+      const result = await rc.deleteRouteScreenshot(parseInt(req.params.id, 10));
+      return res.json(result);
+    } catch (err) {
+      console.error('[ROUTE-CONTROL API] screenshot delete failed:', err.message);
+      return res.status(500).json({ error: 'Failed to remove the screenshot' });
+    }
+  });
+
+  // Manually start tracking for a pending route ("Start tracking now").
+  router.post('/:id/start-tracking', authMiddleware, async (req, res) => {
+    try {
+      const result = await routeControl.startTrackingNow(parseInt(req.params.id, 10), adminName(req));
+      return res.json(result);
+    } catch (err) {
+      return res.status(err.status || 400).json({ error: err.message, code: err.code || 'TRACKING_ERROR' });
     }
   });
 
