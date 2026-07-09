@@ -1,26 +1,56 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useApp } from './store.jsx';
 import Shell from './Shell.jsx';
+// LoginPage stays eager: it is the auth gate and must render instantly.
 import LoginPage from './pages/LoginPage.jsx';
-import Dashboard from './pages/Dashboard.jsx';
-import TasksPage from './pages/TasksPage.jsx';
-import LoadsPage from './pages/LoadsPage.jsx';
-import UpdateBoard from './pages/UpdateBoard.jsx';
-import DispatchBoard from './pages/DispatchBoard.jsx';
-import DispatchMap from './pages/DispatchMap.jsx';
-import EmailsPage from './pages/EmailsPage.jsx';
-import RateSavings from './pages/RateSavings.jsx';
-import Statistics from './pages/Statistics.jsx';
-import UsersPage from './pages/UsersPage.jsx';
-import BrokersPage from './pages/BrokersPage.jsx';
-import DriversPage from './pages/DriversPage.jsx';
-import EquipmentPage from './pages/EquipmentPage.jsx';
-import FuelTolls from './pages/FuelTolls.jsx';
-import CompaniesPage from './pages/CompaniesPage.jsx';
-import SettingsPage from './pages/SettingsPage.jsx';
-import SupportPage from './pages/SupportPage.jsx';
-import HelpPage from './pages/HelpPage.jsx';
+
+// Every other page is lazy-loaded so its code is fetched only when the route
+// is opened — the initial FleetView bundle stays small. Same pattern as the
+// admin SPA (admin/src/App.jsx).
+const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+const TasksPage = lazy(() => import('./pages/TasksPage.jsx'));
+const LoadsPage = lazy(() => import('./pages/LoadsPage.jsx'));
+const UpdateBoard = lazy(() => import('./pages/UpdateBoard.jsx'));
+const DispatchBoard = lazy(() => import('./pages/DispatchBoard.jsx'));
+const DispatchMap = lazy(() => import('./pages/DispatchMap.jsx'));
+const EmailsPage = lazy(() => import('./pages/EmailsPage.jsx'));
+const RateSavings = lazy(() => import('./pages/RateSavings.jsx'));
+const Statistics = lazy(() => import('./pages/Statistics.jsx'));
+const UsersPage = lazy(() => import('./pages/UsersPage.jsx'));
+const BrokersPage = lazy(() => import('./pages/BrokersPage.jsx'));
+const DriversPage = lazy(() => import('./pages/DriversPage.jsx'));
+const EquipmentPage = lazy(() => import('./pages/EquipmentPage.jsx'));
+const FuelTolls = lazy(() => import('./pages/FuelTolls.jsx'));
+const CompaniesPage = lazy(() => import('./pages/CompaniesPage.jsx'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
+const SupportPage = lazy(() => import('./pages/SupportPage.jsx'));
+const HelpPage = lazy(() => import('./pages/HelpPage.jsx'));
+
+/**
+ * A failed lazy chunk (deploy replaced the hashed file, network hiccup) must
+ * never leave a blank screen — offer a reload instead.
+ */
+class ChunkErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { failed: false };
+  }
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    if (this.state.failed) {
+      return (
+        <div style={{ padding: 40 }}>
+          <p>Could not load this page (a new version may have been deployed).</p>
+          <button className="btn" onClick={() => window.location.reload()}>Reload</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function Toasts() {
   const { toasts } = useApp();
@@ -44,6 +74,8 @@ function Protected({ children }) {
 export default function App() {
   return (
     <>
+      <ChunkErrorBoundary>
+      <Suspense fallback={<div style={{ padding: 40 }}>Loading…</div>}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
@@ -67,6 +99,8 @@ export default function App() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
+      </Suspense>
+      </ChunkErrorBoundary>
       <Toasts />
     </>
   );
