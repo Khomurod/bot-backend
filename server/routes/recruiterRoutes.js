@@ -19,8 +19,46 @@ const {
  *   POST   /:id/diagnose  → stepwise diagnostic (creds → auth → extension
  *                           identity/number match → call-log read → today count)
  *   POST   /sync          → run a call-log sync now (optional ?full=1)
- *   GET    /stats?date=   → per-recruiter daily KPIs vs targets
+ *   GET    /stats         → per-recruiter KPIs vs targets (?date= or ?start=&end=)
+ *   GET    /public-stats  → unauthenticated leaderboard stats (today, one day,
+ *                           or a range; never exposes phone numbers/secrets)
  */
+const PUBLIC_MAX_RANGE_DAYS = 31;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** True for a real YYYY-MM-DD calendar date (rejects 2026-02-30 etc.). */
+function isValidIsoDate(value) {
+  return typeof value === 'string'
+    && ISO_DATE_RE.test(value)
+    && DateTime.fromISO(value).isValid;
+}
+
+/**
+ * Interpret ?date= / ?start=&end= query params for a stats window.
+ * Returns { mode:'today' } | { mode:'single-day', date } |
+ * { mode:'range', start, end } | { error } for a 400 response.
+ */
+function parseStatsWindow(query = {}, { maxRangeDays = PUBLIC_MAX_RANGE_DAYS } = {}) {
+  const { date, start, end } = query;
+  if (start !== undefined || end !== undefined) {
+    if (!isValidIsoDate(start) || !isValidIsoDate(end)) {
+      return { error: 'start and end must both be valid YYYY-MM-DD dates.' };
+    }
+    const startDt = DateTime.fromISO(start);
+    const endDt = DateTime.fromISO(end);
+    if (endDt < startDt) return { error: 'end date must not be before start date.' };
+    const days = Math.round(endDt.diff(startDt, 'days').days) + 1;
+    if (days > maxRangeDays) return { error: `Date range is limited to ${maxRangeDays} days.` };
+    if (days === 1) return { mode: 'single-day', date: start };
+    return { mode: 'range', start, end };
+  }
+  if (date !== undefined) {
+    if (!isValidIsoDate(date)) return { error: 'date must be a valid YYYY-MM-DD date.' };
+    return { mode: 'single-day', date };
+  }
+  return { mode: 'today', date: null };
+}
+
 function createRecruiterRouter({ authMiddleware }) {
   const router = express.Router();
 
@@ -225,8 +263,12 @@ function createRecruiterRouter({ authMiddleware }) {
 
   router.get('/stats', authMiddleware, async (req, res) => {
     try {
+      const parsed = parseStatsWindow(req.query, { maxRangeDays: PUBLIC_MAX_RANGE_DAYS });
+      if (parsed.error) return res.status(400).json({ error: parsed.error });
       const cfg = await rc.getRcConfig();
-      const stats = await rc.getRecruiterStats(req.query.date || null, cfg);
+      const stats = parsed.mode === 'range'
+        ? await rc.getRecruiterStatsRange(parsed.start, parsed.end, cfg)
+        : await rc.getRecruiterStats(parsed.date, cfg);
       res.json(stats);
     } catch (err) {
       console.error('[RECRUITER API] stats failed:', err.message);
@@ -234,15 +276,29 @@ function createRecruiterRouter({ authMiddleware }) {
     }
   });
 
-  // Public (unauthenticated) TODAY-only stats for the gamified /recruiters
-  // leaderboard the recruiting team keeps open on a screen. Deliberately
-  // limited: today only, names + KPI numbers — no phone numbers, no settings.
+  // Public (unauthenticated) stats for the gamified /recruiters leaderboard
+  // the recruiting team keeps open on a screen.
+  //   GET /public-stats                       → today (live)
+  //   GET /public-stats?date=YYYY-MM-DD       → one historical day
+  //   GET /public-stats?start=…&end=…         → inclusive range (max 31 days)
+  // Deliberately limited: names + KPI numbers only — no phone numbers, no
+  // credentials, no settings.
   router.get('/public-stats', async (req, res) => {
     try {
+      const parsed = parseStatsWindow(req.query, { maxRangeDays: PUBLIC_MAX_RANGE_DAYS });
+      if (parsed.error) return res.status(400).json({ error: parsed.error });
+
       const cfg = await rc.getRcConfig();
-      const stats = await rc.getRecruiterStats(null, cfg);
+      const stats = parsed.mode === 'range'
+        ? await rc.getRecruiterStatsRange(parsed.start, parsed.end, cfg)
+        : await rc.getRecruiterStats(parsed.date, cfg);
+
       res.json({
+        dateMode: stats.dateMode,
         date: stats.date,
+        startDate: stats.startDate,
+        endDate: stats.endDate,
+        rangeDays: stats.rangeDays,
         timezone: stats.timezone,
         targets: stats.targets,
         thresholds: stats.thresholds,
@@ -257,4 +313,4 @@ function createRecruiterRouter({ authMiddleware }) {
   return router;
 }
 
-module.exports = { createRecruiterRouter };
+module.exports = { createRecruiterRouter, parseStatsWindow, PUBLIC_MAX_RANGE_DAYS };

@@ -1861,11 +1861,15 @@ CREATE TABLE IF NOT EXISTS ringcentral_settings (
   -- How often the poller pulls the call log (minutes) and the day-boundary tz.
   poll_minutes INTEGER NOT NULL DEFAULT 10 CHECK (poll_minutes BETWEEN 1 AND 1440),
   timezone TEXT NOT NULL DEFAULT 'America/Chicago',
-  -- Conversation-quality thresholds (seconds), per the 50/50 rule.
+  -- Conversation-quality thresholds (seconds). non_valuable_max_seconds is the
+  -- minimum call duration counted toward real talk time: calls shorter than
+  -- this do NOT count toward the main talk-time KPI (default 30s).
   non_valuable_max_seconds INTEGER NOT NULL DEFAULT 30,
   real_conversation_min_seconds INTEGER NOT NULL DEFAULT 60,
   strong_conversation_min_seconds INTEGER NOT NULL DEFAULT 180,
-  -- Daily recruiter targets.
+  -- Daily recruiter targets. Main KPI: 2h30m (9000s) of real call duration per
+  -- day; secondary KPI: 150 outbound calls per day.
+  target_talk_seconds INTEGER NOT NULL DEFAULT 9000,
   target_outbound INTEGER NOT NULL DEFAULT 150,
   target_real_conversations INTEGER NOT NULL DEFAULT 35,
   last_synced_at TIMESTAMPTZ NULL,
@@ -1874,6 +1878,9 @@ CREATE TABLE IF NOT EXISTS ringcentral_settings (
 );
 
 INSERT INTO ringcentral_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE ringcentral_settings
+  ADD COLUMN IF NOT EXISTS target_talk_seconds INTEGER NOT NULL DEFAULT 9000;
 
 -- One row per recruiter, with the single dedicated RingCentral direct number
 -- (E.164) whose inbound/outbound calls roll up to them. Number is unique.

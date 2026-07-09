@@ -1618,9 +1618,21 @@ export async function diagnoseRecruiter(id, payload) {
   return res.json();
 }
 
-/** Public (no-auth) today-only recruiter stats for the /recruiters leaderboard. */
-export async function getPublicRecruiterStats() {
-  const res = await fetch(`${API_BASE}/recruiters/public-stats`);
+/**
+ * Public (no-auth) recruiter stats for the /recruiters leaderboard.
+ * No params = today (live); { date } = one historical day;
+ * { start, end } = inclusive date range (max 31 days).
+ */
+export async function getPublicRecruiterStats(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.start && params.end) {
+    qs.set('start', params.start);
+    qs.set('end', params.end);
+  } else if (params.date) {
+    qs.set('date', params.date);
+  }
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await fetch(`${API_BASE}/recruiters/public-stats${suffix}`);
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }

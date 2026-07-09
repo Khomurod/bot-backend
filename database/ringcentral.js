@@ -11,6 +11,10 @@ const { query } = require('./db');
 const config = require('../config/config');
 const { encryptText, decryptText } = require('../services/facebookCrypto');
 
+// Main daily KPI: 2h 30m of REAL call duration per recruiter (calls shorter
+// than nonValuableMaxSeconds — 30s by default — do not count toward it).
+const DEFAULT_TARGET_TALK_SECONDS = 9000;
+
 const SETTINGS_CACHE_TTL_MS = 15_000;
 let settingsCache = null;
 let settingsCacheExpiresAt = 0;
@@ -64,6 +68,7 @@ async function getRcConfig() {
     nonValuableMaxSeconds: row?.non_valuable_max_seconds ?? 30,
     realConversationMinSeconds: row?.real_conversation_min_seconds ?? 60,
     strongConversationMinSeconds: row?.strong_conversation_min_seconds ?? 180,
+    targetTalkSeconds: row?.target_talk_seconds ?? DEFAULT_TARGET_TALK_SECONDS,
     targetOutbound: row?.target_outbound ?? 150,
     targetRealConversations: row?.target_real_conversations ?? 35,
     lastSyncedAt: row?.last_synced_at || null,
@@ -105,6 +110,9 @@ async function getRcSettingsForAdmin() {
     nonValuableMaxSeconds: cfg.nonValuableMaxSeconds,
     realConversationMinSeconds: cfg.realConversationMinSeconds,
     strongConversationMinSeconds: cfg.strongConversationMinSeconds,
+    targetTalkSeconds: cfg.targetTalkSeconds,
+    targetTalkMinutes: Math.round(cfg.targetTalkSeconds / 60),
+    targetTalkLabel: formatTalkLabel(cfg.targetTalkSeconds),
     targetOutbound: cfg.targetOutbound,
     targetRealConversations: cfg.targetRealConversations,
     lastSyncedAt: cfg.lastSyncedAt,
@@ -149,6 +157,13 @@ async function updateRcSettings(payload = {}) {
   pushInt('non_valuable_max_seconds', payload.nonValuableMaxSeconds, 1, 3600);
   pushInt('real_conversation_min_seconds', payload.realConversationMinSeconds, 1, 3600);
   pushInt('strong_conversation_min_seconds', payload.strongConversationMinSeconds, 1, 3600);
+  // Daily real-talk-time target; accepted in seconds, or minutes (converted).
+  if (payload.targetTalkSeconds !== undefined && payload.targetTalkSeconds !== null && payload.targetTalkSeconds !== '') {
+    pushInt('target_talk_seconds', payload.targetTalkSeconds, 60, 86400);
+  } else if (payload.targetTalkMinutes !== undefined && payload.targetTalkMinutes !== null && payload.targetTalkMinutes !== '') {
+    const minutes = Number.parseInt(payload.targetTalkMinutes, 10);
+    if (Number.isFinite(minutes)) pushInt('target_talk_seconds', minutes * 60, 60, 86400);
+  }
   pushInt('target_outbound', payload.targetOutbound, 0, 100000);
   pushInt('target_real_conversations', payload.targetRealConversations, 0, 100000);
 
@@ -324,80 +339,224 @@ async function upsertCall(call) {
   );
 }
 
+// ─── KPI math (pure, unit-tested) ───
+
+/** "2h 30m" / "45m" style label for a number of seconds. */
+function formatTalkLabel(seconds) {
+  const s = Math.max(0, Math.floor(Number(seconds) || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+}
+
+/** Effective KPI thresholds (seconds) from the settings row / defaults. */
+function resolveThresholds(cfg = {}) {
+  return {
+    nonValuableMaxSeconds: cfg.nonValuableMaxSeconds ?? 30,
+    realConversationMinSeconds: cfg.realConversationMinSeconds ?? 60,
+    strongConversationMinSeconds: cfg.strongConversationMinSeconds ?? 180,
+  };
+}
+
 /**
- * Per-recruiter KPI rollup for a single day (in the configured timezone).
+ * Targets for a reporting window. Per-day targets scale linearly with the
+ * number of days (e.g. a 3-day range → 3 × 2h30m talk time, 3 × 150 outbound).
+ */
+function buildTargets(cfg = {}, rangeDays = 1) {
+  const days = Math.max(1, Math.floor(Number(rangeDays) || 1));
+  const talkSeconds = (cfg.targetTalkSeconds ?? DEFAULT_TARGET_TALK_SECONDS) * days;
+  return {
+    talkSeconds,
+    talkMinutes: Math.round(talkSeconds / 60),
+    talkLabel: formatTalkLabel(talkSeconds),
+    outbound: (cfg.targetOutbound ?? 150) * days,
+    realConversations: (cfg.targetRealConversations ?? 35) * days,
+  };
+}
+
+/**
+ * Aggregate a recruiter's calls into raw KPI totals.
+ *
+ * The main-KPI rule lives here: a call counts toward valuableTalkSeconds ONLY
+ * when duration_seconds >= nonValuableMaxSeconds (default 30s). Shorter
+ * non-zero calls are tallied separately as non-valuable. totalTalkSeconds
+ * still includes everything, but is never the main KPI.
+ */
+function summarizeCalls(calls = [], thresholds = resolveThresholds()) {
+  const totals = {
+    totalCalls: 0,
+    outbound: 0,
+    inbound: 0,
+    realConversations: 0,
+    strongConversations: 0,
+    nonValuableCalls: 0,
+    nonValuableSeconds: 0,
+    totalTalkSeconds: 0,
+    valuableTalkSeconds: 0,
+  };
+  for (const call of calls) {
+    if (!call) continue;
+    totals.totalCalls += 1;
+    if (call.direction === 'Outbound') totals.outbound += 1;
+    else if (call.direction === 'Inbound') totals.inbound += 1;
+    const d = Math.max(0, Number(call.durationSeconds ?? call.duration_seconds) || 0);
+    totals.totalTalkSeconds += d;
+    if (d >= thresholds.nonValuableMaxSeconds) {
+      totals.valuableTalkSeconds += d;
+    } else if (d > 0) {
+      totals.nonValuableCalls += 1;
+      totals.nonValuableSeconds += d;
+    }
+    if (d >= thresholds.realConversationMinSeconds) totals.realConversations += 1;
+    if (d >= thresholds.strongConversationMinSeconds) totals.strongConversations += 1;
+  }
+  return totals;
+}
+
+/**
+ * Score one recruiter's totals against the window targets.
+ *
+ * Main score = 70% real-talk-time progress + 30% outbound progress. The old
+ * 50/50 (outbound + real conversations) score is retired; activityScore is
+ * kept as an alias of mainScore for backward compatibility.
+ */
+function computeRecruiterKpis(totals, targets) {
+  const talkPct = targets.talkSeconds
+    ? Math.min(100, Math.round((totals.valuableTalkSeconds / targets.talkSeconds) * 100)) : 0;
+  const outboundPct = targets.outbound
+    ? Math.min(100, Math.round((totals.outbound / targets.outbound) * 100)) : 0;
+  const realPct = targets.realConversations
+    ? Math.min(100, Math.round((totals.realConversations / targets.realConversations) * 100)) : 0;
+  const mainScore = Math.round(talkPct * 0.7 + outboundPct * 0.3);
+  return {
+    ...totals,
+    // Back-compat alias: earlier payloads called the short-call count "nonValuable".
+    nonValuable: totals.nonValuableCalls,
+    talkPct,
+    talkMet: totals.valuableTalkSeconds >= targets.talkSeconds,
+    talkRemainingSeconds: Math.max(0, targets.talkSeconds - totals.valuableTalkSeconds),
+    outboundPct,
+    outboundMet: totals.outbound >= targets.outbound,
+    realConversationsPct: realPct,
+    realConversationsMet: totals.realConversations >= targets.realConversations,
+    mainScore,
+    activityScore: mainScore,
+    targetTalkSeconds: targets.talkSeconds,
+    targetTalkLabel: targets.talkLabel,
+  };
+}
+
+// ─── KPI rollups ───
+
+/**
+ * Per-recruiter KPI rollup for a UTC window (start inclusive, end exclusive).
  * Returns one entry per active recruiter (even those with zero calls) plus the
- * targets/thresholds used, so the dashboard can render progress vs target.
+ * targets/thresholds used, so dashboards can render progress vs target.
+ */
+async function rollupRecruiterKpis({ startUtc, endUtc, cfg, rangeDays }) {
+  const thresholds = resolveThresholds(cfg);
+  const targets = buildTargets(cfg, rangeDays);
+
+  const res = await query(
+    `SELECT
+       r.id, r.name, r.phone_number,
+       c.id AS call_id, c.direction, c.duration_seconds
+     FROM recruiters r
+     LEFT JOIN ringcentral_calls c
+       ON c.recruiter_id = r.id
+      AND c.call_time >= $1 AND c.call_time < $2
+     WHERE r.active = TRUE
+     ORDER BY r.name ASC, r.id ASC`,
+    [startUtc, endUtc]
+  );
+
+  const byRecruiter = new Map();
+  for (const row of res.rows) {
+    let entry = byRecruiter.get(row.id);
+    if (!entry) {
+      entry = { id: row.id, name: row.name, phoneNumber: row.phone_number, calls: [] };
+      byRecruiter.set(row.id, entry);
+    }
+    // A recruiter with zero calls in the window still yields one row (call_id NULL).
+    if (row.call_id != null) {
+      entry.calls.push({ direction: row.direction, durationSeconds: row.duration_seconds });
+    }
+  }
+
+  const recruiters = [...byRecruiter.values()].map(({ id, name, phoneNumber, calls }) => ({
+    id,
+    name,
+    phoneNumber,
+    ...computeRecruiterKpis(summarizeCalls(calls, thresholds), targets),
+  }));
+
+  return { targets, thresholds, recruiters };
+}
+
+/**
+ * Per-recruiter KPI rollup for a single day in the configured timezone.
+ * dateStr null/undefined = today (dateMode "today"); otherwise "single-day".
  */
 async function getRecruiterStats(dateStr, cfg) {
   const tz = cfg.timezone || 'America/Chicago';
   const day = dateStr
     ? DateTime.fromISO(dateStr, { zone: tz })
     : DateTime.now().setZone(tz);
+  if (!day.isValid) throw new Error(`Invalid date: ${dateStr}`);
   const start = day.startOf('day');
   const end = start.plus({ days: 1 });
-  const startUtc = start.toUTC().toISO();
-  const endUtc = end.toUTC().toISO();
 
-  const nonValuable = cfg.nonValuableMaxSeconds ?? 30;
-  const realMin = cfg.realConversationMinSeconds ?? 60;
-  const strongMin = cfg.strongConversationMinSeconds ?? 180;
+  const rollup = await rollupRecruiterKpis({
+    startUtc: start.toUTC().toISO(),
+    endUtc: end.toUTC().toISO(),
+    cfg,
+    rangeDays: 1,
+  });
 
-  const res = await query(
-    `SELECT
-       r.id, r.name, r.phone_number, r.active,
-       COUNT(c.id)::int AS total_calls,
-       COUNT(c.id) FILTER (WHERE c.direction = 'Outbound')::int AS outbound,
-       COUNT(c.id) FILTER (WHERE c.direction = 'Inbound')::int AS inbound,
-       COUNT(c.id) FILTER (WHERE c.duration_seconds >= $4)::int AS real_conversations,
-       COUNT(c.id) FILTER (WHERE c.duration_seconds >= $5)::int AS strong_conversations,
-       COUNT(c.id) FILTER (WHERE c.duration_seconds > 0 AND c.duration_seconds < $3)::int AS non_valuable,
-       COALESCE(SUM(c.duration_seconds), 0)::int AS total_talk_seconds
-     FROM recruiters r
-     LEFT JOIN ringcentral_calls c
-       ON c.recruiter_id = r.id
-      AND c.call_time >= $1 AND c.call_time < $2
-     WHERE r.active = TRUE
-     GROUP BY r.id
-     ORDER BY r.name ASC`,
-    [startUtc, endUtc, nonValuable, realMin, strongMin]
-  );
-
-  const targets = {
-    outbound: cfg.targetOutbound ?? 150,
-    realConversations: cfg.targetRealConversations ?? 35,
+  const date = start.toISODate();
+  return {
+    dateMode: dateStr ? 'single-day' : 'today',
+    date,
+    startDate: date,
+    endDate: date,
+    rangeDays: 1,
+    timezone: tz,
+    ...rollup,
   };
+}
 
-  const recruiters = res.rows.map((row) => {
-    const outboundPct = targets.outbound ? Math.min(100, Math.round((row.outbound / targets.outbound) * 100)) : 0;
-    const realPct = targets.realConversations
-      ? Math.min(100, Math.round((row.real_conversations / targets.realConversations) * 100)) : 0;
-    return {
-      id: row.id,
-      name: row.name,
-      phoneNumber: row.phone_number,
-      totalCalls: row.total_calls,
-      outbound: row.outbound,
-      inbound: row.inbound,
-      realConversations: row.real_conversations,
-      strongConversations: row.strong_conversations,
-      nonValuable: row.non_valuable,
-      totalTalkSeconds: row.total_talk_seconds,
-      outboundPct,
-      realConversationsPct: realPct,
-      outboundMet: row.outbound >= targets.outbound,
-      realConversationsMet: row.real_conversations >= targets.realConversations,
-      // 50/50 rule: 50% activity (outbound) + 50% conversion (real conversations)
-      activityScore: Math.round(outboundPct / 2 + realPct / 2),
-    };
+/**
+ * Per-recruiter KPI rollup for an inclusive date range in the configured
+ * timezone. Targets scale by the number of days in the range.
+ */
+async function getRecruiterStatsRange(startStr, endStr, cfg) {
+  const tz = cfg.timezone || 'America/Chicago';
+  const startDay = DateTime.fromISO(startStr, { zone: tz });
+  const endDay = DateTime.fromISO(endStr, { zone: tz });
+  if (!startDay.isValid) throw new Error(`Invalid start date: ${startStr}`);
+  if (!endDay.isValid) throw new Error(`Invalid end date: ${endStr}`);
+  const start = startDay.startOf('day');
+  const endExclusive = endDay.startOf('day').plus({ days: 1 });
+  if (endExclusive <= start) throw new Error('End date must not be before start date.');
+  const rangeDays = Math.round(endExclusive.diff(start, 'days').days);
+
+  const rollup = await rollupRecruiterKpis({
+    startUtc: start.toUTC().toISO(),
+    endUtc: endExclusive.toUTC().toISO(),
+    cfg,
+    rangeDays,
   });
 
   return {
+    dateMode: 'range',
     date: start.toISODate(),
+    startDate: start.toISODate(),
+    endDate: endDay.startOf('day').toISODate(),
+    rangeDays,
     timezone: tz,
-    targets,
-    thresholds: { nonValuableMaxSeconds: nonValuable, realConversationMinSeconds: realMin, strongConversationMinSeconds: strongMin },
-    recruiters,
+    ...rollup,
   };
 }
 
@@ -417,5 +576,12 @@ module.exports = {
   deleteRecruiter,
   getRecruiterByNormalizedNumber,
   upsertCall,
+  formatTalkLabel,
+  resolveThresholds,
+  buildTargets,
+  summarizeCalls,
+  computeRecruiterKpis,
   getRecruiterStats,
+  getRecruiterStatsRange,
+  DEFAULT_TARGET_TALK_SECONDS,
 };
