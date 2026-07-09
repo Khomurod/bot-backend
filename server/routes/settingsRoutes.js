@@ -18,8 +18,6 @@ const gmaps = require('../../database/gmapsSettings');
 const googleMapsClient = require('../../services/googleMapsClient');
 const multer = require('multer');
 const safetyVideo = require('../../database/safetyEventVideoSettings');
-const bolPodMonitor = require('../../database/bolPodMonitorSettings');
-const bolPodMonitorService = require('../../services/bolPodMonitorSettingsService');
 const { getAudioDurationSeconds } = require('../../utils/audioDuration');
 const {
   getAccessToken,
@@ -39,7 +37,7 @@ const { DateTime } = require('luxon');
  * It uses candidate keys from the request body when supplied (so the operator
  * can verify a key BEFORE saving it), otherwise the currently-stored keys.
  */
-function createSettingsRouter({ authMiddleware, telegram = null }) {
+function createSettingsRouter({ authMiddleware }) {
   const router = express.Router();
 
   router.get('/eld', authMiddleware, async (req, res) => {
@@ -394,67 +392,6 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
     } catch (err) {
       console.error('[SETTINGS API] safety-events download failed:', err.message);
       res.status(500).json({ error: 'Failed to load music asset' });
-    }
-  });
-
-  // ── Silent BOL/POD test monitor (admin Settings → BOL/POD Monitor) ──
-  // DB is the source of truth — no Render env vars. Values are not secrets.
-
-  router.get('/bol-pod-monitor', authMiddleware, async (req, res) => {
-    try {
-      const settings = await bolPodMonitor.getSettingsForAdmin();
-      res.json({ settings });
-    } catch (err) {
-      console.error('[SETTINGS API] bol-pod-monitor load failed:', err.message);
-      res.status(500).json({ error: 'Failed to load BOL/POD monitor settings' });
-    }
-  });
-
-  router.put('/bol-pod-monitor', authMiddleware, async (req, res) => {
-    try {
-      const updatedBy = req.admin?.username || req.admin?.email || null;
-      const settings = await bolPodMonitor.updateSettings(req.body || {}, updatedBy);
-      res.json({ settings });
-    } catch (err) {
-      const status = err.statusCode === 400 ? 400 : 500;
-      if (status === 400) return res.status(400).json({ error: err.message });
-      console.error('[SETTINGS API] bol-pod-monitor update failed:', err.message);
-      res.status(500).json({ error: 'Failed to save BOL/POD monitor settings' });
-    }
-  });
-
-  // Combined settings + service-readiness status for the admin status panel.
-  router.get('/bol-pod-monitor/status', authMiddleware, async (req, res) => {
-    try {
-      const status = await bolPodMonitorService.getStatus();
-      res.json(status);
-    } catch (err) {
-      console.error('[SETTINGS API] bol-pod-monitor status failed:', err.message);
-      res.status(500).json({ error: 'Failed to load BOL/POD monitor status' });
-    }
-  });
-
-  // Send a small probe message to the (optionally candidate) test group.
-  router.post('/bol-pod-monitor/test-message', authMiddleware, async (req, res) => {
-    try {
-      const candidate = req.body?.test_group_id ?? req.body?.testGroupId;
-      const result = await bolPodMonitorService.sendTestMessage(telegram, candidate);
-      res.json(result);
-    } catch (err) {
-      console.error('[SETTINGS API] bol-pod-monitor test-message failed:', err.message);
-      res.json({ ok: false, error: err.message });
-    }
-  });
-
-  // Check whether the bot can reach the test group (getChat).
-  router.post('/bol-pod-monitor/check-access', authMiddleware, async (req, res) => {
-    try {
-      const candidate = req.body?.test_group_id ?? req.body?.testGroupId;
-      const result = await bolPodMonitorService.checkGroupAccess(telegram, candidate);
-      res.json(result);
-    } catch (err) {
-      console.error('[SETTINGS API] bol-pod-monitor check-access failed:', err.message);
-      res.json({ ok: false, error: err.message });
     }
   });
 
