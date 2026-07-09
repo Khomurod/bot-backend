@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../api";
-import { Banner } from "./fields";
+import { Banner, NumField } from "./fields";
 
 
 // ──────────────────────── Safety-event music overlay tab ─────────────────────
