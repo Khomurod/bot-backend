@@ -7,11 +7,10 @@
  * The handlers themselves live under bot/handlers/, and the outbound send
  * family (questions/broadcasts) in bot/senders.js.
  */
-const { Telegraf, Markup } = require('telegraf');
+const { Telegraf } = require('telegraf');
 const config = require('../config/config');
 const { telegramClientOptions } = require('../services/telegramAgent');
 const db = require('../database/db');
-const { NO_CURRENT_LOAD_INFO_MESSAGE } = require('../services/dispatchEtaUpdateService');
 const { registerHomeTimeRequestHandlers } = require('./homeTimeRequestHandlers');
 const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
 const { registerRouteControlHandlers } = require('./routeControlHandlers');
@@ -31,7 +30,6 @@ const { registerStartHandler } = require('./handlers/startHandlers');
 const { registerSurveyCallbackHandlers } = require('./handlers/surveyCallbackHandlers');
 const { createBotSenders } = require('./senders');
 const { installBotSentMessageTracking } = require('../services/botSentMessageRegistry');
-const { escapeHtml } = require('./utils/telegramFormatting');
 // config.js already validates DATABASE_URL, MANAGEMENT_GROUP_ID (BOT_TOKEN has a code default)
 // and exits on missing values — no need to re-check here.
 
@@ -56,7 +54,6 @@ const {
 
 const BOT_LAUNCH_RETRY_MS = 5000;
 const BOT_LAUNCH_MAX_RETRY_MS = 30000;
-const STATUS_TOGGLE_CALLBACK_PREFIX = 'status_toggle';
 
 let botRunning = false;
 let botLaunchPromise = null;
@@ -67,38 +64,12 @@ let botInitialized = false;
 // ─── Rate-limit sleep helper ───
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-function buildCollapsedStatusMessage() {
-  return '📡 <b>Current update</b>:';
-}
-
-function buildStatusToggleMarkup(groupId, expanded) {
-  const mode = expanded ? 'hide' : 'show';
-  const label = expanded ? 'Hide details ▲' : 'Show details ▼';
-  return Markup.inlineKeyboard([
-    [Markup.button.callback(label, `${STATUS_TOGGLE_CALLBACK_PREFIX}:${mode}:${groupId}`)],
-  ]);
-}
-
-async function buildExpandedStatusMessage(group) {
-  try {
-    const snapshot = await resolveDispatchEtaSnapshotForGroup({
-      telegram: bot.telegram,
-      group,
-    });
-    return buildEtaMessage({
-      group,
-      context: snapshot.context,
-      location: snapshot.location,
-      source: snapshot.source,
-      eta: snapshot.eta,
-    });
-  } catch (err) {
-    if (err?.code === 'LOAD_CONTEXT_NOT_FOUND') {
-      return `${buildCollapsedStatusMessage()}\n${escapeHtml(NO_CURRENT_LOAD_INFO_MESSAGE)}`;
-    }
-    throw err;
-  }
-}
+// NOTE: the old status-toggle helpers (buildCollapsedStatusMessage,
+// buildStatusToggleMarkup, buildExpandedStatusMessage) were removed here.
+// They were unreachable: never called, never exported, no `status_toggle:`
+// callback handler exists anywhere, and buildExpandedStatusMessage referenced
+// dispatchEtaUpdateService functions that were never imported, so calling it
+// would have thrown a ReferenceError.
 
 function isPollingConflict(err) {
   const description = err?.response?.description || err?.message || '';
