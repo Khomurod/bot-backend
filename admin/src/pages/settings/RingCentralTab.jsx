@@ -169,7 +169,7 @@ export default function RingCentralTab() {
     clientId: "", clientSecret: "", jwtToken: "", apiBase: "",
     enabled: false, pollMinutes: 10, timezone: "America/Chicago",
     nonValuableMaxSeconds: 30, realConversationMinSeconds: 60, strongConversationMinSeconds: 180,
-    targetOutbound: 150, targetRealConversations: 35,
+    targetTalkMinutes: 150, targetOutbound: 150, targetRealConversations: 35,
   });
   const [newRec, setNewRec] = useState({ name: "", phoneNumber: "", jwtToken: "", clientId: "", clientSecret: "", useCustom: false });
 
@@ -183,6 +183,7 @@ export default function RingCentralTab() {
         ...f, apiBase: s.apiBase || "", enabled: s.enabled, pollMinutes: s.pollMinutes,
         timezone: s.timezone || "America/Chicago", nonValuableMaxSeconds: s.nonValuableMaxSeconds,
         realConversationMinSeconds: s.realConversationMinSeconds, strongConversationMinSeconds: s.strongConversationMinSeconds,
+        targetTalkMinutes: s.targetTalkMinutes ?? 150,
         targetOutbound: s.targetOutbound, targetRealConversations: s.targetRealConversations,
       }));
     } catch (err) { setMessage({ type: "error", text: err.message }); }
@@ -200,6 +201,7 @@ export default function RingCentralTab() {
         timezone: form.timezone, nonValuableMaxSeconds: Number(form.nonValuableMaxSeconds),
         realConversationMinSeconds: Number(form.realConversationMinSeconds),
         strongConversationMinSeconds: Number(form.strongConversationMinSeconds),
+        targetTalkMinutes: Number(form.targetTalkMinutes),
         targetOutbound: Number(form.targetOutbound), targetRealConversations: Number(form.targetRealConversations),
       };
       if (form.clientId.trim()) payload.clientId = form.clientId.trim();
@@ -290,13 +292,21 @@ export default function RingCentralTab() {
 
       <div className="card" style={{ marginBottom: 16 }}>
         <h3 style={{ marginTop: 0 }}>🎯 Daily Targets &amp; Conversation Thresholds</h3>
+        <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 0 }}>
+          Main KPI: <strong>2.5h real call duration</strong> per recruiter per day — calls under 30
+          seconds do not count. Secondary KPI: <strong>150 outbound calls</strong> per day.
+        </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 24 }}>
           <div>
-            <NumField label="Total Outbound target" value={form.targetOutbound} onChange={(v) => setField("targetOutbound", v)} suffix="calls/day" />
+            <NumField label="Real talk-time target (main KPI)" value={form.targetTalkMinutes} onChange={(v) => setField("targetTalkMinutes", v)} suffix="minutes/day" />
+            <NumField label="Total Outbound target (secondary)" value={form.targetOutbound} onChange={(v) => setField("targetOutbound", v)} suffix="calls/day" />
             <NumField label="Real Conversations target" value={form.targetRealConversations} onChange={(v) => setField("targetRealConversations", v)} suffix="calls/day" />
           </div>
           <div>
-            <NumField label="Non-valuable (under)" value={form.nonValuableMaxSeconds} onChange={(v) => setField("nonValuableMaxSeconds", v)} suffix="seconds" />
+            <NumField label="Minimum call duration counted toward talk time" value={form.nonValuableMaxSeconds} onChange={(v) => setField("nonValuableMaxSeconds", v)} suffix="seconds" />
+            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: -6, marginBottom: 10, maxWidth: 320 }}>
+              Calls shorter than this threshold do not count toward real talk time. Default: 30 seconds.
+            </div>
             <NumField label="Real conversation (over)" value={form.realConversationMinSeconds} onChange={(v) => setField("realConversationMinSeconds", v)} suffix="seconds" />
             <NumField label="Strong conversation (over)" value={form.strongConversationMinSeconds} onChange={(v) => setField("strongConversationMinSeconds", v)} suffix="seconds" />
           </div>

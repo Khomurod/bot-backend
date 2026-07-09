@@ -2,11 +2,12 @@ import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../api";
 
 /**
- * Recruiter KPI dashboard — per-recruiter daily call performance vs targets,
- * styled after the "Daily Recruiter Targets" + "50/50 Rule" reference. KPIs are
- * derived from the RingCentral call log (outbound volume + conversation quality
- * by duration). Qualified Found / CRM Updates are intentionally not shown yet —
- * they aren't derivable from call data.
+ * Recruiter KPI dashboard — per-recruiter daily call performance vs targets.
+ *
+ * Main KPI: 2h 30m of REAL call duration per day (calls under the 30-second
+ * threshold do not count toward it). Secondary KPI: 150 outbound calls/day.
+ * The score is 70% talk-time progress + 30% outbound progress. All numbers
+ * are derived from the RingCentral call log.
  */
 
 function todayIso() {
@@ -15,7 +16,7 @@ function todayIso() {
 }
 
 function fmtDuration(seconds) {
-  const s = Number(seconds || 0);
+  const s = Math.max(0, Number(seconds || 0));
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   if (h) return `${h}h ${m}m`;
@@ -45,7 +46,7 @@ function KpiRow({ label, value, target, unit, color, pct, met }) {
   );
 }
 
-const COLORS = { outbound: "#22d3ee", real: "#4ade80", strong: "#f59e0b", activity: "#a78bfa" };
+const COLORS = { talk: "#a78bfa", outbound: "#22d3ee", real: "#4ade80", strong: "#f59e0b" };
 
 export default function RecruiterKpiPage() {
   const [date, setDate] = useState(todayIso());
@@ -73,7 +74,8 @@ export default function RecruiterKpiPage() {
     finally { setSyncing(false); }
   };
 
-  const targets = data?.targets || { outbound: 150, realConversations: 35 };
+  const targets = data?.targets || { talkSeconds: 9000, talkLabel: "2h 30m", outbound: 150, realConversations: 35 };
+  const shortThreshold = data?.thresholds?.nonValuableMaxSeconds ?? 30;
   const recruiters = data?.recruiters || [];
 
   return (
@@ -91,12 +93,15 @@ export default function RecruiterKpiPage() {
 
       {message && <div className={`alert alert-${message.type === "error" ? "error" : "success"}`}>{message.text}</div>}
 
-      {/* The 50/50 rule reference */}
+      {/* KPI rules reference */}
       <div className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0, textAlign: "center", letterSpacing: 1 }}>THE 50/50 RULE</h3>
-        <p style={{ textAlign: "center", color: "#94a3b8", marginTop: -6 }}>50% Activity + 50% Conversion</p>
+        <h3 style={{ marginTop: 0, textAlign: "center", letterSpacing: 1 }}>DAILY RECRUITER TARGETS</h3>
+        <p style={{ textAlign: "center", color: "#94a3b8", marginTop: -6 }}>
+          Main KPI: <strong style={{ color: "#e2e8f0" }}>{targets.talkLabel} real call duration</strong> ·
+          Secondary KPI: <strong style={{ color: "#e2e8f0" }}>{targets.outbound} outbound calls</strong>
+        </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center" }}>
-          <span className="badge badge-inactive">&lt; {data?.thresholds?.nonValuableMaxSeconds ?? 30}s : Non-valuable</span>
+          <span className="badge badge-inactive">&lt; {shortThreshold}s : does NOT count toward talk time</span>
           <span className="badge badge-muted">&gt; {data?.thresholds?.realConversationMinSeconds ?? 60}s : Real Conversation</span>
           <span className="badge" style={{ background: "rgba(167,139,250,0.2)", color: "#c4b5fd" }}>&gt; {data?.thresholds?.strongConversationMinSeconds ?? 180}s : Strong Conv.</span>
         </div>
@@ -112,18 +117,27 @@ export default function RecruiterKpiPage() {
             <div className="card" key={r.id}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
                 <h3 style={{ margin: 0 }}>{r.name}</h3>
-                <span style={{ fontSize: 22, fontWeight: 800, color: r.activityScore >= 100 ? "#22c55e" : r.activityScore >= 50 ? "#f59e0b" : "#f87171" }}>{r.activityScore}%</span>
+                <span style={{ fontSize: 22, fontWeight: 800, color: r.mainScore >= 100 ? "#22c55e" : r.mainScore >= 50 ? "#f59e0b" : "#f87171" }}>{r.mainScore}%</span>
               </div>
-              <div style={{ fontSize: 11, color: "#64748b", fontFamily: "monospace", marginBottom: 14 }}>{r.phoneNumber} · 50/50 score</div>
+              <div style={{ fontSize: 11, color: "#64748b", fontFamily: "monospace", marginBottom: 14 }}>{r.phoneNumber} · Daily Call Duration Score</div>
 
-              <KpiRow label="Total Outbound" value={r.outbound} target={targets.outbound} color={COLORS.outbound} pct={r.outboundPct} met={r.outboundMet} />
+              <KpiRow
+                label={`Real Call Duration (≥${shortThreshold}s calls)`}
+                value={fmtDuration(r.valuableTalkSeconds)}
+                target={targets.talkLabel}
+                color={COLORS.talk}
+                pct={r.talkPct}
+                met={r.talkMet}
+              />
+              <KpiRow label="Outbound Calls" value={r.outbound} target={targets.outbound} color={COLORS.outbound} pct={r.outboundPct} met={r.outboundMet} />
               <KpiRow label="Real Conversations (>1 min)" value={r.realConversations} target={targets.realConversations} color={COLORS.real} pct={r.realConversationsPct} met={r.realConversationsMet} />
               <KpiRow label="Strong Conversations (>3 min)" value={r.strongConversations} target={null} color={COLORS.strong} pct={targets.realConversations ? Math.min(100, Math.round((r.strongConversations / targets.realConversations) * 100)) : 0} />
 
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#94a3b8", marginTop: 10, borderTop: "1px solid rgba(148,163,184,0.15)", paddingTop: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, fontSize: 12, color: "#94a3b8", marginTop: 10, borderTop: "1px solid rgba(148,163,184,0.15)", paddingTop: 10 }}>
                 <span>Inbound: <strong style={{ color: "#cbd5e1" }}>{r.inbound}</strong></span>
-                <span>Non-valuable: <strong style={{ color: "#cbd5e1" }}>{r.nonValuable}</strong></span>
-                <span>Talk: <strong style={{ color: "#cbd5e1" }}>{fmtDuration(r.totalTalkSeconds)}</strong></span>
+                <span title={`Calls under ${shortThreshold}s — excluded from talk time`}>Short calls: <strong style={{ color: "#cbd5e1" }}>{r.nonValuableCalls}</strong></span>
+                <span>Raw talk: <strong style={{ color: "#cbd5e1" }}>{fmtDuration(r.totalTalkSeconds)}</strong></span>
+                <span>To target: <strong style={{ color: "#cbd5e1" }}>{r.talkMet ? "✓ met" : fmtDuration(r.talkRemainingSeconds)}</strong></span>
               </div>
             </div>
           ))}
