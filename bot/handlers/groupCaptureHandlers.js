@@ -13,6 +13,7 @@
 const db = require('../../database/db');
 const botUsers = require('../../database/botUsers');
 const { handleFuelStopMessage } = require('../../services/fuelStopAlertService');
+const { handleTrailerGroupMessage } = require('../../services/trailerMonitorService');
 const { handleDriverGroupStatus } = require('../../services/homeTimeService');
 const recentMessageBuffer = require('../../services/recentMessageBuffer');
 const {
@@ -258,6 +259,13 @@ function registerGroupCaptureHandlers(bot) {
           if (group.active) {
             handleFuelStopMessage(bot.telegram, group, ctx.message).catch((err) => {
               console.error('[BOT] handleFuelStopMessage failed:', err.message);
+            });
+
+            // Trailer Tracking (Beta): watch for trailer pickup/drop-off messages,
+            // register events, and reply/react. Detached + never throws; the
+            // service cheap-filters out non-trailer messages immediately.
+            handleTrailerGroupMessage(bot.telegram, group, ctx.message).catch((err) => {
+              console.error('[BOT] handleTrailerGroupMessage failed:', err.message);
             });
           }
 
