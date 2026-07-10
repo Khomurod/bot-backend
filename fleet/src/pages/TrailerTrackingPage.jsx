@@ -82,11 +82,14 @@ export default function TrailerTrackingPage() {
     layer.clearLayers();
     if (!showTrailers) return;
     for (const t of mapData.filter((x) => x.current_lat != null && x.current_lng != null)) {
+      const approximate = t.location_source === 'approximate_state' || t.location_source === 'approximate';
       const color = STATUS_COLOR[t.current_status] || STATUS_COLOR.unknown;
+      const border = t.status_needs_review ? '3px solid #ef4444' : '2px solid #fff';
+      const dashed = approximate ? 'border-style:dashed;' : '';
       const icon = L.divIcon({
         className: 'trailer-marker',
-        html: `<div style="width:16px;height:16px;border-radius:3px;background:${color};border:2px solid #fff;box-shadow:0 0 3px rgba(0,0,0,.6)"></div>`,
-        iconSize: [16, 16], iconAnchor: [8, 8],
+        html: `<div style="width:16px;height:12px;border-radius:3px;background:${color};${dashed}border:${border};box-shadow:0 0 3px rgba(0,0,0,.6)"></div>`,
+        iconSize: [16, 12], iconAnchor: [8, 6],
       });
       L.marker([t.current_lat, t.current_lng], { icon })
         .bindPopup(
