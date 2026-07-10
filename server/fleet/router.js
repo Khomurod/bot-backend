@@ -1163,6 +1163,55 @@ router.post('/support/tickets', (req, res) => {
   res.status(201).json({ data: { ticketNumber: id, category, destination: 'FleetView Support (internal demo)' } });
 });
 
+// ── Trailer Tracking (Beta) — read-only operational view ─────────────────────
+// FleetView surfaces the same trailer data the Admin Portal manages, but never
+// the import/upload tooling. This is a deliberate, read-only bridge to the main
+// app's trailer store (database/trailers.js). Trailers are global to this
+// deployment (not tenant-scoped), so every failure degrades to an empty list —
+// a trailer-store issue must never break the rest of FleetView.
+function trailerDb() {
+  // Lazy require so FleetView still loads if the main DB module is unavailable.
+  return require('../../database/trailers');
+}
+
+router.get('/trailers/current', async (req, res) => {
+  try {
+    const rows = await trailerDb().listTrailers({
+      q: req.query.q || null,
+      status: req.query.status || null,
+    });
+    res.json(D.envelope(rows, { total: rows.length, pageSize: rows.length }));
+  } catch (err) {
+    console.warn('[FLEET] trailers/current failed (degrading to empty):', err.message);
+    res.json(D.envelope([], { total: 0 }));
+  }
+});
+
+router.get('/trailers/map', async (req, res) => {
+  try {
+    const rows = await trailerDb().listTrailerMapData();
+    res.json(D.envelope(rows, { total: rows.length, pageSize: rows.length }));
+  } catch (err) {
+    console.warn('[FLEET] trailers/map failed (degrading to empty):', err.message);
+    res.json(D.envelope([], { total: 0 }));
+  }
+});
+
+router.get('/trailers/:id/timeline', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return D.apiError(res, 400, 'VALIDATION', 'Invalid trailer id.');
+    const trailer = await trailerDb().getTrailerById(id);
+    if (!trailer) return D.apiError(res, 404, 'NOT_FOUND', 'Trailer not found.');
+    const status = await trailerDb().getTrailerCurrentStatus(id);
+    const events = await trailerDb().listTrailerTimeline(id, 200);
+    res.json({ data: { trailer, status, events } });
+  } catch (err) {
+    console.warn('[FLEET] trailers/timeline failed:', err.message);
+    D.apiError(res, 500, 'INTERNAL', 'Failed to load trailer timeline.');
+  }
+});
+
 // 404 for unknown API routes (tenant-safe)
 router.use((req, res) => D.apiError(res, 404, 'NOT_FOUND', 'Resource not found.'));
 

@@ -21,6 +21,7 @@ const NAV = [
     { to: '/dashboard/brokers', label: 'Brokers', ico: '🤝' },
     { to: '/dashboard/drivers', label: 'Drivers', ico: '🚛' },
     { to: '/dashboard/equipments', label: 'Equipment', ico: '🚚' },
+    { to: '/dashboard/trailers', label: 'Trailer Tracking', ico: '📦' },
     { to: '/dashboard/fuel-tolls', label: 'Fuel & Tolls', ico: '⛽' },
     { to: '/dashboard/companies', label: 'My Companies', ico: '🏢' },
   ] },
@@ -37,7 +38,8 @@ const CRUMBS = {
   '/dashboard/dispatch-map': 'Dispatch Map', '/dashboard/emails': 'Emails',
   '/dashboard/rate-savings': 'Rate Savings', '/dashboard/statistics': 'Statistics',
   '/dashboard/users': 'Site Users', '/dashboard/brokers': 'Brokers', '/dashboard/drivers': 'Drivers',
-  '/dashboard/equipments': 'Equipment', '/dashboard/fuel-tolls': 'Fuel & Tolls',
+  '/dashboard/equipments': 'Equipment', '/dashboard/trailers': 'Trailer Tracking',
+  '/dashboard/fuel-tolls': 'Fuel & Tolls',
   '/dashboard/companies': 'My Companies', '/dashboard/settings': 'Settings',
   '/support': 'Contact Support', '/help': 'Help Center',
 };

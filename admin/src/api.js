@@ -1722,3 +1722,120 @@ export async function deleteSafetyEventMusic(id) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+// ─── Trailer Tracking (Beta) ───
+export async function getTrailers(params = {}) {
+  const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== '')).toString();
+  const res = await fetch(`${API_BASE}/trailers${qs ? `?${qs}` : ''}`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getTrailer(id) {
+  const res = await fetch(`${API_BASE}/trailers/${id}`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getTrailerEvents(params = {}) {
+  const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== '')).toString();
+  const res = await fetch(`${API_BASE}/trailers/events${qs ? `?${qs}` : ''}`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getTrailerTimeline(id) {
+  const res = await fetch(`${API_BASE}/trailers/${id}/events`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getTrailerUnidentified(includeResolved = false) {
+  const res = await fetch(`${API_BASE}/trailers/unidentified?includeResolved=${includeResolved ? 'true' : 'false'}`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getTrailerMapData() {
+  const res = await fetch(`${API_BASE}/trailers/map`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getTrailerSettings() {
+  const res = await fetch(`${API_BASE}/trailers/settings`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function updateTrailerSettings(patch) {
+  const res = await fetch(`${API_BASE}/trailers/settings`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify(patch),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function saveTrailer(trailer) {
+  const res = await fetch(`${API_BASE}/trailers`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(trailer),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function updateTrailer(id, patch) {
+  const res = await fetch(`${API_BASE}/trailers/${id}`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify(patch),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function importTrailerScreenshot(files) {
+  const fd = new FormData();
+  for (const f of files) fd.append('screenshots', f);
+  const res = await fetch(`${API_BASE}/trailers/import/screenshot`, {
+    method: 'POST', headers: getAuthHeader(), body: fd,
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function commitTrailerImport(batchId, rows) {
+  const res = await fetch(`${API_BASE}/trailers/import/${batchId}/commit`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ rows }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getTrailerImportBatches() {
+  const res = await fetch(`${API_BASE}/trailers/import/batches`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function registerManualTrailerEvent(payload) {
+  const res = await fetch(`${API_BASE}/trailers/events/manual`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(payload),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function correctTrailerEvent(id, patch) {
+  const res = await fetch(`${API_BASE}/trailers/events/${id}`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify(patch),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function resolveTrailerUnidentified(id) {
+  const res = await fetch(`${API_BASE}/trailers/unidentified/${id}/resolve`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

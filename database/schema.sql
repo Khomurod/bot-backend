@@ -2242,3 +2242,153 @@ ALTER TABLE safety_event_video_jobs
 ALTER TABLE safety_event_video_jobs
   ADD CONSTRAINT safety_event_video_jobs_status_check
   CHECK (status IN ('pending','processing','sent','compressed_sent','failed','fallback_sent','skipped','failed_too_large'));
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- TRAILER TRACKING (Beta)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Additive-only. The bot watches driver Telegram groups for trailer pickup /
+-- drop-off messages, registers an immutable event per Telegram message, and
+-- keeps a per-trailer "current status" row so map/list APIs stay fast. Admins
+-- can also import a trailer master list from a screenshot (OCR/vision) and edit
+-- records by hand. Nothing here references or revives BOL/POD monitoring.
+
+-- Master list of trailers (one row per unit number).
+CREATE TABLE IF NOT EXISTS trailers (
+  id SERIAL PRIMARY KEY,
+  unit_number TEXT UNIQUE NOT NULL,
+  make TEXT NULL,
+  model TEXT NULL,
+  mc_number TEXT NULL,
+  plate_number TEXT NULL,
+  type TEXT NULL,
+  vin TEXT NULL,
+  year TEXT NULL,
+  ownership_status TEXT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  needs_review BOOLEAN NOT NULL DEFAULT FALSE,
+  -- 'admin_manual' | 'screenshot_import' | 'telegram_detected'
+  source TEXT NOT NULL DEFAULT 'admin_manual',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_trailers_unit_number ON trailers(unit_number);
+CREATE INDEX IF NOT EXISTS idx_trailers_plate ON trailers(plate_number);
+CREATE INDEX IF NOT EXISTS idx_trailers_vin ON trailers(vin);
+
+-- Immutable event ledger — one row per detected/registered pickup, drop-off,
+-- mention, or unidentified command. The (telegram_group_id, telegram_message_id)
+-- pair is the dedupe guard: the same Telegram message can never create two rows.
+CREATE TABLE IF NOT EXISTS trailer_events (
+  id BIGSERIAL PRIMARY KEY,
+  trailer_id INTEGER NULL REFERENCES trailers(id) ON DELETE SET NULL,
+  trailer_unit_number TEXT NULL,
+  event_type TEXT NOT NULL
+    CHECK (event_type IN ('pickup', 'dropoff', 'mention_only', 'unidentified')),
+  confidence SMALLINT NULL,
+  driver_group_id INTEGER NULL REFERENCES groups(id) ON DELETE SET NULL,
+  telegram_group_id BIGINT NULL,
+  telegram_group_name TEXT NULL,
+  driver_profile_id INTEGER NULL REFERENCES driver_profiles(id) ON DELETE SET NULL,
+  driver_name TEXT NULL,
+  reported_by_telegram_user_id BIGINT NULL,
+  reported_by_username TEXT NULL,
+  reported_by_name TEXT NULL,
+  reported_driver_name_from_message TEXT NULL,
+  location_text TEXT NULL,
+  location_lat DOUBLE PRECISION NULL,
+  location_lng DOUBLE PRECISION NULL,
+  location_missing BOOLEAN NOT NULL DEFAULT FALSE,
+  condition_text TEXT NULL,
+  event_date_text TEXT NULL,
+  event_time TIMESTAMPTZ NULL,
+  telegram_message_id BIGINT NULL,
+  telegram_media_group_id TEXT NULL,
+  -- Photo/file evidence and any structured extras (Telegram file_ids, etc.).
+  evidence JSONB NULL,
+  raw_message_text TEXT NULL,
+  ai_summary TEXT NULL,
+  unidentified_reason TEXT NULL,
+  resolved BOOLEAN NOT NULL DEFAULT FALSE,
+  reported_to_test_group BOOLEAN NOT NULL DEFAULT FALSE,
+  source TEXT NOT NULL DEFAULT 'telegram',   -- 'telegram' | 'admin_manual'
+  beta_mode BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_trailer_events_trailer ON trailer_events(trailer_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_trailer_events_type ON trailer_events(event_type, created_at DESC);
+-- Dedupe guard: at most one event per (group, message). Partial so admin_manual
+-- rows (message_id NULL) are never blocked.
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_trailer_events_tg_message
+  ON trailer_events(telegram_group_id, telegram_message_id)
+  WHERE telegram_group_id IS NOT NULL AND telegram_message_id IS NOT NULL;
+
+-- Fast "where is each trailer now" snapshot, maintained from the latest
+-- pickup/dropoff event. One row per trailer.
+CREATE TABLE IF NOT EXISTS trailer_current_status (
+  trailer_id INTEGER PRIMARY KEY REFERENCES trailers(id) ON DELETE CASCADE,
+  unit_number TEXT NOT NULL,
+  current_status TEXT NOT NULL DEFAULT 'unknown'
+    CHECK (current_status IN ('with_driver', 'dropped', 'unknown')),
+  current_driver_group_id INTEGER NULL REFERENCES groups(id) ON DELETE SET NULL,
+  current_driver_profile_id INTEGER NULL REFERENCES driver_profiles(id) ON DELETE SET NULL,
+  current_driver_name TEXT NULL,
+  current_location_text TEXT NULL,
+  current_lat DOUBLE PRECISION NULL,
+  current_lng DOUBLE PRECISION NULL,
+  current_condition TEXT NULL,
+  last_reporter_name TEXT NULL,
+  last_event_id BIGINT NULL REFERENCES trailer_events(id) ON DELETE SET NULL,
+  last_event_type TEXT NULL,
+  last_event_at TIMESTAMPTZ NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_trailer_current_status_unit ON trailer_current_status(unit_number);
+CREATE INDEX IF NOT EXISTS idx_trailer_current_status_state ON trailer_current_status(current_status);
+
+-- Admin screenshot-import batches (one per uploaded image set).
+CREATE TABLE IF NOT EXISTS trailer_import_batches (
+  id SERIAL PRIMARY KEY,
+  uploaded_by TEXT NULL,
+  file_name TEXT NULL,
+  status TEXT NOT NULL DEFAULT 'parsed'
+    CHECK (status IN ('parsed', 'committed', 'failed')),
+  parsed_count INTEGER NOT NULL DEFAULT 0,
+  error_count INTEGER NOT NULL DEFAULT 0,
+  raw_ai_result JSONB NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Extracted rows for a batch (admin reviews/edits before commit).
+CREATE TABLE IF NOT EXISTS trailer_import_rows (
+  id SERIAL PRIMARY KEY,
+  batch_id INTEGER NOT NULL REFERENCES trailer_import_batches(id) ON DELETE CASCADE,
+  unit_number TEXT NULL,
+  make TEXT NULL,
+  model TEXT NULL,
+  mc_number TEXT NULL,
+  plate_number TEXT NULL,
+  type TEXT NULL,
+  vin TEXT NULL,
+  year TEXT NULL,
+  ownership_status TEXT NULL,
+  confidence SMALLINT NULL,
+  needs_review BOOLEAN NOT NULL DEFAULT FALSE,
+  raw_row JSONB NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_trailer_import_rows_batch ON trailer_import_rows(batch_id);
+
+-- Single-row runtime settings for the Trailer feature (Beta). Admin-editable.
+CREATE TABLE IF NOT EXISTS trailer_settings (
+  id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  beta_mode BOOLEAN NOT NULL DEFAULT TRUE,
+  -- NULL → fall back to config.trailerTestGroupId (env).
+  automatic_update_test_group_id TEXT NULL,
+  send_driver_group_confirmation BOOLEAN NOT NULL DEFAULT TRUE,
+  send_reaction BOOLEAN NOT NULL DEFAULT TRUE,
+  ai_fallback_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  geocoding_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO trailer_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;

@@ -114,6 +114,11 @@ module.exports = {
   rcJwtToken: process.env.RC_JWT_TOKEN || '',
   rcApiBase: process.env.RC_API_BASE || 'https://platform.ringcentral.com',
   dispatchEtaTestGroupId: String(process.env.DISPATCH_ETA_TEST_GROUP_ID || '-5289094495').trim(),
+  // Trailer Tracking (Beta): the "Automatic updating (Test)" group that receives
+  // unidentified/unclear trailer commands for review. Env fallback only — the
+  // primary, runtime-editable source is trailer_settings.automatic_update_test_group_id.
+  // Defaults to the shared automatic-updating test group.
+  trailerTestGroupId: String(process.env.TRAILER_TEST_GROUP_ID || process.env.DISPATCH_ETA_TEST_GROUP_ID || '-5289094495').trim(),
   googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   googleGeocodingApiBase: process.env.GOOGLE_GEOCODING_API_BASE || 'https://maps.googleapis.com/maps/api/geocode/json',
   googleRoutesApiBase: process.env.GOOGLE_ROUTES_API_BASE || 'https://routes.googleapis.com/directions/v2:computeRoutes',

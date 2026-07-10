@@ -23,6 +23,7 @@ const chatLogsDb = require('./chatLogs');
 const aiReportsDb = require('./aiReports');
 const employeeBirthdaysDb = require('./employeeBirthdays');
 const facebookLeadsDb = require('./facebookLeads');
+const trailersDb = require('./trailers');
 
 /**
  * Initialize database tables from schema.sql
@@ -275,4 +276,5 @@ module.exports = {
   ...aiReportsDb,
   ...employeeBirthdaysDb,
   ...facebookLeadsDb,
+  ...trailersDb,
 };

@@ -21,6 +21,7 @@ const UsersPage = lazy(() => import('./pages/UsersPage.jsx'));
 const BrokersPage = lazy(() => import('./pages/BrokersPage.jsx'));
 const DriversPage = lazy(() => import('./pages/DriversPage.jsx'));
 const EquipmentPage = lazy(() => import('./pages/EquipmentPage.jsx'));
+const TrailerTrackingPage = lazy(() => import('./pages/TrailerTrackingPage.jsx'));
 const FuelTolls = lazy(() => import('./pages/FuelTolls.jsx'));
 const CompaniesPage = lazy(() => import('./pages/CompaniesPage.jsx'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'));
@@ -91,6 +92,7 @@ export default function App() {
         <Route path="/dashboard/brokers" element={<Protected><BrokersPage /></Protected>} />
         <Route path="/dashboard/drivers" element={<Protected><DriversPage /></Protected>} />
         <Route path="/dashboard/equipments" element={<Protected><EquipmentPage /></Protected>} />
+        <Route path="/dashboard/trailers" element={<Protected><TrailerTrackingPage /></Protected>} />
         <Route path="/dashboard/fuel-tolls" element={<Protected><FuelTolls /></Protected>} />
         <Route path="/dashboard/companies" element={<Protected><CompaniesPage /></Protected>} />
         <Route path="/dashboard/settings" element={<Protected><SettingsPage /></Protected>} />
