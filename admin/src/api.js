@@ -1839,3 +1839,39 @@ export async function resolveTrailerUnidentified(id) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+/** Accept the latest detected change for an event (confirm; keep status). */
+export async function acceptTrailerEvent(id, note) {
+  const res = await fetch(`${API_BASE}/trailers/events/${id}/accept`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ note: note || null }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Decline the latest detected change (kept in history; status restored). */
+export async function declineTrailerEvent(id, note) {
+  const res = await fetch(`${API_BASE}/trailers/events/${id}/decline`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ note: note || null }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Recompute a trailer's current status from its non-declined event history. */
+export async function recomputeTrailerStatus(id) {
+  const res = await fetch(`${API_BASE}/trailers/${id}/recompute-status`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Run the admin-triggered, bounded geocode backfill. */
+export async function runTrailerGeocodeBackfill(limit) {
+  const res = await fetch(`${API_BASE}/trailers/geocode-backfill`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ limit: limit || undefined }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
