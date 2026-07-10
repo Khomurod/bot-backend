@@ -27,6 +27,8 @@ function buildApp() {
     listUnidentifiedTrailerEvents: async () => ([{ id: 3, event_type: 'unidentified' }]),
     getTrailerById: async (id) => ({ id: Number(id), unit_number: 'ST508998' }),
     getTrailerCurrentStatus: async () => ({ trailer_id: 1, current_status: 'dropped' }),
+    getTrailerReviewContext: async () => ({ pendingEvent: null, previousEvent: null }),
+    recomputeTrailerCurrentStatus: async () => ({ trailer_id: 1, current_status: 'dropped' }),
     listTrailerTimeline: async () => ([{ id: 9, event_type: 'pickup' }]),
     upsertTrailerByUnitNumber: async (t) => ({ id: 1, ...t }),
   };

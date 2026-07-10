@@ -163,8 +163,14 @@ const { createBotMessagesRouter } = require('./routes/botMessagesRoutes');
 app.use('/api/bot-messages', createBotMessagesRouter({ authMiddleware, telegram: bot.telegram }));
 
 // ─── Trailer Tracking (Beta) ───
-const { createTrailerRoutes } = require('./routes/trailerRoutes');
-app.use(createTrailerRoutes({ authMiddleware, telegram: bot.telegram }));
+// A trailer-router construction failure must never take down the whole API (the
+// feature is Beta and self-contained); log and continue, like the FleetView mount.
+try {
+  const { createTrailerRoutes } = require('./routes/trailerRoutes');
+  app.use(createTrailerRoutes({ authMiddleware, telegram: bot.telegram }));
+} catch (trailerMountError) {
+  console.error('[TRAILER] route mount failed — main app continues without Trailer API:', trailerMountError.message);
+}
 
 // GET /api/groups/:groupId/members — users the bot has seen in a group, for
 // the Driver Groups "Driver Username" dropdown. Only defines /:groupId/members,

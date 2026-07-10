@@ -2312,15 +2312,58 @@ CREATE TABLE IF NOT EXISTS trailer_events (
   reported_to_test_group BOOLEAN NOT NULL DEFAULT FALSE,
   source TEXT NOT NULL DEFAULT 'telegram',   -- 'telegram' | 'admin_manual'
   beta_mode BOOLEAN NOT NULL DEFAULT TRUE,
+  -- Multi-event support: one Telegram message may name several trailers, so the
+  -- dedupe key is (group, message, event_index) rather than (group, message).
+  -- Existing rows default to 0 (they were always the single event per message).
+  event_index INTEGER NOT NULL DEFAULT 0,
+  -- Review workflow (accept / decline / edit). Historical rows are treated as
+  -- already-accepted; only NEW auto-detected pickup/dropoff events start pending.
+  review_status TEXT NOT NULL DEFAULT 'accepted'
+    CHECK (review_status IN ('pending', 'accepted', 'declined', 'edited')),
+  reviewed_by TEXT NULL,
+  reviewed_at TIMESTAMPTZ NULL,
+  review_note TEXT NULL,
+  corrected_by TEXT NULL,
+  corrected_at TIMESTAMPTZ NULL,
+  correction_note TEXT NULL,
+  superseded_by_event_id BIGINT NULL,
+  original_event_snapshot JSONB NULL,
+  -- Location precision provenance: exact | geocoded | approximate_state |
+  -- derived_from_driver | text_only | manual (see services/trailerGeocodeService).
+  location_source TEXT NULL,
+  location_confidence SMALLINT NULL,
+  geocoded_at TIMESTAMPTZ NULL,
+  geocode_error TEXT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_trailer_events_trailer ON trailer_events(trailer_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_trailer_events_type ON trailer_events(event_type, created_at DESC);
--- Dedupe guard: at most one event per (group, message). Partial so admin_manual
--- rows (message_id NULL) are never blocked.
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_trailer_events_tg_message
-  ON trailer_events(telegram_group_id, telegram_message_id)
+-- Additive migration for databases created before the review/multi-event
+-- columns existed (CREATE TABLE IF NOT EXISTS above is a no-op on them). Every
+-- statement is idempotent (ADD COLUMN IF NOT EXISTS) so re-running is safe and
+-- can never fail boot.
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS event_index INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS review_status TEXT NOT NULL DEFAULT 'accepted';
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS reviewed_by TEXT NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS review_note TEXT NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS corrected_by TEXT NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS corrected_at TIMESTAMPTZ NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS correction_note TEXT NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS superseded_by_event_id BIGINT NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS original_event_snapshot JSONB NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS location_source TEXT NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS location_confidence SMALLINT NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS geocoded_at TIMESTAMPTZ NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS geocode_error TEXT NULL;
+-- Dedupe guard (multi-event): at most one event per (group, message, event_index).
+-- Partial so admin_manual rows (message_id NULL) are never blocked.
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_trailer_events_tg_message_event
+  ON trailer_events(telegram_group_id, telegram_message_id, event_index)
   WHERE telegram_group_id IS NOT NULL AND telegram_message_id IS NOT NULL;
+-- Retire the old 2-column dedupe index (superseded by the 3-column one above).
+-- IF EXISTS keeps this safe on both fresh installs and already-migrated DBs.
+DROP INDEX IF EXISTS uniq_trailer_events_tg_message;
 
 -- Fast "where is each trailer now" snapshot, maintained from the latest
 -- pickup/dropoff event. One row per trailer.
@@ -2340,10 +2383,22 @@ CREATE TABLE IF NOT EXISTS trailer_current_status (
   last_event_id BIGINT NULL REFERENCES trailer_events(id) ON DELETE SET NULL,
   last_event_type TEXT NULL,
   last_event_at TIMESTAMPTZ NULL,
+  -- Set when the latest pickup/dropoff event is still pending human review.
+  -- Drives the "• review" badge and the drawer review panel.
+  needs_review BOOLEAN NOT NULL DEFAULT FALSE,
+  pending_event_id BIGINT NULL,
+  -- Precision of current_lat/current_lng (mirrors trailer_events.location_source).
+  location_source TEXT NULL,
+  location_confidence SMALLINT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_trailer_current_status_unit ON trailer_current_status(unit_number);
 CREATE INDEX IF NOT EXISTS idx_trailer_current_status_state ON trailer_current_status(current_status);
+-- Additive migration for pre-review databases (idempotent).
+ALTER TABLE trailer_current_status ADD COLUMN IF NOT EXISTS needs_review BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE trailer_current_status ADD COLUMN IF NOT EXISTS pending_event_id BIGINT NULL;
+ALTER TABLE trailer_current_status ADD COLUMN IF NOT EXISTS location_source TEXT NULL;
+ALTER TABLE trailer_current_status ADD COLUMN IF NOT EXISTS location_confidence SMALLINT NULL;
 
 -- Admin screenshot-import batches (one per uploaded image set).
 CREATE TABLE IF NOT EXISTS trailer_import_batches (

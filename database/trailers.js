@@ -142,7 +142,9 @@ async function listTrailers(filters = {}) {
             cs.current_status, cs.current_driver_group_id, cs.current_driver_name,
             cs.current_location_text, cs.current_lat, cs.current_lng,
             cs.current_condition, cs.last_reporter_name,
-            cs.last_event_type, cs.last_event_at
+            cs.last_event_type, cs.last_event_at,
+            cs.needs_review AS status_needs_review, cs.pending_event_id,
+            cs.location_source AS current_location_source
      FROM trailers t
      LEFT JOIN trailer_current_status cs ON cs.trailer_id = t.id
      ${whereClause}
@@ -155,24 +157,30 @@ async function listTrailers(filters = {}) {
 
 // ─── events ───
 
+const REVIEW_STATES = new Set(['pending', 'accepted', 'declined', 'edited']);
+
 /**
- * Insert a trailer event. Idempotent against duplicate Telegram messages: if a
- * row already exists for (telegram_group_id, telegram_message_id) it is
- * returned unchanged and `duplicate: true` is flagged. Returns { event, duplicate }.
+ * Insert a trailer event. Idempotent against duplicate Telegram messages: the
+ * dedupe key is (telegram_group_id, telegram_message_id, event_index) so ONE
+ * message can register several trailers (event_index 0, 1, 2 …) while a re-send
+ * of the same message+index is still a no-op. Returns { event, duplicate }.
  */
 async function insertTrailerEvent(input = {}) {
   const telegramGroupId = input.telegram_group_id != null ? String(input.telegram_group_id) : null;
   const telegramMessageId = input.telegram_message_id != null ? Number(input.telegram_message_id) : null;
+  const eventIndex = Number.isFinite(Number(input.event_index)) ? Math.max(0, Math.trunc(Number(input.event_index))) : 0;
 
   if (telegramGroupId != null && telegramMessageId != null) {
     const dupe = await query(
       `SELECT * FROM trailer_events
-       WHERE telegram_group_id = $1 AND telegram_message_id = $2
+       WHERE telegram_group_id = $1 AND telegram_message_id = $2 AND event_index = $3
        LIMIT 1`,
-      [telegramGroupId, telegramMessageId]
+      [telegramGroupId, telegramMessageId, eventIndex]
     );
     if (dupe.rows[0]) return { event: dupe.rows[0], duplicate: true };
   }
+
+  const reviewStatus = REVIEW_STATES.has(String(input.review_status)) ? String(input.review_status) : 'accepted';
 
   const res = await query(
     `INSERT INTO trailer_events (
@@ -185,7 +193,8 @@ async function insertTrailerEvent(input = {}) {
        condition_text, event_date_text, event_time,
        telegram_message_id, telegram_media_group_id, evidence,
        raw_message_text, ai_summary, unidentified_reason,
-       reported_to_test_group, source, beta_mode
+       reported_to_test_group, source, beta_mode,
+       event_index, review_status, location_source, location_confidence, geocoded_at, geocode_error
      ) VALUES (
        $1,$2,$3,$4,
        $5,$6,$7,
@@ -196,9 +205,10 @@ async function insertTrailerEvent(input = {}) {
        $18,$19,$20,
        $21,$22,$23,
        $24,$25,$26,
-       $27,$28,$29
+       $27,$28,$29,
+       $30,$31,$32,$33,$34,$35
      )
-     ON CONFLICT (telegram_group_id, telegram_message_id)
+     ON CONFLICT (telegram_group_id, telegram_message_id, event_index)
        WHERE telegram_group_id IS NOT NULL AND telegram_message_id IS NOT NULL
        DO NOTHING
      RETURNING *`,
@@ -232,14 +242,20 @@ async function insertTrailerEvent(input = {}) {
       Boolean(input.reported_to_test_group),
       s(input.source, 40) || 'telegram',
       input.beta_mode == null ? true : Boolean(input.beta_mode),
+      eventIndex,
+      reviewStatus,
+      s(input.location_source, 40),
+      input.location_confidence != null ? Math.max(0, Math.min(100, Math.round(Number(input.location_confidence)))) : null,
+      input.geocoded_at || null,
+      s(input.geocode_error, 300),
     ]
   );
 
   // ON CONFLICT DO NOTHING returns no row on a race — re-read the existing one.
   if (!res.rows[0] && telegramGroupId != null && telegramMessageId != null) {
     const again = await query(
-      `SELECT * FROM trailer_events WHERE telegram_group_id = $1 AND telegram_message_id = $2 LIMIT 1`,
-      [telegramGroupId, telegramMessageId]
+      `SELECT * FROM trailer_events WHERE telegram_group_id = $1 AND telegram_message_id = $2 AND event_index = $3 LIMIT 1`,
+      [telegramGroupId, telegramMessageId, eventIndex]
     );
     if (again.rows[0]) return { event: again.rows[0], duplicate: true };
   }
@@ -251,20 +267,33 @@ async function getTrailerEventById(id) {
   return res.rows[0] || null;
 }
 
+const EVENT_TYPES = new Set(['pickup', 'dropoff', 'mention_only', 'unidentified']);
+
 /**
- * Update a limited set of fields on an event (admin correction). Only provided
- * keys are changed. Returns the updated row.
+ * Edit an event (admin correction). Only provided keys change. Records who
+ * corrected it and when, snapshots the pre-edit row (once) into
+ * original_event_snapshot, and marks review_status='edited' unless the caller
+ * overrides it. Never deletes — full audit trail is preserved.
+ *
+ * Options: { correctedBy, correctionNote, markEdited=true }.
  */
-async function updateTrailerEvent(id, patch = {}) {
+async function updateTrailerEvent(id, patch = {}, { correctedBy = null, correctionNote = null, markEdited = true } = {}) {
+  const existing = await getTrailerEventById(id);
+  if (!existing) return null;
+
   const allowed = {
-    event_type: (v) => String(v),
+    event_type: (v) => (EVENT_TYPES.has(String(v)) ? String(v) : existing.event_type),
     location_text: (v) => s(v, 500),
-    location_lat: (v) => (v == null ? null : Number(v)),
-    location_lng: (v) => (v == null ? null : Number(v)),
+    location_lat: (v) => (v == null || v === '' ? null : Number(v)),
+    location_lng: (v) => (v == null || v === '' ? null : Number(v)),
+    location_source: (v) => s(v, 40),
+    location_missing: (v) => Boolean(v),
     condition_text: (v) => s(v, 500),
     trailer_unit_number: (v) => normalizeUnitNumber(v),
     driver_name: (v) => s(v, 300),
     reported_driver_name_from_message: (v) => s(v, 300),
+    event_date_text: (v) => s(v, 100),
+    event_time: (v) => (v == null || v === '' ? null : v),
     resolved: (v) => Boolean(v),
   };
   const sets = [];
@@ -273,13 +302,61 @@ async function updateTrailerEvent(id, patch = {}) {
   for (const [k, fn] of Object.entries(allowed)) {
     if (patch[k] !== undefined) { sets.push(`${k} = $${i++}`); vals.push(fn(patch[k])); }
   }
-  if (!sets.length) return getTrailerEventById(id);
+  // Editing a location by hand always clears the "missing" flag unless explicit.
+  if (patch.location_text !== undefined && patch.location_missing === undefined) {
+    sets.push(`location_missing = $${i++}`); vals.push(!s(patch.location_text, 500));
+  }
+
+  // Audit: who/when, one-time original snapshot, and (by default) mark edited.
+  if (correctedBy != null) { sets.push(`corrected_by = $${i++}`); vals.push(s(correctedBy, 200)); }
+  if (correctionNote != null) { sets.push(`correction_note = $${i++}`); vals.push(s(correctionNote, 500)); }
+  sets.push('corrected_at = NOW()');
+  if (existing.original_event_snapshot == null) {
+    sets.push(`original_event_snapshot = $${i++}`);
+    vals.push(JSON.stringify(existing));
+  }
+  if (markEdited) { sets.push(`review_status = $${i++}`); vals.push('edited'); }
+
+  if (!sets.length) return existing;
   vals.push(Number(id));
   const res = await query(
     `UPDATE trailer_events SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
     vals
   );
   return res.rows[0] || null;
+}
+
+/**
+ * Accept the latest detected change: confirm the event, clear its review state,
+ * record who/when. Current status is left as detected (recompute keeps it).
+ */
+async function acceptTrailerEvent(id, { reviewedBy = null, reviewNote = null } = {}) {
+  const res = await query(
+    `UPDATE trailer_events
+     SET review_status = 'accepted', reviewed_by = $2, reviewed_at = NOW(), review_note = $3
+     WHERE id = $1 RETURNING *`,
+    [Number(id), s(reviewedBy, 200), s(reviewNote, 500)]
+  );
+  const event = res.rows[0] || null;
+  if (event && event.trailer_id) await recomputeTrailerCurrentStatus(event.trailer_id);
+  return event;
+}
+
+/**
+ * Decline the latest detected change: mark it declined (kept in history) and
+ * record who/when. Current status is recomputed from the latest non-declined
+ * pickup/dropoff, which restores the previous confirmed status.
+ */
+async function declineTrailerEvent(id, { reviewedBy = null, reviewNote = null } = {}) {
+  const res = await query(
+    `UPDATE trailer_events
+     SET review_status = 'declined', reviewed_by = $2, reviewed_at = NOW(), review_note = $3
+     WHERE id = $1 RETURNING *`,
+    [Number(id), s(reviewedBy, 200), s(reviewNote, 500)]
+  );
+  const event = res.rows[0] || null;
+  if (event && event.trailer_id) await recomputeTrailerCurrentStatus(event.trailer_id);
+  return event;
 }
 
 /** Recent events, newest first. Optional filters: event_type, trailer_id. */
@@ -330,28 +407,71 @@ async function resolveTrailerEvent(id) {
   return res.rows[0] || null;
 }
 
+/**
+ * Pickup/dropoff events that have a location_text but no coordinates yet — the
+ * work list for the admin-triggered geocode backfill. Bounded by `limit`.
+ */
+async function listTrailerEventsNeedingGeocode(limit = 25) {
+  const lim = Math.min(200, Math.max(1, Number(limit) || 25));
+  const res = await query(
+    `SELECT * FROM trailer_events
+     WHERE location_text IS NOT NULL
+       AND (location_lat IS NULL OR location_lng IS NULL)
+       AND event_type IN ('pickup', 'dropoff')
+     ORDER BY COALESCE(event_time, created_at) DESC
+     LIMIT ${lim}`
+  );
+  return res.rows;
+}
+
+/** Set only the geocode columns on an event (used by backfill; no review side effects). */
+async function setTrailerEventGeocode(id, { lat, lng, source = null, confidence = null, error = null } = {}) {
+  const res = await query(
+    `UPDATE trailer_events
+     SET location_lat = $2, location_lng = $3, location_source = $4,
+         location_confidence = $5, geocoded_at = NOW(), geocode_error = $6
+     WHERE id = $1 RETURNING *`,
+    [Number(id), lat != null ? Number(lat) : null, lng != null ? Number(lng) : null,
+      s(source, 40), confidence != null ? Number(confidence) : null, s(error, 300)]
+  );
+  return res.rows[0] || null;
+}
+
 // ─── current status (derived) ───
 
 /**
  * Recompute + persist a trailer's current status from an event. Only real
- * pickup/dropoff events move status; mention/unidentified never do. Advances
- * only when the event is newer than the stored last_event_at (out-of-order safe).
+ * pickup/dropoff events move status; mention/unidentified never do.
+ *
+ * Normally advances only when the event is newer than the stored last_event_at
+ * (out-of-order safe). Pass { force:true } to always overwrite — used by
+ * recomputeTrailerCurrentStatus after a decline restores an OLDER event.
+ *
+ * needs_review / pending_event_id reflect whether the driving event is still
+ * pending human review (drives the admin "• review" badge).
  */
-async function applyEventToCurrentStatus(trailer, event) {
+async function applyEventToCurrentStatus(trailer, event, { force = false } = {}) {
   if (!trailer || !event) return null;
   if (event.event_type !== 'pickup' && event.event_type !== 'dropoff') return null;
 
   const eventAt = event.event_time || event.created_at || new Date().toISOString();
   const currentStatus = event.event_type === 'pickup' ? 'with_driver' : 'dropped';
+  const isPending = event.review_status === 'pending';
+
+  const guard = force
+    ? ''
+    : `WHERE trailer_current_status.last_event_at IS NULL
+          OR trailer_current_status.last_event_at <= EXCLUDED.last_event_at`;
 
   const res = await query(
     `INSERT INTO trailer_current_status (
        trailer_id, unit_number, current_status,
        current_driver_group_id, current_driver_profile_id, current_driver_name,
        current_location_text, current_lat, current_lng, current_condition,
-       last_reporter_name, last_event_id, last_event_type, last_event_at, updated_at
+       last_reporter_name, last_event_id, last_event_type, last_event_at,
+       needs_review, pending_event_id, location_source, location_confidence, updated_at
      ) VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, NOW()
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18, NOW()
      )
      ON CONFLICT (trailer_id) DO UPDATE SET
        current_status = EXCLUDED.current_status,
@@ -366,9 +486,12 @@ async function applyEventToCurrentStatus(trailer, event) {
        last_event_id = EXCLUDED.last_event_id,
        last_event_type = EXCLUDED.last_event_type,
        last_event_at = EXCLUDED.last_event_at,
+       needs_review = EXCLUDED.needs_review,
+       pending_event_id = EXCLUDED.pending_event_id,
+       location_source = EXCLUDED.location_source,
+       location_confidence = EXCLUDED.location_confidence,
        updated_at = NOW()
-     WHERE trailer_current_status.last_event_at IS NULL
-        OR trailer_current_status.last_event_at <= EXCLUDED.last_event_at
+     ${guard}
      RETURNING *`,
     [
       Number(trailer.id),
@@ -385,9 +508,78 @@ async function applyEventToCurrentStatus(trailer, event) {
       Number(event.id),
       event.event_type,
       eventAt,
+      isPending,
+      isPending ? Number(event.id) : null,
+      s(event.location_source, 40),
+      event.location_confidence != null ? Number(event.location_confidence) : null,
     ]
   );
   return res.rows[0] || null;
+}
+
+/**
+ * Rebuild a trailer's current status from its event history, EXCLUDING declined
+ * events. The latest non-declined pickup/dropoff drives the status; if none
+ * remains the status resets to 'unknown'. Called after accept/decline/edit.
+ */
+async function recomputeTrailerCurrentStatus(trailerId) {
+  const id = Number(trailerId);
+  const res = await query(
+    `SELECT * FROM trailer_events
+     WHERE trailer_id = $1
+       AND event_type IN ('pickup', 'dropoff')
+       AND review_status <> 'declined'
+     ORDER BY COALESCE(event_time, created_at) DESC, id DESC
+     LIMIT 1`,
+    [id]
+  );
+  const event = res.rows[0] || null;
+  if (!event) {
+    // No confirmed pickup/dropoff remains — reset to a clean 'unknown' snapshot.
+    const reset = await query(
+      `UPDATE trailer_current_status SET
+         current_status = 'unknown',
+         current_driver_group_id = NULL, current_driver_profile_id = NULL, current_driver_name = NULL,
+         current_location_text = NULL, current_lat = NULL, current_lng = NULL, current_condition = NULL,
+         last_reporter_name = NULL, last_event_id = NULL, last_event_type = NULL, last_event_at = NULL,
+         needs_review = FALSE, pending_event_id = NULL, location_source = NULL, location_confidence = NULL,
+         updated_at = NOW()
+       WHERE trailer_id = $1 RETURNING *`,
+      [id]
+    );
+    return reset.rows[0] || null;
+  }
+  const trailer = await getTrailerById(id);
+  if (!trailer) return null;
+  return applyEventToCurrentStatus(trailer, event, { force: true });
+}
+
+/**
+ * The latest pickup/dropoff event for a trailer that is still PENDING review,
+ * plus the previous confirmed (accepted/edited, non-declined) status event — so
+ * the drawer can show "current detected change" vs "previous confirmed status".
+ */
+async function getTrailerReviewContext(trailerId) {
+  const id = Number(trailerId);
+  const pendingRes = await query(
+    `SELECT * FROM trailer_events
+     WHERE trailer_id = $1 AND event_type IN ('pickup','dropoff') AND review_status = 'pending'
+     ORDER BY COALESCE(event_time, created_at) DESC, id DESC LIMIT 1`,
+    [id]
+  );
+  const pending = pendingRes.rows[0] || null;
+  let previous = null;
+  if (pending) {
+    const prevRes = await query(
+      `SELECT * FROM trailer_events
+       WHERE trailer_id = $1 AND event_type IN ('pickup','dropoff')
+         AND review_status <> 'declined' AND id <> $2
+       ORDER BY COALESCE(event_time, created_at) DESC, id DESC LIMIT 1`,
+      [id, Number(pending.id)]
+    );
+    previous = prevRes.rows[0] || null;
+  }
+  return { pendingEvent: pending, previousEvent: previous };
 }
 
 /** Current status for one trailer. */
@@ -407,7 +599,9 @@ async function listTrailerMapData() {
             cs.current_driver_name, cs.current_driver_group_id,
             cs.current_location_text, cs.current_lat, cs.current_lng,
             cs.current_condition, cs.last_reporter_name,
-            cs.last_event_type, cs.last_event_at
+            cs.last_event_type, cs.last_event_at,
+            COALESCE(cs.needs_review, FALSE) AS status_needs_review,
+            cs.location_source, cs.location_confidence
      FROM trailers t
      LEFT JOIN trailer_current_status cs ON cs.trailer_id = t.id
      WHERE t.active = TRUE
@@ -526,12 +720,18 @@ module.exports = {
   insertTrailerEvent,
   getTrailerEventById,
   updateTrailerEvent,
+  acceptTrailerEvent,
+  declineTrailerEvent,
   listTrailerEvents,
   listTrailerTimeline,
   listUnidentifiedTrailerEvents,
   resolveTrailerEvent,
+  listTrailerEventsNeedingGeocode,
+  setTrailerEventGeocode,
   // current status
   applyEventToCurrentStatus,
+  recomputeTrailerCurrentStatus,
+  getTrailerReviewContext,
   getTrailerCurrentStatus,
   listTrailerMapData,
   // import

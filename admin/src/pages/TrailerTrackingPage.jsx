@@ -1,14 +1,14 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import React, { useEffect, useState, useCallback } from "react";
 import * as api from "../api";
 
+// NOTE: the standalone trailer map tab was removed in the follow-up. Trailers now
+// render inside the shared "📍 Live Locations" section. This page is for the
+// list, import, events, unidentified review, edit, and settings only — no map.
 const TABS = [
   { key: "list", label: "Trailer List" },
   { key: "import", label: "Upload / Import" },
   { key: "events", label: "Events History" },
   { key: "unidentified", label: "Unidentified" },
-  { key: "map", label: "Map / Locations" },
   { key: "settings", label: "Settings" },
 ];
 
@@ -22,6 +22,7 @@ const STATUS_COLOR = {
   dropped: "#f59e0b",
   unknown: "#94a3b8",
 };
+const EVENT_TYPES = ["pickup", "dropoff", "mention_only", "unidentified"];
 
 function fmtTime(iso) {
   if (!iso) return "—";
@@ -40,8 +41,19 @@ function StatusBadge({ status, needsReview }) {
   );
 }
 
+function ReviewPill() {
+  return (
+    <span style={{
+      display: "inline-block", marginLeft: 6, padding: "1px 7px", borderRadius: 10, fontSize: 11,
+      background: "#ef444422", color: "#ef4444", fontWeight: 700, border: "1px solid #ef444455",
+    }}>
+      Review change
+    </span>
+  );
+}
+
 // ─── Trailer List tab ───
-function TrailerListTab({ onOpen, flash }) {
+function TrailerListTab({ onOpen, flash, reloadKey }) {
   const [trailers, setTrailers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ q: "", status: "", needs_review: false });
@@ -62,7 +74,7 @@ function TrailerListTab({ onOpen, flash }) {
     }
   }, [filters, flash]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, reloadKey]);
 
   return (
     <div>
@@ -99,22 +111,28 @@ function TrailerListTab({ onOpen, flash }) {
               {trailers.length === 0 && (
                 <tr><td colSpan={12} style={{ textAlign: "center", color: "#94a3b8" }}>No trailers yet.</td></tr>
               )}
-              {trailers.map((t) => (
-                <tr key={t.id} style={{ cursor: "pointer" }} onClick={() => onOpen(t.id)}>
-                  <td><strong>{t.unit_number}</strong></td>
-                  <td><StatusBadge status={t.current_status} needsReview={t.needs_review} /></td>
-                  <td>{t.current_driver_name || "—"}</td>
-                  <td>{t.current_location_text || "—"}</td>
-                  <td>{t.current_condition || "—"}</td>
-                  <td>{t.last_event_type || "—"}</td>
-                  <td>{t.plate_number || "—"}</td>
-                  <td>{t.vin || "—"}</td>
-                  <td>{t.type || "—"}</td>
-                  <td>{t.ownership_status || "—"}</td>
-                  <td>{t.last_reporter_name || "—"}</td>
-                  <td>{fmtTime(t.last_event_at)}</td>
-                </tr>
-              ))}
+              {trailers.map((t) => {
+                const needsReview = !!(t.status_needs_review || t.needs_review);
+                return (
+                  <tr key={t.id} style={{ cursor: "pointer" }} onClick={() => onOpen(t.id)}>
+                    <td><strong>{t.unit_number}</strong></td>
+                    <td>
+                      <StatusBadge status={t.current_status} needsReview={needsReview} />
+                      {t.status_needs_review ? <ReviewPill /> : null}
+                    </td>
+                    <td>{t.current_driver_name || "—"}</td>
+                    <td>{t.current_location_text || "—"}</td>
+                    <td>{t.current_condition || "—"}</td>
+                    <td>{t.last_event_type || "—"}</td>
+                    <td>{t.plate_number || "—"}</td>
+                    <td>{t.vin || "—"}</td>
+                    <td>{t.type || "—"}</td>
+                    <td>{t.ownership_status || "—"}</td>
+                    <td>{t.last_reporter_name || "—"}</td>
+                    <td>{fmtTime(t.last_event_at)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -171,7 +189,7 @@ function ImportTab({ flash }) {
     <div>
       <div className="card" style={{ padding: 16, marginBottom: 16 }}>
         <h3>Upload trailer list screenshot</h3>
-        <p style={{ color: "#94a3b8" }}>PNG / JPG / WebP, up to 10 MB each. AI reads each row; review before importing. Blank fields never overwrite existing trailer data.</p>
+        <p style={{ color: "#94a3b8" }}>PNG / JPG / WebP, up to 10 MB each, max 4 images and 35 MB per batch. AI reads each row; review before importing. Blank fields never overwrite existing trailer data.</p>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <input type="file" accept="image/png,image/jpeg,image/webp" multiple
             onChange={(e) => setFiles(Array.from(e.target.files || []))} />
@@ -231,7 +249,7 @@ function ImportTab({ flash }) {
 }
 
 // ─── Events tab ───
-function EventsTab({ flash }) {
+function EventsTab({ flash, onOpen }) {
   const [events, setEvents] = useState([]);
   const [type, setType] = useState("");
   const [loading, setLoading] = useState(true);
@@ -259,13 +277,14 @@ function EventsTab({ flash }) {
       {loading ? <p>Loading…</p> : (
         <div style={{ overflowX: "auto" }}>
           <table className="data-table">
-            <thead><tr><th>When</th><th>Type</th><th>Unit</th><th>Group</th><th>Driver</th><th>Location</th><th>Condition</th><th>Reporter</th><th>Conf</th></tr></thead>
+            <thead><tr><th>When</th><th>Type</th><th>Review</th><th>Unit</th><th>Group</th><th>Driver</th><th>Location</th><th>Condition</th><th>Reporter</th><th>Conf</th><th></th></tr></thead>
             <tbody>
-              {events.length === 0 && <tr><td colSpan={9} style={{ color: "#94a3b8" }}>No events.</td></tr>}
+              {events.length === 0 && <tr><td colSpan={11} style={{ color: "#94a3b8" }}>No events.</td></tr>}
               {events.map((e) => (
                 <tr key={e.id}>
                   <td>{fmtTime(e.event_time || e.created_at)}</td>
                   <td>{e.event_type}</td>
+                  <td>{e.review_status || "—"}</td>
                   <td><strong>{e.trailer_unit_number || "—"}</strong></td>
                   <td>{e.telegram_group_name || "—"}</td>
                   <td>{e.driver_name || "—"}</td>
@@ -273,6 +292,7 @@ function EventsTab({ flash }) {
                   <td>{e.condition_text || "—"}</td>
                   <td>{e.reported_by_name || e.reported_by_username || "—"}</td>
                   <td>{e.confidence != null ? `${e.confidence}%` : "—"}</td>
+                  <td>{e.trailer_id ? <button className="btn" onClick={() => onOpen(e.trailer_id)}>Open</button> : null}</td>
                 </tr>
               ))}
             </tbody>
@@ -329,87 +349,12 @@ function UnidentifiedTab({ flash }) {
   );
 }
 
-// ─── Map tab ───
-function MapTab({ flash }) {
-  const [data, setData] = useState([]);
-  const [showTrailers, setShowTrailers] = useState(true);
-  const mapContainerRef = useRef(null);
-  const mapRef = useRef(null);
-  const layerRef = useRef(null);
-
-  const load = useCallback(async () => {
-    try { const d = await api.getTrailerMapData(); setData(d.trailers || []); }
-    catch (err) { flash("error", err.message); }
-  }, [flash]);
-  useEffect(() => { load(); }, [load]);
-
-  useEffect(() => {
-    if (mapRef.current || !mapContainerRef.current) return;
-    const map = L.map(mapContainerRef.current, { zoomControl: true }).setView([39.5, -98.35], 4);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap", maxZoom: 19,
-    }).addTo(map);
-    layerRef.current = L.layerGroup().addTo(map);
-    mapRef.current = map;
-    setTimeout(() => map.invalidateSize(), 200);
-    return () => { map.remove(); mapRef.current = null; };
-  }, []);
-
-  useEffect(() => {
-    const layer = layerRef.current;
-    if (!layer) return;
-    layer.clearLayers();
-    if (!showTrailers) return;
-    const pts = data.filter((t) => t.current_lat != null && t.current_lng != null);
-    for (const t of pts) {
-      const color = STATUS_COLOR[t.current_status] || STATUS_COLOR.unknown;
-      const icon = L.divIcon({
-        className: "trailer-marker",
-        html: `<div style="width:16px;height:16px;border-radius:3px;background:${color};border:2px solid #fff;box-shadow:0 0 3px rgba(0,0,0,.6)"></div>`,
-        iconSize: [16, 16], iconAnchor: [8, 8],
-      });
-      L.marker([t.current_lat, t.current_lng], { icon })
-        .bindPopup(
-          `<b>${t.unit_number}</b><br/>Status: ${STATUS_LABEL[t.current_status] || t.current_status}<br/>`
-          + `Driver: ${t.current_driver_name || "—"}<br/>Location: ${t.current_location_text || "—"}<br/>`
-          + `Condition: ${t.current_condition || "—"}<br/>Reporter: ${t.last_reporter_name || "—"}<br/>`
-          + `Last event: ${fmtTime(t.last_event_at)}`
-        )
-        .addTo(layer);
-    }
-  }, [data, showTrailers]);
-
-  const textOnly = data.filter((t) => (t.current_lat == null || t.current_lng == null) && t.current_location_text);
-
-  return (
-    <div>
-      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <input type="checkbox" checked={showTrailers} onChange={(e) => setShowTrailers(e.target.checked)} />
-          Show trailers
-        </label>
-        <button className="btn" onClick={load}>Refresh</button>
-      </div>
-      <div ref={mapContainerRef} style={{ height: 420, borderRadius: 8, overflow: "hidden", border: "1px solid #33415522" }} />
-      {textOnly.length > 0 && (
-        <div className="card" style={{ padding: 12, marginTop: 12 }}>
-          <h4>Text-only locations (not mappable)</h4>
-          <ul>
-            {textOnly.map((t) => (
-              <li key={t.trailer_id}><strong>{t.unit_number}</strong> — {t.current_location_text} ({STATUS_LABEL[t.current_status] || t.current_status})</li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Settings tab ───
 function SettingsTab({ flash }) {
   const [settings, setSettings] = useState(null);
   const [effectiveTestGroup, setEffectiveTestGroup] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -425,6 +370,16 @@ function SettingsTab({ flash }) {
     try { const d = await api.updateTrailerSettings(settings); setSettings(d.settings); flash("success", "Settings saved."); }
     catch (err) { flash("error", err.message); }
     finally { setBusy(false); }
+  };
+
+  const backfill = async () => {
+    setBackfilling(true);
+    try {
+      const d = await api.runTrailerGeocodeBackfill();
+      const s = d.summary || {};
+      flash("success", `Geocoded ${s.geocoded || 0}, approximate ${s.approximate || 0}, failed ${s.failed || 0}. ${s.remaining || 0} still pending.`);
+    } catch (err) { flash("error", err.message); }
+    finally { setBackfilling(false); }
   };
 
   if (!settings) return <p>Loading…</p>;
@@ -454,67 +409,296 @@ function SettingsTab({ flash }) {
           onChange={(e) => setSettings((s) => ({ ...s, automatic_update_test_group_id: e.target.value }))} />
         <small style={{ color: "#94a3b8" }}>Blank = use configured default ({effectiveTestGroup || "none"}).</small>
       </div>
-      <div style={{ marginTop: 12 }}>
+      <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button className="btn btn-primary" onClick={save} disabled={busy}>Save settings</button>
+        <button className="btn" onClick={backfill} disabled={backfilling} title="Geocode a bounded batch of events missing coordinates">
+          {backfilling ? "Geocoding…" : "Geocode missing locations"}
+        </button>
+      </div>
+      <p style={{ color: "#94a3b8", fontSize: 12, marginTop: 8 }}>
+        Backfill geocodes a small, bounded batch per click (never on boot) and updates the map for the shared 📍 Live Locations view.
+      </p>
+    </div>
+  );
+}
+
+// ─── Event edit form (used inside the drawer) ───
+function EventEditForm({ event, flash, onSaved, onCancel }) {
+  const [form, setForm] = useState({
+    event_type: event.event_type || "pickup",
+    trailer_unit_number: event.trailer_unit_number || "",
+    location_text: event.location_text || "",
+    location_lat: event.location_lat ?? "",
+    location_lng: event.location_lng ?? "",
+    condition_text: event.condition_text || "",
+    driver_name: event.driver_name || "",
+    reported_driver_name_from_message: event.reported_driver_name_from_message || "",
+    event_time: event.event_time ? new Date(event.event_time).toISOString().slice(0, 16) : "",
+    note: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const patch = {
+        event_type: form.event_type,
+        trailer_unit_number: form.trailer_unit_number || undefined,
+        location_text: form.location_text,
+        condition_text: form.condition_text,
+        driver_name: form.driver_name,
+        reported_driver_name_from_message: form.reported_driver_name_from_message,
+        note: form.note || undefined,
+      };
+      if (form.location_lat !== "" && form.location_lng !== "") {
+        patch.location_lat = Number(form.location_lat);
+        patch.location_lng = Number(form.location_lng);
+      }
+      if (form.event_time) patch.event_time = new Date(form.event_time).toISOString();
+      await api.correctTrailerEvent(event.id, patch);
+      flash("success", "Change saved and status recomputed.");
+      onSaved();
+    } catch (err) { flash("error", err.message); }
+    finally { setBusy(false); }
+  };
+
+  const field = (label, k, props = {}) => (
+    <label style={{ display: "block", marginBottom: 8 }}>
+      <span style={{ display: "block", fontSize: 12, color: "#94a3b8" }}>{label}</span>
+      <input className="form-input" value={form[k]} onChange={(e) => set(k, e.target.value)} {...props} />
+    </label>
+  );
+
+  return (
+    <div className="card" style={{ padding: 14, marginBottom: 12, border: "1px solid #6366f155" }}>
+      <h4 style={{ marginTop: 0 }}>Edit change</h4>
+      <label style={{ display: "block", marginBottom: 8 }}>
+        <span style={{ display: "block", fontSize: 12, color: "#94a3b8" }}>Event type</span>
+        <select className="form-input" value={form.event_type} onChange={(e) => set("event_type", e.target.value)}>
+          {EVENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </label>
+      {field("Trailer unit", "trailer_unit_number")}
+      {field("Location text", "location_text")}
+      <div style={{ display: "flex", gap: 8 }}>
+        {field("Lat", "location_lat", { type: "number", step: "any" })}
+        {field("Lng", "location_lng", { type: "number", step: "any" })}
+      </div>
+      {field("Condition", "condition_text")}
+      {field("Driver name", "driver_name")}
+      {field("Reported driver name", "reported_driver_name_from_message")}
+      {field("Event date/time", "event_time", { type: "datetime-local" })}
+      {field("Note", "note")}
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>Save change</button>
+        <button className="btn" onClick={onCancel} disabled={busy}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Trailer detail edit form ───
+function TrailerEditForm({ trailer, flash, onSaved, onCancel }) {
+  const [form, setForm] = useState({
+    make: trailer.make || "", model: trailer.model || "", mc_number: trailer.mc_number || "",
+    plate_number: trailer.plate_number || "", type: trailer.type || "", vin: trailer.vin || "",
+    year: trailer.year || "", ownership_status: trailer.ownership_status || "",
+    active: trailer.active !== false, needs_review: !!trailer.needs_review,
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const save = async () => {
+    // Light validation (soft): warn but do not hard-block.
+    if (form.vin && !/^[A-Za-z0-9]{6,17}$/.test(form.vin.trim())) {
+      flash("error", "VIN looks invalid (expect 6–17 letters/digits)."); return;
+    }
+    if (form.year && !/^\d{4}$/.test(String(form.year).trim())) {
+      flash("error", "Year should be 4 digits."); return;
+    }
+    setBusy(true);
+    try {
+      // Only send fields that have a value (blank text never clobbers existing
+      // data server-side); booleans are always sent so they can be toggled.
+      const patch = { active: form.active, needs_review: form.needs_review };
+      for (const k of ["make", "model", "mc_number", "plate_number", "type", "vin", "year", "ownership_status"]) {
+        if (String(form[k]).trim() !== "") patch[k] = form[k];
+      }
+      await api.updateTrailer(trailer.id, patch);
+      flash("success", "Trailer details saved.");
+      onSaved();
+    } catch (err) { flash("error", err.message); }
+    finally { setBusy(false); }
+  };
+
+  const field = (label, k, props = {}) => (
+    <label style={{ display: "block", marginBottom: 8 }}>
+      <span style={{ display: "block", fontSize: 12, color: "#94a3b8" }}>{label}</span>
+      <input className="form-input" value={form[k]} onChange={(e) => set(k, e.target.value)} {...props} />
+    </label>
+  );
+
+  return (
+    <div className="card" style={{ padding: 14, marginBottom: 12, border: "1px solid #6366f155" }}>
+      <h4 style={{ marginTop: 0 }}>Edit trailer details</h4>
+      <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8 }}>
+        Unit <strong>{trailer.unit_number}</strong> (the unit number is the stable key and is not editable here). Blank fields are left unchanged.
+      </div>
+      {field("Make", "make")}
+      {field("Model", "model")}
+      {field("MC number", "mc_number")}
+      {field("Plate number", "plate_number")}
+      {field("Type", "type")}
+      {field("VIN", "vin")}
+      {field("Year", "year")}
+      {field("Ownership status", "ownership_status")}
+      <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+        <input type="checkbox" checked={form.active} onChange={(e) => set("active", e.target.checked)} /> Active
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+        <input type="checkbox" checked={form.needs_review} onChange={(e) => set("needs_review", e.target.checked)} /> Needs review (data quality)
+      </label>
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>Save details</button>
+        <button className="btn" onClick={onCancel} disabled={busy}>Cancel</button>
       </div>
     </div>
   );
 }
 
 // ─── Trailer detail drawer ───
-function TrailerDrawer({ id, onClose, flash }) {
-  const [trailer, setTrailer] = useState(null);
-  const [status, setStatus] = useState(null);
+function TrailerDrawer({ id, onClose, flash, onChanged }) {
+  const [data, setData] = useState(null); // { trailer, status, review }
   const [timeline, setTimeline] = useState([]);
+  const [editingTrailer, setEditingTrailer] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null); // event object being edited
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const d = await api.getTrailer(id);
-        setTrailer(d.trailer); setStatus(d.status);
-        const t = await api.getTrailerTimeline(id);
-        setTimeline(t.events || []);
-      } catch (err) { flash("error", err.message); }
-    })();
+  const load = useCallback(async () => {
+    try {
+      const d = await api.getTrailer(id);
+      setData({ trailer: d.trailer, status: d.status, review: d.review || {} });
+      const t = await api.getTrailerTimeline(id);
+      setTimeline(t.events || []);
+    } catch (err) { flash("error", err.message); }
   }, [id, flash]);
 
-  if (!trailer) return null;
+  useEffect(() => { load(); }, [load]);
+
+  const afterChange = useCallback(async () => {
+    setEditingTrailer(false);
+    setEditingEvent(null);
+    await load();
+    if (onChanged) onChanged();
+  }, [load, onChanged]);
+
+  const accept = async (eventId) => {
+    setBusy(true);
+    try { await api.acceptTrailerEvent(eventId); flash("success", "Change accepted."); await afterChange(); }
+    catch (err) { flash("error", err.message); }
+    finally { setBusy(false); }
+  };
+  const decline = async (eventId) => {
+    setBusy(true);
+    try { await api.declineTrailerEvent(eventId); flash("success", "Change declined; previous status restored."); await afterChange(); }
+    catch (err) { flash("error", err.message); }
+    finally { setBusy(false); }
+  };
+
+  if (!data) return null;
+  const { trailer, status, review } = data;
+  const pending = review && review.pendingEvent;
+  const previous = review && review.previousEvent;
+
   return (
-    <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(560px, 100%)", background: "var(--bg, #0f172a)", boxShadow: "-4px 0 20px rgba(0,0,0,.4)", zIndex: 1000, overflowY: "auto", padding: 20 }}>
+    <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(600px, 100%)", background: "var(--bg, #0f172a)", boxShadow: "-4px 0 20px rgba(0,0,0,.4)", zIndex: 1000, overflowY: "auto", padding: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2>Trailer {trailer.unit_number}</h2>
+        <h2 style={{ margin: 0 }}>Trailer {trailer.unit_number}</h2>
         <button className="btn" onClick={onClose}>Close</button>
       </div>
-      <div style={{ marginBottom: 8 }}>
-        <StatusBadge status={status?.current_status} needsReview={trailer.needs_review} />
+      <div style={{ margin: "8px 0" }}>
+        <StatusBadge status={status?.current_status} needsReview={!!(status?.needs_review || trailer.needs_review)} />
       </div>
-      <table className="data-table" style={{ marginBottom: 16 }}>
-        <tbody>
-          <tr><td>Make</td><td>{trailer.make || "—"}</td></tr>
-          <tr><td>Model</td><td>{trailer.model || "—"}</td></tr>
-          <tr><td>Plate</td><td>{trailer.plate_number || "—"}</td></tr>
-          <tr><td>VIN</td><td>{trailer.vin || "—"}</td></tr>
-          <tr><td>Type</td><td>{trailer.type || "—"}</td></tr>
-          <tr><td>Year</td><td>{trailer.year || "—"}</td></tr>
-          <tr><td>Ownership</td><td>{trailer.ownership_status || "—"}</td></tr>
-          <tr><td>Current driver</td><td>{status?.current_driver_name || "—"}</td></tr>
-          <tr><td>Current location</td><td>{status?.current_location_text || "—"}</td></tr>
-          <tr><td>Last reporter</td><td>{status?.last_reporter_name || "—"}</td></tr>
-        </tbody>
-      </table>
+
+      {/* ── Review panel: latest detected change awaiting a decision ── */}
+      {pending && !editingEvent && (
+        <div className="card" style={{ padding: 14, marginBottom: 12, border: "1px solid #ef444455", background: "#ef44440d" }}>
+          <h4 style={{ marginTop: 0, color: "#ef4444" }}>Detected change needs review</h4>
+          <div style={{ fontSize: 14, marginBottom: 6 }}>
+            <div><strong>Detected:</strong> {pending.event_type} · {pending.location_text || "(no location)"} · {pending.condition_text || "—"}</div>
+            <div style={{ color: "#94a3b8", fontSize: 12 }}>
+              Reported by {pending.reported_by_name || pending.reported_by_username || "—"} · {fmtTime(pending.event_time || pending.created_at)}
+            </div>
+            <div style={{ marginTop: 6 }}>
+              <span style={{ color: "#94a3b8" }}>Current confirmed status: </span>
+              <StatusBadge status={status?.current_status} />
+            </div>
+            {previous && (
+              <div style={{ marginTop: 4, fontSize: 12, color: "#94a3b8" }}>
+                Previous confirmed: {previous.event_type} · {previous.location_text || "—"} · {fmtTime(previous.event_time || previous.created_at)}
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn btn-primary" onClick={() => accept(pending.id)} disabled={busy}>Accept</button>
+            <button className="btn" style={{ borderColor: "#ef4444", color: "#ef4444" }} onClick={() => decline(pending.id)} disabled={busy}>Decline the change</button>
+            <button className="btn" onClick={() => setEditingEvent(pending)} disabled={busy}>Edit the change</button>
+          </div>
+        </div>
+      )}
+
+      {editingEvent && (
+        <EventEditForm event={editingEvent} flash={flash} onSaved={afterChange} onCancel={() => setEditingEvent(null)} />
+      )}
+
+      {/* ── Trailer details (view / edit) ── */}
+      {editingTrailer ? (
+        <TrailerEditForm trailer={trailer} flash={flash} onSaved={afterChange} onCancel={() => setEditingTrailer(false)} />
+      ) : (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3 style={{ margin: "8px 0" }}>Details</h3>
+            <button className="btn" onClick={() => setEditingTrailer(true)}>Edit details</button>
+          </div>
+          <table className="data-table" style={{ marginBottom: 16 }}>
+            <tbody>
+              <tr><td>Make</td><td>{trailer.make || "—"}</td></tr>
+              <tr><td>Model</td><td>{trailer.model || "—"}</td></tr>
+              <tr><td>MC #</td><td>{trailer.mc_number || "—"}</td></tr>
+              <tr><td>Plate</td><td>{trailer.plate_number || "—"}</td></tr>
+              <tr><td>VIN</td><td>{trailer.vin || "—"}</td></tr>
+              <tr><td>Type</td><td>{trailer.type || "—"}</td></tr>
+              <tr><td>Year</td><td>{trailer.year || "—"}</td></tr>
+              <tr><td>Ownership</td><td>{trailer.ownership_status || "—"}</td></tr>
+              <tr><td>Active</td><td>{trailer.active === false ? "No" : "Yes"}</td></tr>
+              <tr><td>Current driver</td><td>{status?.current_driver_name || "—"}</td></tr>
+              <tr><td>Current location</td><td>{status?.current_location_text || "—"}{status?.location_source ? ` (${status.location_source})` : ""}</td></tr>
+              <tr><td>Last reporter</td><td>{status?.last_reporter_name || "—"}</td></tr>
+            </tbody>
+          </table>
+        </>
+      )}
+
       <h3>Event timeline</h3>
       <div style={{ overflowX: "auto" }}>
         <table className="data-table">
-          <thead><tr><th>When</th><th>Type</th><th>Location</th><th>Condition</th><th>Reporter</th></tr></thead>
+          <thead><tr><th>When</th><th>Type</th><th>Review</th><th>Location</th><th>Condition</th><th>Reporter</th><th></th></tr></thead>
           <tbody>
-            {timeline.length === 0 && <tr><td colSpan={5} style={{ color: "#94a3b8" }}>No events.</td></tr>}
+            {timeline.length === 0 && <tr><td colSpan={7} style={{ color: "#94a3b8" }}>No events.</td></tr>}
             {timeline.map((e) => (
-              <tr key={e.id}>
+              <tr key={e.id} style={e.review_status === "declined" ? { opacity: 0.55 } : undefined}>
                 <td>{fmtTime(e.event_time || e.created_at)}</td>
                 <td>{e.event_type}</td>
+                <td>{e.review_status || "—"}</td>
                 <td>{e.location_text || "—"}</td>
                 <td>{e.condition_text || "—"}</td>
                 <td>{e.reported_by_name || e.reported_by_username || "—"}</td>
+                <td>
+                  {(e.event_type === "pickup" || e.event_type === "dropoff") && (
+                    <button className="btn" onClick={() => setEditingEvent(e)}>Edit</button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -528,11 +712,14 @@ export default function TrailerTrackingPage() {
   const [tab, setTab] = useState("list");
   const [openId, setOpenId] = useState(null);
   const [toast, setToast] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const flash = useCallback((type, message) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 4000);
   }, []);
+
+  const bumpReload = useCallback(() => setReloadKey((k) => k + 1), []);
 
   return (
     <div>
@@ -556,14 +743,13 @@ export default function TrailerTrackingPage() {
         ))}
       </div>
 
-      {tab === "list" && <TrailerListTab onOpen={setOpenId} flash={flash} />}
+      {tab === "list" && <TrailerListTab onOpen={setOpenId} flash={flash} reloadKey={reloadKey} />}
       {tab === "import" && <ImportTab flash={flash} />}
-      {tab === "events" && <EventsTab flash={flash} />}
+      {tab === "events" && <EventsTab flash={flash} onOpen={setOpenId} />}
       {tab === "unidentified" && <UnidentifiedTab flash={flash} />}
-      {tab === "map" && <MapTab flash={flash} />}
       {tab === "settings" && <SettingsTab flash={flash} />}
 
-      {openId && <TrailerDrawer id={openId} onClose={() => setOpenId(null)} flash={flash} />}
+      {openId && <TrailerDrawer id={openId} onClose={() => setOpenId(null)} flash={flash} onChanged={bumpReload} />}
     </div>
   );
 }
