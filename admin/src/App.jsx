@@ -27,6 +27,7 @@ const RecruiterKpiPage = lazy(() => import("./pages/RecruiterKpiPage"));
 const RecruitersPublicPage = lazy(() => import("./pages/RecruitersPublicPage"));
 const LiveLocationsPage = lazy(() => import("./pages/LiveLocationsPage"));
 const RouteControlPage = lazy(() => import("./pages/RouteControlPage"));
+const TrailerTrackingPage = lazy(() => import("./pages/TrailerTrackingPage"));
 
 const pageLoadingFallback = (
   <div className="loading">
@@ -213,6 +214,7 @@ export default function App() {
     recruiter_kpis: <RecruiterKpiPage />,
     live_locations: <LiveLocationsPage />,
     route_control: <RouteControlPage />,
+    trailer_tracking: <TrailerTrackingPage />,
   };
 
   const NAV_SECTIONS = [
@@ -223,6 +225,7 @@ export default function App() {
         { key: 'dispatch', icon: '🚚', label: 'Dispatch Center' },
         { key: 'live_locations', icon: '📍', label: 'Live Locations' },
         { key: 'route_control', icon: '🧭', label: 'Route Control' },
+        { key: 'trailer_tracking', icon: '🚚', label: 'Trailer Tracking' },
         { key: 'leads', icon: '📥', label: 'Leads' },
         { key: 'facebook_leads', icon: '👥', label: 'Customer Inquiries' },
         { key: 'recruiter_kpis', icon: '📞', label: 'Recruiter KPIs' },

@@ -162,6 +162,10 @@ app.use('/api/recruiters', createRecruiterRouter({ authMiddleware }));
 const { createBotMessagesRouter } = require('./routes/botMessagesRoutes');
 app.use('/api/bot-messages', createBotMessagesRouter({ authMiddleware, telegram: bot.telegram }));
 
+// ─── Trailer Tracking (Beta) ───
+const { createTrailerRoutes } = require('./routes/trailerRoutes');
+app.use(createTrailerRoutes({ authMiddleware, telegram: bot.telegram }));
+
 // GET /api/groups/:groupId/members — users the bot has seen in a group, for
 // the Driver Groups "Driver Username" dropdown. Only defines /:groupId/members,
 // so the driver-group routes mounted after still match everything else.
