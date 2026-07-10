@@ -3,6 +3,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import * as api from "../api";
 import { timeAgo } from "../utils/formatTime";
+import { markerColor, displayTrailerStatus } from "../utils/trailerState";
 
 const AUTO_REFRESH_MS = 45000;
 const DEFAULT_CENTER = [39.5, -98.35]; // continental US
@@ -148,11 +149,10 @@ function resolveTrailer(t, unitByName) {
   if (lat == null || lng == null) return null;
 
   const approximate = source === "approximate_state" || source === "approximate";
-  let color;
-  if (derived) color = "#22c55e";              // with driver (derived) — green
-  else if (approximate) color = "#8b5cf6";      // approximate — purple
-  else if (t.current_status === "dropped") color = "#f59e0b"; // dropped exact — orange
-  else color = "#3b82f6";                       // other exact/geocoded — blue
+  // Color reflects possession + cargo (one trailer truth) via the shared helper:
+  // Dropped/Empty=orange, Dropped/Loaded=purple, With driver/Empty=green,
+  // With driver/Loaded=violet, With driver/Unknown=blue.
+  const color = markerColor(t);
 
   return { lat, lng, color, approximate, derived, derivedFrom, needsReview, source };
 }
@@ -172,7 +172,7 @@ function trailerIcon(r) {
 function trailerPopupHtml(t, r) {
   const rows = [];
   rows.push(`<div style="font-weight:700;font-size:14px;margin-bottom:2px">🚚 Trailer ${escapeHtml(t.unit_number)}</div>`);
-  rows.push(`<div><b>Status:</b> ${escapeHtml(TRAILER_STATUS_LABEL[t.current_status] || t.current_status)}${r.needsReview ? ' <span style="color:#ef4444">• review</span>' : ""}</div>`);
+  rows.push(`<div><b>Status:</b> ${escapeHtml(displayTrailerStatus(t))}${r.needsReview ? ' <span style="color:#ef4444">• review</span>' : ""}</div>`);
   rows.push(`<div><b>Driver:</b> ${escapeHtml(t.current_driver_name || "—")}</div>`);
   rows.push(`<div><b>Location:</b> ${escapeHtml(t.current_location_text || "—")}</div>`);
   if (r.derived) rows.push(`<div style="color:#22c55e;font-size:12px">Location derived from driver/truck live location${r.derivedFrom ? " (unit " + escapeHtml(r.derivedFrom) + ")" : ""}.</div>`);

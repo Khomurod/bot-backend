@@ -2,41 +2,37 @@ import React, { useState, useEffect, useRef } from 'react';
 import L from 'leaflet';
 import { api } from '../api';
 import { usePolledApi, Segmented, Skeleton, EmptyState, ErrorState, FreshnessBar, fmtTime, relTime, agoLabel } from '../components.jsx';
+import { trailerMarkerStyle, displayTrailerStatus, TRAILER_COLORS } from '../utils/trailerState';
 
 const CONDITION_COLOR = { loaded: '#722ed1', finishing: '#d48806', empty: '#16a34a', stale: '#8a94a4' };
-const TRAILER_STATUS_LABEL = { with_driver: 'With driver', dropped: 'Dropped', unknown: 'Unknown' };
 
 function normName(name) { return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ''); }
 
-// Resolve a trailer's render position/color, deriving a with-driver trailer's
-// location from its matched dispatch marker. Returns null when not mappable.
+// Resolve a trailer's render position/style. Business status (possession + cargo)
+// and marker color come from the backend via the shared trailerMarkerStyle
+// helper; here we only RESOLVE COORDINATES — a with-driver trailer rides with its
+// matched truck marker (derived_from_driver). Returns null when not mappable.
 function resolveTrailer(t, markerByDriver) {
+  const style = trailerMarkerStyle(t);
   let lat = t.current_lat;
   let lng = t.current_lng;
-  let source = t.location_source || (lat != null ? 'exact' : null);
   let derived = false;
-  if (t.current_status === 'with_driver') {
+  if (style.attachedToDriver) {
     const m = markerByDriver.get(normName(t.current_driver_name));
     if (m && m.latitude != null && m.longitude != null) {
-      lat = m.latitude; lng = m.longitude; source = 'derived_from_driver'; derived = true;
+      lat = m.latitude; lng = m.longitude; derived = true;
     }
   }
   if (lat == null || lng == null) return null;
-  const approximate = source === 'approximate_state' || source === 'approximate';
-  let color;
-  if (derived) color = '#22c55e';
-  else if (approximate) color = '#8b5cf6';
-  else if (t.current_status === 'dropped') color = '#f59e0b';
-  else color = '#3b82f6';
-  return { lat, lng, color, approximate, derived, source, needsReview: !!t.status_needs_review };
+  return { lat, lng, derived, style, needsReview: !!t.status_needs_review };
 }
 
 function trailerDivIcon(r) {
-  const border = r.needsReview ? '3px solid #ef4444' : '2px solid #fff';
-  const dashed = r.approximate ? 'border-style:dashed;' : '';
+  const border = r.needsReview ? '3px solid #ef4444' : `2px solid ${r.style.dashed ? r.style.color : '#fff'}`;
+  const dashed = r.style.dashed ? 'border-style:dashed;' : '';
   return L.divIcon({
     className: 'trailer-fleet-marker',
-    html: `<div style="width:15px;height:11px;border-radius:2px;background:${r.color};${dashed}border:${border};box-shadow:0 0 3px rgba(0,0,0,.6)"></div>`,
+    html: `<div style="width:15px;height:11px;border-radius:2px;background:${r.style.color};${dashed}border:${border};box-shadow:0 0 3px rgba(0,0,0,.6)"></div>`,
     iconSize: [15, 11],
     iconAnchor: r.derived ? [-8, 5] : [7, 5],
   });
@@ -46,6 +42,7 @@ export default function DispatchMap() {
   const [condition, setCondition] = useState('all');
   const [radius, setRadius] = useState(300);
   const [showTrailers, setShowTrailers] = useState(false);
+  const [trailerFilter, setTrailerFilter] = useState('all'); // all | dropped | loadedDropped | review
   const [trailers, setTrailers] = useState([]);
   // Reads the cached snapshot from the backend and auto-refreshes every 30s.
   const q = usePolledApi(`/dispatch-map?condition=${condition}`, [condition], { intervalMs: 30000 });
@@ -94,19 +91,24 @@ export default function DispatchMap() {
     if (!showTrailers) return;
     const markerByDriver = new Map();
     markers.forEach((m) => { if (m.driver_name) markerByDriver.set(normName(m.driver_name), m); });
-    trailers.forEach((t) => {
+    trailers.filter((t) => {
+      if (trailerFilter === 'dropped') return t.possession_status === 'dropped';
+      if (trailerFilter === 'loadedDropped') return t.possession_status === 'dropped' && t.cargo_status === 'loaded';
+      if (trailerFilter === 'review') return !!t.status_needs_review;
+      return true;
+    }).forEach((t) => {
       const r = resolveTrailer(t, markerByDriver);
       if (!r) return;
       const mk = L.marker([r.lat, r.lng], { icon: trailerDivIcon(r), alt: `Trailer ${t.unit_number}` });
       mk.bindPopup(
-        `<b>🚚 Trailer ${t.unit_number}</b><br/>Status: ${TRAILER_STATUS_LABEL[t.current_status] || t.current_status}${r.needsReview ? ' • review' : ''}<br/>`
+        `<b>🚚 Trailer ${t.unit_number}</b><br/>Status: ${displayTrailerStatus(t)}${r.needsReview ? ' • review' : ''}<br/>`
         + `Driver: ${t.current_driver_name || '—'}<br/>Location: ${t.current_location_text || '—'}<br/>`
-        + (r.derived ? '<i>Derived from driver/truck live location.</i><br/>' : (r.approximate ? '<i>Approximate location.</i><br/>' : ''))
+        + (r.derived ? '<i>Trailer location derived from truck/driver live location.</i><br/>' : (r.style.dashed ? '<i>Approximate location.</i><br/>' : ''))
         + `Condition: ${t.current_condition || '—'}`,
       );
       layer.addLayer(mk);
     });
-  }, [trailers, showTrailers, q.data]);
+  }, [trailers, showTrailers, trailerFilter, q.data]);
 
   useEffect(() => {
     if (!layerRef.current) return;
@@ -151,6 +153,15 @@ export default function DispatchMap() {
           <input type="checkbox" checked={showTrailers} onChange={(e) => setShowTrailers(e.target.checked)} aria-label="Show trailers on map" />
           🚚 Trailers
         </label>
+        {showTrailers && (
+          <select value={trailerFilter} onChange={(e) => setTrailerFilter(e.target.value)} aria-label="Trailer filter"
+            style={{ height: 30, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }}>
+            <option value="all">All trailers</option>
+            <option value="dropped">Dropped only</option>
+            <option value="loadedDropped">Dropped &amp; loaded</option>
+            <option value="review">Needs review</option>
+          </select>
+        )}
         <button className="btn" aria-label="Refresh displayed locations" onClick={q.reload}>⟳ Refresh</button>
       </div>
 
@@ -163,6 +174,25 @@ export default function DispatchMap() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12, fontSize: 13 }}>
             {Object.entries(CONDITION_COLOR).map(([k, c]) => <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ width: 12, height: 12, borderRadius: '50%', background: c }} />{k === 'stale' ? 'Stale location' : k}</div>)}
           </div>
+          {showTrailers && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12, fontSize: 13 }}>
+              <div style={{ fontWeight: 600 }}>🚚 Trailers</div>
+              {[
+                ['Dropped / Empty', TRAILER_COLORS.droppedEmpty],
+                ['Dropped / Loaded', TRAILER_COLORS.droppedLoaded],
+                ['With driver / Empty', TRAILER_COLORS.withDriverEmpty],
+                ['With driver / Loaded', TRAILER_COLORS.withDriverLoaded],
+                ['With driver / Unknown', TRAILER_COLORS.withDriverUnknown],
+              ].map(([label, c]) => (
+                <div key={label} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ width: 14, height: 10, borderRadius: 2, background: c }} />{label}
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ width: 14, height: 10, borderRadius: 2, background: 'transparent', border: '2px solid #ef4444' }} />Needs review
+              </div>
+            </div>
+          )}
           {q.loading ? <Skeleton rows={4} /> : (
             <>
               <div style={{ fontWeight: 600, margin: '8px 0' }}>On map ({markers.length})</div>
