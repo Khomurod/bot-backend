@@ -14,8 +14,10 @@
  * existing trailer field with a blank (see upsertTrailerByUnitNumber).
  */
 const db = require('../database/db');
-const { callGeminiJson, GEMINI_API_KEY } = require('./geminiClient');
 const { normalizeUnitNumber } = require('./trailerMessageParser');
+// NOTE: geminiClient (AI vision) is required LAZILY inside extractFromImages so
+// its module + any base64/image work stays off the boot path — the import
+// endpoint is the only caller and it runs rarely.
 
 const MAX_INLINE_BYTES = 8 * 1024 * 1024; // per image
 const FIELDS = ['make', 'model', 'unit_number', 'mc_number', 'plate_number', 'type', 'vin', 'year', 'ownership_status'];
@@ -32,6 +34,7 @@ function str(value, max = 100) {
  * Throws a 4xx-tagged error when no image is readable or AI is unconfigured.
  */
 async function extractFromImages(files) {
+  const { callGeminiJson, GEMINI_API_KEY } = require('./geminiClient');
   if (!GEMINI_API_KEY) {
     const err = new Error('AI vision is not configured (GEMINI_API_KEY missing).');
     err.status = 503;
