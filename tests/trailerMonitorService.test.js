@@ -1,8 +1,14 @@
 /**
  * Unit tests for services/trailerMonitorService.js — the Telegram trailer
- * monitor. The db module and the AI classifier are replaced with fakes; a fake
- * `telegram` records sendMessage / setMessageReaction so behavior is asserted
- * without a live DB or network.
+ * monitor. The db module, the vision service, and the AI semantic verifier are
+ * replaced with fakes; a fake `telegram` records sendMessage /
+ * setMessageReaction so behavior is asserted without a live DB or network.
+ *
+ * Contract under test (mandatory semantic verification):
+ *   - a pickup/drop-off candidate registers ONLY when the (mocked) AI verifies
+ *     a COMPLETED action AND the hard gate passes;
+ *   - with no AI available the candidate FAILS CLOSED to review;
+ *   - mention-only / unidentified messages keep the review ledger without AI.
  */
 process.env.BOT_TOKEN ||= 'test-bot-token';
 process.env.TELEGRAM_BOT_TOKEN ||= 'test-bot-token';
@@ -16,21 +22,25 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-function loadMonitor({ dbOverrides = {}, aiResult = null } = {}) {
-  const modPath = path.resolve(__dirname, '../services/trailerMonitorService.js');
-  const dbPath = path.resolve(__dirname, '../database/db.js');
-  const classifierPath = path.resolve(__dirname, '../services/trailerClassifier.js');
+const monitorPath = path.resolve(__dirname, '../services/trailerMonitorService.js');
+const contextPath = path.resolve(__dirname, '../services/trailerContextService.js');
+const verifierPath = path.resolve(__dirname, '../services/trailerSemanticVerifier.js');
+const visionPath = path.resolve(__dirname, '../services/trailerVisionService.js');
+const dbPath = path.resolve(__dirname, '../database/db.js');
 
+function loadMonitor({ dbOverrides = {}, aiResult } = {}) {
   const state = { events: [], statusUpdates: [], queries: [] };
   const fakeDb = {
     getTrailerSettings: async () => ({
       enabled: true, beta_mode: true, automatic_update_test_group_id: null,
       send_driver_group_confirmation: true, send_reaction: true,
       ai_fallback_enabled: true, geocoding_enabled: false,
+      semantic_ai_required: true, auto_register_confidence: 92, review_confidence: 75,
     }),
     getDriverProfileByGroupId: async () => ({ id: 5, first_name: 'John', last_name: 'Driver' }),
     ensureTrailerForDetection: async (unit) => ({ id: 100, unit_number: unit }),
     getTrailerByUnitNumber: async (unit) => (unit ? { id: 100, unit_number: unit } : null),
+    getTrailerCurrentStatus: async () => null,
     insertTrailerEvent: async (input) => {
       if (dbOverrides.forceDuplicate) return { event: { id: 1, ...input }, duplicate: true };
       const event = { id: state.events.length + 1, ...input };
@@ -41,12 +51,42 @@ function loadMonitor({ dbOverrides = {}, aiResult = null } = {}) {
     query: async (sql, params) => { state.queries.push({ sql, params }); return { rows: [], rowCount: 0 }; },
     ...dbOverrides.db,
   };
+  const fakeVision = {
+    photoDescriptor: () => null,
+    extractTrailerUnitsFromTelegramImage: async () => null,
+    isVisionConfigured: () => false,
+  };
 
-  delete require.cache[modPath];
+  for (const p of [monitorPath, contextPath, verifierPath]) delete require.cache[p];
   require.cache[dbPath] = { exports: fakeDb };
-  require.cache[classifierPath] = { exports: { classifyTrailerMessageWithAi: async () => aiResult, isAiConfigured: () => false } };
-  const mod = require(modPath);
+  require.cache[visionPath] = { exports: fakeVision };
+  const realVerifier = require(verifierPath);
+  require.cache[verifierPath] = {
+    exports: {
+      ...realVerifier,
+      isSemanticAiConfigured: () => aiResult !== undefined,
+      verifyTrailerSemantics: async () => (aiResult === undefined ? { status: 'unavailable' } : aiResult),
+    },
+  };
+  delete require.cache[monitorPath];
+  const mod = require(monitorPath);
   return { mod, state };
+}
+
+/** Normalized approving AI result for one completed event. */
+function approve({ unit, action, confidence = 96, locationText = null, conditionText = null }) {
+  const intent = action === 'pickup' ? 'confirmed_pickup' : 'confirmed_dropoff';
+  return {
+    status: 'ok', trailerRelated: true, intent, action, completed: true,
+    trailerEvents: [{
+      eventIndex: 0, trailerUnit: unit, intent, action, completed: true,
+      unitGrounded: true, unitSource: 'current_text', unitEvidence: unit,
+      possessionStatus: action === 'pickup' ? 'with_driver' : 'dropped',
+      cargoStatus: 'unknown', locationText, conditionText,
+      actionEvidence: action, confidence, reason: 'test approval',
+    }],
+    language: 'en', needsReview: false, aiModel: 'test-model',
+  };
 }
 
 function makeTelegram() {
@@ -65,8 +105,10 @@ function msg(text, extra = {}) {
   return { message_id: 42, date: Math.floor(Date.now() / 1000), from: { id: 777, username: 'reporter', first_name: 'Rep' }, text, ...extra };
 }
 
-test('pickup registers event, replies to driver group, reacts 👍', async () => {
-  const { mod, state } = loadMonitor();
+test('AI-verified pickup registers event, replies to driver group, reacts 👍', async () => {
+  const { mod, state } = loadMonitor({
+    aiResult: approve({ unit: 'VT700669', action: 'pickup', locationText: 'Lancaster PA', conditionText: 'no pictures' }),
+  });
   const tg = makeTelegram();
   const res = await mod.handleTrailerGroupMessage(tg, GROUP, msg(
     'trl # VT700669\nPicked up by: ENICSON JEAN\nLocation: Lancaster PA\nCondition: no pictures'
@@ -76,6 +118,7 @@ test('pickup registers event, replies to driver group, reacts 👍', async () =>
   assert.equal(state.events.length, 1);
   assert.equal(state.events[0].event_type, 'pickup');
   assert.equal(state.events[0].condition_text, 'no pictures');
+  assert.equal(state.events[0].ai_verification_status, 'approved');
   assert.equal(state.statusUpdates.length, 1); // current status updated
   // Reply to the ORIGINAL message, labeled Beta.
   const reply = tg.sent.find((m) => String(m.chatId) === String(GROUP.telegram_group_id));
@@ -86,19 +129,34 @@ test('pickup registers event, replies to driver group, reacts 👍', async () =>
   assert.equal(tg.reactions.length, 1);
 });
 
-test('dropoff registers event and updates status', async () => {
-  const { mod, state } = loadMonitor();
+test('AI-verified dropoff registers event and updates status', async () => {
+  const { mod, state } = loadMonitor({
+    aiResult: approve({ unit: 'ST508998', action: 'dropoff', locationText: 'Lancaster PA' }),
+  });
   const tg = makeTelegram();
   const res = await mod.handleTrailerGroupMessage(tg, GROUP, msg(
     'trl # ST508998\nDropped by: ENICSON JEAN\nLocation: Lancaster PA\nCondition: no pictures'
   ));
   assert.equal(res.eventType, 'dropoff');
   assert.equal(state.events[0].event_type, 'dropoff');
+  assert.equal(state.events[0].cargo_status, 'empty'); // dropped ⇒ empty default
   assert.equal(state.statusUpdates.length, 1);
 });
 
-test('unidentified "trailer?" does NOT reply to driver group; reports to test group', async () => {
-  const { mod, state } = loadMonitor();
+test('WITHOUT AI a deterministic pickup candidate FAILS CLOSED: review only, no reply', async () => {
+  const { mod, state } = loadMonitor(); // aiResult undefined → unavailable
+  const tg = makeTelegram();
+  const res = await mod.handleTrailerGroupMessage(tg, GROUP, msg('trl # VT700669 picked up\nLocation: Reno NV'));
+  assert.equal(res.failedClosed, true);
+  assert.equal(state.statusUpdates.length, 0);
+  assert.equal(state.events[0].event_type, 'unidentified');
+  assert.equal(state.events[0].ai_verification_status, 'unavailable');
+  assert.ok(!tg.sent.some((m) => String(m.chatId) === String(GROUP.telegram_group_id)));
+  assert.equal(tg.reactions.length, 0);
+});
+
+test('unidentified "trailer?" does NOT reply to driver group', async () => {
+  const { mod } = loadMonitor();
   const tg = makeTelegram();
   const res = await mod.handleTrailerGroupMessage(tg, GROUP, msg('trailer?'));
   assert.equal(res.unidentified, true);
@@ -106,7 +164,7 @@ test('unidentified "trailer?" does NOT reply to driver group; reports to test gr
   assert.ok(!tg.sent.some((m) => String(m.chatId) === String(GROUP.telegram_group_id)));
 });
 
-test('unidentified WITH a unit but no action reports to the test group', async () => {
+test('unidentified WITH a unit but no action reports to the test group (no AI needed)', async () => {
   const { mod } = loadMonitor();
   const tg = makeTelegram();
   const res = await mod.handleTrailerGroupMessage(tg, GROUP, msg('trailer ST508998 where is it'));
@@ -117,7 +175,10 @@ test('unidentified WITH a unit but no action reports to the test group', async (
 });
 
 test('duplicate Telegram message does not double-register or re-reply', async () => {
-  const { mod, state } = loadMonitor({ dbOverrides: { forceDuplicate: true } });
+  const { mod } = loadMonitor({
+    dbOverrides: { forceDuplicate: true },
+    aiResult: approve({ unit: 'VT700669', action: 'pickup', locationText: 'Reno NV' }),
+  });
   const tg = makeTelegram();
   const res = await mod.handleTrailerGroupMessage(tg, GROUP, msg('trl # VT700669 picked up\nLocation: Reno NV'));
   assert.equal(res.skipped, 'duplicate');
@@ -139,8 +200,8 @@ test('non-trailer messages are skipped cheaply', async () => {
   assert.equal(res.skipped, 'not-trailer');
 });
 
-test('photo with caption is processed as a pickup', async () => {
-  const { mod, state } = loadMonitor();
+test('photo with caption is processed as an AI-verified pickup', async () => {
+  const { mod, state } = loadMonitor({ aiResult: approve({ unit: 'AB123', action: 'pickup', locationText: 'Dallas TX' }) });
   const tg = makeTelegram();
   const res = await mod.handleTrailerGroupMessage(tg, GROUP, {
     message_id: 43, date: Math.floor(Date.now() / 1000), from: { id: 777, username: 'rep' },
@@ -157,4 +218,24 @@ test('feature disabled → no processing', async () => {
   const tg = makeTelegram();
   const res = await mod.handleTrailerGroupMessage(tg, GROUP, msg('trl # VT700669 picked up'));
   assert.equal(res.skipped, 'disabled');
+});
+
+test('semantic_ai_required=false (explicit opt-out) restores legacy deterministic registration', async () => {
+  const { mod, state } = loadMonitor({
+    dbOverrides: {
+      db: {
+        getTrailerSettings: async () => ({
+          enabled: true, beta_mode: true, automatic_update_test_group_id: null,
+          send_driver_group_confirmation: true, send_reaction: true,
+          ai_fallback_enabled: true, geocoding_enabled: false,
+          semantic_ai_required: false,
+        }),
+      },
+    },
+  });
+  const tg = makeTelegram();
+  const res = await mod.handleTrailerGroupMessage(tg, GROUP, msg('trl # VT700669 picked up\nLocation: Reno NV'));
+  assert.equal(res.registered, true);
+  assert.equal(res.legacy, true);
+  assert.equal(state.events[0].event_type, 'pickup');
 });
