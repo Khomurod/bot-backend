@@ -253,7 +253,10 @@ async function insertTrailerEvent(input = {}) {
        telegram_message_id, telegram_media_group_id, evidence,
        raw_message_text, ai_summary, unidentified_reason,
        reported_to_test_group, source, beta_mode,
-       event_index, review_status, location_source, location_confidence, geocoded_at, geocode_error
+       event_index, review_status, location_source, location_confidence, geocoded_at, geocode_error,
+       semantic_intent, semantic_completed, semantic_confidence, semantic_reason,
+       unit_grounded, unit_source, unit_evidence, action_evidence,
+       ai_model, ai_verified_at, ai_verification_status, raw_ai_result
      ) VALUES (
        $1,$2,$3,$4,$5,$6,
        $7,$8,$9,
@@ -265,7 +268,10 @@ async function insertTrailerEvent(input = {}) {
        $23,$24,$25,
        $26,$27,$28,
        $29,$30,$31,
-       $32,$33,$34,$35,$36,$37
+       $32,$33,$34,$35,$36,$37,
+       $38,$39,$40,$41,
+       $42,$43,$44,$45,
+       $46,$47,$48,$49
      )
      ON CONFLICT (telegram_group_id, telegram_message_id, event_index)
        WHERE telegram_group_id IS NOT NULL AND telegram_message_id IS NOT NULL
@@ -309,6 +315,18 @@ async function insertTrailerEvent(input = {}) {
       input.location_confidence != null ? Math.max(0, Math.min(100, Math.round(Number(input.location_confidence)))) : null,
       input.geocoded_at || null,
       s(input.geocode_error, 300),
+      s(input.semantic_intent, 40),
+      input.semantic_completed == null ? null : Boolean(input.semantic_completed),
+      input.semantic_confidence != null ? Math.max(0, Math.min(100, Math.round(Number(input.semantic_confidence)))) : null,
+      s(input.semantic_reason, 500),
+      input.unit_grounded == null ? null : Boolean(input.unit_grounded),
+      s(input.unit_source, 40),
+      s(input.unit_evidence, 500),
+      s(input.action_evidence, 500),
+      s(input.ai_model, 100),
+      input.ai_verified_at || null,
+      s(input.ai_verification_status, 40),
+      input.raw_ai_result != null ? JSON.stringify(input.raw_ai_result).slice(0, 20000) : null,
     ]
   );
 
@@ -356,16 +374,43 @@ async function updateTrailerEvent(id, patch = {}, { correctedBy = null, correcti
     event_date_text: (v) => s(v, 100),
     event_time: (v) => (v == null || v === '' ? null : v),
     resolved: (v) => Boolean(v),
+    cargo_status: (v) => normCargo(v),
+    possession_status: (v) => normPossession(v),
   };
+
+  // ── consistency normalization (server-side, before saving) ──
+  // A pickup/dropoff event's possession MUST follow its type: pickup ⇒
+  // with_driver, dropoff ⇒ dropped. A contradictory possession in the patch is
+  // overridden; a type change with no possession in the patch forces the
+  // matching possession. This makes rows like event_type=pickup /
+  // possession_status=dropped impossible to create via edit.
+  const normalizedPatch = { ...patch };
+  const effectiveType = normalizedPatch.event_type !== undefined
+    ? (EVENT_TYPES.has(String(normalizedPatch.event_type)) ? String(normalizedPatch.event_type) : existing.event_type)
+    : existing.event_type;
+  if (effectiveType === 'pickup' || effectiveType === 'dropoff') {
+    const requiredPossession = possessionForEventType(effectiveType);
+    if (normalizedPatch.event_type !== undefined || normalizedPatch.possession_status !== undefined) {
+      normalizedPatch.possession_status = requiredPossession;
+    }
+    // Business rule on a type change with no explicit cargo: a dropoff with no
+    // loaded evidence defaults to empty; a pickup's cargo becomes unknown
+    // unless the event already carries an explicit loaded/empty value.
+    if (normalizedPatch.event_type !== undefined && normalizedPatch.cargo_status === undefined) {
+      const existingCargo = normCargo(existing.cargo_status);
+      if (effectiveType === 'dropoff' && existingCargo === 'unknown') normalizedPatch.cargo_status = 'empty';
+    }
+  }
+
   const sets = [];
   const vals = [];
   let i = 1;
   for (const [k, fn] of Object.entries(allowed)) {
-    if (patch[k] !== undefined) { sets.push(`${k} = $${i++}`); vals.push(fn(patch[k])); }
+    if (normalizedPatch[k] !== undefined) { sets.push(`${k} = $${i++}`); vals.push(fn(normalizedPatch[k])); }
   }
   // Editing a location by hand always clears the "missing" flag unless explicit.
-  if (patch.location_text !== undefined && patch.location_missing === undefined) {
-    sets.push(`location_missing = $${i++}`); vals.push(!s(patch.location_text, 500));
+  if (normalizedPatch.location_text !== undefined && normalizedPatch.location_missing === undefined) {
+    sets.push(`location_missing = $${i++}`); vals.push(!s(normalizedPatch.location_text, 500));
   }
 
   // Audit: who/when, one-time original snapshot, and (by default) mark edited.
@@ -855,6 +900,7 @@ async function getTrailerSettings() {
     id: 1, enabled: true, beta_mode: true, automatic_update_test_group_id: null,
     send_driver_group_confirmation: true, send_reaction: true,
     ai_fallback_enabled: true, geocoding_enabled: true,
+    semantic_ai_required: true, auto_register_confidence: 92, review_confidence: 75,
   };
 }
 
@@ -867,6 +913,9 @@ async function updateTrailerSettings(patch = {}) {
     send_reaction: (v) => Boolean(v),
     ai_fallback_enabled: (v) => Boolean(v),
     geocoding_enabled: (v) => Boolean(v),
+    semantic_ai_required: (v) => Boolean(v),
+    auto_register_confidence: (v) => Math.max(50, Math.min(100, Math.round(Number(v)) || 92)),
+    review_confidence: (v) => Math.max(0, Math.min(100, Math.round(Number(v)) || 75)),
   };
   const sets = [];
   const vals = [];
