@@ -102,12 +102,21 @@ function extractUnitNumber(text) {
   return null;
 }
 
-/** Extract a "Location: ..." value, or null. Stops at newline. */
+/**
+ * Extract a "Location: ..." value, or null. The separator is optional so
+ * "Location: Lancaster PA" AND "location Lancaster PA" both work. Stops at the
+ * end of the line and at any following field label on the same line
+ * ("Location: Lancaster PA. Condition: no pictures" → "Lancaster PA") so a
+ * one-line message never leaks the next field into the location text.
+ */
 function extractLocation(text) {
   const raw = String(text || '');
-  const m = raw.match(/\blocation\s*[:\-]\s*([^\n\r]+)/i);
+  const m = raw.match(/\blocation\s*[:\-]?\s*([^\n\r]+)/i);
   if (m && m[1]) {
-    const val = m[1].trim().replace(/[.,;]+$/, '').trim();
+    let val = m[1].trim();
+    // Cut at a following labelled field ("Condition:", "Date -", "Driver:").
+    val = val.split(/\s+(?:condition|date|driver|reefer|temp|status)\b\s*[:\-]/i)[0];
+    val = val.replace(/[.,;]+\s*$/, '').trim();
     return val || null;
   }
   return null;
@@ -284,6 +293,101 @@ function parseTrailerMessage(text) {
 }
 
 /**
+ * Find every trailer-unit token that is prefixed by a trailer/unit LABEL or a
+ * '#', with its start position. This anchors multi-event segmentation: one
+ * driver message may name several trailers ("TRL# 403279 picked up / TRL# 171847
+ * dropped"). Bare tokens with no label/# are deliberately NOT collected here —
+ * splitting on those would be a guess. Returns [{ start, unit }] in order.
+ */
+function findUnitTokens(text) {
+  const raw = String(text || '');
+  const re = /(?:\b(?:tr(?:ai)?l(?:er)?|unit)\s*(?:unit)?\s*#?\s*[:#]?\s*|#\s*)([A-Za-z]{0,4}-?\d[\dA-Za-z-]{2,})/gi;
+  const out = [];
+  let m;
+  while ((m = re.exec(raw)) !== null) {
+    const unit = normalizeUnitNumber(m[1]);
+    if (unit && /\d/.test(unit) && unit.length >= 3) {
+      out.push({ start: m.index, unit });
+    }
+  }
+  return out;
+}
+
+/** Build a parsed-event result for ONE known unit from its text segment. */
+function parseSegmentForUnit(segment, unit, fallback = {}) {
+  const action = detectAction(segment);
+  const locationText = extractLocation(segment) || fallback.locationText || null;
+  const conditionText = extractCondition(segment) || fallback.conditionText || null;
+  const eventDateText = extractDate(segment) || fallback.eventDateText || null;
+  const reportedDriverName = extractReportedDriverName(segment) || fallback.reportedDriverName || null;
+
+  const base = {
+    isTrailerRelated: true,
+    eventType: 'mention_only',
+    trailerUnit: unit,
+    action,
+    locationText,
+    conditionText,
+    eventDateText,
+    reportedDriverName,
+    confidence: 30,
+    reason: `unit ${unit} mentioned, no clear pickup/dropoff action`,
+    needsReview: true,
+    method: 'deterministic',
+  };
+
+  if (action) {
+    let confidence = 70;
+    if (locationText) confidence += 12;
+    if (conditionText) confidence += 8;
+    if (reportedDriverName) confidence += 5;
+    confidence = Math.min(confidence, 98);
+    return { ...base, eventType: action, confidence, needsReview: !locationText, reason: `unit ${unit} + ${action}` };
+  }
+  return base;
+}
+
+/**
+ * Parse a message into an ARRAY of events. When the message names two or more
+ * labelled/# trailer units, each becomes its own event (segmented by unit
+ * position, with a shared leading-preamble location/condition used only as a
+ * fallback when a segment has none). Single-unit / non-trailer messages return a
+ * one-element array holding exactly what parseTrailerMessage would return, so
+ * existing single-event behavior is byte-for-byte preserved.
+ *
+ * Never throws. Never invents a unit. Ambiguous input collapses to the
+ * single-event path (which yields mention_only/unidentified for review).
+ */
+function parseTrailerMessageEvents(text) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return [parseTrailerMessage(text)];
+
+  const tokens = findUnitTokens(trimmed);
+  if (tokens.length < 2) return [parseTrailerMessage(text)];
+
+  // Shared context that appears BEFORE the first unit (e.g. a leading
+  // "Location: …" line) is used only to backfill segments that lack their own.
+  const preambleText = trimmed.slice(0, tokens[0].start);
+  const fallback = {
+    locationText: extractLocation(preambleText),
+    conditionText: extractCondition(preambleText),
+    eventDateText: extractDate(preambleText),
+    reportedDriverName: extractReportedDriverName(preambleText),
+  };
+
+  const results = [];
+  for (let idx = 0; idx < tokens.length; idx += 1) {
+    const start = tokens[idx].start;
+    const end = idx + 1 < tokens.length ? tokens[idx + 1].start : trimmed.length;
+    const segment = trimmed.slice(start, end);
+    const parsed = parseSegmentForUnit(segment, tokens[idx].unit, fallback);
+    parsed.eventIndex = idx;
+    results.push(parsed);
+  }
+  return results;
+}
+
+/**
  * Should the AI classifier run as a fallback? Only when the deterministic pass
  * is uncertain: no unit, or an action-less trailer mention, or low confidence.
  */
@@ -297,6 +401,8 @@ function shouldUseAiFallback(parsed) {
 
 module.exports = {
   parseTrailerMessage,
+  parseTrailerMessageEvents,
+  findUnitTokens,
   hasTrailerKeyword,
   extractUnitNumber,
   extractLocation,

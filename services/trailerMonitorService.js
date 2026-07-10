@@ -19,8 +19,12 @@
  */
 const db = require('../database/db');
 const config = require('../config/config');
-const { parseTrailerMessage, hasTrailerKeyword, extractUnitNumber, shouldUseAiFallback } = require('./trailerMessageParser');
+const {
+  parseTrailerMessage, parseTrailerMessageEvents,
+  hasTrailerKeyword, extractUnitNumber, shouldUseAiFallback,
+} = require('./trailerMessageParser');
 const { classifyTrailerMessageWithAi } = require('./trailerClassifier');
+const { geocodeTrailerLocation } = require('./trailerGeocodeService');
 const { buildTelegramMessageUrl } = require('./telegramUrl');
 
 function messageText(message) {
@@ -115,40 +119,40 @@ async function reactThumbsUp(telegram, chatId, messageId) {
   }
 }
 
-/** Best-effort geocode of a location string → { lat, lng } or null. */
-async function geocodeLocation(locationText) {
-  if (!locationText) return null;
-  try {
-    // Lazy require: keeps the geocoder (and its network deps) off the hot path
-    // for the majority of messages that never geocode.
-    const { geocodePlace } = require('./etaRoutingService');
-    const geo = await geocodePlace(locationText);
-    if (geo && Number.isFinite(Number(geo.lat)) && Number.isFinite(Number(geo.lng))) {
-      return { lat: Number(geo.lat), lng: Number(geo.lng) };
-    }
-  } catch (err) {
-    console.warn('[TRAILER] geocode failed (non-fatal):', err.message);
-  }
-  return null;
-}
-
 function reporterName(from) {
   if (!from) return null;
   const name = [from.first_name, from.last_name].filter(Boolean).join(' ').trim();
   return name || (from.username ? `@${from.username}` : null);
 }
 
+function eventLabel(type) {
+  return type === 'pickup' ? 'pickup' : 'drop-off';
+}
+
 /**
- * Send a short confirmation reply to the driver group for a registered event.
+ * Send ONE confirmation reply to the driver group summarizing every registered
+ * pickup/drop-off from the message. A single-trailer message keeps the detailed
+ * Location/Condition lines; a multi-trailer message lists one line per trailer.
  */
-async function replyConfirmation(telegram, group, message, event, betaMode) {
+async function replyConfirmation(telegram, group, message, events, betaMode) {
+  const list = (Array.isArray(events) ? events : [events]).filter(Boolean);
+  if (!list.length) return;
   const chatId = group.telegram_group_id;
-  const label = event.event_type === 'pickup' ? 'pickup' : 'drop-off';
   const beta = betaMode ? ' (Beta test mode)' : '';
-  const lines = [`✅ Trailer ${label} registered${beta}`, ''];
-  lines.push(`Trailer: ${event.trailer_unit_number || 'unknown'}`);
-  if (event.location_text) lines.push(`Location: ${event.location_text}`);
-  if (event.condition_text) lines.push(`Condition: ${event.condition_text}`);
+
+  const lines = [];
+  if (list.length === 1) {
+    const event = list[0];
+    lines.push(`✅ Trailer ${eventLabel(event.event_type)} registered${beta}`, '');
+    lines.push(`Trailer: ${event.trailer_unit_number || 'unknown'}`);
+    if (event.location_text) lines.push(`Location: ${event.location_text}`);
+    if (event.condition_text) lines.push(`Condition: ${event.condition_text}`);
+  } else {
+    lines.push(`✅ Trailer updates registered${beta}`, '');
+    for (const event of list) {
+      lines.push(`${event.trailer_unit_number || 'unknown'} — ${eventLabel(event.event_type)}`);
+    }
+  }
   try {
     await telegram.sendMessage(chatId, lines.join('\n'), {
       reply_to_message_id: Number(message.message_id),
@@ -189,9 +193,114 @@ async function reportUnidentified(telegram, group, message, parsed, event, testG
 }
 
 /**
+ * Register ONE parsed pickup/dropoff: geocode its location (fail-soft, cached),
+ * insert the immutable event (review_status='pending' so an admin accepts /
+ * declines / edits it), and advance the trailer's current status. Returns
+ * { event, duplicate }.
+ */
+async function registerPickupDropoff(parsed, ctx) {
+  const trailer = await db.ensureTrailerForDetection(parsed.trailerUnit);
+
+  let lat = null;
+  let lng = null;
+  let locationSource = null;
+  let locationConfidence = null;
+  let geocodedAt = null;
+  let geocodeError = null;
+  const locationMissing = !parsed.locationText;
+  if (parsed.locationText) {
+    const geo = await geocodeTrailerLocation(parsed.locationText, {
+      enabled: ctx.settings.geocoding_enabled !== false,
+    });
+    if (geo) {
+      lat = geo.lat;
+      lng = geo.lng;
+      locationSource = geo.source;
+      locationConfidence = geo.confidence;
+      if (geo.lat != null && geo.lng != null) geocodedAt = ctx.nowIso;
+      if (geo.error) geocodeError = geo.error;
+    }
+  }
+
+  const { event, duplicate } = await db.insertTrailerEvent({
+    trailer_id: trailer?.id || null,
+    trailer_unit_number: parsed.trailerUnit,
+    event_type: parsed.eventType,
+    confidence: parsed.confidence,
+    driver_group_id: ctx.group.id,
+    telegram_group_id: ctx.group.telegram_group_id,
+    telegram_group_name: ctx.group.group_name,
+    driver_profile_id: ctx.profile?.id || null,
+    driver_name: ctx.driverName,
+    reported_by_telegram_user_id: ctx.from.id || null,
+    reported_by_username: ctx.from.username || null,
+    reported_by_name: reporterName(ctx.from),
+    reported_driver_name_from_message: parsed.reportedDriverName,
+    location_text: parsed.locationText,
+    location_lat: lat,
+    location_lng: lng,
+    location_missing: locationMissing,
+    location_source: locationSource,
+    location_confidence: locationConfidence,
+    geocoded_at: geocodedAt,
+    geocode_error: geocodeError,
+    condition_text: parsed.conditionText,
+    event_date_text: parsed.eventDateText,
+    event_time: ctx.eventTimeIso,
+    telegram_message_id: ctx.message.message_id,
+    telegram_media_group_id: ctx.message.media_group_id || null,
+    event_index: parsed.eventIndex || 0,
+    review_status: 'pending', // auto-detected → awaits admin accept/decline/edit
+    evidence: ctx.evidence,
+    raw_message_text: ctx.text,
+    ai_summary: parsed.method === 'deterministic' ? null : parsed.reason,
+    source: 'telegram',
+    beta_mode: ctx.betaMode,
+  });
+
+  if (!duplicate && event && trailer) await db.applyEventToCurrentStatus(trailer, event);
+  return { event, duplicate };
+}
+
+/** Register ONE mention_only/unidentified event (ledger only, no driver reply). */
+async function registerUnidentified(parsed, ctx) {
+  const trailerId = parsed.trailerUnit ? (await db.getTrailerByUnitNumber(parsed.trailerUnit))?.id || null : null;
+  return db.insertTrailerEvent({
+    trailer_id: trailerId,
+    trailer_unit_number: parsed.trailerUnit,
+    event_type: parsed.eventType === 'mention_only' ? 'mention_only' : 'unidentified',
+    confidence: parsed.confidence,
+    driver_group_id: ctx.group.id,
+    telegram_group_id: ctx.group.telegram_group_id,
+    telegram_group_name: ctx.group.group_name,
+    driver_profile_id: ctx.profile?.id || null,
+    driver_name: ctx.driverName,
+    reported_by_telegram_user_id: ctx.from.id || null,
+    reported_by_username: ctx.from.username || null,
+    reported_by_name: reporterName(ctx.from),
+    reported_driver_name_from_message: parsed.reportedDriverName,
+    location_text: parsed.locationText,
+    condition_text: parsed.conditionText,
+    event_date_text: parsed.eventDateText,
+    event_time: ctx.eventTimeIso,
+    telegram_message_id: ctx.message.message_id,
+    telegram_media_group_id: ctx.message.media_group_id || null,
+    event_index: parsed.eventIndex || 0,
+    evidence: ctx.evidence,
+    raw_message_text: ctx.text,
+    ai_summary: parsed.method === 'deterministic' ? null : parsed.reason,
+    unidentified_reason: parsed.reason,
+    source: 'telegram',
+    beta_mode: ctx.betaMode,
+  });
+}
+
+/**
  * Main entry point. `group` is the DB group row (must be an active driver group);
- * `message` is ctx.message. Returns a small result object for tests; swallows
- * all errors so it can be called detached.
+ * `message` is ctx.message. ONE message may register several trailers (each an
+ * event with its own event_index); a single confirmation reply summarizes them
+ * all and the message is reacted to once. Returns a small result object for
+ * tests; swallows all errors so it can be called detached.
  */
 async function handleTrailerGroupMessage(telegram, group, message) {
   try {
@@ -209,18 +318,25 @@ async function handleTrailerGroupMessage(telegram, group, message) {
     if (!settings || settings.enabled === false) return { skipped: 'disabled' };
     const betaMode = settings.beta_mode !== false;
 
-    // ── parse (deterministic → AI fallback) ──
-    let parsed = parseTrailerMessage(text);
-    if (!parsed.isTrailerRelated) return { skipped: 'not-trailer' };
-
-    if (settings.ai_fallback_enabled !== false && shouldUseAiFallback(parsed)) {
-      const ai = await classifyTrailerMessageWithAi(text, []);
-      parsed = mergeResults(parsed, ai);
+    // ── parse: multi-event first; AI fallback only for a single uncertain event ──
+    let parsedList = parseTrailerMessageEvents(text);
+    if (parsedList.length === 1) {
+      let parsed = parsedList[0];
+      if (!parsed.isTrailerRelated) return { skipped: 'not-trailer' };
+      if (settings.ai_fallback_enabled !== false && shouldUseAiFallback(parsed)) {
+        const ai = await classifyTrailerMessageWithAi(text, []);
+        parsed = mergeResults(parsed, ai);
+      }
+      parsedList = [parsed];
+    } else {
+      parsedList = parsedList.filter((p) => p.isTrailerRelated);
+      if (!parsedList.length) return { skipped: 'not-trailer' };
     }
 
     const testGroupId = resolveTestGroupId(settings);
     const from = message.from || {};
-    const eventTimeIso = Number.isFinite(message.date) ? new Date(message.date * 1000).toISOString() : new Date().toISOString();
+    const nowIso = new Date().toISOString();
+    const eventTimeIso = Number.isFinite(message.date) ? new Date(message.date * 1000).toISOString() : nowIso;
 
     // Resolve driver profile for the group (best-effort).
     let profile = null;
@@ -229,101 +345,66 @@ async function handleTrailerGroupMessage(telegram, group, message) {
       ? [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim() || group.group_name
       : group.group_name;
 
-    // ── real pickup / dropoff ──
-    if (parsed.eventType === 'pickup' || parsed.eventType === 'dropoff') {
-      const trailer = await db.ensureTrailerForDetection(parsed.trailerUnit);
+    const ctx = { group, from, profile, driverName, eventTimeIso, nowIso, text, evidence, settings, betaMode, message };
 
-      // Location: text first; geocode if enabled and text present.
-      let lat = null;
-      let lng = null;
-      const locationMissing = !parsed.locationText;
-      if (settings.geocoding_enabled !== false && parsed.locationText) {
-        const geo = await geocodeLocation(parsed.locationText);
-        if (geo) { lat = geo.lat; lng = geo.lng; }
+    const registered = [];   // newly inserted pickup/dropoff events
+    const reportedUnids = []; // { parsed, event } for test-group reporting
+    let anyDuplicate = false;
+
+    for (const parsed of parsedList) {
+      if (!parsed.isTrailerRelated) continue;
+      if (parsed.eventType === 'pickup' || parsed.eventType === 'dropoff') {
+        const { event, duplicate } = await registerPickupDropoff(parsed, ctx);
+        if (duplicate) anyDuplicate = true;
+        else if (event) registered.push(event);
+      } else {
+        const { event, duplicate } = await registerUnidentified(parsed, ctx);
+        if (duplicate) anyDuplicate = true;
+        else if (event) reportedUnids.push({ parsed, event });
       }
+    }
 
-      const { event, duplicate } = await db.insertTrailerEvent({
-        trailer_id: trailer?.id || null,
-        trailer_unit_number: parsed.trailerUnit,
-        event_type: parsed.eventType,
-        confidence: parsed.confidence,
-        driver_group_id: group.id,
-        telegram_group_id: group.telegram_group_id,
-        telegram_group_name: group.group_name,
-        driver_profile_id: profile?.id || null,
-        driver_name: driverName,
-        reported_by_telegram_user_id: from.id || null,
-        reported_by_username: from.username || null,
-        reported_by_name: reporterName(from),
-        reported_driver_name_from_message: parsed.reportedDriverName,
-        location_text: parsed.locationText,
-        location_lat: lat,
-        location_lng: lng,
-        location_missing: locationMissing,
-        condition_text: parsed.conditionText,
-        event_date_text: parsed.eventDateText,
-        event_time: eventTimeIso,
-        telegram_message_id: message.message_id,
-        telegram_media_group_id: message.media_group_id || null,
-        evidence,
-        raw_message_text: text,
-        ai_summary: parsed.method === 'deterministic' ? null : parsed.reason,
-        source: 'telegram',
-        beta_mode: betaMode,
-      });
-
-      if (duplicate || !event) return { skipped: 'duplicate', eventType: parsed.eventType };
-
-      // Update current status + reply + react (needs_review trailers are still
-      // tracked; the trailer row carries the needs_review flag).
-      if (trailer) await db.applyEventToCurrentStatus(trailer, event);
-
+    // ── driver-group confirmation + reaction: exactly once for the message ──
+    if (registered.length) {
       if (settings.send_driver_group_confirmation !== false) {
-        await replyConfirmation(telegram, group, message, event, betaMode);
+        await replyConfirmation(telegram, group, message, registered, betaMode);
       }
       if (settings.send_reaction !== false) {
         await reactThumbsUp(telegram, group.telegram_group_id, message.message_id);
       }
-      return { registered: true, eventType: parsed.eventType, eventId: event.id, unit: parsed.trailerUnit };
     }
 
-    // ── mention_only / unidentified ──
-    // Store the event for the ledger, but do NOT confirm in the driver group.
-    const reportToTest = looksLikeTrailerCommand(parsed) && Boolean(testGroupId);
-    const { event, duplicate } = await db.insertTrailerEvent({
-      trailer_id: parsed.trailerUnit ? (await db.getTrailerByUnitNumber(parsed.trailerUnit))?.id || null : null,
-      trailer_unit_number: parsed.trailerUnit,
-      event_type: parsed.eventType === 'mention_only' ? 'mention_only' : 'unidentified',
-      confidence: parsed.confidence,
-      driver_group_id: group.id,
-      telegram_group_id: group.telegram_group_id,
-      telegram_group_name: group.group_name,
-      driver_profile_id: profile?.id || null,
-      driver_name: driverName,
-      reported_by_telegram_user_id: from.id || null,
-      reported_by_username: from.username || null,
-      reported_by_name: reporterName(from),
-      reported_driver_name_from_message: parsed.reportedDriverName,
-      location_text: parsed.locationText,
-      condition_text: parsed.conditionText,
-      event_date_text: parsed.eventDateText,
-      event_time: eventTimeIso,
-      telegram_message_id: message.message_id,
-      telegram_media_group_id: message.media_group_id || null,
-      evidence,
-      raw_message_text: text,
-      ai_summary: parsed.method === 'deterministic' ? null : parsed.reason,
-      unidentified_reason: parsed.reason,
-      source: 'telegram',
-      beta_mode: betaMode,
-    });
-
-    if (duplicate || !event) return { skipped: 'duplicate', eventType: parsed.eventType };
-
-    if (reportToTest) {
-      await reportUnidentified(telegram, group, message, parsed, event, testGroupId, betaMode);
+    // ── report unclear commands to the Automatic-Updating (Test) group ──
+    let reportedToTest = false;
+    for (const { parsed, event } of reportedUnids) {
+      if (looksLikeTrailerCommand(parsed) && testGroupId) {
+        await reportUnidentified(telegram, group, message, parsed, event, testGroupId, betaMode);
+        reportedToTest = true;
+      }
     }
-    return { unidentified: true, eventType: event.event_type, eventId: event.id, reportedToTest: reportToTest };
+
+    if (!registered.length && !reportedUnids.length) {
+      return { skipped: 'duplicate' };
+    }
+    if (registered.length) {
+      const first = registered[0];
+      return {
+        registered: true,
+        registeredCount: registered.length,
+        eventType: first.event_type,
+        eventId: first.id,
+        unit: first.trailer_unit_number,
+        events: registered.map((e) => ({ id: e.id, eventType: e.event_type, unit: e.trailer_unit_number })),
+        unidentifiedCount: reportedUnids.length,
+      };
+    }
+    const firstUnid = reportedUnids[0].event;
+    return {
+      unidentified: true,
+      eventType: firstUnid.event_type,
+      eventId: firstUnid.id,
+      reportedToTest,
+    };
   } catch (err) {
     console.error('[TRAILER] handleTrailerGroupMessage failed:', err.message);
     return { error: err.message };
