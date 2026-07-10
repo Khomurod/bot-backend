@@ -74,11 +74,22 @@ function mergeResults(det, ai) {
     };
   }
   // Otherwise take AI's classification, backfilling from the deterministic pass.
+  // possession follows the (possibly AI-changed) action; cargo keeps the
+  // deterministic text signal ("loaded"/"empty"), else defaults by action —
+  // AI never overrides a clear deterministic loaded/empty read.
+  const aiAction = ai.eventType === 'pickup' ? 'pickup' : ai.eventType === 'dropoff' ? 'dropoff' : null;
+  const possessionStatus = aiAction === 'pickup' ? 'with_driver' : aiAction === 'dropoff' ? 'dropped' : 'unknown';
+  const detHadExplicitCargo = det.cargoStatus === 'loaded' || det.cargoStatus === 'empty';
+  const cargoStatus = detHadExplicitCargo
+    ? det.cargoStatus
+    : (aiAction === 'dropoff' ? 'empty' : 'unknown');
   return {
     isTrailerRelated: true,
     eventType: ai.eventType,
     trailerUnit: ai.trailerUnit || det.trailerUnit,
     action: ai.action,
+    possessionStatus,
+    cargoStatus,
     locationText: ai.locationText || det.locationText,
     conditionText: ai.conditionText || det.conditionText,
     eventDateText: ai.eventDateText || det.eventDateText,
@@ -130,6 +141,19 @@ function eventLabel(type) {
 }
 
 /**
+ * Short possession+cargo phrase for a confirmation line, e.g. "with driver",
+ * "dropped empty", "dropped loaded". Cargo is only shown when known.
+ */
+function statePhrase(event) {
+  const p = event.possession_status;
+  const c = event.cargo_status;
+  const pLabel = p === 'with_driver' ? 'with driver' : p === 'dropped' ? 'dropped' : 'unknown';
+  if (c === 'empty') return `${pLabel} empty`;
+  if (c === 'loaded') return `${pLabel} loaded`;
+  return pLabel;
+}
+
+/**
  * Send ONE confirmation reply to the driver group summarizing every registered
  * pickup/drop-off from the message. A single-trailer message keeps the detailed
  * Location/Condition lines; a multi-trailer message lists one line per trailer.
@@ -145,12 +169,13 @@ async function replyConfirmation(telegram, group, message, events, betaMode) {
     const event = list[0];
     lines.push(`✅ Trailer ${eventLabel(event.event_type)} registered${beta}`, '');
     lines.push(`Trailer: ${event.trailer_unit_number || 'unknown'}`);
+    lines.push(`Status: ${statePhrase(event)}`);
     if (event.location_text) lines.push(`Location: ${event.location_text}`);
     if (event.condition_text) lines.push(`Condition: ${event.condition_text}`);
   } else {
     lines.push(`✅ Trailer updates registered${beta}`, '');
     for (const event of list) {
-      lines.push(`${event.trailer_unit_number || 'unknown'} — ${eventLabel(event.event_type)}`);
+      lines.push(`${event.trailer_unit_number || 'unknown'} — ${eventLabel(event.event_type)} / ${statePhrase(event)}`);
     }
   }
   try {
@@ -226,6 +251,8 @@ async function registerPickupDropoff(parsed, ctx) {
     trailer_id: trailer?.id || null,
     trailer_unit_number: parsed.trailerUnit,
     event_type: parsed.eventType,
+    possession_status: parsed.possessionStatus,
+    cargo_status: parsed.cargoStatus,
     confidence: parsed.confidence,
     driver_group_id: ctx.group.id,
     telegram_group_id: ctx.group.telegram_group_id,
@@ -269,6 +296,8 @@ async function registerUnidentified(parsed, ctx) {
     trailer_id: trailerId,
     trailer_unit_number: parsed.trailerUnit,
     event_type: parsed.eventType === 'mention_only' ? 'mention_only' : 'unidentified',
+    possession_status: parsed.possessionStatus,
+    cargo_status: parsed.cargoStatus,
     confidence: parsed.confidence,
     driver_group_id: ctx.group.id,
     telegram_group_id: ctx.group.telegram_group_id,
@@ -417,6 +446,7 @@ module.exports = {
   isTrailerCandidate,
   extractEvidence,
   mergeResults,
+  statePhrase,
   resolveTestGroupId,
   looksLikeTrailerCommand,
 };

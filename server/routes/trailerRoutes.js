@@ -11,6 +11,7 @@ const db = require('../../database/db');
 const trailerImport = require('../../services/trailerImportService');
 const config = require('../../config/config');
 const { geocodeTrailerLocation } = require('../../services/trailerGeocodeService');
+const trailerState = require('../../services/trailerStateService');
 
 // Screenshots are held in memory while AI vision reads them, so the batch size
 // is bounded to protect the 256 MB heap / 512 MB Render instance. Before the
@@ -83,6 +84,51 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
     } catch (err) {
       console.error('[TRAILER-API] map failed:', err.message);
       res.status(500).json({ error: 'Failed to load trailer map data.' });
+    }
+  });
+
+  // ── Unified trailer state (single source of truth) ─────────────────────────
+  // Registered BEFORE '/api/trailers/:id' so ':id' never captures 'states' /
+  // 'review'. Fail-soft: the state service degrades to an empty list on error.
+  router.get('/api/trailers/states', authMiddleware, async (req, res) => {
+    try {
+      const states = await trailerState.getUnifiedTrailerStates({ activeOnly: req.query.all !== 'true' });
+      res.json({ states });
+    } catch (err) {
+      console.error('[TRAILER-API] states failed:', err.message);
+      res.json({ states: [] });
+    }
+  });
+
+  router.get('/api/trailers/review', authMiddleware, async (req, res) => {
+    try {
+      const rows = await db.listTrailersNeedingReview();
+      res.json({ review: rows });
+    } catch (err) {
+      console.error('[TRAILER-API] review list failed:', err.message);
+      res.json({ review: [] });
+    }
+  });
+
+  // Recompute every trailer's current status from history (bounded, admin-only).
+  router.post('/api/trailers/recompute-all', authMiddleware, async (req, res) => {
+    try {
+      const result = await db.recomputeAllTrailerCurrentStatuses({ limit: Number(req.body?.limit) || 500 });
+      res.json(result);
+    } catch (err) {
+      console.error('[TRAILER-API] recompute-all failed:', err.message);
+      res.status(500).json({ error: 'Failed to recompute trailer statuses.' });
+    }
+  });
+
+  router.get('/api/trailers/:id/state', authMiddleware, async (req, res) => {
+    try {
+      const state = await trailerState.getUnifiedTrailerStateById(req.params.id);
+      if (!state) return res.status(404).json({ error: 'Trailer not found.' });
+      res.json({ state });
+    } catch (err) {
+      console.error('[TRAILER-API] state by id failed:', err.message);
+      res.status(500).json({ error: 'Failed to load trailer state.' });
     }
   });
 
