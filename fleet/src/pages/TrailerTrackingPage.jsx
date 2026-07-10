@@ -3,8 +3,8 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useApp } from '../store.jsx';
 import { api } from '../api';
+import { displayTrailerStatus, markerColor } from '../utils/trailerState';
 
-const STATUS_LABEL = { with_driver: 'With driver', dropped: 'Dropped', unknown: 'Unknown' };
 const STATUS_COLOR = { with_driver: '#22c55e', dropped: '#f59e0b', unknown: '#94a3b8' };
 
 function fmt(iso) {
@@ -12,11 +12,11 @@ function fmt(iso) {
   try { return new Date(iso).toLocaleString(); } catch { return String(iso); }
 }
 
-function Badge({ status }) {
-  const s = status || 'unknown';
+function Badge({ state }) {
+  const s = (state && (state.possession_status || state.current_status)) || 'unknown';
   return (
-    <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600, background: STATUS_COLOR[s] + '22', color: STATUS_COLOR[s] }}>
-      {STATUS_LABEL[s] || s}
+    <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600, background: (STATUS_COLOR[s] || STATUS_COLOR.unknown) + '22', color: STATUS_COLOR[s] || STATUS_COLOR.unknown }}>
+      {state ? displayTrailerStatus(state) : 'Unknown'}
     </span>
   );
 }
@@ -83,7 +83,7 @@ export default function TrailerTrackingPage() {
     if (!showTrailers) return;
     for (const t of mapData.filter((x) => x.current_lat != null && x.current_lng != null)) {
       const approximate = t.location_source === 'approximate_state' || t.location_source === 'approximate';
-      const color = STATUS_COLOR[t.current_status] || STATUS_COLOR.unknown;
+      const color = markerColor(t);
       const border = t.status_needs_review ? '3px solid #ef4444' : '2px solid #fff';
       const dashed = approximate ? 'border-style:dashed;' : '';
       const icon = L.divIcon({
@@ -93,7 +93,7 @@ export default function TrailerTrackingPage() {
       });
       L.marker([t.current_lat, t.current_lng], { icon })
         .bindPopup(
-          `<b>${t.unit_number}</b><br/>Status: ${STATUS_LABEL[t.current_status] || t.current_status}<br/>`
+          `<b>${t.unit_number}</b><br/>Status: ${displayTrailerStatus(t)}<br/>`
           + `Driver: ${t.current_driver_name || '—'}<br/>Location: ${t.current_location_text || '—'}<br/>`
           + `Condition: ${t.current_condition || '—'}<br/>Reporter: ${t.last_reporter_name || '—'}<br/>`
           + `Last event: ${fmt(t.last_event_at)}`
@@ -125,7 +125,7 @@ export default function TrailerTrackingPage() {
           <strong>Text-only locations (not mappable):</strong>
           <ul style={{ margin: '6px 0 0' }}>
             {textOnly.map((t) => (
-              <li key={t.trailer_id}>{t.unit_number} — {t.current_location_text} ({STATUS_LABEL[t.current_status] || t.current_status})</li>
+              <li key={t.trailer_id}>{t.unit_number} — {t.current_location_text} ({displayTrailerStatus(t)})</li>
             ))}
           </ul>
         </div>
@@ -143,7 +143,7 @@ export default function TrailerTrackingPage() {
               {trailers.map((t) => (
                 <tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => openTrailer(t.id)}>
                   <td><strong>{t.unit_number}</strong></td>
-                  <td><Badge status={t.current_status} /></td>
+                  <td><Badge state={t} /></td>
                   <td>{t.current_driver_name || '—'}</td>
                   <td>{t.current_location_text || '—'}</td>
                   <td>{t.current_condition || '—'}</td>
@@ -163,7 +163,7 @@ export default function TrailerTrackingPage() {
             </div>
             {!detail ? <p>Loading…</p> : (
               <>
-                <p style={{ margin: '8px 0' }}><Badge status={detail.status?.current_status} /></p>
+                <p style={{ margin: '8px 0' }}><Badge state={detail.status} /></p>
                 <div style={{ fontSize: 14, color: '#94a3b8', marginBottom: 8 }}>
                   Driver: {detail.status?.current_driver_name || '—'} · Location: {detail.status?.current_location_text || '—'}
                   {detail.status?.last_reporter_name ? ` · Reporter: ${detail.status.last_reporter_name}` : ''}

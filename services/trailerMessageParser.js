@@ -44,6 +44,18 @@ const CONDITION_KEYWORDS = [
   'condition',
 ];
 
+// ── cargo vocabularies ──
+// Word-boundary regexes so "no load" does not match inside "unloaded", "mt" does
+// not match inside "empty", etc. Order does not matter — detectCargoStatus runs
+// both and resolves conflicts explicitly (both present → ambiguous → unknown).
+const LOADED_PATTERNS = [
+  /\bloaded\b/, /\bfull\b/, /\bwith\s+load\b/, /\bunder\s+load\b/, /\bsealed\b/,
+  /\bwith\s+a\s+load\b/, /\bdrop(?:ped)?\s+loaded\b/,
+];
+const EMPTY_PATTERNS = [
+  /\bempty\b/, /\bmt\b/, /\bno\s+load\b/, /\bunloaded\b/, /\bno\s+cargo\b/,
+];
+
 /** Lowercased, whitespace-collapsed copy for keyword scanning. */
 function norm(text) {
   return String(text || '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -189,6 +201,47 @@ function detectAction(text) {
 }
 
 /**
+ * Explicit cargo signal in the text, independent of the pickup/dropoff action.
+ * Returns 'loaded' | 'empty' | 'ambiguous' (both present) | null (neither).
+ * NEVER infers from condition wording like "no pictures" — only the cargo
+ * vocabularies above count.
+ */
+function detectCargoSignal(text) {
+  const t = norm(text);
+  if (!t) return null;
+  const hasLoaded = LOADED_PATTERNS.some((re) => re.test(t));
+  const hasEmpty = EMPTY_PATTERNS.some((re) => re.test(t));
+  if (hasLoaded && hasEmpty) return 'ambiguous';
+  if (hasLoaded) return 'loaded';
+  if (hasEmpty) return 'empty';
+  return null;
+}
+
+/**
+ * Resolve possession + cargo from the action and the message text, applying the
+ * core business rule: a DROPPED trailer defaults to EMPTY unless the message
+ * clearly says loaded; a PICKED-UP trailer's cargo is UNKNOWN unless stated.
+ * Returns { possessionStatus, cargoStatus, cargoAmbiguous }.
+ */
+function resolveCargoPossession(text, action) {
+  const signal = detectCargoSignal(text);
+  const cargoAmbiguous = signal === 'ambiguous';
+
+  let possessionStatus = 'unknown';
+  if (action === 'pickup') possessionStatus = 'with_driver';
+  else if (action === 'dropoff') possessionStatus = 'dropped';
+
+  let cargoStatus;
+  if (signal === 'loaded') cargoStatus = 'loaded';
+  else if (signal === 'empty') cargoStatus = 'empty';
+  else if (signal === 'ambiguous') cargoStatus = 'unknown';
+  else if (action === 'dropoff') cargoStatus = 'empty'; // dropped ⇒ empty by default
+  else cargoStatus = 'unknown'; // pickup/none ⇒ unknown until stated
+
+  return { possessionStatus, cargoStatus, cargoAmbiguous };
+}
+
+/**
  * Parse a message. Returns a structured result:
  *   {
  *     isTrailerRelated, eventType, trailerUnit, action,
@@ -207,6 +260,8 @@ function parseTrailerMessage(text) {
     eventType: 'unidentified',
     trailerUnit: null,
     action: null,
+    possessionStatus: 'unknown',
+    cargoStatus: 'unknown',
     locationText: null,
     conditionText: null,
     eventDateText: null,
@@ -235,9 +290,13 @@ function parseTrailerMessage(text) {
   const eventDateText = extractDate(trimmed);
   const reportedDriverName = extractReportedDriverName(trimmed);
 
+  const cargo = resolveCargoPossession(trimmed, action);
+
   base.isTrailerRelated = true;
   base.trailerUnit = unit;
   base.action = action;
+  base.possessionStatus = cargo.possessionStatus;
+  base.cargoStatus = cargo.cargoStatus;
   base.locationText = locationText;
   base.conditionText = conditionText;
   base.eventDateText = eventDateText;
@@ -255,8 +314,11 @@ function parseTrailerMessage(text) {
       ...base,
       eventType: action, // 'pickup' | 'dropoff'
       confidence,
-      needsReview: !locationText, // no location on an action → flag for review
-      reason: `unit ${unit} + ${action}`,
+      // no location on an action, OR conflicting loaded+empty wording → review.
+      needsReview: !locationText || cargo.cargoAmbiguous,
+      reason: cargo.cargoAmbiguous
+        ? `unit ${unit} + ${action} (conflicting cargo wording — review)`
+        : `unit ${unit} + ${action}`,
     };
   }
 
@@ -321,11 +383,15 @@ function parseSegmentForUnit(segment, unit, fallback = {}) {
   const eventDateText = extractDate(segment) || fallback.eventDateText || null;
   const reportedDriverName = extractReportedDriverName(segment) || fallback.reportedDriverName || null;
 
+  const cargo = resolveCargoPossession(segment, action);
+
   const base = {
     isTrailerRelated: true,
     eventType: 'mention_only',
     trailerUnit: unit,
     action,
+    possessionStatus: cargo.possessionStatus,
+    cargoStatus: cargo.cargoStatus,
     locationText,
     conditionText,
     eventDateText,
@@ -342,7 +408,15 @@ function parseSegmentForUnit(segment, unit, fallback = {}) {
     if (conditionText) confidence += 8;
     if (reportedDriverName) confidence += 5;
     confidence = Math.min(confidence, 98);
-    return { ...base, eventType: action, confidence, needsReview: !locationText, reason: `unit ${unit} + ${action}` };
+    return {
+      ...base,
+      eventType: action,
+      confidence,
+      needsReview: !locationText || cargo.cargoAmbiguous,
+      reason: cargo.cargoAmbiguous
+        ? `unit ${unit} + ${action} (conflicting cargo wording — review)`
+        : `unit ${unit} + ${action}`,
+    };
   }
   return base;
 }
@@ -410,6 +484,8 @@ module.exports = {
   extractDate,
   extractReportedDriverName,
   detectAction,
+  detectCargoSignal,
+  resolveCargoPossession,
   normalizeUnitNumber,
   shouldUseAiFallback,
   TRAILER_KEYWORDS,

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import * as api from "../api";
+import { displayTrailerStatus, possessionStatusLabel, cargoStatusLabel } from "../utils/trailerState";
 
 // NOTE: the standalone trailer map tab was removed in the follow-up. Trailers now
 // render inside the shared "📍 Live Locations" section. This page is for the
@@ -29,14 +30,14 @@ function fmtTime(iso) {
   try { return new Date(iso).toLocaleString(); } catch { return String(iso); }
 }
 
-function StatusBadge({ status, needsReview }) {
+function StatusBadge({ status, needsReview, label }) {
   const s = status || "unknown";
   return (
     <span style={{
       display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 12,
       background: STATUS_COLOR[s] + "22", color: STATUS_COLOR[s], fontWeight: 600,
     }}>
-      {STATUS_LABEL[s] || s}{needsReview ? " • review" : ""}
+      {label || STATUS_LABEL[s] || s}{needsReview ? " • review" : ""}
     </span>
   );
 }
@@ -102,14 +103,14 @@ function TrailerListTab({ onOpen, flash, reloadKey }) {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Unit</th><th>Status</th><th>Current Driver</th><th>Location</th>
+                <th>Unit</th><th>Display Status</th><th>Possession</th><th>Cargo</th><th>Current Driver</th><th>Location</th>
                 <th>Last Condition</th><th>Last Event</th><th>Plate</th><th>VIN</th>
                 <th>Type</th><th>Ownership</th><th>Last Reporter</th><th>Updated</th>
               </tr>
             </thead>
             <tbody>
               {trailers.length === 0 && (
-                <tr><td colSpan={12} style={{ textAlign: "center", color: "#94a3b8" }}>No trailers yet.</td></tr>
+                <tr><td colSpan={14} style={{ textAlign: "center", color: "#94a3b8" }}>No trailers yet.</td></tr>
               )}
               {trailers.map((t) => {
                 const needsReview = !!(t.status_needs_review || t.needs_review);
@@ -117,9 +118,11 @@ function TrailerListTab({ onOpen, flash, reloadKey }) {
                   <tr key={t.id} style={{ cursor: "pointer" }} onClick={() => onOpen(t.id)}>
                     <td><strong>{t.unit_number}</strong></td>
                     <td>
-                      <StatusBadge status={t.current_status} needsReview={needsReview} />
+                      <StatusBadge status={t.possession_status || t.current_status} needsReview={needsReview} label={displayTrailerStatus(t)} />
                       {t.status_needs_review ? <ReviewPill /> : null}
                     </td>
+                    <td>{possessionStatusLabel(t.possession_status || t.current_status)}</td>
+                    <td>{cargoStatusLabel(t.cargo_status)}</td>
                     <td>{t.current_driver_name || "—"}</td>
                     <td>{t.current_location_text || "—"}</td>
                     <td>{t.current_condition || "—"}</td>
@@ -617,8 +620,11 @@ function TrailerDrawer({ id, onClose, flash, onChanged }) {
         <h2 style={{ margin: 0 }}>Trailer {trailer.unit_number}</h2>
         <button className="btn" onClick={onClose}>Close</button>
       </div>
-      <div style={{ margin: "8px 0" }}>
-        <StatusBadge status={status?.current_status} needsReview={!!(status?.needs_review || trailer.needs_review)} />
+      <div style={{ margin: "8px 0", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <StatusBadge status={status?.possession_status || status?.current_status} needsReview={!!(status?.needs_review || trailer.needs_review)} label={status ? displayTrailerStatus(status) : undefined} />
+        <span style={{ fontSize: 12, color: "#94a3b8" }}>
+          Possession: {possessionStatusLabel(status?.possession_status || status?.current_status)} · Cargo: {cargoStatusLabel(status?.cargo_status)}
+        </span>
       </div>
 
       {/* ── Review panel: latest detected change awaiting a decision ── */}
@@ -632,7 +638,7 @@ function TrailerDrawer({ id, onClose, flash, onChanged }) {
             </div>
             <div style={{ marginTop: 6 }}>
               <span style={{ color: "#94a3b8" }}>Current confirmed status: </span>
-              <StatusBadge status={status?.current_status} />
+              <StatusBadge status={status?.possession_status || status?.current_status} label={status ? displayTrailerStatus(status) : undefined} />
             </div>
             {previous && (
               <div style={{ marginTop: 4, fontSize: 12, color: "#94a3b8" }}>

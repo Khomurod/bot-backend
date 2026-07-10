@@ -1197,6 +1197,33 @@ router.get('/trailers/map', async (req, res) => {
   }
 });
 
+// Unified trailer state — the same source of truth the Admin Portal uses, served
+// read-only to FleetView. The Dispatch Map merges `map` (mappable trailers +
+// noLocation) with its truck markers; `current` is the full state list.
+function trailerStateSvc() {
+  return require('../../services/trailerStateService');
+}
+
+router.get('/trailer-state/current', async (req, res) => {
+  try {
+    const states = await trailerStateSvc().getUnifiedTrailerStates();
+    res.json(D.envelope(states, { total: states.length, pageSize: states.length }));
+  } catch (err) {
+    console.warn('[FLEET] trailer-state/current failed (degrading to empty):', err.message);
+    res.json(D.envelope([], { total: 0 }));
+  }
+});
+
+router.get('/trailer-state/map', async (req, res) => {
+  try {
+    const payload = await trailerStateSvc().getTrailerMapPayload();
+    res.json({ data: payload, meta: payload.meta });
+  } catch (err) {
+    console.warn('[FLEET] trailer-state/map failed (degrading to empty):', err.message);
+    res.json({ data: { trailers: [], noLocation: [], meta: { count: 0, error: true } }, meta: { error: true } });
+  }
+});
+
 router.get('/trailers/:id/timeline', async (req, res) => {
   try {
     const id = Number(req.params.id);
