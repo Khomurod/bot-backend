@@ -2284,6 +2284,9 @@ CREATE TABLE IF NOT EXISTS trailer_events (
   trailer_unit_number TEXT NULL,
   event_type TEXT NOT NULL
     CHECK (event_type IN ('pickup', 'dropoff', 'mention_only', 'unidentified')),
+  -- Two-dimension status: possession (who holds it) + cargo (loaded/empty).
+  possession_status TEXT NOT NULL DEFAULT 'unknown',   -- with_driver | dropped | unknown
+  cargo_status TEXT NOT NULL DEFAULT 'unknown',         -- empty | loaded | unknown
   confidence SMALLINT NULL,
   driver_group_id INTEGER NULL REFERENCES groups(id) ON DELETE SET NULL,
   telegram_group_id BIGINT NULL,
@@ -2356,6 +2359,13 @@ ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS location_source TEXT NULL;
 ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS location_confidence SMALLINT NULL;
 ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS geocoded_at TIMESTAMPTZ NULL;
 ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS geocode_error TEXT NULL;
+-- Two-dimension status model (unified trailer state service). Possession is who
+-- holds the trailer; cargo is whether it carries a load. Plain TEXT (validated
+-- in app code) so re-running these ALTERs can never fail on a named CHECK.
+-- Values: possession_status ∈ with_driver | dropped | unknown
+--         cargo_status      ∈ empty | loaded | unknown
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS possession_status TEXT NOT NULL DEFAULT 'unknown';
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS cargo_status TEXT NOT NULL DEFAULT 'unknown';
 -- Dedupe guard (multi-event): at most one event per (group, message, event_index).
 -- Partial so admin_manual rows (message_id NULL) are never blocked.
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_trailer_events_tg_message_event
@@ -2372,6 +2382,11 @@ CREATE TABLE IF NOT EXISTS trailer_current_status (
   unit_number TEXT NOT NULL,
   current_status TEXT NOT NULL DEFAULT 'unknown'
     CHECK (current_status IN ('with_driver', 'dropped', 'unknown')),
+  -- Unified state model. possession_status mirrors current_status (kept in sync
+  -- for clarity); cargo_status + display_status are the new two-dimension view.
+  possession_status TEXT NOT NULL DEFAULT 'unknown',   -- with_driver | dropped | unknown
+  cargo_status TEXT NOT NULL DEFAULT 'unknown',         -- empty | loaded | unknown
+  display_status TEXT NULL,                             -- e.g. 'Dropped / Empty'
   current_driver_group_id INTEGER NULL REFERENCES groups(id) ON DELETE SET NULL,
   current_driver_profile_id INTEGER NULL REFERENCES driver_profiles(id) ON DELETE SET NULL,
   current_driver_name TEXT NULL,
@@ -2399,6 +2414,14 @@ ALTER TABLE trailer_current_status ADD COLUMN IF NOT EXISTS needs_review BOOLEAN
 ALTER TABLE trailer_current_status ADD COLUMN IF NOT EXISTS pending_event_id BIGINT NULL;
 ALTER TABLE trailer_current_status ADD COLUMN IF NOT EXISTS location_source TEXT NULL;
 ALTER TABLE trailer_current_status ADD COLUMN IF NOT EXISTS location_confidence SMALLINT NULL;
+-- Two-dimension status (unified state service). Backfill possession_status from
+-- the legacy current_status once; cargo defaults to unknown until the next event.
+ALTER TABLE trailer_current_status ADD COLUMN IF NOT EXISTS possession_status TEXT NOT NULL DEFAULT 'unknown';
+ALTER TABLE trailer_current_status ADD COLUMN IF NOT EXISTS cargo_status TEXT NOT NULL DEFAULT 'unknown';
+ALTER TABLE trailer_current_status ADD COLUMN IF NOT EXISTS display_status TEXT NULL;
+UPDATE trailer_current_status
+   SET possession_status = current_status
+ WHERE possession_status = 'unknown' AND current_status IN ('with_driver', 'dropped');
 
 -- Admin screenshot-import batches (one per uploaded image set).
 CREATE TABLE IF NOT EXISTS trailer_import_batches (

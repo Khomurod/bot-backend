@@ -33,6 +33,61 @@ function normalizeUnitNumber(value) {
 
 const TRAILER_FIELDS = ['make', 'model', 'mc_number', 'plate_number', 'type', 'vin', 'year', 'ownership_status'];
 
+// ─── unified status normalization ───
+const POSSESSION_STATES = new Set(['with_driver', 'dropped', 'unknown']);
+const CARGO_STATES = new Set(['empty', 'loaded', 'unknown']);
+
+/** Coerce to a valid possession_status; unknown for anything unexpected. */
+function normPossession(value) {
+  const t = String(value || '').trim().toLowerCase();
+  return POSSESSION_STATES.has(t) ? t : 'unknown';
+}
+/** Coerce to a valid cargo_status; unknown for anything unexpected. */
+function normCargo(value) {
+  const t = String(value || '').trim().toLowerCase();
+  return CARGO_STATES.has(t) ? t : 'unknown';
+}
+
+/** Map an event_type to its possession_status (fallback when none was stored). */
+function possessionForEventType(eventType) {
+  if (eventType === 'pickup') return 'with_driver';
+  if (eventType === 'dropoff') return 'dropped';
+  return 'unknown';
+}
+
+/**
+ * Derive the possession + cargo for the current-status row from an event. Honors
+ * the event's stored possession_status/cargo_status when present; otherwise falls
+ * back to the action (dropoff ⇒ dropped/empty, pickup ⇒ with_driver/unknown) so
+ * pre-cargo historical events still resolve sensibly.
+ */
+function derivePossessionCargo(event) {
+  const possession = event.possession_status
+    ? normPossession(event.possession_status)
+    : possessionForEventType(event.event_type);
+  let cargo = normCargo(event.cargo_status);
+  if (cargo === 'unknown' && !event.cargo_status && event.event_type === 'dropoff') {
+    cargo = 'empty'; // dropped ⇒ empty by default (business rule)
+  }
+  return { possession, cargo };
+}
+
+const POSSESSION_LABEL = { with_driver: 'With driver', dropped: 'Dropped', unknown: 'Unknown' };
+const CARGO_LABEL = { empty: 'Empty', loaded: 'Loaded', unknown: 'Unknown cargo' };
+
+/**
+ * Human display status, e.g. "Dropped / Empty", "With driver / Loaded".
+ * needsReview overrides to "Unknown / Needs review" only when possession is
+ * unknown, matching the task's status vocabulary.
+ */
+function buildDisplayStatus(possession, cargo, needsReview) {
+  const p = normPossession(possession);
+  const c = normCargo(cargo);
+  if (p === 'unknown') return needsReview ? 'Unknown / Needs review' : 'Unknown';
+  const cargoLabel = c === 'unknown' ? 'Unknown cargo' : CARGO_LABEL[c];
+  return `${POSSESSION_LABEL[p]} / ${cargoLabel}`;
+}
+
 // ─── trailers (master list) ───
 
 async function getTrailerById(id) {
@@ -139,7 +194,11 @@ async function listTrailers(filters = {}) {
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const res = await query(
     `SELECT t.*,
-            cs.current_status, cs.current_driver_group_id, cs.current_driver_name,
+            cs.current_status,
+            COALESCE(cs.possession_status, 'unknown') AS possession_status,
+            COALESCE(cs.cargo_status, 'unknown') AS cargo_status,
+            cs.display_status,
+            cs.current_driver_group_id, cs.current_driver_name,
             cs.current_location_text, cs.current_lat, cs.current_lng,
             cs.current_condition, cs.last_reporter_name,
             cs.last_event_type, cs.last_event_at,
@@ -184,7 +243,7 @@ async function insertTrailerEvent(input = {}) {
 
   const res = await query(
     `INSERT INTO trailer_events (
-       trailer_id, trailer_unit_number, event_type, confidence,
+       trailer_id, trailer_unit_number, event_type, possession_status, cargo_status, confidence,
        driver_group_id, telegram_group_id, telegram_group_name,
        driver_profile_id, driver_name,
        reported_by_telegram_user_id, reported_by_username, reported_by_name,
@@ -196,17 +255,17 @@ async function insertTrailerEvent(input = {}) {
        reported_to_test_group, source, beta_mode,
        event_index, review_status, location_source, location_confidence, geocoded_at, geocode_error
      ) VALUES (
-       $1,$2,$3,$4,
-       $5,$6,$7,
-       $8,$9,
-       $10,$11,$12,
-       $13,
-       $14,$15,$16,$17,
-       $18,$19,$20,
-       $21,$22,$23,
-       $24,$25,$26,
-       $27,$28,$29,
-       $30,$31,$32,$33,$34,$35
+       $1,$2,$3,$4,$5,$6,
+       $7,$8,$9,
+       $10,$11,
+       $12,$13,$14,
+       $15,
+       $16,$17,$18,$19,
+       $20,$21,$22,
+       $23,$24,$25,
+       $26,$27,$28,
+       $29,$30,$31,
+       $32,$33,$34,$35,$36,$37
      )
      ON CONFLICT (telegram_group_id, telegram_message_id, event_index)
        WHERE telegram_group_id IS NOT NULL AND telegram_message_id IS NOT NULL
@@ -216,6 +275,8 @@ async function insertTrailerEvent(input = {}) {
       input.trailer_id != null ? Number(input.trailer_id) : null,
       normalizeUnitNumber(input.trailer_unit_number),
       String(input.event_type),
+      normPossession(input.possession_status != null ? input.possession_status : possessionForEventType(input.event_type)),
+      normCargo(input.cargo_status),
       input.confidence != null ? Math.max(0, Math.min(100, Math.round(Number(input.confidence)))) : null,
       input.driver_group_id != null ? Number(input.driver_group_id) : null,
       telegramGroupId,
@@ -457,6 +518,8 @@ async function applyEventToCurrentStatus(trailer, event, { force = false } = {})
   const eventAt = event.event_time || event.created_at || new Date().toISOString();
   const currentStatus = event.event_type === 'pickup' ? 'with_driver' : 'dropped';
   const isPending = event.review_status === 'pending';
+  const { possession, cargo } = derivePossessionCargo(event);
+  const displayStatus = buildDisplayStatus(possession, cargo, isPending);
 
   const guard = force
     ? ''
@@ -465,16 +528,19 @@ async function applyEventToCurrentStatus(trailer, event, { force = false } = {})
 
   const res = await query(
     `INSERT INTO trailer_current_status (
-       trailer_id, unit_number, current_status,
+       trailer_id, unit_number, current_status, possession_status, cargo_status, display_status,
        current_driver_group_id, current_driver_profile_id, current_driver_name,
        current_location_text, current_lat, current_lng, current_condition,
        last_reporter_name, last_event_id, last_event_type, last_event_at,
        needs_review, pending_event_id, location_source, location_confidence, updated_at
      ) VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18, NOW()
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21, NOW()
      )
      ON CONFLICT (trailer_id) DO UPDATE SET
        current_status = EXCLUDED.current_status,
+       possession_status = EXCLUDED.possession_status,
+       cargo_status = EXCLUDED.cargo_status,
+       display_status = EXCLUDED.display_status,
        current_driver_group_id = EXCLUDED.current_driver_group_id,
        current_driver_profile_id = EXCLUDED.current_driver_profile_id,
        current_driver_name = EXCLUDED.current_driver_name,
@@ -497,6 +563,9 @@ async function applyEventToCurrentStatus(trailer, event, { force = false } = {})
       Number(trailer.id),
       trailer.unit_number,
       currentStatus,
+      possession,
+      cargo,
+      displayStatus,
       event.driver_group_id != null ? Number(event.driver_group_id) : null,
       event.driver_profile_id != null ? Number(event.driver_profile_id) : null,
       s(event.driver_name, 300),
@@ -538,7 +607,7 @@ async function recomputeTrailerCurrentStatus(trailerId) {
     // No confirmed pickup/dropoff remains — reset to a clean 'unknown' snapshot.
     const reset = await query(
       `UPDATE trailer_current_status SET
-         current_status = 'unknown',
+         current_status = 'unknown', possession_status = 'unknown', cargo_status = 'unknown', display_status = 'Unknown',
          current_driver_group_id = NULL, current_driver_profile_id = NULL, current_driver_name = NULL,
          current_location_text = NULL, current_lat = NULL, current_lng = NULL, current_condition = NULL,
          last_reporter_name = NULL, last_event_id = NULL, last_event_type = NULL, last_event_at = NULL,
@@ -596,7 +665,10 @@ async function listTrailerMapData() {
   const res = await query(
     `SELECT t.id AS trailer_id, t.unit_number, t.type, t.ownership_status, t.needs_review,
             COALESCE(cs.current_status, 'unknown') AS current_status,
-            cs.current_driver_name, cs.current_driver_group_id,
+            COALESCE(cs.possession_status, 'unknown') AS possession_status,
+            COALESCE(cs.cargo_status, 'unknown') AS cargo_status,
+            cs.display_status,
+            cs.current_driver_name, cs.current_driver_group_id, cs.current_driver_profile_id,
             cs.current_location_text, cs.current_lat, cs.current_lng,
             cs.current_condition, cs.last_reporter_name,
             cs.last_event_type, cs.last_event_at,
@@ -607,6 +679,109 @@ async function listTrailerMapData() {
      WHERE t.active = TRUE
      ORDER BY cs.last_event_at DESC NULLS LAST, t.unit_number ASC
      LIMIT 2000`
+  );
+  return res.rows;
+}
+
+/**
+ * Unified trailer states — the single row-shape both Trailer Tracking and the
+ * Dispatch Map consume (via services/trailerStateService.js). Superset of the
+ * map payload: adds master-list detail (plate/vin/make/model) for the management
+ * view. `activeOnly` (default true) mirrors the map query; pass false to include
+ * archived trailers in admin lists.
+ */
+async function getUnifiedTrailerStates({ activeOnly = true, limit = 2000 } = {}) {
+  const res = await query(
+    `SELECT t.id AS trailer_id, t.unit_number, t.type, t.ownership_status, t.active,
+            t.needs_review, t.plate_number, t.vin, t.make, t.model, t.year, t.mc_number,
+            COALESCE(cs.current_status, 'unknown') AS current_status,
+            COALESCE(cs.possession_status, 'unknown') AS possession_status,
+            COALESCE(cs.cargo_status, 'unknown') AS cargo_status,
+            cs.display_status,
+            cs.current_driver_name, cs.current_driver_group_id, cs.current_driver_profile_id,
+            cs.current_location_text, cs.current_lat, cs.current_lng,
+            cs.current_condition, cs.last_reporter_name,
+            cs.last_event_id, cs.last_event_type, cs.last_event_at,
+            COALESCE(cs.needs_review, FALSE) AS status_needs_review,
+            cs.pending_event_id, cs.location_source, cs.location_confidence, cs.updated_at
+     FROM trailers t
+     LEFT JOIN trailer_current_status cs ON cs.trailer_id = t.id
+     ${activeOnly ? 'WHERE t.active = TRUE' : ''}
+     ORDER BY cs.last_event_at DESC NULLS LAST, t.unit_number ASC
+     LIMIT $1`,
+    [Math.max(1, Math.min(5000, Number(limit) || 2000))]
+  );
+  return res.rows;
+}
+
+/** Unified state for a single trailer (same shape as getUnifiedTrailerStates). */
+async function getUnifiedTrailerStateById(trailerId) {
+  const res = await query(
+    `SELECT t.id AS trailer_id, t.unit_number, t.type, t.ownership_status, t.active,
+            t.needs_review, t.plate_number, t.vin, t.make, t.model, t.year, t.mc_number,
+            COALESCE(cs.current_status, 'unknown') AS current_status,
+            COALESCE(cs.possession_status, 'unknown') AS possession_status,
+            COALESCE(cs.cargo_status, 'unknown') AS cargo_status,
+            cs.display_status,
+            cs.current_driver_name, cs.current_driver_group_id, cs.current_driver_profile_id,
+            cs.current_location_text, cs.current_lat, cs.current_lng,
+            cs.current_condition, cs.last_reporter_name,
+            cs.last_event_id, cs.last_event_type, cs.last_event_at,
+            COALESCE(cs.needs_review, FALSE) AS status_needs_review,
+            cs.pending_event_id, cs.location_source, cs.location_confidence, cs.updated_at
+     FROM trailers t
+     LEFT JOIN trailer_current_status cs ON cs.trailer_id = t.id
+     WHERE t.id = $1`,
+    [Number(trailerId)]
+  );
+  return res.rows[0] || null;
+}
+
+/**
+ * Recompute current status for a batch of trailers from their event history.
+ * Bounded (default 500) so an admin backfill never runs an unbounded loop.
+ * Returns { processed }.
+ */
+async function recomputeAllTrailerCurrentStatuses({ limit = 500 } = {}) {
+  const cap = Math.max(1, Math.min(5000, Number(limit) || 500));
+  const res = await query(
+    `SELECT DISTINCT trailer_id FROM trailer_events
+     WHERE trailer_id IS NOT NULL AND event_type IN ('pickup','dropoff')
+     ORDER BY trailer_id LIMIT $1`,
+    [cap]
+  );
+  let processed = 0;
+  for (const row of res.rows) {
+    try {
+      await recomputeTrailerCurrentStatus(row.trailer_id);
+      processed += 1;
+    } catch (err) {
+      console.warn('[TRAILER] recompute failed for', row.trailer_id, '-', err.message);
+    }
+  }
+  return { processed };
+}
+
+/**
+ * Trailers whose latest pickup/dropoff event is still pending review. Drives the
+ * "Needs Review" tab and the Dispatch Map "needs review" filter.
+ */
+async function listTrailersNeedingReview() {
+  const res = await query(
+    `SELECT t.id AS trailer_id, t.unit_number, t.type,
+            COALESCE(cs.possession_status, 'unknown') AS possession_status,
+            COALESCE(cs.cargo_status, 'unknown') AS cargo_status,
+            cs.display_status, cs.current_driver_name, cs.current_location_text,
+            cs.last_reporter_name, cs.last_event_at, cs.pending_event_id,
+            e.event_type AS pending_event_type, e.confidence AS pending_confidence,
+            e.raw_message_text AS pending_raw_message, e.unidentified_reason AS pending_reason,
+            e.location_text AS pending_location, e.reported_by_name AS pending_reporter
+     FROM trailer_current_status cs
+     JOIN trailers t ON t.id = cs.trailer_id
+     LEFT JOIN trailer_events e ON e.id = cs.pending_event_id
+     WHERE cs.needs_review = TRUE
+     ORDER BY cs.last_event_at DESC NULLS LAST
+     LIMIT 1000`
   );
   return res.rows;
 }
@@ -731,9 +906,16 @@ module.exports = {
   // current status
   applyEventToCurrentStatus,
   recomputeTrailerCurrentStatus,
+  recomputeAllTrailerCurrentStatuses,
   getTrailerReviewContext,
   getTrailerCurrentStatus,
   listTrailerMapData,
+  // unified state
+  getUnifiedTrailerStates,
+  getUnifiedTrailerStateById,
+  listTrailersNeedingReview,
+  buildDisplayStatus,
+  derivePossessionCargo,
   // import
   createImportBatch,
   insertImportRows,
