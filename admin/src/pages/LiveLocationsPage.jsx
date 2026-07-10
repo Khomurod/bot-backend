@@ -113,6 +113,77 @@ function popupHtml(unit) {
   return `<div style="min-width:210px;font-size:13px;line-height:1.5">${rows.join("")}</div>`;
 }
 
+// ── Trailer overlay (rectangles) ─────────────────────────────────────────────
+const TRAILER_STATUS_LABEL = { with_driver: "With driver", dropped: "Dropped", unknown: "Unknown" };
+
+/** Normalize a driver name for matching a trailer to a live truck/group. */
+function normName(name) {
+  return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+/**
+ * Decide how to render a trailer: effective coordinates (derived from the
+ * matched driver/truck when the trailer is with a driver), a color by
+ * status/precision, and whether it needs a review outline. Returns null when the
+ * trailer has no mappable location (caller lists it text-only instead).
+ */
+function resolveTrailer(t, unitByName) {
+  const needsReview = !!t.status_needs_review;
+  let lat = t.current_lat;
+  let lng = t.current_lng;
+  let source = t.location_source || (lat != null ? "exact" : null);
+  let derived = false;
+  let derivedFrom = null;
+
+  if (t.current_status === "with_driver") {
+    const u = unitByName.get(normName(t.current_driver_name));
+    if (u && u.location && u.location.lat != null && u.location.lng != null) {
+      lat = u.location.lat;
+      lng = u.location.lng;
+      source = "derived_from_driver";
+      derived = true;
+      derivedFrom = u.unit;
+    }
+  }
+  if (lat == null || lng == null) return null;
+
+  const approximate = source === "approximate_state" || source === "approximate";
+  let color;
+  if (derived) color = "#22c55e";              // with driver (derived) — green
+  else if (approximate) color = "#8b5cf6";      // approximate — purple
+  else if (t.current_status === "dropped") color = "#f59e0b"; // dropped exact — orange
+  else color = "#3b82f6";                       // other exact/geocoded — blue
+
+  return { lat, lng, color, approximate, derived, derivedFrom, needsReview, source };
+}
+
+function trailerIcon(r) {
+  const border = r.needsReview ? "3px solid #ef4444" : "2px solid #fff";
+  const dashed = r.approximate ? "border-style:dashed;" : "";
+  // Derived trailers are nudged to the RIGHT of the truck triangle via anchor.
+  return L.divIcon({
+    className: "trailer-ll-marker",
+    html: `<div style="width:15px;height:11px;border-radius:2px;background:${r.color};${dashed}border:${border};box-shadow:0 0 3px rgba(0,0,0,.6)"></div>`,
+    iconSize: [15, 11],
+    iconAnchor: r.derived ? [-8, 5] : [7, 5],
+  });
+}
+
+function trailerPopupHtml(t, r) {
+  const rows = [];
+  rows.push(`<div style="font-weight:700;font-size:14px;margin-bottom:2px">🚚 Trailer ${escapeHtml(t.unit_number)}</div>`);
+  rows.push(`<div><b>Status:</b> ${escapeHtml(TRAILER_STATUS_LABEL[t.current_status] || t.current_status)}${r.needsReview ? ' <span style="color:#ef4444">• review</span>' : ""}</div>`);
+  rows.push(`<div><b>Driver:</b> ${escapeHtml(t.current_driver_name || "—")}</div>`);
+  rows.push(`<div><b>Location:</b> ${escapeHtml(t.current_location_text || "—")}</div>`);
+  if (r.derived) rows.push(`<div style="color:#22c55e;font-size:12px">Location derived from driver/truck live location${r.derivedFrom ? " (unit " + escapeHtml(r.derivedFrom) + ")" : ""}.</div>`);
+  else if (r.approximate) rows.push(`<div style="color:#8b5cf6;font-size:12px">Approximate location (${escapeHtml(r.source)}).</div>`);
+  rows.push(`<div><b>Condition:</b> ${escapeHtml(t.current_condition || "—")}</div>`);
+  rows.push(`<div><b>Reporter:</b> ${escapeHtml(t.last_reporter_name || "—")}</div>`);
+  rows.push(`<div><b>Last event:</b> ${escapeHtml(t.last_event_at ? new Date(t.last_event_at).toLocaleString() : "—")}</div>`);
+  rows.push(`<div style="margin-top:8px;font-size:12px"><a href="#/trailers" style="color:#6366f1;text-decoration:none;font-weight:600">Open Trailer Tracking ↗</a></div>`);
+  return `<div style="min-width:210px;font-size:13px;line-height:1.5">${rows.join("")}</div>`;
+}
+
 /**
  * Admin-only diagnostics: exactly the secret-free counts the backend already
  * computes on every snapshot build (services/liveLocationsService.js `debug`),
@@ -183,11 +254,14 @@ export default function LiveLocationsPage() {
   const [mapError, setMapError] = useState(null);
   const [tileError, setTileError] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showTrailers, setShowTrailers] = useState(true);
+  const [trailers, setTrailers] = useState([]);
 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const markerLayerRef = useRef(null);
   const routeLayerRef = useRef(null);
+  const trailerLayerRef = useRef(null);
   const markersByUnit = useRef(new Map());
   const selectedUnitRef = useRef(null);
 
@@ -229,6 +303,12 @@ export default function LiveLocationsPage() {
       setSnapshot(data);
       setLastUpdated(at);
       setError(null);
+      // Trailers are an OPTIONAL overlay: a failure here must never surface an
+      // error or blank the trucks — keep the last-known trailer list.
+      try {
+        const td = await api.getTrailerMapData();
+        setTrailers(td.trailers || []);
+      } catch (_) { /* keep previous trailers */ }
     } catch (err) {
       // Keep the previously loaded snapshot visible; just surface a banner.
       setError(err.message || "Failed to refresh");
@@ -287,6 +367,7 @@ export default function LiveLocationsPage() {
         tiles.addTo(map);
         markerLayerRef.current = L.layerGroup().addTo(map);
         routeLayerRef.current = L.layerGroup().addTo(map);
+        trailerLayerRef.current = L.layerGroup().addTo(map);
         mapRef.current = map;
         // Popup "Center map here" links.
         map.on("popupopen", (e) => {
@@ -322,6 +403,14 @@ export default function LiveLocationsPage() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  // Re-measure after any layout-affecting change (map becomes ready, diagnostics
+  // panel toggles, banners appear/disappear) so Leaflet never renders shrunk.
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return undefined;
+    const id = setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 150);
+    return () => clearTimeout(id);
+  }, [mapReady, showDiagnostics, error, snapshot?.isStale, providerErrors.length]);
 
   useEffect(() => {
     return () => {
@@ -378,6 +467,41 @@ export default function LiveLocationsPage() {
     return () => { cancelled = true; };
   }, [selectedUnit, mapReady]);
 
+  // ── Draw trailer rectangles (overlay). Independent of truck markers so it
+  //    can be toggled without touching them. Derives a with-driver trailer's
+  //    position from its matched live truck. ──
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = trailerLayerRef.current;
+    if (!map || !layer) return;
+    layer.clearLayers();
+    if (!showTrailers) return;
+
+    const unitByName = new Map();
+    units.forEach((u) => {
+      if (u.driverName) unitByName.set(normName(u.driverName), u);
+      if (u.groupName) unitByName.set(normName(u.groupName), u);
+    });
+
+    trailers.forEach((t) => {
+      const r = resolveTrailer(t, unitByName);
+      if (!r) return; // text-only / unknown — shown in the side list instead
+      const marker = L.marker([r.lat, r.lng], { icon: trailerIcon(r), title: `Trailer ${t.unit_number}` });
+      marker.bindPopup(trailerPopupHtml(t, r));
+      marker.addTo(layer);
+    });
+  }, [trailers, showTrailers, units, mapReady]);
+
+  const trailerTextOnly = useMemo(() => {
+    if (!showTrailers) return [];
+    const unitByName = new Map();
+    units.forEach((u) => {
+      if (u.driverName) unitByName.set(normName(u.driverName), u);
+      if (u.groupName) unitByName.set(normName(u.groupName), u);
+    });
+    return trailers.filter((t) => !resolveTrailer(t, unitByName));
+  }, [trailers, showTrailers, units]);
+
   const fitAll = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -431,6 +555,13 @@ export default function LiveLocationsPage() {
             {autoRefresh ? "⏱ Auto: On" : "⏱ Auto: Off"}
           </button>
           <button className="btn btn-ghost btn-sm" onClick={fitAll}>🗺 Fit all</button>
+          <button
+            className={`btn btn-sm ${showTrailers ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => setShowTrailers((v) => !v)}
+            title="Show / hide trailer markers (does not affect trucks)"
+          >
+            🚚 Trailers: {showTrailers ? "On" : "Off"}
+          </button>
           <button
             className={`btn btn-sm ${showDiagnostics ? "btn-primary" : "btn-ghost"}`}
             onClick={() => setShowDiagnostics((v) => !v)}
@@ -487,9 +618,10 @@ export default function LiveLocationsPage() {
           Only a true Leaflet failure shows a "map unavailable" message. */}
       {(
         <div style={{ display: "flex", gap: 16, alignItems: "stretch", flexWrap: "wrap" }}>
-          {/* Map */}
-          <div className="card" style={{ flex: "1 1 480px", minWidth: 320, padding: 0, overflow: "hidden", position: "relative" }}>
-            <div ref={mapContainerRef} style={{ height: 620, width: "100%", background: "var(--bg-secondary)" }} />
+          {/* Map — responsive height (fills the viewport, min 460px) so it is
+              never shrunk; invalidateSize on mount/resize keeps tiles correct. */}
+          <div className="card" style={{ flex: "1 1 520px", minWidth: 320, padding: 0, overflow: "hidden", position: "relative" }}>
+            <div ref={mapContainerRef} style={{ height: "max(460px, calc(100vh - 300px))", width: "100%", background: "var(--bg-secondary)" }} />
             {tileError && mapReady && (
               <div style={{ position: "absolute", top: 8, left: 8, right: 8, zIndex: 500, background: "rgba(245,158,11,0.95)", color: "#1e293b", padding: "6px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
                 ⚠️ Map tiles failed to load (tile provider unreachable). The map and unit list still work.
@@ -517,7 +649,7 @@ export default function LiveLocationsPage() {
           </div>
 
           {/* Side panel */}
-          <div className="card" style={{ flex: "0 1 360px", minWidth: 280, display: "flex", flexDirection: "column", maxHeight: 620 }}>
+          <div className="card" style={{ flex: "0 1 360px", minWidth: 280, display: "flex", flexDirection: "column", maxHeight: "max(460px, calc(100vh - 300px))" }}>
             <input
               className="form-input"
               placeholder="Search by unit or driver…"
@@ -586,6 +718,43 @@ export default function LiveLocationsPage() {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Trailer overlay legend + text-only trailers (not mappable). */}
+      {showTrailers && trailers.length > 0 && (
+        <div className="card" style={{ padding: 12, marginTop: 16 }}>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", fontSize: 12 }}>
+            <strong>Trailers ({trailers.length})</strong>
+            {[
+              { c: "#22c55e", l: "With driver (derived)" },
+              { c: "#f59e0b", l: "Dropped (exact)" },
+              { c: "#8b5cf6", l: "Approximate", dashed: true },
+              { c: "#3b82f6", l: "Geocoded" },
+            ].map((s) => (
+              <span key={s.l} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <span style={{ width: 15, height: 11, borderRadius: 2, background: s.c, border: "2px solid #fff", borderStyle: s.dashed ? "dashed" : "solid", display: "inline-block" }} />
+                {s.l}
+              </span>
+            ))}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 15, height: 11, borderRadius: 2, border: "2px solid #ef4444", display: "inline-block" }} /> Needs review
+            </span>
+          </div>
+          {trailerTextOnly.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>
+                Text-only / unknown location ({trailerTextOnly.length}) — not mappable:
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+                {trailerTextOnly.map((t) => (
+                  <li key={t.trailer_id}>
+                    <strong>{t.unit_number}</strong> — {t.current_location_text || "(unknown)"} ({TRAILER_STATUS_LABEL[t.current_status] || t.current_status})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </div>
