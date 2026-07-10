@@ -2,28 +2,42 @@
  * Trailer Tracking (Beta) — Telegram monitor.
  *
  * Called (detached, best-effort) from the driver-group message pipeline for
- * every message in an active driver group. It:
- *   1. cheap-filters out non-trailer messages,
- *   2. parses deterministically, with an AI fallback for messy input,
- *   3. for a clear pickup/dropoff: registers an immutable event, updates the
- *      trailer's current status, and replies to + reacts on the original message,
- *   4. for an unclear/mention-only "trailer command": records it and reports it
- *      to the Automatic Updating (Test) group for review — NOT to the driver group.
+ * every message in an active driver group. Pipeline:
+ *
+ *   all messages
+ *     → cheap trailer-candidate filter (keywords, units, multilingual action
+ *       hints + reply/photo context — no network)
+ *     → full context collection (reply text/caption, replied/current image
+ *       vision text, bounded recent messages — services/trailerContextService)
+ *     → deterministic extraction (units, action words, location, condition —
+ *       candidates only, NEVER authorization)
+ *     → MANDATORY AI semantic verification for any possible pickup/drop-off
+ *       (services/trailerSemanticVerifier — completed past action vs. plan /
+ *       instruction / question / discussion, in EN/RU/UZ)
+ *     → hard server-side approval gate (strict unit validation + grounding +
+ *       confidence thresholds)
+ *     → register ONLY confirmed completed actions; everything meaningful but
+ *       unconfirmed goes to the Needs Review ledger + Automatic Updating (Test)
+ *       group. If the AI is unavailable / times out / returns invalid JSON the
+ *       candidate FAILS CLOSED to review — no status change, no driver reply.
  *
  * Dedupe is guaranteed by the DB unique index on (telegram_group_id,
- * telegram_message_id): the same message can never create two events, so a
- * duplicate update is a no-op and never re-replies or re-reports.
+ * telegram_message_id, event_index) plus an in-flight AI de-dupe per message.
  *
  * NEVER throws to its caller — a trailer-monitor failure must not affect any
- * other bot behavior. No secrets are logged.
+ * other bot behavior. No secrets or full prompts are logged.
  */
 const db = require('../database/db');
 const config = require('../config/config');
 const {
   parseTrailerMessage, parseTrailerMessageEvents,
-  hasTrailerKeyword, extractUnitNumber, shouldUseAiFallback,
+  hasTrailerKeyword, extractUnitNumber, detectAction, detectMultilingualActionHint,
 } = require('./trailerMessageParser');
-const { classifyTrailerMessageWithAi } = require('./trailerClassifier');
+const { collectTrailerContext, groundedSourcesFromContext } = require('./trailerContextService');
+const {
+  verifyTrailerSemantics, evaluateTrailerEventApproval, isSemanticAiConfigured,
+} = require('./trailerSemanticVerifier');
+const { photoDescriptor } = require('./trailerVisionService');
 const { geocodeTrailerLocation } = require('./trailerGeocodeService');
 const { buildTelegramMessageUrl } = require('./telegramUrl');
 
@@ -49,57 +63,34 @@ function extractEvidence(message) {
   };
 }
 
-/** Cheap pre-filter: is this worth parsing at all? */
+/** Cheap text-only pre-filter (kept for compatibility + tests). */
 function isTrailerCandidate(text) {
   if (!text) return false;
   return hasTrailerKeyword(text) || Boolean(extractUnitNumber(text));
 }
 
 /**
- * Merge the deterministic result with an AI result. Trust the deterministic
- * pass for confident actions; otherwise prefer the AI's classification but keep
- * any concrete field the AI left null. Grounded-unit rule is enforced in the
- * classifier, so a merged action always has a real unit.
+ * Cheap MESSAGE-level candidate filter. True when:
+ *  - the text/caption has a trailer keyword or extractable unit (as before), OR
+ *  - the text carries an action hint (English or Uzbek/Russian pickup/drop-off
+ *    verb) AND there is grounding nearby: a replied-to message with a photo or
+ *    trailer signal, or a unit-like token in the text itself.
+ * Runs no network calls; false means the message is ignored entirely.
  */
-function mergeResults(det, ai) {
-  if (!ai) return det;
-  // A confident deterministic action wins.
-  if ((det.eventType === 'pickup' || det.eventType === 'dropoff') && det.confidence >= 75) {
-    return {
-      ...det,
-      locationText: det.locationText || ai.locationText,
-      conditionText: det.conditionText || ai.conditionText,
-      eventDateText: det.eventDateText || ai.eventDateText,
-      reportedDriverName: det.reportedDriverName || ai.reportedDriverName,
-    };
-  }
-  // Otherwise take AI's classification, backfilling from the deterministic pass.
-  // possession follows the (possibly AI-changed) action; cargo keeps the
-  // deterministic text signal ("loaded"/"empty"), else defaults by action —
-  // AI never overrides a clear deterministic loaded/empty read.
-  const aiAction = ai.eventType === 'pickup' ? 'pickup' : ai.eventType === 'dropoff' ? 'dropoff' : null;
-  const possessionStatus = aiAction === 'pickup' ? 'with_driver' : aiAction === 'dropoff' ? 'dropped' : 'unknown';
-  const detHadExplicitCargo = det.cargoStatus === 'loaded' || det.cargoStatus === 'empty';
-  const cargoStatus = detHadExplicitCargo
-    ? det.cargoStatus
-    : (aiAction === 'dropoff' ? 'empty' : 'unknown');
-  return {
-    isTrailerRelated: true,
-    eventType: ai.eventType,
-    trailerUnit: ai.trailerUnit || det.trailerUnit,
-    action: ai.action,
-    possessionStatus,
-    cargoStatus,
-    locationText: ai.locationText || det.locationText,
-    conditionText: ai.conditionText || det.conditionText,
-    eventDateText: ai.eventDateText || det.eventDateText,
-    reportedDriverName: ai.reportedDriverName || det.reportedDriverName,
-    confidence: Math.max(ai.confidence, det.confidence),
-    reason: ai.reason || det.reason,
-    needsReview: ai.needsReview,
-    method: 'ai+deterministic',
-    aiModel: ai.aiModel || null,
-  };
+function isTrailerCandidateMessage(message) {
+  const text = messageText(message);
+  if (isTrailerCandidate(text)) return true;
+  if (!text) return false;
+  const hint = detectMultilingualActionHint(text) || detectAction(text);
+  if (!hint) return false;
+  // Unit-like token inline ("Hooked to SWFZ233611")?
+  if (/\b[A-Za-z]{0,4}-?\d{4,}[A-Za-z0-9-]*\b/.test(text)) return true;
+  // Reply context: replied-to photo (unit may live in the image) or trailer text.
+  const replied = message.reply_to_message;
+  if (!replied) return false;
+  if (photoDescriptor(replied)) return true;
+  const repliedText = `${replied.text || ''}\n${replied.caption || ''}`;
+  return isTrailerCandidate(repliedText);
 }
 
 /** Resolve the effective test-group id (DB setting overrides config env). */
@@ -155,8 +146,8 @@ function statePhrase(event) {
 
 /**
  * Send ONE confirmation reply to the driver group summarizing every registered
- * pickup/drop-off from the message. A single-trailer message keeps the detailed
- * Location/Condition lines; a multi-trailer message lists one line per trailer.
+ * pickup/drop-off from the message. Sent ONLY after the hard approval gate
+ * passed and the events were actually stored.
  */
 async function replyConfirmation(telegram, group, message, events, betaMode) {
   const list = (Array.isArray(events) ? events : [events]).filter(Boolean);
@@ -189,7 +180,7 @@ async function replyConfirmation(telegram, group, message, events, betaMode) {
 }
 
 /**
- * Report an unidentified / unclear trailer command to the Automatic Updating
+ * Report an unconfirmed / unclear trailer candidate to the Automatic Updating
  * (Test) group. Never sent to the driver group. Never throws.
  */
 async function reportUnidentified(telegram, group, message, parsed, event, testGroupId, betaMode) {
@@ -198,15 +189,22 @@ async function reportUnidentified(telegram, group, message, parsed, event, testG
   const link = buildTelegramMessageUrl(group.telegram_group_id, message.message_id);
   const beta = betaMode ? ' [Beta]' : '';
   const raw = messageText(message);
+  const sem = parsed.semantic || null;
   const lines = [
-    `⚠️ Unidentified trailer command${beta}`,
+    sem ? `⚠️ Trailer candidate needs review${beta}` : `⚠️ Unidentified trailer command${beta}`,
     '',
     `Group: ${group.group_name || group.telegram_group_id}`,
     `Sender: ${from.username ? '@' + from.username : ''}${from.username ? ' ' : ''}${reporterName(from) || 'unknown'}`,
     `Detected unit: ${parsed.trailerUnit || '—'}`,
-    `Type: ${parsed.eventType}`,
+    `Type: ${sem?.intent || parsed.eventType}`,
     `Why: ${parsed.reason || 'unclear'}`,
   ];
+  if (sem) {
+    if (sem.confidence != null) lines.push(`AI confidence: ${sem.confidence}`);
+    if (sem.unitEvidence) lines.push(`Unit evidence: ${String(sem.unitEvidence).slice(0, 200)}`);
+    if (sem.actionEvidence) lines.push(`Action evidence: ${String(sem.actionEvidence).slice(0, 200)}`);
+    lines.push('No status was changed.');
+  }
   if (raw) lines.push('', `Message: ${raw.slice(0, 500)}`);
   if (link) lines.push('', link);
   try {
@@ -217,11 +215,31 @@ async function reportUnidentified(telegram, group, message, parsed, event, testG
   }
 }
 
+/** Map a parsed.semantic block to the trailer_events audit columns. */
+function semanticColumns(parsed, verificationStatus) {
+  const sem = parsed.semantic || null;
+  if (!sem) return { ai_verification_status: verificationStatus || null };
+  return {
+    semantic_intent: sem.intent || null,
+    semantic_completed: sem.completed != null ? Boolean(sem.completed) : null,
+    semantic_confidence: sem.confidence != null ? sem.confidence : null,
+    semantic_reason: sem.reason || null,
+    unit_grounded: sem.unitGrounded != null ? Boolean(sem.unitGrounded) : null,
+    unit_source: sem.unitSource || null,
+    unit_evidence: sem.unitEvidence || null,
+    action_evidence: sem.actionEvidence || null,
+    ai_model: sem.aiModel || null,
+    ai_verified_at: sem.verifiedAt || null,
+    ai_verification_status: verificationStatus || null,
+    raw_ai_result: sem.raw || null,
+  };
+}
+
 /**
- * Register ONE parsed pickup/dropoff: geocode its location (fail-soft, cached),
- * insert the immutable event (review_status='pending' so an admin accepts /
- * declines / edits it), and advance the trailer's current status. Returns
- * { event, duplicate }.
+ * Register ONE verified pickup/dropoff: geocode its location (fail-soft,
+ * cached), insert the immutable event (review_status='pending' so an admin
+ * still accepts / declines / edits it), and advance the trailer's current
+ * status. Returns { event, duplicate }.
  */
 async function registerPickupDropoff(parsed, ctx) {
   const trailer = await db.ensureTrailerForDetection(parsed.trailerUnit);
@@ -283,21 +301,27 @@ async function registerPickupDropoff(parsed, ctx) {
     ai_summary: parsed.method === 'deterministic' ? null : parsed.reason,
     source: 'telegram',
     beta_mode: ctx.betaMode,
+    ...semanticColumns(parsed, 'approved'),
   });
 
   if (!duplicate && event && trailer) await db.applyEventToCurrentStatus(trailer, event);
   return { event, duplicate };
 }
 
-/** Register ONE mention_only/unidentified event (ledger only, no driver reply). */
-async function registerUnidentified(parsed, ctx) {
+/**
+ * Register ONE non-state-changing ledger row (mention/review/failed-AI
+ * candidate). NEVER touches trailer_current_status, never replies to the
+ * driver group. `verificationStatus` labels why it is here: 'review',
+ * 'rejected', 'unavailable', 'invalid_response', or null (plain mention).
+ */
+async function registerUnidentified(parsed, ctx, verificationStatus = null) {
   const trailerId = parsed.trailerUnit ? (await db.getTrailerByUnitNumber(parsed.trailerUnit))?.id || null : null;
   return db.insertTrailerEvent({
     trailer_id: trailerId,
     trailer_unit_number: parsed.trailerUnit,
     event_type: parsed.eventType === 'mention_only' ? 'mention_only' : 'unidentified',
-    possession_status: parsed.possessionStatus,
-    cargo_status: parsed.cargoStatus,
+    possession_status: 'unknown', // review rows never assert possession
+    cargo_status: 'unknown',
     confidence: parsed.confidence,
     driver_group_id: ctx.group.id,
     telegram_group_id: ctx.group.telegram_group_id,
@@ -321,15 +345,131 @@ async function registerUnidentified(parsed, ctx) {
     unidentified_reason: parsed.reason,
     source: 'telegram',
     beta_mode: ctx.betaMode,
+    ...semanticColumns(parsed, verificationStatus),
   });
 }
 
 /**
- * Main entry point. `group` is the DB group row (must be an active driver group);
- * `message` is ctx.message. ONE message may register several trailers (each an
- * event with its own event_index); a single confirmation reply summarizes them
- * all and the message is reacted to once. Returns a small result object for
- * tests; swallows all errors so it can be called detached.
+ * Could this deterministic parse become a pickup/drop-off? Any action signal —
+ * deterministic action, English action phrase, or a multilingual (uz/ru)
+ * action hint — makes the message a state-change candidate that REQUIRES
+ * semantic verification.
+ */
+function hasPotentialAction(parsedList, text) {
+  if (parsedList.some((p) => p.eventType === 'pickup' || p.eventType === 'dropoff' || p.action)) return true;
+  return Boolean(detectAction(text) || detectMultilingualActionHint(text));
+}
+
+/** Business-rule cargo for a VERIFIED event: AI explicit → deterministic → default. */
+function resolveVerifiedCargo(aiEvent, detMatch) {
+  if (aiEvent.cargoStatus === 'loaded' || aiEvent.cargoStatus === 'empty') return aiEvent.cargoStatus;
+  if (detMatch && (detMatch.cargoStatus === 'loaded' || detMatch.cargoStatus === 'empty')) return detMatch.cargoStatus;
+  return aiEvent.action === 'dropoff' ? 'empty' : 'unknown';
+}
+
+/**
+ * Build the registration payload for one AI-verified event, backfilling
+ * concrete fields (location/condition/date/reported name) from the matching
+ * deterministic segment when the AI left them null.
+ */
+function buildVerifiedParsed(aiResult, aiEvent, parsedList, eventIndex) {
+  const detMatch = parsedList.find((p) => p.trailerUnit === aiEvent.trailerUnit)
+    || (parsedList.length === 1 ? parsedList[0] : null);
+  const action = aiEvent.action; // gate guarantees pickup|dropoff
+  return {
+    isTrailerRelated: true,
+    eventType: action,
+    trailerUnit: aiEvent.trailerUnit,
+    action,
+    possessionStatus: action === 'pickup' ? 'with_driver' : 'dropped',
+    cargoStatus: resolveVerifiedCargo(aiEvent, detMatch),
+    locationText: aiEvent.locationText || detMatch?.locationText || null,
+    conditionText: aiEvent.conditionText || detMatch?.conditionText || null,
+    eventDateText: detMatch?.eventDateText || null,
+    reportedDriverName: detMatch?.reportedDriverName || null,
+    confidence: aiEvent.confidence,
+    reason: aiEvent.reason || 'AI-verified completed action',
+    needsReview: false,
+    method: 'semantic_ai',
+    eventIndex,
+    semantic: {
+      intent: aiEvent.intent,
+      completed: aiEvent.completed,
+      confidence: aiEvent.confidence,
+      reason: aiEvent.reason,
+      unitGrounded: aiEvent.unitGrounded,
+      unitSource: aiEvent.unitSource,
+      unitEvidence: aiEvent.unitEvidence,
+      actionEvidence: aiEvent.actionEvidence,
+      aiModel: aiResult.aiModel || null,
+      verifiedAt: new Date().toISOString(),
+      raw: sanitizeAiResultForStorage(aiResult),
+    },
+  };
+}
+
+/** Review payload for one AI event that did NOT pass the gate. */
+function buildReviewParsed(aiResult, aiEvent, gate, eventIndex) {
+  return {
+    isTrailerRelated: true,
+    eventType: 'unidentified',
+    trailerUnit: aiEvent.unitGrounded ? aiEvent.trailerUnit : null,
+    action: null,
+    locationText: aiEvent.locationText || null,
+    conditionText: aiEvent.conditionText || null,
+    eventDateText: null,
+    reportedDriverName: null,
+    confidence: aiEvent.confidence,
+    reason: `${aiEvent.intent || aiResult.intent}: ${gate.reason}`,
+    needsReview: true,
+    method: 'semantic_ai',
+    eventIndex,
+    semantic: {
+      intent: aiEvent.intent || aiResult.intent,
+      completed: aiEvent.completed,
+      confidence: aiEvent.confidence,
+      reason: aiEvent.reason || gate.reason,
+      unitGrounded: aiEvent.unitGrounded,
+      unitSource: aiEvent.unitSource,
+      unitEvidence: aiEvent.unitEvidence,
+      actionEvidence: aiEvent.actionEvidence,
+      aiModel: aiResult.aiModel || null,
+      verifiedAt: new Date().toISOString(),
+      raw: sanitizeAiResultForStorage(aiResult),
+    },
+  };
+}
+
+/** Bounded, prompt-free copy of the normalized AI result for the audit column. */
+function sanitizeAiResultForStorage(aiResult) {
+  if (!aiResult || aiResult.status !== 'ok') return null;
+  return {
+    intent: aiResult.intent,
+    action: aiResult.action,
+    completed: aiResult.completed,
+    language: aiResult.language,
+    needsReview: aiResult.needsReview,
+    trailerEvents: (aiResult.trailerEvents || []).map((e) => ({
+      trailerUnit: e.trailerUnit,
+      intent: e.intent,
+      action: e.action,
+      completed: e.completed,
+      unitGrounded: e.unitGrounded,
+      unitSource: e.unitSource,
+      unitEvidence: e.unitEvidence,
+      actionEvidence: e.actionEvidence,
+      possessionStatus: e.possessionStatus,
+      cargoStatus: e.cargoStatus,
+      confidence: e.confidence,
+      reason: e.reason,
+    })),
+  };
+}
+
+/**
+ * Main entry point. `group` is the DB group row (must be an active driver
+ * group); `message` is ctx.message. Returns a small result object for tests;
+ * swallows all errors so it can be called detached.
  */
 async function handleTrailerGroupMessage(telegram, group, message) {
   try {
@@ -339,28 +479,17 @@ async function handleTrailerGroupMessage(telegram, group, message) {
 
     const text = messageText(message);
     const evidence = extractEvidence(message);
-    // Photos with no caption still can't be parsed deterministically; require a
-    // trailer signal in text/caption to avoid touching every random photo.
-    if (!isTrailerCandidate(text)) return { skipped: 'not-trailer' };
+    // ── 1. cheap candidate filter (no network) ──
+    if (!isTrailerCandidateMessage(message)) return { skipped: 'not-trailer' };
 
     const settings = await db.getTrailerSettings();
     if (!settings || settings.enabled === false) return { skipped: 'disabled' };
     const betaMode = settings.beta_mode !== false;
+    const semanticRequired = settings.semantic_ai_required !== false;
 
-    // ── parse: multi-event first; AI fallback only for a single uncertain event ──
+    // ── 2. deterministic extraction (candidates only) ──
     let parsedList = parseTrailerMessageEvents(text);
-    if (parsedList.length === 1) {
-      let parsed = parsedList[0];
-      if (!parsed.isTrailerRelated) return { skipped: 'not-trailer' };
-      if (settings.ai_fallback_enabled !== false && shouldUseAiFallback(parsed)) {
-        const ai = await classifyTrailerMessageWithAi(text, []);
-        parsed = mergeResults(parsed, ai);
-      }
-      parsedList = [parsed];
-    } else {
-      parsedList = parsedList.filter((p) => p.isTrailerRelated);
-      if (!parsedList.length) return { skipped: 'not-trailer' };
-    }
+    parsedList = parsedList.filter((p) => p.isTrailerRelated);
 
     const testGroupId = resolveTestGroupId(settings);
     const from = message.from || {};
@@ -376,24 +505,98 @@ async function handleTrailerGroupMessage(telegram, group, message) {
 
     const ctx = { group, from, profile, driverName, eventTimeIso, nowIso, text, evidence, settings, betaMode, message };
 
-    const registered = [];   // newly inserted pickup/dropoff events
-    const reportedUnids = []; // { parsed, event } for test-group reporting
-    let anyDuplicate = false;
+    const potentialAction = hasPotentialAction(parsedList, text);
 
-    for (const parsed of parsedList) {
-      if (!parsed.isTrailerRelated) continue;
-      if (parsed.eventType === 'pickup' || parsed.eventType === 'dropoff') {
-        const { event, duplicate } = await registerPickupDropoff(parsed, ctx);
-        if (duplicate) anyDuplicate = true;
-        else if (event) registered.push(event);
-      } else {
+    // ── 3. no possible state change → legacy mention/unidentified ledger ──
+    if (!potentialAction) {
+      if (!parsedList.length) return { skipped: 'not-trailer' };
+      const reportedUnids = [];
+      let anyDuplicate = false;
+      for (const parsed of parsedList) {
         const { event, duplicate } = await registerUnidentified(parsed, ctx);
         if (duplicate) anyDuplicate = true;
         else if (event) reportedUnids.push({ parsed, event });
       }
+      let reportedToTest = false;
+      for (const { parsed, event } of reportedUnids) {
+        if (looksLikeTrailerCommand(parsed) && testGroupId) {
+          await reportUnidentified(telegram, group, message, parsed, event, testGroupId, betaMode);
+          reportedToTest = true;
+        }
+      }
+      if (!reportedUnids.length) return { skipped: 'duplicate' };
+      const firstUnid = reportedUnids[0].event;
+      return { unidentified: true, eventType: firstUnid.event_type, eventId: firstUnid.id, reportedToTest };
     }
 
-    // ── driver-group confirmation + reaction: exactly once for the message ──
+    // ── 4. possible pickup/drop-off → gather full context ──
+    const context = await collectTrailerContext(telegram, group, message, {
+      visionEnabled: settings.ai_fallback_enabled !== false,
+    });
+
+    // ── 5. MANDATORY semantic verification ──
+    if (!semanticRequired) {
+      // Explicit admin opt-out (semantic_ai_required=false): legacy behavior —
+      // deterministic pickup/dropoff registers directly. Not the default.
+      return legacyRegisterPath(telegram, group, message, parsedList, ctx, testGroupId, betaMode);
+    }
+
+    const dedupeKey = `${group.telegram_group_id}:${message.message_id}`;
+    const aiResult = await verifyTrailerSemantics(context, parsedList, { dedupeKey });
+
+    // ── 5a. FAIL CLOSED: AI unavailable / error / invalid JSON ──
+    if (!aiResult || aiResult.status !== 'ok') {
+      const status = aiResult?.status === 'invalid_response' ? 'invalid_response'
+        : aiResult?.status === 'unavailable' ? 'unavailable' : 'unavailable';
+      const failParsed = {
+        ...(parsedList[0] || parseTrailerMessage(text)),
+        eventType: 'unidentified',
+        needsReview: true,
+        reason: `AI semantic verification ${aiResult?.status || 'failed'} — no status change (fail closed)`,
+        method: 'semantic_ai_failed',
+      };
+      const { event, duplicate } = await registerUnidentified(failParsed, ctx, status);
+      if (!duplicate && event && testGroupId && looksLikeTrailerCommand(failParsed)) {
+        await reportUnidentified(telegram, group, message, failParsed, event, testGroupId, betaMode);
+      }
+      return { failedClosed: true, aiStatus: aiResult?.status || 'error', eventId: event?.id || null };
+    }
+
+    // ── 5b. AI answered: apply the hard approval gate per event ──
+    const registered = [];
+    const reviewItems = [];
+    let anyDuplicate = false;
+
+    let events = aiResult.trailerEvents;
+    if (!events.length) {
+      // AI says trailer-related but produced no per-trailer events — treat the
+      // message-level result as one ungrounded event for review purposes.
+      events = [{
+        eventIndex: 0, trailerUnit: null, intent: aiResult.intent, action: aiResult.action,
+        completed: aiResult.completed, unitGrounded: false, unitSource: null, unitEvidence: null,
+        possessionStatus: 'unknown', cargoStatus: 'unknown', locationText: null,
+        conditionText: null, actionEvidence: null, confidence: 0, reason: 'no trailer events returned',
+      }];
+    }
+
+    for (let i = 0; i < events.length; i += 1) {
+      const aiEvent = events[i];
+      const gate = evaluateTrailerEventApproval(aiResult, aiEvent, context, settings);
+      if (gate.allow) {
+        const parsed = buildVerifiedParsed(aiResult, aiEvent, parsedList, i);
+        const { event, duplicate } = await registerPickupDropoff(parsed, ctx);
+        if (duplicate) anyDuplicate = true;
+        else if (event) registered.push(event);
+      } else if (gate.disposition === 'review') {
+        const parsed = buildReviewParsed(aiResult, aiEvent, gate, i);
+        const { event, duplicate } = await registerUnidentified(parsed, ctx, 'review');
+        if (duplicate) anyDuplicate = true;
+        else if (event) reviewItems.push({ parsed, event });
+      }
+      // disposition === 'ignore' → silent skip (questions, discussion, low confidence)
+    }
+
+    // ── 6. driver-group confirmation + reaction: ONLY for registered events ──
     if (registered.length) {
       if (settings.send_driver_group_confirmation !== false) {
         await replyConfirmation(telegram, group, message, registered, betaMode);
@@ -403,17 +606,18 @@ async function handleTrailerGroupMessage(telegram, group, message) {
       }
     }
 
-    // ── report unclear commands to the Automatic-Updating (Test) group ──
+    // ── 7. review items → Automatic Updating (Test) group (grounded/strong only) ──
     let reportedToTest = false;
-    for (const { parsed, event } of reportedUnids) {
-      if (looksLikeTrailerCommand(parsed) && testGroupId) {
+    for (const { parsed, event } of reviewItems) {
+      const strong = Boolean(parsed.trailerUnit) || Boolean(parsed.semantic?.actionEvidence);
+      if (strong && testGroupId) {
         await reportUnidentified(telegram, group, message, parsed, event, testGroupId, betaMode);
         reportedToTest = true;
       }
     }
 
-    if (!registered.length && !reportedUnids.length) {
-      return { skipped: 'duplicate' };
+    if (!registered.length && !reviewItems.length) {
+      return anyDuplicate ? { skipped: 'duplicate' } : { skipped: 'no-actionable-intent', intent: aiResult.intent };
     }
     if (registered.length) {
       const first = registered[0];
@@ -424,14 +628,14 @@ async function handleTrailerGroupMessage(telegram, group, message) {
         eventId: first.id,
         unit: first.trailer_unit_number,
         events: registered.map((e) => ({ id: e.id, eventType: e.event_type, unit: e.trailer_unit_number })),
-        unidentifiedCount: reportedUnids.length,
+        reviewCount: reviewItems.length,
+        intent: aiResult.intent,
       };
     }
-    const firstUnid = reportedUnids[0].event;
     return {
-      unidentified: true,
-      eventType: firstUnid.event_type,
-      eventId: firstUnid.id,
+      review: true,
+      intent: aiResult.intent,
+      eventId: reviewItems[0].event.id,
       reportedToTest,
     };
   } catch (err) {
@@ -440,13 +644,69 @@ async function handleTrailerGroupMessage(telegram, group, message) {
   }
 }
 
+/**
+ * Legacy direct-registration path, reachable ONLY when an admin explicitly set
+ * semantic_ai_required=false in Trailer Settings. Deterministic pickup/dropoff
+ * registers without AI (pre-semantic behavior).
+ */
+async function legacyRegisterPath(telegram, group, message, parsedList, ctx, testGroupId, betaMode) {
+  const registered = [];
+  const reportedUnids = [];
+  let anyDuplicate = false;
+  for (const parsed of parsedList) {
+    if (parsed.eventType === 'pickup' || parsed.eventType === 'dropoff') {
+      const { event, duplicate } = await registerPickupDropoff(parsed, ctx);
+      if (duplicate) anyDuplicate = true;
+      else if (event) registered.push(event);
+    } else {
+      const { event, duplicate } = await registerUnidentified(parsed, ctx);
+      if (duplicate) anyDuplicate = true;
+      else if (event) reportedUnids.push({ parsed, event });
+    }
+  }
+  if (registered.length) {
+    if (ctx.settings.send_driver_group_confirmation !== false) {
+      await replyConfirmation(telegram, group, message, registered, betaMode);
+    }
+    if (ctx.settings.send_reaction !== false) {
+      await reactThumbsUp(telegram, group.telegram_group_id, message.message_id);
+    }
+  }
+  let reportedToTest = false;
+  for (const { parsed, event } of reportedUnids) {
+    if (looksLikeTrailerCommand(parsed) && testGroupId) {
+      await reportUnidentified(telegram, group, message, parsed, event, testGroupId, betaMode);
+      reportedToTest = true;
+    }
+  }
+  if (!registered.length && !reportedUnids.length) return { skipped: 'duplicate' };
+  if (registered.length) {
+    const first = registered[0];
+    return {
+      registered: true,
+      registeredCount: registered.length,
+      eventType: first.event_type,
+      eventId: first.id,
+      unit: first.trailer_unit_number,
+      events: registered.map((e) => ({ id: e.id, eventType: e.event_type, unit: e.trailer_unit_number })),
+      legacy: true,
+    };
+  }
+  return { unidentified: true, eventType: reportedUnids[0].event.event_type, eventId: reportedUnids[0].event.id, reportedToTest };
+}
+
 module.exports = {
   handleTrailerGroupMessage,
   // exported for tests
   isTrailerCandidate,
+  isTrailerCandidateMessage,
   extractEvidence,
-  mergeResults,
   statePhrase,
   resolveTestGroupId,
   looksLikeTrailerCommand,
+  hasPotentialAction,
+  buildVerifiedParsed,
+  buildReviewParsed,
+  resolveVerifiedCargo,
+  sanitizeAiResultForStorage,
 };
