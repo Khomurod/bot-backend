@@ -394,7 +394,9 @@ function SettingsTab({ flash }) {
     ["send_reaction", "React 👍 to detected messages"],
     ["ai_fallback_enabled", "AI fallback for unclear messages"],
     ["geocoding_enabled", "Geocode locations to map coordinates"],
+    ["semantic_ai_required", "Require AI semantic verification before any status change (fail closed)"],
   ];
+  const setNum = (k) => (e) => setSettings((s) => ({ ...s, [k]: e.target.value === "" ? "" : Number(e.target.value) }));
 
   return (
     <div className="card" style={{ padding: 16, maxWidth: 560 }}>
@@ -412,6 +414,23 @@ function SettingsTab({ flash }) {
           onChange={(e) => setSettings((s) => ({ ...s, automatic_update_test_group_id: e.target.value }))} />
         <small style={{ color: "#94a3b8" }}>Blank = use configured default ({effectiveTestGroup || "none"}).</small>
       </div>
+      <div style={{ marginTop: 8, display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <label style={{ display: "block" }}>
+          <span style={{ display: "block", fontSize: 12, color: "#94a3b8" }}>Auto-register confidence (default 92)</span>
+          <input className="form-input" type="number" min="50" max="100" style={{ width: 120 }}
+            value={settings.auto_register_confidence ?? 92} onChange={setNum("auto_register_confidence")} />
+        </label>
+        <label style={{ display: "block" }}>
+          <span style={{ display: "block", fontSize: 12, color: "#94a3b8" }}>Review confidence (default 75)</span>
+          <input className="form-input" type="number" min="0" max="100" style={{ width: 120 }}
+            value={settings.review_confidence ?? 75} onChange={setNum("review_confidence")} />
+        </label>
+      </div>
+      <p style={{ color: "#94a3b8", fontSize: 12, marginTop: 4 }}>
+        AI-verified events at or above the auto-register confidence can change trailer status; between review and
+        auto-register they go to Needs Review only; below review confidence they are ignored. If AI verification is
+        unavailable, candidates always fail closed to review — no status change.
+      </p>
       <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button className="btn btn-primary" onClick={save} disabled={busy}>Save settings</button>
         <button className="btn" onClick={backfill} disabled={backfilling} title="Geocode a bounded batch of events missing coordinates">
@@ -429,6 +448,7 @@ function SettingsTab({ flash }) {
 function EventEditForm({ event, flash, onSaved, onCancel }) {
   const [form, setForm] = useState({
     event_type: event.event_type || "pickup",
+    cargo_status: event.cargo_status || "unknown",
     trailer_unit_number: event.trailer_unit_number || "",
     location_text: event.location_text || "",
     location_lat: event.location_lat ?? "",
@@ -447,6 +467,7 @@ function EventEditForm({ event, flash, onSaved, onCancel }) {
     try {
       const patch = {
         event_type: form.event_type,
+        cargo_status: form.cargo_status,
         trailer_unit_number: form.trailer_unit_number || undefined,
         location_text: form.location_text,
         condition_text: form.condition_text,
@@ -480,6 +501,14 @@ function EventEditForm({ event, flash, onSaved, onCancel }) {
         <span style={{ display: "block", fontSize: 12, color: "#94a3b8" }}>Event type</span>
         <select className="form-input" value={form.event_type} onChange={(e) => set("event_type", e.target.value)}>
           {EVENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </label>
+      <label style={{ display: "block", marginBottom: 8 }}>
+        <span style={{ display: "block", fontSize: 12, color: "#94a3b8" }}>
+          Cargo status (possession follows the event type: pickup → with driver, drop-off → dropped)
+        </span>
+        <select className="form-input" value={form.cargo_status} onChange={(e) => set("cargo_status", e.target.value)}>
+          {["empty", "loaded", "unknown"].map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
       </label>
       {field("Trailer unit", "trailer_unit_number")}
