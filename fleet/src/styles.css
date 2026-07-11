@@ -214,7 +214,7 @@ table.tbl .stack .b { color: var(--text-3); font-size: 12px; }
 .email-detail iframe { width: 100%; min-height: 300px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fff; }
 
 /* ── Map ── */
-.map-layout { display: grid; grid-template-columns: 300px 1fr; gap: 14px; height: calc(100vh - 160px); }
+.map-layout { display: grid; grid-template-columns: 300px 1fr; gap: 14px; height: calc(100vh - 160px); min-height: 420px; }
 .map-list { overflow-y: auto; }
 .map-canvas { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
 .leaflet-container { height: 100%; width: 100%; }
@@ -235,6 +235,14 @@ table.tbl .stack .b { color: var(--text-3); font-size: 12px; }
   .email-layout { grid-template-columns: 1fr; height: auto; }
   .email-cats, .email-list { max-height: 200px; }
   .map-layout { grid-template-columns: 1fr; }
+  .map-list { max-height: 240px; }
   .gsearch { display: none; }
   .grid-2 { grid-template-columns: 1fr; }
+}
+
+/* Respect reduced-motion: Leaflet pans/zooms become instant (JS also passes
+   animate:false); no marker transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .leaflet-zoom-animated, .leaflet-fade-anim .leaflet-popup { transition: none !important; }
+  .trailer-fleet-marker, .ll-marker, .trailer-ll-marker { transition: none !important; }
 }
