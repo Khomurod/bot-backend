@@ -2366,6 +2366,25 @@ ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS geocode_error TEXT NULL;
 --         cargo_status      ∈ empty | loaded | unknown
 ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS possession_status TEXT NOT NULL DEFAULT 'unknown';
 ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS cargo_status TEXT NOT NULL DEFAULT 'unknown';
+-- Semantic AI verification audit (mandatory verification layer). Every
+-- Telegram-registered pickup/drop-off records WHY it was allowed: the verified
+-- intent, per-event completion + confidence, how the unit was grounded
+-- (current/replied text/caption or image), the exact evidence quotes, and the
+-- verification status (approved | review | rejected | unavailable |
+-- invalid_response). raw_ai_result stores the sanitized normalized AI JSON —
+-- never full prompts or conversation history.
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS semantic_intent TEXT NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS semantic_completed BOOLEAN NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS semantic_confidence SMALLINT NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS semantic_reason TEXT NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS unit_grounded BOOLEAN NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS unit_source TEXT NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS unit_evidence TEXT NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS action_evidence TEXT NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS ai_model TEXT NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS ai_verified_at TIMESTAMPTZ NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS ai_verification_status TEXT NULL;
+ALTER TABLE trailer_events ADD COLUMN IF NOT EXISTS raw_ai_result JSONB NULL;
 -- Dedupe guard (multi-event): at most one event per (group, message, event_index).
 -- Partial so admin_manual rows (message_id NULL) are never blocked.
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_trailer_events_tg_message_event
@@ -2470,3 +2489,14 @@ CREATE TABLE IF NOT EXISTS trailer_settings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 INSERT INTO trailer_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+-- Semantic-verification settings (additive, idempotent).
+--   semantic_ai_required: when TRUE (default) no Telegram trailer message may
+--     change status without passing AI semantic verification — if the AI is
+--     unavailable the candidate FAILS CLOSED to review.
+--   auto_register_confidence: minimum per-event AI confidence for automatic
+--     registration (default 92).
+--   review_confidence: minimum confidence for a review item (default 75);
+--     below this, candidates are ignored.
+ALTER TABLE trailer_settings ADD COLUMN IF NOT EXISTS semantic_ai_required BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE trailer_settings ADD COLUMN IF NOT EXISTS auto_register_confidence SMALLINT NOT NULL DEFAULT 92;
+ALTER TABLE trailer_settings ADD COLUMN IF NOT EXISTS review_confidence SMALLINT NOT NULL DEFAULT 75;

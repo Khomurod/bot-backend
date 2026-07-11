@@ -123,3 +123,27 @@ test('resolveCargoPossession helper is pure and matches the rule', () => {
     { possessionStatus: 'with_driver', cargoStatus: 'unknown', cargoAmbiguous: false }
   );
 });
+
+// ── "full" is NOT cargo evidence (regression: photo-terminology false loads) ──
+
+test('REGRESSION: "Condition: no full pictures" does NOT mean loaded', () => {
+  const r = one('TRL# 403279 dropped\nLocation: Lancaster PA\nCondition: no full pictures');
+  assert.equal(r.eventType, 'dropoff');
+  assert.notEqual(r.cargoStatus, 'loaded');
+  assert.equal(r.cargoStatus, 'empty'); // dropped ⇒ empty default
+});
+
+test('"full pictures" / "full set of pictures" / "full photos" / "full inspection" never mean loaded', () => {
+  for (const phrase of ['full pictures', 'full set of pictures', 'full photos', 'full inspection']) {
+    const r = one(`TRL# 403279 dropped with ${phrase}`);
+    assert.notEqual(r.cargoStatus, 'loaded', `"${phrase}" must not be loaded`);
+    assert.equal(p.detectCargoSignal(`no ${phrase}`), null, `"no ${phrase}" is not a cargo signal`);
+  }
+});
+
+test('"full trailer" / "trailer is full" ARE cargo-loaded evidence', () => {
+  assert.equal(p.detectCargoSignal('dropped a full trailer'), 'loaded');
+  assert.equal(p.detectCargoSignal('trailer is full'), 'loaded');
+  const r = one('TRL# 403279 dropped, full trailer');
+  assert.equal(r.cargoStatus, 'loaded');
+});

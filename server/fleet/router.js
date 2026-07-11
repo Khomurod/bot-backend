@@ -1174,6 +1174,9 @@ function trailerDb() {
   return require('../../database/trailers');
 }
 
+// DEPRECATED: legacy raw-row endpoint kept only for backward compatibility with
+// older clients. Current FleetView code uses /trailer-state/current (unified
+// TrailerStateService). Do not add new consumers.
 router.get('/trailers/current', async (req, res) => {
   try {
     const rows = await trailerDb().listTrailers({
@@ -1187,6 +1190,9 @@ router.get('/trailers/current', async (req, res) => {
   }
 });
 
+// DEPRECATED: legacy raw-row endpoint kept only for backward compatibility with
+// older clients. Current FleetView code uses /trailer-state/map (unified
+// TrailerStateService). Do not add new consumers.
 router.get('/trailers/map', async (req, res) => {
   try {
     const rows = await trailerDb().listTrailerMapData();

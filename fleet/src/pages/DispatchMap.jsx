@@ -14,8 +14,9 @@ function normName(name) { return String(name || '').toLowerCase().replace(/[^a-z
 // matched truck marker (derived_from_driver). Returns null when not mappable.
 function resolveTrailer(t, markerByDriver) {
   const style = trailerMarkerStyle(t);
-  let lat = t.current_lat;
-  let lng = t.current_lng;
+  // Unified-state shape (lat/lng) with legacy fallback (current_lat/current_lng).
+  let lat = t.lat != null ? t.lat : t.current_lat;
+  let lng = t.lng != null ? t.lng : t.current_lng;
   let derived = false;
   if (style.attachedToDriver) {
     const m = markerByDriver.get(normName(t.current_driver_name));
@@ -24,7 +25,7 @@ function resolveTrailer(t, markerByDriver) {
     }
   }
   if (lat == null || lng == null) return null;
-  return { lat, lng, derived, style, needsReview: !!t.status_needs_review };
+  return { lat, lng, derived, style, needsReview: !!(t.needs_review || t.status_needs_review) };
 }
 
 function trailerDivIcon(r) {
@@ -64,8 +65,10 @@ export default function DispatchMap() {
     let cancelled = false;
     const loadTrailers = async () => {
       try {
-        const resp = await api('/trailers/map');
-        if (!cancelled) setTrailers((resp && resp.data) || []);
+        // Unified trailer state (TrailerStateService) — the same source of
+        // truth Trailer Tracking uses. Payload: { trailers, noLocation, meta }.
+        const resp = await api('/trailer-state/map');
+        if (!cancelled) setTrailers((resp && resp.data && resp.data.trailers) || []);
       } catch (_) { if (!cancelled) setTrailers([]); }
     };
     loadTrailers();
@@ -94,7 +97,7 @@ export default function DispatchMap() {
     trailers.filter((t) => {
       if (trailerFilter === 'dropped') return t.possession_status === 'dropped';
       if (trailerFilter === 'loadedDropped') return t.possession_status === 'dropped' && t.cargo_status === 'loaded';
-      if (trailerFilter === 'review') return !!t.status_needs_review;
+      if (trailerFilter === 'review') return !!(t.needs_review || t.status_needs_review);
       return true;
     }).forEach((t) => {
       const r = resolveTrailer(t, markerByDriver);
@@ -102,9 +105,9 @@ export default function DispatchMap() {
       const mk = L.marker([r.lat, r.lng], { icon: trailerDivIcon(r), alt: `Trailer ${t.unit_number}` });
       mk.bindPopup(
         `<b>🚚 Trailer ${t.unit_number}</b><br/>Status: ${displayTrailerStatus(t)}${r.needsReview ? ' • review' : ''}<br/>`
-        + `Driver: ${t.current_driver_name || '—'}<br/>Location: ${t.current_location_text || '—'}<br/>`
+        + `Driver: ${t.current_driver_name || '—'}<br/>Location: ${t.location_text || t.current_location_text || '—'}<br/>`
         + (r.derived ? '<i>Trailer location derived from truck/driver live location.</i><br/>' : (r.style.dashed ? '<i>Approximate location.</i><br/>' : ''))
-        + `Condition: ${t.current_condition || '—'}`,
+        + `Condition: ${t.condition_text || t.current_condition || '—'}`,
       );
       layer.addLayer(mk);
     });

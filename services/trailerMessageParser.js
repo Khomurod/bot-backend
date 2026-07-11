@@ -37,6 +37,49 @@ const DROPOFF_PHRASES = [
   'droped off', 'droping',
 ];
 
+// ── multilingual action hints (Uzbek Latin/Cyrillic, Russian) ──
+// Used ONLY by the cheap candidate filter to decide that a message MIGHT be a
+// trailer action worth sending to semantic AI verification. These hints never
+// authorize a state change by themselves — completed-vs-planned is the semantic
+// verifier's job. Word-boundary-ish regexes tolerant of suffixes.
+const MULTILINGUAL_PICKUP_HINTS = [
+  // Uzbek Latin: oldim (I took), olib oldim, olaman (I will take), olasiz (you
+  // will take), olamiz, oladi, olib boraman/borasiz, ildim (hooked)
+  /\bol(?:dim|dik|di|aman|asiz|amiz|adi|ib)\b/i, /\bolib\s+ol/i, /\bil(?:dim|di)\b/i,
+  // Uzbek Cyrillic + Russian. NOTE: \b is ASCII-only in JS, so Cyrillic words
+  // use explicit letter lookarounds instead.
+  /(?<![а-яё])(?:олдим|оламан|оласиз|олади|олиб)(?![а-яё])/i,
+  // Russian: забрал(а), заберу, забери, забрать, взял, возьму, возьмёшь,
+  // подцепил, прицепил, зацепил
+  /(?<![а-яё])забрал[аи]?(?![а-яё])/i, /(?<![а-яё])забер[уиёе][а-яё]*(?![а-яё])/i,
+  /(?<![а-яё])забрать(?![а-яё])/i, /(?<![а-яё])вз[яе]л[аи]?(?![а-яё])/i,
+  /(?<![а-яё])возьм[уёе][а-яё]*(?![а-яё])/i, /(?<![а-яё])(?:под|при|за)цепил[аи]?(?![а-яё])/i,
+];
+const MULTILINGUAL_DROPOFF_HINTS = [
+  // Uzbek Latin: tashladim (I dropped), tashlayman, tashlaysiz, tashlab,
+  // qoldirdim (I left), qoldiraman, qo'ydim (I put/left)
+  /\btashla(?:dim|dik|di|yman|ysiz|b)\b/i, /\bqoldir(?:dim|dik|di|aman|asiz)\b/i, /\bqo['’`ʻ]?ydim\b/i,
+  // Uzbek Cyrillic
+  /(?<![а-яё])(?:ташладим|ташлайман|қолдирдим|колдирдим)(?![а-яёқ])/i,
+  // Russian: сбросил, скинул, бросил, оставил, оставлю, отцепил, брошу
+  /(?<![а-яё])с?брос[иы]л[аи]?(?![а-яё])/i, /(?<![а-яё])скинул[аи]?(?![а-яё])/i,
+  /(?<![а-яё])остав(?:ил[аи]?|лю|ь)(?![а-яё])/i, /(?<![а-яё])отцепил[аи]?(?![а-яё])/i,
+  /(?<![а-яё])брошу(?![а-яё])/i, /(?<![а-яё])скину(?![а-яё])/i,
+];
+
+/**
+ * Multilingual (uz/ru) action hint: does the text look like it MIGHT describe a
+ * trailer pickup/drop-off action in Uzbek or Russian? Returns 'pickup' |
+ * 'dropoff' | null. Detection only — tense/intent is NOT decided here.
+ */
+function detectMultilingualActionHint(text) {
+  const raw = String(text || '');
+  if (!raw) return null;
+  if (MULTILINGUAL_PICKUP_HINTS.some((re) => re.test(raw))) return 'pickup';
+  if (MULTILINGUAL_DROPOFF_HINTS.some((re) => re.test(raw))) return 'dropoff';
+  return null;
+}
+
 const CONDITION_KEYWORDS = [
   'no pictures', 'no photos', 'with pictures', 'with photos', 'damage',
   'damaged', 'flat tire', 'flat', 'lights issue', 'light issue', 'lights',
@@ -48,13 +91,22 @@ const CONDITION_KEYWORDS = [
 // Word-boundary regexes so "no load" does not match inside "unloaded", "mt" does
 // not match inside "empty", etc. Order does not matter — detectCargoStatus runs
 // both and resolves conflicts explicitly (both present → ambiguous → unknown).
+// NOTE: a standalone "full" is NOT cargo evidence — drivers write "no full
+// pictures", "full set of photos", "full inspection". Only cargo-specific
+// phrasings ("full trailer", "trailer is full") count as loaded.
 const LOADED_PATTERNS = [
-  /\bloaded\b/, /\bfull\b/, /\bwith\s+load\b/, /\bunder\s+load\b/, /\bsealed\b/,
+  /\bloaded\b/, /\bwith\s+load\b/, /\bunder\s+load\b/, /\bsealed\b/,
   /\bwith\s+a\s+load\b/, /\bdrop(?:ped)?\s+loaded\b/,
+  /\bfull\s+trailer\b/, /\btrailer\s+(?:is\s+)?full\b/,
 ];
 const EMPTY_PATTERNS = [
   /\bempty\b/, /\bmt\b/, /\bno\s+load\b/, /\bunloaded\b/, /\bno\s+cargo\b/,
 ];
+
+const {
+  isValidTrailerUnitFormat,
+  isNonTrailerContextNumber,
+} = require('./trailerUnitValidation');
 
 /** Lowercased, whitespace-collapsed copy for keyword scanning. */
 function norm(text) {
@@ -87,28 +139,39 @@ function hasTrailerKeyword(text) {
  */
 function extractUnitNumber(text) {
   const raw = String(text || '');
+  // Central acceptance rule: strict format (digit, 4–20 chars, charset, not a
+  // reserved word like "TRL") + not a facility/load/door-style "#number".
+  const accept = (value) => {
+    const candidate = normalizeUnitNumber(value);
+    if (!candidate) return null;
+    if (!isValidTrailerUnitFormat(candidate).valid) return null;
+    if (isNonTrailerContextNumber(candidate, raw)) return null;
+    return candidate;
+  };
   // Prefer a token that immediately follows a trailer/unit label.
   const labelled = raw.match(
     /\b(?:tr(?:ai)?l(?:er)?|unit)\s*(?:unit)?\s*#?\s*[:#]?\s*([A-Za-z]{0,4}\s?-?\d[\dA-Za-z-]{2,})/i
   );
   if (labelled && labelled[1]) {
-    const candidate = normalizeUnitNumber(labelled[1]);
-    if (candidate && /\d/.test(candidate) && candidate.length >= 3) return candidate;
+    const candidate = accept(labelled[1]);
+    if (candidate) return candidate;
   }
-  // Fallback: a "# TOKEN" anywhere, when the message is trailer-related.
   if (hasTrailerKeyword(raw)) {
-    const hashed = raw.match(/#\s*([A-Za-z]{0,4}-?\d[\dA-Za-z-]{2,})/);
-    if (hashed && hashed[1]) {
-      const candidate = normalizeUnitNumber(hashed[1]);
-      if (candidate && /\d/.test(candidate) && candidate.length >= 3) return candidate;
+    // Fallback: a "# TOKEN" — but only when it is NOT attached to a facility /
+    // load / door / PO-style label ("Home Depot MDO/DFC #5829", "Load #9492869").
+    const hashedRe = /#\s*([A-Za-z]{0,4}-?\d[\dA-Za-z-]{2,})/g;
+    let hm;
+    while ((hm = hashedRe.exec(raw)) !== null) {
+      const candidate = accept(hm[1]);
+      if (candidate) return candidate;
     }
     // Fallback: a clear fleet-unit token (1–4 letters + 3+ digits, e.g. ST508998,
     // VT700669, AB100) anywhere in a trailer message even when it is not adjacent
     // to the trailer word ("swapped trailer to AB100", "trailer dropped ST201").
     const token = raw.match(/\b([A-Za-z]{1,4}-?\d{3,})\b/);
     if (token && token[1]) {
-      const candidate = normalizeUnitNumber(token[1]);
-      if (candidate && candidate.length >= 4) return candidate;
+      const candidate = accept(token[1]);
+      if (candidate) return candidate;
     }
   }
   return null;
@@ -368,9 +431,12 @@ function findUnitTokens(text) {
   let m;
   while ((m = re.exec(raw)) !== null) {
     const unit = normalizeUnitNumber(m[1]);
-    if (unit && /\d/.test(unit) && unit.length >= 3) {
-      out.push({ start: m.index, unit });
-    }
+    if (!unit) continue;
+    // Same strict rule as extractUnitNumber: valid format AND not a facility /
+    // load / door-style number ("Home Depot MDO/DFC #5829" is not a trailer).
+    if (!isValidTrailerUnitFormat(unit).valid) continue;
+    if (isNonTrailerContextNumber(unit, raw)) continue;
+    out.push({ start: m.index, unit });
   }
   return out;
 }
@@ -484,6 +550,7 @@ module.exports = {
   extractDate,
   extractReportedDriverName,
   detectAction,
+  detectMultilingualActionHint,
   detectCargoSignal,
   resolveCargoPossession,
   normalizeUnitNumber,
