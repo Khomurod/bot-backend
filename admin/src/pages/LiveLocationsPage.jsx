@@ -3,7 +3,12 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import * as api from "../api";
 import { timeAgo } from "../utils/formatTime";
-import { markerColor, displayTrailerStatus } from "../utils/trailerState";
+import { trailerMarkerStyle, displayTrailerStatus } from "../utils/trailerState";
+import {
+  DEFAULT_FILTERS, sanitizeFilters, buildDriverPositionIndex,
+  filterTrailers, calculateAssetCounts, getVisibleMapPoints,
+  cargoGlyph, trailerAriaLabel,
+} from "../utils/assetMapFilters";
 
 const AUTO_REFRESH_MS = 45000;
 const DEFAULT_CENTER = [39.5, -98.35]; // continental US
@@ -115,69 +120,57 @@ function popupHtml(unit) {
 }
 
 // ── Trailer overlay (rectangles) ─────────────────────────────────────────────
-const TRAILER_STATUS_LABEL = { with_driver: "With driver", dropped: "Dropped", unknown: "Unknown" };
+// Position derivation, filtering, counts, and location quality all come from
+// the shared pure helper (utils/assetMapFilters) over the UNIFIED trailer
+// state payload (/trailers/states — TrailerStateService). The frontend never
+// reclassifies possession/cargo/review; it only hides/shows what the backend
+// decided.
+const ASSET_FILTERS_STORAGE_KEY = "admin.liveLocations.assetFilters.v1";
 
-/** Normalize a driver name for matching a trailer to a live truck/group. */
-function normName(name) {
-  return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+function loadStoredAssetFilters() {
+  try {
+    return sanitizeFilters(JSON.parse(localStorage.getItem(ASSET_FILTERS_STORAGE_KEY) || "null"));
+  } catch (_) {
+    return { ...DEFAULT_FILTERS };
+  }
+}
+
+function fmtLocationQuality(qual) {
+  return { exact: "Exact", derived_from_driver: "Derived from driver", approximate: "Approximate", missing: "Missing" }[qual] || qual;
 }
 
 /**
- * Decide how to render a trailer: effective coordinates (derived from the
- * matched driver/truck when the trailer is with a driver), a color by
- * status/precision, and whether it needs a review outline. Returns null when the
- * trailer has no mappable location (caller lists it text-only instead).
+ * Trailer rectangle icon. The in-marker glyph (E/L/?/!) keeps the state
+ * readable without color; `offsetIndex` nudges co-located rectangles apart.
  */
-function resolveTrailer(t, unitByName) {
-  const needsReview = !!t.status_needs_review;
-  let lat = t.current_lat;
-  let lng = t.current_lng;
-  let source = t.location_source || (lat != null ? "exact" : null);
-  let derived = false;
-  let derivedFrom = null;
-
-  if (t.current_status === "with_driver") {
-    const u = unitByName.get(normName(t.current_driver_name));
-    if (u && u.location && u.location.lat != null && u.location.lng != null) {
-      lat = u.location.lat;
-      lng = u.location.lng;
-      source = "derived_from_driver";
-      derived = true;
-      derivedFrom = u.unit;
-    }
-  }
-  if (lat == null || lng == null) return null;
-
-  const approximate = source === "approximate_state" || source === "approximate";
-  // Color reflects possession + cargo (one trailer truth) via the shared helper:
-  // Dropped/Empty=orange, Dropped/Loaded=purple, With driver/Empty=green,
-  // With driver/Loaded=violet, With driver/Unknown=blue.
-  const color = markerColor(t);
-
-  return { lat, lng, color, approximate, derived, derivedFrom, needsReview, source };
-}
-
-function trailerIcon(r) {
-  const border = r.needsReview ? "3px solid #ef4444" : "2px solid #fff";
-  const dashed = r.approximate ? "border-style:dashed;" : "";
-  // Derived trailers are nudged to the RIGHT of the truck triangle via anchor.
+function trailerIcon(entry, offsetIndex = 0) {
+  const style = trailerMarkerStyle(entry.trailer);
+  const glyph = cargoGlyph(entry.trailer);
+  const border = style.outline === "#ef4444" ? "2px solid #ef4444" : `2px solid ${style.dashed ? style.color : "#fff"}`;
+  const dashed = style.dashed ? "border-style:dashed;" : "";
+  const baseX = entry.position.derived ? -8 : 10;
   return L.divIcon({
     className: "trailer-ll-marker",
-    html: `<div style="width:15px;height:11px;border-radius:2px;background:${r.color};${dashed}border:${border};box-shadow:0 0 3px rgba(0,0,0,.6)"></div>`,
-    iconSize: [15, 11],
-    iconAnchor: r.derived ? [-8, 5] : [7, 5],
+    html: `<div role="img" aria-label="${escapeHtml(trailerAriaLabel(entry.trailer, entry.quality))}"
+      style="width:20px;height:14px;border-radius:2px;background:${style.color};${dashed}border:${border};
+      box-shadow:0 0 3px rgba(0,0,0,.6);display:grid;place-items:center;
+      font:700 10px/1 system-ui,sans-serif;color:#fff;text-shadow:0 0 2px rgba(0,0,0,.8)">${glyph}</div>`,
+    iconSize: [20, 14],
+    iconAnchor: [baseX - offsetIndex * 12, 7],
   });
 }
 
-function trailerPopupHtml(t, r) {
+function trailerPopupHtml(entry) {
+  const t = entry.trailer;
+  const needsReview = Boolean(t.needs_review || t.status_needs_review);
   const rows = [];
   rows.push(`<div style="font-weight:700;font-size:14px;margin-bottom:2px">🚚 Trailer ${escapeHtml(t.unit_number)}</div>`);
-  rows.push(`<div><b>Status:</b> ${escapeHtml(displayTrailerStatus(t))}${r.needsReview ? ' <span style="color:#ef4444">• review</span>' : ""}</div>`);
+  rows.push(`<div><b>Status:</b> ${escapeHtml(displayTrailerStatus(t))}${needsReview ? ' <span style="color:#ef4444">• review</span>' : ""}</div>`);
   rows.push(`<div><b>Driver:</b> ${escapeHtml(t.current_driver_name || "—")}</div>`);
-  rows.push(`<div><b>Location:</b> ${escapeHtml(t.current_location_text || "—")}</div>`);
-  if (r.derived) rows.push(`<div style="color:#22c55e;font-size:12px">Location derived from driver/truck live location${r.derivedFrom ? " (unit " + escapeHtml(r.derivedFrom) + ")" : ""}.</div>`);
-  else if (r.approximate) rows.push(`<div style="color:#8b5cf6;font-size:12px">Approximate location (${escapeHtml(r.source)}).</div>`);
-  rows.push(`<div><b>Condition:</b> ${escapeHtml(t.current_condition || "—")}</div>`);
+  rows.push(`<div><b>Location:</b> ${escapeHtml(t.location_text || "—")}</div>`);
+  if (entry.position.derived) rows.push(`<div style="color:#22c55e;font-size:12px">Location derived from driver/truck live location${entry.position.derivedFromUnit ? " (unit " + escapeHtml(entry.position.derivedFromUnit) + ")" : ""}.</div>`);
+  else if (entry.quality === "approximate") rows.push(`<div style="color:#8b5cf6;font-size:12px">Approximate location (${escapeHtml(t.location_source || "approximate")}).</div>`);
+  rows.push(`<div><b>Condition:</b> ${escapeHtml(t.condition_text || "—")}</div>`);
   rows.push(`<div><b>Reporter:</b> ${escapeHtml(t.last_reporter_name || "—")}</div>`);
   rows.push(`<div><b>Last event:</b> ${escapeHtml(t.last_event_at ? new Date(t.last_event_at).toLocaleString() : "—")}</div>`);
   rows.push(`<div style="margin-top:8px;font-size:12px"><a href="#/trailers" style="color:#6366f1;text-decoration:none;font-weight:600">Open Trailer Tracking ↗</a></div>`);
@@ -254,8 +247,10 @@ export default function LiveLocationsPage() {
   const [mapError, setMapError] = useState(null);
   const [tileError, setTileError] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const [showTrailers, setShowTrailers] = useState(true);
+  const [assetFilters, setAssetFilters] = useState(loadStoredAssetFilters);
   const [trailers, setTrailers] = useState([]);
+  const showTrucks = assetFilters.assetView !== "trailers";
+  const showTrailers = assetFilters.assetView !== "trucks";
 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -304,10 +299,12 @@ export default function LiveLocationsPage() {
       setLastUpdated(at);
       setError(null);
       // Trailers are an OPTIONAL overlay: a failure here must never surface an
-      // error or blank the trucks — keep the last-known trailer list.
+      // error or blank the trucks — keep the last-known trailer list. Uses the
+      // UNIFIED trailer-state endpoint (TrailerStateService), not the legacy
+      // raw-row /trailers/map payload.
       try {
-        const td = await api.getTrailerMapData();
-        setTrailers(td.trailers || []);
+        const td = await api.getTrailerStates();
+        setTrailers(td.states || []);
       } catch (_) { /* keep previous trailers */ }
     } catch (err) {
       // Keep the previously loaded snapshot visible; just surface a banner.
@@ -319,6 +316,13 @@ export default function LiveLocationsPage() {
   }, []);
 
   useEffect(() => { load({ initial: true }); }, [load]);
+
+  // Persist the asset-view/trailer filters (validated on read; search text is
+  // deliberately not persisted).
+  useEffect(() => {
+    try { localStorage.setItem(ASSET_FILTERS_STORAGE_KEY, JSON.stringify(assetFilters)); } catch (_) { /* blocked */ }
+  }, [assetFilters]);
+  const setAssetFilter = useCallback((patch) => setAssetFilters((f) => sanitizeFilters({ ...f, ...patch })), []);
 
   // If the selected unit vanishes from a fresh snapshot, drop the selection so
   // we don't hold a stale route/highlight; otherwise keep it across refreshes.
@@ -427,6 +431,9 @@ export default function LiveLocationsPage() {
     if (!map || !layer) return;
     layer.clearLayers();
     markersByUnit.current.clear();
+    // Trailers-only mode: hide the truck layer but keep the units data loaded —
+    // it still powers trailer coordinate derivation and the diagnostics.
+    if (!showTrucks) return;
 
     filtered.forEach((u) => {
       if (!u.location || u.location.lat == null || u.location.lng == null) return;
@@ -439,7 +446,7 @@ export default function LiveLocationsPage() {
       marker.addTo(layer);
       markersByUnit.current.set(u.unit, marker);
     });
-  }, [filtered, selectedUnit, mapReady]);
+  }, [filtered, selectedUnit, mapReady, showTrucks]);
 
   // ── Route line for the selected unit ──
   useEffect(() => {
@@ -467,51 +474,74 @@ export default function LiveLocationsPage() {
     return () => { cancelled = true; };
   }, [selectedUnit, mapReady]);
 
-  // ── Draw trailer rectangles (overlay). Independent of truck markers so it
-  //    can be toggled without touching them. Derives a with-driver trailer's
-  //    position from its matched live truck. ──
+  // ── Shared filtered trailer dataset (map + side panel consume EXACTLY this).
+  //    The driver index is built once per snapshot from ALL units — even when
+  //    the truck layer is hidden — so with-driver trailers keep their derived
+  //    coordinates in Trailers-only mode. ──
+  const driverIndex = useMemo(
+    () => buildDriverPositionIndex(units.map((u) => ({
+      names: [u.driverName, u.groupName],
+      lat: u.location ? u.location.lat : null,
+      lng: u.location ? u.location.lng : null,
+      unit: u.unit,
+    }))),
+    [units]
+  );
+  const visibleTrailers = useMemo(
+    () => filterTrailers(trailers, assetFilters, { driverIndex, search }),
+    [trailers, assetFilters, driverIndex, search]
+  );
+  const mappableTrailers = useMemo(
+    () => visibleTrailers.filter((e) => e.position.lat != null && e.position.lng != null),
+    [visibleTrailers]
+  );
+  const trailerTextOnly = useMemo(
+    () => visibleTrailers.filter((e) => e.position.lat == null || e.position.lng == null),
+    [visibleTrailers]
+  );
+  const trailerCounts = useMemo(
+    () => calculateAssetCounts({ trucks: [], trailers, driverIndex }),
+    [trailers, driverIndex]
+  );
+
+  // ── Draw trailer rectangles (overlay). Independent of truck markers so
+  //    toggling/filtering never touches them. ──
   useEffect(() => {
     const map = mapRef.current;
     const layer = trailerLayerRef.current;
     if (!map || !layer) return;
     layer.clearLayers();
     if (!showTrailers) return;
-
-    const unitByName = new Map();
-    units.forEach((u) => {
-      if (u.driverName) unitByName.set(normName(u.driverName), u);
-      if (u.groupName) unitByName.set(normName(u.groupName), u);
-    });
-
-    trailers.forEach((t) => {
-      const r = resolveTrailer(t, unitByName);
-      if (!r) return; // text-only / unknown — shown in the side list instead
-      const marker = L.marker([r.lat, r.lng], { icon: trailerIcon(r), title: `Trailer ${t.unit_number}` });
-      marker.bindPopup(trailerPopupHtml(t, r));
+    const seenAt = new Map(); // co-located rectangles get a small pixel offset
+    mappableTrailers.forEach((entry) => {
+      const key = `${entry.position.lat.toFixed(5)},${entry.position.lng.toFixed(5)}`;
+      const dupIndex = seenAt.get(key) || 0;
+      seenAt.set(key, dupIndex + 1);
+      const marker = L.marker([entry.position.lat, entry.position.lng], {
+        icon: trailerIcon(entry, dupIndex),
+        title: `Trailer ${entry.trailer.unit_number} — ${displayTrailerStatus(entry.trailer)}`,
+        alt: trailerAriaLabel(entry.trailer, entry.quality),
+      });
+      marker.bindPopup(trailerPopupHtml(entry));
       marker.addTo(layer);
     });
-  }, [trailers, showTrailers, units, mapReady]);
+  }, [mappableTrailers, showTrailers, mapReady]);
 
-  const trailerTextOnly = useMemo(() => {
-    if (!showTrailers) return [];
-    const unitByName = new Map();
-    units.forEach((u) => {
-      if (u.driverName) unitByName.set(normName(u.driverName), u);
-      if (u.groupName) unitByName.set(normName(u.groupName), u);
-    });
-    return trailers.filter((t) => !resolveTrailer(t, unitByName));
-  }, [trailers, showTrailers, units]);
-
+  // Fit to the CURRENTLY VISIBLE filtered markers only (hidden trucks and
+  // filtered-out trailers never affect the bounds). Never throws on empty.
   const fitAll = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
-    const pts = filtered
-      .filter((u) => u.location && u.location.lat != null && u.location.lng != null)
-      .map((u) => [u.location.lat, u.location.lng]);
+    const truckPts = showTrucks
+      ? filtered
+        .filter((u) => u.location && u.location.lat != null && u.location.lng != null)
+        .map((u) => [u.location.lat, u.location.lng])
+      : [];
+    const pts = truckPts.concat(getVisibleMapPoints([], showTrailers ? mappableTrailers : []));
     if (pts.length === 0) return;
     if (pts.length === 1) { map.setView(pts[0], 9); return; }
     map.fitBounds(L.latLngBounds(pts).pad(0.15));
-  }, [filtered]);
+  }, [filtered, showTrucks, showTrailers, mappableTrailers]);
 
   const selectUnit = useCallback((u) => {
     setSelectedUnit(u.unit);
@@ -554,14 +584,18 @@ export default function LiveLocationsPage() {
           >
             {autoRefresh ? "⏱ Auto: On" : "⏱ Auto: Off"}
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={fitAll}>🗺 Fit all</button>
-          <button
-            className={`btn btn-sm ${showTrailers ? "btn-primary" : "btn-ghost"}`}
-            onClick={() => setShowTrailers((v) => !v)}
-            title="Show / hide trailer markers (does not affect trucks)"
-          >
-            🚚 Trailers: {showTrailers ? "On" : "Off"}
-          </button>
+          <button className="btn btn-ghost btn-sm" onClick={fitAll} title="Fit the map to the currently visible filtered markers">🗺 Fit visible</button>
+          <div role="group" aria-label="Asset view" style={{ display: "inline-flex", gap: 4 }}>
+            {[["all", "All assets"], ["trucks", "Trucks only"], ["trailers", "Trailers only"]].map(([v, l]) => (
+              <button key={v}
+                className={`btn btn-sm ${assetFilters.assetView === v ? "btn-primary" : "btn-ghost"}`}
+                onClick={() => setAssetFilter({ assetView: v })}
+                aria-pressed={assetFilters.assetView === v}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
           <button
             className={`btn btn-sm ${showDiagnostics ? "btn-primary" : "btn-ghost"}`}
             onClick={() => setShowDiagnostics((v) => !v)}
@@ -721,35 +755,70 @@ export default function LiveLocationsPage() {
         </div>
       )}
 
-      {/* Trailer overlay legend + text-only trailers (not mappable). */}
+      {/* Trailer overlay: filters, snapshot counts, legend, and the filtered
+          trailer list (mappable + list-only). The list uses EXACTLY the same
+          filtered dataset as the markers. */}
       {showTrailers && trailers.length > 0 && (
         <div className="card" style={{ padding: 12, marginTop: 16 }}>
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", fontSize: 12 }}>
-            <strong>Trailers ({trailers.length})</strong>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", fontSize: 12, marginBottom: 8 }} role="group" aria-label="Trailer filters">
+            <strong>Trailers — showing {visibleTrailers.length} of {trailerCounts.trailers}</strong>
             {[
-              { c: "#22c55e", l: "With driver (derived)" },
-              { c: "#f59e0b", l: "Dropped (exact)" },
-              { c: "#8b5cf6", l: "Approximate", dashed: true },
-              { c: "#3b82f6", l: "Geocoded" },
+              ["trailerPossession", "Possession", [["all", "All"], ["with_driver", "With driver"], ["dropped", "Dropped"], ["unknown", "Unknown"]]],
+              ["trailerCargo", "Cargo", [["all", "All"], ["loaded", "Loaded"], ["empty", "Empty"], ["unknown", "Unknown cargo"]]],
+              ["trailerReview", "Review", [["all", "All"], ["needs_review", "Needs review"], ["confirmed", "Confirmed"]]],
+              ["locationQuality", "Location", [["all", "All"], ["exact", "Exact / manual"], ["derived_from_driver", "Derived"], ["approximate", "Approximate"], ["missing", "Missing"]]],
+            ].map(([key, label, options]) => (
+              <label key={key} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                {label}
+                <select className="form-input" style={{ height: 28, padding: "2px 6px", fontSize: 12, width: "auto" }}
+                  value={assetFilters[key]} onChange={(e) => setAssetFilter({ [key]: e.target.value })}
+                  aria-label={`Trailer filter: ${label}`}>
+                  {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </label>
+            ))}
+            <button className="btn btn-ghost btn-sm" style={{ fontSize: 12 }}
+              onClick={() => setAssetFilter({ trailerPossession: "all", trailerCargo: "all", trailerReview: "all", locationQuality: "all" })}
+              aria-label="Clear trailer filters">
+              ✕ Clear
+            </button>
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", fontSize: 12, marginBottom: 8, color: "var(--text-muted)" }} aria-label="Trailer snapshot counts">
+            {[
+              ["With driver", trailerCounts.withDriver], ["Dropped", trailerCounts.dropped],
+              ["Loaded", trailerCounts.loaded], ["Empty", trailerCounts.empty],
+              ["Unknown cargo", trailerCounts.unknownCargo], ["Needs review", trailerCounts.needsReview],
+              ["No location", trailerCounts.locationMissing],
+            ].map(([l, v]) => <span key={l}>{l} <strong>{v}</strong></span>)}
+            <span style={{ fontSize: 11 }}>(full snapshot, before filters)</span>
+          </div>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", fontSize: 12 }}>
+            {[
+              { c: "#f59e0b", l: "Dropped / Empty (E)" },
+              { c: "#a855f7", l: "Dropped / Loaded (L)" },
+              { c: "#22c55e", l: "With driver / Empty (E)" },
+              { c: "#8b5cf6", l: "With driver / Loaded (L)" },
+              { c: "#3b82f6", l: "With driver / Unknown (?)" },
             ].map((s) => (
               <span key={s.l} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                <span style={{ width: 15, height: 11, borderRadius: 2, background: s.c, border: "2px solid #fff", borderStyle: s.dashed ? "dashed" : "solid", display: "inline-block" }} />
+                <span style={{ width: 15, height: 11, borderRadius: 2, background: s.c, border: "2px solid #fff", display: "inline-block" }} />
                 {s.l}
               </span>
             ))}
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-              <span style={{ width: 15, height: 11, borderRadius: 2, border: "2px solid #ef4444", display: "inline-block" }} /> Needs review
+              <span style={{ width: 15, height: 11, borderRadius: 2, border: "2px solid #ef4444", display: "inline-block" }} /> Needs review (!)
             </span>
+            <span>Letter inside the rectangle = cargo state (never color-only).</span>
           </div>
           {trailerTextOnly.length > 0 && (
             <div style={{ marginTop: 10 }}>
               <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>
-                Text-only / unknown location ({trailerTextOnly.length}) — not mappable:
+                Matching trailers with no mappable location ({trailerTextOnly.length}) — list-only, no marker:
               </div>
               <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
-                {trailerTextOnly.map((t) => (
-                  <li key={t.trailer_id}>
-                    <strong>{t.unit_number}</strong> — {t.current_location_text || "(unknown)"} ({TRAILER_STATUS_LABEL[t.current_status] || t.current_status})
+                {trailerTextOnly.map((e) => (
+                  <li key={e.trailer.trailer_id}>
+                    <strong>{e.trailer.unit_number}</strong> — {e.trailer.location_text || "(unknown)"} ({displayTrailerStatus(e.trailer)})
                   </li>
                 ))}
               </ul>
