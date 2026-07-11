@@ -1757,7 +1757,16 @@ export async function getTrailerUnidentified(includeResolved = false) {
 }
 
 export async function getTrailerMapData() {
+  // DEPRECATED: legacy raw-row map payload. Current code uses getTrailerStates
+  // (unified TrailerStateService). Kept only for backward compatibility.
   const res = await fetch(`${API_BASE}/trailers/map`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Unified trailer states (TrailerStateService) — the single source of truth. */
+export async function getTrailerStates() {
+  const res = await fetch(`${API_BASE}/trailers/states`, { headers: getHeaders() });
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
