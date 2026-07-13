@@ -15,6 +15,7 @@ async function getHomeTimeSettings() {
 
 const SETTINGS_COLUMNS = [
   'enabled', 'road_allowance_weeks', 'home_allowance_days', 'bonus_per_week',
+  'reminder_first_hours', 'reminder_second_hours',
 ];
 
 async function updateHomeTimeSettings(patch = {}) {
@@ -137,6 +138,86 @@ async function insertRoadHistory({
       daysOnRoad, exceededWeeks, bonusUsd]
   );
   return res.rows[0];
+}
+
+/**
+ * The still-open home stay for a group: the most recent completed road leg whose
+ * home stay has not yet been closed (return_to_road_at IS NULL). This is the row
+ * a home→road transition closes with the actual home duration.
+ */
+async function getOpenHomeStay(groupId) {
+  const res = await query(
+    `SELECT * FROM driver_road_history
+     WHERE group_id = $1 AND return_to_road_at IS NULL
+     ORDER BY home_arrived_at DESC LIMIT 1`,
+    [groupId]
+  );
+  return res.rows[0] || null;
+}
+
+/**
+ * Close a home stay: stamp the actual return-to-road time and home duration, and
+ * optionally link the decided request that authorized it. Atomic guard on the
+ * still-open state so a repeated home→road cannot overwrite a closed stay.
+ */
+async function closeHomeStay(id, { returnToRoadAt, homeDays, linkedRequestId }) {
+  const res = await query(
+    `UPDATE driver_road_history
+       SET return_to_road_at = $2,
+           home_days = $3,
+           linked_request_id = COALESCE($4, linked_request_id)
+     WHERE id = $1 AND return_to_road_at IS NULL
+     RETURNING *`,
+    [id, returnToRoadAt, homeDays == null ? null : homeDays,
+      linkedRequestId == null ? null : linkedRequestId]
+  );
+  return res.rows[0] || null;
+}
+
+/**
+ * Every completed road leg with the driver labels + the status of any linked
+ * home-time request, for the efficiency dashboard. `sinceIso` filters on the home
+ * arrival (start of the home side of the cycle). The service classifies each row.
+ */
+async function listCyclesForEfficiency({ sinceIso = null } = {}) {
+  const res = await query(
+    `SELECT h.id, h.group_id, h.driver_name, h.unit_number,
+            h.road_started_at, h.home_arrived_at, h.return_to_road_at,
+            h.days_on_road, h.home_days, h.exceeded_weeks, h.bonus_usd,
+            h.linked_request_id,
+            g.group_name, g.active AS group_active,
+            dp.first_name, dp.last_name, dp.unit_number AS profile_unit_number,
+            dp.driver_type, dp.status AS driver_status,
+            req.status AS linked_request_status,
+            req.home_from AS req_home_from, req.return_to_road_date AS req_return_to_road_date
+     FROM driver_road_history h
+     JOIN groups g ON g.id = h.group_id
+     LEFT JOIN driver_profiles dp ON dp.group_id = h.group_id
+     LEFT JOIN home_time_requests req ON req.id = h.linked_request_id
+     WHERE ($1::timestamptz IS NULL OR h.home_arrived_at >= $1)
+     ORDER BY h.home_arrived_at DESC`,
+    [sinceIso]
+  );
+  return res.rows;
+}
+
+/**
+ * Most recent decided (approved/denied) request for a group whose home-start date
+ * is within `windowDays` of `dateIso` — used to link a completing cycle to the
+ * request that authorized it so approved exceptions are classified correctly.
+ */
+async function findDecidedRequestNearDate(groupId, dateIso, { windowDays = 3 } = {}) {
+  const res = await query(
+    `SELECT * FROM home_time_requests
+     WHERE group_id = $1
+       AND status IN ('approved', 'denied')
+       AND home_from IS NOT NULL
+       AND ABS(home_from - $2::date) <= $3
+     ORDER BY ABS(home_from - $2::date) ASC, decided_at DESC NULLS LAST
+     LIMIT 1`,
+    [groupId, dateIso, windowDays]
+  );
+  return res.rows[0] || null;
 }
 
 /** Current state of every tracked driver group, with the group/driver labels. */
@@ -277,32 +358,107 @@ async function setDriverHomeState(groupId, { state, stateSince } = {}) {
 
 // ─── Home-time requests ───
 
-async function insertHomeTimeRequest({
-  groupId, telegramGroupId, driverName, unitNumber,
-  requestedByUserId, requestedByUsername, roadStartedAt, daysOnRoad,
-  policyMet, homeFrom, homeTo, status = 'pending', source = 'telegram',
-  aiReasoning, telegramChatId, telegramMessageId,
-}) {
+// Open clarification flows still waiting on the driver for one or both dates.
+const AWAITING_STATUSES = ['awaiting_dates', 'awaiting_home_start', 'awaiting_return_to_road'];
+// A driver's plain-text answer can still land after the two reminders are spent,
+// so an 'unanswered' clarification is treated as open for the reply handler.
+const OPEN_CLARIFICATION_STATUSES = [...AWAITING_STATUSES, 'clarification_unanswered'];
+// Anything that should block a second, competing flow for the same driver.
+const OPEN_REQUEST_STATUSES = [...OPEN_CLARIFICATION_STATUSES, 'pending'];
+
+// camelCase option → column. BIGINT id columns are stringified so node-pg keeps
+// full precision. Only keys present in the payload are written (dynamic INSERT),
+// so the same builder serves every insert path (telegram, manual, unplanned).
+const REQUEST_COLUMN_MAP = {
+  groupId: 'group_id',
+  telegramGroupId: 'telegram_group_id',
+  driverName: 'driver_name',
+  unitNumber: 'unit_number',
+  requestedByUserId: 'requested_by_user_id',
+  requestedByUsername: 'requested_by_username',
+  roadStartedAt: 'road_started_at',
+  daysOnRoad: 'days_on_road',
+  policyMet: 'policy_met',
+  homeFrom: 'home_from',
+  homeTo: 'home_to',
+  returnToRoadDate: 'return_to_road_date',
+  status: 'status',
+  source: 'source',
+  aiReasoning: 'ai_reasoning',
+  telegramChatId: 'telegram_chat_id',
+  telegramMessageId: 'telegram_message_id',
+  isUnplannedArrival: 'is_unplanned_arrival',
+  detectedIntent: 'detected_intent',
+  aiConfidence: 'ai_confidence',
+  language: 'language',
+  missingFields: 'missing_fields',
+  rootChatId: 'root_chat_id',
+  rootMessageId: 'root_message_id',
+  clarificationChatId: 'clarification_chat_id',
+  clarificationMessageId: 'clarification_message_id',
+  lastDriverMessageId: 'last_driver_message_id',
+  reminderCount: 'reminder_count',
+  lastReminderAt: 'last_reminder_at',
+  nextReminderAt: 'next_reminder_at',
+  acknowledgedAt: 'acknowledged_at',
+  policyResult: 'policy_result',
+};
+
+// BIGINT columns that must be stored as strings to survive node-pg round-trips.
+const REQUEST_BIGINT_KEYS = new Set([
+  'telegramGroupId', 'telegramChatId', 'rootChatId', 'clarificationChatId',
+]);
+
+function coerceRequestValue(key, value) {
+  if (value === undefined) return null;
+  if (value != null && REQUEST_BIGINT_KEYS.has(key)) return String(value);
+  return value;
+}
+
+async function insertHomeTimeRequest(payload = {}) {
+  const cols = [];
+  const placeholders = [];
+  const values = [];
+  let i = 1;
+  const withDefaults = { status: 'pending', source: 'telegram', ...payload };
+  for (const [key, column] of Object.entries(REQUEST_COLUMN_MAP)) {
+    if (!Object.prototype.hasOwnProperty.call(withDefaults, key)) continue;
+    cols.push(column);
+    placeholders.push(`$${i}`);
+    values.push(coerceRequestValue(key, withDefaults[key]));
+    i += 1;
+  }
   const res = await query(
-    `INSERT INTO home_time_requests
-       (group_id, telegram_group_id, driver_name, unit_number,
-        requested_by_user_id, requested_by_username, road_started_at, days_on_road,
-        policy_met, home_from, home_to, status, source, ai_reasoning,
-        telegram_chat_id, telegram_message_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+    `INSERT INTO home_time_requests (${cols.join(', ')})
+     VALUES (${placeholders.join(', ')})
      RETURNING *`,
-    [
-      groupId || null, telegramGroupId != null ? String(telegramGroupId) : null,
-      driverName || null, unitNumber || null,
-      requestedByUserId || null, requestedByUsername || null,
-      roadStartedAt || null, daysOnRoad == null ? null : daysOnRoad,
-      policyMet == null ? null : policyMet, homeFrom || null, homeTo || null,
-      status, source, aiReasoning || null,
-      telegramChatId != null ? String(telegramChatId) : null,
-      telegramMessageId == null ? null : telegramMessageId,
-    ]
+    values
   );
   return res.rows[0];
+}
+
+/**
+ * Generic partial update over the same column allowlist. Only keys present in the
+ * patch are written, so callers can advance any subset of the conversational
+ * state (e.g. record a newly-supplied home-start date and flip the status to
+ * awaiting_return_to_road) in one atomic UPDATE. Returns the updated row or null.
+ */
+async function updateHomeTimeRequestFields(id, patch = {}) {
+  const sets = [];
+  const values = [id];
+  let i = 2;
+  for (const [key, column] of Object.entries(REQUEST_COLUMN_MAP)) {
+    if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+    sets.push(`${column} = $${i}`);
+    values.push(coerceRequestValue(key, patch[key]));
+    i += 1;
+  }
+  if (!sets.length) return getHomeTimeRequestById(id);
+  const res = await query(
+    `UPDATE home_time_requests SET ${sets.join(', ')} WHERE id = $1 RETURNING *`,
+    values
+  );
+  return res.rows[0] || null;
 }
 
 async function getHomeTimeRequestById(id) {
@@ -322,57 +478,210 @@ async function getPendingHomeTimeRequestForGroup(groupId) {
 }
 
 /**
- * Most recent OPEN request for a group: either a posted card awaiting a decision
- * ('pending') or one waiting for the driver to supply dates ('awaiting_dates').
- * Used as the duplicate guard so a re-tag does not create a second flow.
+ * Most recent OPEN request for a group: a posted card awaiting a decision
+ * ('pending'), a partial/awaiting clarification, or one whose reminders were
+ * spent ('clarification_unanswered'). The duplicate guard so a re-tag or a
+ * repeated Status: Home does not spawn a second flow.
  */
 async function getOpenHomeTimeRequestForGroup(groupId) {
   const res = await query(
     `SELECT * FROM home_time_requests
-     WHERE group_id = $1 AND status IN ('pending', 'awaiting_dates')
+     WHERE group_id = $1 AND status = ANY($2)
      ORDER BY requested_at DESC LIMIT 1`,
-    [groupId]
+    [groupId, OPEN_REQUEST_STATUSES]
   );
   return res.rows[0] || null;
 }
 
-/** Most recent request for a group that is waiting on the driver's dates. */
+/**
+ * Most recent OPEN clarification flow for a group (still waiting on one or both
+ * dates, including an unanswered flow a late reply can still complete). Backs the
+ * plain-text follow-up handler; only one active flow should exist per driver.
+ */
+async function getOpenClarificationForGroup(groupId) {
+  const res = await query(
+    `SELECT * FROM home_time_requests
+     WHERE group_id = $1 AND status = ANY($2)
+     ORDER BY requested_at DESC LIMIT 1`,
+    [groupId, OPEN_CLARIFICATION_STATUSES]
+  );
+  return res.rows[0] || null;
+}
+
+/** Back-compat: most recent request waiting on the driver's dates (any awaiting). */
 async function getAwaitingDatesHomeTimeRequestForGroup(groupId) {
   const res = await query(
     `SELECT * FROM home_time_requests
-     WHERE group_id = $1 AND status = 'awaiting_dates'
+     WHERE group_id = $1 AND status = ANY($2)
      ORDER BY requested_at DESC LIMIT 1`,
+    [groupId, AWAITING_STATUSES]
+  );
+  return res.rows[0] || null;
+}
+
+/** Most recent APPROVED request for a group (to link a completed cycle / dedup). */
+async function getApprovedHomeTimeRequestForGroup(groupId) {
+  const res = await query(
+    `SELECT * FROM home_time_requests
+     WHERE group_id = $1 AND status = 'approved'
+     ORDER BY decided_at DESC NULLS LAST, requested_at DESC LIMIT 1`,
     [groupId]
   );
   return res.rows[0] || null;
 }
 
 /**
- * Fill in the dates on an 'awaiting_dates' request and flip it to 'pending' so a
- * card can be posted. Atomic status guard prevents two replies both winning.
+ * Complete an open clarification: fill BOTH dates and flip it to 'pending' so a
+ * card can be posted. Also clears the reminder schedule and records the driver's
+ * latest message id (final ack replies to it). Atomic status guard (any awaiting
+ * state) prevents two replies both winning.
  */
 async function fulfillAwaitingHomeTimeRequest(id, {
-  homeFrom, homeTo, roadStartedAt, daysOnRoad, policyMet, aiReasoning,
+  homeFrom, homeTo, returnToRoadDate, roadStartedAt, daysOnRoad, policyMet,
+  aiReasoning, lastDriverMessageId, language, aiConfidence,
 }) {
   const res = await query(
     `UPDATE home_time_requests
-       SET home_from = $2,
+       SET home_from = COALESCE($2, home_from),
            home_to = $3,
-           road_started_at = COALESCE($4, road_started_at),
-           days_on_road = $5,
-           policy_met = $6,
-           ai_reasoning = COALESCE($7, ai_reasoning),
+           return_to_road_date = COALESCE($4, return_to_road_date),
+           road_started_at = COALESCE($5, road_started_at),
+           days_on_road = $6,
+           policy_met = $7,
+           ai_reasoning = COALESCE($8, ai_reasoning),
+           last_driver_message_id = COALESCE($9, last_driver_message_id),
+           language = COALESCE($10, language),
+           ai_confidence = COALESCE($11, ai_confidence),
+           missing_fields = NULL,
+           next_reminder_at = NULL,
            status = 'pending'
-     WHERE id = $1 AND status = 'awaiting_dates'
+     WHERE id = $1 AND status = ANY($12)
      RETURNING *`,
     [
-      id, homeFrom || null, homeTo || null, roadStartedAt || null,
+      id, homeFrom || null, homeTo || null, returnToRoadDate || null,
+      roadStartedAt || null,
       daysOnRoad == null ? null : daysOnRoad,
       policyMet == null ? null : policyMet,
       aiReasoning || null,
+      lastDriverMessageId == null ? null : lastDriverMessageId,
+      language || null,
+      aiConfidence == null ? null : aiConfidence,
+      AWAITING_STATUSES,
     ]
   );
   return res.rows[0] || null;
+}
+
+/**
+ * Record the bot's own clarification-question message id (so it can be edited or
+ * referenced) and the reply threading root. Non-atomic; called right after the
+ * ask is sent.
+ */
+async function setHomeTimeClarificationMessage(id, {
+  clarificationChatId, clarificationMessageId,
+}) {
+  const res = await query(
+    `UPDATE home_time_requests
+       SET clarification_chat_id = $2, clarification_message_id = $3
+     WHERE id = $1 RETURNING *`,
+    [
+      id,
+      clarificationChatId != null ? String(clarificationChatId) : null,
+      clarificationMessageId == null ? null : clarificationMessageId,
+    ]
+  );
+  return res.rows[0] || null;
+}
+
+/** Stamp acknowledged_at + policy_result once (idempotency guard on the ack). */
+async function markHomeTimeAcknowledged(id, policyResult) {
+  const res = await query(
+    `UPDATE home_time_requests
+       SET acknowledged_at = NOW(), policy_result = COALESCE($2, policy_result)
+     WHERE id = $1 AND acknowledged_at IS NULL
+     RETURNING *`,
+    [id, policyResult || null]
+  );
+  return res.rows[0] || null;
+}
+
+// ─── Clarification reminders (restart-safe worker) ───
+
+/**
+ * Open clarifications whose next reminder is due, with the group + driver labels
+ * needed to reply-and-tag. Excludes flows that already spent both reminders.
+ */
+async function listDueHomeTimeReminders(nowIso, { limit = 50, maxReminders = 2 } = {}) {
+  const res = await query(
+    `SELECT r.*, g.group_name, g.telegram_group_id AS group_telegram_id, g.active AS group_active,
+            dp.first_name, dp.last_name, dp.unit_number, dp.driver_type,
+            dp.telegram_user_id, dp.telegram_username
+     FROM home_time_requests r
+     JOIN groups g ON g.id = r.group_id
+     LEFT JOIN driver_profiles dp ON dp.group_id = r.group_id
+     WHERE r.status = ANY($1)
+       AND r.next_reminder_at IS NOT NULL
+       AND r.next_reminder_at <= $2
+       AND r.reminder_count < $3
+     ORDER BY r.next_reminder_at ASC
+     LIMIT $4`,
+    [AWAITING_STATUSES, nowIso, maxReminders, limit]
+  );
+  return res.rows;
+}
+
+/**
+ * Atomically claim a due reminder: bump reminder_count and move next_reminder_at
+ * forward (or to NULL when the final reminder was just claimed), only if the row
+ * is still due and its reminder_count has not changed since we read it. Returns
+ * the updated row when THIS worker won the claim, or null otherwise — the guard
+ * that stops overlapping workers / restarts from double-sending.
+ */
+async function claimHomeTimeReminder(id, {
+  expectedReminderCount, nowIso, nextReminderAt = null,
+}) {
+  const res = await query(
+    `UPDATE home_time_requests
+       SET reminder_count = reminder_count + 1,
+           last_reminder_at = $2,
+           next_reminder_at = $3
+     WHERE id = $1
+       AND reminder_count = $4
+       AND next_reminder_at IS NOT NULL
+       AND next_reminder_at <= $2
+       AND status = ANY($5)
+     RETURNING *`,
+    [id, nowIso, nextReminderAt, expectedReminderCount, AWAITING_STATUSES]
+  );
+  return res.rows[0] || null;
+}
+
+/** After the final reminder goes unanswered → flag for manual follow-up. */
+async function markHomeTimeClarificationUnanswered(id) {
+  const res = await query(
+    `UPDATE home_time_requests
+       SET status = 'clarification_unanswered', next_reminder_at = NULL
+     WHERE id = $1 AND status = ANY($2)
+     RETURNING *`,
+    [id, AWAITING_STATUSES]
+  );
+  return res.rows[0] || null;
+}
+
+/**
+ * Retire every open clarification for a group (driver went back on the road, or an
+ * admin closed it): mark them 'expired' and stop their reminders. Returns count.
+ */
+async function expireOpenClarificationsForGroup(groupId, { reason } = {}) {
+  const res = await query(
+    `UPDATE home_time_requests
+       SET status = 'expired', next_reminder_at = NULL,
+           ai_reasoning = COALESCE($3, ai_reasoning)
+     WHERE group_id = $1 AND status = ANY($2)
+     RETURNING id`,
+    [groupId, OPEN_CLARIFICATION_STATUSES, reason || null]
+  );
+  return res.rows.length;
 }
 
 /**
@@ -449,6 +758,9 @@ async function updateBotAccessSettings({ superAdminTelegramId, superAdminLabel }
 }
 
 module.exports = {
+  AWAITING_STATUSES,
+  OPEN_CLARIFICATION_STATUSES,
+  OPEN_REQUEST_STATUSES,
   getHomeTimeSettings,
   updateHomeTimeSettings,
   getDriverHomeStatus,
@@ -460,6 +772,10 @@ module.exports = {
   listUnpostedRoadBonuses,
   claimRoadBonusPost,
   unclaimRoadBonusPost,
+  getOpenHomeStay,
+  closeHomeStay,
+  listCyclesForEfficiency,
+  findDecidedRequestNearDate,
   listCurrentStatuses,
   listRoadHistory,
   getRoadHistoryById,
@@ -468,11 +784,20 @@ module.exports = {
   setDriverHomeStateSince,
   setDriverHomeState,
   insertHomeTimeRequest,
+  updateHomeTimeRequestFields,
   getHomeTimeRequestById,
   getPendingHomeTimeRequestForGroup,
   getOpenHomeTimeRequestForGroup,
+  getOpenClarificationForGroup,
   getAwaitingDatesHomeTimeRequestForGroup,
+  getApprovedHomeTimeRequestForGroup,
   fulfillAwaitingHomeTimeRequest,
+  setHomeTimeClarificationMessage,
+  markHomeTimeAcknowledged,
+  listDueHomeTimeReminders,
+  claimHomeTimeReminder,
+  markHomeTimeClarificationUnanswered,
+  expireOpenClarificationsForGroup,
   decideHomeTimeRequest,
   setHomeTimeRequestMessage,
   findHomeTimeRequestByWindow,

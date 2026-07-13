@@ -1206,6 +1206,22 @@ export async function createHomeTimeRequest(payload) {
   return res.json();
 }
 
+export async function updateHomeTimeRequest(id, patch) {
+  const res = await fetch(`${API_BASE}/home-time/requests/${id}`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify(patch || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getHomeTimeEfficiency(range = 'all') {
+  const res = await fetch(`${API_BASE}/home-time/efficiency?range=${encodeURIComponent(range)}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function getGroupAccess() {
   const res = await fetch(`${API_BASE}/home-time/group-access`, { headers: getHeaders() });
   if (!res.ok) { await handleApiError(res); }

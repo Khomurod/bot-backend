@@ -16,10 +16,7 @@ const { handleFuelStopMessage } = require('../../services/fuelStopAlertService')
 const { handleTrailerGroupMessage } = require('../../services/trailerMonitorService');
 const { handleDriverGroupStatus } = require('../../services/homeTimeService');
 const recentMessageBuffer = require('../../services/recentMessageBuffer');
-const {
-  handleApproverMention,
-  handleHomeTimeDateReply,
-} = require('../../services/homeTimeRequestService');
+const { processHomeTimeMessage } = require('../../services/homeTimeRequestService');
 const { messageMentionsApprovers } = require('../../services/homeTimeRequestConstants');
 
 /**
@@ -250,8 +247,10 @@ function registerGroupCaptureHandlers(bot) {
             ? new Date(ctx.message.date * 1000).toISOString()
             : new Date().toISOString();
           db.recordGroupMessageSeen(group.id, seenAtIso).catch(() => {});
-          // Watch for "Status: Home / Ready / Rolling". Never throws.
-          await handleDriverGroupStatus(bot.telegram, group, ctx.message);
+          // Watch for "Status: Home / Ready / Rolling" (deterministic state
+          // machine). Returns transition metadata for the conversational flow.
+          // Never throws.
+          const statusResult = await handleDriverGroupStatus(bot.telegram, group, ctx.message);
 
           // Fuel Monitor: if this is a gas-station location, start watching the
           // truck and remind the driver when within range. Detached + never
@@ -283,20 +282,18 @@ function registerGroupCaptureHandlers(bot) {
             });
           }
 
-          // A rep tagged an approver → maybe a home-time request. Runs detached
-          // (it makes a slow AI call) and never throws; it posts its own card.
-          if (messageMentionsApprovers(ctx.message)) {
-            handleApproverMention(bot.telegram, group, ctx.message).catch((err) => {
-              console.error('[BOT] handleApproverMention failed:', err.message);
-            });
-          } else {
-            // Not an approver tag, but it may be the driver's reply to the bot's
-            // "what dates?" question for a request that is awaiting dates. Cheap
-            // no-op unless a request is actually waiting. Runs detached.
-            handleHomeTimeDateReply(bot.telegram, group, ctx.message).catch((err) => {
-              console.error('[BOT] handleHomeTimeDateReply failed:', err.message);
-            });
-          }
+          // Conversational home-time flow: reacts to a real status transition
+          // (unplanned home arrival / return to road), an approver tag (request
+          // card), a plain-text date answer to an open clarification, or an
+          // AI-detected non-exact status / driver-initiated request. Runs detached
+          // (it may make a slow AI call), never throws, and is gated by a cheap
+          // candidate filter so ordinary chatter never reaches the model.
+          processHomeTimeMessage(bot.telegram, group, ctx.message, {
+            statusResult,
+            mentionsApprover: messageMentionsApprovers(ctx.message),
+          }).catch((err) => {
+            console.error('[BOT] processHomeTimeMessage failed:', err.message);
+          });
         }
       }
     } catch (err) {

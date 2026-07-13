@@ -1316,6 +1316,17 @@ CREATE TABLE IF NOT EXISTS home_time_settings (
 
 INSERT INTO home_time_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
+-- Conversational clarification reminders: how long to wait before the first and
+-- second (and final) reminder when a driver has not supplied a missing home-time
+-- date. Configurable so the cadence can be tuned without a code change. Defaults
+-- to 12h + 12h. See services/homeTimeReminderService.js.
+ALTER TABLE home_time_settings
+  ADD COLUMN IF NOT EXISTS reminder_first_hours INTEGER NOT NULL DEFAULT 12
+    CHECK (reminder_first_hours BETWEEN 1 AND 168);
+ALTER TABLE home_time_settings
+  ADD COLUMN IF NOT EXISTS reminder_second_hours INTEGER NOT NULL DEFAULT 12
+    CHECK (reminder_second_hours BETWEEN 1 AND 168);
+
 -- Current home/road state for each driver group (one row per group).
 CREATE TABLE IF NOT EXISTS driver_home_status (
   group_id INTEGER PRIMARY KEY REFERENCES groups(id) ON DELETE CASCADE,
@@ -1360,6 +1371,24 @@ CREATE TABLE IF NOT EXISTS driver_road_history (
 ALTER TABLE driver_road_history
   ADD COLUMN IF NOT EXISTS bonus_posted_at TIMESTAMPTZ NULL;
 
+-- Home-Time Efficiency needs BOTH sides of a cycle: time on the road (already
+-- captured by road_started_at → home_arrived_at) AND the home stay that follows.
+-- These columns close the home stay when the driver goes back on the road:
+--   return_to_road_at — actual home→road transition time (NULL while still home);
+--   home_days         — whole days spent home (return_to_road_at − home_arrived_at);
+--   linked_request_id — the decided home-time request this cycle maps to, so an
+--                       APPROVED longer-than-policy stay counts as an approved
+--                       exception rather than an ordinary violation.
+-- A cycle is "complete" (usable for strict efficiency) once return_to_road_at is
+-- set. Additive + idempotent: existing rows keep NULLs and are simply treated as
+-- incomplete home-side data until a future home→road transition fills them.
+ALTER TABLE driver_road_history
+  ADD COLUMN IF NOT EXISTS return_to_road_at TIMESTAMPTZ NULL;
+ALTER TABLE driver_road_history
+  ADD COLUMN IF NOT EXISTS home_days INTEGER NULL;
+ALTER TABLE driver_road_history
+  ADD COLUMN IF NOT EXISTS linked_request_id INTEGER NULL;
+
 -- Backfill: mark every EXISTING completed leg as already-posted so switching to
 -- the road→home summary flow does not re-announce historical trips. Only legs
 -- completed AFTER this migration (bonus_posted_at left NULL by default) will be
@@ -1375,6 +1404,10 @@ CREATE INDEX IF NOT EXISTS idx_driver_road_history_bonus
 -- Fast lookup of completed legs still awaiting their bonus summary.
 CREATE INDEX IF NOT EXISTS idx_driver_road_history_unposted
   ON driver_road_history(home_arrived_at ASC) WHERE bonus_usd > 0 AND bonus_posted_at IS NULL;
+-- The still-open home stay for a group (home_arrived_at set, not yet back on road)
+-- is the row a home→road transition closes.
+CREATE INDEX IF NOT EXISTS idx_driver_road_history_open_home
+  ON driver_road_history(group_id, home_arrived_at DESC) WHERE return_to_road_at IS NULL;
 
 -- Home-time REQUESTS: every time a driver asks for home time (via the bot when a
 -- rep tags an approver, or entered manually in the admin panel). Keeping all of
@@ -1407,19 +1440,85 @@ CREATE TABLE IF NOT EXISTS home_time_requests (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 'awaiting_dates': the bot detected a home-time request but the driver did not
--- give the dates, so it asked in the group and is waiting for the reply before
--- posting the approval card.
+-- ── Conversational home-time flow (AI clarification, partial dates, reminders) ──
+-- DATE MODEL (normalized — do not mix these up):
+--   home_from            = HOME START DATE  (day the driver arrives home)
+--   return_to_road_date  = day the driver leaves home to go back on the road
+--   home_to              = LAST DAY HOME    (= return_to_road_date − 1), kept for
+--                          back-compat/display. homeDays = return_to_road − home_from.
+-- A single supplied date is NEVER copied into both ends: the unknown end stays NULL
+-- and the flow asks for it.
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS return_to_road_date DATE;
+-- Driver went home with no earlier complete request — an "unplanned home arrival"
+-- clarification (we know the start from the Status: Home date, still need the
+-- return-to-road date).
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS is_unplanned_arrival BOOLEAN NOT NULL DEFAULT FALSE;
+-- AI audit: what the model decided, how sure, the driver's language, and which
+-- date fields were still missing when the row was last touched.
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS detected_intent TEXT;
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS ai_confidence INTEGER;
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS language TEXT;
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS missing_fields TEXT;
+-- Telegram reply threading. root_* = the message that STARTED this flow (the
+-- original request / Status: Home / incomplete-date message) — clarifications and
+-- reminders reply to it. clarification_* = the bot's own question message.
+-- last_driver_message_id = the most recent driver message we acted on (final ack
+-- replies to it).
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS root_chat_id BIGINT;
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS root_message_id BIGINT;
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS clarification_chat_id BIGINT;
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS clarification_message_id BIGINT;
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS last_driver_message_id BIGINT;
+-- Restart-safe reminder scheduling. next_reminder_at drives the worker (NULL =
+-- nothing scheduled); reminder_count caps at 2. See homeTimeReminderService.js.
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS reminder_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS last_reminder_at TIMESTAMPTZ;
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS next_reminder_at TIMESTAMPTZ;
+-- The conversational acknowledgment / policy reminder is sent at most once per
+-- request (idempotency guard); policy_result records the evaluation outcome.
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS acknowledged_at TIMESTAMPTZ;
+ALTER TABLE home_time_requests
+  ADD COLUMN IF NOT EXISTS policy_result TEXT;
+
+-- Status lifecycle:
+--   awaiting_dates        — need BOTH home-start and return-to-road (generic).
+--   awaiting_home_start   — have return-to-road, need the home-start date.
+--   awaiting_return_to_road — have home-start (or Status: Home), need return date.
+--   pending               — dates complete, approval card posted, awaiting a human.
+--   approved / denied / cancelled — human decision (approval stays authoritative).
+--   clarification_unanswered — two reminders sent, no answer → manual follow-up.
+--   expired               — flow abandoned (driver returned to road, etc.).
 ALTER TABLE home_time_requests
   DROP CONSTRAINT IF EXISTS home_time_requests_status_check;
 ALTER TABLE home_time_requests
   ADD CONSTRAINT home_time_requests_status_check
-  CHECK (status IN ('pending', 'approved', 'denied', 'cancelled', 'awaiting_dates'));
+  CHECK (status IN ('pending', 'approved', 'denied', 'cancelled', 'awaiting_dates',
+    'awaiting_home_start', 'awaiting_return_to_road', 'clarification_unanswered', 'expired'));
 
 CREATE INDEX IF NOT EXISTS idx_home_time_requests_group
   ON home_time_requests(group_id, requested_at DESC);
 CREATE INDEX IF NOT EXISTS idx_home_time_requests_status
   ON home_time_requests(status, requested_at DESC);
+-- Drives the restart-safe reminder sweep: due, still-open clarifications only.
+CREATE INDEX IF NOT EXISTS idx_home_time_requests_reminder_due
+  ON home_time_requests(next_reminder_at ASC)
+  WHERE next_reminder_at IS NOT NULL
+    AND status IN ('awaiting_dates', 'awaiting_home_start', 'awaiting_return_to_road');
 
 -- Single-row settings for the "Bot Group Access" feature: the super admin whose
 -- Telegram account receives the "add me as admin" deep links.
