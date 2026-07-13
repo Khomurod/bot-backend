@@ -113,7 +113,12 @@ async function collectTrailerContext(telegram, group, message, opts = {}) {
       : new Date().toISOString(),
   };
 
-  // ── driver profile (best-effort) ──
+  // ── driver profile + sender role (best-effort) ──
+  // senderRole gives the AI a "who is talking" hint: the group's own DRIVER, or a
+  // NON-DRIVER (dispatcher / trailer specialist / updater / manager). A driver
+  // saying "done/dropped" may confirm completion; a non-driver giving an address
+  // is usually an instruction. Never trusted alone — just context.
+  context.senderRole = 'unknown';
   if (group?.id) {
     try {
       const profile = await db.getDriverProfileByGroupId(group.id);
@@ -122,9 +127,17 @@ async function collectTrailerContext(telegram, group, message, opts = {}) {
           id: profile.id,
           name: [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim() || null,
         };
+        const senderTgId = context.sender?.telegramUserId;
+        const profileTgId = profile.telegram_user_id != null ? String(profile.telegram_user_id) : null;
+        if (senderTgId && profileTgId) {
+          context.senderRole = senderTgId === profileTgId ? 'driver' : 'non_driver';
+        } else if (senderTgId && !profileTgId) {
+          context.senderRole = 'unknown';
+        }
       }
     } catch { /* ignore */ }
   }
+  if (context.sender) context.sender.role = context.senderRole;
 
   // ── recent surrounding messages (bounded, in-memory only) ──
   try {

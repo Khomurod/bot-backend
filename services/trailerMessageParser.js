@@ -263,6 +263,72 @@ function detectAction(text) {
   return pickupIdx <= dropoffIdx ? 'pickup' : 'dropoff';
 }
 
+// ── instruction / assignment phrasing (NOT a completed action) ──
+// A message that ASSIGNS a pickup/drop-off location or COMMANDS one ("Trailer
+// drop-off address: …", "drop this trailer at …", "pickup address: …") must
+// never register a completed event. English patterns only here — the semantic
+// AI handles the long multilingual tail; this deterministic guard just keeps the
+// obvious label/imperative cases out of the completed-action path (and out of
+// the legacy no-AI path). NOTE: order-independent, checked only when NO
+// completion signal is present.
+const DROPOFF_INSTRUCTION_PATTERNS = [
+  /\bdrop[\s-]?off\s+address\b/i,
+  /\bdrop[\s-]?off\s+location\b/i,
+  /\bdrop[\s-]?off\s+point\b/i,
+  /\baddress\s+(?:for|to)\s+(?:the\s+)?drop/i,
+  /\bdrop\s+(?:this|the|it|your)?\s*trailer\s+(?:at|to|here|off\s+at)\b/i,
+  /\b(?:take|bring|leave)\s+(?:this|the|your)?\s*trailer\s+(?:to|at|here)\b/i,
+  /\bwhere\s+(?:to|you\s+(?:need\s+to\s+)?)\s*drop\b/i,
+];
+const PICKUP_INSTRUCTION_PATTERNS = [
+  /\bpick[\s-]?up\s+address\b/i,
+  /\bpick[\s-]?up\s+location\b/i,
+  /\bpick[\s-]?up\s+point\b/i,
+  /\baddress\s+(?:for|to)\s+(?:the\s+)?pick/i,
+  /\bpick\s+(?:it|this|the)?\s*up\s+(?:from|at)\b/i,
+];
+// Clear English completion evidence — its presence means the message is NOT a
+// mere instruction (a real "dropped/picked up/left it" report).
+const COMPLETION_SIGNAL_RE =
+  /\b(?:dropped|droped|picked\s+up|left\s+(?:it|the\s+trailer|trailer\s+there|them)|hooked\s+up|hooked\s+to|grabbed\s+(?:the\s+)?trailer|drop\s+completed|already\s+(?:dropped|delivered|picked))\b/i;
+
+/** True when the text contains clear English completed-action wording. */
+function hasCompletionSignal(text) {
+  return COMPLETION_SIGNAL_RE.test(String(text || ''));
+}
+
+/**
+ * Instruction/assignment hint: does the text ASSIGN or COMMAND a pickup/drop-off
+ * (an address/location/imperative) rather than report a completed action?
+ * Returns 'pickup' | 'dropoff' | null. Returns null when a completion signal is
+ * present (a real report wins over an instruction reading).
+ */
+function detectInstructionPhrase(text) {
+  const raw = String(text || '');
+  if (!raw || hasCompletionSignal(raw)) return null;
+  if (DROPOFF_INSTRUCTION_PATTERNS.some((re) => re.test(raw))) return 'dropoff';
+  if (PICKUP_INSTRUCTION_PATTERNS.some((re) => re.test(raw))) return 'pickup';
+  return null;
+}
+
+/**
+ * Best-effort extraction of a US-style street address line (number + street +
+ * state/zip) for a planned-instruction destination. Returns the trimmed line or
+ * null. Used only when there is no explicit "Location:" label.
+ */
+function extractAddressLine(text) {
+  for (const rawLine of String(text || '').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const looksLikeStreet = /\d{1,6}\s+[A-Za-z0-9.'’-]+(?:\s+[A-Za-z0-9.'’-]+){1,}/.test(line);
+    const hasStateOrZip = /(?:,\s*[A-Z]{2}\b)|\b\d{5}(?:-\d{4})?\b/.test(line);
+    if (looksLikeStreet && hasStateOrZip) {
+      return line.replace(/[.,;]+\s*$/, '').trim();
+    }
+  }
+  return null;
+}
+
 /**
  * Explicit cargo signal in the text, independent of the pickup/dropoff action.
  * Returns 'loaded' | 'empty' | 'ambiguous' (both present) | null (neither).
@@ -323,6 +389,8 @@ function parseTrailerMessage(text) {
     eventType: 'unidentified',
     trailerUnit: null,
     action: null,
+    isInstruction: false,
+    instructionAction: null,
     possessionStatus: 'unknown',
     cargoStatus: 'unknown',
     locationText: null,
@@ -342,6 +410,7 @@ function parseTrailerMessage(text) {
   const trailerRelated = hasTrailerKeyword(trimmed);
   const unit = extractUnitNumber(trimmed);
   const action = detectAction(trimmed);
+  const instruction = detectInstructionPhrase(trimmed);
 
   if (!trailerRelated && !unit) {
     // Not about trailers at all — caller should ignore (isTrailerRelated=false).
@@ -366,6 +435,28 @@ function parseTrailerMessage(text) {
   base.reportedDriverName = reportedDriverName;
 
   // ── classify ──
+  // Instruction/assignment ("Trailer drop-off address: …", "drop this trailer
+  // at …") — an assignment or command, NOT a completed action. It must never
+  // register a completed event or change status; it is captured as a PLANNED
+  // instruction. We keep `action` set so the message still reaches semantic AI
+  // verification, but eventType is mention_only so the legacy no-AI register
+  // path can never fire on it.
+  if (unit && instruction) {
+    return {
+      ...base,
+      eventType: 'mention_only',
+      action: instruction,
+      isInstruction: true,
+      instructionAction: instruction,
+      possessionStatus: 'unknown',
+      cargoStatus: 'unknown',
+      locationText: locationText || extractAddressLine(trimmed),
+      confidence: 45,
+      needsReview: false,
+      reason: `${instruction} instruction/assignment (location given; not a completed action)`,
+    };
+  }
+
   if (unit && action) {
     // Strong signal: unit + clear action.
     let confidence = 70;
@@ -444,6 +535,7 @@ function findUnitTokens(text) {
 /** Build a parsed-event result for ONE known unit from its text segment. */
 function parseSegmentForUnit(segment, unit, fallback = {}) {
   const action = detectAction(segment);
+  const instruction = detectInstructionPhrase(segment);
   const locationText = extractLocation(segment) || fallback.locationText || null;
   const conditionText = extractCondition(segment) || fallback.conditionText || null;
   const eventDateText = extractDate(segment) || fallback.eventDateText || null;
@@ -456,6 +548,8 @@ function parseSegmentForUnit(segment, unit, fallback = {}) {
     eventType: 'mention_only',
     trailerUnit: unit,
     action,
+    isInstruction: false,
+    instructionAction: null,
     possessionStatus: cargo.possessionStatus,
     cargoStatus: cargo.cargoStatus,
     locationText,
@@ -467,6 +561,22 @@ function parseSegmentForUnit(segment, unit, fallback = {}) {
     needsReview: true,
     method: 'deterministic',
   };
+
+  // Instruction/assignment — never a completed action (see parseTrailerMessage).
+  if (instruction) {
+    return {
+      ...base,
+      action: instruction,
+      isInstruction: true,
+      instructionAction: instruction,
+      possessionStatus: 'unknown',
+      cargoStatus: 'unknown',
+      locationText: locationText || extractAddressLine(segment),
+      confidence: 45,
+      needsReview: false,
+      reason: `${instruction} instruction/assignment (location given; not a completed action)`,
+    };
+  }
 
   if (action) {
     let confidence = 70;
@@ -551,6 +661,9 @@ module.exports = {
   extractReportedDriverName,
   detectAction,
   detectMultilingualActionHint,
+  detectInstructionPhrase,
+  hasCompletionSignal,
+  extractAddressLine,
   detectCargoSignal,
   resolveCargoPossession,
   normalizeUnitNumber,

@@ -2521,3 +2521,52 @@ ALTER TABLE trailer_settings ADD COLUMN IF NOT EXISTS review_confidence SMALLINT
 -- explicit opt-out where an admin turns silent mode off). The internal Automatic
 -- Updating (Test) group still receives review alerts either way.
 ALTER TABLE trailer_settings ADD COLUMN IF NOT EXISTS silent_driver_group_monitoring BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- Pending trailer INSTRUCTIONS (planned/assigned pickup or drop-off) — a small
+-- additive structure that keeps INSTRUCTIONS separate from COMPLETED events.
+--
+-- Root-cause fix: a message like "Trailer DROP OFF address / trl # VM709984 /
+-- 1375 Jersey Ave …" is an assignment, NOT a completed drop-off. It must never
+-- change trailer_current_status. Instead we record the planned action + planned
+-- location here and wait for a later message that CONFIRMS the physical action.
+-- No fake completed trailer_event is ever created just to hold an instruction.
+--
+-- instruction_status: pending → waiting for a completed-action confirmation;
+--   confirmed → a later completed event fulfilled it (confirmed_event_id set);
+--   superseded → a newer instruction/correction replaced it; cancelled → admin.
+CREATE TABLE IF NOT EXISTS trailer_pending_instructions (
+  id BIGSERIAL PRIMARY KEY,
+  trailer_id INTEGER NULL REFERENCES trailers(id) ON DELETE SET NULL,
+  trailer_unit_number TEXT NOT NULL,
+  planned_action TEXT NOT NULL CHECK (planned_action IN ('pickup', 'dropoff')),
+  planned_location TEXT NULL,
+  planned_lat DOUBLE PRECISION NULL,
+  planned_lng DOUBLE PRECISION NULL,
+  driver_group_id INTEGER NULL REFERENCES groups(id) ON DELETE SET NULL,
+  telegram_group_id BIGINT NULL,
+  telegram_group_name TEXT NULL,
+  instruction_source_message_id BIGINT NULL,
+  reported_by_telegram_user_id BIGINT NULL,
+  reported_by_username TEXT NULL,
+  reported_by_name TEXT NULL,
+  semantic_intent TEXT NULL,
+  semantic_confidence SMALLINT NULL,
+  ai_reason TEXT NULL,
+  raw_message_text TEXT NULL,
+  instruction_status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (instruction_status IN ('pending', 'confirmed', 'superseded', 'cancelled')),
+  confirmed_event_id BIGINT NULL,
+  instruction_created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_trailer_pending_instructions_unit
+  ON trailer_pending_instructions(trailer_unit_number, instruction_status);
+CREATE INDEX IF NOT EXISTS idx_trailer_pending_instructions_status
+  ON trailer_pending_instructions(instruction_status, instruction_created_at DESC);
+-- One instruction per (group, source message, unit, action): a re-delivered
+-- Telegram message never creates a duplicate. Partial so admin/manual rows
+-- (no source message) are not blocked.
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_trailer_pending_instructions_msg
+  ON trailer_pending_instructions(telegram_group_id, instruction_source_message_id, trailer_unit_number, planned_action)
+  WHERE telegram_group_id IS NOT NULL AND instruction_source_message_id IS NOT NULL;

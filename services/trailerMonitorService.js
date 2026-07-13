@@ -272,6 +272,23 @@ function semanticColumns(parsed, verificationStatus) {
 async function registerPickupDropoff(parsed, ctx) {
   const trailer = await db.ensureTrailerForDetection(parsed.trailerUnit);
 
+  // A completed action may FULFILL an earlier planned instruction for this
+  // trailer (e.g. "Dropped" after "Trailer drop-off address: 1375 Jersey Ave").
+  // Look it up so we can (a) backfill a missing location with the planned
+  // destination and (b) mark the instruction confirmed + link this event.
+  let pendingInstruction = null;
+  try {
+    if (typeof db.getLatestPendingInstruction === 'function' && parsed.trailerUnit && parsed.eventType) {
+      pendingInstruction = await db.getLatestPendingInstruction(parsed.trailerUnit, parsed.eventType);
+    }
+  } catch { pendingInstruction = null; }
+
+  // Backfill the location from the planned instruction when the completion
+  // message itself carried none ("Dropped" with no address).
+  if (!parsed.locationText && pendingInstruction?.planned_location) {
+    parsed = { ...parsed, locationText: pendingInstruction.planned_location };
+  }
+
   let lat = null;
   let lng = null;
   let locationSource = null;
@@ -333,7 +350,50 @@ async function registerPickupDropoff(parsed, ctx) {
   });
 
   if (!duplicate && event && trailer) await db.applyEventToCurrentStatus(trailer, event);
+
+  // Confirm the fulfilled instruction (best-effort; never blocks registration).
+  if (!duplicate && event && pendingInstruction?.id && typeof db.markPendingInstructionConfirmed === 'function') {
+    try { await db.markPendingInstructionConfirmed(pendingInstruction.id, { confirmedEventId: event.id }); } catch { /* ignore */ }
+  }
   return { event, duplicate };
+}
+
+/**
+ * Record ONE planned/assigned pickup or drop-off INSTRUCTION (not a completed
+ * action). Never changes trailer_current_status and never sends to manual
+ * review — it silently waits for a later message that confirms the physical
+ * action. Returns { instruction, duplicate }. Resilient to a DB that predates
+ * the pending-instructions table (guards the method + swallows errors).
+ */
+async function registerPlannedInstruction(parsed, ctx) {
+  if (typeof db.insertTrailerPendingInstruction !== 'function') return { instruction: null, duplicate: false };
+  const action = parsed.instructionAction || parsed.action;
+  if (!parsed.trailerUnit || (action !== 'pickup' && action !== 'dropoff')) {
+    return { instruction: null, duplicate: false };
+  }
+  try {
+    const trailer = await db.ensureTrailerForDetection(parsed.trailerUnit);
+    return await db.insertTrailerPendingInstruction({
+      trailer_id: trailer?.id || null,
+      trailer_unit_number: parsed.trailerUnit,
+      planned_action: action,
+      planned_location: parsed.locationText || null,
+      driver_group_id: ctx.group.id,
+      telegram_group_id: ctx.group.telegram_group_id,
+      telegram_group_name: ctx.group.group_name,
+      instruction_source_message_id: ctx.message.message_id,
+      reported_by_telegram_user_id: ctx.from.id || null,
+      reported_by_username: ctx.from.username || null,
+      reported_by_name: reporterName(ctx.from),
+      semantic_intent: parsed.semantic?.intent || null,
+      semantic_confidence: parsed.semantic?.confidence != null ? parsed.semantic.confidence : parsed.confidence,
+      ai_reason: parsed.reason || null,
+      raw_message_text: ctx.text,
+    });
+  } catch (err) {
+    console.warn('[TRAILER] Could not store planned instruction (non-fatal):', err.message);
+    return { instruction: null, duplicate: false };
+  }
 }
 
 /**
@@ -457,6 +517,43 @@ function buildReviewParsed(aiResult, aiEvent, gate, eventIndex) {
       completed: aiEvent.completed,
       confidence: aiEvent.confidence,
       reason: aiEvent.reason || gate.reason,
+      unitGrounded: aiEvent.unitGrounded,
+      unitSource: aiEvent.unitSource,
+      unitEvidence: aiEvent.unitEvidence,
+      actionEvidence: aiEvent.actionEvidence,
+      aiModel: aiResult.aiModel || null,
+      verifiedAt: new Date().toISOString(),
+      raw: sanitizeAiResultForStorage(aiResult),
+    },
+  };
+}
+
+/**
+ * Planned-instruction payload for one AI event classified as an assignment /
+ * instruction (instruction_pickup/dropoff, planned_pickup/dropoff). Captures the
+ * planned action + destination; it never becomes a completed event.
+ */
+function buildPlannedParsed(aiResult, aiEvent, eventIndex) {
+  const action = aiEvent.action === 'pickup' || aiEvent.action === 'dropoff'
+    ? aiEvent.action
+    : ((aiEvent.intent || '').includes('pickup') ? 'pickup' : 'dropoff');
+  return {
+    isTrailerRelated: true,
+    eventType: 'instruction',
+    trailerUnit: aiEvent.trailerUnit,
+    action,
+    isInstruction: true,
+    instructionAction: action,
+    locationText: aiEvent.plannedLocation || aiEvent.locationText || null,
+    confidence: aiEvent.confidence,
+    reason: aiEvent.reason || `${aiEvent.intent || aiResult.intent} (instruction/assignment)`,
+    method: 'semantic_ai',
+    eventIndex,
+    semantic: {
+      intent: aiEvent.intent || aiResult.intent,
+      completed: aiEvent.completed,
+      confidence: aiEvent.confidence,
+      reason: aiEvent.reason,
       unitGrounded: aiEvent.unitGrounded,
       unitSource: aiEvent.unitSource,
       unitEvidence: aiEvent.unitEvidence,
@@ -593,6 +690,7 @@ async function handleTrailerGroupMessage(telegram, group, message) {
     // ── 5b. AI answered: apply the hard approval gate per event ──
     const registered = [];
     const reviewItems = [];
+    const plannedItems = [];
     let anyDuplicate = false;
 
     let events = aiResult.trailerEvents;
@@ -615,6 +713,13 @@ async function handleTrailerGroupMessage(telegram, group, message) {
         const { event, duplicate } = await registerPickupDropoff(parsed, ctx);
         if (duplicate) anyDuplicate = true;
         else if (event) registered.push(event);
+      } else if (gate.disposition === 'plan') {
+        // Instruction/assignment (e.g. "Trailer drop-off address: …") — record a
+        // PENDING instruction, never a completed event, never manual review.
+        const parsed = buildPlannedParsed(aiResult, aiEvent, i);
+        const { instruction, duplicate } = await registerPlannedInstruction(parsed, ctx);
+        if (duplicate) anyDuplicate = true;
+        else if (instruction) plannedItems.push({ parsed, instruction });
       } else if (gate.disposition === 'review') {
         const parsed = buildReviewParsed(aiResult, aiEvent, gate, i);
         const { event, duplicate } = await registerUnidentified(parsed, ctx, 'review');
@@ -638,7 +743,7 @@ async function handleTrailerGroupMessage(telegram, group, message) {
       }
     }
 
-    if (!registered.length && !reviewItems.length) {
+    if (!registered.length && !reviewItems.length && !plannedItems.length) {
       return anyDuplicate ? { skipped: 'duplicate' } : { skipped: 'no-actionable-intent', intent: aiResult.intent };
     }
     if (registered.length) {
@@ -651,14 +756,28 @@ async function handleTrailerGroupMessage(telegram, group, message) {
         unit: first.trailer_unit_number,
         events: registered.map((e) => ({ id: e.id, eventType: e.event_type, unit: e.trailer_unit_number })),
         reviewCount: reviewItems.length,
+        plannedCount: plannedItems.length,
         intent: aiResult.intent,
       };
     }
+    if (reviewItems.length) {
+      return {
+        review: true,
+        intent: aiResult.intent,
+        eventId: reviewItems[0].event.id,
+        plannedCount: plannedItems.length,
+        reportedToTest,
+      };
+    }
+    // Only planned instructions were recorded — nothing changed status, nothing
+    // went to manual review, the driver group heard nothing.
     return {
-      review: true,
+      planned: true,
+      plannedCount: plannedItems.length,
       intent: aiResult.intent,
-      eventId: reviewItems[0].event.id,
-      reportedToTest,
+      unit: plannedItems[0].parsed.trailerUnit,
+      action: plannedItems[0].parsed.instructionAction,
+      plannedLocation: plannedItems[0].parsed.locationText || null,
     };
   } catch (err) {
     console.error('[TRAILER] handleTrailerGroupMessage failed:', err.message);
@@ -674,9 +793,16 @@ async function handleTrailerGroupMessage(telegram, group, message) {
 async function legacyRegisterPath(telegram, group, message, parsedList, ctx, testGroupId, betaMode) {
   const registered = [];
   const reportedUnids = [];
+  const plannedItems = [];
   let anyDuplicate = false;
   for (const parsed of parsedList) {
-    if (parsed.eventType === 'pickup' || parsed.eventType === 'dropoff') {
+    if (parsed.isInstruction) {
+      // Assignment/address — record a pending instruction, never a completed
+      // event, even in the no-AI legacy path (the screenshot bug's other route).
+      const { instruction, duplicate } = await registerPlannedInstruction(parsed, ctx);
+      if (duplicate) anyDuplicate = true;
+      else if (instruction) plannedItems.push({ parsed, instruction });
+    } else if (parsed.eventType === 'pickup' || parsed.eventType === 'dropoff') {
       const { event, duplicate } = await registerPickupDropoff(parsed, ctx);
       if (duplicate) anyDuplicate = true;
       else if (event) registered.push(event);
@@ -695,7 +821,7 @@ async function legacyRegisterPath(telegram, group, message, parsedList, ctx, tes
       reportedToTest = true;
     }
   }
-  if (!registered.length && !reportedUnids.length) return { skipped: 'duplicate' };
+  if (!registered.length && !reportedUnids.length && !plannedItems.length) return { skipped: 'duplicate' };
   if (registered.length) {
     const first = registered[0];
     return {
@@ -705,10 +831,21 @@ async function legacyRegisterPath(telegram, group, message, parsedList, ctx, tes
       eventId: first.id,
       unit: first.trailer_unit_number,
       events: registered.map((e) => ({ id: e.id, eventType: e.event_type, unit: e.trailer_unit_number })),
+      plannedCount: plannedItems.length,
       legacy: true,
     };
   }
-  return { unidentified: true, eventType: reportedUnids[0].event.event_type, eventId: reportedUnids[0].event.id, reportedToTest };
+  if (reportedUnids.length) {
+    return { unidentified: true, eventType: reportedUnids[0].event.event_type, eventId: reportedUnids[0].event.id, reportedToTest, plannedCount: plannedItems.length };
+  }
+  return {
+    planned: true,
+    plannedCount: plannedItems.length,
+    unit: plannedItems[0].parsed.trailerUnit,
+    action: plannedItems[0].parsed.instructionAction,
+    plannedLocation: plannedItems[0].parsed.locationText || null,
+    legacy: true,
+  };
 }
 
 module.exports = {
@@ -724,6 +861,8 @@ module.exports = {
   hasPotentialAction,
   buildVerifiedParsed,
   buildReviewParsed,
+  buildPlannedParsed,
+  registerPlannedInstruction,
   resolveVerifiedCargo,
   sanitizeAiResultForStorage,
 };

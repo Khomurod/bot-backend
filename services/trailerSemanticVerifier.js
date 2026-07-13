@@ -37,6 +37,27 @@ const INTENTS = new Set([
 ]);
 /** The ONLY intents that may ever change trailer status. */
 const STATE_CHANGING_INTENTS = new Set(['confirmed_pickup', 'confirmed_dropoff']);
+/** Intents that describe a PLANNED / ASSIGNED / INSTRUCTED action (not done). */
+const PLAN_INTENTS = new Set([
+  'planned_pickup', 'planned_dropoff', 'instruction_pickup', 'instruction_dropoff',
+]);
+/** Intents that carry no actionable state — silently ignored (no review). */
+const QUIET_INTENTS = new Set([
+  'discussion', 'trailer_mention', 'pickup_question', 'dropoff_question', 'condition_report_only',
+]);
+
+/**
+ * PURE. Disposition for a NON-state-changing intent:
+ *   'plan'   → a grounded instruction/assignment to record as a pending plan;
+ *   'ignore' → questions / discussion / mention / condition (silent);
+ *   'review' → genuinely unclear (needs a second look).
+ * A plan is only worth storing when its unit is grounded; otherwise it is noise.
+ */
+function nonStateDisposition(intent, event) {
+  if (PLAN_INTENTS.has(intent)) return event && event.unitGrounded === true ? 'plan' : 'ignore';
+  if (QUIET_INTENTS.has(intent)) return 'ignore';
+  return 'review'; // 'unclear' or anything unexpected
+}
 
 const UNIT_SOURCES = new Set([
   'current_text', 'current_caption', 'replied_text', 'replied_caption',
@@ -96,9 +117,30 @@ const SYSTEM_PROMPT =
   + 'borasiz", "tashlaysiz", "забери", "возьмёшь этот трейлер") → instruction_pickup / '
   + 'instruction_dropoff. Uzbek verbs ending in -siz/-asiz ("olasiz", "tashlaysiz") address '
   + 'ANOTHER person and are instructions/future, NEVER completed actions by the sender.\n'
+  + '- an ASSIGNED LOCATION / ADDRESS given to a driver — a header or label such as '
+  + '"Trailer drop-off address", "Drop-off location", "Drop this trailer at …", "Take this '
+  + 'trailer to …", "Leave this trailer at …", "You will drop this trailer at …", "This is '
+  + 'where you need to drop it", "Pickup address", "Pick it up from here", "olib borasiz", '
+  + '"shu yerga tashlaysiz", "tashlab kelasiz", "olib kelasiz", "manzil shu", "сюда отвезёшь", '
+  + '"оставишь здесь", "адрес для дропа", "заберёшь отсюда" — followed by/near an address, a '
+  + 'trailer number, a facility name, or a map link → instruction_pickup / instruction_dropoff '
+  + 'with completed=false. This is a PLAN/ASSIGNMENT, NOT proof that the trailer was moved.\n'
   + '- a QUESTION ("can you take it?", "olamizmi?", "можешь забрать?") → pickup_question / '
   + 'dropoff_question\n'
   + '- ordinary discussion, a bare trailer mention, or a condition-only report.\n\n'
+  + 'CRITICAL: the mere presence of "drop-off"/"pickup", an address, a trailer number, a '
+  + 'facility name, or a map link is NOT evidence that the action was COMPLETED. Decide '
+  + 'completion from GRAMMAR and TENSE, the MESSAGE PURPOSE (is it assigning/telling vs. '
+  + 'reporting?), and the SENDER ROLE. Set completed=true ONLY when the sender states the '
+  + 'physical action ALREADY happened — e.g. "dropped trailer VM709984", "I dropped it", '
+  + '"trailer was left there", "drop completed", "done, trailer is at the location", '
+  + '"tashladim", "qoldirdim", "olib borib tashladim", "оставил трейлер", "сбросил трейлер", '
+  + '"уже доставил". If in doubt, completed=false.\n\n'
+  + 'SENDER ROLE (provided as context, use it — but never trust it alone): a message from a '
+  + 'trailer specialist / dispatcher / updater / manager that gives an address, an assignment, '
+  + 'or a "pickup/drop-off address" is USUALLY an instruction (completed=false). A message '
+  + 'from the DRIVER saying "done", "dropped", "left it there", "picked it up" MAY confirm '
+  + 'completion when it connects to a grounded trailer/instruction.\n\n'
   + 'Quoted/replied context: text quoted from a replied-to message shows what was discussed, '
   + 'NOT what the current sender did. Never assume the sender performed an action just '
   + 'because the quoted message contains action words.\n\n'
@@ -115,7 +157,11 @@ const SYSTEM_PROMPT =
 function renderContextBlock(context) {
   const lines = [];
   const senderName = context?.sender?.name || context?.sender?.username || 'unknown';
-  lines.push(`CURRENT MESSAGE (sender: ${senderName}):`);
+  const roleRaw = context?.senderRole || context?.sender?.role || 'unknown';
+  const roleLabel = roleRaw === 'driver' ? 'the group driver'
+    : roleRaw === 'non_driver' ? 'a dispatcher/trailer specialist/updater (not the driver)'
+      : 'unknown role';
+  lines.push(`CURRENT MESSAGE (sender: ${senderName}, role: ${roleLabel}):`);
   lines.push(`"""${bounded(context?.messageText, 800) || '(photo with no caption)'}"""`);
 
   if (context?.repliedMessage) {
@@ -193,6 +239,8 @@ const RESPONSE_SCHEMA =
   + '      "intent": string,               // per-trailer intent (same vocabulary)\n'
   + '      "action": "pickup" | "dropoff" | null,\n'
   + '      "completed": boolean,           // per-trailer: already done?\n'
+  + '      "operationalStatusChange": boolean, // true ONLY for a COMPLETED action that changes who holds the trailer; false for instructions/plans/questions\n'
+  + '      "plannedLocation": string | null,   // for an instruction/assignment: the address the trailer should be picked up from / dropped at\n'
   + '      "unitGrounded": boolean,        // the unit literally appears in the provided context\n'
   + '      "unitSource": "current_text" | "current_caption" | "replied_text" | "replied_caption" | "current_image" | "replied_image" | null,\n'
   + '      "unitEvidence": string | null,  // exact text the unit came from\n'
@@ -237,6 +285,12 @@ function normalizeAiResult(parsed, context) {
       intent: evIntent,
       action,
       completed: raw.completed === true,
+      // Instructions/plans carry completed=false. operationalStatusChange is an
+      // extra explicit signal: only a completed action that moves the trailer may
+      // be true. Default it from `completed` when the AI omits it.
+      operationalStatusChange: raw.operationalStatusChange === true
+        || (raw.operationalStatusChange == null && raw.completed === true),
+      plannedLocation: bounded(raw.plannedLocation) || bounded(raw.locationText),
       // Server-side grounding wins over whatever the AI claimed.
       unitGrounded: validation.valid,
       unitSource: validation.valid
@@ -346,11 +400,17 @@ function evaluateTrailerEventApproval(aiResult, event, groundedContext, settings
   if (!event) return deny('no event');
 
   const intent = event.intent || aiResult.intent;
-  // 1. Only confirmed intents may change state; everything else is at most a
-  //    review item (questions/discussion are silently ignorable).
+  // 1. Only confirmed intents may change state. Everything else routes by
+  //    disposition: a grounded instruction/plan → 'plan' (store as a pending
+  //    instruction, NOT manual review); questions/discussion → 'ignore';
+  //    genuinely unclear → 'review'.
   if (!STATE_CHANGING_INTENTS.has(intent)) {
-    const quiet = ['discussion', 'trailer_mention', 'pickup_question', 'dropoff_question', 'condition_report_only'];
-    return deny(`intent ${intent} never changes state`, quiet.includes(intent) ? 'ignore' : 'review');
+    return deny(`intent ${intent} never changes state`, nonStateDisposition(intent, event));
+  }
+  // 1b. An explicit operationalStatusChange=false contradicts a "confirmed"
+  //     intent (an address/assignment mislabeled) — never register it.
+  if (event.operationalStatusChange === false) {
+    return deny(`intent ${intent} but operationalStatusChange=false — not a completed move`);
   }
   // 2. Completed must be explicitly true (per-event AND top-level not contradicting).
   if (event.completed !== true) return deny('event not marked completed');
@@ -395,8 +455,11 @@ module.exports = {
   canRegisterTrailerEvent,
   resolveThresholds,
   isSemanticAiConfigured,
+  nonStateDisposition,
   INTENTS,
   STATE_CHANGING_INTENTS,
+  PLAN_INTENTS,
+  QUIET_INTENTS,
   DEFAULT_AUTO_REGISTER_CONFIDENCE,
   DEFAULT_REVIEW_CONFIDENCE,
   VERIFY_TIMEOUT_MS,
