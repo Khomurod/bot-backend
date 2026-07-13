@@ -51,6 +51,10 @@ const {
   stopRoadBonusNotifierService,
 } = require('./services/roadBonusNotifierService');
 const {
+  startHomeTimeReminderService,
+  stopHomeTimeReminderService,
+} = require('./services/homeTimeReminderService');
+const {
   startRouteControlService,
   stopRouteControlService,
 } = require('./services/routeControlService');
@@ -312,6 +316,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopFuelStopAlertService(); } catch (err) { console.error('[SHUTDOWN] stopFuelStopAlertService failed:', err.message); }
   try { stopRecruiterCallSyncService(); } catch (err) { console.error('[SHUTDOWN] stopRecruiterCallSyncService failed:', err.message); }
   try { stopRoadBonusNotifierService(); } catch (err) { console.error('[SHUTDOWN] stopRoadBonusNotifierService failed:', err.message); }
+  try { stopHomeTimeReminderService(); } catch (err) { console.error('[SHUTDOWN] stopHomeTimeReminderService failed:', err.message); }
   try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
   try { stopMemoryWatchdog(); } catch (err) { console.error('[SHUTDOWN] stopMemoryWatchdog failed:', err.message); }
@@ -359,6 +364,7 @@ async function start() {
   startFuelStopAlertService(bot.telegram);
   startRecruiterCallSyncService();
   startRoadBonusNotifierService(bot.telegram);
+  startHomeTimeReminderService(bot.telegram);
   startRouteControlService(bot.telegram);
   startDuplicateUnitCheckService();
   await startFacebookWebhookWorker();

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import * as api from "../api";
+import HomeTimeEfficiencyTab from "./HomeTimeEfficiencyTab";
 import {
   HOME_TIME_SORT_COLUMNS,
   STATUS_FILTERS,
@@ -117,6 +118,7 @@ export default function HomeTimePage() {
     status: "approved",
     note: "",
   });
+  const [activeTab, setActiveTab] = useState("overview");
   const [importFiles, setImportFiles] = useState([]);
   const [importRows, setImportRows] = useState(null);
   const [importing, setImporting] = useState(false);
@@ -448,6 +450,27 @@ export default function HomeTimePage() {
         </div>
       )}
 
+      <div className="home-time-tabs" style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button
+          type="button"
+          className={`btn ${activeTab === "overview" ? "btn-primary" : "btn-secondary"}`}
+          onClick={() => setActiveTab("overview")}
+        >
+          Overview
+        </button>
+        <button
+          type="button"
+          className={`btn ${activeTab === "efficiency" ? "btn-primary" : "btn-secondary"}`}
+          onClick={() => setActiveTab("efficiency")}
+        >
+          Driver Home Time Efficiency
+        </button>
+      </div>
+
+      {activeTab === "efficiency" && <HomeTimeEfficiencyTab flash={flash} />}
+
+      {activeTab === "overview" && (
+      <>
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="home-time-section-head">
           <div>
@@ -1089,6 +1112,8 @@ export default function HomeTimePage() {
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

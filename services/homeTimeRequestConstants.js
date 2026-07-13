@@ -210,10 +210,92 @@ function buildHomeTimeDateReplyPrompt({ text, todayLabel } = {}) {
   ].join('\n');
 }
 
-/** Friendly group message asking the driver for their home-time dates. */
+/** Friendly group message asking the driver for BOTH home-time dates. */
 function buildAskForDatesMessage() {
   return 'Got it — I can put in a home-time request. What dates would you like to be home? '
-    + 'Please reply with a start and end date (for example: Jul 2 – Jul 8).';
+    + 'Please reply with the day you want to arrive home and the day you plan to be back on the road '
+    + '(for example: home Jul 2, back on the road Jul 6).';
+}
+
+/**
+ * Deterministic fallback for the conversational clarification asks. `kind` picks
+ * which single piece is still missing. Friendly + firm; the AI produces a
+ * language-matched version and these are the safety net.
+ */
+function buildClarificationMessage(kind) {
+  switch (kind) {
+    case 'return_to_road':
+      return 'Brother, what date are you planning to get back on the road after your home time?';
+    case 'home_start':
+      return 'Brother, what date are you planning to arrive home?';
+    case 'unplanned_return':
+      return 'Brother, welcome home! When are you planning to get back on the road after your home time?';
+    default:
+      return buildAskForDatesMessage();
+  }
+}
+
+/**
+ * Deterministic fallback for a clarification REMINDER. Names the specific missing
+ * date so the driver knows exactly what to answer.
+ */
+function buildReminderMessage(missingField) {
+  if (missingField === 'return_to_road') {
+    return 'Brother, please clarify the date when you will be back on the road after home time. '
+      + 'It is important for us to know.';
+  }
+  if (missingField === 'home_start') {
+    return 'Brother, please let us know the date you are planning to arrive home. '
+      + 'It is important for us to know.';
+  }
+  return 'Brother, please let us know your home-time dates (arrive home and back on the road). '
+    + 'It is important for us to know.';
+}
+
+/** Deterministic fallback: compliant acknowledgment (paired with a 👍 reaction). */
+function buildPolicyAckMessage() {
+  return 'Awesome, I took note. Thanks for letting me know.';
+}
+
+/** Deterministic fallback: firm-but-friendly policy reminder (over home / short road). */
+function buildPolicyWarningMessage(allowanceWeeks = 4, homeAllowanceDays = 4) {
+  return `Brother, please follow our initial agreement of ${allowanceWeeks} weeks on the road and up to `
+    + `${homeAllowanceDays} days at home, if you don't mind.`;
+}
+
+/**
+ * Evaluate the home-time policy for a driver once complete dates are known.
+ * Company-driver only; owner operators are not applicable. An approved exception
+ * is surfaced separately so it never draws an ordinary violation warning.
+ *
+ * @returns {{ applies:boolean, result:string, compliant:boolean }}
+ *   result ∈ not_applicable | approved_exception | compliant | over_home |
+ *            short_road | unknown
+ */
+function evaluatePolicy({
+  daysOnRoad = null, homeDays = null, roadAllowanceWeeks = 4, homeAllowanceDays = 4,
+  driverType = 'company_driver', hasApprovedException = false,
+} = {}) {
+  if (!homeTimePolicyApplies(driverType)) {
+    return { applies: false, result: 'not_applicable', compliant: false };
+  }
+  if (hasApprovedException) {
+    return { applies: true, result: 'approved_exception', compliant: true };
+  }
+  const allowanceDays = Math.max(0, Number(roadAllowanceWeeks) || 0) * DAYS_PER_WEEK;
+  const road = daysOnRoad == null ? null : Number(daysOnRoad);
+  const home = homeDays == null ? null : Number(homeDays);
+  // Over the home-day allowance takes precedence in the message.
+  if (home != null && home > Math.max(0, Number(homeAllowanceDays) || 0)) {
+    return { applies: true, result: 'over_home', compliant: false };
+  }
+  if (road != null && road < allowanceDays) {
+    return { applies: true, result: 'short_road', compliant: false };
+  }
+  if (road == null && home == null) {
+    return { applies: true, result: 'unknown', compliant: false };
+  }
+  return { applies: true, result: 'compliant', compliant: true };
 }
 
 const MONTHS = {
@@ -380,6 +462,11 @@ module.exports = {
   buildHomeTimeClassificationPrompt,
   buildHomeTimeDateReplyPrompt,
   buildAskForDatesMessage,
+  buildClarificationMessage,
+  buildReminderMessage,
+  buildPolicyAckMessage,
+  buildPolicyWarningMessage,
+  evaluatePolicy,
   looksLikeDateReply,
   parseHomeTimeWindowText,
   isReasonableHomeWindow,

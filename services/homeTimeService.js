@@ -94,22 +94,52 @@ async function postHomecomingRecognition(telegram, {
  * Process one driver-group message. Safe to call on every message — it is a
  * no-op unless the text contains a recognizable "Status:" line. Never throws.
  *
+ * Returns transition metadata so the caller (bot pipeline) can trigger the
+ * conversational side-effects of a real state change (unplanned-home clarification
+ * on road→home, home-stay close on home→road) without re-deriving them:
+ *   { changed, transition, newState, previousState, eventAt } | null
+ * where transition ∈ 'first_observation' | 'road_to_home' | 'home_to_road' | null.
+ *
  * @param {object} telegram  bot.telegram instance (passed in to avoid a require cycle)
  * @param {object} group     groups row (id, telegram_group_id, group_name, group_type)
  * @param {object} message   Telegram message
  */
 async function handleDriverGroupStatus(telegram, group, message) {
   try {
-    if (!group || group.group_type !== 'driver') return;
+    if (!group || group.group_type !== 'driver') return null;
     const text = message?.text || message?.caption || '';
     const newState = parseDriverStatus(text);
-    if (!newState) return; // not a status message — ignore
-
-    const settings = await ht.getHomeTimeSettings();
-    if (!settings || !settings.enabled) return;
+    if (!newState) return null; // not a status message — ignore
 
     const eventAt = messageTimestampIso(message);
+    return await applyStateTransition(telegram, group, {
+      newState, eventAt, statusText: text,
+    });
+  } catch (err) {
+    console.error('[HOME-TIME] handleDriverGroupStatus error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Apply a home/road state change (from the deterministic status parser OR the AI
+ * intent classifier) to a driver group: run the home/road state machine, record a
+ * completed road leg and its bonus on road→home, and post the extra-week summary +
+ * homecoming recognition when a company driver came home over the allowance.
+ *
+ * Shared by handleDriverGroupStatus (exact "Status:" line) and the AI-detected
+ * status path (non-exact phrasing like "uyda" / "домой приехал"). Never throws.
+ *
+ * @returns {{changed:boolean, transition:(string|null), newState:string,
+ *   previousState:(string|null), eventAt:string} | null}
+ */
+async function applyStateTransition(telegram, group, { newState, eventAt, statusText = '' }) {
+  try {
+    const settings = await ht.getHomeTimeSettings();
+    if (!settings || !settings.enabled) return null;
+
     const current = await ht.getDriverHomeStatus(group.id);
+    const text = String(statusText || '');
 
     // First time we ever see this group: just record where it stands now. We do
     // not invent a bonus for a trip whose start we never observed.
@@ -123,7 +153,9 @@ async function handleDriverGroupStatus(telegram, group, message) {
         lastStatusAt: eventAt,
         roadBonusWeeksNotified: 0,
       });
-      return;
+      return {
+        changed: true, transition: 'first_observation', newState, previousState: null, eventAt,
+      };
     }
 
     // Same state again (e.g. repeated "Status: Home") → just touch, no transition.
@@ -133,9 +165,12 @@ async function handleDriverGroupStatus(telegram, group, message) {
         lastStatusText: text.slice(0, 500),
         lastStatusAt: eventAt,
       });
-      return;
+      return {
+        changed: false, transition: null, newState, previousState: current.state, eventAt,
+      };
     }
 
+    const previousState = current.state;
     // ── A real transition ──
     if (current.state === 'road' && newState === 'home') {
       // Road trip just finished — close it and compute the bonus.
@@ -181,7 +216,9 @@ async function handleDriverGroupStatus(telegram, group, message) {
       }
       console.log(`[HOME-TIME] ${driverName} (${driverType}) home after ${daysOnRoad}d (${exceededWeeks} extra wk, $${bonusUsd} recorded)`);
     }
-    // home → road needs no calculation; the clock simply starts.
+    // home → road needs no calculation; the clock simply starts. The completed
+    // home stay (return-to-road time + home duration) is closed by the caller via
+    // closeHomeStayOnReturn so the home-time efficiency dashboard has real data.
 
     // Every transition starts a fresh leg → reset the extra-week watermark so
     // the notifier re-counts from zero for the new road trip.
@@ -194,11 +231,60 @@ async function handleDriverGroupStatus(telegram, group, message) {
       lastStatusAt: eventAt,
       roadBonusWeeksNotified: 0,
     });
+
+    const transition = previousState === 'road' && newState === 'home'
+      ? 'road_to_home'
+      : (previousState === 'home' && newState === 'road' ? 'home_to_road' : null);
+    return {
+      changed: true, transition, newState, previousState, eventAt,
+    };
   } catch (err) {
-    console.error('[HOME-TIME] handleDriverGroupStatus error:', err.message);
+    console.error('[HOME-TIME] applyStateTransition error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Close the open home stay when a driver goes back on the road (home→road). Stamps
+ * the actual return-to-road time and whole home days onto the still-open completed
+ * road leg, links the decided home-time request that authorized it (for the
+ * approved-exception classification), and retires any open clarification flow for
+ * the group. Best-effort — the state machine already ran; never throws.
+ *
+ * @param {object} group    groups row
+ * @param {object} opts
+ * @param {string} opts.returnToRoadIso  the home→road transition time (ISO)
+ * @returns {object|null} the closed road-history row, or null
+ */
+async function closeHomeStayOnReturn(group, { returnToRoadIso } = {}) {
+  try {
+    if (!group || !returnToRoadIso) return null;
+    const open = await ht.getOpenHomeStay(group.id);
+    if (open && open.home_arrived_at) {
+      const homeDays = wholeDaysBetween(open.home_arrived_at, returnToRoadIso);
+      let linkedRequestId = open.linked_request_id || null;
+      if (!linkedRequestId) {
+        const homeArrivedDate = DateTime.fromJSDate(new Date(open.home_arrived_at)).toISODate();
+        const decided = await ht.findDecidedRequestNearDate(group.id, homeArrivedDate).catch(() => null);
+        if (decided) linkedRequestId = decided.id;
+      }
+      await ht.closeHomeStay(open.id, { returnToRoadAt: returnToRoadIso, homeDays, linkedRequestId });
+    }
+    // The home window is over → retire any clarification still waiting on dates and
+    // stop its reminders (spec §11: stop when the driver returns to the road).
+    await ht.expireOpenClarificationsForGroup(group.id, {
+      reason: 'Driver returned to the road; clarification no longer needed.',
+    }).catch(() => {});
+    return open || null;
+  } catch (err) {
+    console.error('[HOME-TIME] closeHomeStayOnReturn error:', err.message);
+    return null;
   }
 }
 
 module.exports = {
   handleDriverGroupStatus,
+  applyStateTransition,
+  closeHomeStayOnReturn,
+  messageTimestampIso,
 };

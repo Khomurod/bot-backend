@@ -1,18 +1,18 @@
 /**
- * Home-Time Request service.
+ * Home-Time Request & conversational clarification service.
  *
- * Triggered from the bot's group-message handler when a company rep tags an
- * approver (@tomr_robins0n / @SaffieBNett) in a DRIVER group. We:
- *   1. Look at the last ~30 minutes of that group's chat (in-memory buffer).
- *   2. Ask the AI whether this is actually a home-time request (reps get tagged
- *      for many reasons).
- *   3. If it is, work out how long the driver has been on the road (from the
- *      home-time tracker), write an AI note about the policy, and post it with
- *      "Approve" / "Do Not Approve" buttons that only the approvers can use.
- *   4. Record the request so the admin panel can flag policy violators later.
+ * Turns a driver group's messages into a smart home-time workflow:
+ *   - AI understands intent (actual home/road status vs. a request vs. a plan) and
+ *     extracts partial or complete dates (homeTimeIntentService);
+ *   - the bot replies DIRECTLY to the driver's message and follows later plain-text
+ *     answers even without Telegram's reply feature;
+ *   - it asks ONLY for the missing date (never turns one date into both ends);
+ *   - it applies the company policy (≥4 weeks road / ≤4 days home) with a firm but
+ *     friendly reminder, or a 👍 + acknowledgment when the policy is followed;
+ *   - it preserves the existing human Approve / Do Not Approve card.
  *
  * The `telegram` instance is always passed in (never required) so this module
- * stays free of a require cycle with bot.js - same approach as homeTimeService.
+ * stays free of a require cycle with bot.js.
  */
 const { DateTime } = require('luxon');
 const { Markup } = require('telegraf');
@@ -31,14 +31,24 @@ const {
   buildHomeTimeClassificationPrompt,
   buildHomeTimeDateReplyPrompt,
   buildAskForDatesMessage,
+  buildClarificationMessage,
+  buildPolicyAckMessage,
+  buildPolicyWarningMessage,
+  evaluatePolicy,
   looksLikeDateReply,
   parseHomeTimeWindowText,
   isReasonableHomeWindow,
 } = require('./homeTimeRequestConstants');
 const { wholeDaysBetween } = require('./homeTimeConstants');
+const {
+  normalizeHomeTimeWindow, statusForMissingFields, isReasonableWindow,
+} = require('./homeTimeDateResolver');
+const { classifyHomeTimeMessage, isHomeTimeCandidate } = require('./homeTimeIntentService');
+const homeTimeStatus = require('./homeTimeService');
 const { inferDriverType } = require('./driverProfileParse');
 
 const CALLBACK_PREFIX = 'htreq';
+const AI_STATUS_CONFIDENCE_MIN = 70;
 
 function escapeHtml(text) {
   return String(text || '')
@@ -51,6 +61,22 @@ function approverTagLine() {
   return HOME_TIME_APPROVER_MENTIONS.join(' / ');
 }
 
+function todayIsoChicago() {
+  return DateTime.now().setZone('America/Chicago').toISODate();
+}
+
+function hoursFromNowIso(hours) {
+  const h = Math.max(1, Number(hours) || 12);
+  return DateTime.now().toUTC().plus({ hours: h }).toISO();
+}
+
+/** Timestamp of a Telegram message (seconds → ISO), or now. */
+function messageIso(message) {
+  const secs = Number(message?.date);
+  if (Number.isFinite(secs) && secs > 0) return DateTime.fromSeconds(secs).toUTC().toISO();
+  return DateTime.now().toUTC().toISO();
+}
+
 async function resolveDriverLabel(group) {
   try {
     const profile = await db.getDriverProfileByGroupId(group.id);
@@ -59,33 +85,103 @@ async function resolveDriverLabel(group) {
       driverName: name || group.group_name || `Group ${group.id}`,
       unitNumber: profile?.unit_number || null,
       driverType: profile?.driver_type || inferDriverType(group.group_name || ''),
+      profile: profile || null,
     };
   } catch (_) {
     return {
       driverName: group.group_name || `Group ${group.id}`,
       unitNumber: null,
       driverType: inferDriverType(group.group_name || ''),
+      profile: null,
     };
   }
 }
 
+/** null when we cannot tell; true/false when the sender matches the group's driver. */
+async function senderIsDriverOf(group, message, profile) {
+  const fromId = message?.from?.id;
+  const fromUser = message?.from?.username;
+  const p = profile !== undefined ? profile : await db.getDriverProfileByGroupId(group.id).catch(() => null);
+  if (!p) return null;
+  if (p.telegram_user_id && fromId != null) return String(p.telegram_user_id) === String(fromId);
+  if (p.telegram_username && fromUser) {
+    return String(p.telegram_username).replace(/^@/, '').toLowerCase() === String(fromUser).toLowerCase();
+  }
+  return null;
+}
+
+// ── Telegram reply / reaction helpers ──
+
+/** React 👍 to a message. Non-fatal (older API / not an admin). */
+async function reactThumbsUp(telegram, chatId, messageId) {
+  if (!telegram || !chatId || !messageId) return;
+  try {
+    const reaction = [{ type: 'emoji', emoji: '👍' }];
+    if (typeof telegram.setMessageReaction === 'function') {
+      await telegram.setMessageReaction(chatId, messageId, reaction);
+    } else if (typeof telegram.callApi === 'function') {
+      await telegram.callApi('setMessageReaction', { chat_id: chatId, message_id: messageId, reaction });
+    }
+  } catch (err) {
+    console.warn('[HOME-TIME-REQ] Could not set reaction (non-fatal):', err.message);
+  }
+}
+
 /**
- * Ask the AI whether the recent conversation is a home-time request.
- *
- * Inputs:
- *   - `transcript`  : the last ~30 minutes of the group's chat (for context).
- *   - `triggerText` : the message that just tagged an approver (carries intent).
- *
- * Accuracy guards (an approver tag is usually NOT a home-time request — reps get
- * tagged for oil changes, load problems, breakdowns, etc.):
- *   - The AI returns a confidence. A low-confidence "yes" with no home-time
- *     wording anywhere in the window is treated as "not a request".
- *   - If the AI is unavailable we no longer blanket-default to "yes"; we fall
- *     back to deterministic home-time language detection, which only surfaces a
- *     card when the text actually mentions going home / time off.
- *
- * Accepts either an options object `{ transcript, triggerText }` or, for
- * backward compatibility, a bare transcript string.
+ * Send a message, replying to `replyToMessageId` when given. Uses Telegram's
+ * "allow sending without reply" so a deleted root message never drops the reply.
+ */
+async function sendReply(telegram, chatId, text, { replyToMessageId = null, extra = {} } = {}) {
+  const options = { disable_web_page_preview: true, ...extra };
+  if (replyToMessageId) {
+    options.reply_to_message_id = Number(replyToMessageId);
+    options.allow_sending_without_reply = true;
+  }
+  return safeSend(() => telegram.sendMessage(chatId, text, options));
+}
+
+// ── AI natural-language message generation (deterministic fallback) ──
+
+function conversationalPrompt(kind, language, facts = {}) {
+  const langLine = language && !['en', 'english'].includes(String(language).toLowerCase())
+    ? `Write in the driver's language (${language}); keep it natural and simple.`
+    : "Match the driver's language when obvious; otherwise use English.";
+  const intro = 'You are a friendly but firm dispatch assistant for a US trucking company. '
+    + 'Write ONE short message (1-2 sentences, plain text, no markdown). You may address the driver warmly (e.g. "brother").';
+  const asks = {
+    ask_return_to_road: 'Ask the driver what date they plan to get back on the road after their home time.',
+    ask_home_start: 'Ask the driver what date they plan to arrive home.',
+    ask_both: 'Ask the driver which dates they want for home time: the day they will arrive home and the day they will be back on the road.',
+    ask_unplanned_return: 'Warmly welcome the driver home, then ask what date they plan to get back on the road after their home time.',
+    reminder_return: 'Politely but firmly remind the driver that we still need the date they will be back on the road after home time; say it is important for us to know.',
+    reminder_home_start: 'Politely but firmly remind the driver that we still need the date they plan to arrive home; say it is important for us to know.',
+    reminder_both: 'Politely but firmly remind the driver that we still need their home-time dates (arrive home and back on the road); say it is important for us to know.',
+    policy_ack: 'Acknowledge that you noted their home-time dates and thank them. Do NOT say the request is approved.',
+    policy_warning: `Firmly but kindly remind the driver of the agreement: at least ${facts.allowanceWeeks || 4} weeks on the road and up to ${facts.homeAllowanceDays || 4} days at home. One or two sentences, no long explanation, no aggressive wording. Do NOT say the request is approved or denied.`,
+  };
+  return `${intro} ${asks[kind] || asks.ask_both} ${langLine}`;
+}
+
+async function generateMessage({ kind, language, facts, fallback }) {
+  try {
+    const { text } = await callGeminiText({
+      userText: conversationalPrompt(kind, language, facts),
+      maxOutputTokens: 120,
+    });
+    const clean = String(text || '').trim();
+    if (clean) return clean;
+  } catch (err) {
+    console.warn(`[HOME-TIME-REQ] AI message (${kind}) failed, using fallback:`, err.message);
+  }
+  return fallback;
+}
+
+// ── Legacy approver-tag classifier (kept for the @-mention request path) ──
+
+/**
+ * Ask the AI whether the recent conversation is a home-time request (used by the
+ * approver-mention path). Unchanged JSON contract; see homeTimeIntentService for
+ * the newer unified classifier used by the conversational message pipeline.
  */
 async function classifyHomeTimeRequest(input) {
   const { transcript, triggerText, todayIso } = typeof input === 'string'
@@ -93,13 +189,10 @@ async function classifyHomeTimeRequest(input) {
     : (input || {});
   const haystack = `${triggerText || ''}\n${transcript || ''}`;
   const keywordSignal = hasHomeTimeSignal(haystack);
-  const today = todayIso || DateTime.now().setZone('America/Chicago').toISODate();
+  const today = todayIso || todayIsoChicago();
 
   const prompt = buildHomeTimeClassificationPrompt({
-    transcript,
-    triggerText,
-    approvers: HOME_TIME_APPROVER_MENTIONS,
-    todayLabel: today,
+    transcript, triggerText, approvers: HOME_TIME_APPROVER_MENTIONS, todayLabel: today,
   });
   try {
     const { parsed } = await callGeminiJson({
@@ -111,15 +204,11 @@ async function classifyHomeTimeRequest(input) {
     let isRequest = Boolean(parsed.is_home_time_request);
     let reason = String(parsed.reason || '').slice(0, 300);
 
-    // A low-confidence "yes" with no explicit home-time wording is most likely a
-    // misread of an ordinary tag — do not post a card for it.
     if (isRequest && confidence === 'low' && !keywordSignal) {
       isRequest = false;
       reason = `Low-confidence AI guess with no home-time wording — skipped. ${reason}`.trim();
     }
 
-    // Only trust the extracted window if it parses and is sane; otherwise treat
-    // the dates as unspecified so the bot asks the driver.
     let homeFrom = null;
     let homeTo = null;
     if (isRequest && parsed.dates_specified && parsed.home_from && parsed.home_to
@@ -129,18 +218,11 @@ async function classifyHomeTimeRequest(input) {
     }
 
     return {
-      isRequest,
-      reason,
-      confidence: confidence || null,
-      datesSpecified: Boolean(homeFrom && homeTo),
-      homeFrom,
-      homeTo,
-      aiUsed: true,
+      isRequest, reason, confidence: confidence || null,
+      datesSpecified: Boolean(homeFrom && homeTo), homeFrom, homeTo, aiUsed: true,
     };
   } catch (err) {
     console.warn('[HOME-TIME-REQ] AI classification failed, using keyword heuristic:', err.message);
-    // Fallback: deterministic language + date parsing so an outage neither drops
-    // a real request nor invents a fake one.
     const window = keywordSignal ? parseHomeTimeWindowText(haystack, today) : null;
     const valid = window && isReasonableHomeWindow(window.homeFrom, window.homeTo, today);
     return {
@@ -158,8 +240,8 @@ async function classifyHomeTimeRequest(input) {
 }
 
 /**
- * AI-written note for the card. Deterministic fallback keeps the exact policy
- * meaning when the AI is unavailable.
+ * AI-written note for the approval card. Deterministic fallback keeps the exact
+ * policy meaning when the AI is unavailable.
  */
 async function generateRequestText({
   policyMet, daysOnRoad, allowanceWeeks, homeAllowanceDays, driverName, driverType,
@@ -214,18 +296,21 @@ async function generateRequestText({
 }
 
 function buildCardText({
-  driverName, unitNumber, driverType, text, daysOnRoad, policyMet, homeFrom, homeTo,
+  driverName, unitNumber, driverType, text, daysOnRoad, policyMet, homeFrom, homeTo, returnToRoadDate,
 }) {
   const who = `${escapeHtml(driverName)}${unitNumber ? ` (Unit ${escapeHtml(unitNumber)})` : ''}`;
   const policyApplies = homeTimePolicyApplies(driverType);
   const flag = policyMet === false ? '⚠️ ' : '';
+  const backOnRoad = returnToRoadDate
+    ? ` — back on the road <b>${escapeHtml(returnToRoadDate)}</b>`
+    : '';
   const lines = [
     `🏠 <b>Home-Time Request — ${who}</b>`,
     '',
     `${flag}${escapeHtml(text)}`,
     '',
     `Driver type: <b>${policyApplies ? 'Company driver' : 'Owner operator'}</b>`,
-    `Proposed home time: <b>${escapeHtml(homeFrom)} → ${escapeHtml(homeTo)}</b>`,
+    `Home time: <b>${escapeHtml(homeFrom)} → ${escapeHtml(homeTo)}</b>${backOnRoad}`,
   ];
   if (daysOnRoad != null) {
     lines.push(`On the road: <b>${daysOnRoad} days</b> (~${weeksFromDays(daysOnRoad)} weeks)`);
@@ -246,13 +331,10 @@ function buildDecisionButtons(requestId) {
   ]);
 }
 
-/**
- * Build the approval card text and post it with the decision buttons, then store
- * the message id. Shared by the immediate path (dates already known) and the
- * date-reply path (dates supplied later). All dates are passed as strings.
- */
+/** Build + post the approval card, then store its message id. Dates are strings. */
 async function postRequestCard(telegram, group, {
-  requestId, driverName, unitNumber, driverType, daysOnRoad, policyMet, homeFrom, homeTo, settings,
+  requestId, driverName, unitNumber, driverType, daysOnRoad, policyMet,
+  homeFrom, homeTo, returnToRoadDate, settings,
 }) {
   const allowanceWeeks = settings?.road_allowance_weeks || 4;
   const homeAllowanceDays = settings?.home_allowance_days || 4;
@@ -260,7 +342,7 @@ async function postRequestCard(telegram, group, {
     policyMet, daysOnRoad, allowanceWeeks, homeAllowanceDays, driverName, driverType,
   });
   const cardText = buildCardText({
-    driverName, unitNumber, driverType, text, daysOnRoad, policyMet, homeFrom, homeTo,
+    driverName, unitNumber, driverType, text, daysOnRoad, policyMet, homeFrom, homeTo, returnToRoadDate,
   });
   const sent = await safeSend(() => telegram.sendMessage(group.telegram_group_id, cardText, {
     parse_mode: 'HTML',
@@ -277,116 +359,329 @@ async function resolveRoadMetrics(group, allowanceWeeks, driverType) {
   const nowIso = DateTime.now().toUTC().toISO();
   let roadStartedAt = null;
   let daysOnRoad = null;
+  // If already home, "days on road" is the leg that just ended (state_since was set
+  // by the previous road leg). We fall back to the completed leg's history where
+  // possible; otherwise leave null and let the humans judge.
   if (homeStatus && homeStatus.state === 'road') {
     roadStartedAt = homeStatus.state_since;
     daysOnRoad = wholeDaysBetween(homeStatus.state_since, nowIso);
+  } else if (homeStatus && homeStatus.state === 'home') {
+    const openStay = await ht.getOpenHomeStay(group.id).catch(() => null);
+    if (openStay) {
+      roadStartedAt = openStay.road_started_at;
+      daysOnRoad = openStay.days_on_road != null ? Number(openStay.days_on_road) : null;
+    }
   }
   return { roadStartedAt, daysOnRoad, policyMet: isPolicyMet(daysOnRoad, allowanceWeeks, driverType) };
 }
 
+// ── Shared clarification helpers ──
+
 /**
- * Entry point from the bot. Safe to call on any approver-tag message in a driver
- * group. Never throws.
+ * Send the policy response once complete dates are known: a 👍 + short
+ * acknowledgment when the policy is followed (or N/A), or a firm-but-friendly
+ * reminder when it is not. Never claims approval. Idempotent via acknowledged_at.
+ */
+async function sendPolicyResponse(telegram, group, request, {
+  window, daysOnRoad, driverType, settings, replyToMessageId, language,
+}) {
+  const allowanceWeeks = settings?.road_allowance_weeks || 4;
+  const homeAllowanceDays = settings?.home_allowance_days || 4;
+  const hasApprovedException = request.status === 'approved';
+  const policy = evaluatePolicy({
+    daysOnRoad,
+    homeDays: window.homeDays,
+    roadAllowanceWeeks: allowanceWeeks,
+    homeAllowanceDays,
+    driverType,
+    hasApprovedException,
+  });
+  if (policy.result === 'unknown') return; // cannot judge — the card asks the humans
+
+  // Only the first responder sends the ack/warning.
+  const claimed = await ht.markHomeTimeAcknowledged(request.id, policy.result);
+  if (!claimed) return;
+
+  if (policy.compliant) {
+    await reactThumbsUp(telegram, group.telegram_group_id, replyToMessageId);
+    const msg = await generateMessage({
+      kind: 'policy_ack', language, fallback: buildPolicyAckMessage(),
+    });
+    await sendReply(telegram, group.telegram_group_id, msg, { replyToMessageId });
+  } else {
+    const msg = await generateMessage({
+      kind: 'policy_warning',
+      language,
+      facts: { allowanceWeeks, homeAllowanceDays },
+      fallback: buildPolicyWarningMessage(allowanceWeeks, homeAllowanceDays),
+    });
+    await sendReply(telegram, group.telegram_group_id, msg, { replyToMessageId });
+  }
+}
+
+/**
+ * Complete a clarification: fill both dates, post/refresh the approval card, and
+ * send the policy response replying to the driver's latest message. Shared by the
+ * plain-text follow-up path and the orchestrator.
+ */
+async function completeAndRespond(telegram, group, request, window, message, {
+  settings, language,
+}) {
+  const allowanceWeeks = settings?.road_allowance_weeks || 4;
+  const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
+  const { roadStartedAt, daysOnRoad, policyMet } = await resolveRoadMetrics(group, allowanceWeeks, driverType);
+
+  const fulfilled = await ht.fulfillAwaitingHomeTimeRequest(request.id, {
+    homeFrom: window.homeStartDate,
+    homeTo: window.homeTo,
+    returnToRoadDate: window.returnToRoadDate,
+    roadStartedAt,
+    daysOnRoad,
+    policyMet,
+    aiReasoning: `Dates completed via conversation: home ${window.homeStartDate} → back ${window.returnToRoadDate}.`,
+    lastDriverMessageId: message?.message_id || null,
+    language,
+  });
+  if (!fulfilled) return null; // another reply won the race
+
+  await postRequestCard(telegram, group, {
+    requestId: fulfilled.id,
+    driverName, unitNumber, driverType, daysOnRoad, policyMet,
+    homeFrom: window.homeStartDate, homeTo: window.homeTo,
+    returnToRoadDate: window.returnToRoadDate, settings,
+  });
+  await sendPolicyResponse(telegram, group, fulfilled, {
+    window, daysOnRoad, driverType, settings,
+    replyToMessageId: message?.message_id || null, language,
+  });
+  console.log(`[HOME-TIME-REQ] Request #${fulfilled.id} completed (${window.homeStartDate} → ${window.returnToRoadDate}).`);
+  return fulfilled;
+}
+
+/**
+ * Advance an open clarification that gained ONE new date but is still incomplete:
+ * persist what we now know, flip to the precise awaiting status, and ask for the
+ * remaining date (reply to the driver's message). Reschedules the reminder clock.
+ */
+async function advanceClarification(telegram, group, request, window, message, {
+  settings, language,
+}) {
+  const missing = window.missingFields;
+  const nextStatus = statusForMissingFields(missing);
+  const firstHours = settings?.reminder_first_hours || 12;
+  await ht.updateHomeTimeRequestFields(request.id, {
+    homeFrom: window.homeStartDate,
+    homeTo: window.homeTo,
+    returnToRoadDate: window.returnToRoadDate,
+    missingFields: missing.join(','),
+    status: nextStatus,
+    lastDriverMessageId: message?.message_id || null,
+    language: language || undefined,
+    reminderCount: 0,
+    nextReminderAt: hoursFromNowIso(firstHours),
+  });
+  const askKind = missing.includes('return_to_road') ? 'ask_return_to_road' : 'ask_home_start';
+  const fallbackKind = missing.includes('return_to_road') ? 'return_to_road' : 'home_start';
+  const msg = await generateMessage({
+    kind: askKind, language, fallback: buildClarificationMessage(fallbackKind),
+  });
+  await sendReply(telegram, group.telegram_group_id, msg, {
+    replyToMessageId: request.root_message_id || message?.message_id || null,
+  });
+  console.log(`[HOME-TIME-REQ] Request #${request.id} advanced → ${nextStatus} (missing ${missing.join(',')}).`);
+}
+
+/**
+ * Create a brand-new clarification flow (rep tag without dates, unplanned home
+ * arrival, or a driver-initiated request). Stores the reply-threading root, asks
+ * for the missing piece(s), and schedules the first reminder.
  *
- * If the driver already stated the dates, the approval card is posted right away
- * with those dates. If not, the bot asks the group which dates are wanted and
- * keeps the request open as 'awaiting_dates' until the driver replies (handled by
- * handleHomeTimeDateReply).
+ * @param {object} p.window   resolved (possibly partial) date window
+ * @param {string} p.askKind  one of ask_both | ask_return_to_road | ask_home_start | ask_unplanned_return
+ * @param {boolean} p.isUnplanned  driver went home with no earlier request
+ */
+async function createClarification(telegram, group, message, {
+  window, askKind, isUnplanned = false, settings, language, verdict,
+}) {
+  const allowanceWeeks = settings?.road_allowance_weeks || 4;
+  const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
+  const { roadStartedAt, daysOnRoad, policyMet } = await resolveRoadMetrics(group, allowanceWeeks, driverType);
+  const missing = window.missingFields.length ? window.missingFields : ['home_start', 'return_to_road'];
+  const status = statusForMissingFields(missing);
+  const fromUser = message?.from || {};
+  const firstHours = settings?.reminder_first_hours || 12;
+
+  const request = await ht.insertHomeTimeRequest({
+    groupId: group.id,
+    telegramGroupId: group.telegram_group_id,
+    driverName,
+    unitNumber,
+    requestedByUserId: fromUser.id || null,
+    requestedByUsername: fromUser.username || null,
+    roadStartedAt,
+    daysOnRoad,
+    policyMet,
+    homeFrom: window.homeStartDate,
+    homeTo: window.homeTo,
+    returnToRoadDate: window.returnToRoadDate,
+    status,
+    source: 'telegram',
+    isUnplannedArrival: isUnplanned,
+    detectedIntent: verdict?.intent || null,
+    aiConfidence: verdict?.confidence ?? null,
+    language: language || (verdict?.language || null),
+    missingFields: missing.join(','),
+    rootChatId: group.telegram_group_id,
+    rootMessageId: message?.message_id || null,
+    lastDriverMessageId: message?.message_id || null,
+    nextReminderAt: hoursFromNowIso(firstHours),
+    aiReasoning: verdict?.reason || null,
+  });
+
+  const fallback = askKind === 'ask_unplanned_return'
+    ? buildClarificationMessage('unplanned_return')
+    : (askKind === 'ask_return_to_road' ? buildClarificationMessage('return_to_road')
+      : (askKind === 'ask_home_start' ? buildClarificationMessage('home_start') : buildAskForDatesMessage()));
+  const msg = await generateMessage({ kind: askKind, language, fallback });
+  const sent = await sendReply(telegram, group.telegram_group_id, msg, {
+    replyToMessageId: message?.message_id || null,
+  });
+  await ht.setHomeTimeClarificationMessage(request.id, {
+    clarificationChatId: group.telegram_group_id,
+    clarificationMessageId: sent?.message_id || null,
+  });
+  console.log(`[HOME-TIME-REQ] Request #${request.id} clarification opened (${status}, unplanned=${isUnplanned}).`);
+  return request;
+}
+
+// ── Entry points ──
+
+/**
+ * Approver-tag path. Safe to call on any approver-tag message in a driver group.
+ * Never throws. Posts the card immediately when dates are known, otherwise opens a
+ * clarification and waits for the driver's reply.
  */
 async function handleApproverMention(telegram, group, message) {
   try {
     if (!group || group.group_type !== 'driver') return;
 
     const existing = await ht.getOpenHomeTimeRequestForGroup(group.id);
-    if (existing) return;
+    if (existing) return; // one active flow per driver
 
-    // Already home? An approval card asking to send the driver home makes no
-    // sense — they're not asking to go home, they ARE home. Their home time
-    // already started when the status became home (driver_home_status.state_since
-    // is the home start date). Quietly skip the card so the driver group is not
-    // spammed; leave an internal note for admins. We short-circuit before the AI
-    // classification since a home-time request card is never appropriate here.
+    // Already home? A "send them home" card makes no sense — the unplanned-arrival
+    // flow (triggered by the Status: Home message) handles that case instead.
     const homeStatus = await ht.getDriverHomeStatus(group.id);
     if (homeStatus && homeStatus.state === 'home') {
-      console.log(
-        `[HOME-TIME-REQ] ${group.group_name || `Group ${group.id}`} is already home `
-        + `since ${homeStatus.state_since} — home time already in effect; `
-        + 'no request card posted to the driver group.'
-      );
+      console.log(`[HOME-TIME-REQ] ${group.group_name || `Group ${group.id}`} is already home — no request card.`);
       return;
     }
 
-    // The triggering message is passed explicitly (in addition to the rolling
-    // buffer) so the AI always sees the actual tag text, even right after a
-    // restart when the buffer has not warmed up yet.
     const triggerText = message?.text || message?.caption || '';
     const transcript = recentBuffer.renderTranscript(group.telegram_group_id);
-    const todayIso = DateTime.now().setZone('America/Chicago').toISODate();
+    const todayIso = todayIsoChicago();
     const verdict = await classifyHomeTimeRequest({ transcript, triggerText, todayIso });
     if (!verdict.isRequest) return;
 
     const settings = await ht.getHomeTimeSettings();
-    const allowanceWeeks = settings?.road_allowance_weeks || 4;
+    const window = normalizeHomeTimeWindow({
+      homeStart: verdict.datesSpecified ? verdict.homeFrom : null,
+      lastDayHome: verdict.datesSpecified ? verdict.homeTo : null,
+    });
+    const language = null;
 
-    const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
-    const { roadStartedAt, daysOnRoad, policyMet } = await resolveRoadMetrics(group, allowanceWeeks, driverType);
-
-    const fromUser = message?.from || {};
-    const aiReasoning = verdict.confidence
-      ? `[confidence: ${verdict.confidence}] ${verdict.reason || ''}`.trim()
-      : (verdict.reason || null);
-    const baseInsert = {
-      groupId: group.id,
-      telegramGroupId: group.telegram_group_id,
-      driverName,
-      unitNumber,
-      requestedByUserId: fromUser.id || null,
-      requestedByUsername: fromUser.username || null,
-      roadStartedAt,
-      daysOnRoad,
-      policyMet,
-      source: 'telegram',
-      aiReasoning,
-    };
-
-    if (verdict.datesSpecified) {
+    if (window.complete) {
+      const allowanceWeeks = settings?.road_allowance_weeks || 4;
+      const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
+      const { roadStartedAt, daysOnRoad, policyMet } = await resolveRoadMetrics(group, allowanceWeeks, driverType);
+      const fromUser = message?.from || {};
       const request = await ht.insertHomeTimeRequest({
-        ...baseInsert,
-        homeFrom: verdict.homeFrom,
-        homeTo: verdict.homeTo,
-        status: 'pending',
+        groupId: group.id,
+        telegramGroupId: group.telegram_group_id,
+        driverName, unitNumber,
+        requestedByUserId: fromUser.id || null,
+        requestedByUsername: fromUser.username || null,
+        roadStartedAt, daysOnRoad, policyMet,
+        homeFrom: window.homeStartDate, homeTo: window.homeTo, returnToRoadDate: window.returnToRoadDate,
+        status: 'pending', source: 'telegram',
+        detectedIntent: 'home_time_request',
+        aiConfidence: verdict.confidence === 'high' ? 90 : (verdict.confidence === 'medium' ? 60 : null),
+        rootChatId: group.telegram_group_id,
+        rootMessageId: message?.message_id || null,
+        aiReasoning: verdict.confidence ? `[confidence: ${verdict.confidence}] ${verdict.reason || ''}`.trim() : (verdict.reason || null),
       });
       await postRequestCard(telegram, group, {
         requestId: request.id,
         driverName, unitNumber, driverType, daysOnRoad, policyMet,
-        homeFrom: verdict.homeFrom, homeTo: verdict.homeTo, settings,
+        homeFrom: window.homeStartDate, homeTo: window.homeTo,
+        returnToRoadDate: window.returnToRoadDate, settings,
       });
-      console.log(`[HOME-TIME-REQ] Request #${request.id} posted for ${driverName} `
-        + `(${driverType}, policyMet=${policyMet}, ${verdict.homeFrom}→${verdict.homeTo}).`);
+      console.log(`[HOME-TIME-REQ] Request #${request.id} posted (${window.homeStartDate} → ${window.returnToRoadDate}).`);
       return;
     }
 
-    // No dates yet — ask the driver and wait for the reply.
-    const request = await ht.insertHomeTimeRequest({
-      ...baseInsert,
-      homeFrom: null,
-      homeTo: null,
-      status: 'awaiting_dates',
+    // No / partial dates — open a clarification and wait for the driver.
+    const askKind = window.missingFields.includes('return_to_road') && !window.missingFields.includes('home_start')
+      ? 'ask_return_to_road'
+      : (window.missingFields.includes('home_start') && !window.missingFields.includes('return_to_road')
+        ? 'ask_home_start' : 'ask_both');
+    await createClarification(telegram, group, message, {
+      window, askKind, isUnplanned: false, settings, language, verdict: { intent: 'home_time_request', reason: verdict.reason, confidence: null },
     });
-    await safeSend(() => telegram.sendMessage(group.telegram_group_id, buildAskForDatesMessage()));
-    console.log(`[HOME-TIME-REQ] Request #${request.id} awaiting dates for ${driverName} (${driverType}).`);
   } catch (err) {
     console.error('[HOME-TIME-REQ] handleApproverMention error:', err.message);
   }
 }
 
 /**
- * Resolve a home-time window from a driver's free-text reply. AI first (handles
- * "next Monday for 4 days"), deterministic parser as the fallback. Returns
- * `{ homeFrom, homeTo }` strings or null.
+ * Road→home transition side-effect: the driver is now home. Link an existing
+ * complete/approved request when one covers this arrival; otherwise open an
+ * "unplanned arrival" clarification asking ONLY for the return-to-road date
+ * (the home-start date is the Status: Home date). Never throws.
+ */
+async function handleActualHomeArrival(telegram, group, message, { homeStartIso } = {}) {
+  try {
+    if (!group || group.group_type !== 'driver') return;
+
+    // A complete/approved/open request already covers this — do not ask again or
+    // duplicate. (Repeated Status: Home also lands here and is a no-op.)
+    const open = await ht.getOpenHomeTimeRequestForGroup(group.id);
+    if (open) {
+      if ((open.status === 'awaiting_home_start') && (homeStartIso)) {
+        // We were waiting only on the arrival date and now the driver is home:
+        // fill it from the actual arrival and, if that completes the window, post.
+        const settings = await ht.getHomeTimeSettings();
+        const homeStartDate = DateTime.fromISO(homeStartIso).toISODate();
+        const window = normalizeHomeTimeWindow({
+          knownHomeStart: homeStartDate, knownReturnToRoad: open.return_to_road_date,
+        });
+        if (window.complete) {
+          await completeAndRespond(telegram, group, open, window, message, { settings, language: open.language });
+        }
+      }
+      return;
+    }
+
+    const settings = await ht.getHomeTimeSettings();
+    const homeStartDate = homeStartIso
+      ? DateTime.fromISO(homeStartIso).toISODate()
+      : DateTime.fromISO(messageIso(message)).toISODate();
+    const window = normalizeHomeTimeWindow({ homeStart: homeStartDate });
+    await createClarification(telegram, group, message, {
+      window, askKind: 'ask_unplanned_return', isUnplanned: true, settings,
+      language: null, verdict: { intent: 'actual_home_status', reason: 'Unplanned home arrival (no earlier complete request).' },
+    });
+  } catch (err) {
+    console.error('[HOME-TIME-REQ] handleActualHomeArrival error:', err.message);
+  }
+}
+
+/**
+ * Resolve a home-time window from a driver's free-text reply. AI first, then the
+ * deterministic parser. Returns `{ homeFrom, homeTo }` strings or null. Kept for
+ * back-compat (the conversational pipeline uses classifyHomeTimeMessage).
  */
 async function parseHomeTimeDates({ text, todayIso }) {
-  const today = todayIso || DateTime.now().setZone('America/Chicago').toISODate();
+  const today = todayIso || todayIsoChicago();
   const prompt = buildHomeTimeDateReplyPrompt({ text, todayLabel: today });
   try {
     const { parsed } = await callGeminiJson({
@@ -409,47 +704,168 @@ async function parseHomeTimeDates({ text, todayIso }) {
 }
 
 /**
- * Called for every driver-group message. When a request is waiting on dates and
- * this message supplies them, fill the request and post the approval card. A
- * no-op otherwise. Never throws.
+ * Plain-text follow-up handler: understand a later message that answers an open
+ * clarification even without Telegram's reply feature. Uses the AI intent
+ * classifier with the open-clarification context so unrelated chatter (or someone
+ * else's unrelated date) is NOT consumed. Never throws.
  */
-async function handleHomeTimeDateReply(telegram, group, message) {
+async function handleHomeTimeClarificationReply(telegram, group, message) {
   try {
     if (!group || group.group_type !== 'driver') return;
     if (message?.from?.is_bot) return;
     const text = message?.text || message?.caption || '';
-    if (!text || !looksLikeDateReply(text)) return; // cheap gate before any DB/AI work
+    if (!text) return;
 
-    const awaiting = await ht.getAwaitingDatesHomeTimeRequestForGroup(group.id);
-    if (!awaiting) return;
+    const open = await ht.getOpenClarificationForGroup(group.id);
+    if (!open) return; // nothing waiting
+    if (!isHomeTimeCandidate(text, { hasOpenClarification: true })) return; // cheap gate
 
-    const todayIso = DateTime.now().setZone('America/Chicago').toISODate();
-    const dates = await parseHomeTimeDates({ text, todayIso });
-    if (!dates) return; // not a parseable date reply — keep waiting
+    const profile = await db.getDriverProfileByGroupId(group.id).catch(() => null);
+    const senderIsDriver = await senderIsDriverOf(group, message, profile);
+    const openQuestion = open.status === 'awaiting_return_to_road'
+      ? 'What date will you be back on the road after home time?'
+      : (open.status === 'awaiting_home_start' ? 'What date will you arrive home?' : 'Which home-time dates do you want?');
+
+    const verdict = await classifyHomeTimeMessage({
+      transcript: recentBuffer.renderTranscript(group.telegram_group_id),
+      triggerText: text,
+      todayIso: todayIsoChicago(),
+      senderIsDriver,
+      hasOpenClarification: true,
+      openQuestion,
+      knownHomeStart: open.home_from || null,
+      knownReturnToRoad: open.return_to_road_date || null,
+    });
+
+    // Only consume messages that actually answer the clarification. An unrelated
+    // message (or someone else's stray date) is ignored.
+    const answers = verdict.intent === 'home_time_followup'
+      || (verdict.requestedHomeTime && (verdict.window.homeStartDate || verdict.window.returnToRoadDate));
+    const gotNewDate = verdict.window.homeStartDate || verdict.window.returnToRoadDate;
+    if (!answers || !gotNewDate) return;
 
     const settings = await ht.getHomeTimeSettings();
-    const allowanceWeeks = settings?.road_allowance_weeks || 4;
-    const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
-    const { roadStartedAt, daysOnRoad, policyMet } = await resolveRoadMetrics(group, allowanceWeeks, driverType);
-
-    const fulfilled = await ht.fulfillAwaitingHomeTimeRequest(awaiting.id, {
-      homeFrom: dates.homeFrom,
-      homeTo: dates.homeTo,
-      roadStartedAt,
-      daysOnRoad,
-      policyMet,
-      aiReasoning: `Dates provided by driver reply: ${dates.homeFrom} → ${dates.homeTo}.`,
-    });
-    if (!fulfilled) return; // another reply already fulfilled it
-
-    await postRequestCard(telegram, group, {
-      requestId: fulfilled.id,
-      driverName, unitNumber, driverType, daysOnRoad, policyMet,
-      homeFrom: dates.homeFrom, homeTo: dates.homeTo, settings,
-    });
-    console.log(`[HOME-TIME-REQ] Request #${fulfilled.id} dates resolved (${dates.homeFrom} → ${dates.homeTo}).`);
+    if (verdict.window.complete
+      && isReasonableWindow(verdict.window.homeStartDate, verdict.window.returnToRoadDate, todayIsoChicago())) {
+      await completeAndRespond(telegram, group, open, verdict.window, message, {
+        settings, language: verdict.language,
+      });
+      return;
+    }
+    // Still partial — advance and ask for the remaining date.
+    if (verdict.window.missingFields.length && verdict.window.missingFields.length < 2) {
+      await advanceClarification(telegram, group, open, verdict.window, message, {
+        settings, language: verdict.language,
+      });
+    }
   } catch (err) {
-    console.error('[HOME-TIME-REQ] handleHomeTimeDateReply error:', err.message);
+    console.error('[HOME-TIME-REQ] handleHomeTimeClarificationReply error:', err.message);
+  }
+}
+
+/** Back-compat alias — the bot now routes through processHomeTimeMessage. */
+const handleHomeTimeDateReply = handleHomeTimeClarificationReply;
+
+/**
+ * Orchestrator called once per driver-group message by the bot pipeline. Takes the
+ * result of the deterministic status machine (already applied) and dispatches the
+ * conversational side-effects with at most one AI call. Never throws.
+ *
+ * @param {object} opts
+ * @param {object|null} opts.statusResult  return of homeTimeService.handleDriverGroupStatus
+ * @param {boolean} opts.mentionsApprover
+ */
+async function processHomeTimeMessage(telegram, group, message, { statusResult = null, mentionsApprover = false } = {}) {
+  try {
+    if (!group || group.group_type !== 'driver') return;
+
+    // 1) A real (deterministic) status transition just happened.
+    if (statusResult && statusResult.transition === 'home_to_road') {
+      await homeTimeStatus.closeHomeStayOnReturn(group, { returnToRoadIso: statusResult.eventAt });
+      return;
+    }
+    if (statusResult && statusResult.transition === 'road_to_home') {
+      await handleActualHomeArrival(telegram, group, message, { homeStartIso: statusResult.eventAt });
+      return;
+    }
+    // A repeated same-status line (changed=false) or first observation: nothing
+    // conversational to do.
+    if (statusResult) return;
+
+    // 2) No exact status line. Approver tag → request flow.
+    if (mentionsApprover) {
+      await handleApproverMention(telegram, group, message);
+      return;
+    }
+
+    // 3) Neither status nor tag. Could be a clarification answer, an AI-detected
+    //    non-exact status, or a driver-initiated request. One AI call, gated by the
+    //    cheap candidate filter so ordinary chatter never reaches the model.
+    const text = message?.text || message?.caption || '';
+    if (message?.from?.is_bot || !text) return;
+
+    const open = await ht.getOpenClarificationForGroup(group.id);
+    if (open) {
+      // Delegate to the dedicated follow-up handler (it re-reads `open`).
+      await handleHomeTimeClarificationReply(telegram, group, message);
+      return;
+    }
+
+    if (!isHomeTimeCandidate(text, { hasOpenClarification: false })) return;
+
+    const profile = await db.getDriverProfileByGroupId(group.id).catch(() => null);
+    const senderIsDriver = await senderIsDriverOf(group, message, profile);
+    const verdict = await classifyHomeTimeMessage({
+      transcript: recentBuffer.renderTranscript(group.telegram_group_id),
+      triggerText: text,
+      todayIso: todayIsoChicago(),
+      senderIsDriver,
+      hasOpenClarification: false,
+    });
+
+    // AI-detected NON-exact actual status ("uyda", "he is home now", "back rolling").
+    if (verdict.isActualStatusChange && (verdict.confidence == null || verdict.confidence >= AI_STATUS_CONFIDENCE_MIN)) {
+      const newState = verdict.intent === 'actual_home_status' ? 'home'
+        : (verdict.intent === 'actual_road_status' ? 'road' : null);
+      if (newState) {
+        const applied = await homeTimeStatus.applyStateTransition(telegram, group, {
+          newState, eventAt: messageIso(message), statusText: text,
+        });
+        if (applied?.transition === 'road_to_home') {
+          await handleActualHomeArrival(telegram, group, message, { homeStartIso: applied.eventAt });
+        } else if (applied?.transition === 'home_to_road') {
+          await homeTimeStatus.closeHomeStayOnReturn(group, { returnToRoadIso: applied.eventAt });
+        }
+        return;
+      }
+    }
+
+    // Driver-initiated request (no approver tag) — open a clarification / post card.
+    if (verdict.requestedHomeTime || verdict.intent === 'home_time_request') {
+      const settings = await ht.getHomeTimeSettings();
+      if (verdict.window.complete
+        && isReasonableWindow(verdict.window.homeStartDate, verdict.window.returnToRoadDate, todayIsoChicago())) {
+        // Reuse the approver flow's card path by opening then immediately completing.
+        const created = await createClarification(telegram, group, message, {
+          window: normalizeHomeTimeWindow({}), askKind: 'ask_both', isUnplanned: false,
+          settings, language: verdict.language, verdict,
+        });
+        await completeAndRespond(telegram, group, created, verdict.window, message, {
+          settings, language: verdict.language,
+        });
+        return;
+      }
+      const askKind = verdict.window.missingFields.includes('return_to_road')
+        && !verdict.window.missingFields.includes('home_start')
+        ? 'ask_return_to_road'
+        : (verdict.window.missingFields.includes('home_start') && !verdict.window.missingFields.includes('return_to_road')
+          ? 'ask_home_start' : 'ask_both');
+      await createClarification(telegram, group, message, {
+        window: verdict.window, askKind, isUnplanned: false, settings, language: verdict.language, verdict,
+      });
+    }
+  } catch (err) {
+    console.error('[HOME-TIME-REQ] processHomeTimeMessage error:', err.message);
   }
 }
 
@@ -460,11 +876,14 @@ function buildDecidedCardText(request, decision, decidedByUsername) {
   const verdict = decision === 'approved'
     ? `✅ <b>Approved</b> by ${by}`
     : `❌ <b>Not approved</b> by ${by}`;
+  const back = request.return_to_road_date
+    ? ` — back on the road <b>${escapeHtml(request.return_to_road_date)}</b>`
+    : '';
   return [
     `🏠 <b>Home-Time Request — ${who}</b>`,
     '',
     verdict,
-    `Home time: <b>${escapeHtml(request.home_from || '—')} → ${escapeHtml(request.home_to || '—')}</b>`,
+    `Home time: <b>${escapeHtml(request.home_from || '—')} → ${escapeHtml(request.home_to || '—')}</b>${back}`,
   ].join('\n');
 }
 
@@ -491,7 +910,10 @@ async function announceApproval(telegram, request) {
 module.exports = {
   CALLBACK_PREFIX,
   handleApproverMention,
+  handleActualHomeArrival,
+  handleHomeTimeClarificationReply,
   handleHomeTimeDateReply,
+  processHomeTimeMessage,
   parseHomeTimeDates,
   postRequestCard,
   generateRequestText,
@@ -500,4 +922,8 @@ module.exports = {
   buildDecisionButtons,
   buildDecidedCardText,
   announceApproval,
+  sendPolicyResponse,
+  createClarification,
+  completeAndRespond,
+  reactThumbsUp,
 };
