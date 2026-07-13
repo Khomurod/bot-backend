@@ -46,6 +46,18 @@ function intOr(value, fallback) {
   return Number.isFinite(n) ? Math.round(n) : fallback;
 }
 
+/** Float reader with an inclusive clamp — used for the completion radius (miles). */
+function floatClamp(value, fallback, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+// Auto-complete radius (miles) around the final destination — safe range 0.5–100.
+const COMPLETION_RADIUS_MIN = 0.5;
+const COMPLETION_RADIUS_MAX = 100;
+const COMPLETION_RADIUS_DEFAULT = 10;
+
 /**
  * Effective, decrypted config for server-side use. DB values win; an empty DB
  * key falls back to GOOGLE_MAPS_API_KEY. Cached for CACHE_TTL_MS.
@@ -73,6 +85,9 @@ async function getGmapsConfig() {
     warningCooldownMinutes: intOr(row?.warning_cooldown_minutes, 30),
     staleGpsMinutes: intOr(row?.stale_gps_minutes, 15),
     parkedSpeedMph: intOr(row?.parked_speed_mph, 5),
+    routeCompletionRadiusMiles: floatClamp(
+      row?.route_completion_radius_miles, COMPLETION_RADIUS_DEFAULT, COMPLETION_RADIUS_MIN, COMPLETION_RADIUS_MAX
+    ),
     updatedAt: row?.updated_at || null,
   };
 
@@ -108,6 +123,7 @@ async function getGmapsSettingsForAdmin() {
     warningCooldownMinutes: cfg.warningCooldownMinutes,
     staleGpsMinutes: cfg.staleGpsMinutes,
     parkedSpeedMph: cfg.parkedSpeedMph,
+    routeCompletionRadiusMiles: cfg.routeCompletionRadiusMiles,
     updatedAt: cfg.updatedAt,
   };
 }
@@ -148,6 +164,17 @@ async function updateGmapsSettings(payload = {}) {
   pushInt('warning_cooldown_minutes', payload.warningCooldownMinutes);
   pushInt('stale_gps_minutes', payload.staleGpsMinutes);
   pushInt('parked_speed_mph', payload.parkedSpeedMph);
+  // Completion radius is a float, clamped to the DB CHECK range so a bad value
+  // never fails the UPDATE. Omitted → left unchanged.
+  if (payload.routeCompletionRadiusMiles !== undefined
+      && payload.routeCompletionRadiusMiles !== null
+      && payload.routeCompletionRadiusMiles !== '') {
+    const n = Number(payload.routeCompletionRadiusMiles);
+    if (Number.isFinite(n)) {
+      sets.push(`route_completion_radius_miles = $${i++}`);
+      values.push(Math.min(COMPLETION_RADIUS_MAX, Math.max(COMPLETION_RADIUS_MIN, n)));
+    }
+  }
 
   if (!sets.length) {
     invalidateCache();

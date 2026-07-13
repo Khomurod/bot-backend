@@ -387,9 +387,11 @@ function SettingsTab({ flash }) {
 
   if (!settings) return <p>Loading…</p>;
   const toggle = (k) => setSettings((s) => ({ ...s, [k]: !s[k] }));
+  const silent = settings.silent_driver_group_monitoring !== false;
   const TOGGLES = [
     ["enabled", "Feature enabled"],
     ["beta_mode", "Beta mode (labels replies)"],
+    ["silent_driver_group_monitoring", "Silent driver-group monitoring (recommended)"],
     ["send_driver_group_confirmation", "Reply confirmation in driver group"],
     ["send_reaction", "React 👍 to detected messages"],
     ["ai_fallback_enabled", "AI fallback for unclear messages"],
@@ -401,12 +403,23 @@ function SettingsTab({ flash }) {
   return (
     <div className="card" style={{ padding: 16, maxWidth: 560 }}>
       <h3>Trailer Tracking settings (Beta)</h3>
-      {TOGGLES.map(([k, label]) => (
-        <label key={k} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
-          <input type="checkbox" checked={!!settings[k]} onChange={() => toggle(k)} />
-          {label}
-        </label>
-      ))}
+      {TOGGLES.map(([k, label]) => {
+        // In silent mode the driver-group reply/reaction toggles have no effect —
+        // show them disabled so the behavior is not misleading.
+        const overridden = silent && (k === "send_driver_group_confirmation" || k === "send_reaction");
+        return (
+          <label key={k} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", opacity: overridden ? 0.5 : 1 }}>
+            <input type="checkbox" checked={!!settings[k]} disabled={overridden} onChange={() => toggle(k)} />
+            {label}{overridden ? " (overridden by silent mode)" : ""}
+          </label>
+        );
+      })}
+      <p style={{ color: "#94a3b8", fontSize: 12, marginTop: 4 }}>
+        Trailer messages are analyzed and registered without replying or reacting in driver groups.
+        {silent
+          ? " Silent mode is on: nothing is sent back to the driver group. The internal Automatic Updating (Test) group still receives review alerts."
+          : " Silent mode is off: the reply/reaction toggles above control driver-group output."}
+      </p>
       <div style={{ marginTop: 8 }}>
         <label style={{ display: "block", marginBottom: 4 }}>Automatic Updating (Test) group ID</label>
         <input className="form-input" placeholder={effectiveTestGroup || "using env default"}

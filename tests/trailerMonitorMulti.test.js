@@ -141,15 +141,16 @@ test('two-trailer message creates two events with distinct event_index', async (
   assert.equal(state.statusUpdates.length, 2);
 });
 
-test('multi-trailer message replies ONCE (summary) and reacts ONCE', async () => {
-  const { mod } = loadMonitor({ aiResult: TWO_TRAILER_AI });
+test('multi-trailer message registers both events SILENTLY (no reply, no reaction)', async () => {
+  const { mod, state } = loadMonitor({ aiResult: TWO_TRAILER_AI });
   const tg = makeTelegram();
   await mod.handleTrailerGroupMessage(tg, GROUP, msg('TRL# 403279 picked up\nTRL# 171847 dropped'));
+  // Both trailers register…
+  assert.equal(state.events.length, 2);
+  // …but silent mode (default) sends nothing back to the driver group.
   const replies = tg.sent.filter((m) => String(m.chatId) === String(GROUP.telegram_group_id));
-  assert.equal(replies.length, 1);
-  assert.match(replies[0].text, /403279 — pickup/);
-  assert.match(replies[0].text, /171847 — drop-off/);
-  assert.equal(tg.reactions.length, 1);
+  assert.equal(replies.length, 0, 'driver group sends = 0');
+  assert.equal(tg.reactions.length, 0, 'driver group reactions = 0');
 });
 
 test('resending the same multi-trailer message creates no duplicate events', async () => {

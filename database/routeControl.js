@@ -159,16 +159,21 @@ async function deleteRouteScreenshot(assignmentId) {
 }
 
 /**
- * Active assignments that carry route geometry AND whose tracking has started —
- * the ones the monitor runs deviation checks against.
+ * Active assignments whose tracking has started — the ones the monitor evaluates
+ * each pass. A route is eligible when it EITHER has route geometry (off-route
+ * deviation checks) OR has final-destination coordinates (auto-completion is
+ * possible even when geometry is unavailable). Completion is checked before any
+ * off-route logic, so a destination-only route can still complete.
  */
 async function listMonitorableAssignments() {
   const res = await query(
     `SELECT r.*, g.group_name, g.telegram_group_id, g.active AS group_active
      FROM route_assignments r
      JOIN groups g ON g.id = r.group_id
-     WHERE r.status = 'active' AND r.encoded_polyline IS NOT NULL
+     WHERE r.status = 'active'
        AND r.tracking_status = 'active'
+       AND (r.encoded_polyline IS NOT NULL
+            OR (r.destination_lat IS NOT NULL AND r.destination_lng IS NOT NULL))
      ORDER BY r.updated_at ASC`
   );
   return res.rows;
@@ -275,6 +280,41 @@ async function setRouteAssignmentStatus(id, status) {
   return res.rows[0] || null;
 }
 
+/**
+ * Atomically mark a route completed — used by the auto-completion monitor. The
+ * update ONLY fires while status is still 'active', so two overlapping monitor
+ * ticks can never both complete the same route (the second UPDATE matches no row
+ * and returns null). Records where/when/how far, and stamps completed_at.
+ *
+ * @param {number} id
+ * @param {{ latitude?:number, longitude?:number, distanceMeters?:number, reason?:string }} completionData
+ * @returns {Promise<object|null>} the completed row, or null if it was not active
+ */
+async function completeRouteAssignment(id, {
+  latitude = null, longitude = null, distanceMeters = null, reason = null,
+} = {}) {
+  const res = await query(
+    `UPDATE route_assignments
+       SET status = 'completed',
+           completed_at = NOW(),
+           completion_latitude = $2,
+           completion_longitude = $3,
+           completion_distance_meters = $4,
+           completion_reason = $5,
+           updated_at = NOW()
+     WHERE id = $1 AND status = 'active'
+     RETURNING *`,
+    [
+      id,
+      latitude != null && Number.isFinite(Number(latitude)) ? Number(latitude) : null,
+      longitude != null && Number.isFinite(Number(longitude)) ? Number(longitude) : null,
+      distanceMeters != null && Number.isFinite(Number(distanceMeters)) ? Number(distanceMeters) : null,
+      reason ? String(reason).slice(0, 500) : null,
+    ]
+  );
+  return res.rows[0] || null;
+}
+
 /** Record a successful "route message sent to driver group" delivery. */
 async function recordDriverGroupMessageSent(id, { telegramMessageId = null, sentBy = null } = {}) {
   const res = await query(
@@ -326,6 +366,7 @@ module.exports = {
   setRouteAssignmentGeometry,
   updateRouteAssignmentMonitorState,
   setRouteAssignmentStatus,
+  completeRouteAssignment,
   recordDriverGroupMessageSent,
   insertRouteMonitorEvent,
   listRouteMonitorEvents,

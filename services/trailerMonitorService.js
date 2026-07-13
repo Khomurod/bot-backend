@@ -105,6 +105,34 @@ function looksLikeTrailerCommand(parsed) {
   return Boolean(parsed.trailerUnit) || Boolean(parsed.action) || Boolean(parsed.conditionText);
 }
 
+/**
+ * Silent driver-group monitoring (default ON). When enabled, the trailer monitor
+ * NEVER replies or reacts in the driver group — it analyzes and registers
+ * silently. This overrides the older send_driver_group_confirmation /
+ * send_reaction toggles: those only take effect when silent mode is explicitly
+ * turned off. The internal Automatic Updating (Test) group is unaffected.
+ */
+function isSilentDriverGroup(settings) {
+  return !settings || settings.silent_driver_group_monitoring !== false;
+}
+
+/**
+ * Emit the driver-group confirmation reply + 👍 reaction for freshly registered
+ * events — but ONLY when silent monitoring is off (opt-out) AND the legacy
+ * per-channel toggles allow it. In the default (silent) configuration this is a
+ * no-op: nothing is sent back to the driver group.
+ */
+async function maybeReplyAndReact(telegram, group, message, registered, settings, betaMode) {
+  if (!registered.length) return;
+  if (isSilentDriverGroup(settings)) return; // silent mode → never touch the driver group
+  if (settings.send_driver_group_confirmation !== false) {
+    await replyConfirmation(telegram, group, message, registered, betaMode);
+  }
+  if (settings.send_reaction !== false) {
+    await reactThumbsUp(telegram, group.telegram_group_id, message.message_id);
+  }
+}
+
 /** React 👍 on the source message. Never throws. */
 async function reactThumbsUp(telegram, chatId, messageId) {
   if (!telegram || !chatId || !messageId) return;
@@ -596,15 +624,9 @@ async function handleTrailerGroupMessage(telegram, group, message) {
       // disposition === 'ignore' → silent skip (questions, discussion, low confidence)
     }
 
-    // ── 6. driver-group confirmation + reaction: ONLY for registered events ──
-    if (registered.length) {
-      if (settings.send_driver_group_confirmation !== false) {
-        await replyConfirmation(telegram, group, message, registered, betaMode);
-      }
-      if (settings.send_reaction !== false) {
-        await reactThumbsUp(telegram, group.telegram_group_id, message.message_id);
-      }
-    }
+    // ── 6. driver-group confirmation + reaction: suppressed in silent mode
+    // (the default). Events are still registered; the driver group hears nothing.
+    await maybeReplyAndReact(telegram, group, message, registered, settings, betaMode);
 
     // ── 7. review items → Automatic Updating (Test) group (grounded/strong only) ──
     let reportedToTest = false;
@@ -664,14 +686,8 @@ async function legacyRegisterPath(telegram, group, message, parsedList, ctx, tes
       else if (event) reportedUnids.push({ parsed, event });
     }
   }
-  if (registered.length) {
-    if (ctx.settings.send_driver_group_confirmation !== false) {
-      await replyConfirmation(telegram, group, message, registered, betaMode);
-    }
-    if (ctx.settings.send_reaction !== false) {
-      await reactThumbsUp(telegram, group.telegram_group_id, message.message_id);
-    }
-  }
+  // Silent mode (default) suppresses the driver-group reply + reaction here too.
+  await maybeReplyAndReact(telegram, group, message, registered, ctx.settings, betaMode);
   let reportedToTest = false;
   for (const { parsed, event } of reportedUnids) {
     if (looksLikeTrailerCommand(parsed) && testGroupId) {
@@ -700,6 +716,7 @@ module.exports = {
   // exported for tests
   isTrailerCandidate,
   isTrailerCandidateMessage,
+  isSilentDriverGroup,
   extractEvidence,
   statePhrase,
   resolveTestGroupId,

@@ -22,6 +22,13 @@ const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
 const { resolveDriverMentionForGroup, escapeHtml } = require('./driverMention');
 
 const POLL_MS_MIN = 30 * 1000;
+const METERS_PER_MILE = 1609.34;
+// Default auto-complete radius (miles) when GMaps config omits it.
+const DEFAULT_COMPLETION_RADIUS_MILES = 10;
+// Boundary tolerance (meters): floating-point haversine at exactly the radius can
+// land a hair over, so "exactly 10 miles" still completes while 10.01 mi (≈16 m
+// past the radius) stays comfortably outside.
+const COMPLETION_EPSILON_METERS = 1;
 // Telegram caps photo captions at 1024 chars and text messages at 4096.
 const TELEGRAM_CAPTION_MAX = 1024;
 const TELEGRAM_TEXT_SAFE_MAX = 3900;
@@ -60,6 +67,8 @@ function monitorSettingsFromConfig(cfg) {
     warningCooldownMinutes: cfg.warningCooldownMinutes,
     staleGpsMinutes: cfg.staleGpsMinutes,
     parkedSpeedMph: cfg.parkedSpeedMph,
+    completionRadiusMiles: cfg.routeCompletionRadiusMiles != null
+      ? cfg.routeCompletionRadiusMiles : DEFAULT_COMPLETION_RADIUS_MILES,
   };
 }
 
@@ -281,6 +290,68 @@ function evaluateAssignment({ assignment, location, settings, now = new Date() }
   return {
     result: 'off_route', deviationMeters, consecutiveOffRoute, shouldNotify: true,
     reason: 'off route beyond grace, cooldown elapsed',
+  };
+}
+
+/**
+ * PURE. Decide whether an active route should auto-complete because the driver's
+ * FRESH GPS is within the completion radius of the FINAL destination
+ * (destination_lat/destination_lng — never an intermediate waypoint).
+ *
+ * Safe by construction: only active assignments, only fresh GPS, only valid
+ * destination coordinates ever return shouldComplete=true. Anything missing or
+ * stale returns false. The boundary is inclusive (exactly the radius completes).
+ *
+ * @returns {{ shouldComplete:boolean, distanceMeters:(number|null),
+ *             distanceMiles:(number|null), reason:string }}
+ */
+function evaluateDestinationCompletion({
+  assignment, location, staleGpsMinutes, completionRadiusMiles,
+} = {}) {
+  const fail = (reason) => ({ shouldComplete: false, distanceMeters: null, distanceMiles: null, reason });
+
+  // Only active (lifecycle) routes complete; completed/cancelled stay unchanged.
+  if (!assignment || (assignment.status && assignment.status !== 'active')) {
+    return fail(`route is ${assignment?.status || 'missing'}`);
+  }
+  // Final destination coordinates must be present and valid.
+  const dLat = Number(assignment.destination_lat);
+  const dLng = Number(assignment.destination_lng);
+  if (!Number.isFinite(dLat) || !Number.isFinite(dLng)) {
+    return fail('no destination coordinates');
+  }
+  // GPS must exist.
+  if (!location || location.latitude == null || location.longitude == null) {
+    return fail('no GPS available');
+  }
+  const lat = Number(location.latitude);
+  const lng = Number(location.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return fail('invalid GPS coordinates');
+  }
+  // GPS must be fresh — stale GPS must NEVER complete a route.
+  const stale = Number(staleGpsMinutes);
+  const ageMin = location.pingAgeMinutes;
+  if (ageMin != null && Number.isFinite(Number(ageMin)) && Number.isFinite(stale) && Number(ageMin) > stale) {
+    return fail(`GPS is ${Math.round(Number(ageMin))}min old (> ${stale})`);
+  }
+
+  const radiusMiles = Number(completionRadiusMiles) > 0
+    ? Number(completionRadiusMiles) : DEFAULT_COMPLETION_RADIUS_MILES;
+  const distanceMeters = haversineMeters([lat, lng], [dLat, dLng]);
+  if (distanceMeters == null || !Number.isFinite(distanceMeters)) {
+    return fail('could not measure distance to destination');
+  }
+  const distanceMiles = distanceMeters / METERS_PER_MILE;
+  const radiusMeters = radiusMiles * METERS_PER_MILE;
+  const shouldComplete = distanceMeters <= radiusMeters + COMPLETION_EPSILON_METERS;
+  return {
+    shouldComplete,
+    distanceMeters,
+    distanceMiles,
+    reason: shouldComplete
+      ? `fresh GPS is ${distanceMiles.toFixed(1)} mi from the final destination (≤ ${radiusMiles} mi)`
+      : `${distanceMiles.toFixed(1)} mi from the final destination (> ${radiusMiles} mi)`,
   };
 }
 
@@ -774,10 +845,12 @@ async function runRouteMonitorCheck(telegram, { now = new Date() } = {}) {
     }
   }
 
-  // Phase 2 — ACTIVE tracking: the original deviation checks.
+  // Phase 2 — ACTIVE tracking: destination auto-completion FIRST, then the
+  // original deviation checks. Each assignment is processed once per tick.
   const assignments = await rc.listMonitorableAssignments();
   let checked = 0;
   let notified = 0;
+  let completed = 0;
   for (const assignment of assignments) {
     try {
       let location = null;
@@ -787,6 +860,42 @@ async function runRouteMonitorCheck(telegram, { now = new Date() } = {}) {
       } catch (_) {
         location = null; // treated as not_checked — never a false off-route warning
       }
+
+      // ── Auto-completion gate (before ANY off-route logic) ──
+      // When fresh GPS is within the completion radius of the FINAL destination
+      // the route is completed atomically, one audit event is written, and we
+      // skip off-route evaluation entirely — no Telegram message, no further
+      // monitoring (the next tick's query excludes completed routes).
+      const completion = evaluateDestinationCompletion({
+        assignment, location,
+        staleGpsMinutes: settings.staleGpsMinutes,
+        completionRadiusMiles: settings.completionRadiusMiles,
+      });
+      if (completion.shouldComplete) {
+        const detail = `Auto-completed: fresh GPS was ${completion.distanceMiles.toFixed(1)} miles from the final destination.`;
+        const done = await rc.completeRouteAssignment(assignment.id, {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          distanceMeters: completion.distanceMeters,
+          reason: detail,
+        });
+        // done === null → another overlapping tick already completed it: no
+        // duplicate event, no double-processing.
+        if (done) {
+          await rc.insertRouteMonitorEvent({
+            assignmentId: assignment.id,
+            eventType: 'destination_reached',
+            result: 'completed',
+            latitude: location.latitude,
+            longitude: location.longitude,
+            deviationMeters: completion.distanceMeters,
+            detail,
+          });
+          completed += 1;
+        }
+        continue; // skip off-route evaluation for this assignment
+      }
+
       const verdict = evaluateAssignment({ assignment, location, settings, now });
       checked += 1;
 
@@ -821,7 +930,7 @@ async function runRouteMonitorCheck(telegram, { now = new Date() } = {}) {
       console.error(`[ROUTE-CONTROL] Check failed for assignment #${assignment.id}:`, err.message);
     }
   }
-  return { enabled: true, checked, notified, activated };
+  return { enabled: true, checked, notified, activated, completed };
 }
 
 async function tick() {
@@ -860,6 +969,7 @@ function stopRouteControlService() {
 
 module.exports = {
   evaluateAssignment,
+  evaluateDestinationCompletion,
   evaluateTrackingStart,
   normalizeTrackingOptions,
   cleanAddressText,

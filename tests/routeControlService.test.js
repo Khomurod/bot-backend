@@ -827,3 +827,205 @@ test('buildDriverGroupRouteMessage describes scheduled and start-location tracki
   }, { mentionHtml: '@d' });
   assert.match(byLocation, /when the truck reaches 35\.2331, -85\.7095 \(within 3 mi\)/);
 });
+
+// ── Destination auto-completion ───────────────────────────────────────────────
+
+const { evaluateDestinationCompletion } = service;
+
+// Distances along a meridian (dLng = 0) are exact for haversine: R * dLatRad.
+// This lets us place a GPS point at a KNOWN mileage from the destination.
+const EARTH_R_M = 6_371_000;
+const M_PER_MILE = 1609.34;
+const DEST = { status: 'active', destination_lat: 40, destination_lng: -100 };
+
+/** A fresh GPS ping exactly `miles` due south of the destination. */
+function pointMilesFromDest(miles, extra = {}) {
+  const dLatDeg = ((miles * M_PER_MILE) / EARTH_R_M) * (180 / Math.PI);
+  return {
+    latitude: 40 - dLatDeg, longitude: -100, speedMilesPerHour: 55, pingAgeMinutes: 1, ...extra,
+  };
+}
+
+const COMPLETION_SETTINGS = { staleGpsMinutes: 15, completionRadiusMiles: 10 };
+
+function completion(location, assignmentOverrides = {}, settings = COMPLETION_SETTINGS) {
+  return evaluateDestinationCompletion({
+    assignment: { ...DEST, ...assignmentOverrides },
+    location,
+    staleGpsMinutes: settings.staleGpsMinutes,
+    completionRadiusMiles: settings.completionRadiusMiles,
+  });
+}
+
+test('evaluateDestinationCompletion: 5 miles from destination → complete', () => {
+  const v = completion(pointMilesFromDest(5));
+  assert.equal(v.shouldComplete, true);
+  assert.ok(Math.abs(v.distanceMiles - 5) < 0.01);
+});
+
+test('evaluateDestinationCompletion: 9.99 miles → complete (just inside)', () => {
+  assert.equal(completion(pointMilesFromDest(9.99)).shouldComplete, true);
+});
+
+test('evaluateDestinationCompletion: exactly 10 miles → complete (inclusive boundary)', () => {
+  const v = completion(pointMilesFromDest(10));
+  assert.equal(v.shouldComplete, true);
+  assert.ok(Math.abs(v.distanceMiles - 10) < 0.001);
+});
+
+test('evaluateDestinationCompletion: 10.01 miles → NOT complete (just outside)', () => {
+  assert.equal(completion(pointMilesFromDest(10.01)).shouldComplete, false);
+});
+
+test('evaluateDestinationCompletion: stale GPS never completes, even inside the radius', () => {
+  const v = completion(pointMilesFromDest(5, { pingAgeMinutes: 40 }));
+  assert.equal(v.shouldComplete, false);
+  assert.match(v.reason, /old/);
+});
+
+test('evaluateDestinationCompletion: missing GPS → not complete', () => {
+  assert.equal(completion(null).shouldComplete, false);
+  assert.equal(completion({ latitude: null, longitude: null }).shouldComplete, false);
+});
+
+test('evaluateDestinationCompletion: missing/invalid destination → not complete', () => {
+  assert.equal(completion(pointMilesFromDest(2), { destination_lat: null }).shouldComplete, false);
+  assert.equal(completion(pointMilesFromDest(2), { destination_lng: undefined }).shouldComplete, false);
+  assert.equal(completion(pointMilesFromDest(2), { destination_lat: NaN, destination_lng: NaN }).shouldComplete, false);
+});
+
+test('evaluateDestinationCompletion: cancelled or already-completed routes never complete', () => {
+  for (const status of ['cancelled', 'completed']) {
+    const v = completion(pointMilesFromDest(1), { status });
+    assert.equal(v.shouldComplete, false);
+    assert.match(v.reason, new RegExp(status));
+  }
+});
+
+test('evaluateDestinationCompletion: works WITHOUT an encoded polyline (destination coords are enough)', () => {
+  const v = completion(pointMilesFromDest(3), { encoded_polyline: null });
+  assert.equal(v.shouldComplete, true);
+});
+
+/** runRouteMonitorCheck harness with completion-aware routeControl + resolver stubs. */
+function loadServiceForCompletion({ assignments, location, completeReturns = 'active' }) {
+  const captured = { completed: [], events: [], monitorStates: [], telegramSends: [] };
+  const svc = loadServiceWith({
+    '../database/gmapsSettings.js': {
+      async getGmapsConfig() {
+        return {
+          enabled: true, deviationThresholdMeters: 250, offRouteGraceChecks: 3,
+          warningCooldownMinutes: 30, staleGpsMinutes: 15, parkedSpeedMph: 5,
+          checkIntervalSeconds: 300, routeCompletionRadiusMiles: 10,
+        };
+      },
+    },
+    '../services/liveLocationResolver.js': {
+      async resolveLiveLocationForGroupTitle() { return { location }; },
+    },
+    '../database/routeControl.js': {
+      async listPendingTrackingAssignments() { return []; },
+      async listMonitorableAssignments() { return assignments; },
+      async completeRouteAssignment(id, data) {
+        captured.completed.push({ id, data });
+        // 'active' → we won the race and get the row back; 'raced' → another tick
+        // already completed it (WHERE status='active' matched nothing → null).
+        return completeReturns === 'active' ? { id, status: 'completed', ...data } : null;
+      },
+      async insertRouteMonitorEvent(e) { captured.events.push(e); return e; },
+      async updateRouteAssignmentMonitorState(id, s) { captured.monitorStates.push({ id, s }); return null; },
+      async setTrackingHoldReason() { return null; },
+      async activateTracking() { return null; },
+    },
+  });
+  const telegram = {
+    async sendMessage(chatId, text, extra) { captured.telegramSends.push({ chatId, text, extra }); return { message_id: 1 }; },
+  };
+  return { svc, telegram, captured };
+}
+
+const NEAR_DEST_OFF_ROUTE = pointMilesFromDest(8); // 8 mi from dest, far from the POLYLINE below
+
+test('runRouteMonitorCheck auto-completes a route inside the radius, silently, skipping off-route', async () => {
+  // Driver is 8 mi from the destination but off the encoded route. Completion
+  // must fire FIRST: status completed, one audit event, ZERO telegram messages.
+  const { svc, telegram, captured } = loadServiceForCompletion({
+    assignments: [{
+      id: 21, status: 'active', tracking_status: 'active',
+      encoded_polyline: POLYLINE, // driver is nowhere near this
+      destination_lat: 40, destination_lng: -100,
+      consecutive_off_route: 2, group_name: 'G', telegram_group_id: -100500,
+    }],
+    location: NEAR_DEST_OFF_ROUTE,
+  });
+  const res = await svc.runRouteMonitorCheck(telegram, { now: NOW });
+  assert.equal(res.completed, 1);
+  assert.equal(res.notified, 0);
+  assert.equal(captured.completed.length, 1);
+  assert.equal(captured.completed[0].id, 21);
+  assert.ok(Math.abs(captured.completed[0].data.distanceMeters - 8 * M_PER_MILE) < 2);
+  // Exactly one completion audit event, no off-route/warning event.
+  assert.equal(captured.events.length, 1);
+  assert.equal(captured.events[0].eventType, 'destination_reached');
+  assert.equal(captured.events[0].result, 'completed');
+  assert.match(captured.events[0].detail, /Auto-completed: fresh GPS was 8\.0 miles/);
+  // No Telegram message of any kind.
+  assert.equal(captured.telegramSends.length, 0);
+  // Off-route monitor state was NOT written (we skipped that branch).
+  assert.equal(captured.monitorStates.length, 0);
+});
+
+test('runRouteMonitorCheck completes a route that has NO polyline (destination-only)', async () => {
+  const { svc, telegram, captured } = loadServiceForCompletion({
+    assignments: [{
+      id: 22, status: 'active', tracking_status: 'active',
+      encoded_polyline: null, destination_lat: 40, destination_lng: -100,
+      group_name: 'G', telegram_group_id: -100501,
+    }],
+    location: pointMilesFromDest(4),
+  });
+  const res = await svc.runRouteMonitorCheck(telegram, { now: NOW });
+  assert.equal(res.completed, 1);
+  assert.equal(captured.events[0].eventType, 'destination_reached');
+  assert.equal(captured.telegramSends.length, 0);
+});
+
+test('runRouteMonitorCheck does NOT double-complete on overlapping ticks', async () => {
+  // completeRouteAssignment returns null → another tick already completed it.
+  const { svc, telegram, captured } = loadServiceForCompletion({
+    assignments: [{
+      id: 23, status: 'active', tracking_status: 'active',
+      encoded_polyline: null, destination_lat: 40, destination_lng: -100,
+      group_name: 'G', telegram_group_id: -100502,
+    }],
+    location: pointMilesFromDest(2),
+    completeReturns: 'raced',
+  });
+  const res = await svc.runRouteMonitorCheck(telegram, { now: NOW });
+  assert.equal(captured.completed.length, 1, 'attempted once');
+  assert.equal(res.completed, 0, 'not counted — lost the race');
+  assert.equal(captured.events.length, 0, 'no duplicate audit event');
+  assert.equal(captured.telegramSends.length, 0);
+});
+
+test('runRouteMonitorCheck keeps normal off-route warning when the driver is OUTSIDE the radius', async () => {
+  // Far from destination AND off the route → completion does not fire; the
+  // existing off-route warning path runs as before.
+  const { svc, telegram, captured } = loadServiceForCompletion({
+    assignments: [{
+      id: 24, status: 'active', tracking_status: 'active',
+      encoded_polyline: POLYLINE,
+      destination_lat: 40, destination_lng: -100, // ~800+ mi from the polyline/off point
+      consecutive_off_route: 2, last_notification_at: null,
+      group_name: 'G', telegram_group_id: -100503,
+    }],
+    location: offRoute, // off the polyline, and nowhere near (40,-100)
+  });
+  const res = await svc.runRouteMonitorCheck(telegram, { now: NOW });
+  assert.equal(res.completed, 0);
+  assert.equal(res.checked, 1);
+  assert.equal(res.notified, 1, 'off-route warning still sent');
+  assert.equal(captured.telegramSends.length, 1);
+  assert.match(captured.telegramSends[0].text, /off the assigned route/i);
+  assert.ok(!captured.events.some((e) => e.eventType === 'destination_reached'));
+});

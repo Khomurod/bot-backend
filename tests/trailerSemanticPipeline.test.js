@@ -186,7 +186,7 @@ test('"shu TRL ni olasiz" replying to a trailer photo: NO pickup, NO reply, NO r
   assert.equal(review.ai_verification_status, 'review');
 });
 
-test('"oldim" replying to the same photo: pickup registered as SWFZ233611, reply + reaction sent', async () => {
+test('"oldim" replying to the same photo: pickup registered as SWFZ233611, silently (no reply/reaction)', async () => {
   const { mod, state } = loadPipeline({
     visionUnitsByFileId: SWFZ_VISION,
     aiResult: ok({
@@ -213,10 +213,9 @@ test('"oldim" replying to the same photo: pickup registered as SWFZ233611, reply
   assert.equal(event.unit_source, 'replied_image');
   assert.equal(event.ai_verification_status, 'approved');
   assert.equal(state.statusUpdates.length, 1, 'current status advanced');
-  const reply = tg.sent.find((m) => String(m.chatId) === String(GROUP.telegram_group_id));
-  assert.ok(reply && /pickup registered/i.test(reply.text));
-  assert.match(reply.text, /SWFZ233611/);
-  assert.equal(tg.reactions.length, 1);
+  // Silent mode (default): nothing sent back to the driver group, no reaction.
+  assert.ok(!tg.sent.some((m) => String(m.chatId) === String(GROUP.telegram_group_id)));
+  assert.equal(tg.reactions.length, 0);
 });
 
 // ─── intent matrix (the AI classifies; the pipeline must obey) ───
@@ -408,10 +407,10 @@ test('one confirmed + one planned: only the confirmed trailer registers', async 
   assert.ok(review, 'planned drop-off recorded for review');
   assert.equal(review.trailer_unit_number, '171847');
   assert.equal(review.semantic_intent, 'planned_dropoff');
-  // The driver reply mentions only the registered trailer.
-  const reply = tg.sent.find((m) => String(m.chatId) === String(GROUP.telegram_group_id));
-  assert.match(reply.text, /403279/);
-  assert.doesNotMatch(reply.text, /171847/);
+  // Silent mode (default): only the confirmed trailer registers, and nothing is
+  // sent back to the driver group.
+  assert.ok(!tg.sent.some((m) => String(m.chatId) === String(GROUP.telegram_group_id)));
+  assert.equal(tg.reactions.length, 0);
 });
 
 test('two confirmed events → two registered rows with distinct event_index', async () => {
@@ -433,9 +432,9 @@ test('two confirmed events → two registered rows with distinct event_index', a
   assert.notEqual(registered[0].event_index, registered[1].event_index);
   assert.equal(registered[1].event_type, 'dropoff');
   assert.equal(registered[1].cargo_status, 'empty'); // dropped ⇒ empty default
-  // ONE summary reply, ONE reaction.
-  assert.equal(tg.sent.filter((m) => String(m.chatId) === String(GROUP.telegram_group_id)).length, 1);
-  assert.equal(tg.reactions.length, 1);
+  // Silent mode (default): both register, but zero driver-group replies/reactions.
+  assert.equal(tg.sent.filter((m) => String(m.chatId) === String(GROUP.telegram_group_id)).length, 0);
+  assert.equal(tg.reactions.length, 0);
 });
 
 test('valid unit + facility number: only the real trailer is processed (Home Depot #5829)', async () => {
