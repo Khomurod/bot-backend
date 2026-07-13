@@ -3,25 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Trucking Operations & Driver Communication Platform — a unified system for driver communication, dispatch visibility, fleet monitoring, recruiting workflows, automation and operational control." />
+  <meta name="description" content="One connected operations platform for dispatch, drivers, trailers, safety, recruiting and management — built for trucking companies." />
   <meta name="robots" content="noindex" />
-  <title>Wenze — Trucking Operations &amp; Driver Communication Platform</title>
+  <title>One Connected Operations Platform for Trucking Companies</title>
   <style>
-    /* ─────────────────────────────────────────────────────────────
-       Design system
-       Brand anchors reused from the app's own palette:
-         teal  #14b8a6 / #0f766e   ·   amber #f59e0b / #d97706
-         ink   #0b1220 background   ·   slate text
-       ───────────────────────────────────────────────────────────── */
+    /* ───────────────────────────────────────────────
+       Owner-facing product presentation — design system
+       Dark trucking-operations look, projector-friendly.
+       All data on this page is fictional / sanitized.
+       ─────────────────────────────────────────────── */
     :root {
       --bg: #070b16;
       --bg-2: #0b1120;
-      --panel: rgba(255, 255, 255, 0.04);
-      --panel-2: rgba(255, 255, 255, 0.06);
-      --line: rgba(148, 163, 184, 0.16);
-      --line-strong: rgba(148, 163, 184, 0.32);
+      --panel: rgba(255, 255, 255, 0.045);
+      --panel-2: rgba(255, 255, 255, 0.07);
+      --line: rgba(148, 163, 184, 0.18);
+      --line-strong: rgba(148, 163, 184, 0.34);
       --ink: #eef2f8;
-      --muted: #9aa8c0;
+      --muted: #a2b0c8;
       --muted-2: #6b7896;
       --teal: #2dd4bf;
       --teal-deep: #0f766e;
@@ -31,10 +30,10 @@
       --violet: #a78bfa;
       --rose: #fb7185;
       --green: #34d399;
-      --radius: 18px;
-      --radius-lg: 26px;
-      --shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.7);
-      --maxw: 1180px;
+      --radius: 16px;
+      --radius-lg: 24px;
+      --shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.72);
+      --maxw: 1160px;
       --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
 
@@ -49,11 +48,8 @@
       overflow-x: hidden;
     }
     body::before {
-      /* Ambient gradient wash + faint route-grid */
       content: "";
-      position: fixed;
-      inset: 0;
-      z-index: -2;
+      position: fixed; inset: 0; z-index: -2;
       background:
         radial-gradient(1100px 700px at 12% -8%, rgba(45, 212, 191, 0.16), transparent 60%),
         radial-gradient(900px 640px at 100% 0%, rgba(245, 158, 11, 0.12), transparent 55%),
@@ -62,58 +58,54 @@
     }
     body::after {
       content: "";
-      position: fixed;
-      inset: 0;
-      z-index: -1;
+      position: fixed; inset: 0; z-index: -1;
       background-image:
         linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
         linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
-      background-size: 46px 46px;
-      mask-image: radial-gradient(circle at 50% 20%, #000 0%, transparent 78%);
-      -webkit-mask-image: radial-gradient(circle at 50% 20%, #000 0%, transparent 78%);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(circle at 50% 18%, #000 0%, transparent 78%);
+      -webkit-mask-image: radial-gradient(circle at 50% 18%, #000 0%, transparent 78%);
       opacity: 0.5;
     }
 
     a { color: inherit; text-decoration: none; }
     img { max-width: 100%; }
-
     .wrap { width: min(var(--maxw), 92%); margin: 0 auto; }
 
     /* ─── Top nav ─── */
     header.nav {
-      position: sticky;
-      top: 0;
-      z-index: 50;
+      position: sticky; top: 0; z-index: 50;
       backdrop-filter: blur(14px);
-      background: rgba(7, 11, 22, 0.72);
+      background: rgba(7, 11, 22, 0.74);
       border-bottom: 1px solid var(--line);
     }
-    .nav-inner {
-      display: flex;
-      align-items: center;
-      gap: 18px;
-      height: 62px;
-    }
+    .nav-inner { display: flex; align-items: center; gap: 18px; height: 62px; }
     .brand { display: flex; align-items: center; gap: 11px; font-weight: 800; letter-spacing: -0.02em; }
     .brand .logo {
-      width: 34px; height: 34px; border-radius: 10px;
-      display: grid; place-items: center;
+      width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
       background: linear-gradient(135deg, var(--teal), var(--teal-deep));
-      box-shadow: 0 8px 24px -8px var(--teal-deep);
-      font-size: 18px;
+      box-shadow: 0 8px 24px -8px var(--teal-deep); font-size: 18px;
     }
     .brand small { display: block; font-weight: 500; font-size: 11px; color: var(--muted-2); letter-spacing: 0.02em; }
     .nav-links { margin-left: auto; display: flex; gap: 22px; font-size: 14px; color: var(--muted); }
     .nav-links a { transition: color .2s; }
     .nav-links a:hover { color: var(--ink); }
+    .nav-actions { display: flex; align-items: center; gap: 10px; }
+    .present-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; cursor: pointer;
+      border: 1px solid var(--line-strong); color: var(--ink); background: rgba(255,255,255,0.04);
+      transition: border-color .2s, background .2s;
+    }
+    .present-btn:hover { border-color: var(--teal); background: rgba(45,212,191,0.08); }
     .nav-cta {
       padding: 9px 16px; border-radius: 999px; font-size: 13px; font-weight: 700;
       background: linear-gradient(135deg, var(--amber), var(--amber-deep));
       color: #1a1206; box-shadow: 0 10px 24px -10px var(--amber-deep);
     }
-    @media (max-width: 860px) { .nav-links { display: none; } }
+    @media (max-width: 980px) { .nav-links { display: none; } }
+    @media (max-width: 620px) { .nav-cta { display: none; } }
 
-    /* Scroll progress bar */
     #progress {
       position: fixed; top: 0; left: 0; height: 3px; width: 0%;
       background: linear-gradient(90deg, var(--teal), var(--sky), var(--amber));
@@ -121,7 +113,7 @@
     }
 
     /* ─── Section scaffolding ─── */
-    section { padding: 96px 0; position: relative; }
+    section { padding: 90px 0; position: relative; }
     .eyebrow {
       display: inline-flex; align-items: center; gap: 8px;
       font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
@@ -129,59 +121,61 @@
       background: rgba(45, 212, 191, 0.10); border: 1px solid rgba(45, 212, 191, 0.24);
     }
     .eyebrow.amber { color: var(--amber); background: rgba(245, 158, 11, 0.10); border-color: rgba(245, 158, 11, 0.26); }
-    h1, h2, h3 { letter-spacing: -0.025em; line-height: 1.08; margin: 0; }
-    .h-sec { font-size: clamp(28px, 4.4vw, 46px); font-weight: 800; margin: 18px 0 14px; }
+    h1, h2, h3 { letter-spacing: -0.025em; line-height: 1.1; margin: 0; }
+    .h-sec { font-size: clamp(28px, 4.2vw, 44px); font-weight: 800; margin: 16px 0 14px; }
     .lead { font-size: clamp(16px, 1.7vw, 19px); color: var(--muted); max-width: 720px; }
-    .section-head { max-width: 760px; margin-bottom: 46px; }
+    .section-head { max-width: 760px; margin-bottom: 44px; }
 
     /* Reveal-on-scroll */
-    .reveal { opacity: 0; transform: translateY(30px); transition: opacity .7s cubic-bezier(.2,.7,.2,1), transform .7s cubic-bezier(.2,.7,.2,1); }
+    .reveal { opacity: 0; transform: translateY(28px); transition: opacity .7s cubic-bezier(.2,.7,.2,1), transform .7s cubic-bezier(.2,.7,.2,1); }
     .reveal.in { opacity: 1; transform: none; }
     .reveal.d1 { transition-delay: .08s; }
     .reveal.d2 { transition-delay: .16s; }
     .reveal.d3 { transition-delay: .24s; }
-    .reveal.d4 { transition-delay: .32s; }
     @media (prefers-reduced-motion: reduce) {
       .reveal { opacity: 1 !important; transform: none !important; }
-      * { animation: none !important; scroll-behavior: auto !important; }
+      * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
     }
 
-    /* Cards */
+    /* Cards + grids */
     .card {
       background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
-      padding: 22px; position: relative; transition: transform .3s, border-color .3s, background .3s;
+      padding: 24px; position: relative; transition: transform .3s, border-color .3s, background .3s;
     }
     .card:hover { transform: translateY(-4px); border-color: var(--line-strong); background: var(--panel-2); }
     .grid { display: grid; gap: 18px; }
     .g2 { grid-template-columns: repeat(2, 1fr); }
     .g3 { grid-template-columns: repeat(3, 1fr); }
-    .g4 { grid-template-columns: repeat(4, 1fr); }
-    @media (max-width: 980px) { .g3, .g4 { grid-template-columns: repeat(2, 1fr); } }
-    @media (max-width: 620px) { .g2, .g3, .g4 { grid-template-columns: 1fr; } }
+    @media (max-width: 900px) { .g3 { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 620px) { .g2, .g3 { grid-template-columns: 1fr; } }
 
     .ic {
-      width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+      width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center;
       font-size: 22px; margin-bottom: 14px;
       background: rgba(255,255,255,0.05); border: 1px solid var(--line);
     }
-    .card h3 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
-    .card p { font-size: 14px; color: var(--muted); margin: 0; }
-    .tag {
-      display: inline-block; font-size: 11px; font-weight: 600; color: var(--muted);
-      padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line);
-      background: rgba(255,255,255,0.03); margin: 3px 4px 0 0;
+    .card h3 { font-size: 18px; font-weight: 700; margin-bottom: 7px; }
+    .card p { font-size: 14.5px; color: var(--muted); margin: 0; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 9px; padding: 13px 22px; border-radius: 12px;
+      font-weight: 700; font-size: 15px; transition: transform .2s, box-shadow .2s; cursor: pointer; border: 0;
     }
+    .btn.primary { background: linear-gradient(135deg, var(--teal), var(--teal-deep)); color: #04211d; box-shadow: 0 16px 34px -14px var(--teal); }
+    .btn.ghost { border: 1px solid var(--line-strong); color: var(--ink); background: rgba(255,255,255,0.03); }
+    .btn:hover { transform: translateY(-2px); }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 12px; }
 
     /* ─── HERO ─── */
-    .hero { padding-top: 70px; padding-bottom: 40px; overflow: hidden; }
-    .hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 40px; align-items: center; }
+    .hero { padding-top: 66px; padding-bottom: 48px; overflow: hidden; }
+    .hero-grid { display: grid; grid-template-columns: 1.02fr 0.98fr; gap: 42px; align-items: center; }
     @media (max-width: 940px) { .hero-grid { grid-template-columns: 1fr; } }
-    .hero h1 { font-size: clamp(36px, 6vw, 66px); font-weight: 900; }
+    .hero h1 { font-size: clamp(34px, 5.6vw, 60px); font-weight: 900; }
     .hero h1 .grad {
       background: linear-gradient(120deg, var(--teal) 10%, var(--sky) 50%, var(--amber) 95%);
       -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
     }
-    .hero .lead { margin: 22px 0 26px; max-width: 560px; font-size: clamp(16px, 2vw, 20px); }
+    .hero .lead { margin: 22px 0 24px; max-width: 560px; font-size: clamp(16px, 2vw, 19px); }
     .hero-badges { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 28px; }
     .hbadge {
       font-size: 12.5px; font-weight: 600; color: var(--ink);
@@ -189,186 +183,256 @@
       background: rgba(255,255,255,0.04); display: inline-flex; gap: 7px; align-items: center;
     }
     .hbadge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 8px var(--teal); }
-    .btn-row { display: flex; flex-wrap: wrap; gap: 12px; }
-    .btn {
-      display: inline-flex; align-items: center; gap: 9px; padding: 13px 22px; border-radius: 12px;
-      font-weight: 700; font-size: 15px; transition: transform .2s, box-shadow .2s; cursor: pointer;
-    }
-    .btn.primary { background: linear-gradient(135deg, var(--teal), var(--teal-deep)); color: #04211d; box-shadow: 0 16px 34px -14px var(--teal); }
-    .btn.ghost { border: 1px solid var(--line-strong); color: var(--ink); background: rgba(255,255,255,0.03); }
-    .btn:hover { transform: translateY(-2px); }
 
-    /* Floating command-center visual */
+    /* Command-center hero visual */
     .console {
       position: relative; border-radius: var(--radius-lg); padding: 18px; max-width: 100%;
-      background: linear-gradient(160deg, rgba(20,30,52,0.9), rgba(10,16,30,0.9));
+      background: linear-gradient(160deg, rgba(20,30,52,0.92), rgba(10,16,30,0.92));
       border: 1px solid var(--line-strong); box-shadow: var(--shadow);
     }
     .console-top { display: flex; align-items: center; gap: 7px; margin-bottom: 14px; }
     .console-top i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
     .console-top .l { font-size: 12px; color: var(--muted-2); margin-left: 8px; }
-    .radar {
-      position: relative; height: 210px; border-radius: 16px; overflow: hidden;
+
+    /* Reusable mock map */
+    .mapbox {
+      position: relative; height: 230px; border-radius: 14px; overflow: hidden;
       background:
-        radial-gradient(circle at 50% 55%, rgba(45,212,191,0.12), transparent 60%),
+        radial-gradient(circle at 50% 60%, rgba(45,212,191,0.10), transparent 62%),
         #060c17;
       border: 1px solid var(--line);
     }
-    .radar svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-    .sweep {
-      position: absolute; left: 50%; top: 55%; width: 46%; height: 3px; transform-origin: left center;
-      background: linear-gradient(90deg, rgba(45,212,191,0.9), transparent);
-      animation: sweep 4.5s linear infinite;
+    .mapbox svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .marker { position: absolute; transform: translate(-50%, -50%); }
+    .m-truck {
+      width: 16px; height: 16px; border-radius: 50%;
+      background: var(--teal); box-shadow: 0 0 0 4px rgba(45,212,191,0.18), 0 0 14px var(--teal);
+      border: 2px solid #04211d;
     }
-    @keyframes sweep { to { transform: rotate(360deg); } }
-    .blip { position: absolute; width: 9px; height: 9px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 12px var(--amber); animation: blip 3s ease-in-out infinite; }
-    @keyframes blip { 0%,100% { opacity: .35; transform: scale(.8);} 50% { opacity: 1; transform: scale(1.25);} }
+    .m-truck.late { background: var(--amber); box-shadow: 0 0 0 4px rgba(245,158,11,0.2), 0 0 14px var(--amber); }
+    .m-trailer {
+      width: 13px; height: 13px; border-radius: 3px;
+      background: rgba(167,139,250,0.9); border: 2px solid #1a1330; box-shadow: 0 0 10px rgba(167,139,250,0.6);
+      display: grid; place-items: center; font-size: 8px; font-weight: 800; color: #1a1330;
+    }
+    .m-trailer.dropped { background: rgba(148,163,184,0.85); box-shadow: none; }
+    .m-move { animation: mtruck 9s ease-in-out infinite; }
+    @keyframes mtruck {
+      0%   { left: 24%; top: 62%; }
+      45%  { left: 52%; top: 44%; }
+      55%  { left: 52%; top: 44%; }
+      100% { left: 76%; top: 34%; }
+    }
+    .map-chip {
+      position: absolute; padding: 8px 11px; border-radius: 10px; font-size: 11.5px; font-weight: 600;
+      background: rgba(13,20,36,0.94); border: 1px solid var(--line-strong); box-shadow: var(--shadow);
+    }
+    .map-chip .sub { color: var(--muted-2); font-weight: 500; }
     .console-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-top: 14px; }
     .cstat { background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; }
-    .cstat b { display: block; font-size: 20px; font-weight: 800; color: var(--ink); }
+    .cstat b { display: block; font-size: 15px; font-weight: 800; color: var(--ink); }
     .cstat span { font-size: 11px; color: var(--muted-2); }
     .float-card {
       position: absolute; padding: 11px 14px; border-radius: 13px; font-size: 12.5px; font-weight: 600;
-      background: rgba(13,20,36,0.94); border: 1px solid var(--line-strong); box-shadow: var(--shadow);
-      display: flex; align-items: center; gap: 9px;
+      background: rgba(13,20,36,0.96); border: 1px solid var(--line-strong); box-shadow: var(--shadow);
+      display: flex; align-items: center; gap: 9px; z-index: 3;
     }
     .float-card .em { font-size: 18px; }
-    .fc1 { top: -18px; right: -14px; animation: floaty 6s ease-in-out infinite; }
-    .fc2 { bottom: 32px; left: -22px; animation: floaty 7s ease-in-out infinite .8s; }
-    @keyframes floaty { 0%,100% { transform: translateY(0);} 50% { transform: translateY(-11px);} }
-    @media (max-width: 520px) { .fc1, .fc2 { display: none; } }
+    .fc1 { top: -16px; right: -12px; animation: floaty 6s ease-in-out infinite; }
+    .fc2 { bottom: 96px; left: -20px; animation: floaty 7s ease-in-out infinite .8s; }
+    @keyframes floaty { 0%,100% { transform: translateY(0);} 50% { transform: translateY(-10px);} }
+    @media (max-width: 540px) { .fc1, .fc2 { display: none; } }
 
-    /* moving route line under hero */
-    .routeline { height: 2px; margin-top: 34px; position: relative; background: var(--line); overflow: hidden; border-radius: 2px; }
-    .routeline::after { content: ""; position: absolute; inset: 0; width: 34%; background: linear-gradient(90deg, transparent, var(--teal), var(--amber), transparent); animation: track 3.6s linear infinite; }
-    @keyframes track { from { transform: translateX(-40%);} to { transform: translateX(320%);} }
-
-    /* Stat band */
-    .statband { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-    @media (max-width: 720px) { .statband { grid-template-columns: repeat(2, 1fr); } }
-    .stat { text-align: center; padding: 26px 14px; }
-    .stat .num { font-size: clamp(30px, 4.4vw, 46px); font-weight: 900; letter-spacing: -0.03em;
-      background: linear-gradient(120deg, var(--teal), var(--sky)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-    .stat .lbl { font-size: 13px; color: var(--muted); margin-top: 4px; }
-    .stat .sub { font-size: 11px; color: var(--muted-2); }
-
-    /* Roles */
-    .role { text-align: left; }
-    .role .ic { font-size: 24px; }
-    .role ul { margin: 12px 0 0; padding-left: 18px; }
-    .role li { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
-
-    /* Architecture diagram */
-    .arch { display: grid; grid-template-columns: 1fr; gap: 20px; }
-    .arch-lane { border: 1px dashed var(--line-strong); border-radius: var(--radius); padding: 18px; position: relative; background: rgba(255,255,255,0.015); }
-    .arch-lane > .lane-label { position: absolute; top: -11px; left: 18px; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
-      color: var(--muted); background: var(--bg-2); padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); }
-    .nodes { display: flex; flex-wrap: wrap; gap: 12px; }
-    .node {
-      flex: 1 1 150px; min-width: 140px; border-radius: 14px; padding: 14px; border: 1px solid var(--line);
-      background: linear-gradient(160deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
-      transition: border-color .3s, transform .3s;
+    /* Before / After */
+    .ba-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 760px) { .ba-grid { grid-template-columns: 1fr; } }
+    .ba {
+      border-radius: var(--radius); padding: 26px; border: 1px solid var(--line);
     }
-    .node:hover { border-color: var(--teal); transform: translateY(-3px); }
-    .node .nt { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 8px; }
-    .node .nd { font-size: 12px; color: var(--muted-2); margin-top: 5px; }
-    .node.teal { border-color: rgba(45,212,191,0.35); }
-    .node.amber { border-color: rgba(245,158,11,0.32); }
-    .flowdown { text-align: center; color: var(--teal); font-size: 22px; animation: pulseArrow 2s ease-in-out infinite; }
-    @keyframes pulseArrow { 0%,100% { opacity:.4; transform: translateY(0);} 50% { opacity:1; transform: translateY(4px);} }
+    .ba.before { background: rgba(251,113,133,0.05); border-color: rgba(251,113,133,0.22); }
+    .ba.after { background: rgba(45,212,191,0.06); border-color: rgba(45,212,191,0.28); }
+    .ba h3 { font-size: 15px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; gap: 9px; }
+    .ba.before h3 { color: var(--rose); }
+    .ba.after h3 { color: var(--teal); }
+    .ba ul { list-style: none; margin: 0; padding: 0; }
+    .ba li { font-size: 14.5px; color: var(--muted); padding: 8px 0 8px 26px; position: relative; border-bottom: 1px solid var(--line); }
+    .ba li:last-child { border-bottom: 0; }
+    .ba li::before { position: absolute; left: 0; top: 8px; font-size: 13px; }
+    .ba.before li::before { content: "✕"; color: var(--rose); }
+    .ba.after li::before { content: "✓"; color: var(--teal); }
 
-    /* Integration map */
-    .intmap { position: relative; }
-    .int-hub {
-      text-align: center; padding: 22px; border-radius: var(--radius); max-width: 340px; margin: 0 auto 8px;
-      background: linear-gradient(160deg, rgba(45,212,191,0.16), rgba(15,118,110,0.06));
-      border: 1px solid rgba(45,212,191,0.4); box-shadow: 0 0 50px -18px var(--teal);
+    /* Product demos */
+    .demo-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 26px; }
+    .demo-tab {
+      padding: 10px 16px; border-radius: 999px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--line); color: var(--muted); background: rgba(255,255,255,0.02); transition: all .25s;
     }
-    .int-hub b { font-size: 18px; }
-    .int-hub span { font-size: 13px; color: var(--muted); }
-    .int-node .ic { margin: 0 auto 10px; }
-    .int-node { text-align: center; }
-    .int-node .r { font-size: 11px; color: var(--muted-2); margin-top: 8px; display: flex; flex-direction: column; gap: 2px; }
-    .int-node .r em { font-style: normal; color: var(--teal); }
-    .pulse { animation: pulseGlow 2.6s ease-in-out infinite; }
-    @keyframes pulseGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(45,212,191,0.0);} 50% { box-shadow: 0 0 22px -4px rgba(45,212,191,0.5);} }
+    .demo-tab:hover { color: var(--ink); border-color: var(--line-strong); }
+    .demo-tab.active { color: #04211d; background: linear-gradient(135deg, var(--teal), var(--teal-deep)); border-color: transparent; }
+    .demo-panel { display: none; }
+    .demo-panel.active { display: block; animation: fadeUp .5s; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(12px);} to { opacity: 1; transform: none; } }
+    .demo-grid { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 34px; align-items: center; }
+    @media (max-width: 900px) { .demo-grid { grid-template-columns: 1fr; } }
+    .demo-copy h3 { font-size: clamp(22px, 3vw, 28px); font-weight: 800; margin-bottom: 12px; }
+    .demo-copy p { font-size: 15.5px; color: var(--muted); margin: 0 0 16px; max-width: 480px; }
+    .benefit-line {
+      display: inline-flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 600; color: var(--teal);
+      padding: 10px 15px; border-radius: 12px; background: rgba(45,212,191,0.08); border: 1px solid rgba(45,212,191,0.24);
+    }
+    .beta-badge {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--amber); padding: 4px 10px; border-radius: 999px;
+      background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.34); margin-left: 10px; vertical-align: middle;
+    }
+
+    /* Mock UI panel (screenshot-style) */
+    .mock {
+      border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line-strong);
+      background: linear-gradient(160deg, #0c1424, #0a1120); box-shadow: var(--shadow);
+    }
+    .mock-bar { display: flex; align-items: center; gap: 7px; padding: 11px 14px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,0.02); }
+    .mock-bar i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .mock-bar .t { font-size: 12px; color: var(--muted-2); margin-left: 8px; font-weight: 600; }
+    .mock-body { padding: 16px; }
+
+    /* Filter chips */
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
+    .chip {
+      font-size: 11.5px; font-weight: 600; padding: 5px 11px; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--muted); background: rgba(255,255,255,0.03);
+    }
+    .chip.on { color: #04211d; background: var(--teal); border-color: transparent; }
+    .chip.on.violet { color: #1a1330; background: var(--violet); }
+    .chip.on.slate { color: #0b1120; background: rgba(148,163,184,0.9); }
 
     /* Telegram chat mock */
     .phone {
-      max-width: 340px; margin: 0 auto; border-radius: 30px; padding: 16px;
+      max-width: 330px; margin: 0 auto; border-radius: 28px; padding: 16px;
       background: linear-gradient(170deg, #101827, #0a0f1c); border: 1px solid var(--line-strong);
       box-shadow: var(--shadow); position: relative;
     }
-    .phone .notch { width: 90px; height: 6px; border-radius: 999px; background: var(--line-strong); margin: 2px auto 14px; }
-    .chat { display: flex; flex-direction: column; gap: 10px; min-height: 300px; }
-    .bubble { max-width: 82%; padding: 10px 13px; border-radius: 15px; font-size: 13.5px; opacity: 0; transform: translateY(10px); }
+    .phone .notch { width: 84px; height: 6px; border-radius: 999px; background: var(--line-strong); margin: 2px auto 14px; }
+    .chat { display: flex; flex-direction: column; gap: 9px; min-height: 320px; }
+    .bubble { max-width: 84%; padding: 10px 13px; border-radius: 15px; font-size: 13.5px; opacity: 0; transform: translateY(10px); }
     .bubble.in { opacity: 1; transform: none; transition: all .5s; }
     .bubble.them { align-self: flex-start; background: #1b2436; border-bottom-left-radius: 4px; }
     .bubble.me { align-self: flex-end; background: linear-gradient(135deg, var(--teal-deep), #0b5a54); color: #eafffb; border-bottom-right-radius: 4px; }
     .bubble small { display: block; font-size: 10px; color: var(--muted-2); margin-top: 3px; }
-    .bubble.me small { color: rgba(234,255,251,0.6); }
+    .bubble.me small { color: rgba(234,255,251,0.65); }
+    .bubble .xl { color: var(--sky); }
 
-    /* Workflow timeline */
-    .flow { display: grid; gap: 0; }
-    .step { display: grid; grid-template-columns: 44px 1fr; gap: 16px; padding-bottom: 24px; position: relative; }
-    .step:not(:last-child)::before { content: ""; position: absolute; left: 21px; top: 40px; bottom: -2px; width: 2px; background: linear-gradient(var(--teal), transparent); }
-    .step .dot {
-      width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 15px;
-      background: rgba(45,212,191,0.12); border: 1px solid rgba(45,212,191,0.4); color: var(--teal);
+    /* Data rows (trailer / recruiting / automation) */
+    .row {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 11px 13px; border-radius: 11px; border: 1px solid var(--line);
+      background: rgba(255,255,255,0.02); margin-bottom: 9px; font-size: 13.5px;
     }
-    .step .body h4 { margin: 6px 0 4px; font-size: 15px; }
-    .step .body p { margin: 0; font-size: 13.5px; color: var(--muted); }
+    .row .lft { display: flex; align-items: center; gap: 10px; }
+    .row .unit { font-weight: 700; }
+    .row .meta { color: var(--muted-2); font-size: 12px; }
+    .pill { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+    .pill.green { color: #052e23; background: var(--green); }
+    .pill.slate { color: #0b1120; background: rgba(148,163,184,0.9); }
+    .pill.amber { color: #1a1206; background: var(--amber); }
+    .pill.violet { color: #1a1330; background: var(--violet); }
+    .pill.teal { color: #04211d; background: var(--teal); }
 
-    /* Workflow selector */
-    .wf-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
-    .wf-tab {
-      padding: 9px 15px; border-radius: 999px; font-size: 13px; font-weight: 600; cursor: pointer;
-      border: 1px solid var(--line); color: var(--muted); background: rgba(255,255,255,0.02); transition: all .25s;
+    /* Timeline (trailer history + day-in-op) */
+    .tl { position: relative; margin: 4px 0 0; }
+    .tl .ev { position: relative; padding: 0 0 16px 22px; }
+    .tl .ev:not(:last-child)::before { content: ""; position: absolute; left: 5px; top: 14px; bottom: -2px; width: 2px; background: linear-gradient(var(--teal), rgba(45,212,191,0.15)); }
+    .tl .ev::after { content: ""; position: absolute; left: 0; top: 5px; width: 12px; height: 12px; border-radius: 50%; background: rgba(45,212,191,0.15); border: 2px solid var(--teal); }
+    .tl .ev h5 { margin: 0 0 2px; font-size: 13.5px; font-weight: 700; }
+    .tl .ev p { margin: 0; font-size: 12.5px; color: var(--muted-2); }
+
+    /* Progress ring (recruiting) */
+    .ring-wrap { display: flex; align-items: center; gap: 18px; margin-bottom: 16px; }
+    .ring { position: relative; width: 116px; height: 116px; flex: none; }
+    .ring svg { transform: rotate(-90deg); }
+    .ring .rc { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 10; }
+    .ring .rp { fill: none; stroke: var(--teal); stroke-width: 10; stroke-linecap: round; stroke-dasharray: 326.7; stroke-dashoffset: 326.7; transition: stroke-dashoffset 1.4s cubic-bezier(.2,.7,.2,1); }
+    .ring.play .rp { stroke-dashoffset: 78; } /* ~76% of goal */
+    .ring .rl { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+    .ring .rl b { font-size: 20px; font-weight: 800; display: block; }
+    .ring .rl span { font-size: 10px; color: var(--muted-2); }
+    .bar-wrap { margin-bottom: 10px; }
+    .bar-wrap .lbl { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 5px; color: var(--muted); }
+    .bar { height: 9px; border-radius: 999px; background: rgba(255,255,255,0.07); overflow: hidden; }
+    .bar > i { display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--sky), var(--teal)); transition: width 1.4s cubic-bezier(.2,.7,.2,1); }
+    .bar-wrap.play .bar > i { width: var(--w, 60%); }
+
+    /* Day-in-op timeline */
+    .day-flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    @media (max-width: 900px) { .day-flow { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 520px) { .day-flow { grid-template-columns: 1fr; } }
+    .day-step { border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; background: var(--panel); position: relative; }
+    .day-step .n { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-weight: 800; font-size: 14px;
+      background: rgba(45,212,191,0.12); border: 1px solid rgba(45,212,191,0.4); color: var(--teal); margin-bottom: 12px; }
+    .day-step h4 { font-size: 14.5px; margin: 0 0 5px; }
+    .day-step p { font-size: 13px; color: var(--muted); margin: 0; }
+
+    /* Benefits */
+    .value-card .k { font-size: 16px; font-weight: 700; margin-bottom: 7px; display: flex; gap: 9px; align-items: center; }
+
+    /* Integrations */
+    .int-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    @media (max-width: 820px) { .int-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 520px) { .int-grid { grid-template-columns: 1fr; } }
+    .int {
+      display: flex; align-items: center; gap: 13px; padding: 16px; border-radius: 14px;
+      border: 1px solid var(--line); background: var(--panel); transition: border-color .3s, transform .3s;
     }
-    .wf-tab.active { color: #04211d; background: linear-gradient(135deg, var(--teal), var(--teal-deep)); border-color: transparent; }
-    .wf-panel { display: none; }
-    .wf-panel.active { display: block; animation: fadeUp .5s; }
-    @keyframes fadeUp { from { opacity: 0; transform: translateY(12px);} to { opacity: 1; transform: none; } }
+    .int:hover { border-color: var(--line-strong); transform: translateY(-3px); }
+    .int .ig { width: 42px; height: 42px; border-radius: 11px; display: grid; place-items: center; font-size: 20px; flex: none;
+      background: rgba(255,255,255,0.05); border: 1px solid var(--line); }
+    .int b { font-size: 14.5px; display: block; }
+    .int span { font-size: 12.5px; color: var(--muted-2); }
 
-    /* FleetView spotlight */
-    .spotlight {
-      border-radius: var(--radius-lg); padding: 4px;
-      background: linear-gradient(130deg, rgba(56,189,248,0.5), rgba(167,139,250,0.35), rgba(45,212,191,0.4));
-    }
-    .spotlight-inner {
-      border-radius: 23px; padding: 34px; background: linear-gradient(160deg, #0a1120, #0b1424);
-    }
-    .fv-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 34px; align-items: center; }
-    .tg-grid { display: grid; grid-template-columns: 1fr 0.85fr; gap: 36px; align-items: start; }
-    @media (max-width: 860px) { .fv-grid, .tg-grid { grid-template-columns: 1fr; } }
-    .fv-views { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
-    .fv-view { font-size: 12.5px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,0.03); }
-
-    /* Feature inventory table */
-    .table-scroll { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--line); }
-    table { width: 100%; border-collapse: collapse; min-width: 720px; font-size: 13.5px; }
-    thead th { text-align: left; padding: 14px 16px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--line); }
-    tbody td { padding: 13px 16px; border-bottom: 1px solid var(--line); color: var(--muted); vertical-align: top; }
-    tbody tr:hover td { background: rgba(255,255,255,0.02); color: var(--ink); }
-    tbody td:first-child { color: var(--ink); font-weight: 600; }
-    .chip { font-size: 11px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); color: var(--teal); background: rgba(45,212,191,0.08); white-space: nowrap; }
-
-    /* Value / closing */
-    .value-card { padding: 24px; }
-    .value-card .k { font-size: 15px; font-weight: 700; margin-bottom: 6px; display: flex; gap: 9px; align-items: center; }
+    /* Closing */
     .closing {
-      text-align: center; border-radius: var(--radius-lg); padding: 64px 28px; position: relative; overflow: hidden;
+      text-align: center; border-radius: var(--radius-lg); padding: 62px 28px; position: relative; overflow: hidden;
       background: linear-gradient(150deg, rgba(45,212,191,0.12), rgba(245,158,11,0.08));
       border: 1px solid var(--line-strong);
     }
-    .closing h2 { font-size: clamp(26px, 4vw, 44px); max-width: 820px; margin: 0 auto 16px; }
+    .closing h2 { font-size: clamp(26px, 4vw, 42px); max-width: 820px; margin: 0 auto 16px; }
     .closing .lead { margin: 0 auto; }
 
     footer { padding: 40px 0 60px; border-top: 1px solid var(--line); color: var(--muted-2); font-size: 13px; }
     .foot-inner { display: flex; flex-wrap: wrap; gap: 14px; justify-content: space-between; align-items: center; }
-    .disclaimer { font-size: 12px; color: var(--muted-2); max-width: 720px; margin-top: 30px; padding: 14px 16px; border-left: 3px solid var(--amber-deep); background: rgba(245,158,11,0.05); border-radius: 0 10px 10px 0; }
+    .demo-note { font-size: 12px; color: var(--muted-2); text-align: center; margin-top: 20px; }
 
-    .counters-note { font-size: 12px; color: var(--muted-2); text-align: center; margin-top: 14px; }
+    /* ─────────── Presentation Mode ─────────── */
+    #pm-ui { display: none; }
+    body.presenting { overflow-y: scroll; scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+    body.presenting header.nav { display: none; }
+    body.presenting #progress { display: none; }
+    body.presenting section {
+      min-height: 100vh; display: flex; flex-direction: column; justify-content: center;
+      scroll-snap-align: start; padding: 84px 0 72px;
+    }
+    body.presenting footer { scroll-snap-align: start; }
+    body.presenting .reveal { opacity: 1 !important; transform: none !important; }
+    body.presenting #pm-ui { display: block; }
+    /* Presentation control bar */
+    #pm-bar {
+      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 70;
+      display: flex; align-items: center; gap: 12px; padding: 9px 14px; border-radius: 999px;
+      background: rgba(10,16,30,0.92); border: 1px solid var(--line-strong); box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+    #pm-bar button {
+      width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line-strong); cursor: pointer;
+      background: rgba(255,255,255,0.05); color: var(--ink); font-size: 15px; display: grid; place-items: center;
+    }
+    #pm-bar button:hover { border-color: var(--teal); color: var(--teal); }
+    #pm-count { font-size: 13px; font-weight: 700; color: var(--muted); min-width: 52px; text-align: center; }
+    #pm-exit { font-size: 12px; font-weight: 700; color: var(--muted); cursor: pointer; padding-left: 6px; border-left: 1px solid var(--line); }
+    #pm-exit:hover { color: var(--rose); }
+    #pm-dots { position: fixed; right: 20px; top: 50%; transform: translateY(-50%); z-index: 70; display: flex; flex-direction: column; gap: 10px; }
+    #pm-dots i { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.22); transition: background .2s, transform .2s; cursor: pointer; }
+    #pm-dots i.active { background: var(--teal); transform: scale(1.4); }
+    @media (max-width: 620px) { #pm-dots { display: none; } }
   </style>
 </head>
 <body>
@@ -379,618 +443,463 @@
     <div class="wrap nav-inner">
       <div class="brand">
         <span class="logo">🚛</span>
-        <span>Wenze Ops<small>Fleet &amp; Driver Platform</small></span>
+        <span>Fleet Ops<small>Trucking Operations Platform</small></span>
       </div>
       <nav class="nav-links">
-        <a href="#purpose">Purpose</a>
-        <a href="#architecture">Architecture</a>
-        <a href="#admin">Admin</a>
-        <a href="#fleetview">FleetView</a>
+        <a href="#overview">Overview</a>
+        <a href="#demos">Product Demos</a>
+        <a href="#day">A Day in the Operation</a>
+        <a href="#benefits">Owner Benefits</a>
         <a href="#integrations">Integrations</a>
-        <a href="#workflows">Workflows</a>
       </nav>
-      <a class="nav-cta" href="#closing">The Big Picture</a>
+      <div class="nav-actions">
+        <button class="present-btn" id="startPresent" type="button">▶ Presentation Mode</button>
+        <a class="nav-cta" href="#closing">Book a demo</a>
+      </div>
     </div>
   </header>
 
-  <!-- ─── HERO ─── -->
-  <section class="hero">
+  <!-- ─── 1. HERO ─── -->
+  <section class="hero" id="hero">
     <div class="wrap hero-grid">
       <div class="reveal in">
-        <span class="eyebrow">Fleet Operations Command Center</span>
-        <h1>Trucking Operations &amp; <span class="grad">Driver Communication</span> Platform</h1>
-        <p class="lead">A unified system for driver communication, dispatch visibility, fleet monitoring, recruiting workflows, automation and operational control — connecting drivers on the road with dispatch, safety, HR and recruiting back-office in one place.</p>
+        <span class="eyebrow">One connected operations platform</span>
+        <h1>Run your trucking operation from <span class="grad">one connected platform</span>.</h1>
+        <p class="lead">See trucks, trailers, loads, driver communication, safety activity, recruiting performance and automated workflows in one place — instead of scattered across a dozen tools.</p>
         <div class="hero-badges">
-          <span class="hbadge"><span class="dot"></span>Telegram driver comms</span>
-          <span class="hbadge"><span class="dot"></span>Admin operations dashboard</span>
-          <span class="hbadge"><span class="dot"></span>FleetView monitoring</span>
-          <span class="hbadge"><span class="dot"></span>Dispatch &amp; ETA automation</span>
-          <span class="hbadge"><span class="dot"></span>Live GPS locations</span>
-          <span class="hbadge"><span class="dot"></span>Recruiting &amp; leads</span>
-          <span class="hbadge"><span class="dot"></span>Pay, bonuses &amp; home time</span>
+          <span class="hbadge"><span class="dot"></span>Live fleet visibility</span>
+          <span class="hbadge"><span class="dot"></span>Driver communication</span>
+          <span class="hbadge"><span class="dot"></span>Trailer accountability</span>
+          <span class="hbadge"><span class="dot"></span>Dispatch automation</span>
+          <span class="hbadge"><span class="dot"></span>Recruiting performance</span>
+          <span class="hbadge"><span class="dot"></span>Management oversight</span>
         </div>
         <div class="btn-row">
-          <a class="btn primary" href="#architecture">Explore the platform ↓</a>
-          <a class="btn ghost" href="#fleetview">See FleetView</a>
+          <a class="btn primary" href="#demos">See how it works ↓</a>
+          <a class="btn ghost" href="#overview">Explore the platform</a>
         </div>
-        <div class="routeline"></div>
       </div>
 
       <div class="reveal in d2">
         <div class="console">
           <div class="console-top">
             <i style="background:#fb7185"></i><i style="background:#f59e0b"></i><i style="background:#34d399"></i>
-            <span class="l">live-operations · command center</span>
+            <span class="l">operations command center · demo view</span>
           </div>
-          <div class="radar">
-            <svg viewBox="0 0 400 210" preserveAspectRatio="none">
-              <circle cx="200" cy="115" r="40" fill="none" stroke="rgba(148,163,184,0.18)"/>
-              <circle cx="200" cy="115" r="75" fill="none" stroke="rgba(148,163,184,0.14)"/>
-              <circle cx="200" cy="115" r="105" fill="none" stroke="rgba(148,163,184,0.10)"/>
-              <path d="M20 60 Q140 20 220 90 T392 70" fill="none" stroke="rgba(45,212,191,0.5)" stroke-width="2" stroke-dasharray="5 6"/>
-              <path d="M15 170 Q120 140 210 160 T388 150" fill="none" stroke="rgba(245,158,11,0.45)" stroke-width="2" stroke-dasharray="5 6"/>
+          <div class="mapbox">
+            <svg viewBox="0 0 400 230" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M20 150 Q140 90 220 120 T392 70" fill="none" stroke="rgba(45,212,191,0.45)" stroke-width="2" stroke-dasharray="5 6"/>
+              <path d="M15 190 Q120 165 210 175 T388 160" fill="none" stroke="rgba(245,158,11,0.4)" stroke-width="2" stroke-dasharray="5 6"/>
             </svg>
-            <div class="sweep"></div>
-            <div class="blip" style="left:26%; top:34%"></div>
-            <div class="blip" style="left:62%; top:44%; animation-delay:.6s"></div>
-            <div class="blip" style="left:44%; top:70%; animation-delay:1.1s"></div>
-            <div class="blip" style="left:78%; top:64%; animation-delay:1.6s"></div>
+            <div class="marker m-truck m-move" style="left:24%; top:62%"></div>
+            <div class="marker m-truck" style="left:70%; top:38%"></div>
+            <div class="marker m-trailer" style="left:44%; top:70%">L</div>
+            <div class="marker m-trailer dropped" style="left:60%; top:52%">E</div>
+            <div class="map-chip" style="right:12px; top:12px;">Load LD&#8209;5821 <span class="sub">· Dallas → Memphis · ETA 3:30 PM</span></div>
           </div>
           <div class="console-stats">
-            <div class="cstat"><b>ETA</b><span>Datatruck × Samsara</span></div>
-            <div class="cstat"><b>Live</b><span>GPS telemetry</span></div>
-            <div class="cstat"><b>Auto</b><span>15+ background jobs</span></div>
+            <div class="cstat"><b>Trucks</b><span>live on the map</span></div>
+            <div class="cstat"><b>Trailers</b><span>loaded / empty</span></div>
+            <div class="cstat"><b>Exceptions</b><span>surfaced early</span></div>
           </div>
-          <div class="float-card fc1"><span class="em">💬</span> New driver message · auto-translated</div>
-          <div class="float-card fc2"><span class="em">📍</span> Load on-time · ETA synced</div>
+          <div class="float-card fc1"><span class="em">💬</span> Driver message · auto&#8209;translated</div>
+          <div class="float-card fc2"><span class="em">⚠️</span> Delay flagged before the appointment</div>
+        </div>
+      </div>
+    </div>
+    <p class="demo-note wrap">All names, numbers and locations on this page are fictional demo examples — not live operational data.</p>
+  </section>
+
+  <!-- ─── 2. THE OPERATIONAL PROBLEM ─── -->
+  <section id="problem">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <span class="eyebrow amber">The operational problem</span>
+        <h2 class="h-sec">Your operation runs across too many disconnected places</h2>
+        <p class="lead">Telegram chats, the TMS, ELD/GPS, recruiting tools, phone systems and spreadsheets each hold one piece of the picture. Staff spend the day checking systems and re-typing information between them.</p>
+      </div>
+      <div class="ba-grid">
+        <div class="ba before reveal">
+          <h3>🕳️ Before — scattered</h3>
+          <ul>
+            <li>Information spread across many separate tools</li>
+            <li>Staff manually checking systems all day</li>
+            <li>Delayed, one-off driver communication</li>
+            <li>Unclear who has which trailer, and where</li>
+            <li>Repetitive administrative tasks by hand</li>
+            <li>Weak visibility for management</li>
+          </ul>
+        </div>
+        <div class="ba after reveal d1">
+          <h3>🎯 After — connected</h3>
+          <ul>
+            <li>One connected operational view</li>
+            <li>Updates surface automatically</li>
+            <li>Clear ownership, status and history</li>
+            <li>Trailer responsibility is always traceable</li>
+            <li>Routine work runs as automated workflows</li>
+            <li>Earlier intervention, fewer missed details</li>
+          </ul>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ─── STAT BAND ─── -->
-  <section style="padding:40px 0;">
-    <div class="wrap">
-      <div class="statband card" style="padding:8px;">
-        <div class="stat reveal"><div class="num" data-count="3">0</div><div class="lbl">Front-end surfaces</div><div class="sub">Admin · FleetView · Telegram</div></div>
-        <div class="stat reveal d1"><div class="num" data-count="9">0</div><div class="lbl">External integrations</div><div class="sub">TMS · ELD · CRM · AI · more</div></div>
-        <div class="stat reveal d2"><div class="num" data-count="15" data-suffix="+">0</div><div class="lbl">Automated services</div><div class="sub">Cron &amp; background workers</div></div>
-        <div class="stat reveal d3"><div class="num" data-count="3">0</div><div class="lbl">Driver languages</div><div class="sub">English · Russian · Uzbek</div></div>
-      </div>
-      <p class="counters-note">Figures describe platform capabilities and confirmed modules in the codebase — not live operational metrics.</p>
-    </div>
-  </section>
-
-  <!-- ─── PURPOSE ─── -->
-  <section id="purpose">
+  <!-- ─── 3. PLATFORM OVERVIEW ─── -->
+  <section id="overview">
     <div class="wrap">
       <div class="section-head reveal">
-        <span class="eyebrow">Why it exists</span>
-        <h2 class="h-sec">One control tower for a trucking company</h2>
-        <p class="lead">The platform replaces scattered phone calls, spreadsheets and disconnected tools with a single hub. Drivers stay in Telegram; dispatch, safety, HR and recruiting work from the web — and the system keeps both sides in sync automatically.</p>
+        <span class="eyebrow">Platform overview</span>
+        <h2 class="h-sec">One connected platform for dispatch, drivers, trailers, safety, recruiting and management</h2>
+        <p class="lead">Drivers keep using Telegram in their own language. Your office teams work from one web platform. The system keeps both sides in sync and does the repetitive work automatically.</p>
       </div>
       <div class="grid g3">
         <div class="card reveal">
-          <div class="ic">📡</div>
-          <h3>Centralize communication</h3>
-          <p>Driver feedback, home-time requests, announcements and dispatch questions flow through one bot instead of dozens of private chats.</p>
-        </div>
-        <div class="card reveal d1">
           <div class="ic">🗺️</div>
           <h3>See the whole fleet</h3>
-          <p>Live truck locations from the ELD are merged with load and route data from the TMS so operations can see where a truck is versus where it should be.</p>
+          <p>Trucks, trailers, loads and exceptions on one operational map — plan versus reality at a glance.</p>
+        </div>
+        <div class="card reveal d1">
+          <div class="ic">💬</div>
+          <h3>Connect drivers &amp; office</h3>
+          <p>Two-way driver messaging with automatic translation, keeping the road and the back office together.</p>
+        </div>
+        <div class="card reveal d2">
+          <div class="ic">🛻</div>
+          <h3>Track every trailer</h3>
+          <p>Know who has each trailer, whether it is loaded or dropped, and what condition was reported.</p>
+        </div>
+        <div class="card reveal">
+          <div class="ic">🦺</div>
+          <h3>Act on safety faster</h3>
+          <p>Safety events reach the right people quickly, with the video and details attached.</p>
+        </div>
+        <div class="card reveal d1">
+          <div class="ic">📞</div>
+          <h3>Measure recruiting</h3>
+          <p>See real recruiter call time and follow-up so leads are answered and effort is visible.</p>
         </div>
         <div class="card reveal d2">
           <div class="ic">⚙️</div>
-          <h3>Automate the repetitive</h3>
-          <p>ETA updates, lead follow-ups, mileage bonuses, birthday wishes and document delivery run on their own in the background.</p>
-        </div>
-        <div class="card reveal">
-          <div class="ic">🧲</div>
-          <h3>Convert recruiting leads</h3>
-          <p>Meta and Indeed leads are captured, auto-messaged, pushed to CRM and measured against recruiter call activity.</p>
-        </div>
-        <div class="card reveal d1">
-          <div class="ic">💵</div>
-          <h3>Protect driver retention &amp; pay</h3>
-          <p>Raises, mileage bonuses, home time and fuel-fraud checks are tracked with clear approval trails.</p>
-        </div>
-        <div class="card reveal d2">
-          <div class="ic">🌐</div>
-          <h3>Break the language barrier</h3>
-          <p>Non-English driver messages are auto-translated so English-speaking dispatchers understand every message instantly.</p>
+          <h3>Automate the routine</h3>
+          <p>Reminders, approvals, updates and reports run on their own so staff focus on exceptions.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ─── ROLES ─── -->
-  <section id="roles" style="padding-top:40px;">
+  <!-- ─── 4. INTERACTIVE PRODUCT DEMONSTRATIONS ─── -->
+  <section id="demos">
     <div class="wrap">
       <div class="section-head reveal">
-        <span class="eyebrow amber">Who uses it</span>
-        <h2 class="h-sec">Built for every seat in the operation</h2>
-        <p class="lead">Role-based access means each team sees exactly the tools they need — nothing more.</p>
-      </div>
-      <div class="grid g3">
-        <div class="card role reveal">
-          <div class="ic">🛡️</div><h3>Admins / Management</h3>
-          <ul><li>Full settings &amp; integrations control</li><li>Broadcasts &amp; scheduled messages</li><li>Recruiter KPIs &amp; high-level oversight</li><li>Bot group access management</li></ul>
-        </div>
-        <div class="card role reveal d1">
-          <div class="ic">🎧</div><h3>Dispatchers / Operations</h3>
-          <ul><li>FleetView dispatch board &amp; map</li><li>Live locations &amp; ETA monitoring</li><li>Load &amp; stop visibility from the TMS</li><li>Home-time request handling</li></ul>
-        </div>
-        <div class="card role reveal d2">
-          <div class="ic">📞</div><h3>Recruiters</h3>
-          <ul><li>Incoming Meta / Indeed lead intake</li><li>Auto-reply &amp; CRM hand-off</li><li>Call-log KPIs &amp; leaderboard</li><li>SMS follow-up mirroring</li></ul>
-        </div>
-        <div class="card role reveal">
-          <div class="ic">🦺</div><h3>Safety / HR</h3>
-          <ul><li>Anonymous driver feedback</li><li>Home-time approvals</li><li>Fuel-stop fraud alerts</li><li>Birthday &amp; document workflows</li></ul>
-        </div>
-        <div class="card role reveal d1">
-          <div class="ic">📊</div><h3>Managers</h3>
-          <ul><li>Company &amp; driver report summaries</li><li>Raise approval chains</li><li>AI insight &amp; sentiment reporting</li><li>Public KPI floor dashboards</li></ul>
-        </div>
-        <div class="card role reveal d2">
-          <div class="ic">🚚</div><h3>Drivers &amp; Owner-Operators</h3>
-          <ul><li>Everything through Telegram</li><li>Request home time &amp; check loads</li><li>Submit bonuses &amp; feedback</li><li>Receive documents &amp; updates</li></ul>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─── ARCHITECTURE ─── -->
-  <section id="architecture">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="eyebrow">System design</span>
-        <h2 class="h-sec">A single backend, three surfaces, many integrations</h2>
-        <p class="lead">A Node.js / Express core drives two React single-page apps and two Telegram bots, backed by PostgreSQL and a fleet of background workers. External systems connect through dedicated service adapters.</p>
+        <span class="eyebrow amber">See it in action</span>
+        <h2 class="h-sec">Product demonstrations</h2>
+        <p class="lead">Pick an area to see how it actually works, what happens, and why it matters to the owner. These are sanitized demo views modeled on the real platform.</p>
       </div>
 
-      <div class="arch">
-        <div class="arch-lane reveal">
-          <span class="lane-label">Presentation layer</span>
-          <div class="nodes">
-            <div class="node teal"><div class="nt">🖥️ Admin Panel</div><div class="nd">React + Vite SPA · served at <b>/admin</b> · JWT auth</div></div>
-            <div class="node teal"><div class="nt">🛰️ FleetView</div><div class="nd">Separate React SPA · mounted at <b>/update</b></div></div>
-            <div class="node teal"><div class="nt">🤖 Telegram Bots</div><div class="nd">Wenze Feedback + WenzeLeadBots (telegraf)</div></div>
-            <div class="node teal"><div class="nt">🌐 Public pages</div><div class="nd">/recruiters · /raise · this presentation</div></div>
-          </div>
-        </div>
-
-        <div class="flowdown reveal">▼</div>
-
-        <div class="arch-lane reveal">
-          <span class="lane-label">Application core — Node.js / Express (server/api.js)</span>
-          <div class="nodes">
-            <div class="node"><div class="nt">🔀 REST API routes</div><div class="nd">dispatch · leads · home-time · raise · fuel · recruiters · bot-messages · settings</div></div>
-            <div class="node"><div class="nt">🔐 Auth &amp; permissions</div><div class="nd">bcrypt + JWT (HS256) · group access control · rate limiting</div></div>
-            <div class="node"><div class="nt">🪝 Webhooks &amp; proxies</div><div class="nd">Facebook lead intake · RingCentral · leads-bot proxy</div></div>
-            <div class="node"><div class="nt">🧠 Service layer</div><div class="nd">80+ service modules — the business logic &amp; API clients</div></div>
-          </div>
-        </div>
-
-        <div class="flowdown reveal">▼</div>
-
-        <div class="arch-lane reveal">
-          <span class="lane-label">Data, automation &amp; companion services</span>
-          <div class="nodes">
-            <div class="node amber"><div class="nt">🗄️ PostgreSQL</div><div class="nd">groups · driver profiles · leads · home-time · raises · bonuses · schedules</div></div>
-            <div class="node amber"><div class="nt">⏱️ Scheduler &amp; workers</div><div class="nd">node-cron + 15+ background services</div></div>
-            <div class="node amber"><div class="nt">🐍 Leads-Bot (Python)</div><div class="nd">FastAPI child — FB / RingCentral webhook verification</div></div>
-            <div class="node amber"><div class="nt">🛰️ Samsara service</div><div class="nd">Separate Render service · shared DB &amp; bot tokens</div></div>
-          </div>
-        </div>
+      <div class="demo-tabs reveal" role="tablist">
+        <button class="demo-tab active" data-demo="fleet" type="button">🗺️ Dispatch &amp; Fleet</button>
+        <button class="demo-tab" data-demo="comms" type="button">💬 Driver Communication</button>
+        <button class="demo-tab" data-demo="trailer" type="button">🛻 Trailer Tracking</button>
+        <button class="demo-tab" data-demo="safety" type="button">🦺 Safety &amp; Monitoring</button>
+        <button class="demo-tab" data-demo="recruit" type="button">📞 Recruiting &amp; KPIs</button>
+        <button class="demo-tab" data-demo="auto" type="button">⚙️ Workflow Automation</button>
       </div>
 
-      <div class="disclaimer reveal">
-        Note: the Samsara safety-event poller and the Python leads-bot are companion services that cooperate with the core through the shared database and Telegram tokens — they run as their own processes, as documented in the repository.
-      </div>
-    </div>
-  </section>
-
-  <!-- ─── ADMIN PLATFORM ─── -->
-  <section id="admin">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="eyebrow amber">Back-office</span>
-        <h2 class="h-sec">The Main Admin Platform</h2>
-        <p class="lead">A React dashboard where operations, safety, HR and recruiting run day-to-day work. Every page below maps to a real module in the codebase.</p>
-      </div>
-      <div class="grid g4">
-        <div class="card reveal"><div class="ic">👥</div><h3>Driver Groups</h3><p>Sync &amp; manage driver Telegram groups and profiles, including AI-assisted group directory sync.</p></div>
-        <div class="card reveal d1"><div class="ic">❓</div><h3>Questions / Surveys</h3><p>Author multilingual questions the bot sends to driver groups to collect structured feedback.</p></div>
-        <div class="card reveal d2"><div class="ic">🗣️</div><h3>Bot Messages &amp; Feedback</h3><p>Live driver messages, AI-annotated and auto-translated, with anonymous feedback surfaced to HR.</p></div>
-        <div class="card reveal d3"><div class="ic">📢</div><h3>Broadcasts</h3><p>Mass messages with media &amp; multilingual templates, targeted to driver, employee or company groups.</p></div>
-        <div class="card reveal"><div class="ic">📅</div><h3>Scheduled Messages</h3><p>One-time or weekly recurring sends in Central Time, run by the scheduler.</p></div>
-        <div class="card reveal d1"><div class="ic">🎯</div><h3>Dispatch Center</h3><p>Load/ETA snapshots and dispatch context, pushing updates into driver groups.</p></div>
-        <div class="card reveal d2"><div class="ic">🧲</div><h3>Facebook &amp; Customer Leads</h3><p>Incoming Meta / Indeed applicant leads with retry &amp; delivery logs.</p></div>
-        <div class="card reveal d3"><div class="ic">🏁</div><h3>Mileage Bonuses</h3><p>Compute company-driver mileage progress from the TMS and send milestone cards.</p></div>
-        <div class="card reveal"><div class="ic">📈</div><h3>Driver Raises</h3><p>75¢/mile raise requests with OTP verification and manager approval chains.</p></div>
-        <div class="card reveal d1"><div class="ic">🏠</div><h3>Home Time</h3><p>Digital time-off requests flowing from Telegram to approval and back to the driver.</p></div>
-        <div class="card reveal d2"><div class="ic">⛽</div><h3>Fuel Monitor</h3><p>Flags fuel-card swipes that don't match the truck's GPS location — fraud prevention.</p></div>
-        <div class="card reveal d3"><div class="ic">📍</div><h3>Live Locations</h3><p>Real-time truck positions resolved from the ELD, with stale-location detection.</p></div>
-        <div class="card reveal"><div class="ic">📊</div><h3>Recruiter KPIs</h3><p>Call-volume metrics per recruiter with a public gamified daily leaderboard.</p></div>
-        <div class="card reveal d1"><div class="ic">🎂</div><h3>Company Birthdays</h3><p>Automated employee birthday greetings pulled from the roster.</p></div>
-        <div class="card reveal d2"><div class="ic">🔑</div><h3>Users &amp; Group Access</h3><p>Admin accounts plus per-group access control restricting who sees which tools.</p></div>
-        <div class="card reveal d3"><div class="ic">⚙️</div><h3>Settings &amp; AI Features</h3><p>Encrypted integration credentials, AI insight reports and message classification.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─── FLEETVIEW SPOTLIGHT ─── -->
-  <section id="fleetview">
-    <div class="wrap">
-      <div class="spotlight reveal">
-        <div class="spotlight-inner">
-          <div class="fv-grid">
-            <div>
-              <span class="eyebrow">Product spotlight</span>
-              <h2 class="h-sec" style="margin-top:14px;">FleetView — the dispatch operations radar</h2>
-              <p class="lead" style="margin-bottom:16px;">A dedicated, self-contained module for dispatchers to monitor active loads, equipment and drivers without the clutter of HR or recruiting tools. It's a separate React app mounted at <b>/update</b> with its own <b>/api/v1</b> API — isolated by design so a FleetView issue can never take down the main app.</p>
-              <p class="lead" style="font-size:15px;">Its Datatruck adapter shapes TMS data specifically for the dispatch UI, and it draws on the same driver, load, ETA and live-location foundation as the rest of the platform — merged into one operational picture.</p>
-              <div class="fv-views">
-                <span class="fv-view">📊 Dashboard</span>
-                <span class="fv-view">🎯 Dispatch Board</span>
-                <span class="fv-view">🗺️ Dispatch Map</span>
-                <span class="fv-view">📦 Loads</span>
-                <span class="fv-view">🏢 Brokers &amp; Companies</span>
-                <span class="fv-view">🚚 Drivers</span>
-                <span class="fv-view">🛻 Equipment</span>
-                <span class="fv-view">⛽ Fuel &amp; Tolls</span>
-                <span class="fv-view">💰 Rate Savings</span>
-                <span class="fv-view">📈 Statistics</span>
-                <span class="fv-view">✅ Tasks</span>
-                <span class="fv-view">✉️ Emails</span>
+      <!-- A. Dispatch & Fleet -->
+      <div class="demo-panel active" data-panel="fleet">
+        <div class="demo-grid">
+          <div class="mock reveal">
+            <div class="mock-bar"><i style="background:#38bdf8"></i><i style="background:#a78bfa"></i><i style="background:#2dd4bf"></i><span class="t">Dispatch Map</span></div>
+            <div class="mock-body">
+              <div class="chips">
+                <span class="chip on">All assets</span>
+                <span class="chip">Trucks only</span>
+                <span class="chip">Trailers only</span>
+                <span class="chip on violet">Loaded</span>
+                <span class="chip on slate">Dropped / Empty</span>
+                <span class="chip">With driver</span>
               </div>
-            </div>
-            <div>
-              <div class="console" style="box-shadow:none;">
-                <div class="console-top">
-                  <i style="background:#38bdf8"></i><i style="background:#a78bfa"></i><i style="background:#2dd4bf"></i>
-                  <span class="l">fleetview · /update</span>
-                </div>
-                <div class="grid" style="gap:10px;">
-                  <div class="cstat" style="display:flex; justify-content:space-between; align-items:center;"><span>Active loads</span><b style="font-size:16px;">Datatruck sync</b></div>
-                  <div class="cstat" style="display:flex; justify-content:space-between; align-items:center;"><span>Driver ETAs</span><b style="font-size:16px; color:var(--teal);">on route</b></div>
-                  <div class="cstat" style="display:flex; justify-content:space-between; align-items:center;"><span>Live positions</span><b style="font-size:16px; color:var(--amber);">Samsara GPS</b></div>
-                  <div class="radar" style="height:150px;">
-                    <div class="sweep"></div>
-                    <div class="blip" style="left:30%; top:40%"></div>
-                    <div class="blip" style="left:66%; top:56%; animation-delay:.8s"></div>
-                    <div class="blip" style="left:48%; top:30%; animation-delay:1.3s"></div>
-                  </div>
-                </div>
+              <div class="mapbox" style="height:250px;">
+                <svg viewBox="0 0 400 250" preserveAspectRatio="none" aria-hidden="true">
+                  <path d="M30 180 Q150 120 230 140 T388 90" fill="none" stroke="rgba(45,212,191,0.4)" stroke-width="2" stroke-dasharray="5 6"/>
+                </svg>
+                <div class="marker m-truck m-move" style="left:24%; top:62%"></div>
+                <div class="marker m-truck late" style="left:66%; top:44%"></div>
+                <div class="marker m-trailer" style="left:40%; top:72%">L</div>
+                <div class="marker m-trailer dropped" style="left:56%; top:34%">E</div>
+                <div class="marker m-trailer" style="left:80%; top:60%">L</div>
+                <div class="map-chip" style="left:10px; bottom:10px;">Truck 214 · Michael R. <span class="sub">· ETA 3:30 PM · on time</span></div>
+                <div class="map-chip" style="right:10px; top:10px; color:var(--amber);">⚠ Truck 388 <span class="sub">· running 40 min late</span></div>
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─── TELEGRAM BOT ─── -->
-  <section id="telegram">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="eyebrow amber">Driver-facing</span>
-        <h2 class="h-sec">Telegram bot &amp; driver communication</h2>
-        <p class="lead">Drivers never leave the app they already use. Guided flows, multilingual translation and two-way messaging keep the road and the office connected.</p>
-      </div>
-
-      <div class="tg-grid">
-        <div class="grid g2">
-          <div class="card reveal"><div class="ic">🕵️</div><h3>Anonymous Feedback</h3><p>Drivers submit complaints or suggestions privately, surfaced to HR without revealing identity.</p></div>
-          <div class="card reveal d1"><div class="ic">🏠</div><h3>Home-Time Requests</h3><p>A guided date-picking flow saves requests straight to the dispatch queue.</p></div>
-          <div class="card reveal d2"><div class="ic">🏁</div><h3>Mileage Bonus Submissions</h3><p>Drivers submit proof; accounting decides cards inline with an audit trail.</p></div>
-          <div class="card reveal d3"><div class="ic">🔎</div><h3>Dispatch / Load Lookup</h3><p><code>/status</code>, <code>/load</code>, <code>/location</code> return live load context on demand.</p></div>
-          <div class="card reveal"><div class="ic">📍</div><h3>Location Check-ins</h3><p>Drivers share live location pins used to enrich ETA and dispatch views.</p></div>
-          <div class="card reveal d1"><div class="ic">🌐</div><h3>Multilingual Support</h3><p>English, Russian and Uzbek with AI auto-translation both directions.</p></div>
-          <div class="card reveal d2"><div class="ic">📢</div><h3>Broadcasts &amp; Scheduling</h3><p>Verbatim announcements and recurring safety messages to targeted groups.</p></div>
-          <div class="card reveal d3"><div class="ic">🤝</div><h3>Datatruck Peer Bot</h3><p>Reacts to and playfully banters with the TMS bot inside active driver groups.</p></div>
-        </div>
-
-        <div class="reveal d1">
-          <div class="phone">
-            <div class="notch"></div>
-            <div class="chat" id="chat">
-              <div class="bubble them" data-b>Привет! Когда я смогу взять home time?<small>Driver · Russian</small></div>
-              <div class="bubble them" data-b>🌐 "Hi! When can I take home time?"<small>Auto-translated for dispatch</small></div>
-              <div class="bubble me" data-b>Home time approved for Fri–Mon. Confirmation sent. ✅<small>Dispatcher</small></div>
-              <div class="bubble them" data-b>/status<small>Driver command</small></div>
-              <div class="bubble me" data-b>Load #4821 · PU Dallas → DEL Memphis · ETA on time 🚚<small>Bot · Datatruck × Samsara</small></div>
-              <div class="bubble them" data-b>🏁 Submitting mileage proof…<small>Owner-operator</small></div>
-            </div>
+          <div class="demo-copy reveal d1">
+            <h3>Dispatch &amp; fleet visibility</h3>
+            <p>Dispatch sees trucks, trailers, loads and exceptions in one operational view. Filter to trucks only or trailers only, and see loaded, empty, dropped and with-driver trailers at a glance.</p>
+            <p>Delays are highlighted automatically — a late truck is flagged before the appointment is missed.</p>
+            <span class="benefit-line">💡 Faster decisions and fewer surprises</span>
           </div>
         </div>
       </div>
+
+      <!-- B. Driver Communication -->
+      <div class="demo-panel" data-panel="comms">
+        <div class="demo-grid">
+          <div class="reveal">
+            <div class="phone">
+              <div class="notch"></div>
+              <div class="chat" data-chat>
+                <div class="bubble them" data-b>Привет! Когда я смогу взять home time?<small>Driver · Russian</small></div>
+                <div class="bubble them" data-b><span class="xl">🌐 "Hi! When can I take home time?"</span><small>Auto-translated for the office</small></div>
+                <div class="bubble me" data-b>Home time approved for Fri–Mon. Confirmation sent ✅<small>Office · from the dashboard</small></div>
+                <div class="bubble them" data-b>/status<small>Driver command</small></div>
+                <div class="bubble me" data-b>Load LD-5821 · Dallas → Memphis · ETA 3:30 PM 🚚<small>Automatic reply</small></div>
+                <div class="bubble me" data-b>📢 Reminder: submit your paperwork by Friday.<small>Scheduled message to the group</small></div>
+              </div>
+            </div>
+          </div>
+          <div class="demo-copy reveal d1">
+            <h3>Driver communication</h3>
+            <p>Drivers keep using Telegram in English, Russian or Uzbek while the office manages every conversation from one dashboard. Messages are auto-translated both directions.</p>
+            <p>Home-time requests, status lookups, broadcasts and scheduled reminders all flow through the same channel drivers already use.</p>
+            <span class="benefit-line">💡 Faster communication, no new app for drivers</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- C. Trailer Tracking (Beta) -->
+      <div class="demo-panel" data-panel="trailer">
+        <div class="demo-grid">
+          <div class="mock reveal">
+            <div class="mock-bar"><i style="background:#38bdf8"></i><i style="background:#a78bfa"></i><i style="background:#2dd4bf"></i><span class="t">Trailer Tracking</span></div>
+            <div class="mock-body">
+              <div class="row">
+                <div class="lft"><span style="font-size:18px;">🛻</span><div><div class="unit">TRL-1084</div><div class="meta">Driver: Michael R. · Truck 214</div></div></div>
+                <span class="pill teal" data-trailer-status>With driver · Loaded</span>
+              </div>
+              <div class="row">
+                <div class="lft"><span style="font-size:18px;">🛻</span><div><div class="unit">TRL-2260</div><div class="meta">Last seen: Memphis, TN yard</div></div></div>
+                <span class="pill slate">Dropped · Empty</span>
+              </div>
+              <div style="margin:14px 0 8px; font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted-2);">TRL-1084 · event history</div>
+              <div class="tl">
+                <div class="ev"><h5>Condition reported — good</h5><p>Photo &amp; note reviewed and approved · today 2:10 PM</p></div>
+                <div class="ev"><h5>Status changed → Dropped · Empty</h5><p>Verified before the status was updated · yesterday</p></div>
+                <div class="ev"><h5>Picked up by Michael R.</h5><p>Trailer assigned to Truck 214 · Mon</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="demo-copy reveal d1">
+            <h3>Trailer tracking <span class="beta-badge">Beta</span></h3>
+            <p>Know where every trailer was left, who had it, and what condition was reported. Each trailer shows its current driver, loaded or dropped state, latest location and a full event history.</p>
+            <p>Status changes and condition reports go through a review and approval step, so the record stays trustworthy.</p>
+            <span class="benefit-line">💡 Clear trailer responsibility and history</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- D. Safety & Monitoring -->
+      <div class="demo-panel" data-panel="safety">
+        <div class="demo-grid">
+          <div class="mock reveal">
+            <div class="mock-bar"><i style="background:#fb7185"></i><i style="background:#f59e0b"></i><i style="background:#34d399"></i><span class="t">Safety &amp; Monitoring</span></div>
+            <div class="mock-body">
+              <div class="row" style="border-color:rgba(245,158,11,0.35); background:rgba(245,158,11,0.06);">
+                <div class="lft"><span style="font-size:18px;">🎥</span><div><div class="unit">Speeding event · Truck 214</div><div class="meta">Dashcam video delivered to the driver group</div></div></div>
+                <span class="pill amber">Review</span>
+              </div>
+              <div class="row" style="border-color:rgba(251,113,133,0.35); background:rgba(251,113,133,0.06);">
+                <div class="lft"><span style="font-size:18px;">⛽</span><div><div class="unit">Fuel stop check · Truck 388</div><div class="meta">Fuel activity far from the truck's GPS location</div></div></div>
+                <span class="pill" style="color:#fff; background:var(--rose);">Flagged</span>
+              </div>
+              <div style="margin:14px 0 8px; font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted-2);">Recent safety activity</div>
+              <div class="tl">
+                <div class="ev"><h5>Speeding event reviewed</h5><p>Video shared with driver &amp; safety · resolved</p></div>
+                <div class="ev"><h5>Fuel-location mismatch cleared</h5><p>Confirmed legitimate after check · logged</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="demo-copy reveal d1">
+            <h3>Safety &amp; monitoring</h3>
+            <p>Safety events reach the right people quickly, with the evidence attached. Speeding-event dashcam video is delivered straight to the driver group so the team can follow up right away.</p>
+            <p>Fuel-stop activity is checked against the truck's GPS location, flagging swipes that don't line up.</p>
+            <span class="benefit-line">💡 Faster safety response and better accountability</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- E. Recruiting & KPIs -->
+      <div class="demo-panel" data-panel="recruit">
+        <div class="demo-grid">
+          <div class="mock reveal">
+            <div class="mock-bar"><i style="background:#38bdf8"></i><i style="background:#a78bfa"></i><i style="background:#2dd4bf"></i><span class="t">Recruiter KPIs · today</span></div>
+            <div class="mock-body">
+              <div class="ring-wrap">
+                <div class="ring" data-ring>
+                  <svg width="116" height="116"><circle class="rc" cx="58" cy="58" r="52"></circle><circle class="rp" cx="58" cy="58" r="52"></circle></svg>
+                  <div class="rl"><b>1h 54m</b><span>of 2h 30m talk</span></div>
+                </div>
+                <div style="flex:1;">
+                  <div class="bar-wrap" data-bar><div class="lbl"><span>Outbound calls</span><span>114 / 150</span></div><div class="bar"><i style="--w:76%"></i></div></div>
+                  <div class="bar-wrap" data-bar><div class="lbl"><span>Real conversations</span><span>27 / 35</span></div><div class="bar"><i style="--w:77%"></i></div></div>
+                  <p style="font-size:12px; color:var(--muted-2); margin:6px 0 0;">Main KPI: real call duration — short calls don't count toward it.</p>
+                </div>
+              </div>
+              <div style="margin:6px 0 8px; font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted-2);">Leaderboard · today</div>
+              <div class="row"><div class="lft"><span class="pill teal">1</span><span class="unit">Sarah K.</span></div><span class="meta">2h 18m · 138 calls</span></div>
+              <div class="row"><div class="lft"><span class="pill violet">2</span><span class="unit">Daniel M.</span></div><span class="meta">1h 54m · 114 calls</span></div>
+              <div class="row"><div class="lft"><span class="pill slate">3</span><span class="unit">Alex T.</span></div><span class="meta">1h 32m · 96 calls</span></div>
+            </div>
+          </div>
+          <div class="demo-copy reveal d1">
+            <h3>Recruiting &amp; KPI visibility</h3>
+            <p>Track recruiter activity and real call time. Management can see whether recruiters are actually spending enough time speaking with candidates — not just dialing.</p>
+            <p>New leads from Facebook and Indeed get an instant follow-up, and a daily leaderboard keeps the effort visible. History is viewable by date.</p>
+            <span class="benefit-line">💡 Better accountability and faster lead follow-up</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- F. Workflow Automation -->
+      <div class="demo-panel" data-panel="auto">
+        <div class="demo-grid">
+          <div class="mock reveal">
+            <div class="mock-bar"><i style="background:#38bdf8"></i><i style="background:#a78bfa"></i><i style="background:#2dd4bf"></i><span class="t">Automated workflows</span></div>
+            <div class="mock-body">
+              <div class="row"><div class="lft"><span style="font-size:17px;">🏠</span><div><div class="unit">Home-time request</div><div class="meta">Michael R. · Fri–Mon</div></div></div><span class="pill green" data-approve>Approved</span></div>
+              <div class="row"><div class="lft"><span style="font-size:17px;">📈</span><div><div class="unit">Driver raise request</div><div class="meta">Verified · awaiting manager</div></div></div><span class="pill amber">Pending</span></div>
+              <div class="row"><div class="lft"><span style="font-size:17px;">🏁</span><div><div class="unit">Mileage bonus</div><div class="meta">Milestone reached · card sent</div></div></div><span class="pill teal">Auto</span></div>
+              <div class="row"><div class="lft"><span style="font-size:17px;">📅</span><div><div class="unit">Scheduled message</div><div class="meta">Weekly safety reminder</div></div></div><span class="pill violet">Recurring</span></div>
+              <div class="row"><div class="lft"><span style="font-size:17px;">🎂</span><div><div class="unit">Birthday greeting</div><div class="meta">Sent automatically from the roster</div></div></div><span class="pill teal">Auto</span></div>
+            </div>
+          </div>
+          <div class="demo-copy reveal d1">
+            <h3>Workflow automation</h3>
+            <p>Routine work continues automatically while staff focus on exceptions. Scheduled messages, mileage-bonus milestones, home-time and raise approvals and birthday greetings run on their own — with a clear trail.</p>
+            <span class="benefit-line">💡 Less manual work and fewer forgotten tasks</span>
+          </div>
+        </div>
+      </div>
+
+      <p class="demo-note">Trailer Tracking is currently in Beta. All figures shown are illustrative demo data.</p>
     </div>
   </section>
 
-  <!-- ─── DISPATCH / ETA / LOCATIONS ─── -->
-  <section id="dispatch">
+  <!-- ─── 5. A DAY IN THE OPERATION ─── -->
+  <section id="day">
     <div class="wrap">
       <div class="section-head reveal">
-        <span class="eyebrow">Operational visibility</span>
-        <h2 class="h-sec">Dispatch, loads, ETA &amp; live locations</h2>
-        <p class="lead">The platform's operational heart merges the TMS "plan" with the ELD "reality" so dispatch always knows where a truck is versus where it should be.</p>
+        <span class="eyebrow">A day in the operation</span>
+        <h2 class="h-sec">How one load connects every department</h2>
+        <p class="lead">The same information flows from dispatch to the driver, to safety, to management — without anyone re-typing it.</p>
       </div>
-      <div class="grid g3">
-        <div class="card reveal"><div class="ic">📦</div><h3>Datatruck TMS sync</h3><p>Pulls loads, stops, brokers and driver profiles — treated as the source of truth for loads and drivers.</p></div>
-        <div class="card reveal d1"><div class="ic">🛰️</div><h3>Samsara ELD / GPS</h3><p>Fetches real-time coordinates and Hours-of-Service — the source of truth for locations.</p></div>
-        <div class="card reveal d2"><div class="ic">🧭</div><h3>ETA routing</h3><p>Calculates whether a driver will make an appointment based on current live position.</p></div>
-        <div class="card reveal"><div class="ic">🗺️</div><h3>Live map visibility</h3><p>Route data and live pins overlaid so dispatch sees plan vs. reality at a glance.</p></div>
-        <div class="card reveal d1"><div class="ic">⏳</div><h3>Stale-location detection</h3><p>Location resolver flags trucks whose telemetry has gone quiet.</p></div>
-        <div class="card reveal d2"><div class="ic">🔄</div><h3>Automatic ETA updates</h3><p>A scheduler posts fresh ETA snapshots into driver groups without manual work.</p></div>
+      <div class="day-flow">
+        <div class="day-step reveal"><div class="n">1</div><h4>Load arrives</h4><p>A new load and its stops appear from the TMS.</p></div>
+        <div class="day-step reveal d1"><div class="n">2</div><h4>Dispatch sees it</h4><p>The assigned driver and live truck location show on the map.</p></div>
+        <div class="day-step reveal d2"><div class="n">3</div><h4>Driver is updated</h4><p>The driver gets the route and details in Telegram.</p></div>
+        <div class="day-step reveal d3"><div class="n">4</div><h4>ETA is watched</h4><p>The system flags dispatch if the truck starts running late.</p></div>
+        <div class="day-step reveal"><div class="n">5</div><h4>Trailer updates</h4><p>A pickup or drop updates the trailer's status and history.</p></div>
+        <div class="day-step reveal d1"><div class="n">6</div><h4>Exceptions surface</h4><p>Safety or fuel issues are raised automatically.</p></div>
+        <div class="day-step reveal d2"><div class="n">7</div><h4>Management sees results</h4><p>Leadership reviews the outcome through dashboards.</p></div>
+        <div class="day-step reveal d3"><div class="n">8</div><h4>Routine runs itself</h4><p>Reminders, approvals and reports happen automatically.</p></div>
       </div>
     </div>
   </section>
 
-  <!-- ─── RECRUITING ─── -->
-  <section id="recruiting">
+  <!-- ─── 6. OWNER BENEFITS ─── -->
+  <section id="benefits">
     <div class="wrap">
       <div class="section-head reveal">
-        <span class="eyebrow amber">Growth engine</span>
-        <h2 class="h-sec">Recruiting &amp; lead management</h2>
-        <p class="lead">From ad click to recruiter call, the pipeline is captured, routed and measured automatically.</p>
+        <span class="eyebrow amber">What the owner gets</span>
+        <h2 class="h-sec">Business value for your company</h2>
+        <p class="lead">Less scattered work, more visibility, and a clear record of who did what.</p>
       </div>
       <div class="grid g3">
-        <div class="card reveal"><div class="ic">📥</div><h3>Meta lead capture</h3><p>The Facebook webhook service catches lead-form submissions the moment they're filed.</p></div>
-        <div class="card reveal d1"><div class="ic">💬</div><h3>Instant auto-reply</h3><p>Candidates receive an automated SMS, mirrored into a Telegram lead group for the team.</p></div>
-        <div class="card reveal d2"><div class="ic">🗂️</div><h3>CRM hand-off (Bitrix24)</h3><p>Leads are mapped and pushed into the Bitrix24 recruiting pipeline for follow-up.</p></div>
-        <div class="card reveal"><div class="ic">📞</div><h3>Recruiter call KPIs</h3><p>RingCentral call logs sync in the background to measure per-recruiter activity.</p></div>
-        <div class="card reveal d1"><div class="ic">🏆</div><h3>Public leaderboard</h3><p>A gamified TV dashboard at <b>/recruiters</b> shows today's call counts on the sales floor.</p></div>
-        <div class="card reveal d2"><div class="ic">📄</div><h3>Indeed lead intake</h3><p>Résumé-bearing Indeed emails are ingested through a secured internal endpoint.</p></div>
+        <div class="card value-card reveal"><div class="k">🔎 Better operational visibility</div><p>See what is happening across dispatch, drivers, trailers, safety and recruiting.</p></div>
+        <div class="card value-card reveal d1"><div class="k">⚡ Faster decisions</div><p>Important changes and exceptions appear before they become bigger problems.</p></div>
+        <div class="card value-card reveal d2"><div class="k">⚙️ Less manual work</div><p>Automated updates, reminders, approvals and reports reduce repetitive work.</p></div>
+        <div class="card value-card reveal"><div class="k">🧾 Clear accountability</div><p>Know who handled a trailer, who reported a condition, and who approved a change.</p></div>
+        <div class="card value-card reveal d1"><div class="k">💬 Better driver communication</div><p>Drivers use Telegram in their preferred language while office teams work from the dashboard.</p></div>
+        <div class="card value-card reveal d2"><div class="k">📊 Measurable team performance</div><p>Review recruiter KPIs, communication activity, workflows and operational history.</p></div>
       </div>
     </div>
   </section>
 
-  <!-- ─── DRIVER OPS WORKFLOWS ─── -->
-  <section id="driverops">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="eyebrow">Retention &amp; pay</span>
-        <h2 class="h-sec">Driver operations workflows</h2>
-        <p class="lead">The trucking-specific processes that keep drivers paid, rewarded, home on time and supplied with paperwork.</p>
-      </div>
-      <div class="grid g3">
-        <div class="card reveal"><div class="ic">🏁</div><h3>Mileage bonus</h3><p>Milestone cards computed from TMS mileage, with resend/disregard controls and serialized runs.</p></div>
-        <div class="card reveal d1"><div class="ic">📈</div><h3>Driver raises</h3><p>75¢/mile requests with OTP email verification and an auditable approval chain.</p></div>
-        <div class="card reveal d2"><div class="ic">🏠</div><h3>Home time</h3><p>Request → dispatch approval → confirmation back to the driver, end to end.</p></div>
-        <div class="card reveal"><div class="ic">⛽</div><h3>Fuel-stop alerts</h3><p>Cross-checks fuel-card location against GPS to flag suspicious swipes.</p></div>
-        <div class="card reveal d1"><div class="ic">📑</div><h3>BOL / POD document delivery</h3><p>When a driver uploads a Bill of Lading or POD to the TMS, the bot forwards it to their group — once, idempotently.</p></div>
-        <div class="card reveal d2"><div class="ic">🎉</div><h3>Road &amp; birthday notifiers</h3><p>Road-bonus notifications and automated employee birthday wishes run on schedule.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─── INTEGRATIONS MAP ─── -->
+  <!-- ─── 7. INTEGRATIONS ─── -->
   <section id="integrations">
     <div class="wrap">
       <div class="section-head reveal">
-        <span class="eyebrow amber">Connected systems</span>
-        <h2 class="h-sec">The integration map</h2>
-        <p class="lead">Every integration below is wired in the codebase through a dedicated service adapter. Credentials are stored encrypted or via environment secrets — never exposed in the app.</p>
+        <span class="eyebrow">Works with your tools</span>
+        <h2 class="h-sec">Works with the systems your company already uses</h2>
+        <p class="lead">The platform securely connects your existing operational systems into one place — no rip-and-replace.</p>
       </div>
-
-      <div class="int-hub reveal pulse">
-        <b>🚛 Node.js / Express Core</b><br />
-        <span>The hub every integration connects through</span>
+      <div class="int-grid">
+        <div class="int reveal"><span class="ig">✈️</span><div><b>Telegram</b><span>Driver communication</span></div></div>
+        <div class="int reveal d1"><span class="ig">📦</span><div><b>Datatruck</b><span>Load and stop information</span></div></div>
+        <div class="int reveal d2"><span class="ig">🛰️</span><div><b>Samsara</b><span>Truck location &amp; safety events</span></div></div>
+        <div class="int reveal"><span class="ig">📞</span><div><b>RingCentral</b><span>Recruiting calls &amp; KPIs</span></div></div>
+        <div class="int reveal d1"><span class="ig">🗂️</span><div><b>Bitrix24</b><span>Lead &amp; CRM workflow</span></div></div>
+        <div class="int reveal d2"><span class="ig">📣</span><div><b>Meta / Facebook</b><span>Recruiting leads</span></div></div>
+        <div class="int reveal"><span class="ig">📄</span><div><b>Indeed</b><span>Recruiting leads</span></div></div>
+        <div class="int reveal d1"><span class="ig">🧭</span><div><b>Factor &amp; Leader ELD</b><span>Truck location data</span></div></div>
+        <div class="int reveal d2"><span class="ig">🗺️</span><div><b>Google Maps</b><span>Routing &amp; locations</span></div></div>
       </div>
-      <div class="flowdown reveal">▼</div>
-
-      <div class="grid g3">
-        <div class="card int-node reveal"><div class="ic pulse">✈️</div><h3>Telegram</h3><p>Two-way driver communication.</p><div class="r"><span><em>In:</em> messages, commands, media</span><span><em>Out:</em> broadcasts, docs, ETAs</span></div></div>
-        <div class="card int-node reveal d1"><div class="ic pulse">📦</div><h3>Datatruck TMS</h3><p>Loads, stops, brokers, drivers.</p><div class="r"><span><em>In:</em> loads &amp; documents</span><span><em>Powers:</em> dispatch, ETA, bonuses</span></div></div>
-        <div class="card int-node reveal d2"><div class="ic pulse">🛰️</div><h3>Samsara ELD</h3><p>Live GPS &amp; Hours-of-Service.</p><div class="r"><span><em>In:</em> coordinates, HOS</span><span><em>Powers:</em> live map, fuel checks</span></div></div>
-        <div class="card int-node reveal"><div class="ic pulse">🧾</div><h3>Drive HoS / Factor / Leader ELD</h3><p>Fallback ELD providers.</p><div class="r"><span><em>In:</em> HOS fallbacks</span><span><em>Powers:</em> continuity</span></div></div>
-        <div class="card int-node reveal d1"><div class="ic pulse">📣</div><h3>Meta / Facebook Graph</h3><p>Lead-gen form capture &amp; page connect.</p><div class="r"><span><em>In:</em> lead submissions</span><span><em>Powers:</em> recruiting pipeline</span></div></div>
-        <div class="card int-node reveal d2"><div class="ic pulse">📞</div><h3>RingCentral</h3><p>Call logs &amp; SMS routing.</p><div class="r"><span><em>In:</em> call metrics</span><span><em>Out:</em> auto-SMS replies</span></div></div>
-        <div class="card int-node reveal"><div class="ic pulse">🗂️</div><h3>Bitrix24</h3><p>Recruiting CRM.</p><div class="r"><span><em>Out:</em> mapped leads</span><span><em>Powers:</em> recruiter follow-up</span></div></div>
-        <div class="card int-node reveal d1"><div class="ic pulse">🧠</div><h3>OpenAI · Groq · Gemini</h3><p>Translation, classification, insights.</p><div class="r"><span><em>In:</em> driver messages</span><span><em>Out:</em> translations &amp; summaries</span></div></div>
-        <div class="card int-node reveal d2"><div class="ic pulse">🗄️</div><h3>PostgreSQL</h3><p>Central shared datastore.</p><div class="r"><span><em>Holds:</em> groups, leads, requests</span><span><em>Shared with:</em> companion services</span></div></div>
-      </div>
+      <p class="demo-note">Securely connects your existing operational systems into one platform. No credentials or account details are shown here.</p>
     </div>
   </section>
 
-  <!-- ─── AUTOMATION ─── -->
-  <section id="automation">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="eyebrow">Always-on</span>
-        <h2 class="h-sec">The automation engine</h2>
-        <p class="lead">Orchestrated by <code>schedulerService.js</code> and node-cron, more than a dozen background workers do the repetitive work so staff don't have to.</p>
-      </div>
-      <div class="grid g4">
-        <div class="card reveal"><div class="ic">📅</div><h3>Scheduler</h3><p>Runs one-time &amp; weekly broadcasts and survey sends.</p></div>
-        <div class="card reveal d1"><div class="ic">🧭</div><h3>Dispatch ETA</h3><p>Periodic ETA snapshots posted to driver groups.</p></div>
-        <div class="card reveal d2"><div class="ic">🎂</div><h3>Birthday services</h3><p>Driver &amp; employee birthday wishes on schedule.</p></div>
-        <div class="card reveal d3"><div class="ic">🧠</div><h3>Group status AI</h3><p>Classifies group chatter and generates insight.</p></div>
-        <div class="card reveal"><div class="ic">🏁</div><h3>Mileage bonus</h3><p>Recomputes progress and issues milestone cards.</p></div>
-        <div class="card reveal d1"><div class="ic">📑</div><h3>Datatruck documents</h3><p>Polls for new BOL/POD files and delivers them.</p></div>
-        <div class="card reveal d2"><div class="ic">📈</div><h3>Raise approval</h3><p>Tracks raise request state through approval.</p></div>
-        <div class="card reveal d3"><div class="ic">⛽</div><h3>Fuel-stop alerts</h3><p>Watches for GPS-vs-fuel-card mismatches.</p></div>
-        <div class="card reveal"><div class="ic">📞</div><h3>Recruiter call sync</h3><p>Pulls RingCentral call logs for KPIs.</p></div>
-        <div class="card reveal d1"><div class="ic">🎉</div><h3>Road bonus notifier</h3><p>Sends road-bonus notifications to drivers.</p></div>
-        <div class="card reveal d2"><div class="ic">🪝</div><h3>Facebook webhook worker</h3><p>Processes queued lead events reliably.</p></div>
-        <div class="card reveal d3"><div class="ic">👥</div><h3>Driver group AI sync</h3><p>Reconciles Telegram groups with driver profiles.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─── WORKFLOWS ─── -->
-  <section id="workflows">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="eyebrow amber">Start to finish</span>
-        <h2 class="h-sec">End-to-end business workflows</h2>
-        <p class="lead">Follow a request across the whole system. Pick a workflow to see each step.</p>
-      </div>
-
-      <div class="wf-tabs reveal">
-        <div class="wf-tab active" data-wf="home">🏠 Home Time</div>
-        <div class="wf-tab" data-wf="lead">🧲 Lead → Recruiter</div>
-        <div class="wf-tab" data-wf="dispatch">🧭 Dispatch &amp; ETA</div>
-        <div class="wf-tab" data-wf="bonus">🏁 Mileage Bonus</div>
-        <div class="wf-tab" data-wf="raise">📈 Driver Raise</div>
-        <div class="wf-tab" data-wf="feedback">🗣️ Feedback</div>
-      </div>
-
-      <div class="card reveal">
-        <div class="wf-panel active" data-panel="home">
-          <div class="flow">
-            <div class="step"><div class="dot">1</div><div class="body"><h4>Driver requests in Telegram</h4><p>A driver starts the home-time flow in the bot and picks start / end dates.</p></div></div>
-            <div class="step"><div class="dot">2</div><div class="body"><h4>Request is saved</h4><p>The structured request lands in the database and appears on the admin Home Time page.</p></div></div>
-            <div class="step"><div class="dot">3</div><div class="body"><h4>Dispatch reviews &amp; approves</h4><p>A dispatcher approves or declines from the dashboard.</p></div></div>
-            <div class="step"><div class="dot">4</div><div class="body"><h4>Driver is notified</h4><p>The decision is pushed back to the driver in Telegram, closing the loop.</p></div></div>
-          </div>
-        </div>
-
-        <div class="wf-panel" data-panel="lead">
-          <div class="flow">
-            <div class="step"><div class="dot">1</div><div class="body"><h4>Candidate submits a Meta form</h4><p>A lead-gen form on Facebook is filled out.</p></div></div>
-            <div class="step"><div class="dot">2</div><div class="body"><h4>Webhook captures it</h4><p>The Python verifier validates the signature; the Node worker ingests the lead.</p></div></div>
-            <div class="step"><div class="dot">3</div><div class="body"><h4>Auto-reply &amp; mirror</h4><p>The candidate gets an automated SMS, mirrored into the recruiting Telegram group.</p></div></div>
-            <div class="step"><div class="dot">4</div><div class="body"><h4>CRM &amp; KPIs</h4><p>The lead is mapped to Bitrix24 while recruiter call activity is tracked against it.</p></div></div>
-          </div>
-        </div>
-
-        <div class="wf-panel" data-panel="dispatch">
-          <div class="flow">
-            <div class="step"><div class="dot">1</div><div class="body"><h4>TMS load sync</h4><p>Datatruck provides the load, stops and appointment windows.</p></div></div>
-            <div class="step"><div class="dot">2</div><div class="body"><h4>Live GPS overlay</h4><p>Samsara supplies real-time position and Hours-of-Service.</p></div></div>
-            <div class="step"><div class="dot">3</div><div class="body"><h4>ETA calculated</h4><p>The routing service decides if the truck will make its appointment.</p></div></div>
-            <div class="step"><div class="dot">4</div><div class="body"><h4>Update delivered</h4><p>Dispatch sees it in FleetView; drivers get an ETA snapshot in Telegram.</p></div></div>
-          </div>
-        </div>
-
-        <div class="wf-panel" data-panel="bonus">
-          <div class="flow">
-            <div class="step"><div class="dot">1</div><div class="body"><h4>Mileage computed</h4><p>The service reads company-driver mileage from the TMS.</p></div></div>
-            <div class="step"><div class="dot">2</div><div class="body"><h4>Milestone card issued</h4><p>A bonus card is posted to the configured Telegram accounting group.</p></div></div>
-            <div class="step"><div class="dot">3</div><div class="body"><h4>Accounting decides</h4><p>Authorized users approve, resend or disregard — every action audited.</p></div></div>
-            <div class="step"><div class="dot">4</div><div class="body"><h4>Driver rewarded</h4><p>Paid bonuses are locked so they can't be re-issued.</p></div></div>
-          </div>
-        </div>
-
-        <div class="wf-panel" data-panel="raise">
-          <div class="flow">
-            <div class="step"><div class="dot">1</div><div class="body"><h4>Raise requested</h4><p>A 75¢/mile raise request is opened with the driver's current pay context.</p></div></div>
-            <div class="step"><div class="dot">2</div><div class="body"><h4>OTP verification</h4><p>An email one-time-passcode confirms the request is legitimate.</p></div></div>
-            <div class="step"><div class="dot">3</div><div class="body"><h4>Manager approval chain</h4><p>The request moves through the approval chain on the admin page.</p></div></div>
-            <div class="step"><div class="dot">4</div><div class="body"><h4>Outcome recorded</h4><p>Status is tracked and viewable, including via the public raise page.</p></div></div>
-          </div>
-        </div>
-
-        <div class="wf-panel" data-panel="feedback">
-          <div class="flow">
-            <div class="step"><div class="dot">1</div><div class="body"><h4>Driver sends feedback</h4><p>Anonymous or open feedback is submitted through the bot.</p></div></div>
-            <div class="step"><div class="dot">2</div><div class="body"><h4>AI translates &amp; annotates</h4><p>Non-English text is translated; messages are classified and annotated.</p></div></div>
-            <div class="step"><div class="dot">3</div><div class="body"><h4>Surfaced to staff</h4><p>HR and management see it on the Bot Messages dashboard.</p></div></div>
-            <div class="step"><div class="dot">4</div><div class="body"><h4>Staff reply directly</h4><p>The team responds to the driver from the web message manager.</p></div></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─── FEATURE INVENTORY ─── -->
-  <section id="inventory">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="eyebrow">Reference</span>
-        <h2 class="h-sec">Feature inventory</h2>
-        <p class="lead">A module-by-module map of the platform's confirmed capabilities.</p>
-      </div>
-      <div class="table-scroll reveal">
-        <table>
-          <thead>
-            <tr><th>Module</th><th>Feature</th><th>What it does</th><th>Primary role</th><th>Business value</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>Comms</td><td>Anonymous Feedback</td><td>Drivers send hidden feedback surfaced to HR</td><td><span class="chip">HR · Driver</span></td><td>Honest signal on morale &amp; issues</td></tr>
-            <tr><td>Comms</td><td>AI Translation</td><td>Auto-translates driver messages (EN/RU/UZ)</td><td><span class="chip">Dispatch</span></td><td>No language barrier</td></tr>
-            <tr><td>Comms</td><td>Broadcasts &amp; Scheduling</td><td>Targeted mass messages, one-time or weekly</td><td><span class="chip">Admin</span></td><td>Consistent, timely announcements</td></tr>
-            <tr><td>Ops</td><td>Live Location Map</td><td>Tracks trucks against their dispatch route</td><td><span class="chip">Dispatch</span></td><td>Plan vs. reality visibility</td></tr>
-            <tr><td>Ops</td><td>ETA Routing</td><td>Predicts appointment on-time performance</td><td><span class="chip">Dispatch</span></td><td>Proactive delay management</td></tr>
-            <tr><td>Ops</td><td>Dispatch Board (FleetView)</td><td>Active loads, brokers, equipment &amp; ETAs</td><td><span class="chip">Dispatch</span></td><td>Faster operational decisions</td></tr>
-            <tr><td>HR</td><td>Home Time Approval</td><td>Digital time-off request &amp; approval loop</td><td><span class="chip">Dispatch · HR</span></td><td>Fewer missed requests</td></tr>
-            <tr><td>Pay</td><td>Mileage Bonus</td><td>TMS-based milestone bonus cards</td><td><span class="chip">Accounting</span></td><td>Automated, auditable rewards</td></tr>
-            <tr><td>Pay</td><td>Driver Raises</td><td>75¢/mile requests with OTP &amp; approval chain</td><td><span class="chip">Manager</span></td><td>Structured retention decisions</td></tr>
-            <tr><td>Safety</td><td>Fuel Stop Alerts</td><td>Flags fuel-card use far from truck GPS</td><td><span class="chip">Safety</span></td><td>Fraud prevention</td></tr>
-            <tr><td>Ops</td><td>BOL / POD Delivery</td><td>Forwards TMS documents to driver groups</td><td><span class="chip">Dispatch</span></td><td>Paperwork reaches the right driver</td></tr>
-            <tr><td>Recruiting</td><td>Meta &amp; Indeed Leads</td><td>Captures, auto-replies &amp; routes leads</td><td><span class="chip">Recruiter</span></td><td>Faster lead conversion</td></tr>
-            <tr><td>Recruiting</td><td>Recruiter KPIs</td><td>RingCentral call metrics &amp; public leaderboard</td><td><span class="chip">Manager</span></td><td>Accountability &amp; motivation</td></tr>
-            <tr><td>Platform</td><td>AI Insights &amp; Reports</td><td>Sentiment, summaries &amp; company reports</td><td><span class="chip">Management</span></td><td>Data-driven oversight</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─── WHY IT MATTERS ─── -->
-  <section id="value">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="eyebrow amber">Business value</span>
-        <h2 class="h-sec">Why it matters for a trucking company</h2>
-        <p class="lead">The platform turns scattered work into one coordinated operation.</p>
-      </div>
-      <div class="grid g3">
-        <div class="card value-card reveal"><div class="k">🎯 Centralized operations</div><p>Communication, dispatch, HR and recruiting live in one connected system instead of siloed tools.</p></div>
-        <div class="card value-card reveal d1"><div class="k">⏱️ Less manual work</div><p>Background jobs handle ETAs, bonuses, follow-ups and documents automatically.</p></div>
-        <div class="card value-card reveal d2"><div class="k">💬 Better driver communication</div><p>Drivers stay in Telegram; translation removes the language barrier both ways.</p></div>
-        <div class="card value-card reveal"><div class="k">🗺️ Dispatch visibility</div><p>Plan-vs-reality tracking means fewer surprises and earlier interventions.</p></div>
-        <div class="card value-card reveal d1"><div class="k">🧲 Faster recruiting follow-up</div><p>Leads are answered in seconds and measured against real call activity.</p></div>
-        <div class="card value-card reveal d2"><div class="k">📊 Management insight</div><p>KPIs, AI summaries and audit trails give leadership a clear operational picture.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─── CLOSING ─── -->
+  <!-- ─── 8. CLOSING ─── -->
   <section id="closing" style="padding-bottom:70px;">
     <div class="wrap">
       <div class="closing reveal">
-        <span class="eyebrow">One platform</span>
-        <h2 style="margin-top:16px;">One platform for driver communication, fleet visibility, recruiting operations, and trucking workflow automation.</h2>
-        <p class="lead">From the cab to the command center — Wenze Ops keeps the whole operation moving in sync.</p>
+        <span class="eyebrow">One connected platform</span>
+        <h2 style="margin-top:16px;">One connected operations platform for dispatch, drivers, trailers, safety, recruiting and management.</h2>
+        <p class="lead">See it running on your own operation — a short live walkthrough is the fastest way to understand the fit.</p>
         <div class="btn-row" style="justify-content:center; margin-top:26px;">
-          <a class="btn primary" href="#architecture">Review the architecture</a>
-          <a class="btn ghost" href="#fleetview">Revisit FleetView</a>
+          <a class="btn primary" href="#demos">Revisit the demos</a>
+          <button class="btn ghost" id="startPresent2" type="button">▶ Start Presentation Mode</button>
         </div>
-        <div class="routeline" style="max-width:520px; margin:34px auto 0;"></div>
       </div>
     </div>
   </section>
 
   <footer>
     <div class="wrap foot-inner">
-      <div class="brand"><span class="logo">🚛</span><span>Wenze Ops<small>Trucking Operations &amp; Driver Communication Platform</small></span></div>
+      <div class="brand"><span class="logo">🚛</span><span>Fleet Ops<small>Trucking Operations Platform</small></span></div>
       <div style="text-align:right;">
-        Internal product presentation · content derived from the application codebase.<br />
-        <span style="color:var(--muted);">No credentials, tokens or secrets are exposed on this page.</span>
+        Product overview · for demonstration purposes.<br />
+        <span style="color:var(--muted);">All examples are fictional. No live, private or customer data is shown.</span>
       </div>
     </div>
   </footer>
+
+  <!-- Presentation Mode UI -->
+  <div id="pm-ui" aria-hidden="true">
+    <div id="pm-dots"></div>
+    <div id="pm-bar">
+      <button id="pm-prev" type="button" aria-label="Previous section">‹</button>
+      <span id="pm-count">1 / 8</span>
+      <button id="pm-next" type="button" aria-label="Next section">›</button>
+      <span id="pm-exit" role="button" tabindex="0">Esc · Exit</span>
+    </div>
+  </div>
 
   <script>
     (function () {
       var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-      // Scroll progress bar
+      /* Scroll progress bar */
       var bar = document.getElementById('progress');
       function onScroll() {
         var h = document.documentElement;
-        var scrolled = h.scrollTop / (h.scrollHeight - h.clientHeight);
-        bar.style.width = (scrolled * 100) + '%';
+        var denom = (h.scrollHeight - h.clientHeight) || 1;
+        bar.style.width = ((h.scrollTop / denom) * 100) + '%';
       }
       document.addEventListener('scroll', onScroll, { passive: true });
       onScroll();
 
-      // Reveal on scroll
+      /* Reveal on scroll */
       if ('IntersectionObserver' in window && !reduce) {
         var io = new IntersectionObserver(function (entries) {
           entries.forEach(function (e) {
@@ -1002,69 +911,134 @@
         document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('in'); });
       }
 
-      // Animated counters
-      function animateCount(el) {
-        var target = parseFloat(el.getAttribute('data-count'));
-        var suffix = el.getAttribute('data-suffix') || '';
-        if (reduce) { el.textContent = target + suffix; return; }
-        var start = null, dur = 1400;
-        function tick(ts) {
-          if (!start) start = ts;
-          var p = Math.min((ts - start) / dur, 1);
-          var eased = 1 - Math.pow(1 - p, 3);
-          el.textContent = Math.round(target * eased) + suffix;
-          if (p < 1) requestAnimationFrame(tick);
-        }
-        requestAnimationFrame(tick);
+      /* Product demo tabs */
+      var tabs = document.querySelectorAll('.demo-tab');
+      var panels = document.querySelectorAll('.demo-panel');
+      function activateDemo(key) {
+        tabs.forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-demo') === key); });
+        panels.forEach(function (p) { p.classList.toggle('active', p.getAttribute('data-panel') === key); });
+        if (key === 'comms') playChat();
+        if (key === 'recruit') playRings();
       }
+      tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () { activateDemo(tab.getAttribute('data-demo')); });
+      });
+
+      /* Telegram chat staggered reveal */
+      function playChat() {
+        var chat = document.querySelector('[data-chat]');
+        if (!chat) return;
+        var bubbles = chat.querySelectorAll('[data-b]');
+        bubbles.forEach(function (b, i) {
+          b.classList.remove('in');
+          setTimeout(function () { b.classList.add('in'); }, reduce ? 0 : i * 480);
+        });
+      }
+
+      /* Recruiting rings/bars fill */
+      function playRings() {
+        document.querySelectorAll('[data-ring]').forEach(function (r) {
+          r.classList.remove('play'); void r.offsetWidth; r.classList.add('play');
+        });
+        document.querySelectorAll('[data-bar]').forEach(function (b) {
+          b.classList.remove('play'); void b.offsetWidth; b.classList.add('play');
+        });
+      }
+
+      /* Play the active demo's animation when the demos section scrolls into view */
       if ('IntersectionObserver' in window) {
-        var co = new IntersectionObserver(function (entries) {
+        var demoSection = document.getElementById('demos');
+        if (demoSection) {
+          var dobs = new IntersectionObserver(function (entries) {
+            entries.forEach(function (e) {
+              if (e.isIntersecting) {
+                var active = document.querySelector('.demo-tab.active');
+                if (active) { var k = active.getAttribute('data-demo'); if (k === 'comms') playChat(); if (k === 'recruit') playRings(); }
+              }
+            });
+          }, { threshold: 0.3 });
+          dobs.observe(demoSection);
+        }
+      }
+      // Rings play by default (fleet is default tab); prime them so switching feels instant
+      playRings();
+
+      /* ─── Presentation Mode ─── */
+      var slides = Array.prototype.slice.call(document.querySelectorAll('section'));
+      var dotsWrap = document.getElementById('pm-dots');
+      var count = document.getElementById('pm-count');
+      var current = 0;
+      var presenting = false;
+
+      // Build dots once
+      slides.forEach(function (s, i) {
+        var d = document.createElement('i');
+        d.addEventListener('click', function () { goTo(i); });
+        dotsWrap.appendChild(d);
+      });
+      var dots = dotsWrap.querySelectorAll('i');
+
+      function updateIndicator() {
+        count.textContent = (current + 1) + ' / ' + slides.length;
+        dots.forEach(function (d, i) { d.classList.toggle('active', i === current); });
+      }
+      function goTo(i) {
+        current = Math.max(0, Math.min(slides.length - 1, i));
+        slides[current].scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+        updateIndicator();
+      }
+      function enterPresent() {
+        if (presenting) return;
+        presenting = true;
+        document.body.classList.add('presenting');
+        document.getElementById('pm-ui').setAttribute('aria-hidden', 'false');
+        // Start from whichever section is closest to the current scroll position
+        var closest = 0, best = Infinity;
+        slides.forEach(function (s, i) {
+          var d = Math.abs(s.getBoundingClientRect().top);
+          if (d < best) { best = d; closest = i; }
+        });
+        current = closest;
+        updateIndicator();
+        setTimeout(function () { goTo(current); }, 30);
+      }
+      function exitPresent() {
+        if (!presenting) return;
+        presenting = false;
+        document.body.classList.remove('presenting');
+        document.getElementById('pm-ui').setAttribute('aria-hidden', 'true');
+      }
+
+      // Track current slide while scrolling in presentation mode
+      if ('IntersectionObserver' in window) {
+        var so = new IntersectionObserver(function (entries) {
+          if (!presenting) return;
           entries.forEach(function (e) {
-            if (e.isIntersecting) { animateCount(e.target); co.unobserve(e.target); }
+            if (e.isIntersecting) {
+              var idx = slides.indexOf(e.target);
+              if (idx > -1) { current = idx; updateIndicator(); }
+            }
           });
         }, { threshold: 0.5 });
-        document.querySelectorAll('[data-count]').forEach(function (el) { co.observe(el); });
-      } else {
-        document.querySelectorAll('[data-count]').forEach(function (el) {
-          el.textContent = el.getAttribute('data-count') + (el.getAttribute('data-suffix') || '');
-        });
+        slides.forEach(function (s) { so.observe(s); });
       }
 
-      // Telegram chat bubbles staggered reveal (loops when in view)
-      var chat = document.getElementById('chat');
-      if (chat) {
-        var bubbles = chat.querySelectorAll('[data-b]');
-        function playChat() {
-          bubbles.forEach(function (b, i) {
-            b.classList.remove('in');
-            setTimeout(function () { b.classList.add('in'); }, reduce ? 0 : i * 550);
-          });
-        }
-        if ('IntersectionObserver' in window && !reduce) {
-          var seen = false;
-          var bo = new IntersectionObserver(function (entries) {
-            entries.forEach(function (e) {
-              if (e.isIntersecting && !seen) { seen = true; playChat(); }
-              else if (!e.isIntersecting) { seen = false; }
-            });
-          }, { threshold: 0.4 });
-          bo.observe(chat);
-        } else {
-          bubbles.forEach(function (b) { b.classList.add('in'); });
-        }
-      }
+      document.getElementById('startPresent').addEventListener('click', enterPresent);
+      var sp2 = document.getElementById('startPresent2');
+      if (sp2) sp2.addEventListener('click', enterPresent);
+      document.getElementById('pm-prev').addEventListener('click', function () { goTo(current - 1); });
+      document.getElementById('pm-next').addEventListener('click', function () { goTo(current + 1); });
+      var exitEl = document.getElementById('pm-exit');
+      exitEl.addEventListener('click', exitPresent);
+      exitEl.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') exitPresent(); });
 
-      // Workflow tabs
-      var tabs = document.querySelectorAll('.wf-tab');
-      tabs.forEach(function (tab) {
-        tab.addEventListener('click', function () {
-          var key = tab.getAttribute('data-wf');
-          tabs.forEach(function (t) { t.classList.remove('active'); });
-          tab.classList.add('active');
-          document.querySelectorAll('.wf-panel').forEach(function (p) {
-            p.classList.toggle('active', p.getAttribute('data-panel') === key);
-          });
-        });
+      document.addEventListener('keydown', function (e) {
+        if (!presenting) return;
+        if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === 'ArrowDown') { e.preventDefault(); goTo(current + 1); }
+        else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'ArrowUp') { e.preventDefault(); goTo(current - 1); }
+        else if (e.key === 'Escape') { exitPresent(); }
+        else if (e.key === 'Home') { goTo(0); }
+        else if (e.key === 'End') { goTo(slides.length - 1); }
       });
     })();
   </script>
