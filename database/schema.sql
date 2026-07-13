@@ -1972,6 +1972,11 @@ CREATE TABLE IF NOT EXISTS gmaps_settings (
 
 INSERT INTO gmaps_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
+-- Auto-complete a route when the driver's fresh GPS is within this many miles of
+-- the FINAL destination. Additive/idempotent; default 10 mi, safe range 0.5–100.
+ALTER TABLE gmaps_settings ADD COLUMN IF NOT EXISTS route_completion_radius_miles DOUBLE PRECISION NOT NULL DEFAULT 10
+  CHECK (route_completion_radius_miles BETWEEN 0.5 AND 100);
+
 -- One assigned route per row. group_id ties it to a driver group so the monitor
 -- can resolve that driver's live GPS (via the same resolver as /location).
 CREATE TABLE IF NOT EXISTS route_assignments (
@@ -2040,6 +2045,16 @@ ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_start_lng DOUBLE
 ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_start_location_text TEXT NULL;
 ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_start_radius_miles DOUBLE PRECISION NULL;
 ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_hold_reason TEXT NULL;
+
+-- Auto-completion. When the driver's fresh GPS enters the completion radius
+-- around the FINAL destination (destination_lat/destination_lng), the monitor
+-- flips status to 'completed', records where/when/how far, and stops monitoring
+-- permanently. These columns are additive/idempotent; NULL on every existing row.
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS completion_latitude DOUBLE PRECISION NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS completion_longitude DOUBLE PRECISION NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS completion_distance_meters DOUBLE PRECISION NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS completion_reason TEXT NULL;
 
 -- Route screenshots (admin-attached images sent with the driver-group route
 -- message). A SEPARATE table so no existing `SELECT r.*` query ever drags image
@@ -2500,3 +2515,9 @@ INSERT INTO trailer_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 ALTER TABLE trailer_settings ADD COLUMN IF NOT EXISTS semantic_ai_required BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE trailer_settings ADD COLUMN IF NOT EXISTS auto_register_confidence SMALLINT NOT NULL DEFAULT 92;
 ALTER TABLE trailer_settings ADD COLUMN IF NOT EXISTS review_confidence SMALLINT NOT NULL DEFAULT 75;
+-- Silent driver-group monitoring (default TRUE): trailer messages are analyzed
+-- and registered WITHOUT any reply or reaction in the driver group. When TRUE it
+-- overrides send_driver_group_confirmation and send_reaction (kept for the
+-- explicit opt-out where an admin turns silent mode off). The internal Automatic
+-- Updating (Test) group still receives review alerts either way.
+ALTER TABLE trailer_settings ADD COLUMN IF NOT EXISTS silent_driver_group_monitoring BOOLEAN NOT NULL DEFAULT TRUE;

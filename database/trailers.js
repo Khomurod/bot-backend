@@ -901,6 +901,7 @@ async function getTrailerSettings() {
     send_driver_group_confirmation: true, send_reaction: true,
     ai_fallback_enabled: true, geocoding_enabled: true,
     semantic_ai_required: true, auto_register_confidence: 92, review_confidence: 75,
+    silent_driver_group_monitoring: true,
   };
 }
 
@@ -916,6 +917,7 @@ async function updateTrailerSettings(patch = {}) {
     semantic_ai_required: (v) => Boolean(v),
     auto_register_confidence: (v) => Math.max(50, Math.min(100, Math.round(Number(v)) || 92)),
     review_confidence: (v) => Math.max(0, Math.min(100, Math.round(Number(v)) || 75)),
+    silent_driver_group_monitoring: (v) => Boolean(v),
   };
   const sets = [];
   const vals = [];

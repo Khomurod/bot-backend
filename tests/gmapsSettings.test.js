@@ -93,3 +93,17 @@ test('numeric tunables round-trip and default sanely', async () => {
   assert.equal(view.warningCooldownMinutes, 30);
   assert.equal(view.staleGpsMinutes, 15);
 });
+
+test('route completion radius defaults to 10 mi and clamps to the safe range', async () => {
+  const { mod } = loadModule();
+  // Default when never set.
+  assert.equal((await mod.getGmapsConfig()).routeCompletionRadiusMiles, 10);
+  // Round-trips a valid value.
+  let view = await mod.updateGmapsSettings({ routeCompletionRadiusMiles: 7.5 });
+  assert.equal(view.routeCompletionRadiusMiles, 7.5);
+  // Clamps out-of-range values (0.5–100).
+  view = await mod.updateGmapsSettings({ routeCompletionRadiusMiles: 999 });
+  assert.equal(view.routeCompletionRadiusMiles, 100);
+  view = await mod.updateGmapsSettings({ routeCompletionRadiusMiles: 0.1 });
+  assert.equal(view.routeCompletionRadiusMiles, 0.5);
+});

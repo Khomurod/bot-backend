@@ -105,7 +105,7 @@ function msg(text, extra = {}) {
   return { message_id: 42, date: Math.floor(Date.now() / 1000), from: { id: 777, username: 'reporter', first_name: 'Rep' }, text, ...extra };
 }
 
-test('AI-verified pickup registers event, replies to driver group, reacts 👍', async () => {
+test('AI-verified pickup registers event SILENTLY: no driver-group reply, no reaction', async () => {
   const { mod, state } = loadMonitor({
     aiResult: approve({ unit: 'VT700669', action: 'pickup', locationText: 'Lancaster PA', conditionText: 'no pictures' }),
   });
@@ -120,13 +120,11 @@ test('AI-verified pickup registers event, replies to driver group, reacts 👍',
   assert.equal(state.events[0].condition_text, 'no pictures');
   assert.equal(state.events[0].ai_verification_status, 'approved');
   assert.equal(state.statusUpdates.length, 1); // current status updated
-  // Reply to the ORIGINAL message, labeled Beta.
-  const reply = tg.sent.find((m) => String(m.chatId) === String(GROUP.telegram_group_id));
-  assert.ok(reply);
-  assert.match(reply.text, /pickup registered/i);
-  assert.match(reply.text, /Beta test mode/i);
-  assert.equal(reply.opts.reply_to_message_id, 42);
-  assert.equal(tg.reactions.length, 1);
+  // Silent driver-group monitoring (default ON): registered, but nothing sent
+  // back to the driver group and no reaction.
+  const driverSends = tg.sent.filter((m) => String(m.chatId) === String(GROUP.telegram_group_id));
+  assert.equal(driverSends.length, 0, 'driver group sends = 0');
+  assert.equal(tg.reactions.length, 0, 'driver group reactions = 0');
 });
 
 test('AI-verified dropoff registers event and updates status', async () => {
@@ -238,4 +236,32 @@ test('semantic_ai_required=false (explicit opt-out) restores legacy deterministi
   assert.equal(res.registered, true);
   assert.equal(res.legacy, true);
   assert.equal(state.events[0].event_type, 'pickup');
+  // Legacy path is silent too (silent mode defaults ON): no driver-group output.
+  assert.equal(tg.sent.filter((m) => String(m.chatId) === String(GROUP.telegram_group_id)).length, 0);
+  assert.equal(tg.reactions.length, 0);
+});
+
+test('silent mode OFF (explicit opt-out) restores driver-group reply + reaction', async () => {
+  const { mod, state } = loadMonitor({
+    dbOverrides: {
+      db: {
+        getTrailerSettings: async () => ({
+          enabled: true, beta_mode: true, automatic_update_test_group_id: null,
+          send_driver_group_confirmation: true, send_reaction: true,
+          ai_fallback_enabled: true, geocoding_enabled: false,
+          semantic_ai_required: true, auto_register_confidence: 92, review_confidence: 75,
+          silent_driver_group_monitoring: false,
+        }),
+      },
+    },
+    aiResult: approve({ unit: 'VT700669', action: 'pickup', locationText: 'Lancaster PA' }),
+  });
+  const tg = makeTelegram();
+  const res = await mod.handleTrailerGroupMessage(tg, GROUP, msg('trl # VT700669 picked up\nLocation: Lancaster PA'));
+  assert.equal(res.registered, true);
+  assert.equal(state.events.length, 1);
+  const reply = tg.sent.find((m) => String(m.chatId) === String(GROUP.telegram_group_id));
+  assert.ok(reply, 'reply sent when silent mode is off');
+  assert.match(reply.text, /pickup registered/i);
+  assert.equal(tg.reactions.length, 1);
 });

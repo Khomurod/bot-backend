@@ -17,6 +17,7 @@ export default function GmapsTab() {
     geocodingApiEnabled: false, geocodingApiKey: "",
     deviationThresholdMeters: 250, checkIntervalSeconds: 300, offRouteGraceChecks: 3,
     warningCooldownMinutes: 30, staleGpsMinutes: 15, parkedSpeedMph: 5,
+    routeCompletionRadiusMiles: 10,
   });
 
   const load = useCallback(async () => {
@@ -30,6 +31,7 @@ export default function GmapsTab() {
         deviationThresholdMeters: s.deviationThresholdMeters, checkIntervalSeconds: s.checkIntervalSeconds,
         offRouteGraceChecks: s.offRouteGraceChecks, warningCooldownMinutes: s.warningCooldownMinutes,
         staleGpsMinutes: s.staleGpsMinutes, parkedSpeedMph: s.parkedSpeedMph,
+        routeCompletionRadiusMiles: s.routeCompletionRadiusMiles ?? 10,
       }));
     } catch (err) { setMessage({ type: "error", text: err.message }); }
     finally { setLoading(false); }
@@ -49,6 +51,7 @@ export default function GmapsTab() {
         offRouteGraceChecks: Number(form.offRouteGraceChecks),
         warningCooldownMinutes: Number(form.warningCooldownMinutes),
         staleGpsMinutes: Number(form.staleGpsMinutes), parkedSpeedMph: Number(form.parkedSpeedMph),
+        routeCompletionRadiusMiles: Number(form.routeCompletionRadiusMiles),
       };
       if (form.serverApiKey.trim()) payload.serverApiKey = form.serverApiKey.trim();
       if (form.geocodingApiKey.trim()) payload.geocodingApiKey = form.geocodingApiKey.trim();
@@ -128,6 +131,20 @@ export default function GmapsTab() {
         <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
           A driver must be off route by more than the threshold for the grace number of consecutive checks before a warning
           is sent. Warnings are then spaced by the cooldown. Stale GPS and parked/slow trucks never trigger a warning.
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ marginTop: 0 }}>🏁 Auto-completion</h3>
+        <NumField
+          label="Auto-complete route within"
+          value={form.routeCompletionRadiusMiles}
+          onChange={(v) => setField("routeCompletionRadiusMiles", v)}
+          suffix="miles"
+        />
+        <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
+          When fresh GPS enters this radius around the final destination, the route is marked complete and monitoring
+          stops. No completion message is sent to the driver group. Safe range 0.5–100 miles (default 10).
         </div>
       </div>
 

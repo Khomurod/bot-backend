@@ -569,6 +569,18 @@ function RouteRow({ a, onChanged, onMessage }) {
             {" · "}Checked: {fmtTime(a.last_checked_at)}
             {a.last_notification_at && <> · Last warning: {fmtTime(a.last_notification_at)}</>}
           </div>
+          {a.status === "completed" && a.completed_at && (
+            <div style={{ fontSize: 12, marginTop: 4, color: "#22c55e" }}>
+              ✅ Completed {fmtTime(a.completed_at)}
+              {a.completion_distance_meters != null && <> · {fmtMeters(a.completion_distance_meters)} from destination</>}
+              {a.completion_latitude != null && a.completion_longitude != null && (
+                <> · Final GPS {a.completion_latitude.toFixed(4)}, {a.completion_longitude.toFixed(4)}</>
+              )}
+              {a.completion_reason && (
+                <div style={{ color: "#94a3b8", marginTop: 2 }}>{a.completion_reason}</div>
+              )}
+            </div>
+          )}
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-start" }}>
           <button className="btn btn-ghost btn-sm" onClick={viewDetails}>{details ? "Hide" : "Details"}</button>
