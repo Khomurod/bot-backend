@@ -1777,6 +1777,21 @@ export async function getTrailerSettings() {
   return res.json();
 }
 
+/** Planned pickup/drop-off instructions (assignments not yet confirmed done). */
+export async function getTrailerPendingInstructions(status = 'pending') {
+  const res = await fetch(`${API_BASE}/trailers/pending-instructions?status=${encodeURIComponent(status)}`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function cancelTrailerPendingInstruction(id) {
+  const res = await fetch(`${API_BASE}/trailers/pending-instructions/${id}/cancel`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function updateTrailerSettings(patch) {
   const res = await fetch(`${API_BASE}/trailers/settings`, {
     method: 'PUT', headers: getHeaders(), body: JSON.stringify(patch),

@@ -89,17 +89,28 @@ test('every non-confirmed intent is refused', () => {
   }
 });
 
-test('questions/discussion are silently ignorable; instructions/plans go to review', () => {
+test('questions/discussion are silently ignorable; grounded instructions/plans go to plan; unclear reviews', () => {
   for (const [intent, disposition] of [
     ['pickup_question', 'ignore'], ['dropoff_question', 'ignore'], ['discussion', 'ignore'],
     ['trailer_mention', 'ignore'], ['condition_report_only', 'ignore'],
-    ['instruction_pickup', 'review'], ['instruction_dropoff', 'review'],
-    ['planned_pickup', 'review'], ['planned_dropoff', 'review'], ['unclear', 'review'],
+    // Grounded instructions/plans are recorded as pending instructions, NOT
+    // sent to manual review.
+    ['instruction_pickup', 'plan'], ['instruction_dropoff', 'plan'],
+    ['planned_pickup', 'plan'], ['planned_dropoff', 'plan'],
+    ['unclear', 'review'],
   ]) {
-    const ev = aiEvent({ intent, completed: false });
+    const ev = aiEvent({ intent, completed: false }); // unitGrounded: true by default
     const r = aiResult({ intent, completed: false }, [ev]);
     const g = sv.evaluateTrailerEventApproval(r, ev, CTX_TEXT, SETTINGS);
     assert.equal(g.disposition, disposition, `${intent} → ${disposition}`);
+  }
+});
+
+test('an UNGROUNDED instruction/plan is ignored (nothing worth storing), not planned', () => {
+  for (const intent of ['instruction_pickup', 'planned_dropoff']) {
+    const ev = aiEvent({ intent, completed: false, unitGrounded: false });
+    const r = aiResult({ intent, completed: false }, [ev]);
+    assert.equal(sv.evaluateTrailerEventApproval(r, ev, CTX_TEXT, SETTINGS).disposition, 'ignore');
   }
 });
 
@@ -248,5 +259,6 @@ test('one confirmed + one planned: only the confirmed event passes the gate', ()
   const r = aiResult({ intent: 'confirmed_pickup' }, [ev1, ev2]);
   assert.equal(sv.canRegisterTrailerEvent(r, ev1, ctx, SETTINGS), true);
   assert.equal(sv.canRegisterTrailerEvent(r, ev2, ctx, SETTINGS), false);
-  assert.equal(sv.evaluateTrailerEventApproval(r, ev2, ctx, SETTINGS).disposition, 'review');
+  // The planned drop-off is captured as a pending instruction, not manual review.
+  assert.equal(sv.evaluateTrailerEventApproval(r, ev2, ctx, SETTINGS).disposition, 'plan');
 });

@@ -156,6 +156,35 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
     }
   });
 
+  // ── Planned instructions (assigned pickup / drop-off, not yet completed) ─────
+  // Registered BEFORE '/api/trailers/:id' so ':id' never captures this path.
+  router.get('/api/trailers/pending-instructions', authMiddleware, async (req, res) => {
+    try {
+      const rows = await db.listPendingInstructions({
+        status: req.query.status || 'pending',
+        trailer_id: req.query.trailer_id || null,
+        unit: req.query.unit || null,
+        limit: req.query.limit || 200,
+      });
+      res.json({ instructions: rows });
+    } catch (err) {
+      console.error('[TRAILER-API] list pending instructions failed:', err.message);
+      res.json({ instructions: [] });
+    }
+  });
+
+  // Cancel a pending instruction (admin — it was wrong or is no longer relevant).
+  router.post('/api/trailers/pending-instructions/:id/cancel', authMiddleware, async (req, res) => {
+    try {
+      const instruction = await db.setPendingInstructionStatus(req.params.id, 'cancelled');
+      if (!instruction) return res.status(404).json({ error: 'Instruction not found.' });
+      res.json({ instruction });
+    } catch (err) {
+      console.error('[TRAILER-API] cancel instruction failed:', err.message);
+      res.status(500).json({ error: 'Failed to cancel instruction.' });
+    }
+  });
+
   // ── Single trailer + timeline ──────────────────────────────────────────────
   // Includes the latest PENDING review event (and the previous confirmed one),
   // so the drawer can show "detected change" vs "current/previous confirmed".

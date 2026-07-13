@@ -35,8 +35,15 @@ const dbPath = path.resolve(__dirname, '../database/db.js');
  *    gate still runs against the REAL collected context.
  */
 function loadPipeline({ aiResult, settings = {}, forceDuplicate = false, visionUnitsByFileId = {} } = {}) {
-  const state = { events: [], statusUpdates: [], queries: [] };
+  const state = { events: [], statusUpdates: [], queries: [], instructions: [] };
   const fakeDb = {
+    insertTrailerPendingInstruction: async (input) => {
+      const instruction = { id: state.instructions.length + 1, instruction_status: 'pending', ...input };
+      state.instructions.push(instruction);
+      return { instruction, duplicate: false };
+    },
+    getLatestPendingInstruction: async () => null,
+    markPendingInstructionConfirmed: async (id, opts) => ({ id, ...opts }),
     getTrailerSettings: async () => ({
       enabled: true, beta_mode: true, automatic_update_test_group_id: null,
       send_driver_group_confirmation: true, send_reaction: true,
@@ -176,14 +183,13 @@ test('"shu TRL ni olasiz" replying to a trailer photo: NO pickup, NO reply, NO r
   // No driver-group reply, no reaction.
   assert.ok(!tg.sent.some((m) => String(m.chatId) === String(GROUP.telegram_group_id)));
   assert.equal(tg.reactions.length, 0);
-  // Internal review item only, correctly labelled.
-  assert.equal(res.review, true);
-  const review = state.events[0];
-  assert.equal(review.event_type, 'unidentified');
-  assert.equal(review.semantic_intent, 'instruction_pickup');
-  assert.equal(review.semantic_completed, false);
-  assert.equal(review.trailer_unit_number, 'SWFZ233611');
-  assert.equal(review.ai_verification_status, 'review');
+  // A grounded instruction is captured as a PENDING instruction (not a completed
+  // event, not a manual-review item). No unidentified review row is created.
+  assert.equal(res.planned, true);
+  assert.ok(!state.events.some((e) => e.event_type === 'unidentified'));
+  assert.equal(state.instructions.length, 1);
+  assert.equal(state.instructions[0].trailer_unit_number, 'SWFZ233611');
+  assert.equal(state.instructions[0].planned_action, 'pickup');
 });
 
 test('"oldim" replying to the same photo: pickup registered as SWFZ233611, silently (no reply/reaction)', async () => {
@@ -403,10 +409,12 @@ test('one confirmed + one planned: only the confirmed trailer registers', async 
   assert.equal(registered.length, 1);
   assert.equal(registered[0].trailer_unit_number, '403279');
   assert.equal(state.statusUpdates.length, 1, '171847 status untouched');
-  const review = state.events.find((e) => e.event_type === 'unidentified');
-  assert.ok(review, 'planned drop-off recorded for review');
-  assert.equal(review.trailer_unit_number, '171847');
-  assert.equal(review.semantic_intent, 'planned_dropoff');
+  // The planned drop-off is captured as a PENDING instruction (not a completed
+  // event, not a manual-review 'unidentified' row).
+  assert.ok(!state.events.some((e) => e.event_type === 'unidentified'), 'no manual-review row for the plan');
+  const instruction = state.instructions.find((i) => i.trailer_unit_number === '171847');
+  assert.ok(instruction, 'planned drop-off recorded as an instruction');
+  assert.equal(instruction.planned_action, 'dropoff');
   // Silent mode (default): only the confirmed trailer registers, and nothing is
   // sent back to the driver group.
   assert.ok(!tg.sent.some((m) => String(m.chatId) === String(GROUP.telegram_group_id)));
