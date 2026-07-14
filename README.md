@@ -106,26 +106,39 @@ failed scheduled runs retry with exponential backoff.
 | `MILEAGE_BONUS_ACCOUNTING_USER_IDS` | Comma-separated Telegram numeric IDs allowed to decide cards |
 | `MILEAGE_BONUS_ACCOUNTING_USERNAMES` | Compatibility fallback usernames |
 
-## Datatruck BOL/POD delivery
+## Datatruck BOL/POD delivery (admin-controlled)
 
 When a driver uploads a **Bill of Lading** or **Proof of Delivery** to Datatruck,
-the bot forwards the file to that driver's Telegram group. A polling
-service scans recently-picked-up and recently-delivered orders from the read-only Datatruck OpenAPI,
-reads each order's inline `documents` array, matches the order to its driver
-group by **driver name only** (never truck/unit number), and posts the document
-with a short caption.
+the bot forwards the file to Telegram. A polling service scans recently-picked-up
+and recently-delivered orders from the read-only Datatruck OpenAPI, reads each
+order's inline `documents` array, matches the order to its driver group by
+**driver name only** (never truck/unit number), and posts the document with a
+short caption.
 
-- **Idempotent:** every (order, document) pair is delivered at most once,
-  guarded by a UNIQUE signature in `datatruck_document_deliveries`.
+Routing, the master on/off switch, and the central group are configured in the
+Admin Panel under **Settings → BOL / POD** (not env). The feature is **OFF by
+default** — nothing is forwarded to any group until an administrator enables it.
+See [docs/architecture/bol-pod-forwarding.md](docs/architecture/bol-pod-forwarding.md)
+for the full design.
+
+- **Delivery modes:** the matched **driver group only**, one **central group
+  only**, or **both** — each destination tracked and retried independently.
+- **Idempotent:** every (order, document) pair is delivered at most once per
+  destination, guarded by a UNIQUE signature in `datatruck_document_deliveries`.
 - **No backfill spam:** documents uploaded before the feature first activated
   are baselined as historical and never sent. `DATATRUCK_DOC_SINCE` can only
   make this cutoff stricter; it cannot release older documents.
 - **Retryable:** a failed send, or a document whose group does not exist yet,
-  stays eligible for a later scan up to an attempt cap.
+  stays eligible for a later scan up to an attempt cap (exponential backoff).
+- **Never guesses a driver group:** an unmatched document is marked
+  *needs review* (`skipped_no_group`) rather than sent to an unrelated group.
+- **Deterministic classification:** BOL vs POD comes from Datatruck's
+  authoritative document type; the AI vision fallback is off by default.
 
 | Variable | Default | Description |
 |---|---|---|
-| `DATATRUCK_DOC_DELIVERY_ENABLED` | `true` | Set `false` to disable forwarding |
+| `DATATRUCK_DOC_DELIVERY_ENABLED` | `true` | Env kill-switch; the admin master toggle (default OFF) is the primary gate |
+| `BOL_POD_AI_FALLBACK_ENABLED` | `false` | Enable the defensive AI vision fallback for documents whose type metadata cannot decide |
 | `DATATRUCK_DOC_POLL_MINUTES` | `15` | How often to scan for new uploads |
 | `DATATRUCK_DOC_LOOKBACK_DAYS` | `7` | How far back (by delivery time) to scan |
 | `DATATRUCK_DOC_SINCE` | _(activation time)_ | ISO cutoff; documents uploaded before are treated as backfill |
