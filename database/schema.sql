@@ -1564,9 +1564,33 @@ CREATE TABLE IF NOT EXISTS datatruck_document_deliveries (
   )
 );
 
--- Additive migration for existing databases: allow the legacy status
--- 'suppressed_bot_upload'. It was written by the retired BOL/POD intake
--- pipeline's loop prevention; historical rows may still carry it.
+-- Additive: the admin-controlled BOL/POD forwarding feature tracks TWO
+-- destinations per document (the driver group and a central group). The columns
+-- above serve the DRIVER destination; these central_* columns track the CENTRAL
+-- destination independently, so a partial failure retries only the failed side.
+-- doc_classification/classification_source record how BOL vs POD was decided.
+-- All ADD COLUMN IF NOT EXISTS — safe to run on every boot.
+ALTER TABLE datatruck_document_deliveries
+  ADD COLUMN IF NOT EXISTS central_status TEXT NOT NULL DEFAULT 'skipped_not_applicable';
+ALTER TABLE datatruck_document_deliveries
+  ADD COLUMN IF NOT EXISTS central_telegram_group_id BIGINT NULL;
+ALTER TABLE datatruck_document_deliveries
+  ADD COLUMN IF NOT EXISTS central_telegram_message_id BIGINT NULL;
+ALTER TABLE datatruck_document_deliveries
+  ADD COLUMN IF NOT EXISTS central_attempt_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE datatruck_document_deliveries
+  ADD COLUMN IF NOT EXISTS central_last_error TEXT NULL;
+ALTER TABLE datatruck_document_deliveries
+  ADD COLUMN IF NOT EXISTS doc_classification TEXT NULL;
+ALTER TABLE datatruck_document_deliveries
+  ADD COLUMN IF NOT EXISTS classification_source TEXT NULL;
+
+-- Additive migration for existing databases. Widens the driver-destination
+-- status allow-list (adds 'processing' and the routing skip states while
+-- keeping the legacy 'suppressed_bot_upload' historical value) and adds the
+-- central-destination status allow-list. Drop + re-add is idempotent; existing
+-- rows only carry values in the old (narrower) set. The central_status
+-- constraint is added AFTER its column exists (columns are altered above).
 DO $$
 BEGIN
   IF EXISTS (
@@ -1579,7 +1603,28 @@ BEGIN
   END IF;
   ALTER TABLE datatruck_document_deliveries
     ADD CONSTRAINT datatruck_document_deliveries_status_check
-    CHECK (status IN ('pending', 'sent', 'failed', 'suppressed_backfill', 'skipped_no_group', 'suppressed_bot_upload'));
+    CHECK (status IN (
+      'pending', 'processing', 'sent', 'failed',
+      'suppressed_backfill', 'skipped_no_group', 'suppressed_bot_upload',
+      'skipped_not_applicable', 'skipped_same_group', 'skipped_unclear',
+      'skipped_duplicate'
+    ));
+
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'datatruck_document_deliveries_central_status_check'
+      AND conrelid = 'datatruck_document_deliveries'::regclass
+  ) THEN
+    ALTER TABLE datatruck_document_deliveries
+      DROP CONSTRAINT datatruck_document_deliveries_central_status_check;
+  END IF;
+  ALTER TABLE datatruck_document_deliveries
+    ADD CONSTRAINT datatruck_document_deliveries_central_status_check
+    CHECK (central_status IN (
+      'pending', 'processing', 'sent', 'failed',
+      'skipped_not_applicable', 'skipped_same_group', 'skipped_unclear',
+      'skipped_duplicate'
+    ));
 END
 $$;
 
@@ -1587,6 +1632,9 @@ CREATE INDEX IF NOT EXISTS idx_datatruck_document_deliveries_status
   ON datatruck_document_deliveries(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_datatruck_document_deliveries_group
   ON datatruck_document_deliveries(group_id, created_at DESC);
+-- Supports the per-destination central retry scan (claim due central rows).
+CREATE INDEX IF NOT EXISTS idx_datatruck_document_deliveries_central_status
+  ON datatruck_document_deliveries(central_status, updated_at DESC);
 
 -- ── Retired: Smart BOL/POD intake + silent BOL/POD test monitor ──
 -- The Telegram→Datatruck BOL/POD intake pipeline and the admin "BOL/POD
@@ -2669,3 +2717,30 @@ CREATE INDEX IF NOT EXISTS idx_trailer_pending_instructions_status
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_trailer_pending_instructions_msg
   ON trailer_pending_instructions(telegram_group_id, instruction_source_message_id, trailer_unit_number, planned_action)
   WHERE telegram_group_id IS NOT NULL AND instruction_source_message_id IS NOT NULL;
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- BOL / POD document forwarding (admin-controlled) — Settings → BOL / POD
+-- ══════════════════════════════════════════════════════════════════════════
+-- Runtime-editable routing for forwarding DataTruck BOL/POD documents to
+-- Telegram groups. Single-row (id = 1). OFF by default: after deploy NO document
+-- is forwarded to ANY group until an administrator enables the feature in the
+-- admin panel. This is a NEW table — the retired bol_pod_monitor_settings table
+-- (a different, removed feature) is left untouched for historical safety and is
+-- NOT reused. No secrets are stored here (the bot token stays server-side).
+CREATE TABLE IF NOT EXISTS bol_pod_forwarding_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  delivery_mode TEXT NOT NULL DEFAULT 'driver_group'
+    CHECK (delivery_mode IN ('driver_group', 'central_group', 'both')),
+  central_group_id BIGINT NULL,
+  central_group_title TEXT NULL,
+  central_group_validated_at TIMESTAMPTZ NULL,
+  document_type_mode TEXT NOT NULL DEFAULT 'both'
+    CHECK (document_type_mode IN ('bol', 'pod', 'both')),
+  uncertain_document_policy TEXT NOT NULL DEFAULT 'do_not_send'
+    CHECK (uncertain_document_policy IN ('do_not_send', 'central_review')),
+  last_tested_at TIMESTAMPTZ NULL,
+  updated_by TEXT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO bol_pod_forwarding_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
