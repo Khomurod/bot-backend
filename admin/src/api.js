@@ -1380,6 +1380,70 @@ export async function testGmapsConnection(apiKey) {
   return res.json();
 }
 
+// ─── Settings: BOL / POD document forwarding ───
+
+export async function getBolPodSettings() {
+  const res = await fetch(`${API_BASE}/settings/bol-pod`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.settings;
+}
+
+export async function updateBolPodSettings(payload) {
+  const res = await fetch(`${API_BASE}/settings/bol-pod`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.settings;
+}
+
+/** Validate the central Telegram group server-side. Returns { ok, title?, message }. */
+export async function validateBolPodGroup(groupId) {
+  const res = await fetch(`${API_BASE}/settings/bol-pod/validate-group`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ groupId }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Send a harmless test message to the central group. Returns { ok, message }. */
+export async function sendBolPodTestMessage(groupId) {
+  const res = await fetch(`${API_BASE}/settings/bol-pod/test-message`, {
+    method: 'POST', headers: getHeaders(),
+    body: JSON.stringify(groupId ? { groupId } : {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getBolPodStatus() {
+  const res = await fetch(`${API_BASE}/settings/bol-pod/status`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function getBolPodDeliveries(limit = 30) {
+  const res = await fetch(
+    `${API_BASE}/settings/bol-pod/deliveries?limit=${encodeURIComponent(limit)}`,
+    { headers: getHeaders() },
+  );
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.deliveries;
+}
+
+/** Manual retry of a delivery's failed destination(s). Returns the updated delivery. */
+export async function retryBolPodDelivery(id) {
+  const res = await fetch(
+    `${API_BASE}/settings/bol-pod/deliveries/${encodeURIComponent(id)}/retry`,
+    { method: 'POST', headers: getHeaders() },
+  );
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.delivery;
+}
+
 // ─── Route Control ───
 
 export async function getRouteAssignments(status) {

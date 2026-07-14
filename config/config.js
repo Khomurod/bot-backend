@@ -213,6 +213,12 @@ module.exports = {
     process.env.DATATRUCK_DOC_MEDIA_BASE_URL
     || 'https://tms-datatruck.s3-accelerate.amazonaws.com/static/'
   ).trim(),
+  // BOL/POD forwarding: classification comes from DataTruck's authoritative
+  // `file_type` (deterministic). This flag enables a defensive AI vision
+  // fallback for the rare document whose type cannot be determined from
+  // metadata. OFF by default — a genuinely-uncertain document otherwise
+  // follows the admin's uncertain_document_policy without any AI call.
+  bolPodAiFallbackEnabled: process.env.BOL_POD_AI_FALLBACK_ENABLED === 'true',
   // Gmail App Password channel for driver-raise OTP delivery (no third party).
   // GMAIL_USER is the full address; GMAIL_APP_PASSWORD is a 16-char App Password
   // created at https://myaccount.google.com/apppasswords (2FA required).

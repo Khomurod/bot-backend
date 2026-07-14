@@ -1,13 +1,16 @@
 /**
- * The BOL/POD monitoring feature (Telegram→Datatruck smart intake + silent
- * test monitor + admin Settings tab) was fully retired. This test pins the
- * removal so it cannot silently come back:
- *   - the BOL/POD-only modules are gone from disk,
- *   - the bot registers no document-intake / dtdoc: handlers,
- *   - the settings API no longer exposes /bol-pod-monitor routes,
- *   - the admin UI has no BOL/POD Monitor tab or API functions,
- *   - the leads bot stays enabled and the kept Datatruck delivery service
- *     stays wired in index.js.
+ * The old BOL/POD *intake + upload* pipeline (drivers post documents in their
+ * Telegram group -> AI classify -> match a load -> confirm -> UPLOAD to
+ * DataTruck) was removed and is deliberately NOT restored: its DataTruck upload
+ * endpoint was never verified, so it never ran live. This test pins that the
+ * fragile intake/upload feature stays gone even though a *new, forwarding-only*
+ * BOL/POD feature (DataTruck -> Telegram) has since been added.
+ *
+ * What is asserted GONE: the intake/upload/monitor modules, the dtdoc:
+ * confirmation callbacks, any DataTruck document-upload call, and the old
+ * /bol-pod-monitor routes.
+ * What is asserted PRESENT: the new forwarding service wiring and the new
+ * /bol-pod settings routes.
  */
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -23,6 +26,7 @@ process.env.DATABASE_URL ||= 'postgresql://localhost:5432/unused_in_this_test';
 
 const ROOT = path.resolve(__dirname, '..');
 
+// The intake/upload/monitor modules must stay deleted.
 const REMOVED_FILES = [
   'bot/documentIntakeHandlers.js',
   'services/documentIntakeService.js',
@@ -38,7 +42,7 @@ const REMOVED_FILES = [
   'admin/src/pages/settings/BolPodMonitorTab.jsx',
 ];
 
-test('BOL/POD-only modules are deleted', () => {
+test('the retired intake/upload/monitor modules stay deleted', () => {
   for (const rel of REMOVED_FILES) {
     assert.equal(fs.existsSync(path.join(ROOT, rel)), false, `${rel} must not exist`);
   }
@@ -54,7 +58,6 @@ test('bot sources register no document intake and no dtdoc: callbacks', () => {
       else if (entry.name.endsWith('.js')) files.push(full);
     }
   })(botDir);
-
   for (const file of files) {
     const src = fs.readFileSync(file, 'utf8');
     assert.ok(!/documentIntake/i.test(src), `${path.relative(ROOT, file)} references documentIntake`);
@@ -62,9 +65,18 @@ test('bot sources register no document intake and no dtdoc: callbacks', () => {
   }
 });
 
-test('settings API has no /bol-pod-monitor routes (404), other settings still resolve', async () => {
-  // Only the DB module needs faking: the settings router's other deps load
-  // fine with dummy env and never run at registration time.
+test('the DataTruck client exposes no document-upload endpoint (forwarding only)', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'services/datatruckApiService.js'), 'utf8');
+  assert.ok(!/uploadOrderDocument/.test(src), 'datatruckApiService must not upload documents');
+});
+
+test('index.js wires the forwarding service and never the retired intake', () => {
+  const indexSrc = fs.readFileSync(path.join(ROOT, 'index.js'), 'utf8');
+  assert.match(indexSrc, /startDatatruckDocumentService/, 'forwarding service must stay wired');
+  assert.ok(!/documentIntake/i.test(indexSrc), 'index.js must not reference the retired intake');
+});
+
+test('settings API: /bol-pod-monitor is gone (404); /bol-pod (new forwarding) resolves', async () => {
   const dbPath = path.resolve(__dirname, '../database/db.js');
   require.cache[dbPath] = {
     id: dbPath,
@@ -97,26 +109,10 @@ test('settings API has no /bol-pod-monitor routes (404), other settings still re
       });
       assert.equal(res.status, 404, `${method} ${pathname} must be gone`);
     }
-
-    // Sanity: the router itself still serves its remaining settings routes.
-    const alive = await fetch(`${base}/message-groups`);
-    assert.notEqual(alive.status, 404, 'message-groups settings route must survive');
+    // The new forwarding settings route exists.
+    const alive = await fetch(`${base}/bol-pod`);
+    assert.notEqual(alive.status, 404, 'new /bol-pod settings route must exist');
   } finally {
     server.close();
   }
-});
-
-test('admin UI has no BOL/POD Monitor tab or API functions', () => {
-  const settingsPage = fs.readFileSync(path.join(ROOT, 'admin/src/pages/SettingsPage.jsx'), 'utf8');
-  assert.ok(!/bolpod|BolPod|BOL\/POD/i.test(settingsPage), 'SettingsPage must not mention BOL/POD');
-
-  const api = fs.readFileSync(path.join(ROOT, 'admin/src/api.js'), 'utf8');
-  assert.ok(!/bol-pod|BolPod/i.test(api), 'admin api.js must not expose BOL/POD functions');
-});
-
-test('leads bot stays enabled and the kept Datatruck delivery service stays wired', () => {
-  const indexSrc = fs.readFileSync(path.join(ROOT, 'index.js'), 'utf8');
-  assert.match(indexSrc, /ENABLE_LEADS_BOT/, 'leads bot wiring must survive');
-  assert.match(indexSrc, /startDatatruckDocumentService/, 'Datatruck document delivery must stay wired');
-  assert.ok(!/documentIntake|bolPod/i.test(indexSrc), 'index.js must not reference the retired intake/monitor');
 });
