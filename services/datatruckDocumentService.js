@@ -21,6 +21,8 @@ const { bot } = require('../bot/bot');
 const { safeSend, isPermanentSendError } = require('./telegramHtml');
 const datatruck = require('./datatruckApiService');
 const docsDb = require('../database/datatruckDocuments');
+const bolPodSettings = require('../database/bolPodForwardingSettings');
+const { classifyDocument } = require('./bolPodClassifier');
 const { listCanonicalDriverGroups } = require('./driverGroupDirectoryService');
 const {
   isTrackedDocumentType,
@@ -32,8 +34,16 @@ const {
   resolveDocumentUrl,
 } = require('./datatruckDocumentHelpers');
 
-const CLAIM_OPTS = { staleMinutes: 60, maxAttempts: 6 };
+const MAX_ATTEMPTS = 6;
 const DOWNLOAD_TIMEOUT_MS = 60_000;
+
+// Which destinations a delivery mode targets.
+function destinationsForMode(mode) {
+  return {
+    driver: mode === 'driver_group' || mode === 'both',
+    central: mode === 'central_group' || mode === 'both',
+  };
+}
 
 let serviceTimer = null;
 let serviceStopped = false;
@@ -81,16 +91,28 @@ async function downloadDocument(fileLink) {
   }
 }
 
+/** Minimal caption/filename for an unclear document sent for human review. */
+function buildReviewCaption(doc) {
+  const load = doc?.loadReference || doc?.orderId;
+  return `📄 Document needs review${load ? `\nLoad: ${load}` : ''}`;
+}
+function buildReviewFilename(doc) {
+  const ref = String(doc?.loadReference || doc?.orderId || 'file').replace(/[^A-Za-z0-9._-]/g, '_');
+  return `document_${ref}.pdf`;
+}
+
 /**
- * Send one document to a driver group. Lets Telegram fetch the URL directly;
- * falls back to downloading + uploading the bytes when Telegram cannot.
+ * Send one document to a group. Lets Telegram fetch the URL directly; falls back
+ * to downloading + uploading the bytes when Telegram cannot. In `review` mode
+ * (an unclear document forwarded to the central review group) the tracked-type
+ * guard is relaxed and a generic caption/filename is used.
  */
-async function sendDocumentToGroup(telegramGroupId, doc) {
-  if (!isTrackedDocumentType(doc?.fileType)) {
+async function sendDocumentToGroup(telegramGroupId, doc, { review = false } = {}) {
+  if (!review && !isTrackedDocumentType(doc?.fileType)) {
     throw new Error(`Refusing to send unsupported document type: ${doc?.fileType || 'unknown'}`);
   }
-  const caption = buildDocumentCaption(doc);
-  const filename = buildDocumentFilename(doc);
+  const caption = review ? buildReviewCaption(doc) : buildDocumentCaption(doc);
+  const filename = review ? buildReviewFilename(doc) : buildDocumentFilename(doc);
   const fileUrl = resolveDocumentUrl(doc.fileLink, config.datatruckDocMediaBaseUrl);
   if (!fileUrl) throw new Error('Document has no resolvable file URL.');
   const extra = { caption, parse_mode: 'HTML' };
@@ -137,106 +159,226 @@ async function resolveCutoffMs() {
 }
 
 /**
- * One full scan: fetch recent orders, forward any new BOL/POD documents.
+ * Mark a destination not-applicable/skipped, but ONLY while it is still
+ * un-acted (pending/processing). Never overwrites a terminal sent/failed/skip —
+ * so a routing-mode change does not erase an already-recorded outcome.
+ */
+async function skipIfUnacted(row, destination, skipStatus) {
+  const current = destination === 'driver' ? row.status : row.central_status;
+  if (current === 'pending' || current === 'processing') {
+    await docsDb.markDestinationSkipped(row.id, destination, skipStatus);
+  }
+}
+
+/**
+ * Claim + send one destination. Claim is atomic (two processes cannot both send)
+ * and honours the attempt cap + exponential backoff. Returns what happened so
+ * the caller can count it. A destination already 'sent' (or not yet due for
+ * retry) is not claimed and is left untouched — the successful side is never
+ * resent.
+ */
+async function deliverDestination(id, destination, chatId, doc, extraSent = {}, sendOptions = {}) {
+  const claimed = await docsDb.claimDestination(id, destination, { maxAttempts: MAX_ATTEMPTS });
+  if (!claimed) return { attempted: false };
+  try {
+    const result = await sendDocumentToGroup(chatId, doc, sendOptions);
+    await docsDb.markDestinationSent(id, destination, {
+      telegramGroupId: chatId,
+      messageId: result?.message_id || null,
+      ...extraSent,
+    });
+    return { attempted: true, sent: true };
+  } catch (err) {
+    await docsDb.markDestinationFailed(id, destination, err.message).catch(() => {});
+    return { attempted: true, sent: false, error: err.message };
+  }
+}
+
+/**
+ * Route one document per the configured delivery mode + document-type filter +
+ * uncertain-document policy. Returns a small tally object.
+ */
+async function routeDocument(doc, ctx) {
+  const { dest, documentTypeMode, uncertainPolicy, centralGroupId, centralApplicable, index, cutoffMs } = ctx;
+  const meta = {
+    signature: doc.signature,
+    orderId: doc.orderId,
+    loadReference: doc.loadReference,
+    fileType: doc.fileType,
+    fileLink: doc.fileLink,
+    uploadedBy: doc.uploadedBy,
+    uploadedAt: doc.uploadedAt,
+    driverName: doc.driverNames.join(' / ') || null,
+    unitNumber: doc.unitNumber || null,
+  };
+
+  // Backfill / undatable documents are recorded once and never sent.
+  if (doc.uploadedAtMs == null || doc.uploadedAtMs < cutoffMs) {
+    return { backfill: await docsDb.recordBackfillSuppressed(meta) };
+  }
+
+  const { classification, source } = await classifyDocument(doc);
+  meta.classification = classification;
+  meta.classificationSource = source;
+
+  // Unrelated documents are never forwarded and are not tracked.
+  if (classification === 'unrelated') return { skippedUnrelated: true };
+
+  // Document-type filter for confident BOL/POD.
+  if ((classification === 'bol' || classification === 'pod')
+      && documentTypeMode !== 'both' && documentTypeMode !== classification) {
+    return { skippedType: true };
+  }
+
+  // Uncertain documents follow the admin policy — NEVER a driver group.
+  if (classification === 'unclear') {
+    const { row } = await docsDb.upsertDelivery(meta);
+    await skipIfUnacted(row, 'driver', 'skipped_unclear');
+    if (uncertainPolicy === 'central_review' && centralApplicable) {
+      const r = await deliverDestination(row.id, 'central', centralGroupId, doc, {}, { review: true });
+      return { skippedUnclear: true, centralSent: r.sent === true, failed: r.attempted && !r.sent, error: r.error };
+    }
+    await skipIfUnacted(row, 'central', 'skipped_unclear');
+    return { skippedUnclear: true };
+  }
+
+  // Confident BOL/POD → route to driver and/or central.
+  const { row } = await docsDb.upsertDelivery(meta);
+  // Only resolve the driver group when the mode needs it, so central-only
+  // delivery is never blocked by driver-group lookup.
+  const match = dest.driver ? matchDocumentToGroup(doc, index) : null;
+  const driverChatId = match ? String(match.group.telegram_group_id) : null;
+  // Same-group protection (only meaningful in 'both' mode): if the central group
+  // IS the driver's own group, send once and mark central skipped_same_group.
+  const sameGroup = dest.driver && centralApplicable && driverChatId
+    && driverChatId === String(centralGroupId);
+
+  const out = {};
+
+  if (dest.driver) {
+    if (!match) {
+      await skipIfUnacted(row, 'driver', 'skipped_no_group');
+      out.driverNoGroup = true;
+    } else {
+      const r = await deliverDestination(row.id, 'driver', match.group.telegram_group_id, doc, {
+        groupId: match.group.group_id,
+        matchedBy: match.matchedBy,
+      });
+      if (r.sent) {
+        out.driverSent = true;
+        console.log(
+          `[DATATRUCK-DOCS] Sent ${classification.toUpperCase()} for load `
+          + `${doc.loadReference || doc.orderId} to "${match.group.group_name}" (${match.matchedBy})`
+        );
+      } else if (r.attempted) { out.failed = true; out.error = r.error; }
+    }
+  } else {
+    await skipIfUnacted(row, 'driver', 'skipped_not_applicable');
+  }
+
+  if (centralApplicable && !sameGroup) {
+    const r = await deliverDestination(row.id, 'central', centralGroupId, doc);
+    if (r.sent) out.centralSent = true;
+    else if (r.attempted) { out.failed = true; out.error = r.error || out.error; }
+  } else if (sameGroup) {
+    await skipIfUnacted(row, 'central', 'skipped_same_group');
+  } else {
+    await skipIfUnacted(row, 'central', 'skipped_not_applicable');
+  }
+
+  return out;
+}
+
+/**
+ * One full scan: fetch recent orders and route any new BOL/POD documents per the
+ * admin settings. Returns a summary (also stored for the admin status panel).
  * @returns {Promise<object>} summary
  */
 async function runOnce({ referenceMs = Date.now() } = {}) {
   if (!datatruck.isConfigured()) {
     return { configured: false, reason: 'datatruck_not_configured' };
   }
+  const settings = await bolPodSettings.getBolPodConfig();
+  if (!settings.enabled) {
+    return { configured: true, enabled: false, reason: 'feature_disabled', ranAt: new Date().toISOString() };
+  }
+
+  const dest = destinationsForMode(settings.deliveryMode);
+  const centralGroupId = settings.centralGroupId; // string | null
+  const centralApplicable = dest.central && Boolean(centralGroupId);
 
   const cutoffMs = await resolveCutoffMs();
   const { startIso, endIso } = windowIso(referenceMs);
   const orders = await datatruck.fetchOrdersByDocumentWindow(startIso, endIso);
 
-  const directory = await listCanonicalDriverGroups({ operational: true, includeNonDrivers: false });
-  const index = buildGroupMatchIndex(directory);
+  // The driver-group directory is only needed when a mode routes to drivers.
+  const index = dest.driver
+    ? buildGroupMatchIndex(await listCanonicalDriverGroups({ operational: true, includeNonDrivers: false }))
+    : { byNameKey: new Map() };
 
-  let scanned = 0;
-  let backfillSuppressed = 0;
-  let sent = 0;
-  let skippedNoGroup = 0;
-  let failed = 0;
+  const ctx = {
+    dest,
+    documentTypeMode: settings.documentTypeMode,
+    uncertainPolicy: settings.uncertainDocumentPolicy,
+    centralGroupId,
+    centralApplicable,
+    index,
+    cutoffMs,
+  };
+
+  const c = {
+    scanned: 0, backfillSuppressed: 0, driverSent: 0, centralSent: 0,
+    skippedNoGroup: 0, skippedType: 0, skippedUnrelated: 0, skippedUnclear: 0, failed: 0,
+  };
   const errors = [];
 
   for (const order of orders) {
     const docs = extractTrackedDocuments(order);
     for (const doc of docs) {
-      scanned += 1;
-      const meta = {
-        signature: doc.signature,
-        orderId: doc.orderId,
-        loadReference: doc.loadReference,
-        fileType: doc.fileType,
-        fileLink: doc.fileLink,
-        uploadedBy: doc.uploadedBy,
-        uploadedAt: doc.uploadedAt,
-        driverName: doc.driverNames.join(' / ') || null,
-        unitNumber: doc.unitNumber || null,
-      };
-
-      // Backfill / undatable documents are recorded once and never sent.
-      if (doc.uploadedAtMs == null || doc.uploadedAtMs < cutoffMs) {
-        if (await docsDb.recordBackfillSuppressed(meta)) backfillSuppressed += 1;
-        continue;
-      }
-
-      const claimed = await docsDb.claimDocumentDelivery(meta, CLAIM_OPTS);
-      if (!claimed) continue; // already sent/suppressed, or not yet due for retry
-
-      const match = matchDocumentToGroup(doc, index);
-      if (!match) {
-        await docsDb.markSkippedNoGroup(claimed.id, {
-          driverName: meta.driverName,
-          unitNumber: meta.unitNumber,
-        });
-        skippedNoGroup += 1;
-        continue;
-      }
-
+      c.scanned += 1;
       try {
-        const result = await sendDocumentToGroup(match.group.telegram_group_id, doc);
-        await docsDb.markSent(claimed.id, {
-          groupId: match.group.group_id,
-          telegramGroupId: match.group.telegram_group_id,
-          messageId: result?.message_id || null,
-          matchedBy: match.matchedBy,
-        });
-        sent += 1;
-        console.log(
-          `[DATATRUCK-DOCS] Sent ${doc.fileType} for load ${doc.loadReference || doc.orderId} `
-          + `to "${match.group.group_name}" (matched by ${match.matchedBy})`
-        );
+        const r = await routeDocument(doc, ctx);
+        if (r.backfill) c.backfillSuppressed += 1;
+        if (r.skippedType) c.skippedType += 1;
+        if (r.skippedUnrelated) c.skippedUnrelated += 1;
+        if (r.skippedUnclear) c.skippedUnclear += 1;
+        if (r.driverNoGroup) c.skippedNoGroup += 1;
+        if (r.driverSent) c.driverSent += 1;
+        if (r.centralSent) c.centralSent += 1;
+        if (r.failed) { c.failed += 1; if (r.error) errors.push({ signature: doc.signature, error: r.error }); }
       } catch (err) {
-        await docsDb.markFailed(claimed.id, err.message).catch(() => {});
-        failed += 1;
+        // One bad document never stops the batch.
+        c.failed += 1;
         errors.push({ signature: doc.signature, error: err.message });
-        console.error(
-          `[DATATRUCK-DOCS] Failed to send ${doc.fileType} for load `
-          + `${doc.loadReference || doc.orderId}: ${err.message}`
-        );
+        console.error(`[DATATRUCK-DOCS] Error routing document ${doc.signature}: ${err.message}`);
       }
     }
   }
 
   const summary = {
     configured: true,
+    enabled: true,
+    deliveryMode: settings.deliveryMode,
     window: { startIso, endIso },
     cutoffIso: new Date(cutoffMs).toISOString(),
     ordersScanned: orders.length,
-    documentsScanned: scanned,
-    sent,
-    backfillSuppressed,
-    skippedNoGroup,
-    failed,
+    documentsScanned: c.scanned,
+    driverSent: c.driverSent,
+    centralSent: c.centralSent,
+    backfillSuppressed: c.backfillSuppressed,
+    skippedNoGroup: c.skippedNoGroup,
+    skippedType: c.skippedType,
+    skippedUnrelated: c.skippedUnrelated,
+    skippedUnclear: c.skippedUnclear,
+    failed: c.failed,
     errors,
     ranAt: new Date().toISOString(),
   };
   lastRunSummary = summary;
   console.log(
-    `[DATATRUCK-DOCS] Scan complete: ${orders.length} orders, ${scanned} BOL/POD docs, `
-    + `${sent} sent, ${backfillSuppressed} backfill, `
-    + `${skippedNoGroup} no-group, ${failed} failed`
+    `[DATATRUCK-DOCS] Scan complete (${settings.deliveryMode}): ${orders.length} orders, `
+    + `${c.scanned} BOL/POD docs, ${c.driverSent} driver-sent, ${c.centralSent} central-sent, `
+    + `${c.backfillSuppressed} backfill, ${c.skippedNoGroup} no-group, ${c.failed} failed`
   );
   return summary;
 }
@@ -245,8 +387,10 @@ async function tick() {
   if (tickRunning) return;
   tickRunning = true;
   try {
-    if (!config.datatruckDocDeliveryEnabled) return;
+    if (!config.datatruckDocDeliveryEnabled) return; // env kill-switch
     if (!datatruck.isConfigured()) return;
+    const settings = await bolPodSettings.getBolPodConfig();
+    if (!settings.enabled) return; // DB master toggle — OFF by default
     await runOnce();
   } catch (err) {
     console.error('[DATATRUCK-DOCS] Scan error:', err.message);
@@ -263,9 +407,10 @@ function startDatatruckDocumentService() {
   }
   const pollMs = config.datatruckDocPollMinutes * 60 * 1000;
   console.log(
-    `[DATATRUCK-DOCS] Service started — scanning every ${config.datatruckDocPollMinutes} min `
-    + `(lookback ${config.datatruckDocLookbackDays}d)`
-    + (datatruck.isConfigured() ? '' : ' (Datatruck API not configured yet — idle)')
+    `[DATATRUCK-DOCS] BOL/POD forwarding poller started — every ${config.datatruckDocPollMinutes} min `
+    + `(lookback ${config.datatruckDocLookbackDays}d). Idle until enabled in Settings → BOL / POD `
+    + `(off by default).`
+    + (datatruck.isConfigured() ? '' : ' Datatruck API not configured yet.')
   );
   // Defer the first scan so the bot/telegram is fully ready, and so activation
   // time is set a little after boot (a doc uploaded during boot still counts).
@@ -296,4 +441,7 @@ module.exports = {
   windowIso,
   downloadDocument,
   sendDocumentToGroup,
+  routeDocument,
+  deliverDestination,
+  destinationsForMode,
 };
