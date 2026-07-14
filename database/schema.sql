@@ -2120,9 +2120,26 @@ CREATE TABLE IF NOT EXISTS gmaps_settings (
 INSERT INTO gmaps_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 -- Auto-complete a route when the driver's fresh GPS is within this many miles of
--- the FINAL destination. Additive/idempotent; default 10 mi, safe range 0.5–100.
+-- the FINAL destination. Additive/idempotent; default 35 mi (see
+-- services/routeControlConstants.js), recommended range 1–100. The CHECK stays
+-- 0.5–100 for backward compatibility with any legacy sub-1-mile value.
 ALTER TABLE gmaps_settings ADD COLUMN IF NOT EXISTS route_completion_radius_miles DOUBLE PRECISION NOT NULL DEFAULT 10
   CHECK (route_completion_radius_miles BETWEEN 0.5 AND 100);
+ALTER TABLE gmaps_settings ALTER COLUMN route_completion_radius_miles SET DEFAULT 35;
+
+-- One-shot 10 → 35 completion-radius migration. The marker column makes it run
+-- exactly once even though this file executes on every boot: an untouched old
+-- default of 10 becomes the new default of 35; any other (customized) value is
+-- left alone. NOTE: a value of exactly 10 cannot be distinguished from a
+-- deliberate choice of 10 — treating it as the old default is the documented
+-- decision here (an admin can set it back to 10 afterwards and it will stick).
+ALTER TABLE gmaps_settings ADD COLUMN IF NOT EXISTS completion_radius_35_migrated BOOLEAN NOT NULL DEFAULT FALSE;
+UPDATE gmaps_settings
+   SET route_completion_radius_miles = 35, completion_radius_35_migrated = TRUE
+ WHERE id = 1 AND completion_radius_35_migrated = FALSE AND route_completion_radius_miles = 10;
+UPDATE gmaps_settings
+   SET completion_radius_35_migrated = TRUE
+ WHERE id = 1 AND completion_radius_35_migrated = FALSE;
 
 -- One assigned route per row. group_id ties it to a driver group so the monitor
 -- can resolve that driver's live GPS (via the same resolver as /location).
@@ -2203,6 +2220,23 @@ ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS completion_longitude DOUB
 ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS completion_distance_meters DOUBLE PRECISION NULL;
 ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS completion_reason TEXT NULL;
 
+-- Completion diagnostics (why a route is / is not completing) + screenshot send
+-- reporting. Written by the monitor on every completion check so the Admin
+-- panel can show the live distance to the final destination and a
+-- machine-readable blocked reason (e.g. DESTINATION_COORDINATES_MISSING,
+-- LIVE_GPS_STALE, OUTSIDE_COMPLETION_RADIUS). All additive/idempotent.
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS last_completion_check_at TIMESTAMPTZ NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS last_destination_distance_meters DOUBLE PRECISION NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS completion_blocked_reason TEXT NULL;
+-- Bounded destination-coordinate repair bookkeeping (never retried every tick).
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS destination_repair_attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS destination_repair_last_at TIMESTAMPTZ NULL;
+-- How the last driver-group route message went out (photo | photo+text | text)
+-- and the last screenshot delivery error (NULL when the screenshot was sent or
+-- there was none) — lets the Admin panel say "Sent as text only" truthfully.
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_via TEXT NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS screenshot_send_error TEXT NULL;
+
 -- Route screenshots (admin-attached images sent with the driver-group route
 -- message). A SEPARATE table so no existing `SELECT r.*` query ever drags image
 -- bytes into list views; bytes are only read by the dedicated fetch used for
@@ -2219,6 +2253,17 @@ CREATE TABLE IF NOT EXISTS route_assignment_attachments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_route_assignment_attachments_assignment
+  ON route_assignment_attachments(assignment_id, kind);
+
+-- Enforce ONE screenshot per (assignment, kind) so replacement can be a single
+-- atomic UPSERT (a failed replacement can never destroy the stored screenshot,
+-- and two concurrent uploads can never leave duplicates). The DELETE below
+-- clears any pre-constraint duplicates (keeps the newest row) and is a no-op on
+-- every later boot.
+DELETE FROM route_assignment_attachments a
+ USING route_assignment_attachments b
+ WHERE a.assignment_id = b.assignment_id AND a.kind = b.kind AND a.id < b.id;
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_route_assignment_attachment
   ON route_assignment_attachments(assignment_id, kind);
 
 CREATE INDEX IF NOT EXISTS idx_route_assignments_active
