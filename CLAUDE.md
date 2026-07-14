@@ -37,6 +37,21 @@ documentation task in this repository:
   auto-opens AND auto-merges a PR into `main` within seconds — review the
   complete diff BEFORE pushing.
 
+# Tool Usage
+
+- **codebase-memory-mcp** = understands this project. Use its graph tools before
+  searching application code. This project is indexed, and automatic indexing
+  and watching are enabled.
+- **Context7** = checks the latest instructions. Use it only for current public
+  library and API documentation. Never send private source code, passwords,
+  tokens, `.env` values, or company information to Context7.
+- **Playwright** = tests the website. Use `playwright-cli` and its installed
+  agent skill for browser testing. Do not test production or use real
+  credentials without explicit permission.
+- **Gitleaks** = protects passwords and API keys. Run read-only checks with
+  `gitleaks dir . --redact`. Report only the file name, line number, and finding
+  type; never print a discovered value or change files automatically.
+
 # Test Commands
 
 ```
