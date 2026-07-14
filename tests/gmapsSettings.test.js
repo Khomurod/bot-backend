@@ -94,16 +94,36 @@ test('numeric tunables round-trip and default sanely', async () => {
   assert.equal(view.staleGpsMinutes, 15);
 });
 
-test('route completion radius defaults to 10 mi and clamps to the safe range', async () => {
+test('route completion radius defaults to 35 mi and clamps to the 1–100 range', async () => {
   const { mod } = loadModule();
-  // Default when never set.
-  assert.equal((await mod.getGmapsConfig()).routeCompletionRadiusMiles, 10);
+  // Default when never set (fresh database → 35, the authoritative constant).
+  assert.equal((await mod.getGmapsConfig()).routeCompletionRadiusMiles, 35);
   // Round-trips a valid value.
   let view = await mod.updateGmapsSettings({ routeCompletionRadiusMiles: 7.5 });
   assert.equal(view.routeCompletionRadiusMiles, 7.5);
-  // Clamps out-of-range values (0.5–100).
+  // Clamps out-of-range values (recommended range 1–100).
   view = await mod.updateGmapsSettings({ routeCompletionRadiusMiles: 999 });
   assert.equal(view.routeCompletionRadiusMiles, 100);
   view = await mod.updateGmapsSettings({ routeCompletionRadiusMiles: 0.1 });
-  assert.equal(view.routeCompletionRadiusMiles, 0.5);
+  assert.equal(view.routeCompletionRadiusMiles, 1);
+  // Junk input is ignored (value left unchanged), never crashes the update.
+  view = await mod.updateGmapsSettings({ routeCompletionRadiusMiles: 'not-a-number' });
+  assert.equal(view.routeCompletionRadiusMiles, 1);
+});
+
+test('the single authoritative radius constant is exported and used everywhere', () => {
+  const { ROUTE_COMPLETION_RADIUS_MILES } = require('../services/routeControlConstants');
+  assert.equal(ROUTE_COMPLETION_RADIUS_MILES.DEFAULT, 35);
+  assert.equal(ROUTE_COMPLETION_RADIUS_MILES.MIN, 1);
+  assert.equal(ROUTE_COMPLETION_RADIUS_MILES.MAX, 100);
+});
+
+test('a stored legacy 10-mile value is what the one-shot schema migration targets', () => {
+  // The 10 → 35 bump happens in database/schema.sql (one-shot, marker-guarded).
+  // Guard the migration text here so a refactor can't silently drop it.
+  const fs = require('node:fs');
+  const schema = fs.readFileSync(path.resolve(__dirname, '../database/schema.sql'), 'utf-8');
+  assert.match(schema, /ALTER COLUMN route_completion_radius_miles SET DEFAULT 35/);
+  assert.match(schema, /completion_radius_35_migrated = FALSE AND route_completion_radius_miles = 10/);
+  assert.match(schema, /uniq_route_assignment_attachment/);
 });

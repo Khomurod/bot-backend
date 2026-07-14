@@ -17,7 +17,7 @@ export default function GmapsTab() {
     geocodingApiEnabled: false, geocodingApiKey: "",
     deviationThresholdMeters: 250, checkIntervalSeconds: 300, offRouteGraceChecks: 3,
     warningCooldownMinutes: 30, staleGpsMinutes: 15, parkedSpeedMph: 5,
-    routeCompletionRadiusMiles: 10,
+    routeCompletionRadiusMiles: 35,
   });
 
   const load = useCallback(async () => {
@@ -31,7 +31,7 @@ export default function GmapsTab() {
         deviationThresholdMeters: s.deviationThresholdMeters, checkIntervalSeconds: s.checkIntervalSeconds,
         offRouteGraceChecks: s.offRouteGraceChecks, warningCooldownMinutes: s.warningCooldownMinutes,
         staleGpsMinutes: s.staleGpsMinutes, parkedSpeedMph: s.parkedSpeedMph,
-        routeCompletionRadiusMiles: s.routeCompletionRadiusMiles ?? 10,
+        routeCompletionRadiusMiles: s.routeCompletionRadiusMiles ?? 35,
       }));
     } catch (err) { setMessage({ type: "error", text: err.message }); }
     finally { setLoading(false); }
@@ -144,7 +144,8 @@ export default function GmapsTab() {
         />
         <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
           When fresh GPS enters this radius around the final destination, the route is marked complete and monitoring
-          stops. No completion message is sent to the driver group. Safe range 0.5–100 miles (default 10).
+          stops permanently — this applies to existing active routes too, and works even when Google Maps is disabled.
+          No completion message is sent to the driver group. Safe range 1–100 miles (default 35).
         </div>
       </div>
 

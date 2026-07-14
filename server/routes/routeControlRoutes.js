@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const rc = require('../../database/routeControl');
 const routeControl = require('../../services/routeControlService');
+const gmaps = require('../../database/gmapsSettings');
 
 // Route screenshots: common image types only, held in memory (they go straight
 // to Postgres BYTEA / Telegram) and capped at 8 MB — Telegram's sendPhoto
@@ -16,6 +17,20 @@ const screenshotUpload = multer({
     else cb(new Error(`Invalid screenshot type: ${file.mimetype}. Allowed: jpg, png, webp.`));
   },
 });
+
+/**
+ * Basic file-signature (magic bytes) check so a renamed non-image can't get in
+ * on a spoofed Content-Type alone. PNG: \x89PNG. JPEG: FF D8 FF. WEBP:
+ * "RIFF"…"WEBP". Returns true when the bytes plausibly match ANY allowed type
+ * (the claimed MIME already passed the fileFilter).
+ */
+function looksLikeAllowedImage(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return false;
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return true; // PNG
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return true; // JPEG
+  if (buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') return true; // WEBP
+  return false;
+}
 
 /** Wrap a multer middleware so its errors become clean JSON (not a 500 page). */
 function uploadErrorsAsJson(middleware) {
@@ -44,6 +59,8 @@ function uploadErrorsAsJson(middleware) {
  *   GET    /:id/screenshot          → the stored screenshot bytes (auth-gated preview)
  *   DELETE /:id/screenshot          → remove the stored screenshot
  *   POST   /:id/start-tracking      → manually start tracking for a pending route
+ *   POST   /:id/run-completion-check → destination-completion check for one route (no warnings)
+ *   POST   /run-completion-check    → destination-completion reconciliation over all active routes
  *   POST   /:id/cancel              → mark cancelled
  *   POST   /:id/complete            → mark completed
  */
@@ -59,7 +76,11 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
     try {
       const status = req.query.status ? String(req.query.status) : null;
       const assignments = await rc.listRouteAssignments({ status });
-      res.json({ assignments });
+      // Current completion radius rides along so the UI can explain the
+      // distance diagnostics ("52.4 mi from destination, completes at 35").
+      let completionRadiusMiles = null;
+      try { completionRadiusMiles = (await gmaps.getGmapsConfig()).routeCompletionRadiusMiles; } catch (_) { /* optional */ }
+      res.json({ assignments, completionRadiusMiles });
     } catch (err) {
       console.error('[ROUTE-CONTROL API] list failed:', err.message);
       res.status(500).json({ error: 'Failed to load route assignments' });
@@ -92,14 +113,24 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
     try {
       const by = adminName(req);
       // JSON body (unchanged legacy path), or multipart: the JSON payload rides
-      // in a `payload` field next to the `screenshot` file.
+      // in a `payload` field next to the `screenshot` file. The payload is
+      // parsed whenever it is present — a multipart request whose file part was
+      // dropped must still assign the route (partial success), not fail with a
+      // confusing "no group" error.
       let body = req.body || {};
-      if (req.file && typeof body.payload === 'string') {
+      if (typeof body.payload === 'string') {
         try {
           body = JSON.parse(body.payload);
         } catch (_) {
           return res.status(400).json({ error: 'Invalid multipart payload JSON.', code: 'BAD_PAYLOAD' });
         }
+      }
+      // Server-side signature check on top of the MIME filter.
+      if (req.file && !looksLikeAllowedImage(req.file.buffer)) {
+        return res.status(400).json({
+          error: 'The uploaded file does not look like a PNG, JPG or WEBP image.',
+          code: 'SCREENSHOT_TYPE_UNSUPPORTED',
+        });
       }
 
       const result = await routeControl.assignRoute({
@@ -152,11 +183,18 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
     }
   });
 
-  // Upload/replace the route screenshot for an existing assignment.
+  // Upload/replace the route screenshot for an existing assignment. Replacement
+  // is an atomic UPSERT — a failed upload can never destroy the stored one.
   router.post('/:id/screenshot', authMiddleware, uploadErrorsAsJson(screenshotUpload.single('screenshot')), async (req, res) => {
     try {
       const id = parseInt(req.params.id, 10);
-      if (!req.file) return res.status(400).json({ error: 'Attach a screenshot file.', code: 'NO_FILE' });
+      if (!req.file) return res.status(400).json({ error: 'Attach a screenshot file.', code: 'SCREENSHOT_FILE_MISSING' });
+      if (!looksLikeAllowedImage(req.file.buffer)) {
+        return res.status(400).json({
+          error: 'The uploaded file does not look like a PNG, JPG or WEBP image.',
+          code: 'SCREENSHOT_TYPE_UNSUPPORTED',
+        });
+      }
       const assignment = await rc.getRouteAssignment(id);
       if (!assignment) return res.status(404).json({ error: 'Route assignment not found' });
       const saved = await rc.saveRouteScreenshot(id, {
@@ -167,7 +205,7 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
       return res.json({ stored: true, sizeBytes: saved.file_size_bytes, mimeType: saved.mime_type });
     } catch (err) {
       console.error('[ROUTE-CONTROL API] screenshot upload failed:', err.message);
-      return res.status(500).json({ error: 'Failed to store the screenshot' });
+      return res.status(500).json({ error: 'Failed to store the screenshot', code: 'SCREENSHOT_DB_SAVE_FAILED' });
     }
   });
 
@@ -192,6 +230,29 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
     } catch (err) {
       console.error('[ROUTE-CONTROL API] screenshot delete failed:', err.message);
       return res.status(500).json({ error: 'Failed to remove the screenshot' });
+    }
+  });
+
+  // Destination-completion reconciliation over ALL active routes — same service
+  // logic as the automatic monitor, never sends off-route warnings.
+  router.post('/run-completion-check', authMiddleware, async (req, res) => {
+    try {
+      const result = await routeControl.runCompletionCheckNow();
+      return res.json(result);
+    } catch (err) {
+      console.error('[ROUTE-CONTROL API] run-completion-check failed:', err.message);
+      return res.status(err.status || 500).json({ error: err.message, code: err.code || 'COMPLETION_CHECK_ERROR' });
+    }
+  });
+
+  // Destination-completion check for ONE route ("Run completion check now").
+  router.post('/:id/run-completion-check', authMiddleware, async (req, res) => {
+    try {
+      const result = await routeControl.runCompletionCheckNow({ assignmentId: parseInt(req.params.id, 10) });
+      return res.json(result);
+    } catch (err) {
+      console.error('[ROUTE-CONTROL API] run-completion-check failed:', err.message);
+      return res.status(err.status || 500).json({ error: err.message, code: err.code || 'COMPLETION_CHECK_ERROR' });
     }
   });
 

@@ -117,19 +117,23 @@ async function listRouteAssignments({ status = null, limit = 200 } = {}) {
 
 /**
  * Store (or replace) the route screenshot for an assignment. One screenshot per
- * assignment: any previous one is deleted in the same transaction-free pass
- * (worst case a failed insert leaves no screenshot, never two).
+ * assignment, enforced by the uniq_route_assignment_attachment index: the
+ * replacement is a single atomic UPSERT, so a failed upload can NEVER destroy
+ * the previously stored screenshot, and two concurrent uploads can never leave
+ * duplicate rows (last writer wins).
  */
 async function saveRouteScreenshot(assignmentId, { mimeType, data, uploadedBy = null }) {
   if (!Buffer.isBuffer(data) || data.length === 0) throw new Error('screenshot data buffer is required');
-  await query(
-    `DELETE FROM route_assignment_attachments WHERE assignment_id = $1 AND kind = 'route_screenshot'`,
-    [assignmentId]
-  );
   const res = await query(
     `INSERT INTO route_assignment_attachments
        (assignment_id, kind, mime_type, file_size_bytes, file_data, uploaded_by)
      VALUES ($1, 'route_screenshot', $2, $3, $4, $5)
+     ON CONFLICT (assignment_id, kind) DO UPDATE
+       SET mime_type = EXCLUDED.mime_type,
+           file_size_bytes = EXCLUDED.file_size_bytes,
+           file_data = EXCLUDED.file_data,
+           uploaded_by = EXCLUDED.uploaded_by,
+           created_at = NOW()
      RETURNING id, assignment_id, kind, mime_type, file_size_bytes, uploaded_by, created_at`,
     [assignmentId, String(mimeType || 'image/png'), data.length, data, uploadedBy ? String(uploadedBy).slice(0, 128) : null]
   );
@@ -156,6 +160,26 @@ async function deleteRouteScreenshot(assignmentId) {
     [assignmentId]
   );
   return { deleted: res.rowCount > 0 };
+}
+
+/**
+ * EVERY lifecycle-active assignment, regardless of tracking status — the single
+ * candidate set the monitor sweeps each pass. Destination auto-completion
+ * applies to all of them (including tracking-pending routes, which must be able
+ * to complete without ever receiving off-route warnings); off-route deviation
+ * checks additionally require tracking_status='active' + geometry and are
+ * decided in the service. LEFT JOIN so a route whose group row was deleted
+ * still surfaces with a diagnostic instead of silently vanishing.
+ */
+async function listActiveAssignmentsForMonitor() {
+  const res = await query(
+    `SELECT r.*, g.group_name, g.telegram_group_id, g.active AS group_active
+     FROM route_assignments r
+     LEFT JOIN groups g ON g.id = r.group_id
+     WHERE r.status = 'active'
+     ORDER BY r.updated_at ASC`
+  );
+  return res.rows;
 }
 
 /**
@@ -271,6 +295,54 @@ async function updateRouteAssignmentMonitorState(id, {
   return res.rows[0] || null;
 }
 
+/**
+ * Record the outcome of one destination-completion check: when it ran, the
+ * measured distance to the final destination (NULL when unmeasurable), and a
+ * machine-readable reason the route did not complete (NULL once completed).
+ */
+async function updateCompletionDiagnostics(id, {
+  lastCompletionCheckAt = null, distanceMeters = null, blockedReason = null,
+} = {}) {
+  const res = await query(
+    `UPDATE route_assignments
+       SET last_completion_check_at = COALESCE($2, NOW()),
+           last_destination_distance_meters = $3,
+           completion_blocked_reason = $4,
+           updated_at = NOW()
+     WHERE id = $1 RETURNING id`,
+    [
+      id, lastCompletionCheckAt || null,
+      distanceMeters != null && Number.isFinite(Number(distanceMeters)) ? Number(distanceMeters) : null,
+      blockedReason ? String(blockedReason).slice(0, 64) : null,
+    ]
+  );
+  return res.rows[0] || null;
+}
+
+/** Persist repaired final-destination coordinates (from text parse / geocoding). */
+async function setRouteAssignmentDestinationCoords(id, { lat, lng }) {
+  const res = await query(
+    `UPDATE route_assignments
+       SET destination_lat = $2, destination_lng = $3, updated_at = NOW()
+     WHERE id = $1 RETURNING *`,
+    [id, Number(lat), Number(lng)]
+  );
+  return res.rows[0] || null;
+}
+
+/** Count a destination-repair attempt (bounded retries — never every tick). */
+async function recordDestinationRepairAttempt(id) {
+  const res = await query(
+    `UPDATE route_assignments
+       SET destination_repair_attempts = destination_repair_attempts + 1,
+           destination_repair_last_at = NOW(),
+           updated_at = NOW()
+     WHERE id = $1 RETURNING destination_repair_attempts`,
+    [id]
+  );
+  return res.rows[0] || null;
+}
+
 async function setRouteAssignmentStatus(id, status) {
   const res = await query(
     `UPDATE route_assignments SET status = $2, updated_at = NOW()
@@ -301,6 +373,9 @@ async function completeRouteAssignment(id, {
            completion_longitude = $3,
            completion_distance_meters = $4,
            completion_reason = $5,
+           completion_blocked_reason = NULL,
+           last_completion_check_at = NOW(),
+           last_destination_distance_meters = COALESCE($4, last_destination_distance_meters),
            updated_at = NOW()
      WHERE id = $1 AND status = 'active'
      RETURNING *`,
@@ -315,16 +390,28 @@ async function completeRouteAssignment(id, {
   return res.rows[0] || null;
 }
 
-/** Record a successful "route message sent to driver group" delivery. */
-async function recordDriverGroupMessageSent(id, { telegramMessageId = null, sentBy = null } = {}) {
+/**
+ * Record a successful "route message sent to driver group" delivery, including
+ * HOW it went out (photo | photo+text | text) and the screenshot delivery
+ * error when the photo could not be sent (NULL when it was, or none stored).
+ */
+async function recordDriverGroupMessageSent(id, {
+  telegramMessageId = null, sentBy = null, via = null, screenshotError = null,
+} = {}) {
   const res = await query(
     `UPDATE route_assignments
        SET driver_group_message_sent_at = NOW(),
            driver_group_message_id = $2,
            driver_group_message_sent_by = $3,
+           driver_group_message_via = $4,
+           screenshot_send_error = $5,
            updated_at = NOW()
      WHERE id = $1 RETURNING *`,
-    [id, telegramMessageId ?? null, sentBy ? String(sentBy).slice(0, 128) : null]
+    [
+      id, telegramMessageId ?? null, sentBy ? String(sentBy).slice(0, 128) : null,
+      via ? String(via).slice(0, 32) : null,
+      screenshotError ? String(screenshotError).slice(0, 300) : null,
+    ]
   );
   return res.rows[0] || null;
 }
@@ -359,12 +446,16 @@ module.exports = {
   getActiveRouteAssignmentByGroupId,
   findRouteAssignmentByTelegramMessage,
   listRouteAssignments,
+  listActiveAssignmentsForMonitor,
   listMonitorableAssignments,
   listPendingTrackingAssignments,
   activateTracking,
   setTrackingHoldReason,
   setRouteAssignmentGeometry,
   updateRouteAssignmentMonitorState,
+  updateCompletionDiagnostics,
+  setRouteAssignmentDestinationCoords,
+  recordDestinationRepairAttempt,
   setRouteAssignmentStatus,
   completeRouteAssignment,
   recordDriverGroupMessageSent,

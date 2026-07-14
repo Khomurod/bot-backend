@@ -53,10 +53,12 @@ function floatClamp(value, fallback, min, max) {
   return Math.min(max, Math.max(min, n));
 }
 
-// Auto-complete radius (miles) around the final destination — safe range 0.5–100.
-const COMPLETION_RADIUS_MIN = 0.5;
-const COMPLETION_RADIUS_MAX = 100;
-const COMPLETION_RADIUS_DEFAULT = 10;
+// Auto-complete radius (miles) around the final destination. The single
+// authoritative default/range lives in services/routeControlConstants.js.
+const { ROUTE_COMPLETION_RADIUS_MILES } = require('../services/routeControlConstants');
+const COMPLETION_RADIUS_MIN = ROUTE_COMPLETION_RADIUS_MILES.MIN;
+const COMPLETION_RADIUS_MAX = ROUTE_COMPLETION_RADIUS_MILES.MAX;
+const COMPLETION_RADIUS_DEFAULT = ROUTE_COMPLETION_RADIUS_MILES.DEFAULT;
 
 /**
  * Effective, decrypted config for server-side use. DB values win; an empty DB

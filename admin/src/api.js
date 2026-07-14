@@ -1450,8 +1450,8 @@ export async function getRouteAssignments(status) {
   const qs = status ? `?status=${encodeURIComponent(status)}` : '';
   const res = await fetch(`${API_BASE}/route-control${qs}`, { headers: getHeaders() });
   if (!res.ok) { await handleApiError(res); }
-  const data = await res.json();
-  return data.assignments;
+  // { assignments, completionRadiusMiles } — radius rides along for diagnostics.
+  return res.json();
 }
 
 export async function getRouteAssignment(id) {
@@ -1500,6 +1500,32 @@ export async function uploadRouteScreenshot(id, screenshotFile) {
   const res = await fetch(`${API_BASE}/route-control/${id}/screenshot`, {
     method: 'POST', headers: getAuthHeader(), body: formData,
   });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Fetch the stored screenshot (auth-gated) as a Blob for an in-app preview. */
+export async function getRouteScreenshotBlob(id) {
+  const res = await fetch(`${API_BASE}/route-control/${id}/screenshot`, { headers: getAuthHeader() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.blob();
+}
+
+/** Remove the stored route screenshot (the assignment itself is untouched). */
+export async function deleteRouteScreenshot(id) {
+  const res = await fetch(`${API_BASE}/route-control/${id}/screenshot`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Destination-completion check now — one route, or all active when id is null. */
+export async function runRouteCompletionCheck(id) {
+  const url = id != null
+    ? `${API_BASE}/route-control/${id}/run-completion-check`
+    : `${API_BASE}/route-control/run-completion-check`;
+  const res = await fetch(url, { method: 'POST', headers: getHeaders() });
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
