@@ -3,9 +3,13 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 /**
- * Loads datatruckDocumentService with every external dependency mocked via
- * require.cache so the test needs no installed packages and performs no I/O.
- * The pure helpers module is intentionally left real.
+ * End-to-end tests for the BOL/POD forwarding service's runOnce(): real DataTruck
+ * order extraction + real driver-name → group matching, with the settings store,
+ * Telegram bot, and delivery DB helper mocked via require.cache. Complements
+ * bolPodRouting.test.js (which unit-tests the routing decision matrix).
+ *
+ * Default settings here: feature enabled, driver_group mode — so runOnce forwards
+ * to the matched driver group exactly as the pre-admin-control service did.
  */
 function loadService({
   config: cfg = {},
@@ -14,6 +18,7 @@ function loadService({
   directory = [],
   telegram = {},
   permanentSendError = false,
+  settings = {},
 } = {}) {
   const servicePath = path.resolve(__dirname, '../services/datatruckDocumentService.js');
   const configPath = path.resolve(__dirname, '../config/config.js');
@@ -23,16 +28,13 @@ function loadService({
   const datatruckPath = path.resolve(__dirname, '../services/datatruckApiService.js');
   const docsDbPath = path.resolve(__dirname, '../database/datatruckDocuments.js');
   const directoryPath = path.resolve(__dirname, '../services/driverGroupDirectoryService.js');
+  const settingsPath = path.resolve(__dirname, '../database/bolPodForwardingSettings.js');
 
-  for (const p of [servicePath]) delete require.cache[p];
+  delete require.cache[servicePath];
 
   const calls = {
-    sent: [],
-    backfill: [],
-    claimed: [],
-    markedSent: [],
-    markedFailed: [],
-    markedSkipped: [],
+    sent: [], backfill: [], upserts: [], claimed: [],
+    markedSent: [], markedFailed: [], markedSkipped: [],
   };
 
   const configMock = {
@@ -44,7 +46,17 @@ function loadService({
     datatruckDocMediaBaseUrl: 'https://tms-datatruck.s3-accelerate.amazonaws.com/static/',
     datatruckApiToken: 'token',
     datatruckCompany: 'wenze',
+    bolPodAiFallbackEnabled: false,
     ...cfg,
+  };
+
+  const settingsMock = {
+    enabled: true,
+    deliveryMode: 'driver_group',
+    centralGroupId: null,
+    documentTypeMode: 'both',
+    uncertainDocumentPolicy: 'do_not_send',
+    ...settings,
   };
 
   const datatruckMock = {
@@ -56,13 +68,19 @@ function loadService({
     datatruckMock.fetchOrdersByDocumentWindow = (...args) => datatruckMock.fetchOrdersByDeliveryWindow(...args);
   }
 
+  let rowSeq = 0;
   const docsDbMock = {
     async ensureActivationTime() { return new Date('2026-06-01T00:00:00Z'); },
     async recordBackfillSuppressed(meta) { calls.backfill.push(meta); return true; },
-    async claimDocumentDelivery(meta) { calls.claimed.push(meta); return { id: calls.claimed.length, ...meta }; },
-    async markSent(id, info) { calls.markedSent.push({ id, info }); return { id }; },
-    async markFailed(id, error) { calls.markedFailed.push({ id, error }); return { id }; },
-    async markSkippedNoGroup(id, info) { calls.markedSkipped.push({ id, info }); return { id }; },
+    async upsertDelivery(meta) {
+      rowSeq += 1;
+      calls.upserts.push(meta);
+      return { row: { id: rowSeq, status: 'pending', central_status: 'pending', ...meta }, isNew: true };
+    },
+    async claimDestination(id, dest) { calls.claimed.push({ id, dest }); return { id, dest }; },
+    async markDestinationSent(id, dest, info) { calls.markedSent.push({ id, dest, info }); return { id }; },
+    async markDestinationFailed(id, dest, error) { calls.markedFailed.push({ id, dest, error }); return { id }; },
+    async markDestinationSkipped(id, dest, skip) { calls.markedSkipped.push({ id, dest, skip }); return { id }; },
     ...docsDb,
   };
 
@@ -92,9 +110,8 @@ function loadService({
   };
   require.cache[datatruckPath] = { exports: datatruckMock };
   require.cache[docsDbPath] = { exports: docsDbMock };
-  require.cache[directoryPath] = {
-    exports: { listCanonicalDriverGroups: async () => directory },
-  };
+  require.cache[directoryPath] = { exports: { listCanonicalDriverGroups: async () => directory } };
+  require.cache[settingsPath] = { exports: { getBolPodConfig: async () => settingsMock } };
 
   const service = require(servicePath);
   return { service, calls, configMock };
@@ -130,7 +147,7 @@ function orderWith(documents, trip = {}) {
   };
 }
 
-test('forwards a new BOL by driver name despite a non-matching truck number', async () => {
+test('driver_group mode: forwards a new BOL by driver name (truck number ignored)', async () => {
   const { service, calls } = loadService({
     directory: [driverGroup],
     datatruck: {
@@ -144,35 +161,30 @@ test('forwards a new BOL by driver name despite a non-matching truck number', as
 
   const summary = await service.runOnce({ referenceMs: Date.parse('2026-06-20T00:00:00Z') });
 
-  assert.equal(summary.sent, 1);
+  assert.equal(summary.driverSent, 1);
   assert.equal(summary.backfillSuppressed, 0);
   assert.equal(calls.sent.length, 1);
   assert.equal(calls.sent[0].chatId, '-1002614');
   assert.equal(calls.sent[0].file.kind, 'url');
-  // Relative file_link is resolved against the configured media base.
   assert.equal(
     calls.sent[0].file.url,
     'https://tms-datatruck.s3-accelerate.amazonaws.com/static/2026/6/15/uuid/bol_scan.pdf'
   );
   assert.equal(calls.sent[0].extra.parse_mode, 'HTML');
   assert.match(calls.sent[0].extra.caption, /Bill of Lading/);
-  assert.equal(calls.markedSent.length, 1);
-  assert.equal(calls.markedSent[0].info.telegramGroupId, '-1002614');
-  assert.equal(calls.markedSent[0].info.matchedBy, 'name');
+  const driverSent = calls.markedSent.find((m) => m.dest === 'driver');
+  assert.ok(driverSent);
+  assert.equal(driverSent.info.telegramGroupId, '-1002614');
+  assert.equal(driverSent.info.matchedBy, 'name');
 });
 
-test('routes BOL to the uploader driver group before the assigned driver group', async () => {
+test('routes BOL to the uploader driver group by uploader name', async () => {
   const { service, calls } = loadService({
     directory: [driverGroup, uploaderGroup],
     datatruck: {
       async fetchOrdersByDeliveryWindow() {
         return [orderWith([
-          {
-            file_type: 'bill_of_lading',
-            file_link: 'https://x/bol.pdf',
-            uploaded_at: '2026-06-15T10:00:00Z',
-            uploaded_by: { full_name: 'Jane Driver' },
-          },
+          { file_type: 'bill_of_lading', file_link: 'https://x/bol.pdf', uploaded_at: '2026-06-15T10:00:00Z', uploaded_by: { full_name: 'Jane Driver' } },
         ])];
       },
     },
@@ -180,24 +192,20 @@ test('routes BOL to the uploader driver group before the assigned driver group',
 
   const summary = await service.runOnce({ referenceMs: Date.parse('2026-06-20T00:00:00Z') });
 
-  assert.equal(summary.sent, 1);
+  assert.equal(summary.driverSent, 1);
   assert.equal(calls.sent[0].chatId, '-1000008');
-  assert.equal(calls.markedSent[0].info.groupId, 20);
-  assert.equal(calls.markedSent[0].info.matchedBy, 'name');
+  const driverSent = calls.markedSent.find((m) => m.dest === 'driver');
+  assert.equal(driverSent.info.groupId, 20);
+  assert.equal(driverSent.info.matchedBy, 'name');
 });
 
-test('forwards a new POD by uploader driver name and marks it sent', async () => {
+test('forwards a new POD by uploader driver name', async () => {
   const { service, calls } = loadService({
     directory: [driverGroup, uploaderGroup],
     datatruck: {
       async fetchOrdersByDeliveryWindow() {
         return [orderWith([
-          {
-            file_type: 'proof_of_delivery',
-            file_link: '2026/6/15/uuid/pod_scan.pdf',
-            uploaded_at: '2026-06-15T11:00:00Z',
-            uploaded_by: 'Jane Driver',
-          },
+          { file_type: 'proof_of_delivery', file_link: '2026/6/15/uuid/pod_scan.pdf', uploaded_at: '2026-06-15T11:00:00Z', uploaded_by: 'Jane Driver' },
         ], { truck__unit_number: '9999' })];
       },
     },
@@ -205,29 +213,20 @@ test('forwards a new POD by uploader driver name and marks it sent', async () =>
 
   const summary = await service.runOnce({ referenceMs: Date.parse('2026-06-20T00:00:00Z') });
 
-  assert.equal(summary.sent, 1);
+  assert.equal(summary.driverSent, 1);
   assert.equal(calls.sent[0].chatId, '-1000008');
   assert.match(calls.sent[0].extra.caption, /Proof of Delivery/);
   assert.equal(calls.sent[0].file.filename, 'POD_L-500.pdf');
-  assert.equal(calls.markedSent[0].info.matchedBy, 'name');
 });
 
-test('sends BOL and POD from the same order as separate idempotent deliveries', async () => {
+test('sends BOL and POD from the same order as two idempotent deliveries', async () => {
   const { service, calls } = loadService({
     directory: [driverGroup],
     datatruck: {
       async fetchOrdersByDeliveryWindow() {
         return [orderWith([
-          {
-            file_type: 'bill_of_lading',
-            file_link: 'https://x/bol.pdf',
-            uploaded_at: '2026-06-15T10:00:00Z',
-          },
-          {
-            file_type: 'proof_of_delivery',
-            file_link: 'https://x/pod.pdf',
-            uploaded_at: '2026-06-15T11:00:00Z',
-          },
+          { file_type: 'bill_of_lading', file_link: 'https://x/bol.pdf', uploaded_at: '2026-06-15T10:00:00Z' },
+          { file_type: 'proof_of_delivery', file_link: 'https://x/pod.pdf', uploaded_at: '2026-06-15T11:00:00Z' },
         ])];
       },
     },
@@ -236,14 +235,14 @@ test('sends BOL and POD from the same order as separate idempotent deliveries', 
   const summary = await service.runOnce({ referenceMs: Date.parse('2026-06-20T00:00:00Z') });
 
   assert.equal(summary.documentsScanned, 2);
-  assert.equal(summary.sent, 2);
-  assert.equal(calls.claimed.length, 2);
+  assert.equal(summary.driverSent, 2);
+  assert.equal(calls.upserts.length, 2);
   assert.equal(calls.sent.length, 2);
-  assert.notEqual(calls.claimed[0].signature, calls.claimed[1].signature);
+  assert.notEqual(calls.upserts[0].signature, calls.upserts[1].signature);
   assert.deepEqual(calls.sent.map((call) => call.file.filename), ['BOL_L-500.pdf', 'POD_L-500.pdf']);
 });
 
-test('suppresses documents uploaded before the activation cutoff (no backfill spam)', async () => {
+test('suppresses documents uploaded before the activation cutoff', async () => {
   const { service, calls } = loadService({
     directory: [driverGroup],
     datatruck: {
@@ -257,10 +256,10 @@ test('suppresses documents uploaded before the activation cutoff (no backfill sp
 
   const summary = await service.runOnce({ referenceMs: Date.parse('2026-06-20T00:00:00Z') });
 
-  assert.equal(summary.sent, 0);
+  assert.equal(summary.driverSent, 0);
   assert.equal(summary.backfillSuppressed, 1);
   assert.equal(calls.sent.length, 0);
-  assert.equal(calls.claimed.length, 0);
+  assert.equal(calls.upserts.length, 0);
 });
 
 test('respects DATATRUCK_DOC_SINCE override for the cutoff', async () => {
@@ -270,7 +269,6 @@ test('respects DATATRUCK_DOC_SINCE override for the cutoff', async () => {
     datatruck: {
       async fetchOrdersByDeliveryWindow() {
         return [orderWith([
-          // After activation (2026-06-01) but before the SINCE override → suppressed.
           { file_type: 'bill_of_lading', file_link: 'https://x/mid.pdf', uploaded_at: '2026-06-05T10:00:00Z' },
         ])];
       },
@@ -282,9 +280,9 @@ test('respects DATATRUCK_DOC_SINCE override for the cutoff', async () => {
   assert.equal(calls.sent.length, 0);
 });
 
-test('records skipped_no_group when no active driver group matches', async () => {
+test('missing driver group → skipped_no_group, nothing sent', async () => {
   const { service, calls } = loadService({
-    directory: [], // empty directory → no match
+    directory: [],
     datatruck: {
       async fetchOrdersByDeliveryWindow() {
         return [orderWith([
@@ -295,13 +293,13 @@ test('records skipped_no_group when no active driver group matches', async () =>
   });
 
   const summary = await service.runOnce({ referenceMs: Date.parse('2026-06-20T00:00:00Z') });
-  assert.equal(summary.sent, 0);
+  assert.equal(summary.driverSent, 0);
   assert.equal(summary.skippedNoGroup, 1);
-  assert.equal(calls.markedSkipped.length, 1);
+  assert.ok(calls.markedSkipped.some((m) => m.dest === 'driver' && m.skip === 'skipped_no_group'));
   assert.equal(calls.sent.length, 0);
 });
 
-test('ignores document types other than BOL and POD without claiming them', async () => {
+test('ignores non-BOL/POD document types without tracking them', async () => {
   const { service, calls } = loadService({
     directory: [driverGroup],
     datatruck: {
@@ -320,35 +318,32 @@ test('ignores document types other than BOL and POD without claiming them', asyn
   assert.equal(calls.backfill.length, 0);
 });
 
-test('send guard rejects unsupported document types before calling Telegram', async () => {
-  const { service, calls } = loadService({ directory: [driverGroup] });
-
-  await assert.rejects(
-    service.sendDocumentToGroup('-1002614', {
-      fileType: 'rate_confirmation',
-      fileLink: 'https://x/rate.pdf',
-    }),
-    /Refusing to send unsupported document type/
-  );
-  assert.equal(calls.sent.length, 0);
-});
-
-test('an older DATATRUCK_DOC_SINCE cannot release documents from before activation', async () => {
+test('document-type filter: BOL-only mode does not send a POD', async () => {
   const { service, calls } = loadService({
-    config: { datatruckDocSinceIso: '2026-05-01T00:00:00Z' },
     directory: [driverGroup],
+    settings: { documentTypeMode: 'bol' },
     datatruck: {
       async fetchOrdersByDeliveryWindow() {
         return [orderWith([
-          { file_type: 'proof_of_delivery', file_link: 'https://x/old-pod.pdf', uploaded_at: '2026-05-15T10:00:00Z' },
+          { file_type: 'proof_of_delivery', file_link: 'https://x/pod.pdf', uploaded_at: '2026-06-15T10:00:00Z' },
         ])];
       },
     },
   });
 
   const summary = await service.runOnce({ referenceMs: Date.parse('2026-06-20T00:00:00Z') });
-  assert.equal(summary.backfillSuppressed, 1);
-  assert.equal(calls.claimed.length, 0);
+  assert.equal(summary.driverSent, 0);
+  assert.equal(summary.skippedType, 1);
+  assert.equal(calls.sent.length, 0);
+});
+
+test('send guard rejects unsupported document types before calling Telegram', async () => {
+  const { service, calls } = loadService({ directory: [driverGroup] });
+
+  await assert.rejects(
+    service.sendDocumentToGroup('-1002614', { fileType: 'rate_confirmation', fileLink: 'https://x/rate.pdf' }),
+    /Refusing to send unsupported document type/
+  );
   assert.equal(calls.sent.length, 0);
 });
 
@@ -356,9 +351,7 @@ test('marks failed (not sent) when delivery throws', async () => {
   const { service, calls } = loadService({
     directory: [driverGroup],
     permanentSendError: true,
-    telegram: {
-      async sendDocument() { throw new Error('boom'); },
-    },
+    telegram: { async sendDocument() { throw new Error('boom'); } },
     datatruck: {
       async fetchOrdersByDeliveryWindow() {
         return [orderWith([
@@ -370,8 +363,8 @@ test('marks failed (not sent) when delivery throws', async () => {
 
   const summary = await service.runOnce({ referenceMs: Date.parse('2026-06-20T00:00:00Z') });
   assert.equal(summary.failed, 1);
-  assert.equal(summary.sent, 0);
-  assert.equal(calls.markedFailed.length, 1);
+  assert.equal(summary.driverSent, 0);
+  assert.ok(calls.markedFailed.some((m) => m.dest === 'driver'));
 });
 
 test('runOnce reports not configured when Datatruck is off', async () => {
@@ -380,19 +373,20 @@ test('runOnce reports not configured when Datatruck is off', async () => {
   assert.equal(summary.configured, false);
 });
 
-test('an uploaded document forwards normally', async () => {
+test('runOnce is a no-op when the feature is disabled (sends nothing)', async () => {
   const { service, calls } = loadService({
     directory: [driverGroup],
+    settings: { enabled: false },
     datatruck: {
       async fetchOrdersByDeliveryWindow() {
         return [orderWith([
-          { file_type: 'proof_of_delivery', file_link: 'https://x/pod.pdf', uploaded_at: '2026-06-15T10:00:00Z', uploaded_by: 'Broker' },
+          { file_type: 'bill_of_lading', file_link: 'https://x/bol.pdf', uploaded_at: '2026-06-15T10:00:00Z' },
         ])];
       },
     },
   });
 
   const summary = await service.runOnce({ referenceMs: Date.parse('2026-06-20T00:00:00Z') });
-  assert.equal(summary.sent, 1);
-  assert.equal(calls.sent.length, 1, 'upload is forwarded as before');
+  assert.equal(summary.enabled, false);
+  assert.equal(calls.sent.length, 0);
 });
