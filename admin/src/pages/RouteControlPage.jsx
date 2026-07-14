@@ -228,7 +228,8 @@ function AssignForm({ options, onAssigned, onMessage }) {
     } finally { setBusy(false); }
   };
 
-  /** Report the outcome, distinguishing full success from partial (send failed). */
+  /** Report the outcome, distinguishing full success from every partial state
+   *  (screenshot store failed / photo fell back to text / send failed). */
   const reportResult = (result) => {
     const trackingNote = result.trackingStatus === "pending"
       ? " Tracking is pending until its start condition is met."
@@ -236,16 +237,26 @@ function AssignForm({ options, onAssigned, onMessage }) {
     const base = result.geometryPending
       ? "Route saved. Geometry is pending — enable Google Maps in Settings → GMaps, then Compute."
       : `Route assigned and geometry computed.${trackingNote}`;
+    const shotNote = result.screenshot && result.screenshot.stored === false
+      ? ` ⚠️ The screenshot could NOT be stored (${result.screenshot.error || "unknown error"}) — the route was kept; upload it again with “Upload screenshot” on the route below.`
+      : "";
     if (result.driverMessage && result.driverMessage.sent === false) {
       onMessage({
         type: "warning",
-        text: `${base} However, the route message could NOT be sent to the driver group: `
+        text: `${base}${shotNote} However, the route message could NOT be sent to the driver group: `
           + `${result.driverMessage.error || "unknown error"}. Use “Send route message” on the route below to retry.`,
       });
+    } else if (result.driverMessage && result.driverMessage.sent && result.driverMessage.screenshotError) {
+      onMessage({
+        type: "warning",
+        text: `${base}${shotNote} Route message was sent as TEXT ONLY — the screenshot could not be sent `
+          + `(${result.driverMessage.screenshotError}). It is still stored; re-send to retry.`,
+      });
     } else if (result.driverMessage && result.driverMessage.sent) {
-      onMessage({ type: "success", text: `${base} Route message sent to the driver group.` });
+      const withShot = result.driverMessage.withScreenshot ? " (with screenshot)" : "";
+      onMessage({ type: "success", text: `${base}${shotNote} Route message sent to the driver group${withShot}.` });
     } else {
-      onMessage({ type: "success", text: base });
+      onMessage({ type: "success", text: `${base}${shotNote}` });
     }
   };
 
@@ -479,9 +490,37 @@ function trackingBadge(a) {
   }
 }
 
-function RouteRow({ a, onChanged, onMessage }) {
+/** Human explanation for a machine-readable completion_blocked_reason. */
+const BLOCKED_REASON_TEXT = {
+  DESTINATION_COORDINATES_MISSING: "Cannot complete: destination coordinates are missing.",
+  LIVE_GPS_MISSING: "Cannot complete: no live GPS available.",
+  LIVE_GPS_STALE: "Cannot complete: GPS is stale.",
+  UNIT_RESOLUTION_FAILED: "Cannot complete: the truck/unit could not be resolved.",
+  OUTSIDE_COMPLETION_RADIUS: "Outside the completion radius — monitoring continues.",
+  DISTANCE_UNMEASURABLE: "Cannot complete: distance to the destination could not be measured.",
+};
+
+/** Screenshot status label per the stored + delivery state. */
+function screenshotStatus(a) {
+  if (a.status !== "cancelled" && a.driver_group_message_sent_at) {
+    if (a.screenshot_send_error) {
+      return { text: "📷 Sent as text only (screenshot failed)", color: "#f59e0b", title: a.screenshot_send_error };
+    }
+    if (a.driver_group_message_via === "photo" || a.driver_group_message_via === "photo+text") {
+      return { text: "📷 Sent with screenshot", color: "#22c55e" };
+    }
+  }
+  if (a.has_screenshot) return { text: "📷 Screenshot stored", color: "#60a5fa" };
+  return { text: "No screenshot", color: "#94a3b8" };
+}
+
+function RouteRow({ a, completionRadius, onChanged, onMessage }) {
   const [busy, setBusy] = useState(false);
   const [details, setDetails] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const shotInputRef = useRef(null);
+
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
   const act = async (fn, okText) => {
     setBusy(true);
@@ -503,7 +542,15 @@ function RouteRow({ a, onChanged, onMessage }) {
         send.withScreenshot ? " Screenshot attached." : "",
         send.trackingActivated ? " Tracking is now active." : "",
       ].join("");
-      onMessage({ type: "success", text: `Route message sent to the driver group.${tagged}${extras}` });
+      if (send.screenshotError) {
+        onMessage({
+          type: "warning",
+          text: `Route message sent as TEXT ONLY — the screenshot could not be sent (${send.screenshotError}). `
+            + `The screenshot is still stored; you can retry with “Re-send route message”.${tagged}${extras}`,
+        });
+      } else {
+        onMessage({ type: "success", text: `Route message sent to the driver group.${tagged}${extras}` });
+      }
       await onChanged();
     } catch (err) {
       onMessage({ type: "error", text: `Could not send the route message: ${err.message}` });
@@ -527,9 +574,69 @@ function RouteRow({ a, onChanged, onMessage }) {
     } finally { setBusy(false); }
   };
 
+  const runCompletionCheck = async () => {
+    setBusy(true);
+    try {
+      const result = await api.runRouteCompletionCheck(a.id);
+      const r = (result.results || [])[0];
+      if (!r) {
+        onMessage({ type: "warning", text: "Completion check ran but returned no result." });
+      } else if (r.completed) {
+        onMessage({
+          type: "success",
+          text: `Completed automatically at ${r.distanceMiles != null ? `${r.distanceMiles} miles` : "the destination"}.`,
+        });
+      } else {
+        const why = BLOCKED_REASON_TEXT[r.blockedReason] || r.note || r.error || "not completed";
+        const dist = r.distanceMiles != null ? `${r.distanceMiles} miles from destination — ` : "";
+        onMessage({ type: "warning", text: `${dist}${why}${r.resolveError ? ` (${r.resolveError})` : ""}` });
+      }
+      await onChanged();
+    } catch (err) {
+      onMessage({ type: "error", text: `Completion check failed: ${err.message}` });
+    } finally { setBusy(false); }
+  };
+
+  const previewScreenshot = async () => {
+    if (previewUrl) { setPreviewUrl(null); return; }
+    setBusy(true);
+    try {
+      const blob = await api.getRouteScreenshotBlob(a.id);
+      setPreviewUrl(URL.createObjectURL(blob));
+    } catch (err) {
+      onMessage({ type: "error", text: `Could not load the screenshot: ${err.message}` });
+    } finally { setBusy(false); }
+  };
+
+  const uploadScreenshot = async (file) => {
+    if (!file) return;
+    if (!SCREENSHOT_TYPES.includes(file.type)) {
+      onMessage({ type: "error", text: `Screenshot must be PNG, JPG or WEBP (got ${file.type || "unknown type"}).` });
+      return;
+    }
+    if (file.size > SCREENSHOT_MAX_MB * 1024 * 1024) {
+      onMessage({ type: "error", text: `Screenshot is too large — the limit is ${SCREENSHOT_MAX_MB} MB.` });
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.uploadRouteScreenshot(a.id, file);
+      setPreviewUrl(null);
+      onMessage({ type: "success", text: "Screenshot stored. Use “Send route message” to deliver it." });
+      await onChanged();
+    } catch (err) {
+      onMessage({ type: "error", text: `Screenshot upload failed: ${err.message}` });
+    } finally {
+      setBusy(false);
+      if (shotInputRef.current) shotInputRef.current.value = "";
+    }
+  };
+
   const result = RESULT_LABELS[a.last_check_result] || { text: a.last_check_result || "—", color: "#94a3b8" };
   const statusBadge = a.status === "active" ? "badge-active" : "badge-inactive";
   const tracking = trackingBadge(a);
+  const shot = screenshotStatus(a);
+  const hasDestCoords = a.destination_lat != null && a.destination_lng != null;
 
   return (
     <div className="card" style={{ marginBottom: 10 }}>
@@ -541,7 +648,9 @@ function RouteRow({ a, onChanged, onMessage }) {
           {!a.encoded_polyline && <span className="badge badge-inactive" style={{ marginLeft: 6 }}>geometry pending</span>}
           {a.source === "telegram" && <span className="badge" style={{ marginLeft: 6 }}>📲 from Telegram</span>}
           {a.driver_group_message_sent_at && <span className="badge" style={{ marginLeft: 6 }}>✅ sent to group</span>}
-          {a.has_screenshot && <span className="badge" style={{ marginLeft: 6 }}>📷 screenshot</span>}
+          <span className="badge" style={{ marginLeft: 6, color: shot.color, borderColor: shot.color }} title={shot.title || ""}>
+            {shot.text}
+          </span>
           {tracking && (
             <span className="badge" style={{ marginLeft: 6, color: tracking.color, borderColor: tracking.color }}>
               {tracking.text}
@@ -569,6 +678,19 @@ function RouteRow({ a, onChanged, onMessage }) {
             {" · "}Checked: {fmtTime(a.last_checked_at)}
             {a.last_notification_at && <> · Last warning: {fmtTime(a.last_notification_at)}</>}
           </div>
+          {a.status === "active" && (
+            <div style={{ fontSize: 12, marginTop: 4, color: "#94a3b8" }}>
+              🏁 Destination coords: {hasDestCoords ? "Yes" : <span style={{ color: "#f87171" }}>No</span>}
+              {" · "}Distance to destination: {fmtMeters(a.last_destination_distance_meters)}
+              {completionRadius != null && <> (completes at {completionRadius} mi)</>}
+              {" · "}Completion check: {fmtTime(a.last_completion_check_at)}
+              {a.completion_blocked_reason && (
+                <div style={{ color: a.completion_blocked_reason === "OUTSIDE_COMPLETION_RADIUS" ? "#94a3b8" : "#f59e0b", marginTop: 2 }}>
+                  {BLOCKED_REASON_TEXT[a.completion_blocked_reason] || a.completion_blocked_reason}
+                </div>
+              )}
+            </div>
+          )}
           {a.status === "completed" && a.completed_at && (
             <div style={{ fontSize: 12, marginTop: 4, color: "#22c55e" }}>
               ✅ Completed {fmtTime(a.completed_at)}
@@ -598,6 +720,33 @@ function RouteRow({ a, onChanged, onMessage }) {
             <button className="btn btn-ghost btn-sm" onClick={() => act(() => api.computeRouteGeometry(a.id), "Geometry computed.")} disabled={busy}>Compute</button>
           )}
           {a.status === "active" && (
+            <button className="btn btn-ghost btn-sm" onClick={runCompletionCheck} disabled={busy} title="Resolve GPS and check the 35-mile destination completion now">
+              Check completion now
+            </button>
+          )}
+          {a.has_screenshot && (
+            <button className="btn btn-ghost btn-sm" onClick={previewScreenshot} disabled={busy}>
+              {previewUrl ? "Hide screenshot" : "Preview screenshot"}
+            </button>
+          )}
+          {a.status === "active" && (
+            <button className="btn btn-ghost btn-sm" onClick={() => shotInputRef.current?.click()} disabled={busy}>
+              {a.has_screenshot ? "Replace screenshot" : "Upload screenshot"}
+            </button>
+          )}
+          {a.has_screenshot && a.status === "active" && (
+            <button className="btn btn-ghost btn-sm" onClick={() => act(() => api.deleteRouteScreenshot(a.id), "Screenshot removed.")} disabled={busy}>
+              Remove screenshot
+            </button>
+          )}
+          <input
+            ref={shotInputRef}
+            type="file"
+            accept={SCREENSHOT_TYPES.join(",")}
+            style={{ display: "none" }}
+            onChange={(e) => uploadScreenshot(e.target.files?.[0])}
+          />
+          {a.status === "active" && (
             <>
               <button className="btn btn-ghost btn-sm" onClick={() => act(() => api.completeRoute(a.id), "Route completed.")} disabled={busy}>Complete</button>
               <button className="btn btn-danger btn-sm" onClick={() => act(() => api.cancelRoute(a.id), "Route cancelled.")} disabled={busy}>Cancel</button>
@@ -605,6 +754,17 @@ function RouteRow({ a, onChanged, onMessage }) {
           )}
         </div>
       </div>
+      {previewUrl && (
+        <div style={{ marginTop: 12, borderTop: "1px solid rgba(148,163,184,0.15)", paddingTop: 10 }}>
+          <img
+            src={previewUrl}
+            alt={`Route screenshot for ${a.group_name || `route ${a.id}`}`}
+            style={{ maxWidth: "100%", maxHeight: 420, borderRadius: 8, cursor: "pointer" }}
+            onClick={() => setPreviewUrl(null)}
+            title="Click to close"
+          />
+        </div>
+      )}
       {details && (
         <div style={{ marginTop: 12, borderTop: "1px solid rgba(148,163,184,0.15)", paddingTop: 10 }}>
           <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>
@@ -632,12 +792,15 @@ function RouteRow({ a, onChanged, onMessage }) {
 export default function RouteControlPage() {
   const [options, setOptions] = useState([]);
   const [assignments, setAssignments] = useState([]);
+  const [completionRadius, setCompletionRadius] = useState(null);
   const [statusFilter, setStatusFilter] = useState("active");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
 
   const loadAssignments = useCallback(async () => {
-    setAssignments(await api.getRouteAssignments(statusFilter === "all" ? undefined : statusFilter));
+    const data = await api.getRouteAssignments(statusFilter === "all" ? undefined : statusFilter);
+    setAssignments(data.assignments || []);
+    if (data.completionRadiusMiles != null) setCompletionRadius(data.completionRadiusMiles);
   }, [statusFilter]);
 
   const load = useCallback(async () => {
@@ -676,7 +839,9 @@ export default function RouteControlPage() {
           {assignments.length === 0 ? (
             <div className="card"><div style={{ fontSize: 13, color: "#94a3b8" }}>No routes {statusFilter === "all" ? "" : statusFilter}.</div></div>
           ) : (
-            assignments.map((a) => <RouteRow key={a.id} a={a} onChanged={loadAssignments} onMessage={setMessage} />)
+            assignments.map((a) => (
+              <RouteRow key={a.id} a={a} completionRadius={completionRadius} onChanged={loadAssignments} onMessage={setMessage} />
+            ))
           )}
         </>
       )}
