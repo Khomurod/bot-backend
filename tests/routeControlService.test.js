@@ -537,7 +537,7 @@ test('runRouteMonitorCheck activates a pending route once its message was sent',
       },
     },
     '../database/routeControl.js': {
-      async listPendingTrackingAssignments() {
+      async listActiveAssignmentsForMonitor() {
         return [{
           id: 11, status: 'active', tracking_status: 'pending',
           tracking_start_mode: 'after_message_sent',
@@ -545,11 +545,11 @@ test('runRouteMonitorCheck activates a pending route once its message was sent',
           group_name: 'G', telegram_group_id: -1,
         }];
       },
-      async listMonitorableAssignments() { return []; },
       async activateTracking(id) { activatedId = id; return { id }; },
       async setTrackingHoldReason() { throw new Error('should not be called'); },
       async insertRouteMonitorEvent(e) { events.push(e); return e; },
       async updateRouteAssignmentMonitorState() { return null; },
+      async updateCompletionDiagnostics() { return null; },
     },
   });
   const res = await svc.runRouteMonitorCheck(null, { now: NOW });
@@ -562,18 +562,18 @@ test('runRouteMonitorCheck records a hold-reason event once, not on every tick',
   const events = [];
   let holdSet = null;
   const rcMock = {
-    async listPendingTrackingAssignments() {
+    async listActiveAssignmentsForMonitor() {
       return [{
         id: 12, status: 'active', tracking_status: 'pending',
         tracking_start_mode: 'scheduled_time', tracking_start_at: '2027-01-01T00:00:00Z',
         tracking_hold_reason: null, group_name: 'G', telegram_group_id: -1,
       }];
     },
-    async listMonitorableAssignments() { return []; },
     async activateTracking() { throw new Error('should not activate'); },
     async setTrackingHoldReason(id, reason) { holdSet = { id, reason }; return { id }; },
     async insertRouteMonitorEvent(e) { events.push(e); return e; },
     async updateRouteAssignmentMonitorState() { return null; },
+    async updateCompletionDiagnostics() { return null; },
   };
   const gmapsMock = {
     async getGmapsConfig() {
@@ -597,7 +597,7 @@ test('runRouteMonitorCheck records a hold-reason event once, not on every tick',
     '../database/gmapsSettings.js': gmapsMock,
     '../database/routeControl.js': {
       ...rcMock,
-      async listPendingTrackingAssignments() {
+      async listActiveAssignmentsForMonitor() {
         return [{
           id: 12, status: 'active', tracking_status: 'pending',
           tracking_start_mode: 'scheduled_time', tracking_start_at: '2027-01-01T00:00:00Z',
@@ -629,7 +629,7 @@ test('runRouteMonitorCheck activates a start-location route when GPS enters the 
       },
     },
     '../database/routeControl.js': {
-      async listPendingTrackingAssignments() {
+      async listActiveAssignmentsForMonitor() {
         return [{
           id: 13, status: 'active', tracking_status: 'pending',
           tracking_start_mode: 'start_location',
@@ -637,11 +637,11 @@ test('runRouteMonitorCheck activates a start-location route when GPS enters the 
           group_name: 'G', telegram_group_id: -1,
         }];
       },
-      async listMonitorableAssignments() { return []; },
       async activateTracking(id) { activatedId = id; return { id }; },
       async setTrackingHoldReason() { return null; },
       async insertRouteMonitorEvent(e) { events.push(e); return e; },
       async updateRouteAssignmentMonitorState() { return null; },
+      async updateCompletionDiagnostics() { return null; },
     },
   });
   const res = await svc.runRouteMonitorCheck(null, { now: NOW });
@@ -717,17 +717,86 @@ test('sendDriverGroupRouteMessage splits photo + text when the message exceeds t
   assert.equal(res.sentVia, 'photo+text');
 });
 
-test('sendDriverGroupRouteMessage falls back to text when the photo send fails', async () => {
+test('sendDriverGroupRouteMessage falls back to text when the photo send fails — and reports it truthfully', async () => {
   const { svc, telegram, captured } = loadServiceForScreenshotSend({
     assignment: SEND_ASSIGNMENT,
     screenshot: { file_data: Buffer.from('PNG'), mime_type: 'image/png' },
-    sendPhotoImpl: async () => { const e = new Error('photo boom'); e.response = { error_code: 400 }; throw e; },
+    sendPhotoImpl: async () => { const e = new Error('photo boom'); e.response = { error_code: 400, description: 'PHOTO_INVALID' }; throw e; },
   });
   const res = await svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram });
   assert.equal(captured.texts.length, 1, 'text route message still sent');
   assert.equal(res.sent, true);
   assert.equal(res.sentVia, 'text');
   assert.equal(res.withScreenshot, false);
+  assert.equal(res.screenshotStored, true, 'screenshot remains stored for a retry');
+  assert.match(res.screenshotError, /TELEGRAM_PHOTO_REJECTED/, 'failure is reported, not hidden');
+  // The persisted send record carries the same truth for the Admin list.
+  assert.equal(captured.recorded.opts.via, 'text');
+  assert.match(captured.recorded.opts.screenshotError, /TELEGRAM_PHOTO_REJECTED/);
+});
+
+test('sendDriverGroupRouteMessage: photo 403 is surfaced as a bot permission failure', async () => {
+  const { svc, telegram } = loadServiceForScreenshotSend({
+    assignment: SEND_ASSIGNMENT,
+    screenshot: { file_data: Buffer.from('PNG'), mime_type: 'image/png' },
+    sendPhotoImpl: async () => { const e = new Error('kicked'); e.response = { error_code: 403 }; throw e; },
+  });
+  const res = await svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram });
+  assert.match(res.screenshotError, /lacks permission/);
+});
+
+test('sendDriverGroupRouteMessage: 413/oversize and timeout photo errors are classified safely', () => {
+  const svc = loadService();
+  assert.match(
+    svc.classifyTelegramPhotoError({ response: { error_code: 413 } }),
+    /too large.*413/i
+  );
+  assert.equal(svc.classifyTelegramPhotoError(new Error('request timed out')), 'TELEGRAM_PHOTO_TIMEOUT');
+});
+
+test('sendDriverGroupRouteMessage: photo AND text failure → clear failure, nothing marked sent, no tracking', async () => {
+  const captured = { recorded: null, activated: null };
+  const svc = loadServiceWith({
+    '../database/db.js': {
+      async getDriverProfileByGroupId() { return { telegram_user_id: 999, full_name: 'Bob', group_name: 'G' }; },
+    },
+    '../database/routeControl.js': {
+      async getRouteAssignment() { return SEND_ASSIGNMENT; },
+      async getRouteScreenshot() { return { file_data: Buffer.from('PNG'), mime_type: 'image/png' }; },
+      async recordDriverGroupMessageSent(id, opts) { captured.recorded = { id, opts }; return { id }; },
+      async insertRouteMonitorEvent() { return null; },
+      async activateTracking(id) { captured.activated = id; return { id }; },
+    },
+  });
+  const boom = (code) => { const e = new Error('down'); e.response = { error_code: code }; throw e; };
+  const telegram = {
+    async sendPhoto() { boom(400); },
+    async sendMessage() { boom(403); }, // permanent → safeSend rethrows immediately
+  };
+  await assert.rejects(() => svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram }));
+  assert.equal(captured.recorded, null, 'driver_group_message_sent_at is NOT marked');
+  assert.equal(captured.activated, null, 'after-message tracking is NOT activated');
+});
+
+test('sendDriverGroupRouteMessage: screenshot DB read failure still sends the text and reports the code', async () => {
+  const captured = { texts: 0, recorded: null };
+  const svc = loadServiceWith({
+    '../database/db.js': {
+      async getDriverProfileByGroupId() { return { telegram_user_id: 999, full_name: 'Bob', group_name: 'G' }; },
+    },
+    '../database/routeControl.js': {
+      async getRouteAssignment() { return SEND_ASSIGNMENT; },
+      async getRouteScreenshot() { throw new Error('bytea read failed'); },
+      async recordDriverGroupMessageSent(id, opts) { captured.recorded = { id, opts }; return { id }; },
+      async insertRouteMonitorEvent() { return null; },
+      async activateTracking(id) { return { id }; },
+    },
+  });
+  const telegram = { async sendMessage() { captured.texts += 1; return { message_id: 9 }; } };
+  const res = await svc.sendDriverGroupRouteMessage({ assignmentId: 5, telegram });
+  assert.equal(captured.texts, 1);
+  assert.equal(res.sent, true);
+  assert.equal(res.screenshotError, 'SCREENSHOT_DB_READ_FAILED');
 });
 
 test('sendDriverGroupRouteMessage activates after_message_sent tracking on success', async () => {
@@ -846,7 +915,7 @@ function pointMilesFromDest(miles, extra = {}) {
   };
 }
 
-const COMPLETION_SETTINGS = { staleGpsMinutes: 15, completionRadiusMiles: 10 };
+const COMPLETION_SETTINGS = { staleGpsMinutes: 15, completionRadiusMiles: 35 };
 
 function completion(location, assignmentOverrides = {}, settings = COMPLETION_SETTINGS) {
   return evaluateDestinationCompletion({
@@ -863,18 +932,44 @@ test('evaluateDestinationCompletion: 5 miles from destination → complete', () 
   assert.ok(Math.abs(v.distanceMiles - 5) < 0.01);
 });
 
-test('evaluateDestinationCompletion: 9.99 miles → complete (just inside)', () => {
-  assert.equal(completion(pointMilesFromDest(9.99)).shouldComplete, true);
+test('evaluateDestinationCompletion: 20 miles → complete', () => {
+  assert.equal(completion(pointMilesFromDest(20)).shouldComplete, true);
 });
 
-test('evaluateDestinationCompletion: exactly 10 miles → complete (inclusive boundary)', () => {
-  const v = completion(pointMilesFromDest(10));
+test('evaluateDestinationCompletion: 34.9 miles → complete (just inside)', () => {
+  assert.equal(completion(pointMilesFromDest(34.9)).shouldComplete, true);
+});
+
+test('evaluateDestinationCompletion: exactly 35 miles → complete (inclusive boundary)', () => {
+  const v = completion(pointMilesFromDest(35));
   assert.equal(v.shouldComplete, true);
-  assert.ok(Math.abs(v.distanceMiles - 10) < 0.001);
+  assert.ok(Math.abs(v.distanceMiles - 35) < 0.001);
 });
 
-test('evaluateDestinationCompletion: 10.01 miles → NOT complete (just outside)', () => {
-  assert.equal(completion(pointMilesFromDest(10.01)).shouldComplete, false);
+test('evaluateDestinationCompletion: 35.1 miles → NOT complete (just outside)', () => {
+  const v = completion(pointMilesFromDest(35.1));
+  assert.equal(v.shouldComplete, false);
+  assert.equal(v.code, 'OUTSIDE_COMPLETION_RADIUS');
+});
+
+test('evaluateDestinationCompletion: 50 miles → NOT complete, monitoring continues', () => {
+  assert.equal(completion(pointMilesFromDest(50)).shouldComplete, false);
+});
+
+test('evaluateDestinationCompletion: the authoritative DEFAULT radius is 35 miles', () => {
+  // No completionRadiusMiles passed at all → the constants default applies.
+  const inside = completion(pointMilesFromDest(30), {}, { staleGpsMinutes: 15, completionRadiusMiles: undefined });
+  assert.equal(inside.shouldComplete, true, '30 mi completes under the 35 mi default');
+  const outside = completion(pointMilesFromDest(36), {}, { staleGpsMinutes: 15, completionRadiusMiles: undefined });
+  assert.equal(outside.shouldComplete, false, '36 mi does not complete under the 35 mi default');
+});
+
+test('evaluateDestinationCompletion: numeric coordinate STRINGS are normalized', () => {
+  const v = completion(
+    { latitude: String(pointMilesFromDest(5).latitude), longitude: '-100', speedMilesPerHour: 55, pingAgeMinutes: 1 },
+    { destination_lat: '40', destination_lng: '-100' }
+  );
+  assert.equal(v.shouldComplete, true);
 });
 
 test('evaluateDestinationCompletion: stale GPS never completes, even inside the radius', () => {
@@ -888,10 +983,16 @@ test('evaluateDestinationCompletion: missing GPS → not complete', () => {
   assert.equal(completion({ latitude: null, longitude: null }).shouldComplete, false);
 });
 
-test('evaluateDestinationCompletion: missing/invalid destination → not complete', () => {
-  assert.equal(completion(pointMilesFromDest(2), { destination_lat: null }).shouldComplete, false);
-  assert.equal(completion(pointMilesFromDest(2), { destination_lng: undefined }).shouldComplete, false);
-  assert.equal(completion(pointMilesFromDest(2), { destination_lat: NaN, destination_lng: NaN }).shouldComplete, false);
+test('evaluateDestinationCompletion: missing/invalid destination → not complete, classified as missing coords', () => {
+  for (const overrides of [
+    { destination_lat: null }, // Number(null)===0 must NOT count as a coordinate
+    { destination_lng: undefined },
+    { destination_lat: NaN, destination_lng: NaN },
+  ]) {
+    const v = completion(pointMilesFromDest(2), overrides);
+    assert.equal(v.shouldComplete, false);
+    assert.equal(v.code, 'DESTINATION_COORDINATES_MISSING');
+  }
 });
 
 test('evaluateDestinationCompletion: cancelled or already-completed routes never complete', () => {
@@ -908,24 +1009,33 @@ test('evaluateDestinationCompletion: works WITHOUT an encoded polyline (destinat
 });
 
 /** runRouteMonitorCheck harness with completion-aware routeControl + resolver stubs. */
-function loadServiceForCompletion({ assignments, location, completeReturns = 'active' }) {
-  const captured = { completed: [], events: [], monitorStates: [], telegramSends: [] };
+function loadServiceForCompletion({
+  assignments, location, completeReturns = 'active', gmapsEnabled = true,
+  gmapsThrows = false, resolverThrows = null, resolverCapture = null, extraRcMock = {},
+}) {
+  const captured = {
+    completed: [], events: [], monitorStates: [], telegramSends: [], diagnostics: [], activated: [],
+  };
   const svc = loadServiceWith({
     '../database/gmapsSettings.js': {
       async getGmapsConfig() {
+        if (gmapsThrows) throw new Error('settings table unavailable');
         return {
-          enabled: true, deviationThresholdMeters: 250, offRouteGraceChecks: 3,
+          enabled: gmapsEnabled, deviationThresholdMeters: 250, offRouteGraceChecks: 3,
           warningCooldownMinutes: 30, staleGpsMinutes: 15, parkedSpeedMph: 5,
-          checkIntervalSeconds: 300, routeCompletionRadiusMiles: 10,
+          checkIntervalSeconds: 300, routeCompletionRadiusMiles: 35,
         };
       },
     },
     '../services/liveLocationResolver.js': {
-      async resolveLiveLocationForGroupTitle() { return { location }; },
+      async resolveLiveLocationForGroupTitle(groupTitle, opts) {
+        if (resolverCapture) resolverCapture.push({ groupTitle, opts });
+        if (resolverThrows) { const e = new Error(resolverThrows); e.code = resolverThrows; throw e; }
+        return { location, source: 'Samsara' };
+      },
     },
     '../database/routeControl.js': {
-      async listPendingTrackingAssignments() { return []; },
-      async listMonitorableAssignments() { return assignments; },
+      async listActiveAssignmentsForMonitor() { return assignments; },
       async completeRouteAssignment(id, data) {
         captured.completed.push({ id, data });
         // 'active' → we won the race and get the row back; 'raced' → another tick
@@ -934,8 +1044,12 @@ function loadServiceForCompletion({ assignments, location, completeReturns = 'ac
       },
       async insertRouteMonitorEvent(e) { captured.events.push(e); return e; },
       async updateRouteAssignmentMonitorState(id, s) { captured.monitorStates.push({ id, s }); return null; },
+      async updateCompletionDiagnostics(id, d) { captured.diagnostics.push({ id, ...d }); return { id }; },
       async setTrackingHoldReason() { return null; },
-      async activateTracking() { return null; },
+      async activateTracking(id) { captured.activated.push(id); return { id }; },
+      async setRouteAssignmentDestinationCoords() { return null; },
+      async recordDestinationRepairAttempt() { return null; },
+      ...extraRcMock,
     },
   });
   const telegram = {
@@ -1028,4 +1142,261 @@ test('runRouteMonitorCheck keeps normal off-route warning when the driver is OUT
   assert.equal(captured.telegramSends.length, 1);
   assert.match(captured.telegramSends[0].text, /off the assigned route/i);
   assert.ok(!captured.events.some((e) => e.eventType === 'destination_reached'));
+});
+
+// ── Existing routes / pending tracking / feature-gate completion ─────────────
+
+test('runRouteMonitorCheck completes a tracking-PENDING route silently (no activation, no warning)', async () => {
+  const { svc, telegram, captured } = loadServiceForCompletion({
+    assignments: [{
+      id: 30, status: 'active', tracking_status: 'pending',
+      tracking_start_mode: 'after_message_sent', driver_group_message_sent_at: null,
+      encoded_polyline: null, destination_lat: 40, destination_lng: -100,
+      group_name: 'G', telegram_group_id: -100600,
+    }],
+    location: pointMilesFromDest(30),
+  });
+  const res = await svc.runRouteMonitorCheck(telegram, { now: NOW });
+  assert.equal(res.completed, 1, 'pending route inside 35 mi completes');
+  assert.equal(captured.activated.length, 0, 'tracking is never activated for it');
+  assert.equal(captured.telegramSends.length, 0, 'no message of any kind');
+  assert.equal(captured.events.length, 1);
+  assert.equal(captured.events[0].eventType, 'destination_reached');
+});
+
+test('runRouteMonitorCheck leaves a far-away pending route pending, with zero warnings', async () => {
+  const { svc, telegram, captured } = loadServiceForCompletion({
+    assignments: [{
+      id: 31, status: 'active', tracking_status: 'pending',
+      tracking_start_mode: 'after_message_sent', driver_group_message_sent_at: null,
+      tracking_hold_reason: 'waiting_for_message',
+      encoded_polyline: POLYLINE, destination_lat: 40, destination_lng: -100,
+      consecutive_off_route: 5, // even a long off-route streak must not warn while pending
+      group_name: 'G', telegram_group_id: -100601,
+    }],
+    location: pointMilesFromDest(200),
+  });
+  const res = await svc.runRouteMonitorCheck(telegram, { now: NOW });
+  assert.equal(res.completed, 0);
+  assert.equal(res.notified, 0);
+  assert.equal(captured.activated.length, 0, 'stays pending');
+  assert.equal(captured.telegramSends.length, 0, 'pending routes NEVER get off-route warnings');
+  assert.equal(captured.diagnostics[0].blockedReason, 'OUTSIDE_COMPLETION_RADIUS');
+});
+
+test('runRouteMonitorCheck completes routes even when Google Maps is DISABLED', async () => {
+  const { svc, telegram, captured } = loadServiceForCompletion({
+    gmapsEnabled: false,
+    assignments: [{
+      id: 32, status: 'active', tracking_status: 'active',
+      encoded_polyline: POLYLINE, destination_lat: 40, destination_lng: -100,
+      group_name: 'G', telegram_group_id: -100602,
+    }],
+    location: pointMilesFromDest(12),
+  });
+  const res = await svc.runRouteMonitorCheck(telegram, { now: NOW });
+  assert.equal(res.enabled, false, 'off-route monitoring reported as disabled');
+  assert.equal(res.completed, 1, 'completion does not need the Google gate');
+  assert.equal(res.checked, 0, 'no off-route evaluation while GMaps is off');
+  assert.equal(captured.telegramSends.length, 0);
+});
+
+test('runRouteMonitorCheck still completes when the settings row is unavailable (default 35 mi)', async () => {
+  const { svc, telegram, captured } = loadServiceForCompletion({
+    gmapsThrows: true,
+    assignments: [{
+      id: 33, status: 'active', tracking_status: 'active',
+      encoded_polyline: null, destination_lat: 40, destination_lng: -100,
+      group_name: 'G', telegram_group_id: -100603,
+    }],
+    location: pointMilesFromDest(30),
+  });
+  const res = await svc.runRouteMonitorCheck(telegram, { now: NOW });
+  assert.equal(res.completed, 1, '30 mi completes under the built-in 35 mi default');
+  assert.equal(captured.telegramSends.length, 0);
+});
+
+test('runRouteMonitorCheck resolves GPS by the STORED unit number, not only the group title', async () => {
+  const resolverCapture = [];
+  const { svc, telegram } = loadServiceForCompletion({
+    resolverCapture,
+    assignments: [{
+      id: 34, status: 'active', tracking_status: 'active', unit_number: '512',
+      encoded_polyline: null, destination_lat: 40, destination_lng: -100,
+      group_name: 'Group with no unit in the title', telegram_group_id: -100604,
+    }],
+    location: pointMilesFromDest(5),
+  });
+  await svc.runRouteMonitorCheck(telegram, { now: NOW });
+  assert.equal(resolverCapture.length, 1);
+  assert.equal(resolverCapture[0].opts.unitNumber, '512');
+});
+
+test('runRouteMonitorCheck never completes on an ambiguous unit — diagnostic recorded instead', async () => {
+  const { svc, telegram, captured } = loadServiceForCompletion({
+    resolverThrows: 'AMBIGUOUS_UNIT_MATCH',
+    assignments: [{
+      id: 35, status: 'active', tracking_status: 'active',
+      encoded_polyline: null, destination_lat: 40, destination_lng: -100,
+      group_name: 'G', telegram_group_id: -100605,
+    }],
+    location: pointMilesFromDest(2), // irrelevant — resolution fails first
+  });
+  const res = await svc.runRouteMonitorCheck(telegram, { now: NOW });
+  assert.equal(res.completed, 0);
+  assert.equal(captured.completed.length, 0);
+  assert.equal(captured.diagnostics[0].blockedReason, 'UNIT_RESOLUTION_FAILED');
+  assert.equal(captured.telegramSends.length, 0);
+});
+
+test('runRouteMonitorCheck repairs coordinate-text destinations and completes in the same pass', async () => {
+  let storedCoords = null;
+  const { svc, telegram, captured } = loadServiceForCompletion({
+    assignments: [{
+      id: 36, status: 'active', tracking_status: 'active',
+      encoded_polyline: null,
+      destination_lat: null, destination_lng: null,
+      destination_text: '40, -100', // parseable coordinates — free repair, no geocoding
+      destination_repair_attempts: 0,
+      group_name: 'G', telegram_group_id: -100606,
+    }],
+    location: pointMilesFromDest(10),
+    extraRcMock: {
+      async setRouteAssignmentDestinationCoords(id, coords) { storedCoords = { id, ...coords }; return { id }; },
+    },
+  });
+  const res = await svc.runRouteMonitorCheck(telegram, { now: NOW });
+  assert.deepEqual(storedCoords, { id: 36, lat: 40, lng: -100 });
+  assert.equal(res.completed, 1, 'repaired destination completes immediately');
+  assert.ok(captured.events.some((e) => e.eventType === 'destination_repaired'));
+});
+
+test('destination repair via geocoding is BOUNDED — never retried when attempts are exhausted', async () => {
+  let geocodeCalls = 0;
+  const svc = loadServiceWith({
+    '../database/gmapsSettings.js': {
+      async getGmapsConfig() { return { enabled: false, staleGpsMinutes: 15, routeCompletionRadiusMiles: 35 }; },
+    },
+    '../services/liveLocationResolver.js': {
+      async resolveLiveLocationForGroupTitle() { return { location: pointMilesFromDest(300) }; },
+    },
+    '../services/etaRoutingService.js': {
+      async geocodePlace() { geocodeCalls += 1; return null; },
+    },
+    '../database/routeControl.js': {
+      async listActiveAssignmentsForMonitor() {
+        return [{
+          id: 37, status: 'active', tracking_status: 'active',
+          encoded_polyline: null, destination_lat: null, destination_lng: null,
+          destination_text: 'Dallas, TX',
+          destination_repair_attempts: 3, // exhausted
+          group_name: 'G', telegram_group_id: -1,
+        }];
+      },
+      async updateCompletionDiagnostics() { return null; },
+      async insertRouteMonitorEvent() { return null; },
+      async recordDestinationRepairAttempt() { return null; },
+      async setRouteAssignmentDestinationCoords() { throw new Error('must not store anything'); },
+    },
+  });
+  await svc.runRouteMonitorCheck(null, { now: NOW });
+  assert.equal(geocodeCalls, 0, 'no geocode call once the attempt budget is used up');
+});
+
+test('destination repair geocodes text destinations (bounded) and stores the result', async () => {
+  let stored = null;
+  let attempts = 0;
+  const svc = loadServiceWith({
+    '../database/gmapsSettings.js': {
+      async getGmapsConfig() { return { enabled: false, staleGpsMinutes: 15, routeCompletionRadiusMiles: 35 }; },
+    },
+    '../services/liveLocationResolver.js': {
+      async resolveLiveLocationForGroupTitle() { return { location: pointMilesFromDest(20) }; },
+    },
+    '../services/etaRoutingService.js': {
+      async geocodePlace(text) { return text === 'Dallas, TX' ? { latitude: 40, longitude: -100 } : null; },
+    },
+    '../database/routeControl.js': {
+      async listActiveAssignmentsForMonitor() {
+        return [{
+          id: 38, status: 'active', tracking_status: 'active',
+          encoded_polyline: null, destination_lat: null, destination_lng: null,
+          destination_text: 'Dallas, TX', destination_repair_attempts: 0, destination_repair_last_at: null,
+          group_name: 'G', telegram_group_id: -1,
+        }];
+      },
+      async recordDestinationRepairAttempt(id) { attempts += 1; return { id }; },
+      async setRouteAssignmentDestinationCoords(id, coords) { stored = { id, ...coords }; return { id }; },
+      async completeRouteAssignment(id, data) { return { id, status: 'completed', ...data }; },
+      async insertRouteMonitorEvent() { return null; },
+      async updateCompletionDiagnostics() { return null; },
+    },
+  });
+  const res = await svc.runRouteMonitorCheck(null, { now: NOW });
+  assert.equal(attempts, 1);
+  assert.deepEqual(stored, { id: 38, lat: 40, lng: -100 });
+  assert.equal(res.completed, 1, 'geocoded destination lets the 20-mi route complete');
+});
+
+// ── runCompletionCheckNow (admin "Run completion check now") ─────────────────
+
+test('runCompletionCheckNow completes one route and reports the distance', async () => {
+  const { svc, captured } = loadServiceForCompletion({
+    assignments: [], // list not used for the single-route path
+    location: pointMilesFromDest(31.8),
+    extraRcMock: {
+      async getRouteAssignment(id) {
+        return {
+          id, status: 'active', tracking_status: 'pending',
+          destination_lat: 40, destination_lng: -100,
+          group_name: 'G', telegram_group_id: -1,
+        };
+      },
+    },
+  });
+  const out = await svc.runCompletionCheckNow({ assignmentId: 44, now: NOW });
+  assert.equal(out.completionRadiusMiles, 35);
+  assert.equal(out.results.length, 1);
+  assert.equal(out.results[0].completed, true);
+  assert.ok(Math.abs(out.results[0].distanceMiles - 31.8) < 0.1);
+  assert.equal(captured.completed[0].id, 44);
+});
+
+test('runCompletionCheckNow reports (not completes) a non-active route and sends nothing', async () => {
+  const { svc, captured } = loadServiceForCompletion({
+    assignments: [],
+    location: pointMilesFromDest(1),
+    extraRcMock: {
+      async getRouteAssignment(id) { return { id, status: 'completed', group_name: 'G' }; },
+    },
+  });
+  const out = await svc.runCompletionCheckNow({ assignmentId: 45, now: NOW });
+  assert.equal(out.results[0].completed, false);
+  assert.match(out.results[0].note, /completed/);
+  assert.equal(captured.completed.length, 0);
+  assert.equal(captured.telegramSends.length, 0);
+});
+
+test('runCompletionCheckNow sweeps all active routes and NEVER warns or activates tracking', async () => {
+  const { svc, captured } = loadServiceForCompletion({
+    assignments: [
+      {
+        id: 46, status: 'active', tracking_status: 'active',
+        encoded_polyline: POLYLINE, destination_lat: 40, destination_lng: -100,
+        consecutive_off_route: 5, group_name: 'A', telegram_group_id: -1,
+      },
+      {
+        id: 47, status: 'active', tracking_status: 'pending',
+        tracking_start_mode: 'immediate',
+        destination_lat: 40, destination_lng: -100, group_name: 'B', telegram_group_id: -2,
+      },
+    ],
+    location: pointMilesFromDest(200), // both far away
+  });
+  const out = await svc.runCompletionCheckNow({ now: NOW });
+  assert.equal(out.results.length, 2);
+  assert.ok(out.results.every((r) => r.completed === false));
+  assert.ok(out.results.every((r) => r.blockedReason === 'OUTSIDE_COMPLETION_RADIUS'));
+  assert.equal(captured.telegramSends.length, 0, 'no warnings from the reconciliation pass');
+  assert.equal(captured.activated.length, 0, 'tracking state untouched');
 });

@@ -4,12 +4,20 @@
  * Assigns a Google Maps directions link to a driver group (parsing the link and
  * computing route geometry via the Routes API), then periodically compares the
  * driver's live GPS to that route and warns the driver group when they drift off
- * it. All Google calls are server-side and gated on Settings → GMaps; with the
- * feature off, assignment still stores the parsed link but monitoring stays idle.
+ * it. All Google calls are server-side and gated on Settings → GMaps.
  *
- * `evaluateAssignment` is a PURE decision function (no DB / network / telegram)
- * so the deviation → grace → cooldown → stale/parked logic is unit-tested
- * deterministically. The monitor loop is a thin wrapper around it.
+ * Two independent concerns run in the monitor, with different gates:
+ *   1. DESTINATION AUTO-COMPLETION — needs only stored destination coordinates,
+ *      live ELD GPS and a haversine distance. It runs for EVERY lifecycle-active
+ *      route (tracking active OR pending) and does NOT require Google Maps to
+ *      be enabled: existing routes keep completing even with the GMaps switch
+ *      off. Completion is silent (no driver-group message) and atomic.
+ *   2. OFF-ROUTE WARNINGS — need computed route geometry, so they stay gated on
+ *      Settings → GMaps `enabled` and only run for tracking-active routes.
+ *
+ * `evaluateAssignment` / `evaluateDestinationCompletion` are PURE decision
+ * functions (no DB / network / telegram) so the logic is unit-tested
+ * deterministically. The monitor loop is a thin wrapper around them.
  */
 const db = require('../database/db');
 const rc = require('../database/routeControl');
@@ -20,15 +28,31 @@ const { parseDirectionsUrl, expandShortLink, classifyPoint } = require('./google
 const { decodePolyline, distancePointToPolylineMeters, haversineMeters } = require('./routeGeometry');
 const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
 const { resolveDriverMentionForGroup, escapeHtml } = require('./driverMention');
+const { ROUTE_COMPLETION_RADIUS_MILES } = require('./routeControlConstants');
 
 const POLL_MS_MIN = 30 * 1000;
 const METERS_PER_MILE = 1609.34;
-// Default auto-complete radius (miles) when GMaps config omits it.
-const DEFAULT_COMPLETION_RADIUS_MILES = 10;
+// Default auto-complete radius (miles) when GMaps config omits it. The single
+// authoritative value lives in routeControlConstants (35 mi).
+const DEFAULT_COMPLETION_RADIUS_MILES = ROUTE_COMPLETION_RADIUS_MILES.DEFAULT;
 // Boundary tolerance (meters): floating-point haversine at exactly the radius can
-// land a hair over, so "exactly 10 miles" still completes while 10.01 mi (≈16 m
+// land a hair over, so "exactly 35 miles" still completes while 35.01 mi (≈16 m
 // past the radius) stays comfortably outside.
 const COMPLETION_EPSILON_METERS = 1;
+// Bounded destination-coordinate repair: at most this many geocode attempts per
+// assignment, spaced at least this far apart — never on every monitor tick.
+const DESTINATION_REPAIR_MAX_ATTEMPTS = 3;
+const DESTINATION_REPAIR_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+// Machine-readable reasons written to route_assignments.completion_blocked_reason
+// (surfaced verbatim in the Admin panel — keep them stable and PII-free).
+const COMPLETION_BLOCKED = Object.freeze({
+  DESTINATION_COORDINATES_MISSING: 'DESTINATION_COORDINATES_MISSING',
+  LIVE_GPS_MISSING: 'LIVE_GPS_MISSING',
+  LIVE_GPS_STALE: 'LIVE_GPS_STALE',
+  UNIT_RESOLUTION_FAILED: 'UNIT_RESOLUTION_FAILED',
+  OUTSIDE_COMPLETION_RADIUS: 'OUTSIDE_COMPLETION_RADIUS',
+});
 // Telegram caps photo captions at 1024 chars and text messages at 4096.
 const TELEGRAM_CAPTION_MAX = 1024;
 const TELEGRAM_TEXT_SAFE_MAX = 3900;
@@ -59,16 +83,28 @@ function pointText(point) {
   return point.raw || null;
 }
 
-/** Map the stored GMaps config to the tunables evaluateAssignment expects. */
+/** True when a coordinate value is present AND numeric (null/undefined are NOT
+ *  coordinates — Number(null) === 0 must never masquerade as one). */
+function hasFiniteCoord(value) {
+  return value != null && Number.isFinite(Number(value));
+}
+
+/**
+ * Map the stored GMaps config to the tunables the evaluators expect. Every
+ * field falls back to a safe default so completion (which runs even when the
+ * settings row is unavailable) never loses its stale-GPS protection.
+ */
 function monitorSettingsFromConfig(cfg) {
+  const c = cfg || {};
+  const numOr = (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
   return {
-    deviationThresholdMeters: cfg.deviationThresholdMeters,
-    offRouteGraceChecks: cfg.offRouteGraceChecks,
-    warningCooldownMinutes: cfg.warningCooldownMinutes,
-    staleGpsMinutes: cfg.staleGpsMinutes,
-    parkedSpeedMph: cfg.parkedSpeedMph,
-    completionRadiusMiles: cfg.routeCompletionRadiusMiles != null
-      ? cfg.routeCompletionRadiusMiles : DEFAULT_COMPLETION_RADIUS_MILES,
+    deviationThresholdMeters: numOr(c.deviationThresholdMeters, 250),
+    offRouteGraceChecks: numOr(c.offRouteGraceChecks, 3),
+    warningCooldownMinutes: numOr(c.warningCooldownMinutes, 30),
+    staleGpsMinutes: numOr(c.staleGpsMinutes, 15),
+    parkedSpeedMph: numOr(c.parkedSpeedMph, 5),
+    completionRadiusMiles: c.routeCompletionRadiusMiles != null
+      ? c.routeCompletionRadiusMiles : DEFAULT_COMPLETION_RADIUS_MILES,
   };
 }
 
@@ -303,44 +339,51 @@ function evaluateAssignment({ assignment, location, settings, now = new Date() }
  * stale returns false. The boundary is inclusive (exactly the radius completes).
  *
  * @returns {{ shouldComplete:boolean, distanceMeters:(number|null),
- *             distanceMiles:(number|null), reason:string }}
+ *             distanceMiles:(number|null), reason:string, code:string }}
+ * `code` is a stable machine-readable classification: COMPLETED_WITHIN_RADIUS |
+ * OUTSIDE_COMPLETION_RADIUS | DESTINATION_COORDINATES_MISSING |
+ * LIVE_GPS_MISSING | LIVE_GPS_STALE | NOT_ACTIVE | DISTANCE_UNMEASURABLE.
  */
 function evaluateDestinationCompletion({
   assignment, location, staleGpsMinutes, completionRadiusMiles,
 } = {}) {
-  const fail = (reason) => ({ shouldComplete: false, distanceMeters: null, distanceMiles: null, reason });
+  const fail = (code, reason) => ({
+    shouldComplete: false, distanceMeters: null, distanceMiles: null, reason, code,
+  });
 
   // Only active (lifecycle) routes complete; completed/cancelled stay unchanged.
   if (!assignment || (assignment.status && assignment.status !== 'active')) {
-    return fail(`route is ${assignment?.status || 'missing'}`);
+    return fail('NOT_ACTIVE', `route is ${assignment?.status || 'missing'}`);
   }
-  // Final destination coordinates must be present and valid.
+  // Final destination coordinates must be present and valid. NOTE: null is
+  // checked explicitly because Number(null) === 0 would otherwise silently
+  // point a missing destination at latitude/longitude 0.
+  if (!hasFiniteCoord(assignment.destination_lat) || !hasFiniteCoord(assignment.destination_lng)) {
+    return fail(COMPLETION_BLOCKED.DESTINATION_COORDINATES_MISSING, 'no destination coordinates');
+  }
   const dLat = Number(assignment.destination_lat);
   const dLng = Number(assignment.destination_lng);
-  if (!Number.isFinite(dLat) || !Number.isFinite(dLng)) {
-    return fail('no destination coordinates');
-  }
   // GPS must exist.
   if (!location || location.latitude == null || location.longitude == null) {
-    return fail('no GPS available');
+    return fail(COMPLETION_BLOCKED.LIVE_GPS_MISSING, 'no GPS available');
   }
   const lat = Number(location.latitude);
   const lng = Number(location.longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return fail('invalid GPS coordinates');
+    return fail(COMPLETION_BLOCKED.LIVE_GPS_MISSING, 'invalid GPS coordinates');
   }
   // GPS must be fresh — stale GPS must NEVER complete a route.
   const stale = Number(staleGpsMinutes);
   const ageMin = location.pingAgeMinutes;
   if (ageMin != null && Number.isFinite(Number(ageMin)) && Number.isFinite(stale) && Number(ageMin) > stale) {
-    return fail(`GPS is ${Math.round(Number(ageMin))}min old (> ${stale})`);
+    return fail(COMPLETION_BLOCKED.LIVE_GPS_STALE, `GPS is ${Math.round(Number(ageMin))}min old (> ${stale})`);
   }
 
   const radiusMiles = Number(completionRadiusMiles) > 0
     ? Number(completionRadiusMiles) : DEFAULT_COMPLETION_RADIUS_MILES;
   const distanceMeters = haversineMeters([lat, lng], [dLat, dLng]);
   if (distanceMeters == null || !Number.isFinite(distanceMeters)) {
-    return fail('could not measure distance to destination');
+    return fail('DISTANCE_UNMEASURABLE', 'could not measure distance to destination');
   }
   const distanceMiles = distanceMeters / METERS_PER_MILE;
   const radiusMeters = radiusMiles * METERS_PER_MILE;
@@ -349,6 +392,7 @@ function evaluateDestinationCompletion({
     shouldComplete,
     distanceMeters,
     distanceMiles,
+    code: shouldComplete ? 'COMPLETED_WITHIN_RADIUS' : COMPLETION_BLOCKED.OUTSIDE_COMPLETION_RADIUS,
     reason: shouldComplete
       ? `fresh GPS is ${distanceMiles.toFixed(1)} mi from the final destination (≤ ${radiusMiles} mi)`
       : `${distanceMiles.toFixed(1)} mi from the final destination (> ${radiusMiles} mi)`,
@@ -543,6 +587,26 @@ function escapeHref(url) {
   return escapeHtml(url).replace(/"/g, '&quot;');
 }
 
+/**
+ * PURE. Classify a Telegram sendPhoto failure into a safe, admin-readable
+ * reason string (no tokens, no internal stack traces). 403 = bot permission /
+ * group access; 413 or size wording = file too large; 400 = rejected payload;
+ * timeouts are called out so a retry is the obvious next step.
+ */
+function classifyTelegramPhotoError(err) {
+  const code = err?.response?.error_code;
+  const desc = String(err?.response?.description || err?.message || '').slice(0, 160);
+  if (code === 403) return 'TELEGRAM_PHOTO_REJECTED: the bot lacks permission in the driver group (403)';
+  if (code === 413 || /too large|too big|entity too large/i.test(desc)) {
+    return 'TELEGRAM_PHOTO_REJECTED: the file is too large for Telegram (413)';
+  }
+  if (code === 400) return `TELEGRAM_PHOTO_REJECTED: Telegram rejected the photo (400${desc ? ` — ${desc}` : ''})`;
+  if (/timeout|timed out|etimedout|esockettimedout|econnreset|network/i.test(desc)) {
+    return 'TELEGRAM_PHOTO_TIMEOUT';
+  }
+  return `TELEGRAM_PHOTO_SEND_FAILED${desc ? `: ${desc}` : ''}`;
+}
+
 /** PURE. Driver-facing line describing when Route Control starts monitoring. */
 function buildTrackingSection(assignment) {
   switch (assignment?.tracking_start_mode) {
@@ -658,13 +722,20 @@ async function sendDriverGroupRouteMessage({ assignmentId, telegram, sentBy = nu
     : buildDriverGroupRouteMessage(assignment, mention);
 
   // Attach the route screenshot when one is stored. A photo-send failure must
-  // never lose the route text: fall back to the plain text message. When the
-  // full message exceeds Telegram's 1024-char photo caption, the photo goes
-  // first with a short caption and the details follow as a separate message.
+  // never lose the route text: fall back to the plain text message AND report
+  // the failure truthfully (screenshotError in the result + persisted on the
+  // assignment) — never claim the screenshot was delivered when it wasn't.
+  // When the full message exceeds Telegram's 1024-char photo caption, the photo
+  // goes first with a short caption and the details follow as a separate message.
   let screenshot = null;
+  let screenshotError = null;
   try {
     screenshot = await rc.getRouteScreenshot(assignmentId);
-  } catch (_) { screenshot = null; /* screenshots are optional — never block the send */ }
+  } catch (readErr) {
+    screenshot = null;
+    screenshotError = 'SCREENSHOT_DB_READ_FAILED';
+    console.error(`[ROUTE-CONTROL] assignment=${assignmentId} screenshot=read_failed:`, readErr.message);
+  }
 
   let messageId = null;
   let sentVia = 'text';
@@ -690,26 +761,46 @@ async function sendDriverGroupRouteMessage({ assignmentId, telegram, sentBy = nu
         sentVia = 'photo+text';
       }
     } catch (photoErr) {
-      console.error(`[ROUTE-CONTROL] Screenshot send failed for assignment #${assignmentId} (falling back to text):`, photoErr.message);
+      screenshotError = classifyTelegramPhotoError(photoErr);
+      console.error(
+        `[ROUTE-CONTROL] assignment=${assignmentId} screenshot=send_failed reason=${screenshotError}`
+        + ' (falling back to text)'
+      );
       sentVia = 'text';
     }
   }
   if (sentVia === 'text') {
-    const sent = await safeSend(() => telegram.sendMessage(chatId, body, {
-      parse_mode: 'HTML',
-      disable_web_page_preview: true,
-    }));
-    messageId = sent?.message_id ?? null;
+    try {
+      const sent = await safeSend(() => telegram.sendMessage(chatId, body, {
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      }));
+      messageId = sent?.message_id ?? null;
+    } catch (textErr) {
+      // Photo (if any) AND text failed → complete failure. Nothing is marked
+      // sent and after-message tracking is NOT activated; the screenshot stays
+      // stored so a later retry can use it.
+      if (!textErr.code) textErr.code = 'TELEGRAM_TEXT_SEND_FAILED';
+      throw textErr;
+    }
   }
 
-  await rc.recordDriverGroupMessageSent(assignmentId, { telegramMessageId: messageId, sentBy });
+  await rc.recordDriverGroupMessageSent(assignmentId, {
+    telegramMessageId: messageId, sentBy, via: sentVia, screenshotError,
+  });
   await rc.insertRouteMonitorEvent({
     assignmentId,
     eventType: 'driver_group_message_sent',
     detail: `route message sent to driver group${sentBy ? ` by ${sentBy}` : ''}`
       + `${messageId ? ` (telegram msg ${messageId})` : ''}`
-      + ` [via:${sentVia}] [mention:${mention.source}/${mention.confidence}]`,
+      + ` [via:${sentVia}]${screenshotError ? ` [screenshot_error:${screenshotError}]` : ''}`
+      + ` [mention:${mention.source}/${mention.confidence}]`,
   });
+  console.log(
+    `[ROUTE-CONTROL] assignment=${assignmentId} screenshot=${screenshot?.file_data ? 'stored' : 'none'}`
+    + ` send_via=${sentVia}${messageId ? ` telegram_message_id=${messageId}` : ''}`
+    + `${screenshotError ? ` screenshot_error=${screenshotError}` : ''}`
+  );
 
   // After-message start mode: a successful send is the start condition.
   let trackingActivated = false;
@@ -732,6 +823,8 @@ async function sendDriverGroupRouteMessage({ assignmentId, telegram, sentBy = nu
     chatId,
     sentVia,
     withScreenshot: sentVia !== 'text',
+    screenshotStored: Boolean(screenshot?.file_data),
+    screenshotError,
     trackingActivated,
     mentionSource: mention.source,
     mentionConfidence: mention.confidence,
@@ -794,108 +887,255 @@ function buildOffRouteMessage(assignment, verdict) {
 }
 
 /**
- * One monitoring pass over every active assignment that has route geometry.
- * Resolves each driver's live GPS (same resolver as /location), evaluates it,
- * records the outcome, and warns the driver group when a real off-route streak
- * clears the grace + cooldown gate.
+ * Resolve an assignment's live GPS, preferring stable stored identifiers:
+ * the assignment's stored unit_number → the group's current driver-profile
+ * unit → group-title parsing (compatibility fallback inside the resolver).
+ * Never throws — a failure is returned so the caller can diagnose it.
  */
-async function runRouteMonitorCheck(telegram, { now = new Date() } = {}) {
-  const cfg = await gmaps.getGmapsConfig();
-  if (!cfg.enabled) return { enabled: false, checked: 0, notified: 0 };
-  const settings = monitorSettingsFromConfig(cfg);
-
-  // Phase 1 — PENDING tracking: evaluate start conditions instead of running
-  // deviation checks. Live GPS is only resolved for the start-location mode.
-  // Hold-reason events are recorded once per reason change, never per tick.
-  let activated = 0;
-  let pending = [];
-  try {
-    pending = await rc.listPendingTrackingAssignments();
-  } catch (_) { pending = []; /* pre-migration DB — skip the phase */ }
-  for (const assignment of pending) {
+async function resolveAssignmentLocation(assignment) {
+  let unitNumber = assignment?.unit_number != null && String(assignment.unit_number).trim()
+    ? String(assignment.unit_number).trim() : null;
+  if (!unitNumber && assignment?.group_id) {
     try {
-      let location = null;
-      if (assignment.tracking_start_mode === 'start_location') {
-        try {
-          const resolved = await resolveLiveLocationForGroupTitle(assignment.group_name || '');
-          location = resolved.location;
-        } catch (_) { location = null; }
-      }
-      const startVerdict = evaluateTrackingStart({ assignment, location, now });
-      if (startVerdict.shouldStart) {
-        await rc.activateTracking(assignment.id);
-        await rc.insertRouteMonitorEvent({
-          assignmentId: assignment.id,
-          eventType: 'tracking_started',
-          latitude: location?.latitude,
-          longitude: location?.longitude,
-          detail: startVerdict.reason,
-        });
-        activated += 1;
-      } else if ((assignment.tracking_hold_reason || null) !== (startVerdict.holdReason || null)) {
-        await rc.setTrackingHoldReason(assignment.id, startVerdict.holdReason);
-        await rc.insertRouteMonitorEvent({
-          assignmentId: assignment.id,
-          eventType: `tracking_start_${startVerdict.holdReason || 'pending'}`,
-          detail: startVerdict.reason,
-        });
-      }
-    } catch (err) {
-      console.error(`[ROUTE-CONTROL] Tracking-start check failed for assignment #${assignment.id}:`, err.message);
-    }
+      const profile = await db.getDriverProfileByGroupId(assignment.group_id);
+      if (profile?.unit_number) unitNumber = String(profile.unit_number).trim() || null;
+    } catch (_) { /* fall through to group-title parsing */ }
+  }
+  try {
+    const resolved = await resolveLiveLocationForGroupTitle(assignment?.group_name || '', { unitNumber });
+    return { location: resolved.location, source: resolved.source, error: null };
+  } catch (err) {
+    return { location: null, source: null, error: err };
+  }
+}
+
+/**
+ * Safe, BOUNDED repair of missing final-destination coordinates on an existing
+ * assignment. Free text-parse first (the destination may literally be
+ * "lat, lng"); then the shared geocoding cascade (Nominatim → Photon → Google),
+ * at most DESTINATION_REPAIR_MAX_ATTEMPTS times per assignment and never more
+ * often than DESTINATION_REPAIR_MIN_INTERVAL_MS — NEVER on every tick, and
+ * coordinates are never invented. Mutates the in-memory row on success so the
+ * current pass can use the repaired coordinates immediately.
+ */
+async function maybeRepairDestinationCoordinates(assignment) {
+  const text = String(assignment?.destination_text || '').trim();
+  if (!text) return { repaired: false, reason: 'no destination text to repair from' };
+
+  // Free path: coordinates embedded in the destination text.
+  const parsed = classifyPoint(text);
+  if (Number.isFinite(parsed?.lat) && Number.isFinite(parsed?.lng)) {
+    await rc.setRouteAssignmentDestinationCoords(assignment.id, { lat: parsed.lat, lng: parsed.lng });
+    assignment.destination_lat = parsed.lat;
+    assignment.destination_lng = parsed.lng;
+    await rc.insertRouteMonitorEvent({
+      assignmentId: assignment.id,
+      eventType: 'destination_repaired',
+      detail: 'final destination coordinates parsed from the stored destination text',
+    });
+    return { repaired: true };
   }
 
-  // Phase 2 — ACTIVE tracking: destination auto-completion FIRST, then the
-  // original deviation checks. Each assignment is processed once per tick.
-  const assignments = await rc.listMonitorableAssignments();
+  const attempts = Number(assignment.destination_repair_attempts) || 0;
+  if (attempts >= DESTINATION_REPAIR_MAX_ATTEMPTS) {
+    return { repaired: false, reason: 'repair attempts exhausted' };
+  }
+  const lastAt = assignment.destination_repair_last_at
+    ? new Date(assignment.destination_repair_last_at).getTime() : 0;
+  if (lastAt && Date.now() - lastAt < DESTINATION_REPAIR_MIN_INTERVAL_MS) {
+    return { repaired: false, reason: 'repair attempted recently' };
+  }
+
+  await rc.recordDestinationRepairAttempt(assignment.id);
+  assignment.destination_repair_attempts = attempts + 1;
+  assignment.destination_repair_last_at = new Date().toISOString();
+  try {
+    // Lazy require: keeps startup light and avoids loading the ETA stack unless
+    // a repair is actually needed.
+    const { geocodePlace } = require('./etaRoutingService');
+    const geo = await geocodePlace(text);
+    const lat = Number(geo?.latitude);
+    const lng = Number(geo?.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      await rc.setRouteAssignmentDestinationCoords(assignment.id, { lat, lng });
+      assignment.destination_lat = lat;
+      assignment.destination_lng = lng;
+      await rc.insertRouteMonitorEvent({
+        assignmentId: assignment.id,
+        eventType: 'destination_repaired',
+        detail: `final destination geocoded from text (attempt ${attempts + 1}/${DESTINATION_REPAIR_MAX_ATTEMPTS})`,
+      });
+      return { repaired: true };
+    }
+    await rc.insertRouteMonitorEvent({
+      assignmentId: assignment.id,
+      eventType: 'destination_repair_failed',
+      detail: `geocoding returned no result (attempt ${attempts + 1}/${DESTINATION_REPAIR_MAX_ATTEMPTS})`,
+    });
+  } catch (err) {
+    await rc.insertRouteMonitorEvent({
+      assignmentId: assignment.id,
+      eventType: 'destination_repair_failed',
+      detail: `geocoding failed: ${String(err.message || err).slice(0, 200)} (attempt ${attempts + 1}/${DESTINATION_REPAIR_MAX_ATTEMPTS})`,
+    }).catch(() => {});
+  }
+  return { repaired: false, reason: 'geocoding did not resolve the destination' };
+}
+
+/**
+ * Destination-completion gate for ONE assignment with an already-resolved
+ * location. Attempts a bounded coordinate repair when needed, evaluates the
+ * pure completion decision, atomically completes inside the radius (exactly one
+ * audit event ever — overlapping checks lose the atomic UPDATE race and write
+ * nothing), and records diagnostics (distance, blocked reason) otherwise.
+ *
+ * @returns {{ completed:boolean, duplicate:boolean, blockedReason:(string|null),
+ *             distanceMeters:(number|null), distanceMiles:(number|null) }}
+ */
+async function checkAssignmentCompletion(assignment, { location, resolveError = null, settings, now = new Date() }) {
+  const hasCoords = hasFiniteCoord(assignment.destination_lat)
+    && hasFiniteCoord(assignment.destination_lng);
+  if (!hasCoords && assignment.status === 'active') {
+    try { await maybeRepairDestinationCoordinates(assignment); } catch (_) { /* diagnosed below */ }
+  }
+
+  const completion = evaluateDestinationCompletion({
+    assignment, location,
+    staleGpsMinutes: settings.staleGpsMinutes,
+    completionRadiusMiles: settings.completionRadiusMiles,
+  });
+
+  if (completion.shouldComplete) {
+    const detail = `Auto-completed: fresh GPS was ${completion.distanceMiles.toFixed(1)} miles from the final destination`
+      + ` (radius ${settings.completionRadiusMiles} mi, GPS age ${location.pingAgeMinutes != null ? `${Math.round(Number(location.pingAgeMinutes))}min` : 'unknown'}).`;
+    const done = await rc.completeRouteAssignment(assignment.id, {
+      latitude: location.latitude,
+      longitude: location.longitude,
+      distanceMeters: completion.distanceMeters,
+      reason: detail,
+    });
+    // done === null → another overlapping check already completed it: no
+    // duplicate event, no double-processing.
+    if (done) {
+      await rc.insertRouteMonitorEvent({
+        assignmentId: assignment.id,
+        eventType: 'destination_reached',
+        result: 'completed',
+        latitude: location.latitude,
+        longitude: location.longitude,
+        deviationMeters: completion.distanceMeters,
+        detail,
+      });
+    }
+    return {
+      completed: true, duplicate: !done, blockedReason: null,
+      distanceMeters: completion.distanceMeters, distanceMiles: completion.distanceMiles,
+    };
+  }
+
+  // Not completed — classify why, for the Admin diagnostics. A GPS resolution
+  // failure (unit unparseable / ambiguous / provider error) beats the generic
+  // "no GPS" so the admin sees the actionable cause.
+  let blockedReason = completion.code;
+  if (blockedReason === COMPLETION_BLOCKED.LIVE_GPS_MISSING && resolveError) {
+    blockedReason = COMPLETION_BLOCKED.UNIT_RESOLUTION_FAILED;
+  }
+  try {
+    await rc.updateCompletionDiagnostics(assignment.id, {
+      lastCompletionCheckAt: nowIso(now),
+      distanceMeters: completion.distanceMeters,
+      blockedReason,
+    });
+  } catch (_) { /* diagnostics must never break monitoring */ }
+  return {
+    completed: false, duplicate: false, blockedReason,
+    distanceMeters: completion.distanceMeters, distanceMiles: completion.distanceMiles,
+  };
+}
+
+/** Tally a completion blocked-reason into the monitor summary counters. */
+function tallyBlockedReason(summary, blockedReason) {
+  if (blockedReason === COMPLETION_BLOCKED.OUTSIDE_COMPLETION_RADIUS) summary.outside_radius += 1;
+  else if (blockedReason === COMPLETION_BLOCKED.DESTINATION_COORDINATES_MISSING) summary.missing_destination += 1;
+  else if (blockedReason === COMPLETION_BLOCKED.LIVE_GPS_STALE) summary.stale_gps += 1;
+  else if (blockedReason === COMPLETION_BLOCKED.UNIT_RESOLUTION_FAILED) summary.resolution_errors += 1;
+  else if (blockedReason === COMPLETION_BLOCKED.LIVE_GPS_MISSING) summary.missing_gps += 1;
+}
+
+/**
+ * One monitoring pass over EVERY lifecycle-active assignment (tracking active
+ * AND pending). Per assignment, in order:
+ *   1. Resolve live GPS once (stored unit number preferred).
+ *   2. Destination auto-completion FIRST — runs for every route, needs no
+ *      Google Maps config, and short-circuits everything else when it fires.
+ *   3. Pending tracking → evaluate the start condition (never warnings).
+ *   4. Active tracking → off-route deviation checks, gated on Settings → GMaps.
+ */
+async function runRouteMonitorCheck(telegram, { now = new Date() } = {}) {
+  let cfg = null;
+  try { cfg = await gmaps.getGmapsConfig(); } catch (_) { cfg = null; }
+  const settings = monitorSettingsFromConfig(cfg || {});
+  const offRouteMonitoringEnabled = Boolean(cfg && cfg.enabled);
+
+  let assignments = [];
+  try {
+    assignments = await rc.listActiveAssignmentsForMonitor();
+  } catch (err) {
+    console.error('[ROUTE-CONTROL] Could not load active assignments:', err.message);
+    return { enabled: offRouteMonitoringEnabled, checked: 0, notified: 0, activated: 0, completed: 0 };
+  }
+
+  const summary = {
+    eligible: assignments.length, completed: 0, outside_radius: 0, missing_destination: 0,
+    missing_gps: 0, stale_gps: 0, resolution_errors: 0, warnings_sent: 0,
+  };
   let checked = 0;
   let notified = 0;
+  let activated = 0;
   let completed = 0;
+
   for (const assignment of assignments) {
     try {
-      let location = null;
-      try {
-        const resolved = await resolveLiveLocationForGroupTitle(assignment.group_name || '');
-        location = resolved.location;
-      } catch (_) {
-        location = null; // treated as not_checked — never a false off-route warning
-      }
+      const { location, error: resolveError } = await resolveAssignmentLocation(assignment);
 
-      // ── Auto-completion gate (before ANY off-route logic) ──
-      // When fresh GPS is within the completion radius of the FINAL destination
-      // the route is completed atomically, one audit event is written, and we
-      // skip off-route evaluation entirely — no Telegram message, no further
-      // monitoring (the next tick's query excludes completed routes).
-      const completion = evaluateDestinationCompletion({
-        assignment, location,
-        staleGpsMinutes: settings.staleGpsMinutes,
-        completionRadiusMiles: settings.completionRadiusMiles,
-      });
-      if (completion.shouldComplete) {
-        const detail = `Auto-completed: fresh GPS was ${completion.distanceMiles.toFixed(1)} miles from the final destination.`;
-        const done = await rc.completeRouteAssignment(assignment.id, {
-          latitude: location.latitude,
-          longitude: location.longitude,
-          distanceMeters: completion.distanceMeters,
-          reason: detail,
-        });
-        // done === null → another overlapping tick already completed it: no
-        // duplicate event, no double-processing.
-        if (done) {
+      // 1) Destination auto-completion — before ANY off-route logic. A completed
+      // route sends no message, is excluded from every later pass, and can never
+      // warn again.
+      const gate = await checkAssignmentCompletion(assignment, { location, resolveError, settings, now });
+      if (gate.completed) {
+        if (!gate.duplicate) { completed += 1; summary.completed += 1; }
+        continue;
+      }
+      tallyBlockedReason(summary, gate.blockedReason);
+
+      // 2) Pending tracking: evaluate the start condition only. Pending routes
+      // NEVER receive off-route warnings (evaluateAssignment also guards this).
+      if (assignment.tracking_status === 'pending') {
+        const startVerdict = evaluateTrackingStart({ assignment, location, now });
+        if (startVerdict.shouldStart) {
+          await rc.activateTracking(assignment.id);
           await rc.insertRouteMonitorEvent({
             assignmentId: assignment.id,
-            eventType: 'destination_reached',
-            result: 'completed',
-            latitude: location.latitude,
-            longitude: location.longitude,
-            deviationMeters: completion.distanceMeters,
-            detail,
+            eventType: 'tracking_started',
+            latitude: location?.latitude,
+            longitude: location?.longitude,
+            detail: startVerdict.reason,
           });
-          completed += 1;
+          activated += 1;
+        } else if ((assignment.tracking_hold_reason || null) !== (startVerdict.holdReason || null)) {
+          await rc.setTrackingHoldReason(assignment.id, startVerdict.holdReason);
+          await rc.insertRouteMonitorEvent({
+            assignmentId: assignment.id,
+            eventType: `tracking_start_${startVerdict.holdReason || 'pending'}`,
+            detail: startVerdict.reason,
+          });
         }
-        continue; // skip off-route evaluation for this assignment
+        continue;
       }
 
+      // 3) Off-route deviation checks — the Google-geometry feature, still gated
+      // on Settings → GMaps. Completion above already ran regardless.
+      if (!offRouteMonitoringEnabled) continue;
       const verdict = evaluateAssignment({ assignment, location, settings, now });
       checked += 1;
 
@@ -925,12 +1165,86 @@ async function runRouteMonitorCheck(telegram, { now = new Date() } = {}) {
           { disable_web_page_preview: true }
         ));
         notified += 1;
+        summary.warnings_sent += 1;
       }
     } catch (err) {
       console.error(`[ROUTE-CONTROL] Check failed for assignment #${assignment.id}:`, err.message);
     }
   }
-  return { enabled: true, checked, notified, activated, completed };
+  if (assignments.length) {
+    console.log(
+      `[ROUTE-CONTROL] eligible=${summary.eligible} completed=${summary.completed}`
+      + ` outside_radius=${summary.outside_radius} missing_destination=${summary.missing_destination}`
+      + ` missing_gps=${summary.missing_gps} stale_gps=${summary.stale_gps}`
+      + ` resolution_errors=${summary.resolution_errors} warnings_sent=${summary.warnings_sent}`
+    );
+  }
+  return { enabled: offRouteMonitoringEnabled, checked, notified, activated, completed, summary };
+}
+
+let completionCheckRunning = false;
+
+/**
+ * Idempotent completion-only reconciliation over existing routes — the "Run
+ * completion check now" admin action (optionally scoped to one assignment).
+ * Resolves GPS, repairs destinations (bounded), completes routes inside the
+ * radius and reports a per-route diagnostic. NEVER sends off-route warnings and
+ * never touches tracking state, so it is safe to run at any time. Guarded
+ * against overlapping manual runs; overlap with the monitor tick is safe
+ * because completion is an atomic conditional UPDATE.
+ */
+async function runCompletionCheckNow({ assignmentId = null, now = new Date() } = {}) {
+  if (completionCheckRunning) return { alreadyRunning: true, results: [] };
+  completionCheckRunning = true;
+  try {
+    let cfg = null;
+    try { cfg = await gmaps.getGmapsConfig(); } catch (_) { cfg = null; }
+    const settings = monitorSettingsFromConfig(cfg || {});
+
+    let assignments;
+    if (assignmentId != null) {
+      const one = await rc.getRouteAssignment(assignmentId);
+      if (!one) throw serviceError('NOT_FOUND', 'Route assignment not found.', 404);
+      if (one.status !== 'active') {
+        return {
+          alreadyRunning: false,
+          completionRadiusMiles: settings.completionRadiusMiles,
+          results: [{ id: one.id, completed: false, blockedReason: null, note: `route is ${one.status}` }],
+        };
+      }
+      assignments = [one];
+    } else {
+      assignments = await rc.listActiveAssignmentsForMonitor();
+    }
+
+    const results = [];
+    for (const assignment of assignments) {
+      try {
+        const { location, source, error: resolveError } = await resolveAssignmentLocation(assignment);
+        const gate = await checkAssignmentCompletion(assignment, { location, resolveError, settings, now });
+        results.push({
+          id: assignment.id,
+          groupName: assignment.group_name || null,
+          completed: gate.completed,
+          blockedReason: gate.blockedReason,
+          distanceMeters: gate.distanceMeters,
+          distanceMiles: gate.distanceMiles != null ? Number(gate.distanceMiles.toFixed(1)) : null,
+          gpsSource: source,
+          gpsAgeMinutes: location?.pingAgeMinutes ?? null,
+          resolveError: resolveError ? String(resolveError.message || resolveError).slice(0, 200) : null,
+        });
+      } catch (err) {
+        results.push({ id: assignment.id, completed: false, error: String(err.message || err).slice(0, 200) });
+      }
+    }
+    return {
+      alreadyRunning: false,
+      completionRadiusMiles: settings.completionRadiusMiles,
+      results,
+    };
+  } finally {
+    completionCheckRunning = false;
+  }
 }
 
 async function tick() {
@@ -943,17 +1257,44 @@ async function tick() {
   } finally {
     tickRunning = false;
   }
+  // Pick up an admin-changed check interval without a restart (single timer —
+  // the old one is always cleared before a new one is created).
+  await maybeRescheduleTimer().catch(() => {});
+}
+
+let currentIntervalMs = POLL_MS_MIN;
+
+async function maybeRescheduleTimer() {
+  if (serviceStopped || !serviceTimer) return;
+  let intervalMs = currentIntervalMs;
+  try {
+    const cfg = await gmaps.getGmapsConfig();
+    intervalMs = Math.max(POLL_MS_MIN, (cfg.checkIntervalSeconds || 300) * 1000);
+  } catch (_) { return; }
+  if (intervalMs === currentIntervalMs || serviceStopped || !serviceTimer) return;
+  clearInterval(serviceTimer);
+  currentIntervalMs = intervalMs;
+  serviceTimer = setInterval(() => { if (!serviceStopped) tick(); }, intervalMs);
+  serviceTimer.unref?.();
+  console.log(`[ROUTE-CONTROL] Check interval updated — monitoring every ${Math.round(intervalMs / 1000)}s`);
 }
 
 async function startRouteControlService(telegram) {
   if (telegram) telegramClient = telegram;
   serviceStopped = false;
+  // Never leave two timers running if start is called twice (e.g. a re-init).
+  if (serviceTimer) { clearInterval(serviceTimer); serviceTimer = null; }
   let intervalMs = POLL_MS_MIN;
   try {
     const cfg = await gmaps.getGmapsConfig();
     intervalMs = Math.max(POLL_MS_MIN, (cfg.checkIntervalSeconds || 300) * 1000);
   } catch (_) { /* use default */ }
-  console.log(`[ROUTE-CONTROL] Service started — monitoring every ${Math.round(intervalMs / 1000)}s (idle until GMaps is enabled)`);
+  currentIntervalMs = intervalMs;
+  console.log(`[ROUTE-CONTROL] Service started — monitoring every ${Math.round(intervalMs / 1000)}s`
+    + ' (destination completion always on; off-route warnings gated on Settings → GMaps)');
+  // First pass ~25s after boot doubles as the existing-route reconciliation:
+  // every lifecycle-active route (tracking active OR pending) gets a completion
+  // check, so routes already inside the radius complete on startup.
   setTimeout(() => { if (!serviceStopped) tick(); }, 25 * 1000).unref?.();
   serviceTimer = setInterval(() => { if (!serviceStopped) tick(); }, intervalMs);
   serviceTimer.unref?.();
@@ -974,6 +1315,7 @@ module.exports = {
   normalizeTrackingOptions,
   cleanAddressText,
   describeTrackingStartCondition,
+  classifyTelegramPhotoError,
   parseRouteLink,
   assignRoute,
   cancelActiveRoutesForGroup,
@@ -982,6 +1324,7 @@ module.exports = {
   sendDriverGroupRouteMessage,
   startTrackingNow,
   runRouteMonitorCheck,
+  runCompletionCheckNow,
   buildOffRouteMessage,
   monitorSettingsFromConfig,
   startRouteControlService,

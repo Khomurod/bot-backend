@@ -39,8 +39,14 @@ async function withTransientRetries(label, fn, maxAttempts = 2) {
  * ELD and then Leader ELD (both on the Drive HoS platform) are the fallbacks.
  * Credentials come from the admin Settings tab (eld_settings), falling back to
  * environment variables when unset.
+ *
+ * `unitNumber` (optional) is a STORED unit number known to belong to this
+ * group (e.g. from a route assignment or driver profile). When provided it is
+ * used directly, so resolution no longer depends on the unit being parseable
+ * out of the group title; the title is still used for the driver-name
+ * disambiguation hint.
  */
-async function resolveLiveLocationForGroupTitle(groupTitle) {
+async function resolveLiveLocationForGroupTitle(groupTitle, { unitNumber = null } = {}) {
   const cfg = await getEldConfig();
   let location = null;
   let source = 'Samsara';
@@ -52,6 +58,7 @@ async function resolveLiveLocationForGroupTitle(groupTitle) {
       try {
         location = await withTransientRetries('Samsara', () => getLiveLocationForGroupTitle({
           groupTitle,
+          unitNumber,
           apiKey: samsaraKey,
           apiBase: cfg.samsaraApiBase,
         }));
@@ -83,6 +90,7 @@ async function resolveLiveLocationForGroupTitle(groupTitle) {
     try {
       location = await withTransientRetries(provider.label, () => getLiveLocationForGroupTitleFromDriveHos({
         groupTitle,
+        unitNumber,
         providerKey: cfg.driveHosProviderKey,
         companyKey: provider.companyKey,
         apiBase: cfg.driveHosApiBase,

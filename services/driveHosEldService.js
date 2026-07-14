@@ -198,6 +198,7 @@ async function getLiveLocationForGroupTitleFromDriveHos({
   companyKey,
   apiBase,
   providerLabel = 'Drive HoS ELD',
+  unitNumber: unitNumberOverride = null,
 }) {
   if (!providerKey) {
     const err = new Error('Drive HoS provider key is missing.');
@@ -210,7 +211,11 @@ async function getLiveLocationForGroupTitleFromDriveHos({
     throw err;
   }
 
-  const unitNumber = extractUnitNumberFromGroupName(groupTitle);
+  // A stored unit number (route assignment / driver profile) takes priority;
+  // parsing the group title remains the compatibility fallback.
+  const unitNumber = (unitNumberOverride != null && String(unitNumberOverride).trim())
+    ? String(unitNumberOverride).trim()
+    : extractUnitNumberFromGroupName(groupTitle);
   if (!unitNumber) {
     const err = new Error(`Could not parse a unit number from group title: "${groupTitle}"`);
     err.code = 'UNIT_NOT_FOUND_IN_GROUP_TITLE';

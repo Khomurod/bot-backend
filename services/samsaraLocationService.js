@@ -281,14 +281,18 @@ async function resolveAddress(gps) {
   }
 }
 
-async function getLiveLocationForGroupTitle({ groupTitle, apiKey, apiBase }) {
+async function getLiveLocationForGroupTitle({ groupTitle, apiKey, apiBase, unitNumber: unitNumberOverride = null }) {
   if (!apiKey) {
     const err = new Error('SAMSARA_API_KEY is not configured.');
     err.code = 'SAMSARA_API_KEY_MISSING';
     throw err;
   }
 
-  const unitNumber = extractUnitNumberFromGroupName(groupTitle);
+  // A stored unit number (route assignment / driver profile) takes priority;
+  // parsing the group title remains the compatibility fallback.
+  const unitNumber = (unitNumberOverride != null && String(unitNumberOverride).trim())
+    ? String(unitNumberOverride).trim()
+    : extractUnitNumberFromGroupName(groupTitle);
   if (!unitNumber) {
     const err = new Error(`Could not parse a unit number from group title: "${groupTitle}"`);
     err.code = 'UNIT_NOT_FOUND_IN_GROUP_TITLE';
