@@ -14,6 +14,7 @@ const RingCentralTab = lazy(() => import("./settings/RingCentralTab"));
 const TelegramGroupsTab = lazy(() => import("./settings/TelegramGroupsTab"));
 const GmapsTab = lazy(() => import("./settings/GmapsTab"));
 const SafetyEventsTab = lazy(() => import("./settings/SafetyEventsTab"));
+const BolPodTab = lazy(() => import("./settings/BolPodTab"));
 
 export default function SettingsPage() {
   const [tab, setTab] = useState("location");
@@ -29,6 +30,7 @@ export default function SettingsPage() {
         <button className={`btn ${tab === "groups" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("groups")}>💬 Telegram Groups</button>
         <button className={`btn ${tab === "gmaps" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("gmaps")}>🗺️ GMaps</button>
         <button className={`btn ${tab === "safety" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("safety")}>🎵 Safety Event Music</button>
+        <button className={`btn ${tab === "bolpod" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("bolpod")}>📄 BOL / POD</button>
       </div>
       <Suspense fallback={<div style={{ padding: 20, color: "#94a3b8" }}>Loading…</div>}>
         {tab === "location" && <LocationProvidersTab />}
@@ -36,6 +38,7 @@ export default function SettingsPage() {
         {tab === "groups" && <TelegramGroupsTab />}
         {tab === "gmaps" && <GmapsTab />}
         {tab === "safety" && <SafetyEventsTab />}
+        {tab === "bolpod" && <BolPodTab />}
       </Suspense>
     </div>
   );
