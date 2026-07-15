@@ -1,6 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "../api";
 import { buildGroupOptions, filterGroupOptions } from "./routeControlGroupSearch.mjs";
+import {
+  SCREENSHOT_TYPES,
+  SCREENSHOT_MAX_MB,
+  validateScreenshotFile,
+  imageFromClipboard,
+  screenshotStatusBanner,
+} from "./routeScreenshot.mjs";
 
 /**
  * Route Control — assign a Google Maps directions route to a driver group and
@@ -142,9 +149,6 @@ function SearchableGroupSelect({ options, value, onChange, disabled }) {
   );
 }
 
-const SCREENSHOT_TYPES = ["image/png", "image/jpeg", "image/webp"];
-const SCREENSHOT_MAX_MB = 8;
-
 const TRACKING_MODES = [
   { value: "after_message_sent", label: "After route message is sent (default)" },
   { value: "immediate", label: "Immediately" },
@@ -180,14 +184,8 @@ function AssignForm({ options, onAssigned, onMessage }) {
 
   const acceptScreenshot = useCallback((file) => {
     if (!file) return;
-    if (!SCREENSHOT_TYPES.includes(file.type)) {
-      onMessage({ type: "error", text: `Screenshot must be PNG, JPG or WEBP (got ${file.type || "unknown type"}).` });
-      return;
-    }
-    if (file.size > SCREENSHOT_MAX_MB * 1024 * 1024) {
-      onMessage({ type: "error", text: `Screenshot is too large (${(file.size / 1048576).toFixed(1)} MB). The limit is ${SCREENSHOT_MAX_MB} MB.` });
-      return;
-    }
+    const check = validateScreenshotFile(file);
+    if (!check.ok) { onMessage({ type: "error", text: check.error }); return; }
     setScreenshot(file);
     setScreenshotPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
   }, [onMessage]);
@@ -195,14 +193,8 @@ function AssignForm({ options, onAssigned, onMessage }) {
   // Ctrl+V anywhere on the page attaches a pasted image as the route screenshot.
   useEffect(() => {
     const onPaste = (e) => {
-      const items = e.clipboardData?.items || [];
-      for (const item of items) {
-        if (item.kind === "file" && item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (file) { acceptScreenshot(file); e.preventDefault(); }
-          return;
-        }
-      }
+      const file = imageFromClipboard(e.clipboardData?.items);
+      if (file) { acceptScreenshot(file); e.preventDefault(); }
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
@@ -500,15 +492,26 @@ const BLOCKED_REASON_TEXT = {
   DISTANCE_UNMEASURABLE: "Cannot complete: distance to the destination could not be measured.",
 };
 
-/** Screenshot status label per the stored + delivery state. */
+/** Screenshot status label per the stored + delivery + in-place-edit state. */
 function screenshotStatus(a) {
-  if (a.status !== "cancelled" && a.driver_group_message_sent_at) {
-    if (a.screenshot_send_error) {
-      return { text: "📷 Sent as text only (screenshot failed)", color: "#f59e0b", title: a.screenshot_send_error };
+  const sent = a.status !== "cancelled" && a.driver_group_message_sent_at;
+  const err = a.screenshot_send_error;
+  if (sent && err) {
+    // Machine-readable screenshot delivery / in-place-edit outcomes.
+    if (err === "SCREENSHOT_NOT_SHOWN_IN_TELEGRAM") {
+      return { text: "📷 Stored — not shown in Telegram (message is text-only)", color: "#f59e0b", title: err };
     }
-    if (a.driver_group_message_via === "photo" || a.driver_group_message_via === "photo+text") {
-      return { text: "📷 Sent with screenshot", color: "#22c55e" };
+    if (err === "SCREENSHOT_STILL_SHOWN_IN_TELEGRAM") {
+      return { text: "📷 Removed from storage — image still in the sent photo", color: "#f59e0b", title: err };
     }
+    if (/TELEGRAM_EDIT|BOT_PERMISSION|MESSAGE_NOT|NO_TELEGRAM/.test(err)) {
+      return { text: "📷 Telegram update failed", color: "#f59e0b", title: err };
+    }
+    return { text: "📷 Sent as text only (screenshot failed)", color: "#f59e0b", title: err };
+  }
+  if (sent && (a.driver_group_message_via === "photo" || a.driver_group_message_via === "photo+text")) {
+    const edited = a.driver_group_message_edited_at ? " (updated in place)" : "";
+    return { text: `📷 Sent with screenshot${edited}`, color: "#22c55e" };
   }
   if (a.has_screenshot) return { text: "📷 Screenshot stored", color: "#60a5fa" };
   return { text: "No screenshot", color: "#94a3b8" };
@@ -518,9 +521,32 @@ function RouteRow({ a, completionRadius, onChanged, onMessage }) {
   const [busy, setBusy] = useState(false);
   const [details, setDetails] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+  // Existing-route screenshot section: a toggled panel with click / drag-drop /
+  // Ctrl+V paste + a local preview of the pending image before replacing.
+  const [showShot, setShowShot] = useState(false);
+  const [pendingShot, setPendingShot] = useState(null);
+  const [pendingPreview, setPendingPreview] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
   const shotInputRef = useRef(null);
 
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+  useEffect(() => () => { if (pendingPreview) URL.revokeObjectURL(pendingPreview); }, [pendingPreview]);
+
+  const clearPending = useCallback(() => {
+    setPendingShot(null);
+    setPendingPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+    if (shotInputRef.current) shotInputRef.current.value = "";
+  }, []);
+
+  // Validate + stage a chosen/dropped/pasted image (shown as a local preview
+  // before the admin confirms the replace). Invalid/oversized/unreadable images
+  // produce a clear error and are not staged.
+  const acceptPending = useCallback((file) => {
+    const check = validateScreenshotFile(file);
+    if (!check.ok) { onMessage({ type: "error", text: check.error }); return; }
+    setPendingShot(file);
+    setPendingPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
+  }, [onMessage]);
 
   const act = async (fn, okText) => {
     setBusy(true);
@@ -608,28 +634,55 @@ function RouteRow({ a, completionRadius, onChanged, onMessage }) {
     } finally { setBusy(false); }
   };
 
-  const uploadScreenshot = async (file) => {
-    if (!file) return;
-    if (!SCREENSHOT_TYPES.includes(file.type)) {
-      onMessage({ type: "error", text: `Screenshot must be PNG, JPG or WEBP (got ${file.type || "unknown type"}).` });
-      return;
-    }
-    if (file.size > SCREENSHOT_MAX_MB * 1024 * 1024) {
-      onMessage({ type: "error", text: `Screenshot is too large — the limit is ${SCREENSHOT_MAX_MB} MB.` });
-      return;
-    }
+  // Replace the stored screenshot. This NEVER sends a new Telegram message — when
+  // the route was already delivered the backend edits the existing message in
+  // place. A failed upload leaves the previously stored screenshot intact.
+  const replaceScreenshot = async () => {
+    const file = pendingShot;
+    if (!file) { onMessage({ type: "error", text: "Choose an image first." }); return; }
+    const check = validateScreenshotFile(file);
+    if (!check.ok) { onMessage({ type: "error", text: check.error }); return; }
     setBusy(true);
     try {
-      await api.uploadRouteScreenshot(a.id, file);
+      const res = await api.uploadRouteScreenshot(a.id, file);
+      clearPending();
       setPreviewUrl(null);
-      onMessage({ type: "success", text: "Screenshot stored. Use “Send route message” to deliver it." });
+      setShowShot(false);
+      onMessage(screenshotStatusBanner("replace", res));
       await onChanged();
     } catch (err) {
-      onMessage({ type: "error", text: `Screenshot upload failed: ${err.message}` });
+      // Storage failed → the previous screenshot is untouched.
+      onMessage({ type: "error", text: `Screenshot upload failed: ${err.message} The previously stored screenshot was kept.` });
     } finally {
       setBusy(false);
-      if (shotInputRef.current) shotInputRef.current.value = "";
     }
+  };
+
+  const removeScreenshot = async () => {
+    setBusy(true);
+    try {
+      const res = await api.deleteRouteScreenshot(a.id);
+      setPreviewUrl(null);
+      clearPending();
+      onMessage(screenshotStatusBanner("remove", res));
+      await onChanged();
+    } catch (err) {
+      onMessage({ type: "error", text: `Could not remove the screenshot: ${err.message}` });
+    } finally { setBusy(false); }
+  };
+
+  // Explicitly edit the already-sent Telegram message(s) in place (retry / push a
+  // text edit) — never posts a new message.
+  const updateInTelegram = async () => {
+    setBusy(true);
+    try {
+      const res = await api.updateRouteDriverMessage(a.id);
+      const type = res.code === "UPDATED" ? "success" : (res.updated ? "success" : "warning");
+      onMessage({ type, text: res.detail || `Telegram update: ${res.code}` });
+      await onChanged();
+    } catch (err) {
+      onMessage({ type: "error", text: `Could not update the Telegram message: ${err.message}` });
+    } finally { setBusy(false); }
   };
 
   const result = RESULT_LABELS[a.last_check_result] || { text: a.last_check_result || "—", color: "#94a3b8" };
@@ -706,10 +759,23 @@ function RouteRow({ a, completionRadius, onChanged, onMessage }) {
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-start" }}>
           <button className="btn btn-ghost btn-sm" onClick={viewDetails}>{details ? "Hide" : "Details"}</button>
-          {a.status === "active" && (
-            <button className="btn btn-ghost btn-sm" onClick={sendRouteMessage} disabled={busy}>
-              {a.driver_group_message_sent_at ? "Re-send route message" : "Send route message"}
+          {a.status === "active" && !a.driver_group_message_sent_at && (
+            <button className="btn btn-ghost btn-sm" onClick={sendRouteMessage} disabled={busy}
+              title="Posts the route message to the driver group for the first time.">
+              Send route message
             </button>
+          )}
+          {a.status === "active" && a.driver_group_message_sent_at && (
+            <>
+              <button className="btn btn-ghost btn-sm" onClick={updateInTelegram} disabled={busy}
+                title="Edits the message already in the driver group in place — does NOT post a new message.">
+                Update message in Telegram
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={sendRouteMessage} disabled={busy}
+                title="Posts a brand-new message to the driver group. Use only if the existing message is gone.">
+                Send as new message
+              </button>
+            </>
           )}
           {a.status === "active" && a.tracking_status === "pending" && (
             <button className="btn btn-ghost btn-sm" onClick={startTracking} disabled={busy}>
@@ -730,22 +796,15 @@ function RouteRow({ a, completionRadius, onChanged, onMessage }) {
             </button>
           )}
           {a.status === "active" && (
-            <button className="btn btn-ghost btn-sm" onClick={() => shotInputRef.current?.click()} disabled={busy}>
-              {a.has_screenshot ? "Replace screenshot" : "Upload screenshot"}
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowShot((v) => !v)} disabled={busy}>
+              {showShot ? "Close screenshot panel" : (a.has_screenshot ? "Manage screenshot" : "Add screenshot")}
             </button>
           )}
           {a.has_screenshot && a.status === "active" && (
-            <button className="btn btn-ghost btn-sm" onClick={() => act(() => api.deleteRouteScreenshot(a.id), "Screenshot removed.")} disabled={busy}>
+            <button className="btn btn-ghost btn-sm" onClick={removeScreenshot} disabled={busy}>
               Remove screenshot
             </button>
           )}
-          <input
-            ref={shotInputRef}
-            type="file"
-            accept={SCREENSHOT_TYPES.join(",")}
-            style={{ display: "none" }}
-            onChange={(e) => uploadScreenshot(e.target.files?.[0])}
-          />
           {a.status === "active" && (
             <>
               <button className="btn btn-ghost btn-sm" onClick={() => act(() => api.completeRoute(a.id), "Route completed.")} disabled={busy}>Complete</button>
@@ -754,6 +813,56 @@ function RouteRow({ a, completionRadius, onChanged, onMessage }) {
           )}
         </div>
       </div>
+      {showShot && a.status === "active" && (
+        <div style={{ marginTop: 12, borderTop: "1px solid rgba(148,163,184,0.15)", paddingTop: 10 }}>
+          <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>
+            {a.has_screenshot ? "Replace" : "Add"} the route screenshot. Replacing or removing it updates the
+            already-sent Telegram message <strong>in place</strong> — it never posts a new message to the group.
+          </div>
+          <div
+            tabIndex={0}
+            role="button"
+            aria-label="Screenshot dropzone — click to choose, or focus and press Ctrl+V to paste"
+            onClick={() => shotInputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => { e.preventDefault(); setDragOver(false); acceptPending(e.dataTransfer?.files?.[0]); }}
+            onPaste={(e) => { const f = imageFromClipboard(e.clipboardData?.items); if (f) { acceptPending(f); e.preventDefault(); } }}
+            style={{
+              border: `1.5px dashed ${dragOver ? "#60a5fa" : "rgba(148,163,184,0.4)"}`,
+              borderRadius: 8, padding: pendingPreview ? 8 : 16, cursor: "pointer", outline: "none",
+              background: dragOver ? "rgba(59,130,246,0.08)" : "rgba(148,163,184,0.04)", textAlign: "center",
+            }}
+          >
+            {pendingPreview ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left" }}>
+                <img src={pendingPreview} alt="New screenshot preview" style={{ maxHeight: 120, maxWidth: 220, borderRadius: 6 }} />
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                  <div>{pendingShot?.name || "pasted image"} · {(pendingShot?.size / 1048576).toFixed(1)} MB</div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    <button className="btn btn-primary btn-sm" onClick={(e) => { e.stopPropagation(); replaceScreenshot(); }} disabled={busy}>
+                      {a.has_screenshot ? "Replace screenshot" : "Upload screenshot"}
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); clearPending(); }} disabled={busy}>Cancel</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: "#94a3b8" }}>
+                Click to choose an image, drag &amp; drop it here, or click here then press <strong>Ctrl+V</strong> to paste a screenshot.
+                <div style={{ fontSize: 11, marginTop: 4 }}>PNG, JPG or WEBP · up to {SCREENSHOT_MAX_MB} MB</div>
+              </div>
+            )}
+          </div>
+          <input
+            ref={shotInputRef}
+            type="file"
+            accept={SCREENSHOT_TYPES.join(",")}
+            style={{ display: "none" }}
+            onChange={(e) => { acceptPending(e.target.files?.[0]); if (shotInputRef.current) shotInputRef.current.value = ""; }}
+          />
+        </div>
+      )}
       {previewUrl && (
         <div style={{ marginTop: 12, borderTop: "1px solid rgba(148,163,184,0.15)", paddingTop: 10 }}>
           <img

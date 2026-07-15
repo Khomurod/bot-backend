@@ -816,6 +816,239 @@ test('sendDriverGroupRouteMessage does NOT activate tracking for other start mod
   assert.equal(res.trackingActivated, false);
 });
 
+// ── updateDriverGroupRouteMessage: in-place Telegram edits (no resend) ────────
+
+/**
+ * Harness for the in-place editor. Mocks the driver mention + the DB read/write,
+ * and a Telegram client exposing editMessageText/Caption/Media. `editImpl` lets a
+ * test force a specific call to throw a Telegram-style error.
+ */
+function loadServiceForEdit({ assignment, screenshot = null, editImpl = {} } = {}) {
+  const captured = { edits: [], recordedEdit: null, events: [] };
+  const svc = loadServiceWith({
+    '../services/driverMention.js': {
+      async resolveDriverMentionForGroup() { return { mentionHtml: 'driver', source: 'name', confidence: 'low' }; },
+      escapeHtml: (s) => String(s == null ? '' : s),
+    },
+    '../database/routeControl.js': {
+      async getRouteAssignment() { return assignment; },
+      async getRouteScreenshot() { return screenshot; },
+      async recordDriverGroupMessageEdit(id, opts) { captured.recordedEdit = { id, opts }; return { id }; },
+      async insertRouteMonitorEvent(e) { captured.events.push(e); return e; },
+    },
+  });
+  const mk = (kind) => async (chatId, messageId, inlineId, a, b) => {
+    captured.edits.push({ kind, chatId, messageId, a, b });
+    if (editImpl[kind]) return editImpl[kind](chatId, messageId, inlineId, a, b);
+    return { message_id: messageId };
+  };
+  const telegram = {
+    editMessageText: mk('text'),
+    editMessageCaption: mk('caption'),
+    editMessageMedia: mk('media'),
+  };
+  return { svc, telegram, captured };
+}
+
+const EDIT_BASE = {
+  id: 9, group_id: 7, telegram_group_id: -100900,
+  original_url: 'https://maps.google.com/dir?a=1', origin_text: 'A', destination_text: 'B', waypoints: [],
+  driver_group_message_sent_at: '2026-07-10T00:00:00Z',
+};
+const PNG = { file_data: Buffer.from('PNG-BYTES'), mime_type: 'image/png' };
+const telegramErr = (code, description) => { const e = new Error(description || 'err'); e.response = { error_code: code, description }; return e; };
+
+test('update: replace screenshot on a single photo message edits the media in place', async () => {
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'photo', driver_group_messages: [{ message_id: 71, kind: 'photo' }] },
+    screenshot: PNG,
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram });
+  assert.equal(res.code, 'UPDATED');
+  assert.equal(res.screenshotUpdated, true);
+  assert.equal(captured.edits.length, 1);
+  assert.equal(captured.edits[0].kind, 'media');
+  assert.equal(captured.edits[0].messageId, 71);
+  assert.equal(captured.recordedEdit.opts.screenshotError, null, 'screenshot now shown → error cleared');
+});
+
+test('update: photo+text delivery edits BOTH the photo media and the text message', async () => {
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: {
+      ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'photo+text',
+      driver_group_messages: [{ message_id: 71, kind: 'photo' }, { message_id: 72, kind: 'text' }],
+    },
+    screenshot: PNG,
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram, customMessage: 'updated route text' });
+  assert.equal(res.code, 'UPDATED');
+  assert.equal(res.screenshotUpdated, true);
+  assert.equal(res.textUpdated, true);
+  const media = captured.edits.find((e) => e.kind === 'media');
+  const text = captured.edits.find((e) => e.kind === 'text');
+  assert.equal(media.messageId, 71);
+  assert.equal(text.messageId, 72);
+  assert.match(text.a, /updated route text/);
+});
+
+test('update: text-only message edit changes the text in place', async () => {
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: false, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 72, kind: 'text' }] },
+    screenshot: null,
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram, customMessage: 'new text' });
+  assert.equal(res.code, 'UPDATED');
+  assert.equal(res.textUpdated, true);
+  assert.equal(captured.edits.length, 1);
+  assert.equal(captured.edits[0].kind, 'text');
+  assert.equal(captured.edits[0].messageId, 72);
+});
+
+test('update: adding a screenshot to a text-only delivery cannot become a photo in place', async () => {
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 72, kind: 'text' }] },
+    screenshot: PNG,
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram });
+  assert.equal(res.screenshotUpdated, false);
+  assert.ok(res.limitations.includes('TEXT_MESSAGE_CANNOT_SHOW_SCREENSHOT'));
+  assert.equal(res.code, 'PARTIAL', 'text still updated, screenshot could not be shown');
+  assert.equal(captured.recordedEdit.opts.screenshotError, 'SCREENSHOT_NOT_SHOWN_IN_TELEGRAM');
+  // No media edit was even attempted (Telegram cannot convert text → photo).
+  assert.equal(captured.edits.some((e) => e.kind === 'media'), false);
+});
+
+test('update: removing a screenshot from a photo message cannot strip the image in place', async () => {
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: false, driver_group_message_via: 'photo', driver_group_messages: [{ message_id: 71, kind: 'photo' }] },
+    screenshot: null,
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram });
+  assert.ok(res.limitations.includes('PHOTO_IMAGE_CANNOT_BE_REMOVED_IN_PLACE'));
+  assert.equal(res.screenshotRemovedInTelegram, false);
+  assert.equal(captured.recordedEdit.opts.screenshotError, 'SCREENSHOT_STILL_SHOWN_IN_TELEGRAM');
+  // It edits the caption (keeps text current) but never posts/deletes anything.
+  assert.equal(captured.edits.some((e) => e.kind === 'caption'), true);
+});
+
+test('update: never sent → NO_SENT_MESSAGE, nothing edited or sent', async () => {
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, driver_group_message_sent_at: null, driver_group_messages: null, driver_group_message_id: null },
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram });
+  assert.equal(res.code, 'NO_SENT_MESSAGE');
+  assert.equal(captured.edits.length, 0);
+});
+
+test('update: sent earlier but no editable message id on file → NO_SENT_MESSAGE with guidance', async () => {
+  const { svc, telegram } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, driver_group_messages: null, driver_group_message_id: null },
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram });
+  assert.equal(res.code, 'NO_SENT_MESSAGE');
+  assert.match(res.detail, /no editable Telegram message id/i);
+});
+
+test('update: reconstructs legacy scalar id (via=photo) when no message list exists', async () => {
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'photo', driver_group_message_id: 555, driver_group_messages: null },
+    screenshot: PNG,
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram });
+  assert.equal(res.screenshotUpdated, true);
+  assert.equal(captured.edits[0].kind, 'media');
+  assert.equal(captured.edits[0].messageId, 555, 'edited the legacy-tracked message id — restart-safe');
+});
+
+test('update: driver_group_messages stored as a JSON STRING is parsed (restart-safe)', async () => {
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: false, driver_group_message_via: 'text', driver_group_messages: JSON.stringify([{ message_id: 88, kind: 'text' }]) },
+    screenshot: null,
+  });
+  await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram, customMessage: 'x' });
+  assert.equal(captured.edits[0].messageId, 88);
+});
+
+test('update: Telegram edit failure is reported truthfully, not as success', async () => {
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'photo', driver_group_messages: [{ message_id: 71, kind: 'photo' }] },
+    screenshot: PNG,
+    editImpl: { media: () => { throw telegramErr(400, 'Bad Request: MEDIA_INVALID'); } },
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram });
+  assert.equal(res.updated, false);
+  assert.equal(res.screenshotUpdated, false);
+  assert.match(res.code, /TELEGRAM_EDIT_REJECTED/);
+  assert.ok(res.editError, 'edit error captured');
+  assert.ok(captured.recordedEdit.opts.editError, 'edit failure persisted for the admin list');
+});
+
+test('update: message no longer found is classified', async () => {
+  const { svc, telegram } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: false, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 72, kind: 'text' }] },
+    editImpl: { text: () => { throw telegramErr(400, 'Bad Request: message to edit not found'); } },
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram, customMessage: 'x' });
+  assert.equal(res.code, 'MESSAGE_NOT_FOUND');
+});
+
+test('update: bot permission failure (403) is classified', async () => {
+  const { svc, telegram } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: false, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 72, kind: 'text' }] },
+    editImpl: { text: () => { throw telegramErr(403, 'Forbidden: not enough rights'); } },
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram, customMessage: 'x' });
+  assert.equal(res.code, 'BOT_PERMISSION');
+});
+
+test('update: "message can\'t be edited" is classified as not editable', async () => {
+  const { svc, telegram } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: false, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 72, kind: 'text' }] },
+    editImpl: { text: () => { throw telegramErr(400, "Bad Request: message can't be edited"); } },
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram, customMessage: 'x' });
+  assert.equal(res.code, 'MESSAGE_NOT_EDITABLE');
+});
+
+test('update: "message is not modified" counts as success (no false failure)', async () => {
+  const { svc, telegram } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: false, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 72, kind: 'text' }] },
+    editImpl: { text: () => { throw telegramErr(400, 'Bad Request: message is not modified'); } },
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram, customMessage: 'x' });
+  assert.equal(res.textUpdated, true);
+  assert.equal(res.code, 'UPDATED');
+});
+
+test('update: repeated replacements keep editing the SAME message id', async () => {
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'photo', driver_group_messages: [{ message_id: 71, kind: 'photo' }] },
+    screenshot: PNG,
+  });
+  await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram });
+  await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram });
+  assert.equal(captured.edits.length, 2);
+  assert.ok(captured.edits.every((e) => e.messageId === 71 && e.kind === 'media'));
+});
+
+test('update: near-simultaneous requests do not double-edit (in-flight guard)', async () => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: false, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 72, kind: 'text' }] },
+    editImpl: { text: async () => { await gate; return { message_id: 72 }; } },
+  });
+  const p1 = svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram, customMessage: 'x' });
+  // Let p1 progress past the in-flight guard and park inside editMessageText.
+  await new Promise((r) => setImmediate(r));
+  const r2 = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram, customMessage: 'x' });
+  assert.equal(r2.code, 'EDIT_IN_PROGRESS', 'second concurrent request is rejected, not double-edited');
+  release();
+  const r1 = await p1;
+  assert.equal(r1.code, 'UPDATED');
+  assert.equal(captured.edits.length, 1, 'only one edit actually happened');
+});
+
 test('startTrackingNow activates a pending route and refuses non-active lifecycles', async () => {
   const events = [];
   let activated = null;

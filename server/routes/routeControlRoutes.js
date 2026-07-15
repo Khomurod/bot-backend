@@ -54,10 +54,12 @@ function uploadErrorsAsJson(middleware) {
  *                                     JSON, or multipart with a `screenshot` file + a `payload` JSON field
  *   POST   /parse                   → test-parse a Google Maps link (no store) { url }
  *   POST   /:id/compute             → compute/recompute geometry for an assignment
- *   POST   /:id/send-driver-message → send/re-send the route message (+ screenshot) to the driver group
- *   POST   /:id/screenshot          → upload/replace the route screenshot (multipart `screenshot`)
+ *   POST   /:id/send-driver-message → send a NEW route message (+ screenshot) to the driver group
+ *   POST   /:id/update-driver-message → EDIT the already-sent route message(s) in place (no new message)
+ *   POST   /:id/screenshot          → upload/replace the route screenshot (multipart `screenshot`);
+ *                                     edits the already-sent message in place, never posts a new one
  *   GET    /:id/screenshot          → the stored screenshot bytes (auth-gated preview)
- *   DELETE /:id/screenshot          → remove the stored screenshot
+ *   DELETE /:id/screenshot          → remove the stored screenshot; edits the sent message in place
  *   POST   /:id/start-tracking      → manually start tracking for a pending route
  *   POST   /:id/run-completion-check → destination-completion check for one route (no warnings)
  *   POST   /run-completion-check    → destination-completion reconciliation over all active routes
@@ -70,6 +72,27 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
   /** Admin display name for audit trails (never an internal id). */
   function adminName(req) {
     return req.admin?.username || req.admin?.email || 'admin';
+  }
+
+  /**
+   * After a screenshot storage change (upload/replace/remove), update the
+   * ALREADY-SENT driver-group route message IN PLACE — never a new message, so
+   * the driver group is not spammed. Returns a status object for the Admin
+   * portal; a Telegram-side failure is reported, never thrown (storage already
+   * succeeded). When the route was never sent, it is a storage-only no-op.
+   */
+  async function maybeUpdateSentMessage(id, assignment) {
+    if (!assignment || !assignment.driver_group_message_sent_at) {
+      return {
+        updated: false, code: 'NOT_SENT',
+        detail: 'No route message has been sent to the driver group yet — the stored route was updated only.',
+      };
+    }
+    try {
+      return await routeControl.updateDriverGroupRouteMessage({ assignmentId: id, telegram });
+    } catch (err) {
+      return { updated: false, code: err.code || 'UPDATE_ERROR', error: err.message };
+    }
   }
 
   router.get('/', authMiddleware, async (req, res) => {
@@ -185,6 +208,8 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
 
   // Upload/replace the route screenshot for an existing assignment. Replacement
   // is an atomic UPSERT — a failed upload can never destroy the stored one.
+  // NEVER posts a new Telegram message: when the route was already delivered, it
+  // EDITS the existing message(s) in place so the driver group is not spammed.
   router.post('/:id/screenshot', authMiddleware, uploadErrorsAsJson(screenshotUpload.single('screenshot')), async (req, res) => {
     try {
       const id = parseInt(req.params.id, 10);
@@ -202,7 +227,9 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
         data: req.file.buffer,
         uploadedBy: adminName(req),
       });
-      return res.json({ stored: true, sizeBytes: saved.file_size_bytes, mimeType: saved.mime_type });
+      const result = { stored: true, sizeBytes: saved.file_size_bytes, mimeType: saved.mime_type };
+      result.telegram = await maybeUpdateSentMessage(id, assignment);
+      return res.json(result);
     } catch (err) {
       console.error('[ROUTE-CONTROL API] screenshot upload failed:', err.message);
       return res.status(500).json({ error: 'Failed to store the screenshot', code: 'SCREENSHOT_DB_SAVE_FAILED' });
@@ -225,7 +252,12 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
 
   router.delete('/:id/screenshot', authMiddleware, async (req, res) => {
     try {
-      const result = await rc.deleteRouteScreenshot(parseInt(req.params.id, 10));
+      const id = parseInt(req.params.id, 10);
+      // Read the delivery state BEFORE deleting so we know whether to update the
+      // already-sent message. Removing a screenshot never posts a new message.
+      const assignment = await rc.getRouteAssignment(id);
+      const result = await rc.deleteRouteScreenshot(id);
+      result.telegram = await maybeUpdateSentMessage(id, assignment);
       return res.json(result);
     } catch (err) {
       console.error('[ROUTE-CONTROL API] screenshot delete failed:', err.message);
@@ -266,6 +298,8 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
     }
   });
 
+  // Explicit "Send route message" / "Send as new message" — the ONLY path that
+  // posts a NEW Telegram message. Never triggered by a screenshot change.
   router.post('/:id/send-driver-message', authMiddleware, async (req, res) => {
     try {
       const send = await routeControl.sendDriverGroupRouteMessage({
@@ -278,6 +312,23 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
     } catch (err) {
       console.error('[ROUTE-CONTROL API] send-driver-message failed:', err.message);
       res.status(err.status || 400).json({ error: err.message, code: err.code || 'SEND_ERROR' });
+    }
+  });
+
+  // Explicit "Update message in Telegram" / retry-edit — edits the ALREADY-SENT
+  // route message(s) in place. Never posts a new message. Used by the admin to
+  // push a text edit (or retry a failed in-place edit) without spamming.
+  router.post('/:id/update-driver-message', authMiddleware, async (req, res) => {
+    try {
+      const result = await routeControl.updateDriverGroupRouteMessage({
+        assignmentId: parseInt(req.params.id, 10),
+        telegram,
+        customMessage: req.body?.message ? String(req.body.message) : null,
+      });
+      res.json(result);
+    } catch (err) {
+      console.error('[ROUTE-CONTROL API] update-driver-message failed:', err.message);
+      res.status(err.status || 400).json({ error: err.message, code: err.code || 'UPDATE_ERROR' });
     }
   });
 

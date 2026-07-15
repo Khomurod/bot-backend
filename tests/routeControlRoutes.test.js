@@ -336,11 +336,17 @@ test('POST /:id/screenshot save failure returns SCREENSHOT_DB_SAVE_FAILED', asyn
   assert.equal(res.json.code, 'SCREENSHOT_DB_SAVE_FAILED');
 });
 
-test('DELETE /:id/screenshot removes the screenshot without touching the assignment', async () => {
+test('DELETE /:id/screenshot removes the screenshot; unsent route = storage only, no Telegram', async () => {
   let deletedId = null;
   let statusTouched = false;
+  let updateCalled = false;
   const app = loadApp({
+    serviceMock: {
+      async updateDriverGroupRouteMessage() { updateCalled = true; return { updated: true }; },
+    },
     rcMock: {
+      // Never sent → no editable message.
+      async getRouteAssignment(id) { return { id, driver_group_message_sent_at: null }; },
       async deleteRouteScreenshot(id) { deletedId = id; return { deleted: true }; },
       async setRouteAssignmentStatus() { statusTouched = true; },
     },
@@ -350,6 +356,62 @@ test('DELETE /:id/screenshot removes the screenshot without touching the assignm
   assert.equal(res.json.deleted, true);
   assert.equal(deletedId, 5);
   assert.equal(statusTouched, false);
+  assert.equal(updateCalled, false, 'no in-place edit for a never-sent route');
+  assert.equal(res.json.telegram.code, 'NOT_SENT');
+});
+
+// ── Screenshot change edits the sent message in place (never resends) ────────
+
+test('POST /:id/screenshot on a SENT route edits the message in place — never sends a new one', async () => {
+  let updateArgs = null;
+  let sendCalled = false;
+  const app = loadApp({
+    serviceMock: {
+      async updateDriverGroupRouteMessage(a) { updateArgs = a; return { updated: true, code: 'UPDATED', screenshotUpdated: true }; },
+      async sendDriverGroupRouteMessage() { sendCalled = true; return { sent: true }; },
+    },
+    rcMock: {
+      async getRouteAssignment(id) { return { id, driver_group_message_sent_at: '2026-07-10T00:00:00Z' }; },
+      async saveRouteScreenshot(id, shot) { return { file_size_bytes: shot.data.length, mime_type: shot.mimeType }; },
+    },
+  });
+  const res = await callMultipart(app, '/api/route-control/5/screenshot', { file: PNG_BYTES });
+  assert.equal(res.status, 200);
+  assert.equal(res.json.stored, true);
+  assert.equal(res.json.telegram.code, 'UPDATED');
+  assert.equal(updateArgs.assignmentId, 5);
+  assert.equal(sendCalled, false, 'replacing a screenshot must NOT post a new message');
+});
+
+test('POST /:id/screenshot on an UNSENT route stores only — no Telegram edit or send', async () => {
+  let updateCalled = false;
+  const app = loadApp({
+    serviceMock: {
+      async updateDriverGroupRouteMessage() { updateCalled = true; return { updated: true }; },
+    },
+    rcMock: {
+      async getRouteAssignment(id) { return { id, driver_group_message_sent_at: null }; },
+      async saveRouteScreenshot(id, shot) { return { file_size_bytes: shot.data.length, mime_type: shot.mimeType }; },
+    },
+  });
+  const res = await callMultipart(app, '/api/route-control/5/screenshot', { file: PNG_BYTES });
+  assert.equal(res.status, 200);
+  assert.equal(res.json.telegram.code, 'NOT_SENT');
+  assert.equal(updateCalled, false, 'never-sent route: storage only, no Telegram call');
+});
+
+test('POST /:id/update-driver-message edits in place with the given text', async () => {
+  let args = null;
+  const app = loadApp({
+    serviceMock: {
+      async updateDriverGroupRouteMessage(a) { args = a; return { updated: true, code: 'UPDATED', textUpdated: true }; },
+    },
+  });
+  const res = await call(app, 'POST', '/api/route-control/5/update-driver-message', { message: 'hello' });
+  assert.equal(res.status, 200);
+  assert.equal(res.json.code, 'UPDATED');
+  assert.equal(args.assignmentId, 5);
+  assert.equal(args.customMessage, 'hello');
 });
 
 // ── Completion-check endpoints ───────────────────────────────────────────────

@@ -1547,9 +1547,21 @@ export async function computeRouteGeometry(id) {
   return res.json();
 }
 
-/** Send (or re-send) the route message to the driver's Telegram group. */
+/** Send a NEW route message to the driver's Telegram group (the only path that
+ *  posts a new message — used for the first send or an intentional re-send). */
 export async function sendRouteDriverMessage(id, { message } = {}) {
   const res = await fetch(`${API_BASE}/route-control/${id}/send-driver-message`, {
+    method: 'POST', headers: getHeaders(),
+    body: JSON.stringify(message ? { message } : {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Update (edit) the ALREADY-SENT route message(s) in place — never posts a new
+ *  message. Returns the structured in-place-edit status. */
+export async function updateRouteDriverMessage(id, { message } = {}) {
+  const res = await fetch(`${API_BASE}/route-control/${id}/update-driver-message`, {
     method: 'POST', headers: getHeaders(),
     body: JSON.stringify(message ? { message } : {}),
   });

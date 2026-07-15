@@ -2250,6 +2250,21 @@ ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS destination_repair_last_a
 ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_via TEXT NULL;
 ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS screenshot_send_error TEXT NULL;
 
+-- One route delivery can be MORE than one Telegram message (a photo plus a
+-- separate long-text message). To later EDIT every part in place (replace the
+-- screenshot / edit the text) without posting new messages, store the ordered
+-- list of Telegram messages that make up the delivery:
+--   [{ "message_id": 71, "kind": "photo" }, { "message_id": 72, "kind": "text" }]
+-- driver_group_messages is the authoritative record used for in-place editing;
+-- it survives restart/redeploy/logout because it lives in the DB, not memory.
+-- Legacy rows (NULL here) are reconstructed from driver_group_message_id +
+-- driver_group_message_via. driver_group_message_edited_at / _edit_error record
+-- the last in-place edit outcome so the admin panel can report it truthfully.
+-- All additive/idempotent; NULL on every existing row.
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_messages JSONB NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_edited_at TIMESTAMPTZ NULL;
+ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_edit_error TEXT NULL;
+
 -- Route screenshots (admin-attached images sent with the driver-group route
 -- message). A SEPARATE table so no existing `SELECT r.*` query ever drags image
 -- bytes into list views; bytes are only read by the dedicated fetch used for
