@@ -33,4 +33,45 @@ const telegramClientOptions = {
   attachmentAgent: telegramIpv4Agent,
 };
 
-module.exports = { telegramIpv4Agent, telegramClientOptions };
+// ─── Dedicated agent for Route Control media EDITS (editMessageMedia) ───
+//
+// Route Control replaces/converts a driver-group message's photo by uploading a
+// fresh multipart body. A transient `socket hang up` (ECONNRESET) mid-upload is
+// retried — but a retry must NOT reuse a possibly half-dead pooled socket.
+//
+// This agent pins IPv4 (same upload-stall fix as above) but disables keep-alive,
+// so EVERY media-edit request (and each retry) opens a brand-new connection.
+// It is SEPARATE from the shared polling/agent above, so retrying a media edit
+// never disturbs long-poll or ordinary bot traffic, and we never destroy a
+// shared agent. `maxSockets` is bounded to avoid unbounded socket growth even
+// though media edits are rare, admin-triggered actions.
+const telegramMediaEditAgent = new https.Agent({
+  keepAlive: false,
+  family: 4,
+  maxSockets: 4,
+});
+
+// Lazily-built dedicated Telegraf `Telegram` client for Route Control media
+// edits, bound to the fresh-socket agent. Lazy so requiring this module stays
+// side-effect-free (no client until a media edit actually happens) and so the
+// bot token is only read from validated config, never logged or exposed.
+let mediaEditClient = null;
+function getRouteMediaEditClient() {
+  if (!mediaEditClient) {
+    // Required lazily to avoid a load-time dependency on telegraf/config here.
+    const { Telegram } = require('telegraf');
+    const config = require('../config/config');
+    mediaEditClient = new Telegram(config.botToken, {
+      agent: telegramMediaEditAgent,
+      attachmentAgent: telegramMediaEditAgent,
+    });
+  }
+  return mediaEditClient;
+}
+
+module.exports = {
+  telegramIpv4Agent,
+  telegramClientOptions,
+  telegramMediaEditAgent,
+  getRouteMediaEditClient,
+};

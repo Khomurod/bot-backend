@@ -1009,6 +1009,87 @@ test('update: a rejected conversion leaves the delivery as TEXT and reports the 
   assert.equal(captured.recordedEdit.opts.screenshotError, 'MESSAGE_NOT_FOUND');
 });
 
+// ── Transient network resilience for the text→photo conversion (prod bug 22) ──
+
+const noRetryWait = { sleep: async () => {}, random: () => 0 };
+const socketHangUp = () => Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' });
+
+test('update: socket hang up on the conversion is retried and succeeds — metadata persisted, no new message', async () => {
+  let calls = 0;
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 1410, kind: 'text' }] },
+    screenshot: PNG,
+    editImpl: { media: () => { calls += 1; if (calls === 1) throw socketHangUp(); return { message_id: 1410 }; } },
+  });
+  telegram.sendPhoto = () => { throw new Error('must not send'); };
+  telegram.sendMessage = () => { throw new Error('must not send'); };
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram, retry: noRetryWait });
+  assert.equal(res.ok, true);
+  assert.equal(res.status, 'updated');
+  assert.equal(res.converted, true);
+  assert.equal(res.attempts, 2);
+  assert.equal(calls, 2, 'edited the SAME message id twice — retried in place, never a new message');
+  assert.equal(captured.recordedEdit.opts.via, 'photo', 'metadata persisted only after confirmed success');
+  assert.deepEqual(captured.recordedEdit.opts.messages, [{ message_id: 1410, kind: 'photo' }]);
+});
+
+test('update: three socket hang ups → UNCONFIRMED (ambiguous), metadata unchanged, no new message', async () => {
+  let calls = 0;
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 1410, kind: 'text' }] },
+    screenshot: PNG,
+    editImpl: { media: () => { calls += 1; throw socketHangUp(); } },
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram, retry: noRetryWait });
+  assert.equal(calls, 3);
+  assert.equal(res.ok, false);
+  assert.equal(res.status, 'unconfirmed');
+  assert.equal(res.ambiguousOutcome, true);
+  assert.equal(res.code, 'TELEGRAM_CONNECTION_RESET');
+  assert.equal(res.category, 'transport');
+  assert.equal(res.transportCode, 'ECONNRESET');
+  assert.equal(res.attempts, 3);
+  assert.equal(res.operation, 'edit_media_text_to_photo');
+  assert.match(res.detail, /could not be confirmed after 3 attempts/i);
+  assert.ok(res.correlationId && res.correlationId.startsWith('rc-edit-'));
+  // Delivery metadata must NOT be marked converted on an unconfirmed outcome.
+  assert.equal(captured.recordedEdit.opts.via, undefined);
+  assert.equal(captured.recordedEdit.opts.messages, undefined);
+});
+
+test('update: lost response then "message is not modified" on retry → confirmed success', async () => {
+  let calls = 0;
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 1410, kind: 'text' }] },
+    screenshot: PNG,
+    editImpl: {
+      media: () => {
+        calls += 1;
+        if (calls === 1) throw socketHangUp();
+        throw telegramErr(400, 'Bad Request: message is not modified');
+      },
+    },
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram, retry: noRetryWait });
+  assert.equal(res.ok, true);
+  assert.equal(res.converted, true, 'the earlier request had applied — treated as success');
+  assert.equal(res.attempts, 2);
+  assert.equal(captured.recordedEdit.opts.via, 'photo');
+});
+
+test('update: transport failure exposes safe structured fields with no secrets', async () => {
+  const { svc, telegram } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 1410, kind: 'text' }] },
+    screenshot: PNG,
+    editImpl: { media: () => { throw Object.assign(new Error('write EPROTO https://api.telegram.org/bot123:SECRET/x'), { code: 'ECONNRESET' }); } },
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram, retry: noRetryWait });
+  const blob = JSON.stringify(res);
+  assert.doesNotMatch(blob, /SECRET/);
+  assert.doesNotMatch(blob, /bot123:/);
+  assert.doesNotMatch(blob, /api\.telegram\.org/);
+});
+
 test('update: removing a screenshot from a photo message cannot strip the image in place', async () => {
   const { svc, telegram, captured } = loadServiceForEdit({
     assignment: { ...EDIT_BASE, has_screenshot: false, driver_group_message_via: 'photo', driver_group_messages: [{ message_id: 71, kind: 'photo' }] },

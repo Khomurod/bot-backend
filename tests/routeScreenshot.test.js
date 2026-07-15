@@ -124,3 +124,49 @@ test('screenshotStatusBanner: a hard Telegram failure is reported truthfully (si
   assert.match(b.text, /no new message was sent/i);
   assert.equal((b.text.match(/no new message was sent/gi) || []).length, 1);
 });
+
+test('screenshotStatusBanner: an UNCONFIRMED transport failure is a warning with safe diagnostic details', async () => {
+  const { screenshotStatusBanner } = await import(MOD);
+  const b = screenshotStatusBanner('replace', {
+    stored: true,
+    telegram: {
+      ok: false, status: 'unconfirmed', code: 'TELEGRAM_CONNECTION_RESET', category: 'transport',
+      operation: 'edit_media_text_to_photo', attempts: 3, ambiguousOutcome: true,
+      transportCode: 'ECONNRESET', telegramErrorCode: null, correlationId: 'rc-edit-22-abc',
+      detail: 'Telegram’s connection closed while it was receiving the image. The update could not be confirmed after 3 attempts. No new message was sent.',
+    },
+  });
+  assert.equal(b.type, 'warning');
+  assert.match(b.text, /could not be confirmed after 3 attempts/i);
+  assert.ok(Array.isArray(b.details));
+  const byLabel = Object.fromEntries(b.details.map((d) => [d.label, String(d.value)]));
+  assert.equal(byLabel.Attempts, '3');
+  assert.match(byLabel.Operation, /Convert existing text message to photo/);
+  assert.match(byLabel['Telegram response'], /No response received/);
+  assert.equal(byLabel['New message sent'], 'No');
+  assert.equal(byLabel.Reference, 'rc-edit-22-abc');
+});
+
+test('screenshotStatusBanner: a permission failure surfaces the Telegram error code in details', async () => {
+  const { screenshotStatusBanner } = await import(MOD);
+  const b = screenshotStatusBanner('replace', {
+    telegram: {
+      ok: false, status: 'failed', code: 'BOT_PERMISSION', category: 'permission',
+      operation: 'edit_media', attempts: 1, telegramErrorCode: 403, correlationId: 'rc-edit-1-z',
+      detail: 'Telegram rejected the update because the bot does not have permission to edit the message in that group. No new message was sent.',
+    },
+  });
+  assert.equal(b.type, 'warning');
+  const byLabel = Object.fromEntries(b.details.map((d) => [d.label, String(d.value)]));
+  assert.equal(byLabel['Telegram response'], 'Error 403');
+});
+
+test('screenshotStatusBanner: the "update" action has no "Screenshot stored" prefix and no details on success', async () => {
+  const { screenshotStatusBanner } = await import(MOD);
+  const b = screenshotStatusBanner('update', {
+    telegram: { ok: true, status: 'updated', code: 'UPDATED', detail: 'Updated the existing Telegram message text in place — no new message was sent.' },
+  });
+  assert.equal(b.type, 'success');
+  assert.doesNotMatch(b.text, /Screenshot stored/);
+  assert.equal(b.details, undefined);
+});

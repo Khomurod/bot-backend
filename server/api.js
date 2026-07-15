@@ -154,7 +154,15 @@ const { createSettingsRouter } = require('./routes/settingsRoutes');
 app.use('/api/settings', createSettingsRouter({ authMiddleware, telegram: bot.telegram }));
 
 const { createRouteControlRouter } = require('./routes/routeControlRoutes');
-app.use('/api/route-control', createRouteControlRouter({ authMiddleware, telegram: bot.telegram }));
+const { getRouteMediaEditClient } = require('../services/telegramAgent');
+// Route Control media edits (editMessageMedia) use a dedicated fresh-socket
+// IPv4 client so a transient reset is retried on a clean connection without
+// disturbing the shared polling agent.
+app.use('/api/route-control', createRouteControlRouter({
+  authMiddleware,
+  telegram: bot.telegram,
+  mediaTelegram: getRouteMediaEditClient(),
+}));
 
 const { createRecruiterRouter } = require('./routes/recruiterRoutes');
 app.use('/api/recruiters', createRecruiterRouter({ authMiddleware }));

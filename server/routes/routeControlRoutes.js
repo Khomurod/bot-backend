@@ -66,7 +66,7 @@ function uploadErrorsAsJson(middleware) {
  *   POST   /:id/cancel              → mark cancelled
  *   POST   /:id/complete            → mark completed
  */
-function createRouteControlRouter({ authMiddleware, telegram = null }) {
+function createRouteControlRouter({ authMiddleware, telegram = null, mediaTelegram = null }) {
   const router = express.Router();
 
   /** Admin display name for audit trails (never an internal id). */
@@ -77,21 +77,23 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
   /**
    * After a screenshot storage change (upload/replace/remove), update the
    * ALREADY-SENT driver-group route message IN PLACE — never a new message, so
-   * the driver group is not spammed. Returns a status object for the Admin
-   * portal; a Telegram-side failure is reported, never thrown (storage already
-   * succeeded). When the route was never sent, it is a storage-only no-op.
+   * the driver group is not spammed. Media edits go through the dedicated
+   * fresh-socket client so a transient reset is retried on a clean connection.
+   * Returns a structured status object for the Admin portal; a Telegram-side
+   * failure is reported, never thrown (storage already succeeded). When the
+   * route was never sent, it is a storage-only no-op.
    */
   async function maybeUpdateSentMessage(id, assignment) {
     if (!assignment || !assignment.driver_group_message_sent_at) {
       return {
-        updated: false, code: 'NOT_SENT',
+        ok: false, updated: false, code: 'NOT_SENT', status: 'not_sent',
         detail: 'No route message has been sent to the driver group yet — the stored route was updated only.',
       };
     }
     try {
-      return await routeControl.updateDriverGroupRouteMessage({ assignmentId: id, telegram });
+      return await routeControl.updateDriverGroupRouteMessage({ assignmentId: id, telegram, mediaTelegram });
     } catch (err) {
-      return { updated: false, code: err.code || 'UPDATE_ERROR', error: err.message };
+      return { ok: false, updated: false, code: err.code || 'UPDATE_ERROR', status: 'failed', error: err.message };
     }
   }
 
@@ -227,7 +229,13 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
         data: req.file.buffer,
         uploadedBy: adminName(req),
       });
-      const result = { stored: true, sizeBytes: saved.file_size_bytes, mimeType: saved.mime_type };
+      const result = {
+        stored: true,
+        sizeBytes: saved.file_size_bytes,
+        mimeType: saved.mime_type,
+        screenshot: { stored: true, operation: assignment.has_screenshot ? 'replaced' : 'stored' },
+        newMessageSent: false,
+      };
       result.telegram = await maybeUpdateSentMessage(id, assignment);
       return res.json(result);
     } catch (err) {
@@ -257,6 +265,8 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
       // already-sent message. Removing a screenshot never posts a new message.
       const assignment = await rc.getRouteAssignment(id);
       const result = await rc.deleteRouteScreenshot(id);
+      result.screenshot = { stored: false, operation: 'removed' };
+      result.newMessageSent = false;
       result.telegram = await maybeUpdateSentMessage(id, assignment);
       return res.json(result);
     } catch (err) {
@@ -323,6 +333,7 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
       const result = await routeControl.updateDriverGroupRouteMessage({
         assignmentId: parseInt(req.params.id, 10),
         telegram,
+        mediaTelegram,
         customMessage: req.body?.message ? String(req.body.message) : null,
       });
       res.json(result);

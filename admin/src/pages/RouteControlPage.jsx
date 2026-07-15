@@ -36,7 +36,22 @@ const RESULT_LABELS = {
 function Banner({ message }) {
   if (!message) return null;
   const type = message.type === "error" ? "error" : message.type === "warning" ? "warning" : "success";
-  return <div className={`alert alert-${type}`}>{message.text}</div>;
+  const details = Array.isArray(message.details) ? message.details : null;
+  return (
+    <div className={`alert alert-${type}`}>
+      <div>{message.text}</div>
+      {details && details.length > 0 && (
+        <dl style={{ margin: "8px 0 0", display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 10px", fontSize: 12 }}>
+          {details.map((d) => (
+            <React.Fragment key={d.label}>
+              <dt style={{ fontWeight: 600, opacity: 0.8 }}>{d.label}</dt>
+              <dd style={{ margin: 0, fontFamily: d.label === "Reference" ? "monospace" : "inherit", wordBreak: "break-word" }}>{d.value}</dd>
+            </React.Fragment>
+          ))}
+        </dl>
+      )}
+    </div>
+  );
 }
 
 function fmtMeters(m) {
@@ -693,8 +708,7 @@ function RouteRow({ a, completionRadius, onChanged, onMessage }) {
     setBusy(true);
     try {
       const res = await api.updateRouteDriverMessage(a.id);
-      const type = res.code === "UPDATED" ? "success" : (res.updated ? "success" : "warning");
-      onMessage({ type, text: res.detail || `Telegram update: ${res.code}` });
+      onMessage(screenshotStatusBanner("update", { telegram: res }));
       await onChanged();
     } catch (err) {
       onMessage({ type: "error", text: `Could not update the Telegram message: ${err.message}` });

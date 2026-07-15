@@ -49,40 +49,79 @@ export function imageFromClipboard(items) {
   return null;
 }
 
+const OPERATION_LABEL = {
+  edit_media_text_to_photo: 'Convert existing text message to photo',
+  edit_media: 'Replace the photo',
+  edit_caption: 'Update the caption',
+  edit_text: 'Update the message text',
+  none: 'Update the message',
+};
+
+/** PURE. Backward-compatible status: prefer the structured `status`, else infer
+ *  it from the legacy `code` so older responses still render sensibly. */
+export function telegramStatusOf(tg) {
+  if (!tg) return 'none';
+  if (tg.status) return tg.status;
+  const c = tg.code;
+  if (!c || c === 'NOT_SENT' || c === 'NO_SENT_MESSAGE') return 'not_sent';
+  if (c === 'UPDATED') return 'updated';
+  if (c === 'NO_CHANGE') return 'no_change';
+  if (c === 'EDIT_IN_PROGRESS') return 'in_progress';
+  if (c === 'PARTIAL') return 'partial';
+  return 'failed';
+}
+
+/** PURE. The safe diagnostic rows shown under a failed/unconfirmed banner so an
+ *  admin can see the exact failing stage without opening server logs. */
+function telegramDetailList(tg, storedLabel) {
+  return [
+    { label: 'Stage', value: 'Sending the stored screenshot to Telegram' },
+    { label: 'Operation', value: OPERATION_LABEL[tg.operation] || 'Update the message' },
+    { label: 'Result', value: tg.description || tg.detail || tg.code || 'Unknown' },
+    { label: 'Attempts', value: tg.attempts != null ? String(tg.attempts) : '—' },
+    { label: 'Telegram response', value: tg.telegramErrorCode != null ? `Error ${tg.telegramErrorCode}` : 'No response received' },
+    { label: 'Stored screenshot', value: storedLabel },
+    { label: 'New message sent', value: 'No' },
+    ...(tg.correlationId ? [{ label: 'Reference', value: tg.correlationId }] : []),
+  ];
+}
+
 /**
- * PURE. Turn a screenshot-change API result into an Admin banner, truthfully
- * distinguishing every case the backend reports:
- *   - route never sent            → stored/removed only, nothing sent
- *   - existing message updated    → success (says what changed)
- *   - partial / limitation        → warning (what Telegram could not do)
- *   - Telegram edit failed         → warning (never a false success)
+ * PURE. Turn a screenshot-change / update API result into an Admin banner,
+ * truthfully distinguishing every case the backend reports (never sent, updated,
+ * partial/limitation, ambiguous/unconfirmed, and hard failures). Returns a
+ * concise `text` plus, for non-success outcomes, a safe `details` list.
  *
- * @param {'replace'|'remove'} action
- * @param {object} apiResult  the JSON returned by the screenshot endpoint
- * @returns {{ type:'success'|'warning'|'error', text:string }}
+ * @param {'replace'|'remove'|'update'} action
+ * @param {object} apiResult  the JSON returned by the screenshot/update endpoint
+ * @returns {{ type:'success'|'warning'|'error', text:string, details?:Array }}
  */
 export function screenshotStatusBanner(action, apiResult) {
-  const storedLine = action === 'remove' ? 'Screenshot removed from storage.' : 'Screenshot stored.';
-  const tg = apiResult && apiResult.telegram;
+  const storedLine = action === 'remove' ? 'Screenshot removed from storage.'
+    : action === 'update' ? '' : 'Screenshot stored.';
+  const storedLabel = action === 'remove' ? 'Removed' : 'Yes';
+  const prefix = storedLine ? `${storedLine} ` : '';
+  const tg = (apiResult && apiResult.telegram) || null;
 
-  if (!tg || tg.code === 'NOT_SENT' || tg.code === 'NO_SENT_MESSAGE') {
-    return {
-      type: 'success',
-      text: `${storedLine} The route message has not been sent to the driver group yet, so nothing was sent or changed in Telegram.`,
-    };
+  if (!tg) {
+    return { type: 'success', text: (storedLine || 'Done.').trim() };
   }
-  if (tg.code === 'UPDATED') {
-    return { type: 'success', text: `${storedLine} ${tg.detail || 'The existing Telegram message was updated in place — no new message was sent.'}` };
+  const status = telegramStatusOf(tg);
+
+  if (status === 'not_sent') {
+    return { type: 'success', text: `${prefix}The route message has not been sent to the driver group yet, so nothing was sent or changed in Telegram.`.trim() };
   }
-  if (tg.code === 'EDIT_IN_PROGRESS') {
-    return { type: 'warning', text: `${storedLine} Another update for this route was still in progress — try again in a moment.` };
+  if (status === 'updated' || status === 'no_change') {
+    const body = tg.detail || 'The existing Telegram message was updated in place — no new message was sent.';
+    return { type: 'success', text: `${prefix}${body}`.trim() };
   }
-  // Every other outcome (PARTIAL, CAPTION_TOO_LONG_FOR_IN_PLACE_CONVERSION, and
-  // hard failures like BOT_PERMISSION / MESSAGE_NOT_FOUND / TELEGRAM_EDIT_* /
-  // UPDATE_ERROR) is a warning. The backend `detail` is already a complete,
-  // self-contained sentence — use it verbatim so we never double the
-  // "No new message was sent." clause. Fall back to a safe generic when absent.
-  const detail = tg.detail
+  if (status === 'in_progress') {
+    return { type: 'warning', text: `${prefix}Another update for this route was still in progress — try again in a moment.`.trim() };
+  }
+  // partial / unconfirmed / failed / caption_too_long → warning + safe details.
+  // The backend `detail` is a complete, self-contained sentence (already ends
+  // with "No new message was sent." where relevant) — use it verbatim.
+  const body = tg.detail
     || `Telegram was not updated (${tg.code}${tg.error ? ` — ${tg.error}` : ''}). The stored route is correct and no new message was sent.`;
-  return { type: 'warning', text: `${storedLine} ${detail}` };
+  return { type: 'warning', text: `${prefix}${body}`.trim(), details: telegramDetailList(tg, storedLabel) };
 }

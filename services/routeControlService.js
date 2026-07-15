@@ -29,6 +29,7 @@ const { decodePolyline, distancePointToPolylineMeters, haversineMeters } = requi
 const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
 const { resolveDriverMentionForGroup, escapeHtml } = require('./driverMention');
 const { ROUTE_COMPLETION_RADIUS_MILES } = require('./routeControlConstants');
+const { classifyTelegramError, runTelegramEditWithRetry } = require('./telegramEdit');
 
 const POLL_MS_MIN = 30 * 1000;
 const METERS_PER_MILE = 1609.34;
@@ -646,22 +647,12 @@ function classifyTelegramPhotoError(err) {
 }
 
 /**
- * PURE. Classify a Telegram message-EDIT failure into a stable code so the admin
- * panel can report exactly why an in-place update did not happen (no tokens, no
- * message content). NOT_MODIFIED is treated as success by callers (the content
- * was already identical). Mirrors the strings botMessageAdminService relies on.
+ * PURE. Stable string code for a Telegram edit failure — a thin wrapper over the
+ * ONE canonical classifier in services/telegramEdit.js (kept for callers that
+ * only need the code). NOT_MODIFIED is treated as success by callers.
  */
 function classifyTelegramEditError(err) {
-  const code = err?.response?.error_code;
-  const desc = String(err?.response?.description || err?.message || '').toLowerCase();
-  if (desc.includes('message is not modified')) return 'NOT_MODIFIED';
-  if (desc.includes('message to edit not found')) return 'MESSAGE_NOT_FOUND';
-  if (desc.includes("message can't be edited") || desc.includes('message can not be edited')) return 'MESSAGE_NOT_EDITABLE';
-  if (code === 403 || /not enough rights|no rights|forbidden/i.test(desc)) return 'BOT_PERMISSION';
-  if (desc.includes('there is no text in the message to edit')) return 'NO_TEXT_IN_MESSAGE';
-  if (/timeout|timed out|etimedout|esockettimedout|econnreset|network/i.test(desc)) return 'TELEGRAM_EDIT_TIMEOUT';
-  if (code === 400) return `TELEGRAM_EDIT_REJECTED${desc ? `: ${desc.slice(0, 120)}` : ''}`;
-  return `TELEGRAM_EDIT_FAILED${desc ? `: ${desc.slice(0, 120)}` : ''}`;
+  return classifyTelegramError(err).code;
 }
 
 /**
@@ -678,6 +669,35 @@ function buildDeliveryMessageList({ via, photoMessageId = null, textMessageId = 
     out.push({ message_id: Number(textMessageId), kind: 'text' });
   }
   return out;
+}
+
+/** A safe, non-secret correlation id so Admin ↔ logs can be tied together. */
+function makeEditCorrelationId(assignmentId) {
+  return `rc-edit-${assignmentId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * One structured, SAFE log line per media-edit attempt / final outcome. Only
+ * allowlisted fields — never tokens, URLs, message content, screenshot bytes,
+ * personal data, or stack traces. The same stable code appears in the Admin panel.
+ */
+function logEditAttempt({ correlationId, assignmentId, operation, chatId, attempt, ok, durationMs, classification }) {
+  const rec = {
+    evt: 'route_edit_attempt',
+    cid: correlationId,
+    assignment: assignmentId,
+    operation,
+    attempt,
+    ok: Boolean(ok),
+    durationMs: durationMs ?? null,
+    hasChatId: chatId != null,
+    category: classification?.category || null,
+    code: classification?.code || null,
+    transportCode: classification?.transportCode || null,
+    telegramErrorCode: classification?.telegramErrorCode ?? null,
+    retryable: classification?.retryable ?? null,
+  };
+  console.log(`[ROUTE-CONTROL-EDIT] ${JSON.stringify(rec)}`);
 }
 
 /**
@@ -975,12 +995,20 @@ async function sendDriverGroupRouteMessage({ assignmentId, telegram, sentBy = nu
  * @returns {Promise<object>} structured status (never throws for a Telegram-side
  *   failure — that is reported in the result so the admin sees the truth).
  */
-async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMessage = null }) {
+async function updateDriverGroupRouteMessage({
+  assignmentId, telegram, mediaTelegram = null, customMessage = null, retry = {},
+}) {
   const assignment = await rc.getRouteAssignment(assignmentId);
   if (!assignment) throw serviceError('NOT_FOUND', 'Route assignment not found.', 404);
 
   const chatId = assignment.telegram_group_id;
   const screenshotStored = Boolean(assignment.has_screenshot);
+  const correlationId = makeEditCorrelationId(assignmentId);
+  // Media edits (multipart photo uploads) go through a dedicated fresh-socket
+  // client so a retry never reuses a half-dead keep-alive socket; small text /
+  // caption edits use the normal client. Both default to the injected client so
+  // tests inject one fake.
+  const mediaClient = mediaTelegram || telegram;
   const base = {
     updated: false,
     telegramChanged: false,
@@ -991,6 +1019,18 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
     chatId: chatId ?? null,
     limitations: [],
     editError: null,
+    // ── Structured, safe Telegram status (for the Admin API + logs) ──
+    ok: false,
+    status: 'failed',
+    operation: 'none',
+    category: 'unknown',
+    retryable: false,
+    ambiguousOutcome: false,
+    attempts: 0,
+    telegramErrorCode: null,
+    transportCode: null,
+    retryAfterSeconds: null,
+    correlationId,
   };
 
   const { messages, legacy } = parseDeliveryMessages(assignment);
@@ -998,16 +1038,14 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
   // Never sent (or no editable message id on file) → storage-only. Do NOT send
   // anything: creating a message must be a separate, explicit admin action.
   if (!messages.length) {
-    return {
-      ...base,
-      code: 'NO_SENT_MESSAGE',
-      detail: assignment.driver_group_message_sent_at
-        ? 'The route was sent earlier but no editable Telegram message id is on file, so it cannot be updated in place. Use “Send as new message” to post a fresh one.'
-        : 'No route message has been sent to the driver group yet — only the stored route was updated.',
-    };
+    const detail = assignment.driver_group_message_sent_at
+      ? 'The route was sent earlier but no editable Telegram message id is on file, so it cannot be updated in place. Use “Send as new message” to post a fresh one.'
+      : 'No route message has been sent to the driver group yet — only the stored route was updated.';
+    return { ...base, code: 'NO_SENT_MESSAGE', status: 'not_sent', category: 'validation', detail, description: detail };
   }
   if (chatId == null) {
-    return { ...base, code: 'NO_TELEGRAM_GROUP', editError: 'NO_TELEGRAM_GROUP', detail: 'This driver group has no Telegram chat id, so the message cannot be updated.' };
+    const detail = 'This driver group has no Telegram chat id, so the message cannot be updated.';
+    return { ...base, code: 'NO_TELEGRAM_GROUP', status: 'failed', category: 'validation', editError: 'NO_TELEGRAM_GROUP', detail, description: detail };
   }
   if (!telegram || typeof telegram.editMessageText !== 'function') {
     throw serviceError('NO_TELEGRAM', 'Telegram client is unavailable right now.', 503);
@@ -1016,7 +1054,8 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
   // Collapse near-simultaneous requests for the same route (double-click, or a
   // replace immediately followed by a remove) so we never double-edit.
   if (editingAssignments.has(assignmentId)) {
-    return { ...base, code: 'EDIT_IN_PROGRESS', detail: 'Another update for this route is already in progress — try again in a moment.' };
+    const detail = 'Another update for this route is already in progress — try again in a moment.';
+    return { ...base, code: 'EDIT_IN_PROGRESS', status: 'in_progress', retryable: true, detail, description: detail };
   }
   editingAssignments.add(assignmentId);
   try {
@@ -1043,17 +1082,30 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
     let convertedToPhoto = false;
     let captionTooLongForConversion = false;
     let editError = null;
+    let attemptsTotal = 0;
+    let firstFailClass = null;
+    let primaryOperation = 'none';
 
-    const runEdit = async (fn, label) => {
-      try {
-        await fn();
-        return { ok: true };
-      } catch (err) {
-        const code = classifyTelegramEditError(err);
-        if (code === 'NOT_MODIFIED') return { ok: true };
-        console.error(`[ROUTE-CONTROL] assignment=${assignmentId} edit=${label} failed reason=${code}`);
-        return { ok: false, code };
-      }
+    // Each edit runs through the bounded retry wrapper: transient transport/5xx/
+    // 429 failures are retried on the SAME message id (never a new message);
+    // permanent failures return immediately; a "message is not modified" is
+    // success. sleep/random are injectable for deterministic tests.
+    const runEdit = async (fn, operation) => {
+      if (primaryOperation === 'none') primaryOperation = operation;
+      const r = await runTelegramEditWithRetry(fn, {
+        operation,
+        correlationId,
+        sleep: retry.sleep,
+        random: retry.random,
+        maxAttempts: retry.maxAttempts,
+        baseDelayMs: retry.baseDelayMs,
+        perAttemptTimeoutMs: retry.perAttemptTimeoutMs,
+        onAttempt: (a) => logEditAttempt({ correlationId, assignmentId, operation, chatId, ...a }),
+      });
+      attemptsTotal = Math.max(attemptsTotal, r.attempts);
+      if (r.ok) return { ok: true, attempts: r.attempts, notModified: r.notModified };
+      if (!firstFailClass) firstFailClass = r.classification;
+      return { ok: false, code: r.classification.code, attempts: r.attempts, classification: r.classification };
     };
 
     // The caption that belongs on the PHOTO part: the short shared caption when
@@ -1067,10 +1119,10 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
     // 1) Photo part.
     if (photoMsg) {
       if (hasScreenshot) {
-        const r = await runEdit(() => telegram.editMessageMedia(
+        const r = await runEdit(() => mediaClient.editMessageMedia(
           String(chatId), Number(photoMsg.message_id), undefined,
           { type: 'photo', media: { source: screenshot.file_data }, caption: photoCaption, parse_mode: 'HTML' }
-        ), 'media');
+        ), 'edit_media');
         if (r.ok) { screenshotUpdated = true; if (!textMsg) textUpdated = true; }
         else { editError = editError || r.code; limitations.push(`SCREENSHOT_UPDATE_FAILED:${r.code}`); }
       } else {
@@ -1081,7 +1133,7 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
         if (!textMsg) {
           const r = await runEdit(() => telegram.editMessageCaption(
             String(chatId), Number(photoMsg.message_id), undefined, photoCaption, { parse_mode: 'HTML' }
-          ), 'caption');
+          ), 'edit_caption');
           if (r.ok) textUpdated = true;
           else editError = editError || r.code;
         }
@@ -1102,10 +1154,10 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
           limitations.push('CAPTION_TOO_LONG_FOR_IN_PLACE_CONVERSION');
           // Leave the Telegram message unchanged — no truncation, no new message.
         } else {
-          const r = await runEdit(() => telegram.editMessageMedia(
+          const r = await runEdit(() => mediaClient.editMessageMedia(
             String(chatId), Number(textMsg.message_id), undefined,
             { type: 'photo', media: { source: screenshot.file_data }, caption: body, parse_mode: 'HTML' }
-          ), 'media(text_to_photo)');
+          ), 'edit_media_text_to_photo');
           if (r.ok) {
             // The body is now the photo caption → both the image and the text changed.
             screenshotUpdated = true;
@@ -1122,7 +1174,7 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
         const r = await runEdit(() => telegram.editMessageText(
           String(chatId), Number(textMsg.message_id), undefined, body,
           { parse_mode: 'HTML', disable_web_page_preview: true }
-        ), 'text');
+        ), 'edit_text');
         if (r.ok) textUpdated = true;
         else { editError = editError || r.code; limitations.push(`TEXT_UPDATE_FAILED:${r.code}`); }
       }
@@ -1153,9 +1205,9 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
     else code = 'NO_CHANGE';
 
     // Persist. A text→photo conversion keeps the SAME message id but changes the
-    // message TYPE, so we rewrite `via` + the message list (only on Telegram
-    // success) so the next replacement follows the photo branch. Routine edits
-    // leave `via`/messages untouched (undefined).
+    // message TYPE, so we rewrite `via` + the message list ONLY on confirmed
+    // Telegram success (convertedToPhoto is set only when the edit succeeded).
+    // An ambiguous/failed outcome therefore leaves delivery metadata unchanged.
     const convertedVia = convertedToPhoto ? 'photo' : undefined;
     const convertedMessages = convertedToPhoto
       ? [{ message_id: Number(textMsg.message_id), kind: 'photo' }]
@@ -1166,22 +1218,54 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
       via: convertedVia,
       messages: convertedMessages,
     });
-    await rc.insertRouteMonitorEvent({
-      assignmentId,
-      eventType: 'driver_group_message_edited',
-      detail: `in-place edit: text=${textUpdated} screenshot=${screenshotUpdated} removed=${!hasScreenshot}`
-        + `${convertedToPhoto ? ' converted=text_to_photo' : ''}`
-        + `${legacy ? ' [legacy-record]' : ''}${limitations.length ? ` [limits:${limitations.join('|')}]` : ''}`
-        + `${editError ? ` [error:${editError}]` : ''}`,
-    });
+
     const conversion = convertedToPhoto
       ? 'text_to_photo'
       : (photoMsg && screenshotUpdated ? 'photo_replace' : 'none');
-    console.log(
-      `[ROUTE-CONTROL] assignment=${assignmentId} edit code=${code} text=${textUpdated}`
-      + ` screenshot=${screenshotUpdated} removed=${!hasScreenshot} conversion=${conversion}`
-      + `${editError ? ` error=${editError}` : ''}`
-    );
+    const detail = describeEditOutcome({
+      code, textUpdated, screenshotUpdated, hasScreenshot, limitations, editError,
+      converted: convertedToPhoto, classification: firstFailClass, attempts: attemptsTotal,
+    });
+
+    // ── Structured, safe Telegram status (Admin API + logs) ──
+    const cls = firstFailClass;
+    let status;
+    if (telegramChanged && !editError) status = limitations.length ? 'partial' : 'updated';
+    else if (telegramChanged && editError) status = 'partial';
+    else if (captionTooLongForConversion) status = 'caption_too_long';
+    else if (cls) status = cls.ambiguousOutcome ? 'unconfirmed' : 'failed';
+    else if (code === 'PARTIAL' || code === 'NOT_UPDATED') status = 'partial';
+    else status = 'no_change';
+    const ok = status === 'updated' || status === 'no_change';
+    const ambiguousOutcome = status === 'unconfirmed';
+
+    await rc.insertRouteMonitorEvent({
+      assignmentId,
+      eventType: 'driver_group_message_edited',
+      detail: `in-place edit: status=${status} text=${textUpdated} screenshot=${screenshotUpdated} removed=${!hasScreenshot}`
+        + `${convertedToPhoto ? ' converted=text_to_photo' : ''} attempts=${attemptsTotal}`
+        + `${legacy ? ' [legacy-record]' : ''}${limitations.length ? ` [limits:${limitations.join('|')}]` : ''}`
+        + `${editError ? ` [error:${editError}]` : ''} [cid:${correlationId}]`,
+    });
+    console.log(`[ROUTE-CONTROL-EDIT] ${JSON.stringify({
+      evt: 'route_edit_final',
+      cid: correlationId,
+      assignment: assignmentId,
+      operation: primaryOperation,
+      status,
+      code,
+      category: cls?.category || (captionTooLongForConversion ? 'validation' : (ok ? 'none' : 'unknown')),
+      attempts: attemptsTotal,
+      ambiguousOutcome,
+      transportCode: cls?.transportCode || null,
+      telegramErrorCode: cls?.telegramErrorCode ?? null,
+      retryable: cls?.retryable ?? false,
+      hasChatId: chatId != null,
+      hasMessageId: messages.length > 0,
+      hasScreenshot,
+      metadataUpdated: convertedToPhoto,
+      newMessageSent: false,
+    })}`);
 
     return {
       ...base,
@@ -1197,9 +1281,19 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
       limitations,
       editError,
       code,
-      detail: describeEditOutcome({
-        code, textUpdated, screenshotUpdated, hasScreenshot, limitations, editError, converted: convertedToPhoto,
-      }),
+      // Structured status fields (override base defaults).
+      ok,
+      status,
+      operation: primaryOperation,
+      category: cls?.category || (captionTooLongForConversion ? 'validation' : (ok ? 'none' : 'unknown')),
+      retryable: cls?.retryable ?? false,
+      ambiguousOutcome,
+      attempts: attemptsTotal,
+      telegramErrorCode: cls?.telegramErrorCode ?? null,
+      transportCode: cls?.transportCode || null,
+      retryAfterSeconds: cls?.retryAfterSeconds ?? null,
+      description: cls?.description || detail,
+      detail,
     };
   } finally {
     editingAssignments.delete(assignmentId);
@@ -1208,7 +1302,10 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
 
 /** PURE. Short admin-facing summary of an in-place edit outcome (self-contained
  *  — callers must NOT append their own "no new message" sentence). */
-function describeEditOutcome({ code, textUpdated, screenshotUpdated, hasScreenshot, limitations, editError, converted }) {
+function describeEditOutcome({
+  code, textUpdated, screenshotUpdated, hasScreenshot, limitations, editError, converted,
+  classification = null, attempts = 0,
+}) {
   if (code === 'UPDATED') {
     if (converted) {
       return 'The existing Telegram message was converted to a photo and updated in place — no new message was sent.';
@@ -1234,13 +1331,40 @@ function describeEditOutcome({ code, textUpdated, screenshotUpdated, hasScreensh
     }
     return `Updated what Telegram allows${notes.length ? ` — ${notes.join('; ')}` : ''}. No new message was sent.`;
   }
+  // Transport-level failures carry a classification. An AMBIGUOUS outcome (the
+  // connection dropped mid-request) is reported as unconfirmed — never as a
+  // proven Telegram rejection.
+  if (classification && classification.category === 'transport') {
+    if (classification.ambiguousOutcome) {
+      const base = classification.code === 'TELEGRAM_TIMEOUT'
+        ? 'Telegram did not respond in time while receiving the request'
+        : 'Telegram’s connection closed while it was receiving the image';
+      return `${base}. The update could not be confirmed after ${attempts} attempt${attempts === 1 ? '' : 's'}. No new message was sent.`;
+    }
+    return `${classification.description} The update was not applied after ${attempts} attempt${attempts === 1 ? '' : 's'}. No new message was sent.`;
+  }
+  if (classification && classification.code === 'TELEGRAM_RATE_LIMITED') {
+    return `Telegram temporarily rate-limited the update; automatic retries were attempted (${attempts}). No new message was sent.`;
+  }
+  if (classification && classification.code === 'TELEGRAM_SERVICE_ERROR') {
+    return `Telegram had a temporary server error and the update could not be applied after ${attempts} attempts. No new message was sent.`;
+  }
+  if (code === 'BOT_PERMISSION') {
+    return 'Telegram rejected the update because the bot does not have permission to edit the message in that group. No new message was sent.';
+  }
+  if (code === 'MESSAGE_NOT_FOUND') {
+    return 'The original Telegram message could not be found — verify it was not deleted. No new message was sent.';
+  }
+  if (code === 'MESSAGE_NOT_EDITABLE') {
+    return 'Telegram will not allow the existing message to be edited. No new message was sent.';
+  }
   if (code === 'NOT_UPDATED' || code === 'NO_CHANGE') {
     if (limitations.includes('PHOTO_IMAGE_CANNOT_BE_REMOVED_IN_PLACE')) {
       return 'The screenshot was removed from storage, but Telegram cannot remove the image from the already-sent photo message. No new message was sent.';
     }
     return 'Nothing needed updating in Telegram.';
   }
-  return `Telegram could not be updated (${editError || code}). The stored route was updated; no new message was sent.`;
+  return `Telegram could not be updated (${(classification && classification.description) || editError || code}). The stored route was updated; no new message was sent.`;
 }
 
 /**
