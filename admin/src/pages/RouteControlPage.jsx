@@ -5,9 +5,15 @@ import {
   SCREENSHOT_TYPES,
   SCREENSHOT_MAX_MB,
   validateScreenshotFile,
-  imageFromClipboard,
   screenshotStatusBanner,
 } from "./routeScreenshot.mjs";
+import { createPasteRouter } from "./pasteTarget.mjs";
+
+// One paste-target router for the whole page: whichever screenshot dropzone was
+// last focused/opened is the sole destination for a Ctrl+V image. A single
+// window paste listener (in RouteControlPage) dispatches through it, so a paste
+// inside a route's "Manage screenshot" panel never leaks into the upper form.
+const pasteRouter = createPasteRouter();
 
 /**
  * Route Control — assign a Google Maps directions route to a driver group and
@@ -190,15 +196,10 @@ function AssignForm({ options, onAssigned, onMessage }) {
     setScreenshotPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
   }, [onMessage]);
 
-  // Ctrl+V anywhere on the page attaches a pasted image as the route screenshot.
-  useEffect(() => {
-    const onPaste = (e) => {
-      const file = imageFromClipboard(e.clipboardData?.items);
-      if (file) { acceptScreenshot(file); e.preventDefault(); }
-    };
-    window.addEventListener("paste", onPaste);
-    return () => window.removeEventListener("paste", onPaste);
-  }, [acceptScreenshot]);
+  // Ctrl+V is scoped: this form only receives a pasted image while its own
+  // screenshot dropzone is the active paste target (focused). Clear on unmount so
+  // it never keeps stealing pastes meant for a route's "Manage screenshot" panel.
+  useEffect(() => () => pasteRouter.clearActive("assign"), []);
 
   const resetInputs = () => {
     setUrl(""); setOrigin(""); setDestination(""); setWaypoints(""); setParsed(null);
@@ -345,13 +346,17 @@ function AssignForm({ options, onAssigned, onMessage }) {
           Route screenshot (optional — sent to the driver group with the route message)
         </label>
         <div
-          onClick={() => fileInputRef.current?.click()}
+          tabIndex={0}
+          role="button"
+          aria-label="Route screenshot dropzone — click to choose, or focus and press Ctrl+V to paste"
+          onFocus={() => pasteRouter.setActive("assign", acceptScreenshot)}
+          onClick={() => { pasteRouter.setActive("assign", acceptScreenshot); fileInputRef.current?.click(); }}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
           onDrop={(e) => { e.preventDefault(); setDragOver(false); acceptScreenshot(e.dataTransfer?.files?.[0]); }}
           style={{
             border: `1.5px dashed ${dragOver ? "#60a5fa" : "rgba(148,163,184,0.4)"}`,
-            borderRadius: 8, padding: screenshotPreview ? 8 : 18, cursor: "pointer",
+            borderRadius: 8, padding: screenshotPreview ? 8 : 18, cursor: "pointer", outline: "none",
             background: dragOver ? "rgba(59,130,246,0.08)" : "rgba(148,163,184,0.04)",
             textAlign: "center",
           }}
@@ -528,6 +533,7 @@ function RouteRow({ a, completionRadius, onChanged, onMessage }) {
   const [pendingPreview, setPendingPreview] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const shotInputRef = useRef(null);
+  const shotDropRef = useRef(null);
 
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
   useEffect(() => () => { if (pendingPreview) URL.revokeObjectURL(pendingPreview); }, [pendingPreview]);
@@ -547,6 +553,16 @@ function RouteRow({ a, completionRadius, onChanged, onMessage }) {
     setPendingShot(file);
     setPendingPreview((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(file); });
   }, [onMessage]);
+
+  // When THIS route's screenshot panel opens, make it the sole Ctrl+V paste
+  // target and focus its dropzone so a paste lands here immediately — never in
+  // the upper "Assign a route" form or another route row. Cleared on close/unmount.
+  useEffect(() => {
+    if (!showShot) { pasteRouter.clearActive(`row:${a.id}`); return undefined; }
+    pasteRouter.setActive(`row:${a.id}`, acceptPending);
+    const t = setTimeout(() => shotDropRef.current?.focus(), 0);
+    return () => { clearTimeout(t); pasteRouter.clearActive(`row:${a.id}`); };
+  }, [showShot, a.id, acceptPending]);
 
   const act = async (fn, okText) => {
     setBusy(true);
@@ -820,14 +836,15 @@ function RouteRow({ a, completionRadius, onChanged, onMessage }) {
             already-sent Telegram message <strong>in place</strong> — it never posts a new message to the group.
           </div>
           <div
+            ref={shotDropRef}
             tabIndex={0}
             role="button"
             aria-label="Screenshot dropzone — click to choose, or focus and press Ctrl+V to paste"
-            onClick={() => shotInputRef.current?.click()}
+            onFocus={() => pasteRouter.setActive(`row:${a.id}`, acceptPending)}
+            onClick={() => { pasteRouter.setActive(`row:${a.id}`, acceptPending); shotInputRef.current?.click(); }}
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
             onDrop={(e) => { e.preventDefault(); setDragOver(false); acceptPending(e.dataTransfer?.files?.[0]); }}
-            onPaste={(e) => { const f = imageFromClipboard(e.clipboardData?.items); if (f) { acceptPending(f); e.preventDefault(); } }}
             style={{
               border: `1.5px dashed ${dragOver ? "#60a5fa" : "rgba(148,163,184,0.4)"}`,
               borderRadius: 8, padding: pendingPreview ? 8 : 16, cursor: "pointer", outline: "none",
@@ -925,6 +942,19 @@ export default function RouteControlPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadAssignments().catch(() => {}); }, [statusFilter, loadAssignments]);
+
+  // Single window-level paste listener for the whole page. It routes a pasted
+  // image to the ONE active screenshot dropzone (the last one focused/opened)
+  // and only prevents the default paste when an image was actually consumed —
+  // so pasting text into ordinary inputs keeps working normally.
+  useEffect(() => {
+    const onPaste = (e) => {
+      const handled = pasteRouter.handlePaste(e.clipboardData?.items);
+      if (handled != null) e.preventDefault();
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
 
   return (
     <div>

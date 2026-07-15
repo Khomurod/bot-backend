@@ -77,14 +77,12 @@ export function screenshotStatusBanner(action, apiResult) {
   if (tg.code === 'EDIT_IN_PROGRESS') {
     return { type: 'warning', text: `${storedLine} Another update for this route was still in progress — try again in a moment.` };
   }
-  if (tg.code === 'PARTIAL' || tg.code === 'NOT_UPDATED' || tg.code === 'NO_CHANGE') {
-    return { type: 'warning', text: `${storedLine} ${tg.detail || 'Telegram could only be partly updated.'} No new message was sent.` };
-  }
-  // Any hard failure code (BOT_PERMISSION / MESSAGE_NOT_FOUND / MESSAGE_NOT_EDITABLE /
-  // NO_TELEGRAM_GROUP / TELEGRAM_EDIT_* / UPDATE_ERROR).
-  return {
-    type: 'warning',
-    text: `${storedLine} Telegram was NOT updated (${tg.code}${tg.detail ? ` — ${tg.detail}` : (tg.error ? ` — ${tg.error}` : '')}). `
-      + 'The stored route is correct and no new message was sent; use “Update message in Telegram” to retry.',
-  };
+  // Every other outcome (PARTIAL, CAPTION_TOO_LONG_FOR_IN_PLACE_CONVERSION, and
+  // hard failures like BOT_PERMISSION / MESSAGE_NOT_FOUND / TELEGRAM_EDIT_* /
+  // UPDATE_ERROR) is a warning. The backend `detail` is already a complete,
+  // self-contained sentence — use it verbatim so we never double the
+  // "No new message was sent." clause. Fall back to a safe generic when absent.
+  const detail = tg.detail
+    || `Telegram was not updated (${tg.code}${tg.error ? ` — ${tg.error}` : ''}). The stored route is correct and no new message was sent.`;
+  return { type: 'warning', text: `${storedLine} ${detail}` };
 }

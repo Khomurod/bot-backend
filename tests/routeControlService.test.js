@@ -904,18 +904,109 @@ test('update: text-only message edit changes the text in place', async () => {
   assert.equal(captured.edits[0].messageId, 72);
 });
 
-test('update: adding a screenshot to a text-only delivery cannot become a photo in place', async () => {
+test('update: adding a screenshot to a text-only delivery CONVERTS it to a photo in place (Bot API 7.11+)', async () => {
   const { svc, telegram, captured } = loadServiceForEdit({
     assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 72, kind: 'text' }] },
     screenshot: PNG,
   });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram, customMessage: 'route body' });
+  assert.equal(res.code, 'UPDATED');
+  assert.equal(res.converted, true);
+  assert.equal(res.conversion, 'text_to_photo');
+  assert.equal(res.screenshotUpdated, true);
+  assert.equal(res.textUpdated, true, 'the body becomes the photo caption');
+  // editMessageMedia was called on the EXISTING text message id — no new message.
+  assert.equal(captured.edits.length, 1);
+  assert.equal(captured.edits[0].kind, 'media');
+  assert.equal(captured.edits[0].messageId, 72);
+  assert.equal(captured.edits[0].a.type, 'photo');
+  assert.equal(captured.edits[0].a.caption, 'route body');
+  // Metadata persisted so later replacements follow the photo branch.
+  assert.equal(captured.recordedEdit.opts.via, 'photo');
+  assert.deepEqual(captured.recordedEdit.opts.messages, [{ message_id: 72, kind: 'photo' }]);
+  assert.equal(captured.recordedEdit.opts.screenshotError, null);
+  assert.equal(captured.recordedEdit.opts.editError, null);
+});
+
+test('update: NO send/delete methods are used during a text→photo conversion', async () => {
+  let forbidden = 0;
+  const { svc, telegram } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 72, kind: 'text' }] },
+    screenshot: PNG,
+  });
+  telegram.sendPhoto = async () => { forbidden += 1; return { message_id: 999 }; };
+  telegram.sendMessage = async () => { forbidden += 1; return { message_id: 999 }; };
+  telegram.deleteMessage = async () => { forbidden += 1; };
+  await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram });
+  assert.equal(forbidden, 0, 'conversion must not send or delete any message');
+});
+
+test('update: legacy scalar-only text record converts on the same message id', async () => {
+  const { svc, telegram, captured } = loadServiceForEdit({
+    // No driver_group_messages list at all — only the legacy scalar id + via.
+    assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'text', driver_group_message_id: 555, driver_group_messages: null },
+    screenshot: PNG,
+  });
   const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram });
+  assert.equal(res.converted, true);
+  assert.equal(captured.edits[0].kind, 'media');
+  assert.equal(captured.edits[0].messageId, 555, 'edited the legacy-tracked id — no new message');
+  assert.deepEqual(captured.recordedEdit.opts.messages, [{ message_id: 555, kind: 'photo' }]);
+});
+
+test('update: JSON-STRING message list is parsed and converted', async () => {
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'text', driver_group_messages: JSON.stringify([{ message_id: 88, kind: 'text' }]) },
+    screenshot: PNG,
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram });
+  assert.equal(res.converted, true);
+  assert.equal(captured.edits[0].messageId, 88);
+});
+
+test('update: after conversion, a later replacement uses the photo branch on the same id', async () => {
+  // The row now looks like a photo delivery (as persisted by the conversion).
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'photo', driver_group_messages: [{ message_id: 72, kind: 'photo' }] },
+    screenshot: { file_data: Buffer.from('NEW-PNG'), mime_type: 'image/png' },
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram });
+  assert.equal(res.code, 'UPDATED');
+  assert.equal(res.converted, false, 'already a photo — not a conversion');
+  assert.equal(res.conversion, 'photo_replace');
+  assert.equal(captured.edits[0].kind, 'media');
+  assert.equal(captured.edits[0].messageId, 72);
+});
+
+test('update: overlong route text declines the conversion (no truncation, no new message)', async () => {
+  const longBody = 'x'.repeat(1100); // > 1024 caption limit after entity parsing
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 72, kind: 'text' }] },
+    screenshot: PNG,
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram, customMessage: longBody });
+  assert.equal(res.code, 'CAPTION_TOO_LONG_FOR_IN_PLACE_CONVERSION');
   assert.equal(res.screenshotUpdated, false);
-  assert.ok(res.limitations.includes('TEXT_MESSAGE_CANNOT_SHOW_SCREENSHOT'));
-  assert.equal(res.code, 'PARTIAL', 'text still updated, screenshot could not be shown');
-  assert.equal(captured.recordedEdit.opts.screenshotError, 'SCREENSHOT_NOT_SHOWN_IN_TELEGRAM');
-  // No media edit was even attempted (Telegram cannot convert text → photo).
-  assert.equal(captured.edits.some((e) => e.kind === 'media'), false);
+  assert.equal(res.converted, false);
+  assert.equal(captured.edits.length, 0, 'no Telegram mutation at all');
+  assert.equal(captured.recordedEdit.opts.via, undefined, 'delivery type left unchanged');
+  assert.equal(captured.recordedEdit.opts.messages, undefined, 'message list left unchanged');
+  assert.equal(captured.recordedEdit.opts.screenshotError, 'CAPTION_TOO_LONG_FOR_IN_PLACE_CONVERSION');
+});
+
+test('update: a rejected conversion leaves the delivery as TEXT and reports the classified error', async () => {
+  const { svc, telegram, captured } = loadServiceForEdit({
+    assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 72, kind: 'text' }] },
+    screenshot: PNG,
+    editImpl: { media: () => { throw telegramErr(400, 'Bad Request: message to edit not found'); } },
+  });
+  const res = await svc.updateDriverGroupRouteMessage({ assignmentId: 9, telegram });
+  assert.equal(res.converted, false);
+  assert.equal(res.updated, false);
+  assert.equal(res.code, 'MESSAGE_NOT_FOUND');
+  assert.equal(captured.recordedEdit.opts.via, undefined, 'metadata NOT converted on failure');
+  assert.equal(captured.recordedEdit.opts.messages, undefined);
+  assert.equal(captured.recordedEdit.opts.screenshotError, 'MESSAGE_NOT_FOUND');
 });
 
 test('update: removing a screenshot from a photo message cannot strip the image in place', async () => {

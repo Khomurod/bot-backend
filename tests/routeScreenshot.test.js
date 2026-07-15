@@ -75,23 +75,52 @@ test('screenshotStatusBanner: in-place update is a success that says no new mess
   assert.match(b.text, /no new message/i);
 });
 
-test('screenshotStatusBanner: a limitation is a WARNING, not a false success', async () => {
-  const { screenshotStatusBanner } = await import(MOD);
-  const b = screenshotStatusBanner('remove', {
-    deleted: true,
-    telegram: { code: 'PARTIAL', detail: 'Telegram can’t remove the image from the already-sent photo message.' },
-  });
-  assert.equal(b.type, 'warning');
-  assert.match(b.text, /No new message was sent/i);
-});
-
-test('screenshotStatusBanner: a hard Telegram failure is reported truthfully with retry guidance', async () => {
+test('screenshotStatusBanner: text→photo conversion reads as a clear success', async () => {
   const { screenshotStatusBanner } = await import(MOD);
   const b = screenshotStatusBanner('replace', {
     stored: true,
-    telegram: { code: 'BOT_PERMISSION', detail: 'The bot lacks permission to edit the message.' },
+    telegram: { code: 'UPDATED', converted: true, detail: 'The existing Telegram message was converted to a photo and updated in place — no new message was sent.' },
+  });
+  assert.equal(b.type, 'success');
+  assert.match(b.text, /converted to a photo/i);
+  assert.match(b.text, /Screenshot stored\./);
+});
+
+test('screenshotStatusBanner: a limitation is a WARNING and does NOT duplicate the "no new message" sentence', async () => {
+  const { screenshotStatusBanner } = await import(MOD);
+  // Realistic backend detail already ends with the sentence.
+  const b = screenshotStatusBanner('remove', {
+    deleted: true,
+    telegram: {
+      code: 'PARTIAL',
+      detail: 'Updated what Telegram allows — the screenshot was removed from storage, but Telegram can’t remove the image from the already-sent photo message. No new message was sent.',
+    },
   });
   assert.equal(b.type, 'warning');
-  assert.match(b.text, /Telegram was NOT updated/);
+  const occurrences = (b.text.match(/No new message was sent/gi) || []).length;
+  assert.equal(occurrences, 1, 'the sentence must appear exactly once');
+});
+
+test('screenshotStatusBanner: caption-too-long conversion is a warning that points to Send as new message', async () => {
+  const { screenshotStatusBanner } = await import(MOD);
+  const b = screenshotStatusBanner('replace', {
+    stored: true,
+    telegram: {
+      code: 'CAPTION_TOO_LONG_FOR_IN_PLACE_CONVERSION',
+      detail: 'The screenshot is stored, but the full route text is too long to fit in a photo caption, so the existing text message was left unchanged (converting it would drop part of the route). Use “Send as new message” to post it as a photo. No new message was sent.',
+    },
+  });
+  assert.equal(b.type, 'warning');
+  assert.match(b.text, /Send as new message/i);
+});
+
+test('screenshotStatusBanner: a hard Telegram failure is reported truthfully (single, self-contained)', async () => {
+  const { screenshotStatusBanner } = await import(MOD);
+  const b = screenshotStatusBanner('replace', {
+    stored: true,
+    telegram: { code: 'BOT_PERMISSION', detail: 'Telegram could not be updated (BOT_PERMISSION). The stored route was updated; no new message was sent.' },
+  });
+  assert.equal(b.type, 'warning');
   assert.match(b.text, /no new message was sent/i);
+  assert.equal((b.text.match(/no new message was sent/gi) || []).length, 1);
 });

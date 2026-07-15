@@ -400,6 +400,28 @@ test('POST /:id/screenshot on an UNSENT route stores only — no Telegram edit o
   assert.equal(updateCalled, false, 'never-sent route: storage only, no Telegram call');
 });
 
+test('POST /:id/screenshot stores FIRST, then converts; a Telegram failure does not roll back storage', async () => {
+  const order = [];
+  const app = loadApp({
+    serviceMock: {
+      async updateDriverGroupRouteMessage() {
+        order.push('convert');
+        // Telegram-side failure — reported, not thrown.
+        return { updated: false, code: 'MESSAGE_NOT_FOUND', detail: 'Telegram could not be updated (MESSAGE_NOT_FOUND). The stored route was updated; no new message was sent.' };
+      },
+    },
+    rcMock: {
+      async getRouteAssignment(id) { return { id, driver_group_message_sent_at: '2026-07-10T00:00:00Z' }; },
+      async saveRouteScreenshot(id, shot) { order.push('store'); return { file_size_bytes: shot.data.length, mime_type: shot.mimeType }; },
+    },
+  });
+  const res = await callMultipart(app, '/api/route-control/5/screenshot', { file: PNG_BYTES });
+  assert.equal(res.status, 200, 'storage still succeeded despite the Telegram failure');
+  assert.equal(res.json.stored, true, 'screenshot kept — not rolled back');
+  assert.equal(res.json.telegram.code, 'MESSAGE_NOT_FOUND');
+  assert.deepEqual(order, ['store', 'convert'], 'stored first, then attempted the in-place conversion');
+});
+
 test('POST /:id/update-driver-message edits in place with the given text', async () => {
   let args = null;
   const app = loadApp({

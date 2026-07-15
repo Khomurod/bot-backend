@@ -681,6 +681,18 @@ function buildDeliveryMessageList({ via, photoMessageId = null, textMessageId = 
 }
 
 /**
+ * PURE. Conservative estimate of a Telegram caption's length AFTER HTML entity
+ * parsing: strips the HTML tags Telegram ignores, but leaves entity refs like
+ * &amp; as their escaped text, so it never UNDER-counts. A body we accept for an
+ * in-place text→photo conversion therefore always fits Telegram's 1024-char
+ * post-parse caption limit; anything borderline is rejected rather than risking
+ * a silent truncation.
+ */
+function estimatedCaptionLength(html) {
+  return String(html || '').replace(/<[^>]+>/g, '').length;
+}
+
+/**
  * PURE. Read the Telegram message list for an assignment. Prefers the
  * authoritative `driver_group_messages` (JSONB, restart-safe). Falls back to
  * reconstructing from the legacy scalar `driver_group_message_id` +
@@ -1028,6 +1040,8 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
     let textUpdated = false;
     let screenshotUpdated = false;
     let screenshotRemovedInTelegram = false;
+    let convertedToPhoto = false;
+    let captionTooLongForConversion = false;
     let editError = null;
 
     const runEdit = async (fn, label) => {
@@ -1076,19 +1090,44 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
 
     // 2) Text part.
     if (textMsg) {
-      const r = await runEdit(() => telegram.editMessageText(
-        String(chatId), Number(textMsg.message_id), undefined, body,
-        { parse_mode: 'HTML', disable_web_page_preview: true }
-      ), 'text');
-      if (r.ok) textUpdated = true;
-      else { editError = editError || r.code; limitations.push(`TEXT_UPDATE_FAILED:${r.code}`); }
+      if (!photoMsg && hasScreenshot) {
+        // Adding a screenshot to a TEXT-ONLY delivery: convert the existing text
+        // message into a photo IN PLACE (Bot API 7.11+ lets editMessageMedia
+        // replace a text message with media). Same message id, nothing new sent.
+        // The full route body becomes the photo caption, so it must fit the
+        // 1024-char caption limit — otherwise we'd have to drop route text or
+        // post a second message, so we decline and report it instead.
+        if (estimatedCaptionLength(body) > TELEGRAM_CAPTION_MAX) {
+          captionTooLongForConversion = true;
+          limitations.push('CAPTION_TOO_LONG_FOR_IN_PLACE_CONVERSION');
+          // Leave the Telegram message unchanged — no truncation, no new message.
+        } else {
+          const r = await runEdit(() => telegram.editMessageMedia(
+            String(chatId), Number(textMsg.message_id), undefined,
+            { type: 'photo', media: { source: screenshot.file_data }, caption: body, parse_mode: 'HTML' }
+          ), 'media(text_to_photo)');
+          if (r.ok) {
+            // The body is now the photo caption → both the image and the text changed.
+            screenshotUpdated = true;
+            textUpdated = true;
+            convertedToPhoto = true;
+          } else {
+            editError = editError || r.code;
+            limitations.push(`SCREENSHOT_CONVERT_FAILED:${r.code}`);
+          }
+        }
+      } else {
+        // Plain text edit: a text-only route without a screenshot, or the text
+        // half of a photo+text delivery.
+        const r = await runEdit(() => telegram.editMessageText(
+          String(chatId), Number(textMsg.message_id), undefined, body,
+          { parse_mode: 'HTML', disable_web_page_preview: true }
+        ), 'text');
+        if (r.ok) textUpdated = true;
+        else { editError = editError || r.code; limitations.push(`TEXT_UPDATE_FAILED:${r.code}`); }
+      }
     }
 
-    // 3) A screenshot was added but the delivery is text-only: a text message
-    // cannot become a photo message in place.
-    if (hasScreenshot && !photoMsg) {
-      limitations.push('TEXT_MESSAGE_CANNOT_SHOW_SCREENSHOT');
-    }
     // Removal is only truly reflected in Telegram when there was no photo to
     // begin with (text-only delivery).
     if (!hasScreenshot && !photoMsg) screenshotRemovedInTelegram = true;
@@ -1099,31 +1138,49 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
     let screenshotSendError;
     if (hasScreenshot && screenshotUpdated) screenshotSendError = null; // now shown
     else if (hasScreenshot && photoMsg && editError) screenshotSendError = editError;
+    else if (hasScreenshot && !photoMsg && captionTooLongForConversion) screenshotSendError = 'CAPTION_TOO_LONG_FOR_IN_PLACE_CONVERSION';
+    else if (hasScreenshot && !photoMsg && editError) screenshotSendError = editError;
     else if (hasScreenshot && !photoMsg) screenshotSendError = 'SCREENSHOT_NOT_SHOWN_IN_TELEGRAM';
     else if (!hasScreenshot && photoMsg) screenshotSendError = 'SCREENSHOT_STILL_SHOWN_IN_TELEGRAM';
     else screenshotSendError = null;
 
     let code;
-    if (editError && !telegramChanged) code = editError;
+    if (captionTooLongForConversion && !telegramChanged) code = 'CAPTION_TOO_LONG_FOR_IN_PLACE_CONVERSION';
+    else if (editError && !telegramChanged) code = editError;
     else if (limitations.some((l) => !l.startsWith('SCREENSHOT_DB_READ_FAILED')) && !telegramChanged) code = 'NOT_UPDATED';
     else if (limitations.length) code = 'PARTIAL';
     else if (telegramChanged) code = 'UPDATED';
     else code = 'NO_CHANGE';
 
+    // Persist. A text→photo conversion keeps the SAME message id but changes the
+    // message TYPE, so we rewrite `via` + the message list (only on Telegram
+    // success) so the next replacement follows the photo branch. Routine edits
+    // leave `via`/messages untouched (undefined).
+    const convertedVia = convertedToPhoto ? 'photo' : undefined;
+    const convertedMessages = convertedToPhoto
+      ? [{ message_id: Number(textMsg.message_id), kind: 'photo' }]
+      : undefined;
     await rc.recordDriverGroupMessageEdit(assignmentId, {
       editError: editError || (limitations.length ? limitations.join(',') : null),
       screenshotError: screenshotSendError,
+      via: convertedVia,
+      messages: convertedMessages,
     });
     await rc.insertRouteMonitorEvent({
       assignmentId,
       eventType: 'driver_group_message_edited',
       detail: `in-place edit: text=${textUpdated} screenshot=${screenshotUpdated} removed=${!hasScreenshot}`
+        + `${convertedToPhoto ? ' converted=text_to_photo' : ''}`
         + `${legacy ? ' [legacy-record]' : ''}${limitations.length ? ` [limits:${limitations.join('|')}]` : ''}`
         + `${editError ? ` [error:${editError}]` : ''}`,
     });
+    const conversion = convertedToPhoto
+      ? 'text_to_photo'
+      : (photoMsg && screenshotUpdated ? 'photo_replace' : 'none');
     console.log(
       `[ROUTE-CONTROL] assignment=${assignmentId} edit code=${code} text=${textUpdated}`
-      + ` screenshot=${screenshotUpdated} removed=${!hasScreenshot}${editError ? ` error=${editError}` : ''}`
+      + ` screenshot=${screenshotUpdated} removed=${!hasScreenshot} conversion=${conversion}`
+      + `${editError ? ` error=${editError}` : ''}`
     );
 
     return {
@@ -1133,45 +1190,53 @@ async function updateDriverGroupRouteMessage({ assignmentId, telegram, customMes
       textUpdated,
       screenshotUpdated,
       screenshotRemovedInTelegram,
+      converted: convertedToPhoto,
+      conversion,
       screenshotStored: hasScreenshot,
-      via: assignment.driver_group_message_via || null,
+      via: convertedToPhoto ? 'photo' : (assignment.driver_group_message_via || null),
       limitations,
       editError,
       code,
-      detail: describeEditOutcome({ code, textUpdated, screenshotUpdated, hasScreenshot, limitations, editError }),
+      detail: describeEditOutcome({
+        code, textUpdated, screenshotUpdated, hasScreenshot, limitations, editError, converted: convertedToPhoto,
+      }),
     };
   } finally {
     editingAssignments.delete(assignmentId);
   }
 }
 
-/** PURE. Short admin-facing summary of an in-place edit outcome. */
-function describeEditOutcome({ code, textUpdated, screenshotUpdated, hasScreenshot, limitations, editError }) {
+/** PURE. Short admin-facing summary of an in-place edit outcome (self-contained
+ *  — callers must NOT append their own "no new message" sentence). */
+function describeEditOutcome({ code, textUpdated, screenshotUpdated, hasScreenshot, limitations, editError, converted }) {
   if (code === 'UPDATED') {
+    if (converted) {
+      return 'The existing Telegram message was converted to a photo and updated in place — no new message was sent.';
+    }
     const parts = [];
     if (screenshotUpdated) parts.push('screenshot');
     if (textUpdated) parts.push('message text');
     return `Updated the existing Telegram ${parts.join(' and ') || 'message'} in place — no new message was sent.`;
+  }
+  if (code === 'CAPTION_TOO_LONG_FOR_IN_PLACE_CONVERSION') {
+    return 'The screenshot is stored, but the full route text is too long to fit in a photo caption, so the existing '
+      + 'text message was left unchanged (converting it would drop part of the route). Use “Send as new message” to post it as a photo. No new message was sent.';
   }
   if (code === 'PARTIAL') {
     const notes = [];
     if (limitations.includes('PHOTO_IMAGE_CANNOT_BE_REMOVED_IN_PLACE')) {
       notes.push('the screenshot was removed from storage, but Telegram can’t remove the image from the already-sent photo message');
     }
-    if (limitations.includes('TEXT_MESSAGE_CANNOT_SHOW_SCREENSHOT')) {
-      notes.push('the screenshot is stored, but the original message was text-only and Telegram can’t turn it into a photo in place');
-    }
-    if (limitations.some((l) => l.startsWith('SCREENSHOT_UPDATE_FAILED')) || limitations.some((l) => l.startsWith('TEXT_UPDATE_FAILED'))) {
+    if (limitations.some((l) => l.startsWith('SCREENSHOT_UPDATE_FAILED'))
+        || limitations.some((l) => l.startsWith('TEXT_UPDATE_FAILED'))
+        || limitations.some((l) => l.startsWith('SCREENSHOT_CONVERT_FAILED'))) {
       notes.push('part of the Telegram update failed');
     }
     return `Updated what Telegram allows${notes.length ? ` — ${notes.join('; ')}` : ''}. No new message was sent.`;
   }
   if (code === 'NOT_UPDATED' || code === 'NO_CHANGE') {
-    if (limitations.includes('TEXT_MESSAGE_CANNOT_SHOW_SCREENSHOT')) {
-      return 'The screenshot is stored, but the existing route message is text-only and Telegram cannot add an image to it in place. Use “Send as new message” to post it as a photo.';
-    }
     if (limitations.includes('PHOTO_IMAGE_CANNOT_BE_REMOVED_IN_PLACE')) {
-      return 'The screenshot was removed from storage, but Telegram cannot remove the image from the already-sent photo message.';
+      return 'The screenshot was removed from storage, but Telegram cannot remove the image from the already-sent photo message. No new message was sent.';
     }
     return 'Nothing needed updating in Telegram.';
   }
@@ -1693,6 +1758,7 @@ module.exports = {
   classifyTelegramEditError,
   buildDeliveryMessageList,
   parseDeliveryMessages,
+  estimatedCaptionLength,
   parseRouteLink,
   assignRoute,
   cancelActiveRoutesForGroup,

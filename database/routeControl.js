@@ -426,14 +426,18 @@ async function recordDriverGroupMessageSent(id, {
 
 /**
  * Record the outcome of an IN-PLACE edit of the already-sent driver-group route
- * message(s). The message-id list is NOT changed here — an edit keeps the same
- * Telegram message ids. Stamps when the edit ran, the machine-readable edit
- * error (NULL when the requested edits fully succeeded), and refreshes the
- * screenshot delivery status. `via`/`screenshotError` are only written when
- * explicitly provided (pass undefined to leave a column unchanged).
+ * message(s). Stamps when the edit ran, the machine-readable edit error (NULL
+ * when the requested edits fully succeeded), and refreshes the screenshot
+ * delivery status. `via`/`screenshotError`/`messages` are only written when
+ * explicitly provided (pass undefined to leave a column unchanged) — so a
+ * routine edit that keeps the same message ids does NOT rewrite the list, while
+ * a text→photo conversion (same id, new kind) DOES persist the new `via` +
+ * `driver_group_messages` so later replacements follow the photo branch.
+ *
+ * @param {{ messages?: Array<{message_id:number, kind:'photo'|'text'}> }} p
  */
 async function recordDriverGroupMessageEdit(id, {
-  via = undefined, screenshotError = undefined, editError = null,
+  via = undefined, screenshotError = undefined, editError = null, messages = undefined,
 } = {}) {
   const sets = [
     'driver_group_message_edited_at = NOW()',
@@ -449,6 +453,10 @@ async function recordDriverGroupMessageEdit(id, {
   if (screenshotError !== undefined) {
     sets.push(`screenshot_send_error = $${i++}`);
     values.push(screenshotError ? String(screenshotError).slice(0, 300) : null);
+  }
+  if (messages !== undefined) {
+    sets.push(`driver_group_messages = $${i++}::jsonb`);
+    values.push(Array.isArray(messages) && messages.length ? JSON.stringify(messages) : null);
   }
   const res = await query(
     `UPDATE route_assignments SET ${sets.join(', ')} WHERE id = $1 RETURNING *`,
