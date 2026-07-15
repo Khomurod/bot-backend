@@ -915,7 +915,7 @@ function pointMilesFromDest(miles, extra = {}) {
   };
 }
 
-const COMPLETION_SETTINGS = { staleGpsMinutes: 15, completionRadiusMiles: 35 };
+const COMPLETION_SETTINGS = { staleGpsMinutes: 15, completionRadiusMiles: 50 };
 
 function completion(location, assignmentOverrides = {}, settings = COMPLETION_SETTINGS) {
   return evaluateDestinationCompletion({
@@ -936,32 +936,32 @@ test('evaluateDestinationCompletion: 20 miles → complete', () => {
   assert.equal(completion(pointMilesFromDest(20)).shouldComplete, true);
 });
 
-test('evaluateDestinationCompletion: 34.9 miles → complete (just inside)', () => {
-  assert.equal(completion(pointMilesFromDest(34.9)).shouldComplete, true);
+test('evaluateDestinationCompletion: 49.9 miles → complete (just inside)', () => {
+  assert.equal(completion(pointMilesFromDest(49.9)).shouldComplete, true);
 });
 
-test('evaluateDestinationCompletion: exactly 35 miles → complete (inclusive boundary)', () => {
-  const v = completion(pointMilesFromDest(35));
+test('evaluateDestinationCompletion: exactly 50 miles → complete (inclusive boundary)', () => {
+  const v = completion(pointMilesFromDest(50));
   assert.equal(v.shouldComplete, true);
-  assert.ok(Math.abs(v.distanceMiles - 35) < 0.001);
+  assert.ok(Math.abs(v.distanceMiles - 50) < 0.001);
 });
 
-test('evaluateDestinationCompletion: 35.1 miles → NOT complete (just outside)', () => {
-  const v = completion(pointMilesFromDest(35.1));
+test('evaluateDestinationCompletion: 50.1 miles → NOT complete (just outside)', () => {
+  const v = completion(pointMilesFromDest(50.1));
   assert.equal(v.shouldComplete, false);
   assert.equal(v.code, 'OUTSIDE_COMPLETION_RADIUS');
 });
 
-test('evaluateDestinationCompletion: 50 miles → NOT complete, monitoring continues', () => {
-  assert.equal(completion(pointMilesFromDest(50)).shouldComplete, false);
+test('evaluateDestinationCompletion: 60 miles → NOT complete, monitoring continues', () => {
+  assert.equal(completion(pointMilesFromDest(60)).shouldComplete, false);
 });
 
-test('evaluateDestinationCompletion: the authoritative DEFAULT radius is 35 miles', () => {
+test('evaluateDestinationCompletion: the authoritative DEFAULT radius is 50 miles', () => {
   // No completionRadiusMiles passed at all → the constants default applies.
-  const inside = completion(pointMilesFromDest(30), {}, { staleGpsMinutes: 15, completionRadiusMiles: undefined });
-  assert.equal(inside.shouldComplete, true, '30 mi completes under the 35 mi default');
-  const outside = completion(pointMilesFromDest(36), {}, { staleGpsMinutes: 15, completionRadiusMiles: undefined });
-  assert.equal(outside.shouldComplete, false, '36 mi does not complete under the 35 mi default');
+  const inside = completion(pointMilesFromDest(45), {}, { staleGpsMinutes: 15, completionRadiusMiles: undefined });
+  assert.equal(inside.shouldComplete, true, '45 mi completes under the 50 mi default');
+  const outside = completion(pointMilesFromDest(51), {}, { staleGpsMinutes: 15, completionRadiusMiles: undefined });
+  assert.equal(outside.shouldComplete, false, '51 mi does not complete under the 50 mi default');
 });
 
 test('evaluateDestinationCompletion: numeric coordinate STRINGS are normalized', () => {
@@ -1023,7 +1023,7 @@ function loadServiceForCompletion({
         return {
           enabled: gmapsEnabled, deviationThresholdMeters: 250, offRouteGraceChecks: 3,
           warningCooldownMinutes: 30, staleGpsMinutes: 15, parkedSpeedMph: 5,
-          checkIntervalSeconds: 300, routeCompletionRadiusMiles: 35,
+          checkIntervalSeconds: 300, routeCompletionRadiusMiles: 50,
         };
       },
     },
@@ -1157,7 +1157,7 @@ test('runRouteMonitorCheck completes a tracking-PENDING route silently (no activ
     location: pointMilesFromDest(30),
   });
   const res = await svc.runRouteMonitorCheck(telegram, { now: NOW });
-  assert.equal(res.completed, 1, 'pending route inside 35 mi completes');
+  assert.equal(res.completed, 1, 'pending route inside the completion radius completes');
   assert.equal(captured.activated.length, 0, 'tracking is never activated for it');
   assert.equal(captured.telegramSends.length, 0, 'no message of any kind');
   assert.equal(captured.events.length, 1);
@@ -1201,7 +1201,7 @@ test('runRouteMonitorCheck completes routes even when Google Maps is DISABLED', 
   assert.equal(captured.telegramSends.length, 0);
 });
 
-test('runRouteMonitorCheck still completes when the settings row is unavailable (default 35 mi)', async () => {
+test('runRouteMonitorCheck still completes when the settings row is unavailable (default 50 mi)', async () => {
   const { svc, telegram, captured } = loadServiceForCompletion({
     gmapsThrows: true,
     assignments: [{
@@ -1212,7 +1212,7 @@ test('runRouteMonitorCheck still completes when the settings row is unavailable 
     location: pointMilesFromDest(30),
   });
   const res = await svc.runRouteMonitorCheck(telegram, { now: NOW });
-  assert.equal(res.completed, 1, '30 mi completes under the built-in 35 mi default');
+  assert.equal(res.completed, 1, '30 mi completes under the built-in 50 mi default');
   assert.equal(captured.telegramSends.length, 0);
 });
 
@@ -1271,11 +1271,96 @@ test('runRouteMonitorCheck repairs coordinate-text destinations and completes in
   assert.ok(captured.events.some((e) => e.eventType === 'destination_repaired'));
 });
 
+test('destinationCoordFromPolyline returns the LAST route point (the destination), null for empty', () => {
+  // POLYLINE decodes to [[38.5,-120.2],[40.7,-120.95],[43.252,-126.453]].
+  const d = service.destinationCoordFromPolyline(POLYLINE);
+  assert.ok(d && Math.abs(d.lat - 43.252) < 1e-6 && Math.abs(d.lng - (-126.453)) < 1e-6);
+  assert.equal(service.destinationCoordFromPolyline(''), null);
+  assert.equal(service.destinationCoordFromPolyline(null), null);
+});
+
+test('assignRoute captures the FINAL destination coords from the computed polyline for an address destination', async () => {
+  let created = null;
+  const svc = loadServiceWith({
+    '../database/gmapsSettings.js': {
+      async getGmapsConfig() { return { enabled: true, routesApiEnabled: true, serverApiKey: 'k' }; },
+    },
+    '../services/googleMapsClient.js': {
+      async computeRoute() { return { encodedPolyline: POLYLINE, distanceMeters: 1000, durationSeconds: 60 }; },
+    },
+    '../database/routeControl.js': {
+      async createRouteAssignment(a) { created = a; return { id: 1, ...a }; },
+      async insertRouteMonitorEvent() { return null; },
+    },
+  });
+  // An address-only destination classifies to NO coordinates — the fix backfills
+  // the destination from the polyline END so auto-completion has a target.
+  await svc.assignRoute({
+    groupId: 7, manual: { origin: 'Chicago, IL', destination: 'Dallas, TX' },
+    tracking: { startMode: 'immediate' },
+  });
+  assert.ok(Math.abs(created.destinationLat - 43.252) < 1e-6, 'destination lat from polyline end');
+  assert.ok(Math.abs(created.destinationLng - (-126.453)) < 1e-6, 'destination lng from polyline end');
+});
+
+test('assignRoute keeps EXPLICIT destination coordinates (never overwrites them with the polyline end)', async () => {
+  let created = null;
+  const svc = loadServiceWith({
+    '../database/gmapsSettings.js': {
+      async getGmapsConfig() { return { enabled: true, routesApiEnabled: true, serverApiKey: 'k' }; },
+    },
+    '../services/googleMapsClient.js': {
+      async computeRoute() { return { encodedPolyline: POLYLINE }; },
+    },
+    '../database/routeControl.js': {
+      async createRouteAssignment(a) { created = a; return { id: 1, ...a }; },
+      async insertRouteMonitorEvent() { return null; },
+    },
+  });
+  await svc.assignRoute({
+    groupId: 7, manual: { origin: '41.0, -87.0', destination: '32.9, -96.8' },
+    tracking: { startMode: 'immediate' },
+  });
+  assert.equal(created.destinationLat, 32.9, 'explicit destination lat preserved');
+  assert.equal(created.destinationLng, -96.8, 'explicit destination lng preserved');
+});
+
+test('runRouteMonitorCheck self-heals an EXISTING route from its polyline end (no geocoding) and completes', async () => {
+  // Simulates an active route created before the fix: it has geometry but NULL
+  // destination coordinates. The monitor recovers the destination from the
+  // polyline end on the next pass — the deploy/restart reconciliation path.
+  let storedCoords = null;
+  const { svc, telegram, captured } = loadServiceForCompletion({
+    assignments: [{
+      id: 40, status: 'active', tracking_status: 'active',
+      encoded_polyline: POLYLINE,
+      destination_lat: null, destination_lng: null,
+      group_name: 'G', telegram_group_id: -100700,
+    }],
+    // Driver sitting exactly at the polyline end (the true destination).
+    location: { latitude: 43.252, longitude: -126.453, speedMilesPerHour: 0, pingAgeMinutes: 1 },
+    extraRcMock: {
+      async setRouteAssignmentDestinationCoords(id, coords) { storedCoords = { id, ...coords }; return { id }; },
+    },
+  });
+  const res = await svc.runRouteMonitorCheck(telegram, { now: NOW });
+  assert.ok(
+    storedCoords && Math.abs(storedCoords.lat - 43.252) < 1e-6 && Math.abs(storedCoords.lng - (-126.453)) < 1e-6,
+    'destination coordinates recovered from the polyline'
+  );
+  assert.equal(res.completed, 1, 'route completes once the destination is recovered — no geocoding needed');
+  assert.ok(
+    captured.events.some((e) => e.eventType === 'destination_repaired' && /polyline/i.test(e.detail || '')),
+    'records a polyline-based repair event'
+  );
+  assert.equal(captured.telegramSends.length, 0, 'completion is silent');
+});
+
 test('destination repair via geocoding is BOUNDED — never retried when attempts are exhausted', async () => {
   let geocodeCalls = 0;
   const svc = loadServiceWith({
     '../database/gmapsSettings.js': {
-      async getGmapsConfig() { return { enabled: false, staleGpsMinutes: 15, routeCompletionRadiusMiles: 35 }; },
+      async getGmapsConfig() { return { enabled: false, staleGpsMinutes: 15, routeCompletionRadiusMiles: 50 }; },
     },
     '../services/liveLocationResolver.js': {
       async resolveLiveLocationForGroupTitle() { return { location: pointMilesFromDest(300) }; },
@@ -1308,7 +1393,7 @@ test('destination repair geocodes text destinations (bounded) and stores the res
   let attempts = 0;
   const svc = loadServiceWith({
     '../database/gmapsSettings.js': {
-      async getGmapsConfig() { return { enabled: false, staleGpsMinutes: 15, routeCompletionRadiusMiles: 35 }; },
+      async getGmapsConfig() { return { enabled: false, staleGpsMinutes: 15, routeCompletionRadiusMiles: 50 }; },
     },
     '../services/liveLocationResolver.js': {
       async resolveLiveLocationForGroupTitle() { return { location: pointMilesFromDest(20) }; },
@@ -1355,7 +1440,7 @@ test('runCompletionCheckNow completes one route and reports the distance', async
     },
   });
   const out = await svc.runCompletionCheckNow({ assignmentId: 44, now: NOW });
-  assert.equal(out.completionRadiusMiles, 35);
+  assert.equal(out.completionRadiusMiles, 50);
   assert.equal(out.results.length, 1);
   assert.equal(out.results[0].completed, true);
   assert.ok(Math.abs(out.results[0].distanceMiles - 31.8) < 0.1);

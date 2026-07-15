@@ -77,7 +77,7 @@ function createRouteControlRouter({ authMiddleware, telegram = null }) {
       const status = req.query.status ? String(req.query.status) : null;
       const assignments = await rc.listRouteAssignments({ status });
       // Current completion radius rides along so the UI can explain the
-      // distance diagnostics ("52.4 mi from destination, completes at 35").
+      // distance diagnostics ("52.4 mi from destination, completes at 50").
       let completionRadiusMiles = null;
       try { completionRadiusMiles = (await gmaps.getGmapsConfig()).routeCompletionRadiusMiles; } catch (_) { /* optional */ }
       res.json({ assignments, completionRadiusMiles });

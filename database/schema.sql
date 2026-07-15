@@ -2120,12 +2120,12 @@ CREATE TABLE IF NOT EXISTS gmaps_settings (
 INSERT INTO gmaps_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 -- Auto-complete a route when the driver's fresh GPS is within this many miles of
--- the FINAL destination. Additive/idempotent; default 35 mi (see
+-- the FINAL destination. Additive/idempotent; default 50 mi (see
 -- services/routeControlConstants.js), recommended range 1–100. The CHECK stays
 -- 0.5–100 for backward compatibility with any legacy sub-1-mile value.
 ALTER TABLE gmaps_settings ADD COLUMN IF NOT EXISTS route_completion_radius_miles DOUBLE PRECISION NOT NULL DEFAULT 10
   CHECK (route_completion_radius_miles BETWEEN 0.5 AND 100);
-ALTER TABLE gmaps_settings ALTER COLUMN route_completion_radius_miles SET DEFAULT 35;
+ALTER TABLE gmaps_settings ALTER COLUMN route_completion_radius_miles SET DEFAULT 50;
 
 -- One-shot 10 → 35 completion-radius migration. The marker column makes it run
 -- exactly once even though this file executes on every boot: an untouched old
@@ -2140,6 +2140,19 @@ UPDATE gmaps_settings
 UPDATE gmaps_settings
    SET completion_radius_35_migrated = TRUE
  WHERE id = 1 AND completion_radius_35_migrated = FALSE;
+
+-- One-shot 35 → 50 completion-radius migration (same one-run-only marker
+-- pattern). The intended production radius is now 50 mi. A row still sitting on
+-- the previous default of 35 is bumped to 50; any other (customized) value —
+-- including a deliberate 35 the admin later re-selects — is left untouched.
+-- Additive/idempotent: safe to re-run on every boot.
+ALTER TABLE gmaps_settings ADD COLUMN IF NOT EXISTS completion_radius_50_migrated BOOLEAN NOT NULL DEFAULT FALSE;
+UPDATE gmaps_settings
+   SET route_completion_radius_miles = 50, completion_radius_50_migrated = TRUE
+ WHERE id = 1 AND completion_radius_50_migrated = FALSE AND route_completion_radius_miles = 35;
+UPDATE gmaps_settings
+   SET completion_radius_50_migrated = TRUE
+ WHERE id = 1 AND completion_radius_50_migrated = FALSE;
 
 -- One assigned route per row. group_id ties it to a driver group so the monitor
 -- can resolve that driver's live GPS (via the same resolver as /location).

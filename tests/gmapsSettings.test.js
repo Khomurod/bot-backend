@@ -94,10 +94,10 @@ test('numeric tunables round-trip and default sanely', async () => {
   assert.equal(view.staleGpsMinutes, 15);
 });
 
-test('route completion radius defaults to 35 mi and clamps to the 1–100 range', async () => {
+test('route completion radius defaults to 50 mi and clamps to the 1–100 range', async () => {
   const { mod } = loadModule();
-  // Default when never set (fresh database → 35, the authoritative constant).
-  assert.equal((await mod.getGmapsConfig()).routeCompletionRadiusMiles, 35);
+  // Default when never set (fresh database → 50, the authoritative constant).
+  assert.equal((await mod.getGmapsConfig()).routeCompletionRadiusMiles, 50);
   // Round-trips a valid value.
   let view = await mod.updateGmapsSettings({ routeCompletionRadiusMiles: 7.5 });
   assert.equal(view.routeCompletionRadiusMiles, 7.5);
@@ -113,17 +113,21 @@ test('route completion radius defaults to 35 mi and clamps to the 1–100 range'
 
 test('the single authoritative radius constant is exported and used everywhere', () => {
   const { ROUTE_COMPLETION_RADIUS_MILES } = require('../services/routeControlConstants');
-  assert.equal(ROUTE_COMPLETION_RADIUS_MILES.DEFAULT, 35);
+  assert.equal(ROUTE_COMPLETION_RADIUS_MILES.DEFAULT, 50);
   assert.equal(ROUTE_COMPLETION_RADIUS_MILES.MIN, 1);
   assert.equal(ROUTE_COMPLETION_RADIUS_MILES.MAX, 100);
 });
 
-test('a stored legacy 10-mile value is what the one-shot schema migration targets', () => {
-  // The 10 → 35 bump happens in database/schema.sql (one-shot, marker-guarded).
+test('the one-shot completion-radius schema migrations are present (10→35, then 35→50)', () => {
+  // The radius bumps happen in database/schema.sql (one-shot, marker-guarded).
   // Guard the migration text here so a refactor can't silently drop it.
   const fs = require('node:fs');
   const schema = fs.readFileSync(path.resolve(__dirname, '../database/schema.sql'), 'utf-8');
-  assert.match(schema, /ALTER COLUMN route_completion_radius_miles SET DEFAULT 35/);
+  // The effective column default is now 50 mi.
+  assert.match(schema, /ALTER COLUMN route_completion_radius_miles SET DEFAULT 50/);
+  // History: the original 10 → 35 bump is still present and marker-guarded.
   assert.match(schema, /completion_radius_35_migrated = FALSE AND route_completion_radius_miles = 10/);
+  // The new 35 → 50 bump, guarded by its own one-shot marker.
+  assert.match(schema, /completion_radius_50_migrated = FALSE AND route_completion_radius_miles = 35/);
   assert.match(schema, /uniq_route_assignment_attachment/);
 });

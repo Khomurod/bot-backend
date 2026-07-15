@@ -33,10 +33,10 @@ const { ROUTE_COMPLETION_RADIUS_MILES } = require('./routeControlConstants');
 const POLL_MS_MIN = 30 * 1000;
 const METERS_PER_MILE = 1609.34;
 // Default auto-complete radius (miles) when GMaps config omits it. The single
-// authoritative value lives in routeControlConstants (35 mi).
+// authoritative value lives in routeControlConstants (50 mi).
 const DEFAULT_COMPLETION_RADIUS_MILES = ROUTE_COMPLETION_RADIUS_MILES.DEFAULT;
 // Boundary tolerance (meters): floating-point haversine at exactly the radius can
-// land a hair over, so "exactly 35 miles" still completes while 35.01 mi (≈16 m
+// land a hair over, so "exactly 50 miles" still completes while 50.01 mi (≈16 m
 // past the radius) stays comfortably outside.
 const COMPLETION_EPSILON_METERS = 1;
 // Bounded destination-coordinate repair: at most this many geocode attempts per
@@ -87,6 +87,22 @@ function pointText(point) {
  *  coordinates — Number(null) === 0 must never masquerade as one). */
 function hasFiniteCoord(value) {
   return value != null && Number.isFinite(Number(value));
+}
+
+/**
+ * PURE. The FINAL destination coordinate implied by a computed route: the LAST
+ * point of the encoded polyline (Google routes end exactly at the destination).
+ * This is the authoritative destination when the parsed link/manual entry gave
+ * only an address (no lat/lng) — it needs no geocoding and is never a waypoint.
+ *
+ * @returns {{ lat:number, lng:number }|null} null when the polyline is empty.
+ */
+function destinationCoordFromPolyline(encodedPolyline) {
+  const points = decodePolyline(encodedPolyline || '');
+  if (!points.length) return null;
+  const [lat, lng] = points[points.length - 1];
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
 }
 
 /**
@@ -479,6 +495,18 @@ async function assignRoute({
     computed = await googleClient.computeRoute({ origin, destination, waypoints }, { cfg });
   }
 
+  // Final-destination coordinates. Prefer the coordinates the parse/manual entry
+  // gave us; otherwise (an address-only destination) fall back to the END of the
+  // computed route polyline — the exact point Google routed to. Without this,
+  // address-destination routes stored NULL destination coordinates and could
+  // never auto-complete (the reported production bug). Never a waypoint.
+  let destinationLat = destination.lat;
+  let destinationLng = destination.lng;
+  if ((!Number.isFinite(destinationLat) || !Number.isFinite(destinationLng)) && computed?.encodedPolyline) {
+    const derived = destinationCoordFromPolyline(computed.encodedPolyline);
+    if (derived) { destinationLat = derived.lat; destinationLng = derived.lng; }
+  }
+
   const assignment = await rc.createRouteAssignment({
     groupId,
     driverProfileId,
@@ -489,7 +517,7 @@ async function assignRoute({
     destinationText: pointText(destination),
     waypoints: waypoints.map((w) => ({ raw: w.raw, lat: w.lat, lng: w.lng })),
     originLat: origin.lat, originLng: origin.lng,
-    destinationLat: destination.lat, destinationLng: destination.lng,
+    destinationLat, destinationLng,
     encodedPolyline: computed?.encodedPolyline || null,
     distanceMeters: computed?.distanceMeters || null,
     durationSeconds: computed?.durationSeconds || null,
@@ -865,14 +893,23 @@ async function computeGeometryForAssignment(id) {
   };
   const waypoints = Array.isArray(assignment.waypoints) ? assignment.waypoints : [];
   const computed = await googleClient.computeRoute({ origin, destination, waypoints }, { cfg });
+  // Backfill the final-destination coordinates from the computed polyline end
+  // when the stored ones are missing, so recomputing geometry also unblocks
+  // auto-completion for an address-only destination.
+  let destinationLat = assignment.destination_lat;
+  let destinationLng = assignment.destination_lng;
+  if ((!hasFiniteCoord(destinationLat) || !hasFiniteCoord(destinationLng)) && computed.encodedPolyline) {
+    const derived = destinationCoordFromPolyline(computed.encodedPolyline);
+    if (derived) { destinationLat = derived.lat; destinationLng = derived.lng; }
+  }
   return rc.setRouteAssignmentGeometry(id, {
     originText: assignment.origin_text,
     destinationText: assignment.destination_text,
     waypoints,
     originLat: assignment.origin_lat,
     originLng: assignment.origin_lng,
-    destinationLat: assignment.destination_lat,
-    destinationLng: assignment.destination_lng,
+    destinationLat,
+    destinationLng,
     encodedPolyline: computed.encodedPolyline,
     distanceMeters: computed.distanceMeters,
     durationSeconds: computed.durationSeconds,
@@ -919,10 +956,27 @@ async function resolveAssignmentLocation(assignment) {
  * current pass can use the repaired coordinates immediately.
  */
 async function maybeRepairDestinationCoordinates(assignment) {
+  // Free path #1: the computed route polyline already ends AT the final
+  // destination. No network, no attempt budget — this is how existing routes
+  // (address-only destination, geometry already computed) self-heal on the next
+  // monitor tick after deploy/restart.
+  const fromPolyline = destinationCoordFromPolyline(assignment?.encoded_polyline);
+  if (fromPolyline) {
+    await rc.setRouteAssignmentDestinationCoords(assignment.id, { lat: fromPolyline.lat, lng: fromPolyline.lng });
+    assignment.destination_lat = fromPolyline.lat;
+    assignment.destination_lng = fromPolyline.lng;
+    await rc.insertRouteMonitorEvent({
+      assignmentId: assignment.id,
+      eventType: 'destination_repaired',
+      detail: 'final destination coordinates recovered from the computed route polyline',
+    });
+    return { repaired: true };
+  }
+
   const text = String(assignment?.destination_text || '').trim();
   if (!text) return { repaired: false, reason: 'no destination text to repair from' };
 
-  // Free path: coordinates embedded in the destination text.
+  // Free path #2: coordinates embedded in the destination text.
   const parsed = classifyPoint(text);
   if (Number.isFinite(parsed?.lat) && Number.isFinite(parsed?.lng)) {
     await rc.setRouteAssignmentDestinationCoords(assignment.id, { lat: parsed.lat, lng: parsed.lng });
@@ -1311,6 +1365,7 @@ function stopRouteControlService() {
 module.exports = {
   evaluateAssignment,
   evaluateDestinationCompletion,
+  destinationCoordFromPolyline,
   evaluateTrackingStart,
   normalizeTrackingOptions,
   cleanAddressText,

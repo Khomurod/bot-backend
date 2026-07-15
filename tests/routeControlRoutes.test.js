@@ -307,6 +307,23 @@ test('POST /:id/screenshot uploads a replacement; missing file is a clear 400', 
   assert.equal(saved.id, 5);
 });
 
+test('POST /:id/screenshot rejects an oversized file with a clear 413 (never reaches the DB)', async () => {
+  const app = loadApp({
+    rcMock: {
+      async getRouteAssignment(id) { return { id }; },
+      async saveRouteScreenshot() { throw new Error('should not be reached for an oversized file'); },
+    },
+  });
+  // 8 MB is the limit — a valid PNG signature followed by just over 8 MB.
+  const oversized = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(8 * 1024 * 1024 + 1024, 0x7f),
+  ]);
+  const res = await callMultipart(app, '/api/route-control/5/screenshot', { file: oversized });
+  assert.equal(res.status, 413);
+  assert.equal(res.json.code, 'SCREENSHOT_TOO_LARGE');
+});
+
 test('POST /:id/screenshot save failure returns SCREENSHOT_DB_SAVE_FAILED', async () => {
   const app = loadApp({
     rcMock: {

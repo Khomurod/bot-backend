@@ -45,9 +45,6 @@ documentation task in this repository:
 - **Context7** = checks the latest instructions. Use it only for current public
   library and API documentation. Never send private source code, passwords,
   tokens, `.env` values, or company information to Context7.
-- **Playwright** = tests the website. Use `playwright-cli` and its installed
-  agent skill for browser testing. Do not test production or use real
-  credentials without explicit permission.
 - **Gitleaks** = protects passwords and API keys. Run read-only checks with
   `gitleaks dir . --redact`. Report only the file name, line number, and finding
   type; never print a discovered value or change files automatically.
@@ -65,12 +62,16 @@ environment — compare against `main` before attributing failures to a change.
 # Key Feature Notes
 
 - **Route Control** (`services/routeControlService.js`): destination
-  auto-completion (default 35 mi — single authoritative constant in
+  auto-completion (default 50 mi — single authoritative constant in
   `services/routeControlConstants.js`) runs for EVERY lifecycle-active route,
   including tracking-pending ones, and does NOT require Google Maps to be
   enabled. Off-route warnings require Settings → GMaps `enabled` and
   tracking-active. Completion is atomic (`completeRouteAssignment`,
   `WHERE status='active' RETURNING *`) — only the winner writes the audit event.
+  The FINAL destination coordinate is taken from the parsed/manual point, and
+  when that is address-only it falls back to the END of the computed route
+  polyline (never a waypoint); existing routes self-heal from their polyline on
+  the next monitor pass, so no admin re-creation is needed.
 - **Route screenshots** (`route_assignment_attachments`): one per assignment,
   enforced by a unique index; replacement is a single UPSERT — never
   delete-then-insert.

@@ -5,8 +5,9 @@
  * radius around the FINAL destination. database/gmapsSettings.js (persistence +
  * clamping) and services/routeControlService.js (evaluation fallback) both read
  * from here so the default can never drift between layers. The database column
- * default and its one-shot 10→35 migration live in database/schema.sql and must
- * be kept in sync with ROUTE_COMPLETION_RADIUS_MILES.DEFAULT.
+ * default and its one-shot migrations (10→35, then 35→50) live in
+ * database/schema.sql and must be kept in sync with
+ * ROUTE_COMPLETION_RADIUS_MILES.DEFAULT.
  *
  * Telegram authorization: authorization to assign a route from Telegram
  * normally comes from dispatch team membership (see
@@ -26,7 +27,7 @@ const { normalizeTelegramUsername } = require('./telegramUsername');
 // clamped to this recommended range. A stored legacy value below MIN is read
 // as MIN.
 const ROUTE_COMPLETION_RADIUS_MILES = Object.freeze({
-  DEFAULT: 35,
+  DEFAULT: 50,
   MIN: 1,
   MAX: 100,
 });

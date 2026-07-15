@@ -720,7 +720,7 @@ function RouteRow({ a, completionRadius, onChanged, onMessage }) {
             <button className="btn btn-ghost btn-sm" onClick={() => act(() => api.computeRouteGeometry(a.id), "Geometry computed.")} disabled={busy}>Compute</button>
           )}
           {a.status === "active" && (
-            <button className="btn btn-ghost btn-sm" onClick={runCompletionCheck} disabled={busy} title="Resolve GPS and check the 35-mile destination completion now">
+            <button className="btn btn-ghost btn-sm" onClick={runCompletionCheck} disabled={busy} title={`Resolve GPS and check destination completion now${completionRadius != null ? ` (${completionRadius}-mile radius)` : ""}`}>
               Check completion now
             </button>
           )}
