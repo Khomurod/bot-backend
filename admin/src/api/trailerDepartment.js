@@ -23,10 +23,13 @@ async function request(path, options = {}) {
   const type = res.headers.get("content-type") || "";
   return type.includes("application/json") ? res.json() : res;
 }
+export const status = () => request("/status");
 export const dashboard = (filters = {}) =>
   request(`/dashboard?${new URLSearchParams(filters)}`);
 export const trailers = (filters = {}) =>
   request(`/trailers?${new URLSearchParams(filters)}`);
+export const createTrailer = (body) =>
+  request("/trailers", { method: "POST", body: JSON.stringify(body) });
 export const updateTrailer = (id, body) =>
   request(`/trailers/${id}`, { method: "PUT", body: JSON.stringify(body) });
 export const companies = (filters = {}) =>
@@ -123,8 +126,10 @@ export async function saveRole(id, body) {
 }
 
 export default {
+  status,
   dashboard,
   trailers,
+  createTrailer,
   updateTrailer,
   companies,
   createCompany,

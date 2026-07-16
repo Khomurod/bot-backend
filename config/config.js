@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const metaAppCredentials = require('./metaAppCredentials.json');
 const { loadBitrixFieldMapConfig } = require('../services/bitrix24FieldMapLoader');
+const { resolveTrailerDepartmentEnabled } = require('./trailerDepartmentFlag');
 
 const samsaraApiKeysFromEnv = String(process.env.SAMSARA_API_KEYS || '')
   .split(',')
@@ -119,7 +120,9 @@ module.exports = {
   // primary, runtime-editable source is trailer_settings.automatic_update_test_group_id.
   // Defaults to the shared automatic-updating test group.
   trailerTestGroupId: String(process.env.TRAILER_TEST_GROUP_ID || process.env.DISPATCH_ETA_TEST_GROUP_ID || '-5289094495').trim(),
-  trailerDepartmentEnabled: process.env.TRAILER_DEPARTMENT_ENABLED === 'true',
+  // Enabled unless TRAILER_DEPARTMENT_ENABLED is explicitly "false" (the
+  // emergency kill switch). A restart is required after changing it.
+  trailerDepartmentEnabled: resolveTrailerDepartmentEnabled(process.env.TRAILER_DEPARTMENT_ENABLED),
   supabaseUrl: normalizeOptionalEnv(process.env.SUPABASE_URL),
   supabaseServiceRoleKey: normalizeOptionalEnv(process.env.SUPABASE_SERVICE_ROLE_KEY),
   trailerStorageBucket: String(process.env.TRAILER_STORAGE_BUCKET || 'trailer-private').trim(),

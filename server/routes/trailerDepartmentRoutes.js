@@ -45,6 +45,10 @@ async function cleanupFiles(files){for(const file of files||[]){try{await fs.unl
 
 function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermission,telegram}){
   const router=express.Router();
+  // Registered BEFORE the disabled-guard below so the admin UI can tell a
+  // disabled department apart from a broken request. Authenticated, and it
+  // reports nothing beyond the flag itself.
+  router.get('/api/trailer-department/status',authMiddleware,(_req,res)=>res.json({enabled:Boolean(config.trailerDepartmentEnabled)}));
   router.use('/api/trailer-department',authMiddleware,(req,res,next)=>{
     if(!config.trailerDepartmentEnabled)return res.status(404).json({error:'Trailer Department is disabled.'});
     next();

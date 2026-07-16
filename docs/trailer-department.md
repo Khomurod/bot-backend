@@ -1,6 +1,21 @@
 # Trailer Department operations
 
-The rental and asset-management APIs are disabled unless `TRAILER_DEPARTMENT_ENABLED=true`. Existing trailer tracking remains available under its current routes and permission gates.
+## Feature flag
+
+The rental and asset-management APIs are **enabled by default**. `TRAILER_DEPARTMENT_ENABLED` controls them:
+
+| Value | Result |
+| --- | --- |
+| absent (or empty) | Enabled |
+| `true` | Enabled |
+| `false` | Disabled — the emergency kill switch |
+| anything else | Disabled, with a configuration error logged (an explicit mistake fails closed) |
+
+Setting `TRAILER_DEPARTMENT_ENABLED=false` makes every `/api/trailer-department/*` endpoint return `404 Trailer Department is disabled.` The single exception is `GET /api/trailer-department/status`, which stays available to authenticated admins and returns `{ "enabled": false }` so the admin panel can explain the state instead of showing a page full of failed requests.
+
+A **server restart or redeploy is required** after changing the value — the flag is read once at boot. Production deployment and environment-variable changes remain manual.
+
+Existing trailer tracking remains available under its current routes and permission gates.
 
 ## Authentication and browser security
 
@@ -25,6 +40,6 @@ Never expose the service-role key through the React build or a public environmen
 3. Create the private bucket and configure the server-only credentials.
 4. Configure payment and overdue Telegram group IDs. Send a successful test to both groups before enabling reminders.
 5. In staging, review one existing trailer as available and complete a pickup, return, invoice, receipt upload, payment, and reversal test.
-6. Enable `TRAILER_DEPARTMENT_ENABLED` manually and monitor `trailer_notification_jobs` failures and `trailer_audit_log`.
+6. Leave `TRAILER_DEPARTMENT_ENABLED` unset (or `true`) and monitor `trailer_notification_jobs` failures and `trailer_audit_log`. Set it to `false` and restart the server only to shut the department off.
 
 Do not automate production environment-variable changes or deployment from this workflow.

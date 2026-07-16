@@ -1,91 +1,13 @@
 import React, { useEffect, useState } from "react";
 import api from "../../api/trailerDepartment";
-import {
-  Alert,
-  Card,
-  Empty,
-  Field,
-  PageHeader,
-  Status,
-  Table,
-  useLoad,
-} from "./TrailerUi";
-const INSPECTION_FIELDS = [
-  "overall_condition",
-  "tires",
-  "lights",
-  "doors",
-  "roof",
-  "floor",
-  "exterior",
-  "interior",
-  "landing_gear",
-  "brakes",
-  "existing_damage",
-  "new_damage",
-  "missing_equipment",
-  "notes",
-];
+import Inspection from "./TrailerInspectionForm";
+import TrailerRentalDraftDialog from "./TrailerRentalDraftDialog";
+import { Alert, Card, Empty, PageHeader, Status, Table, useLoad } from "./TrailerUi";
+
 function dateIso(value) {
   return value ? new Date(value).toISOString() : null;
 }
-function Inspection({ rental, type, onDone }) {
-  const [form, setForm] = useState(Object.fromEntries(INSPECTION_FIELDS.map((key) => [
-    key, ["brakes", "existing_damage", "new_damage", "missing_equipment", "notes"].includes(key) ? "" : "Good",
-  ])));
-  const [files, setFiles] = useState([]);
-  const [busy, setBusy] = useState(false);
-  const submit = async () => {
-    setBusy(true);
-    try {
-      const { inspection } = await api.saveInspection(rental.id, type, {
-        ...form,
-        completed: true,
-      });
-      if (!files.length)
-        throw new Error("Select at least one condition photo.");
-      await api.uploadMedia(files, {
-        media_type:
-          type === "pickup"
-            ? "pickup_condition_photo"
-            : "return_condition_photo",
-        rental_id: rental.id,
-        trailer_id: rental.trailer_id,
-        inspection_id: inspection.id,
-      });
-      onDone?.(inspection);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <Card>
-      <h3>{type === "pickup" ? "Pickup" : "Return"} inspection</h3>
-      <div className="trailer-form-grid">
-        {INSPECTION_FIELDS.map((key) => (
-          <Field key={key} label={key.replaceAll("_", " ")}>
-            <input
-              value={form[key]}
-              onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-            />
-          </Field>
-        ))}
-        <Field label="Condition photos">
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            multiple
-            onChange={(e) => setFiles([...e.target.files])}
-          />
-        </Field>
-      </div>
-      <button className="btn btn-primary" disabled={busy} onClick={submit}>
-        {busy ? "Processing…" : "Complete inspection and upload"}
-      </button>
-    </Card>
-  );
-}
+
 const EMPTY = {
   trailer_id: "",
   company_id: "",
@@ -102,19 +24,45 @@ const EMPTY = {
   payment_terms: "",
   notes: "",
 };
+
+const COLUMNS = [
+  { key: "agreement_number", label: "Agreement" },
+  { key: "unit_number", label: "Trailer" },
+  { key: "company_name", label: "Company" },
+  { key: "status", label: "Status", render: (r) => <Status value={r.status} /> },
+  {
+    key: "start_at",
+    label: "Started",
+    render: (r) => (r.start_at ? new Date(r.start_at).toLocaleString() : "—"),
+  },
+  {
+    key: "expected_return_at",
+    label: "Expected return",
+    render: (r) =>
+      r.expected_return_at ? new Date(r.expected_return_at).toLocaleString() : "—",
+  },
+  {
+    key: "outstanding_balance",
+    label: "Balance",
+    render: (r) => `$${Number(r.outstanding_balance || 0).toFixed(2)}`,
+  },
+];
+
 export default function TrailerRentalsPage() {
   const list = useLoad(() => api.rentals(), []);
-  const assets = useLoad(
-    () => api.trailers({ physicalStatus: "available" }),
-    [],
-  );
+  const assets = useLoad(() => api.trailers({ physicalStatus: "available" }), []);
   const companies = useLoad(() => api.companies({ active: true }), []);
   const [create, setCreate] = useState(null);
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
   const [msg, setMsg] = useState(null);
   useEffect(() => {
-    const warn = (event) => { if (create) { event.preventDefault(); event.returnValue = ""; } };
+    const warn = (event) => {
+      if (create) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [create]);
@@ -135,7 +83,9 @@ export default function TrailerRentalsPage() {
         expected_return_at: dateIso(create.expected_return_at),
         daily_rate: create.daily_rate || null,
         flat_rate: create.flat_rate || null,
-        manual_billable_days: create.manual_billable_days ? Number(create.manual_billable_days) : null,
+        manual_billable_days: create.manual_billable_days
+          ? Number(create.manual_billable_days)
+          : null,
       });
       setCreate(null);
       setMsg({ text: "Draft rental created." });
@@ -143,6 +93,22 @@ export default function TrailerRentalsPage() {
     } catch (err) {
       setMsg({ type: "error", text: err.message });
     }
+  };
+  // Quick-adds only ever touch their own field: the draft is patched, never replaced.
+  const quickAddTrailer = async (unitNumber) => {
+    const { trailer } = await api.createTrailer({
+      unit_number: unitNumber,
+      physical_status: "available",
+      needs_review: false,
+    });
+    await assets.reload();
+    setCreate((draft) => ({ ...draft, trailer_id: String(trailer.id) }));
+  };
+  const quickAddCompany = async (name) => {
+    // The backend requires both names; one field is all this flow asks for.
+    const { company } = await api.createCompany({ legal_name: name, display_name: name });
+    await companies.reload();
+    setCreate((draft) => ({ ...draft, company_id: String(company.id) }));
   };
   const activate = async () => {
     try {
@@ -185,6 +151,7 @@ export default function TrailerRentalsPage() {
         subtitle="Draft, inspect, confirm pickup, return, and invoice without rewriting trailer history."
         actions={
           <button
+            type="button"
             className="btn btn-primary"
             onClick={() => setCreate({ ...EMPTY })}
           >
@@ -199,152 +166,20 @@ export default function TrailerRentalsPage() {
       ) : !list.data?.rentals?.length ? (
         <Empty>No rental agreements yet.</Empty>
       ) : (
-        <Table
-          rows={list.data.rentals}
-          onRow={open}
-          columns={[
-            { key: "agreement_number", label: "Agreement" },
-            { key: "unit_number", label: "Trailer" },
-            { key: "company_name", label: "Company" },
-            {
-              key: "status",
-              label: "Status",
-              render: (r) => <Status value={r.status} />,
-            },
-            {
-              key: "start_at",
-              label: "Started",
-              render: (r) =>
-                r.start_at ? new Date(r.start_at).toLocaleString() : "—",
-            },
-            {
-              key: "expected_return_at",
-              label: "Expected return",
-              render: (r) =>
-                r.expected_return_at
-                  ? new Date(r.expected_return_at).toLocaleString()
-                  : "—",
-            },
-            {
-              key: "outstanding_balance",
-              label: "Balance",
-              render: (r) =>
-                `$${Number(r.outstanding_balance || 0).toFixed(2)}`,
-            },
-          ]}
-        />
-      )}{" "}
+        <Table rows={list.data.rentals} onRow={open} columns={COLUMNS} />
+      )}
       {create && (
-        <div className="trailer-modal-backdrop">
-          <Card className="trailer-modal trailer-modal-wide">
-            <PageHeader
-              title="New rental draft"
-              actions={
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => setCreate(null)}
-                >
-                  Close
-                </button>
-              }
-            />
-            <form onSubmit={submitCreate} className="trailer-form-grid">
-              <Field label="Available trailer">
-                <select
-                  required
-                  value={create.trailer_id}
-                  onChange={(e) =>
-                    setCreate({ ...create, trailer_id: e.target.value })
-                  }
-                >
-                  <option value="">Select…</option>
-                  {assets.data?.trailers?.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.unit_number}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Renter company">
-                <select
-                  required
-                  value={create.company_id}
-                  onChange={(e) =>
-                    setCreate({ ...create, company_id: e.target.value })
-                  }
-                >
-                  <option value="">Select…</option>
-                  {companies.data?.companies?.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.display_name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Pickup date/time">
-                <input
-                  required
-                  type="datetime-local"
-                  value={create.start_at}
-                  onChange={(e) =>
-                    setCreate({ ...create, start_at: e.target.value })
-                  }
-                />
-              </Field>
-              <Field label="Expected return">
-                <input
-                  required
-                  type="datetime-local"
-                  value={create.expected_return_at}
-                  onChange={(e) =>
-                    setCreate({ ...create, expected_return_at: e.target.value })
-                  }
-                />
-              </Field>
-              <Field label="Billing method">
-                <select
-                  value={create.billing_method}
-                  onChange={(e) =>
-                    setCreate({ ...create, billing_method: e.target.value })
-                  }
-                >
-                  {[
-                    "calendar_day",
-                    "twenty_four_hour",
-                    "manual_days",
-                    "flat_rate",
-                  ].map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
-                </select>
-              </Field>
-              {create.billing_method === "flat_rate" ? <Field label="Flat rate"><input required type="number" min="0" step="0.01" value={create.flat_rate} onChange={(e) => setCreate({ ...create, flat_rate: e.target.value })}/></Field>
-                : <Field label="Daily rate"><input required type="number" min="0" step="0.01" value={create.daily_rate} onChange={(e) => setCreate({ ...create, daily_rate: e.target.value })}/></Field>}
-              {create.billing_method === "manual_days" && <><Field label="Agreed billable days"><input required type="number" min="1" step="1" value={create.manual_billable_days} onChange={(e) => setCreate({ ...create, manual_billable_days: e.target.value })}/></Field><Field label="Manual-day reason"><input required value={create.manual_days_reason} onChange={(e) => setCreate({ ...create, manual_days_reason: e.target.value })}/></Field></>}
-              <Field label="Pickup location">
-                <input
-                  required
-                  value={create.pickup_location}
-                  onChange={(e) =>
-                    setCreate({ ...create, pickup_location: e.target.value })
-                  }
-                />
-              </Field>
-              <Field label="Notes">
-                <textarea
-                  value={create.notes}
-                  onChange={(e) =>
-                    setCreate({ ...create, notes: e.target.value })
-                  }
-                />
-              </Field>
-              <button className="btn btn-primary" type="submit">
-                Save draft
-              </button>
-            </form>
-          </Card>
-        </div>
-      )}{" "}
+        <TrailerRentalDraftDialog
+          draft={create}
+          setDraft={setCreate}
+          trailers={assets.data?.trailers || []}
+          companies={companies.data?.companies || []}
+          onClose={() => setCreate(null)}
+          onSubmit={submitCreate}
+          onQuickAddTrailer={quickAddTrailer}
+          onQuickAddCompany={quickAddCompany}
+        />
+      )}
       {selected && detail && (
         <div className="trailer-modal-backdrop">
           <Card className="trailer-modal trailer-modal-wide">
@@ -353,6 +188,7 @@ export default function TrailerRentalsPage() {
               subtitle={`${detail.unit_number} — ${detail.company_name}`}
               actions={
                 <button
+                  type="button"
                   className="btn btn-ghost"
                   onClick={() => {
                     setSelected(null);
@@ -375,18 +211,18 @@ export default function TrailerRentalsPage() {
                   type="pickup"
                   onDone={() => setMsg({ text: "Pickup inspection saved." })}
                 />
-                <button className="btn btn-primary" onClick={activate}>
+                <button type="button" className="btn btn-primary" onClick={activate}>
                   Confirm pickup and activate
                 </button>
               </>
             )}
             {detail.status === "active" && (
               <Inspection rental={detail} type="return" onDone={finishReturn} />
-            )}{" "}
+            )}
             {detail.invoices?.map((i) => (
               <Card key={i.id}>
-                <b>{i.invoice_number}</b> — ${Number(i.total_amount).toFixed(2)}{" "}
-                / balance ${Number(i.outstanding_balance).toFixed(2)}
+                <b>{i.invoice_number}</b> — ${Number(i.total_amount).toFixed(2)} / balance $
+                {Number(i.outstanding_balance).toFixed(2)}
               </Card>
             ))}
           </Card>

@@ -3,6 +3,12 @@ import * as api from "./api";
 // LoginPage stays eager: it is the auth gate and must render instantly.
 import LoginPage from "./pages/LoginPage";
 import { AuthProvider } from "./context/AuthContext";
+import AdminSidebar from "./components/AdminSidebar";
+import {
+  defaultTrailerSection,
+  trailerSectionFromPath,
+  trailerSectionPath,
+} from "./pages/trailer/trailerNavigation";
 
 // Every other page is lazy-loaded so its code is fetched only when the page
 // is opened — the initial admin bundle stays small.
@@ -91,7 +97,6 @@ function getPageFromPath(pathname) {
 
 function getPathForPage(page) {
   if (page === "dispatch") return "/dispatch";
-  if (page === "trailer_department") return "/admin/trailers/dashboard";
   return "/admin";
 }
 
@@ -102,13 +107,25 @@ export default function App() {
   const [page, setPage] = useState(() => getPageFromPath(window.location.pathname));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [adminExpanded, setAdminExpanded] = useState(false);
+  const [trailerSection, setTrailerSection] = useState(() =>
+    trailerSectionFromPath(window.location.pathname),
+  );
+  const [trailerExpanded, setTrailerExpanded] = useState(() =>
+    getPageFromPath(window.location.pathname) === "trailer_department",
+  );
   const isDispatchPage = page === "dispatch";
   const isRaisePublicPage = page === "raise_public";
   const isRecruitersPublicPage = page === "recruiters_public";
 
   useEffect(() => {
+    // Back/forward must move the selected page AND the active sidebar item.
     const handlePopState = () => {
-      setPage(getPageFromPath(window.location.pathname));
+      const nextPage = getPageFromPath(window.location.pathname);
+      setPage(nextPage);
+      if (nextPage === "trailer_department") {
+        setTrailerSection(trailerSectionFromPath(window.location.pathname));
+        setTrailerExpanded(true);
+      }
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -127,8 +144,7 @@ export default function App() {
           setSession(verified);
           setAuthed(Boolean(verified));
           if (verified && !verified.permissions?.includes('admin.full_access') && verified.permissions?.some((p) => p.startsWith('trailer'))) {
-            setPage('trailer_department');
-            window.history.replaceState({}, '', '/admin/trailers/dashboard');
+            openTrailerDepartmentOnLoad(verified.permissions);
           }
         }
       } catch (err) {
@@ -140,7 +156,30 @@ export default function App() {
     })();
   }, []);
 
+  /** Trailer-only accounts land straight in the department on first paint. */
+  function openTrailerDepartmentOnLoad(permissions) {
+    const section = defaultTrailerSection(permissions);
+    setPage("trailer_department");
+    setTrailerSection(section);
+    setTrailerExpanded(true);
+    window.history.replaceState({}, "", trailerSectionPath(section));
+  }
+
+  const navigateToTrailerSection = (sectionKey) => {
+    setPage("trailer_department");
+    setTrailerSection(sectionKey);
+    setTrailerExpanded(true);
+    setMobileMenuOpen(false);
+    const nextPath = trailerSectionPath(sectionKey);
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, "", nextPath);
+    }
+  };
+
   const navigateToPage = (nextPage) => {
+    if (nextPage === "trailer_department") {
+      return navigateToTrailerSection(defaultTrailerSection(session?.permissions));
+    }
     setPage(nextPage);
     setMobileMenuOpen(false);
 
@@ -191,8 +230,8 @@ export default function App() {
           setAuthed(true);
           setSession(loginSession);
           const trailerOnly = !loginSession?.permissions?.includes('admin.full_access') && loginSession?.permissions?.some((p) => p.startsWith('trailer'));
-          setPage(trailerOnly ? 'trailer_department' : getPageFromPath(window.location.pathname));
-          if (trailerOnly) window.history.replaceState({}, '', '/admin/trailers/dashboard');
+          if (trailerOnly) openTrailerDepartmentOnLoad(loginSession.permissions);
+          else setPage(getPageFromPath(window.location.pathname));
         }}
       />
     );
@@ -232,112 +271,30 @@ export default function App() {
     live_locations: <LiveLocationsPage />,
     route_control: <RouteControlPage />,
     trailer_tracking: <TrailerTrackingPage />,
-    trailer_department: <TrailerDepartmentShell />,
+    trailer_department: (
+      <TrailerDepartmentShell
+        section={trailerSection}
+        onNavigate={navigateToTrailerSection}
+      />
+    ),
   };
-
-  const NAV_SECTIONS = [
-    {
-      label: 'Operations',
-      color: '#22c55e',
-      items: [
-        { key: 'dispatch', icon: '🚚', label: 'Dispatch Center' },
-        { key: 'live_locations', icon: '📍', label: 'Live Locations' },
-        { key: 'route_control', icon: '🧭', label: 'Route Control' },
-        { key: 'trailer_tracking', icon: '🚚', label: 'Trailer Tracking' },
-        { key: 'trailer_department', icon: '🏢', label: 'Trailer Department' },
-        { key: 'leads', icon: '📥', label: 'Leads' },
-        { key: 'facebook_leads', icon: '👥', label: 'Customer Inquiries' },
-        { key: 'recruiter_kpis', icon: '📞', label: 'Recruiter KPIs' },
-      ],
-    },
-    {
-      label: 'Communications',
-      color: '#6366f1',
-      items: [
-        { key: 'broadcast', icon: '📢', label: 'Send Message' },
-        { key: 'questions', icon: '📝', label: 'Surveys' },
-      ],
-    },
-    {
-      label: 'Team',
-      color: '#a78bfa',
-      items: [
-        { key: 'groups', icon: '👷', label: 'Driver Groups' },
-        { key: 'company_birthdays', icon: '🎂', label: 'Birthdays' },
-        { key: 'mileage_bonus', icon: '🏁', label: 'Mileage Bonuses' },
-        { key: 'raise_approval', icon: '💵', label: 'Driver Raises' },
-        { key: 'home_time', icon: '🏠', label: 'Driver Home Time' },
-        { key: 'fuel_monitor', icon: '⛽', label: 'Fuel Monitor' },
-        { key: 'users', icon: '👤', label: 'Users' },
-        { key: 'group_access', icon: '🔍', label: 'Bot Group Access' },
-      ],
-    },
-  ];
-
-  const ADMIN_ITEMS = [
-    { key: 'manager', icon: '🛠️', label: 'Edit Message' },
-    { key: 'bot_messages', icon: '📨', label: 'Bot Messages' },
-    { key: 'scheduled', icon: '📅', label: 'Scheduled Messages' },
-    { key: 'settings', icon: '⚙️', label: 'Settings' },
-  ];
-
-  const isFullAdmin = session?.permissions?.includes('admin.full_access');
-  const visibleSections = NAV_SECTIONS.map((section) => ({ ...section, items: section.items.filter((item) => isFullAdmin || item.key === 'trailer_department') })).filter((section) => section.items.length);
 
   return (
     <AuthProvider session={session}>
     <div className="app-layout">
-      <aside className={`sidebar ${mobileMenuOpen ? "mobile-open" : ""}`}>
-        <div className="sidebar-logo">
-          <h1>🚛 Driver Feedback</h1>
-          <p>Admin Panel</p>
-        </div>
-        <nav className="sidebar-nav">
-          {visibleSections.map((section) => (
-            <div key={section.label} className="nav-section">
-              <div className="nav-section-header" style={{ borderLeftColor: section.color }}>
-                {section.label}
-              </div>
-              {section.items.map((item) => (
-                <button
-                  key={item.key}
-                  className={`nav-item ${page === item.key ? "active" : ""}`}
-                  onClick={() => navigateToPage(item.key)}
-                >
-                  <span className="nav-icon">{item.icon}</span>
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          ))}
-          {isFullAdmin && <div className="nav-section">
-            <button
-              className="nav-section-header nav-section-toggle"
-              onClick={() => setAdminExpanded(!adminExpanded)}
-              style={{ borderLeftColor: '#64748b' }}
-            >
-              ⚙️ Admin
-              <span className="nav-section-arrow">{adminExpanded ? '▾' : '▸'}</span>
-            </button>
-            {adminExpanded && ADMIN_ITEMS.map((item) => (
-              <button
-                key={item.key}
-                className={`nav-item ${page === item.key ? "active" : ""}`}
-                onClick={() => navigateToPage(item.key)}
-              >
-                <span className="nav-icon">{item.icon}</span>
-                {item.label}
-              </button>
-            ))}
-          </div>}
-        </nav>
-        <div className="sidebar-footer">
-          <button className="logout-btn" onClick={handleLogout}>
-            <span className="nav-icon">🚪</span>
-            Sign Out
-          </button>
-        </div>
-      </aside>
+      <AdminSidebar
+        session={session}
+        page={page}
+        mobileMenuOpen={mobileMenuOpen}
+        trailerSection={trailerSection}
+        trailerExpanded={trailerExpanded}
+        onToggleTrailer={() => setTrailerExpanded((open) => !open)}
+        onNavigateToPage={navigateToPage}
+        onNavigateToTrailerSection={navigateToTrailerSection}
+        adminExpanded={adminExpanded}
+        onToggleAdmin={() => setAdminExpanded(!adminExpanded)}
+        onLogout={handleLogout}
+      />
       <main className="main-content" onClick={() => setMobileMenuOpen(false)}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: "20px" }}>
           <button
