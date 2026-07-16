@@ -43,6 +43,9 @@ function loadServiceWith(overrides = {}) {
     '../services/googleMapsClient.js': {},
     '../services/liveLocationResolver.js': { async resolveLiveLocationForGroupTitle() { return { location: null }; } },
     '../services/telegramHtml.js': { safeSend: async (fn) => fn() },
+    '../services/routeControl/screenshotMediaReference.js': {
+      buildTelegramScreenshotUrl: ({ assignmentId }) => `https://example.test/api/route-screenshot-media/${assignmentId}?signed=test`,
+    },
     ...overrides,
   };
   purgeService();

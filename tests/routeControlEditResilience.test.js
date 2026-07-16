@@ -86,7 +86,7 @@ test('update: transport failure exposes safe structured fields with no secrets',
   assert.doesNotMatch(blob, /api\.telegram\.org/);
 });
 
-test('update: conversion goes through RAW callApi with a real AbortSignal and a Buffer photo source', async () => {
+test('update: conversion uses abortable JSON editMessageMedia with a signed photo URL', async () => {
   const { svc, telegram, captured } = loadServiceForEdit({
     assignment: { ...EDIT_BASE, has_screenshot: true, driver_group_message_via: 'text', driver_group_messages: [{ message_id: 1410, kind: 'text' }] },
     screenshot: PNG,
@@ -99,7 +99,11 @@ test('update: conversion goes through RAW callApi with a real AbortSignal and a 
   assert.equal(media.signal, true, 'a per-attempt AbortSignal reached the HTTP layer');
   assert.equal(media.messageId, 1410, 'same message id — never a new message');
   assert.equal(media.payload.inline_message_id, undefined, 'inline_message_id never set for a chat message');
-  assert.ok(Buffer.isBuffer(media.a.media.source), 'stored screenshot is a Buffer Telegraf can upload');
+  assert.equal(
+    media.a.media,
+    'https://example.test/api/route-screenshot-media/9?signed=test',
+    'plain URL makes Telegraf send JSON instead of a multipart file upload'
+  );
 });
 
 test('update: conversion never calls sendMessage, sendPhoto, deleteMessage, or copyMessage', async () => {

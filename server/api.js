@@ -114,6 +114,12 @@ app.use(createAuthRoutes({ db, config, authMiddleware }));
 // ─── Health checks, site root, presentation, Meta compliance pages ───
 app.use(createHealthRoutes({ db, config }));
 
+// Telegram cannot carry an admin session when it fetches photo media. These
+// image bytes are therefore exposed only through a short-lived, HMAC-signed,
+// screenshot-version-bound URL. Mount before authenticated Route Control APIs.
+const { createRouteScreenshotMediaRouter } = require('./routes/routeScreenshotMediaRoutes');
+app.use('/api/route-screenshot-media', createRouteScreenshotMediaRouter());
+
 // ─── Facebook internal endpoints + connect/OAuth flow + leads log ───
 app.use(createFacebookConnectRoutes({ db, internalSharedSecretGuard, proxyAuthGuard }));
 
@@ -155,9 +161,9 @@ app.use('/api/settings', createSettingsRouter({ authMiddleware, telegram: bot.te
 
 const { createRouteControlRouter } = require('./routes/routeControlRoutes');
 const { getRouteMediaEditClient } = require('../services/telegramAgent');
-// Route Control media edits (editMessageMedia) use a dedicated fresh-socket
-// IPv4 client so a transient reset is retried on a clean connection without
-// disturbing the shared polling agent.
+// Route Control media edits use a dedicated IPv4 client so cancellation or a
+// transient reset cannot disturb the shared polling agent. Screenshot media is
+// sent as a signed URL, keeping this call on Telegraf's JSON transport.
 app.use('/api/route-control', createRouteControlRouter({
   authMiddleware,
   telegram: bot.telegram,

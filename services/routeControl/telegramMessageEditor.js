@@ -26,6 +26,7 @@ const {
   deriveScreenshotSendError, deriveEditCode, deriveEditStatus, describeEditOutcome,
 } = require('./editOutcome');
 const { TELEGRAM_CAPTION_MAX, PHOTO_ONLY_CAPTION } = require('./constants');
+const { buildTelegramScreenshotUrl } = require('./screenshotMediaReference');
 
 // Per-assignment in-flight guard for in-place Telegram edits, so two admin
 // requests that land close together (double-click, replace + remove) can't fire
@@ -76,10 +77,10 @@ async function updateDriverGroupRouteMessage({
 
   const chatId = assignment.telegram_group_id;
   const correlationId = makeEditCorrelationId(assignmentId);
-  // Media edits (multipart photo uploads) go through a dedicated fresh-socket
-  // client so a retry never reuses a half-dead keep-alive socket; small text /
-  // caption edits use the normal client. Both default to the injected client so
-  // tests inject one fake.
+  // Media edits use an independently configured client so their abort/retry
+  // lifecycle cannot disturb bot polling; the photo itself is a signed URL, so
+  // these calls are compact JSON rather than multipart uploads. Both clients
+  // default to the injected fake in tests.
   const mediaClient = mediaTelegram || telegram;
   const base = baseResult({
     chatId, screenshotStored: Boolean(assignment.has_screenshot), correlationId,
@@ -115,6 +116,12 @@ async function updateDriverGroupRouteMessage({
     if (read.screenshotError) base.limitations.push('SCREENSHOT_DB_READ_FAILED');
     const screenshot = read.screenshot;
     const hasScreenshot = Boolean(screenshot?.file_data);
+    // Plain URL media keeps editMessageMedia JSON-only. Telegram fetches the
+    // stored image from our signed endpoint instead of waiting on a multipart
+    // upload from Render. The URL is never included in status output or logs.
+    const screenshotUrl = hasScreenshot
+      ? buildTelegramScreenshotUrl({ assignmentId, screenshot })
+      : null;
 
     const mention = await resolveDriverMentionForGroup(assignment.group_id);
     const body = customMessage && String(customMessage).trim()
@@ -178,13 +185,13 @@ async function updateDriverGroupRouteMessage({
     if (photoMsg) {
       if (hasScreenshot) {
         // Raw callApi (not the wrapper) so the per-attempt AbortSignal reaches
-        // the HTTP layer and a stalled multipart upload is genuinely cancelled.
+        // the HTTP layer and a stalled Telegram request is genuinely cancelled.
         // Payload mirrors Telegraf 4.16's own editMessageMedia wrapper, minus
         // inline_message_id (never set for a normal chat message).
         const r = await runEdit(({ signal }) => mediaClient.callApi('editMessageMedia', {
           chat_id: String(chatId),
           message_id: Number(photoMsg.message_id),
-          media: { type: 'photo', media: { source: screenshot.file_data }, caption: photoCaption, parse_mode: 'HTML' },
+          media: { type: 'photo', media: screenshotUrl, caption: photoCaption, parse_mode: 'HTML' },
         }, { signal }), 'edit_media');
         if (r.ok) { screenshotUpdated = true; if (!textMsg) textUpdated = true; }
         else { editError = editError || r.code; limitations.push(`SCREENSHOT_UPDATE_FAILED:${r.code}`); }
@@ -222,7 +229,7 @@ async function updateDriverGroupRouteMessage({
           const r = await runEdit(({ signal }) => mediaClient.callApi('editMessageMedia', {
             chat_id: String(chatId),
             message_id: Number(textMsg.message_id),
-            media: { type: 'photo', media: { source: screenshot.file_data }, caption: body, parse_mode: 'HTML' },
+            media: { type: 'photo', media: screenshotUrl, caption: body, parse_mode: 'HTML' },
           }, { signal }), 'edit_media_text_to_photo');
           if (r.ok) {
             // The body is now the photo caption → both the image and the text changed.

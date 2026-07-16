@@ -17,6 +17,7 @@ const { serviceError, classifyTelegramPhotoError } = require('./errors');
 const { buildDriverGroupRouteMessage } = require('./messageFormatter');
 const { buildDeliveryMessageList } = require('./deliveryRecords');
 const { TELEGRAM_CAPTION_MAX, PHOTO_ONLY_CAPTION } = require('./constants');
+const { buildTelegramScreenshotUrl } = require('./screenshotMediaReference');
 
 /**
  * Read the stored screenshot for a delivery. A DB read failure must never lose
@@ -76,15 +77,19 @@ async function sendDriverGroupRouteMessage({ assignmentId, telegram, sentBy = nu
   let sentVia = 'text';
   if (screenshot?.file_data) {
     try {
+      // A URL keeps this Bot API call JSON-only. Telegram downloads the image
+      // from our short-lived signed endpoint, avoiding Render's stalled
+      // multipart upload path while preserving the stored DB screenshot.
+      const screenshotUrl = buildTelegramScreenshotUrl({ assignmentId, screenshot });
       if (body.length <= TELEGRAM_CAPTION_MAX) {
-        const sent = await safeSend(() => telegram.sendPhoto(chatId, { source: screenshot.file_data }, {
+        const sent = await safeSend(() => telegram.sendPhoto(chatId, screenshotUrl, {
           caption: body,
           parse_mode: 'HTML',
         }));
         photoMessageId = sent?.message_id ?? null;
         sentVia = 'photo';
       } else {
-        const sentPhoto = await safeSend(() => telegram.sendPhoto(chatId, { source: screenshot.file_data }, {
+        const sentPhoto = await safeSend(() => telegram.sendPhoto(chatId, screenshotUrl, {
           caption: PHOTO_ONLY_CAPTION,
           parse_mode: 'HTML',
         }));

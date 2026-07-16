@@ -147,6 +147,11 @@ test('sendDriverGroupRouteMessage sends the screenshot as a photo with the route
   assert.equal(captured.photos.length, 1);
   assert.equal(captured.texts.length, 0, 'short message fits the caption — no separate text');
   assert.equal(captured.photos[0].chatId, -100200);
+  assert.equal(
+    captured.photos[0].photo,
+    'https://example.test/api/route-screenshot-media/5?signed=test',
+    'future screenshot sends use the JSON URL transport, not multipart upload'
+  );
   assert.match(captured.photos[0].extra.caption, /Route Assigned/);
   assert.equal(res.withScreenshot, true);
   assert.equal(res.sentVia, 'photo');
