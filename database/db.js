@@ -24,6 +24,15 @@ const aiReportsDb = require('./aiReports');
 const employeeBirthdaysDb = require('./employeeBirthdays');
 const facebookLeadsDb = require('./facebookLeads');
 const trailersDb = require('./trailers');
+const rbacDb = require('./rbac');
+const trailerCompaniesDb = require('./trailerCompanies');
+const trailerRentalsDb = require('./trailerRentals');
+const trailerMediaDb = require('./trailerMedia');
+const trailerFinanceDb = require('./trailerFinance');
+const trailerNotificationsDb = require('./trailerNotifications');
+const trailerAuditDb = require('./trailerAudit');
+const trailerAssetsDb = require('./trailerAssets');
+const trailerReportsDb = require('./trailerReports');
 
 /**
  * Initialize database tables from schema.sql
@@ -69,11 +78,11 @@ async function createAdmin(username, passwordHash) {
   const res = await query(
     `INSERT INTO admins (username, password_hash)
      VALUES ($1, $2)
-     ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash
+     ON CONFLICT (username) DO NOTHING
      RETURNING *`,
     [username, passwordHash]
   );
-  return res.rows[0];
+  return res.rows[0] || getAdminByUsername(username);
 }
 
 // ─── Service Run Guard (daily/weekly idempotency) ───
@@ -277,4 +286,13 @@ module.exports = {
   ...employeeBirthdaysDb,
   ...facebookLeadsDb,
   ...trailersDb,
+  ...rbacDb,
+  ...trailerCompaniesDb,
+  ...trailerRentalsDb,
+  ...trailerMediaDb,
+  ...trailerFinanceDb,
+  ...trailerNotificationsDb,
+  ...trailerAuditDb,
+  ...trailerAssetsDb,
+  ...trailerReportsDb,
 };

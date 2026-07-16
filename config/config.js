@@ -119,6 +119,10 @@ module.exports = {
   // primary, runtime-editable source is trailer_settings.automatic_update_test_group_id.
   // Defaults to the shared automatic-updating test group.
   trailerTestGroupId: String(process.env.TRAILER_TEST_GROUP_ID || process.env.DISPATCH_ETA_TEST_GROUP_ID || '-5289094495').trim(),
+  trailerDepartmentEnabled: process.env.TRAILER_DEPARTMENT_ENABLED === 'true',
+  supabaseUrl: normalizeOptionalEnv(process.env.SUPABASE_URL),
+  supabaseServiceRoleKey: normalizeOptionalEnv(process.env.SUPABASE_SERVICE_ROLE_KEY),
+  trailerStorageBucket: String(process.env.TRAILER_STORAGE_BUCKET || 'trailer-private').trim(),
   googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   googleGeocodingApiBase: process.env.GOOGLE_GEOCODING_API_BASE || 'https://maps.googleapis.com/maps/api/geocode/json',
   googleRoutesApiBase: process.env.GOOGLE_ROUTES_API_BASE || 'https://routes.googleapis.com/directions/v2:computeRoutes',

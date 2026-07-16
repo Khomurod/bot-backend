@@ -12,6 +12,8 @@ const assert = require('node:assert');
 const http = require('node:http');
 const jwt = require('jsonwebtoken');
 
+const db = require('../database/db');
+db.getAdminAuthorization = async () => ({ id: 1, username: 'admin', active: true, auth_version: 1, role_keys: ['super_admin'], permissions: ['admin.full_access'] });
 const { app, stagingTelegram } = require('../server/api');
 
 // The upload route uses the dedicated staging client's callApi (with an
@@ -26,7 +28,7 @@ stagingTelegram.callApi = async (method, payload) => {
 stagingTelegram.deleteMessage = async () => true;
 stagingTelegram.editMessageCaption = async () => true;
 
-const token = jwt.sign({ username: 'admin' }, process.env.JWT_SECRET, { algorithm: 'HS256', expiresIn: '1h' });
+const token = jwt.sign({ id: 1, username: 'admin', auth_version: 1 }, process.env.JWT_SECRET, { algorithm: 'HS256', expiresIn: '1h' });
 
 function uploadPhoto(server, photoBytes) {
   return new Promise((resolve) => {

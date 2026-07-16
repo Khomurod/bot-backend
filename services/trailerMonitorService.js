@@ -40,12 +40,10 @@ const {
 const { photoDescriptor } = require('./trailerVisionService');
 const { geocodeTrailerLocation } = require('./trailerGeocodeService');
 const { buildTelegramMessageUrl } = require('./telegramUrl');
-
 function messageText(message) {
   if (!message) return '';
   return String(message.text || message.caption || '').trim();
 }
-
 /** Collect Telegram file evidence (photos/documents) from a message. */
 function extractEvidence(message) {
   if (!message) return null;
@@ -271,7 +269,9 @@ function semanticColumns(parsed, verificationStatus) {
  */
 async function registerPickupDropoff(parsed, ctx) {
   const trailer = await db.ensureTrailerForDetection(parsed.trailerUnit);
-
+  let activeRental = null;
+  try { if (trailer?.id && typeof db.getActiveRentalForTrailer === 'function') activeRental = await db.getActiveRentalForTrailer(trailer.id); }
+  catch { activeRental = null; }
   // A completed action may FULFILL an earlier planned instruction for this
   // trailer (e.g. "Dropped" after "Trailer drop-off address: 1375 Jersey Ave").
   // Look it up so we can (a) backfill a missing location with the planned
@@ -343,16 +343,16 @@ async function registerPickupDropoff(parsed, ctx) {
     review_status: 'pending', // auto-detected → awaits admin accept/decline/edit
     evidence: ctx.evidence,
     raw_message_text: ctx.text,
-    ai_summary: parsed.method === 'deterministic' ? null : parsed.reason,
+    ai_summary: activeRental ? `Rental conflict: active agreement ${activeRental.agreement_number}; review required. ${parsed.reason || ''}`.trim() : (parsed.method === 'deterministic' ? null : parsed.reason),
     source: 'telegram',
     beta_mode: ctx.betaMode,
     ...semanticColumns(parsed, 'approved'),
   });
 
-  if (!duplicate && event && trailer) await db.applyEventToCurrentStatus(trailer, event);
+  if (!duplicate && event && trailer && !activeRental) await db.applyEventToCurrentStatus(trailer, event);
 
   // Confirm the fulfilled instruction (best-effort; never blocks registration).
-  if (!duplicate && event && pendingInstruction?.id && typeof db.markPendingInstructionConfirmed === 'function') {
+  if (!activeRental && !duplicate && event && pendingInstruction?.id && typeof db.markPendingInstructionConfirmed === 'function') {
     try { await db.markPendingInstructionConfirmed(pendingInstruction.id, { confirmedEventId: event.id }); } catch { /* ignore */ }
   }
   return { event, duplicate };

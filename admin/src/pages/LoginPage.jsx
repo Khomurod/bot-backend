@@ -14,7 +14,7 @@ export default function LoginPage({ onLogin }) {
     try {
       const data = await api.login(username, password);
       localStorage.setItem("token", data.token);
-      onLogin();
+      onLogin(data);
     } catch (err) {
       setError(err.message);
     } finally {

@@ -17,7 +17,6 @@ async function handleApiError(res) {
 }
 
 const API_BASE = '/api';
-
 function getHeaders() {
   const token = localStorage.getItem('token');
   return {
@@ -47,7 +46,8 @@ export async function verifyAuth() {
   const res = await fetch(`${API_BASE}/auth/verify`, {
     headers: getHeaders(),
   });
-  return res.ok;
+  if (!res.ok) return null;
+  return res.json();
 }
 
 export function logout() {

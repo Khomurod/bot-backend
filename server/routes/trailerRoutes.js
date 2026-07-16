@@ -33,11 +33,17 @@ const screenshotUpload = multer({
 /** Backfill geocoding is admin-triggered and bounded per run (never on boot). */
 const GEOCODE_BACKFILL_MAX_PER_RUN = 25;
 
-function createTrailerRoutes({ authMiddleware, telegram = null }) {
+function createTrailerRoutes({ authMiddleware, requirePermission = null, telegram = null }) {
   const router = express.Router();
+  const permit = requirePermission || (() => (_req, _res, next) => next());
+  const view = permit('trailers.view');
+  const edit = permit('trailers.edit');
+  const create = permit('trailers.create');
+  const settings = permit('trailer_settings.manage');
+  const map = permit('trailer_map.view');
 
   // ── Trailer master list ──────────────────────────────────────────────────
-  router.get('/api/trailers', authMiddleware, async (req, res) => {
+  router.get('/api/trailers', authMiddleware, view, async (req, res) => {
     try {
       const rows = await db.listTrailers({
         q: req.query.q || null,
@@ -53,7 +59,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
     }
   });
 
-  router.get('/api/trailers/events', authMiddleware, async (req, res) => {
+  router.get('/api/trailers/events', authMiddleware, view, async (req, res) => {
     try {
       const rows = await db.listTrailerEvents({
         event_type: req.query.event_type || null,
@@ -67,7 +73,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
     }
   });
 
-  router.get('/api/trailers/unidentified', authMiddleware, async (req, res) => {
+  router.get('/api/trailers/unidentified', authMiddleware, view, async (req, res) => {
     try {
       const rows = await db.listUnidentifiedTrailerEvents({ includeResolved: req.query.includeResolved === 'true' });
       res.json({ events: rows });
@@ -77,7 +83,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
     }
   });
 
-  router.get('/api/trailers/map', authMiddleware, async (req, res) => {
+  router.get('/api/trailers/map', authMiddleware, map, async (req, res) => {
     try {
       const rows = await db.listTrailerMapData();
       res.json({ trailers: rows });
@@ -90,7 +96,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
   // ── Unified trailer state (single source of truth) ─────────────────────────
   // Registered BEFORE '/api/trailers/:id' so ':id' never captures 'states' /
   // 'review'. Fail-soft: the state service degrades to an empty list on error.
-  router.get('/api/trailers/states', authMiddleware, async (req, res) => {
+  router.get('/api/trailers/states', authMiddleware, view, async (req, res) => {
     try {
       const states = await trailerState.getUnifiedTrailerStates({ activeOnly: req.query.all !== 'true' });
       res.json({ states });
@@ -100,7 +106,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
     }
   });
 
-  router.get('/api/trailers/review', authMiddleware, async (req, res) => {
+  router.get('/api/trailers/review', authMiddleware, view, async (req, res) => {
     try {
       const rows = await db.listTrailersNeedingReview();
       res.json({ review: rows });
@@ -111,7 +117,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
   });
 
   // Recompute every trailer's current status from history (bounded, admin-only).
-  router.post('/api/trailers/recompute-all', authMiddleware, async (req, res) => {
+  router.post('/api/trailers/recompute-all', authMiddleware, settings, async (req, res) => {
     try {
       const result = await db.recomputeAllTrailerCurrentStatuses({ limit: Number(req.body?.limit) || 500 });
       res.json(result);
@@ -121,7 +127,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
     }
   });
 
-  router.get('/api/trailers/:id/state', authMiddleware, async (req, res) => {
+  router.get('/api/trailers/:id/state', authMiddleware, view, async (req, res) => {
     try {
       const state = await trailerState.getUnifiedTrailerStateById(req.params.id);
       if (!state) return res.status(404).json({ error: 'Trailer not found.' });
@@ -133,7 +139,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
   });
 
   // ── Settings ──────────────────────────────────────────────────────────────
-  router.get('/api/trailers/settings', authMiddleware, async (req, res) => {
+  router.get('/api/trailers/settings', authMiddleware, settings, async (req, res) => {
     try {
       const settings = await db.getTrailerSettings();
       res.json({
@@ -146,7 +152,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
     }
   });
 
-  router.put('/api/trailers/settings', authMiddleware, async (req, res) => {
+  router.put('/api/trailers/settings', authMiddleware, settings, async (req, res) => {
     try {
       const settings = await db.updateTrailerSettings(req.body || {});
       res.json({ settings });
@@ -158,7 +164,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
 
   // ── Planned instructions (assigned pickup / drop-off, not yet completed) ─────
   // Registered BEFORE '/api/trailers/:id' so ':id' never captures this path.
-  router.get('/api/trailers/pending-instructions', authMiddleware, async (req, res) => {
+  router.get('/api/trailers/pending-instructions', authMiddleware, view, async (req, res) => {
     try {
       const rows = await db.listPendingInstructions({
         status: req.query.status || 'pending',
@@ -174,7 +180,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
   });
 
   // Cancel a pending instruction (admin — it was wrong or is no longer relevant).
-  router.post('/api/trailers/pending-instructions/:id/cancel', authMiddleware, async (req, res) => {
+  router.post('/api/trailers/pending-instructions/:id/cancel', authMiddleware, edit, async (req, res) => {
     try {
       const instruction = await db.setPendingInstructionStatus(req.params.id, 'cancelled');
       if (!instruction) return res.status(404).json({ error: 'Instruction not found.' });
@@ -188,7 +194,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
   // ── Single trailer + timeline ──────────────────────────────────────────────
   // Includes the latest PENDING review event (and the previous confirmed one),
   // so the drawer can show "detected change" vs "current/previous confirmed".
-  router.get('/api/trailers/:id', authMiddleware, async (req, res) => {
+  router.get('/api/trailers/:id', authMiddleware, view, async (req, res) => {
     try {
       const trailer = await db.getTrailerById(req.params.id);
       if (!trailer) return res.status(404).json({ error: 'Trailer not found.' });
@@ -202,7 +208,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
   });
 
   // Recompute a trailer's current status from its (non-declined) event history.
-  router.post('/api/trailers/:id/recompute-status', authMiddleware, async (req, res) => {
+  router.post('/api/trailers/:id/recompute-status', authMiddleware, edit, async (req, res) => {
     try {
       const trailer = await db.getTrailerById(req.params.id);
       if (!trailer) return res.status(404).json({ error: 'Trailer not found.' });
@@ -214,7 +220,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
     }
   });
 
-  router.get('/api/trailers/:id/events', authMiddleware, async (req, res) => {
+  router.get('/api/trailers/:id/events', authMiddleware, view, async (req, res) => {
     try {
       const trailer = await db.getTrailerById(req.params.id);
       if (!trailer) return res.status(404).json({ error: 'Trailer not found.' });
@@ -227,7 +233,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
   });
 
   // Manual add / edit trailer record.
-  router.post('/api/trailers', authMiddleware, async (req, res) => {
+  router.post('/api/trailers', authMiddleware, create, async (req, res) => {
     try {
       const body = req.body || {};
       if (!body.unit_number || !String(body.unit_number).trim()) {
@@ -241,7 +247,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
     }
   });
 
-  router.put('/api/trailers/:id', authMiddleware, async (req, res) => {
+  router.put('/api/trailers/:id', authMiddleware, edit, async (req, res) => {
     try {
       const existing = await db.getTrailerById(req.params.id);
       if (!existing) return res.status(404).json({ error: 'Trailer not found.' });
@@ -255,7 +261,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
   });
 
   // ── Screenshot import ───────────────────────────────────────────────────────
-  router.post('/api/trailers/import/screenshot', authMiddleware, (req, res) => {
+  router.post('/api/trailers/import/screenshot', authMiddleware, create, (req, res) => {
     screenshotUpload.array('screenshots', MAX_UPLOAD_FILES)(req, res, async (uploadErr) => {
       if (uploadErr) {
         if (uploadErr instanceof multer.MulterError && uploadErr.code === 'LIMIT_FILE_SIZE') {
@@ -289,7 +295,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
     });
   });
 
-  router.get('/api/trailers/import/batches', authMiddleware, async (req, res) => {
+  router.get('/api/trailers/import/batches', authMiddleware, view, async (req, res) => {
     try {
       const batches = await db.listImportBatches(req.query.limit || 50);
       res.json({ batches });
@@ -299,7 +305,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
     }
   });
 
-  router.get('/api/trailers/import/:batchId', authMiddleware, async (req, res) => {
+  router.get('/api/trailers/import/:batchId', authMiddleware, view, async (req, res) => {
     try {
       const batch = await db.getImportBatch(req.params.batchId);
       if (!batch) return res.status(404).json({ error: 'Import batch not found.' });
@@ -310,7 +316,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
     }
   });
 
-  router.post('/api/trailers/import/:batchId/commit', authMiddleware, async (req, res) => {
+  router.post('/api/trailers/import/:batchId/commit', authMiddleware, create, async (req, res) => {
     try {
       const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
       if (!rows) return res.status(400).json({ error: 'rows array is required.' });
@@ -323,7 +329,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
   });
 
   // ── Manual event registration + correction ─────────────────────────────────
-  router.post('/api/trailers/events/manual', authMiddleware, async (req, res) => {
+  router.post('/api/trailers/events/manual', authMiddleware, edit, async (req, res) => {
     try {
       const body = req.body || {};
       const unit = body.trailer_unit_number || body.unit_number;
@@ -368,7 +374,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
   });
 
   // Accept the latest detected change for an event (clears review, keeps status).
-  router.post('/api/trailers/events/:id/accept', authMiddleware, async (req, res) => {
+  router.post('/api/trailers/events/:id/accept', authMiddleware, edit, async (req, res) => {
     try {
       const event = await db.acceptTrailerEvent(req.params.id, {
         reviewedBy: req.admin?.username || 'admin',
@@ -385,7 +391,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
 
   // Decline the latest detected change (kept in history; status recomputed from
   // the latest non-declined pickup/dropoff, restoring the previous status).
-  router.post('/api/trailers/events/:id/decline', authMiddleware, async (req, res) => {
+  router.post('/api/trailers/events/:id/decline', authMiddleware, edit, async (req, res) => {
     try {
       const event = await db.declineTrailerEvent(req.params.id, {
         reviewedBy: req.admin?.username || 'admin',
@@ -402,7 +408,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
 
   // Edit an event's fields (records who/when + a one-time original snapshot,
   // marks it 'edited') and recompute current status from the corrected timeline.
-  router.put('/api/trailers/events/:id', authMiddleware, async (req, res) => {
+  router.put('/api/trailers/events/:id', authMiddleware, edit, async (req, res) => {
     try {
       const body = req.body || {};
       // If the admin supplied a location text but no coordinates, geocode it.
@@ -435,7 +441,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
   // Geocodes a BOUNDED batch of pickup/dropoff events that have location text but
   // no coordinates, then recomputes the affected trailers' current status. Never
   // runs on boot and never geocodes more than GEOCODE_BACKFILL_MAX_PER_RUN rows.
-  router.post('/api/trailers/geocode-backfill', authMiddleware, async (req, res) => {
+  router.post('/api/trailers/geocode-backfill', authMiddleware, settings, async (req, res) => {
     try {
       const limit = Math.min(GEOCODE_BACKFILL_MAX_PER_RUN, Math.max(1, Number(req.body?.limit) || GEOCODE_BACKFILL_MAX_PER_RUN));
       const events = await db.listTrailerEventsNeedingGeocode(limit);
@@ -465,7 +471,7 @@ function createTrailerRoutes({ authMiddleware, telegram = null }) {
     }
   });
 
-  router.post('/api/trailers/unidentified/:id/resolve', authMiddleware, async (req, res) => {
+  router.post('/api/trailers/unidentified/:id/resolve', authMiddleware, edit, async (req, res) => {
     try {
       const event = await db.resolveTrailerEvent(req.params.id);
       if (!event) return res.status(404).json({ error: 'Event not found.' });

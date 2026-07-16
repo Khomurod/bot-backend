@@ -15,7 +15,7 @@ const db = require('../database/db');
     const hash = await bcrypt.hash(password, 10);
 
     await db.createAdmin(username, hash);
-    console.log(`[SEED] Admin user created: ${username}`);
+    console.log(`[SEED] Admin user ensured without resetting an existing password: ${username}`);
     process.exit(0);
   } catch (err) {
     console.error('[SEED] Failed to seed admin:', err.message);

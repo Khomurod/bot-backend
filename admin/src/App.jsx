@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useEffect, useState } from "react";
 import * as api from "./api";
 // LoginPage stays eager: it is the auth gate and must render instantly.
 import LoginPage from "./pages/LoginPage";
+import { AuthProvider } from "./context/AuthContext";
 
 // Every other page is lazy-loaded so its code is fetched only when the page
 // is opened — the initial admin bundle stays small.
@@ -28,6 +29,7 @@ const RecruitersPublicPage = lazy(() => import("./pages/RecruitersPublicPage"));
 const LiveLocationsPage = lazy(() => import("./pages/LiveLocationsPage"));
 const RouteControlPage = lazy(() => import("./pages/RouteControlPage"));
 const TrailerTrackingPage = lazy(() => import("./pages/TrailerTrackingPage"));
+const TrailerDepartmentShell = lazy(() => import("./pages/trailer/TrailerDepartmentShell"));
 
 const pageLoadingFallback = (
   <div className="loading">
@@ -81,15 +83,21 @@ function getPageFromPath(pathname) {
   if (pathname === "/recruiters" || pathname.startsWith("/recruiters/")) {
     return "recruiters_public";
   }
+  if (pathname === "/admin/trailers" || pathname.startsWith("/admin/trailers/")) {
+    return "trailer_department";
+  }
   return "groups";
 }
 
 function getPathForPage(page) {
-  return page === "dispatch" ? "/dispatch" : "/admin";
+  if (page === "dispatch") return "/dispatch";
+  if (page === "trailer_department") return "/admin/trailers/dashboard";
+  return "/admin";
 }
 
 export default function App() {
   const [authed, setAuthed] = useState(false);
+  const [session, setSession] = useState(null);
   const [checking, setChecking] = useState(true);
   const [page, setPage] = useState(() => getPageFromPath(window.location.pathname));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -114,9 +122,14 @@ export default function App() {
       try {
         const token = localStorage.getItem("token");
         if (token) {
-          const valid = await api.verifyAuth();
-          if (!valid) localStorage.removeItem("token");
-          setAuthed(valid);
+          const verified = await api.verifyAuth();
+          if (!verified) localStorage.removeItem("token");
+          setSession(verified);
+          setAuthed(Boolean(verified));
+          if (verified && !verified.permissions?.includes('admin.full_access') && verified.permissions?.some((p) => p.startsWith('trailer'))) {
+            setPage('trailer_department');
+            window.history.replaceState({}, '', '/admin/trailers/dashboard');
+          }
         }
       } catch (err) {
         localStorage.removeItem("token");
@@ -140,6 +153,7 @@ export default function App() {
   const handleLogout = () => {
     api.logout();
     setAuthed(false);
+    setSession(null);
     setPage("groups");
     setMobileMenuOpen(false);
     if (window.location.pathname !== "/admin") {
@@ -173,9 +187,12 @@ export default function App() {
     // originally requested page, so the user lands back on Dispatch Center.
     return (
       <LoginPage
-        onLogin={() => {
+        onLogin={(loginSession) => {
           setAuthed(true);
-          setPage(getPageFromPath(window.location.pathname));
+          setSession(loginSession);
+          const trailerOnly = !loginSession?.permissions?.includes('admin.full_access') && loginSession?.permissions?.some((p) => p.startsWith('trailer'));
+          setPage(trailerOnly ? 'trailer_department' : getPageFromPath(window.location.pathname));
+          if (trailerOnly) window.history.replaceState({}, '', '/admin/trailers/dashboard');
         }}
       />
     );
@@ -215,6 +232,7 @@ export default function App() {
     live_locations: <LiveLocationsPage />,
     route_control: <RouteControlPage />,
     trailer_tracking: <TrailerTrackingPage />,
+    trailer_department: <TrailerDepartmentShell />,
   };
 
   const NAV_SECTIONS = [
@@ -226,6 +244,7 @@ export default function App() {
         { key: 'live_locations', icon: '📍', label: 'Live Locations' },
         { key: 'route_control', icon: '🧭', label: 'Route Control' },
         { key: 'trailer_tracking', icon: '🚚', label: 'Trailer Tracking' },
+        { key: 'trailer_department', icon: '🏢', label: 'Trailer Department' },
         { key: 'leads', icon: '📥', label: 'Leads' },
         { key: 'facebook_leads', icon: '👥', label: 'Customer Inquiries' },
         { key: 'recruiter_kpis', icon: '📞', label: 'Recruiter KPIs' },
@@ -262,7 +281,11 @@ export default function App() {
     { key: 'settings', icon: '⚙️', label: 'Settings' },
   ];
 
+  const isFullAdmin = session?.permissions?.includes('admin.full_access');
+  const visibleSections = NAV_SECTIONS.map((section) => ({ ...section, items: section.items.filter((item) => isFullAdmin || item.key === 'trailer_department') })).filter((section) => section.items.length);
+
   return (
+    <AuthProvider session={session}>
     <div className="app-layout">
       <aside className={`sidebar ${mobileMenuOpen ? "mobile-open" : ""}`}>
         <div className="sidebar-logo">
@@ -270,7 +293,7 @@ export default function App() {
           <p>Admin Panel</p>
         </div>
         <nav className="sidebar-nav">
-          {NAV_SECTIONS.map((section) => (
+          {visibleSections.map((section) => (
             <div key={section.label} className="nav-section">
               <div className="nav-section-header" style={{ borderLeftColor: section.color }}>
                 {section.label}
@@ -287,7 +310,7 @@ export default function App() {
               ))}
             </div>
           ))}
-          <div className="nav-section">
+          {isFullAdmin && <div className="nav-section">
             <button
               className="nav-section-header nav-section-toggle"
               onClick={() => setAdminExpanded(!adminExpanded)}
@@ -306,7 +329,7 @@ export default function App() {
                 {item.label}
               </button>
             ))}
-          </div>
+          </div>}
         </nav>
         <div className="sidebar-footer">
           <button className="logout-btn" onClick={handleLogout}>
@@ -330,5 +353,6 @@ export default function App() {
         <LazyPage>{pages[page] || pages.dispatch}</LazyPage>
       </main>
     </div>
+    </AuthProvider>
   );
 }

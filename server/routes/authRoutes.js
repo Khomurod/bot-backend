@@ -59,6 +59,10 @@ function createAuthRoutes({ db, config, authMiddleware }) {
         recordLoginFailure(req);
         return res.status(401).json({ error: 'Invalid credentials' });
       }
+      if (admin.active === false) {
+        recordLoginFailure(req);
+        return res.status(401).json({ error: 'Account is disabled' });
+      }
 
       const valid = await bcrypt.compare(password, admin.password_hash);
       if (!valid) {
@@ -67,13 +71,15 @@ function createAuthRoutes({ db, config, authMiddleware }) {
       }
 
       const token = jwt.sign(
-        { id: admin.id, username: admin.username },
+        { id: admin.id, username: admin.username, auth_version: admin.auth_version || 1 },
         config.jwtSecret,
         { algorithm: 'HS256', expiresIn: '24h' }
       );
 
       clearLoginFailures(req);
-      res.json({ token, username: admin.username });
+      await db.markAdminLogin(admin.id);
+      const identity = await db.getAdminAuthorization(admin.id);
+      res.json({ token, username: admin.username, user: identity, roles: identity.role_keys, permissions: identity.permissions });
     } catch (err) {
       console.error('[API] Login error:', err.message);
       res.status(500).json({ error: 'Server error' });
@@ -82,7 +88,26 @@ function createAuthRoutes({ db, config, authMiddleware }) {
 
   // GET /api/auth/verify
   router.get('/api/auth/verify', authMiddleware, (req, res) => {
-    res.json({ valid: true, username: req.admin.username });
+    res.json({ valid: true, username: req.admin.username, user: req.admin, roles: req.admin.role_keys, permissions: req.admin.permissions });
+  });
+
+  router.post('/api/auth/change-password', authMiddleware, async (req, res) => {
+    try {
+      const { current_password: currentPassword, new_password: newPassword } = req.body || {};
+      if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' || newPassword.length < 10) {
+        return res.status(400).json({ error: 'Current password and a new password of at least 10 characters are required.' });
+      }
+      const admin = await db.getAdminByUsername(req.admin.username);
+      if (!admin || !(await bcrypt.compare(currentPassword, admin.password_hash))) {
+        return res.status(401).json({ error: 'Current password is incorrect.' });
+      }
+      const hash = await bcrypt.hash(newPassword, 12);
+      await db.changeOwnPassword(req.admin.id, hash);
+      res.json({ changed: true, sign_in_again: true });
+    } catch (err) {
+      console.error('[API] Password change error:', err.message);
+      res.status(500).json({ error: 'Could not change password.' });
+    }
   });
 
   return router;

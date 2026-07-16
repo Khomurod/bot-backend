@@ -13,7 +13,6 @@
  *   - current_status is derived from the latest pickup/dropoff event only.
  */
 const { query } = require('./pool');
-
 // ─── helpers ───
 
 /** Trim to a bounded string, or null for empty/blank. Never throws. */
@@ -23,20 +22,16 @@ function s(value, max = 500) {
   if (!t) return null;
   return t.length > max ? t.slice(0, max) : t;
 }
-
 /** Normalize a unit number for stable matching/storage: upper, strip spaces/#. */
 function normalizeUnitNumber(value) {
   if (value == null) return null;
   const t = String(value).toUpperCase().replace(/[#\s]+/g, '').trim();
   return t || null;
 }
-
 const TRAILER_FIELDS = ['make', 'model', 'mc_number', 'plate_number', 'type', 'vin', 'year', 'ownership_status'];
-
 // ─── unified status normalization ───
 const POSSESSION_STATES = new Set(['with_driver', 'dropped', 'unknown']);
 const CARGO_STATES = new Set(['empty', 'loaded', 'unknown']);
-
 /** Coerce to a valid possession_status; unknown for anything unexpected. */
 function normPossession(value) {
   const t = String(value || '').trim().toLowerCase();
@@ -47,14 +42,12 @@ function normCargo(value) {
   const t = String(value || '').trim().toLowerCase();
   return CARGO_STATES.has(t) ? t : 'unknown';
 }
-
 /** Map an event_type to its possession_status (fallback when none was stored). */
 function possessionForEventType(eventType) {
   if (eventType === 'pickup') return 'with_driver';
   if (eventType === 'dropoff') return 'dropped';
   return 'unknown';
 }
-
 /**
  * Derive the possession + cargo for the current-status row from an event. Honors
  * the event's stored possession_status/cargo_status when present; otherwise falls
@@ -708,7 +701,7 @@ async function getTrailerCurrentStatus(trailerId) {
  */
 async function listTrailerMapData() {
   const res = await query(
-    `SELECT t.id AS trailer_id, t.unit_number, t.type, t.ownership_status, t.needs_review,
+    `SELECT t.id AS trailer_id, t.unit_number, t.type, t.ownership_status, t.needs_review, t.physical_status, t.tracking_reference,
             COALESCE(cs.current_status, 'unknown') AS current_status,
             COALESCE(cs.possession_status, 'unknown') AS possession_status,
             COALESCE(cs.cargo_status, 'unknown') AS cargo_status,
@@ -737,7 +730,7 @@ async function listTrailerMapData() {
  */
 async function getUnifiedTrailerStates({ activeOnly = true, limit = 2000 } = {}) {
   const res = await query(
-    `SELECT t.id AS trailer_id, t.unit_number, t.type, t.ownership_status, t.active,
+    `SELECT t.id AS trailer_id, t.unit_number, t.type, t.ownership_status, t.active, t.physical_status, t.tracking_reference,
             t.needs_review, t.plate_number, t.vin, t.make, t.model, t.year, t.mc_number,
             COALESCE(cs.current_status, 'unknown') AS current_status,
             COALESCE(cs.possession_status, 'unknown') AS possession_status,
@@ -762,7 +755,7 @@ async function getUnifiedTrailerStates({ activeOnly = true, limit = 2000 } = {})
 /** Unified state for a single trailer (same shape as getUnifiedTrailerStates). */
 async function getUnifiedTrailerStateById(trailerId) {
   const res = await query(
-    `SELECT t.id AS trailer_id, t.unit_number, t.type, t.ownership_status, t.active,
+    `SELECT t.id AS trailer_id, t.unit_number, t.type, t.ownership_status, t.active, t.physical_status, t.tracking_reference,
             t.needs_review, t.plate_number, t.vin, t.make, t.model, t.year, t.mc_number,
             COALESCE(cs.current_status, 'unknown') AS current_status,
             COALESCE(cs.possession_status, 'unknown') AS possession_status,
@@ -1065,6 +1058,13 @@ async function updateTrailerSettings(patch = {}) {
     auto_register_confidence: (v) => Math.max(50, Math.min(100, Math.round(Number(v)) || 92)),
     review_confidence: (v) => Math.max(0, Math.min(100, Math.round(Number(v)) || 75)),
     silent_driver_group_monitoring: (v) => Boolean(v),
+    payment_confirmation_group_id: (v) => s(v, 40), overdue_reminder_group_id: (v) => s(v, 40),
+    responsible_telegram_username: (v) => s(String(v || '').replace(/^@/, ''), 64), responsible_telegram_user_id: (v) => s(v, 40),
+    escalation_telegram_username: (v) => s(String(v || '').replace(/^@/, ''), 64), escalation_telegram_user_id: (v) => s(v, 40),
+    reminder_timezone: (v) => s(v, 80) || 'America/Chicago', payment_grace_period_days: (v) => Math.max(0, Math.min(90, Math.round(Number(v)) || 0)),
+    reminder_hour: (v) => Math.max(0, Math.min(23, Math.round(Number(v)) || 0)), reminder_repeat_days: (v) => Math.max(1, Math.min(30, Math.round(Number(v)) || 1)),
+    reminder_escalation_days: (v) => Math.max(1, Math.min(90, Math.round(Number(v)) || 7)), reminder_weekend_behavior: (v) => v === 'send' ? 'send' : 'skip',
+    reminders_enabled: (v) => Boolean(v),
   };
   const sets = [];
   const vals = [];

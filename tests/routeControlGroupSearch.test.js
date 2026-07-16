@@ -7,8 +7,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 
-const MOD = path.resolve(__dirname, '../admin/src/pages/routeControlGroupSearch.mjs');
+const MOD = pathToFileURL(path.resolve(__dirname, '../admin/src/pages/routeControlGroupSearch.mjs')).href;
 
 const PROFILES = [
   { group_id: 1, group_name: 'WENZE UNIT 800 DILSHOD URINOV', unit_number: '800', first_name: 'Dilshod', last_name: 'Urinov', driver_type: 'company_driver' },

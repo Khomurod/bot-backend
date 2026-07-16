@@ -40,6 +40,7 @@ const {
   createAuthMiddleware,
   createInternalSharedSecretGuard,
   createProxyAuthGuard,
+  requirePermission,
 } = require('./middleware/auth');
 
 const dispatchRoutes = require('./routes/dispatchRoutes');
@@ -82,9 +83,10 @@ app.use(cors(corsOptions));
 app.set('trust proxy', 1); // Render terminates TLS upstream; needed for rate-limit + IP logs.
 
 // ─── Auth middleware (shared by every admin route module) ───
-const authMiddleware = createAuthMiddleware(config);
+const authMiddleware = createAuthMiddleware(config, db);
+const legacyAuthMiddleware = [authMiddleware, requirePermission('admin.full_access')];
 const internalSharedSecretGuard = createInternalSharedSecretGuard(config);
-const proxyAuthGuard = createProxyAuthGuard(config);
+const proxyAuthGuard = createProxyAuthGuard(config, db);
 
 // ─── Leads-Bot Proxy + Indeed intake (MUST be before express.json()) ───
 // The proxy preserves the raw body for Facebook's X-Hub-Signature-256
@@ -110,6 +112,8 @@ try {
 
 // ─── Auth ───
 app.use(createAuthRoutes({ db, config, authMiddleware }));
+const { createAdminUserRoutes } = require('./routes/adminUserRoutes');
+app.use(createAdminUserRoutes({ db, authMiddleware, requirePermission }));
 
 // ─── Health checks, site root, presentation, Meta compliance pages ───
 app.use(createHealthRoutes({ db, config }));
@@ -126,38 +130,38 @@ app.use(createFacebookConnectRoutes({ db, internalSharedSecretGuard, proxyAuthGu
 // ─── Media Upload ───
 // `stagingTelegram` is exposed so tests can stub its `callApi` to drive the
 // upload route without touching the network (re-exported below).
-const { router: mediaUploadRouter, stagingTelegram } = createMediaUploadRoutes({ config, authMiddleware });
+const { router: mediaUploadRouter, stagingTelegram } = createMediaUploadRoutes({ config, authMiddleware: legacyAuthMiddleware });
 app.use(mediaUploadRouter);
 
 // ─── Feature routers on dedicated path prefixes ───
 
 // Dispatch routes expose live GPS, Telegram group IDs, and send-to-Telegram
 // actions — they must never be reachable without an admin token.
-app.use('/api/dispatch', authMiddleware, dispatchRoutes);
-app.use('/api/facebook-leads', createFacebookLeadsRouter({ authMiddleware }));
+app.use('/api/dispatch', legacyAuthMiddleware, dispatchRoutes);
+app.use('/api/facebook-leads', createFacebookLeadsRouter({ authMiddleware: legacyAuthMiddleware }));
 
 // ─── Driver Raise Approval (75¢/mile) ───
 // Admin router is mounted on the more specific path FIRST so /api/raise/admin/*
 // is never captured by the public router's /:token route.
 const { publicRouter: raisePublicRouter, adminRouter: raiseAdminRouter } = require('./routes/raiseRoutes');
-app.use('/api/raise/admin', raiseAdminRouter);
+app.use('/api/raise/admin', legacyAuthMiddleware, raiseAdminRouter);
 app.use('/api/raise', raisePublicRouter);
 
 // ─── Driver Home-Time Tracking ───
 const { createHomeTimeRouter } = require('./routes/homeTimeRoutes');
-app.use('/api/home-time', createHomeTimeRouter({ authMiddleware }));
+app.use('/api/home-time', createHomeTimeRouter({ authMiddleware: legacyAuthMiddleware }));
 
 const { createFuelMonitorRouter } = require('./routes/fuelMonitorRoutes');
-app.use('/api/fuel-monitor', createFuelMonitorRouter({ authMiddleware, telegram: bot.telegram }));
+app.use('/api/fuel-monitor', createFuelMonitorRouter({ authMiddleware: legacyAuthMiddleware, telegram: bot.telegram }));
 
 const { createLiveLocationsRouter } = require('./routes/liveLocationsRoutes');
-app.use('/api/live-locations', createLiveLocationsRouter({ authMiddleware }));
+app.use('/api/live-locations', createLiveLocationsRouter({ authMiddleware: legacyAuthMiddleware }));
 
 const { createBotUsersRouter } = require('./routes/botUsersRoutes');
-app.use('/api/bot-users', createBotUsersRouter({ authMiddleware }));
+app.use('/api/bot-users', createBotUsersRouter({ authMiddleware: legacyAuthMiddleware }));
 
 const { createSettingsRouter } = require('./routes/settingsRoutes');
-app.use('/api/settings', createSettingsRouter({ authMiddleware, telegram: bot.telegram }));
+app.use('/api/settings', createSettingsRouter({ authMiddleware: legacyAuthMiddleware, telegram: bot.telegram }));
 
 const { createRouteControlRouter } = require('./routes/routeControlRoutes');
 const { getRouteMediaEditClient } = require('../services/telegramAgent');
@@ -165,23 +169,25 @@ const { getRouteMediaEditClient } = require('../services/telegramAgent');
 // transient reset cannot disturb the shared polling agent. Screenshot media is
 // sent as a signed URL, keeping this call on Telegraf's JSON transport.
 app.use('/api/route-control', createRouteControlRouter({
-  authMiddleware,
+  authMiddleware: legacyAuthMiddleware,
   telegram: bot.telegram,
   mediaTelegram: getRouteMediaEditClient(),
 }));
 
 const { createRecruiterRouter } = require('./routes/recruiterRoutes');
-app.use('/api/recruiters', createRecruiterRouter({ authMiddleware }));
+app.use('/api/recruiters', createRecruiterRouter({ authMiddleware: legacyAuthMiddleware }));
 
 const { createBotMessagesRouter } = require('./routes/botMessagesRoutes');
-app.use('/api/bot-messages', createBotMessagesRouter({ authMiddleware, telegram: bot.telegram }));
+app.use('/api/bot-messages', createBotMessagesRouter({ authMiddleware: legacyAuthMiddleware, telegram: bot.telegram }));
 
 // ─── Trailer Tracking (Beta) ───
 // A trailer-router construction failure must never take down the whole API (the
 // feature is Beta and self-contained); log and continue, like the FleetView mount.
 try {
   const { createTrailerRoutes } = require('./routes/trailerRoutes');
-  app.use(createTrailerRoutes({ authMiddleware, telegram: bot.telegram }));
+  app.use(createTrailerRoutes({ authMiddleware, requirePermission, telegram: bot.telegram }));
+  const { createTrailerDepartmentRoutes } = require('./routes/trailerDepartmentRoutes');
+  app.use(createTrailerDepartmentRoutes({ db, config, authMiddleware, requirePermission, telegram: bot.telegram }));
 } catch (trailerMountError) {
   console.error('[TRAILER] route mount failed — main app continues without Trailer API:', trailerMountError.message);
 }
@@ -190,22 +196,22 @@ try {
 // the Driver Groups "Driver Username" dropdown. Only defines /:groupId/members,
 // so the driver-group routes mounted after still match everything else.
 const { createGroupMembersRouter } = require('./routes/groupMembersRoutes');
-app.use('/api/groups', createGroupMembersRouter({ authMiddleware }));
+app.use('/api/groups', createGroupMembersRouter({ authMiddleware: legacyAuthMiddleware }));
 
 // ─── Feature route modules (full paths, mounted at the app root) ───
-app.use(createDriverGroupsRoutes({ db, authMiddleware }));
-app.use(createDriverProfilesRoutes({ db, authMiddleware }));
-app.use(createMileageBonusRoutes({ authMiddleware }));
+app.use(createDriverGroupsRoutes({ db, authMiddleware: legacyAuthMiddleware }));
+app.use(createDriverProfilesRoutes({ db, authMiddleware: legacyAuthMiddleware }));
+app.use(createMileageBonusRoutes({ authMiddleware: legacyAuthMiddleware }));
 app.use(createQuestionsRoutes({
   db,
-  authMiddleware,
+  authMiddleware: legacyAuthMiddleware,
   sendQuestionToGroups,
   sendTestQuestion,
   translateBatch,
 }));
 app.use(createBroadcastRoutes({
   db,
-  authMiddleware,
+  authMiddleware: legacyAuthMiddleware,
   sendBroadcastToGroups,
   sendBroadcastTest,
   sendConfirmationBroadcast,
@@ -216,15 +222,15 @@ app.use(createBroadcastRoutes({
 }));
 app.use(createScheduledMessagesRoutes({
   db,
-  authMiddleware,
+  authMiddleware: legacyAuthMiddleware,
   processScheduledMessage,
   normalizeActiveFilter,
 }));
-app.use(createLeadsRoutes({ db, authMiddleware }));
+app.use(createLeadsRoutes({ db, authMiddleware: legacyAuthMiddleware }));
 app.use(createAiReportsRoutes({
   db,
   config,
-  authMiddleware,
+  authMiddleware: legacyAuthMiddleware,
   bot,
   generateDriverReport,
   generateCompanyReport,
@@ -237,8 +243,8 @@ app.use(createAiReportsRoutes({
   sanitizeCompanyReportHtmlForTelegram,
   sendTelegramHtmlChunks,
 }));
-app.use(createMessageManagerRoutes({ authMiddleware, bot }));
-app.use(createEmployeeBirthdayRoutes({ db, config, authMiddleware, bot }));
+app.use(createMessageManagerRoutes({ authMiddleware: legacyAuthMiddleware, bot }));
+app.use(createEmployeeBirthdayRoutes({ db, config, authMiddleware: legacyAuthMiddleware, bot }));
 
 // ─── Catch-all for admin SPA (/admin and public /dispatch share one build) ───
 app.get(['/admin', '/admin/*', '/dispatch', '/dispatch/*', '/raise', '/raise/*', '/recruiters', '/recruiters/*'], (req, res) => {

@@ -138,6 +138,8 @@ function normalizeState(row) {
     // extra master-list detail for the management view (may be absent on map rows)
     type: row.type || null,
     ownership_status: row.ownership_status || null,
+    physical_status: row.physical_status || 'unknown',
+    tracking_reference: row.tracking_reference || null,
     plate_number: row.plate_number || null,
     vin: row.vin || null,
     make: row.make || null,

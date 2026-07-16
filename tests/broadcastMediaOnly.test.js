@@ -26,12 +26,13 @@ const GROUP = { id: 1, telegram_group_id: '-100111', group_name: 'G1', language:
 db.createBroadcast = async (b) => ({ id: 555, ...b });
 db.createBroadcastDelivery = async () => ({});
 db.getDriverProfileByGroupId = async () => null;
+db.getAdminAuthorization = async () => ({ id: 1, username: 'admin', active: true, auth_version: 1, role_keys: ['super_admin'], permissions: ['admin.full_access'] });
 
 const bts = require('../services/broadcastTargetService');
 bts.resolveBroadcastTargetGroups = async () => [GROUP];
 
 const { app } = require('../server/api');
-const token = jwt.sign({ username: 'admin' }, process.env.JWT_SECRET, { algorithm: 'HS256', expiresIn: '1h' });
+const token = jwt.sign({ id: 1, username: 'admin', auth_version: 1 }, process.env.JWT_SECRET, { algorithm: 'HS256', expiresIn: '1h' });
 
 function request(server, path, payload) {
   return new Promise((resolve) => {

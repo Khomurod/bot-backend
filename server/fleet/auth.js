@@ -66,15 +66,19 @@ async function loginReal(username, password) {
   const bcrypt = require('bcryptjs');
   const db = require('../../database/db');
   const admin = await db.getAdminByUsername(String(username || '').trim());
-  if (!admin) return null;
+  if (!admin || admin.active === false) return null;
   const ok = await bcrypt.compare(String(password || ''), admin.password_hash);
   if (!ok) return null;
-  const token = jwt.sign({ id: admin.id, username: admin.username }, realSecret(), { algorithm: 'HS256', expiresIn: TOKEN_TTL });
+  const authorization = typeof db.getAdminAuthorization === 'function'
+    ? await db.getAdminAuthorization(admin.id)
+    : { active: true, permissions: ['admin.full_access'] };
+  if (!authorization?.permissions?.includes('admin.full_access')) return null;
+  const token = jwt.sign({ id: admin.id, username: admin.username, auth_version: admin.auth_version || 1 }, realSecret(), { algorithm: 'HS256', expiresIn: TOKEN_TTL });
   return { token, user: realIdentity(admin.username), activeCompanyId: REAL_COMPANY.id };
 }
 
 // Attaches req.auth = { user, tenantId, companyId, permissions }
-function authenticate(req, res, next) {
+async function authenticate(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return apiError(res, 401, 'UNAUTHENTICATED', 'Authentication required.');
@@ -86,6 +90,21 @@ function authenticate(req, res, next) {
       return apiError(res, 401, 'UNAUTHENTICATED', 'Session expired or invalid.');
     }
     if (!rp || !rp.username) return apiError(res, 401, 'UNAUTHENTICATED', 'Invalid token.');
+    const db = require('../../database/db');
+    let authorization;
+    try {
+      authorization = typeof db.getAdminAuthorization === 'function'
+        ? await db.getAdminAuthorization(rp.id)
+        : { active: true, auth_version: rp.auth_version || 1, permissions: ['admin.full_access'] };
+    } catch (e) {
+      return apiError(res, 503, 'AUTH_UNAVAILABLE', 'Authentication service unavailable.');
+    }
+    if (!authorization?.active || !authorization.permissions.includes('admin.full_access')) {
+      return apiError(res, 403, 'FORBIDDEN', 'FleetView requires full administrator access.');
+    }
+    if (rp.auth_version != null && Number(rp.auth_version) !== Number(authorization.auth_version)) {
+      return apiError(res, 401, 'UNAUTHENTICATED', 'Session is no longer valid.');
+    }
     req.auth = {
       user: realIdentity(rp.username), tenantId: REAL_TENANT.id, companyId: REAL_COMPANY.id,
       permissions: [...PERMISSIONS], // single Admin role in real mode

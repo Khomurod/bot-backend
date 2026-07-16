@@ -134,3 +134,31 @@ environment — compare against `main` before attributing failures to a change.
 - **Route screenshots** (`route_assignment_attachments`): one per assignment,
   enforced by a unique index; replacement is a single UPSERT — never
   delete-then-insert.
+
+  **Telegram screenshot transport is a permanent invariant — do not regress it:**
+
+  - Route Control must send screenshots to Telegram as short-lived, HMAC-signed
+    HTTPS URLs produced by
+    `services/routeControl/screenshotMediaReference.js`. This applies to both
+    `editMessageMedia` for existing messages and `sendPhoto` for new messages.
+  - Never change these calls back to raw `Buffer`/`{ source: file_data }` input,
+    multipart upload, or another implementation that uploads screenshot bytes
+    directly from Render to `api.telegram.org`. That production path repeatedly
+    stalled without a Telegram response even though the browser upload and
+    database storage had succeeded.
+  - Telegram must fetch the bytes through
+    `/api/route-screenshot-media/:id`. That endpoint must remain protected by a
+    short expiry, HMAC signature, assignment binding, and screenshot-content
+    version binding. It must not expose a permanent or unsigned public image
+    URL, and signed URLs or query strings must never be logged.
+  - Replacing a screenshot must invalidate URLs for the previous image. Admin
+    previews remain authenticated separately.
+  - Existing text-only Telegram messages must continue to be converted in place
+    with `editMessageMedia` using the same stored chat ID and message ID; never
+    silently post a replacement message.
+  - Before changing this workflow, run and preserve:
+    `tests/telegramUrlMediaTransport.test.js`,
+    `tests/routeScreenshotMediaReference.test.js`,
+    `tests/routeScreenshotMediaRoutes.test.js`, Route Control edit/delivery
+    tests, and Admin screenshot-status tests. The transport test must continue
+    proving that real Telegraf requests use `application/json`, not multipart.
