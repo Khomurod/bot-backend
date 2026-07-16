@@ -33,38 +33,39 @@ const telegramClientOptions = {
   attachmentAgent: telegramIpv4Agent,
 };
 
-// ─── Dedicated agent for Route Control media EDITS (editMessageMedia) ───
+// ─── Route Control media-edit client (editMessageMedia uploads) ───
 //
 // Route Control replaces/converts a driver-group message's photo by uploading a
-// fresh multipart body. A transient `socket hang up` (ECONNRESET) mid-upload is
-// retried — but a retry must NOT reuse a possibly half-dead pooled socket.
+// fresh multipart body via the raw `callApi('editMessageMedia', payload,
+// { signal })`, with a real AbortController per attempt (services/telegramEdit).
 //
-// This agent pins IPv4 (same upload-stall fix as above) but disables keep-alive,
-// so EVERY media-edit request (and each retry) opens a brand-new connection.
-// It is SEPARATE from the shared polling/agent above, so retrying a media edit
-// never disturbs long-poll or ordinary bot traffic, and we never destroy a
-// shared agent. `maxSockets` is bounded to avoid unbounded socket growth even
-// though media edits are rare, admin-triggered actions.
-const telegramMediaEditAgent = new https.Agent({
-  keepAlive: false,
-  family: 4,
-  maxSockets: 4,
-});
-
-// Lazily-built dedicated Telegraf `Telegram` client for Route Control media
-// edits, bound to the fresh-socket agent. Lazy so requiring this module stays
-// side-effect-free (no client until a media edit actually happens) and so the
-// bot token is only read from validated config, never logged or exposed.
+// TRANSPORT CHOICE — this client deliberately shares `telegramClientOptions`,
+// i.e. the SAME IPv4-pinned keep-alive agent that the proven media-staging
+// uploader (server/routes/mediaUploadRoutes.js) and all normal bot traffic use.
+// A previous design gave media edits their own keepAlive:false agent; in
+// production every multipart edit through it stalled for the full 30s window
+// while text edits over the shared agent returned in ~0.4s, so the dedicated
+// agent was retired in favour of the one transport demonstrably good for
+// multipart uploads on this host.
+//
+// Why sharing is SAFE with retries: on timeout the AbortController genuinely
+// cancels the request, and node-fetch DESTROYS an aborted request's socket
+// rather than returning it to the keep-alive pool — a retry can never inherit
+// a poisoned connection, no zombie upload lingers in the pool, and total socket
+// count stays bounded by the shared agent. Nothing here destroys the shared
+// agent itself, so long-polling and ordinary sends are never disturbed.
+//
+// A separate `Telegram` instance (not bot.telegram) keeps the sent-message
+// registry's awaited DB insert off the media path, mirroring the staging
+// client. Built lazily so requiring this module stays side-effect-free and the
+// bot token is only ever read from validated config — never logged or exposed.
 let mediaEditClient = null;
 function getRouteMediaEditClient() {
   if (!mediaEditClient) {
     // Required lazily to avoid a load-time dependency on telegraf/config here.
     const { Telegram } = require('telegraf');
     const config = require('../config/config');
-    mediaEditClient = new Telegram(config.botToken, {
-      agent: telegramMediaEditAgent,
-      attachmentAgent: telegramMediaEditAgent,
-    });
+    mediaEditClient = new Telegram(config.botToken, telegramClientOptions);
   }
   return mediaEditClient;
 }
@@ -72,6 +73,5 @@ function getRouteMediaEditClient() {
 module.exports = {
   telegramIpv4Agent,
   telegramClientOptions,
-  telegramMediaEditAgent,
   getRouteMediaEditClient,
 };

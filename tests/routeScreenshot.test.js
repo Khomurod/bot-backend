@@ -161,6 +161,37 @@ test('screenshotStatusBanner: a permission failure surfaces the Telegram error c
   assert.equal(byLabel['Telegram response'], 'Error 403');
 });
 
+test('screenshotStatusBanner: unconfirmed timeout shows the aborted-attempts detail row', async () => {
+  const { screenshotStatusBanner } = await import(MOD);
+  const b = screenshotStatusBanner('replace', {
+    stored: true,
+    telegram: {
+      ok: false, status: 'unconfirmed', code: 'TELEGRAM_TIMEOUT', category: 'transport',
+      operation: 'edit_media_text_to_photo', attempts: 3, abortedAttempts: 3, ambiguousOutcome: true,
+      transportCode: 'ETIMEDOUT', telegramErrorCode: null, correlationId: 'rc-edit-22-t1',
+      detail: 'Telegram did not respond in time while receiving the request. The update could not be confirmed after 3 attempts. No new message was sent.',
+    },
+  });
+  assert.equal(b.type, 'warning');
+  const byLabel = Object.fromEntries(b.details.map((d) => [d.label, String(d.value)]));
+  assert.match(byLabel['Timed-out requests aborted'], /Yes \(3 cancelled before retrying\)/);
+  assert.match(byLabel['Telegram response'], /No response received/);
+  assert.equal(byLabel['New message sent'], 'No');
+});
+
+test('screenshotStatusBanner: no_change (already up to date) is a success with the correct wording', async () => {
+  const { screenshotStatusBanner } = await import(MOD);
+  const b = screenshotStatusBanner('update', {
+    telegram: {
+      ok: true, status: 'no_change', code: 'NO_CHANGE', alreadyUpToDate: true,
+      detail: 'The Telegram message was already up to date — nothing needed changing, and no new message was sent.',
+    },
+  });
+  assert.equal(b.type, 'success');
+  assert.match(b.text, /already up to date/i);
+  assert.doesNotMatch(b.text, /was updated in place/i, 'must not claim a change happened');
+});
+
 test('screenshotStatusBanner: the "update" action has no "Screenshot stored" prefix and no details on success', async () => {
   const { screenshotStatusBanner } = await import(MOD);
   const b = screenshotStatusBanner('update', {

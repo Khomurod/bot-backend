@@ -1,5 +1,5 @@
 /**
- * Route Control — Telegram edit error model + bounded retry.
+ * Route Control — Telegram edit error model + bounded, ABORTABLE retry.
  *
  * ONE canonical classifier (`classifyTelegramError`) turns any Telegram edit
  * failure into a structured, allowlisted result, and ONE retry wrapper
@@ -7,13 +7,22 @@
  * transient transport/5xx/429 failures only — never permanent rejections, and
  * never by sending a new or replacement message.
  *
- * The motivating production failure: a `socket hang up` (ECONNRESET) during the
- * multipart `editMessageMedia` upload for a text→photo conversion, with NO
- * Telegram HTTP response. That is AMBIGUOUS — Telegram may have applied the edit
- * before the response socket died — so we retry the same op; a follow-up
- * "message is not modified" is treated as confirmed success, and if every
- * attempt dies on the wire we report the outcome as UNCONFIRMED rather than a
- * proven rejection.
+ * The motivating production failures (assignment 22): first a `socket hang up`
+ * (ECONNRESET), then three 30s ETIMEDOUTs, during the multipart
+ * `editMessageMedia` upload for a text→photo conversion, with NO Telegram HTTP
+ * response. Both are AMBIGUOUS — Telegram may have applied the edit before the
+ * connection died — so we retry the same op; a follow-up "message is not
+ * modified" is treated as confirmed success, and if every attempt dies on the
+ * wire we report the outcome as UNCONFIRMED rather than a proven rejection.
+ *
+ * ATTEMPT LIFECYCLE (the ETIMEDOUT fix): each attempt owns a fresh
+ * AbortController whose signal the caller passes into Telegraf's
+ * `callApi(method, payload, { signal })`. When the per-attempt timer fires, the
+ * controller aborts and the UNDERLYING HTTP REQUEST IS CANCELLED — node-fetch
+ * rejects promptly and destroys the socket. The wrapper awaits each attempt to
+ * full settlement before starting the next, so attempts can never overlap and
+ * no zombie upload is left occupying a socket while its retry runs (the exact
+ * failure mode of the previous Promise-race timeout).
  *
  * SAFETY: nothing here ever returns or logs bot tokens, Authorization headers,
  * full request URLs, cookies, stack traces, DB URLs, screenshot bytes, or
@@ -111,7 +120,11 @@ function classifyTelegramError(err, { operation = 'edit', correlationId = null }
 
   // ── Transport-level (no Bot API response) — inspect nested codes + message ──
   const isReset = has('ECONNRESET') || has('EPIPE') || /socket hang up|econnreset|epipe|connection reset/i.test(descRaw);
+  // node-fetch abort (our per-attempt cancellation): name 'AbortError',
+  // type 'aborted', message "The user aborted a request." — a timeout-shaped,
+  // AMBIGUOUS outcome (the body may have reached Telegram before the abort).
   const isTimeout = has('ETIMEDOUT') || has('ESOCKETTIMEDOUT') || has('ECONNABORTED')
+    || err?.name === 'AbortError' || has('ABORTED')
     || /timed out|timeout|operation was aborted|aborted/i.test(descRaw);
   const isUnreachable = has('ENETUNREACH') || has('EHOSTUNREACH') || has('ECONNREFUSED') || has('ENETDOWN') || has('EADDRNOTAVAIL');
   const isDns = has('EAI_AGAIN') || has('ENOTFOUND') || /getaddrinfo|dns/i.test(descRaw);
@@ -140,43 +153,27 @@ function classifyTelegramError(err, { operation = 'edit', correlationId = null }
 const defaultSleep = (ms) => new Promise((resolve) => { const t = setTimeout(resolve, ms); if (t.unref) t.unref(); });
 
 /**
- * Bound one edit attempt with a timeout so we never hang on the very long
- * Telegraf default. The underlying request may still finish in the background;
- * the caller uses a fresh (no-keepalive) socket for retries so a dead/abandoned
- * socket is never reused. A timeout is classified as an AMBIGUOUS transport
- * failure (Telegram may have applied the edit).
- */
-function withTimeout(fn, ms, operation) {
-  if (!ms || ms <= 0) return Promise.resolve().then(fn);
-  return new Promise((resolve, reject) => {
-    let done = false;
-    const timer = setTimeout(() => {
-      if (done) return;
-      done = true;
-      const e = new Error(`Telegram ${operation} timed out after ${ms}ms`);
-      e.code = 'ETIMEDOUT';
-      reject(e);
-    }, ms);
-    if (timer.unref) timer.unref();
-    Promise.resolve().then(fn).then(
-      (v) => { if (done) return; done = true; clearTimeout(timer); resolve(v); },
-      (err) => { if (done) return; done = true; clearTimeout(timer); reject(err); },
-    );
-  });
-}
-
-/**
- * Run one Telegram edit operation with bounded retries. Retries ONLY transient
- * failures (transport resets/timeouts/unreachable/DNS, Telegram 5xx, and 429 —
- * honouring retry_after with a cap). Permanent failures (400/403/message-state)
- * are returned immediately. A "message is not modified" at any point is SUCCESS
- * (the edit had already applied). Never sends a new/replacement message — it
- * only re-invokes the SAME idempotent `fn` (same chat + message id).
+ * Run one Telegram edit operation with bounded, ABORTABLE retries.
  *
- * @param {() => Promise<any>} fn  performs the single edit call
+ * `fn` is invoked once per attempt as `fn({ signal, attempt, correlationId })`
+ * and must pass `signal` into Telegraf's `callApi(method, payload, { signal })`
+ * so a timed-out request is genuinely cancelled (not merely un-awaited). Each
+ * attempt is awaited to FULL SETTLEMENT before the next begins — at most one
+ * request is ever in flight for the operation, and no zombie upload can occupy
+ * a socket while its retry runs.
+ *
+ * Retries ONLY transient failures (transport resets/timeouts/unreachable/DNS,
+ * Telegram 5xx, and 429 — honouring retry_after with a cap). Permanent failures
+ * (400/403/message-state) are returned immediately. A "message is not modified"
+ * at any point is SUCCESS (the edit had already applied — `notModified: true`,
+ * and `attempts` tells the caller whether that was a first-attempt no-op or a
+ * post-ambiguity confirmation). Never sends a new/replacement message — it only
+ * re-invokes the SAME idempotent `fn` (same chat + message id).
+ *
+ * @param {(ctx: { signal: AbortSignal, attempt: number, correlationId: (string|null) }) => Promise<any>} fn
  * @param {object} [opts]
  * @returns {Promise<{ ok:boolean, notModified:boolean, attempts:number,
- *   classification:(object|null), result:any }>}
+ *   abortedAttempts:number, classification:(object|null), result:any }>}
  */
 async function runTelegramEditWithRetry(fn, {
   operation = 'edit',
@@ -191,37 +188,72 @@ async function runTelegramEditWithRetry(fn, {
   onAttempt = null,
 } = {}) {
   let lastClass = null;
+  let abortedAttempts = 0;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = perAttemptTimeoutMs > 0
+      ? setTimeout(() => { timedOut = true; controller.abort(); }, perAttemptTimeoutMs)
+      : null;
+    if (timer && timer.unref) timer.unref();
     const startedAt = Date.now();
+    let result;
+    let caught = null;
     try {
-      const result = await withTimeout(fn, perAttemptTimeoutMs, operation);
-      if (onAttempt) onAttempt({ attempt, ok: true, durationMs: Date.now() - startedAt, classification: null });
-      return { ok: true, notModified: false, attempts: attempt, classification: null, result };
+      // Awaited to settlement: on timeout the controller aborts the request and
+      // node-fetch rejects, so we NEVER proceed while a request is still live.
+      result = await fn({ signal: controller.signal, attempt, correlationId });
     } catch (err) {
-      const classification = classifyTelegramError(err, { operation, correlationId });
-      lastClass = classification;
-      if (classification.code === 'NOT_MODIFIED') {
-        // Already applied — possibly by a prior attempt whose response was lost.
-        if (onAttempt) onAttempt({ attempt, ok: true, durationMs: Date.now() - startedAt, classification });
-        return { ok: true, notModified: true, attempts: attempt, classification, result: null };
-      }
-      if (onAttempt) onAttempt({ attempt, ok: false, durationMs: Date.now() - startedAt, classification });
-      const canRetry = classification.retryable && attempt < maxAttempts;
-      if (!canRetry) {
-        return { ok: false, notModified: false, attempts: attempt, classification, result: null };
-      }
-      let delayMs;
-      if (classification.code === 'TELEGRAM_RATE_LIMITED' && classification.retryAfterSeconds != null) {
-        delayMs = Math.min(classification.retryAfterSeconds, retryAfterCapSeconds) * 1000 + 250;
-      } else {
-        const exp = Math.min(maxDelayMs, baseDelayMs * (2 ** (attempt - 1)));
-        // Half fixed + half jitter so retries de-synchronize without long waits.
-        delayMs = Math.round(exp / 2 + random() * (exp / 2));
-      }
-      await sleep(delayMs);
+      caught = err;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
+    const durationMs = Date.now() - startedAt;
+
+    if (caught == null) {
+      if (onAttempt) onAttempt({ attempt, ok: true, durationMs, aborted: false, classification: null });
+      return { ok: true, notModified: false, attempts: attempt, abortedAttempts, classification: null, result };
+    }
+
+    let classification = classifyTelegramError(caught, { operation, correlationId });
+    if (timedOut) {
+      abortedAttempts += 1;
+      // OUR timer cancelled the request. Whatever shape the rejection took,
+      // report it as an ambiguous timeout: the body may have reached Telegram
+      // before the abort, so the same idempotent edit is retried.
+      classification = {
+        ...classification,
+        code: 'TELEGRAM_TIMEOUT',
+        category: CATEGORY.TRANSPORT,
+        retryable: true,
+        ambiguousOutcome: true,
+        transportCode: classification.transportCode || 'ETIMEDOUT',
+        description: `Telegram did not respond within ${Math.round(perAttemptTimeoutMs / 1000)}s; the request was cancelled.`,
+      };
+    }
+    lastClass = classification;
+
+    if (classification.code === 'NOT_MODIFIED') {
+      // Already applied — possibly by a prior attempt whose response was lost.
+      if (onAttempt) onAttempt({ attempt, ok: true, durationMs, aborted: false, classification });
+      return { ok: true, notModified: true, attempts: attempt, abortedAttempts, classification, result: null };
+    }
+    if (onAttempt) onAttempt({ attempt, ok: false, durationMs, aborted: timedOut, classification });
+    const canRetry = classification.retryable && attempt < maxAttempts;
+    if (!canRetry) {
+      return { ok: false, notModified: false, attempts: attempt, abortedAttempts, classification, result: null };
+    }
+    let delayMs;
+    if (classification.code === 'TELEGRAM_RATE_LIMITED' && classification.retryAfterSeconds != null) {
+      delayMs = Math.min(classification.retryAfterSeconds, retryAfterCapSeconds) * 1000 + 250;
+    } else {
+      const exp = Math.min(maxDelayMs, baseDelayMs * (2 ** (attempt - 1)));
+      // Half fixed + half jitter so retries de-synchronize without long waits.
+      delayMs = Math.round(exp / 2 + random() * (exp / 2));
+    }
+    await sleep(delayMs);
   }
-  return { ok: false, notModified: false, attempts: maxAttempts, classification: lastClass, result: null };
+  return { ok: false, notModified: false, attempts: maxAttempts, abortedAttempts, classification: lastClass, result: null };
 }
 
 module.exports = {
@@ -229,5 +261,4 @@ module.exports = {
   classifyTelegramError,
   runTelegramEditWithRetry,
   sanitizeDescription,
-  withTimeout,
 };

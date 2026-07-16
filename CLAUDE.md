@@ -37,6 +37,62 @@ documentation task in this repository:
   auto-opens AND auto-merges a PR into `main` within seconds — review the
   complete diff BEFORE pushing.
 
+# Maintainability
+
+## Maximum source-file size
+
+- No hand-written source-code or test-code file may exceed **500 physical lines**.
+- This is a hard maximum, not a target.
+- Begin splitting a file before it reaches approximately 400 lines.
+- Split by cohesive responsibility and domain boundary, not arbitrary line
+  ranges.
+- Do not evade the limit through minification, compressed formatting, multiple
+  statements per line, generated-looking code, or moving giant functions into
+  another catch-all file.
+- New and modified files must comply before work is considered complete.
+- When touching an existing file over 500 lines, reduce it below the limit as
+  part of that work, or explicitly stop and report why a separate approved
+  refactor is required.
+- Generated files, vendored dependencies, package-lock files, build output, and
+  machine-generated artifacts are excluded.
+- Database schema snapshots or generated migrations may be excluded only when
+  splitting them would break their tooling.
+- Prefer a small compatibility façade plus focused internal modules when an
+  existing import path must be preserved. `services/routeControlService.js` →
+  `services/routeControl/*` is the reference example.
+
+### Checking the limit
+
+```
+npm run lint:filesize        # enforce: fails on NEW violations
+npm run lint:filesize:list   # list every file currently over the limit
+```
+
+Legacy violations that predate this rule are recorded in
+`scripts/fileSizeBaseline.json`. That baseline may only ever **shrink**: a file
+that is not listed fails the check if it exceeds the limit, a listed file fails
+if it grows, and a listed file that drops to/below 500 lines must be removed
+from the baseline so the win is locked in. Do not add new entries to the
+baseline to work around the rule.
+
+## Module design
+
+- Modules must have one clear primary responsibility.
+- Circular dependencies are prohibited. Dependencies flow one way:
+  routes/controllers → service façade/orchestrators → focused domain services →
+  database and external integrations → pure helpers/constants.
+- Business logic does not belong in route/controller files.
+- Separate pure logic from I/O when practical — prefer pure functions for
+  formatting, normalization, and decisions (tracking, deviation, completion,
+  error/status construction), and keep database writes and Telegram calls in
+  explicit orchestration functions.
+- Shared logic must be extracted, never copied.
+- Shared mutable state must have one clearly documented owner.
+- Avoid "utils.js" dumping grounds and modules that exist only to re-export a
+  single trivial function.
+- Tests must be reorganized when they become oversized, rather than consolidated
+  into giant files.
+
 # Tool Usage
 
 - **codebase-memory-mcp** = understands this project. Use its graph tools before
@@ -61,7 +117,10 @@ environment — compare against `main` before attributing failures to a change.
 
 # Key Feature Notes
 
-- **Route Control** (`services/routeControlService.js`): destination
+- **Route Control** (`services/routeControl/`, reached through the
+  `services/routeControlService.js` compatibility façade — that façade is
+  re-export only; add new code to a focused module in the package and export it
+  from `services/routeControl/index.js`): destination
   auto-completion (default 50 mi — single authoritative constant in
   `services/routeControlConstants.js`) runs for EVERY lifecycle-active route,
   including tracking-pending ones, and does NOT require Google Maps to be

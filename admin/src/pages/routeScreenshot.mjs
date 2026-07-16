@@ -79,6 +79,9 @@ function telegramDetailList(tg, storedLabel) {
     { label: 'Operation', value: OPERATION_LABEL[tg.operation] || 'Update the message' },
     { label: 'Result', value: tg.description || tg.detail || tg.code || 'Unknown' },
     { label: 'Attempts', value: tg.attempts != null ? String(tg.attempts) : '—' },
+    ...(tg.abortedAttempts > 0
+      ? [{ label: 'Timed-out requests aborted', value: `Yes (${tg.abortedAttempts} cancelled before retrying)` }]
+      : []),
     { label: 'Telegram response', value: tg.telegramErrorCode != null ? `Error ${tg.telegramErrorCode}` : 'No response received' },
     { label: 'Stored screenshot', value: storedLabel },
     { label: 'New message sent', value: 'No' },

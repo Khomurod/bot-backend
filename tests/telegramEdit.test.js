@@ -197,13 +197,93 @@ test('retry: Telegram 403 is NOT retried', async () => {
   assert.equal(r.classification.code, 'BOT_PERMISSION');
 });
 
-test('retry: a per-attempt timeout is enforced and classified as an (ambiguous) timeout', async () => {
-  let calls = 0;
-  const r = await runTelegramEditWithRetry(async () => {
-    calls += 1;
-    if (calls === 1) return new Promise(() => {}); // never resolves → must time out
-    return {};
+// A fake "request" that stalls forever UNLESS its AbortSignal fires — the same
+// contract as node-fetch: abort → prompt rejection with an AbortError.
+function stalledUntilAborted(signal, onSettled) {
+  return new Promise((_resolve, reject) => {
+    const fail = () => {
+      const e = new Error('The user aborted a request.');
+      e.name = 'AbortError';
+      e.type = 'aborted';
+      if (onSettled) onSettled();
+      reject(e);
+    };
+    if (signal.aborted) return fail();
+    signal.addEventListener('abort', fail, { once: true });
+  });
+}
+
+test('retry: a stalled request receives the AbortSignal, is cancelled, and settles before the retry', async () => {
+  const events = [];
+  let active = 0;
+  let maxActive = 0;
+  let sawSignal = false;
+  const r = await runTelegramEditWithRetry(async ({ signal, attempt }) => {
+    sawSignal = signal instanceof AbortSignal || (signal && typeof signal.aborted === 'boolean');
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    events.push(`start:${attempt}`);
+    if (attempt === 1) {
+      // Never resolves on its own — only the abort can settle it.
+      return stalledUntilAborted(signal, () => { active -= 1; events.push('settled:1'); });
+    }
+    active -= 1;
+    events.push(`ok:${attempt}`);
+    return { message_id: 1410 };
   }, { sleep: noSleep, random: zeroRandom, perAttemptTimeoutMs: 20 });
-  assert.equal(r.ok, true, 'second attempt succeeds after the first times out');
+  assert.equal(r.ok, true, 'second attempt succeeds after the first is aborted');
   assert.equal(r.attempts, 2);
+  assert.equal(r.abortedAttempts, 1, 'the timed-out request was actually aborted');
+  assert.equal(sawSignal, true, 'the attempt received an AbortSignal');
+  assert.equal(maxActive, 1, 'attempts never overlap');
+  assert.deepEqual(events, ['start:1', 'settled:1', 'start:2', 'ok:2'],
+    'attempt 1 fully settled before attempt 2 started');
+});
+
+test('retry: three aborted timeouts → unconfirmed (ambiguous), no active request remains', async () => {
+  let active = 0;
+  let maxActive = 0;
+  const r = await runTelegramEditWithRetry(async ({ signal }) => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    return stalledUntilAborted(signal, () => { active -= 1; });
+  }, { sleep: noSleep, random: zeroRandom, perAttemptTimeoutMs: 15 });
+  assert.equal(r.ok, false);
+  assert.equal(r.attempts, 3);
+  assert.equal(r.abortedAttempts, 3);
+  assert.equal(r.classification.code, 'TELEGRAM_TIMEOUT');
+  assert.equal(r.classification.ambiguousOutcome, true, 'a cancelled upload is never a proven rejection');
+  assert.equal(maxActive, 1);
+  assert.equal(active, 0, 'no request is left running after the runner returns');
+});
+
+test('retry: fn receives attempt number and correlationId', async () => {
+  const seen = [];
+  await runTelegramEditWithRetry(async ({ attempt, correlationId }) => {
+    seen.push({ attempt, correlationId });
+    if (attempt === 1) throw socketHangUp();
+    return {};
+  }, { sleep: noSleep, random: zeroRandom, correlationId: 'rc-edit-test-1' });
+  assert.deepEqual(seen, [
+    { attempt: 1, correlationId: 'rc-edit-test-1' },
+    { attempt: 2, correlationId: 'rc-edit-test-1' },
+  ]);
+});
+
+test('retry: ten repeated timeout scenarios leave zero active requests and never exhaust a socket pool', async () => {
+  // Simulated pool: each in-flight request holds one socket; an abort releases
+  // it. If aborts did not truly settle requests, `pool` would climb toward the
+  // old maxSockets:4 ceiling and later attempts would starve.
+  let pool = 0;
+  let maxPool = 0;
+  for (let scenario = 1; scenario <= 10; scenario += 1) {
+    const r = await runTelegramEditWithRetry(async ({ signal }) => {
+      pool += 1;
+      maxPool = Math.max(maxPool, pool);
+      return stalledUntilAborted(signal, () => { pool -= 1; });
+    }, { sleep: noSleep, random: zeroRandom, perAttemptTimeoutMs: 5 });
+    assert.equal(r.ok, false);
+    assert.equal(pool, 0, `scenario ${scenario}: all sockets released`);
+  }
+  assert.equal(maxPool, 1, 'at most one socket ever in use — no accumulation across scenarios');
 });
