@@ -232,6 +232,17 @@ async function activateTrailerRental(id, actor) {
     if (!trailer.rows[0] || !trailer.rows[0].active || trailer.rows[0].needs_review || trailer.rows[0].physical_status !== 'available') {
       throw httpError('Trailer must be active, reviewed, and available.', 409);
     }
+    // Master-list authority: a trailer that is pending review, archived or
+    // merged is not an official asset and can never start a rental, however
+    // available it looks physically.
+    if (trailer.rows[0].master_status !== 'active') {
+      const reason = {
+        pending_master_review: 'This trailer is pending master-list review and cannot be rented until it is verified.',
+        archived: 'This trailer is archived and cannot be rented.',
+        merged: 'This trailer was merged into another record and cannot be rented.',
+      };
+      throw httpError(reason[trailer.rows[0].master_status] || 'Trailer is not on the official master list.', 409);
+    }
     if (!rental.start_at || !rental.expected_return_at || !rental.pickup_location) throw httpError('Start, expected return, and pickup location are required.');
     if (rental.currency !== 'USD') throw httpError('Only USD is supported.');
     if (rental.billing_method === 'flat_rate' && (rental.flat_rate == null || Number(rental.flat_rate) < 0)) throw httpError('A flat rate is required.');

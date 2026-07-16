@@ -13,6 +13,33 @@
  *   - current_status is derived from the latest pickup/dropoff event only.
  */
 const { query } = require('./pool');
+// services/trailerMasterList/normalize is the single owner of unit-number
+// normalization, shared with the master-list and Telegram ingest paths so
+// matching can never drift between them. Re-exported below for callers.
+const { normalizeUnitNumber } = require('../services/trailerMasterList/normalize');
+// The master list itself (reads + the single restricted creation path) lives in
+// ./trailerMasterList/masterTrailers. Re-exported below so `require('./db')` and
+// `require('./trailers')` callers keep working unchanged.
+const masterTrailers = require('./trailerMasterList/masterTrailers');
+
+const {
+  getTrailerById,
+  getTrailerByUnitNumber,
+  upsertTrailerByUnitNumber,
+  ensureTrailerForDetection,
+  TRAILER_FIELDS,
+} = masterTrailers;
+
+/**
+ * What makes a trailer a real, official asset — the single definition shared by
+ * every list, map and picker (`t` must be the trailers alias).
+ *
+ * Two independent flags must BOTH hold: `active` is the legacy soft-delete, and
+ * `master_status` is master-list authority. A pending-review, archived or merged
+ * trailer is not an asset: it keeps its history but must never appear on a map,
+ * in a default list, or in a rental picker.
+ */
+const OFFICIAL_TRAILER_PREDICATE = "t.active = TRUE AND t.master_status = 'active'";
 // ─── helpers ───
 
 /** Trim to a bounded string, or null for empty/blank. Never throws. */
@@ -22,13 +49,6 @@ function s(value, max = 500) {
   if (!t) return null;
   return t.length > max ? t.slice(0, max) : t;
 }
-/** Normalize a unit number for stable matching/storage: upper, strip spaces/#. */
-function normalizeUnitNumber(value) {
-  if (value == null) return null;
-  const t = String(value).toUpperCase().replace(/[#\s]+/g, '').trim();
-  return t || null;
-}
-const TRAILER_FIELDS = ['make', 'model', 'mc_number', 'plate_number', 'type', 'vin', 'year', 'ownership_status'];
 // ─── unified status normalization ───
 const POSSESSION_STATES = new Set(['with_driver', 'dropped', 'unknown']);
 const CARGO_STATES = new Set(['empty', 'loaded', 'unknown']);
@@ -83,93 +103,15 @@ function buildDisplayStatus(possession, cargo, needsReview) {
 
 // ─── trailers (master list) ───
 
-async function getTrailerById(id) {
-  const res = await query('SELECT * FROM trailers WHERE id = $1', [Number(id)]);
-  return res.rows[0] || null;
-}
-
-async function getTrailerByUnitNumber(unitNumber) {
-  const unit = normalizeUnitNumber(unitNumber);
-  if (!unit) return null;
-  const res = await query('SELECT * FROM trailers WHERE unit_number = $1', [unit]);
-  return res.rows[0] || null;
-}
-
-/**
- * Upsert a trailer by unit number. Only NON-EMPTY provided fields are written;
- * existing values are never clobbered with blanks. Returns the row.
- *
- * `source` defaults to 'admin_manual'. On insert, `needs_review` follows the
- * caller; on update it is only set when explicitly provided.
- */
-async function upsertTrailerByUnitNumber(input = {}) {
-  const unit = normalizeUnitNumber(input.unit_number);
-  if (!unit) return null;
-
-  const existing = await getTrailerByUnitNumber(unit);
-  const source = s(input.source) || (existing ? existing.source : 'admin_manual');
-
-  if (!existing) {
-    const cols = ['unit_number', 'source'];
-    const vals = [unit, source];
-    for (const f of TRAILER_FIELDS) {
-      if (input[f] != null && s(input[f]) != null) { cols.push(f); vals.push(s(input[f])); }
-    }
-    if (input.needs_review != null) { cols.push('needs_review'); vals.push(Boolean(input.needs_review)); }
-    if (input.active != null) { cols.push('active'); vals.push(Boolean(input.active)); }
-    const placeholders = vals.map((_, i) => `$${i + 1}`);
-    const res = await query(
-      `INSERT INTO trailers (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`,
-      vals
-    );
-    return res.rows[0];
-  }
-
-  // Update: only overwrite with non-blank provided values.
-  const sets = [];
-  const vals = [];
-  let i = 1;
-  for (const f of TRAILER_FIELDS) {
-    if (input[f] != null && s(input[f]) != null) {
-      sets.push(`${f} = $${i++}`);
-      vals.push(s(input[f]));
-    }
-  }
-  if (input.needs_review != null) { sets.push(`needs_review = $${i++}`); vals.push(Boolean(input.needs_review)); }
-  if (input.active != null) { sets.push(`active = $${i++}`); vals.push(Boolean(input.active)); }
-  if (!sets.length) return existing;
-  sets.push('updated_at = NOW()');
-  vals.push(existing.id);
-  const res = await query(
-    `UPDATE trailers SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
-    vals
-  );
-  return res.rows[0];
-}
-
-/**
- * Ensure a minimal trailer row exists for a unit the bot detected. Creates it
- * with source='telegram_detected' + needs_review=true when absent. Returns the
- * row (existing or newly created).
- */
-async function ensureTrailerForDetection(unitNumber) {
-  const unit = normalizeUnitNumber(unitNumber);
-  if (!unit) return null;
-  const existing = await getTrailerByUnitNumber(unit);
-  if (existing) return existing;
-  const res = await query(
-    `INSERT INTO trailers (unit_number, source, needs_review)
-     VALUES ($1, 'telegram_detected', TRUE)
-     ON CONFLICT (unit_number) DO UPDATE SET updated_at = NOW()
-     RETURNING *`,
-    [unit]
-  );
-  return res.rows[0];
-}
-
 /**
  * Trailer master list joined to current status, with optional filters.
- * Filters: q (unit/plate/vin substring), status, ownership, type, needs_review.
+ * Filters: q (unit/plate/vin substring), status, ownership, type, needs_review,
+ * master_status.
+ *
+ * Defaults to OFFICIAL trailers only. Pending-review, archived and merged
+ * records keep all their history but are not assets, so they are reachable only
+ * by asking for them explicitly (`master_status`), which is what the dedicated
+ * master-list review section does.
  */
 async function listTrailers(filters = {}) {
   const where = [];
@@ -179,6 +121,12 @@ async function listTrailers(filters = {}) {
     where.push(`(UPPER(t.unit_number) LIKE $${i} OR UPPER(COALESCE(t.plate_number,'')) LIKE $${i} OR UPPER(COALESCE(t.vin,'')) LIKE $${i})`);
     vals.push(`%${String(filters.q).toUpperCase()}%`);
     i++;
+  }
+  if (filters.master_status) {
+    where.push(`t.master_status = $${i++}`);
+    vals.push(String(filters.master_status));
+  } else if (filters.include_unofficial !== true && filters.include_unofficial !== 'true') {
+    where.push(OFFICIAL_TRAILER_PREDICATE);
   }
   if (filters.status) { where.push(`COALESCE(cs.current_status,'unknown') = $${i++}`); vals.push(String(filters.status)); }
   if (filters.ownership) { where.push(`t.ownership_status = $${i++}`); vals.push(String(filters.ownership)); }
@@ -714,7 +662,7 @@ async function listTrailerMapData() {
             cs.location_source, cs.location_confidence
      FROM trailers t
      LEFT JOIN trailer_current_status cs ON cs.trailer_id = t.id
-     WHERE t.active = TRUE
+     WHERE ${OFFICIAL_TRAILER_PREDICATE}
      ORDER BY cs.last_event_at DESC NULLS LAST, t.unit_number ASC
      LIMIT 2000`
   );
@@ -728,7 +676,11 @@ async function listTrailerMapData() {
  * view. `activeOnly` (default true) mirrors the map query; pass false to include
  * archived trailers in admin lists.
  */
-async function getUnifiedTrailerStates({ activeOnly = true, limit = 2000 } = {}) {
+async function getUnifiedTrailerStates({ activeOnly = true, limit = 2000, includeUnofficial = false } = {}) {
+  // Default to OFFICIAL trailers only. Pending-review / archived / merged
+  // records are not assets: they must not appear on a map or in a default list,
+  // only in the dedicated master-list review section (includeUnofficial).
+  const officialFilter = activeOnly && !includeUnofficial ? `WHERE ${OFFICIAL_TRAILER_PREDICATE}` : '';
   const res = await query(
     `SELECT t.id AS trailer_id, t.unit_number, t.type, t.ownership_status, t.active, t.physical_status, t.tracking_reference,
             t.needs_review, t.plate_number, t.vin, t.make, t.model, t.year, t.mc_number,
@@ -744,7 +696,7 @@ async function getUnifiedTrailerStates({ activeOnly = true, limit = 2000 } = {})
             cs.pending_event_id, cs.location_source, cs.location_confidence, cs.updated_at
      FROM trailers t
      LEFT JOIN trailer_current_status cs ON cs.trailer_id = t.id
-     ${activeOnly ? 'WHERE t.active = TRUE' : ''}
+     ${officialFilter}
      ORDER BY cs.last_event_at DESC NULLS LAST, t.unit_number ASC
      LIMIT $1`,
     [Math.max(1, Math.min(5000, Number(limit) || 2000))]

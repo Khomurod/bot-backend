@@ -22,6 +22,7 @@ const contextPath = path.resolve(__dirname, '../services/trailerContextService.j
 const verifierPath = path.resolve(__dirname, '../services/trailerSemanticVerifier.js');
 const visionPath = path.resolve(__dirname, '../services/trailerVisionService.js');
 const dbPath = path.resolve(__dirname, '../database/db.js');
+const detectionPath = path.resolve(__dirname, '../services/trailerMasterList/detection.js');
 const geoPath = path.resolve(__dirname, '../services/trailerGeocodeService.js');
 
 /** Approving normalized AI result: one confirmed completed event per unit. */
@@ -56,7 +57,7 @@ function approveUnits(units) {
 }
 
 function loadMonitor({ aiResult } = {}) {
-  const state = { events: [], statusUpdates: [] };
+  const state = { events: [], statusUpdates: [], unmatchedMentions: [] };
   const fakeDb = {
     getTrailerSettings: async () => ({
       enabled: true, beta_mode: true, automatic_update_test_group_id: null,
@@ -65,7 +66,16 @@ function loadMonitor({ aiResult } = {}) {
       semantic_ai_required: true, auto_register_confidence: 92, review_confidence: 75,
     }),
     getDriverProfileByGroupId: async () => ({ id: 5, first_name: 'John', last_name: 'Driver' }),
-    ensureTrailerForDetection: async (unit) => ({ id: 100 + state.events.length, unit_number: unit }),
+    // A detection RESOLVES against the authoritative master list and can never
+    // create a trailer. Default: the unit is a known ACTIVE OFFICIAL trailer, so
+    // known-trailer ingestion behaves exactly as before.
+    resolveTrailerByUnitOrAlias: async (unit) => (unit
+      ? { trailer: { id: 100 + state.events.length, unit_number: unit }, official: true, matchedBy: 'unit_number', normalizedUnit: unit }
+      : { trailer: null, official: false, matchedBy: null, normalizedUnit: null }),
+    recordUnmatchedMention: async (evidence) => {
+      state.unmatchedMentions.push(evidence);
+      return { id: state.unmatchedMentions.length, ...evidence };
+    },
     getTrailerByUnitNumber: async (unit) => (unit ? { id: 100, unit_number: unit } : null),
     getTrailerCurrentStatus: async () => null,
     insertTrailerEvent: async (input) => {
@@ -85,7 +95,10 @@ function loadMonitor({ aiResult } = {}) {
     isVisionConfigured: () => false,
   };
 
-  for (const p of [monitorPath, contextPath, verifierPath]) delete require.cache[p];
+  // detectionPath captures `db` at require time, so it MUST be purged with the
+  // monitor — otherwise it stays bound to a previous test's fake db and quietly
+  // records into the wrong state.
+  for (const p of [monitorPath, contextPath, verifierPath, detectionPath]) delete require.cache[p];
   require.cache[dbPath] = { exports: fakeDb };
   require.cache[visionPath] = { exports: fakeVision };
   // Geocoding disabled in settings, but stub anyway so nothing can hit network.

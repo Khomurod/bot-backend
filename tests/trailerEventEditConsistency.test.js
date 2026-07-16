@@ -7,11 +7,29 @@
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
+
+const DATABASE_DIR = path.resolve(__dirname, '../database');
+
+/** Every .js file under database/, recursively. */
+function databaseFiles(dir = DATABASE_DIR) {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...databaseFiles(full));
+    else if (entry.name.endsWith('.js')) out.push(full);
+  }
+  return out;
+}
 
 function load(fakeQuery) {
   const modPath = path.resolve(__dirname, '../database/trailers.js');
   const poolPath = path.resolve(__dirname, '../database/pool.js');
+  // trailers.js is a façade over database/trailerMasterList/*, so purging only
+  // the façade would leave those modules bound to a PREVIOUS load's pool and
+  // the fake below would be silently ignored. Purge the whole tree.
+  for (const file of databaseFiles()) delete require.cache[file];
   delete require.cache[modPath];
   require.cache[poolPath] = { exports: { query: fakeQuery, pool: {}, ping: async () => true } };
   return require(modPath);

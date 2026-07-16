@@ -27,9 +27,10 @@ const contextPath = path.resolve(__dirname, '../services/trailerContextService.j
 const verifierPath = path.resolve(__dirname, '../services/trailerSemanticVerifier.js');
 const visionPath = path.resolve(__dirname, '../services/trailerVisionService.js');
 const dbPath = path.resolve(__dirname, '../database/db.js');
+const detectionPath = path.resolve(__dirname, '../services/trailerMasterList/detection.js');
 
 function loadMonitor({ dbOverrides = {}, aiResult } = {}) {
-  const state = { events: [], statusUpdates: [], queries: [] };
+  const state = { events: [], statusUpdates: [], queries: [], unmatchedMentions: [] };
   const fakeDb = {
     getTrailerSettings: async () => ({
       enabled: true, beta_mode: true, automatic_update_test_group_id: null,
@@ -38,7 +39,16 @@ function loadMonitor({ dbOverrides = {}, aiResult } = {}) {
       semantic_ai_required: true, auto_register_confidence: 92, review_confidence: 75,
     }),
     getDriverProfileByGroupId: async () => ({ id: 5, first_name: 'John', last_name: 'Driver' }),
-    ensureTrailerForDetection: async (unit) => ({ id: 100, unit_number: unit }),
+    // A detection RESOLVES against the authoritative master list and can never
+    // create a trailer. Default: the unit is a known ACTIVE OFFICIAL trailer, so
+    // known-trailer ingestion behaves exactly as before.
+    resolveTrailerByUnitOrAlias: async (unit) => (unit
+      ? { trailer: { id: 100, unit_number: unit }, official: true, matchedBy: 'unit_number', normalizedUnit: unit }
+      : { trailer: null, official: false, matchedBy: null, normalizedUnit: null }),
+    recordUnmatchedMention: async (evidence) => {
+      state.unmatchedMentions.push(evidence);
+      return { id: state.unmatchedMentions.length, ...evidence };
+    },
     getTrailerByUnitNumber: async (unit) => (unit ? { id: 100, unit_number: unit } : null),
     getTrailerCurrentStatus: async () => null,
     insertTrailerEvent: async (input) => {
@@ -57,7 +67,10 @@ function loadMonitor({ dbOverrides = {}, aiResult } = {}) {
     isVisionConfigured: () => false,
   };
 
-  for (const p of [monitorPath, contextPath, verifierPath]) delete require.cache[p];
+  // detectionPath captures `db` at require time, so it MUST be purged with the
+  // monitor — otherwise it stays bound to a previous test's fake db and quietly
+  // records into the wrong state.
+  for (const p of [monitorPath, contextPath, verifierPath, detectionPath]) delete require.cache[p];
   require.cache[dbPath] = { exports: fakeDb };
   require.cache[visionPath] = { exports: fakeVision };
   const realVerifier = require(verifierPath);
@@ -125,6 +138,82 @@ test('AI-verified pickup registers event SILENTLY: no driver-group reply, no rea
   const driverSends = tg.sent.filter((m) => String(m.chatId) === String(GROUP.telegram_group_id));
   assert.equal(driverSends.length, 0, 'driver group sends = 0');
   assert.equal(tg.reactions.length, 0, 'driver group reactions = 0');
+});
+
+// ─── master-list authority ───
+// `trailers` is the authoritative master list. A Telegram message must NEVER
+// add to it: an unknown unit number is queued for human review instead. Before
+// this, OCR noise and typos silently became assets on the master list and map.
+
+test('an UNKNOWN trailer number registers no event and creates no trailer', async () => {
+  const { mod, state } = loadMonitor({
+    aiResult: approve({ unit: 'VT999999', action: 'pickup', locationText: 'Lancaster PA' }),
+    dbOverrides: {
+      db: {
+        // The unit matches no trailer and no active alias.
+        resolveTrailerByUnitOrAlias: async () => ({
+          trailer: null, official: false, matchedBy: null, normalizedUnit: 'VT999999',
+        }),
+      },
+    },
+  });
+  const tg = makeTelegram();
+
+  const res = await mod.handleTrailerGroupMessage(tg, GROUP, msg('trl # VT999999\nPicked up by: ENICSON JEAN'));
+
+  assert.equal(state.events.length, 0, 'no event is registered for an unknown trailer');
+  assert.equal(state.statusUpdates.length, 0, 'no trailer status is touched');
+  assert.ok(!res.registered, 'the message does not register');
+});
+
+test('an UNKNOWN trailer number is queued for master-list review with its evidence', async () => {
+  const { mod, state } = loadMonitor({
+    aiResult: approve({ unit: 'VT999999', action: 'pickup', locationText: 'Lancaster PA' }),
+    dbOverrides: {
+      db: {
+        resolveTrailerByUnitOrAlias: async () => ({
+          trailer: null, official: false, matchedBy: null, normalizedUnit: 'VT999999',
+        }),
+      },
+    },
+  });
+
+  await mod.handleTrailerGroupMessage(makeTelegram(), GROUP, msg('trl # VT999999\nPicked up by: ENICSON JEAN'));
+
+  assert.equal(state.unmatchedMentions.length, 1, 'the detection becomes a review record');
+  const mention = state.unmatchedMentions[0];
+  assert.equal(mention.unit_number, 'VT999999');
+  assert.equal(mention.extracted_action, 'pickup');
+  assert.equal(mention.extracted_location, 'Lancaster PA');
+  assert.equal(mention.linked_trailer_id, null, 'nothing to link — the trailer does not exist');
+  assert.equal(String(mention.telegram_group_id), String(GROUP.telegram_group_id), 'evidence is preserved');
+  assert.ok(mention.message_text, 'the original message is kept for review');
+});
+
+test('a PENDING-REVIEW trailer is not reactivated and registers no event', async () => {
+  // Resolves to a real trailer that is NOT official (e.g. a legacy
+  // telegram_detected row awaiting review). Spec: preserve the message as
+  // review evidence, but never reactivate it or change its state automatically.
+  const { mod, state } = loadMonitor({
+    aiResult: approve({ unit: 'VT700669', action: 'pickup' }),
+    dbOverrides: {
+      db: {
+        resolveTrailerByUnitOrAlias: async (unit) => ({
+          trailer: { id: 42, unit_number: unit, master_status: 'pending_master_review' },
+          official: false,
+          matchedBy: 'unit_number',
+          normalizedUnit: unit,
+        }),
+      },
+    },
+  });
+
+  await mod.handleTrailerGroupMessage(makeTelegram(), GROUP, msg('trl # VT700669\nPicked up by: ENICSON JEAN'));
+
+  assert.equal(state.events.length, 0, 'a non-official trailer registers no event');
+  assert.equal(state.statusUpdates.length, 0, 'its status is never changed automatically');
+  assert.equal(state.unmatchedMentions.length, 1);
+  assert.equal(state.unmatchedMentions[0].linked_trailer_id, 42, 'evidence links to the trailer under review');
 });
 
 test('AI-verified dropoff registers event and updates status', async () => {

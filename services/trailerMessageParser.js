@@ -113,12 +113,11 @@ function norm(text) {
   return String(text || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-/** Normalize a unit number to a stable form: uppercase, no spaces/#. */
-function normalizeUnitNumber(value) {
-  if (value == null) return null;
-  const t = String(value).toUpperCase().replace(/[#\s]+/g, '').trim();
-  return t || null;
-}
+// Re-exported below so existing `require('./trailerMessageParser')` callers keep
+// working. The implementation lives in trailerMasterList/normalize, the single
+// owner shared with the database layer — an independent copy here would let
+// parser matching drift away from master-list matching.
+const { normalizeUnitNumber } = require('./trailerMasterList/normalize');
 
 /** True when the message references trailers at all. */
 function hasTrailerKeyword(text) {

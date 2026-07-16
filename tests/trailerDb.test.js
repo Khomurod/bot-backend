@@ -8,11 +8,29 @@
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
+
+const DATABASE_DIR = path.resolve(__dirname, '../database');
+
+/** Every .js file under database/, recursively. */
+function databaseFiles(dir = DATABASE_DIR) {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...databaseFiles(full));
+    else if (entry.name.endsWith('.js')) out.push(full);
+  }
+  return out;
+}
 
 function load(fakeQuery) {
   const modPath = path.resolve(__dirname, '../database/trailers.js');
   const poolPath = path.resolve(__dirname, '../database/pool.js');
+  // trailers.js is a façade over database/trailerMasterList/*, so purging only
+  // the façade would leave those modules bound to a PREVIOUS load's pool and
+  // the fake below would be silently ignored. Purge the whole tree.
+  for (const file of databaseFiles()) delete require.cache[file];
   delete require.cache[modPath];
   require.cache[poolPath] = { exports: { query: fakeQuery, pool: {}, ping: async () => true } };
   return require(modPath);
@@ -125,14 +143,30 @@ test('applyEventToCurrentStatus ignores mention/unidentified events', async () =
   assert.equal(rec.calls.length, 0);
 });
 
-test('ensureTrailerForDetection creates minimal telegram_detected trailer', async () => {
+// `trailers` is the authoritative master list: a Telegram detection resolves
+// against it and must NEVER add to it. This test previously asserted the
+// opposite — that a detection created a stub telegram_detected trailer.
+test('ensureTrailerForDetection resolves a known trailer without creating one', async () => {
   const rec = recorder((s) => {
-    if (s.startsWith('SELECT * FROM trailers WHERE unit_number')) return []; // not existing
-    if (s.startsWith('INSERT INTO trailers')) return [{ id: 3, unit_number: 'VM709984', source: 'telegram_detected', needs_review: true }];
-    return [];
+    if (/FROM trailers t WHERE t\.unit_number/.test(s)) {
+      return [{ id: 3, unit_number: 'VM709984', source: 'admin_manual', is_official: true }];
+    }
+    return []; // alias lookup finds nothing
   });
   const db = load(rec.query);
+
   const t = await db.ensureTrailerForDetection('vm709984');
-  assert.equal(t.source, 'telegram_detected');
-  assert.equal(t.needs_review, true);
+
+  assert.equal(t.id, 3);
+  assert.equal(rec.calls.some((c) => /INSERT INTO trailers\b/i.test(c.sql)), false, 'no master-list write');
+});
+
+test('ensureTrailerForDetection returns null for an unknown unit instead of creating it', async () => {
+  const rec = recorder(() => []); // matches no trailer and no alias
+  const db = load(rec.query);
+
+  const t = await db.ensureTrailerForDetection('vm709984');
+
+  assert.equal(t, null, 'the caller must queue an unmatched mention for review');
+  assert.equal(rec.calls.some((c) => /INSERT INTO trailers\b/i.test(c.sql)), false);
 });

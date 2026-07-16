@@ -24,6 +24,7 @@ const aiReportsDb = require('./aiReports');
 const employeeBirthdaysDb = require('./employeeBirthdays');
 const facebookLeadsDb = require('./facebookLeads');
 const trailersDb = require('./trailers');
+const trailerMasterListDb = require('./trailerMasterList');
 const rbacDb = require('./rbac');
 const trailerCompaniesDb = require('./trailerCompanies');
 const trailerRentalsDb = require('./trailerRentals');
@@ -286,6 +287,7 @@ module.exports = {
   ...employeeBirthdaysDb,
   ...facebookLeadsDb,
   ...trailersDb,
+  ...trailerMasterListDb,
   ...rbacDb,
   ...trailerCompaniesDb,
   ...trailerRentalsDb,

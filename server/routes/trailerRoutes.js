@@ -337,7 +337,15 @@ function createTrailerRoutes({ authMiddleware, requirePermission = null, telegra
       if (!['pickup', 'dropoff'].includes(body.event_type)) {
         return res.status(400).json({ error: "event_type must be 'pickup' or 'dropoff'." });
       }
+      // A manual event must reference an EXISTING official trailer: registering
+      // an event can never bring a trailer onto the authoritative master list.
       const trailer = await db.ensureTrailerForDetection(unit);
+      if (!trailer) {
+        return res.status(422).json({
+          error: 'Create or approve the trailer in the master list before registering an event.',
+          code: 'TRAILER_NOT_IN_MASTER_LIST',
+        });
+      }
       // Optional geocode of a provided location (fail-soft, cached).
       let lat = body.location_lat ?? null;
       let lng = body.location_lng ?? null;

@@ -28,6 +28,7 @@ const verifierPath = path.resolve(__dirname, '../services/trailerSemanticVerifie
 const visionPath = path.resolve(__dirname, '../services/trailerVisionService.js');
 const geoPath = path.resolve(__dirname, '../services/trailerGeocodeService.js');
 const dbPath = path.resolve(__dirname, '../database/db.js');
+const detectionPath = path.resolve(__dirname, '../services/trailerMasterList/detection.js');
 
 const SCREENSHOT_TEXT =
   'Trailer DROP OFF address\ntrl # VM709984\n1375 Jersey Ave, North Brunswick Township, NJ 08902, United States';
@@ -113,7 +114,7 @@ test('gate: confirmed intent but operationalStatusChange=false is refused (never
 
 // ── monitor end-to-end (mocked db / AI / vision / geocode) ──────────────────
 function loadMonitor({ settings = {}, aiResult: ai, pendingInstruction = null } = {}) {
-  const state = { events: [], statusUpdates: [], instructions: [], confirmedInstructions: [] };
+  const state = { events: [], statusUpdates: [], instructions: [], confirmedInstructions: [], unmatchedMentions: [] };
   const fakeDb = {
     getTrailerSettings: async () => ({
       enabled: true, beta_mode: true, automatic_update_test_group_id: null,
@@ -123,7 +124,16 @@ function loadMonitor({ settings = {}, aiResult: ai, pendingInstruction = null } 
       silent_driver_group_monitoring: true, ...settings,
     }),
     getDriverProfileByGroupId: async () => ({ id: 5, first_name: 'John', last_name: 'Driver', telegram_user_id: 111 }),
-    ensureTrailerForDetection: async (unit) => ({ id: 100, unit_number: unit }),
+    // A detection RESOLVES against the authoritative master list and can never
+    // create a trailer. Default: the unit is a known ACTIVE OFFICIAL trailer, so
+    // known-trailer ingestion behaves exactly as before.
+    resolveTrailerByUnitOrAlias: async (unit) => (unit
+      ? { trailer: { id: 100, unit_number: unit }, official: true, matchedBy: 'unit_number', normalizedUnit: unit }
+      : { trailer: null, official: false, matchedBy: null, normalizedUnit: null }),
+    recordUnmatchedMention: async (evidence) => {
+      state.unmatchedMentions.push(evidence);
+      return { id: state.unmatchedMentions.length, ...evidence };
+    },
     getTrailerByUnitNumber: async (unit) => (unit ? { id: 100, unit_number: unit } : null),
     getTrailerCurrentStatus: async () => null,
     insertTrailerEvent: async (input) => {
@@ -143,7 +153,10 @@ function loadMonitor({ settings = {}, aiResult: ai, pendingInstruction = null } 
   };
   const fakeVision = { photoDescriptor: () => null, extractTrailerUnitsFromTelegramImage: async () => null, isVisionConfigured: () => false };
 
-  for (const p of [monitorPath, contextPath, verifierPath]) delete require.cache[p];
+  // detectionPath captures `db` at require time, so it MUST be purged with the
+  // monitor — otherwise it stays bound to a previous test's fake db and quietly
+  // records into the wrong state.
+  for (const p of [monitorPath, contextPath, verifierPath, detectionPath]) delete require.cache[p];
   require.cache[dbPath] = { exports: fakeDb };
   require.cache[visionPath] = { exports: fakeVision };
   require.cache[geoPath] = { exports: { geocodeTrailerLocation: async () => ({ lat: null, lng: null, source: 'text_only', confidence: 0 }) } };

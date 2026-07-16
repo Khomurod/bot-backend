@@ -20,7 +20,7 @@
     "database/raiseApproval.js": 612,
     "database/ringcentral.js": 587,
     "database/routeControl.js": 517,
-    "database/trailers.js": 1132,
+    "database/trailers.js": 1084,
     "server/fleet/realProvider.js": 846,
     "server/fleet/router.js": 1251,
     "server/fleet/store.js": 556,
@@ -35,8 +35,8 @@
     "services/liveLocationsService.js": 766,
     "services/mileageBonusService.js": 612,
     "services/raiseApprovalService.js": 683,
-    "services/trailerMessageParser.js": 675,
-    "services/trailerMonitorService.js": 868,
+    "services/trailerMessageParser.js": 674,
+    "services/trailerMonitorService.js": 837,
     "tests/dispatchPinnedContext.test.js": 519,
     "tests/routeControlRoutes.test.js": 505
   }

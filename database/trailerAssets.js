@@ -5,10 +5,21 @@ const { insertTrailerAudit } = require('./trailerAudit');
 
 const PHYSICAL = new Set(['unknown','available','rented','under_inspection','maintenance','out_of_service','held_damage']);
 
+/**
+ * Department trailer list.
+ *
+ * Defaults to OFFICIAL trailers only (active + master_status='active'). A
+ * pending-review, archived or merged trailer keeps its whole history but is not
+ * an asset: it must not appear in the department list, on the map, or in a
+ * rental picker. Pass `master_status` to target one group (the master-list
+ * review section), or `include_unofficial` to see everything (detail lookups).
+ */
 async function listDepartmentTrailers(filters={}){
   const values=[];const where=[];
   if(filters.q){values.push(`%${String(filters.q).trim()}%`);where.push(`(t.unit_number ILIKE $${values.length} OR t.plate_number ILIKE $${values.length} OR t.vin ILIKE $${values.length} OR c.display_name ILIKE $${values.length})`);}
   if(filters.physicalStatus){values.push(filters.physicalStatus);where.push(`t.physical_status=$${values.length}`);}
+  if(filters.master_status){values.push(filters.master_status);where.push(`t.master_status=$${values.length}`);}
+  else if(filters.include_unofficial!==true&&filters.include_unofficial!=='true'){where.push(`t.active=TRUE AND t.master_status='active'`);}
   const res=await query(
     `SELECT t.*,s.possession_status,s.cargo_status,s.display_status,s.current_location_text,
        s.current_lat,s.current_lng,s.location_source,s.location_confidence,s.last_event_at,
@@ -25,8 +36,13 @@ async function listDepartmentTrailers(filters={}){
   return res.rows;
 }
 
+/**
+ * One trailer by id, WHATEVER its master status — a detail page must still open
+ * for a pending-review or archived trailer so its history stays reachable and a
+ * reviewer can act on it.
+ */
 async function getDepartmentTrailer(id){
-  const rows=await listDepartmentTrailers();return rows.find((r)=>Number(r.id)===Number(id))||null;
+  const rows=await listDepartmentTrailers({include_unofficial:true});return rows.find((r)=>Number(r.id)===Number(id))||null;
 }
 
 async function updateDepartmentTrailer(id,data,actor){
