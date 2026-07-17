@@ -150,7 +150,7 @@ function createHealthRoutes({ db, config }) {
   <style>
     html, body { width: 100%; height: 100%; margin: 0; }
     body { display: grid; place-items: center; overflow: hidden; background: #ffe500; }
-    img { display: block; width: 100%; height: 100%; object-fit: contain; }
+    img { display: block; width: min(88vw, 560px); height: auto; max-height: 88vh; object-fit: contain; }
   </style>
 </head>
 <body>

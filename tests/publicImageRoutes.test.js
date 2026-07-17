@@ -36,6 +36,7 @@ test('GET /123 serves the responsive image page', async () => {
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /^text\/html/);
     assert.match(html, /<img src="\/123\/image\.png"/);
+    assert.match(html, /width: min\(88vw, 560px\)/);
     assert.match(html, /object-fit: contain/);
   });
 });
