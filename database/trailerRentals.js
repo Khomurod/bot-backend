@@ -132,11 +132,23 @@ async function updateTrailerRental(id, data, actor) {
   } catch (error) { try { await client.query('ROLLBACK'); } catch (_) {} throw error; } finally { client.release(); }
 }
 
+/** The photo an inspection of this type cannot be completed without. */
+const REQUIRED_INSPECTION_MEDIA = {
+  pickup: 'pickup_condition_photo',
+  return: 'return_condition_photo',
+};
+
+/**
+ * Save inspection answers. ALWAYS as a draft.
+ *
+ * `completed` is deliberately ignored here. The frontend used to be able to
+ * mark an inspection complete before its photo upload had succeeded, which left
+ * a "completed" inspection with no photo and blocked activation with a
+ * confusing error. Completion now happens ONLY through completeInspection(),
+ * which verifies the media really exists first.
+ */
 async function saveInspection(data, actor) {
   if (!['pickup','return','damage','maintenance'].includes(data.inspection_type)) throw httpError('Invalid inspection type.');
-  if (data.completed && REQUIRED_INSPECTION_FIELDS.some((key) => !String(data[key] || '').trim())) {
-    throw httpError('Complete every required inspection field before confirmation.');
-  }
   const client=await pool.connect();try{await client.query('BEGIN');
   const rental = await client.query('SELECT trailer_id FROM trailer_rentals WHERE id=$1', [data.rental_id]);
   if (!rental.rows[0]) throw httpError('Rental not found.', 404);
@@ -153,16 +165,87 @@ async function saveInspection(data, actor) {
       existing_damage=EXCLUDED.existing_damage,new_damage=EXCLUDED.new_damage,
       missing_equipment=EXCLUDED.missing_equipment,notes=EXCLUDED.notes,
       inspector_admin_id=EXCLUDED.inspector_admin_id,inspected_at=EXCLUDED.inspected_at,
-      completed=EXCLUDED.completed,updated_at=NOW() RETURNING *`,
+      -- completed is owned solely by completeInspection(). Saving answers must
+      -- neither complete an inspection nor silently un-complete one.
+      completed=trailer_inspections.completed,updated_at=NOW() RETURNING *`,
     [data.rental_id,rental.rows[0].trailer_id,data.inspection_type,data.overall_condition || null,
      data.tires || null,data.lights || null,data.doors || null,data.roof || null,data.floor || null,
      data.exterior || null,data.interior || null,data.landing_gear || null,data.brakes || null,
      data.existing_damage || null,data.new_damage || null,data.missing_equipment || null,
-     data.notes || null,actor?.id || null,data.inspected_at || null,Boolean(data.completed)],
+     data.notes || null,actor?.id || null,data.inspected_at || null,false],
   );
   await insertTrailerAudit({...actorMeta(actor),action:`inspection.${before.rows[0]?'update':'create'}`,entityType:'inspection',entityId:res.rows[0].id,oldValues:before.rows[0]||null,newValues:res.rows[0]},client);
   await client.query('COMMIT');return res.rows[0];
   }catch(error){try{await client.query('ROLLBACK');}catch(_){}throw error;}finally{client.release();}
+}
+
+/**
+ * Complete an inspection — the ONLY path that sets completed=true.
+ *
+ * Transactional and verifying: every required field must be answered AND the
+ * required photo must genuinely exist, metadata *and* bytes. A failed upload
+ * therefore leaves the inspection incomplete and retryable, instead of
+ * producing a "completed" inspection with nothing behind it.
+ *
+ * For database-backed media the bytes are checked by joining the blob and
+ * confirming it is non-empty — the metadata row alone is not proof the file
+ * landed.
+ */
+async function completeInspection(rentalId, type, actor) {
+  if (!['pickup','return','damage','maintenance'].includes(type)) throw httpError('Invalid inspection type.');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const found = await client.query(
+      'SELECT * FROM trailer_inspections WHERE rental_id=$1 AND inspection_type=$2 FOR UPDATE',
+      [rentalId, type],
+    );
+    const inspection = found.rows[0];
+    if (!inspection) throw httpError('Save the inspection before completing it.', 404);
+
+    const missing = REQUIRED_INSPECTION_FIELDS.filter((key) => !String(inspection[key] || '').trim());
+    if (missing.length) {
+      throw httpError(`Answer every required inspection field first. Missing: ${missing.join(', ')}.`);
+    }
+
+    const requiredMedia = REQUIRED_INSPECTION_MEDIA[type];
+    if (requiredMedia) {
+      // Metadata AND bytes: a row whose blob vanished is not a stored photo.
+      const media = await client.query(
+        `SELECT m.id
+           FROM trailer_media m
+           LEFT JOIN trailer_media_blobs b ON b.id = m.blob_id
+          WHERE m.inspection_id = $1
+            AND m.media_type = $2
+            AND (m.storage_backend = 'supabase' OR (b.id IS NOT NULL AND b.byte_size > 0))
+          LIMIT 1`,
+        [inspection.id, requiredMedia],
+      );
+      if (!media.rows[0]) {
+        throw httpError(
+          `At least one ${type} photo must be uploaded before this inspection can be completed.`,
+          422,
+        );
+      }
+    }
+
+    const updated = await client.query(
+      `UPDATE trailer_inspections SET completed=TRUE, inspector_admin_id=COALESCE($2,inspector_admin_id),
+              updated_at=NOW() WHERE id=$1 RETURNING *`,
+      [inspection.id, actor?.id || null],
+    );
+    await insertTrailerAudit({
+      ...actorMeta(actor), action: 'inspection.complete', entityType: 'inspection',
+      entityId: inspection.id, oldValues: inspection, newValues: updated.rows[0],
+    }, client);
+    await client.query('COMMIT');
+    return updated.rows[0];
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* the original error matters more */ }
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function createAuthoritativeMovement(client, { rental, inspection, type, at, location, lat, lng, actor }) {
@@ -342,4 +425,4 @@ async function estimateTrailerRental(id,endAt,timezone='America/Chicago'){
   return calculateInvoice({startAt:r.start_at,endAt:endAt||new Date().toISOString(),billingMethod:r.billing_method,timezone,manualDays:r.manual_billable_days,manualReason:r.manual_days_reason,dailyRate:r.daily_rate,flatRate:r.flat_rate,depositCredit:r.deposit_amount,discountAmount:r.discount_amount,currency:'USD'});
 }
 
-module.exports={ nextNumber,listTrailerRentals,getTrailerRental,createTrailerRental,updateTrailerRental,saveInspection,activateTrailerRental,returnTrailerRental,linkTrailerEventToRental,changeTrailerRentalStatus,estimateTrailerRental };
+module.exports={ nextNumber,listTrailerRentals,getTrailerRental,createTrailerRental,updateTrailerRental,saveInspection,completeInspection,activateTrailerRental,returnTrailerRental,linkTrailerEventToRental,changeTrailerRentalStatus,estimateTrailerRental };

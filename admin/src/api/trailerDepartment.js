@@ -45,11 +45,16 @@ export const createRental = (body) =>
   request("/rentals", { method: "POST", body: JSON.stringify(body) });
 export const updateRental = (id, body) =>
   request(`/rentals/${id}`, { method: "PUT", body: JSON.stringify(body) });
+// Saving always produces a DRAFT — the backend ignores any `completed` flag.
+// Completion is a separate step, allowed only once the required photo's bytes
+// are genuinely stored.
 export const saveInspection = (id, type, body) =>
   request(`/rentals/${id}/inspections/${type}`, {
     method: "PUT",
     body: JSON.stringify(body),
   });
+export const completeInspection = (id, type) =>
+  request(`/rentals/${id}/inspections/${type}/complete`, { method: "POST", body: "{}" });
 export const activateRental = (id) =>
   request(`/rentals/${id}/activate`, { method: "POST", body: "{}" });
 export const returnRental = (id, body) =>
@@ -139,6 +144,7 @@ export default {
   createRental,
   updateRental,
   saveInspection,
+  completeInspection,
   activateRental,
   returnRental,
   uploadMedia,

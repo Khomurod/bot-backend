@@ -1,19 +1,25 @@
 /**
  * Shared harness for the Trailer Department PostgreSQL integration tests.
  *
- * database/schema.sql runs on EVERY boot, so the department's DDL must be
- * additive and idempotent. These tests prove that against a real PostgreSQL by
- * applying only the "TRAILER DEPARTMENT" slice of schema.sql into a throwaway
- * schema, which keeps each test isolated and cheap.
+ * database/schema.sql runs on EVERY boot, so its DDL must be additive and
+ * idempotent. This applies the REAL, COMPLETE schema.sql into a throwaway
+ * PostgreSQL schema, so tests exercise the actual production migration and the
+ * actual tables — no hand-written stubs to drift out of sync with reality.
  *
- * The slice depends on three tables defined EARLIER in schema.sql (admins,
- * trailers, trailer_events) plus trailer_settings; those are stubbed here with
- * just the columns the slice needs, because the slice ALTERs them to add the
- * rest. Everything else (roles, permissions, rentals, invoices, …) is created
- * by the slice itself and must never be stubbed — stubbing it would hide a
- * broken migration.
+ * An earlier version stubbed the few tables defined before the department
+ * banner. Every stub was another chance to be wrong about production (a missing
+ * column, a missed constraint), and each one hid real bugs until a test happened
+ * to reach past it. Applying the whole file costs a second and removes the guess.
+ *
+ * Isolation is per-test via a throwaway DATABASE, each using its own `public`
+ * schema — exactly the shape production runs in. That matters: schema.sql is
+ * full of guards that check pg_constraint / information_schema by NAME without
+ * a schema filter. With several schemas in one database those guards see each
+ * other's constraints and misfire. One database per test sidesteps all of it and
+ * keeps the tests faithful to production.
  *
  * Requires TEST_DATABASE_URL; call skipWithoutPg() in the test's skip option.
+ * The database must be UTF8 — schema.sql contains box-drawing characters.
  */
 'use strict';
 
@@ -39,78 +45,15 @@ function departmentSchemaSection() {
   return parts[1];
 }
 
+/** The complete schema.sql, exactly as production runs it on every boot. */
+function fullSchema() {
+  return fs.readFileSync(require.resolve('../../database/schema.sql'), 'utf8');
+}
+
 /** node:test skip value: false to run, else the reason string. */
 function skipWithoutPg() {
   return process.env.TEST_DATABASE_URL ? false : 'set TEST_DATABASE_URL';
 }
-
-/**
- * Tables the department slice expects to already exist. Only the columns the
- * slice actually reads/ALTERs are declared — the slice adds the rest.
- */
-const PREREQUISITE_DDL = `
-  CREATE TABLE admins (
-    id SERIAL PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-  CREATE TABLE trailers (
-    id SERIAL PRIMARY KEY,
-    unit_number TEXT UNIQUE NOT NULL,
-    make TEXT NULL,
-    model TEXT NULL,
-    mc_number TEXT NULL,
-    plate_number TEXT NULL,
-    type TEXT NULL,
-    vin TEXT NULL,
-    year TEXT NULL,
-    ownership_status TEXT NULL,
-    active BOOLEAN NOT NULL DEFAULT TRUE,
-    needs_review BOOLEAN NOT NULL DEFAULT FALSE,
-    source TEXT NOT NULL DEFAULT 'admin_manual',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-  CREATE TABLE trailer_events (
-    id BIGSERIAL PRIMARY KEY
-  );
-  CREATE TABLE trailer_settings (
-    id INTEGER PRIMARY KEY,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-  INSERT INTO trailer_settings (id) VALUES (1);
-  -- Master-list snapshot imports reuse the screenshot-import staging tables, so
-  -- the slice both ALTERs them and takes foreign keys against them.
-  CREATE TABLE trailer_import_batches (
-    id SERIAL PRIMARY KEY,
-    uploaded_by TEXT NULL,
-    file_name TEXT NULL,
-    status TEXT NOT NULL DEFAULT 'parsed'
-      CONSTRAINT trailer_import_batches_status_check CHECK (status IN ('parsed', 'committed', 'failed')),
-    parsed_count INTEGER NOT NULL DEFAULT 0,
-    error_count INTEGER NOT NULL DEFAULT 0,
-    raw_ai_result JSONB NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-  CREATE TABLE trailer_import_rows (
-    id SERIAL PRIMARY KEY,
-    batch_id INTEGER NOT NULL REFERENCES trailer_import_batches(id) ON DELETE CASCADE,
-    unit_number TEXT NULL,
-    make TEXT NULL,
-    model TEXT NULL,
-    mc_number TEXT NULL,
-    plate_number TEXT NULL,
-    type TEXT NULL,
-    vin TEXT NULL,
-    year TEXT NULL,
-    ownership_status TEXT NULL,
-    confidence SMALLINT NULL,
-    needs_review BOOLEAN NOT NULL DEFAULT FALSE,
-    raw_row JSONB NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-`;
 
 /**
  * Stand up an isolated schema with the department migration applied.
@@ -120,48 +63,43 @@ const PREREQUISITE_DDL = `
  *
  * @param {import('node:test').TestContext} t
  * @param {object} [options]
- * @param {string} [options.extraDdl]   DDL appended to the prerequisites (before the slice).
- * @param {boolean} [options.applySchema=true]  Apply the department slice on setup.
+ * @param {string} [options.extraDdl]  DDL applied after the schema.
+ * @param {boolean} [options.applySchema=true]  Apply schema.sql on setup.
  * @returns {Promise<object>} harness
  */
 async function createTrailerPgHarness(t, options = {}) {
   const { extraDdl = '', applySchema = true } = options;
-  const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 4 });
   const schema = `td_${crypto.randomBytes(6).toString('hex')}`;
-  /** Extra pools handed to loadDataLayer(); drained before the schema drops. */
+  const adminUrl = process.env.TEST_DATABASE_URL;
+  const databaseUrl = new URL(adminUrl);
+  databaseUrl.pathname = `/${schema}`;
+
+  // A separate connection to the maintenance database: CREATE/DROP DATABASE
+  // cannot run from inside the database being created or dropped.
+  const admin = new Pool({ connectionString: adminUrl, max: 2 });
+  // template0 + UTF8: schema.sql contains box-drawing characters in comments,
+  // which a WIN1252 cluster default cannot store.
+  await admin.query(`CREATE DATABASE ${schema} WITH ENCODING 'UTF8' TEMPLATE template0`);
+
+  const pool = new Pool({ connectionString: databaseUrl.toString(), max: 4 });
+  /** Extra pools handed to loadDataLayer(); drained before the database drops. */
   const scopedPools = [];
 
   t.after(async () => {
-    // Data-layer pools hold connections into the schema — drain them first or
-    // the DROP blocks behind them.
+    // Every connection must be gone before DROP DATABASE, hence FORCE as a
+    // backstop for anything a failing test left open.
     await Promise.allSettled(scopedPools.map((p) => p.end()));
+    await pool.end().catch(() => {});
     try {
-      await pool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+      await admin.query(`DROP DATABASE IF EXISTS ${schema} WITH (FORCE)`);
     } finally {
-      await pool.end();
+      await admin.end();
     }
   });
 
-  const setup = await pool.connect();
-  try {
-    await setup.query(`CREATE SCHEMA ${schema}`);
-    await setup.query(`SET search_path TO ${schema},public`);
-    await setup.query(PREREQUISITE_DDL);
-    if (extraDdl) await setup.query(extraDdl);
-  } finally {
-    setup.release();
-  }
-
-  /** A pooled client already scoped to the throwaway schema. Caller releases. */
+  /** A pooled client on the throwaway database. Caller releases. */
   async function connect() {
-    const client = await pool.connect();
-    try {
-      await client.query(`SET search_path TO ${schema},public`);
-      return client;
-    } catch (error) {
-      client.release();
-      throw error;
-    }
+    return pool.connect();
   }
 
   /** Run one statement on a scoped connection. */
@@ -175,13 +113,14 @@ async function createTrailerPgHarness(t, options = {}) {
   }
 
   /**
-   * Apply the department slice. Call repeatedly to prove idempotency — that is
-   * exactly what production does on every boot.
+   * Apply the COMPLETE schema.sql. Call repeatedly to prove idempotency — that
+   * is exactly what production does on every boot.
    */
   async function applyDepartmentSchema() {
     const client = await connect();
     try {
-      await client.query(departmentSchemaSection());
+      await client.query(fullSchema());
+      if (extraDdl) await client.query(extraDdl);
     } finally {
       client.release();
     }
@@ -196,24 +135,23 @@ async function createTrailerPgHarness(t, options = {}) {
    * which trailerRentals pulls in) would still hold the production pool and
    * quietly write to the real database.
    *
-   * search_path is pinned on the connection itself rather than via SET, so
-   * every pooled connection lands in the throwaway schema without each caller
-   * having to remember.
    *
    * @param {string[]} moduleNames e.g. ['trailerRentals']
    * @returns {object} map of moduleName -> loaded module
    */
   function loadDataLayer(moduleNames) {
-    const scopedPool = new Pool({
-      connectionString: process.env.TEST_DATABASE_URL,
-      max: 4,
-      options: `-c search_path=${schema},public`,
-    });
+    const scopedPool = new Pool({ connectionString: databaseUrl.toString(), max: 4 });
     scopedPools.push(scopedPool);
 
-    const purge = () => {
-      for (const file of fs.readdirSync(DATABASE_DIR)) {
-        if (file.endsWith('.js')) delete require.cache[path.join(DATABASE_DIR, file)];
+    // RECURSIVE on purpose: the data layer has nested packages
+    // (database/trailerMasterList/*). Purging only the top level would leave
+    // those bound to an earlier load's pool — which, once this harness's
+    // t.after has ended it, surfaces as "Cannot use a pool after calling end".
+    const purge = (dir = DATABASE_DIR) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) purge(full);
+        else if (entry.name.endsWith('.js')) delete require.cache[full];
       }
     };
 
@@ -240,9 +178,66 @@ async function createTrailerPgHarness(t, options = {}) {
     }
   }
 
+  /**
+   * Load services/trailerStorage bound to the throwaway database, with the
+   * Supabase config under the test's control.
+   *
+   * `supabaseConfigured` decides which backend the package selects — the whole
+   * point being that an UNCONFIGURED deployment must still store files.
+   *
+   * @param {object} [options]
+   * @param {boolean} [options.supabaseConfigured=false]
+   * @returns {object} the storage package
+   */
+  function loadStorage(options = {}) {
+    const { supabaseConfigured = false } = options;
+    const configPath = require.resolve('../../config/config');
+    const realConfig = require('../../config/config');
+    const storageDir = path.resolve(__dirname, '../../services/trailerStorage');
+    const facadePath = require.resolve('../../services/trailerStorageService');
+
+    const scopedPool = new Pool({ connectionString: databaseUrl.toString(), max: 4 });
+    scopedPools.push(scopedPool);
+
+    const purge = () => {
+      for (const file of fs.readdirSync(storageDir)) {
+        if (file.endsWith('.js')) delete require.cache[path.join(storageDir, file)];
+      }
+      delete require.cache[facadePath];
+      delete require.cache[POOL_PATH];
+      delete require.cache[configPath];
+    };
+
+    purge();
+    require.cache[POOL_PATH] = {
+      id: POOL_PATH,
+      filename: POOL_PATH,
+      loaded: true,
+      exports: { pool: scopedPool, query: (t, v) => scopedPool.query(t, v), ping: async () => true },
+    };
+    require.cache[configPath] = {
+      id: configPath,
+      filename: configPath,
+      loaded: true,
+      exports: {
+        ...realConfig,
+        supabaseUrl: supabaseConfigured ? 'https://example.supabase.co' : null,
+        supabaseServiceRoleKey: supabaseConfigured ? 'service-role-key' : null,
+        trailerStorageBucket: 'trailer-private',
+        jwtSecret: 'test-signing-secret',
+        renderExternalUrl: 'https://example.test',
+      },
+    };
+    try {
+      return require('../../services/trailerStorage');
+    } finally {
+      purge();
+    }
+  }
+
   if (applySchema) await applyDepartmentSchema();
 
-  return { pool, schema, connect, query, applyDepartmentSchema, loadDataLayer };
+  return { pool, schema, connect, query, applyDepartmentSchema, loadDataLayer, loadStorage };
 }
 
 module.exports = {

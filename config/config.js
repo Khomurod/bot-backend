@@ -123,6 +123,13 @@ module.exports = {
   // Enabled unless TRAILER_DEPARTMENT_ENABLED is explicitly "false" (the
   // emergency kill switch). A restart is required after changing it.
   trailerDepartmentEnabled: resolveTrailerDepartmentEnabled(process.env.TRAILER_DEPARTMENT_ENABLED),
+  // Master-list snapshot import limits. The whole official trailer list arrives
+  // as many photos, and this runs on a memory-constrained instance, so the caps
+  // are configurable rather than baked in. Images are processed one at a time
+  // from temp disk (services/trailerMasterList/imageIngest.js).
+  trailerMasterImportMaxImages: Number.parseInt(process.env.TRAILER_MASTER_IMPORT_MAX_IMAGES || '12', 10),
+  trailerMasterImportMaxImageBytes: Number.parseInt(process.env.TRAILER_MASTER_IMPORT_MAX_IMAGE_BYTES || String(8 * 1024 * 1024), 10),
+  trailerMasterImportMaxTotalBytes: Number.parseInt(process.env.TRAILER_MASTER_IMPORT_MAX_TOTAL_BYTES || String(64 * 1024 * 1024), 10),
   supabaseUrl: normalizeOptionalEnv(process.env.SUPABASE_URL),
   supabaseServiceRoleKey: normalizeOptionalEnv(process.env.SUPABASE_SERVICE_ROLE_KEY),
   trailerStorageBucket: String(process.env.TRAILER_STORAGE_BUCKET || 'trailer-private').trim(),

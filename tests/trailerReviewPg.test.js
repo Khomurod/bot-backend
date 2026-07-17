@@ -19,13 +19,24 @@ if (!TEST_DB) {
   test('trailer review PG integration (skipped: set TEST_DATABASE_URL)', { skip: true }, () => {});
 } else {
   const { Pool } = require('pg');
-  const pool = new Pool({ connectionString: TEST_DB });
+  const crypto = require('node:crypto');
+  // Own schema, pinned on the connection — see trailerCargoPg for why public
+  // must stay clean.
+  const PG_DB = `rev_${crypto.randomBytes(4).toString('hex')}`;
+  const dbUrl = new URL(TEST_DB); dbUrl.pathname = `/${PG_DB}`;
+  const pool = new Pool({ connectionString: dbUrl.toString() });
   const query = (text, params) => pool.query(text, params);
 
   // Point database/trailers.js at THIS pool via the module-cache seam.
   const poolPath = path.resolve(__dirname, '../database/pool.js');
   require.cache[poolPath] = { exports: { pool, query, ping: async () => true } };
   const db = require(path.resolve(__dirname, '../database/trailers.js'));
+
+  /**
+   * A detection can no longer conjure a trailer (master-list authority), so
+   * fixtures create it explicitly, the way an authorized employee would.
+   */
+  const seedTrailer = (unit) => db.upsertTrailerByUnitNumber({ unit_number: unit, source: 'admin_manual' });
 
   const base = `PGIT${Date.now().toString().slice(-6)}`;
   const gid = 900000 + (Date.now() % 90000);
@@ -37,12 +48,18 @@ if (!TEST_DB) {
   const U4 = `${base}D`;
 
   test('setup: apply schema (idempotent)', async () => {
+    // Own database, using its own public schema — the shape production runs
+    // in. schema.sql's guards check constraints by NAME without a schema
+    // filter, so several schemas in one database make them misfire.
+    const admin = new Pool({ connectionString: TEST_DB });
+    await admin.query(`CREATE DATABASE ${PG_DB} WITH ENCODING 'UTF8' TEMPLATE template0`);
+    await admin.end();
     const schema = fs.readFileSync(path.resolve(__dirname, '../database/schema.sql'), 'utf8');
     await pool.query(schema);
   });
 
   test('unique index supports multiple events per Telegram message', async () => {
-    const t = await db.ensureTrailerForDetection(U1);
+    const t = await seedTrailer(U1);
     const a = await db.insertTrailerEvent({ trailer_id: t.id, trailer_unit_number: U1, event_type: 'pickup', telegram_group_id: gid, telegram_message_id: 1, event_index: 0, review_status: 'pending' });
     const b = await db.insertTrailerEvent({ trailer_id: t.id, trailer_unit_number: U1, event_type: 'dropoff', telegram_group_id: gid, telegram_message_id: 1, event_index: 1, review_status: 'pending' });
     assert.equal(a.duplicate, false);
@@ -53,7 +70,7 @@ if (!TEST_DB) {
   });
 
   test('accept keeps status; decline restores previous; declined excluded; audit saved', async () => {
-    const t = await db.ensureTrailerForDetection(U2);
+    const t = await seedTrailer(U2);
     const { event: pick } = await db.insertTrailerEvent({ trailer_id: t.id, trailer_unit_number: U2, event_type: 'pickup', telegram_group_id: gid, telegram_message_id: 2, event_index: 0, review_status: 'pending', event_time: '2026-07-01T10:00:00Z' });
     await db.applyEventToCurrentStatus(t, pick);
     let cs = await db.getTrailerCurrentStatus(t.id);
@@ -85,7 +102,7 @@ if (!TEST_DB) {
   });
 
   test('edit changes fields, recomputes status, snapshots original + records corrector', async () => {
-    const t = await db.ensureTrailerForDetection(U3);
+    const t = await seedTrailer(U3);
     const { event } = await db.insertTrailerEvent({ trailer_id: t.id, trailer_unit_number: U3, event_type: 'pickup', telegram_group_id: gid, telegram_message_id: 4, event_index: 0, review_status: 'pending', event_time: '2026-07-03T10:00:00Z' });
     await db.applyEventToCurrentStatus(t, event);
     await db.updateTrailerEvent(event.id, { event_type: 'dropoff', location_text: 'Miami FL' }, { correctedBy: 'admin', correctionNote: 'fix' });
@@ -99,7 +116,7 @@ if (!TEST_DB) {
   });
 
   test('geocode fields persist on an event', async () => {
-    const t = await db.ensureTrailerForDetection(U4);
+    const t = await seedTrailer(U4);
     const { event } = await db.insertTrailerEvent({ trailer_id: t.id, trailer_unit_number: U4, event_type: 'pickup', telegram_group_id: gid, telegram_message_id: 5, event_index: 0, location_text: 'PA', location_lat: 40.59, location_lng: -77.2, location_source: 'approximate_state', location_confidence: 25, geocoded_at: new Date().toISOString() });
     const row = await db.getTrailerEventById(event.id);
     assert.equal(row.location_source, 'approximate_state');

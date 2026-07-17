@@ -30,15 +30,23 @@ const DATABASE_DIR = path.resolve(__dirname, '../database');
 
 /**
  * The complete, intentional set of trailer-creation sites, keyed by file.
+ *
  *   trailerMasterList/masterTrailers.js
  *       upsertTrailerByUnitNumber — manual creation / approved import only;
  *       it throws for any other source.
  *   trailerAssets.js
  *       createDepartmentTrailer — permission-gated manual creation.
- * There is deliberately NO detection-driven creation path.
+ *   trailerMasterList/reconciliation.js
+ *       createApproved — a trailer explicitly approved by a reviewer from the
+ *       "new" group of a confirmed master-list snapshot, inside the
+ *       reconciliation transaction.
+ *
+ * Each is a human deciding to add a trailer. There is deliberately NO
+ * detection-driven creation path.
  */
 const KNOWN_CREATION_SITES = {
   'trailerMasterList/masterTrailers.js': 1,
+  'trailerMasterList/reconciliation.js': 1,
   'trailerAssets.js': 1,
 };
 

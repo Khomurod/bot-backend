@@ -17,7 +17,14 @@ if (!TEST_DB) {
   test('trailer cargo PG integration (skipped: set TEST_DATABASE_URL)', { skip: true }, () => {});
 } else {
   const { Pool } = require('pg');
-  const pool = new Pool({ connectionString: TEST_DB });
+  const crypto = require('node:crypto');
+  // Own schema, pinned on the connection: applying schema.sql into `public`
+  // would leak these tables into every other PG suite, and CREATE TABLE IF NOT
+  // EXISTS resolves across the whole search_path — so a shared public schema
+  // silently stops other suites from creating their own isolated copies.
+  const PG_DB = `cgo_${crypto.randomBytes(4).toString('hex')}`;
+  const dbUrl = new URL(TEST_DB); dbUrl.pathname = `/${PG_DB}`;
+  const pool = new Pool({ connectionString: dbUrl.toString() });
   const query = (text, params) => pool.query(text, params);
   const poolPath = path.resolve(__dirname, '../database/pool.js');
   require.cache[poolPath] = { exports: { pool, query, ping: async () => true } };
@@ -27,13 +34,21 @@ if (!TEST_DB) {
   const gid = 910000 + (Date.now() % 80000);
 
   test('setup: apply schema TWICE (idempotent)', async () => {
+    // Own database, using its own public schema — the shape production runs
+    // in. schema.sql's guards check constraints by NAME without a schema
+    // filter, so several schemas in one database make them misfire.
+    const admin = new Pool({ connectionString: TEST_DB });
+    await admin.query(`CREATE DATABASE ${PG_DB} WITH ENCODING 'UTF8' TEMPLATE template0`);
+    await admin.end();
     const schema = fs.readFileSync(path.resolve(__dirname, '../database/schema.sql'), 'utf8');
     await query(schema);
     await query(schema); // second apply must not fail
   });
 
   async function insertPickupDropoff(unit, eventType, possession, cargo, msgId) {
-    const trailer = await db.ensureTrailerForDetection(unit);
+    // A detection can no longer conjure a trailer (master-list authority), so
+    // the fixture creates it explicitly, the way an employee would.
+    const trailer = await db.upsertTrailerByUnitNumber({ unit_number: unit, source: 'admin_manual' });
     const { event } = await db.insertTrailerEvent({
       trailer_id: trailer.id, trailer_unit_number: unit, event_type: eventType,
       possession_status: possession, cargo_status: cargo, confidence: 90,

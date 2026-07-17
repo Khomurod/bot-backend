@@ -56,9 +56,16 @@ async function sendPayment(job){
   if(!settings.payment_confirmation_group_id)throw new Error('Payment confirmation Telegram group is not configured.');
   const options={caption:paymentMessage(row),parse_mode:'HTML'};
   let sent;
-  const path=row.preview_object_path||row.object_path;
-  if(path){
-    const url=await storage.createSignedUrl(path,300);
+  // Telegram fetches the receipt from a short-lived signed URL rather than
+  // receiving an uploaded buffer — the same transport Route Control relies on,
+  // where the multipart path stalled between Render and api.telegram.org.
+  // Works for both backends: a database-backed receipt has no object_path.
+  if(row.receipt_media_id){
+    const url=await storage.buildSignedMediaUrl({
+      id:row.receipt_media_id,storage_backend:row.storage_backend,bucket:row.bucket,
+      object_path:row.object_path,preview_object_path:row.preview_object_path,
+      blob_id:row.blob_id,preview_blob_id:row.preview_blob_id,checksum_sha256:row.checksum_sha256,
+    },{preview:row.mime_type!=='application/pdf'});
     sent=row.mime_type==='application/pdf'
       ?await telegram.sendDocument(settings.payment_confirmation_group_id,url,{...options,caption:options.caption})
       :await telegram.sendPhoto(settings.payment_confirmation_group_id,url,options);

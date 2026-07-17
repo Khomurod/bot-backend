@@ -162,3 +162,72 @@ environment — compare against `main` before attributing failures to a change.
     `tests/routeScreenshotMediaRoutes.test.js`, Route Control edit/delivery
     tests, and Admin screenshot-status tests. The transport test must continue
     proving that real Telegraf requests use `application/json`, not multipart.
+
+- **Trailer master list** (`database/trailerMasterList/`, `services/trailerMasterList/`):
+  `trailers` is the single authoritative master list.
+
+  **No code path may create a trailer from a detection — this is a permanent
+  invariant:**
+
+  - A trailer may join the list ONLY through an approved master-list import or
+    explicit, permission-gated manual creation. A Telegram message or an AI
+    detection must NEVER create one. `ensureTrailerForDetection` RESOLVES ONLY
+    (exact unit number, then active alias, following `merged_into_trailer_id` to
+    the survivor) and returns null for an unknown unit; callers must then queue a
+    `trailer_unmatched_mentions` review record, never insert a trailer.
+  - Enforcement lives in the DATA ACCESS LAYER, not only in routes:
+    `upsertTrailerByUnitNumber` throws `TRAILER_NOT_IN_MASTER_LIST` for any
+    source other than `admin_manual` / `screenshot_import`.
+  - "Official" means `active AND master_status = 'active'`. `active` keeps its
+    legacy soft-delete meaning and is deliberately NOT mirrored from
+    `master_status`; both must hold. Pending-review, archived and merged trailers
+    keep ALL their history but must never appear on a map, in a default list, or
+    in a rental picker.
+  - Archive and merge NEVER delete: a merge reassigns every history table to the
+    survivor and keeps both identifiers resolving as aliases. A trailer with an
+    open rental cannot be archived or merged.
+  - Master-list imports STAGE only. Reconciliation applies approved decisions in
+    ONE transaction; a failure rolls back every master-list change and leaves the
+    staged import intact.
+  - Before changing this, run and preserve: `tests/trailerAutoCreationGuard.test.js`
+    (its static scan fails if a new `INSERT INTO trailers` site appears — update
+    `KNOWN_CREATION_SITES` only deliberately), `tests/trailerMasterListPg.test.js`,
+    `tests/trailerMasterListReconcile.test.js`.
+
+- **Trailer Department file storage** (`services/trailerStorage/`, reached through
+  the `services/trailerStorageService.js` re-export-only façade): uploads must
+  work with NO Supabase bucket configured.
+
+  - Requiring Supabase was a production outage: every upload threw 503, so the
+    required pickup photo never stored, so "Confirm Pickup and Activate" failed.
+    Never reintroduce a hard Supabase dependency on the upload path.
+  - Backend selection is automatic: Supabase when fully configured, otherwise
+    `database` (bytes in `trailer_media_blobs`). Reads follow `storage_backend`
+    recorded ON THE ROW, never the current configuration, so files written before
+    Supabase is configured keep working after it is.
+  - Bytes live in `trailer_media_blobs`, separate from `trailer_media` metadata:
+    never select BYTEA in a list query.
+  - Telegram fetches media via short-lived HMAC-signed URLs
+    (`/api/trailer-media/:id`) — same invariant as Route Control screenshots.
+    Never a permanent or unsigned public URL; never log a signed URL or query
+    string. The variant (original/preview) is part of the signature.
+  - Inspections complete ONLY through `completeInspection()`, which verifies the
+    required photo's metadata AND bytes inside a transaction. `saveInspection()`
+    always writes a draft and ignores `completed`, so a failed upload can never
+    leave a completed inspection.
+  - Before changing this, run and preserve: `tests/trailerStoragePg.test.js`,
+    `tests/trailerStorageFallback.test.js`, `tests/trailerMediaRoutes.test.js`,
+    `tests/trailerInspectionAtomicityPg.test.js`.
+
+# PostgreSQL integration tests
+
+`*Pg.test.js` need `TEST_DATABASE_URL` and SKIP without it — a skipped test is
+not a passing test. The harness (`tests/helpers/trailerPgHarness.js`) creates a
+throwaway DATABASE per test and applies the real, complete `schema.sql` into it.
+
+- **Per-database, not per-schema, and not stubbed tables.** `schema.sql` contains
+  guards that check `pg_constraint` / `information_schema` by constraint NAME
+  with no schema filter; several schemas in one database make them see each
+  other's constraints and misfire. One database per test mirrors production.
+- The database must be **UTF8** (`TEMPLATE template0`) — `schema.sql` contains
+  box-drawing characters in comments.

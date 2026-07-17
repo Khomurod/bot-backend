@@ -21,6 +21,38 @@ const { normalizeUnitNumber } = require('../../services/trailerMasterList/normal
 /** A trailer is official only when it is both active and master-list active. */
 const OFFICIAL_PREDICATE = "t.active AND t.master_status = 'active'";
 
+/** Depth cap for merge chains: A -> B -> C. Guards against a cycle looping forever. */
+const MAX_MERGE_DEPTH = 10;
+
+/**
+ * Follow merged_into_trailer_id to the surviving trailer.
+ *
+ * A merged trailer KEEPS its old unit number (that is the historical record),
+ * so an exact match can land on a shell that is no longer an asset. Resolution
+ * has to walk to the survivor, or every Telegram message using the old number
+ * would resolve to a non-official record and be queued for review forever
+ * instead of attaching to the trailer that actually exists.
+ *
+ * Chains are possible (A merged into B, later B into C), hence the loop.
+ *
+ * @returns {Promise<{trailer: object, followed: boolean}>}
+ */
+async function followMerges(start, run) {
+  let trailer = start;
+  let followed = false;
+  for (let depth = 0; depth < MAX_MERGE_DEPTH; depth += 1) {
+    if (trailer.master_status !== 'merged' || !trailer.merged_into_trailer_id) break;
+    const next = await run(
+      `SELECT t.*, (${OFFICIAL_PREDICATE}) AS is_official FROM trailers t WHERE t.id = $1`,
+      [trailer.merged_into_trailer_id],
+    );
+    if (!next.rows[0]) break; // dangling pointer: keep the shell rather than lose the match
+    trailer = next.rows[0];
+    followed = true;
+  }
+  return { trailer, followed };
+}
+
 /**
  * Resolve a detected unit number to its canonical trailer.
  *
@@ -48,10 +80,13 @@ async function resolveTrailerByUnitOrAlias(unitNumber, options = {}) {
     [unit],
   );
   if (direct.rows[0]) {
+    const resolved = await followMerges(direct.rows[0], run);
     return {
-      trailer: direct.rows[0],
-      matchedBy: 'unit_number',
-      official: Boolean(direct.rows[0].is_official),
+      trailer: resolved.trailer,
+      // A merged shell keeps its old unit number, so an exact match on it is
+      // really an alias match on the survivor.
+      matchedBy: resolved.followed ? 'alias' : 'unit_number',
+      official: Boolean(resolved.trailer.is_official),
       normalizedUnit: unit,
     };
   }
@@ -67,10 +102,12 @@ async function resolveTrailerByUnitOrAlias(unitNumber, options = {}) {
     [unit],
   );
   if (viaAlias.rows[0]) {
+    // An alias can point at a trailer that was itself later merged away.
+    const resolved = await followMerges(viaAlias.rows[0], run);
     return {
-      trailer: viaAlias.rows[0],
+      trailer: resolved.trailer,
       matchedBy: 'alias',
-      official: Boolean(viaAlias.rows[0].is_official),
+      official: Boolean(resolved.trailer.is_official),
       normalizedUnit: unit,
     };
   }

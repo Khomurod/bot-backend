@@ -112,7 +112,7 @@ test('REPRODUCTION: activation fails when the pickup photo upload never succeede
     await harness.query(
       `INSERT INTO trailer_media
          (media_type, trailer_id, rental_id, inspection_id, bucket, object_path,
-          original_filename, mime_type, original_size, checksum, uploaded_by_admin_id)
+          original_filename, mime_type, original_size_bytes, checksum_sha256, uploaded_by_admin_id)
        VALUES ('pickup_condition_photo', $1, $2, $3, 'trailer-private', 'condition-photos/x/original.jpg',
                'original.jpg', 'image/jpeg', 1024, 'deadbeef', $4)`,
       [trailerId, rental.id, inspection.rows[0].id, adminId],

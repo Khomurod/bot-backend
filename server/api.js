@@ -188,6 +188,13 @@ try {
   app.use(createTrailerRoutes({ authMiddleware, requirePermission, telegram: bot.telegram }));
   const { createTrailerDepartmentRoutes } = require('./routes/trailerDepartmentRoutes');
   app.use(createTrailerDepartmentRoutes({ db, config, authMiddleware, requirePermission, telegram: bot.telegram }));
+  const { createTrailerMasterListRoutes } = require('./routes/trailerMasterListRoutes');
+  app.use(createTrailerMasterListRoutes({ authMiddleware, requirePermission }));
+  // Signed, expiring delivery of database-backed media so Telegram can fetch it
+  // by URL. Deliberately outside authMiddleware — Telegram has no session — and
+  // gated entirely by the HMAC signature. Mirrors /api/route-screenshot-media.
+  const { createTrailerMediaRouter } = require('./routes/trailerMediaRoutes');
+  app.use('/api/trailer-media', createTrailerMediaRouter());
 } catch (trailerMountError) {
   console.error('[TRAILER] route mount failed — main app continues without Trailer API:', trailerMountError.message);
 }

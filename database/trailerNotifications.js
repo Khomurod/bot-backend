@@ -46,6 +46,10 @@ async function getPaymentNotificationContext(paymentId){
     `SELECT p.*,i.invoice_number,i.total_amount,i.billable_days,i.daily_rate,i.flat_rate,i.billing_method,
        r.agreement_number,r.start_at,r.actual_return_at,t.unit_number,c.display_name AS company_name,
        a.username AS recorded_by,m.object_path,m.preview_object_path,m.mime_type,m.bucket,
+       -- Everything services/trailerStorage needs to build a signed URL for
+       -- EITHER backend. Without these a database-backed receipt has no
+       -- object_path and would silently send as a plain text message.
+       m.id AS receipt_media_id,m.storage_backend,m.blob_id,m.preview_blob_id,m.checksum_sha256,
        COALESCE(total.total_paid,0) AS total_paid,
        GREATEST(i.total_amount-COALESCE(total.total_paid,0),0) AS remaining_balance
      FROM trailer_payments p JOIN trailer_invoices i ON i.id=p.invoice_id

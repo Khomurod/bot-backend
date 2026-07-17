@@ -26,18 +26,44 @@ function objectNamespace(mediaType){
   return'condition-photos';
 }
 
-async function storeFile(file,mediaType,entityKey){
+/**
+ * Validate and store one upload with whichever backend is active.
+ *
+ * Storage no longer requires Supabase: with no bucket configured the bytes go
+ * into Postgres (services/trailerStorage), so photo upload — and therefore
+ * pickup activation, which requires a photo — works out of the box.
+ *
+ * The returned descriptor carries `uploaded` so a caller whose metadata insert
+ * fails can hand it straight back to storage.removeObjects and leave nothing
+ * orphaned.
+ */
+async function storeFile(file,mediaType,entityKey,options={}){
   const processed=await processTrailerUpload(file);
   const base=`${objectNamespace(mediaType)}/${entityKey}/${crypto.randomUUID()}`;
   const extension=path.extname(processed.originalFilename).toLowerCase()|| (processed.mimeType==='application/pdf'?'.pdf':'.bin');
-  const originalPath=`${base}/original${extension}`;const previewPath=processed.preview?`${base}/preview.webp`:null;
   const uploaded=[];
   try{
-    const original=await storage.uploadObject({path:originalPath,bytes:processed.original,contentType:processed.mimeType});uploaded.push(original.objectPath);
-    if(processed.preview){await storage.uploadObject({path:previewPath,bytes:processed.preview,contentType:'image/webp'});uploaded.push(previewPath);}
-    return{bucket:original.bucket,objectPath:original.objectPath,previewObjectPath:previewPath,
+    const original=await storage.putObject({
+      bytes:processed.original,contentType:processed.mimeType,filename:processed.originalFilename,
+      checksum:processed.checksum,objectPath:`${base}/original${extension}`,
+    },options);
+    uploaded.push(original);
+    let preview=null;
+    if(processed.preview){
+      preview=await storage.putObject({
+        bytes:processed.preview,contentType:'image/webp',filename:'preview.webp',
+        checksum:processed.checksum,objectPath:`${base}/preview.webp`,
+      },options);
+      uploaded.push(preview);
+    }
+    return{
+      storageBackend:original.storageBackend,
+      bucket:original.bucket||null,objectPath:original.objectPath||null,
+      blobId:original.blobId||null,
+      previewObjectPath:preview?.objectPath||null,previewBlobId:preview?.blobId||null,
       originalFilename:processed.originalFilename,mimeType:processed.mimeType,originalSize:processed.originalSize,
-      previewSize:processed.previewSize,checksum:processed.checksum,uploadedPaths:uploaded};
+      previewSize:processed.previewSize,checksum:processed.checksum,uploaded,
+    };
   }catch(e){await storage.removeObjects(uploaded);throw e;}
 }
 
@@ -83,8 +109,17 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
     if(req.body?.billing_method==='manual_days'&&!can(req,'trailer_rentals.close'))return res.status(403).json({error:'Manual day overrides require rental close permission.'});
     const rental=await db.updateTrailerRental(req.params.id,req.body||{},actor(req));if(!rental)return res.status(404).json({error:'Rental not found.'});res.json({rental});
   }));
+  // Saving answers ALWAYS produces a draft — `completed` in the body is ignored.
+  // The frontend used to be able to mark an inspection complete before its photo
+  // upload had succeeded, leaving a "completed" inspection with no photo that
+  // then blocked activation.
   router.put('/api/trailer-department/rentals/:id/inspections/:type',requirePermission('trailer_inspections.manage'),asyncRoute(async(req,res)=>{
     const inspection=await db.saveInspection({...req.body,rental_id:req.params.id,inspection_type:req.params.type},actor(req));res.json({inspection});
+  }));
+  // The only way to complete one: transactional, and only after the required
+  // fields are answered and the required photo's bytes genuinely exist.
+  router.post('/api/trailer-department/rentals/:id/inspections/:type/complete',requirePermission('trailer_inspections.manage'),asyncRoute(async(req,res)=>{
+    res.json({inspection:await db.completeInspection(req.params.id,req.params.type,actor(req))});
   }));
   router.post('/api/trailer-department/rentals/:id/activate',requirePermission('trailer_rentals.create'),asyncRoute(async(req,res)=>res.json(await db.activateTrailerRental(req.params.id,actor(req)))));
   router.post('/api/trailer-department/rentals/:id/return',requirePermission('trailer_rentals.close'),asyncRoute(async(req,res)=>res.json(await db.returnTrailerRental(req.params.id,req.body||{},actor(req)))));
@@ -104,20 +139,24 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
         const allowed=['pickup_condition_photo','return_condition_photo','damage_photo','agreement_document','invoice_document','other_rental_document'];
         if(!allowed.includes(mediaType))return res.status(400).json({error:'Invalid media type.'});
         for(const file of req.files){
-          const descriptor=await storeFile(file,mediaType,req.body.rental_id||req.body.trailer_id||'unassigned');
+          const descriptor=await storeFile(file,mediaType,req.body.rental_id||req.body.trailer_id||'unassigned',{actor:actor(req)});
+          // A failed metadata insert must not leave the bytes behind.
           try{created.push(await db.createTrailerMedia({...descriptor,mediaType,trailerId:req.body.trailer_id,rentalId:req.body.rental_id,
             inspectionId:req.body.inspection_id,invoiceId:req.body.invoice_id,uploadedByAdminId:req.admin.id,notes:req.body.notes}));}
-          catch(e){await storage.removeObjects(descriptor.uploadedPaths);throw e;}
+          catch(e){await storage.removeObjects(descriptor.uploaded);throw e;}
         }
         res.status(201).json({media:created});
       }catch(e){next(e);}finally{await cleanupFiles(req.files);}
     });
   });
+  // A short-lived URL the browser (or Telegram) can fetch. Works for BOTH
+  // backends: Supabase mints its own signed URL, while a database-backed file
+  // gets an HMAC-signed link to /api/trailer-media/:id. Never a permanent or
+  // unsigned public URL, and the resulting URL is never logged.
   router.get('/api/trailer-department/media/:id/signed-url',requirePermission('trailers.view','trailer_receipts.view'),asyncRoute(async(req,res)=>{
     const media=await db.getTrailerMedia(req.params.id);if(!media)return res.status(404).json({error:'Media not found.'});
     if(media.media_type==='payment_receipt'&&!can(req,'trailer_receipts.view'))return res.status(403).json({error:'Receipt permission required.'});
-    const objectPath=req.query.preview==='true'&&media.preview_object_path?media.preview_object_path:media.object_path;
-    res.json({url:await storage.createSignedUrl(objectPath,300),expires_in:300});
+    res.json({url:await storage.buildSignedMediaUrl(media,{preview:req.query.preview==='true'}),expires_in:storage.DEFAULT_TTL_SECONDS});
   }));
 
   router.get('/api/trailer-department/invoices',requirePermission('trailer_payments.view'),asyncRoute(async(req,res)=>res.json({invoices:await db.listTrailerInvoices(req.query)})));
@@ -146,7 +185,15 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
     await db.updateInvoiceReminderState(req.params.id,req.body||{},actor(req));res.json({updated:true});
   }));
 
-  router.get('/api/trailer-department/settings',requirePermission('trailer_settings.manage'),asyncRoute(async(req,res)=>res.json({settings:await db.getTrailerSettings(),storage_configured:storage.isConfigured()})));
+  // storage_configured stays TRUE now: uploads always work, because with no
+  // Supabase bucket the files go into the database. storage_backend tells the
+  // settings screen which one is actually in use.
+  router.get('/api/trailer-department/settings',requirePermission('trailer_settings.manage'),asyncRoute(async(req,res)=>res.json({
+    settings:await db.getTrailerSettings(),
+    storage_configured:storage.isConfigured(),
+    storage_backend:storage.activeBackend(),
+    supabase_configured:storage.isSupabaseConfigured(),
+  })));
   router.put('/api/trailer-department/settings',requirePermission('trailer_settings.manage'),asyncRoute(async(req,res)=>{
     if(req.body?.reminders_enabled){const current=await db.getTrailerSettings();if(!current.payment_group_tested_at||!current.overdue_group_tested_at)return res.status(409).json({error:'Test both Telegram groups successfully before enabling reminders.'});}
     res.json({settings:await db.updateTrailerSettings(req.body||{})});
