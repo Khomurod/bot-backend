@@ -53,6 +53,7 @@ function renderMetaCompliancePage(title, bodyHtml) {
 
 function createHealthRoutes({ db, config }) {
   const router = express.Router();
+  const imagePageAssetPath = path.join(__dirname, '..', 'public', '123.png');
 
   // ─── Health Check (public, for Render + external cron / uptime pings) ───
   // Pings the DB so a healthy response genuinely means the app can serve
@@ -133,6 +134,37 @@ function createHealthRoutes({ db, config }) {
   router.head('/api/health', healthHandler);
   router.get('/health', healthHandler);
   router.head('/health', healthHandler);
+
+  function imagePageHandler(req, res) {
+    if (!fs.existsSync(imagePageAssetPath)) {
+      return res.status(404).type('text/plain').send('Image not found.');
+    }
+
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.status(200).type('html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>123</title>
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body { display: grid; place-items: center; overflow: hidden; background: #ffe500; }
+    img { display: block; width: 100%; height: 100%; object-fit: contain; }
+  </style>
+</head>
+<body>
+  <img src="/123/image.png" alt="Yellow graphic">
+</body>
+</html>`);
+  }
+
+  router.get('/123', imagePageHandler);
+  router.get('/123/', imagePageHandler);
+  router.get('/123/image.png', (req, res) => {
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.sendFile(imagePageAssetPath);
+  });
 
   router.post('/api/dat-ui/inspect', async (req, res) => {
     try {
