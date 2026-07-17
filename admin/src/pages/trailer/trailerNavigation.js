@@ -12,6 +12,7 @@ export const TRAILER_DEFAULT_SECTION = "dashboard";
 export const TRAILER_SECTIONS = [
   { key: "dashboard", label: "Dashboard", icon: "📊", permissions: ["trailers.view"] },
   { key: "rentals", label: "Rentals", icon: "📄", permissions: ["trailer_rentals.view"] },
+  { key: "agreements", label: "Agreements", icon: "🧾", permissions: ["trailer_agreements.view"] },
   { key: "trailers", label: "Trailers", icon: "🚛", permissions: ["trailers.view"] },
   {
     key: "companies",
@@ -23,6 +24,8 @@ export const TRAILER_SECTIONS = [
   { key: "map", label: "Trailer Map", icon: "🗺️", permissions: ["trailer_map.view"] },
   { key: "reports", label: "Reports", icon: "📈", permissions: ["trailer_reports.view"] },
   { key: "tracking", label: "AI Tracking", icon: "🤖", permissions: ["trailers.view"] },
+  { key: "masterImport", label: "Master Import", icon: "📥", permissions: ["trailer_imports.manage"] },
+  { key: "mentions", label: "Mentions", icon: "🔎", permissions: ["trailer_unmatched_mentions.manage"] },
   { key: "settings", label: "Settings", icon: "⚙️", permissions: ["trailer_settings.manage"] },
   { key: "users", label: "Trailer Users", icon: "👥", permissions: ["trailer_users.manage"] },
 ];

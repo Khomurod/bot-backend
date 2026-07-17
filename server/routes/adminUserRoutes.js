@@ -2,6 +2,7 @@
 
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const scope = require('./adminUserScope');
 
 function has(req, permission){return new Set(req.admin?.permissions||[]).has(permission);}
 function status(error){return error.status||(/duplicate key|unique constraint/i.test(error.message)?409:500);}
@@ -20,7 +21,9 @@ function createAdminUserRoutes({db,authMiddleware,requirePermission}){
   }
 
   router.get('/api/admin/users',authMiddleware,canManageUsers,async(req,res)=>{
-    try{res.json({users:await db.listAdminUsers()});}catch(e){res.status(500).json({error:'Failed to load users.'});}
+    // A Trailer Manager sees ONLY trailer-scoped accounts — super admins and
+    // unrelated admins are invisible, so their existence cannot be inferred.
+    try{res.json({users:scope.visibleUsers(req,await db.listAdminUsers())});}catch(e){res.status(500).json({error:'Failed to load users.'});}
   });
   router.get('/api/admin/roles',authMiddleware,canManageUsers,async(req,res)=>{
     try{res.json(await db.listRolesAndPermissions());}catch(e){res.status(500).json({error:'Failed to load roles.'});}
@@ -39,10 +42,13 @@ function createAdminUserRoutes({db,authMiddleware,requirePermission}){
   router.put('/api/admin/users/:id',authMiddleware,canManageUsers,async(req,res)=>{
     try{
       const body=req.body||{}; const roleIds=body.role_ids;
-      const users=await db.listAdminUsers(); const target=users.find((u)=>Number(u.id)===Number(req.params.id));
-      if(!target)return res.status(404).json({error:'User not found.'});
-      if(!has(req,'users.manage')&&target.roles.some((role)=>role.system_key==='super_admin'))return res.status(403).json({error:'Trailer managers cannot edit super administrators.'});
+      const users=await db.listAdminUsers();
+      // Out-of-scope target → 404 (never 403), so a Trailer Manager cannot infer
+      // that a super admin or unrelated account exists.
+      const target=scope.resolveTargetOr404(req,users,req.params.id);
       if(Array.isArray(roleIds))await validateAssignableRoles(req,roleIds);
+      // The last active super administrator cannot be deactivated or demoted.
+      scope.assertSuperAdminFloor(users,target,{nextRoleIds:roleIds,nextActive:body.active});
       const passwordHash=body.password?await bcrypt.hash(String(body.password),12):null;
       if(body.password&&String(body.password).length<10)return res.status(400).json({error:'Password must be at least 10 characters.'});
       const user=await db.updateAdminUser(req.params.id,{username:body.username,active:body.active,roleIds,passwordHash,actorId:req.admin.id});

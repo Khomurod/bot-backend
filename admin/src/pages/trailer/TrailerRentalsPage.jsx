@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import api from "../../api/trailerDepartment";
 import Inspection from "./TrailerInspectionForm";
 import TrailerRentalDraftDialog from "./TrailerRentalDraftDialog";
+import ReturnDialog from "./returns/ReturnDialog";
 import { Alert, Card, Empty, PageHeader, Status, Table, useLoad } from "./TrailerUi";
 
 function dateIso(value) {
@@ -55,6 +56,7 @@ export default function TrailerRentalsPage() {
   const [create, setCreate] = useState(null);
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [returning, setReturning] = useState(null);
   const [msg, setMsg] = useState(null);
   useEffect(() => {
     const warn = (event) => {
@@ -120,29 +122,16 @@ export default function TrailerRentalsPage() {
       setMsg({ type: "error", text: e.message });
     }
   };
-  const finishReturn = async (inspection) => {
-    const location = prompt("Return location");
-    if (!location) return;
-    const physical = prompt(
-      "Status after return: available, under_inspection, maintenance, out_of_service, held_damage",
-      "available",
-    );
-    try {
-      await api.returnRental(detail.id, {
-        actual_return_at: new Date().toISOString(),
-        return_location: location,
-        physical_status: physical,
-        damage_charge: 0,
-        cleaning_charge: 0,
-        other_charges: 0,
-        new_damage: inspection.new_damage,
-      });
-      setMsg({ text: "Trailer returned and invoice finalized." });
-      setDetail((await api.rental(detail.id)).rental);
-      list.reload();
-    } catch (e) {
-      setMsg({ type: "error", text: e.message });
-    }
+  // The return inspection opens the dialog; the dialog collects the inputs the
+  // old prompt() pair used to, then calls the same returnRental endpoint.
+  const finishReturn = (inspection) =>
+    setReturning({ new_damage: Boolean(inspection?.new_damage) });
+  const submitReturn = async (payload) => {
+    await api.returnRental(detail.id, payload);
+    setReturning(null);
+    setMsg({ text: "Trailer returned and invoice finalized." });
+    setDetail((await api.rental(detail.id)).rental);
+    list.reload();
   };
   return (
     <div>
@@ -227,6 +216,14 @@ export default function TrailerRentalsPage() {
             ))}
           </Card>
         </div>
+      )}
+      {returning && detail && (
+        <ReturnDialog
+          rental={detail}
+          initialNewDamage={returning.new_damage}
+          onClose={() => setReturning(null)}
+          onSubmit={submitReturn}
+        />
       )}
     </div>
   );

@@ -7,24 +7,30 @@ import "./trailerDepartment.css";
 
 const Dashboard = lazy(() => import("./TrailerDashboard"));
 const Rentals = lazy(() => import("./TrailerRentalsPage"));
+const Agreements = lazy(() => import("./agreement/AgreementsPage"));
 const Trailers = lazy(() => import("./TrailerAssetsPage"));
 const Companies = lazy(() => import("./TrailerCompaniesPage"));
 const Payments = lazy(() => import("./TrailerPaymentsPage"));
 const MapPage = lazy(() => import("./TrailerMapPage"));
 const Reports = lazy(() => import("./TrailerReportsPage"));
 const Tracking = lazy(() => import("../TrailerTrackingPage"));
+const MasterImport = lazy(() => import("./masterImport/MasterImportPage"));
+const Mentions = lazy(() => import("./mentions/MentionsPage"));
 const Settings = lazy(() => import("./TrailerSettingsPage"));
 const Users = lazy(() => import("./TrailerUsersPage"));
 
 const PAGES = {
   dashboard: Dashboard,
   rentals: Rentals,
+  agreements: Agreements,
   trailers: Trailers,
   companies: Companies,
   payments: Payments,
   map: MapPage,
   reports: Reports,
   tracking: Tracking,
+  masterImport: MasterImport,
+  mentions: Mentions,
   settings: Settings,
   users: Users,
 };

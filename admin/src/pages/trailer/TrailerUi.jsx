@@ -95,3 +95,21 @@ export function PageHeader({ title, subtitle, actions }) {
     </div>
   );
 }
+export function Modal({ title, subtitle, onClose, wide, children }) {
+  return (
+    <div className="trailer-modal-backdrop">
+      <Card className={`trailer-modal ${wide ? "trailer-modal-wide" : ""}`}>
+        <PageHeader
+          title={title}
+          subtitle={subtitle}
+          actions={
+            <button type="button" className="btn btn-ghost" onClick={onClose}>
+              Close
+            </button>
+          }
+        />
+        {children}
+      </Card>
+    </div>
+  );
+}

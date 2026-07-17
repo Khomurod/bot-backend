@@ -2,11 +2,19 @@
 
 const { query } = require('./pool');
 
-function redact(value) {
-  if (!value || typeof value !== 'object') return value ?? null;
-  const copy = Array.isArray(value) ? [...value] : { ...value };
-  for (const key of Object.keys(copy)) {
-    if (/password|token|secret|service.?role|receipt.?content/i.test(key)) copy[key] = '[REDACTED]';
+// Sensitive key names, redacted anywhere in the payload (recursively). Covers
+// passwords, hashes, tokens, secrets, and signed-URL material (a signed URL or
+// its query string must never land in the audit log).
+const SENSITIVE_KEY = /password|passwd|token|secret|service.?role|receipt.?content|_hash\b|password_hash|signature|signed.?url|\bsig\b|jwt|bearer|authorization|api.?key/i;
+
+function redact(value, depth = 0) {
+  if (value == null || typeof value !== 'object') return value ?? null;
+  if (depth > 6) return '[TRUNCATED]';
+  if (Array.isArray(value)) return value.map((v) => redact(v, depth + 1));
+  const copy = {};
+  for (const key of Object.keys(value)) {
+    if (SENSITIVE_KEY.test(key)) copy[key] = '[REDACTED]';
+    else copy[key] = redact(value[key], depth + 1);
   }
   return copy;
 }

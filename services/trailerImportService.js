@@ -114,29 +114,28 @@ async function extractAndStage(files, { uploadedBy = null, fileName = null } = {
 }
 
 /**
- * Commit reviewed rows into the `trailers` master list. Each row is upserted by
- * unit number (only non-blank provided fields are written; blanks never clobber
- * existing data). Rows without a unit number are skipped. Returns a summary.
+ * DISABLED. The legacy screenshot importer used to commit reviewed rows
+ * directly into the `trailers` master list, bypassing reconciliation entirely —
+ * a second, unreviewed trailer-creation authority that could mint official
+ * trailers with no complete-snapshot confirmation and no reviewer decision.
+ *
+ * That bypass is now closed. All trailer creation from imported images must go
+ * through the master-list import + reconciliation flow
+ * (server/routes/trailerMasterListRoutes.js), which stages a confirmed complete
+ * snapshot, groups matched/new/missing/conflicting, applies only approved
+ * decisions in one transaction, and writes a permanent reconciliation-log
+ * entry. Calling this throws so no caller can silently reintroduce the bypass.
+ *
+ * Guarded by tests/trailerLegacyImportGuard.test.js.
  */
-async function commitRows(batchId, rows) {
-  const summary = { created: 0, updated: 0, skipped: 0 };
-  const list = Array.isArray(rows) ? rows : [];
-  for (const row of list) {
-    const unit = normalizeUnitNumber(row.unit_number);
-    if (!unit) { summary.skipped += 1; continue; }
-    const before = await db.getTrailerByUnitNumber(unit);
-    await db.upsertTrailerByUnitNumber({
-      unit_number: unit,
-      make: row.make, model: row.model, mc_number: row.mc_number,
-      plate_number: row.plate_number, type: row.type, vin: row.vin,
-      year: row.year, ownership_status: row.ownership_status,
-      needs_review: Boolean(row.needs_review),
-      source: before ? undefined : 'screenshot_import',
-    });
-    if (before) summary.updated += 1; else summary.created += 1;
-  }
-  if (batchId != null) await db.markImportBatchCommitted(batchId);
-  return summary;
+async function commitRows() {
+  throw Object.assign(
+    new Error(
+      'The legacy screenshot import can no longer write to the trailer master '
+      + 'list. Use the master-list import and reconciliation flow instead.',
+    ),
+    { status: 410, code: 'LEGACY_IMPORT_DISABLED' },
+  );
 }
 
 module.exports = {
