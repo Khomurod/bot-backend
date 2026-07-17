@@ -30,13 +30,21 @@ function s(value, max = 500) {
 }
 
 /**
- * Legacy `source` values that may bring a trailer onto the master list, mapped
- * to the master_source they record. 'telegram_detected' is deliberately absent:
- * a detection must never create a trailer.
+ * `source` values that may bring a trailer onto the master list through this
+ * general-purpose write path, mapped to the master_source they record.
+ *
+ * ONLY 'admin_manual' is creatable here. 'telegram_detected' is absent — a
+ * detection must never create a trailer. 'screenshot_import' is ALSO absent on
+ * purpose: the legacy screenshot importer must not be a second, unreviewed
+ * trailer-creation authority. Approved-import trailers are created exclusively
+ * inside the reconciliation transaction (database/trailerMasterList/
+ * reconciliation.js `createApproved`), which requires a confirmed complete
+ * snapshot, a reviewer decision, and a permanent reconciliation-log entry.
+ * Removing it here closes the bypass where a raw commit could mint official
+ * trailers with no reconciliation. See tests/trailerAutoCreationGuard.test.js.
  */
 const CREATABLE_SOURCES = new Map([
   ['admin_manual', 'admin_manual'],
-  ['screenshot_import', 'approved_import'],
 ]);
 
 async function getTrailerById(id) {
@@ -116,11 +124,25 @@ async function upsertTrailerByUnitNumber(input = {}) {
   if (input.active != null) { sets.push(`active = $${i++}`); vals.push(Boolean(input.active)); }
   if (!sets.length) return existing;
   sets.push('updated_at = NOW()');
+  // Optimistic locking: bump version on every write, and when the caller sends
+  // the version it loaded, refuse to overwrite a newer row (HTTP 409).
+  sets.push('version = version + 1');
   vals.push(existing.id);
+  let where = `id = $${i++}`;
+  if (input.version != null) {
+    where += ` AND version = $${i++}`;
+    vals.push(Number(input.version));
+  }
   const res = await query(
-    `UPDATE trailers SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+    `UPDATE trailers SET ${sets.join(', ')} WHERE ${where} RETURNING *`,
     vals,
   );
+  if (!res.rows[0] && input.version != null) {
+    throw Object.assign(
+      new Error('This trailer was changed by someone else. Reload and try again.'),
+      { status: 409, code: 'VERSION_CONFLICT', currentVersion: existing.version },
+    );
+  }
   return res.rows[0];
 }
 

@@ -62,7 +62,26 @@ async function getPaymentNotificationContext(paymentId){
   return res.rows[0]||null;
 }
 
+/**
+ * Restore expired snoozes to the active reminder state.
+ *
+ * A snoozed invoice carries reminder_state='snoozed'; enqueueOverdueReminders
+ * only considers reminder_state='active', so without this an expired snooze
+ * would stay snoozed forever and never remind again. Each UPDATE is atomic.
+ * Returns the count restored.
+ */
+async function resumeExpiredSnoozes(){
+  const res=await query(
+    `UPDATE trailer_invoices
+        SET reminder_state='active', snoozed_until=NULL, updated_at=NOW()
+      WHERE reminder_state='snoozed' AND snoozed_until IS NOT NULL AND snoozed_until<=NOW()
+      RETURNING id`);
+  return res.rowCount;
+}
+
 async function enqueueOverdueReminders(){
+  // Expired snoozes rejoin the active pool before we decide who is due.
+  await resumeExpiredSnoozes();
   const res=await query(
     `INSERT INTO trailer_notification_jobs(job_type,entity_type,entity_id,idempotency_key,payload)
      SELECT 'overdue_reminder','invoice',i.id,
@@ -107,4 +126,4 @@ async function retryTrailerNotification(id){
 }
 
 module.exports={claimTrailerNotificationJob,markTrailerNotificationSent,markTrailerNotificationFailed,getPaymentNotificationContext,
-  enqueueOverdueReminders,getOverdueNotificationContext,retryTrailerNotification};
+  enqueueOverdueReminders,resumeExpiredSnoozes,getOverdueNotificationContext,retryTrailerNotification};

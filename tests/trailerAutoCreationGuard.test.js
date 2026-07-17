@@ -226,15 +226,25 @@ test('manual creation records admin_manual as the master source', async () => {
   assert.ok(insert.values.includes('active'), 'a manually created trailer is official immediately');
 });
 
-test('approved import creates with approved_import as the master source', async () => {
+test('legacy screenshot_import can no longer create through the general upsert', async () => {
+  // The bypass: commitRows used to upsert with source 'screenshot_import',
+  // minting official trailers with no reconciliation. That source is no longer
+  // a creation authority on the general write path — approved-import trailers
+  // are created only inside the reconciliation transaction (createApproved).
   const { trailers, statements } = loadTrailersWithCapturedSql((text) => (
-    isTrailerInsert(text) ? [{ id: 6 }] : []
+    isSelect(text) ? [] : [{ id: 6 }]
   ));
 
-  await trailers.upsertTrailerByUnitNumber({ unit_number: 'T-903', source: 'screenshot_import' });
-
-  const insert = statements.find((s) => isTrailerInsert(s.text));
-  assert.ok(insert.values.includes('approved_import'));
+  await assert.rejects(
+    () => trailers.upsertTrailerByUnitNumber({ unit_number: 'T-903', source: 'screenshot_import' }),
+    (err) => err.code === 'TRAILER_NOT_IN_MASTER_LIST',
+    'legacy screenshot import must not mint an official trailer via upsert',
+  );
+  assert.equal(
+    statements.filter((s) => isTrailerInsert(s.text)).length,
+    0,
+    'no INSERT is attempted for a blocked legacy import source',
+  );
 });
 
 test('updating an existing trailer is never blocked by the creation guard', async () => {
@@ -249,4 +259,25 @@ test('updating an existing trailer is never blocked by the creation guard', asyn
 
   assert.equal(updated.make, 'Utility');
   assert.equal(statements.filter((s) => isTrailerInsert(s.text)).length, 0, 'an update is not a create');
+});
+
+test('optimistic locking: an update always bumps version', async () => {
+  const existing = { id: 4, unit_number: 'T-100', source: 'admin_manual', version: 2 };
+  const { trailers, statements } = loadTrailersWithCapturedSql((text) => (
+    isSelect(text) ? [existing] : [{ ...existing, make: 'Utility', version: 3 }]
+  ));
+  await trailers.upsertTrailerByUnitNumber({ unit_number: 'T-100', make: 'Utility' });
+  const update = statements.find((s) => /UPDATE\s+trailers/i.test(s.text));
+  assert.ok(update, 'an UPDATE ran');
+  assert.match(update.text, /version = version \+ 1/, 'the update bumps the version');
+});
+
+test('optimistic locking: a stale version raises 409 and overwrites nothing', async () => {
+  const existing = { id: 4, unit_number: 'T-100', source: 'admin_manual', version: 5 };
+  // Simulate the guarded UPDATE affecting no row (someone else already bumped it).
+  const { trailers } = loadTrailersWithCapturedSql((text) => (isSelect(text) ? [existing] : []));
+  await assert.rejects(
+    () => trailers.upsertTrailerByUnitNumber({ unit_number: 'T-100', make: 'Utility', version: 3 }),
+    (err) => err.status === 409 && err.code === 'VERSION_CONFLICT',
+  );
 });

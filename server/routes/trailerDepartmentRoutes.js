@@ -126,7 +126,7 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
   router.get('/api/trailer-department/rentals/:id/estimate',requirePermission('trailer_rentals.view'),asyncRoute(async(req,res)=>res.json({estimate:await db.estimateTrailerRental(req.params.id,req.query.end_at,req.query.timezone)})));
   router.post('/api/trailer-department/rentals/:id/status',requirePermission('trailer_rentals.edit'),asyncRoute(async(req,res)=>res.json({rental:await db.changeTrailerRentalStatus(req.params.id,req.body?.status,req.body?.reason,actor(req))})));
   router.post('/api/trailer-department/rentals/:id/link-event/:eventId',requirePermission('trailer_rentals.edit'),asyncRoute(async(req,res)=>{
-    const event=await db.linkTrailerEventToRental(req.params.eventId,req.params.id,actor(req));if(!event)return res.status(404).json({error:'Event or rental movement not found.'});res.json({event});
+    const event=await db.linkTrailerEventToRental(req.params.eventId,req.params.id,actor(req),{movementId:req.body?.movement_id});if(!event)return res.status(404).json({error:'Event or rental movement not found.'});res.json({event});
   }));
 
   router.post('/api/trailer-department/media',requirePermission('trailer_inspections.manage','trailer_payments.record'),(req,res,next)=>{
@@ -171,13 +171,18 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
       try{
         if(!req.file&&!can(req,'trailer_payments.record_without_receipt'))return res.status(403).json({error:'Receipt bypass permission required.'});
         if(req.file)descriptor=await storeFile(req.file,'payment_receipt',req.body.invoice_id||'unassigned');
-        const result=await db.recordTrailerPayment(req.body||{},actor(req),descriptor);
+        // Overpayment is only allowed with the permission AND explicit confirmation.
+        const allowOverpayment=can(req,'trailer_payments.record_overpayment')
+          &&(req.body.confirm_overpayment==='true'||req.body.confirm_overpayment===true);
+        const result=await db.recordTrailerPayment({...req.body,allow_overpayment:allowOverpayment},actor(req),descriptor);
         if(result.duplicate&&descriptor?.uploadedPaths)await storage.removeObjects(descriptor.uploadedPaths);
         res.status(result.duplicate?200:201).json(result);
       }catch(e){if(descriptor?.uploadedPaths)await storage.removeObjects(descriptor.uploadedPaths);next(e);}finally{await cleanupFiles(req.file?[req.file]:[]);}
     });
   });
   router.post('/api/trailer-department/payments/:id/reverse',requirePermission('trailer_payments.reverse'),asyncRoute(async(req,res)=>res.json(await db.reverseTrailerPayment(req.params.id,req.body?.reason,actor(req)))));
+  router.get('/api/trailer-department/companies/:id/credits',requirePermission('trailer_payments.view'),asyncRoute(async(req,res)=>res.json({credits:await db.listCompanyCredits(req.params.id)})));
+  router.post('/api/trailer-department/credits/:id/apply',requirePermission('trailer_payments.record'),asyncRoute(async(req,res)=>res.json({credit:await db.applyCompanyCredit({creditId:req.params.id,invoiceId:req.body?.invoice_id,amount:req.body?.amount,actor:actor(req)})})));
   router.post('/api/trailer-department/notifications/:id/retry',requirePermission('trailer_payments.record','trailer_settings.manage'),asyncRoute(async(req,res)=>{
     const job=await db.retryTrailerNotification(req.params.id);if(!job)return res.status(404).json({error:'Failed notification not found.'});res.json({job});
   }));

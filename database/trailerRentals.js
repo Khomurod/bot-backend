@@ -376,7 +376,10 @@ async function returnTrailerRental(id, data, actor) {
     );
     await client.query('UPDATE trailers SET physical_status=$2,updated_by_admin_id=$3,updated_at=NOW() WHERE id=$1',[rental.trailer_id,data.physical_status,actor?.id || null]);
     const invoiceNumber = await nextNumber(client,'trailer_invoices','invoice_number','INV');
-    const dueAt = data.due_at || rental.payment_due_at || new Date(new Date(actualReturn).getTime()+Math.max(0,rental.grace_period_days)*86_400_000).toISOString();
+    // due_at is the payment DEADLINE only — grace is NOT baked in here. The
+    // grace period is applied exactly once, at reminder time (the first reminder
+    // fires after due_at + grace). Adding it here too would double-count it.
+    const dueAt = data.due_at || rental.payment_due_at || new Date(actualReturn).toISOString();
     const invoice = await client.query(
       `INSERT INTO trailer_invoices
        (invoice_number,rental_id,trailer_id,company_id,billing_period_start,billing_period_end,
@@ -403,10 +406,42 @@ async function returnTrailerRental(id, data, actor) {
   } catch(error) { try { await client.query('ROLLBACK'); } catch(_){} throw error; } finally { client.release(); }
 }
 
-async function linkTrailerEventToRental(eventId,rentalId,actor) {
-  const client=await pool.connect();try{await client.query('BEGIN');const before=await client.query('SELECT * FROM trailer_events WHERE id=$1 FOR UPDATE',[eventId]);
-    const res=await client.query(`UPDATE trailer_events SET rental_movement_id=(SELECT id FROM trailer_rental_movements WHERE rental_id=$2 ORDER BY event_at DESC LIMIT 1),review_status='accepted',reviewed_by=$3,reviewed_at=NOW() WHERE id=$1 RETURNING *`,[eventId,rentalId,actor?.username || 'admin']);
-    if(res.rows[0])await insertTrailerAudit({...actorMeta(actor),action:'rental.event_link',entityType:'trailer_event',entityId:eventId,oldValues:before.rows[0],newValues:res.rows[0]},client);await client.query('COMMIT');return res.rows[0]||null;
+/**
+ * Link a trailer event to a SPECIFIC rental movement — never "the newest one".
+ *
+ * The old implementation guessed the newest movement of the rental, which could
+ * attach an event to the wrong trip and silently overwrite an existing link.
+ * This now validates an explicit movementId: it must belong to the rental, must
+ * not already be linked to another event, the event itself must not already be
+ * linked, and the event's trailer must match the movement's trailer. When no
+ * movementId is given and the rental has exactly one movement, that unambiguous
+ * one is used; otherwise the caller must choose.
+ */
+async function linkTrailerEventToRental(eventId,rentalId,actor,options={}) {
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const before=await client.query('SELECT * FROM trailer_events WHERE id=$1 FOR UPDATE',[eventId]);
+    const event=before.rows[0];
+    if(!event)throw httpError('Event not found.',404);
+    if(event.rental_movement_id)throw httpError('This event is already linked to a movement.',409);
+    let movementId=options.movementId!=null?Number(options.movementId):null;
+    const movements=await client.query('SELECT id,trailer_id FROM trailer_rental_movements WHERE rental_id=$1',[rentalId]);
+    if(movementId==null){
+      if(movements.rows.length===1)movementId=movements.rows[0].id;
+      else throw httpError('Specify which rental movement to link this event to.',422);
+    }
+    const movement=movements.rows.find((m)=>Number(m.id)===movementId);
+    if(!movement)throw httpError('That movement does not belong to this rental.',404);
+    if(event.trailer_id!=null&&movement.trailer_id!=null&&Number(event.trailer_id)!==Number(movement.trailer_id)){
+      throw httpError('The event and movement are for different trailers.',409);
+    }
+    const taken=await client.query(`SELECT id FROM trailer_events WHERE rental_movement_id=$1 AND id<>$2`,[movementId,eventId]);
+    if(taken.rows[0])throw httpError('That movement is already linked to another event.',409);
+    const res=await client.query(`UPDATE trailer_events SET rental_movement_id=$1,review_status='accepted',reviewed_by=$3,reviewed_at=NOW() WHERE id=$2 RETURNING *`,[movementId,eventId,actor?.username || 'admin']);
+    await insertTrailerAudit({...actorMeta(actor),action:'rental.event_link',entityType:'trailer_event',entityId:eventId,oldValues:before.rows[0],newValues:res.rows[0],reason:`movement:${movementId}`},client);
+    await client.query('COMMIT');
+    return res.rows[0]||null;
   }catch(e){try{await client.query('ROLLBACK');}catch(_){}throw e;}finally{client.release();}
 }
 

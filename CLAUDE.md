@@ -177,7 +177,13 @@ environment — compare against `main` before attributing failures to a change.
     `trailer_unmatched_mentions` review record, never insert a trailer.
   - Enforcement lives in the DATA ACCESS LAYER, not only in routes:
     `upsertTrailerByUnitNumber` throws `TRAILER_NOT_IN_MASTER_LIST` for any
-    source other than `admin_manual` / `screenshot_import`.
+    source other than `admin_manual`. Approved-import trailers are created ONLY
+    inside the reconciliation transaction (`reconciliation.js` `createApproved`,
+    direct INSERT). The legacy screenshot importer (`trailerImportService.js`
+    `commitRows` and `POST /api/trailers/import/:batchId/commit`) is DISABLED —
+    it returned official trailers with no reconciliation. Do not re-enable a
+    second import authority; route image imports through the master-list flow.
+    Guarded by `tests/trailerLegacyImportGuard.test.js`.
   - "Official" means `active AND master_status = 'active'`. `active` keeps its
     legacy soft-delete meaning and is deliberately NOT mirrored from
     `master_status`; both must hold. Pending-review, archived and merged trailers
@@ -218,6 +224,65 @@ environment — compare against `main` before attributing failures to a change.
   - Before changing this, run and preserve: `tests/trailerStoragePg.test.js`,
     `tests/trailerStorageFallback.test.js`, `tests/trailerMediaRoutes.test.js`,
     `tests/trailerInspectionAtomicityPg.test.js`.
+
+- **Multi-trailer rental agreements** (`database/trailerAgreements/`,
+  `services/trailerAgreements/`, `services/trailerPricing/`, reached through
+  `server/routes/trailerAgreementRoutes.js` at `/api/trailer-agreements`):
+  one company can rent many trailers under one agreement, each trailer an
+  independent `trailer_rental_items` row with its own pickup/return/pricing.
+
+  - `trailer_rental_agreements` is the header; `trailer_rental_items` is one
+    row per trailer. Agreement status is DERIVED from item statuses by the pure
+    `services/trailerAgreements/statusDerivation.js` — never set directly — and
+    re-derived inside the SAME transaction as every item change.
+  - History is AMENDMENT-BASED: add/remove/replace/rate/amount/extend changes
+    append an immutable `trailer_rental_amendments` row. There is no amendment
+    UPDATE path.
+  - Availability is enforced by the DB: an EXCLUDE-gist overlap constraint
+    (`trailer_rental_items_no_overlap`) and a partial unique "one active item per
+    trailer". Only official trailers (`active AND master_status='active'`) may be
+    added.
+  - Invoicing writes `trailer_invoice_lines` (immutable once finalized;
+    corrections via adjustments/credits) AND maintains the legacy
+    `trailer_invoices` column totals as a denormalized sum, so every existing
+    reader keeps working. Combined = one invoice for all items; separate = one
+    per item.
+  - LEGACY BACKFILL is production-critical and idempotent: `schema.sql` creates
+    one agreement + one item per existing `trailer_rentals` row, guarded by
+    `legacy_rental_id` (INSERT-only, fill-NULLs-only), and connects existing
+    invoices/inspections/movements/media. Re-running on every boot is a strict
+    no-op. The old `trailer_rentals` table and `/rentals/*` endpoints stay fully
+    functional — nothing is dropped.
+  - Before changing this, run and preserve: `tests/trailerAgreementsPg.test.js`,
+    `tests/trailerAgreementStatus.test.js`, `tests/trailerPricing.test.js`.
+
+- **Trailer Department safety invariants** (Phase 6 hardening):
+  - USER SCOPING (`server/routes/adminUserScope.js`): a Trailer Manager
+    (`trailer_users.manage` WITHOUT `users.manage`) sees and edits ONLY accounts
+    whose roles are all `trailer_`-prefixed. Out-of-scope accounts return 404
+    (never 403) so their existence cannot be inferred. The last active super
+    administrator cannot be deactivated or demoted.
+  - OVERPAYMENTS (`database/trailerFinance.js`, `database/trailerCredits.js`): a
+    payment above the outstanding balance is REJECTED unless the caller holds
+    `trailer_payments.record_overpayment` AND confirms; the excess is then banked
+    as a `trailer_company_credits` row and applied later through an audited
+    ledger. Never silently swallow an overpayment.
+  - SNOOZED REMINDERS (`database/trailerNotifications.js`): `resumeExpiredSnoozes`
+    restores `reminder_state='snoozed'` invoices whose `snoozed_until<=NOW()` to
+    active BEFORE reminders are enqueued, so an expired snooze always resumes.
+  - GRACE PERIOD: `due_at` is the payment deadline ONLY; grace is applied exactly
+    once, at reminder time. Never bake grace into `due_at`.
+  - OPTIMISTIC LOCKING: trailers, agreements, items, companies and invoices carry
+    a `version` column. A write bumps it; a caller that sends a stale version gets
+    HTTP 409, never a silent overwrite.
+  - AI EVENT LINKING (`linkTrailerEventToRental`): links to a SPECIFIC validated
+    movement, never "the newest one"; refuses to relink an already-linked event
+    or steal a movement already linked elsewhere.
+  - AUDIT REDACTION (`database/trailerAudit.js` `redact`): recursively strips
+    passwords, hashes, tokens, secrets and signed-URL material at any depth.
+  - Before changing these, run and preserve: `tests/adminUserScope.test.js`,
+    `tests/trailerOverpaymentPg.test.js`, `tests/trailerReminderResumePg.test.js`,
+    `tests/trailerEventLinkPg.test.js`, `tests/trailerAuditRedact.test.js`.
 
 # PostgreSQL integration tests
 

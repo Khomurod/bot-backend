@@ -4,6 +4,7 @@ const { pool, query } = require('./pool');
 const { nextNumber } = require('./trailerRentals');
 const { createTrailerMedia, attachMediaToPayment } = require('./trailerMedia');
 const { insertTrailerAudit } = require('./trailerAudit');
+const { createCompanyCredit } = require('./trailerCredits');
 
 function error(message,status=400){return Object.assign(new Error(message),{status});}
 function actorMeta(actor){return{adminId:actor?.id,roleKeys:actor?.role_keys||[],ipAddress:actor?.ipAddress};}
@@ -75,6 +76,18 @@ async function recordTrailerPayment(data, actor, receiptDescriptor) {
     if(['voided','disputed'].includes(invoice.status))throw error('Payments cannot be recorded for a voided or disputed invoice.',409);
     const existing=await client.query('SELECT * FROM trailer_payments WHERE invoice_id=$1 AND idempotency_key=$2',[data.invoice_id,data.idempotency_key]);
     if(existing.rows[0]){await client.query('COMMIT');return{payment:existing.rows[0],invoice:await refreshInvoiceStatus(client,data.invoice_id),duplicate:true};}
+    // Overpayment control: a payment above the outstanding balance is rejected
+    // by default. With the record_overpayment permission AND explicit
+    // confirmation (both surfaced by the route as allow_overpayment), the excess
+    // is banked as a company credit in this same transaction.
+    const paidRes=await client.query(
+      `SELECT COALESCE(SUM(amount),0) total FROM trailer_payments
+        WHERE invoice_id=$1 AND verification_status IN ('recorded','verified')`,[invoice.id]);
+    const outstanding=Number(invoice.total_amount)-Number(paidRes.rows[0].total);
+    const overpayment=Number(data.amount)-outstanding;
+    if(overpayment>0.0001 && !data.allow_overpayment){
+      throw error('Payment exceeds the outstanding balance. Authorize an overpayment to bank the excess as company credit.',409);
+    }
     let media=null;
     if(receiptDescriptor){
       media=await createTrailerMedia({...receiptDescriptor,mediaType:'payment_receipt',trailerId:invoice.trailer_id,
@@ -99,10 +112,19 @@ async function recordTrailerPayment(data, actor, receiptDescriptor) {
       `INSERT INTO trailer_reminder_history(invoice_id,action,note,action_by_admin_id,metadata)
        VALUES($1,'payment_resolution','Invoice paid in full',$2,$3)`,
       [invoice.id,actor?.id||null,JSON.stringify({payment_id:payment.rows[0].id})]);
+    let credit=null;
+    if(overpayment>0.0001&&data.allow_overpayment){
+      credit=await createCompanyCredit({company_id:invoice.company_id,source_payment_id:payment.rows[0].id,
+        source_invoice_id:invoice.id,amount:Number(overpayment.toFixed(2)),
+        reason:data.overpayment_reason||'Overpayment on invoice '+invoice.invoice_number,
+        created_by_admin_id:actor?.id||null},client);
+      await insertTrailerAudit({...actorMeta(actor),action:'payment.overpayment_credit',entityType:'company_credit',
+        entityId:credit.id,newValues:{amount:credit.original_amount,payment_id:payment.rows[0].id}},client);
+    }
     await insertTrailerAudit({...actorMeta(actor),action:'payment.create',entityType:'payment',entityId:payment.rows[0].id,
       newValues:payment.rows[0],reason:data.receipt_bypass_reason},client);
     await client.query('COMMIT');
-    return{payment:payment.rows[0],invoice:refreshed,media,notification:job.rows[0]||null,duplicate:false};
+    return{payment:payment.rows[0],invoice:refreshed,media,notification:job.rows[0]||null,credit,duplicate:false};
   }catch(e){try{await client.query('ROLLBACK');}catch(_){}throw e;}finally{client.release();}
 }
 

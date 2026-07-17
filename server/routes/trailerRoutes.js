@@ -316,16 +316,17 @@ function createTrailerRoutes({ authMiddleware, requirePermission = null, telegra
     }
   });
 
-  router.post('/api/trailers/import/:batchId/commit', authMiddleware, create, async (req, res) => {
-    try {
-      const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
-      if (!rows) return res.status(400).json({ error: 'rows array is required.' });
-      const summary = await trailerImport.commitRows(req.params.batchId, rows);
-      res.json({ summary });
-    } catch (err) {
-      console.error('[TRAILER-API] commit import failed:', err.message);
-      res.status(500).json({ error: 'Failed to commit import.' });
-    }
+  // DISABLED: the legacy screenshot importer must not be a second, unreviewed
+  // trailer-creation authority. Trailer creation from images now goes only
+  // through the master-list import + reconciliation flow
+  // (/api/trailer-master-list/*). This endpoint returns 410 with instructions.
+  router.post('/api/trailers/import/:batchId/commit', authMiddleware, create, (req, res) => {
+    res.status(410).json({
+      error: 'The legacy screenshot import has been retired. Use the master-list '
+        + 'import and reconciliation flow to add or update official trailers.',
+      code: 'LEGACY_IMPORT_DISABLED',
+      use: '/api/trailer-master-list/imports',
+    });
   });
 
   // ── Manual event registration + correction ─────────────────────────────────

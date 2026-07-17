@@ -190,6 +190,8 @@ try {
   app.use(createTrailerDepartmentRoutes({ db, config, authMiddleware, requirePermission, telegram: bot.telegram }));
   const { createTrailerMasterListRoutes } = require('./routes/trailerMasterListRoutes');
   app.use(createTrailerMasterListRoutes({ authMiddleware, requirePermission }));
+  const { createTrailerAgreementRoutes } = require('./routes/trailerAgreementRoutes');
+  app.use(createTrailerAgreementRoutes({ authMiddleware, requirePermission }));
   // Signed, expiring delivery of database-backed media so Telegram can fetch it
   // by URL. Deliberately outside authMiddleware — Telegram has no session — and
   // gated entirely by the HMAC signature. Mirrors /api/route-screenshot-media.
