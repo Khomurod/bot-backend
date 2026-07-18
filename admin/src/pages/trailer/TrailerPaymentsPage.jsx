@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import api from "./../../api/trailerDepartment";
 import { useAuth } from "../../context/AuthContext";
-import { Alert, Card, Empty, Field, PageHeader, Table, useLoad } from "./TrailerUi";
+import { Alert, Card, Empty, Field, PageHeader, Pagination, Table, useLoad, useUrlList } from "./TrailerUi";
 import { invoiceStatus } from "./trailerStatusVocabulary";
 import { paymentConfirmationMessage } from "./money/paymentConfirmation";
 
@@ -18,16 +18,30 @@ function StatusPill({ value }) {
  * extra as company credit?") — offered ONLY to holders of
  * trailer_payments.record_overpayment, otherwise the server rejects it.
  */
+const INVOICE_FILTER_KEYS = ["q", "status", "company", "due_from", "due_to", "outstanding_only", "page", "page_size"];
+const INVOICE_STATUSES = ["draft", "issued", "partially_paid", "paid", "overdue", "disputed", "voided"];
+
 export default function TrailerPaymentsPage({ statusFilter, onOpenInvoice }) {
   const { can } = useAuth();
-  const list = useLoad(
-    () => api.invoices(statusFilter ? { status: statusFilter } : {}),
-    [statusFilter],
-  );
+  const { filters, setFilter, setPage, clearAll, activeCount } = useUrlList(INVOICE_FILTER_KEYS);
+  const [searchText, setSearchText] = useState(filters.q || "");
+  useEffect(() => {
+    const id = setTimeout(() => {
+      if ((searchText || "") !== (filters.q || "")) setFilter({ q: searchText || undefined });
+    }, 300);
+    return () => clearTimeout(id);
+  }, [searchText]);
+
+  // The overdue tab pins status=overdue + outstanding-only; otherwise the UI filters apply.
+  const effective = statusFilter === "overdue"
+    ? { ...filters, status: "overdue", outstanding_only: "true" }
+    : filters;
+  const list = useLoad(() => api.invoices(effective), [JSON.stringify(effective)]);
   const [selected, setSelected] = useState(null);
   const [msg, setMsg] = useState(null);
 
-  const rows = list.data?.invoices || [];
+  const rows = list.data?.items || list.data?.invoices || [];
+  const total = list.data?.total ?? rows.length;
 
   return (
     <div>
@@ -38,16 +52,54 @@ export default function TrailerPaymentsPage({ statusFilter, onOpenInvoice }) {
           : "Every invoice with what has been collected and what is still owed."}
       />
       <Alert message={msg} />
-      {list.error && <div className="alert alert-danger">{list.error}</div>}
+      {statusFilter !== "overdue" && (
+        <div className="trailer-filter-bar" role="search">
+          <Field label="Search">
+            <input type="search" value={searchText} placeholder="Invoice number or company"
+              aria-label="Search invoices"
+              onChange={(e) => setSearchText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") setFilter({ q: searchText || undefined }); }} />
+          </Field>
+          <Field label="Company">
+            <input value={filters.company || ""} placeholder="Company name"
+              onChange={(e) => setFilter({ company: e.target.value || undefined })} />
+          </Field>
+          <Field label="Status">
+            <select value={filters.status || ""} onChange={(e) => setFilter({ status: e.target.value || undefined })}>
+              <option value="">Any status</option>
+              {INVOICE_STATUSES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
+            </select>
+          </Field>
+          <Field label="Due from">
+            <input type="date" value={filters.due_from || ""} onChange={(e) => setFilter({ due_from: e.target.value || undefined })} />
+          </Field>
+          <Field label="Due to">
+            <input type="date" value={filters.due_to || ""} onChange={(e) => setFilter({ due_to: e.target.value || undefined })} />
+          </Field>
+          <label className="trailer-check">
+            <input type="checkbox" checked={filters.outstanding_only === "true" || filters.outstanding_only === true}
+              onChange={(e) => setFilter({ outstanding_only: e.target.checked ? "true" : undefined })} />
+            Outstanding only
+          </label>
+          {activeCount > 0 && (
+            <button type="button" className="btn btn-ghost btn-sm"
+              onClick={() => { setSearchText(""); clearAll(); }}>Clear all filters ({activeCount})</button>
+          )}
+        </div>
+      )}
+      {list.error && <div className="alert alert-danger" role="alert">{list.error}</div>}
       {list.loading ? (
-        <div className="loading"><div className="spinner" />Loading…</div>
+        <div className="loading" role="status"><div className="spinner" />Loading…</div>
       ) : !rows.length ? (
         <Empty>
           {statusFilter === "overdue"
             ? "Nothing is overdue — all invoices are paid or within their due date."
-            : "No invoices yet. An invoice is created when a trailer is returned."}
+            : activeCount > 0
+              ? "No invoices match these filters. Try clearing them."
+              : "No invoices yet. An invoice is created when a trailer is returned."}
         </Empty>
       ) : (
+        <>
         <Table
           rows={rows}
           onRow={onOpenInvoice || setSelected}
@@ -63,6 +115,8 @@ export default function TrailerPaymentsPage({ statusFilter, onOpenInvoice }) {
             { key: "due_at", label: "Due", render: (r) => (r.due_at ? new Date(r.due_at).toLocaleDateString() : "—") },
           ]}
         />
+        <Pagination page={effective.page} pageSize={effective.page_size} total={total} onPage={setPage} />
+        </>
       )}
       {selected && (
         <PaymentDialog

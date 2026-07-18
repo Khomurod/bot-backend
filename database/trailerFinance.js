@@ -40,6 +40,16 @@ async function listTrailerInvoices(filters={}) {
     values.push(`%${String(filters.q).trim()}%`);
     where.push(`(i.invoice_number ILIKE $${values.length} OR c.display_name ILIKE $${values.length})`);
   }
+  if(filters.company){values.push(`%${String(filters.company).trim()}%`);where.push(`c.display_name ILIKE $${values.length}`);}
+  if(filters.due_from){values.push(filters.due_from);where.push(`i.due_at >= $${values.length}`);}
+  if(filters.due_to){values.push(filters.due_to);where.push(`i.due_at <= $${values.length}`);}
+  // Outstanding-only: self-contained subqueries (payments + credits) so the
+  // condition resolves in BOTH the list and the COUNT query, which join fewer tables.
+  if(filters.outstanding_only===true||filters.outstanding_only==='true'){
+    where.push(`i.total_amount
+      - COALESCE((SELECT SUM(amount) FROM trailer_payments WHERE invoice_id=i.id AND verification_status IN ('recorded','verified')),0)
+      - COALESCE((SELECT SUM(amount) FROM trailer_company_credit_applications WHERE invoice_id=i.id),0) > 0`);
+  }
   const clause=where.length?`WHERE ${where.join(' AND ')}`:'';
   // With a page requested, answer the shared paginated envelope; without one,
   // keep the legacy bare-array behaviour for existing consumers.
