@@ -21,6 +21,7 @@ const agreementsDb = require('../../database/trailerAgreements/agreements');
 const itemsDb = require('../../database/trailerAgreements/items');
 const { insertTrailerAudit } = require('../../database/trailerAudit');
 const { assertTrailerAvailable } = require('../../database/trailerAvailability');
+const { resolveActualPickup } = require('./pickupDetails');
 
 /** A completed pickup inspection with a photo backed by real bytes. */
 async function validateItemPickupInspection(client, itemId) {
@@ -46,7 +47,9 @@ async function validateItemPickupInspection(client, itemId) {
   return res.rows[0];
 }
 
-async function activateItem(agreementId, itemId, actor = {}, { requireInspection = true, version } = {}) {
+async function activateItem(agreementId, itemId, actor = {}, {
+  requireInspection = true, version, pickup = {},
+} = {}) {
   return withTxn(async (client) => {
     const itemRes = await client.query(
       'SELECT * FROM trailer_rental_items WHERE id = $1 AND agreement_id = $2 FOR UPDATE',
@@ -61,6 +64,11 @@ async function activateItem(agreementId, itemId, actor = {}, { requireInspection
       throw httpError('A pickup and expected-return time are required.', 400);
     }
 
+    // Resolve the ACTUAL pickup details the employee recorded (validated,
+    // coordinates optional-both-or-neither). Throws 422 on bad input BEFORE any
+    // write, so a failed activation never half-saves pickup data.
+    const actual = resolveActualPickup(pickup, item);
+
     await itemsDb.assertSelectableTrailer(item.trailer_id, client);
     // Cross-system availability: the trailer must not be held by an active or
     // overlapping booking in EITHER the legacy rentals or another agreement item.
@@ -74,7 +82,10 @@ async function activateItem(agreementId, itemId, actor = {}, { requireInspection
     if (requireInspection) await validateItemPickupInspection(client, itemId);
 
     const updated = await itemsDb.setItemStatus(itemId, 'active', {
-      actual_pickup_at: item.actual_pickup_at || item.scheduled_pickup_at,
+      actual_pickup_at: actual.actual_pickup_at,
+      actual_pickup_location: actual.actual_pickup_location,
+      actual_pickup_lat: actual.actual_pickup_lat,
+      actual_pickup_lng: actual.actual_pickup_lng,
       updated_by_admin_id: actor.id || null,
     }, client, version);
     await client.query(
@@ -86,7 +97,8 @@ async function activateItem(agreementId, itemId, actor = {}, { requireInspection
          (trailer_id, agreement_id, rental_item_id, movement_type, to_location, to_lat, to_lng,
           event_at, employee_admin_id, source)
        VALUES ($1, $2, $3, 'rental_pickup', $4, $5, $6, $7, $8, 'agreement')`,
-      [item.trailer_id, Number(agreementId), item.id, item.pickup_location, item.pickup_lat, item.pickup_lng,
+      [item.trailer_id, Number(agreementId), item.id,
+        updated.actual_pickup_location, updated.actual_pickup_lat, updated.actual_pickup_lng,
         updated.actual_pickup_at, actor.id || null],
     );
     await insertTrailerAudit({

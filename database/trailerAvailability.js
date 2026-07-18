@@ -81,4 +81,61 @@ async function assertTrailerAvailable(client, {
   }
 }
 
-module.exports = { assertTrailerAvailable };
+/**
+ * Is this trailer physically committed RIGHT NOW — by either system? Returns the
+ * blocking hold ({ system, unit, from, to }) or null. "Committed" means an
+ * ACTIVE legacy rental or an ACTIVE agreement item: the trailer is out on the
+ * road whatever the paperwork says.
+ */
+async function findActiveHold(client, trailerId) {
+  const unitRes = await client.query('SELECT unit_number FROM trailers WHERE id=$1', [Number(trailerId)]);
+  const unit = unitRes.rows[0]?.unit_number || `#${trailerId}`;
+
+  const rental = await client.query(
+    `SELECT start_at, expected_return_at FROM trailer_rentals
+      WHERE trailer_id = $1 AND status = 'active' LIMIT 1`,
+    [Number(trailerId)],
+  );
+  if (rental.rows[0]) {
+    return { system: 'legacy', unit, from: rental.rows[0].start_at, to: rental.rows[0].expected_return_at };
+  }
+
+  const item = await client.query(
+    `SELECT scheduled_pickup_at, expected_return_at FROM trailer_rental_items
+      WHERE trailer_id = $1 AND item_status = 'active' LIMIT 1`,
+    [Number(trailerId)],
+  );
+  if (item.rows[0]) {
+    return { system: 'agreement', unit, from: item.rows[0].scheduled_pickup_at, to: item.rows[0].expected_return_at };
+  }
+  return null;
+}
+
+/**
+ * Guard a manual trailer status change. Making a trailer Available, or archiving
+ * it (active → false), must be refused while it is out on an active rental in
+ * EITHER system — otherwise the map, the pickers and the rental disagree about
+ * where the trailer is. The check lives here, once, instead of being re-derived
+ * (legacy-only, historically) inside every update function.
+ *
+ * @param {object} client   a pg client already inside the update transaction
+ * @param {object} change   { trailerId, targetPhysicalStatus, archiving }
+ */
+async function assertTrailerStatusChangeAllowed(client, { trailerId, targetPhysicalStatus, archiving = false } = {}) {
+  const makingAvailable = targetPhysicalStatus === 'available';
+  if (!makingAvailable && !archiving) return;
+
+  const hold = await findActiveHold(client, trailerId);
+  if (!hold) return;
+
+  const action = archiving ? 'archived' : 'made available';
+  throw Object.assign(
+    new Error(
+      `Trailer ${hold.unit} is still out on an active rental and cannot be ${action}. `
+      + 'Return the trailer first, then change its status.',
+    ),
+    { status: 409, code: 'TRAILER_IN_USE' },
+  );
+}
+
+module.exports = { assertTrailerAvailable, findActiveHold, assertTrailerStatusChangeAllowed };

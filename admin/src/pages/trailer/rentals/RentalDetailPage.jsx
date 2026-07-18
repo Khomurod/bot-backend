@@ -6,6 +6,7 @@ import { invoiceStatus, rentalStatus } from "../trailerStatusVocabulary";
 import GuidedPickup from "./GuidedPickup";
 import GuidedReturn from "./GuidedReturn";
 import AgreementItemDialog from "../agreement/AgreementItemDialog";
+import AddTrailerDialog from "./AddTrailerDialog";
 
 const usd = (n) => `$${Number(n || 0).toFixed(2)}`;
 const when = (d) => (d ? new Date(d).toLocaleString() : "—");
@@ -226,7 +227,7 @@ export default function RentalDetailPage({ agreementId, onBack, trailers = [] })
               busy={busy} onAction={onAction} />
           ))}
           <button type="button" className="btn btn-secondary" disabled={busy}
-            onClick={() => setFlow({ kind: "dialog", action: "replace", item: null, addMode: true })}>
+            onClick={() => setFlow({ kind: "addTrailer" })}>
             Add a trailer to this rental
           </button>
         </div>
@@ -340,13 +341,13 @@ export default function RentalDetailPage({ agreementId, onBack, trailers = [] })
         <AgreementItemDialog action={flow.action} item={flow.item} trailers={trailers}
           onClose={() => setFlow(null)} onSubmit={submitDialog} />
       )}
-      {flow?.kind === "dialog" && flow.addMode && (
-        <AgreementItemDialog action="replace" item={{ id: null }} trailers={trailers} addMode
+      {flow?.kind === "addTrailer" && (
+        <AddTrailerDialog trailers={trailers} existingItems={rental.trailers}
           onClose={() => setFlow(null)}
-          onSubmit={async (payload) => {
-            await ag.addItem(agreementId, payload.item, payload.reason || "Added from rental detail");
+          onSubmit={async (item, reason) => {
+            await ag.addItem(agreementId, item, reason);
             setFlow(null);
-            setMsg({ text: "Trailer added to this rental." });
+            setMsg({ text: `Trailer ${trailers.find((t) => Number(t.id) === Number(item.trailer_id))?.unit_number || ""} added — it is scheduled for pickup.` });
             await reloadAll();
           }} />
       )}

@@ -2,6 +2,10 @@ import React, { useState } from "react";
 import ag from "../../../api/trailerAgreements";
 import dept from "../../../api/trailerDepartment";
 import { Field, Modal } from "../TrailerUi";
+import {
+  CHARGE_TYPES, MIN_RETURN_PHOTOS, nextUnusedChargeType,
+  returnBlockers, buildReturnCharges,
+} from "./returnCharges";
 
 const CONDITION_FIELDS = [
   ["overall_condition", "Overall condition"],
@@ -24,13 +28,6 @@ const AFTER_RETURN = [
   ["out_of_service", "Out of service"],
 ];
 
-const CHARGE_TYPES = [
-  ["damage_charge", "Damage"],
-  ["cleaning_charge", "Cleaning"],
-  ["late_fee", "Late fee"],
-  ["other_charge", "Other"],
-];
-
 const STEPS = ["Condition", "Photos & details", "Charges", "Review"];
 
 /**
@@ -45,18 +42,35 @@ export default function GuidedReturn({ agreementId, item, onClose, onDone }) {
   ));
   const [damage, setDamage] = useState({ has: false, description: "", charge: "" });
   const [photos, setPhotos] = useState([]);
+  const [storedReturnPhotos, setStoredReturnPhotos] = useState(Number(item.return_photo_count || 0));
   const [damagePhotos, setDamagePhotos] = useState([]);
   const [details, setDetails] = useState({
     actual_return_at: "", return_location: "", trailer_status: "available",
   });
   const [charges, setCharges] = useState([]); // [{type, amount, description}]
   const [discount, setDiscount] = useState("");
+  const [chargeNote, setChargeNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
 
   const chargeTotal = charges.reduce((s, c) => s + Number(c.amount || 0), 0)
     + Number(damage.charge || 0);
+
+  // A return photo counts whether it is already stored OR selected for upload.
+  const returnPhotoCount = storedReturnPhotos + photos.length;
+  const usedChargeTypes = new Set(charges.map((c) => c.type));
+  const nextUnusedType = nextUnusedChargeType(charges);
+
+  // Everything that must be true before "Confirm return" unlocks, each with the
+  // plain-language reason shown to the employee while it is still missing.
+  const missing = returnBlockers({
+    returnPhotoCount,
+    hasDamage: damage.has,
+    damageDescription: damage.description,
+    damagePhotoCount: damagePhotos.length,
+  });
+  const canConfirm = missing.length === 0;
 
   const confirm = async () => {
     setBusy(true);
@@ -73,6 +87,9 @@ export default function GuidedReturn({ agreementId, item, onClose, onDone }) {
           media_type: "return_condition_photo",
           agreement_id: agreementId, rental_item_id: item.id, trailer_id: item.trailer_id,
         });
+        // Move the count from "selected" to "stored" only after the server
+        // confirms the upload — never on selected-file count alone.
+        setStoredReturnPhotos((c) => c + photos.length);
         setPhotos([]);
       }
       if (damage.has && damagePhotos.length) {
@@ -86,7 +103,14 @@ export default function GuidedReturn({ agreementId, item, onClose, onDone }) {
       setProgress("Completing inspection…");
       await ag.completeItemInspection(agreementId, item.id, "return");
       setProgress("Recording the return…");
-      const byType = Object.fromEntries(charges.map((c) => [c.type, Number(c.amount || 0)]));
+      // Sum by type so duplicate rows of the same type are added, never lost.
+      const chargePayload = buildReturnCharges({
+        charges,
+        damageCharge: damage.charge,
+        chargeNote,
+        hasDamage: damage.has,
+        damageDescription: damage.description,
+      });
       const result = await ag.returnItem(agreementId, item.id, {
         actual_return_at: details.actual_return_at
           ? new Date(details.actual_return_at).toISOString() : undefined,
@@ -94,14 +118,8 @@ export default function GuidedReturn({ agreementId, item, onClose, onDone }) {
         trailer_status: damage.has && details.trailer_status === "available"
           ? "held_damage" : details.trailer_status,
         new_damage: damage.has ? damage.description : undefined,
-        damage_charge: Number(damage.charge || 0) || byType.damage_charge || 0,
-        cleaning_charge: byType.cleaning_charge || 0,
-        late_fee: byType.late_fee || 0,
-        other_charge: byType.other_charge || 0,
+        ...chargePayload,
         discount: Number(discount || 0) || 0,
-        description: damage.has
-          ? damage.description
-          : charges.map((c) => c.description).filter(Boolean).join("; ") || undefined,
         version: item.version,
       });
       onDone(result);
@@ -172,8 +190,11 @@ export default function GuidedReturn({ agreementId, item, onClose, onDone }) {
             <input type="file" accept="image/*" capture="environment" multiple
               onChange={(e) => setPhotos([...photos, ...Array.from(e.target.files || [])])} />
           </Field>
-          {Number(item.return_photo_count) > 0 && (
-            <p className="trailer-help">{item.return_photo_count} photo(s) already stored.</p>
+          {storedReturnPhotos > 0 && (
+            <p className="trailer-help" role="status">
+              {storedReturnPhotos} return photo{storedReturnPhotos > 1 ? "s" : ""} already stored
+              {returnPhotoCount >= MIN_RETURN_PHOTOS ? " — the photo requirement is met." : "."}
+            </p>
           )}
           {photos.map((f, i) => (
             <div key={i} className="trailer-photo-row">
@@ -208,7 +229,11 @@ export default function GuidedReturn({ agreementId, item, onClose, onDone }) {
               <Field label="Charge type">
                 <select value={c.type}
                   onChange={(e) => setCharges(charges.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)))}>
-                  {CHARGE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  {CHARGE_TYPES
+                    // One row per type: hide types already used by another row so
+                    // duplicate-type amounts can never collide and be lost.
+                    .filter(([value]) => value === c.type || !usedChargeTypes.has(value))
+                    .map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
               </Field>
               <Field label="Amount">
@@ -223,10 +248,14 @@ export default function GuidedReturn({ agreementId, item, onClose, onDone }) {
                 onClick={() => setCharges(charges.filter((_, j) => j !== i))}>Remove</button>
             </div>
           ))}
-          <button type="button" className="btn btn-secondary"
-            onClick={() => setCharges([...charges, { type: "cleaning_charge", amount: "", description: "" }])}>
+          <button type="button" className="btn btn-secondary" disabled={!nextUnusedType}
+            onClick={() => nextUnusedType
+              && setCharges([...charges, { type: nextUnusedType, amount: "", description: "" }])}>
             Add another charge
           </button>
+          {!nextUnusedType && (
+            <p className="trailer-help">Every charge type already has a row. Combine amounts into the existing row.</p>
+          )}
           <div className="trailer-form-grid" style={{ marginTop: 12 }}>
             <Field label="Discount (optional)">
               <input type="number" min="0" step="0.01" value={discount}
@@ -239,12 +268,18 @@ export default function GuidedReturn({ agreementId, item, onClose, onDone }) {
         <div className="trailer-summary">
           <span>Trailer: <b>{item.unit_number}</b></span>
           <span>New damage: {damage.has ? "yes" : "no"}</span>
+          <span>Return photos: {returnPhotoCount}</span>
           <span>Extra charges: ${chargeTotal.toFixed(2)}</span>
           <span>Condition after return: {AFTER_RETURN.find(([v]) => v === details.trailer_status)?.[1]}</span>
-          {!damageComplete && (
-            <p className="trailer-help">Damage needs a description and at least one photo before confirming.</p>
+          {!canConfirm && (
+            <div className="alert alert-warning" role="alert">
+              <p style={{ margin: 0, fontWeight: 600 }}>Before you can confirm this return:</p>
+              <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                {missing.map((m) => <li key={m}>{m}</li>)}
+              </ul>
+            </div>
           )}
-          {progress && <p className="trailer-help">{progress}</p>}
+          {progress && <p className="trailer-help" role="status" aria-live="polite">{progress}</p>}
         </div>
       )}
       <div className="trailer-actions" style={{ marginTop: 16 }}>
@@ -260,7 +295,7 @@ export default function GuidedReturn({ agreementId, item, onClose, onDone }) {
           </button>
         )}
         {step === STEPS.length - 1 && (
-          <button type="button" className="btn btn-primary" disabled={busy || !damageComplete} onClick={confirm}>
+          <button type="button" className="btn btn-primary" disabled={busy || !canConfirm} onClick={confirm}>
             {busy ? progress || "Working…" : "Confirm return"}
           </button>
         )}

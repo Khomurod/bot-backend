@@ -4069,3 +4069,11 @@ ALTER TABLE trailer_rental_items ADD COLUMN IF NOT EXISTS return_charges JSONB N
 -- Optimistic locking for trailers (agreements/items/invoices/companies already
 -- carry a version column).
 ALTER TABLE trailers ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+
+-- Actual pickup details captured at "Confirm pickup" time. The planned pickup
+-- (pickup_location / pickup_lat / pickup_lng, plus scheduled_pickup_at) is kept
+-- intact; these hold what the employee actually recorded on the ground so the
+-- scheduled and the real pickup are never conflated. Additive + idempotent.
+ALTER TABLE trailer_rental_items ADD COLUMN IF NOT EXISTS actual_pickup_location TEXT NULL;
+ALTER TABLE trailer_rental_items ADD COLUMN IF NOT EXISTS actual_pickup_lat DOUBLE PRECISION NULL;
+ALTER TABLE trailer_rental_items ADD COLUMN IF NOT EXISTS actual_pickup_lng DOUBLE PRECISION NULL;

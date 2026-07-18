@@ -46,8 +46,14 @@ export const replaceItem = (id, itemId, item, reason) =>
   post(`${AG}/${id}/items/${itemId}/replace`, { item, reason });
 export const scheduleItem = (id, itemId, body) =>
   post(`${AG}/${id}/items/${itemId}/schedule`, body);
-export const activateItem = (id, itemId, version) =>
-  post(`${AG}/${id}/items/${itemId}/activate`, version != null ? { version } : {});
+// Confirm pickup for one item. `pickup` carries the ACTUAL details recorded on
+// the ground (time, location, optional lat/lng) so the server stores and bills
+// them instead of the scheduled plan.
+export const activateItem = (id, itemId, version, pickup = {}) =>
+  post(`${AG}/${id}/items/${itemId}/activate`, {
+    ...(version != null ? { version } : {}),
+    ...pickup,
+  });
 export const returnItem = (id, itemId, body) =>
   post(`${AG}/${id}/items/${itemId}/return`, body);
 // Item-scoped inspections: saving is ALWAYS a draft; completion verifies the
