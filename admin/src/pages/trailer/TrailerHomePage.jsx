@@ -2,9 +2,11 @@ import React, { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../api/trailerDepartment";
 import { Card, PageHeader, useLoad } from "./TrailerUi";
-import { hasTrailerPermission } from "./trailerNavigation";
-
-const WELCOME_KEY = "trailerHomeWelcomeDismissed";
+import { visibleQuickActions } from "./homeQuickActions";
+import {
+  GUIDE_STEPS, isOnboardingDismissed, dismissOnboarding,
+} from "./homeOnboarding";
+import HomeGuide from "./HomeGuide";
 
 const ATTENTION_COPY = {
   pickups_due: (c) => `${c} pickup${c > 1 ? "s" : ""} due today or overdue`,
@@ -32,19 +34,20 @@ function timeAgo(value) {
 }
 
 export default function TrailerHomePage({ navigate }) {
-  const { permissions } = useAuth();
+  const { permissions, user } = useAuth();
   const { data, loading, error, reload } = useLoad(() => api.home(), []);
   const [welcomeDismissed, setWelcomeDismissed] = useState(
-    () => localStorage.getItem(WELCOME_KEY) === "true",
+    () => isOnboardingDismissed(window.localStorage, user?.id),
   );
+  const [guideOpen, setGuideOpen] = useState(false);
   const go = (section, query) => navigate?.(section, query);
+  const dismissWelcome = () => {
+    dismissOnboarding(window.localStorage, user?.id);
+    setWelcomeDismissed(true);
+  };
 
-  const quickActions = [
-    { label: "Start a rental", perm: "trailer_agreements.manage", section: "rentals", query: "action=start" },
-    { label: "Confirm a pickup", perm: "trailer_inspections.manage", section: "rentals", query: "tab=upcoming_pickups" },
-    { label: "Return a trailer", perm: "trailer_rentals.close", section: "rentals", query: "tab=currently_rented" },
-    { label: "Record a payment", perm: "trailer_payments.record", section: "money", query: "action=record-payment" },
-  ].filter((a) => hasTrailerPermission(permissions, a.perm, "trailer_agreements.manage"));
+  // Each quick action gates on its OWN permission — no broad fallback.
+  const quickActions = visibleQuickActions(permissions);
 
   if (loading) return <div className="loading"><div className="spinner" />Loading…</div>;
 
@@ -74,18 +77,21 @@ export default function TrailerHomePage({ navigate }) {
               the trailer list and map, <b>Money</b> is invoices and payments, and <b>More</b>{" "}
               holds companies, reports and settings.
             </p>
-            <button type="button" className="btn btn-link" onClick={() => go("rentals", "action=start")}>
-              1-minute guide: start your first rental →
+            <button type="button" className="btn btn-link" onClick={() => setGuideOpen(true)}>
+              Open the 1-minute guide →
             </button>
           </div>
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={() => { localStorage.setItem(WELCOME_KEY, "true"); setWelcomeDismissed(true); }}
+            onClick={dismissWelcome}
           >
             Got it
           </button>
         </Card>
+      )}
+      {guideOpen && (
+        <HomeGuide steps={GUIDE_STEPS} onClose={() => setGuideOpen(false)} />
       )}
 
       {quickActions.length > 0 && (
