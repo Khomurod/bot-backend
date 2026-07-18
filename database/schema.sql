@@ -4077,3 +4077,7 @@ ALTER TABLE trailers ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1
 ALTER TABLE trailer_rental_items ADD COLUMN IF NOT EXISTS actual_pickup_location TEXT NULL;
 ALTER TABLE trailer_rental_items ADD COLUMN IF NOT EXISTS actual_pickup_lat DOUBLE PRECISION NULL;
 ALTER TABLE trailer_rental_items ADD COLUMN IF NOT EXISTS actual_pickup_lng DOUBLE PRECISION NULL;
+
+-- Optimistic locking for roles: a custom-role edit that sends a stale version
+-- gets a 409 instead of silently clobbering a concurrent change. Additive.
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;

@@ -2,6 +2,7 @@
 
 const { query, pool } = require('./pool');
 const { insertTrailerAudit } = require('./trailerAudit');
+const { generateCustomRoleKey, isReservedRoleKey } = require('../services/rbac/roleKeys');
 
 async function auditRbac(client, actorId, action, entityType, entityId, oldValues, newValues) {
   const actor = actorId ? await getAdminAuthorization(actorId, client) : null;
@@ -173,14 +174,35 @@ async function updateAdminUser(adminId, { username, active, roleIds, passwordHas
   }
 }
 
-async function createRole({ displayName, description, permissionKeys, actorId }) {
+async function createRole({ displayName, description, permissionKeys, actorId, systemKey }) {
+  const name = String(displayName || '').trim();
+  if (!name) {
+    throw Object.assign(new Error('Role name is required.'), { status: 400, code: 'INVALID_ROLE_NAME' });
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // Custom roles get a stable, unique `custom_*` system key generated from the
+    // name. A caller-supplied key must not be reserved and must be unique. Both
+    // are checked against the current key set inside this transaction.
+    const existing = await client.query('SELECT system_key FROM roles WHERE system_key IS NOT NULL');
+    const existingKeys = existing.rows.map((r) => r.system_key);
+    let key;
+    if (systemKey) {
+      key = String(systemKey).trim().toLowerCase();
+      if (isReservedRoleKey(key)) {
+        throw Object.assign(new Error('That role key is reserved for the system.'), { status: 409, code: 'ROLE_KEY_RESERVED' });
+      }
+      if (existingKeys.some((k) => String(k).toLowerCase() === key)) {
+        throw Object.assign(new Error('A role with that key already exists.'), { status: 409, code: 'ROLE_KEY_TAKEN' });
+      }
+    } else {
+      key = generateCustomRoleKey(name, existingKeys);
+    }
     const role = await client.query(
-      `INSERT INTO roles (display_name, description, created_by_admin_id, updated_by_admin_id)
-       VALUES ($1,$2,$3,$3) RETURNING *`,
-      [String(displayName).trim(), description || null, actorId || null],
+      `INSERT INTO roles (system_key, display_name, description, created_by_admin_id, updated_by_admin_id)
+       VALUES ($1,$2,$3,$4,$4) RETURNING *`,
+      [key, name, description || null, actorId || null],
     );
     await replaceRolePermissions(client, role.rows[0].id, permissionKeys, actorId);
     await auditRbac(client, actorId, 'role.create', 'role', role.rows[0].id, null,
@@ -203,12 +225,20 @@ async function replaceRolePermissions(client, roleId, permissionKeys, actorId) {
   );
 }
 
-async function updateRole(roleId, { displayName, description, active, permissionKeys, actorId }) {
+async function updateRole(roleId, { displayName, description, active, permissionKeys, actorId, version }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const current = await client.query('SELECT * FROM roles WHERE id = $1 FOR UPDATE', [roleId]);
     if (!current.rows[0]) { await client.query('ROLLBACK'); return null; }
+    // Optimistic locking: a stale version means someone else edited the role.
+    if (version !== undefined && version !== null
+        && Number(current.rows[0].version) !== Number(version)) {
+      throw Object.assign(
+        new Error('This role changed while you were editing it. Review the latest version before saving again.'),
+        { status: 409, code: 'VERSION_CONFLICT', currentVersion: current.rows[0].version },
+      );
+    }
     if (current.rows[0].system_key === 'super_admin' && (active === false
       || (Array.isArray(permissionKeys) && !permissionKeys.includes('admin.full_access')))) {
       const error = new Error('The system super administrator role cannot be disabled or lose full access.');
@@ -218,7 +248,7 @@ async function updateRole(roleId, { displayName, description, active, permission
     await client.query(
       `UPDATE roles SET display_name = COALESCE($2, display_name),
          description = COALESCE($3, description), active = COALESCE($4, active),
-         updated_by_admin_id = $5, updated_at = NOW() WHERE id = $1`,
+         updated_by_admin_id = $5, updated_at = NOW(), version = version + 1 WHERE id = $1`,
       [roleId, displayName || null, description ?? null, active ?? null, actorId || null],
     );
     if (Array.isArray(permissionKeys)) await replaceRolePermissions(client, roleId, permissionKeys, actorId);

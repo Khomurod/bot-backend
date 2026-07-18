@@ -66,7 +66,7 @@ function createAdminUserRoutes({db,authMiddleware,requirePermission}){
     try{
       const b=req.body||{};
       const role=await db.updateRole(req.params.id,{displayName:b.display_name,description:b.description,
-        active:b.active,permissionKeys:b.permission_keys,actorId:req.admin.id});
+        active:b.active,permissionKeys:b.permission_keys,version:b.version,actorId:req.admin.id});
       if(!role)return res.status(404).json({error:'Role not found.'});
       res.json({role});
     }catch(e){res.status(status(e)).json({error:e.status?e.message:'Could not update role.'});}
