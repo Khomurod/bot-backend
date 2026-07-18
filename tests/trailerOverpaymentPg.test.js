@@ -91,21 +91,48 @@ test('authorized overpayment banks the excess as a company credit', async (t) =>
   const credits = await trailerCredits.listCompanyCredits(companyId);
   assert.equal(credits.length, 1);
 
-  // Apply 60 of the 100 credit → partially_applied with 40 remaining.
-  const applied = await trailerCredits.applyCompanyCredit({ creditId: res.credit.id, amount: 60, actor: { id: null } });
+  // A credit must name the invoice it reduces.
+  await assert.rejects(
+    () => trailerCredits.applyCompanyCredit({ creditId: res.credit.id, amount: 60, actor: { id: null } }),
+    (e) => e.code === 'INVOICE_REQUIRED',
+  );
+
+  // A second open invoice for the same company to apply the credit against.
+  const second = await harness.query(
+    `INSERT INTO trailer_invoices
+       (invoice_number, rental_id, trailer_id, company_id, billing_period_start, billing_period_end,
+        billing_method, base_amount, total_amount, due_at, status)
+     SELECT 'INV-OP-2', i.rental_id, i.trailer_id, i.company_id, NOW()-INTERVAL '2 days', NOW(),
+        'calendar_day', 300, 300, NOW()+INTERVAL '5 days', 'issued'
+       FROM trailer_invoices i WHERE i.id=$1 RETURNING *`,
+    [invoice.id],
+  );
+  const target = second.rows[0];
+
+  // Apply 60 of the 100 credit → partially_applied with 40 remaining, and the
+  // invoice's outstanding drops by the applied amount in the same transaction.
+  const applied = await trailerCredits.applyCompanyCredit({ creditId: res.credit.id, invoiceId: target.id, amount: 60, actor: { id: null } });
   assert.equal(applied.status, 'partially_applied');
   assert.equal(Number(applied.remaining_amount), 40);
+  assert.equal(Number(applied.invoice.outstanding_balance), 240);
+  assert.equal(applied.invoice.status, 'partially_paid');
 
   // Applying more than remaining is rejected.
   await assert.rejects(
-    () => trailerCredits.applyCompanyCredit({ creditId: res.credit.id, amount: 100, actor: { id: null } }),
+    () => trailerCredits.applyCompanyCredit({ creditId: res.credit.id, invoiceId: target.id, amount: 100, actor: { id: null } }),
     (e) => e.code === 'CREDIT_OVER_APPLY',
   );
 
-  // Apply the rest → fully applied.
-  const done = await trailerCredits.applyCompanyCredit({ creditId: res.credit.id, amount: 40, actor: { id: null } });
+  // Apply the rest → fully applied, outstanding down to 200.
+  const done = await trailerCredits.applyCompanyCredit({ creditId: res.credit.id, invoiceId: target.id, amount: 40, actor: { id: null } });
   assert.equal(done.status, 'applied');
   assert.equal(Number(done.remaining_amount), 0);
+  assert.equal(Number(done.invoice.outstanding_balance), 200);
+
+  // The credited amounts count as paid everywhere invoices are read.
+  const listed = await trailerFinance.getTrailerInvoice(target.id);
+  assert.equal(Number(listed.total_paid), 100);
+  assert.equal(Number(listed.outstanding_balance), 200);
 });
 
 test('duplicate payment (same idempotency key) does not double-charge', async (t) => {

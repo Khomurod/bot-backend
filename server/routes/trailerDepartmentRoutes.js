@@ -8,6 +8,7 @@ const fs=require('node:fs/promises');
 const crypto=require('node:crypto');
 const storage=require('../../services/trailerStorageService');
 const {processTrailerUpload,safeFilename}=require('../../services/trailerImageService');
+const {errorPayload}=require('../../services/trailerErrorMessages');
 
 const upload=multer({
   storage:multer.diskStorage({destination:os.tmpdir(),filename:(_req,file,cb)=>cb(null,`trailer-${crypto.randomUUID()}-${safeFilename(file.originalname)}`)}),
@@ -80,8 +81,13 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
     next();
   });
 
+  router.use(require('./trailerDepartmentHomeRoutes').createTrailerHomeRouter({requirePermission}));
+
   router.get('/api/trailer-department/dashboard',requirePermission('trailers.view'),asyncRoute(async(req,res)=>res.json({dashboard:await db.getTrailerDashboard(req.query)})));
-  router.get('/api/trailer-department/trailers',requirePermission('trailers.view'),asyncRoute(async(req,res)=>res.json({trailers:await db.listDepartmentTrailers(req.query)})));
+  router.get('/api/trailer-department/trailers',requirePermission('trailers.view'),asyncRoute(async(req,res)=>{
+    const data=await db.listDepartmentTrailers(req.query);
+    res.json(Array.isArray(data)?{trailers:data}:{...data,trailers:data.items});
+  }));
   router.post('/api/trailer-department/trailers',requirePermission('trailers.create'),asyncRoute(async(req,res)=>res.status(201).json({trailer:await db.createDepartmentTrailer(req.body||{},actor(req))})));
   router.get('/api/trailer-department/trailers/:id',requirePermission('trailers.view'),asyncRoute(async(req,res)=>{
     const trailer=await db.getDepartmentTrailer(req.params.id);if(!trailer)return res.status(404).json({error:'Trailer not found.'});res.json({trailer});
@@ -138,10 +144,20 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
         const mediaType=req.body.media_type;
         const allowed=['pickup_condition_photo','return_condition_photo','damage_photo','agreement_document','invoice_document','other_rental_document'];
         if(!allowed.includes(mediaType))return res.status(400).json({error:'Invalid media type.'});
+        // Item-scoped uploads: verify the agreement item exists (and matches the
+        // agreement when both are given) so photos can never attach to nothing.
+        let agreementId=req.body.agreement_id||null;
+        const rentalItemId=req.body.rental_item_id||null;
+        if(rentalItemId){
+          const item=await db.getItemById(rentalItemId);
+          if(!item||(agreementId&&Number(item.agreement_id)!==Number(agreementId)))return res.status(404).json({error:'Rental item not found.'});
+          agreementId=agreementId||item.agreement_id;
+        }
         for(const file of req.files){
-          const descriptor=await storeFile(file,mediaType,req.body.rental_id||req.body.trailer_id||'unassigned',{actor:actor(req)});
+          const descriptor=await storeFile(file,mediaType,rentalItemId||req.body.rental_id||req.body.trailer_id||'unassigned',{actor:actor(req)});
           // A failed metadata insert must not leave the bytes behind.
           try{created.push(await db.createTrailerMedia({...descriptor,mediaType,trailerId:req.body.trailer_id,rentalId:req.body.rental_id,
+            agreementId,rentalItemId,
             inspectionId:req.body.inspection_id,invoiceId:req.body.invoice_id,uploadedByAdminId:req.admin.id,notes:req.body.notes}));}
           catch(e){await storage.removeObjects(descriptor.uploaded);throw e;}
         }
@@ -159,7 +175,11 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
     res.json({url:await storage.buildSignedMediaUrl(media,{preview:req.query.preview==='true'}),expires_in:storage.DEFAULT_TTL_SECONDS});
   }));
 
-  router.get('/api/trailer-department/invoices',requirePermission('trailer_payments.view'),asyncRoute(async(req,res)=>res.json({invoices:await db.listTrailerInvoices(req.query)})));
+  router.get('/api/trailer-department/invoices',requirePermission('trailer_payments.view'),asyncRoute(async(req,res)=>{
+    const data=await db.listTrailerInvoices({...req.query,companyId:req.query.companyId??req.query.company_id,
+      agreementId:req.query.agreementId??req.query.agreement_id});
+    res.json(Array.isArray(data)?{invoices:data}:{...data,invoices:data.items});
+  }));
   router.get('/api/trailer-department/invoices/:id',requirePermission('trailer_payments.view'),asyncRoute(async(req,res)=>{
     const invoice=await db.getTrailerInvoice(req.params.id);if(!invoice)return res.status(404).json({error:'Invoice not found.'});res.json({invoice});
   }));
@@ -221,8 +241,8 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
 
   router.use((error,_req,res,_next)=>{
     console.error('[TRAILER-DEPARTMENT]',error.message);
-    const code=error.status|| (error.code==='23505'||error.code==='23P01'?409:500);
-    res.status(code).json({error:code===500?'Trailer Department request failed.':error.message});
+    const {status,payload}=errorPayload(error);
+    res.status(status).json(payload);
   });
   return router;
 }

@@ -165,13 +165,13 @@ export default function App() {
     window.history.replaceState({}, "", trailerSectionPath(section));
   }
 
-  const navigateToTrailerSection = (sectionKey) => {
+  const navigateToTrailerSection = (sectionKey, query) => {
     setPage("trailer_department");
     setTrailerSection(sectionKey);
     setTrailerExpanded(true);
     setMobileMenuOpen(false);
-    const nextPath = trailerSectionPath(sectionKey);
-    if (window.location.pathname !== nextPath) {
+    const nextPath = trailerSectionPath(sectionKey) + (query ? `?${query}` : "");
+    if (window.location.pathname !== nextPath || query) {
       window.history.pushState({}, "", nextPath);
     }
   };

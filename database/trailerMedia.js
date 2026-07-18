@@ -27,11 +27,12 @@ async function createTrailerMedia(data, client = null) {
   const backend = data.storageBackend || (data.blobId ? 'database' : 'supabase');
   const res = await run(
     `INSERT INTO trailer_media
-      (media_type,trailer_id,rental_id,inspection_id,invoice_id,payment_id,storage_backend,
+      (media_type,trailer_id,rental_id,agreement_id,rental_item_id,inspection_id,invoice_id,payment_id,storage_backend,
        bucket,object_path,preview_object_path,blob_id,preview_blob_id,original_filename,mime_type,
        original_size_bytes,compressed_size_bytes,checksum_sha256,uploaded_by_admin_id,notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
-    [data.mediaType, data.trailerId || null, data.rentalId || null, data.inspectionId || null,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
+    [data.mediaType, data.trailerId || null, data.rentalId || null,
+      data.agreementId || null, data.rentalItemId || null, data.inspectionId || null,
       data.invoiceId || null, data.paymentId || null, backend,
       data.bucket || null, data.objectPath || null, data.previewObjectPath || null,
       data.blobId || null, data.previewBlobId || null,

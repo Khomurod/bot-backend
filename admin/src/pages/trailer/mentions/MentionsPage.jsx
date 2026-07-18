@@ -1,98 +1,97 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import api from "../../../api/trailerAgreements";
 import dept from "../../../api/trailerDepartment";
-import { Alert, Empty, PageHeader, Table, useLoad } from "../TrailerUi";
+import { Alert, Card, Empty, PageHeader, useLoad } from "../TrailerUi";
 import MentionResolveDialog from "./MentionResolveDialog";
 
-const ACTIONS = [
-  { key: "linked", label: "Link" },
-  { key: "created", label: "Create manually" },
-  { key: "ignored", label: "Ignore" },
-  { key: "false_detection", label: "False detection" },
-];
+const when = (d) => (d ? new Date(d).toLocaleString() : "—");
 
-function suggested(row) {
-  const ids = Array.isArray(row.suggested_trailer_ids) ? row.suggested_trailer_ids : [];
-  return ids.length ? ids.join(", ") : "—";
-}
-
+/**
+ * Unknown trailer messages: Telegram messages that mentioned a trailer number
+ * not on the official list. One message at a time, the message itself first,
+ * with four plain actions — link, add as new trailer (inline, permission-
+ * gated), ignore, or "not a trailer message".
+ */
 export default function MentionsPage() {
   const list = useLoad(() => api.listMentions({ review_status: "pending" }), []);
   const assets = useLoad(() => dept.trailers(), []);
   const [resolve, setResolve] = useState(null); // { mention, action }
   const [msg, setMsg] = useState(null);
+  const [cursor, setCursor] = useState(0);
 
+  const rows = useMemo(() => list.data?.rows || [], [list.data]);
   const trailers = assets.data?.trailers || [];
+  const mention = rows[Math.min(cursor, Math.max(rows.length - 1, 0))];
 
   const submit = async (body) => {
-    await api.resolveMention(resolve.mention.id, body);
+    const { trailer } = await api.resolveMention(resolve.mention.id, body);
     setResolve(null);
-    setMsg({ text: "Mention resolved." });
-    list.reload();
+    setMsg({
+      text: body.review_status === "created" && trailer
+        ? `Trailer ${trailer.unit_number} added and linked.`
+        : body.review_status === "linked"
+          ? "Message linked to the trailer."
+          : "Message resolved.",
+    });
+    await list.reload();
+    setCursor(0);
   };
-
-  const columns = [
-    {
-      key: "normalized_unit_number",
-      label: "Detected",
-      render: (r) => r.normalized_unit_number || r.raw_unit_number || "—",
-    },
-    { key: "telegram_group_title", label: "Group", render: (r) => r.telegram_group_title || "—" },
-    {
-      key: "sender_name",
-      label: "Sender",
-      render: (r) => r.sender_name || r.sender_username || "—",
-    },
-    {
-      key: "detected_at",
-      label: "Detected",
-      render: (r) => (r.detected_at ? new Date(r.detected_at).toLocaleString() : "—"),
-    },
-    {
-      key: "ai_confidence",
-      label: "Confidence",
-      render: (r) => (r.ai_confidence != null ? `${r.ai_confidence}%` : "—"),
-    },
-    { key: "suggested_trailer_ids", label: "Suggested", render: suggested },
-    { key: "extracted_action", label: "Action", render: (r) => r.extracted_action || "—" },
-    { key: "extracted_location", label: "Location", render: (r) => r.extracted_location || "—" },
-    {
-      key: "actions",
-      label: "",
-      render: (r) => (
-        <div className="trailer-actions">
-          {ACTIONS.map((a) => (
-            <button
-              key={a.key}
-              type="button"
-              className="btn btn-sm btn-secondary"
-              onClick={(e) => {
-                e.stopPropagation();
-                setResolve({ mention: r, action: a.key });
-              }}
-            >
-              {a.label}
-            </button>
-          ))}
-        </div>
-      ),
-    },
-  ];
 
   return (
     <div>
       <PageHeader
-        title="Unmatched Mentions"
-        subtitle="Telegram trailer mentions that matched no master-list unit — link, ignore, or dismiss them."
+        title="Unknown trailer messages"
+        subtitle="Messages that mention a trailer number we do not recognize. Review them one by one."
       />
       <Alert message={msg} />
       {list.error && <div className="alert alert-danger">{list.error}</div>}
       {list.loading ? (
-        <div className="loading">Loading…</div>
-      ) : !list.data?.rows?.length ? (
-        <Empty>No pending mentions to review.</Empty>
+        <div className="loading"><div className="spinner" />Loading…</div>
+      ) : !rows.length ? (
+        <Card>
+          <Empty>No unknown trailer messages to review — the queue is clear.</Empty>
+        </Card>
       ) : (
-        <Table rows={list.data.rows} columns={columns} />
+        <Card>
+          <p className="trailer-help">
+            Message {Math.min(cursor + 1, rows.length)} of {rows.length}
+          </p>
+          <blockquote className="trailer-mention-message">
+            {mention.message_text || "(no message text was captured)"}
+          </blockquote>
+          <div className="trailer-summary">
+            <span>Detected number: <b>{mention.normalized_unit_number || mention.raw_unit_number || "—"}</b></span>
+            <span>From: {mention.sender_name || mention.sender_username || "unknown sender"}</span>
+            <span>Group: {mention.telegram_group_title || "—"}</span>
+            <span>{when(mention.detected_at)}</span>
+            {mention.ai_confidence != null && <span>Confidence: {mention.ai_confidence}%</span>}
+          </div>
+          <p>This number is not on the trailer list. What is it?</p>
+          <div className="trailer-actions">
+            <button type="button" className="btn btn-primary"
+              onClick={() => setResolve({ mention, action: "linked" })}>
+              Link to an existing trailer
+            </button>
+            <button type="button" className="btn btn-secondary"
+              onClick={() => setResolve({ mention, action: "created" })}>
+              Add as a new trailer
+            </button>
+            <button type="button" className="btn btn-ghost"
+              onClick={() => setResolve({ mention, action: "ignored" })}>
+              Ignore
+            </button>
+            <button type="button" className="btn btn-ghost"
+              onClick={() => setResolve({ mention, action: "false_detection" })}>
+              Not a trailer message
+            </button>
+            {rows.length > 1 && (
+              <button type="button" className="btn btn-ghost"
+                onClick={() => setCursor((cursor + 1) % rows.length)}>
+                Skip to next message
+              </button>
+            )}
+          </div>
+        </Card>
       )}
       {resolve && (
         <MentionResolveDialog

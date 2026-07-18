@@ -36,6 +36,8 @@ const trailerAssetsDb = require('./trailerAssets');
 const trailerReportsDb = require('./trailerReports');
 const trailerAgreementsDb = require('./trailerAgreements');
 const trailerCreditsDb = require('./trailerCredits');
+const trailerItemInspectionsDb = require('./trailerItemInspections');
+const trailerAvailabilityDb = require('./trailerAvailability');
 
 /**
  * Initialize database tables from schema.sql
@@ -301,4 +303,6 @@ module.exports = {
   ...trailerReportsDb,
   ...trailerAgreementsDb,
   ...trailerCreditsDb,
+  ...trailerItemInspectionsDb,
+  ...trailerAvailabilityDb,
 };

@@ -3,6 +3,7 @@
 const { pool, query } = require('./pool');
 const { insertTrailerAudit } = require('./trailerAudit');
 const { calculateInvoice } = require('../services/trailerBillingService');
+const { assertTrailerAvailable } = require('./trailerAvailability');
 
 const REQUIRED_INSPECTION_FIELDS = ['overall_condition','tires','lights','doors','roof','floor','exterior','interior','landing_gear'];
 
@@ -13,12 +14,19 @@ async function nextNumber(client, table, column, prefix) {
   const year = new Date().getUTCFullYear();
   const stem = `${prefix}-${year}-`;
   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`number:${stem}`]);
-  const allowed = { trailer_rentals: 'agreement_number', trailer_invoices: 'invoice_number', trailer_payments: 'receipt_number' };
+  const allowed = {
+    trailer_rentals: 'agreement_number',
+    trailer_rental_agreements: 'agreement_number',
+    trailer_invoices: 'invoice_number',
+    trailer_payments: 'receipt_number',
+  };
   if (allowed[table] !== column) throw new Error('Invalid document sequence.');
+  // The regex filter ignores already-corrupted rows (e.g. a year duplicated into
+  // the suffix) when computing MAX; the UNIQUE constraint remains the backstop.
   const res = await client.query(
-    `SELECT COALESCE(MAX(NULLIF(regexp_replace(${column}, '^.*-', ''), '')::int),0)+1 AS next
-       FROM ${table} WHERE ${column} LIKE $1`,
-    [`${stem}%`],
+    `SELECT COALESCE(MAX(NULLIF(regexp_replace(${column}, '^.*-', ''), '')::bigint),0)+1 AS next
+       FROM ${table} WHERE ${column} LIKE $1 AND ${column} ~ $2`,
+    [`${stem}%`, `^${prefix}-${year}-\\d{1,6}$`],
   );
   return `${stem}${String(res.rows[0].next).padStart(6, '0')}`;
 }
@@ -88,6 +96,11 @@ async function createTrailerRental(data, actor) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    if (data.start_at) {
+      await assertTrailerAvailable(client, {
+        trailerId: data.trailer_id, startAt: data.start_at, endAt: data.expected_return_at || null,
+      });
+    }
     const agreement = await nextNumber(client, 'trailer_rentals', 'agreement_number', 'RENT');
     const res = await client.query(
       `INSERT INTO trailer_rentals
@@ -334,8 +347,12 @@ async function activateTrailerRental(id, actor) {
     const company = await client.query('SELECT active FROM trailer_renter_companies WHERE id=$1', [rental.company_id]);
     if (!company.rows[0]?.active) throw httpError('Renter company is inactive.', 409);
     const inspection = await validateInspectionMedia(client, id, 'pickup');
-    const conflict = await client.query(`SELECT id FROM trailer_rentals WHERE trailer_id=$1 AND status='active' AND id<>$2`, [rental.trailer_id,id]);
-    if (conflict.rows[0]) throw httpError('Trailer already has an active rental.', 409);
+    // Cross-system: the trailer must be free in BOTH the legacy rentals and the
+    // multi-trailer agreement items before this rental can go active.
+    await assertTrailerAvailable(client, {
+      trailerId: rental.trailer_id, startAt: rental.start_at, endAt: rental.expected_return_at,
+      excludeRentalId: id,
+    });
     const updated = await client.query(`UPDATE trailer_rentals SET status='active',updated_by_admin_id=$2,updated_at=NOW() WHERE id=$1 RETURNING *`, [id,actor?.id || null]);
     await client.query(`UPDATE trailers SET physical_status='rented',updated_by_admin_id=$2,updated_at=NOW() WHERE id=$1`, [rental.trailer_id,actor?.id || null]);
     const linked = await createAuthoritativeMovement(client,{rental:updated.rows[0],inspection,type:'rental_pickup',at:rental.start_at,location:rental.pickup_location,lat:rental.pickup_lat,lng:rental.pickup_lng,actor});

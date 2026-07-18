@@ -74,14 +74,20 @@ async function createTrailerPgHarness(t, options = {}) {
   const databaseUrl = new URL(adminUrl);
   databaseUrl.pathname = `/${schema}`;
 
+  // An idle pooled client terminated server-side (a DROP DATABASE … FORCE from
+  // teardown racing a straggler) emits 'error' on the pool; with no listener
+  // that becomes an uncaughtException attributed to whatever test happens to be
+  // running. Swallow it — every query path still surfaces its own errors.
+  const quiet = (p) => { p.on('error', () => {}); return p; };
+
   // A separate connection to the maintenance database: CREATE/DROP DATABASE
   // cannot run from inside the database being created or dropped.
-  const admin = new Pool({ connectionString: adminUrl, max: 2 });
+  const admin = quiet(new Pool({ connectionString: adminUrl, max: 2 }));
   // template0 + UTF8: schema.sql contains box-drawing characters in comments,
   // which a WIN1252 cluster default cannot store.
   await admin.query(`CREATE DATABASE ${schema} WITH ENCODING 'UTF8' TEMPLATE template0`);
 
-  const pool = new Pool({ connectionString: databaseUrl.toString(), max: 4 });
+  const pool = quiet(new Pool({ connectionString: databaseUrl.toString(), max: 4 }));
   /** Extra pools handed to loadDataLayer(); drained before the database drops. */
   const scopedPools = [];
 
@@ -140,7 +146,7 @@ async function createTrailerPgHarness(t, options = {}) {
    * @returns {object} map of moduleName -> loaded module
    */
   function loadDataLayer(moduleNames) {
-    const scopedPool = new Pool({ connectionString: databaseUrl.toString(), max: 4 });
+    const scopedPool = quiet(new Pool({ connectionString: databaseUrl.toString(), max: 4 }));
     scopedPools.push(scopedPool);
 
     // RECURSIVE on purpose: the data layer has nested packages
@@ -196,7 +202,7 @@ async function createTrailerPgHarness(t, options = {}) {
     const storageDir = path.resolve(__dirname, '../../services/trailerStorage');
     const facadePath = require.resolve('../../services/trailerStorageService');
 
-    const scopedPool = new Pool({ connectionString: databaseUrl.toString(), max: 4 });
+    const scopedPool = quiet(new Pool({ connectionString: databaseUrl.toString(), max: 4 }));
     scopedPools.push(scopedPool);
 
     const purge = () => {

@@ -143,7 +143,17 @@ function createTrailerMasterListRoutes({ authMiddleware, requirePermission }) {
     if (body.review_status === 'created' && !new Set(req.admin?.permissions || []).has('trailers.create')) {
       return res.status(403).json({ error: 'Creating a trailer from a mention requires trailers.create.' });
     }
-    res.json({ mention: await db.resolveUnmatchedMention(req.params.id, body, { actor: actor(req) }) });
+    // "Add as new trailer" in the review flow: the trailer is created through
+    // the SAME permission-gated manual-creation path as the Trailers page
+    // (source='admin_manual' — an allowed creation site; a mention itself still
+    // cannot create anything), then the mention is linked to it.
+    let createdTrailer = null;
+    if (body.review_status === 'created' && body.new_trailer && !body.linked_trailer_id) {
+      createdTrailer = await db.createDepartmentTrailer(body.new_trailer, actor(req));
+      body.linked_trailer_id = createdTrailer.id;
+    }
+    const mention = await db.resolveUnmatchedMention(req.params.id, body, { actor: actor(req) });
+    res.json({ mention, trailer: createdTrailer });
   }));
 
   // ─── aliases ───

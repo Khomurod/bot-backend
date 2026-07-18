@@ -24,6 +24,17 @@ async function request(path, options = {}) {
   return type.includes("application/json") ? res.json() : res;
 }
 export const status = () => request("/status");
+export const home = () => request("/home");
+export const rentalList = (filters = {}) => {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) if (v != null && v !== "") params.set(k, v);
+  return request(`/rental-list?${params}`);
+};
+export const rentalOverview = (agreementId) => request(`/rental-list/${agreementId}`);
+export const companyCredits = (companyId) => request(`/companies/${companyId}/credits`);
+export const applyCredit = (creditId, body) =>
+  request(`/credits/${creditId}/apply`, { method: "POST", body: JSON.stringify(body) });
+export const invoice = (id) => request(`/invoices/${id}`);
 export const dashboard = (filters = {}) =>
   request(`/dashboard?${new URLSearchParams(filters)}`);
 export const trailers = (filters = {}) =>
@@ -132,6 +143,12 @@ export async function saveRole(id, body) {
 
 export default {
   status,
+  home,
+  rentalList,
+  rentalOverview,
+  companyCredits,
+  applyCredit,
+  invoice,
   dashboard,
   trailers,
   createTrailer,

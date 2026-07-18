@@ -4040,3 +4040,32 @@ DO $$ BEGIN
     );
   END IF;
 END $$;
+
+-- ----------------------------------------------------------------------------
+-- Phase A stabilization: agreement-native payments, persisted return charges,
+-- and optimistic locking for trailers. Additive + idempotent (runs every boot).
+-- ----------------------------------------------------------------------------
+
+-- Agreement-only invoices (no legacy rental / single trailer) must be payable.
+-- invoice_id stays NOT NULL — it is the real anchor of every payment.
+ALTER TABLE trailer_payments ALTER COLUMN rental_id DROP NOT NULL;
+ALTER TABLE trailer_payments ALTER COLUMN trailer_id DROP NOT NULL;
+ALTER TABLE trailer_payments ADD COLUMN IF NOT EXISTS agreement_id BIGINT NULL REFERENCES trailer_rental_agreements(id) ON DELETE SET NULL;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'trailer_payments_scope_check' AND conrelid = 'trailer_payments'::regclass
+  ) THEN
+    ALTER TABLE trailer_payments ADD CONSTRAINT trailer_payments_scope_check CHECK (
+      rental_id IS NOT NULL OR invoice_id IS NOT NULL
+    );
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_trailer_payments_agreement ON trailer_payments(agreement_id) WHERE agreement_id IS NOT NULL;
+
+-- Charges entered at item return must survive until invoicing.
+ALTER TABLE trailer_rental_items ADD COLUMN IF NOT EXISTS return_charges JSONB NULL;
+
+-- Optimistic locking for trailers (agreements/items/invoices/companies already
+-- carry a version column).
+ALTER TABLE trailers ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;

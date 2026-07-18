@@ -5,56 +5,69 @@ const { nextNumber } = require('./trailerRentals');
 const { createTrailerMedia, attachMediaToPayment } = require('./trailerMedia');
 const { insertTrailerAudit } = require('./trailerAudit');
 const { createCompanyCredit } = require('./trailerCredits');
+const { refreshInvoiceStatus, PAID_TOTAL_LATERAL } = require('./trailerInvoiceStatus');
 
 function error(message,status=400){return Object.assign(new Error(message),{status});}
 function actorMeta(actor){return{adminId:actor?.id,roleKeys:actor?.role_keys||[],ipAddress:actor?.ipAddress};}
 
-async function refreshInvoiceStatus(client, invoiceId) {
-  const res = await client.query(
-    `WITH paid AS (
-       SELECT COALESCE(SUM(amount),0) total FROM trailer_payments
-        WHERE invoice_id=$1 AND verification_status IN ('recorded','verified')
-     )
-     UPDATE trailer_invoices i SET status = CASE
-       WHEN i.status IN ('disputed','voided') THEN i.status
-       WHEN paid.total >= i.total_amount THEN 'paid'
-       WHEN paid.total > 0 THEN 'partially_paid'
-       WHEN i.due_at < NOW() THEN 'overdue'
-       ELSE 'issued' END, updated_at=NOW()
-     FROM paid WHERE i.id=$1 RETURNING i.*,paid.total AS total_paid,
-       GREATEST(i.total_amount-paid.total,0) AS outstanding_balance`, [invoiceId],
-  );
-  return res.rows[0] || null;
-}
+// Invoice header joins. Legacy rental and trailer are OPTIONAL — an
+// agreement-only invoice (combined, or a fresh agreement with no legacy rental)
+// has neither, so requiring them made those invoices invisible and unpayable.
+const INVOICE_SELECT = `
+  SELECT i.*,COALESCE(r.agreement_number,a.agreement_number) AS agreement_number,
+    t.unit_number,c.display_name AS company_name,
+    COALESCE(p.total_paid,0) AS total_paid,GREATEST(i.total_amount-COALESCE(p.total_paid,0),0) AS outstanding_balance,
+    CASE WHEN i.status NOT IN ('disputed','voided','paid') AND i.due_at<NOW()
+      THEN TRUE ELSE FALSE END AS is_overdue,n.status AS notification_status,
+    n.attempts AS notification_attempts,n.last_error AS notification_error
+  FROM trailer_invoices i
+  LEFT JOIN trailer_rentals r ON r.id=i.rental_id
+  LEFT JOIN trailer_rental_agreements a ON a.id=i.agreement_id
+  LEFT JOIN trailers t ON t.id=i.trailer_id
+  JOIN trailer_renter_companies c ON c.id=i.company_id
+  ${PAID_TOTAL_LATERAL}
+  LEFT JOIN LATERAL (SELECT j.status,j.attempts,j.last_error FROM trailer_notification_jobs j
+    JOIN trailer_payments pp ON pp.id=j.entity_id WHERE j.job_type='payment_confirmation'
+    AND pp.invoice_id=i.id ORDER BY j.created_at DESC LIMIT 1) n ON TRUE`;
 
 async function listTrailerInvoices(filters={}) {
   const values=[]; const where=[];
-  for(const [col,val] of [['i.status',filters.status],['i.company_id',filters.companyId],['i.trailer_id',filters.trailerId]]){
+  for(const [col,val] of [['i.status',filters.status],['i.company_id',filters.companyId],
+    ['i.trailer_id',filters.trailerId],['i.agreement_id',filters.agreementId],['i.rental_item_id',filters.rentalItemId]]){
     if(val!=null&&val!==''){values.push(val);where.push(`${col}=$${values.length}`);}
   }
+  if(filters.q){
+    values.push(`%${String(filters.q).trim()}%`);
+    where.push(`(i.invoice_number ILIKE $${values.length} OR c.display_name ILIKE $${values.length})`);
+  }
+  const clause=where.length?`WHERE ${where.join(' AND ')}`:'';
+  // With a page requested, answer the shared paginated envelope; without one,
+  // keep the legacy bare-array behaviour for existing consumers.
+  if(filters.page){
+    const page=Math.max(Number(filters.page)||1,1);
+    const size=Math.min(Math.max(Number(filters.page_size??filters.pageSize)||25,1),200);
+    const total=await query(
+      `SELECT COUNT(*)::int AS total FROM trailer_invoices i JOIN trailer_renter_companies c ON c.id=i.company_id ${clause}`,values);
+    const res=await query(
+      `${INVOICE_SELECT} ${clause} ORDER BY i.created_at DESC LIMIT ${size} OFFSET ${(page-1)*size}`,values);
+    return {items:res.rows,page,page_size:size,total:total.rows[0].total};
+  }
   const res=await query(
-    `SELECT i.*,r.agreement_number,t.unit_number,c.display_name AS company_name,
-       COALESCE(p.total_paid,0) AS total_paid,GREATEST(i.total_amount-COALESCE(p.total_paid,0),0) AS outstanding_balance,
-       CASE WHEN i.status NOT IN ('disputed','voided','paid') AND i.due_at<NOW()
-         THEN TRUE ELSE FALSE END AS is_overdue,n.status AS notification_status,
-       n.attempts AS notification_attempts,n.last_error AS notification_error
-     FROM trailer_invoices i JOIN trailer_rentals r ON r.id=i.rental_id
-     JOIN trailers t ON t.id=i.trailer_id JOIN trailer_renter_companies c ON c.id=i.company_id
-     LEFT JOIN LATERAL (SELECT SUM(amount) total_paid FROM trailer_payments
-       WHERE invoice_id=i.id AND verification_status IN ('recorded','verified')) p ON TRUE
-     LEFT JOIN LATERAL (SELECT j.status,j.attempts,j.last_error FROM trailer_notification_jobs j
-       JOIN trailer_payments pp ON pp.id=j.entity_id WHERE j.job_type='payment_confirmation'
-       AND pp.invoice_id=i.id ORDER BY j.created_at DESC LIMIT 1) n ON TRUE
-     ${where.length?`WHERE ${where.join(' AND ')}`:''} ORDER BY i.created_at DESC LIMIT 500`,values);
+    `${INVOICE_SELECT}
+     ${clause} ORDER BY i.created_at DESC LIMIT 500`,values);
   return res.rows;
 }
 
 async function getTrailerInvoice(id){
-  const rows=await listTrailerInvoices(); const invoice=rows.find((r)=>Number(r.id)===Number(id));
+  const res=await query(`${INVOICE_SELECT} WHERE i.id=$1`,[Number(id)]);
+  const invoice=res.rows[0];
   if(!invoice)return null;
-  const payments=await query('SELECT * FROM trailer_payments WHERE invoice_id=$1 ORDER BY payment_at DESC',[id]);
-  const adjustments=await query('SELECT * FROM trailer_invoice_adjustments WHERE invoice_id=$1 ORDER BY created_at',[id]);
-  return{...invoice,payments:payments.rows,adjustments:adjustments.rows};
+  const [payments,adjustments,lines]=await Promise.all([
+    query('SELECT * FROM trailer_payments WHERE invoice_id=$1 ORDER BY payment_at DESC',[id]),
+    query('SELECT * FROM trailer_invoice_adjustments WHERE invoice_id=$1 ORDER BY created_at',[id]),
+    query('SELECT * FROM trailer_invoice_lines WHERE invoice_id=$1 ORDER BY id',[id]),
+  ]);
+  return{...invoice,payments:payments.rows,adjustments:adjustments.rows,lines:lines.rows};
 }
 
 async function recordTrailerPayment(data, actor, receiptDescriptor) {
@@ -67,9 +80,13 @@ async function recordTrailerPayment(data, actor, receiptDescriptor) {
   try{
     await client.query('BEGIN');
     const invoiceRes=await client.query(
-      `SELECT i.*,r.agreement_number,t.unit_number,c.display_name AS company_name
-       FROM trailer_invoices i JOIN trailer_rentals r ON r.id=i.rental_id
-       JOIN trailers t ON t.id=i.trailer_id JOIN trailer_renter_companies c ON c.id=i.company_id
+      `SELECT i.*,COALESCE(r.agreement_number,a.agreement_number) AS agreement_number,
+         t.unit_number,c.display_name AS company_name
+       FROM trailer_invoices i
+       LEFT JOIN trailer_rentals r ON r.id=i.rental_id
+       LEFT JOIN trailer_rental_agreements a ON a.id=i.agreement_id
+       LEFT JOIN trailers t ON t.id=i.trailer_id
+       JOIN trailer_renter_companies c ON c.id=i.company_id
        WHERE i.id=$1 FOR UPDATE OF i`,[data.invoice_id]);
     const invoice=invoiceRes.rows[0];
     if(!invoice)throw error('Invoice not found.',404);
@@ -81,8 +98,10 @@ async function recordTrailerPayment(data, actor, receiptDescriptor) {
     // confirmation (both surfaced by the route as allow_overpayment), the excess
     // is banked as a company credit in this same transaction.
     const paidRes=await client.query(
-      `SELECT COALESCE(SUM(amount),0) total FROM trailer_payments
-        WHERE invoice_id=$1 AND verification_status IN ('recorded','verified')`,[invoice.id]);
+      `SELECT COALESCE((SELECT SUM(amount) FROM trailer_payments
+                WHERE invoice_id=$1 AND verification_status IN ('recorded','verified')),0)
+            + COALESCE((SELECT SUM(amount) FROM trailer_company_credit_applications
+                WHERE invoice_id=$1),0) AS total`,[invoice.id]);
     const outstanding=Number(invoice.total_amount)-Number(paidRes.rows[0].total);
     const overpayment=Number(data.amount)-outstanding;
     if(overpayment>0.0001 && !data.allow_overpayment){
@@ -96,10 +115,11 @@ async function recordTrailerPayment(data, actor, receiptDescriptor) {
     const receiptNumber=await nextNumber(client,'trailer_payments','receipt_number','RCPT');
     const payment=await client.query(
       `INSERT INTO trailer_payments
-       (receipt_number,invoice_id,rental_id,trailer_id,company_id,amount,currency,payment_at,payment_method,
+       (receipt_number,invoice_id,rental_id,trailer_id,agreement_id,company_id,amount,currency,payment_at,payment_method,
         reference_number,notes,receipt_media_id,receipt_bypass_reason,idempotency_key,recorded_by_admin_id)
-       VALUES ($1,$2,$3,$4,$5,$6,'USD',$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-      [receiptNumber,invoice.id,invoice.rental_id,invoice.trailer_id,invoice.company_id,Number(data.amount),
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'USD',$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      [receiptNumber,invoice.id,invoice.rental_id||null,invoice.trailer_id||null,invoice.agreement_id||null,
+       invoice.company_id,Number(data.amount),
        data.payment_at,String(data.payment_method).trim(),data.reference_number||null,data.notes||null,
        media?.id||null,data.receipt_bypass_reason||null,String(data.idempotency_key),actor?.id||null]);
     if(media)await attachMediaToPayment(media.id,payment.rows[0].id,client);
@@ -148,13 +168,17 @@ async function reverseTrailerPayment(paymentId, reason, actor){
   }catch(e){try{await client.query('ROLLBACK');}catch(_){}throw e;}finally{client.release();}
 }
 
-async function addTrailerInvoiceAdjustment(invoiceId,{adjustment_type:adjustmentType,amount,reason},actor){
+async function addTrailerInvoiceAdjustment(invoiceId,{adjustment_type:adjustmentType,amount,reason,version},actor){
   const value=Number(amount);if(!adjustmentType||!Number.isFinite(value)||value===0||!String(reason||'').trim())throw error('Adjustment type, non-zero amount, and reason are required.');
   const client=await pool.connect();try{await client.query('BEGIN');
     const before=await client.query('SELECT * FROM trailer_invoices WHERE id=$1 FOR UPDATE',[invoiceId]);
     if(!before.rows[0])throw error('Invoice not found.',404);if(['paid','voided'].includes(before.rows[0].status))throw error('Paid or voided invoices cannot be adjusted.',409);
+    if(version!==undefined&&version!==null&&Number(before.rows[0].version)!==Number(version)){
+      throw Object.assign(new Error('This record changed while you were editing. Reload and try again.'),
+        {status:409,code:'VERSION_CONFLICT',currentVersion:before.rows[0].version});
+    }
     const adjustment=await client.query(`INSERT INTO trailer_invoice_adjustments(invoice_id,adjustment_type,amount,reason,created_by_admin_id)VALUES($1,$2,$3,$4,$5)RETURNING *`,[invoiceId,String(adjustmentType),value,String(reason).trim(),actor?.id||null]);
-    await client.query('UPDATE trailer_invoices SET other_charges=other_charges+$2,total_amount=GREATEST(total_amount+$2,0),updated_at=NOW() WHERE id=$1',[invoiceId,value]);
+    await client.query('UPDATE trailer_invoices SET other_charges=other_charges+$2,total_amount=GREATEST(total_amount+$2,0),updated_at=NOW(),version=version+1 WHERE id=$1',[invoiceId,value]);
     const invoice=await refreshInvoiceStatus(client,invoiceId);await insertTrailerAudit({...actorMeta(actor),action:'invoice.adjust',entityType:'invoice',entityId:invoiceId,oldValues:before.rows[0],newValues:{invoice,adjustment:adjustment.rows[0]},reason},client);
     await client.query('COMMIT');return{adjustment:adjustment.rows[0],invoice};
   }catch(e){try{await client.query('ROLLBACK');}catch(_){}throw e;}finally{client.release();}

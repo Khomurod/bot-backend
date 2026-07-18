@@ -1,6 +1,7 @@
 /**
- * Trailer Department navigation contract: one shared permission catalog, nested
- * under the main sidebar item, with the old horizontal tab bar gone.
+ * Trailer Department navigation contract: FIVE destinations (Home, Rentals,
+ * Trailers, Money, More), one shared permission catalog, nested under the main
+ * sidebar item, with every pre-redesign section key still routing somewhere.
  *
  * The catalog is dependency-free ESM, so its behaviour is tested for real. The
  * JSX around it is verified as a source contract — the admin project has no
@@ -17,60 +18,75 @@ const ADMIN = path.resolve(__dirname, '../admin/src');
 const read = (relative) => fs.readFileSync(path.join(ADMIN, relative), 'utf8');
 const catalog = () => import(pathToFileURL(path.join(ADMIN, 'pages/trailer/trailerNavigation.js')).href);
 
-const TRAILER_ONLY = ['trailers.view', 'trailer_rentals.view', 'trailer_map.view'];
-
 test('the catalog defines every section with its documented permissions', async () => {
   const { TRAILER_SECTIONS } = await catalog();
   const byKey = Object.fromEntries(TRAILER_SECTIONS.map((s) => [s.key, s]));
   const expected = {
-    dashboard: ['trailers.view'],
-    rentals: ['trailer_rentals.view'],
+    home: ['trailers.view', 'trailer_rentals.view', 'trailer_payments.view'],
+    rentals: ['trailer_rentals.view', 'trailer_agreements.view'],
     trailers: ['trailers.view'],
-    companies: ['trailer_rentals.view', 'trailer_companies.manage'],
-    payments: ['trailer_payments.view'],
-    map: ['trailer_map.view'],
-    reports: ['trailer_reports.view'],
-    tracking: ['trailers.view'],
-    settings: ['trailer_settings.manage'],
-    users: ['trailer_users.manage'],
+    money: ['trailer_payments.view'],
+    more: ['trailer_companies.manage', 'trailer_imports.manage', 'trailer_reports.view',
+      'trailer_settings.manage', 'trailer_users.manage'],
   };
   assert.deepEqual(TRAILER_SECTIONS.map((s) => s.key), Object.keys(expected));
   for (const [key, permissions] of Object.entries(expected)) {
     assert.deepEqual(byKey[key].permissions, permissions, `${key} permissions`);
   }
-  assert.deepEqual(byKey.companies.label, 'Companies');
+  assert.equal(byKey.home.label, 'Home');
+  assert.equal(byKey.more.label, 'More');
 });
 
-test('children are permission-filtered; full admins see all of them', async () => {
+test('role presets emerge from permissions — no inaccessible items rendered', async () => {
   const { permittedTrailerSections, TRAILER_SECTIONS } = await catalog();
-  const trailerOnly = permittedTrailerSections(TRAILER_ONLY).map((s) => s.key);
-  assert.deepEqual(trailerOnly, ['dashboard', 'rentals', 'trailers', 'companies', 'map', 'tracking']);
-  assert.ok(!trailerOnly.includes('settings'), 'trailer-only users must not see Settings');
-  assert.ok(!trailerOnly.includes('users'), 'trailer-only users must not see Trailer Users');
+  const keys = (permissions) => permittedTrailerSections(permissions).map((s) => s.key);
 
-  const full = permittedTrailerSections(['admin.full_access']).map((s) => s.key);
-  assert.deepEqual(full, TRAILER_SECTIONS.map((s) => s.key));
+  // Employee: works rentals and trailers.
+  assert.deepEqual(keys(['trailers.view', 'trailer_rentals.view', 'trailer_inspections.manage']),
+    ['home', 'rentals', 'trailers']);
+  // Accounting: money-focused.
+  assert.deepEqual(keys(['trailer_payments.view', 'trailer_payments.record']), ['home', 'money']);
+  // Manager permissions unlock More.
+  assert.ok(keys(['trailer_settings.manage']).includes('more'));
+  assert.ok(!keys(['trailers.view']).includes('more'), 'non-managers must not see More');
+  // Full admins see everything; nobody gets an empty ghost menu.
+  assert.deepEqual(keys(['admin.full_access']), TRAILER_SECTIONS.map((s) => s.key));
   assert.deepEqual(permittedTrailerSections([]), []);
 });
 
-test('either companies permission is enough for the Companies child', async () => {
-  const { permittedTrailerSections } = await catalog();
-  const keys = (permissions) => permittedTrailerSections(permissions).map((s) => s.key);
-  assert.ok(keys(['trailer_rentals.view']).includes('companies'));
-  assert.ok(keys(['trailer_companies.manage']).includes('companies'));
+test('every legacy section key routes to its new destination', async () => {
+  const { trailerSectionFromPath, trailerLegacyTab, TRAILER_LEGACY_SECTIONS } = await catalog();
+  const expected = {
+    dashboard: ['home', null],
+    agreements: ['rentals', null],
+    payments: ['money', null],
+    map: ['trailers', 'map'],
+    tracking: ['trailers', 'updates'],
+    mentions: ['trailers', 'updates'],
+    masterImport: ['more', 'trailer-list'],
+    companies: ['more', 'companies'],
+    reports: ['more', 'reports'],
+    settings: ['more', 'settings'],
+    users: ['more', 'team'],
+  };
+  assert.deepEqual(Object.keys(TRAILER_LEGACY_SECTIONS).sort(), Object.keys(expected).sort());
+  for (const [legacy, [section, tab]] of Object.entries(expected)) {
+    assert.equal(trailerSectionFromPath(`/admin/trailers/${legacy}`), section, `${legacy} section`);
+    assert.equal(trailerLegacyTab(`/admin/trailers/${legacy}`), tab, `${legacy} tab`);
+  }
 });
 
 test('routes and active sections stay synchronized', async () => {
   const { trailerSectionPath, trailerSectionFromPath, defaultTrailerSection } = await catalog();
-  assert.equal(trailerSectionPath('payments'), '/admin/trailers/payments');
-  assert.equal(trailerSectionFromPath('/admin/trailers/payments'), 'payments');
-  assert.equal(trailerSectionFromPath('/admin/trailers'), 'dashboard');
+  assert.equal(trailerSectionPath('money'), '/admin/trailers/money');
+  assert.equal(trailerSectionFromPath('/admin/trailers/money'), 'money');
+  assert.equal(trailerSectionFromPath('/admin/trailers'), 'home');
   // An unknown or stale deep link must not leave the sidebar without a match.
-  assert.equal(trailerSectionFromPath('/admin/trailers/bogus'), 'dashboard');
+  assert.equal(trailerSectionFromPath('/admin/trailers/bogus'), 'home');
 
-  assert.equal(defaultTrailerSection(['admin.full_access']), 'dashboard');
-  // Dashboard needs trailers.view — without it the first permitted child wins.
-  assert.equal(defaultTrailerSection(['trailer_payments.view']), 'payments');
+  assert.equal(defaultTrailerSection(['admin.full_access']), 'home');
+  // Home needs a view permission — without one the first permitted section wins.
+  assert.equal(defaultTrailerSection(['trailer_settings.manage']), 'more');
 });
 
 test('the old horizontal Trailer Department navigation is gone', () => {
@@ -111,7 +127,7 @@ test('the sidebar nests permitted children under Trailer Department', () => {
 
 test('navigating to a child pushes /admin/trailers/{section}', () => {
   const app = read('App.jsx');
-  assert.ok(/navigateToTrailerSection = \(sectionKey\) => \{/.test(app));
+  assert.ok(/navigateToTrailerSection = \(sectionKey/.test(app));
   assert.ok(/window\.history\.pushState\(\{\}, "", nextPath\)/.test(app));
   assert.ok(/trailerSectionPath\(sectionKey\)/.test(app));
   // Back/forward must resync both the page and the highlighted child.
