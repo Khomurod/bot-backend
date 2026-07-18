@@ -41,12 +41,16 @@ const MESSAGES = {
   23505: 'That record already exists.',
 };
 
-/** The message to show a person for this error. */
+/**
+ * The message to show a person for this error. A message the service already
+ * phrased for humans (4xx with text, often more specific — naming the trailer
+ * or the dates) wins; the map covers bare codes and raw pg constraint errors.
+ */
 function humanMessage(err) {
   if (!err) return 'Something went wrong. Try again.';
+  if (err.status && err.status < 500 && err.message) return err.message;
   const mapped = MESSAGES[err.code];
   if (mapped) return mapped;
-  if (err.status && err.status < 500 && err.message) return err.message;
   return 'Something went wrong. Try again.';
 }
 

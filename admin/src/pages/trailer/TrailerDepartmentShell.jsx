@@ -5,34 +5,18 @@ import TrailerDisabledPanel from "./TrailerDisabledPanel";
 import { permittedTrailerSections } from "./trailerNavigation";
 import "./trailerDepartment.css";
 
-const Dashboard = lazy(() => import("./TrailerDashboard"));
-const Rentals = lazy(() => import("./TrailerRentalsPage"));
-const Agreements = lazy(() => import("./agreement/AgreementsPage"));
-const Trailers = lazy(() => import("./TrailerAssetsPage"));
-const Companies = lazy(() => import("./TrailerCompaniesPage"));
-const Payments = lazy(() => import("./TrailerPaymentsPage"));
-const MapPage = lazy(() => import("./TrailerMapPage"));
-const Reports = lazy(() => import("./TrailerReportsPage"));
-const Tracking = lazy(() => import("../TrailerTrackingPage"));
-const MasterImport = lazy(() => import("./masterImport/MasterImportPage"));
-const Mentions = lazy(() => import("./mentions/MentionsPage"));
-const Settings = lazy(() => import("./TrailerSettingsPage"));
-const Users = lazy(() => import("./TrailerUsersPage"));
+const Home = lazy(() => import("./TrailerHomePage"));
+const RentalsSection = lazy(() => import("./sections/RentalsSection"));
+const TrailersSection = lazy(() => import("./sections/TrailersSection"));
+const MoneySection = lazy(() => import("./sections/MoneySection"));
+const MoreSection = lazy(() => import("./sections/MoreSection"));
 
 const PAGES = {
-  dashboard: Dashboard,
-  rentals: Rentals,
-  agreements: Agreements,
-  trailers: Trailers,
-  companies: Companies,
-  payments: Payments,
-  map: MapPage,
-  reports: Reports,
-  tracking: Tracking,
-  masterImport: MasterImport,
-  mentions: Mentions,
-  settings: Settings,
-  users: Users,
+  home: Home,
+  rentals: RentalsSection,
+  trailers: TrailersSection,
+  money: MoneySection,
+  more: MoreSection,
 };
 
 /**
@@ -67,7 +51,7 @@ export default function TrailerDepartmentShell({ section, onNavigate }) {
     if (!permitted && allowed[0]) onNavigate?.(allowed[0].key);
   }, [permitted, allowed, onNavigate]);
 
-  const Page = PAGES[permitted ? section : allowed[0]?.key] || Dashboard;
+  const Page = PAGES[permitted ? section : allowed[0]?.key] || Home;
 
   return (
     <div className="trailer-department">

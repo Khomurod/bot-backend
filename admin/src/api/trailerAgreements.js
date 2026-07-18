@@ -46,10 +46,19 @@ export const replaceItem = (id, itemId, item, reason) =>
   post(`${AG}/${id}/items/${itemId}/replace`, { item, reason });
 export const scheduleItem = (id, itemId, body) =>
   post(`${AG}/${id}/items/${itemId}/schedule`, body);
-export const activateItem = (id, itemId) =>
-  post(`${AG}/${id}/items/${itemId}/activate`, {});
+export const activateItem = (id, itemId, version) =>
+  post(`${AG}/${id}/items/${itemId}/activate`, version != null ? { version } : {});
 export const returnItem = (id, itemId, body) =>
   post(`${AG}/${id}/items/${itemId}/return`, body);
+// Item-scoped inspections: saving is ALWAYS a draft; completion verifies the
+// required fields and the stored photo bytes on the server.
+export const saveItemInspection = (id, itemId, type, body) =>
+  request(`${AG}/${id}/items/${itemId}/inspections/${type}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+export const completeItemInspection = (id, itemId, type) =>
+  post(`${AG}/${id}/items/${itemId}/inspections/${type}/complete`, {});
 export const extendItem = (id, itemId, expected_return_at, reason) =>
   post(`${AG}/${id}/items/${itemId}/extend`, { expected_return_at, reason });
 export const changeAmount = (id, amount, reason) =>
@@ -57,7 +66,8 @@ export const changeAmount = (id, amount, reason) =>
 export const combinedInvoice = (id) => post(`${AG}/${id}/invoices/combined`, {});
 export const itemInvoice = (id, itemId) =>
   post(`${AG}/${id}/items/${itemId}/invoice`, {});
-export const closeAgreement = (id) => post(`${AG}/${id}/close`, {});
+export const closeAgreement = (id, version) =>
+  post(`${AG}/${id}/close`, version != null ? { version } : {});
 
 // ─── Master list imports ───
 const ML = "/api/trailer-master-list";
@@ -94,6 +104,8 @@ export default {
   scheduleItem,
   activateItem,
   returnItem,
+  saveItemInspection,
+  completeItemInspection,
   extendItem,
   changeAmount,
   combinedInvoice,
