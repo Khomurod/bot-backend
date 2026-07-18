@@ -146,6 +146,11 @@ export async function saveRole(id, body) {
   if (!res.ok) throw new Error((await res.json()).error);
   return res.json();
 }
+export async function createRole(body) {
+  const res = await fetch("/api/admin/roles", { method: "POST", headers: { ...auth(), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
 
 export default {
   status,
@@ -187,4 +192,5 @@ export default {
   roles,
   saveAdminUser,
   saveRole,
+  createRole,
 };
