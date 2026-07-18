@@ -142,8 +142,10 @@ test('partial pickup and independent return drive partially_active then partiall
   const a2 = await service.activateItem(agreement.id, items[1].id, { id: adminId }, { requireInspection: false });
   assert.equal(a2.agreement.status, 'partially_active');
 
-  // Return the first — others stay active → partially_returned.
-  const r1 = await service.returnItem(agreement.id, items[0].id, { actual_return_at: new Date().toISOString() }, { id: adminId });
+  // Return the first — others stay active → partially_returned. The return
+  // inspection is bypassed here (test-only) like the pickup above; the evidence
+  // requirement has its own dedicated tests.
+  const r1 = await service.returnItem(agreement.id, items[0].id, { actual_return_at: new Date().toISOString() }, { id: adminId }, { requireInspection: false });
   assert.equal(r1.item.item_status, 'returned');
   assert.equal(r1.agreement.status, 'partially_returned');
   assert.ok(Number(r1.invoiceLine.line_total) >= 0);

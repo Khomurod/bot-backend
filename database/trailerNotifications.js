@@ -44,7 +44,9 @@ async function markTrailerNotificationFailed(id,error){
 async function getPaymentNotificationContext(paymentId){
   const res=await query(
     `SELECT p.*,i.invoice_number,i.total_amount,i.billable_days,i.daily_rate,i.flat_rate,i.billing_method,
-       r.agreement_number,r.start_at,r.actual_return_at,t.unit_number,c.display_name AS company_name,
+       COALESCE(r.agreement_number,ag.agreement_number) AS agreement_number,
+       COALESCE(r.start_at,ag.start_date::timestamptz) AS start_at,r.actual_return_at,
+       t.unit_number,c.display_name AS company_name,
        a.username AS recorded_by,m.object_path,m.preview_object_path,m.mime_type,m.bucket,
        -- Everything services/trailerStorage needs to build a signed URL for
        -- EITHER backend. Without these a database-backed receipt has no
@@ -53,11 +55,17 @@ async function getPaymentNotificationContext(paymentId){
        COALESCE(total.total_paid,0) AS total_paid,
        GREATEST(i.total_amount-COALESCE(total.total_paid,0),0) AS remaining_balance
      FROM trailer_payments p JOIN trailer_invoices i ON i.id=p.invoice_id
-     JOIN trailer_rentals r ON r.id=p.rental_id JOIN trailers t ON t.id=p.trailer_id
+     -- Agreement-only payments have no legacy rental or single trailer; the
+     -- confirmation must still send, falling back to the agreement number.
+     LEFT JOIN trailer_rentals r ON r.id=p.rental_id
+     LEFT JOIN trailer_rental_agreements ag ON ag.id=COALESCE(p.agreement_id,i.agreement_id)
+     LEFT JOIN trailers t ON t.id=p.trailer_id
      JOIN trailer_renter_companies c ON c.id=p.company_id LEFT JOIN admins a ON a.id=p.recorded_by_admin_id
      LEFT JOIN trailer_media m ON m.id=p.receipt_media_id
-     LEFT JOIN LATERAL(SELECT SUM(amount) total_paid FROM trailer_payments
-       WHERE invoice_id=i.id AND verification_status IN ('recorded','verified')) total ON TRUE
+     LEFT JOIN LATERAL(SELECT COALESCE((SELECT SUM(amount) FROM trailer_payments
+         WHERE invoice_id=i.id AND verification_status IN ('recorded','verified')),0)
+       + COALESCE((SELECT SUM(amount) FROM trailer_company_credit_applications
+         WHERE invoice_id=i.id),0) AS total_paid) total ON TRUE
      WHERE p.id=$1`,[paymentId]);
   return res.rows[0]||null;
 }
@@ -88,8 +96,10 @@ async function enqueueOverdueReminders(){
        'overdue:'||i.id||':'||to_char(NOW() AT TIME ZONE COALESCE(s.reminder_timezone,'America/Chicago'),'YYYY-MM-DD'),
        jsonb_build_object('invoice_id',i.id)
      FROM trailer_invoices i CROSS JOIN trailer_settings s
-     LEFT JOIN LATERAL(SELECT COALESCE(SUM(amount),0) total_paid FROM trailer_payments
-       WHERE invoice_id=i.id AND verification_status IN ('recorded','verified')) p ON TRUE
+     LEFT JOIN LATERAL(SELECT COALESCE((SELECT SUM(amount) FROM trailer_payments
+         WHERE invoice_id=i.id AND verification_status IN ('recorded','verified')),0)
+       + COALESCE((SELECT SUM(amount) FROM trailer_company_credit_applications
+         WHERE invoice_id=i.id),0) AS total_paid) p ON TRUE
      WHERE s.id=1 AND s.reminders_enabled=TRUE AND s.overdue_reminder_group_id IS NOT NULL
        AND i.status NOT IN ('paid','disputed','voided') AND i.reminder_state='active'
        AND (i.snoozed_until IS NULL OR i.snoozed_until<=NOW())
@@ -107,15 +117,21 @@ async function enqueueOverdueReminders(){
 
 async function getOverdueNotificationContext(invoiceId){
   const res=await query(
-    `SELECT i.*,r.agreement_number,r.actual_return_at,t.unit_number,c.display_name AS company_name,
+    `SELECT i.*,COALESCE(r.agreement_number,ag.agreement_number) AS agreement_number,
+       r.actual_return_at,t.unit_number,c.display_name AS company_name,
        s.overdue_reminder_group_id,s.responsible_telegram_username,s.responsible_telegram_user_id,
        s.escalation_telegram_username,s.escalation_telegram_user_id,s.reminder_escalation_days,
        COALESCE(p.total_paid,0) total_paid,GREATEST(i.total_amount-COALESCE(p.total_paid,0),0) outstanding,
        FLOOR(EXTRACT(EPOCH FROM (NOW()-i.due_at))/86400)::int days_overdue
-     FROM trailer_invoices i JOIN trailer_rentals r ON r.id=i.rental_id JOIN trailers t ON t.id=i.trailer_id
+     FROM trailer_invoices i
+     LEFT JOIN trailer_rentals r ON r.id=i.rental_id
+     LEFT JOIN trailer_rental_agreements ag ON ag.id=i.agreement_id
+     LEFT JOIN trailers t ON t.id=i.trailer_id
      JOIN trailer_renter_companies c ON c.id=i.company_id CROSS JOIN trailer_settings s
-     LEFT JOIN LATERAL(SELECT SUM(amount) total_paid FROM trailer_payments
-       WHERE invoice_id=i.id AND verification_status IN ('recorded','verified')) p ON TRUE
+     LEFT JOIN LATERAL(SELECT COALESCE((SELECT SUM(amount) FROM trailer_payments
+         WHERE invoice_id=i.id AND verification_status IN ('recorded','verified')),0)
+       + COALESCE((SELECT SUM(amount) FROM trailer_company_credit_applications
+         WHERE invoice_id=i.id),0) AS total_paid) p ON TRUE
      WHERE i.id=$1 AND s.id=1`,[invoiceId]);
   return res.rows[0]||null;
 }

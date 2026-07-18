@@ -86,13 +86,20 @@ async function updateTrailerCompany(id, data, actor) {
     await client.query('BEGIN');
     const before = await client.query('SELECT * FROM trailer_renter_companies WHERE id=$1 FOR UPDATE', [id]);
     if (!before.rows[0]) { await client.query('ROLLBACK'); return null; }
+    if (data.version !== undefined && data.version !== null
+        && Number(before.rows[0].version) !== Number(data.version)) {
+      throw Object.assign(
+        new Error('This record changed while you were editing. Reload and try again.'),
+        { status: 409, code: 'VERSION_CONFLICT', currentVersion: before.rows[0].version },
+      );
+    }
     const merged = { ...before.rows[0], ...data };
     const p = companyParams(merged);
     const res = await client.query(
       `UPDATE trailer_renter_companies SET legal_name=$2,display_name=$3,mc_number=$4,dot_number=$5,
        billing_address=$6,contact_name=$7,phone=$8,email=$9,telegram_username=$10,telegram_user_id=$11,
        payment_terms=$12,default_daily_rate=$13,tax_reference=$14,notes=$15,
-       active=COALESCE($16,active),updated_by_admin_id=$17,updated_at=NOW() WHERE id=$1 RETURNING *`,
+       active=COALESCE($16,active),updated_by_admin_id=$17,updated_at=NOW(),version=version+1 WHERE id=$1 RETURNING *`,
       [id, ...p, data.active ?? null, actor?.id || null],
     );
     await insertTrailerAudit({ ...actorMeta(actor), action: data.active === false ? 'company.archive' : 'company.update', entityType: 'company', entityId: id, oldValues: before.rows[0], newValues: res.rows[0], reason: data.reason }, client);

@@ -52,13 +52,17 @@ async function updateDepartmentTrailer(id,data,actor){
     await client.query('BEGIN');
     const before=await client.query('SELECT * FROM trailers WHERE id=$1 FOR UPDATE',[id]);
     if(!before.rows[0]){await client.query('ROLLBACK');return null;}
+    if(data.version!==undefined&&data.version!==null&&Number(before.rows[0].version)!==Number(data.version)){
+      throw Object.assign(new Error('This record changed while you were editing. Reload and try again.'),
+        {status:409,code:'VERSION_CONFLICT',currentVersion:before.rows[0].version});
+    }
     if(data.physical_status==='available'){
       const active=await client.query(`SELECT id FROM trailer_rentals WHERE trailer_id=$1 AND status='active'`,[id]);
       if(active.rows[0])throw Object.assign(new Error('A trailer with an active rental cannot be made available.'),{status:409});
     }
     if(data.active===false){const active=await client.query(`SELECT id FROM trailer_rentals WHERE trailer_id=$1 AND status='active'`,[id]);if(active.rows[0])throw Object.assign(new Error('A trailer with an active rental cannot be archived.'),{status:409});}
     const allowed=['make','model','mc_number','plate_number','type','vin','year','ownership_status','active','physical_status','tracking_reference','notes','needs_review'];
-    const params=[id,actor?.id||null];const sets=['updated_by_admin_id=$2','updated_at=NOW()'];
+    const params=[id,actor?.id||null];const sets=['updated_by_admin_id=$2','updated_at=NOW()','version=version+1'];
     for(const key of allowed)if(Object.prototype.hasOwnProperty.call(data,key)){params.push(data[key]);sets.push(`${key}=$${params.length}`);}
     const res=await client.query(`UPDATE trailers SET ${sets.join(',')} WHERE id=$1 RETURNING *`,params);
     await insertTrailerAudit({adminId:actor?.id,roleKeys:actor?.role_keys||[],ipAddress:actor?.ipAddress,

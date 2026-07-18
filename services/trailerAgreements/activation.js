@@ -20,6 +20,7 @@ const { withTxn, httpError } = require('./lifecycle');
 const agreementsDb = require('../../database/trailerAgreements/agreements');
 const itemsDb = require('../../database/trailerAgreements/items');
 const { insertTrailerAudit } = require('../../database/trailerAudit');
+const { assertTrailerAvailable } = require('../../database/trailerAvailability');
 
 /** A completed pickup inspection with a photo backed by real bytes. */
 async function validateItemPickupInspection(client, itemId) {
@@ -45,7 +46,7 @@ async function validateItemPickupInspection(client, itemId) {
   return res.rows[0];
 }
 
-async function activateItem(agreementId, itemId, actor = {}, { requireInspection = true } = {}) {
+async function activateItem(agreementId, itemId, actor = {}, { requireInspection = true, version } = {}) {
   return withTxn(async (client) => {
     const itemRes = await client.query(
       'SELECT * FROM trailer_rental_items WHERE id = $1 AND agreement_id = $2 FOR UPDATE',
@@ -61,24 +62,21 @@ async function activateItem(agreementId, itemId, actor = {}, { requireInspection
     }
 
     await itemsDb.assertSelectableTrailer(item.trailer_id, client);
-    const avail = await client.query(
-      "SELECT physical_status FROM trailers WHERE id = $1",
-      [item.trailer_id],
-    );
-    if (avail.rows[0].physical_status === 'rented') {
-      const conflict = await client.query(
-        "SELECT id FROM trailer_rental_items WHERE trailer_id = $1 AND item_status = 'active' AND id <> $2",
-        [item.trailer_id, item.id],
-      );
-      if (conflict.rows[0]) throw httpError('Trailer already has an active rental.', 409, 'TRAILER_ACTIVE');
-    }
+    // Cross-system availability: the trailer must not be held by an active or
+    // overlapping booking in EITHER the legacy rentals or another agreement item.
+    await assertTrailerAvailable(client, {
+      trailerId: item.trailer_id,
+      startAt: item.scheduled_pickup_at,
+      endAt: item.expected_return_at,
+      excludeItemId: item.id,
+    });
 
     if (requireInspection) await validateItemPickupInspection(client, itemId);
 
     const updated = await itemsDb.setItemStatus(itemId, 'active', {
       actual_pickup_at: item.actual_pickup_at || item.scheduled_pickup_at,
       updated_by_admin_id: actor.id || null,
-    }, client);
+    }, client, version);
     await client.query(
       "UPDATE trailers SET physical_status = 'rented', updated_by_admin_id = $2, updated_at = NOW() WHERE id = $1",
       [item.trailer_id, actor.id || null],

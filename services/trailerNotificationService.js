@@ -20,7 +20,7 @@ function paymentMessage(row){
   return [
     '<b>Trailer Payment Received</b>',
     '',
-    `Trailer: <b>${esc(row.unit_number)}</b>`,
+    `Trailer: <b>${esc(row.unit_number??'Multiple trailers')}</b>`,
     `Company: ${esc(row.company_name)}`,
     `Agreement: ${esc(row.agreement_number)}`,
     `Rental period: ${esc(row.start_at)} — ${esc(row.actual_return_at||'active')}`,
@@ -42,7 +42,7 @@ function overdueMessage(row){
     ?`Escalation: ${mention(row.escalation_telegram_user_id,row.escalation_telegram_username,'Escalation contact')}`:null;
   return [
     '<b>Trailer Payment Overdue</b>','',`${who}, please follow up with the renter company.`,'',
-    `Trailer: <b>${esc(row.unit_number)}</b>`,`Company: ${esc(row.company_name)}`,
+    `Trailer: <b>${esc(row.unit_number??'Multiple trailers')}</b>`,`Company: ${esc(row.company_name)}`,
     `Agreement: ${esc(row.agreement_number)}`,`Rental ended: ${esc(row.actual_return_at||'—')}`,
     `Invoice total: ${usd(row.total_amount)}`,`Paid: ${usd(row.total_paid)}`,
     `Outstanding: <b>${usd(row.outstanding)}</b>`,`Days overdue: ${esc(row.days_overdue)}`,escalation,

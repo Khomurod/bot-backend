@@ -13,19 +13,18 @@
 
 const { query, pool } = require('../pool');
 const { deriveAgreementStatus } = require('../../services/trailerAgreements/statusDerivation');
+const { nextNumber } = require('../trailerRentals');
 
 const CREATE_STATUS = new Set(['draft']);
 
-/** Next agreement number, format AGR-YYYY-NNNNNN, gap-tolerant. */
+/**
+ * Next agreement number, format AGR-YYYY-NNNNNN. Delegates to the shared
+ * advisory-locked generator so concurrent creations cannot collide and the year
+ * is never folded into the suffix (the old regexp_replace('\D') implementation
+ * produced AGR-2026-2026000002 as the second number).
+ */
 async function nextAgreementNumber(client = { query }) {
-  const res = await client.query(
-    `SELECT COALESCE(MAX((regexp_replace(agreement_number, '\\D', '', 'g'))::bigint), 0) + 1 AS n
-       FROM trailer_rental_agreements
-      WHERE agreement_number ~ '^AGR-'`,
-  );
-  const seq = String(res.rows[0].n).padStart(6, '0');
-  const year = new Date().getUTCFullYear();
-  return `AGR-${year}-${seq}`;
+  return nextNumber(client, 'trailer_rental_agreements', 'agreement_number', 'AGR');
 }
 
 async function getAgreementById(id, client = { query }) {

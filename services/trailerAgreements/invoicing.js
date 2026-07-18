@@ -18,17 +18,12 @@ const agreementsDb = require('../../database/trailerAgreements/agreements');
 const itemsDb = require('../../database/trailerAgreements/items');
 const { buildInvoiceLines, buildItemLine } = require('../trailerPricing/invoiceBuilder');
 const { insertTrailerAudit } = require('../../database/trailerAudit');
+// Concurrency-safe document numbering (advisory lock + per-year suffix scan) —
+// the same generator the legacy rentals use, so INV-YYYY-NNNNNN never duplicates
+// the year into the suffix and parallel generators never collide.
+const { nextNumber } = require('../../database/trailerRentals');
 
 const BILLABLE = new Set(['active', 'returned']);
-
-async function nextInvoiceNumber(client) {
-  const res = await client.query(
-    `SELECT COALESCE(MAX((regexp_replace(invoice_number, '\\D', '', 'g'))::bigint), 0) + 1 AS n
-       FROM trailer_invoices WHERE invoice_number ~ '^INV-'`,
-  );
-  const year = new Date().getUTCFullYear();
-  return `INV-${year}-${String(res.rows[0].n).padStart(6, '0')}`;
-}
 
 /** Sum charge columns from a set of lines into the denormalized invoice totals. */
 function totalsFromLines(lines) {
@@ -48,19 +43,27 @@ function totalsFromLines(lines) {
 async function insertInvoice(client, agreement, item, lines, opts = {}) {
   const t = totalsFromLines(lines);
   const round2 = (n) => Math.round(n * 100) / 100;
-  const number = await nextInvoiceNumber(client);
+  const number = await nextNumber(client, 'trailer_invoices', 'invoice_number', 'INV');
   const periodStart = opts.periodStart
     || (item ? item.actual_pickup_at || item.scheduled_pickup_at : agreement.start_date) || new Date();
   const periodEnd = opts.periodEnd
     || (item ? item.actual_return_at || item.expected_return_at : null) || new Date();
   const dueAt = opts.dueAt || periodEnd;
+  // Deposit reduces the amount actually owed, mirroring the legacy
+  // calculateInvoice semantics: total = base+charges−discount−deposit, floor 0.
+  // Separate invoice → the item's deposit allocation; combined → the whole
+  // agreement deposit.
+  const depositCredit = round2(item
+    ? Number(item.deposit_allocation || 0)
+    : Number(agreement.deposit_amount || 0));
+  const totalAmount = round2(Math.max(t.total - depositCredit, 0));
   const res = await client.query(
     `INSERT INTO trailer_invoices
        (invoice_number, rental_id, trailer_id, company_id, agreement_id, rental_item_id,
         billing_period_start, billing_period_end, billing_method, base_amount,
         discount_amount, damage_charge, cleaning_charge, late_fee, other_charges,
-        total_amount, due_at, status, calculation_inputs, created_by_admin_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'draft',$18,$19)
+        deposit_credit, total_amount, due_at, status, calculation_inputs, created_by_admin_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'draft',$19,$20)
      RETURNING *`,
     [
       number,
@@ -71,8 +74,12 @@ async function insertInvoice(client, agreement, item, lines, opts = {}) {
       item ? item.id : null,
       periodStart, periodEnd, 'calendar_day',
       round2(t.base), round2(t.discount), round2(t.damage), round2(t.cleaning),
-      round2(t.late), round2(t.other), round2(t.total), dueAt,
-      JSON.stringify({ mode: opts.mode || 'combined' }),
+      round2(t.late), round2(t.other), depositCredit, totalAmount, dueAt,
+      JSON.stringify({
+        mode: opts.mode || 'combined',
+        deposit_credit: depositCredit,
+        lines_total: round2(t.total),
+      }),
       opts.actor?.id || null,
     ],
   );
@@ -108,6 +115,8 @@ async function generateCombinedInvoice(agreementId, actor = {}) {
         endAt: item.actual_return_at || item.expected_return_at,
         timezone: item.billing_timezone_override || agreement.billing_timezone,
       },
+      // Damage/cleaning/late/other entered at return were persisted on the item.
+      charges: item.return_charges || {},
     }));
     const { lines } = buildInvoiceLines(agreement, entries);
     // A combined invoice needs a rental_id (legacy NOT NULL); use the first
@@ -137,7 +146,7 @@ async function generateItemInvoice(agreementId, itemId, actor = {}) {
       startAt: item.actual_pickup_at || item.scheduled_pickup_at,
       endAt: item.actual_return_at || item.expected_return_at,
       timezone: item.billing_timezone_override || agreement.billing_timezone,
-    }, {});
+    }, item.return_charges || {});
     const invoice = await insertInvoice(client, agreement, item, [line], { mode: 'separate', actor });
     await insertTrailerAudit({
       adminId: actor.id || null, roleKeys: actor.roleKeys, ipAddress: actor.ip,

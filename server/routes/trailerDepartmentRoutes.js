@@ -138,10 +138,20 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
         const mediaType=req.body.media_type;
         const allowed=['pickup_condition_photo','return_condition_photo','damage_photo','agreement_document','invoice_document','other_rental_document'];
         if(!allowed.includes(mediaType))return res.status(400).json({error:'Invalid media type.'});
+        // Item-scoped uploads: verify the agreement item exists (and matches the
+        // agreement when both are given) so photos can never attach to nothing.
+        let agreementId=req.body.agreement_id||null;
+        const rentalItemId=req.body.rental_item_id||null;
+        if(rentalItemId){
+          const item=await db.getItemById(rentalItemId);
+          if(!item||(agreementId&&Number(item.agreement_id)!==Number(agreementId)))return res.status(404).json({error:'Rental item not found.'});
+          agreementId=agreementId||item.agreement_id;
+        }
         for(const file of req.files){
-          const descriptor=await storeFile(file,mediaType,req.body.rental_id||req.body.trailer_id||'unassigned',{actor:actor(req)});
+          const descriptor=await storeFile(file,mediaType,rentalItemId||req.body.rental_id||req.body.trailer_id||'unassigned',{actor:actor(req)});
           // A failed metadata insert must not leave the bytes behind.
           try{created.push(await db.createTrailerMedia({...descriptor,mediaType,trailerId:req.body.trailer_id,rentalId:req.body.rental_id,
+            agreementId,rentalItemId,
             inspectionId:req.body.inspection_id,invoiceId:req.body.invoice_id,uploadedByAdminId:req.admin.id,notes:req.body.notes}));}
           catch(e){await storage.removeObjects(descriptor.uploaded);throw e;}
         }
