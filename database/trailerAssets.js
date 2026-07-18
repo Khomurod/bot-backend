@@ -21,6 +21,13 @@ async function listDepartmentTrailers(filters={}){
   if(filters.physicalStatus){values.push(filters.physicalStatus);where.push(`t.physical_status=$${values.length}`);}
   if(filters.master_status){values.push(filters.master_status);where.push(`t.master_status=$${values.length}`);}
   else if(filters.include_unofficial!==true&&filters.include_unofficial!=='true'){where.push(`t.active=TRUE AND t.master_status='active'`);}
+  // Additional list filters (all optional, parameterized). "rented"/"available"
+  // consider BOTH rental systems; company matches the current renter's name.
+  if(filters.needs_attention===true||filters.needs_attention==='true'){where.push(`t.needs_review=TRUE`);}
+  if(filters.missing_location===true||filters.missing_location==='true'){where.push(`s.current_location_text IS NULL`);}
+  if(filters.rental_state==='rented'){where.push(`(r.id IS NOT NULL OR it.id IS NOT NULL)`);}
+  else if(filters.rental_state==='available'){where.push(`t.physical_status='available' AND r.id IS NULL AND it.id IS NULL`);}
+  if(filters.company){values.push(`%${String(filters.company).trim()}%`);where.push(`COALESCE(c.display_name,ic.display_name) ILIKE $${values.length}`);}
   // The current renter comes from EITHER system: an active legacy rental or an
   // active agreement item (via its agreement's company).
   const select=`SELECT t.*,s.possession_status,s.cargo_status,s.display_status,s.current_location_text,
@@ -44,10 +51,16 @@ async function listDepartmentTrailers(filters={}){
   if(filters.page){
     const page=Math.max(Number(filters.page)||1,1);
     const size=Math.min(Math.max(Number(filters.page_size??filters.pageSize)||25,1),200);
+    // The count must share EVERY join the filters can reference (status,
+    // agreement item + its company) so any WHERE condition resolves.
     const total=await query(
       `SELECT COUNT(*)::int AS total FROM trailers t
+       LEFT JOIN trailer_current_status s ON s.trailer_id=t.id
        LEFT JOIN trailer_rentals r ON r.trailer_id=t.id AND r.status='active'
-       LEFT JOIN trailer_renter_companies c ON c.id=r.company_id ${clause}`,values);
+       LEFT JOIN trailer_renter_companies c ON c.id=r.company_id
+       LEFT JOIN LATERAL(SELECT * FROM trailer_rental_items x WHERE x.trailer_id=t.id AND x.item_status='active' LIMIT 1)it ON TRUE
+       LEFT JOIN trailer_rental_agreements ia ON ia.id=it.agreement_id
+       LEFT JOIN trailer_renter_companies ic ON ic.id=ia.company_id ${clause}`,values);
     const res=await query(`${select} ${clause} ORDER BY t.active DESC,t.unit_number LIMIT ${size} OFFSET ${(page-1)*size}`,values);
     return {items:res.rows,page,page_size:size,total:total.rows[0].total};
   }
