@@ -9,6 +9,7 @@ const crypto=require('node:crypto');
 const storage=require('../../services/trailerStorageService');
 const {processTrailerUpload,safeFilename}=require('../../services/trailerImageService');
 const {errorPayload}=require('../../services/trailerErrorMessages');
+const {toCsv}=require('./csvSafe');
 
 const upload=multer({
   storage:multer.diskStorage({destination:os.tmpdir(),filename:(_req,file,cb)=>cb(null,`trailer-${crypto.randomUUID()}-${safeFilename(file.originalname)}`)}),
@@ -18,8 +19,8 @@ const upload=multer({
 function asyncRoute(fn){return(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);}
 function actor(req){return{...req.admin,ipAddress:req.ip};}
 function can(req,p){return new Set(req.admin?.permissions||[]).has(p);}
-function csvCell(value){const s=typeof value==='object'&&value!==null?JSON.stringify(value):String(value??'');return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;}
-function sendCsv(res,name,rows){const keys=rows.length?Object.keys(rows[0]):[];const body=[keys.map(csvCell).join(','),...rows.map((r)=>keys.map((k)=>csvCell(r[k])).join(','))].join('\n');res.set('Content-Type','text/csv; charset=utf-8');res.set('Content-Disposition',`attachment; filename="${name}.csv"`);res.send(body);}
+// csvCell/toCsv are formula-injection-safe (see ./csvSafe).
+function sendCsv(res,name,rows){res.set('Content-Type','text/csv; charset=utf-8');res.set('Content-Disposition',`attachment; filename="${name}.csv"`);res.send(toCsv(rows));}
 function objectNamespace(mediaType){
   if(mediaType==='payment_receipt')return'payment-receipts';
   if(mediaType==='agreement_document')return'agreements';
@@ -242,7 +243,7 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
     const trailers=await db.listDepartmentTrailers(req.query);res.json({trailers,without_coordinates:trailers.filter((t)=>t.current_lat==null||t.current_lng==null)});
   }));
   router.get('/api/trailer-department/reports/:name',requirePermission('trailer_reports.view'),asyncRoute(async(req,res)=>{
-    const rows=await db.getTrailerReport(req.params.name);if(req.query.format==='csv')return sendCsv(res,req.params.name,rows);res.json({rows});
+    const rows=await db.getTrailerReport(req.params.name,req.query);if(req.query.format==='csv')return sendCsv(res,req.params.name,rows);res.json({rows});
   }));
   router.get('/api/trailer-department/audit',requirePermission('trailer_reports.view'),asyncRoute(async(req,res)=>res.json({audit:await db.listTrailerAudit(req.query)})));
 
