@@ -35,6 +35,12 @@ export const companyCredits = (companyId) => request(`/companies/${companyId}/cr
 export const applyCredit = (creditId, body) =>
   request(`/credits/${creditId}/apply`, { method: "POST", body: JSON.stringify(body) });
 export const invoice = (id) => request(`/invoices/${id}`);
+export const trailerOverview = (id) => request(`/trailers/${id}/overview`);
+export const audit = (filters = {}) => {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) if (v != null && v !== "") params.set(k, v);
+  return request(`/audit?${params}`);
+};
 export const dashboard = (filters = {}) =>
   request(`/dashboard?${new URLSearchParams(filters)}`);
 export const trailers = (filters = {}) =>
@@ -149,6 +155,8 @@ export default {
   companyCredits,
   applyCredit,
   invoice,
+  trailerOverview,
+  audit,
   dashboard,
   trailers,
   createTrailer,

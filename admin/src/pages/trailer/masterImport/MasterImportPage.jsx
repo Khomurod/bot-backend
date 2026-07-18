@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import api from "../../../api/trailerAgreements";
+import dept from "../../../api/trailerDepartment";
 import { Alert, Card, Empty, PageHeader, Status, Table, useLoad } from "../TrailerUi";
 import ReconciliationPanel from "./ReconciliationPanel";
 
@@ -85,6 +86,8 @@ export default function MasterImportPage() {
     () => (selectedId ? api.importReconciliation(selectedId) : Promise.resolve(null)),
     [selectedId],
   );
+  // The searchable merge picker needs the current official trailer list.
+  const assets = useLoad(() => dept.trailers(), []);
 
   const confirm = async () => {
     setBusy(true);
@@ -184,7 +187,8 @@ export default function MasterImportPage() {
                   it is what makes "missing from the snapshot" meaningful.
                 </p>
               )}
-              <ReconciliationPanel data={recon.data} busy={busy} onApply={apply} />
+              <ReconciliationPanel data={recon.data} busy={busy} onApply={apply}
+                trailers={assets.data?.trailers || []} />
             </>
           )}
         </>

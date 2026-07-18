@@ -8,6 +8,7 @@ const MasterImport = lazy(() => import("../masterImport/MasterImportPage"));
 const Reports = lazy(() => import("../TrailerReportsPage"));
 const Users = lazy(() => import("../TrailerUsersPage"));
 const Settings = lazy(() => import("../TrailerSettingsPage"));
+const Audit = lazy(() => import("../more/AuditPage"));
 
 /**
  * More section: companies, "Update trailer list" (the renamed master import),
@@ -28,6 +29,7 @@ export default function MoreSection({ navigate }) {
     },
     { key: "reports", label: "Reports", allowed: hasTrailerPermission(permissions, "trailer_reports.view") },
     { key: "team", label: "Team access", allowed: hasTrailerPermission(permissions, "trailer_users.manage") },
+    { key: "audit", label: "Audit trail", allowed: hasTrailerPermission(permissions, "trailer_reports.view") },
     { key: "settings", label: "Settings", allowed: hasTrailerPermission(permissions, "trailer_settings.manage") },
   ].filter((t) => t.allowed), [permissions]);
 
@@ -41,6 +43,7 @@ export default function MoreSection({ navigate }) {
         {tab === "trailer-list" && <MasterImport navigate={navigate} />}
         {tab === "reports" && <Reports navigate={navigate} />}
         {tab === "team" && <Users navigate={navigate} />}
+        {tab === "audit" && <Audit navigate={navigate} />}
         {tab === "settings" && <Settings navigate={navigate} />}
       </Suspense>
     </div>

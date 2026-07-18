@@ -81,3 +81,14 @@
 .trailer-picker-option.active{border-color:var(--primary,#2563eb);background:#eff6ff}
 .trailer-picker-option span{color:#64748b;font-size:12px}
 .btn-danger{background:#dc2626;color:#fff;border:none}
+
+/* ── Detail pages, audit viewer, grouped settings, import review ────────── */
+.trailer-json{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:12px;overflow-x:auto;max-height:320px}
+.trailer-group-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;background:none;border:none;cursor:pointer;padding:4px 0;text-align:left}
+.trailer-group-toggle h3{margin:0}
+.trailer-field-error{color:#991b1b;font-size:13px;margin:4px 0}
+.trailer-diff-table td b{color:#166534}
+.trailer-recon-section{margin:14px 0}
+.trailer-recon-row{margin-bottom:10px}
+.trailer-audit-row{border-bottom:1px solid var(--border-color,#eef2f7)}
+.trailer-audit-row:last-child{border-bottom:none}

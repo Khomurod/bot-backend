@@ -2,9 +2,10 @@ import React, { useState } from "react";
 import api from "../../api/trailerDepartment";
 import { useAuth } from "../../context/AuthContext";
 import TrailerCreateDialog from "./TrailerCreateDialog";
+import TrailerEditDialog from "./TrailerEditDialog";
 import { hasTrailerPermission } from "./trailerNavigation";
-import { Alert, Card, Empty, Field, PageHeader, Table, useLoad } from "./TrailerUi";
-import { TRAILER_CONDITION_LABELS, trailerCondition } from "./trailerStatusVocabulary";
+import { Alert, Empty, PageHeader, Table, useLoad } from "./TrailerUi";
+import { trailerCondition } from "./trailerStatusVocabulary";
 
 const SOURCE_LABELS = { manual: "Manual", ai: "Driver-derived", geocoded: "Driver-derived", gps: "GPS" };
 
@@ -38,30 +39,13 @@ const COLUMNS = [
   },
 ];
 
-export default function TrailerAssetsPage() {
+export default function TrailerAssetsPage({ onOpen }) {
   const { permissions } = useAuth();
   const { data, loading, error, reload } = useLoad(() => api.trailers(), []);
   const [selected, setSelected] = useState(null);
   const [adding, setAdding] = useState(false);
   const [msg, setMsg] = useState(null);
   const canCreate = hasTrailerPermission(permissions, "trailers.create");
-
-  const save = async () => {
-    try {
-      await api.updateTrailer(selected.id, {
-        physical_status: selected.physical_status,
-        needs_review: selected.needs_review,
-        tracking_reference: selected.tracking_reference,
-        notes: selected.notes,
-        version: selected.version,
-      });
-      setMsg({ text: "Trailer updated." });
-      setSelected(null);
-      reload();
-    } catch (e) {
-      setMsg({ type: "error", text: e.message });
-    }
-  };
 
   const created = (trailer) => {
     setAdding(false);
@@ -94,55 +78,19 @@ export default function TrailerAssetsPage() {
       ) : !data?.trailers?.length ? (
         <Empty />
       ) : (
-        <Table rows={data.trailers} onRow={setSelected} columns={COLUMNS} />
+        <Table rows={data.trailers} onRow={onOpen || setSelected} columns={COLUMNS} />
       )}
       {adding && <TrailerCreateDialog onClose={() => setAdding(false)} onCreated={created} />}
       {selected && (
-        <div className="trailer-modal-backdrop">
-          <Card className="trailer-modal">
-            <PageHeader
-              title={`Trailer ${selected.unit_number}`}
-              actions={
-                <button type="button" className="btn btn-ghost" onClick={() => setSelected(null)}>
-                  Close
-                </button>
-              }
-            />
-            <Field label="Trailer condition">
-              <select
-                value={selected.physical_status}
-                onChange={(e) => setSelected({ ...selected, physical_status: e.target.value })}
-              >
-                {Object.entries(TRAILER_CONDITION_LABELS).map(([value, s]) => (
-                  <option key={value} value={value}>{s.label}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Tracking reference">
-              <input
-                value={selected.tracking_reference || ""}
-                onChange={(e) => setSelected({ ...selected, tracking_reference: e.target.value })}
-              />
-            </Field>
-            <Field label="Notes">
-              <textarea
-                value={selected.notes || ""}
-                onChange={(e) => setSelected({ ...selected, notes: e.target.value })}
-              />
-            </Field>
-            <label className="trailer-check">
-              <input
-                type="checkbox"
-                checked={!selected.needs_review}
-                onChange={(e) => setSelected({ ...selected, needs_review: !e.target.checked })}
-              />
-              Physical availability verified
-            </label>
-            <button type="button" className="btn btn-primary" onClick={save}>
-              Save trailer
-            </button>
-          </Card>
-        </div>
+        <TrailerEditDialog
+          trailer={selected}
+          onClose={() => setSelected(null)}
+          onSaved={() => {
+            setMsg({ text: "Trailer updated." });
+            setSelected(null);
+            reload();
+          }}
+        />
       )}
     </div>
   );

@@ -37,6 +37,7 @@ const trailerReportsDb = require('./trailerReports');
 const trailerAgreementsDb = require('./trailerAgreements');
 const trailerCreditsDb = require('./trailerCredits');
 const trailerItemInspectionsDb = require('./trailerItemInspections');
+const trailerOverviewDb = require('./trailerOverview');
 const trailerAvailabilityDb = require('./trailerAvailability');
 
 /**
@@ -304,5 +305,6 @@ module.exports = {
   ...trailerAgreementsDb,
   ...trailerCreditsDb,
   ...trailerItemInspectionsDb,
+  ...trailerOverviewDb,
   ...trailerAvailabilityDb,
 };
