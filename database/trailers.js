@@ -643,31 +643,10 @@ async function getTrailerCurrentStatus(trailerId) {
   return res.rows[0] || null;
 }
 
-/**
- * Map/list payload: every trailer with its current status. `mappable` rows have
- * coordinates. Used by both the admin and FleetView trailer map sections.
- */
-async function listTrailerMapData() {
-  const res = await query(
-    `SELECT t.id AS trailer_id, t.unit_number, t.type, t.ownership_status, t.needs_review, t.physical_status, t.tracking_reference,
-            COALESCE(cs.current_status, 'unknown') AS current_status,
-            COALESCE(cs.possession_status, 'unknown') AS possession_status,
-            COALESCE(cs.cargo_status, 'unknown') AS cargo_status,
-            cs.display_status,
-            cs.current_driver_name, cs.current_driver_group_id, cs.current_driver_profile_id,
-            cs.current_location_text, cs.current_lat, cs.current_lng,
-            cs.current_condition, cs.last_reporter_name,
-            cs.last_event_type, cs.last_event_at,
-            COALESCE(cs.needs_review, FALSE) AS status_needs_review,
-            cs.location_source, cs.location_confidence
-     FROM trailers t
-     LEFT JOIN trailer_current_status cs ON cs.trailer_id = t.id
-     WHERE ${OFFICIAL_TRAILER_PREDICATE}
-     ORDER BY cs.last_event_at DESC NULLS LAST, t.unit_number ASC
-     LIMIT 2000`
-  );
-  return res.rows;
-}
+// listTrailerMapData now lives in ./trailerMapData (kept small per the size
+// budget); re-exported below so require('./trailers') callers are unaffected.
+const { listTrailerMapData } = require('./trailerMapData');
+
 
 /**
  * Unified trailer states — the single row-shape both Trailer Tracking and the
