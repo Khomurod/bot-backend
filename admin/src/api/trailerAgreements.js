@@ -38,6 +38,8 @@ export const listAgreements = (filters = {}) =>
   request(`${AG}?${new URLSearchParams(filters)}`);
 export const getAgreement = (id) => request(`${AG}/${id}`);
 export const createAgreement = (body) => post(AG, body);
+// Server-side estimate for the wizard's Price step — same math as invoicing.
+export const estimateAgreement = (body) => post(`${AG}/estimate`, body);
 export const addItem = (id, item, reason) =>
   post(`${AG}/${id}/items`, { item, reason });
 export const removeItem = (id, itemId, reason) =>
@@ -104,6 +106,7 @@ export default {
   listAgreements,
   getAgreement,
   createAgreement,
+  estimateAgreement,
   addItem,
   removeItem,
   replaceItem,

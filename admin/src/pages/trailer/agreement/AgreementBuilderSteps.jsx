@@ -97,7 +97,7 @@ export function TermsStep({ terms, setTerms, companies }) {
   );
 }
 
-function ItemRow({ item, index, trailers, onChange, onRemove, canRemove, excludeIds = [] }) {
+function ItemRow({ item, index, trailers, onChange, onRemove, canRemove, excludeIds = [], showPricing = true }) {
   const set = (patch) => onChange(index, { ...item, ...patch });
   const mode = item.pricing_mode;
   // Searchable picker options exclude trailers already chosen in OTHER rows, so
@@ -128,15 +128,17 @@ function ItemRow({ item, index, trailers, onChange, onRemove, canRemove, exclude
             emptyText="No available trailer matches"
           />
         </Field>
-        <Field label="Pricing mode">
-          <select value={mode} onChange={(e) => set({ pricing_mode: e.target.value })}>
-            {PRICING_MODES.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </Field>
+        {showPricing && (
+          <Field label="Pricing mode">
+            <select value={mode} onChange={(e) => set({ pricing_mode: e.target.value })}>
+              {PRICING_MODES.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         <Field label="Scheduled pickup">
           <input
             type="datetime-local"
@@ -151,7 +153,7 @@ function ItemRow({ item, index, trailers, onChange, onRemove, canRemove, exclude
             onChange={(e) => set({ expected_return_at: e.target.value })}
           />
         </Field>
-        {mode === "daily" && (
+        {showPricing && mode === "daily" && (
           <Field label="Daily rate">
             <input
               type="number"
@@ -162,7 +164,7 @@ function ItemRow({ item, index, trailers, onChange, onRemove, canRemove, exclude
             />
           </Field>
         )}
-        {mode === "weekly" && (
+        {showPricing && mode === "weekly" && (
           <Field label="Weekly rate">
             <input
               type="number"
@@ -173,7 +175,7 @@ function ItemRow({ item, index, trailers, onChange, onRemove, canRemove, exclude
             />
           </Field>
         )}
-        {mode === "monthly" && (
+        {showPricing && mode === "monthly" && (
           <Field label="Monthly rate">
             <input
               type="number"
@@ -184,7 +186,7 @@ function ItemRow({ item, index, trailers, onChange, onRemove, canRemove, exclude
             />
           </Field>
         )}
-        {mode === "flat" && (
+        {showPricing && mode === "flat" && (
           <Field label="Flat amount">
             <input
               type="number"
@@ -201,6 +203,7 @@ function ItemRow({ item, index, trailers, onChange, onRemove, canRemove, exclude
             onChange={(e) => set({ pickup_location: e.target.value })}
           />
         </Field>
+        {showPricing && (
         <Field label="Additional amount">
           <input
             type="number"
@@ -210,6 +213,8 @@ function ItemRow({ item, index, trailers, onChange, onRemove, canRemove, exclude
             onChange={(e) => set({ additional_amount: e.target.value })}
           />
         </Field>
+        )}
+        {showPricing && (
         <Field label="Item discount">
           <input
             type="number"
@@ -219,6 +224,7 @@ function ItemRow({ item, index, trailers, onChange, onRemove, canRemove, exclude
             onChange={(e) => set({ discount_amount: e.target.value })}
           />
         </Field>
+        )}
         <Field label="Notes">
           <input
             value={item.notes}
@@ -230,8 +236,9 @@ function ItemRow({ item, index, trailers, onChange, onRemove, canRemove, exclude
   );
 }
 
-/** Step 2 — repeatable trailer rows. */
-export function TrailersStep({ items, setItems, trailers }) {
+/** Step 2 — repeatable trailer rows. `showPricing={false}` keeps this step
+ * purely about which trailers and when — pricing then lives in the Price step. */
+export function TrailersStep({ items, setItems, trailers, showPricing = true }) {
   const change = (index, next) =>
     setItems(items.map((it, i) => (i === index ? next : it)));
   const remove = (index) => setItems(items.filter((_, i) => i !== index));
@@ -247,6 +254,7 @@ export function TrailersStep({ items, setItems, trailers }) {
           onChange={change}
           onRemove={remove}
           canRemove={items.length > 1}
+          showPricing={showPricing}
         />
       ))}
       <button
