@@ -17,7 +17,7 @@ function StatusPill({ value }) {
  * extra as company credit?") — offered ONLY to holders of
  * trailer_payments.record_overpayment, otherwise the server rejects it.
  */
-export default function TrailerPaymentsPage({ statusFilter }) {
+export default function TrailerPaymentsPage({ statusFilter, onOpenInvoice }) {
   const { can } = useAuth();
   const list = useLoad(
     () => api.invoices(statusFilter ? { status: statusFilter } : {}),
@@ -49,7 +49,7 @@ export default function TrailerPaymentsPage({ statusFilter }) {
       ) : (
         <Table
           rows={rows}
-          onRow={setSelected}
+          onRow={onOpenInvoice || setSelected}
           columns={[
             { key: "invoice_number", label: "Invoice" },
             { key: "unit_number", label: "Trailer", render: (r) => r.unit_number || "Multiple" },
@@ -79,7 +79,7 @@ export default function TrailerPaymentsPage({ statusFilter }) {
   );
 }
 
-function PaymentDialog({ invoice, can, onClose, onSaved }) {
+export function PaymentDialog({ invoice, can, onClose, onSaved }) {
   const [form, setForm] = useState({
     amount: "", method: "ACH", reference: "", date: new Date().toISOString().slice(0, 10),
     bypassReason: "",

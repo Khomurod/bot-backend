@@ -92,6 +92,13 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
   router.get('/api/trailer-department/trailers/:id',requirePermission('trailers.view'),asyncRoute(async(req,res)=>{
     const trailer=await db.getDepartmentTrailer(req.params.id);if(!trailer)return res.status(404).json({error:'Trailer not found.'});res.json({trailer});
   }));
+  // The trailer detail page: rentals from both systems, movements, documents
+  // (metadata only), invoices, aliases and the audit trail in one response.
+  router.get('/api/trailer-department/trailers/:id/overview',requirePermission('trailers.view'),asyncRoute(async(req,res)=>{
+    const overview=await db.getTrailerOverview(req.params.id);
+    if(!overview)return res.status(404).json({error:'Trailer not found.'});
+    res.json(overview);
+  }));
   router.put('/api/trailer-department/trailers/:id',requirePermission('trailers.edit'),asyncRoute(async(req,res)=>{
     if(req.body?.active===false&&!can(req,'trailers.delete_or_archive'))return res.status(403).json({error:'Trailer archive permission required.'});
     const trailer=await db.updateDepartmentTrailer(req.params.id,req.body||{},actor(req));if(!trailer)return res.status(404).json({error:'Trailer not found.'});res.json({trailer});
