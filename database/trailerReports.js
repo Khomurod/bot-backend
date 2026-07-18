@@ -62,7 +62,7 @@ async function getPeriodUtilization(start,end){
   return Number(res.rows[0]?.pct||0);
 }
 
-async function getTrailerReport(name){
+async function getTrailerReport(name, filters = {}){
   const reports={
     active_rentals:`SELECT r.agreement_number,t.unit_number,c.display_name company,r.start_at,r.expected_return_at,r.status FROM trailer_rentals r JOIN trailers t ON t.id=r.trailer_id JOIN trailer_renter_companies c ON c.id=r.company_id WHERE r.status='active' ORDER BY r.expected_return_at`,
     overdue_returns:`SELECT r.agreement_number,t.unit_number,c.display_name company,r.expected_return_at,NOW()-r.expected_return_at overdue_for FROM trailer_rentals r JOIN trailers t ON t.id=r.trailer_id JOIN trailer_renter_companies c ON c.id=r.company_id WHERE r.status='active' AND r.expected_return_at<NOW() ORDER BY r.expected_return_at`,
@@ -80,7 +80,51 @@ async function getTrailerReport(name){
     missing_pickup_photos:`SELECT r.agreement_number,t.unit_number FROM trailer_rentals r JOIN trailers t ON t.id=r.trailer_id WHERE r.status IN('active','returned') AND NOT EXISTS(SELECT 1 FROM trailer_media m WHERE m.rental_id=r.id AND m.media_type='pickup_condition_photo') ORDER BY r.start_at`,
   };
   if(!reports[name])throw Object.assign(new Error('Unknown report.'),{status:404});
-  return(await query(reports[name])).rows;
+
+  // Apply the optional filters the route forwards from req.query. A report is
+  // filtered only on columns it actually exposes (below); reports without a
+  // matching column are returned unfiltered rather than erroring. Everything is
+  // parameterized — no filter value is interpolated into SQL.
+  const filterable = REPORT_FILTERS[name];
+  if (filterable && hasAnyFilter(filters)) {
+    return (await query(...applyReportFilters(reports[name], filterable, filters))).rows;
+  }
+  return (await query(reports[name])).rows;
+}
+
+// Which PROJECTED columns each report exposes for filtering (the wrapper filters
+// on the report's output columns, so these are the SELECT aliases, not the inner
+// table columns). A report absent here is returned unfiltered.
+const REPORT_FILTERS = {
+  active_rentals: { date: 'start_at', company: 'company' },
+  overdue_returns: { date: 'expected_return_at', company: 'company' },
+  missing_receipts: { date: 'payment_at' },
+  partial_payments: { company: 'company' },
+  aging: { date: 'due_at', company: 'company' },
+  company_credits: { date: 'created_at', company: 'company' },
+  overpayments: { date: 'created_at', company: 'company' },
+  amendments: { date: 'effective_date' },
+  active_agreements: { company: 'company' },
+};
+
+function hasAnyFilter(filters = {}) {
+  return ['start', 'end', 'company'].some((k) => filters[k] != null && filters[k] !== '');
+}
+
+/**
+ * Wrap a report query as an outer SELECT with a parameterized WHERE on its
+ * PROJECTED columns, so filters apply regardless of the inner query's
+ * GROUP BY / HAVING / ORDER BY, and the inner ordering is preserved. Returns
+ * [text, values] for query(). No filter value is interpolated into SQL.
+ */
+function applyReportFilters(sql, cols, filters) {
+  const conds = [];
+  const values = [];
+  if (cols.date && filters.start) { values.push(filters.start); conds.push(`r.${cols.date} >= $${values.length}`); }
+  if (cols.date && filters.end) { values.push(filters.end); conds.push(`r.${cols.date} <= $${values.length}`); }
+  if (cols.company && filters.company) { values.push(String(filters.company)); conds.push(`r.${cols.company} = $${values.length}`); }
+  if (!conds.length) return [sql];
+  return [`SELECT * FROM (${sql}) r WHERE ${conds.join(' AND ')}`, values];
 }
 
 module.exports={getTrailerDashboard,getTrailerReport,getPeriodUtilization};
