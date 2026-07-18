@@ -6,9 +6,70 @@ import { invoiceStatus } from "../trailerStatusVocabulary";
 const usd = (n) => `$${Number(n || 0).toFixed(2)}`;
 const when = (d) => (d ? new Date(d).toLocaleString() : "—");
 const day = (d) => (d ? new Date(d).toLocaleDateString() : "—");
-const TABS = ["Overview", "Charges", "Payments", "History"];
+const TABS = ["Overview", "Charges", "Payments", "Documents", "History"];
 
 const LINE_LABELS = { rental: "Trailer rental", bundle: "Bundle rental" };
+
+const MEDIA_TYPE_LABELS = {
+  payment_receipt: "Payment receipt",
+  invoice_document: "Invoice document",
+  agreement_document: "Agreement document",
+  other_rental_document: "Document",
+};
+
+/**
+ * Documents tab (§4/§9): receipts and invoice documents with preview and
+ * download. The list carries METADATA ONLY — a short-lived signed URL is
+ * requested only at the moment preview/download is clicked, and is never shown
+ * or logged.
+ */
+function DocumentsTab({ invoiceId, onError }) {
+  const { data, loading, error } = useLoad(() => api.invoiceMedia(invoiceId), [invoiceId]);
+  const [busyId, setBusyId] = useState(null);
+  const rows = data?.media || [];
+
+  const open = async (row, preview) => {
+    setBusyId(row.id);
+    try {
+      const { url } = await api.mediaSignedUrl(row.id, { preview });
+      // A fresh short-lived URL each click; opened directly, never stored.
+      window.open(url, "_blank", "noopener");
+    } catch (e) { onError(e.message); } finally { setBusyId(null); }
+  };
+
+  if (loading) return <div className="loading" role="status">Loading…</div>;
+  if (error) return <div className="alert alert-danger" role="alert">{error}</div>;
+  if (!rows.length) {
+    return <Empty>No documents yet. Receipts appear here when payments are recorded.</Empty>;
+  }
+  return (
+    <Table
+      rows={rows}
+      columns={[
+        { key: "media_type", label: "Type", render: (r) => MEDIA_TYPE_LABELS[r.media_type] || "Document" },
+        { key: "original_filename", label: "File" },
+        { key: "created_at", label: "Uploaded", render: (r) => when(r.created_at) },
+        { key: "uploaded_by", label: "By", render: (r) => r.uploaded_by || "—" },
+        {
+          key: "actions",
+          label: "",
+          render: (r) => (
+            <span className="trailer-actions">
+              <button type="button" className="btn btn-sm btn-secondary" disabled={busyId === r.id}
+                onClick={(e) => { e.stopPropagation(); open(r, true); }}>
+                Preview
+              </button>
+              <button type="button" className="btn btn-sm btn-secondary" disabled={busyId === r.id}
+                onClick={(e) => { e.stopPropagation(); open(r, false); }}>
+                Download
+              </button>
+            </span>
+          ),
+        },
+      ]}
+    />
+  );
+}
 
 function Pill({ value }) {
   const s = invoiceStatus(value);
@@ -193,6 +254,11 @@ export default function InvoiceDetailPage({ invoiceId, onBack, onRecordPayment, 
         </Card>
       )}
 
+      {tab === "Documents" && (
+        <Card>
+          <DocumentsTab invoiceId={invoiceId} onError={(text) => setMsg({ type: "error", text })} />
+        </Card>
+      )}
       {tab === "History" && (
         <Card>
           <h3>Adjustments</h3>

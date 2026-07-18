@@ -77,6 +77,32 @@ async function listInspectionMedia(inspectionId, mediaType = null, options = {})
 }
 
 /**
+ * Every document/receipt attached to one invoice — directly (invoice_id) or via
+ * one of its payments (payment_id). METADATA ONLY: bytes live in
+ * trailer_media_blobs and are never selected in a list. Receipts can be
+ * excluded for callers without the receipt permission.
+ */
+async function listInvoiceMedia(invoiceId, { includeReceipts = true } = {}) {
+  const values = [Number(invoiceId)];
+  let receiptFilter = '';
+  if (!includeReceipts) {
+    receiptFilter = " AND m.media_type <> 'payment_receipt'";
+  }
+  const res = await query(
+    `SELECT m.id, m.media_type, m.original_filename, m.mime_type, m.original_size_bytes,
+            m.created_at, m.payment_id, a.username AS uploaded_by
+       FROM trailer_media m
+       LEFT JOIN admins a ON a.id = m.uploaded_by_admin_id
+      WHERE (m.invoice_id = $1
+             OR m.payment_id IN (SELECT id FROM trailer_payments WHERE invoice_id = $1))
+        ${receiptFilter}
+      ORDER BY m.created_at DESC`,
+    values,
+  );
+  return res.rows;
+}
+
+/**
  * Delete a media row AND its blobs, in one transaction.
  *
  * Only for orphan cleanup on a failed upload — never for a file that is part of
@@ -112,5 +138,6 @@ module.exports = {
   getTrailerMedia,
   attachMediaToPayment,
   listInspectionMedia,
+  listInvoiceMedia,
   deleteTrailerMediaWithBlobs,
 };
