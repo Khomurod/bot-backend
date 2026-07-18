@@ -3,23 +3,38 @@ import api from "../../api/trailerDepartment";
 import { useAuth } from "../../context/AuthContext";
 import TrailerCreateDialog from "./TrailerCreateDialog";
 import { hasTrailerPermission } from "./trailerNavigation";
-import { Alert, Card, Empty, Field, PageHeader, Status, Table, useLoad } from "./TrailerUi";
+import { Alert, Card, Empty, Field, PageHeader, Table, useLoad } from "./TrailerUi";
+import { TRAILER_CONDITION_LABELS, trailerCondition } from "./trailerStatusVocabulary";
+
+const SOURCE_LABELS = { manual: "Manual", ai: "Driver-derived", geocoded: "Driver-derived", gps: "GPS" };
 
 const COLUMNS = [
-  { key: "unit_number", label: "Unit" },
+  { key: "unit_number", label: "Trailer" },
   {
     key: "physical_status",
-    label: "Physical status",
-    render: (r) => <Status value={r.physical_status} />,
+    label: "Condition",
+    render: (r) => {
+      const s = trailerCondition(r.physical_status);
+      return <span className={`trailer-pill trailer-pill-${s.tone}`}>{s.label}</span>;
+    },
   },
-  { key: "display_status", label: "Possession / cargo" },
-  { key: "current_company_name", label: "Renter" },
-  { key: "current_location_text", label: "Location" },
-  { key: "location_source", label: "Source" },
+  { key: "current_company_name", label: "Rented to", render: (r) => r.current_company_name || "—" },
+  {
+    key: "expected_return_at",
+    label: "Expected back",
+    render: (r) => (r.expected_return_at ? new Date(r.expected_return_at).toLocaleDateString() : "—"),
+  },
+  { key: "current_location_text", label: "Last known location", render: (r) => r.current_location_text || "—" },
+  {
+    key: "location_source",
+    label: "Location source",
+    render: (r) => (r.current_location_text ? SOURCE_LABELS[r.location_source] || "Unknown" : "Unknown"),
+  },
+  { key: "display_status", label: "Loaded or empty", render: (r) => r.display_status || "—" },
   {
     key: "needs_review",
-    label: "Review",
-    render: (r) => (r.needs_review ? "Required" : "Verified"),
+    label: "",
+    render: (r) => (r.needs_review ? <span className="trailer-pill trailer-pill-attention">Needs attention</span> : null),
   },
 ];
 
@@ -38,6 +53,7 @@ export default function TrailerAssetsPage() {
         needs_review: selected.needs_review,
         tracking_reference: selected.tracking_reference,
         notes: selected.notes,
+        version: selected.version,
       });
       setMsg({ text: "Trailer updated." });
       setSelected(null);
@@ -57,7 +73,7 @@ export default function TrailerAssetsPage() {
     <div>
       <PageHeader
         title="Trailers"
-        subtitle="Physical availability stays separate from possession and cargo."
+        subtitle="Every trailer with its condition, current renter and last known location."
         actions={
           <>
             {canCreate && (
@@ -92,21 +108,13 @@ export default function TrailerAssetsPage() {
                 </button>
               }
             />
-            <Field label="Physical status">
+            <Field label="Trailer condition">
               <select
                 value={selected.physical_status}
                 onChange={(e) => setSelected({ ...selected, physical_status: e.target.value })}
               >
-                {[
-                  "unknown",
-                  "available",
-                  "rented",
-                  "under_inspection",
-                  "maintenance",
-                  "out_of_service",
-                  "held_damage",
-                ].map((x) => (
-                  <option key={x}>{x}</option>
+                {Object.entries(TRAILER_CONDITION_LABELS).map(([value, s]) => (
+                  <option key={value} value={value}>{s.label}</option>
                 ))}
               </select>
             </Field>

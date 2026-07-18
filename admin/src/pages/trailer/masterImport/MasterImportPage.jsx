@@ -120,8 +120,8 @@ export default function MasterImportPage() {
   return (
     <div>
       <PageHeader
-        title="Master Import"
-        subtitle="Import the official trailer list as photos, then review and reconcile."
+        title="Update trailer list"
+        subtitle="Upload photos of the official trailer list, review the differences, then confirm the changes."
         actions={
           selectedId ? (
             <button
