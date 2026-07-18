@@ -4,6 +4,8 @@ import dept from "../../../api/trailerDepartment";
 import { Field, Modal, PageHeader } from "../TrailerUi";
 import { EMPTY_TERMS, emptyItem } from "../agreement/agreementConstants";
 import { SummaryStep, TrailersStep } from "../agreement/AgreementBuilderSteps";
+import Combobox from "../a11y/Combobox";
+import { companyDefaults } from "../a11y/comboboxFilter";
 
 const STEPS = ["Who is renting", "Which trailers", "Price", "Review"];
 
@@ -68,19 +70,45 @@ function WhoStep({ terms, setTerms, companies, onAddCompany }) {
   const [advanced, setAdvanced] = useState(false);
   const set = (patch) => setTerms({ ...terms, ...patch });
   const company = companies.find((c) => String(c.id) === String(terms.company_id));
+
+  // Selecting a company auto-applies its defaults (contact, terms, rate,
+  // timezone, grace) so the employee doesn't re-enter them; defined fields only.
+  const selectCompany = (companyId) => {
+    const picked = companies.find((c) => String(c.id) === String(companyId));
+    const d = companyDefaults(picked);
+    set({
+      company_id: companyId,
+      ...(d.payment_terms != null ? { payment_terms: d.payment_terms } : {}),
+      ...(d.billing_timezone != null ? { billing_timezone: d.billing_timezone } : {}),
+      ...(d.payment_grace_period_days != null ? { payment_grace_period_days: d.payment_grace_period_days } : {}),
+      ...(d.default_daily_rate != null ? { default_daily_rate: d.default_daily_rate } : {}),
+    });
+  };
+
   return (
     <div>
       <div className="trailer-form-grid">
         <Field label="Company that is renting">
-          <select required value={terms.company_id} onChange={(e) => set({ company_id: e.target.value })}>
-            <option value="">Choose a company…</option>
-            {companies.map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
-          </select>
+          <Combobox
+            options={companies.map((c) => ({ value: String(c.id), label: c.display_name, hint: c.contact_name || "" }))}
+            value={terms.company_id}
+            onChange={selectCompany}
+            placeholder="Search companies by name…"
+            label="Company that is renting"
+            emptyText="No matching company — add one below"
+          />
         </Field>
         <button type="button" className="btn btn-secondary" onClick={onAddCompany}>
           Add a new company
         </button>
-        {company?.contact_name && <p className="trailer-help">Contact: {company.contact_name}</p>}
+        {company && (
+          <div className="trailer-help" role="status">
+            {company.contact_name ? `Contact: ${company.contact_name}. ` : ""}
+            {terms.payment_terms ? `Terms: ${terms.payment_terms}. ` : ""}
+            {terms.billing_timezone ? `Billing timezone: ${terms.billing_timezone}. ` : ""}
+            {Number(terms.payment_grace_period_days) ? `Grace: ${terms.payment_grace_period_days} days.` : ""}
+          </div>
+        )}
         <Field label="Start date">
           <input type="date" value={terms.agreement_date} onChange={(e) => set({ agreement_date: e.target.value })} />
         </Field>
@@ -129,11 +157,18 @@ export default function StartRentalWizard({ companies, trailers, onCancel, onCre
   const [terms, setTerms] = useState({ ...EMPTY_TERMS });
   const [items, setItems] = useState([emptyItem()]);
   const [addingCompany, setAddingCompany] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Only official trailers that are physically available can be chosen.
-  const selectable = trailers.filter((t) => t.physical_status === "available" || t.physical_status === "unknown");
+  // Any entered data makes the draft "dirty" — leaving then needs confirmation.
+  const dirty = Boolean(terms.company_id) || items.some((it) => it.trailer_id)
+    || Boolean(terms.deposit_amount) || Boolean(terms.notes);
+  const requestCancel = () => { if (dirty) setConfirmLeave(true); else onCancel(); };
+
+  // Only official trailers that are physically AVAILABLE can be chosen — an
+  // "unknown"-condition trailer is not offered as an ordinary selectable one.
+  const selectable = trailers.filter((t) => t.physical_status === "available");
 
   const stepValid = () => {
     if (step === 0) return Boolean(terms.company_id);
@@ -170,7 +205,7 @@ export default function StartRentalWizard({ companies, trailers, onCancel, onCre
       <PageHeader
         title="Start a rental"
         subtitle={`Step ${step + 1} of ${STEPS.length} — ${STEPS[step]}`}
-        actions={<button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>}
+        actions={<button type="button" className="btn btn-ghost" onClick={requestCancel}>Cancel</button>}
       />
       {error && <div className="alert alert-danger">{error}</div>}
       {step === 0 && (
@@ -215,6 +250,19 @@ export default function StartRentalWizard({ companies, trailers, onCancel, onCre
             onCompanyAdded?.(company);
           }}
         />
+      )}
+      {confirmLeave && (
+        <Modal title="Discard this rental draft?" onClose={() => setConfirmLeave(false)}>
+          <p>You have unsaved rental details. Discarding will lose them.</p>
+          <div className="trailer-actions" style={{ marginTop: 12 }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setConfirmLeave(false)}>
+              Continue editing
+            </button>
+            <button type="button" className="btn btn-danger" onClick={onCancel}>
+              Discard draft
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

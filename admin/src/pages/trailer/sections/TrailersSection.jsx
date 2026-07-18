@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../../context/AuthContext";
 import { hasTrailerPermission } from "../trailerNavigation";
-import SectionTabs, { useSectionTab } from "./SectionTabs";
+import SectionTabs, { useSectionTab, TabPanel } from "./SectionTabs";
 
 const TrailerList = lazy(() => import("../TrailerAssetsPage"));
 const TrailerDetail = lazy(() => import("../TrailerDetailPage"));
@@ -55,7 +55,7 @@ export default function TrailersSection({ navigate }) {
 
   return (
     <div>
-      {!trailerId && <SectionTabs tabs={tabs} active={tab} onChange={setTab} />}
+      {!trailerId && <SectionTabs tabs={tabs} active={tab} onChange={setTab} idBase="trailer-trailers" />}
       <Suspense fallback={<div className="loading"><div className="spinner" />Loading…</div>}>
         {trailerId ? (
           <>
@@ -74,12 +74,12 @@ export default function TrailersSection({ navigate }) {
             )}
           </>
         ) : (
-          <>
+          <TabPanel idBase="trailer-trailers" activeKey={tab}>
             {tab === "all" && <TrailerList navigate={navigate} onOpen={openTrailer} />}
             {tab === "map" && <MapPage navigate={navigate} />}
             {tab === "updates" && <Tracking navigate={navigate} />}
             {tab === "unknown" && <Mentions navigate={navigate} />}
-          </>
+          </TabPanel>
         )}
       </Suspense>
     </div>
