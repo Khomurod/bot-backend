@@ -187,6 +187,12 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
     if(media.media_type==='payment_receipt'&&!can(req,'trailer_receipts.view'))return res.status(403).json({error:'Receipt permission required.'});
     res.json({url:await storage.buildSignedMediaUrl(media,{preview:req.query.preview==='true'}),expires_in:storage.DEFAULT_TTL_SECONDS});
   }));
+  // Documents/receipts attached to one invoice — metadata only, never bytes.
+  // Receipt rows are hidden from callers without the receipt permission; the
+  // signed-url route above enforces the same rule again at fetch time.
+  router.get('/api/trailer-department/invoices/:id/media',requirePermission('trailer_payments.view'),asyncRoute(async(req,res)=>{
+    res.json({media:await db.listInvoiceMedia(req.params.id,{includeReceipts:can(req,'trailer_receipts.view')})});
+  }));
 
   router.get('/api/trailer-department/invoices',requirePermission('trailer_payments.view'),asyncRoute(async(req,res)=>{
     const data=await db.listTrailerInvoices({...req.query,companyId:req.query.companyId??req.query.company_id,

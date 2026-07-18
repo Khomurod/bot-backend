@@ -121,6 +121,11 @@ export const reminderAction = (invoiceId, body) =>
     method: "POST",
     body: JSON.stringify(body),
   });
+// Documents/receipts on one invoice — metadata only; bytes come later through a
+// short-lived signed URL requested only when preview/download is clicked.
+export const invoiceMedia = (invoiceId) => request(`/invoices/${invoiceId}/media`);
+export const mediaSignedUrl = (mediaId, { preview = false } = {}) =>
+  request(`/media/${mediaId}/signed-url?preview=${preview}`);
 
 export async function adminUsers() {
   const res = await fetch("/api/admin/users", { headers: auth() });
@@ -188,6 +193,8 @@ export default {
   report,
   downloadReport,
   reminderAction,
+  invoiceMedia,
+  mediaSignedUrl,
   adminUsers,
   roles,
   saveAdminUser,
