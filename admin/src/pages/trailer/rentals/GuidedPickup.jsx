@@ -73,7 +73,13 @@ export default function GuidedPickup({ agreementId, item, onClose, onDone }) {
       setProgress("Completing inspection…");
       await ag.completeItemInspection(agreementId, item.id, "pickup");
       setProgress("Confirming pickup…");
-      const result = await ag.activateItem(agreementId, item.id, item.version);
+      const result = await ag.activateItem(agreementId, item.id, item.version, {
+        actual_pickup_at: details.actual_pickup_at
+          ? new Date(details.actual_pickup_at).toISOString() : undefined,
+        pickup_location: details.pickup_location || undefined,
+        pickup_lat: advanced && coords.lat !== "" ? coords.lat : undefined,
+        pickup_lng: advanced && coords.lng !== "" ? coords.lng : undefined,
+      });
       onDone(result);
     } catch (e) {
       setError(e.message);

@@ -2,6 +2,7 @@
 
 const { query, pool } = require('./pool');
 const { insertTrailerAudit } = require('./trailerAudit');
+const { assertTrailerStatusChangeAllowed } = require('./trailerAvailability');
 
 const PHYSICAL = new Set(['unknown','available','rented','under_inspection','maintenance','out_of_service','held_damage']);
 
@@ -74,11 +75,14 @@ async function updateDepartmentTrailer(id,data,actor){
       throw Object.assign(new Error('This record changed while you were editing. Reload and try again.'),
         {status:409,code:'VERSION_CONFLICT',currentVersion:before.rows[0].version});
     }
-    if(data.physical_status==='available'){
-      const active=await client.query(`SELECT id FROM trailer_rentals WHERE trailer_id=$1 AND status='active'`,[id]);
-      if(active.rows[0])throw Object.assign(new Error('A trailer with an active rental cannot be made available.'),{status:409});
-    }
-    if(data.active===false){const active=await client.query(`SELECT id FROM trailer_rentals WHERE trailer_id=$1 AND status='active'`,[id]);if(active.rows[0])throw Object.assign(new Error('A trailer with an active rental cannot be archived.'),{status:409});}
+    // Cross-system guard: an active hold in EITHER the legacy rentals OR the new
+    // agreement items blocks Available/archive — one centralized check, so this
+    // can never again see only the legacy table.
+    await assertTrailerStatusChangeAllowed(client,{
+      trailerId:id,
+      targetPhysicalStatus:data.physical_status,
+      archiving:data.active===false,
+    });
     const allowed=['make','model','mc_number','plate_number','type','vin','year','ownership_status','active','physical_status','tracking_reference','notes','needs_review'];
     const params=[id,actor?.id||null];const sets=['updated_by_admin_id=$2','updated_at=NOW()','version=version+1'];
     for(const key of allowed)if(Object.prototype.hasOwnProperty.call(data,key)){params.push(data[key]);sets.push(`${key}=$${params.length}`);}

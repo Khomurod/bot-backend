@@ -93,7 +93,15 @@ function createTrailerAgreementRoutes({ authMiddleware, requirePermission }) {
   router.post(`${base}/:id/items/:itemId/activate`, manage, asyncRoute(async (req, res) => {
     try {
       res.json(await service.activateItem(req.params.id, req.params.itemId, actor(req),
-        { version: req.body?.version }));
+        {
+          version: req.body?.version,
+          pickup: {
+            actual_pickup_at: req.body?.actual_pickup_at,
+            pickup_location: req.body?.pickup_location,
+            pickup_lat: req.body?.pickup_lat,
+            pickup_lng: req.body?.pickup_lng,
+          },
+        }));
     } catch (err) { sendErr(res, err); }
   }));
 
