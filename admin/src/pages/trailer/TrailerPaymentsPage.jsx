@@ -3,6 +3,7 @@ import api from "./../../api/trailerDepartment";
 import { useAuth } from "../../context/AuthContext";
 import { Alert, Card, Empty, Field, PageHeader, Table, useLoad } from "./TrailerUi";
 import { invoiceStatus } from "./trailerStatusVocabulary";
+import { paymentConfirmationMessage } from "./money/paymentConfirmation";
 
 const usd = (n) => `$${Number(n || 0).toFixed(2)}`;
 
@@ -110,9 +111,9 @@ export function PaymentDialog({ invoice, can, onClose, onSaved }) {
         confirm_overpayment: confirmOverpayment ? "true" : undefined,
         idempotency_key: idempotencyKey,
       }, file);
-      onSaved(result.credit
-        ? `Payment saved. ${usd(result.credit.original_amount)} extra was saved as company credit.`
-        : "Payment saved. The confirmation is on its way to Telegram.");
+      // Truthful confirmation: amount, invoice, remaining balance, any credit,
+      // and the REAL Telegram delivery state — never "on its way" if it failed.
+      onSaved(paymentConfirmationMessage(result));
     } catch (err) {
       setError(err.message);
       setBusy(false);
