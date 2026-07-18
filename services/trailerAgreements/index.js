@@ -15,6 +15,7 @@ const returns = require('./returns');
 const invoicing = require('./invoicing');
 const amendmentOps = require('./amendmentOps');
 const { deriveAgreementStatus } = require('./statusDerivation');
+const { estimateAgreement } = require('./estimate');
 
 module.exports = {
   ...lifecycle,
@@ -23,4 +24,5 @@ module.exports = {
   ...invoicing,
   ...amendmentOps,
   deriveAgreementStatus,
+  estimateAgreement,
 };

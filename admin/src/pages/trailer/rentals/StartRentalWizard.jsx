@@ -3,9 +3,11 @@ import ag from "../../../api/trailerAgreements";
 import dept from "../../../api/trailerDepartment";
 import { Field, Modal, PageHeader } from "../TrailerUi";
 import { EMPTY_TERMS, emptyItem } from "../agreement/agreementConstants";
-import { SummaryStep, TrailersStep } from "../agreement/AgreementBuilderSteps";
+import { TrailersStep } from "../agreement/AgreementBuilderSteps";
 import Combobox from "../a11y/Combobox";
 import { companyDefaults } from "../a11y/comboboxFilter";
+import PriceStep from "./PriceStep";
+import { PRICING_CHOICES, priceBlockers, buildPricingPayload, rateField } from "./priceStepModel";
 
 const STEPS = ["Who is renting", "Which trailers", "Price", "Review"];
 
@@ -20,6 +22,7 @@ function itemPayload(item) {
       ? new Date(item.expected_return_at).toISOString() : null,
     pickup_location: item.pickup_location || null,
     pricing_mode: item.pricing_mode,
+    included_in_bundle: item.included_in_bundle === true,
     daily_rate: item.daily_rate ? Number(item.daily_rate) : null,
     weekly_rate: item.weekly_rate ? Number(item.weekly_rate) : null,
     monthly_rate: item.monthly_rate ? Number(item.monthly_rate) : null,
@@ -112,10 +115,7 @@ function WhoStep({ terms, setTerms, companies, onAddCompany }) {
         <Field label="Start date">
           <input type="date" value={terms.agreement_date} onChange={(e) => set({ agreement_date: e.target.value })} />
         </Field>
-        <Field label="Deposit amount (optional)">
-          <input type="number" min="0" step="0.01" value={terms.deposit_amount}
-            onChange={(e) => set({ deposit_amount: e.target.value })} />
-        </Field>
+        {/* Deposit belongs to the Price step, not here (§1). */}
       </div>
       <button type="button" className="btn btn-link" onClick={() => setAdvanced(!advanced)}>
         {advanced ? "Hide advanced options" : "Advanced options"}
@@ -156,6 +156,11 @@ export default function StartRentalWizard({ companies, trailers, onCancel, onCre
   const [step, setStep] = useState(0);
   const [terms, setTerms] = useState({ ...EMPTY_TERMS });
   const [items, setItems] = useState([emptyItem()]);
+  // The Price step: one of the three plain-language charging choices.
+  const [price, setPrice] = useState({
+    choice: "per_trailer", totalAmount: "", manualAmount: "", manualReason: "",
+    deposit: "", discount: "",
+  });
   const [addingCompany, setAddingCompany] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [error, setError] = useState("");
@@ -163,16 +168,18 @@ export default function StartRentalWizard({ companies, trailers, onCancel, onCre
 
   // Any entered data makes the draft "dirty" — leaving then needs confirmation.
   const dirty = Boolean(terms.company_id) || items.some((it) => it.trailer_id)
-    || Boolean(terms.deposit_amount) || Boolean(terms.notes);
+    || Boolean(price.totalAmount) || Boolean(price.manualAmount) || Boolean(terms.notes);
   const requestCancel = () => { if (dirty) setConfirmLeave(true); else onCancel(); };
 
   // Only official trailers that are physically AVAILABLE can be chosen — an
   // "unknown"-condition trailer is not offered as an ordinary selectable one.
   const selectable = trailers.filter((t) => t.physical_status === "available");
 
+  const priceMissing = priceBlockers(price.choice, { ...price, items });
   const stepValid = () => {
     if (step === 0) return Boolean(terms.company_id);
     if (step === 1) return items.length > 0 && items.every((it) => it.trailer_id);
+    if (step === 2) return priceMissing.length === 0;
     return true;
   };
 
@@ -180,18 +187,18 @@ export default function StartRentalWizard({ companies, trailers, onCancel, onCre
     setBusy(true);
     setError("");
     try {
+      const { agreement, itemPatch } = buildPricingPayload(price.choice, {
+        ...price, notes: terms.notes || null,
+      });
       const result = await ag.createAgreement({
         company_id: Number(terms.company_id),
-        pricing_mode: terms.pricing_mode,
         agreement_date: terms.agreement_date || null,
         start_date: terms.agreement_date || null,
-        deposit_amount: Number(terms.deposit_amount || 0),
-        agreement_discount: Number(terms.agreement_discount || 0),
         payment_terms: terms.payment_terms || null,
         payment_grace_period_days: Number(terms.payment_grace_period_days || 0),
         billing_timezone: terms.billing_timezone || "America/Chicago",
-        notes: terms.notes || null,
-        items: items.map(itemPayload),
+        ...agreement,
+        items: items.map((it) => itemPayload({ ...it, ...itemPatch(it) })),
       });
       onCreated(result.agreement, items.length);
     } catch (e) {
@@ -212,13 +219,33 @@ export default function StartRentalWizard({ companies, trailers, onCancel, onCre
         <WhoStep terms={terms} setTerms={setTerms} companies={companies}
           onAddCompany={() => setAddingCompany(true)} />
       )}
-      {step === 1 && <TrailersStep items={items} setItems={setItems} trailers={selectable} />}
-      {step === 2 && <SummaryStep terms={terms} items={items} trailers={trailers} />}
+      {step === 1 && (
+        <TrailersStep items={items} setItems={setItems} trailers={selectable} showPricing={false} />
+      )}
+      {step === 2 && (
+        <PriceStep price={price} setPrice={setPrice} items={items} setItems={setItems} terms={terms} />
+      )}
       {step === 3 && (
         <div className="trailer-summary trailer-summary-stack">
           <span>Company: <b>{companies.find((c) => String(c.id) === String(terms.company_id))?.display_name || "—"}</b></span>
-          <span>Trailers: {items.length}</span>
-          <span>Deposit: ${Number(terms.deposit_amount || 0).toFixed(2)}</span>
+          {items.map((it, i) => {
+            const unit = trailers.find((t) => String(t.id) === String(it.trailer_id))?.unit_number || `#${it.trailer_id}`;
+            return (
+              <span key={i}>
+                Trailer <b>{unit}</b>
+                {it.scheduled_pickup_at ? ` — pickup ${new Date(it.scheduled_pickup_at).toLocaleString()}` : ""}
+                {it.expected_return_at ? `, return ${new Date(it.expected_return_at).toLocaleString()}` : ""}
+                {it.pickup_location ? ` at ${it.pickup_location}` : ""}
+                {price.choice === "per_trailer"
+                  ? ` — $${Number(it[rateField(it.pricing_mode)] || 0).toFixed(2)} ${it.pricing_mode}` : ""}
+              </span>
+            );
+          })}
+          <span>Pricing: {PRICING_CHOICES.find((c) => c.value === price.choice)?.label}</span>
+          {price.choice === "total" && <span>Total agreed amount: <b>${Number(price.totalAmount || 0).toFixed(2)}</b></span>}
+          {price.choice === "manual" && <span>Final agreed amount: <b>${Number(price.manualAmount || 0).toFixed(2)}</b> ({price.manualReason})</span>}
+          {Number(price.deposit) > 0 && <span>Deposit: ${Number(price.deposit).toFixed(2)}</span>}
+          {Number(price.discount) > 0 && <span>Discount: −${Number(price.discount).toFixed(2)}</span>}
           <p className="trailer-help">
             The rental starts as “being set up”. Next you will complete the pickup
             inspection and photos for each trailer, then confirm each pickup.

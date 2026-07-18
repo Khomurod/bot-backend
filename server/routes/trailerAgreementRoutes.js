@@ -47,6 +47,13 @@ function createTrailerAgreementRoutes({ authMiddleware, requirePermission }) {
     res.json(await agreementsDb.listAgreements({ companyId, status, page, pageSize }));
   }));
 
+  // Stateless server-side estimate for the wizard's Price step: computed with
+  // the SAME pricing helpers invoicing uses. Writes nothing. MUST be declared
+  // before the `${base}/:id` routes so "estimate" is not read as an id.
+  router.post(`${base}/estimate`, view, asyncRoute(async (req, res) => {
+    res.json({ estimate: service.estimateAgreement(req.body || {}) });
+  }));
+
   router.get(`${base}/:id`, view, asyncRoute(async (req, res) => {
     const agreement = await agreementsDb.getAgreementById(req.params.id);
     if (!agreement) return res.status(404).json({ error: 'Agreement not found.' });
