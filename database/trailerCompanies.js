@@ -7,7 +7,7 @@ function actorMeta(actor) {
   return { adminId: actor?.id, roleKeys: actor?.role_keys || [], ipAddress: actor?.ipAddress };
 }
 
-async function listTrailerCompanies({ q, active } = {}) {
+async function listTrailerCompanies({ q, active, page, page_size: pageSize } = {}) {
   const values = [];
   const where = [];
   if (q) {
@@ -16,8 +16,8 @@ async function listTrailerCompanies({ q, active } = {}) {
       OR c.mc_number ILIKE $${values.length} OR c.dot_number ILIKE $${values.length})`);
   }
   if (active != null) { values.push(Boolean(active)); where.push(`c.active = $${values.length}`); }
-  const res = await query(
-    `SELECT c.*,COALESCE(r.active_rentals,0)::int AS active_rentals,
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const select = `SELECT c.*,COALESCE(r.active_rentals,0)::int AS active_rentals,
        COALESCE(i.total_invoiced,0)::numeric AS total_invoiced,
        COALESCE(p.total_paid,0)::numeric AS total_paid,
        GREATEST(COALESCE(i.total_invoiced,0)-COALESCE(p.total_paid,0),0) AS outstanding_balance
@@ -28,10 +28,20 @@ async function listTrailerCompanies({ q, active } = {}) {
        WHERE company_id=c.id AND status<>'voided') i ON TRUE
      LEFT JOIN LATERAL (SELECT SUM(amount) total_paid FROM trailer_payments
        WHERE company_id=c.id AND verification_status IN ('recorded','verified')) p ON TRUE
-     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-     ORDER BY c.active DESC, lower(c.display_name)`,
-    values,
-  );
+     ${clause}
+     ORDER BY c.active DESC, lower(c.display_name)`;
+  // With a page requested, answer the shared paginated envelope; without one,
+  // keep the legacy bare-array behaviour (the wizard picker loads all matches).
+  if (page) {
+    const p = Math.max(Number(page) || 1, 1);
+    const size = Math.min(Math.max(Number(pageSize) || 25, 1), 200);
+    const total = await query(
+      `SELECT COUNT(*)::int AS total FROM trailer_renter_companies c ${clause}`, values,
+    );
+    const res = await query(`${select} LIMIT ${size} OFFSET ${(p - 1) * size}`, values);
+    return { items: res.rows, page: p, page_size: size, total: total.rows[0].total };
+  }
+  const res = await query(select, values);
   return res.rows;
 }
 
