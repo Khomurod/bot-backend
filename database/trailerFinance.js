@@ -36,9 +36,25 @@ async function listTrailerInvoices(filters={}) {
     ['i.trailer_id',filters.trailerId],['i.agreement_id',filters.agreementId],['i.rental_item_id',filters.rentalItemId]]){
     if(val!=null&&val!==''){values.push(val);where.push(`${col}=$${values.length}`);}
   }
+  if(filters.q){
+    values.push(`%${String(filters.q).trim()}%`);
+    where.push(`(i.invoice_number ILIKE $${values.length} OR c.display_name ILIKE $${values.length})`);
+  }
+  const clause=where.length?`WHERE ${where.join(' AND ')}`:'';
+  // With a page requested, answer the shared paginated envelope; without one,
+  // keep the legacy bare-array behaviour for existing consumers.
+  if(filters.page){
+    const page=Math.max(Number(filters.page)||1,1);
+    const size=Math.min(Math.max(Number(filters.page_size??filters.pageSize)||25,1),200);
+    const total=await query(
+      `SELECT COUNT(*)::int AS total FROM trailer_invoices i JOIN trailer_renter_companies c ON c.id=i.company_id ${clause}`,values);
+    const res=await query(
+      `${INVOICE_SELECT} ${clause} ORDER BY i.created_at DESC LIMIT ${size} OFFSET ${(page-1)*size}`,values);
+    return {items:res.rows,page,page_size:size,total:total.rows[0].total};
+  }
   const res=await query(
     `${INVOICE_SELECT}
-     ${where.length?`WHERE ${where.join(' AND ')}`:''} ORDER BY i.created_at DESC LIMIT 500`,values);
+     ${clause} ORDER BY i.created_at DESC LIMIT 500`,values);
   return res.rows;
 }
 

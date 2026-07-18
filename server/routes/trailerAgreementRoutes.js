@@ -26,9 +26,12 @@ function actor(req) {
   };
 }
 
+const { errorPayload } = require('../../services/trailerErrorMessages');
+
 function sendErr(res, err) {
-  const status = err.status || 500;
-  res.status(status).json({ error: err.message, code: err.code || undefined });
+  const { status, payload } = errorPayload(err);
+  if (status === 500) console.error('[TRAILER-AGREEMENTS]', err.message);
+  res.status(status).json(payload);
 }
 
 function createTrailerAgreementRoutes({ authMiddleware, requirePermission }) {
