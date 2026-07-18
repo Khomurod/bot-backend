@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../../context/AuthContext";
 import { hasTrailerPermission } from "../trailerNavigation";
-import SectionTabs, { useSectionTab } from "./SectionTabs";
+import SectionTabs, { useSectionTab, TabPanel } from "./SectionTabs";
 
 const Payments = lazy(() => import("../TrailerPaymentsPage"));
 const PaymentDialogLoader = lazy(() => import("../TrailerPaymentsPage").then((m) => ({ default: m.PaymentDialog })));
@@ -47,7 +47,7 @@ export default function MoneySection({ navigate }) {
 
   return (
     <div>
-      {!invoiceId && <SectionTabs tabs={tabs} active={tab} onChange={setTab} />}
+      {!invoiceId && <SectionTabs tabs={tabs} active={tab} onChange={setTab} idBase="trailer-money" />}
       <Suspense fallback={<div className="loading"><div className="spinner" />Loading…</div>}>
         {invoiceId ? (
           <>
@@ -68,11 +68,11 @@ export default function MoneySection({ navigate }) {
             )}
           </>
         ) : (
-          <>
+          <TabPanel idBase="trailer-money" activeKey={tab}>
             {tab === "invoices" && <Payments navigate={navigate} onOpenInvoice={openInvoice} />}
             {tab === "overdue" && <Payments navigate={navigate} statusFilter="overdue" onOpenInvoice={openInvoice} />}
             {tab === "credits" && <Credits navigate={navigate} />}
-          </>
+          </TabPanel>
         )}
       </Suspense>
     </div>

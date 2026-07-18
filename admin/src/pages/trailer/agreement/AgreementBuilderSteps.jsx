@@ -1,5 +1,7 @@
 import React from "react";
 import { Card, Field } from "../TrailerUi";
+import Combobox from "../a11y/Combobox";
+import { trailerPickerOptions } from "../a11y/comboboxFilter";
 import {
   AGREEMENT_PRICING_MODES,
   PRICING_MODES,
@@ -95,9 +97,12 @@ export function TermsStep({ terms, setTerms, companies }) {
   );
 }
 
-function ItemRow({ item, index, trailers, onChange, onRemove, canRemove }) {
+function ItemRow({ item, index, trailers, onChange, onRemove, canRemove, excludeIds = [] }) {
   const set = (patch) => onChange(index, { ...item, ...patch });
   const mode = item.pricing_mode;
+  // Searchable picker options exclude trailers already chosen in OTHER rows, so
+  // the same trailer can't be selected twice, while keeping this row's pick.
+  const trailerOptions = trailerPickerOptions(trailers, item.trailer_id, excludeIds);
   return (
     <Card>
       <div className="trailer-actions" style={{ justifyContent: "space-between" }}>
@@ -114,18 +119,14 @@ function ItemRow({ item, index, trailers, onChange, onRemove, canRemove }) {
       </div>
       <div className="trailer-form-grid">
         <Field label="Trailer">
-          <select
-            required
+          <Combobox
+            options={trailerOptions}
             value={item.trailer_id}
-            onChange={(e) => set({ trailer_id: e.target.value })}
-          >
-            <option value="">Select…</option>
-            {trailers.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.unit_number}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => set({ trailer_id: value })}
+            placeholder="Search trailers by unit…"
+            label="Trailer"
+            emptyText="No available trailer matches"
+          />
         </Field>
         <Field label="Pricing mode">
           <select value={mode} onChange={(e) => set({ pricing_mode: e.target.value })}>
@@ -242,6 +243,7 @@ export function TrailersStep({ items, setItems, trailers }) {
           item={item}
           index={index}
           trailers={trailers}
+          excludeIds={items.filter((_, i) => i !== index).map((it) => it.trailer_id).filter(Boolean)}
           onChange={change}
           onRemove={remove}
           canRemove={items.length > 1}
