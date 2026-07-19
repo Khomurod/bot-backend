@@ -221,6 +221,14 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
   });
   router.post('/api/trailer-department/payments/:id/reverse',requirePermission('trailer_payments.reverse'),asyncRoute(async(req,res)=>res.json(await db.reverseTrailerPayment(req.params.id,req.body?.reason,actor(req)))));
   router.get('/api/trailer-department/companies/:id/credits',requirePermission('trailer_payments.view'),asyncRoute(async(req,res)=>res.json({credits:await db.listCompanyCredits(req.params.id)})));
+  // Company documents (metadata only; receipts hidden without the permission —
+  // the signed-url route enforces the same rule again at fetch time).
+  router.get('/api/trailer-department/companies/:id/media',requirePermission('trailer_payments.view'),asyncRoute(async(req,res)=>{
+    res.json({media:await db.listCompanyMedia(req.params.id,{includeReceipts:can(req,'trailer_receipts.view')})});
+  }));
+  router.get('/api/trailer-department/companies/:id/reminder-history',requirePermission('trailer_payments.view'),asyncRoute(async(req,res)=>{
+    res.json({history:await db.listCompanyReminderHistory(req.params.id)});
+  }));
   router.post('/api/trailer-department/credits/:id/apply',requirePermission('trailer_payments.record'),asyncRoute(async(req,res)=>res.json({credit:await db.applyCompanyCredit({creditId:req.params.id,invoiceId:req.body?.invoice_id,amount:req.body?.amount,actor:actor(req)})})));
   router.post('/api/trailer-department/notifications/:id/retry',requirePermission('trailer_payments.record','trailer_settings.manage'),asyncRoute(async(req,res)=>{
     const job=await db.retryTrailerNotification(req.params.id);if(!job)return res.status(404).json({error:'Failed notification not found.'});res.json({job});
