@@ -175,13 +175,17 @@ export function PageHeader({ title, subtitle, actions }) {
     </div>
   );
 }
-/** Focusable descendants of a container, in DOM order, that are visible. */
+/**
+ * Focusable descendants of a container, in DOM order. Hidden/disabled elements
+ * are excluded via attributes rather than layout (offsetParent), so the same
+ * logic works in the browser AND in jsdom component tests, which never lay out.
+ */
 function focusableWithin(container) {
   if (!container) return [];
   const sel = 'a[href],area[href],button:not([disabled]),input:not([disabled]),'
     + 'select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
   return Array.from(container.querySelectorAll(sel))
-    .filter((el) => el.offsetParent !== null || el === document.activeElement);
+    .filter((el) => !el.closest('[hidden]') && el.getAttribute('aria-hidden') !== 'true');
 }
 
 /**
@@ -199,9 +203,12 @@ export function Modal({ title, subtitle, onClose, wide, children }) {
 
   useEffect(() => {
     restoreRef.current = document.activeElement;
-    // Move focus into the dialog (first focusable, else the card itself).
+    // Move focus into the dialog: prefer the first control in the BODY (so a
+    // screen reader doesn't announce "Close" first), else the close button,
+    // else the card itself.
     const focusables = focusableWithin(cardRef.current);
-    (focusables[0] || cardRef.current)?.focus?.();
+    const preferred = focusables.find((el) => !el.closest("[data-modal-header]")) || focusables[0];
+    (preferred || cardRef.current)?.focus?.();
     return () => {
       // Restore focus to whatever opened the dialog.
       restoreRef.current?.focus?.();
@@ -240,7 +247,7 @@ export function Modal({ title, subtitle, onClose, wide, children }) {
         onKeyDown={onKeyDown}
         className={`card trailer-card trailer-modal ${wide ? "trailer-modal-wide" : ""}`}
       >
-        <div className="trailer-page-header">
+        <div className="trailer-page-header" data-modal-header>
           <div>
             <h2 id={titleId}>{title}</h2>
             {subtitle && <p id={subId}>{subtitle}</p>}
