@@ -141,5 +141,19 @@ async function retryTrailerNotification(id){
     WHERE id=$1 AND status='failed' RETURNING *`,[id]);return res.rows[0]||null;
 }
 
+/** Reminder history across every invoice of one company — newest 200, with the
+ *  invoice number and the acting admin so a company page can show the story. */
+async function listCompanyReminderHistory(companyId){
+  const res=await query(
+    `SELECT h.id,h.action,h.note,h.action_at,h.metadata,i.invoice_number,a.username AS action_by
+       FROM trailer_reminder_history h
+       JOIN trailer_invoices i ON i.id=h.invoice_id
+       LEFT JOIN admins a ON a.id=h.action_by_admin_id
+      WHERE i.company_id=$1
+      ORDER BY h.action_at DESC
+      LIMIT 200`,[Number(companyId)]);
+  return res.rows;
+}
+
 module.exports={claimTrailerNotificationJob,markTrailerNotificationSent,markTrailerNotificationFailed,getPaymentNotificationContext,
-  enqueueOverdueReminders,resumeExpiredSnoozes,getOverdueNotificationContext,retryTrailerNotification};
+  enqueueOverdueReminders,resumeExpiredSnoozes,getOverdueNotificationContext,retryTrailerNotification,listCompanyReminderHistory};
