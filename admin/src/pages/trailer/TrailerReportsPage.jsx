@@ -7,6 +7,7 @@ const REPORT_GROUPS = [
   ["Rentals", [
     ["active_rentals", "Currently rented"],
     ["active_agreements", "Open rentals"],
+    ["upcoming_pickups", "Upcoming pickups"],
     ["overdue_returns", "Overdue returns"],
     ["amendments", "Rental changes"],
   ]],
@@ -20,9 +21,17 @@ const REPORT_GROUPS = [
   ["Trailers", [
     ["missing_inspections", "Missing inspections"],
     ["missing_pickup_photos", "Missing pickup photos"],
+    ["missing_return_inspections", "Missing return inspections"],
+    ["missing_return_photos", "Missing return photos"],
+    ["damage_holds", "Trailers held for damage"],
+    ["missing_trailer_locations", "Trailers without a location"],
     ["unmatched_mentions", "Unknown trailer messages"],
     ["pending_master_review", "Trailers pending review"],
     ["archived_trailers", "Archived trailers"],
+  ]],
+  ["System", [
+    ["failed_notifications", "Failed notifications"],
+    ["storage_usage", "Storage usage"],
   ]],
 ];
 

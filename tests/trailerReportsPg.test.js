@@ -18,6 +18,8 @@ const NAMED = [
   'partial_payments', 'aging', 'company_credits', 'overpayments', 'amendments',
   'unmatched_mentions', 'pending_master_review', 'archived_trailers',
   'active_agreements', 'missing_pickup_photos',
+  'upcoming_pickups', 'missing_return_inspections', 'missing_return_photos',
+  'damage_holds', 'failed_notifications', 'missing_trailer_locations', 'storage_usage',
 ];
 
 test('dashboard returns current occupancy and period utilization', async (t) => {

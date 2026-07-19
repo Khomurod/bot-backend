@@ -78,6 +78,13 @@ async function getTrailerReport(name, filters = {}){
     archived_trailers:`SELECT unit_number,master_status,archived_at,master_review_reason FROM trailers WHERE master_status IN('archived','merged') ORDER BY archived_at DESC NULLS LAST`,
     active_agreements:`SELECT a.agreement_number,c.display_name company,a.status,a.pricing_mode,a.current_agreed_amount,(SELECT COUNT(*) FROM trailer_rental_items it WHERE it.agreement_id=a.id) items FROM trailer_rental_agreements a JOIN trailer_renter_companies c ON c.id=a.company_id WHERE a.status IN('active','partially_active','partially_returned','scheduled') ORDER BY a.created_at DESC`,
     missing_pickup_photos:`SELECT r.agreement_number,t.unit_number FROM trailer_rentals r JOIN trailers t ON t.id=r.trailer_id WHERE r.status IN('active','returned') AND NOT EXISTS(SELECT 1 FROM trailer_media m WHERE m.rental_id=r.id AND m.media_type='pickup_condition_photo') ORDER BY r.start_at`,
+    upcoming_pickups:`SELECT a.agreement_number,t.unit_number,c.display_name company,it.scheduled_pickup_at AS pickup_at,it.pickup_location FROM trailer_rental_items it JOIN trailer_rental_agreements a ON a.id=it.agreement_id JOIN trailers t ON t.id=it.trailer_id JOIN trailer_renter_companies c ON c.id=a.company_id WHERE it.item_status IN('scheduled','ready_for_pickup') AND it.scheduled_pickup_at>=NOW()-INTERVAL '1 day' ORDER BY it.scheduled_pickup_at`,
+    missing_return_inspections:`SELECT a.agreement_number,t.unit_number,it.actual_return_at FROM trailer_rental_items it JOIN trailer_rental_agreements a ON a.id=it.agreement_id JOIN trailers t ON t.id=it.trailer_id WHERE it.item_status='returned' AND NOT EXISTS(SELECT 1 FROM trailer_inspections ins WHERE ins.rental_item_id=it.id AND ins.inspection_type='return' AND ins.completed) ORDER BY it.actual_return_at DESC NULLS LAST`,
+    missing_return_photos:`SELECT a.agreement_number,t.unit_number,it.actual_return_at FROM trailer_rental_items it JOIN trailer_rental_agreements a ON a.id=it.agreement_id JOIN trailers t ON t.id=it.trailer_id WHERE it.item_status='returned' AND NOT EXISTS(SELECT 1 FROM trailer_media m WHERE m.rental_item_id=it.id AND m.media_type='return_condition_photo') ORDER BY it.actual_return_at DESC NULLS LAST`,
+    damage_holds:`SELECT t.unit_number,cs.current_location_text,cs.last_event_at,COALESCE(c.display_name,ic.display_name) company FROM trailers t LEFT JOIN trailer_current_status cs ON cs.trailer_id=t.id LEFT JOIN trailer_rentals r ON r.trailer_id=t.id AND r.status='active' LEFT JOIN trailer_renter_companies c ON c.id=r.company_id LEFT JOIN LATERAL(SELECT * FROM trailer_rental_items x WHERE x.trailer_id=t.id AND x.item_status='active' LIMIT 1)it ON TRUE LEFT JOIN trailer_rental_agreements ia ON ia.id=it.agreement_id LEFT JOIN trailer_renter_companies ic ON ic.id=ia.company_id WHERE t.physical_status='held_damage' AND t.active ORDER BY t.unit_number`,
+    failed_notifications:`SELECT j.job_type,j.entity_type,j.entity_id,j.attempts,j.last_error,j.created_at FROM trailer_notification_jobs j WHERE j.status='failed' ORDER BY j.created_at DESC`,
+    missing_trailer_locations:`SELECT t.unit_number,t.physical_status,cs.last_event_at FROM trailers t LEFT JOIN trailer_current_status cs ON cs.trailer_id=t.id WHERE t.active AND t.master_status='active' AND (cs.current_lat IS NULL OR cs.current_lng IS NULL) ORDER BY t.unit_number`,
+    storage_usage:`SELECT m.media_type,m.storage_backend,COUNT(*)::int files,COALESCE(SUM(m.original_size_bytes),0)::bigint total_bytes FROM trailer_media m GROUP BY m.media_type,m.storage_backend ORDER BY total_bytes DESC`,
   };
   if(!reports[name])throw Object.assign(new Error('Unknown report.'),{status:404});
 
@@ -105,6 +112,11 @@ const REPORT_FILTERS = {
   overpayments: { date: 'created_at', company: 'company' },
   amendments: { date: 'effective_date' },
   active_agreements: { company: 'company' },
+  upcoming_pickups: { date: 'pickup_at', company: 'company' },
+  missing_return_inspections: { date: 'actual_return_at' },
+  missing_return_photos: { date: 'actual_return_at' },
+  damage_holds: { company: 'company' },
+  failed_notifications: { date: 'created_at' },
 };
 
 function hasAnyFilter(filters = {}) {
