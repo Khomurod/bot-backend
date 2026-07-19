@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import api from "../../api/trailerDepartment";
-import { Alert, Card, Empty, Field, PageHeader, Pagination, Table, useLoad, useUrlList } from "./TrailerUi";
+import { Alert, Card, Empty, Field, Modal, PageHeader, Pagination, Table, useLoad, useUrlList } from "./TrailerUi";
 import { invoiceStatus, rentalStatus } from "./trailerStatusVocabulary";
 
 const COMPANY_FILTER_KEYS = ["q", "active", "page", "page_size"];
@@ -187,10 +187,55 @@ export default function TrailerCompaniesPage({ navigate }) {
 }
 
 /** Company detail: contacts, rentals, invoices, credits, outstanding. */
+/** Edit-company dialog: same fields as create, with optimistic locking. */
+function EditCompanyDialog({ company, onClose, onSaved }) {
+  const [form, setForm] = useState(() => Object.fromEntries(
+    Object.keys(EMPTY).map((k) => [k, company[k] ?? ""]),
+  ));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const save = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      // Send the current version so a concurrent edit is a 409, not an overwrite.
+      await api.updateCompany(company.id, { ...form, version: company.version });
+      onSaved();
+    } catch (err) { setError(err.message); setBusy(false); }
+  };
+  return (
+    <Modal title={`Edit ${company.display_name}`} onClose={busy ? undefined : onClose}>
+      {error && <div className="alert alert-danger" role="alert">{error}</div>}
+      <form onSubmit={save} className="trailer-form-grid">
+        {Object.keys(EMPTY).map((key) => (
+          <Field key={key} label={FIELD_LABELS[key]}>
+            {key === "notes" ? (
+              <textarea value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
+            ) : (
+              <input
+                required={["legal_name", "display_name"].includes(key)}
+                type={key === "default_daily_rate" ? "number" : key === "email" ? "email" : "text"}
+                value={form[key]}
+                onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+              />
+            )}
+          </Field>
+        ))}
+        <button className="btn btn-primary" type="submit" disabled={busy}>
+          {busy ? "Saving…" : "Save company"}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
 function CompanyDetail({ company, navigate, onBack }) {
   const rentals = useLoad(() => api.rentalList({ company_id: company.id, page_size: 50 }), [company.id]);
   const invoices = useLoad(() => api.invoices({ companyId: company.id }), [company.id]);
   const credits = useLoad(() => api.companyCredits(company.id), [company.id]);
+  const [editing, setEditing] = useState(false);
+  const [msg, setMsg] = useState(null);
 
   const invoiceRows = invoices.data?.invoices || [];
   const outstanding = invoiceRows.reduce((s, i) => s + Number(i.outstanding_balance || 0), 0);
@@ -207,10 +252,14 @@ function CompanyDetail({ company, navigate, onBack }) {
             <button type="button" className="btn btn-primary" onClick={() => navigate?.("rentals", "action=start")}>
               Start a rental
             </button>
+            <button type="button" className="btn btn-secondary" onClick={() => setEditing(true)}>
+              Edit company
+            </button>
             <button type="button" className="btn btn-ghost" onClick={onBack}>Back to companies</button>
           </div>
         }
       />
+      <Alert message={msg} />
       <div className="trailer-two-col">
         <Card>
           <h3>Contact</h3>
@@ -234,6 +283,7 @@ function CompanyDetail({ company, navigate, onBack }) {
         : !rentals.data?.items?.length ? <Empty>No rentals with this company yet.</Empty> : (
           <Table
             rows={rentals.data.items}
+            onRow={(r) => navigate?.("rentals", `rental=${r.agreement_id}`)}
             columns={[
               { key: "display_number", label: "Rental" },
               { key: "trailer_count", label: "Trailers" },
@@ -247,6 +297,7 @@ function CompanyDetail({ company, navigate, onBack }) {
         : !invoiceRows.length ? <Empty>No invoices for this company yet.</Empty> : (
           <Table
             rows={invoiceRows}
+            onRow={(r) => navigate?.("money", `invoice=${r.id}`)}
             columns={[
               { key: "invoice_number", label: "Invoice" },
               { key: "status", label: "Status", render: (r) => invoiceStatus(r.status).label },
@@ -255,6 +306,30 @@ function CompanyDetail({ company, navigate, onBack }) {
             ]}
           />
         )}
+      <h3>Company credits</h3>
+      {credits.loading ? <div className="loading">Loading…</div>
+        : !creditRows.length ? <Empty>No company credits. An authorized overpayment creates one.</Empty> : (
+          <Table
+            rows={creditRows}
+            columns={[
+              { key: "created_at", label: "Created", render: (r) => (r.created_at ? new Date(r.created_at).toLocaleDateString() : "—") },
+              { key: "original_amount", label: "Original", render: (r) => usd(r.original_amount) },
+              { key: "remaining_amount", label: "Remaining", render: (r) => usd(r.remaining_amount) },
+              { key: "status", label: "Status" },
+              { key: "reason", label: "Reason", render: (r) => r.reason || "—" },
+            ]}
+          />
+        )}
+      {editing && (
+        <EditCompanyDialog
+          company={company}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            setMsg({ text: `${company.display_name} updated. Reopen the company to see the changes.` });
+          }}
+        />
+      )}
     </div>
   );
 }
