@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import api from "../../../api/trailerDepartment";
-import { Card, Empty, Field, PageHeader, useLoad } from "../TrailerUi";
+import { Card, Empty, Field, PageHeader, Pagination, useLoad, useUrlList } from "../TrailerUi";
 import { auditSentence } from "./auditVocabulary";
+
+const AUDIT_FILTER_KEYS = ["entityType", "page", "page_size"];
 
 const when = (d) => (d ? new Date(d).toLocaleString() : "—");
 
@@ -23,14 +25,16 @@ const TYPE_FILTERS = [
  * record (old/new values) stays available per row behind "Show detail".
  */
 export default function AuditPage() {
-  const [entityType, setEntityType] = useState("");
+  const { filters, setFilter, setPage } = useUrlList(AUDIT_FILTER_KEYS);
+  const entityType = filters.entityType || "";
   const { data, loading, error, reload } = useLoad(
-    () => api.audit(entityType ? { entityType } : {}),
-    [entityType],
+    () => api.audit(filters),
+    [JSON.stringify(filters)],
   );
   const [expanded, setExpanded] = useState(null);
 
-  const rows = data?.audit || [];
+  const rows = data?.items || data?.audit || [];
+  const total = data?.total ?? rows.length;
 
   return (
     <div>
@@ -40,7 +44,7 @@ export default function AuditPage() {
         actions={<button type="button" className="btn btn-secondary" onClick={reload}>Refresh</button>}
       />
       <Field label="Show changes about">
-        <select value={entityType} onChange={(e) => setEntityType(e.target.value)}>
+        <select value={entityType} onChange={(e) => setFilter({ entityType: e.target.value || undefined })}>
           {TYPE_FILTERS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
       </Field>
@@ -73,6 +77,7 @@ export default function AuditPage() {
             )}
           </div>
         ))}
+        <Pagination page={filters.page} pageSize={filters.page_size} total={total} onPage={setPage} />
       </Card>
     </div>
   );

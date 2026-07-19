@@ -256,7 +256,11 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
   router.get('/api/trailer-department/reports/:name',requirePermission('trailer_reports.view'),asyncRoute(async(req,res)=>{
     const rows=await db.getTrailerReport(req.params.name,req.query);if(req.query.format==='csv')return sendCsv(res,req.params.name,rows);res.json({rows});
   }));
-  router.get('/api/trailer-department/audit',requirePermission('trailer_reports.view'),asyncRoute(async(req,res)=>res.json({audit:await db.listTrailerAudit(req.query)})));
+  router.get('/api/trailer-department/audit',requirePermission('trailer_reports.view'),asyncRoute(async(req,res)=>{
+    const data=await db.listTrailerAudit(req.query);
+    // Paged → the standard envelope (+ audit alias for old readers); else legacy bare array.
+    res.json(Array.isArray(data)?{audit:data}:{...data,audit:data.items});
+  }));
 
   router.use((error,_req,res,_next)=>{
     console.error('[TRAILER-DEPARTMENT]',error.message);

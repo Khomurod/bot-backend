@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import api from "../../../api/trailerDepartment";
 import { Card, Empty, PageHeader, Table, useLoad } from "../TrailerUi";
 import { invoiceStatus } from "../trailerStatusVocabulary";
+import InvoiceActionsCard from "./InvoiceActionsCard";
 
 const usd = (n) => `$${Number(n || 0).toFixed(2)}`;
 const when = (d) => (d ? new Date(d).toLocaleString() : "—");
@@ -195,6 +196,7 @@ export default function InvoiceDetailPage({ invoiceId, onBack, onRecordPayment, 
               <span>Still owed: <b>{usd(inv.outstanding_balance)}</b></span>
             </div>
           </Card>
+          <InvoiceActionsCard invoice={inv} onChanged={reload} onMessage={setMsg} />
         </div>
       )}
 
@@ -232,11 +234,15 @@ export default function InvoiceDetailPage({ invoiceId, onBack, onRecordPayment, 
               { key: "amount", label: "Amount", render: (r) => usd(r.amount) },
               { key: "payment_method", label: "Method" },
               { key: "payment_at", label: "When", render: (r) => day(r.payment_at) },
+              { key: "recorded_by", label: "Recorded by", render: (r) => r.recorded_by || "—" },
+              { key: "reference_number", label: "Reference", render: (r) => r.reference_number || "—" },
               {
                 key: "verification_status",
                 label: "Status",
                 render: (r) => (r.verification_status === "reversed"
-                  ? <span className="trailer-pill trailer-pill-attention">Reversed</span>
+                  ? <span className="trailer-pill trailer-pill-attention" title={r.reversal_reason || ""}>
+                      Reversed{r.reversal_reason ? ` — ${String(r.reversal_reason).slice(0, 40)}` : ""}
+                    </span>
                   : <span className="trailer-pill trailer-pill-success">Recorded</span>),
               },
               {

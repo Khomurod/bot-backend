@@ -40,19 +40,27 @@ async function insertTrailerAudit(entry, client = null) {
   return res.rows[0];
 }
 
-async function listTrailerAudit({ entityType, entityId, limit = 200 }) {
+async function listTrailerAudit({ entityType, entityId, limit = 200, page, page_size: pageSize } = {}) {
   const values = [];
   const where = [];
   if (entityType) { values.push(entityType); where.push(`entity_type = $${values.length}`); }
   if (entityId) { values.push(String(entityId)); where.push(`entity_id = $${values.length}`); }
-  values.push(Math.min(500, Math.max(1, Number(limit) || 200)));
-  const res = await query(
-    `SELECT l.*, a.username
+  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const select = `SELECT l.*, a.username
        FROM trailer_audit_log l LEFT JOIN admins a ON a.id = l.admin_id
-      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-      ORDER BY l.created_at DESC LIMIT $${values.length}`,
-    values,
-  );
+      ${clause}
+      ORDER BY l.created_at DESC`;
+  // With a page requested, answer the shared paginated envelope; without one,
+  // keep the legacy bounded-array behaviour for existing consumers.
+  if (page) {
+    const p = Math.max(Number(page) || 1, 1);
+    const size = Math.min(Math.max(Number(pageSize) || 25, 1), 200);
+    const total = await query(`SELECT COUNT(*)::int AS total FROM trailer_audit_log l ${clause}`, values);
+    const res = await query(`${select} LIMIT ${size} OFFSET ${(p - 1) * size}`, values);
+    return { items: res.rows, page: p, page_size: size, total: total.rows[0].total };
+  }
+  values.push(Math.min(500, Math.max(1, Number(limit) || 200)));
+  const res = await query(`${select} LIMIT $${values.length}`, values);
   return res.rows;
 }
 

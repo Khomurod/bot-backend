@@ -18,7 +18,7 @@ const INVOICE_SELECT = `
     t.unit_number,c.display_name AS company_name,
     COALESCE(p.total_paid,0) AS total_paid,GREATEST(i.total_amount-COALESCE(p.total_paid,0),0) AS outstanding_balance,
     CASE WHEN i.status NOT IN ('disputed','voided','paid') AND i.due_at<NOW()
-      THEN TRUE ELSE FALSE END AS is_overdue,n.status AS notification_status,
+      THEN TRUE ELSE FALSE END AS is_overdue,n.id AS notification_job_id,n.status AS notification_status,
     n.attempts AS notification_attempts,n.last_error AS notification_error
   FROM trailer_invoices i
   LEFT JOIN trailer_rentals r ON r.id=i.rental_id
@@ -26,7 +26,7 @@ const INVOICE_SELECT = `
   LEFT JOIN trailers t ON t.id=i.trailer_id
   JOIN trailer_renter_companies c ON c.id=i.company_id
   ${PAID_TOTAL_LATERAL}
-  LEFT JOIN LATERAL (SELECT j.status,j.attempts,j.last_error FROM trailer_notification_jobs j
+  LEFT JOIN LATERAL (SELECT j.id,j.status,j.attempts,j.last_error FROM trailer_notification_jobs j
     JOIN trailer_payments pp ON pp.id=j.entity_id WHERE j.job_type='payment_confirmation'
     AND pp.invoice_id=i.id ORDER BY j.created_at DESC LIMIT 1) n ON TRUE`;
 
@@ -73,7 +73,11 @@ async function getTrailerInvoice(id){
   const invoice=res.rows[0];
   if(!invoice)return null;
   const [payments,adjustments,lines]=await Promise.all([
-    query('SELECT * FROM trailer_payments WHERE invoice_id=$1 ORDER BY payment_at DESC',[id]),
+    query(`SELECT p.*,a.username AS recorded_by,rv.reason AS reversal_reason,rv.reversed_at
+       FROM trailer_payments p
+       LEFT JOIN admins a ON a.id=p.recorded_by_admin_id
+       LEFT JOIN trailer_payment_reversals rv ON rv.payment_id=p.id
+      WHERE p.invoice_id=$1 ORDER BY p.payment_at DESC`,[id]),
     query('SELECT * FROM trailer_invoice_adjustments WHERE invoice_id=$1 ORDER BY created_at',[id]),
     query('SELECT * FROM trailer_invoice_lines WHERE invoice_id=$1 ORDER BY id',[id]),
   ]);

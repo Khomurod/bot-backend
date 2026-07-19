@@ -121,6 +121,8 @@ export const reminderAction = (invoiceId, body) =>
     method: "POST",
     body: JSON.stringify(body),
   });
+export const retryNotification = (jobId) =>
+  request(`/notifications/${jobId}/retry`, { method: "POST", body: "{}" });
 // Documents/receipts on one invoice — metadata only; bytes come later through a
 // short-lived signed URL requested only when preview/download is clicked.
 export const invoiceMedia = (invoiceId) => request(`/invoices/${invoiceId}/media`);
@@ -193,6 +195,7 @@ export default {
   report,
   downloadReport,
   reminderAction,
+  retryNotification,
   invoiceMedia,
   mediaSignedUrl,
   adminUsers,
