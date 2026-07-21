@@ -34,6 +34,25 @@ function pool() {
   return _pool;
 }
 
+// ── In-process read cache ────────────────────────────────────────────────────
+// FleetView read endpoints are polled by every open browser tab, but the data
+// only changes when the sync job WRITES (~every 120s). Serving repeated reads
+// from process memory collapses many polls into ~one Postgres read per sync
+// cycle — the main lever against standing Supabase egress on the polled path.
+// Writes invalidate their key immediately (a fresh sync shows at once); a safety
+// TTL bounds staleness if a write is ever missed. Per-process and fail-open:
+// caching never turns a working read into a failing one.
+const READ_CACHE_TTL_MS = Number.parseInt(process.env.FLEET_READ_CACHE_TTL_MS || '60000', 10);
+const _readCache = new Map();
+function cacheGet(key) {
+  const hit = _readCache.get(key);
+  if (!hit) return undefined;
+  if (Date.now() - hit.at > READ_CACHE_TTL_MS) { _readCache.delete(key); return undefined; }
+  return hit.value;
+}
+function cacheSet(key, value) { _readCache.set(key, { value, at: Date.now() }); }
+function cacheDrop(key) { _readCache.delete(key); }
+
 const SNAPSHOT_DDL = `
 CREATE TABLE IF NOT EXISTS fleet_snapshots (
   tenant_id TEXT NOT NULL,
@@ -111,6 +130,7 @@ async function writeSnapshot(tenantId, kind, { payload, recordCount = 0, source 
        error_summary = $7, duration_ms = $8, generated_at = $9, last_synced_at = NOW()`,
     [tenantId, kind, JSON.stringify(payload == null ? {} : payload), recordCount, source, stale, error, durationMs, gen],
   );
+  cacheDrop(`snap:${tenantId}:${kind}`);
 }
 
 /**
@@ -119,15 +139,18 @@ async function writeSnapshot(tenantId, kind, { payload, recordCount = 0, source 
  * page — it just makes the first load slower until the sync job has run once.
  */
 async function readSnapshot(tenantId, kind) {
+  const ck = `snap:${tenantId}:${kind}`;
+  const cached = cacheGet(ck);
+  if (cached !== undefined) return cached;
   try {
     const { rows } = await query(
       'SELECT payload, record_count, source, stale, error_summary, duration_ms, generated_at, last_synced_at FROM fleet_snapshots WHERE tenant_id = $1 AND kind = $2',
       [tenantId, kind],
     );
-    if (!rows || !rows.length) return null;
+    if (!rows || !rows.length) { cacheSet(ck, null); return null; }
     const r = rows[0];
     const payload = typeof r.payload === 'string' ? JSON.parse(r.payload) : r.payload;
-    return {
+    const out = {
       payload,
       recordCount: r.record_count,
       source: r.source,
@@ -137,6 +160,8 @@ async function readSnapshot(tenantId, kind) {
       generatedAt: r.generated_at ? new Date(r.generated_at).toISOString() : null,
       lastSyncedAt: r.last_synced_at ? new Date(r.last_synced_at).toISOString() : null,
     };
+    cacheSet(ck, out);
+    return out;
   } catch (e) {
     return null;
   }
@@ -163,6 +188,7 @@ async function replaceUnitSnapshots(tenantId, units) {
       );
     }
     await client.query('COMMIT');
+    cacheDrop(`units:${tenantId}`);
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch (_) { /* noop */ }
     throw e;
@@ -172,9 +198,14 @@ async function replaceUnitSnapshots(tenantId, units) {
 }
 
 async function readUnitSnapshots(tenantId) {
+  const ck = `units:${tenantId}`;
+  const cached = cacheGet(ck);
+  if (cached !== undefined) return cached;
   try {
     const { rows } = await query('SELECT * FROM fleet_unit_snapshots WHERE tenant_id = $1', [tenantId]);
-    return rows || [];
+    const out = rows || [];
+    cacheSet(ck, out);
+    return out;
   } catch (e) { return []; }
 }
 
@@ -191,12 +222,16 @@ async function recordSyncStatus(tenantId, source, { status, error = null, durati
        error_summary = $5, last_duration_ms = $6, records_processed = $7, updated_at = NOW()`,
     [tenantId, source, ok ? 'success' : 'error', ok, error ? String(error).slice(0, 300) : null, durationMs, records],
   );
+  cacheDrop(`sync:${tenantId}`);
 }
 
 async function readSyncStatus(tenantId) {
+  const ck = `sync:${tenantId}`;
+  const cached = cacheGet(ck);
+  if (cached !== undefined) return cached;
   try {
     const { rows } = await query('SELECT * FROM fleet_sync_status WHERE tenant_id = $1 ORDER BY source', [tenantId]);
-    return (rows || []).map((r) => ({
+    const out = (rows || []).map((r) => ({
       source: r.source,
       status: r.status,
       last_success_at: r.last_success_at ? new Date(r.last_success_at).toISOString() : null,
@@ -206,6 +241,8 @@ async function readSyncStatus(tenantId) {
       records_processed: r.records_processed,
       updated_at: r.updated_at ? new Date(r.updated_at).toISOString() : null,
     }));
+    cacheSet(ck, out);
+    return out;
   } catch (e) { return []; }
 }
 
