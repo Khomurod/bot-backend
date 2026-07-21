@@ -13,6 +13,16 @@ const CATEGORY_META = {
   not_applicable: { label: "Policy not applicable", color: "#a78bfa" },
 };
 
+// Company-commitment verdicts: did what actually happened match the approved
+// (registered) home dates? Kept text-labelled (never color-only).
+const COMMITMENT_META = {
+  met: { label: "Commitment met", color: "#22c55e" },
+  broken: { label: "Commitment broken", color: "#ef4444" },
+  incomplete: { label: "Awaiting return", color: "#94a3b8" },
+  none: { label: "No approved dates", color: "#64748b" },
+  not_applicable: { label: "N/A", color: "#a78bfa" },
+};
+
 const RANGES = [
   { value: "30", label: "Last 30 days" },
   { value: "90", label: "Last 90 days" },
@@ -248,6 +258,51 @@ export default function HomeTimeEfficiencyTab({ flash }) {
           Strict efficiency = compliant cycles ÷ all policy-eligible completed cycles. Operational efficiency also credits
           approved exceptions. Incomplete cycles (home stay not yet closed) are excluded from both.
         </p>
+
+        <div style={{ borderTop: "1px solid rgba(148,163,184,0.18)", marginTop: 16, paddingTop: 16 }}>
+          <h4 style={{ margin: "0 0 4px" }}>Company home-time commitment</h4>
+          <p className="home-time-muted" style={{ marginTop: 0 }}>
+            Of the home windows the company <strong>approved</strong>, how often did what actually happened match the
+            registered dates — the driver got home by the promised day and was back on the road by the promised return
+            (±{company.commitment_grace_days ?? 1}d). Cycles with no approved dates, or whose home stay is still open,
+            are shown separately and never counted as met or broken.
+          </p>
+          <div className="home-time-summary-strip">
+            <div className="home-time-summary-chip">
+              <strong>{pctLabel(company.commitment_pct)}</strong>
+              <span>Commitments met</span>
+            </div>
+            <div className="home-time-summary-chip">
+              <strong>{company.commitment_evaluated || 0}</strong>
+              <span>Approved windows evaluated</span>
+            </div>
+            <div className="home-time-summary-chip" style={{ color: COMMITMENT_META.met.color }}>
+              <strong>{company.commitment_met || 0}</strong>
+              <span>Met</span>
+            </div>
+            <div
+              className="home-time-summary-chip"
+              style={(company.commitment_broken || 0) ? { color: COMMITMENT_META.broken.color } : undefined}
+            >
+              <strong>{company.commitment_broken || 0}</strong>
+              <span>Broken</span>
+            </div>
+            <div className="home-time-summary-chip">
+              <strong>{company.commitment_incomplete || 0}</strong>
+              <span>Awaiting return</span>
+            </div>
+            <div className="home-time-summary-chip">
+              <strong>{company.commitment_none || 0}</strong>
+              <span>No approved dates</span>
+            </div>
+          </div>
+          {(company.commitment_evaluated || 0) === 0 && (
+            <p className="home-time-muted" style={{ marginTop: 10 }}>
+              No approved home windows with registered dates have completed in this range yet, so there is not enough
+              data to score company commitment.
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="card">
@@ -325,6 +380,11 @@ export default function HomeTimeEfficiencyTab({ flash }) {
                             {d.too_short_road} too-short-road · {d.too_long_home} too-long-home ·
                             {" "}{d.approved_exceptions} approved exception(s) · {d.incomplete} incomplete
                           </div>
+                          <div style={{ marginBottom: 8, fontSize: 13, opacity: 0.8 }}>
+                            Commitment: <strong>{pctLabel(d.commitment_pct)}</strong> met ·
+                            {" "}{d.commitment_met} met · {d.commitment_broken} broken ·
+                            {" "}{d.commitment_incomplete} awaiting · {d.commitment_none} no approved dates
+                          </div>
                           {(!d.cycles || d.cycles.length === 0) && <div className="home-time-muted">No cycles in range.</div>}
                           {d.cycles && d.cycles.length > 0 && (
                             <table className="table" style={{ fontSize: 13 }}>
@@ -335,9 +395,10 @@ export default function HomeTimeEfficiencyTab({ flash }) {
                                   <th>Back on road</th>
                                   <th>Road days</th>
                                   <th>Home days</th>
-                                  <th>Requested</th>
+                                  <th>Approved dates</th>
                                   <th>Approval</th>
                                   <th>Result</th>
+                                  <th>Commitment</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -349,14 +410,18 @@ export default function HomeTimeEfficiencyTab({ flash }) {
                                     <td>{c.road_days == null ? "--" : c.road_days}</td>
                                     <td>{c.home_days == null ? "--" : c.home_days}</td>
                                     <td>
-                                      {c.requested_home_from
-                                        ? `${fmtDate(c.requested_home_from)} → ${fmtDate(c.requested_return_to_road)}`
-                                        : "--"}
+                                      {c.promised_home_from
+                                        ? `${fmtDate(c.promised_home_from)} → ${c.promised_return_to_road ? fmtDate(c.promised_return_to_road) : "?"}`
+                                        : (c.requested_home_from ? `${fmtDate(c.requested_home_from)} → ${fmtDate(c.requested_return_to_road)}` : "--")}
                                     </td>
                                     <td>{c.approval_status || "--"}</td>
                                     <td style={{ color: (CATEGORY_META[c.category] || {}).color }}>
                                       {(CATEGORY_META[c.category] || {}).label || c.category}
                                       {c.reasons && c.reasons.length ? ` (${c.reasons.join(", ")})` : ""}
+                                    </td>
+                                    <td style={{ color: (COMMITMENT_META[c.commitment] || {}).color }}>
+                                      {(COMMITMENT_META[c.commitment] || {}).label || c.commitment || "--"}
+                                      {c.commitment_reasons && c.commitment_reasons.length ? ` (${c.commitment_reasons.join(", ")})` : ""}
                                     </td>
                                   </tr>
                                 ))}

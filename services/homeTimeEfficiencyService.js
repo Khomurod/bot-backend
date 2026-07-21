@@ -17,9 +17,20 @@
  * Strict company efficiency  = compliant ÷ policy-eligible completed cycles.
  * Operational efficiency     = (compliant + approved_exception) ÷ same denominator.
  * (Approved exceptions are surfaced separately so the two percentages are explained.)
+ *
+ * COMPANY COMMITMENT is a SEPARATE question: when a home window was APPROVED
+ * (the registered/approved dates the company agreed to), did what ACTUALLY
+ * happened match the promise? — the driver got home by the promised date and
+ * returned by the promised return date (both within a small grace). This measures
+ * the COMPANY honoring its home-time commitments, not the driver following policy.
+ * Cycles with no approved registered dates are `no_commitment` (nothing to judge);
+ * cycles whose home stay is still open are `commitment_incomplete` (insufficient
+ * data). Neither is counted as met OR broken — see classifyCommitment.
  */
+const { DateTime } = require('luxon');
 const { homeTimePolicyApplies, DAYS_PER_WEEK } = require('./homeTimeConstants');
 const { inferDriverType } = require('./driverProfileParse');
+const { isoDateOnly, resolveRequestReturnDate } = require('./homeTimeDateResolver');
 
 const CATEGORY = {
   COMPLIANT: 'compliant',
@@ -28,6 +39,82 @@ const CATEGORY = {
   INCOMPLETE: 'incomplete',
   NOT_APPLICABLE: 'not_applicable',
 };
+
+// Company-commitment verdicts (approved registered dates vs. what happened).
+const COMMITMENT = {
+  MET: 'met',
+  BROKEN: 'broken',
+  INCOMPLETE: 'incomplete', // approved window, but home stay not yet closed
+  NONE: 'none',             // no approved registered dates → nothing to measure
+  NOT_APPLICABLE: 'not_applicable', // owner operator
+};
+
+// Actual home arrival / return may legitimately differ from the promise by a day
+// (message timing, timezone). Only a gap LARGER than this breaks the commitment.
+const COMMITMENT_GRACE_DAYS = 1;
+
+/** Signed whole-day difference toIso − fromIso for two date-only values; null if unusable. */
+function dateDeltaDays(fromIso, toIso) {
+  const a = DateTime.fromISO(isoDateOnly(fromIso) || '', { zone: 'utc' });
+  const b = DateTime.fromISO(isoDateOnly(toIso) || '', { zone: 'utc' });
+  if (!a.isValid || !b.isValid) return null;
+  return Math.round(b.diff(a, 'days').days);
+}
+
+/**
+ * Did the company honor an APPROVED home window for this cycle? Compares the
+ * registered/approved dates against what actually happened. PURE.
+ *
+ * @returns {{ category:string, reasons:string[], promisedHome?:string,
+ *   promisedReturn?:string, homeDeltaDays?:number, returnDeltaDays?:number }}
+ */
+function classifyCommitment(cycle, { graceDays = COMMITMENT_GRACE_DAYS } = {}) {
+  const driverType = cycle.driver_type || inferDriverType(cycle.group_name || '');
+  if (!homeTimePolicyApplies(driverType)) {
+    return { category: COMMITMENT.NOT_APPLICABLE, reasons: [] };
+  }
+  const promisedHome = isoDateOnly(cycle.req_home_from);
+  const promisedReturn = resolveRequestReturnDate({
+    return_to_road_date: cycle.req_return_to_road_date, home_to: cycle.req_home_to,
+  });
+  // A commitment exists only when a human APPROVED a home window.
+  if (cycle.linked_request_status !== 'approved' || !promisedHome) {
+    return { category: COMMITMENT.NONE, reasons: [] };
+  }
+
+  const actualHome = isoDateOnly(cycle.home_arrived_at);
+  // + means the driver got home LATER than promised (company kept them out).
+  const homeDeltaDays = actualHome ? dateDeltaDays(promisedHome, actualHome) : null;
+  if (homeDeltaDays == null) {
+    return {
+      category: COMMITMENT.INCOMPLETE, reasons: ['no_actual_home'], promisedHome, promisedReturn,
+    };
+  }
+  const reasons = [];
+  const homeOnTime = homeDeltaDays <= graceDays;
+  if (!homeOnTime) reasons.push('home_late');
+
+  let returnOnTime = true;
+  let returnDeltaDays = null;
+  if (promisedReturn) {
+    const homeClosed = cycle.return_to_road_at != null;
+    const actualReturn = isoDateOnly(cycle.return_to_road_at);
+    if (!homeClosed || !actualReturn) {
+      return {
+        category: COMMITMENT.INCOMPLETE, reasons: ['home_stay_open'],
+        promisedHome, promisedReturn, homeDeltaDays,
+      };
+    }
+    returnDeltaDays = dateDeltaDays(promisedReturn, actualReturn);
+    returnOnTime = returnDeltaDays != null && returnDeltaDays <= graceDays;
+    if (!returnOnTime) reasons.push('returned_late');
+  }
+
+  return {
+    category: (homeOnTime && returnOnTime) ? COMMITMENT.MET : COMMITMENT.BROKEN,
+    reasons, promisedHome, promisedReturn, homeDeltaDays, returnDeltaDays,
+  };
+}
 
 function num(value) {
   const n = Number(value);
@@ -135,6 +222,10 @@ function buildEfficiencyReport({
         incomplete: 0,
         too_short_road: 0,
         too_long_home: 0,
+        commitment_met: 0,
+        commitment_broken: 0,
+        commitment_incomplete: 0,
+        commitment_none: 0,
         road_days_list: [],
         home_days_list: [],
         latest_cycle_result: null,
@@ -151,10 +242,15 @@ function buildEfficiencyReport({
     non_compliant: 0,
     incomplete: 0,
     not_applicable: 0,
+    commitment_met: 0,
+    commitment_broken: 0,
+    commitment_incomplete: 0,
+    commitment_none: 0,
   };
 
   for (const cycle of cycles) {
     const verdict = classifyCycle(cycle, opts);
+    const commitment = classifyCommitment(cycle);
     const d = ensureDriver(cycle);
     company[verdict.category] = (company[verdict.category] || 0) + 1;
 
@@ -170,8 +266,21 @@ function buildEfficiencyReport({
       requested_home_from: cycle.req_home_from || null,
       requested_return_to_road: cycle.req_return_to_road_date || null,
       approval_status: cycle.linked_request_status || null,
+      commitment: commitment.category,
+      commitment_reasons: commitment.reasons || [],
+      promised_home_from: commitment.promisedHome || null,
+      promised_return_to_road: commitment.promisedReturn || null,
+      home_delta_days: commitment.homeDeltaDays == null ? null : commitment.homeDeltaDays,
+      return_delta_days: commitment.returnDeltaDays == null ? null : commitment.returnDeltaDays,
     };
     d.cycles.push(detail);
+
+    // Company-commitment tally — independent of the driver-policy flow below
+    // (which `continue`s past owner operators and incomplete home stays).
+    if (commitment.category === COMMITMENT.MET) { company.commitment_met += 1; d.commitment_met += 1; }
+    else if (commitment.category === COMMITMENT.BROKEN) { company.commitment_broken += 1; d.commitment_broken += 1; }
+    else if (commitment.category === COMMITMENT.INCOMPLETE) { company.commitment_incomplete += 1; d.commitment_incomplete += 1; }
+    else if (commitment.category === COMMITMENT.NONE) { company.commitment_none += 1; d.commitment_none += 1; }
 
     if (verdict.category === CATEGORY.NOT_APPLICABLE) continue;
     if (verdict.category === CATEGORY.INCOMPLETE) {
@@ -212,6 +321,13 @@ function buildEfficiencyReport({
       too_long_home: d.too_long_home,
       efficiency_pct: d.policy_applies ? pct(d.compliant, eligible) : null,
       operational_pct: d.policy_applies ? pct(d.compliant + d.approved_exceptions, eligible) : null,
+      commitment_met: d.commitment_met,
+      commitment_broken: d.commitment_broken,
+      commitment_incomplete: d.commitment_incomplete,
+      commitment_none: d.commitment_none,
+      commitment_pct: d.policy_applies
+        ? pct(d.commitment_met, d.commitment_met + d.commitment_broken)
+        : null,
       avg_road_days: avg(d.road_days_list),
       avg_home_days: avg(d.home_days_list),
       latest_cycle_result: d.latest_cycle_result,
@@ -240,6 +356,13 @@ function buildEfficiencyReport({
       not_applicable: company.not_applicable,
       total_eligible_drivers: eligibleDrivers,
       total_completed_cycles: eligibleCompleted,
+      commitment_met: company.commitment_met,
+      commitment_broken: company.commitment_broken,
+      commitment_incomplete: company.commitment_incomplete,
+      commitment_none: company.commitment_none,
+      commitment_pct: pct(company.commitment_met, company.commitment_met + company.commitment_broken),
+      commitment_evaluated: company.commitment_met + company.commitment_broken,
+      commitment_grace_days: COMMITMENT_GRACE_DAYS,
       road_allowance_weeks: roadAllowanceWeeks,
       road_allowance_days: roadAllowanceWeeks * DAYS_PER_WEEK,
       home_allowance_days: homeAllowanceDays,
@@ -250,6 +373,9 @@ function buildEfficiencyReport({
 
 module.exports = {
   CATEGORY,
+  COMMITMENT,
+  COMMITMENT_GRACE_DAYS,
   classifyCycle,
+  classifyCommitment,
   buildEfficiencyReport,
 };

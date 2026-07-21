@@ -1,6 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { classifyCycle, buildEfficiencyReport, CATEGORY } = require('../services/homeTimeEfficiencyService');
+const {
+  classifyCycle, classifyCommitment, buildEfficiencyReport, CATEGORY, COMMITMENT,
+} = require('../services/homeTimeEfficiencyService');
 
 const OPTS = { roadAllowanceWeeks: 4, homeAllowanceDays: 4 }; // 28 road days / 4 home days
 
@@ -90,4 +92,81 @@ test('no eligible cycles → efficiency is null (no misleading number)', () => {
   });
   assert.equal(rep.company.total_completed_cycles, 0);
   assert.equal(rep.company.strict_efficiency_pct, null);
+});
+
+// ── Company commitment (registered/approved dates vs. what actually happened) ──
+
+// A cycle linked to an APPROVED request whose promised dates match reality.
+function committedCycle(over = {}) {
+  return cycle({
+    linked_request_status: 'approved',
+    req_home_from: '2026-02-01', req_return_to_road_date: '2026-02-05',
+    home_arrived_at: '2026-02-01T12:00:00Z', return_to_road_at: '2026-02-05T09:00:00Z',
+    ...over,
+  });
+}
+
+test('commitment met: driver got home and returned on the promised dates', () => {
+  const v = classifyCommitment(committedCycle());
+  assert.equal(v.category, COMMITMENT.MET);
+  assert.equal(v.promisedHome, '2026-02-01');
+  assert.equal(v.promisedReturn, '2026-02-05');
+});
+
+test('commitment broken: driver got home LATE relative to the approved date', () => {
+  const v = classifyCommitment(committedCycle({ home_arrived_at: '2026-02-05T00:00:00Z' })); // 4 days late
+  assert.equal(v.category, COMMITMENT.BROKEN);
+  assert.ok(v.reasons.includes('home_late'));
+});
+
+test('commitment broken: driver returned to the road LATE relative to the approved date', () => {
+  const v = classifyCommitment(committedCycle({ return_to_road_at: '2026-02-10T00:00:00Z' })); // 5 days late
+  assert.equal(v.category, COMMITMENT.BROKEN);
+  assert.ok(v.reasons.includes('returned_late'));
+});
+
+test('commitment tolerates a one-day grace on both ends', () => {
+  const v = classifyCommitment(committedCycle({
+    home_arrived_at: '2026-02-02T00:00:00Z', return_to_road_at: '2026-02-06T00:00:00Z',
+  }));
+  assert.equal(v.category, COMMITMENT.MET);
+});
+
+test('commitment none: no approved registered dates → nothing to measure', () => {
+  assert.equal(classifyCommitment(cycle({ linked_request_status: null })).category, COMMITMENT.NONE);
+  assert.equal(classifyCommitment(cycle({ linked_request_status: 'pending', req_home_from: '2026-02-01' })).category, COMMITMENT.NONE);
+});
+
+test('commitment incomplete: approved window but the home stay is still open', () => {
+  const v = classifyCommitment(committedCycle({ return_to_road_at: null }));
+  assert.equal(v.category, COMMITMENT.INCOMPLETE);
+});
+
+test('commitment falls back to home_to + 1 when the approved return date is absent', () => {
+  const v = classifyCommitment(committedCycle({ req_return_to_road_date: null, req_home_to: '2026-02-04' }));
+  assert.equal(v.promisedReturn, '2026-02-05');
+  assert.equal(v.category, COMMITMENT.MET);
+});
+
+test('owner operators are not applicable for commitment', () => {
+  const v = classifyCommitment(committedCycle({ driver_type: 'owner', group_name: 'U OWNER OPERATOR' }));
+  assert.equal(v.category, COMMITMENT.NOT_APPLICABLE);
+});
+
+test('company commitment % = met ÷ (met + broken); no-data & incomplete excluded', () => {
+  const cycles = [
+    committedCycle({ id: 1, group_id: 1 }), // met
+    committedCycle({ id: 2, group_id: 1, home_arrived_at: '2026-02-06T00:00:00Z' }), // broken (home late)
+    committedCycle({ id: 3, group_id: 2, return_to_road_at: null, group_name: 'U2 COMPANY DRIVER' }), // incomplete
+    cycle({ id: 4, group_id: 3, linked_request_status: null, group_name: 'U3 COMPANY DRIVER' }), // no commitment
+  ];
+  const rep = buildEfficiencyReport({ cycles, statuses: [], settings: { road_allowance_weeks: 4, home_allowance_days: 4 } });
+  assert.equal(rep.company.commitment_met, 1);
+  assert.equal(rep.company.commitment_broken, 1);
+  assert.equal(rep.company.commitment_incomplete, 1);
+  assert.equal(rep.company.commitment_none, 1);
+  assert.equal(rep.company.commitment_evaluated, 2);
+  assert.equal(rep.company.commitment_pct, 50);
+  const d1 = rep.drivers.find((d) => d.group_id === 1);
+  assert.equal(d1.commitment_pct, 50);
 });
