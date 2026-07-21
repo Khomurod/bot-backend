@@ -13,6 +13,7 @@
  */
 const { DateTime } = require('luxon');
 const { homeTimePolicyApplies } = require('./homeTimeConstants');
+const { hasHomeTimeSignal } = require('./homeTimeSignals');
 
 function csvValues(value) {
   return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
@@ -95,40 +96,10 @@ function messageMentionsApprovers(message) {
   return false;
 }
 
-/**
- * Deterministic "this looks like home-time language" detector.
- *
- * Used two ways:
- *   1. As the AI-unavailable fallback (so a tag during an outage only creates a
- *      card when the text actually mentions going home — not the old blanket
- *      "default to true" that produced false positives like an oil-change tag).
- *   2. As a guard against a low-confidence AI "yes": if the model is unsure and
- *      there is no home-time wording anywhere in the window, we do not post.
- */
-const HOME_TIME_SIGNAL_PATTERNS = [
-  /\bhome[\s-]*time\b/i,
-  /\bhometime\b/i,
-  /\btime\s*off\b/i,
-  /\bdays?\s*off\b/i,
-  /\boff\s*days?\b/i,
-  /\bgo(?:ing|es)?\s+home\b/i,
-  /\bhead(?:ing|ed|s)?\s+home\b/i,
-  /\bget(?:ting|s)?\s+home\b/i,
-  /\bcome(?:s|ing)?\s+home\b/i,
-  /\bsend\s+(?:me|him|her|them|the\s+driver)\s+home\b/i,
-  /\b(?:needs?|wants?|asking|like)\s+(?:to\s+)?(?:go|get|come|head)\s+home\b/i,
-  /\bhome\s+for\s+(?:a|some|the|\d)/i,
-  /\bat\s+the\s+house\b/i,
-  /\bvacation\b/i,
-  /\bpto\b/i,
-  /\bday(?:s)?\s+(?:at\s+)?home\b/i,
-];
-
-/** True when free text contains explicit home-time / time-off wording. */
-function hasHomeTimeSignal(text) {
-  const str = String(text || '');
-  return HOME_TIME_SIGNAL_PATTERNS.some((re) => re.test(str));
-}
+// The home-time / time-off wording detector (`hasHomeTimeSignal`) now lives in
+// ./homeTimeSignals so its broad and STRICT variants share one pattern set. It
+// is imported above and re-exported below to keep this module's public surface
+// (and every existing importer) unchanged.
 
 /**
  * Build the AI classification prompt for a possible home-time request. Pure (no
