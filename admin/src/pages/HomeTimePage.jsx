@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import * as api from "../api";
 import HomeTimeEfficiencyTab from "./HomeTimeEfficiencyTab";
 import HomeTimeSettingsCard from "./HomeTimeSettingsCard";
+import HomeTimeRequestDatesEditor from "./HomeTimeRequestDatesEditor";
 import {
   HOME_TIME_SORT_COLUMNS,
   STATUS_FILTERS,
@@ -948,10 +949,18 @@ export default function HomeTimePage() {
                           {item.kind === "request" ? (
                             <div className="home-time-activity-meta">
                               <span>Window: {fmtDate(item.home_from)} to {fmtDate(item.home_to)}</span>
+                              <span>Back on the road: {fmtDate(item.return_to_road_date)}</span>
                               <span>{policyLabel(selectedStatus.driver_type, item.policy_met)}</span>
                               <span>Days out: {item.days_on_road != null ? `${item.days_on_road}d` : "--"}</span>
                               <span>Source: {item.source || "--"}</span>
                               <span>Decided by: {item.decided_by_username ? `@${item.decided_by_username}` : "--"}</span>
+                              <HomeTimeRequestDatesEditor
+                                requestId={item.request_id}
+                                homeFrom={item.home_from}
+                                returnToRoad={item.return_to_road_date}
+                                flash={flash}
+                                onSaved={load}
+                              />
                             </div>
                           ) : (
                             <div className="home-time-activity-meta">

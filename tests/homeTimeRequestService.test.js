@@ -30,6 +30,7 @@ function loadService({
   ack = { id: 99 }, // markHomeTimeAcknowledged (claim wins by default)
   transcript = '',
   notifyGroupId = NOTIFY_GROUP_ID, // completed-request notification group (null = unconfigured)
+  approvedRequest = null, // getApprovedHomeTimeRequestForGroup (an already-registered window)
 } = {}) {
   const servicePath = path.resolve(__dirname, '../services/homeTimeRequestService.js');
   const dbPath = path.resolve(__dirname, '../database/db.js');
@@ -72,6 +73,7 @@ function loadService({
       async getDriverHomeStatus() { return homeStatus; },
       async getOpenHomeStay() { return openStay; },
       async findDecidedRequestNearDate() { return null; },
+      async getApprovedHomeTimeRequestForGroup() { return approvedRequest; },
       async insertHomeTimeRequest(payload) { inserts.push(payload); return { id: 99, ...payload }; },
       async updateHomeTimeRequestFields(id, patch) { updates.push({ id, patch }); return { id, ...patch }; },
       async fulfillAwaitingHomeTimeRequest(id, payload) {
@@ -250,6 +252,49 @@ test('Status: Home does NOT re-ask when a complete request already exists (no du
   await service.handleActualHomeArrival(telegram, GROUP, { message_id: 77, text: 'Status: Home', from: { id: 900 } }, { homeStartIso: TODAY.toUTC().toISO() });
   assert.equal(inserts.length, 0);
   assert.equal(sends.length, 0);
+});
+
+test('Status: Home reuses an APPROVED request return date (no re-ask, no clarification)', async () => {
+  // No OPEN request, but an approved home-time request already carries a usable
+  // return-to-road date → do not open a clarification or send any message.
+  const homeStartIso = TODAY.toUTC().toISO();
+  const { service, telegram, inserts, sends } = loadService({
+    open: null,
+    approvedRequest: { id: 12, status: 'approved', home_from: TODAY.toISODate(), return_to_road_date: TO },
+    homeStatus: { state: 'home', state_since: homeStartIso },
+  });
+  await service.handleActualHomeArrival(telegram, GROUP, { message_id: 77, text: 'Status: Home', from: { id: 900 } }, { homeStartIso });
+  assert.equal(inserts.length, 0, 'no new clarification request created');
+  assert.equal(sends.length, 0, 'the driver is NOT asked for a return date again');
+});
+
+test('Status: Home reuses an approved window that only carries home_to (last day home + 1)', async () => {
+  const homeStartIso = TODAY.toUTC().toISO();
+  const { service, telegram, inserts, sends } = loadService({
+    open: null,
+    approvedRequest: { id: 13, status: 'approved', home_from: TODAY.toISODate(), return_to_road_date: null, home_to: LAST_DAY },
+    homeStatus: { state: 'home', state_since: homeStartIso },
+  });
+  await service.handleActualHomeArrival(telegram, GROUP, { message_id: 77, text: 'Status: Home', from: { id: 900 } }, { homeStartIso });
+  assert.equal(inserts.length, 0);
+  assert.equal(sends.length, 0);
+});
+
+test('Status: Home still asks when the only approved return date is stale/unusable', async () => {
+  // Approved return date is in the past relative to this arrival → not reused.
+  const homeStartIso = TODAY.toUTC().toISO();
+  const stalePast = TODAY.minus({ days: 30 }).toISODate();
+  const { service, telegram, inserts, sends } = loadService({
+    open: null,
+    approvedRequest: { id: 14, status: 'approved', home_from: stalePast, return_to_road_date: stalePast },
+    homeStatus: { state: 'home', state_since: homeStartIso },
+    gemini: { text: new Error('force fallback') },
+  });
+  await service.handleActualHomeArrival(telegram, GROUP, { message_id: 77, text: 'Status: Home', from: { id: 900 } }, { homeStartIso });
+  assert.equal(inserts.length, 1, 'a fresh clarification is opened');
+  assert.equal(inserts[0].status, 'awaiting_return_to_road');
+  assert.equal(sends.length, 1);
+  assert.match(sends[0].text, /back on the road/i);
 });
 
 // ── handleHomeTimeClarificationReply (plain-text follow-up) ──

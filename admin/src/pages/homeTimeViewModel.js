@@ -284,6 +284,7 @@ export function buildDriverTimeline({ requests = [], history = [] }) {
   for (const request of requests) {
     items.push({
       id: `request-${request.id}`,
+      request_id: request.id,
       kind: "request",
       timestamp: request.requested_at || request.home_from || request.home_to || null,
       status: request.status,
@@ -292,6 +293,7 @@ export function buildDriverTimeline({ requests = [], history = [] }) {
       days_on_road: request.days_on_road,
       home_from: request.home_from || null,
       home_to: request.home_to || null,
+      return_to_road_date: request.return_to_road_date || null,
       decided_by_username: request.decided_by_username || null,
     });
   }

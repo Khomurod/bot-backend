@@ -15,7 +15,6 @@
  * stays free of a require cycle with bot.js.
  */
 const { DateTime } = require('luxon');
-const { Markup } = require('telegraf');
 const db = require('../database/db');
 const ht = require('../database/homeTime');
 const config = require('../config/config');
@@ -42,24 +41,16 @@ const {
 const { wholeDaysBetween } = require('./homeTimeConstants');
 const {
   normalizeHomeTimeWindow, statusForMissingFields, isReasonableWindow,
+  isUsableKnownReturnDate, resolveRequestReturnDate,
 } = require('./homeTimeDateResolver');
 const { classifyHomeTimeMessage, isHomeTimeCandidate } = require('./homeTimeIntentService');
 const homeTimeStatus = require('./homeTimeService');
 const { inferDriverType } = require('./driverProfileParse');
+const {
+  CALLBACK_PREFIX, escapeHtml, buildCardText, buildDecisionButtons, buildDecidedCardText,
+} = require('./homeTimeRequestCards');
 
-const CALLBACK_PREFIX = 'htreq';
 const AI_STATUS_CONFIDENCE_MIN = 70;
-
-function escapeHtml(text) {
-  return String(text || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-function approverTagLine() {
-  return HOME_TIME_APPROVER_MENTIONS.join(' / ');
-}
 
 function todayIsoChicago() {
   return DateTime.now().setZone('America/Chicago').toISODate();
@@ -293,42 +284,6 @@ async function generateRequestText({
   }
   return `I couldn't confirm how long you've been on the road, so I can't check the ${allowanceWeeks}-week policy. `
     + `I'm just a bot, so let the humans decide.`;
-}
-
-function buildCardText({
-  driverName, unitNumber, driverType, text, daysOnRoad, policyMet, homeFrom, homeTo, returnToRoadDate,
-}) {
-  const who = `${escapeHtml(driverName)}${unitNumber ? ` (Unit ${escapeHtml(unitNumber)})` : ''}`;
-  const policyApplies = homeTimePolicyApplies(driverType);
-  const flag = policyMet === false ? '⚠️ ' : '';
-  const backOnRoad = returnToRoadDate
-    ? ` — back on the road <b>${escapeHtml(returnToRoadDate)}</b>`
-    : '';
-  const lines = [
-    `🏠 <b>Home-Time Request — ${who}</b>`,
-    '',
-    `${flag}${escapeHtml(text)}`,
-    '',
-    `Driver type: <b>${policyApplies ? 'Company driver' : 'Owner operator'}</b>`,
-    `Home time: <b>${escapeHtml(homeFrom)} → ${escapeHtml(homeTo)}</b>${backOnRoad}`,
-  ];
-  if (daysOnRoad != null) {
-    lines.push(`On the road: <b>${daysOnRoad} days</b> (~${weeksFromDays(daysOnRoad)} weeks)`);
-  }
-  if (!policyApplies) {
-    lines.push('Policy: <b>N/A</b> (owner operator)');
-  }
-  lines.push('', `Only ${approverTagLine()} can decide.`);
-  return lines.join('\n');
-}
-
-function buildDecisionButtons(requestId) {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('✅ Approve', `${CALLBACK_PREFIX}:approve:${requestId}`),
-      Markup.button.callback('❌ Do Not Approve', `${CALLBACK_PREFIX}:deny:${requestId}`),
-    ],
-  ]);
 }
 
 /** Build + post the approval card, then store its message id. Dates are strings. */
@@ -665,6 +620,20 @@ async function handleActualHomeArrival(telegram, group, message, { homeStartIso 
     const homeStartDate = homeStartIso
       ? DateTime.fromISO(homeStartIso).toISODate()
       : DateTime.fromISO(messageIso(message)).toISODate();
+
+    // A valid return-to-road date may already be on record from an APPROVED
+    // request (registered by the driver earlier, by a manager, or corrected in
+    // the admin panel — an approved manual entry carries it too). When it is, use
+    // it and do NOT ask the driver again: no duplicate clarification, no reminder.
+    // The completed cycle still links to this request at close time via
+    // findDecidedRequestNearDate, so efficiency/commitment reporting is intact.
+    const approved = await ht.getApprovedHomeTimeRequestForGroup(group.id).catch(() => null);
+    const knownReturn = approved ? resolveRequestReturnDate(approved) : null;
+    if (knownReturn && isUsableKnownReturnDate(knownReturn, homeStartDate)) {
+      console.log(`[HOME-TIME-REQ] ${group.group_name || `Group ${group.id}`} arrived home; reusing registered return-to-road ${knownReturn} (no clarification).`);
+      return;
+    }
+
     const window = normalizeHomeTimeWindow({ homeStart: homeStartDate });
     await createClarification(telegram, group, message, {
       window, askKind: 'ask_unplanned_return', isUnplanned: true, settings,
@@ -867,24 +836,6 @@ async function processHomeTimeMessage(telegram, group, message, { statusResult =
   } catch (err) {
     console.error('[HOME-TIME-REQ] processHomeTimeMessage error:', err.message);
   }
-}
-
-function buildDecidedCardText(request, decision, decidedByUsername) {
-  const who = `${escapeHtml(request.driver_name || 'Driver')}`
-    + `${request.unit_number ? ` (Unit ${escapeHtml(request.unit_number)})` : ''}`;
-  const by = decidedByUsername ? `@${escapeHtml(decidedByUsername)}` : 'a manager';
-  const verdict = decision === 'approved'
-    ? `✅ <b>Approved</b> by ${by}`
-    : `❌ <b>Not approved</b> by ${by}`;
-  const back = request.return_to_road_date
-    ? ` — back on the road <b>${escapeHtml(request.return_to_road_date)}</b>`
-    : '';
-  return [
-    `🏠 <b>Home-Time Request — ${who}</b>`,
-    '',
-    verdict,
-    `Home time: <b>${escapeHtml(request.home_from || '—')} → ${escapeHtml(request.home_to || '—')}</b>${back}`,
-  ].join('\n');
 }
 
 /** Announce an approved request to the employee group. Non-fatal on failure. */

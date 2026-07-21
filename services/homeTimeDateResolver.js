@@ -111,6 +111,58 @@ function normalizeHomeTimeWindow({
   };
 }
 
+/**
+ * Date-only (YYYY-MM-DD) from a DATE-column value that node-pg may hand back as a
+ * JS Date OR a string. Deliberately UTC-based (NOT the Chicago TZ used elsewhere):
+ * a bare DATE has no time, so shifting it into a negative-offset zone would move
+ * a midnight-UTC Date to the previous calendar day. Returns null when unusable.
+ */
+function isoDateOnly(value) {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) {
+    const dt = DateTime.fromJSDate(value, { zone: 'utc' });
+    return dt.isValid ? dt.toISODate() : null;
+  }
+  const s = String(value).trim();
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  const dt = DateTime.fromISO(s, { zone: 'utc' });
+  return dt.isValid ? dt.toISODate() : null;
+}
+
+/**
+ * The return-to-road date already registered on a home-time request. Prefers the
+ * explicit `return_to_road_date`; falls back to `home_to` (last day home) + 1 day
+ * so a manually-registered window that only carries the last-day-home still yields
+ * a usable return. Returns a YYYY-MM-DD string or null.
+ */
+function resolveRequestReturnDate(request) {
+  if (!request) return null;
+  const explicit = isoDateOnly(request.return_to_road_date);
+  if (explicit) return explicit;
+  const lastDayHome = isoDateOnly(request.home_to);
+  return lastDayHome ? returnFromLastDayHome(lastDayHome) : null;
+}
+
+/**
+ * Is a previously-registered return-to-road date usable for a driver who has just
+ * arrived home on `arrivalDate`? True only when the return is a valid date
+ * strictly AFTER the arrival and no more than `maxHomeDays` out, so a stale or
+ * unrelated old approval is never silently reused in place of asking the driver.
+ */
+function isUsableKnownReturnDate(returnDate, arrivalDate, { maxHomeDays = 60 } = {}) {
+  const ret = isoDateOnly(returnDate);
+  const arr = isoDateOnly(arrivalDate);
+  if (!ret || !arr) return false;
+  const r = DateTime.fromISO(ret, { zone: 'utc' });
+  const a = DateTime.fromISO(arr, { zone: 'utc' });
+  if (!r.isValid || !a.isValid) return false;
+  const days = r.diff(a, 'days').days;
+  if (days <= 0) return false;
+  if (days > Math.max(1, Number(maxHomeDays) || 60)) return false;
+  return true;
+}
+
 /** Map the missing-field set to the request's clarification status. */
 function statusForMissingFields(missingFields = []) {
   const set = new Set(missingFields);
@@ -142,10 +194,13 @@ function isReasonableWindow(homeStart, returnToRoad, referenceIso, timezone = TZ
 module.exports = {
   TZ,
   toISODate,
+  isoDateOnly,
   addDays,
   computeHomeDays,
   lastDayHomeFromReturn,
   returnFromLastDayHome,
+  resolveRequestReturnDate,
+  isUsableKnownReturnDate,
   normalizeHomeTimeWindow,
   statusForMissingFields,
   isReasonableWindow,

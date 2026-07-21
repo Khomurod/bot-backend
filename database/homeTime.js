@@ -189,7 +189,7 @@ async function listCyclesForEfficiency({ sinceIso = null } = {}) {
             dp.first_name, dp.last_name, dp.unit_number AS profile_unit_number,
             dp.driver_type, dp.status AS driver_status,
             req.status AS linked_request_status,
-            req.home_from AS req_home_from, req.return_to_road_date AS req_return_to_road_date
+            req.home_from AS req_home_from, req.return_to_road_date AS req_return_to_road_date, req.home_to AS req_home_to
      FROM driver_road_history h
      JOIN groups g ON g.id = h.group_id
      LEFT JOIN driver_profiles dp ON dp.group_id = h.group_id

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   normalizeHomeTimeWindow, statusForMissingFields, computeHomeDays,
   lastDayHomeFromReturn, returnFromLastDayHome, isReasonableWindow,
+  resolveRequestReturnDate, isUsableKnownReturnDate, isoDateOnly,
 } = require('../services/homeTimeDateResolver');
 
 // §3 / §8 — the canonical date model. home_from = arrive home; return_to_road =
@@ -74,6 +75,44 @@ test('date derivation helpers are consistent', () => {
   assert.equal(computeHomeDays('2026-07-13', '2026-07-17'), 4);
   assert.equal(lastDayHomeFromReturn('2026-07-17'), '2026-07-16');
   assert.equal(returnFromLastDayHome('2026-07-16'), '2026-07-17');
+});
+
+// §4 — reuse an already-known return date instead of re-asking the driver.
+
+test('isoDateOnly extracts a plain date from a string, a JS Date (UTC, no shift), or ISO datetime', () => {
+  assert.equal(isoDateOnly('2026-07-17'), '2026-07-17');
+  assert.equal(isoDateOnly('2026-07-17T13:45:00Z'), '2026-07-17');
+  assert.equal(isoDateOnly(new Date('2026-07-17T00:00:00Z')), '2026-07-17'); // no TZ off-by-one
+  assert.equal(isoDateOnly(null), null);
+  assert.equal(isoDateOnly(''), null);
+});
+
+test('resolveRequestReturnDate prefers explicit return_to_road_date', () => {
+  assert.equal(
+    resolveRequestReturnDate({ return_to_road_date: '2026-07-17', home_to: '2026-07-20' }),
+    '2026-07-17'
+  );
+});
+
+test('resolveRequestReturnDate falls back to home_to + 1 (last day home → return)', () => {
+  assert.equal(resolveRequestReturnDate({ return_to_road_date: null, home_to: '2026-07-16' }), '2026-07-17');
+  assert.equal(resolveRequestReturnDate({}), null);
+  assert.equal(resolveRequestReturnDate(null), null);
+});
+
+test('isUsableKnownReturnDate accepts a future return within the window', () => {
+  assert.equal(isUsableKnownReturnDate('2026-07-17', '2026-07-13'), true);
+});
+
+test('isUsableKnownReturnDate rejects a return on/before the arrival', () => {
+  assert.equal(isUsableKnownReturnDate('2026-07-13', '2026-07-13'), false);
+  assert.equal(isUsableKnownReturnDate('2026-07-10', '2026-07-13'), false);
+});
+
+test('isUsableKnownReturnDate rejects a stale/too-far return (> maxHomeDays out)', () => {
+  assert.equal(isUsableKnownReturnDate('2026-12-13', '2026-07-13'), false); // ~150 days
+  assert.equal(isUsableKnownReturnDate('2026-07-20', '2026-07-13', { maxHomeDays: 3 }), false);
+  assert.equal(isUsableKnownReturnDate(null, '2026-07-13'), false);
 });
 
 test('isReasonableWindow rejects reversed / far-past / far-future windows', () => {
