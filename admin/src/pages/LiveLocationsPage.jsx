@@ -4,6 +4,7 @@ import "leaflet/dist/leaflet.css";
 import * as api from "../api";
 import { timeAgo } from "../utils/formatTime";
 import { trailerMarkerStyle, displayTrailerStatus } from "../utils/trailerState";
+import useVisibleInterval from "../utils/useVisibleInterval";
 import {
   DEFAULT_FILTERS, sanitizeFilters, buildDriverPositionIndex,
   filterTrailers, calculateAssetCounts, getVisibleMapPoints,
@@ -333,12 +334,9 @@ export default function LiveLocationsPage() {
     }
   }, [snapshot, selectedUnit]);
 
-  // Auto-refresh
-  useEffect(() => {
-    if (!autoRefresh) return undefined;
-    const id = setInterval(() => load({ force: false }), AUTO_REFRESH_MS);
-    return () => clearInterval(id);
-  }, [autoRefresh, load]);
+  // Auto-refresh — paused while the browser tab is hidden (refreshes on return)
+  // so a live-map dashboard left open does not poll the database indefinitely.
+  useVisibleInterval(() => load({ force: false }), AUTO_REFRESH_MS, autoRefresh);
 
   // ── Map init ──
   // The map must initialize independently of GPS/load/route data — it only needs

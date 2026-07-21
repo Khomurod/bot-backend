@@ -2,8 +2,11 @@
  * FleetView sync job — runs the FleetView snapshot build on an interval so the
  * UI always reads a warm database cache instead of blocking on live APIs.
  *
- * Cadence (decision): default 30s live snapshot refresh, overridable with
- * FLEETVIEW_SYNC_INTERVAL_SECONDS (clamped to a safe 10–600s range). The job:
+ * Cadence (decision): default 120s live snapshot refresh, overridable with
+ * FLEETVIEW_SYNC_INTERVAL_SECONDS (clamped to a safe 10–600s range). This job
+ * runs continuously server-side whether or not anyone is watching, so a tighter
+ * interval is pure standing database egress; 120s keeps the overview usably
+ * fresh while cutting that steady read traffic ~4x vs the old 30s. The job:
  *   - runs ONLY in FleetView real mode (no-op in demo/local);
  *   - never overlaps itself (a slow run delays the next tick, it does not stack)
  *     via a setTimeout chain + the sync service's own re-entrancy guard;
@@ -20,7 +23,7 @@
 
 const { isReal } = require('./config');
 
-const DEFAULT_INTERVAL_SECONDS = 30;
+const DEFAULT_INTERVAL_SECONDS = 120;
 const MIN_INTERVAL_SECONDS = 10;
 const MAX_INTERVAL_SECONDS = 600;
 

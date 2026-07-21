@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "../api";
+import useVisibleInterval from "../utils/useVisibleInterval";
 
 /**
  * /recruiters — public, full-screen, gamified leaderboard.
@@ -313,12 +314,10 @@ export default function RecruitersPublicPage() {
     }
   }, [view]);
 
-  useEffect(() => {
-    load();
-    // Live auto-refresh only makes sense for today's board.
-    const dataTimer = view.mode === "today" ? setInterval(load, REFRESH_MS) : null;
-    return () => { if (dataTimer) clearInterval(dataTimer); };
-  }, [load, view.mode]);
+  useEffect(() => { load(); }, [load]);
+  // Live auto-refresh only for today's board; pauses while the tab is hidden.
+  // (A permanent wall display is never "hidden", so it stays live as before.)
+  useVisibleInterval(load, REFRESH_MS, view.mode === "today");
 
   useEffect(() => {
     const clockTimer = setInterval(() => setClock(new Date()), 1000);
