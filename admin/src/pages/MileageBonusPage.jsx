@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import * as api from "../api";
+import useVisibleInterval from "../utils/useVisibleInterval";
 
 const STATUS_BADGE = {
   pending: { label: "Pending", bg: "rgba(245,158,11,0.18)", color: "#f59e0b" },
@@ -81,12 +82,9 @@ export default function MileageBonusPage() {
     load();
   }, [load]);
 
-  // Poll while a run is in progress so the table + cards refresh live.
-  useEffect(() => {
-    if (!overview?.running) return undefined;
-    const timer = setInterval(load, 8000);
-    return () => clearInterval(timer);
-  }, [overview?.running, load]);
+  // Poll while a run is in progress so the table + cards refresh live — paused
+  // while the browser tab is hidden.
+  useVisibleInterval(load, 8000, Boolean(overview?.running));
 
   const handleRun = async () => {
     if (!window.confirm(

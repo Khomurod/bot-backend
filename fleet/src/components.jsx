@@ -37,8 +37,14 @@ export function usePolledApi(path, deps = [], { enabled = true, intervalMs = 300
     const controller = new AbortController();
     let timer = null;
 
+    const isHidden = () => typeof document !== 'undefined' && document.hidden;
+
     const fetchOnce = async () => {
       if (!alive) return;
+      // Skip background refreshes while the tab is hidden — a dashboard left open
+      // in an inactive tab otherwise polls the database forever (egress drain).
+      // The first load and the on-visible refresh below still run.
+      if (!firstLoad.current && isHidden()) return;
       setState((s) => (firstLoad.current ? { ...s, loading: true } : { ...s, refreshing: true }));
       try {
         const res = await api(path, { signal: controller.signal });
@@ -54,9 +60,19 @@ export function usePolledApi(path, deps = [], { enabled = true, intervalMs = 300
       }
     };
 
+    // When the tab becomes visible again, refresh once immediately so the user
+    // never stares at stale data after the hidden-tab pause.
+    const onVisible = () => { if (!isHidden()) fetchOnce(); };
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible);
+
     fetchOnce();
     if (intervalMs > 0) timer = setInterval(fetchOnce, intervalMs);
-    return () => { alive = false; controller.abort(); if (timer) clearInterval(timer); };
+    return () => {
+      alive = false;
+      controller.abort();
+      if (timer) clearInterval(timer);
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, tick, enabled, intervalMs, ...deps]);
 

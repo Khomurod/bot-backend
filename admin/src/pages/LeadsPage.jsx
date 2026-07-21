@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import * as api from "../api";
 import { timeAgo } from "../utils/formatTime";
+import useVisibleInterval from "../utils/useVisibleInterval";
 
 const SOURCE_BADGE = {
   facebook: { label: "Facebook", bg: "#1877F2" },
@@ -91,9 +92,10 @@ export default function LeadsPage() {
     const mounted = { current: true };
     setLoading(true);
     fetchData(mounted);
-    const interval = setInterval(() => fetchData(mounted), 15000);
-    return () => { mounted.current = false; clearInterval(interval); };
+    return () => { mounted.current = false; };
   }, [fetchData]);
+  // Recurring refresh pauses while the tab is hidden (refreshes on return).
+  useVisibleInterval(() => fetchData(), 15000);
 
   const copyScript = async () => {
     try {
