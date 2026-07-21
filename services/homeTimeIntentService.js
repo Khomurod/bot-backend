@@ -18,9 +18,18 @@ const { DateTime } = require('luxon');
 const { callGeminiJson } = require('./geminiClient');
 const { parseDriverStatus } = require('./homeTimeConstants');
 const {
-  hasHomeTimeSignal, parseHomeTimeWindowText, looksLikeDateReply,
+  parseHomeTimeWindowText, looksLikeDateReply,
 } = require('./homeTimeRequestConstants');
+const { hasHomeTimeSignal, hasStrongHomeTimeSignal } = require('./homeTimeSignals');
 const { normalizeHomeTimeWindow, TZ } = require('./homeTimeDateResolver');
+
+// A driver-initiated "home_time_request" verdict is only ACTED ON (a clarification
+// is opened / a card is posted) when the AI is at least this confident OR the
+// message carries corroborating strong wording / an explicit date. This is what
+// stops a low-confidence guess on an incidental "home" mention from opening a
+// request. Actual status changes keep their own, separate confidence gate in the
+// request service.
+const REQUEST_CONFIDENCE_MIN = 60;
 
 const VALID_INTENTS = [
   'actual_home_status', 'actual_road_status', 'home_time_request',
@@ -84,6 +93,12 @@ function buildIntentPrompt({
     '',
     'CRITICAL: a plan or a question is NOT an actual status change. Only set isActualStatusChange=true when the message reports the driver IS home now or IS back on the road now.',
     '',
+    'A message that merely CONTAINS the word "home" is NOT automatically a request. Ignore incidental uses:',
+    'a place or errand ("Home Depot", "home 20 miles out", "home screen"), a greeting, or simply reporting',
+    'progress ("almost home", "heading home for the night", "home at the yard/terminal"). Choose',
+    'home_time_request ONLY when the driver — or a rep on their behalf — is actually asking to TAKE TIME OFF',
+    'or be home for a period. When unsure, prefer question_or_discussion or unrelated with a LOW confidence.',
+    '',
     'Also extract any home-time dates the message states:',
     '- homeStartDate: the day the driver arrives/arrived home.',
     '- returnToRoadDate: the day the driver leaves home to go back on the road.',
@@ -128,9 +143,39 @@ function clampConfidence(value) {
 }
 
 /**
+ * Precision guard for a driver-initiated request. The candidate gate is broad
+ * (any "home" reaches the model), so a low-confidence AI "home_time_request" on
+ * an incidental mention must NOT open a request. We act on such a verdict only
+ * when the model is reasonably confident OR the message itself carries strong
+ * time-off wording / an explicit date. Otherwise the request intent is dropped
+ * (downgraded to question_or_discussion) while every extracted date is kept, so
+ * a genuine follow-up during an open clarification is unaffected. Never touches
+ * actual-status verdicts.
+ */
+function applyRequestPrecisionGuard(verdict, { triggerText = '' } = {}) {
+  const requested = verdict.requestedHomeTime || verdict.intent === 'home_time_request';
+  if (!requested) return verdict;
+  const hasDate = Boolean(verdict.window
+    && (verdict.window.homeStartDate || verdict.window.returnToRoadDate));
+  const corroborated = hasStrongHomeTimeSignal(triggerText) || hasDate;
+  const confident = verdict.confidence == null
+    ? corroborated
+    : (verdict.confidence >= REQUEST_CONFIDENCE_MIN || corroborated);
+  if (confident) return verdict;
+  return {
+    ...verdict,
+    intent: verdict.intent === 'home_time_request' ? 'question_or_discussion' : verdict.intent,
+    requestedHomeTime: false,
+    reason: `Precision guard: low-confidence home mention (conf ${verdict.confidence ?? 'n/a'}, `
+      + `no strong wording/date) — not treated as a request. ${verdict.reason || ''}`.slice(0, 300),
+  };
+}
+
+/**
  * Deterministic fallback when the AI is unavailable. Uses the exact-status parser
- * and home-time wording detector so an outage neither drops a real signal nor
- * invents one. Ambiguous text stays 'unrelated' (no state change).
+ * and the STRICT time-off wording detector so an outage neither drops a clear
+ * signal nor invents one: only unambiguous wording ("PTO", "days off", "home for
+ * a week") opens a request, while ambiguous "home" chatter stays 'unrelated'.
  */
 function classifyDeterministically({ triggerText, transcript, todayIso, hasOpenClarification }) {
   const text = String(triggerText || '');
@@ -152,11 +197,11 @@ function classifyDeterministically({ triggerText, transcript, todayIso, hasOpenC
       reason: 'AI unavailable — exact "Status: Ready/Rolling" detected.',
     };
   }
-  if (hasHomeTimeSignal(haystack)) {
+  if (hasStrongHomeTimeSignal(haystack)) {
     return {
       intent: 'home_time_request', isActualStatusChange: false, requestedHomeTime: true,
       raw: { homeStart: window.homeFrom, lastDayHome: window.homeTo }, confidence: null,
-      reason: 'AI unavailable — home-time wording detected.',
+      reason: 'AI unavailable — explicit time-off wording detected.',
     };
   }
   if (hasOpenClarification && looksLikeDateReply(text)) {
@@ -226,7 +271,7 @@ async function classifyHomeTimeMessage(input = {}) {
     // regardless of what the model set.
     const isActual = Boolean(parsed.isActualStatusChange)
       && (intent === 'actual_home_status' || intent === 'actual_road_status');
-    return finalize({
+    const verdict = finalize({
       intent,
       confidence: clampConfidence(parsed.confidence),
       isActualStatusChange: isActual,
@@ -241,6 +286,7 @@ async function classifyHomeTimeMessage(input = {}) {
       lastDayHome: parsed.lastDayHome,
       durationDays: parsed.durationDays,
     });
+    return applyRequestPrecisionGuard(verdict, { triggerText });
   } catch (err) {
     console.warn('[HOME-TIME-INTENT] AI classification failed, using deterministic fallback:', err.message);
     const det = classifyDeterministically({ triggerText, transcript, todayIso: today, hasOpenClarification });
@@ -250,8 +296,10 @@ async function classifyHomeTimeMessage(input = {}) {
 
 module.exports = {
   VALID_INTENTS,
+  REQUEST_CONFIDENCE_MIN,
   isHomeTimeCandidate,
   buildIntentPrompt,
   classifyHomeTimeMessage,
   classifyDeterministically,
+  applyRequestPrecisionGuard,
 };

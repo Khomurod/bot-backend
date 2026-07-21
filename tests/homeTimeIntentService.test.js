@@ -102,3 +102,76 @@ test('AI unavailable: casual "almost home" is NOT an actual state change', async
   assert.equal(v.isActualStatusChange, false);
   assert.equal(v.intent, 'unrelated');
 });
+
+// ── precision guard: an incidental "home" mention must not open a request ──
+
+test('precision guard: low-confidence request with no strong wording/date is NOT a request', async () => {
+  const svc = loadService({
+    gemini: {
+      intent: 'home_time_request', confidence: 35, isActualStatusChange: false,
+      requestedHomeTime: true, reason: 'maybe',
+    },
+  });
+  const v = await svc.classifyHomeTimeMessage({ triggerText: 'I might swing by home at some point', todayIso: TODAY });
+  assert.notEqual(v.intent, 'home_time_request');
+  assert.equal(v.requestedHomeTime, false);
+  assert.match(v.reason, /precision guard/i);
+});
+
+test('precision guard: low confidence BUT explicit time-off wording IS kept as a request', async () => {
+  const svc = loadService({
+    gemini: {
+      intent: 'home_time_request', confidence: 35, isActualStatusChange: false, requestedHomeTime: true,
+    },
+  });
+  const v = await svc.classifyHomeTimeMessage({ triggerText: 'requesting PTO please', todayIso: TODAY });
+  assert.equal(v.intent, 'home_time_request');
+  assert.equal(v.requestedHomeTime, true);
+});
+
+test('precision guard: low confidence BUT an explicit date IS kept as a request', async () => {
+  const svc = loadService({
+    gemini: {
+      intent: 'home_time_request', confidence: 30, isActualStatusChange: false,
+      requestedHomeTime: true, homeStartDate: '2026-07-20',
+    },
+  });
+  const v = await svc.classifyHomeTimeMessage({ triggerText: 'home on the 20th', todayIso: TODAY });
+  assert.equal(v.intent, 'home_time_request');
+  assert.equal(v.window.homeStartDate, '2026-07-20');
+});
+
+test('precision guard: a confident request (>= threshold) is kept even without strong wording', async () => {
+  const svc = loadService({
+    gemini: {
+      intent: 'home_time_request', confidence: 85, isActualStatusChange: false, requestedHomeTime: true,
+    },
+  });
+  const v = await svc.classifyHomeTimeMessage({ triggerText: 'he was hoping to head back to see the family', todayIso: TODAY });
+  assert.equal(v.intent, 'home_time_request');
+  assert.equal(v.requestedHomeTime, true);
+});
+
+test('applyRequestPrecisionGuard is a no-op for non-request verdicts', () => {
+  const svc = loadService({ gemini: {} });
+  const verdict = {
+    intent: 'actual_home_status', confidence: 20, requestedHomeTime: false, window: {},
+  };
+  assert.equal(svc.applyRequestPrecisionGuard(verdict, { triggerText: 'home' }), verdict);
+});
+
+// ── fallback conservatism: during an AI outage, only STRONG wording opens a request ──
+
+test('AI unavailable: soft "heading home" does NOT open a request', async () => {
+  const svc = loadService({ gemini: new Error('no key') });
+  const v = await svc.classifyHomeTimeMessage({ triggerText: 'heading home for the night boss', todayIso: TODAY });
+  assert.notEqual(v.intent, 'home_time_request');
+  assert.equal(v.requestedHomeTime, false);
+});
+
+test('AI unavailable: explicit "requesting PTO" DOES open a request', async () => {
+  const svc = loadService({ gemini: new Error('no key') });
+  const v = await svc.classifyHomeTimeMessage({ triggerText: 'requesting PTO for next week', todayIso: TODAY });
+  assert.equal(v.intent, 'home_time_request');
+  assert.equal(v.requestedHomeTime, true);
+});
