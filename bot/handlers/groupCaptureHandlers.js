@@ -18,6 +18,7 @@ const { handleDriverGroupStatus } = require('../../services/homeTimeService');
 const recentMessageBuffer = require('../../services/recentMessageBuffer');
 const { processHomeTimeMessage } = require('../../services/homeTimeRequestService');
 const { messageMentionsApprovers } = require('../../services/homeTimeRequestConstants');
+const { applyAutoReaction } = require('../../services/autoReactionService');
 
 /**
  * Persist a single Telegram user object (from any update field) into `drivers`,
@@ -217,6 +218,14 @@ function registerGroupCaptureHandlers(bot) {
       const chat = ctx.chat;
       // Only log if it's a group
       if (chat && (chat.type === 'group' || chat.type === 'supergroup')) {
+        // Auto-react to the sender's message when an admin configured a rule for
+        // them. Runs for ANY group (not just driver groups), detached, and never
+        // throws — a cached in-memory lookup keeps it off the DB hot path.
+        if (ctx.message) {
+          applyAutoReaction(bot.telegram, ctx.message).catch((err) => {
+            console.error('[BOT] applyAutoReaction failed:', err.message);
+          });
+        }
         const group = await db.getGroupByTelegramId(chat.id);
         if (group && ctx.message?.pinned_message?.message_id) {
           const sourceEventDate = Number.isFinite(ctx.message.date)

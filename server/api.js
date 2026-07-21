@@ -160,6 +160,9 @@ app.use('/api/live-locations', createLiveLocationsRouter({ authMiddleware: legac
 const { createBotUsersRouter } = require('./routes/botUsersRoutes');
 app.use('/api/bot-users', createBotUsersRouter({ authMiddleware: legacyAuthMiddleware }));
 
+const { createAutoReactionsRouter } = require('./routes/autoReactionsRoutes');
+app.use('/api/auto-reactions', createAutoReactionsRouter({ authMiddleware: legacyAuthMiddleware }));
+
 const { createSettingsRouter } = require('./routes/settingsRoutes');
 app.use('/api/settings', createSettingsRouter({ authMiddleware: legacyAuthMiddleware, telegram: bot.telegram }));
 

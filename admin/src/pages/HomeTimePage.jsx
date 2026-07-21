@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import * as api from "../api";
 import HomeTimeEfficiencyTab from "./HomeTimeEfficiencyTab";
+import HomeTimeSettingsCard from "./HomeTimeSettingsCard";
 import {
   HOME_TIME_SORT_COLUMNS,
   STATUS_FILTERS,
@@ -617,63 +618,7 @@ export default function HomeTimePage() {
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: 20, marginBottom: 20 }}>
-        <h3>Settings</h3>
-        {settings && (
-          <div style={{ display: "grid", gap: 12, maxWidth: 560 }}>
-            <label>
-              <input
-                type="checkbox"
-                checked={settings.enabled}
-                onChange={(e) => saveSettings({ enabled: e.target.checked })}
-                disabled={saving}
-              />{" "}
-              Tracking enabled
-            </label>
-            <div className="home-time-form-grid">
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>Weeks allowed on the road</label>
-                <input
-                  className="form-input"
-                  type="number"
-                  min="1"
-                  max="52"
-                  defaultValue={settings.road_allowance_weeks}
-                  onBlur={(e) => saveSettings({ road_allowance_weeks: Number(e.target.value) })}
-                />
-              </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>Days allowed at home</label>
-                <input
-                  className="form-input"
-                  type="number"
-                  min="1"
-                  max="60"
-                  defaultValue={settings.home_allowance_days}
-                  onBlur={(e) => saveSettings({ home_allowance_days: Number(e.target.value) })}
-                />
-              </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label>Bonus per extra week ($)</label>
-                <input
-                  className="form-input"
-                  type="number"
-                  min="0"
-                  step="1"
-                  defaultValue={settings.bonus_per_week}
-                  onBlur={(e) => saveSettings({ bonus_per_week: Number(e.target.value) })}
-                />
-              </div>
-            </div>
-            <p className="home-time-muted" style={{ margin: 0 }}>
-              Company-driver policy: at least {settings.road_allowance_weeks} weeks on the road, then{" "}
-              {settings.home_allowance_days} days home. Each full extra road week earns{" "}
-              {money(settings.bonus_per_week)} for company drivers only. Owner operators stay visible for tracking but
-              do not accrue the company bonus.
-            </p>
-          </div>
-        )}
-      </div>
+      <HomeTimeSettingsCard settings={settings} saving={saving} onSave={saveSettings} />
 
       <div className="card" style={{ marginBottom: 20 }}>
         <h3>Import from screenshots</h3>

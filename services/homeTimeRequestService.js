@@ -336,6 +336,8 @@ async function postRequestCard(telegram, group, {
   requestId, driverName, unitNumber, driverType, daysOnRoad, policyMet,
   homeFrom, homeTo, returnToRoadDate, settings,
 }) {
+  const notifyChatId = settings?.completed_notify_group_id ? String(settings.completed_notify_group_id) : null;
+  if (!notifyChatId) { console.warn(`[HOME-TIME-REQ] Request #${requestId}: completed-notification group not configured — card not posted (the driver group is never used for completed cards).`); return null; }
   const allowanceWeeks = settings?.road_allowance_weeks || 4;
   const homeAllowanceDays = settings?.home_allowance_days || 4;
   const text = await generateRequestText({
@@ -344,12 +346,10 @@ async function postRequestCard(telegram, group, {
   const cardText = buildCardText({
     driverName, unitNumber, driverType, text, daysOnRoad, policyMet, homeFrom, homeTo, returnToRoadDate,
   });
-  const sent = await safeSend(() => telegram.sendMessage(group.telegram_group_id, cardText, {
-    parse_mode: 'HTML',
-    disable_web_page_preview: true,
-    ...buildDecisionButtons(requestId),
+  const sent = await safeSend(() => telegram.sendMessage(notifyChatId, cardText, {
+    parse_mode: 'HTML', disable_web_page_preview: true, ...buildDecisionButtons(requestId),
   }));
-  await ht.setHomeTimeRequestMessage(requestId, group.telegram_group_id, sent?.message_id || null);
+  await ht.setHomeTimeRequestMessage(requestId, notifyChatId, sent?.message_id || null);
   return sent;
 }
 

@@ -22,6 +22,7 @@ const { inferDriverType, isInactiveGroup } = require('../../services/driverProfi
 const { homeTimePolicyApplies } = require('../../services/homeTimeConstants');
 const { listCanonicalDriverGroups } = require('../../services/driverGroupDirectoryService');
 const { buildEfficiencyReport } = require('../../services/homeTimeEfficiencyService');
+const { parseDateInput, parseDateOnly, normalizeNotifyGroupId } = require('./homeTimeRouteHelpers');
 
 // Supported efficiency date-range windows (days). 'all' = no lower bound.
 const EFFICIENCY_RANGES = { 30: 30, 90: 90, 180: 180 };
@@ -58,26 +59,6 @@ function resolveDriverType(row) {
 
 function buildDirectoryIndex(rows) {
   return new Map((rows || []).map((row) => [Number(row.group_id), row]));
-}
-
-/** Accept a YYYY-MM-DD or full ISO datetime; return a UTC ISO string or null. */
-function parseDateInput(value) {
-  if (value == null || value === '') return null;
-  const str = String(value);
-  let dt = DateTime.fromISO(str, { zone: 'utc' });
-  if (!dt.isValid && /^\d{4}-\d{2}-\d{2}$/.test(str)) {
-    dt = DateTime.fromISO(`${str}T00:00:00`, { zone: 'utc' });
-  }
-  return dt.isValid ? dt.toISO() : null;
-}
-
-/** Accept only a calendar date; return YYYY-MM-DD or null. */
-function parseDateOnly(value) {
-  if (value == null || value === '') return null;
-  const str = String(value).trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) return null;
-  const dt = DateTime.fromISO(str);
-  return dt.isValid ? dt.toISODate() : null;
 }
 
 /** Shape a driver-group access row for the admin view (adds the read verdict). */
@@ -547,6 +528,13 @@ function createHomeTimeRouter({ authMiddleware }) {
           if (!(h >= 1 && h <= 168)) return res.status(400).json({ error: `${col} must be 1-168 hours` });
           patch[col] = h;
         }
+      }
+      // Telegram group that receives COMPLETED request cards. '' clears it; the
+      // driver's own group is never used for completed cards.
+      if (b.completed_notify_group_id !== undefined) {
+        const gid = normalizeNotifyGroupId(b.completed_notify_group_id);
+        if (gid === null) return res.status(400).json({ error: 'completed_notify_group_id must be a numeric Telegram chat id' });
+        patch.completed_notify_group_id = gid || null;
       }
       const settings = await ht.updateHomeTimeSettings(patch);
       res.json({ settings });

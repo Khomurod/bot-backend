@@ -1327,6 +1327,14 @@ ALTER TABLE home_time_settings
   ADD COLUMN IF NOT EXISTS reminder_second_hours INTEGER NOT NULL DEFAULT 12
     CHECK (reminder_second_hours BETWEEN 1 AND 168);
 
+-- Telegram chat id (stored as text to keep full precision on large negative
+-- supergroup ids) that receives COMPLETED home-time request cards. When NULL the
+-- completed card is not posted at all — it is NEVER sent to the driver's own
+-- group. Date-clarification asks and the <allowance policy reminder still go to
+-- the driver group (see services/homeTimeRequestService.js).
+ALTER TABLE home_time_settings
+  ADD COLUMN IF NOT EXISTS completed_notify_group_id TEXT;
+
 -- Current home/road state for each driver group (one row per group).
 CREATE TABLE IF NOT EXISTS driver_home_status (
   group_id INTEGER PRIMARY KEY REFERENCES groups(id) ON DELETE CASCADE,
@@ -1928,6 +1936,35 @@ ALTER TABLE bot_users ADD COLUMN IF NOT EXISTS source TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_bot_users_last_interaction
   ON bot_users(last_interaction_at DESC);
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- TABLE: auto_reaction_rules — the bot automatically reacts to every message
+-- posted by a chosen user with a chosen emoji. A rule identifies its target by
+-- a stable telegram_user_id (when the admin picked from the seen-users list)
+-- and/or a telegram_username (when typed by hand); at least one is required. A
+-- user-id match wins over a username match at send time. emoji must be one of
+-- the Bot-API-supported reactions (validated in the API layer).
+CREATE TABLE IF NOT EXISTS auto_reaction_rules (
+  id SERIAL PRIMARY KEY,
+  telegram_user_id BIGINT NULL,
+  telegram_username TEXT NULL,
+  emoji TEXT NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  note TEXT NULL,
+  created_by TEXT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT auto_reaction_rules_identity_check
+    CHECK (telegram_user_id IS NOT NULL OR telegram_username IS NOT NULL)
+);
+
+-- One rule per target identity: re-adding the same user updates their emoji
+-- rather than stacking duplicate reactions. Partial uniques so a username-only
+-- rule and an id-only rule never conflict on a shared NULL.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_auto_reaction_user_id
+  ON auto_reaction_rules(telegram_user_id) WHERE telegram_user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_auto_reaction_username
+  ON auto_reaction_rules(LOWER(telegram_username)) WHERE telegram_username IS NOT NULL;
 
 -- ─────────────────────────────────────────────────────────────────────────
 -- TABLE: eld_settings — single-row store for the live truck-location provider

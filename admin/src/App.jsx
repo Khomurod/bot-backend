@@ -29,6 +29,7 @@ const HomeTimePage = lazy(() => import("./pages/HomeTimePage"));
 const GroupAccessPage = lazy(() => import("./pages/GroupAccessPage"));
 const FuelMonitorPage = lazy(() => import("./pages/FuelMonitorPage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
+const AutoReactionsPage = lazy(() => import("./pages/AutoReactionsPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const RecruiterKpiPage = lazy(() => import("./pages/RecruiterKpiPage"));
 const RecruitersPublicPage = lazy(() => import("./pages/RecruitersPublicPage"));
@@ -262,6 +263,7 @@ export default function App() {
     home_time: <HomeTimePage />,
     fuel_monitor: <FuelMonitorPage />,
     users: <UsersPage />,
+    auto_reactions: <AutoReactionsPage />,
     group_access: <GroupAccessPage />,
     manager: <MessageManagerPage />,
     bot_messages: <BotMessagesPage />,

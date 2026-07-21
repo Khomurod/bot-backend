@@ -9,6 +9,8 @@ const TODAY = DateTime.now().setZone('America/Chicago');
 const FROM = TODAY.plus({ days: 3 }).toISODate();
 const TO = TODAY.plus({ days: 7 }).toISODate(); // 4 days after FROM (return-to-road)
 const LAST_DAY = TODAY.plus({ days: 6 }).toISODate(); // last day home = return − 1
+// Completed request cards go here, NEVER to the driver's group (GROUP below).
+const NOTIFY_GROUP_ID = '-1009999';
 
 /**
  * Load homeTimeRequestService with its DB / AI / Telegram / status deps mocked.
@@ -27,6 +29,7 @@ function loadService({
   },
   ack = { id: 99 }, // markHomeTimeAcknowledged (claim wins by default)
   transcript = '',
+  notifyGroupId = NOTIFY_GROUP_ID, // completed-request notification group (null = unconfigured)
 } = {}) {
   const servicePath = path.resolve(__dirname, '../services/homeTimeRequestService.js');
   const dbPath = path.resolve(__dirname, '../database/db.js');
@@ -63,6 +66,7 @@ function loadService({
       async getHomeTimeSettings() {
         return {
           road_allowance_weeks: 4, home_allowance_days: 4, reminder_first_hours: 12, reminder_second_hours: 12,
+          completed_notify_group_id: notifyGroupId,
         };
       },
       async getDriverHomeStatus() { return homeStatus; },
@@ -166,7 +170,21 @@ test('approver tag WITH dates posts the approval card immediately', async () => 
   assert.equal(inserts[0].returnToRoadDate, TO); // last-day-home + 1
   assert.equal(sends.length, 1);
   assert.ok(sends[0].extra?.reply_markup, 'card carries inline buttons');
+  assert.equal(sends[0].chatId, NOTIFY_GROUP_ID, 'card posts to the notification group, not the driver group');
+  assert.notEqual(sends[0].chatId, GROUP.telegram_group_id);
   assert.equal(messageLinks.length, 1);
+  assert.equal(messageLinks[0].chatId, NOTIFY_GROUP_ID, 'stored message chat id is the notification group');
+});
+
+test('approver tag WITH dates but NO notification group → card is NOT posted to the driver group', async () => {
+  const { service, telegram, inserts, sends, messageLinks } = loadService({
+    notifyGroupId: null,
+    gemini: { json: { is_home_time_request: true, confidence: 'high', dates_specified: true, home_from: FROM, home_to: LAST_DAY } },
+  });
+  await service.handleApproverMention(telegram, GROUP, { message_id: 10, text: `home ${FROM} to ${LAST_DAY} @tomr_robins0n`, from: { id: 1, username: 'rep' } });
+  assert.equal(inserts.length, 1, 'request is still recorded for the admin panel');
+  assert.equal(sends.length, 0, 'no card posted anywhere (never the driver group)');
+  assert.equal(messageLinks.length, 0);
 });
 
 test('approver tag WITHOUT dates opens a clarification, replying to the tag message', async () => {
@@ -253,10 +271,16 @@ test('driver answers the return date (no Telegram reply) → completes + posts c
   await service.handleHomeTimeClarificationReply(telegram, GROUP, { message_id: 88, text: `back on the road ${TO}`, from: { id: 900, username: 'driver' } });
   assert.equal(fulfills.length, 1);
   assert.equal(fulfills[0].payload.returnToRoadDate, TO);
-  // one card + one ack message
+  // one card (notification group) + one ack (driver group)
   assert.ok(sends.length >= 2, 'card and acknowledgment both sent');
-  assert.ok(sends.some((s) => s.extra?.reply_markup), 'approval card posted');
-  assert.equal(reactions.length, 1, 'compliant → 👍 reaction');
+  const card = sends.find((s) => s.extra?.reply_markup);
+  const ack = sends.find((s) => !s.extra?.reply_markup);
+  assert.ok(card, 'approval card posted');
+  assert.equal(card.chatId, NOTIFY_GROUP_ID, 'card → notification group');
+  assert.equal(ack.chatId, GROUP.telegram_group_id, 'ack → driver group (existing behavior)');
+  assert.equal(ack.extra?.reply_to_message_id, 88, 'ack replies to the driver message');
+  assert.equal(reactions.length, 1, 'compliant → 👍 reaction on the driver message');
+  assert.equal(reactions[0].chatId, GROUP.telegram_group_id, 'reaction is in the driver group');
 });
 
 test('over-home window → firm policy reminder, NO 👍', async () => {
@@ -275,7 +299,9 @@ test('over-home window → firm policy reminder, NO 👍', async () => {
   await service.handleHomeTimeClarificationReply(telegram, GROUP, { message_id: 88, text: `back ${longReturn}`, from: { id: 900 } });
   assert.equal(fulfills.length, 1);
   assert.equal(reactions.length, 0, 'not compliant → no 👍');
-  assert.ok(sends.some((s) => /4 weeks on the road/i.test(s.text)), 'firm policy reminder sent');
+  const warning = sends.find((s) => /4 weeks on the road/i.test(s.text));
+  assert.ok(warning, 'firm policy reminder sent');
+  assert.equal(warning.chatId, GROUP.telegram_group_id, 'under-allowance reminder stays in the driver group');
 });
 
 test('unrelated plain text is NOT consumed as an answer', async () => {

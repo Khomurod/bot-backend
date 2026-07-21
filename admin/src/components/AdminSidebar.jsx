@@ -36,6 +36,7 @@ const NAV_SECTIONS = [
       { key: 'home_time', icon: '🏠', label: 'Driver Home Time' },
       { key: 'fuel_monitor', icon: '⛽', label: 'Fuel Monitor' },
       { key: 'users', icon: '👤', label: 'Users' },
+      { key: 'auto_reactions', icon: '😀', label: 'Auto Reactions' },
       { key: 'group_access', icon: '🔍', label: 'Bot Group Access' },
     ],
   },

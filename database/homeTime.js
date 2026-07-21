@@ -15,7 +15,7 @@ async function getHomeTimeSettings() {
 
 const SETTINGS_COLUMNS = [
   'enabled', 'road_allowance_weeks', 'home_allowance_days', 'bonus_per_week',
-  'reminder_first_hours', 'reminder_second_hours',
+  'reminder_first_hours', 'reminder_second_hours', 'completed_notify_group_id',
 ];
 
 async function updateHomeTimeSettings(patch = {}) {
