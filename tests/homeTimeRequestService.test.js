@@ -90,9 +90,10 @@ function loadService({
   };
   require.cache[htmlPath] = { exports: { safeSend: async (fn) => fn() } };
   require.cache[bufferPath] = { exports: { renderTranscript() { return transcript; } } };
+  const stateTransitions = [];
   require.cache[statusPath] = {
     exports: {
-      async applyStateTransition() { return null; },
+      async applyStateTransition(_telegram, _group, payload) { stateTransitions.push(payload); return null; },
       async closeHomeStayOnReturn() { return null; },
     },
   };
@@ -127,7 +128,7 @@ function loadService({
 
   return {
     service: require(servicePath), telegram,
-    inserts, sends, messageLinks, fulfills, updates, clarMsgs, reactions, geminiCalls,
+    inserts, sends, messageLinks, fulfills, updates, clarMsgs, reactions, geminiCalls, stateTransitions,
   };
 }
 
@@ -223,6 +224,53 @@ test('approver tag while already home → no card (unplanned flow handles that)'
   assert.equal(inserts.length, 0);
   assert.equal(sends.length, 0);
   assert.equal(geminiCalls.json.length, 0, 'short-circuits before AI');
+});
+
+// ── manager mention must not force a request on a temporary stop / errand ──
+
+test('classifyHomeTimeRequest: confident AI request on an errand is refused (temporary stop)', async () => {
+  const { service } = loadService({
+    gemini: { json: { is_home_time_request: true, confidence: 'high', reason: 'ai thinks home' } },
+  });
+  const v = await service.classifyHomeTimeRequest({
+    triggerText: 'He needs to pass by his house to pick up his personal belongings @tomr_robins0n',
+  });
+  assert.equal(v.isRequest, false);
+  assert.match(v.reason, /temporary stop|errand/i);
+});
+
+test('approver tag on the EXACT "pass by the house to grab belongings" example → no card, no clarification', async () => {
+  const { service, telegram, inserts, sends } = loadService({
+    gemini: { json: { is_home_time_request: true, confidence: 'high', reason: 'ai over-eager' } },
+  });
+  await service.handleApproverMention(telegram, GROUP, {
+    message_id: 10,
+    text: 'Please talk to the driver. He needs to pass by his house to pick up his personal belongings @tomr_robins0n',
+    from: { id: 1 },
+  });
+  assert.equal(inserts.length, 0, 'no request recorded for a temporary stop');
+  assert.equal(sends.length, 0, 'nothing sent to anyone');
+});
+
+test('approver tag, AI unavailable + errand wording → not surfaced', async () => {
+  const { service, telegram, inserts, sends } = loadService({ gemini: { json: new Error('no key') } });
+  await service.handleApproverMention(telegram, GROUP, {
+    message_id: 10, text: 'he needs to go home to grab his charger @tomr_robins0n', from: { id: 1 },
+  });
+  assert.equal(inserts.length, 0);
+  assert.equal(sends.length, 0);
+});
+
+test('approver tag, AI unavailable + genuine "go home" wording → clarification still opens', async () => {
+  const { service, telegram, inserts, sends } = loadService({
+    gemini: { json: new Error('no key'), text: new Error('force fallback') },
+  });
+  await service.handleApproverMention(telegram, GROUP, {
+    message_id: 10, text: 'driver wants to go home, been out 6 weeks @tomr_robins0n', from: { id: 1 },
+  });
+  assert.equal(inserts.length, 1, 'genuine time-off wording is still surfaced during an outage');
+  assert.equal(inserts[0].status, 'awaiting_dates');
+  assert.equal(sends.length, 1);
 });
 
 // ── handleActualHomeArrival (Status: Home without an earlier request) ──
@@ -386,4 +434,41 @@ test('orchestrator: repeated same-status line does nothing conversational', asyn
   });
   assert.equal(inserts.length, 0);
   assert.equal(sends.length, 0);
+});
+
+test('orchestrator: AI "actual_home_status" on a brief ERRAND stop does NOT flip the tracker or ask', async () => {
+  const { service, telegram, stateTransitions, inserts, sends } = loadService({
+    open: null, clarification: null,
+    homeStatus: { state: 'road', state_since: TODAY.minus({ days: 30 }).toUTC().toISO() },
+    gemini: {
+      json: {
+        intent: 'actual_home_status', confidence: 95, isActualStatusChange: true,
+        requestedHomeTime: false, reason: 'ai thinks driver is home',
+      },
+    },
+  });
+  await service.processHomeTimeMessage(telegram, GROUP, {
+    message_id: 5, text: "he's at the house grabbing his charger, then back out", from: { id: 900 },
+  }, { statusResult: null, mentionsApprover: false });
+  assert.equal(stateTransitions.length, 0, 'no state transition applied for a brief stop');
+  assert.equal(inserts.length, 0, 'no unplanned-arrival request opened');
+  assert.equal(sends.length, 0, 'driver is not asked about a return-to-road date');
+});
+
+test('orchestrator: AI "actual_home_status" on a genuine arrival DOES flip the tracker', async () => {
+  const { service, telegram, stateTransitions } = loadService({
+    open: null, clarification: null,
+    homeStatus: { state: 'road', state_since: TODAY.minus({ days: 30 }).toUTC().toISO() },
+    gemini: {
+      json: {
+        intent: 'actual_home_status', confidence: 95, isActualStatusChange: true,
+        requestedHomeTime: false, reason: 'driver arrived home',
+      },
+    },
+  });
+  await service.processHomeTimeMessage(telegram, GROUP, {
+    message_id: 6, text: 'uyga yetib keldim', from: { id: 900 },
+  }, { statusResult: null, mentionsApprover: false });
+  assert.equal(stateTransitions.length, 1, 'a genuine home arrival still transitions');
+  assert.equal(stateTransitions[0].newState, 'home');
 });

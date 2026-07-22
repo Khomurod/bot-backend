@@ -20,7 +20,9 @@ const { parseDriverStatus } = require('./homeTimeConstants');
 const {
   parseHomeTimeWindowText, looksLikeDateReply,
 } = require('./homeTimeRequestConstants');
-const { hasHomeTimeSignal, hasStrongHomeTimeSignal } = require('./homeTimeSignals');
+const {
+  hasHomeTimeSignal, hasStrongHomeTimeSignal, looksLikeTemporaryHomeStop,
+} = require('./homeTimeSignals');
 const { normalizeHomeTimeWindow, TZ } = require('./homeTimeDateResolver');
 
 // A driver-initiated "home_time_request" verdict is only ACTED ON (a clarification
@@ -93,11 +95,31 @@ function buildIntentPrompt({
     '',
     'CRITICAL: a plan or a question is NOT an actual status change. Only set isActualStatusChange=true when the message reports the driver IS home now or IS back on the road now.',
     '',
-    'A message that merely CONTAINS the word "home" is NOT automatically a request. Ignore incidental uses:',
-    'a place or errand ("Home Depot", "home 20 miles out", "home screen"), a greeting, or simply reporting',
-    'progress ("almost home", "heading home for the night", "home at the yard/terminal"). Choose',
-    'home_time_request ONLY when the driver — or a rep on their behalf — is actually asking to TAKE TIME OFF',
-    'or be home for a period. When unsure, prefer question_or_discussion or unrelated with a LOW confidence.',
+    'Judge the MEANING and INTENTION of the message, not the mere presence of the words "home" or "house".',
+    'A message that only mentions a home, house, family, or hometown is NOT a home-time request.',
+    'The following are NOT home-time requests — do NOT open one, and do NOT ask about arrive-home or',
+    'return-to-road dates:',
+    '- A brief stop or errand: "pass by his house", "swing by home", "stop by the house".',
+    '- Picking up or dropping off something/someone: clothes, belongings, documents, medicine, equipment,',
+    '  a package, or a person ("drop him off at home").',
+    "- Passing THROUGH the driver's hometown or area while continuing the current trip.",
+    '- Sleeping at home ONE night because the route passes nearby ("home for the night").',
+    "- A pickup, delivery, repair, oil change, or appointment located near the driver's home.",
+    '- Progress / incidental use ("almost home", "heading home for the night", "home at the yard/terminal",',
+    '  "Home Depot", "home 20 miles out"), a greeting, or just discussing someone\'s house.',
+    'Concrete example that is NOT a request: "Please talk to the driver. He needs to pass by his house to',
+    'pick up his personal belongings." He is only making a short stop and keeps working → answer unrelated.',
+    '',
+    'It IS a home_time_request only when the driver — or a rep on the driver\'s behalf — is actually asking',
+    'to TAKE TIME OFF or be home for a period: staying home for several days, days off, vacation/PTO, being',
+    'routed home for a break, or giving arrive-home / back-on-the-road dates. Informal phrasing still counts',
+    '("he\'s been out 6 weeks and wants a few days with his family").',
+    '',
+    'Base your decision on the MESSAGE TO CLASSIFY below. Use the recent conversation only when it is clearly',
+    'part of the same, still-open request; an earlier, resolved, or unrelated home-time discussion must NOT',
+    'turn this message into a request. A manager being tagged does NOT by itself make it a request — managers',
+    'are tagged for loads, rates, breakdowns, paperwork, and many other reasons. When the meaning is unclear,',
+    'prefer question_or_discussion or unrelated with a LOW confidence; never guess a request.',
     '',
     'Also extract any home-time dates the message states:',
     '- homeStartDate: the day the driver arrives/arrived home.',
@@ -157,17 +179,38 @@ function applyRequestPrecisionGuard(verdict, { triggerText = '' } = {}) {
   if (!requested) return verdict;
   const hasDate = Boolean(verdict.window
     && (verdict.window.homeStartDate || verdict.window.returnToRoadDate));
+
+  // A brief stop / errand near home is never a request — no matter how confident
+  // the model is. This is the "pass by the house to grab belongings" family: the
+  // meaning of the text does not support real home time, so we do not rely on AI
+  // confidence alone. Any extracted dates stay on the verdict.
+  if (looksLikeTemporaryHomeStop(triggerText, { hasDate })) {
+    return downgradeRequestVerdict(verdict,
+      'Precision guard: temporary stop / errand near home (no time-off wording or date) '
+      + '— not treated as a request.');
+  }
+
   const corroborated = hasStrongHomeTimeSignal(triggerText) || hasDate;
   const confident = verdict.confidence == null
     ? corroborated
     : (verdict.confidence >= REQUEST_CONFIDENCE_MIN || corroborated);
   if (confident) return verdict;
+  return downgradeRequestVerdict(verdict,
+    `Precision guard: low-confidence home mention (conf ${verdict.confidence ?? 'n/a'}, `
+    + 'no strong wording/date) — not treated as a request.');
+}
+
+/**
+ * Drop a request verdict to plain discussion while KEEPING any extracted dates and
+ * the rest of the verdict. Used by the precision guard so an incidental "home"
+ * mention or an errand never opens a request.
+ */
+function downgradeRequestVerdict(verdict, why) {
   return {
     ...verdict,
     intent: verdict.intent === 'home_time_request' ? 'question_or_discussion' : verdict.intent,
     requestedHomeTime: false,
-    reason: `Precision guard: low-confidence home mention (conf ${verdict.confidence ?? 'n/a'}, `
-      + `no strong wording/date) — not treated as a request. ${verdict.reason || ''}`.slice(0, 300),
+    reason: `${why} ${verdict.reason || ''}`.slice(0, 300),
   };
 }
 
@@ -197,7 +240,12 @@ function classifyDeterministically({ triggerText, transcript, todayIso, hasOpenC
       reason: 'AI unavailable — exact "Status: Ready/Rolling" detected.',
     };
   }
-  if (hasStrongHomeTimeSignal(haystack)) {
+  // Strong time-off wording opens a request when the AI is down — UNLESS the same
+  // text is really a brief stop / errand near home ("go home to grab his stuff"),
+  // in which case we stay conservative and do not fabricate a request.
+  const hasWindowDate = Boolean(window.homeFrom || window.homeTo);
+  if (hasStrongHomeTimeSignal(haystack)
+    && !looksLikeTemporaryHomeStop(haystack, { hasDate: hasWindowDate })) {
     return {
       intent: 'home_time_request', isActualStatusChange: false, requestedHomeTime: true,
       raw: { homeStart: window.homeFrom, lastDayHome: window.homeTo }, confidence: null,

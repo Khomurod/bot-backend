@@ -39,6 +39,7 @@ const {
   isReasonableHomeWindow,
 } = require('./homeTimeRequestConstants');
 const { wholeDaysBetween } = require('./homeTimeConstants');
+const { looksLikeTemporaryHomeStop } = require('./homeTimeSignals');
 const {
   normalizeHomeTimeWindow, statusForMissingFields, isReasonableWindow,
   isUsableKnownReturnDate, resolveRequestReturnDate,
@@ -208,6 +209,17 @@ async function classifyHomeTimeRequest(input) {
       homeTo = String(parsed.home_to);
     }
 
+    // Backstop: a brief stop / errand near home is never a request — even with a
+    // manager tag and a confident model — unless there is genuine time-off
+    // evidence (explicit wording or a real date window). "Please talk to the
+    // driver, he needs to pass by his house to grab his belongings" stops here.
+    if (isRequest && looksLikeTemporaryHomeStop(haystack, { hasDate: Boolean(homeFrom && homeTo) })) {
+      isRequest = false;
+      homeFrom = null;
+      homeTo = null;
+      reason = `Temporary stop / errand near home, not time off — not treated as a request. ${reason}`.slice(0, 300);
+    }
+
     return {
       isRequest, reason, confidence: confidence || null,
       datesSpecified: Boolean(homeFrom && homeTo), homeFrom, homeTo, aiUsed: true,
@@ -216,11 +228,17 @@ async function classifyHomeTimeRequest(input) {
     console.warn('[HOME-TIME-REQ] AI classification failed, using keyword heuristic:', err.message);
     const window = keywordSignal ? parseHomeTimeWindowText(haystack, today) : null;
     const valid = window && isReasonableHomeWindow(window.homeFrom, window.homeTo, today);
+    // Surface home-time wording for human review — but NOT a brief stop / errand
+    // near home that carries no genuine time-off evidence.
+    const surfaced = keywordSignal
+      && !looksLikeTemporaryHomeStop(haystack, { hasDate: Boolean(valid) });
     return {
-      isRequest: keywordSignal,
-      reason: keywordSignal
+      isRequest: surfaced,
+      reason: surfaced
         ? 'AI unavailable — home-time wording detected, surfaced for human review.'
-        : 'AI unavailable — no home-time wording detected, not surfaced.',
+        : (keywordSignal
+          ? 'AI unavailable — wording looks like a brief stop / errand near home, not surfaced.'
+          : 'AI unavailable — no home-time wording detected, not surfaced.'),
       confidence: null,
       datesSpecified: Boolean(valid),
       homeFrom: valid ? window.homeFrom : null,
@@ -796,6 +814,13 @@ async function processHomeTimeMessage(telegram, group, message, { statusResult =
     if (verdict.isActualStatusChange && (verdict.confidence == null || verdict.confidence >= AI_STATUS_CONFIDENCE_MIN)) {
       const newState = verdict.intent === 'actual_home_status' ? 'home'
         : (verdict.intent === 'actual_road_status' ? 'road' : null);
+      // A brief stop / errand near home ("at the house grabbing my charger, then
+      // back out") is NOT the driver arriving home for a stay. Do not flip the
+      // tracker to home or open the return-to-road ask off a soft AI guess. The
+      // official "Status: Home" line is deterministic and handled earlier, so this
+      // only gates the fuzzy AI-status path — a genuine "he is home" (no errand
+      // wording) still transitions normally.
+      if (newState === 'home' && looksLikeTemporaryHomeStop(text)) return;
       if (newState) {
         const applied = await homeTimeStatus.applyStateTransition(telegram, group, {
           newState, eventAt: messageIso(message), statusText: text,
