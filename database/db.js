@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../config/config');
 const { pool, query, ping } = require('./pool');
+const { runMigrations, checksum, MIGRATIONS_DIR } = require('./migrate');
 
 // Feature modules extracted from this file. db.js stays the compatibility
 // seam: it re-exports every helper below so existing `require('./db')` /
@@ -41,14 +42,34 @@ const trailerOverviewDb = require('./trailerOverview');
 const trailerAvailabilityDb = require('./trailerAvailability');
 
 /**
- * Initialize database tables from schema.sql
+ * Initialize the database.
+ *
+ * Two phases, both idempotent and safe on every boot:
+ *   1. BASELINE — apply database/schema.sql verbatim in a single transaction.
+ *      This is the accumulated, additive, idempotent schema (generated from the
+ *      organized segments in database/baseline/). Unchanged critical path.
+ *   2. FORWARD MIGRATIONS — apply any versioned, run-once migrations in
+ *      database/migrations/ that the schema_migrations ledger has not recorded.
+ *
+ * Any failure in either phase throws, aborting boot (process exits) — the same
+ * fail-fast behavior the single-file schema apply has always had.
  */
 async function initializeDatabase() {
   const schemaPath = path.join(__dirname, 'schema.sql');
   const schema = fs.readFileSync(schemaPath, 'utf-8');
   try {
+    const baselineStart = process.hrtime.bigint();
     await pool.query(schema);
+    const baselineMs = Number((process.hrtime.bigint() - baselineStart) / 1000000n);
     console.log('[DB] Database tables verified/created.');
+
+    // Forward migrations: record the baseline in the ledger and apply any
+    // pending versioned migrations. Additive around the baseline above.
+    await runMigrations(pool, {
+      migrationsDir: MIGRATIONS_DIR,
+      baselineChecksum: checksum(schema),
+      baselineMs,
+    });
 
     // Auto-tag employee group if EMPLOYEE_GROUP_ID is set
     if (config.employeeGroupId) {

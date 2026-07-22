@@ -4,9 +4,14 @@ This directory is the **durable, in-repo documentation of the PostgreSQL
 database** shared by the two services in this system:
 
 - **`bot-backend`** (this repo) — the Telegram bot, Express API, admin panel,
-  and scheduled jobs. It **owns the canonical schema** in
-  [`database/schema.sql`](../../database/schema.sql), which is applied
-  idempotently on every boot by `database/db.js → initializeDatabase()`.
+  and scheduled jobs. It **owns the canonical schema**, managed by the migration
+  system in [`database/migrate/`](../../database/migrate/): `database/db.js →
+  initializeDatabase()` applies the idempotent baseline
+  [`database/schema.sql`](../../database/schema.sql) (GENERATED from
+  [`database/baseline/*.sql`](../../database/baseline/)) and then any pending,
+  run-once forward migrations in
+  [`database/migrations/`](../../database/migrations/). See
+  [`migration-notes.md`](migration-notes.md).
 - **`samsara-integration`** — a standalone Samsara → Telegram poller that
   **shares the same `DATABASE_URL`**. It reads the `groups` table for routing
   and owns a handful of `samsara_*` tables plus writes `safety_event_video_jobs`.
@@ -46,9 +51,10 @@ npm run db:docs:from-schema
 ## When to run it
 
 **Every pull request that changes the schema must also run `npm run db:docs`
-and commit the regenerated files.** "Changes the schema" means any edit to
-`database/schema.sql`, any new `CREATE TABLE`/`ALTER TABLE`, or any new table
-created by the `samsara-integration` service.
+and commit the regenerated files.** "Changes the schema" means any new forward
+migration in `database/migrations/`, any edit to a `database/baseline/*.sql`
+segment (followed by `npm run build:schema`), any new `CREATE TABLE`/`ALTER
+TABLE`, or any new table created by the `samsara-integration` service.
 
 Also update `table-metadata.json` when you **add** a table (give it a purpose +
 owning service) or **retire** one (set `status` to `legacy`/`retired` and add a

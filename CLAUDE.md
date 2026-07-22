@@ -27,8 +27,14 @@ documentation task in this repository:
   database URLs, ELD/RingCentral/Facebook secrets) in code, logs, commits, or
   chat output.
 - Never make destructive database changes without explicit approval and a
-  backup. Schema changes must be additive and idempotent — `database/schema.sql`
-  runs on every boot.
+  backup. Schema changes must be additive and idempotent. The database is
+  managed by the migration system in `database/migrate/`:
+  `initializeDatabase()` applies the baseline `database/schema.sql` (GENERATED
+  from `database/baseline/*.sql` via `npm run build:schema`; runs verbatim on
+  every boot) and then any pending, run-once forward migrations in
+  `database/migrations/` (tracked in the `schema_migrations` ledger). Put NEW
+  changes in a forward migration (`npm run migrate:new -- <name>`); do not
+  hand-edit `database/schema.sql`. See `docs/database/migration-notes.md`.
 - Never trust old repository memory without checking the current source code.
 - Run the relevant tests before claiming success, and report exact test results
   (command, pass/fail counts). Do not claim a test passed unless it was run.

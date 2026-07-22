@@ -1,58 +1,101 @@
 # Migration Notes
 
-## How schema changes are applied (no migration framework)
+## How schema changes are applied
 
-This app has **no migration runner**. The single source of truth is
-[`database/schema.sql`](../../database/schema.sql), which `database/db.js →
-initializeDatabase()` executes **verbatim on every boot**. The file is written to
-be **idempotent**:
+The database is managed by a lightweight, versioned migration system in
+[`database/migrate/`](../../database/migrate/). There are two layers, both
+applied by `database/db.js → initializeDatabase()` on every boot:
 
-- `CREATE TABLE IF NOT EXISTS …`
-- `ALTER TABLE … ADD COLUMN IF NOT EXISTS …`
-- `CREATE INDEX IF NOT EXISTS …`
-- seed rows via `INSERT … ON CONFLICT DO NOTHING`
+1. **Baseline** — [`database/schema.sql`](../../database/schema.sql), applied
+   verbatim in a single transaction. This is the accumulated, **additive,
+   idempotent** schema (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE … ADD COLUMN
+   IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, guarded `DO $$` blocks, seed
+   `INSERT … ON CONFLICT`, marker-guarded backfills). It re-runs safely on every
+   boot and self-heals seed rows. `schema.sql` is a **generated** artifact,
+   assembled from the per-domain segment files in
+   [`database/baseline/`](../../database/baseline/) by
+   [`scripts/build-schema.js`](../../scripts/build-schema.js).
 
-**To change the schema:** edit `schema.sql` (keep every statement idempotent),
-deploy, and the change is applied on the next boot. Then run `npm run db:docs`
-and commit the regenerated docs.
+2. **Forward migrations** — versioned, **run-once** `.sql` files in
+   [`database/migrations/`](../../database/migrations/). The runner records each
+   in the `schema_migrations` ledger and never re-runs it. This is where **all
+   new** schema/seed/backfill changes go.
 
-The `samsara-integration` service shares the same database. It creates its own
-`samsara_*` tables (and mirrors `safety_event_video_jobs`) with
-`CREATE TABLE IF NOT EXISTS` in `src/db.js → initPgDb()`. `bot-backend` remains
-the canonical owner of `safety_event_*` (music/settings) tables.
+```
+initializeDatabase()
+  ├─ apply database/schema.sql            (baseline; one transaction; every boot)
+  └─ runMigrations()
+       ├─ ensure schema_migrations ledger
+       ├─ refresh baseline sentinel row
+       └─ apply each pending database/migrations/NNNN_*.sql
+            (in version order, each in its own transaction, then recorded)
+```
 
-## Changes in this feature (driver-group speeding-video music overlay)
+The `schema_migrations` ledger is created and owned by the runner (not by
+`schema.sql`), so the baseline file and the tests that apply it carry no
+migration bookkeeping. The table is additive and safe on the database shared
+with `samsara-integration`.
 
-Added to `schema.sql` (all additive; no existing object altered/dropped):
+### To change the schema (going forward)
 
-| Object | Type | Notes |
-|---|---|---|
-| `safety_event_music_assets` | table | Uploaded music clips; bytes in `file_data BYTEA` (`storage_kind='db_bytea'`). Partial unique index `uniq_safety_event_music_active` enforces ≤1 active clip. |
-| `safety_event_video_settings` | table | Single row (`id=1`) of overlay settings; seeded via `ON CONFLICT DO NOTHING`. |
-| `safety_event_video_jobs` | table | Best-effort overlay-job ledger (also created by samsara `initPgDb`). |
-| `idx_safety_event_music_created`, `idx_safety_event_video_jobs_event`, `idx_safety_event_video_jobs_status_created` | indexes | Supporting indexes. |
+```bash
+npm run migrate:new -- add_widget_flags        # scaffold database/migrations/NNNN_add_widget_flags.sql
+# edit the generated file (keep it additive + idempotent)
+npm run migrate                                # apply baseline + pending migrations
+npm run migrate:status                         # show ledger state
+npm run db:docs                                # regenerate docs, then commit
+```
 
-These were validated by loading `schema.sql` into a clean PostgreSQL 16 instance
-(0 errors) and re-applying it (idempotent — only benign "already exists"
-notices).
+Directives inside a migration file:
+
+- `-- migrate:kind: schema|seed|backfill` — records intent in the ledger.
+- `-- migrate:no-transaction` — apply outside a transaction (for
+  `CREATE INDEX CONCURRENTLY`, `ALTER TYPE … ADD VALUE`, …). Must be internally
+  idempotent — a mid-way failure leaves it unrecorded and it retries next boot.
+
+Editing an already-applied migration is an error: the runner logs a
+**checksum-drift** warning and does **not** re-execute it. Add a new migration
+instead. See [`database/migrations/README.md`](../../database/migrations/README.md).
+
+### To change the baseline (rare — maintenance only)
+
+Edit the relevant segment in `database/baseline/`, then run
+`npm run build:schema` and commit the regenerated `database/schema.sql`. A test
+(`tests/schemaBaselineBuild.test.js`) fails if the two drift. Do **not**
+hand-edit `database/schema.sql`. See
+[`database/baseline/README.md`](../../database/baseline/README.md). Baseline
+edits are reserved for squashing shipped forward migrations or reorganizing
+segments — day-to-day changes are forward migrations.
+
+### Invariants (unchanged)
+
+- Everything the app applies on boot stays additive and idempotent; no
+  destructive `DROP`/`ALTER … DROP` without an explicit backup and approval
+  (`CLAUDE.md`). New columns nullable or defaulted.
+- Pushing this repo can auto-deploy — review the full diff before pushing.
+- The `samsara-integration` service shares the database. It creates its own
+  `samsara_*` tables (and mirrors `safety_event_video_jobs`) with
+  `CREATE TABLE IF NOT EXISTS` in `src/db.js → initPgDb()`. `bot-backend` remains
+  the canonical owner of `safety_event_*` (music/settings) tables.
 
 ## Deferred / opt-in improvements (see `audit-report.md`)
 
 - **`database/optional-index-improvements.sql`** — operator-reviewed, additive
   FK indexes (safe) plus commented redundant-index drops (reversible). Run
   manually after reviewing index usage; it is **not** part of `schema.sql`.
+  (A good candidate to convert into a forward migration once reviewed.)
 - **Timestamp standardization (`timestamp` → `timestamptz`)** — DEFERRED, since
   it reinterprets stored values. Do it per-column in a maintenance window with a
   backup; see the audit report for the exact `ALTER` form and rollback.
 
 ## Rollback guidance
 
-- New tables: `DROP TABLE IF EXISTS safety_event_video_jobs,
-  safety_event_video_settings, safety_event_music_assets CASCADE;` (destroys the
-  stored music — export first if needed). Because everything is `IF NOT EXISTS`,
-  simply reverting `schema.sql` will not drop already-created tables; drop them
-  explicitly if you need to roll back.
-- Opt-in indexes: `DROP INDEX IF EXISTS <name>;` (all listed in the opt-in file).
+- The baseline and forward migrations are additive, so reverting the code does
+  **not** drop already-created objects. To roll back a specific change, write a
+  new, reviewed migration (or manual `DROP`/`ALTER`) with a backup first.
+- A forward migration that has not yet been applied anywhere can simply be
+  deleted before it ships. Once applied in production it is immutable — supersede
+  it with a new migration.
 
 ## Before any destructive DB change — backup command
 

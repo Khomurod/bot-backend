@@ -28,9 +28,12 @@ after deploy on the live service.
 - ☐ **[MANUAL]** You read `docs/architecture/module-map.md` for the feature you
   touched, including its "Risks / Do NOT touch yet" notes.
 - ☐ **[AUTO]** **Schema changes update the DB docs.** If this change touched
-  `database/schema.sql` (or added/retired any table), you ran `npm run db:docs`
-  and committed the regenerated `docs/database/*`, and updated
-  `docs/database/table-metadata.json` for any new/retired table.
+  the schema (a new forward migration in `database/migrations/`, or a
+  `database/baseline/*.sql` segment), you ran `npm run db:docs` and committed the
+  regenerated `docs/database/*`, and updated `docs/database/table-metadata.json`
+  for any new/retired table. If you edited a baseline segment, you also ran
+  `npm run build:schema` and committed the regenerated `database/schema.sql`
+  (`npm run build:schema:check` must pass).
 
 ---
 
@@ -159,8 +162,8 @@ after deploy on the live service.
 
 | # | What / Why | How to check |
 |---|---|---|
-| I1 | **Existing tables are not accidentally changed.** | **[MANUAL]** `git diff database/schema.sql` — no `DROP`, no destructive `ALTER`; new columns nullable/defaulted. |
-| I2 | Migrations are safe. | **[MANUAL]** `schema.sql` uses `CREATE TABLE IF NOT EXISTS`; additive only. |
+| I1 | **Existing tables are not accidentally changed.** | **[MANUAL]** `git diff database/schema.sql database/baseline/ database/migrations/` — no `DROP`, no destructive `ALTER`; new columns nullable/defaulted. |
+| I2 | Migrations are safe. | **[MANUAL]** Baseline + forward migrations are additive (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`). **[AUTO]** `npm run build:schema:check` passes (schema.sql matches segments); migration-runner tests pass. |
 | I3 | **Backups exist before a production migration.** | **[MANUAL]** Take/confirm a Postgres backup before any manual migration. |
 | I4 | Idempotency ledgers still work. | **[AUTO]** dedupe tests (see module-map ledger list) pass. |
 | I5 | Important events are logged. | **[PROD]** Sends recorded in `bot_sent_messages`; errors in logs. |
@@ -195,8 +198,11 @@ or lead event.**
    leads-bot changed).
 2. ☐ **[AUTO]** Lint/typecheck: *none configured in this repo* — mark N/A.
 3. ☐ **[AUTO]** Build the admin panel: `npm run build --prefix admin` → success.
-4. ☐ **[MANUAL]** Run DB migrations **only if needed** — this app auto-applies
-   additive `schema.sql` on boot; take a backup first if anything changed.
+4. ☐ **[MANUAL]** DB migrations run automatically on boot — the app applies the
+   additive baseline `schema.sql` and then any pending forward migrations in
+   `database/migrations/` (recorded in `schema_migrations`). Take a backup first
+   if anything changed. To apply without a full boot: `npm run migrate`
+   (`npm run migrate:status` to inspect).
 5. ☐ **[MANUAL]** Confirm environment variables on Render match
    `render.yaml` / `.env.example`.
 6. ☐ **[MANUAL]** Confirm you are deploying the intended **production branch**.

@@ -292,7 +292,10 @@ cd admin && npm run dev
 │   └── routes/facebookLeadsRoutes.js  # Admin API for lead auto-SMS config
 ├── database/
 │   ├── db.js                    # Database helpers (groups, drivers, questions)
-│   └── schema.sql               # PostgreSQL schema (auto-migrates on startup)
+│   ├── schema.sql               # Baseline schema (GENERATED from baseline/; auto-applied on boot)
+│   ├── baseline/                # Per-domain baseline segments (source of schema.sql)
+│   ├── migrations/              # Versioned, run-once forward migrations
+│   └── migrate/                 # Migration runner + schema_migrations ledger
 ├── services/
 │   └── translationService.js    # OpenAI translation service
 ├── config/
