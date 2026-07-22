@@ -162,7 +162,8 @@ organization should converge toward.
 
 | Concern | Current files |
 |---|---|
-| DB pool/connection | `database/db.js` (single `pg.Pool`, `max=5`, SSL auto-detect, `initializeDatabase()` runs `schema.sql`, `query()`, `ping()`) |
+| DB pool/connection | `database/db.js` (single `pg.Pool`, `max=5`, SSL auto-detect, `initializeDatabase()` applies the baseline `schema.sql` then runs forward migrations via `database/migrate/`, `query()`, `ping()`) |
+| Migration system | `database/migrate/` (runner + `schema_migrations` ledger), `database/baseline/*.sql` (baseline segments → generated `schema.sql`), `database/migrations/*.sql` (versioned run-once). See `docs/database/migration-notes.md`. |
 | Per-feature DB helpers | `database/botUsers.js`, `mileageBonus.js`, `raiseApproval.js`, `homeTime.js`, `eldSettings.js`, `datatruckDocuments.js`, `driverLocationMonitors.js`, `ringcentral.js` |
 | External API clients | Telegram (`bot/bot.js`), RingCentral (`services/ringCentralSmsService.js`, `ringCentralCallService.js`, `leads-bot/sms.py`), Bitrix24 (`services/bitrix24Service.js`), Samsara GPS (`services/samsaraLocationService.js`), Drive HoS/Factor/Leader ELD (`services/driveHosEldService.js`), Datatruck (`services/datatruckApiService.js`, `datatruckLoadService.js`), Meta Graph (`services/facebookGraphService.js`, `leads-bot/graph.py`), Groq/Gemini clients |
 | **Idempotency ledger** — sent-message registry | `services/botSentMessageRegistry.js` (monkey-patches `telegram.callApi` → records every send/edit/copy/forward into `bot_sent_messages`). Comment: *"Never turn a successful Telegram send into a retry and duplicate."* |
@@ -196,7 +197,7 @@ organization should converge toward.
 | `aiAnalysisService.js` / `aiAnnotationService.js` fencing | Removing the fence exposes prompt injection from driver chat. | Keep the `<driver_transcript>` fence + sanitizers. |
 | `index.js` orchestration | Ordering/backoff/circuit-breaker prevent OOM restart loops. | Do not remove the circuit breaker or `--max-old-space-size` caps. |
 | `database/db.js` (~3,500 lines) | Huge shared query surface used everywhere. | Split *by moving functions into existing per-feature `database/*.js` files one at a time*, re-exporting from `db.js` to preserve imports; run tests after each move. |
-| `database/schema.sql` | Auto-runs on startup (`IF NOT EXISTS`). | Never add destructive `DROP`/`ALTER ... DROP`. New columns must be nullable or defaulted. Back up before any manual migration. |
+| `database/schema.sql` | GENERATED baseline (from `database/baseline/*.sql`), auto-applied on startup (`IF NOT EXISTS`). New changes go in `database/migrations/`, not here. | Never hand-edit `schema.sql` (run `npm run build:schema`). Never add destructive `DROP`/`ALTER ... DROP`. New columns must be nullable or defaulted. Back up before any manual migration. |
 | Telegram polling tokens | Two bots must use distinct tokens (enforced in `index.js`). | Never share `BOT_TOKEN` with the leads bot or the Samsara service. |
 | Samsara repo coupling | Both apps read the `groups` table. | A `groups` schema change affects **both** repos — check both before shipping. |
 

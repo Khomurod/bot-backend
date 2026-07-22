@@ -157,7 +157,8 @@ A **self-contained TMS-style module**, deliberately isolated from the rest:
 ### Entry point — `index.js`
 
 Boot order: `assertDistinctTelegramPollingTokens()` → `db.initializeDatabase()`
-(runs `schema.sql`) → wire Telegram instances into ETA/Facebook services →
+(applies baseline `schema.sql`, then pending forward migrations via
+`database/migrate/`) → wire Telegram instances into ETA/Facebook services →
 `startServer()` (Express) → `await startBot()` (Telegraf long-polling) → start
 ~12 schedulers → `startLeadsBot()` (spawn Python child). Graceful shutdown on
 SIGINT/SIGTERM/uncaught errors: stop all services → stop bot/server → SIGTERM
@@ -271,11 +272,15 @@ handling; they only share the backend.
   (`max=5`, `connectionTimeoutMillis=30000`, SSL auto-detected for
   supabase/neon/`sslmode=require`). The pool is deliberately small for the
   memory-constrained instance.
-- **Schema**: `database/schema.sql` — **auto-run on every boot** by
-  `initializeDatabase()` (everything `IF NOT EXISTS` / additive `ALTER`).
-  **There is no migrations framework** — schema changes are made by editing
-  `schema.sql` additively. Never add destructive `DROP`/`ALTER … DROP`; new
-  columns must be nullable or defaulted.
+- **Schema**: managed by the migration system in `database/migrate/`.
+  `initializeDatabase()` applies the **baseline** (`database/schema.sql`,
+  everything `IF NOT EXISTS` / additive `ALTER`, one transaction, every boot)
+  and then any pending **forward migrations** (`database/migrations/NNNN_*.sql`,
+  run-once, tracked in the `schema_migrations` ledger). `schema.sql` is
+  GENERATED from `database/baseline/*.sql` (`npm run build:schema`). New changes
+  go in `database/migrations/` (`npm run migrate:new -- <name>`), not by editing
+  `schema.sql`. Never add destructive `DROP`/`ALTER … DROP`; new columns must be
+  nullable or defaulted. See `docs/database/migration-notes.md`.
 - **Queries**: `database/db.js` (~3,600 lines — every query is a named
   function) plus per-feature helpers: `database/botUsers.js`,
   `mileageBonus.js`, `raiseApproval.js`, `homeTime.js`, `eldSettings.js`,
@@ -508,7 +513,8 @@ For each: config location → main files → data flow → dependents → failur
   routes.
 - `database/db.js` — the shared query surface (~3,600 lines). Split-in-place
   guidance exists in `docs/architecture/module-map.md`.
-- `database/schema.sql` — auto-applied schema; additive-only.
+- `database/schema.sql` — GENERATED baseline schema (from `database/baseline/*.sql`); auto-applied, additive-only.
+- `database/migrate/`, `database/migrations/` — migration runner + forward migrations.
 - `database/*.js` — per-feature query helpers.
 - `admin/` — admin SPA (see §2/§5); `admin/src/api.js` is the API client.
 - `fleet/` — FleetView SPA (see §3).
@@ -590,7 +596,8 @@ none (they stub env/DB). Never print or commit secret values.
    claim pattern, `mileage_bonus_runs`.
 5. **AI prompt-injection fencing** in `aiAnalysisService.js` /
    `aiAnnotationService.js` — never remove.
-6. **`schema.sql` is auto-applied at boot** — additive changes only; a bad
+6. **Schema is auto-applied at boot** — the baseline `schema.sql` plus pending
+   forward migrations (`database/migrations/`). Additive changes only; a bad
    statement can crash-loop production. Coordinate `groups` changes with the
    Samsara repo.
 7. **Payroll-adjacent code**: mileage bonuses (`mileageBonusService.js`) and

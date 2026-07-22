@@ -1,3 +1,15 @@
+-- =============================================================================
+-- GENERATED FILE — DO NOT EDIT BY HAND.
+--
+-- Assembled from database/baseline/*.sql by scripts/build-schema.js.
+-- Edit the per-domain segment files there, then run: npm run build:schema
+--
+-- This is the BASELINE: the accumulated, additive, idempotent schema applied
+-- verbatim on every boot. NEW schema/seed/backfill changes are versioned,
+-- run-once forward migrations in database/migrations/ — see that folder's
+-- README and docs/database/migration-notes.md.
+-- =============================================================================
+
 -- Telegram Driver Feedback System - Database Schema
 
 -- TABLE: groups
