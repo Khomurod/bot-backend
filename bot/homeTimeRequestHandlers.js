@@ -67,6 +67,11 @@ function registerHomeTimeRequestHandlers(bot) {
             'Missing or invalid home-time dates — fix them in the admin panel first.',
             { show_alert: true }
           );
+        } else if (result.code === 'outdated') {
+          await ctx.answerCbQuery(
+            'This home-time period has already passed — it can no longer be approved. You can decline it.',
+            { show_alert: true }
+          );
         } else if (result.code === 'already_decided' || result.code === 'conflict') {
           await ctx.answerCbQuery('This request was just decided by someone else.');
         } else {

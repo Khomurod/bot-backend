@@ -1,138 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const path = require('node:path');
-const { DateTime } = require('luxon');
-
-// Dates relative to "now" so the window-reasonableness checks (which use the real
-// clock) always accept them, regardless of when the suite runs.
-const TODAY = DateTime.now().setZone('America/Chicago');
-const FROM = TODAY.plus({ days: 3 }).toISODate();
-const TO = TODAY.plus({ days: 7 }).toISODate(); // 4 days after FROM (return-to-road)
-const LAST_DAY = TODAY.plus({ days: 6 }).toISODate(); // last day home = return − 1
-// Completed request cards go here, NEVER to the driver's group (GROUP below).
-const NOTIFY_GROUP_ID = '-1009999';
-
-/**
- * Load homeTimeRequestService with its DB / AI / Telegram / status deps mocked.
- * `gemini.json` controls callGeminiJson; `gemini.text` controls callGeminiText
- * (an Error there forces the deterministic fallback message).
- */
-function loadService({
-  gemini = {},
-  open = null, // getOpenHomeTimeRequestForGroup
-  clarification = null, // getOpenClarificationForGroup
-  homeStatus = { state: 'road', state_since: DateTime.now().minus({ days: 40 }).toUTC().toISO() },
-  openStay = { road_started_at: DateTime.now().minus({ days: 40 }).toUTC().toISO(), days_on_road: 40 },
-  profile = {
-    first_name: 'Pascal', last_name: 'F', unit_number: '96266', driver_type: 'company_driver',
-    telegram_user_id: '900',
-  },
-  ack = { id: 99 }, // markHomeTimeAcknowledged (claim wins by default)
-  transcript = '',
-  notifyGroupId = NOTIFY_GROUP_ID, // completed-request notification group (null = unconfigured)
-  approvedRequest = null, // getApprovedHomeTimeRequestForGroup (an already-registered window)
-} = {}) {
-  const servicePath = path.resolve(__dirname, '../services/homeTimeRequestService.js');
-  const dbPath = path.resolve(__dirname, '../database/db.js');
-  const htPath = path.resolve(__dirname, '../database/homeTime.js');
-  const htmlPath = path.resolve(__dirname, '../services/telegramHtml.js');
-  const bufferPath = path.resolve(__dirname, '../services/recentMessageBuffer.js');
-  const geminiPath = path.resolve(__dirname, '../services/geminiClient.js');
-  const intentPath = path.resolve(__dirname, '../services/homeTimeIntentService.js');
-  const statusPath = path.resolve(__dirname, '../services/homeTimeService.js');
-  const configPath = path.resolve(__dirname, '../config/config.js');
-
-  for (const p of [servicePath, dbPath, htPath, htmlPath, bufferPath, geminiPath, intentPath, statusPath, configPath]) {
-    delete require.cache[p];
-  }
-
-  require.cache[configPath] = { exports: { employeeGroupId: '' } };
-
-  const inserts = [];
-  const sends = [];
-  const messageLinks = [];
-  const fulfills = [];
-  const updates = [];
-  const clarMsgs = [];
-  const reactions = [];
-
-  require.cache[dbPath] = {
-    exports: { async getDriverProfileByGroupId() { return profile; } },
-  };
-  require.cache[htPath] = {
-    exports: {
-      async getOpenHomeTimeRequestForGroup() { return open; },
-      async getOpenClarificationForGroup() { return clarification; },
-      async getAwaitingDatesHomeTimeRequestForGroup() { return clarification; },
-      async getHomeTimeSettings() {
-        return {
-          road_allowance_weeks: 4, home_allowance_days: 4, reminder_first_hours: 12, reminder_second_hours: 12,
-          completed_notify_group_id: notifyGroupId,
-        };
-      },
-      async getDriverHomeStatus() { return homeStatus; },
-      async getOpenHomeStay() { return openStay; },
-      async findDecidedRequestNearDate() { return null; },
-      async getApprovedHomeTimeRequestForGroup() { return approvedRequest; },
-      async insertHomeTimeRequest(payload) { inserts.push(payload); return { id: 99, ...payload }; },
-      async updateHomeTimeRequestFields(id, patch) { updates.push({ id, patch }); return { id, ...patch }; },
-      async fulfillAwaitingHomeTimeRequest(id, payload) {
-        fulfills.push({ id, payload });
-        return { id, status: 'pending', ...payload };
-      },
-      async setHomeTimeRequestMessage(id, chatId, messageId) {
-        messageLinks.push({ id, chatId, messageId });
-        return { id };
-      },
-      async setHomeTimeClarificationMessage(id, payload) { clarMsgs.push({ id, payload }); return { id }; },
-      async markHomeTimeAcknowledged(id) { return ack; },
-    },
-  };
-  require.cache[htmlPath] = { exports: { safeSend: async (fn) => fn() } };
-  require.cache[bufferPath] = { exports: { renderTranscript() { return transcript; } } };
-  const stateTransitions = [];
-  require.cache[statusPath] = {
-    exports: {
-      async applyStateTransition(_telegram, _group, payload) { stateTransitions.push(payload); return null; },
-      async closeHomeStayOnReturn() { return null; },
-    },
-  };
-
-  const geminiCalls = { json: [], text: [] };
-  require.cache[geminiPath] = {
-    exports: {
-      async callGeminiJson(opts) {
-        geminiCalls.json.push(opts);
-        if (gemini.json instanceof Error) throw gemini.json;
-        if (Array.isArray(gemini.json)) {
-          const next = gemini.json.shift();
-          if (next instanceof Error) throw next;
-          return { parsed: next };
-        }
-        return { parsed: gemini.json || { is_home_time_request: false } };
-      },
-      async callGeminiText(opts) {
-        geminiCalls.text.push(opts);
-        if (gemini.text instanceof Error) throw gemini.text;
-        return { text: gemini.text || 'A friendly bot note.' };
-      },
-    },
-  };
-  // Real intent service, but with the mocked gemini client above.
-  delete require.cache[intentPath];
-
-  const telegram = {
-    async sendMessage(chatId, text, extra) { sends.push({ chatId, text, extra }); return { message_id: 555 }; },
-    async setMessageReaction(chatId, messageId, reaction) { reactions.push({ chatId, messageId, reaction }); },
-  };
-
-  return {
-    service: require(servicePath), telegram,
-    inserts, sends, messageLinks, fulfills, updates, clarMsgs, reactions, geminiCalls, stateTransitions,
-  };
-}
-
-const GROUP = { id: 7, telegram_group_id: '-1007', group_type: 'driver', group_name: 'WENZE UNIT # 96266 (COMPANY DRIVER)' };
+const {
+  TODAY, FROM, TO, LAST_DAY, NOTIFY_GROUP_ID, GROUP, loadService,
+} = require('./helpers/homeTimeRequestServiceHarness');
 
 // ── legacy classifier (unchanged contract) ──
 
@@ -471,4 +341,70 @@ test('orchestrator: AI "actual_home_status" on a genuine arrival DOES flip the t
   }, { statusResult: null, mentionsApprover: false });
   assert.equal(stateTransitions.length, 1, 'a genuine home arrival still transitions');
   assert.equal(stateTransitions[0].newState, 'home');
+});
+
+// ── outdated-request guards (expiry applied consistently, not just in the UI) ──
+
+const PAST_FROM = TODAY.minus({ days: 40 }).toISODate();
+const PAST_RETURN = TODAY.minus({ days: 33 }).toISODate();
+
+test('approver tag: an OUTDATED open request is auto-closed and a fresh request proceeds', async () => {
+  const { service, telegram, inserts, sends, expiries } = loadService({
+    open: { id: 1, status: 'pending', home_from: PAST_FROM, return_to_road_date: PAST_RETURN },
+    gemini: { json: { is_home_time_request: true, confidence: 'high', dates_specified: true, home_from: FROM, home_to: LAST_DAY } },
+  });
+  await service.handleApproverMention(telegram, GROUP, {
+    message_id: 10, text: `home ${FROM} to ${LAST_DAY} @tomr_robins0n`, from: { id: 1, username: 'rep' },
+  });
+  assert.deepEqual(expiries, [1], 'the stale open request was expired first');
+  assert.equal(inserts.length, 1, 'a brand-new request was created (not blocked)');
+  assert.ok(sends.length >= 1, 'a new card/message was sent');
+});
+
+test('late reply to an OUTDATED clarification is ignored (expired, never completed)', async () => {
+  const { service, telegram, fulfills, updates, expiries } = loadService({
+    clarification: {
+      id: 42, status: 'awaiting_return_to_road', home_from: PAST_FROM,
+      return_to_road_date: null, next_reminder_at: null, requested_at: `${PAST_FROM}T00:00:00Z`,
+    },
+    gemini: { json: { intent: 'home_time_followup', confidence: 90, returnToRoadDate: TO } },
+  });
+  await service.handleHomeTimeClarificationReply(telegram, GROUP, {
+    message_id: 88, text: `back ${TO}`, from: { id: 900 },
+  });
+  assert.deepEqual(expiries, [42], 'the stale clarification was expired');
+  assert.equal(fulfills.length, 0, 'the expired request is never completed');
+  assert.equal(updates.length, 0, 'the expired request is never advanced');
+});
+
+test('orchestrator: an OUTDATED open clarification is expired and the message is not fed to it', async () => {
+  const { service, telegram, fulfills, inserts, expiries } = loadService({
+    clarification: {
+      id: 42, status: 'awaiting_dates', home_from: null,
+      next_reminder_at: null, requested_at: `${PAST_FROM}T00:00:00Z`,
+    },
+    gemini: { json: { intent: 'unrelated', confidence: 90 } },
+  });
+  await service.processHomeTimeMessage(telegram, GROUP, {
+    message_id: 5, text: 'ok thanks boss', from: { id: 900 },
+  }, { statusResult: null, mentionsApprover: false });
+  assert.deepEqual(expiries, [42]);
+  assert.equal(fulfills.length, 0);
+  assert.equal(inserts.length, 0);
+});
+
+test('actual home arrival: an OUTDATED open request does not block a fresh unplanned-arrival flow', async () => {
+  const homeStartIso = TODAY.toUTC().toISO();
+  const { service, telegram, inserts, expiries } = loadService({
+    open: { id: 1, status: 'pending', home_from: PAST_FROM, return_to_road_date: PAST_RETURN },
+    homeStatus: { state: 'home', state_since: homeStartIso },
+    gemini: { text: new Error('force fallback') },
+  });
+  await service.handleActualHomeArrival(telegram, GROUP, {
+    message_id: 77, text: 'Status: Home', from: { id: 900 },
+  }, { homeStartIso });
+  assert.deepEqual(expiries, [1], 'the stale request was expired');
+  assert.equal(inserts.length, 1, 'a fresh unplanned-arrival clarification was opened');
+  assert.equal(inserts[0].status, 'awaiting_return_to_road');
+  assert.equal(inserts[0].isUnplannedArrival, true);
 });

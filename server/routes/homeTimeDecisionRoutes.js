@@ -27,6 +27,7 @@ const HTTP_BY_CODE = {
   not_found: [404, 'Request not found.'],
   invalid_decision: [400, "decision must be 'approve' or 'decline'."],
   invalid_dates: [422, 'Set a valid arrive-home and return-to-road date before approving.'],
+  outdated: [422, 'This home-time period has already passed — it can no longer be approved. You can decline or close it.'],
   already_decided: [409, 'This request was already decided.'],
   conflict: [409, 'This request was just decided by someone else.'],
 };

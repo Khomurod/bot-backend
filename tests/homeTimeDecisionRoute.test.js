@@ -85,6 +85,14 @@ test('invalid dates → 422', async () => {
   assert.match(res.json.error, /date/i);
 });
 
+test('outdated (window already passed) → 422', async () => {
+  const { app } = loadApp({ result: { ok: false, code: 'outdated', request: { id: 5, status: 'pending' } } });
+  const res = await post(app, '/api/home-time/requests/5/decision', { decision: 'approve' });
+  assert.equal(res.status, 422);
+  assert.equal(res.json.code, 'outdated');
+  assert.match(res.json.error, /passed|decline/i);
+});
+
 test('already decided → 409 with the final status', async () => {
   const { app } = loadApp({ result: { ok: false, code: 'already_decided', request: { id: 5, status: 'approved' } } });
   const res = await post(app, '/api/home-time/requests/5/decision', { decision: 'approve' });

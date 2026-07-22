@@ -18,9 +18,12 @@
  */
 const config = require('../config/config');
 const ht = require('../database/homeTime');
+const htExpiry = require('../database/homeTimeExpiry');
 const { safeSend } = require('./telegramHtml');
-const { escapeHtml, buildDecidedCardText } = require('./homeTimeRequestCards');
-const { isoDateOnly, resolveRequestReturnDate } = require('./homeTimeDateResolver');
+const { escapeHtml, buildDecidedCardText, buildExpiredCardText } = require('./homeTimeRequestCards');
+const {
+  isoDateOnly, resolveRequestReturnDate, isHomeTimeWindowInPast, isHomeTimeRequestOutdated,
+} = require('./homeTimeDateResolver');
 
 /** Announce an approved request to the employee group. Non-fatal on failure. */
 async function announceApproval(telegram, request) {
@@ -86,7 +89,7 @@ async function settleDecisionCard(telegram, record, decision, decidedByUsername,
  * @param {'telegram'|'admin'} [opts.via]
  */
 async function applyHomeTimeDecision(telegram, requestId, {
-  decision, decidedByUsername = null, decidedByUserId = null, via = 'telegram',
+  decision, decidedByUsername = null, decidedByUserId = null, via = 'telegram', todayIso = null,
 } = {}) {
   const d = String(decision || '').toLowerCase();
   const status = ['approve', 'approved', 'yes'].includes(d) ? 'approved'
@@ -96,8 +99,11 @@ async function applyHomeTimeDecision(telegram, requestId, {
   const current = await ht.getHomeTimeRequestById(requestId);
   if (!current) return { ok: false, code: 'not_found' };
   if (current.status !== 'pending') return { ok: false, code: 'already_decided', request: current };
-  if (status === 'approved' && !canApproveWindow(current)) {
-    return { ok: false, code: 'invalid_dates', request: current };
+  if (status === 'approved') {
+    if (!canApproveWindow(current)) return { ok: false, code: 'invalid_dates', request: current };
+    // Never approve a request whose whole home-time window is already in the past;
+    // a manager may still decline/close it. (Declines skip this on purpose.)
+    if (isHomeTimeWindowInPast(current, todayIso)) return { ok: false, code: 'outdated', request: current };
   }
 
   // Atomic pending→decided guard: two managers deciding at once, from either
@@ -115,8 +121,53 @@ async function applyHomeTimeDecision(telegram, requestId, {
   return { ok: true, request: record };
 }
 
+/**
+ * Atomically close ONE outdated open request as 'expired' and, when it has a
+ * posted Telegram card, edit that card in place to the "Expired — No Action"
+ * text (which also drops the buttons). Best-effort card edit; never throws.
+ * Returns the expired row, or null when it was already changed by someone else.
+ */
+async function expireOutdatedRequest(telegram, request) {
+  if (!request) return null;
+  const expired = await htExpiry.expireOutdatedHomeTimeRequest(request.id);
+  if (!expired) return null;
+  if (telegram && expired.telegram_chat_id && expired.telegram_message_id) {
+    try {
+      await telegram.editMessageText(
+        expired.telegram_chat_id, expired.telegram_message_id, undefined,
+        buildExpiredCardText(expired), { parse_mode: 'HTML' }
+      );
+    } catch (err) {
+      console.warn('[HOME-TIME-REQ] Could not update expired card:', err.message);
+    }
+  }
+  return expired;
+}
+
+/**
+ * Sweep every still-open request and auto-close the ones whose requested period
+ * has passed (or whose partial clarification has gone stale). Each close is
+ * atomic and preserves all original data. Returns a small summary.
+ */
+async function sweepOutdatedHomeTimeRequests(telegram, { todayIso = null, staleClarificationDays } = {}) {
+  const open = await htExpiry.listOpenHomeTimeRequests();
+  let expired = 0;
+  for (const req of open) {
+    if (!isHomeTimeRequestOutdated(req, { todayIso, staleClarificationDays })) continue;
+    // eslint-disable-next-line no-await-in-loop
+    const row = await expireOutdatedRequest(telegram, req);
+    if (row) {
+      expired += 1;
+      console.log(`[HOME-TIME-REQ] Request #${req.id} auto-closed (Expired — No Action; requested dates passed).`);
+    }
+  }
+  return { scanned: open.length, expired };
+}
+
 module.exports = {
   announceApproval,
   applyHomeTimeDecision,
   canApproveWindow,
+  expireOutdatedRequest,
+  sweepOutdatedHomeTimeRequests,
 };

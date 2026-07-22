@@ -191,8 +191,66 @@ function isReasonableWindow(homeStart, returnToRoad, referenceIso, timezone = TZ
   return true;
 }
 
+// A partial clarification with NO resolvable end date is treated as stale (and
+// safe to auto-close) only after the reminder cycle is exhausted AND it has been
+// open at least this many days — long enough that a legitimately active
+// clarification (driver still expected to answer) is never expired early.
+const STALE_CLARIFICATION_DAYS = 21;
+
+// Statuses that can still be "open" and therefore candidates for auto-expiry.
+const OUTDATABLE_STATUSES = [
+  'pending', 'awaiting_dates', 'awaiting_home_start', 'awaiting_return_to_road',
+  'clarification_unanswered',
+];
+
+/**
+ * True when the ENTIRE requested home-time window is already in the past relative
+ * to `todayIso` (the driver should be back on the road). The window end is the
+ * return-to-road date, or last-day-home + 1. Returns false when no end date is
+ * known (a partial clarification). Used both to block approving an outdated
+ * request and as the primary auto-expiry rule.
+ */
+function isHomeTimeWindowInPast(request, todayIso = null) {
+  const end = resolveRequestReturnDate(request);
+  if (!end) return false;
+  const today = isoDateOnly(todayIso) || DateTime.now().setZone(TZ).toISODate();
+  return end < today;
+}
+
+/**
+ * True when an open home-time request is no longer actionable and should be
+ * auto-closed as "Expired — No Action":
+ *   1. any request whose resolvable end date is already in the past; OR
+ *   2. a partial clarification with no end date, but ONLY once its reminders are
+ *      exhausted (next_reminder_at cleared) AND it has been open beyond
+ *      `staleClarificationDays` (anchored on home_from when known, else
+ *      requested_at) — so an active clarification is never expired prematurely.
+ * Terminal requests (approved/denied/cancelled/expired) are never "outdated".
+ */
+function isHomeTimeRequestOutdated(request, { todayIso = null, staleClarificationDays = STALE_CLARIFICATION_DAYS } = {}) {
+  if (!request) return false;
+  if (!OUTDATABLE_STATUSES.includes(String(request.status || ''))) return false;
+  if (isHomeTimeWindowInPast(request, todayIso)) return true;
+
+  const status = String(request.status || '');
+  const isOpenClarification = status === 'awaiting_dates' || status === 'awaiting_home_start'
+    || status === 'awaiting_return_to_road' || status === 'clarification_unanswered';
+  if (!isOpenClarification) return false; // a 'pending' card is judged only on its dates
+  if (request.next_reminder_at) return false; // reminders still pending → still active
+
+  const today = isoDateOnly(todayIso) || DateTime.now().setZone(TZ).toISODate();
+  const anchor = isoDateOnly(request.home_from) || isoDateOnly(request.requested_at);
+  if (!anchor) return false;
+  const cutoff = DateTime.fromISO(today, { zone: TZ })
+    .minus({ days: Math.max(1, Number(staleClarificationDays) || STALE_CLARIFICATION_DAYS) })
+    .toISODate();
+  return anchor < cutoff;
+}
+
 module.exports = {
   TZ,
+  STALE_CLARIFICATION_DAYS,
+  OUTDATABLE_STATUSES,
   toISODate,
   isoDateOnly,
   addDays,
@@ -204,4 +262,6 @@ module.exports = {
   normalizeHomeTimeWindow,
   statusForMissingFields,
   isReasonableWindow,
+  isHomeTimeWindowInPast,
+  isHomeTimeRequestOutdated,
 };

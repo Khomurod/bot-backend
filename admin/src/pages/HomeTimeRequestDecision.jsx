@@ -31,6 +31,14 @@ export default function HomeTimeRequestDecision({ request, flash, onSaved }) {
   const from = dateOnly(request.home_from);
   const ret = dateOnly(request.return_to_road_date) || dateOnly(request.home_to);
   const datesReady = Boolean(from && ret && ret > from);
+  // The whole requested period is already over → approving makes no sense; only a
+  // decline/close is appropriate (the server enforces this too).
+  const today = new Date().toISOString().slice(0, 10);
+  const windowPast = Boolean(ret && ret < today);
+  const canApprove = datesReady && !windowPast;
+  const approveHint = windowPast
+    ? "This home-time period has already passed — decline or close it instead."
+    : "Add the arrive-home and return-to-road dates to approve.";
 
   const run = async (decision) => {
     setBusy(true);
@@ -72,17 +80,15 @@ export default function HomeTimeRequestDecision({ request, flash, onSaved }) {
         type="button"
         className="btn btn-sm btn-primary"
         onClick={() => setConfirming("approve")}
-        disabled={busy || !datesReady}
-        title={datesReady ? "Approve this request" : "Set a valid arrive-home and return-to-road date first"}
+        disabled={busy || !canApprove}
+        title={canApprove ? "Approve this request" : approveHint}
       >
         Approve
       </button>
       <button type="button" className="btn btn-sm btn-danger" onClick={() => setConfirming("decline")} disabled={busy}>
         Do Not Approve
       </button>
-      {!datesReady ? (
-        <span className="home-time-subtext">Add the arrive-home and return-to-road dates to approve.</span>
-      ) : null}
+      {!canApprove ? <span className="home-time-subtext">{approveHint}</span> : null}
     </div>
   );
 }

@@ -132,6 +132,28 @@ test('decline is allowed even without valid dates', async () => {
   assert.equal(calls.decide[0].patch.status, 'denied');
 });
 
+// ── outdated window (approval only) ──
+
+test('approve is blocked when the whole home-time window is already in the past', async () => {
+  const { mod, calls, telegram, edits } = load();
+  const result = await mod.applyHomeTimeDecision(telegram, 5, {
+    decision: 'approve', decidedByUsername: 'adminboss', via: 'admin', todayIso: '2026-08-01',
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'outdated');
+  assert.equal(calls.decide.length, 0, 'an outdated request is never approved');
+  assert.equal(edits.length, 0);
+});
+
+test('an outdated request can still be DECLINED', async () => {
+  const { mod, calls, telegram } = load();
+  const result = await mod.applyHomeTimeDecision(telegram, 5, {
+    decision: 'decline', decidedByUsername: 'adminboss', via: 'admin', todayIso: '2026-08-01',
+  });
+  assert.equal(result.ok, true);
+  assert.equal(calls.decide[0].patch.status, 'denied');
+});
+
 // ── already decided / conflict / not found ──
 
 test('a non-pending request is reported as already decided (no second decision)', async () => {

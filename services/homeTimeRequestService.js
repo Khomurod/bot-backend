@@ -41,7 +41,7 @@ const { wholeDaysBetween } = require('./homeTimeConstants');
 const { looksLikeTemporaryHomeStop } = require('./homeTimeSignals');
 const {
   normalizeHomeTimeWindow, statusForMissingFields, isReasonableWindow,
-  isUsableKnownReturnDate, resolveRequestReturnDate,
+  isUsableKnownReturnDate, resolveRequestReturnDate, isHomeTimeRequestOutdated,
 } = require('./homeTimeDateResolver');
 const { classifyHomeTimeMessage, isHomeTimeCandidate } = require('./homeTimeIntentService');
 const homeTimeStatus = require('./homeTimeService');
@@ -51,7 +51,7 @@ const {
 } = require('./homeTimeRequestCards');
 // The decision workflow (approve/decline + card settle + approval announcement)
 // lives in a focused module; re-exported below so existing importers are unchanged.
-const { announceApproval, applyHomeTimeDecision } = require('./homeTimeApproval');
+const { announceApproval, applyHomeTimeDecision, expireOutdatedRequest } = require('./homeTimeApproval');
 
 const AI_STATUS_CONFIDENCE_MIN = 70;
 
@@ -541,7 +541,11 @@ async function handleApproverMention(telegram, group, message) {
     if (!group || group.group_type !== 'driver') return;
 
     const existing = await ht.getOpenHomeTimeRequestForGroup(group.id);
-    if (existing) return; // one active flow per driver
+    if (existing) {
+      // An outdated open request must not block a new one — close it first.
+      if (!isHomeTimeRequestOutdated(existing, { todayIso: todayIsoChicago() })) return; // one active flow per driver
+      await expireOutdatedRequest(telegram, existing);
+    }
 
     // Already home? A "send them home" card makes no sense — the unplanned-arrival
     // flow (triggered by the Status: Home message) handles that case instead.
@@ -620,7 +624,10 @@ async function handleActualHomeArrival(telegram, group, message, { homeStartIso 
     // A complete/approved/open request already covers this — do not ask again or
     // duplicate. (Repeated Status: Home also lands here and is a no-op.)
     const open = await ht.getOpenHomeTimeRequestForGroup(group.id);
-    if (open) {
+    if (open && isHomeTimeRequestOutdated(open, { todayIso: todayIsoChicago() })) {
+      // A stale/outdated open request must not block a fresh home arrival.
+      await expireOutdatedRequest(telegram, open);
+    } else if (open) {
       if ((open.status === 'awaiting_home_start') && (homeStartIso)) {
         // We were waiting only on the arrival date and now the driver is home:
         // fill it from the actual arrival and, if that completes the window, post.
@@ -707,6 +714,11 @@ async function handleHomeTimeClarificationReply(telegram, group, message) {
 
     const open = await ht.getOpenClarificationForGroup(group.id);
     if (!open) return; // nothing waiting
+    // A late reply must never reopen/complete an outdated clarification — close it.
+    if (isHomeTimeRequestOutdated(open, { todayIso: todayIsoChicago() })) {
+      await expireOutdatedRequest(telegram, open);
+      return;
+    }
     if (!isHomeTimeCandidate(text, { hasOpenClarification: true })) return; // cheap gate
 
     const profile = await db.getDriverProfileByGroupId(group.id).catch(() => null);
@@ -793,7 +805,13 @@ async function processHomeTimeMessage(telegram, group, message, { statusResult =
     const text = message?.text || message?.caption || '';
     if (message?.from?.is_bot || !text) return;
 
-    const open = await ht.getOpenClarificationForGroup(group.id);
+    let open = await ht.getOpenClarificationForGroup(group.id);
+    if (open && isHomeTimeRequestOutdated(open, { todayIso: todayIsoChicago() })) {
+      // Outdated clarification: close it and let this message be judged fresh
+      // (it might be a brand-new request), never fed into the stale one.
+      await expireOutdatedRequest(telegram, open);
+      open = null;
+    }
     if (open) {
       // Delegate to the dedicated follow-up handler (it re-reads `open`).
       await handleHomeTimeClarificationReply(telegram, group, message);

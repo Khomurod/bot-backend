@@ -143,11 +143,31 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;');
 }
 
+/**
+ * Auto-close outdated home-time requests (dates passed / stale clarification) as
+ * "Expired — No Action", updating any Telegram card. Runs on the same restart-safe
+ * cadence as the reminder sweep and is gated on the feature being enabled. The
+ * decision/expiry logic is required lazily so this module can be unit-tested (and
+ * the reminder tests loaded) without pulling in config/bot at require time.
+ *
+ * @returns {{ enabled:boolean, scanned:number, expired:number }}
+ */
+async function runHomeTimeExpirySweep(telegram, { nowIso } = {}) {
+  const settings = await ht.getHomeTimeSettings();
+  if (!settings || !settings.enabled) return { enabled: false, scanned: 0, expired: 0 };
+  const { sweepOutdatedHomeTimeRequests } = require('./homeTimeApproval');
+  const todayIso = (nowIso ? DateTime.fromISO(nowIso) : DateTime.now())
+    .setZone('America/Chicago').toISODate();
+  const result = await sweepOutdatedHomeTimeRequests(telegram, { todayIso });
+  return { enabled: true, ...result };
+}
+
 async function tick() {
   if (tickRunning || !telegramClient) return;
   tickRunning = true;
   try {
     await runHomeTimeReminderCheck(telegramClient);
+    await runHomeTimeExpirySweep(telegramClient);
   } catch (err) {
     console.error('[HOME-TIME-REMINDER] tick error:', err.message);
   } finally {
@@ -177,6 +197,7 @@ module.exports = {
   missingFieldFor,
   buildReminderText,
   runHomeTimeReminderCheck,
+  runHomeTimeExpirySweep,
   startHomeTimeReminderService,
   stopHomeTimeReminderService,
   tick,

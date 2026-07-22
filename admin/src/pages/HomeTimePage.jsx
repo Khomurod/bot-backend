@@ -49,10 +49,20 @@ function requestStatusMeta(status) {
       return { label: "Denied", color: "#ef4444", background: "rgba(239, 68, 68, 0.14)" };
     case "cancelled":
       return { label: "Cancelled", color: "#94a3b8", background: "rgba(148, 163, 184, 0.14)" };
+    case "expired":
+      return { label: "Expired — No Action", color: "#a78bfa", background: "rgba(167, 139, 250, 0.14)" };
+    case "clarification_unanswered":
+      return { label: "No response", color: "#fb923c", background: "rgba(251, 146, 60, 0.14)" };
     case "awaiting_dates":
       return { label: "Awaiting dates", color: "#38bdf8", background: "rgba(56, 189, 248, 0.14)" };
+    case "awaiting_home_start":
+      return { label: "Awaiting arrive-home date", color: "#38bdf8", background: "rgba(56, 189, 248, 0.14)" };
+    case "awaiting_return_to_road":
+      return { label: "Awaiting return date", color: "#38bdf8", background: "rgba(56, 189, 248, 0.14)" };
+    case "pending":
+      return { label: "Pending decision", color: "#f59e0b", background: "rgba(245, 158, 11, 0.14)" };
     default:
-      return { label: "Pending", color: "#f59e0b", background: "rgba(245, 158, 11, 0.14)" };
+      return { label: status ? String(status) : "Unknown", color: "#94a3b8", background: "rgba(148, 163, 184, 0.14)" };
   }
 }
 
