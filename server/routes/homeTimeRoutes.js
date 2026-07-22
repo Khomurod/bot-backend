@@ -23,6 +23,7 @@ const { homeTimePolicyApplies } = require('../../services/homeTimeConstants');
 const { listCanonicalDriverGroups } = require('../../services/driverGroupDirectoryService');
 const { buildEfficiencyReport } = require('../../services/homeTimeEfficiencyService');
 const { parseDateInput, parseDateOnly, normalizeNotifyGroupId } = require('./homeTimeRouteHelpers');
+const { registerHomeTimeDecisionRoutes } = require('./homeTimeDecisionRoutes');
 
 // Supported efficiency date-range windows (days). 'all' = no lower bound.
 const EFFICIENCY_RANGES = { 30: 30, 90: 90, 180: 180 };
@@ -94,6 +95,9 @@ function shapeAccessRow(row, now) {
 
 function createHomeTimeRouter({ authMiddleware }) {
   const router = express.Router();
+
+  // Approve / decline a pending request from the admin panel (shared workflow).
+  registerHomeTimeDecisionRoutes(router, { authMiddleware });
 
   // GET /overview — settings + current per-driver state (with live counters) +
   // recent earned-bonus history.

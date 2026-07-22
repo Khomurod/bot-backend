@@ -295,6 +295,8 @@ export function buildDriverTimeline({ requests = [], history = [] }) {
       home_to: request.home_to || null,
       return_to_road_date: request.return_to_road_date || null,
       decided_by_username: request.decided_by_username || null,
+      decided_at: request.decided_at || null,
+      note: request.ai_reasoning || null,
     });
   }
 

@@ -3,6 +3,7 @@ import * as api from "../api";
 import HomeTimeEfficiencyTab from "./HomeTimeEfficiencyTab";
 import HomeTimeSettingsCard from "./HomeTimeSettingsCard";
 import HomeTimeRequestDatesEditor from "./HomeTimeRequestDatesEditor";
+import HomeTimeRequestDecision from "./HomeTimeRequestDecision";
 import {
   HOME_TIME_SORT_COLUMNS,
   STATUS_FILTERS,
@@ -954,6 +955,8 @@ export default function HomeTimePage() {
                               <span>Days out: {item.days_on_road != null ? `${item.days_on_road}d` : "--"}</span>
                               <span>Source: {item.source || "--"}</span>
                               <span>Decided by: {item.decided_by_username ? `@${item.decided_by_username}` : "--"}</span>
+                              {item.decided_at ? <span>Decided: {fmtDate(item.decided_at)}</span> : null}
+                              {item.note ? <span>Notes: {item.note}</span> : null}
                               <HomeTimeRequestDatesEditor
                                 requestId={item.request_id}
                                 homeFrom={item.home_from}
@@ -961,6 +964,7 @@ export default function HomeTimePage() {
                                 flash={flash}
                                 onSaved={load}
                               />
+                              <HomeTimeRequestDecision request={item} flash={flash} onSaved={load} />
                             </div>
                           ) : (
                             <div className="home-time-activity-meta">

@@ -10,8 +10,7 @@
 const ht = require('../database/homeTime');
 const {
   CALLBACK_PREFIX,
-  buildDecidedCardText,
-  announceApproval,
+  applyHomeTimeDecision,
 } = require('../services/homeTimeRequestService');
 const { isHomeTimeApprover } = require('../services/homeTimeRequestConstants');
 
@@ -52,33 +51,32 @@ function registerHomeTimeRequestHandlers(bot) {
         return;
       }
 
-      const record = await ht.decideHomeTimeRequest(requestId, {
-        status: decision,
-        username: from.username || null,
-        userId: from.id || null,
+      // Route through the SHARED decision workflow so a Telegram-button decision
+      // has the exact same business result as an admin-panel decision (atomic
+      // guard, card settle, reminders stopped, approval announcement).
+      const result = await applyHomeTimeDecision(ctx.telegram, requestId, {
+        decision,
+        decidedByUsername: from.username || null,
+        decidedByUserId: from.id || null,
+        via: 'telegram',
       });
-      if (!record) {
-        // Lost the race — someone decided between our read and write.
-        await ctx.answerCbQuery('This request was just decided by someone else.');
+
+      if (!result.ok) {
+        if (result.code === 'invalid_dates') {
+          await ctx.answerCbQuery(
+            'Missing or invalid home-time dates — fix them in the admin panel first.',
+            { show_alert: true }
+          );
+        } else if (result.code === 'already_decided' || result.code === 'conflict') {
+          await ctx.answerCbQuery('This request was just decided by someone else.');
+        } else {
+          await ctx.answerCbQuery('This request is no longer available.');
+        }
         return;
       }
 
-      try {
-        await ctx.editMessageText(
-          buildDecidedCardText(record, decision, from.username),
-          { parse_mode: 'HTML' }
-        );
-      } catch (err) {
-        console.warn('[HOME-TIME-REQ] Could not edit request card:', err.message);
-      }
-
       await ctx.answerCbQuery(decision === 'approved' ? '✅ Approved.' : '❌ Not approved.');
-
-      if (decision === 'approved') {
-        await announceApproval(ctx.telegram, record);
-      }
-
-      console.log(`[HOME-TIME-REQ] Request #${requestId} ${decision} by @${from.username || from.id}`);
+      console.log(`[HOME-TIME-REQ] Request #${requestId} ${decision} by @${from.username || from.id} (telegram)`);
     } catch (err) {
       console.error('[HOME-TIME-REQ] Callback error:', err.message);
       try { await ctx.answerCbQuery('An error occurred.'); } catch (_) { /* ignore */ }

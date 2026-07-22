@@ -69,13 +69,17 @@ function buildDecisionButtons(requestId) {
   ]);
 }
 
-function buildDecidedCardText(request, decision, decidedByUsername) {
+function buildDecidedCardText(request, decision, decidedByUsername, { via } = {}) {
   const who = `${escapeHtml(request.driver_name || 'Driver')}`
     + `${request.unit_number ? ` (Unit ${escapeHtml(request.unit_number)})` : ''}`;
   const by = decidedByUsername ? `@${escapeHtml(decidedByUsername)}` : 'a manager';
+  // The card reflects WHERE the decision was made. Telegram (the default) keeps
+  // its original wording; an admin-panel decision is labelled so the group sees
+  // the card is settled and no longer actionable.
+  const source = via === 'admin' ? ' via the admin panel' : '';
   const verdict = decision === 'approved'
-    ? `✅ <b>Approved</b> by ${by}`
-    : `❌ <b>Not approved</b> by ${by}`;
+    ? `✅ <b>Approved</b> by ${by}${source}`
+    : `❌ <b>Not approved</b> by ${by}${source}`;
   const back = request.return_to_road_date
     ? ` — back on the road <b>${escapeHtml(request.return_to_road_date)}</b>`
     : '';

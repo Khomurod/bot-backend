@@ -17,7 +17,6 @@
 const { DateTime } = require('luxon');
 const db = require('../database/db');
 const ht = require('../database/homeTime');
-const config = require('../config/config');
 const { safeSend } = require('./telegramHtml');
 const recentBuffer = require('./recentMessageBuffer');
 const { callGeminiJson, callGeminiText } = require('./geminiClient');
@@ -48,8 +47,11 @@ const { classifyHomeTimeMessage, isHomeTimeCandidate } = require('./homeTimeInte
 const homeTimeStatus = require('./homeTimeService');
 const { inferDriverType } = require('./driverProfileParse');
 const {
-  CALLBACK_PREFIX, escapeHtml, buildCardText, buildDecisionButtons, buildDecidedCardText,
+  CALLBACK_PREFIX, buildCardText, buildDecisionButtons, buildDecidedCardText,
 } = require('./homeTimeRequestCards');
+// The decision workflow (approve/decline + card settle + approval announcement)
+// lives in a focused module; re-exported below so existing importers are unchanged.
+const { announceApproval, applyHomeTimeDecision } = require('./homeTimeApproval');
 
 const AI_STATUS_CONFIDENCE_MIN = 70;
 
@@ -863,26 +865,6 @@ async function processHomeTimeMessage(telegram, group, message, { statusResult =
   }
 }
 
-/** Announce an approved request to the employee group. Non-fatal on failure. */
-async function announceApproval(telegram, request) {
-  if (!config.employeeGroupId) return;
-  const who = `${escapeHtml(request.driver_name || 'A driver')}`
-    + `${request.unit_number ? ` (Unit ${escapeHtml(request.unit_number)})` : ''}`;
-  const by = request.decided_by_username ? `@${escapeHtml(request.decided_by_username)}` : 'a manager';
-  const text = `🏠 <b>Home Time Approved</b>\n`
-    + `${who} requested home time from <b>${escapeHtml(request.home_from || '—')}</b> `
-    + `to <b>${escapeHtml(request.home_to || '—')}</b>.\n`
-    + `Approved by ${by}.`;
-  try {
-    await safeSend(() => telegram.sendMessage(config.employeeGroupId, text, {
-      parse_mode: 'HTML',
-      disable_web_page_preview: true,
-    }));
-  } catch (err) {
-    console.error('[HOME-TIME-REQ] Failed to announce approval to employee group:', err.message);
-  }
-}
-
 module.exports = {
   CALLBACK_PREFIX,
   handleApproverMention,
@@ -898,6 +880,7 @@ module.exports = {
   buildDecisionButtons,
   buildDecidedCardText,
   announceApproval,
+  applyHomeTimeDecision,
   sendPolicyResponse,
   createClarification,
   completeAndRespond,
