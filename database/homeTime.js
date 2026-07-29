@@ -5,6 +5,9 @@
  * driver group, and a history of completed road trips with their bonus.
  */
 const { query } = require('./db');
+// Atomic clarification/reminder claim helpers, split out for the file-size
+// limit and re-exported below so importers of this module are unchanged.
+const clarification = require('./homeTimeClarification');
 
 // ─── Settings (single row, id = 1) ───
 
@@ -16,6 +19,9 @@ async function getHomeTimeSettings() {
 const SETTINGS_COLUMNS = [
   'enabled', 'road_allowance_weeks', 'home_allowance_days', 'bonus_per_week',
   'reminder_first_hours', 'reminder_second_hours', 'completed_notify_group_id',
+  // Silent mode: whether the bot may message DRIVER groups at all, and where the
+  // internal "staff must clarify these dates" alert goes when it may not.
+  'driver_clarification_enabled', 'internal_clarification_group_id',
 ];
 
 async function updateHomeTimeSettings(patch = {}) {
@@ -359,7 +365,8 @@ async function setDriverHomeState(groupId, { state, stateSince } = {}) {
 // ─── Home-time requests ───
 
 // Open clarification flows still waiting on the driver for one or both dates.
-const AWAITING_STATUSES = ['awaiting_dates', 'awaiting_home_start', 'awaiting_return_to_road'];
+// Single source of truth lives with the clarification worker that guards on it.
+const { AWAITING_STATUSES } = clarification;
 // A driver's plain-text answer can still land after the two reminders are spent,
 // so an 'unanswered' clarification is treated as open for the reply handler.
 const OPEN_CLARIFICATION_STATUSES = [...AWAITING_STATUSES, 'clarification_unanswered'];
@@ -402,6 +409,8 @@ const REQUEST_COLUMN_MAP = {
   nextReminderAt: 'next_reminder_at',
   acknowledgedAt: 'acknowledged_at',
   policyResult: 'policy_result',
+  clarificationChannel: 'clarification_channel',
+  internalAlertSentAt: 'internal_alert_sent_at',
 };
 
 // BIGINT columns that must be stored as strings to survive node-pg round-trips.
@@ -606,67 +615,10 @@ async function markHomeTimeAcknowledged(id, policyResult) {
 }
 
 // ─── Clarification reminders (restart-safe worker) ───
-
-/**
- * Open clarifications whose next reminder is due, with the group + driver labels
- * needed to reply-and-tag. Excludes flows that already spent both reminders.
- */
-async function listDueHomeTimeReminders(nowIso, { limit = 50, maxReminders = 2 } = {}) {
-  const res = await query(
-    `SELECT r.*, g.group_name, g.telegram_group_id AS group_telegram_id, g.active AS group_active,
-            dp.first_name, dp.last_name, dp.unit_number, dp.driver_type,
-            dp.telegram_user_id, dp.telegram_username
-     FROM home_time_requests r
-     JOIN groups g ON g.id = r.group_id
-     LEFT JOIN driver_profiles dp ON dp.group_id = r.group_id
-     WHERE r.status = ANY($1)
-       AND r.next_reminder_at IS NOT NULL
-       AND r.next_reminder_at <= $2
-       AND r.reminder_count < $3
-     ORDER BY r.next_reminder_at ASC
-     LIMIT $4`,
-    [AWAITING_STATUSES, nowIso, maxReminders, limit]
-  );
-  return res.rows;
-}
-
-/**
- * Atomically claim a due reminder: bump reminder_count and move next_reminder_at
- * forward (or to NULL when the final reminder was just claimed), only if the row
- * is still due and its reminder_count has not changed since we read it. Returns
- * the updated row when THIS worker won the claim, or null otherwise — the guard
- * that stops overlapping workers / restarts from double-sending.
- */
-async function claimHomeTimeReminder(id, {
-  expectedReminderCount, nowIso, nextReminderAt = null,
-}) {
-  const res = await query(
-    `UPDATE home_time_requests
-       SET reminder_count = reminder_count + 1,
-           last_reminder_at = $2,
-           next_reminder_at = $3
-     WHERE id = $1
-       AND reminder_count = $4
-       AND next_reminder_at IS NOT NULL
-       AND next_reminder_at <= $2
-       AND status = ANY($5)
-     RETURNING *`,
-    [id, nowIso, nextReminderAt, expectedReminderCount, AWAITING_STATUSES]
-  );
-  return res.rows[0] || null;
-}
-
-/** After the final reminder goes unanswered → flag for manual follow-up. */
-async function markHomeTimeClarificationUnanswered(id) {
-  const res = await query(
-    `UPDATE home_time_requests
-       SET status = 'clarification_unanswered', next_reminder_at = NULL
-     WHERE id = $1 AND status = ANY($2)
-     RETURNING *`,
-    [id, AWAITING_STATUSES]
-  );
-  return res.rows[0] || null;
-}
+// The atomic claim helpers (due-reminder sweep, reminder claim / stand-down, and
+// the internal-alert claim) live in database/homeTimeClarification.js so this
+// file stays within the per-file line limit. They are re-exported below, so
+// every existing importer of database/homeTime.js is unchanged.
 
 /**
  * Retire every open clarification for a group (driver went back on the road, or an
@@ -787,6 +739,9 @@ module.exports = {
   updateHomeTimeRequestFields,
   getHomeTimeRequestById,
   getPendingHomeTimeRequestForGroup,
+  cancelHomeTimeReminderSchedule: clarification.cancelHomeTimeReminderSchedule,
+  claimInternalClarificationAlert: clarification.claimInternalClarificationAlert,
+  releaseInternalClarificationAlert: clarification.releaseInternalClarificationAlert,
   getOpenHomeTimeRequestForGroup,
   getOpenClarificationForGroup,
   getAwaitingDatesHomeTimeRequestForGroup,
@@ -794,9 +749,9 @@ module.exports = {
   fulfillAwaitingHomeTimeRequest,
   setHomeTimeClarificationMessage,
   markHomeTimeAcknowledged,
-  listDueHomeTimeReminders,
-  claimHomeTimeReminder,
-  markHomeTimeClarificationUnanswered,
+  listDueHomeTimeReminders: clarification.listDueHomeTimeReminders,
+  claimHomeTimeReminder: clarification.claimHomeTimeReminder,
+  markHomeTimeClarificationUnanswered: clarification.markHomeTimeClarificationUnanswered,
   expireOpenClarificationsForGroup,
   decideHomeTimeRequest,
   setHomeTimeRequestMessage,

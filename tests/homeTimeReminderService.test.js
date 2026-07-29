@@ -14,6 +14,7 @@ function loadService({ due = [], claimResult, settings } = {}) {
   const claims = [];
   const marks = [];
   const sends = [];
+  const cancels = [];
 
   require.cache[htPath] = {
     exports: {
@@ -29,6 +30,7 @@ function loadService({ due = [], claimResult, settings } = {}) {
         return { ...row, reminder_count: Number(row.reminder_count) + 1 };
       },
       async markHomeTimeClarificationUnanswered(id) { marks.push(id); return { id }; },
+      async cancelHomeTimeReminderSchedule(id) { cancels.push(id); return { id, next_reminder_at: null }; },
     },
   };
   require.cache[htmlPath] = { exports: { safeSend: async (fn) => fn() } };
@@ -41,7 +43,7 @@ function loadService({ due = [], claimResult, settings } = {}) {
   const telegram = {
     async sendMessage(chatId, text, extra) { sends.push({ chatId, text, extra }); return { message_id: 1 }; },
   };
-  return { service: require(servicePath), telegram, claims, marks, sends };
+  return { service: require(servicePath), telegram, claims, marks, sends, cancels };
 }
 
 function dueRow(over = {}) {
@@ -106,4 +108,87 @@ test('disabled feature performs no work', async () => {
   const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
   assert.equal(res.enabled, false);
   assert.equal(sends.length, 0);
+});
+
+// ── driver messaging disabled: reminders must never leak, and must not pile up ──
+
+const MESSAGING_OFF = {
+  enabled: true, reminder_first_hours: 12, reminder_second_hours: 12,
+  driver_clarification_enabled: false,
+};
+
+test('DISABLED: a due reminder is stood down instead of sent', async () => {
+  const {
+    service, telegram, sends, claims, cancels,
+  } = loadService({ due: [dueRow({ reminder_count: 0 })], settings: MESSAGING_OFF });
+  const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
+
+  assert.equal(sends.length, 0, 'nothing may reach the driver group');
+  assert.equal(res.sent, 0);
+  assert.equal(res.standDown, 1);
+  assert.deepEqual(cancels, [1], 'the schedule is cleared');
+  assert.equal(claims.length, 0, 'the reminder allowance is NOT consumed');
+});
+
+test('DISABLED: standing down does not flag the request as unanswered', async () => {
+  const { service, telegram, marks } = loadService({
+    // reminder_count 1 → this would have been the FINAL reminder when enabled.
+    due: [dueRow({ reminder_count: 1 })],
+    settings: MESSAGING_OFF,
+  });
+  await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
+  assert.deepEqual(marks, [], 'the request stays open for staff, not marked "No response"');
+});
+
+test('DISABLED: every due row is stood down, none slips through', async () => {
+  const {
+    service, telegram, sends, cancels,
+  } = loadService({
+    due: [dueRow({ id: 1 }), dueRow({ id: 2 }), dueRow({ id: 3 })],
+    settings: MESSAGING_OFF,
+  });
+  const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
+  assert.equal(sends.length, 0);
+  assert.deepEqual(cancels, [1, 2, 3]);
+  assert.equal(res.standDown, 3);
+});
+
+test('RE-ENABLING replays nothing: cleared schedules are no longer due', async () => {
+  // Turning messaging off cleared next_reminder_at, so listDueHomeTimeReminders
+  // (which requires next_reminder_at IS NOT NULL AND <= now) returns nothing.
+  // Switching back on therefore cannot fire an accumulated backlog.
+  const { service, telegram, sends } = loadService({
+    due: [], // nothing due — the rows were stood down while messaging was off
+    settings: { enabled: true, reminder_first_hours: 12, reminder_second_hours: 12, driver_clarification_enabled: true },
+  });
+  const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
+  assert.equal(sends.length, 0, 'no burst of old reminders');
+  assert.equal(res.sent, 0);
+  assert.equal(res.due, 0);
+});
+
+test('ENABLED (or column absent) keeps sending exactly as before', async () => {
+  for (const settings of [
+    { enabled: true, reminder_first_hours: 12, reminder_second_hours: 12, driver_clarification_enabled: true },
+    { enabled: true, reminder_first_hours: 12, reminder_second_hours: 12 }, // pre-migration row
+  ]) {
+    const {
+      service, telegram, sends, cancels,
+    } = loadService({ due: [dueRow({ reminder_count: 0 })], settings });
+    const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
+    assert.equal(sends.length, 1);
+    assert.equal(res.sent, 1);
+    assert.deepEqual(cancels, [], 'nothing is stood down while messaging is on');
+  }
+});
+
+test('the overall tracking switch still short-circuits before anything else', async () => {
+  const { service, telegram, sends, cancels } = loadService({
+    due: [dueRow()],
+    settings: { enabled: false, driver_clarification_enabled: false },
+  });
+  const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
+  assert.equal(res.enabled, false);
+  assert.equal(sends.length, 0);
+  assert.deepEqual(cancels, []);
 });

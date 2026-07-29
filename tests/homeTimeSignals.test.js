@@ -6,6 +6,9 @@ const {
   hasExplicitTimeOffSignal,
   hasHomeErrandSignal,
   looksLikeTemporaryHomeStop,
+  hasOperationalContextSignal,
+  looksLikeOperationalContext,
+  looksLikeFirstPersonStatus,
   HOME_TIME_SIGNAL_PATTERNS,
   HOME_TIME_STRONG_SIGNAL_PATTERNS,
   HOME_TIME_EXPLICIT_TIMEOFF_PATTERNS,
@@ -139,4 +142,91 @@ test('looksLikeTemporaryHomeStop yields to explicit time-off wording or a known 
   // Genuine requests with no errand marker are never flagged.
   assert.equal(looksLikeTemporaryHomeStop('driver wants to go home next week'), false);
   assert.equal(looksLikeTemporaryHomeStop('requesting PTO for next week'), false);
+});
+
+// ── operational context (the negative signal for ordinary driver-group talk) ──
+
+test('hasOperationalContextSignal detects repairs, loads, facilities, ETA', () => {
+  const hits = [
+    'the trailer needs a repair',
+    'broke down on I-80',
+    'need a new tire',
+    'taking it to the mechanic',
+    "700 ml yurmaydi bu trailer. Yo'lda fix qilsak bo'ladimi aka",
+    'send me the rate con',
+    'where is the BOL',
+    'delivery is at 8am',
+    'shipper says the load is not ready',
+    'he is at the yard',
+    'parked at the terminal',
+    'what is your ETA',
+    'appointment is tomorrow',
+    'once he gets to the truck',
+  ];
+  for (const text of hits) {
+    assert.strictEqual(hasOperationalContextSignal(text), true, text);
+  }
+});
+
+test('hasOperationalContextSignal does NOT fire on plain home-time wording', () => {
+  const misses = [
+    'I need four days of home time starting August 2',
+    "My home time after tomorrow and I'm going to stay for the whole week",
+    'he is asking for a few days off',
+    'can I get home time next month',
+    'Status: Home',
+    'Status: Ready',
+  ];
+  for (const text of misses) {
+    assert.strictEqual(hasOperationalContextSignal(text), false, text);
+  }
+});
+
+test('looksLikeOperationalContext yields to explicit time-off wording or a known date', () => {
+  const mixed = 'After I deliver this load I need 4 days off';
+  assert.strictEqual(hasOperationalContextSignal(mixed), true, 'operational words are present');
+  assert.strictEqual(looksLikeOperationalContext(mixed), false, 'but explicit time off wins');
+
+  const dated = 'dropping the trailer at the terminal, home Aug 2 back Aug 6';
+  assert.strictEqual(looksLikeOperationalContext(dated), true, 'no explicit wording, no date passed');
+  assert.strictEqual(looksLikeOperationalContext(dated, { hasDate: true }), false, 'a real date wins');
+});
+
+// ── first-person status detection ──
+
+test('looksLikeFirstPersonStatus accepts the driver speaking about themselves', () => {
+  const hits = [
+    "I'm home",
+    'I am home now',
+    'im at the house',
+    'I just got home',
+    'men uydaman',
+    "men yo'ldaman",
+    'я дома',
+    'приехал домой',
+  ];
+  for (const text of hits) {
+    assert.strictEqual(looksLikeFirstPersonStatus(text), true, text);
+  }
+});
+
+test('looksLikeFirstPersonStatus rejects third-person reports about the driver', () => {
+  const misses = [
+    'He is currently at home and will let us know once he gets to the truck',
+    'he is home',
+    'the driver is home now',
+    'they are back on the road',
+    'driver will let me know',
+  ];
+  for (const text of misses) {
+    assert.strictEqual(looksLikeFirstPersonStatus(text), false, text);
+  }
+});
+
+test('third-person wins even when a first-person fragment appears in the same message', () => {
+  // "I" appears, but the message is a staff report ABOUT the driver.
+  assert.strictEqual(
+    looksLikeFirstPersonStatus("I spoke to him, he is home and will let us know"),
+    false,
+  );
 });

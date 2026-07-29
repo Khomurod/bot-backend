@@ -13,6 +13,11 @@
  * (bump count + move/clear next_reminder_at, guarded on the unchanged count and
  * still-due time) before sending, so overlapping ticks or a restart never double
  * a reminder. No long in-memory timers.
+ *
+ * A reminder is a DRIVER-GROUP message, so the whole sweep respects the
+ * driver-messaging switch (home_time_settings.driver_clarification_enabled). When
+ * it is off, due reminders are stood down rather than sent — see the guard in
+ * runHomeTimeReminderCheck.
  */
 const { DateTime } = require('luxon');
 const ht = require('../database/homeTime');
@@ -20,6 +25,7 @@ const { safeSend } = require('./telegramHtml');
 const { callGeminiText } = require('./geminiClient');
 const { buildReminderMessage } = require('./homeTimeRequestConstants');
 const { buildDriverMention } = require('./driverMention');
+const { isDriverMessagingEnabled } = require('./homeTimeDriverChannel');
 
 const MAX_REMINDERS = 2;
 const POLL_MS = 5 * 60 * 1000; // 5 min — reminders are hours apart, so this is ample
@@ -82,6 +88,27 @@ async function runHomeTimeReminderCheck(telegram, { nowIso } = {}) {
   let sent = 0;
   let unanswered = 0;
   let errors = 0;
+  let standDown = 0;
+
+  // Driver messaging switched off while reminders were already scheduled. Clear
+  // each due row's schedule WITHOUT sending, without consuming one of the two
+  // allowed reminders, and without flagging it unanswered: the request stays open
+  // in its awaiting_* status for staff to resolve. Clearing (rather than
+  // deferring) is what guarantees that switching the setting back on replays
+  // nothing and fires no accumulated backlog.
+  if (!isDriverMessagingEnabled(settings)) {
+    for (const row of rows) {
+      // eslint-disable-next-line no-await-in-loop
+      const cleared = await ht.cancelHomeTimeReminderSchedule(row.id).catch(() => null);
+      if (cleared) standDown += 1;
+    }
+    if (standDown) {
+      console.log(`[HOME-TIME-REMINDER] Driver messaging disabled — stood down ${standDown} due reminder(s) without sending.`);
+    }
+    return {
+      enabled: true, due: rows.length, sent: 0, unanswered: 0, errors: 0, standDown,
+    };
+  }
 
   for (const row of rows) {
     // Skip inactive groups (spec §11: stop when the group becomes inactive).
@@ -132,7 +159,7 @@ async function runHomeTimeReminderCheck(telegram, { nowIso } = {}) {
     }
   }
   return {
-    enabled: true, due: rows.length, sent, unanswered, errors,
+    enabled: true, due: rows.length, sent, unanswered, errors, standDown,
   };
 }
 

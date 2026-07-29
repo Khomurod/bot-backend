@@ -15,8 +15,19 @@ const TO = TODAY.plus({ days: 7 }).toISODate(); // 4 days after FROM (return-to-
 const LAST_DAY = TODAY.plus({ days: 6 }).toISODate(); // last day home = return − 1
 // Completed request cards go here, NEVER to the driver's group (GROUP below).
 const NOTIFY_GROUP_ID = '-1009999';
+// Internal staff group for clarification alerts while driver messaging is off.
+const INTERNAL_GROUP_ID = '-1008888';
 
 const GROUP = { id: 7, telegram_group_id: '-1007', group_type: 'driver', group_name: 'WENZE UNIT # 96266 (COMPANY DRIVER)' };
+
+/** camelCase insert payload → the snake_case row shape `RETURNING *` produces. */
+function toRowShape(payload = {}) {
+  const row = {};
+  for (const [key, value] of Object.entries(payload)) {
+    row[key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)] = value;
+  }
+  return row;
+}
 
 /**
  * Load homeTimeRequestService with its DB / AI / Telegram / status deps mocked.
@@ -37,6 +48,8 @@ function loadService({
   transcript = '',
   notifyGroupId = NOTIFY_GROUP_ID, // completed-request notification group (null = unconfigured)
   approvedRequest = null, // getApprovedHomeTimeRequestForGroup (an already-registered window)
+  driverMessaging = true, // home_time_settings.driver_clarification_enabled
+  internalGroupId = INTERNAL_GROUP_ID, // internal_clarification_group_id (null = unconfigured)
 } = {}) {
   const servicePath = path.resolve(__dirname, '../../services/homeTimeRequestService.js');
   const dbPath = path.resolve(__dirname, '../../database/db.js');
@@ -51,8 +64,18 @@ function loadService({
   // homeTimeApproval must be re-required so it re-binds the mocked expiry DB layer
   // below (its `htExpiry`/`ht` references are captured at load time).
   const approvalPath = path.resolve(__dirname, '../../services/homeTimeApproval.js');
+  // The modules the orchestrator was split into capture `ht`/`db`/telegram helpers
+  // at load time too, so every one of them must be re-required against the mocks
+  // below. Forgetting one leaves a stale binding and the flow silently no-ops.
+  const flowPath = path.resolve(__dirname, '../../services/homeTimeClarificationFlow.js');
+  const composerPath = path.resolve(__dirname, '../../services/homeTimeMessageComposer.js');
+  const channelPath = path.resolve(__dirname, '../../services/homeTimeDriverChannel.js');
+  const internalAlertPath = path.resolve(__dirname, '../../services/homeTimeInternalAlert.js');
+  const approverTagPath = path.resolve(__dirname, '../../services/homeTimeApproverTag.js');
 
-  for (const p of [servicePath, dbPath, htPath, htmlPath, bufferPath, geminiPath, intentPath, statusPath, configPath, htExpiryPath, approvalPath]) {
+  for (const p of [servicePath, dbPath, htPath, htmlPath, bufferPath, geminiPath, intentPath,
+    statusPath, configPath, htExpiryPath, approvalPath, flowPath, composerPath, channelPath,
+    internalAlertPath, approverTagPath]) {
     delete require.cache[p];
   }
 
@@ -66,6 +89,7 @@ function loadService({
   const clarMsgs = [];
   const reactions = [];
   const expiries = [];
+  const internalClaims = [];
 
   require.cache[htExpiryPath] = {
     exports: {
@@ -90,13 +114,21 @@ function loadService({
         return {
           road_allowance_weeks: 4, home_allowance_days: 4, reminder_first_hours: 12, reminder_second_hours: 12,
           completed_notify_group_id: notifyGroupId,
+          driver_clarification_enabled: driverMessaging,
+          internal_clarification_group_id: internalGroupId,
         };
       },
       async getDriverHomeStatus() { return homeStatus; },
       async getOpenHomeStay() { return openStay; },
       async findDecidedRequestNearDate() { return null; },
       async getApprovedHomeTimeRequestForGroup() { return approvedRequest; },
-      async insertHomeTimeRequest(payload) { inserts.push(payload); return { id: 99, ...payload }; },
+      async insertHomeTimeRequest(payload) {
+        inserts.push(payload);
+        // Production runs `INSERT ... RETURNING *`, so the returned row is the
+        // DATABASE shape (snake_case), not the camelCase payload. Mirror that —
+        // callers such as the internal alert read request.driver_name.
+        return { id: 99, ...payload, ...toRowShape(payload) };
+      },
       async updateHomeTimeRequestFields(id, patch) { updates.push({ id, patch }); return { id, ...patch }; },
       async fulfillAwaitingHomeTimeRequest(id, payload) {
         fulfills.push({ id, payload });
@@ -108,6 +140,18 @@ function loadService({
       },
       async setHomeTimeClarificationMessage(id, payload) { clarMsgs.push({ id, payload }); return { id }; },
       async markHomeTimeAcknowledged(id) { return ack; },
+      // Atomic internal-alert claim: the first caller for an id wins, matching
+      // the real `WHERE internal_alert_sent_at IS NULL` guard.
+      async claimInternalClarificationAlert(id) {
+        if (internalClaims.includes(id)) return null;
+        internalClaims.push(id);
+        return { id };
+      },
+      async releaseInternalClarificationAlert(id) {
+        const i = internalClaims.indexOf(id);
+        if (i >= 0) internalClaims.splice(i, 1);
+        return { id };
+      },
     },
   };
   require.cache[htmlPath] = { exports: { safeSend: async (fn) => fn() } };
@@ -153,9 +197,15 @@ function loadService({
   return {
     service: require(servicePath), telegram,
     inserts, sends, messageLinks, fulfills, updates, clarMsgs, reactions, geminiCalls, stateTransitions, expiries, edits,
+    internalClaims,
+    // Messages split by destination, so a test can assert "nothing reached the
+    // driver" without re-deriving chat ids.
+    driverSends: () => sends.filter((m) => String(m.chatId) === String(GROUP.telegram_group_id)),
+    internalSends: () => sends.filter((m) => String(m.chatId) === String(INTERNAL_GROUP_ID)),
+    notifySends: () => sends.filter((m) => String(m.chatId) === String(notifyGroupId)),
   };
 }
 
 module.exports = {
-  TODAY, FROM, TO, LAST_DAY, NOTIFY_GROUP_ID, GROUP, loadService,
+  TODAY, FROM, TO, LAST_DAY, NOTIFY_GROUP_ID, INTERNAL_GROUP_ID, GROUP, loadService,
 };

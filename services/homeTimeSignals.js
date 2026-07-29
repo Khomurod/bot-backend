@@ -105,6 +105,73 @@ const HOME_ERRAND_SIGNAL_PATTERNS = [
   /\b(?:oil\s*change|appointment|dentist|doctor(?:'s)?|the\s+mechanic)\b/i,
 ];
 
+// Ordinary OPERATIONAL conversation. A driver group is mostly load, repair and
+// appointment talk, and a lot of it happens to contain "home", "road" or
+// "yo'lda" — "700 ml yurmaydi bu trailer. Yo'lda fix qilsak bo'ladimi aka" is a
+// trailer repair question, not a home-time request or a road-status change.
+//
+// These are the NEGATIVE operational signals. Like the errand markers they only
+// bite when there is no explicit time-off wording, so a genuine request that
+// merely mentions a load or a yard is unaffected.
+//
+// Uzbek/Russian forms are included because the driver groups actually use them.
+// Cyrillic entries omit \b — JS word boundaries are ASCII-only and would never
+// fire before a Cyrillic letter.
+const OPERATIONAL_CONTEXT_PATTERNS = [
+  // Repairs, breakdowns, maintenance.
+  /\brepair(?:s|ed|ing)?\b/i,
+  /\bbreak\s*down\b/i, /\bbroke(?:n)?\s+down\b/i,
+  /\btires?\b/i, /\btyres?\b/i, /\bflat\b/i,
+  /\bmechanic\b/i, /\bshop\b/i, /\bmaintenance\b/i, /\bservice\s+truck\b/i,
+  /\bfix(?:ed|ing)?\b/i, /\bfix\s*qil/i, /\bremont/i, /\bshina\b/i,
+  /\btrailer\b/i, /\breefer\b/i, /\bengine\b/i, /\bbrakes?\b/i,
+  /ремонт/i, /поломк/i,
+  // Load / rate / paperwork.
+  /\bload(?:s|ed|ing)?\b/i, /\brate\s*con(?:firmation)?\b/i, /\brate\b/i,
+  /\bbol\b/i, /\bpod\b/i, /\bpaperwork\b/i, /\binvoice\b/i, /\bdetention\b/i,
+  /\bgruz/i, /груз/i, /\bstavka/i, /ставк/i,
+  // Pickup / delivery / facilities.
+  /\bpick\s*up\s+(?:is|at|in|on|time|number|#)\b/i, /\bpu\s*#/i,
+  /\bdeliver(?:y|ies|ed|ing)?\b/i, /\bdrop\s*off\s+(?:is|at|in|on)\b/i,
+  /\bshipper\b/i, /\breceiver\b/i, /\bconsignee\b/i, /\bwarehouse\b/i,
+  // Yard / terminal / parking.
+  /\byard\b/i, /\bterminal\b/i, /\bparking\b/i, /\btruck\s*stop\b/i,
+  /\bto\s+the\s+truck\b/i, /\bat\s+the\s+truck\b/i,
+  // ETA / appointment / departure timing.
+  /\beta\b/i, /\bappt\b/i, /\bappointment\b/i,
+  /\bdeparture\b/i, /\bdepart(?:s|ing|ed)?\b/i,
+  /\bdispatch(?:er|ed|ing)?\b/i,
+];
+
+// First-person, present-tense status wording. An AI-detected (non-deterministic)
+// status change is only trusted from the driver speaking about themselves right
+// now — "I'm home", "men uydaman", "я дома" — never a third party reporting on
+// them ("he is currently at home and will let us know once he gets to the
+// truck", which is an ETA update, not a state change).
+const FIRST_PERSON_STATUS_PATTERNS = [
+  /\bi\s*(?:'|’)?\s*m\b/i, /\bi\s+am\b/i, /\bim\b/i,
+  /\bi\s+(?:just\s+)?(?:got|arrived|reached|made\s+it)\b/i,
+  /\bi\s+(?:will|'ll|am\s+going\s+to)\b/i,
+  /\bmy\s+(?:home|truck|status)\b/i,
+  /\bwe\s*(?:'|’)?\s*re\b/i, /\bwe\s+are\b/i,
+  // Uzbek 1st-person: uydaman, yo'ldaman, keldim, ketdim, boraman.
+  /\b\w*(?:da|ga)man\b/i, /\b\w+dim\b/i, /\b\w+aman\b/i,
+  // Russian 1st-person: я дома, я в пути, приехал, выехал (no explicit pronoun).
+  // "я" needs an explicit non-Cyrillic boundary — a JS \b is ASCII-only and would
+  // never fire before/after a Cyrillic letter (same trap as the hint lists above).
+  /(?:^|[^а-яё])я(?:\s|$)/i, /приехал/i, /выехал/i, /доехал/i,
+];
+
+// Third-person reporting ABOUT the driver. Present so a staff update is never
+// mistaken for the driver's own statement even if some first-person-looking
+// fragment appears elsewhere in the same message.
+const THIRD_PERSON_STATUS_PATTERNS = [
+  /\b(?:he|she|they|driver|the\s+driver)\s+(?:is|are|was|were|has|have|will|'s)\b/i,
+  /\bhe\s*(?:'|’)?s\b/i,
+  /\blet\s+us\s+know\b/i, /\blet\s+me\s+know\b/i,
+  /\bwill\s+(?:let|update|inform|advise)\b/i,
+];
+
 /** True when free text contains any home-time / time-off wording (broad recall). */
 function hasHomeTimeSignal(text) {
   const str = String(text || '');
@@ -154,8 +221,53 @@ function looksLikeTemporaryHomeStop(text, { hasDate = false } = {}) {
   return hasHomeErrandSignal(str);
 }
 
+/** True when the text carries ordinary operational-conversation wording. */
+function hasOperationalContextSignal(text) {
+  const str = String(text || '');
+  return OPERATIONAL_CONTEXT_PATTERNS.some((re) => re.test(str));
+}
+
+/**
+ * Decision helper mirroring looksLikeTemporaryHomeStop: is this just ordinary
+ * operational conversation that happens to mention home/road?
+ *
+ * True ONLY when an operational marker is present AND there is no genuine
+ * time-off evidence — neither explicit time-off wording nor a concrete
+ * date/window. That asymmetry is what lets "700 ml yurmaydi bu trailer. Yo'lda
+ * fix qilsak bo'ladimi aka" be refused while "I need four days of home time,
+ * my trailer is at the yard" still opens a request.
+ *
+ * @param {string} text
+ * @param {object} [opts]
+ * @param {boolean} [opts.hasDate=false] a concrete home-time date/window is known
+ */
+function looksLikeOperationalContext(text, { hasDate = false } = {}) {
+  const str = String(text || '');
+  if (hasDate) return false;
+  if (hasExplicitTimeOffSignal(str)) return false;
+  return hasOperationalContextSignal(str);
+}
+
+/**
+ * True when the text reads as the DRIVER describing their own current status
+ * ("I'm home", "men uydaman"), rather than someone reporting about them.
+ * Third-person reporting wins outright: a message that talks about "he/she/the
+ * driver" is never treated as a first-person statement.
+ */
+function looksLikeFirstPersonStatus(text) {
+  const str = String(text || '');
+  if (THIRD_PERSON_STATUS_PATTERNS.some((re) => re.test(str))) return false;
+  return FIRST_PERSON_STATUS_PATTERNS.some((re) => re.test(str));
+}
+
 module.exports = {
   HOME_TIME_SIGNAL_PATTERNS,
+  OPERATIONAL_CONTEXT_PATTERNS,
+  FIRST_PERSON_STATUS_PATTERNS,
+  THIRD_PERSON_STATUS_PATTERNS,
+  hasOperationalContextSignal,
+  looksLikeOperationalContext,
+  looksLikeFirstPersonStatus,
   HOME_TIME_STRONG_SIGNAL_PATTERNS,
   HOME_TIME_EXPLICIT_TIMEOFF_PATTERNS,
   HOME_TIME_GO_HOME_PATTERNS,

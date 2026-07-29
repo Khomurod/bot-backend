@@ -22,7 +22,9 @@ const { inferDriverType, isInactiveGroup } = require('../../services/driverProfi
 const { homeTimePolicyApplies } = require('../../services/homeTimeConstants');
 const { listCanonicalDriverGroups } = require('../../services/driverGroupDirectoryService');
 const { buildEfficiencyReport } = require('../../services/homeTimeEfficiencyService');
-const { parseDateInput, parseDateOnly, normalizeNotifyGroupId } = require('./homeTimeRouteHelpers');
+const {
+  parseDateInput, parseDateOnly, buildSettingsPatch,
+} = require('./homeTimeRouteHelpers');
 const { registerHomeTimeDecisionRoutes } = require('./homeTimeDecisionRoutes');
 
 // Supported efficiency date-range windows (days). 'all' = no lower bound.
@@ -460,86 +462,8 @@ function createHomeTimeRouter({ authMiddleware }) {
       const existing = await ht.getHomeTimeRequestById(id);
       if (!existing) return res.status(404).json({ error: 'Request not found' });
 
-      const b = req.body || {};
-      const patch = {};
-      if (b.home_from !== undefined) {
-        const v = parseDateOnly(b.home_from);
-        if (b.home_from && !v) return res.status(400).json({ error: 'home_from must be YYYY-MM-DD' });
-        patch.homeFrom = v;
-      }
-      if (b.return_to_road_date !== undefined) {
-        const v = parseDateOnly(b.return_to_road_date);
-        if (b.return_to_road_date && !v) return res.status(400).json({ error: 'return_to_road_date must be YYYY-MM-DD' });
-        patch.returnToRoadDate = v;
-        // Keep home_to (last day home) consistent when a return date is supplied.
-        patch.homeTo = v ? DateTime.fromISO(v).minus({ days: 1 }).toISODate() : null;
-      }
-      if (b.home_to !== undefined && b.return_to_road_date === undefined) {
-        const v = parseDateOnly(b.home_to);
-        if (b.home_to && !v) return res.status(400).json({ error: 'home_to must be YYYY-MM-DD' });
-        patch.homeTo = v;
-      }
-      if (b.status !== undefined) {
-        const allowed = ['pending', 'approved', 'denied', 'cancelled', 'expired', 'clarification_unanswered',
-          'awaiting_dates', 'awaiting_home_start', 'awaiting_return_to_road'];
-        if (!allowed.includes(b.status)) return res.status(400).json({ error: 'invalid status' });
-        patch.status = b.status;
-        // Resolving a flow stops any pending reminders.
-        if (['cancelled', 'expired', 'approved', 'denied'].includes(b.status)) patch.nextReminderAt = null;
-      }
-      if (b.note !== undefined) patch.aiReasoning = b.note ? String(b.note).slice(0, 1000) : null;
-      if (Object.keys(patch).length === 0) {
-        return res.status(400).json({ error: 'Provide at least one field to update' });
-      }
-      // Guard: if both dates are present after the patch, the return must be after the start.
-      const finalFrom = patch.homeFrom !== undefined ? patch.homeFrom : existing.home_from;
-      const finalReturn = patch.returnToRoadDate !== undefined ? patch.returnToRoadDate : existing.return_to_road_date;
-      if (finalFrom && finalReturn && String(finalReturn) <= String(finalFrom).slice(0, 10)) {
-        return res.status(400).json({ error: 'return_to_road_date must be after home_from' });
-      }
-      const request = await ht.updateHomeTimeRequestFields(id, patch);
-      res.json({ request });
-    } catch (err) {
-      console.error('[HOME-TIME API] request update failed:', err.message);
-      res.status(500).json({ error: 'Failed to update request.' });
-    }
-  });
-
-  // PUT /settings — enable/disable + tune the allowance and bonus.
-  router.put('/settings', authMiddleware, async (req, res) => {
-    try {
-      const b = req.body || {};
-      const patch = {};
-      if (b.enabled !== undefined) patch.enabled = Boolean(b.enabled);
-      if (b.road_allowance_weeks !== undefined) {
-        const w = Number.parseInt(b.road_allowance_weeks, 10);
-        if (!(w >= 1 && w <= 52)) return res.status(400).json({ error: 'road_allowance_weeks must be 1-52' });
-        patch.road_allowance_weeks = w;
-      }
-      if (b.home_allowance_days !== undefined) {
-        const d = Number.parseInt(b.home_allowance_days, 10);
-        if (!(d >= 1 && d <= 60)) return res.status(400).json({ error: 'home_allowance_days must be 1-60' });
-        patch.home_allowance_days = d;
-      }
-      if (b.bonus_per_week !== undefined) {
-        const n = Number(b.bonus_per_week);
-        if (!(n >= 0)) return res.status(400).json({ error: 'bonus_per_week must be 0 or more' });
-        patch.bonus_per_week = n;
-      }
-      for (const col of ['reminder_first_hours', 'reminder_second_hours']) {
-        if (b[col] !== undefined) {
-          const h = Number.parseInt(b[col], 10);
-          if (!(h >= 1 && h <= 168)) return res.status(400).json({ error: `${col} must be 1-168 hours` });
-          patch[col] = h;
-        }
-      }
-      // Telegram group that receives COMPLETED request cards. '' clears it; the
-      // driver's own group is never used for completed cards.
-      if (b.completed_notify_group_id !== undefined) {
-        const gid = normalizeNotifyGroupId(b.completed_notify_group_id);
-        if (gid === null) return res.status(400).json({ error: 'completed_notify_group_id must be a numeric Telegram chat id' });
-        patch.completed_notify_group_id = gid || null;
-      }
+      const { patch, error } = buildSettingsPatch(req.body);
+      if (error) return res.status(400).json({ error });
       const settings = await ht.updateHomeTimeSettings(patch);
       res.json({ settings });
     } catch (err) {

@@ -9,15 +9,28 @@
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { DateTime } = require('luxon');
+
+// Dates are relative to "now" so the past-window guard (which uses the real
+// clock) always sees a still-actionable request. A hardcoded window silently
+// becomes a time bomb: the original fixture ended 2026-07-24 and every approve
+// test began failing the moment that date passed. Mirrors the approach in
+// tests/helpers/homeTimeRequestServiceHarness.js.
+const TODAY = DateTime.now().setZone('America/Chicago');
+const HOME_FROM = TODAY.plus({ days: 3 }).toISODate();
+const HOME_TO = TODAY.plus({ days: 6 }).toISODate();
+const RETURN_TO_ROAD = TODAY.plus({ days: 7 }).toISODate();
+// Comfortably past the whole window — used to exercise the outdated guard.
+const AFTER_WINDOW = TODAY.plus({ days: 30 }).toISODate();
 
 const PENDING = {
   id: 5,
   status: 'pending',
   driver_name: 'Pascal F',
   unit_number: '96266',
-  home_from: '2026-07-20',
-  home_to: '2026-07-23',
-  return_to_road_date: '2026-07-24',
+  home_from: HOME_FROM,
+  home_to: HOME_TO,
+  return_to_road_date: RETURN_TO_ROAD,
   telegram_chat_id: '-100200300',
   telegram_message_id: 42,
 };
@@ -119,7 +132,9 @@ test('approve is blocked when the return date is missing', async () => {
 });
 
 test('approve is blocked when the return date is on/before the arrive-home date', async () => {
-  const bad = load({ request: { ...PENDING, return_to_road_date: '2026-07-20', home_to: '2026-07-19' } });
+  const bad = load({
+    request: { ...PENDING, return_to_road_date: HOME_FROM, home_to: TODAY.plus({ days: 2 }).toISODate() },
+  });
   const r = await bad.mod.applyHomeTimeDecision(bad.telegram, 5, { decision: 'approve', via: 'admin' });
   assert.equal(r.ok, false);
   assert.equal(r.code, 'invalid_dates');
@@ -137,7 +152,7 @@ test('decline is allowed even without valid dates', async () => {
 test('approve is blocked when the whole home-time window is already in the past', async () => {
   const { mod, calls, telegram, edits } = load();
   const result = await mod.applyHomeTimeDecision(telegram, 5, {
-    decision: 'approve', decidedByUsername: 'adminboss', via: 'admin', todayIso: '2026-08-01',
+    decision: 'approve', decidedByUsername: 'adminboss', via: 'admin', todayIso: AFTER_WINDOW,
   });
   assert.equal(result.ok, false);
   assert.equal(result.code, 'outdated');
@@ -148,7 +163,7 @@ test('approve is blocked when the whole home-time window is already in the past'
 test('an outdated request can still be DECLINED', async () => {
   const { mod, calls, telegram } = load();
   const result = await mod.applyHomeTimeDecision(telegram, 5, {
-    decision: 'decline', decidedByUsername: 'adminboss', via: 'admin', todayIso: '2026-08-01',
+    decision: 'decline', decidedByUsername: 'adminboss', via: 'admin', todayIso: AFTER_WINDOW,
   });
   assert.equal(result.ok, true);
   assert.equal(calls.decide[0].patch.status, 'denied');

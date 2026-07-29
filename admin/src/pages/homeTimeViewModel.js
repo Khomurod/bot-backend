@@ -194,6 +194,9 @@ function buildUnlinkedActivity(statuses, requests, history) {
       driver_type: request.driver_type || null,
       unit_number: request.unit_number || null,
       status: request.status,
+      // Drives the "Awaiting staff clarification" label when the bot is not
+      // messaging driver groups. Null on historical rows = the driver was asked.
+      clarification_channel: request.clarification_channel || null,
       home_from: request.home_from || null,
       home_to: request.home_to || null,
       source: request.source || null,
@@ -288,6 +291,7 @@ export function buildDriverTimeline({ requests = [], history = [] }) {
       kind: "request",
       timestamp: request.requested_at || request.home_from || request.home_to || null,
       status: request.status,
+      clarification_channel: request.clarification_channel || null,
       source: request.source || null,
       policy_met: request.policy_met,
       days_on_road: request.days_on_road,

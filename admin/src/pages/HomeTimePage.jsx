@@ -41,7 +41,20 @@ function money(value) {
   return `$${Number(value || 0).toFixed(0)}`;
 }
 
-function requestStatusMeta(status) {
+// An awaiting_* request whose clarification is being handled by staff (because
+// the bot is not messaging driver groups) reads as "Awaiting staff clarification".
+// The stored status value is unchanged — only the label differs — so all the
+// reminder and completion logic that keys off awaiting_* is untouched.
+const AWAITING_STATUSES = ["awaiting_dates", "awaiting_home_start", "awaiting_return_to_road"];
+
+function requestStatusMeta(status, clarificationChannel) {
+  if (clarificationChannel === "internal" && AWAITING_STATUSES.includes(status)) {
+    return {
+      label: "Awaiting staff clarification",
+      color: "#c084fc",
+      background: "rgba(192, 132, 252, 0.14)",
+    };
+  }
   switch (status) {
     case "approved":
       return { label: "Approved", color: "#22c55e", background: "rgba(34, 197, 94, 0.14)" };
@@ -97,7 +110,7 @@ function bonusProgressLabel(status) {
 
 function activityTitle(item) {
   if (item.kind === "request") {
-    return `${requestStatusMeta(item.status).label} home-time request`;
+    return `${requestStatusMeta(item.status, item.clarification_channel).label} home-time request`;
   }
   return "Completed road cycle";
 }
@@ -732,7 +745,7 @@ export default function HomeTimePage() {
                     <td>{fmtDate(item.timestamp)}</td>
                     <td>
                       {item.kind === "request"
-                        ? `${requestStatusMeta(item.status).label} | ${fmtDate(item.home_from)} to ${fmtDate(item.home_to)} | ${item.source || "--"}`
+                        ? `${requestStatusMeta(item.status, item.clarification_channel).label} | ${fmtDate(item.home_from)} to ${fmtDate(item.home_to)} | ${item.source || "--"}`
                         : `${fmtDate(item.road_started_at)} to ${fmtDate(item.home_arrived_at)} | ${money(item.bonus_usd)}`}
                     </td>
                   </tr>
@@ -934,7 +947,7 @@ export default function HomeTimePage() {
                 {selectedTimeline.length > 0 ? (
                   <div className="home-time-activity-list">
                     {selectedTimeline.map((item) => {
-                      const requestMeta = item.kind === "request" ? requestStatusMeta(item.status) : null;
+                      const requestMeta = item.kind === "request" ? requestStatusMeta(item.status, item.clarification_channel) : null;
                       return (
                         <div key={item.id} className="home-time-activity-item">
                           <div className="home-time-activity-top">
