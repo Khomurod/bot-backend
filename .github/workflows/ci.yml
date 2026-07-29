@@ -1,0 +1,157 @@
+name: CI
+
+# Runs on every push and pull request. Deliberately split into three jobs so a
+# failure tells you WHICH class of check broke:
+#
+#   checks       static/structural gates + the admin production build
+#   test         the Node suite that needs no secrets and no database
+#   integration  the *Pg suites, against a real PostgreSQL service container
+#
+# The integration job is a SEPARATE job rather than a silent skip. The *Pg tests
+# skip themselves when TEST_DATABASE_URL is unset, and a skipped test is not a
+# passing test (CLAUDE.md) — so CI provides a real database and they must pass.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Dummy values so config validation passes. Nothing here reaches a real
+  # service: no token is valid, and the tests never make outbound calls.
+  JWT_SECRET: ci-jwt-secret-not-a-real-secret-000000
+  BOT_TOKEN: '1:ci-placeholder'
+  TELEGRAM_BOT_TOKEN: '2:ci-placeholder'
+  FACEBOOK_TOKEN_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+
+jobs:
+  checks:
+    name: Static checks + admin build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # --ignore-scripts: the root postinstall builds the admin panel, which we
+      # do explicitly below so a build failure is reported as its own step.
+      - name: Install backend dependencies
+        run: npm ci --ignore-scripts
+
+      - name: File-size lint
+        run: npm run lint:filesize
+
+      - name: Schema baseline is up to date
+        run: npm run build:schema:check
+
+      - name: Install admin dependencies
+        run: npm ci --prefix admin
+
+      - name: Build admin panel
+        run: npm run build --prefix admin
+
+      - name: FleetView stays archived, not in the runtime
+        run: |
+          set -e
+          test ! -d fleet          || { echo "::error::fleet/ is back in the tree"; exit 1; }
+          test ! -d server/fleet   || { echo "::error::server/fleet/ is back in the tree"; exit 1; }
+          if grep -rn "mountFleet" --include=*.js . | grep -v node_modules | grep -v '^\./docs/'; then
+            echo "::error::a FleetView mount was reintroduced"; exit 1
+          fi
+          if grep -n "prefix fleet" package.json; then
+            echo "::error::the FleetView build is back in postinstall"; exit 1
+          fi
+          echo "FleetView is archived and absent from the runtime."
+
+  test:
+    name: Node unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install backend dependencies
+        run: npm ci --ignore-scripts
+
+      # The *Pg suites self-skip without TEST_DATABASE_URL; they are covered by
+      # the integration job below, which supplies a real database.
+      - name: Run the Node test suite
+        run: node --test --test-concurrency=1 tests/*.test.js
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install leads-bot dependencies
+        run: pip install -r leads-bot/requirements.txt
+
+      - name: Run the Python leads-bot tests
+        run: python -m unittest discover -s leads-bot -p "test_*.py"
+
+  integration:
+    name: PostgreSQL integration tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # UTF8 + a C locale template: database/schema.sql contains box-drawing
+        # characters in comments that a non-UTF8 cluster cannot store.
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install backend dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Apply migrations, then apply them again (idempotency)
+        run: |
+          set -e
+          npm run migrate
+          npm run migrate:status
+          echo "--- re-applying: a second run must be a no-op ---"
+          npm run migrate
+          npm run migrate:status
+
+      # Guard against the *Pg suites silently self-skipping: a skipped test is
+      # not a passing test, so fail loudly if the whole class vanishes.
+      - name: Run the PostgreSQL integration tests
+        run: |
+          set -e
+          node --test --test-concurrency=1 tests/*Pg.test.js 2>&1 | tee pg-results.txt
+          if grep -qE '^# skipped [1-9]' pg-results.txt; then
+            echo "::error::integration tests were skipped — TEST_DATABASE_URL is not reaching them"
+            exit 1
+          fi

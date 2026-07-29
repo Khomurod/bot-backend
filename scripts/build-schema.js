@@ -47,10 +47,25 @@ function segmentFiles() {
   return files;
 }
 
-/** The assembled schema.sql content (header + concatenated segments). */
+/**
+ * Normalize line endings to LF.
+ *
+ * The header above is built in JS with '\n', but the segment BODIES are read
+ * from disk — and on a Windows checkout (core.autocrlf) they arrive as CRLF.
+ * Without this the assembled output was LF header + CRLF bodies, so the exact
+ * bytes depended on which platform ran the build, and `--check` could never pass
+ * on a CRLF working copy even though the SQL was identical. Normalizing makes
+ * the generated file byte-identical on every platform, which is what lets CI
+ * gate on it.
+ */
+function toLf(text) {
+  return String(text).replace(/\r\n/g, '\n');
+}
+
+/** The assembled schema.sql content (header + concatenated segments), LF. */
 function assemble() {
   const files = segmentFiles();
-  const bodies = files.map((f) => fs.readFileSync(path.join(BASELINE_DIR, f), 'utf8'));
+  const bodies = files.map((f) => toLf(fs.readFileSync(path.join(BASELINE_DIR, f), 'utf8')));
   return HEADER + bodies.join('\n');
 }
 
@@ -60,7 +75,10 @@ function main() {
 
   if (check) {
     const current = fs.existsSync(SCHEMA_PATH) ? fs.readFileSync(SCHEMA_PATH, 'utf8') : '';
-    if (current !== assembled) {
+    // Compare normalized: a developer on Windows has a CRLF working copy of a
+    // file git stores as LF, and that is not schema drift. Content is what
+    // matters here, so a spurious failure would just train people to ignore it.
+    if (toLf(current) !== assembled) {
       console.error(
         '[build:schema] database/schema.sql is OUT OF DATE with database/baseline/*.sql.\n'
         + '               Run `npm run build:schema` and commit the result.',
@@ -77,4 +95,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { assemble, segmentFiles, main, BASELINE_DIR, SCHEMA_PATH, HEADER };
+module.exports = { assemble, segmentFiles, main, toLf, BASELINE_DIR, SCHEMA_PATH, HEADER };

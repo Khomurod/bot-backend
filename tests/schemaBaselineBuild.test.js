@@ -12,12 +12,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { assemble, segmentFiles, SCHEMA_PATH } = require('../scripts/build-schema');
+const { assemble, segmentFiles, SCHEMA_PATH, toLf } = require('../scripts/build-schema');
 
 test('database/schema.sql is up to date with database/baseline/*.sql', () => {
   const current = fs.readFileSync(SCHEMA_PATH, 'utf8');
+  // Compared with LF normalization, exactly as `npm run build:schema:check`
+  // does. A Windows checkout stores LF but writes CRLF into the working copy,
+  // which is not schema drift — asserting on raw bytes made this test fail on
+  // every Windows machine regardless of the SQL.
   assert.equal(
-    current, assemble(),
+    toLf(current), assemble(),
     'database/schema.sql is stale. Run `npm run build:schema` and commit the result.',
   );
 });

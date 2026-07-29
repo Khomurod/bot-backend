@@ -72,10 +72,11 @@ function loadService({
   const channelPath = path.resolve(__dirname, '../../services/homeTimeDriverChannel.js');
   const internalAlertPath = path.resolve(__dirname, '../../services/homeTimeInternalAlert.js');
   const approverTagPath = path.resolve(__dirname, '../../services/homeTimeApproverTag.js');
+  const outboxPath = path.resolve(__dirname, '../../database/homeTimeInternalAlertOutbox.js');
 
   for (const p of [servicePath, dbPath, htPath, htmlPath, bufferPath, geminiPath, intentPath,
     statusPath, configPath, htExpiryPath, approvalPath, flowPath, composerPath, channelPath,
-    internalAlertPath, approverTagPath]) {
+    internalAlertPath, approverTagPath, outboxPath]) {
     delete require.cache[p];
   }
 
@@ -90,6 +91,8 @@ function loadService({
   const reactions = [];
   const expiries = [];
   const internalClaims = [];
+  // id -> the row `RETURNING *` would produce, for the outbox claim mock.
+  const requestRows = new Map();
 
   require.cache[htExpiryPath] = {
     exports: {
@@ -124,6 +127,7 @@ function loadService({
       async getApprovedHomeTimeRequestForGroup() { return approvedRequest; },
       async insertHomeTimeRequest(payload) {
         inserts.push(payload);
+        requestRows.set(99, { id: 99, ...payload, ...toRowShape(payload) });
         // Production runs `INSERT ... RETURNING *`, so the returned row is the
         // DATABASE shape (snake_case), not the camelCase payload. Mirror that —
         // callers such as the internal alert read request.driver_name.
@@ -140,18 +144,52 @@ function loadService({
       },
       async setHomeTimeClarificationMessage(id, payload) { clarMsgs.push({ id, payload }); return { id }; },
       async markHomeTimeAcknowledged(id) { return ack; },
-      // Atomic internal-alert claim: the first caller for an id wins, matching
-      // the real `WHERE internal_alert_sent_at IS NULL` guard.
-      async claimInternalClarificationAlert(id) {
-        if (internalClaims.includes(id)) return null;
+    },
+  };
+
+  // Internal-alert OUTBOX (migration 0002). Modelled closely enough to be
+  // meaningful: enqueue makes a row pending, a lease can only be taken once
+  // while pending, and delivery is terminal. The real atomicity is proven
+  // against PostgreSQL in tests/homeTimeInternalAlertOutboxPg.test.js.
+  const alertRows = new Map();
+  require.cache[outboxPath] = {
+    exports: {
+      async enqueueInternalAlert(id) {
+        const r = alertRows.get(id) || { id, state: null, leased: false };
+        if (r.state !== 'delivered') r.state = 'pending';
+        alertRows.set(id, r);
+        return r;
+      },
+      async claimInternalAlertById(id) {
+        const r = alertRows.get(id);
+        if (!r || r.state !== 'pending' || r.leased) return null;
+        r.leased = true;
         internalClaims.push(id);
+        // The real claim is `RETURNING *`, so the caller gets the WHOLE request
+        // row and can render the alert from it. Mirror that.
+        return { ...(requestRows.get(id) || { id }), id, internal_alert_attempts: 1 };
+      },
+      async claimDueInternalAlerts() { return []; },
+      async markInternalAlertDelivered(id) {
+        const r = alertRows.get(id);
+        if (r) { r.state = 'delivered'; r.leased = false; }
         return { id };
       },
-      async releaseInternalClarificationAlert(id) {
-        const i = internalClaims.indexOf(id);
-        if (i >= 0) internalClaims.splice(i, 1);
+      async markInternalAlertFailed(id) {
+        const r = alertRows.get(id);
+        if (r) { r.state = 'pending'; r.leased = false; }
+        return { id, internal_alert_state: 'pending' };
+      },
+      async releaseInternalAlertClaim(id) {
+        const r = alertRows.get(id);
+        if (r) r.leased = false;
         return { id };
       },
+      async countPendingInternalAlerts() {
+        return [...alertRows.values()].filter((r) => r.state === 'pending').length;
+      },
+      async standDownAllDriverReminders() { return 0; },
+      async switchOpenClarificationsToInternal() { return { switched: 0, enqueued: 0 }; },
     },
   };
   require.cache[htmlPath] = { exports: { safeSend: async (fn) => fn() } };
