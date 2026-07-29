@@ -2,9 +2,9 @@
  * HTTP API assembly.
  *
  * This file owns the Express app: global middleware (CORS, body parsers,
- * static admin build, FleetView mount), auth middleware construction, and the
- * mounting of every feature route module in a stable, order-sensitive
- * sequence. Route handlers themselves live under server/routes/.
+ * static admin build), auth middleware construction, and the mounting of every
+ * feature route module in a stable, order-sensitive sequence. Route handlers
+ * themselves live under server/routes/.
  *
  * Route modules receive their external collaborators (db, config, bot send
  * functions, AI services…) as injected dependencies from here. That keeps the
@@ -100,15 +100,10 @@ app.use(express.urlencoded({ extended: false }));
 // Serve admin panel static files (production build)
 app.use('/admin', express.static(adminBuildDir));
 
-// ─── Fleet Operations Platform (self-contained module, mounted at /update) ───
-// This is the only place linking the fleet module to the host app. It adds the
-// /api/v1/* API and the /update/* SPA and touches nothing else in this file.
-// A FleetView initialization failure must never take down the main app.
-try {
-  require('./fleet').mountFleet(app);
-} catch (fleetMountError) {
-  console.error('[FLEET] mount failed — main app continues without FleetView:', fleetMountError);
-}
+// ─── FleetView removed ───
+// The Fleet Operations Platform (/api/v1/* API + /update/* SPA + its background
+// snapshot sync job) used to be mounted here. It is disabled and archived; see
+// docs/ARCHIVED_FEATURES.md. Do not re-add a mount without reading that file.
 
 // ─── Auth ───
 app.use(createAuthRoutes({ db, config, authMiddleware }));
@@ -185,7 +180,7 @@ app.use('/api/bot-messages', createBotMessagesRouter({ authMiddleware: legacyAut
 
 // ─── Trailer Tracking (Beta) ───
 // A trailer-router construction failure must never take down the whole API (the
-// feature is Beta and self-contained); log and continue, like the FleetView mount.
+// feature is Beta and self-contained); log and continue.
 try {
   const { createTrailerRoutes } = require('./routes/trailerRoutes');
   app.use(createTrailerRoutes({ authMiddleware, requirePermission, telegram: bot.telegram }));

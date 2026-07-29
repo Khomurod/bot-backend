@@ -125,30 +125,20 @@ Everything else under `/api/*` requires the admin JWT (see §9).
 
 ---
 
-## 3. Fleet Operations Platform ("FleetView", `/update`)
+## 3. Fleet Operations Platform ("FleetView", `/update`) — ARCHIVED
 
-A **self-contained TMS-style module**, deliberately isolated from the rest:
+**FleetView has been removed from this repository.** It no longer exists on
+`main`: no `fleet/` SPA, no `server/fleet/` backend, no `/update` page, no
+`/api/v1/*` API, and no background snapshot-sync job. Nothing in the running
+application references it.
 
-- **Frontend**: separate React/Vite app in **`fleet/`** (built to
-  `fleet/build/`, served at `/update` with SPA fallback). Pages
-  (`fleet/src/pages/`): Dashboard, LoadsPage (+LoadDrawer), DispatchBoard,
-  DispatchMap, UpdateBoard, DriversPage, BrokersPage, CompaniesPage,
-  EquipmentPage, FuelTolls, RateSavings, Statistics, TasksPage, EmailsPage,
-  UsersPage, SettingsPage, HelpPage, LoginPage, SupportPage. State via a
-  custom store (`fleet/src/store.jsx`), API client `fleet/src/api.js`.
-- **Backend**: **`server/fleet/`** — mounted by `server/fleet/index.js`
-  (`mountFleet(app)`), the **only** integration point with the host app. API at
-  **`/api/v1/*`** (`server/fleet/router.js`, ~73 endpoints). Failure to mount
-  is caught in `server/api.js` so the main app keeps running without it.
-- **Data modes** (`server/fleet/config.js`, `FLEETVIEW_DATA_MODE`):
-  - `real` (production default): reads the **existing** integrations — Postgres
-    (`realDb.js`), Datatruck (`dataTruckAdapter.js`), etc. via
-    `realProvider.js`. Single hardcoded tenant "Wenze".
-  - demo: in-memory store (`store.js`) with demo data.
-- **Auth** (`server/fleet/auth.js`): JWT; in real mode it **federates with the
-  main admin panel's `JWT_SECRET`** and fails closed if unset. Tenant is derived
-  from the verified token, never the request body. Permissions enforced
-  server-side.
+The complete feature is preserved at the git tag
+**`archive/fleetview-disabled`**. See **`docs/ARCHIVED_FEATURES.md`** for what
+was removed, which database tables were left in place, and how to restore it.
+
+**AI agents: do not scan, index, or modify the archived feature unless you were
+specifically asked to work on FleetView.** Treat any remaining FleetView
+reference in older documentation as historical.
 
 ---
 
@@ -174,9 +164,8 @@ Order matters in this file:
 2. **Raw webhook proxies** (`/webhook`, `/rc-webhook`) and the internal Indeed
    route — mounted **before** `express.json()` (signature preservation).
 3. `express.json({ limit: '1mb' })`, static `/admin`.
-4. FleetView mount (`require('./fleet').mountFleet(app)`, try/caught).
-5. Auth (`/api/auth/login` with per-IP rate limiting, `/api/auth/verify`).
-6. Feature routes — inline in `api.js` (auth, groups, driver profiles,
+4. Auth (`/api/auth/login` with per-IP rate limiting, `/api/auth/verify`).
+5. Feature routes — inline in `api.js` (auth, groups, driver profiles,
    questions, broadcasts, scheduled messages, mileage bonus, AI reports/insights,
    employee birthdays, media upload) plus mounted routers from
    `server/routes/`:
@@ -195,9 +184,8 @@ Order matters in this file:
 | `/api/recruiters` | `recruiterRoutes.js` | has public `GET /public-stats` |
 | `/api/bot-messages` | `botMessagesRoutes.js` | receives `bot.telegram` |
 | `/api/groups` (members) | `groupMembersRoutes.js` | |
-| `/api/v1` | `server/fleet/router.js` | FleetView |
 
-7. SPA fallbacks: `/admin/*`, `/dispatch/*`, `/raise/*`, `/recruiters/*` all
+6. SPA fallbacks: `/admin/*`, `/dispatch/*`, `/raise/*`, `/recruiters/*` all
    serve the admin build's `index.html`.
 
 **Media upload** (`POST /api/upload-media`): multer memory storage (20MB cap;
@@ -257,9 +245,6 @@ static `build/` folders and served by Express:
   client-side photo downscaling to ≤2560px JPEG — Telegram recompresses photos
   anyway, so this is lossless in practice). Styling is inline styles + a CSS
   file; state is React `useState`/`useEffect` — **no Redux/query library**.
-- **`fleet/`** — richer SPA with its own shell (`Shell.jsx`), store
-  (`store.jsx`), API client (`api.js`), components (`components.jsx`), pages in
-  `fleet/src/pages/`. Base path `/update/`.
 
 Duplicated logic to be aware of: each app has its **own** API client and auth
 handling; they only share the backend.
@@ -359,11 +344,11 @@ For each: config location → main files → data flow → dependents → failur
 - **Config**: `DATATRUCK_API_TOKEN`, `DATATRUCK_COMPANY` (subdomain, default
   `wenze`), doc-delivery knobs in `config/config.js`.
 - **Files**: `services/datatruckApiService.js` (read-only OpenAPI client),
-  `datatruckLoadService.js` (active loads → dispatch/ETA/FleetView),
+  `datatruckLoadService.js` (active loads → dispatch/ETA),
   `datatruckDocumentService.js` (+`datatruckDocumentHelpers.js`) BOL/POD
-  forwarding, `server/fleet/dataTruckAdapter.js` (FleetView),
+  forwarding,
   `mileageBonusService.js` (mileage source).
-- **Depends on it**: dispatch `/load`, ETA context, mileage bonuses, FleetView
+- **Depends on it**: dispatch `/load`, ETA context, mileage bonuses
   loads, document forwarding. Failure → features degrade to fallbacks (pinned
   messages, chat history parsing) or skip the tick.
 
@@ -474,8 +459,7 @@ For each: config location → main files → data flow → dependents → failur
   (`server/api.js`) **pins `algorithms: ['HS256']`** (blocks alg-none/asym
   forgeries). Frontend stores the token in localStorage.
 - **No role system** in the admin panel — any admin token grants all admin
-  APIs. FleetView has its own role/permission resolution (`server/fleet/auth.js`)
-  but in real mode federates the same `JWT_SECRET`.
+  APIs.
 - **Internal calls**: `internalSharedSecretGuard`
   (`LEADS_INTERNAL_SHARED_SECRET`) for Python-child ↔ Node and Indeed ingest.
 - **Public token flows**: raise page (per-driver token + OTP), Facebook connect
@@ -485,7 +469,7 @@ For each: config location → main files → data flow → dependents → failur
   check accounting user ids; home-time approvals check approver ids. Never
   authorize by username.
 - **Security-sensitive files**: `server/api.js` (authMiddleware, CORS, proxy),
-  `server/fleet/auth.js`, `services/facebookCrypto.js`,
+  `services/facebookCrypto.js`,
   `config/config.js`, `bot/creatorMessageManager.js`.
 
 ---
@@ -508,7 +492,6 @@ For each: config location → main files → data flow → dependents → failur
 - `services/` — ~84 business-logic modules (see §7/§8 for ownership).
 - `server/api.js` — Express app (see §4).
 - `server/routes/` — 11 feature routers.
-- `server/fleet/` — FleetView backend (see §3).
 - `server/services/dispatchParserService.js` — dispatch parsing helpers used by
   routes.
 - `database/db.js` — the shared query surface (~3,600 lines). Split-in-place
@@ -517,7 +500,6 @@ For each: config location → main files → data flow → dependents → failur
 - `database/migrate/`, `database/migrations/` — migration runner + forward migrations.
 - `database/*.js` — per-feature query helpers.
 - `admin/` — admin SPA (see §2/§5); `admin/src/api.js` is the API client.
-- `fleet/` — FleetView SPA (see §3).
 - `leads-bot/` — Python FastAPI worker: `webhook_server.py` (endpoints
   `/webhook`, `/rc-webhook`, `/health`, `/retry/{id}`, `/leads-log`),
   `graph.py` (Meta Graph), `sms.py` (RingCentral), `config.py`, `main.py`.
@@ -571,7 +553,7 @@ For each: config location → main files → data flow → dependents → failur
 - **Platform**: `PORT` (Render injects), `RENDER_EXTERNAL_URL`,
   `CORS_ALLOWED_ORIGINS` (**required in production** unless
   `RENDER_EXTERNAL_URL` set), `NODE_ENV`, `PG_POOL_MAX`,
-  `FLEETVIEW_DATA_MODE`, `ADMIN_USERNAME`/`ADMIN_PASSWORD` (seeding only).
+  `ADMIN_USERNAME`/`ADMIN_PASSWORD` (seeding only).
 
 **Local development minimum**: the 5 required secrets + a Postgres. Tests need
 none (they stub env/DB). Never print or commit secret values.
@@ -633,7 +615,7 @@ none (they stub env/DB). Never print or commit secret values.
   changing code, run the suite once to capture the baseline, and after your
   change confirm you added zero new failures.**
 - **Single file**: `node --test tests/<name>.test.js`.
-- **Frontends**: `cd admin && npm run build` and `cd fleet && npm run build`
+- **Frontend**: `cd admin && npm run build`
   (Vite; build success is the validation — there is **no lint/typecheck setup**
   and no frontend unit tests).
 - **Boot smoke test** (no network sends): load modules with stub env —
@@ -667,7 +649,7 @@ none (they stub env/DB). Never print or commit secret values.
    paths reach real drivers. Use the test endpoints and the management group;
    never fire real sends to driver groups while developing.
 5. **Run tests and builds before finalizing**: full Node suite (compare to the
-   pre-change baseline; zero new failures), plus `admin`/`fleet` builds if you
+   pre-change baseline; zero new failures), plus the `admin` build if you
    touched a frontend. Verify user-facing changes against real behavior where
    safely possible.
 6. **Keep changes small, modular, and in-style**: CommonJS, one concern per

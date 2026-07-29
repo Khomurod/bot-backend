@@ -1,25 +1,24 @@
 /**
- * Pure asset-map filter helpers (fleet/src/utils/assetMapFilters.js and its
- * admin mirror). These drive BOTH the Dispatch Map markers and the side list,
- * so every filter dimension is tested here. The helpers must only hide/show
- * backend-decided state — never reclassify it.
+ * Pure asset-map filter helpers (admin/src/utils/assetMapFilters.js). These drive
+ * BOTH the Dispatch Map markers and the side list, so every filter dimension is
+ * tested here. The helpers must only hide/show backend-decided state — never
+ * reclassify it.
+ *
+ * This suite used to also assert that the admin copy was byte-identical to a
+ * second copy under fleet/. FleetView has been archived and removed (see
+ * docs/ARCHIVED_FEATURES.md), so the admin module is now the only copy and there
+ * is nothing left to mirror.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 
-const FLEET_PATH = path.resolve(__dirname, '../fleet/src/utils/assetMapFilters.js');
 const ADMIN_PATH = path.resolve(__dirname, '../admin/src/utils/assetMapFilters.js');
 
-let m; // fleet module (admin copy is byte-identical — asserted below)
+let m;
 test.before(async () => {
-  m = await import(pathToFileURL(FLEET_PATH).href);
-});
-
-test('admin helper is an exact mirror of the fleet helper', () => {
-  assert.equal(fs.readFileSync(ADMIN_PATH, 'utf8'), fs.readFileSync(FLEET_PATH, 'utf8'));
+  m = await import(pathToFileURL(ADMIN_PATH).href);
 });
 
 // ── fixtures ──
