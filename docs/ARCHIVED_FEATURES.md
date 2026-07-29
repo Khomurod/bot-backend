@@ -15,6 +15,19 @@ git so they can be recovered.
 **Archived:** 2026-07-29
 **Preserved at tag:** `archive/fleetview-disabled` (commit `e6a6bb7`)
 
+**Remote tag verified 2026-07-29** — it exists on `origin` and dereferences to the
+pre-removal commit:
+
+```bash
+git ls-remote --tags origin refs/tags/archive/fleetview-disabled
+# 8c5f9a69…  refs/tags/archive/fleetview-disabled       (annotated tag object)
+# e6a6bb74…  refs/tags/archive/fleetview-disabled^{}    (the pre-removal commit)
+```
+
+Recovery from the remote was proven by a fresh clone at that tag: 35 `fleet/`
+source files and 14 `server/fleet/` files, including `fleet/package.json` and
+`server/fleet/index.js`.
+
 A self-contained TMS-style module: a React/Vite SPA served at `/update`, a
 `/api/v1/*` Express API, and a background job that rebuilt a database-cached
 fleet snapshot every 120 seconds.

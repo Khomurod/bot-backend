@@ -23,9 +23,13 @@ const { homeTimePolicyApplies } = require('../../services/homeTimeConstants');
 const { listCanonicalDriverGroups } = require('../../services/driverGroupDirectoryService');
 const { buildEfficiencyReport } = require('../../services/homeTimeEfficiencyService');
 const {
-  parseDateInput, parseDateOnly, buildSettingsPatch,
+  parseDateInput, buildSettingsPatch,
 } = require('./homeTimeRouteHelpers');
+const {
+  isSilencingTransition, applySilentModeTransition,
+} = require('../../services/homeTimeSilentModeTransition');
 const { registerHomeTimeDecisionRoutes } = require('./homeTimeDecisionRoutes');
+const { registerHomeTimeRequestRoutes } = require('./homeTimeRequestRoutes');
 
 // Supported efficiency date-range windows (days). 'all' = no lower bound.
 const EFFICIENCY_RANGES = { 30: 30, 90: 90, 180: 180 };
@@ -364,107 +368,43 @@ function createHomeTimeRouter({ authMiddleware }) {
     }
   });
 
-  // GET /requests — every home-time request (for red-flag review).
-  router.get('/requests', authMiddleware, async (req, res) => {
-    try {
-      const [rows, directory] = await Promise.all([
-        ht.listHomeTimeRequests({ limit: 200 }),
-        listCanonicalDriverGroups({ operational: true, includeNonDrivers: false }),
-      ]);
-      const directoryByGroupId = buildDirectoryIndex(directory);
-      const requests = rows.map((row) => {
-        const identity = directoryByGroupId.get(Number(row.group_id)) || null;
-        const driverType = identity?.driver_type || resolveDriverType(row);
-        return {
-          ...row,
-          group_id: identity?.canonical_group_id || row.group_id,
-          source_group_id: row.group_id,
-          driver_name: identity?.display_name || row.driver_name || null,
-          unit_number: identity?.unit_number || row.unit_number || null,
-          driver_type: driverType,
-          policy_applies: homeTimePolicyApplies(driverType),
-        };
-      });
-      res.json({ requests });
-    } catch (err) {
-      console.error('[HOME-TIME API] requests load failed:', err.message);
-      res.status(500).json({ error: 'Failed to load requests.' });
-    }
+  // Request endpoints (list / create / correct) live in their own module so the
+  // request handlers and the SETTINGS handler below can never be confused for
+  // one another again. They only ever write home_time_requests.
+  registerHomeTimeRequestRoutes(router, {
+    authMiddleware, buildDirectoryIndex, resolveDriverType,
   });
 
-  // POST /requests — manually register a home-time request (admin entry).
-  router.post('/requests', authMiddleware, async (req, res) => {
+  // PUT /settings — enable/disable + tune the allowance, bonus, reminder cadence
+  // and the two notification groups. Validation lives in the pure
+  // buildSettingsPatch() helper so every bound is unit-testable.
+  //
+  // Deliberately SEPARATE from PUT /requests/:id above: this endpoint only ever
+  // writes the single home_time_settings row and never touches a request. (A
+  // previous refactor collapsed the two, so settings saves 404'd and request
+  // edits silently wrote settings — see tests/homeTimeRoutesSeparation.test.js.)
+  router.put('/settings', authMiddleware, async (req, res) => {
     try {
-      const b = req.body || {};
-      const groupId = b.group_id != null ? Number.parseInt(b.group_id, 10) : null;
-      const homeFrom = parseDateOnly(b.home_from);
-      const homeTo = parseDateOnly(b.home_to);
-      if (!homeFrom || !homeTo) {
-        return res.status(400).json({ error: 'home_from and home_to must be YYYY-MM-DD' });
-      }
-      if (homeTo < homeFrom) {
-        return res.status(400).json({ error: 'home_to must be on or after home_from' });
-      }
-      const allowedStatus = ['pending', 'approved', 'denied'];
-      const status = allowedStatus.includes(b.status) ? b.status : 'approved';
-
-      let driverName = b.driver_name || null;
-      let unitNumber = b.unit_number || null;
-      let telegramGroupId = null;
-      let driverType = null;
-      if (groupId) {
-        const profile = await db.getDriverProfileByGroupId(groupId).catch(() => null);
-        if (profile) {
-          driverName = driverName || [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim() || null;
-          unitNumber = unitNumber || profile.unit_number || null;
-          telegramGroupId = profile.telegram_group_id || null;
-          driverType = profile.driver_type || inferDriverType(profile.group_name || '');
-        }
-      }
-      const policyMet = homeTimePolicyApplies(driverType)
-        ? (typeof b.policy_met === 'boolean' ? b.policy_met : null)
-        : null;
-
-      // Always insert as pending, then decide() so decided_by/decided_at are set
-      // consistently for approved/denied manual entries.
-      let request = await ht.insertHomeTimeRequest({
-        groupId: groupId || null,
-        telegramGroupId,
-        driverName,
-        unitNumber,
-        requestedByUsername: req.admin?.username || null,
-        policyMet,
-        homeFrom,
-        homeTo,
-        status: 'pending',
-        source: 'manual',
-        aiReasoning: b.note || null,
-      });
-      if (status !== 'pending') {
-        const decided = await ht.decideHomeTimeRequest(request.id, {
-          status, username: req.admin?.username || null,
-        });
-        if (decided) request = decided;
-      }
-      res.json({ request });
-    } catch (err) {
-      console.error('[HOME-TIME API] manual request failed:', err.message);
-      res.status(500).json({ error: 'Failed to register request.' });
-    }
-  });
-
-  // PUT /requests/:id — admin correction: fix the dates and/or resolve the status
-  // (e.g. close an unanswered clarification, cancel a flow). At least one field.
-  router.put('/requests/:id', authMiddleware, async (req, res) => {
-    try {
-      const id = Number.parseInt(req.params.id, 10);
-      if (!(id > 0)) return res.status(400).json({ error: 'Invalid request id' });
-      const existing = await ht.getHomeTimeRequestById(id);
-      if (!existing) return res.status(404).json({ error: 'Request not found' });
-
       const { patch, error } = buildSettingsPatch(req.body);
       if (error) return res.status(400).json({ error });
+
+      // Detect the true → false flip BEFORE the write, then act AFTER it. The
+      // ordering matters: standing reminders down before the write would, if the
+      // write then failed, leave a still-enabled bot with its schedule wiped.
+      const previous = await ht.getHomeTimeSettings();
+      const silencing = isSilencingTransition(previous, patch);
+
       const settings = await ht.updateHomeTimeSettings(patch);
+
+      // Turning driver messaging off must stop every ALREADY-SCHEDULED reminder
+      // at once, not just the ones that happen to be due — otherwise one
+      // scheduled for later today still fires if the setting is switched back on
+      // before it comes due. Bulk DB update; sends nothing to any driver group.
+      if (silencing) {
+        await applySilentModeTransition().catch((e) => {
+          console.error('[HOME-TIME API] silent-mode transition failed:', e.message);
+        });
+      }
       res.json({ settings });
     } catch (err) {
       console.error('[HOME-TIME API] settings update failed:', err.message);

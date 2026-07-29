@@ -89,40 +89,6 @@ async function cancelHomeTimeReminderSchedule(id) {
   return res.rows[0] || null;
 }
 
-/**
- * Atomically claim the right to send THE internal clarification alert for a
- * request. Mirrors markHomeTimeAcknowledged: only the first caller gets a row
- * back, so concurrent ticks, retries and process restarts can never post the
- * same request to the internal group twice.
- *
- * @returns {object|null} the claimed row, or null when an alert already went out
- */
-async function claimInternalClarificationAlert(id) {
-  const res = await query(
-    `UPDATE home_time_requests
-       SET internal_alert_sent_at = NOW()
-     WHERE id = $1 AND internal_alert_sent_at IS NULL
-     RETURNING *`,
-    [id]
-  );
-  return res.rows[0] || null;
-}
-
-/**
- * Release an internal-alert claim after the send itself failed, so the next
- * sweep can retry instead of the request being silently marked as alerted.
- */
-async function releaseInternalClarificationAlert(id) {
-  const res = await query(
-    `UPDATE home_time_requests
-       SET internal_alert_sent_at = NULL
-     WHERE id = $1
-     RETURNING *`,
-    [id]
-  );
-  return res.rows[0] || null;
-}
-
 /** After the final reminder goes unanswered → flag for manual follow-up. */
 async function markHomeTimeClarificationUnanswered(id) {
   const res = await query(
@@ -140,7 +106,5 @@ module.exports = {
   listDueHomeTimeReminders,
   claimHomeTimeReminder,
   cancelHomeTimeReminderSchedule,
-  claimInternalClarificationAlert,
-  releaseInternalClarificationAlert,
   markHomeTimeClarificationUnanswered,
 };

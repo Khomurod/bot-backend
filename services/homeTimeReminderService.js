@@ -21,11 +21,10 @@
  */
 const { DateTime } = require('luxon');
 const ht = require('../database/homeTime');
-const { safeSend } = require('./telegramHtml');
 const { callGeminiText } = require('./geminiClient');
 const { buildReminderMessage } = require('./homeTimeRequestConstants');
 const { buildDriverMention } = require('./driverMention');
-const { isDriverMessagingEnabled } = require('./homeTimeDriverChannel');
+const { isDriverMessagingEnabled, sendToDriverGroup } = require('./homeTimeDriverChannel');
 
 const MAX_REMINDERS = 2;
 const POLL_MS = 5 * 60 * 1000; // 5 min — reminders are hours apart, so this is ample
@@ -139,12 +138,17 @@ async function runHomeTimeReminderCheck(telegram, { nowIso } = {}) {
       const chatId = row.group_telegram_id || row.telegram_group_id;
       const replyTo = row.root_message_id || row.clarification_message_id || null;
 
+      // Routed through the central driver channel rather than calling Telegram
+      // directly. The sweep already returns early when messaging is off, so this
+      // is defence in depth: the ONE choke point stays the only way a Home-Time
+      // message reaches a driver group, and a future edit here cannot bypass it.
       // eslint-disable-next-line no-await-in-loop
-      await safeSend(() => telegram.sendMessage(chatId, text, {
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-        ...(replyTo ? { reply_to_message_id: Number(replyTo), allow_sending_without_reply: true } : {}),
-      }));
+      await sendToDriverGroup(telegram, chatId, text, {
+        replyToMessageId: replyTo,
+        settings,
+        reason: 'clarification reminder',
+        extra: { parse_mode: 'HTML' },
+      });
       sent += 1;
 
       if (isFinal) {
@@ -195,6 +199,17 @@ async function tick() {
   try {
     await runHomeTimeReminderCheck(telegramClient);
     await runHomeTimeExpirySweep(telegramClient);
+    // Rides this service's cadence but is a SEPARATE responsibility: the two
+    // sweeps above chase DRIVERS, this one chases STAFF. Required lazily so the
+    // reminder tests can load this module without the alert outbox. Isolated in
+    // its own try/catch so a staff-alert problem can never stop driver
+    // reminders (or vice versa).
+    try {
+      const { runInternalAlertSweep } = require('./homeTimeInternalAlert');
+      await runInternalAlertSweep(telegramClient);
+    } catch (alertErr) {
+      console.error('[HOME-TIME-INTERNAL] sweep error:', alertErr.message);
+    }
   } catch (err) {
     console.error('[HOME-TIME-REMINDER] tick error:', err.message);
   } finally {

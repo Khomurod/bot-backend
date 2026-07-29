@@ -740,8 +740,6 @@ module.exports = {
   getHomeTimeRequestById,
   getPendingHomeTimeRequestForGroup,
   cancelHomeTimeReminderSchedule: clarification.cancelHomeTimeReminderSchedule,
-  claimInternalClarificationAlert: clarification.claimInternalClarificationAlert,
-  releaseInternalClarificationAlert: clarification.releaseInternalClarificationAlert,
   getOpenHomeTimeRequestForGroup,
   getOpenClarificationForGroup,
   getAwaitingDatesHomeTimeRequestForGroup,
