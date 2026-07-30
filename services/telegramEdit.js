@@ -24,6 +24,16 @@
  * no zombie upload is left occupying a socket while its retry runs (the exact
  * failure mode of the previous Promise-race timeout).
  *
+ * TIMER LIFECYCLE: the per-attempt abort timer and the retry backoff sleep are
+ * deliberately REF'd (never unref()'d). They are what guarantees an in-flight
+ * attempt SETTLES: with an unref()'d timer, an otherwise-idle event loop drains
+ * before the abort fires and the awaited attempt is abandoned mid-flight — the
+ * promise never settles, the request is never cancelled, and (in tests) the
+ * runner reports "Promise resolution is still pending but the event loop has
+ * already resolved". A pending edit operation legitimately holds the process
+ * alive for at most perAttemptTimeoutMs × attempts + backoff; idle background
+ * schedulers are where unref belongs, not in-flight request guards.
+ *
  * SAFETY: nothing here ever returns or logs bot tokens, Authorization headers,
  * full request URLs, cookies, stack traces, DB URLs, screenshot bytes, or
  * personal data — only allowlisted codes and a sanitized short description.
@@ -150,7 +160,9 @@ function classifyTelegramError(err, { operation = 'edit', correlationId = null }
   return make({ code: 'TELEGRAM_EDIT_FAILED', category: CATEGORY.UNKNOWN, retryable: false, ambiguousOutcome: false, description: `Unexpected Telegram error${descRaw ? `: ${sanitizeDescription(err)}` : ''}` });
 }
 
-const defaultSleep = (ms) => new Promise((resolve) => { const t = setTimeout(resolve, ms); if (t.unref) t.unref(); });
+// REF'd on purpose: a retry backoff between live attempts must complete even
+// when the event loop is otherwise empty (see TIMER LIFECYCLE above).
+const defaultSleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 /**
  * Run one Telegram edit operation with bounded, ABORTABLE retries.
@@ -192,10 +204,13 @@ async function runTelegramEditWithRetry(fn, {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const controller = new AbortController();
     let timedOut = false;
+    // REF'd on purpose: this timer is the settlement guarantee for a stalled
+    // request. unref() here previously let an idle event loop drain before the
+    // abort fired, abandoning the in-flight attempt with its promise forever
+    // pending (see TIMER LIFECYCLE above).
     const timer = perAttemptTimeoutMs > 0
       ? setTimeout(() => { timedOut = true; controller.abort(); }, perAttemptTimeoutMs)
       : null;
-    if (timer && timer.unref) timer.unref();
     const startedAt = Date.now();
     let result;
     let caught = null;

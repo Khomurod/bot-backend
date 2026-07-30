@@ -1,7 +1,8 @@
 /**
  * /answers — presentation sections (all Uzbek). Every section renders only
- * anonymous aggregated data; groups under the k-threshold arrive suppressed
- * from the server (count only) and are shown as "collecting responses".
+ * anonymous aggregated data (no names, tokens, or individual records).
+ * Department and dispatch-team results render for ANY group size — including
+ * a single respondent — as explicitly requested for this internal event.
  */
 import { useState } from "react";
 
@@ -21,16 +22,6 @@ function PatternBars({ counts, meta }) {
         </div>
       ))}
     </div>
-  );
-}
-
-function Suppressed({ count }) {
-  return (
-    <p className="sos-suppressed">
-      {count === 0
-        ? "Hali javoblar yoʻq."
-        : `${count} ta ishtirokchi — maxfiylik uchun natijalar kamida 3 kishidan soʻng koʻrsatiladi.`}
-    </p>
   );
 }
 
@@ -56,21 +47,17 @@ export function CompanySection({ summary }) {
     <div className="sos-card">
       <div className="sos-card-kicker">Kompaniya boʻyicha umumiy manzara</div>
       <h2>Butun jamoaning SOS profili</h2>
-      {company.suppressed ? (
-        <Suppressed count={summary.total} />
-      ) : (
-        <div className="sos-grid">
-          <div>
-            <p style={{ fontWeight: 700, marginBottom: 8 }}>Asosiy javob uslubi boʻyicha (odamlar soni)</p>
-            <PatternBars counts={company.primaryCounts} meta={meta} />
-          </div>
-          <div>
-            <p style={{ fontWeight: 700, marginBottom: 8 }}>Barcha javoblar boʻyicha (ball ulushi)</p>
-            <PatternBars counts={company.answerPatternCounts} meta={meta} />
-            <TopPatternStory topPatterns={company.topPatterns} meta={meta} />
-          </div>
+      <div className="sos-grid">
+        <div>
+          <p style={{ fontWeight: 700, marginBottom: 8 }}>Asosiy javob uslubi boʻyicha (odamlar soni)</p>
+          <PatternBars counts={company.primaryCounts} meta={meta} />
         </div>
-      )}
+        <div>
+          <p style={{ fontWeight: 700, marginBottom: 8 }}>Barcha javoblar boʻyicha (ball ulushi)</p>
+          <PatternBars counts={company.answerPatternCounts} meta={meta} />
+          <TopPatternStory topPatterns={company.topPatterns} meta={meta} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -143,19 +130,13 @@ export function DepartmentsSection({ summary }) {
               {dept.labelUz}
               <span className="sos-badge">{dept.count} ta javob</span>
             </h2>
-            {dept.suppressed ? (
-              <Suppressed count={dept.count} />
-            ) : (
-              <>
-                <PatternBars counts={dept.primaryCounts} meta={meta} />
-                <TopPatternStory topPatterns={dept.topPatterns} meta={meta} />
-                {dept.technique && <div className="sos-technique">🛠 {dept.technique}</div>}
-                {dept.sosQuestions && dept.sosQuestions.map((q) => (
-                  <div key={q} className="sos-q-chip" style={{ marginTop: 8 }}>“{q}”</div>
-                ))}
-                {dept.questions && <QuestionDistributions questions={dept.questions} />}
-              </>
-            )}
+            <PatternBars counts={dept.primaryCounts} meta={meta} />
+            <TopPatternStory topPatterns={dept.topPatterns} meta={meta} />
+            {dept.technique && <div className="sos-technique">🛠 {dept.technique}</div>}
+            {dept.sosQuestions && dept.sosQuestions.map((q) => (
+              <div key={q} className="sos-q-chip" style={{ marginTop: 8 }}>“{q}”</div>
+            ))}
+            {dept.questions && <QuestionDistributions questions={dept.questions} />}
           </div>
         ))}
       </div>
@@ -183,14 +164,8 @@ export function TeamsSection({ summary }) {
               {team.teamName}
               <span className="sos-badge">{team.count} ta javob</span>
             </h2>
-            {team.suppressed ? (
-              <Suppressed count={team.count} />
-            ) : (
-              <>
-                <PatternBars counts={team.primaryCounts} meta={meta} />
-                <TopPatternStory topPatterns={team.topPatterns} meta={meta} />
-              </>
-            )}
+            <PatternBars counts={team.primaryCounts} meta={meta} />
+            <TopPatternStory topPatterns={team.topPatterns} meta={meta} />
           </div>
         ))}
       </div>

@@ -3,7 +3,7 @@
  * selected option with its scoring meaning (pattern + weight), the score
  * breakdown, and the personal result text they saw.
  */
-import { PatternChip, PATTERN_COLORS } from "./SosSubmissionsTable";
+import { PatternChip, PATTERN_COLORS, ModeBadge } from "./SosSubmissionsTable";
 
 const PATTERN_ORDER = ["victim", "complaint", "waiting", "blame", "ownership", "builder"];
 
@@ -31,6 +31,7 @@ export default function SosSubmissionDetail({ detail, departmentLabels, onClose,
         </div>
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 14, marginBottom: 16 }}>
+          <span className="card" style={{ padding: "6px 12px" }}><ModeBadge isTest={detail.isTest} /></span>
           <span className="card" style={{ padding: "6px 12px" }}>{departmentLabels[detail.department] || detail.department}</span>
           {detail.dispatchTeamName && <span className="card" style={{ padding: "6px 12px" }}>🚚 {detail.dispatchTeamName}</span>}
           <span className="card" style={{ padding: "6px 12px", textTransform: "uppercase" }}>{detail.language}</span>
@@ -87,8 +88,8 @@ export default function SosSubmissionDetail({ detail, departmentLabels, onClose,
           </div>
         ))}
 
-        <button className="btn" style={{ color: "#f87171", marginTop: 8 }} onClick={() => onDelete(detail.id)}>
-          🗑 Delete this submission
+        <button className="btn" style={{ color: "#f87171", marginTop: 8 }} onClick={() => onDelete(detail.id, detail.isTest)}>
+          🗑 Delete this {detail.isTest ? "TEST" : "REAL"} submission
         </button>
       </div>
     </div>

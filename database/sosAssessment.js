@@ -1,11 +1,22 @@
 /**
- * SOS assessment — data access layer (tables from migration 0003).
+ * SOS assessment — data access layer (tables from migrations 0003 + 0004).
  *
  * Deliberately separate from the Telegram driver-feedback survey tables
  * (questions/options/responses). Not spread into database/db.js — require this
  * module directly. Submissions are written in one transaction together with
  * their 10 answer snapshots; results are stored at submit time and never
  * recomputed, so a stored result can never change.
+ *
+ * REAL/TEST ISOLATION (permanent invariant): every submission row carries
+ * `is_test`; FALSE = real production data (the pre-0004 default, so all
+ * historical rows are real). EVERY query in this module that touches
+ * submissions is scoped by mode AT THE SQL LEVEL — summaries, duplicate
+ * detection, result-token lookup, completion stats, list, and clear. Mode
+ * flags are normalized with `=== true`, so an accidentally-undefined flag
+ * degrades to REAL-mode reads and can never widen a delete: `clearSubmissions`
+ * requires an explicit boolean and refuses anything else. The test pages can
+ * therefore never read or destroy real records even if a frontend or route
+ * bug passes the wrong thing.
  */
 
 const { pool, query } = require('./pool');
@@ -25,33 +36,40 @@ function mapSubmission(row) {
     primaryPattern: row.primary_pattern,
     secondaryPattern: row.secondary_pattern,
     duplicateConfirmed: row.duplicate_confirmed,
+    isTest: row.is_test === true,
     createdAt: row.created_at,
     ...(row.duplicate_count !== undefined ? { duplicateCount: Number(row.duplicate_count) } : {}),
   };
 }
 
+/** Both switches in one read: `is_open` (real) and `test_is_open` (test). */
 async function getSettings() {
-  const res = await query('SELECT is_open, updated_at FROM sos_settings WHERE id = 1');
+  const res = await query('SELECT is_open, test_is_open, updated_at FROM sos_settings WHERE id = 1');
   const row = res.rows[0];
-  return { isOpen: row ? row.is_open === true : false, updatedAt: row ? row.updated_at : null };
+  return {
+    isOpen: row ? row.is_open === true : false,
+    testIsOpen: row ? row.test_is_open === true : false,
+    updatedAt: row ? row.updated_at : null,
+  };
 }
 
-async function setOpen(isOpen) {
-  const res = await query(
-    'UPDATE sos_settings SET is_open = $1, updated_at = NOW() WHERE id = 1 RETURNING is_open, updated_at',
+/** Toggle exactly one mode's switch; the other mode is untouched. */
+async function setOpen(isOpen, isTest) {
+  const column = isTest === true ? 'test_is_open' : 'is_open';
+  await query(
+    `UPDATE sos_settings SET ${column} = $1, updated_at = NOW() WHERE id = 1`,
     [isOpen === true],
   );
-  const row = res.rows[0];
-  return { isOpen: row.is_open === true, updatedAt: row.updated_at };
+  return getSettings();
 }
 
-/** Latest submission with the same normalized name + department, if any. */
-async function findDuplicate(nameNormalized, department) {
+/** Latest same-mode submission with the same normalized name + department. */
+async function findDuplicate(nameNormalized, department, isTest) {
   const res = await query(
     `SELECT id, created_at FROM sos_submissions
-      WHERE name_normalized = $1 AND department = $2
+      WHERE name_normalized = $1 AND department = $2 AND is_test = $3
       ORDER BY created_at DESC LIMIT 1`,
-    [nameNormalized, department],
+    [nameNormalized, department, isTest === true],
   );
   return res.rows[0] ? { id: res.rows[0].id, createdAt: res.rows[0].created_at } : null;
 }
@@ -68,8 +86,8 @@ async function createSubmission(input) {
       `INSERT INTO sos_submissions
          (full_name, name_normalized, department, dispatch_team_id, dispatch_team_name,
           language, content_version, pattern_scores, primary_pattern, secondary_pattern,
-          result_token, duplicate_confirmed, client_ip)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+          result_token, duplicate_confirmed, client_ip, is_test)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING id, created_at`,
       [
         input.fullName,
@@ -85,6 +103,7 @@ async function createSubmission(input) {
         input.resultToken,
         input.duplicateConfirmed === true,
         input.clientIp ?? null,
+        input.isTest === true,
       ],
     );
     const submissionId = subRes.rows[0].id;
@@ -105,13 +124,16 @@ async function createSubmission(input) {
   }
 }
 
-/** Result re-view via capability token. Excludes name/ip on purpose. */
-async function getSubmissionByToken(resultToken) {
+/**
+ * Result re-view via capability token, scoped to its mode: a real token is
+ * invisible to the test route and vice versa. Excludes name/ip on purpose.
+ */
+async function getSubmissionByToken(resultToken, isTest) {
   const res = await query(
     `SELECT language, department, content_version, pattern_scores,
             primary_pattern, secondary_pattern, created_at
-       FROM sos_submissions WHERE result_token = $1`,
-    [resultToken],
+       FROM sos_submissions WHERE result_token = $1 AND is_test = $2`,
+    [resultToken, isTest === true],
   );
   const row = res.rows[0];
   if (!row) return null;
@@ -126,11 +148,15 @@ async function getSubmissionByToken(resultToken) {
   };
 }
 
-/** Admin list with filters; duplicateCount flags likely duplicates. */
-async function listSubmissions({ department, dispatchTeamId, pattern, search, limit = 500 } = {}) {
+/**
+ * Admin list. `mode` is explicit: 'real' | 'test' | 'all' (combined view the
+ * admin selects deliberately). duplicateCount never counts across modes.
+ */
+async function listSubmissions({ department, dispatchTeamId, pattern, search, mode = 'real', limit = 500 } = {}) {
   const where = [];
   const values = [];
   const add = (sqlForIndex, value) => { values.push(value); where.push(sqlForIndex(`$${values.length}`)); };
+  if (mode !== 'all') add((i) => `is_test = ${i}`, mode === 'test');
   if (department) add((i) => `department = ${i}`, department);
   if (dispatchTeamId) add((i) => `dispatch_team_id = ${i}`, dispatchTeamId);
   if (pattern) add((i) => `(primary_pattern = ${i} OR secondary_pattern = ${i})`, pattern);
@@ -138,7 +164,7 @@ async function listSubmissions({ department, dispatchTeamId, pattern, search, li
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
   values.push(Math.min(Number(limit) || 500, 2000));
   const res = await query(
-    `SELECT *, COUNT(*) OVER (PARTITION BY name_normalized, department) AS duplicate_count
+    `SELECT *, COUNT(*) OVER (PARTITION BY name_normalized, department, is_test) AS duplicate_count
        FROM sos_submissions ${whereSql}
       ORDER BY created_at DESC
       LIMIT $${values.length}`,
@@ -172,21 +198,41 @@ async function deleteSubmission(id) {
   return res.rows.length > 0;
 }
 
-async function clearAllSubmissions() {
-  const res = await query('DELETE FROM sos_submissions RETURNING id');
+/**
+ * Clear ONE mode's submissions. The mode is a REQUIRED boolean — anything
+ * else throws, so no caller can ever wipe both modes (or the wrong mode) by
+ * omitting a flag. Cascade removes the mode's answers with its submissions.
+ */
+async function clearSubmissions(isTest) {
+  if (typeof isTest !== 'boolean') {
+    throw new Error('clearSubmissions requires an explicit boolean mode');
+  }
+  const res = await query('DELETE FROM sos_submissions WHERE is_test = $1 RETURNING id', [isTest]);
   return res.rows.length;
 }
 
-/** Rows for aggregation.buildSummary — anonymous by construction. */
-async function getSummaryRows() {
+/** Rows for aggregation.buildSummary — anonymous by construction, one mode only. */
+async function getSummaryRows(isTest) {
+  const mode = isTest === true;
   const [subs, patterns, options] = await Promise.all([
-    query('SELECT department, dispatch_team_id, dispatch_team_name, primary_pattern FROM sos_submissions'),
+    query(
+      'SELECT department, dispatch_team_id, dispatch_team_name, primary_pattern FROM sos_submissions WHERE is_test = $1',
+      [mode],
+    ),
     query(
       `SELECT s.department AS submission_department, a.pattern, SUM(a.weight)::float AS count
          FROM sos_answers a JOIN sos_submissions s ON s.id = a.submission_id
+        WHERE s.is_test = $1
         GROUP BY s.department, a.pattern`,
+      [mode],
     ),
-    query('SELECT question_key, option_key, COUNT(*)::int AS count FROM sos_answers GROUP BY question_key, option_key'),
+    query(
+      `SELECT a.question_key, a.option_key, COUNT(*)::int AS count
+         FROM sos_answers a JOIN sos_submissions s ON s.id = a.submission_id
+        WHERE s.is_test = $1
+        GROUP BY a.question_key, a.option_key`,
+      [mode],
+    ),
   ]);
   return {
     submissions: subs.rows.map((r) => ({
@@ -208,16 +254,19 @@ async function getSummaryRows() {
   };
 }
 
-/** Completion counts for the admin status card. */
-async function getCompletionStats() {
+/** Completion counts for the admin status card, one mode only. */
+async function getCompletionStats(isTest) {
+  const mode = isTest === true;
   const [total, byDept, byTeam, last] = await Promise.all([
-    query('SELECT COUNT(*)::int AS n FROM sos_submissions'),
-    query('SELECT department, COUNT(*)::int AS n FROM sos_submissions GROUP BY department'),
+    query('SELECT COUNT(*)::int AS n FROM sos_submissions WHERE is_test = $1', [mode]),
+    query('SELECT department, COUNT(*)::int AS n FROM sos_submissions WHERE is_test = $1 GROUP BY department', [mode]),
     query(
       `SELECT dispatch_team_name, COUNT(*)::int AS n FROM sos_submissions
-        WHERE dispatch_team_name IS NOT NULL GROUP BY dispatch_team_name ORDER BY dispatch_team_name`,
+        WHERE dispatch_team_name IS NOT NULL AND is_test = $1
+        GROUP BY dispatch_team_name ORDER BY dispatch_team_name`,
+      [mode],
     ),
-    query('SELECT MAX(created_at) AS at FROM sos_submissions'),
+    query('SELECT MAX(created_at) AS at FROM sos_submissions WHERE is_test = $1', [mode]),
   ]);
   const byDepartment = {};
   for (const row of byDept.rows) byDepartment[row.department] = row.n;
@@ -238,7 +287,7 @@ module.exports = {
   listSubmissions,
   getSubmissionDetail,
   deleteSubmission,
-  clearAllSubmissions,
+  clearSubmissions,
   getSummaryRows,
   getCompletionStats,
 };

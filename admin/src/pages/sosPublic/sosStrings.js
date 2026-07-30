@@ -14,6 +14,8 @@ export const STRINGS = {
   uz: {
     appTitle: "Savol Ortidagi Savol",
     appAbbr: "SOS",
+    testBadge: "TEST rejimi",
+    testNote: "Bu sinov sahifasi — javoblaringiz haqiqiy natijalarga qoʻshilmaydi.",
     welcomeTitle: "Jamoaviy oʻyin-soʻrovnomasiga xush kelibsiz!",
     welcomeText: "Bu qisqa soʻrovnoma ish jarayonidagi vaziyatlarga birinchi munosabatingizni aniqlashga yordam beradi. 10 ta savol, taxminan 5 daqiqa. Toʻgʻri yoki notoʻgʻri javob yoʻq — oʻzingizga eng yaqin variantni tanlang.",
     welcomePrivacy: "Shaxsiy natijangizni faqat oʻzingiz va administratorlar koʻradi. Umumiy ekranda faqat anonim jamoaviy natijalar chiqadi.",
@@ -59,6 +61,8 @@ export const STRINGS = {
   ru: {
     appTitle: "Savol Ortidagi Savol",
     appAbbr: "SOS",
+    testBadge: "ТЕСТ-режим",
+    testNote: "Это тестовая страница — ваши ответы не попадут в настоящие результаты.",
     welcomeTitle: "Добро пожаловать в командный опрос!",
     welcomeText: "Этот короткий опрос поможет увидеть вашу первую реакцию на рабочие ситуации. 10 вопросов, примерно 5 минут. Правильных и неправильных ответов нет — выбирайте вариант, который ближе всего к вам.",
     welcomePrivacy: "Ваш личный результат видите только вы и администраторы. На общем экране показываются только анонимные командные итоги.",
@@ -104,6 +108,8 @@ export const STRINGS = {
   en: {
     appTitle: "Savol Ortidagi Savol",
     appAbbr: "SOS",
+    testBadge: "TEST mode",
+    testNote: "This is a practice page — your answers will not be counted in the real results.",
     welcomeTitle: "Welcome to the team assessment!",
     welcomeText: "This short assessment helps you see your first reaction to everyday work situations. 10 questions, about 5 minutes. There are no right or wrong answers — pick the option closest to what you would really do.",
     welcomePrivacy: "Your personal result is visible only to you and the administrators. The shared screen shows anonymous team totals only.",

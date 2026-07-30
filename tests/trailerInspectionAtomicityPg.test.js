@@ -202,10 +202,28 @@ test('a photo record without bytes cannot exist in the first place', {
       originalSize: bytes.length, checksum: 'abc', uploadedByAdminId: adminId,
     });
 
+    // Assert on the SQLSTATE and the constraint NAME rather than on the error
+    // prose: PostgreSQL words an ON DELETE RESTRICT violation as the generic
+    // "violates foreign key constraint …" (verified on PG 16 and 17), and
+    // matching the wording made this check fail on every supported server.
+    // Checking 23503 + the constraint identity is both version-independent and
+    // stricter than the previous message regex, which named no constraint.
     await assert.rejects(
       () => harness.query('DELETE FROM trailer_media_blobs WHERE id = $1', [descriptor.blobId]),
-      /violates RESTRICT setting of foreign key/i,
+      (err) => {
+        assert.equal(err.code, '23503', 'must be a foreign_key_violation');
+        assert.equal(err.constraint, 'trailer_media_blob_id_fkey', 'blocked by the live-media FK');
+        assert.match(err.message, /violates .*foreign key constraint/i);
+        return true;
+      },
       'a live photo can never be gutted, leaving metadata pointing at nothing',
     );
+
+    // The RESTRICT actually protected the row: the bytes are still there.
+    const stillThere = await harness.query(
+      'SELECT COUNT(*)::int AS n FROM trailer_media_blobs WHERE id = $1',
+      [descriptor.blobId],
+    );
+    assert.equal(stillThere.rows[0].n, 1, 'the blob survives the rejected delete');
   });
 });

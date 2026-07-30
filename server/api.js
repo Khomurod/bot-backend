@@ -148,8 +148,12 @@ app.use('/api/raise', raisePublicRouter);
 // content and anonymous aggregates — individual answers stay admin-only. A
 // failure constructing this feature must not take down the rest of the API.
 try {
-  const { publicRouter: sosPublicRouter, adminRouter: sosAdminRouter } = require('./routes/sosRoutes');
+  const { publicRouter: sosPublicRouter, publicTestRouter: sosPublicTestRouter, adminRouter: sosAdminRouter } = require('./routes/sosRoutes');
   app.use('/api/sos/admin', legacyAuthMiddleware, sosAdminRouter);
+  // TEST mode mounts BEFORE the real router so /api/sos/test/* can never fall
+  // through to a real-mode endpoint. The two routers are the same factory with
+  // only the mode flag differing; all isolation is enforced in SQL.
+  app.use('/api/sos/test', sosPublicTestRouter);
   app.use('/api/sos', sosPublicRouter);
 } catch (err) {
   console.error('[API] SOS assessment routes unavailable:', err.message);

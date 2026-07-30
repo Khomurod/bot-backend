@@ -1,8 +1,12 @@
 /**
- * Public /answers page — the live SOS presentation screen for the
- * team-building session. Entirely in Uzbek, projector-friendly, auto-updating
- * (20s visibility-aware polling). Receives ONLY anonymous aggregates from
- * /api/sos/summary — names and individual results never reach this page.
+ * Public /answers (real) and /answers/test — the live SOS presentation screen.
+ * Entirely in Uzbek, projector-friendly, auto-updating (20s visibility-aware
+ * polling). Receives ONLY anonymous aggregates from the mode's summary API —
+ * names and individual results never reach this page. Department and
+ * dispatch-team results are shown for any group size.
+ *
+ * Test mode adds a clear TEST banner and an admin-authenticated test-data
+ * cleanup control (deletes is_test rows only — enforced server-side).
  */
 import { useEffect, useState } from "react";
 import "./sosPublic.css";
@@ -11,16 +15,17 @@ import useVisibleInterval from "../../utils/useVisibleInterval";
 import {
   CompanySection, TechniquesSection, DepartmentsSection, TeamsSection, PracticesSection,
 } from "./SosAnswersSections";
+import SosTestCleanup from "./SosTestCleanup";
 
 const REFRESH_MS = 20_000;
 
-export default function SosAnswersPage() {
+export default function SosAnswersPage({ isTest = false }) {
   const [summary, setSummary] = useState(null);
   const [stale, setStale] = useState(false);
 
   async function load() {
     try {
-      setSummary(await getSosSummary());
+      setSummary(await getSosSummary(isTest));
       setStale(false);
     } catch (err) {
       setStale(true); // keep last-good data on screen during blips
@@ -28,9 +33,9 @@ export default function SosAnswersPage() {
   }
 
   useEffect(() => {
-    document.title = "SOS — Jamoaviy natijalar";
+    document.title = isTest ? "TEST — SOS Jamoaviy natijalar" : "SOS — Jamoaviy natijalar";
     load();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useVisibleInterval(load, REFRESH_MS);
 
   if (!summary) {
@@ -46,10 +51,18 @@ export default function SosAnswersPage() {
 
   const p = summary.presentation;
   const hasData = summary.total > 0;
+  const questionsUrl = `${window.location.origin}/questions${isTest ? "/test" : ""}`;
 
   return (
     <div className="sos-root sos-answers">
       <div className="sos-shell sos-shell--wide">
+        {isTest && (
+          <div className="sos-test-banner" style={{ textAlign: "center", fontSize: 17 }}>
+            🧪 <b>TEST rejimi</b> — bu sinov sahifasi: faqat /questions/test orqali yuborilgan javoblar koʻrsatiladi.
+            Haqiqiy natijalarga taʼsir qilmaydi.
+          </div>
+        )}
+
         <div className="sos-hero">
           <h1 className="sos-hero-title">
             Savol Ortidagi Savol — <span className="accent">SOS</span>
@@ -84,7 +97,7 @@ export default function SosAnswersPage() {
             <div className="sos-emoji" aria-hidden="true">📱</div>
             <h1>Hali javoblar yoʻq</h1>
             <p style={{ fontSize: 18 }}>
-              Soʻrovnomani telefoningizda oching: <b style={{ color: "#ea580c" }}>{window.location.origin}/questions</b>
+              Soʻrovnomani telefoningizda oching: <b style={{ color: "#ea580c" }}>{questionsUrl}</b>
             </p>
           </div>
         )}
@@ -95,8 +108,10 @@ export default function SosAnswersPage() {
         {hasData && <TeamsSection summary={summary} />}
         <PracticesSection presentation={p} />
 
+        {isTest && <SosTestCleanup onCleared={load} />}
+
         <div className="sos-footer-note">
-          Natijalar anonim va umumlashtirilgan · Kichik guruhlar (3 kishidan kam) maxfiylik uchun ochilmaydi
+          Natijalar anonim va umumlashtirilgan — ismlar va shaxsiy javob varaqlari koʻrsatilmaydi
         </div>
       </div>
     </div>

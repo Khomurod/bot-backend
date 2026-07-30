@@ -2,13 +2,16 @@
  * Admin — QBQ / SOS assessment section (full administrators only; the server
  * enforces admin.full_access on every /api/sos/admin endpoint).
  *
- * Status + open/close control, completion counts, filterable submissions list
- * with CSV export, per-submission detail, delete, and clear-all test data.
+ * REAL and TEST data are managed side by side but never mixed: separate
+ * status cards and open/close switches per mode, a mode filter on the
+ * submissions list (real / test / combined), mode-labeled CSV exports, and
+ * SEPARATE clear operations — clearing test data can never touch real
+ * submissions (enforced server-side by distinct endpoints and phrases).
  */
 import { useEffect, useState } from "react";
 import {
   getSosAdminStatus, setSosOpen, listSosSubmissions, getSosSubmissionDetail,
-  deleteSosSubmission, clearSosSubmissions, downloadSosCsv,
+  deleteSosSubmission, clearSosTestData, clearSosRealData, downloadSosCsv,
 } from "../../api/sos";
 import SosSubmissionsTable from "./SosSubmissionsTable";
 import SosSubmissionDetail from "./SosSubmissionDetail";
@@ -18,10 +21,42 @@ const DEPARTMENT_LABELS = {
   samsara: "Samsara Monitoring", accounting: "Accounting", updaters: "Updaters",
 };
 
+function ModeStatusCard({ title, color, stats, open, busy, onToggle }) {
+  return (
+    <div className="card" style={{ flex: 1, minWidth: 320, borderTop: `3px solid ${color}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+        <b style={{ fontSize: 15 }}>{title}</b>
+        <span style={{ fontWeight: 700, color: open ? "#22c55e" : "#f87171" }}>
+          {open ? "● Open" : "● Closed"}
+        </span>
+        <span>Completed: <b>{stats?.total ?? "…"}</b></span>
+        <span style={{ fontSize: 13, opacity: 0.7 }}>
+          Last: {stats?.lastSubmissionAt ? new Date(stats.lastSubmissionAt).toLocaleString() : "—"}
+        </span>
+        <button className="btn" style={{ marginLeft: "auto" }} onClick={onToggle} disabled={busy}>
+          {open ? "Close" : "Open"}
+        </button>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+        {Object.entries(DEPARTMENT_LABELS).map(([key, label]) => (
+          <span key={key} style={{ background: "rgba(99,102,241,0.12)", borderRadius: 999, padding: "3px 10px", fontSize: 12.5 }}>
+            {label}: <b>{stats?.byDepartment?.[key] || 0}</b>
+          </span>
+        ))}
+        {(stats?.byTeam || []).map((team) => (
+          <span key={team.teamName} style={{ background: "rgba(34,197,94,0.12)", borderRadius: 999, padding: "3px 10px", fontSize: 12.5 }}>
+            🚚 {team.teamName}: <b>{team.count}</b>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function SosAdminPage() {
   const [status, setStatus] = useState(null);
   const [rows, setRows] = useState([]);
-  const [filters, setFilters] = useState({ department: "", pattern: "", search: "" });
+  const [filters, setFilters] = useState({ mode: "real", department: "", pattern: "", search: "" });
   const [detail, setDetail] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -43,13 +78,14 @@ export default function SosAdminPage() {
 
   useEffect(() => { loadStatus(); loadRows(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function toggleOpen() {
+  async function toggleOpen(mode) {
     if (!status) return;
     setBusy(true);
     try {
-      await setSosOpen(!status.open);
+      const current = mode === "test" ? status.testOpen : status.open;
+      await setSosOpen(!current, mode);
       await loadStatus();
-      setNotice(status.open ? "Questionnaire closed — submissions are now blocked." : "Questionnaire reopened.");
+      setNotice(`${mode === "test" ? "TEST" : "REAL"} questionnaire ${current ? "closed" : "reopened"}.`);
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
@@ -58,25 +94,39 @@ export default function SosAdminPage() {
     try { setDetail(await getSosSubmissionDetail(id)); } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
-  async function removeSubmission(id) {
-    if (!window.confirm(`Delete submission #${id}? This cannot be undone.`)) return;
+  async function removeSubmission(id, isTest) {
+    const label = isTest ? "TEST" : "REAL";
+    if (!window.confirm(`Delete ${label} submission #${id}? This cannot be undone.`)) return;
     setBusy(true);
     try {
       await deleteSosSubmission(id);
       setDetail(null);
-      setNotice(`Submission #${id} deleted.`);
+      setNotice(`${label} submission #${id} deleted.`);
       await Promise.all([loadStatus(), loadRows()]);
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
-  async function clearAll() {
-    const phrase = window.prompt('This deletes EVERY submission (e.g. to clear test data before the real event).\nType DELETE ALL to confirm:');
-    if (phrase !== "DELETE ALL") return;
+  async function clearTest() {
+    if (!window.confirm("Delete ALL TEST submissions? Real data will not be touched.")) return;
     setBusy(true);
     try {
-      const res = await clearSosSubmissions();
+      const res = await clearSosTestData();
       setDetail(null);
-      setNotice(`Cleared ${res.deleted} submission(s).`);
+      setNotice(`Cleared ${res.deleted} TEST submission(s). Real data untouched.`);
+      await Promise.all([loadStatus(), loadRows()]);
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  async function clearReal() {
+    const phrase = window.prompt(
+      'DANGER: this deletes EVERY REAL submission (use only to reset before the real event).\nType DELETE ALL REAL SUBMISSIONS to confirm:',
+    );
+    if (phrase !== "DELETE ALL REAL SUBMISSIONS") return;
+    setBusy(true);
+    try {
+      const res = await clearSosRealData();
+      setDetail(null);
+      setNotice(`Cleared ${res.deleted} REAL submission(s).`);
       await Promise.all([loadStatus(), loadRows()]);
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
@@ -93,48 +143,36 @@ export default function SosAdminPage() {
       {error && <div className="alert alert-error" style={{ marginBottom: 12 }}>{error}</div>}
       {notice && <div className="alert alert-success" style={{ marginBottom: 12 }}>{notice}</div>}
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 24, alignItems: "center" }}>
-          <div>
-            <div style={{ fontSize: 13, opacity: 0.7 }}>Status</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: status?.open ? "#22c55e" : "#f87171" }}>
-              {status ? (status.open ? "● Open" : "● Closed") : "…"}
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 13, opacity: 0.7 }}>Completed</div>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{status?.total ?? "…"}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: 13, opacity: 0.7 }}>Last submission</div>
-            <div style={{ fontSize: 14 }}>{status?.lastSubmissionAt ? new Date(status.lastSubmissionAt).toLocaleString() : "—"}</div>
-          </div>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn btn-primary" onClick={toggleOpen} disabled={busy || !status}>
-              {status?.open ? "Close questionnaire" : "Open questionnaire"}
-            </button>
-            <button className="btn" onClick={() => downloadSosCsv().catch((e) => setError(e.message))} disabled={busy}>
-              ⬇ Export CSV
-            </button>
-            <button className="btn" style={{ color: "#f87171" }} onClick={clearAll} disabled={busy}>
-              🗑 Clear all
-            </button>
-          </div>
-        </div>
-        {status && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 14 }}>
-            {Object.entries(DEPARTMENT_LABELS).map(([key, label]) => (
-              <span key={key} style={{ background: "rgba(99,102,241,0.12)", borderRadius: 999, padding: "4px 12px", fontSize: 13 }}>
-                {label}: <b>{status.byDepartment?.[key] || 0}</b>
-              </span>
-            ))}
-            {(status.byTeam || []).map((team) => (
-              <span key={team.teamName} style={{ background: "rgba(34,197,94,0.12)", borderRadius: 999, padding: "4px 12px", fontSize: 13 }}>
-                🚚 {team.teamName}: <b>{team.count}</b>
-              </span>
-            ))}
-          </div>
-        )}
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
+        <ModeStatusCard
+          title="REAL event"
+          color="#22c55e"
+          stats={status?.real}
+          open={Boolean(status?.open)}
+          busy={busy || !status}
+          onToggle={() => toggleOpen("real")}
+        />
+        <ModeStatusCard
+          title="🧪 TEST mode"
+          color="#7c3aed"
+          stats={status?.test}
+          open={Boolean(status?.testOpen)}
+          busy={busy || !status}
+          onToggle={() => toggleOpen("test")}
+        />
+      </div>
+
+      <div className="card" style={{ marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ fontSize: 13, opacity: 0.7 }}>Exports and cleanup:</span>
+        <button className="btn" onClick={() => downloadSosCsv(filters.mode).catch((e) => setError(e.message))} disabled={busy}>
+          ⬇ Export CSV ({filters.mode})
+        </button>
+        <button className="btn" style={{ color: "#a78bfa" }} onClick={clearTest} disabled={busy}>
+          🧹 Clear TEST data
+        </button>
+        <button className="btn" style={{ color: "#f87171", marginLeft: "auto" }} onClick={clearReal} disabled={busy}>
+          🗑 Clear REAL data…
+        </button>
       </div>
 
       <SosSubmissionsTable

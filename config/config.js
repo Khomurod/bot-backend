@@ -12,8 +12,13 @@ const resolvedSamsaraApiKeys = Array.from(
   new Set([process.env.SAMSARA_API_KEY, ...samsaraApiKeysFromEnv].filter(Boolean))
 );
 
-// Validate required environment variables up-front so we fail fast
-// with a clear error instead of crashing later at first use.
+// Validate required environment variables at the STARTUP BOUNDARY, not at
+// import time. Production entrypoints (index.js and the database scripts)
+// call `assertRequiredConfig()` as their first statement and still fail fast
+// with the same clear message. Importing this module must never terminate the
+// process: unit tests import services (which import this module transitively)
+// without production secrets, and the old import-time `process.exit(1)` was
+// killing entire unrelated test files (the CI "Node unit tests" failures).
 // NOTE: only true secrets are required here. Non-secret config (group ids,
 // USDOT numbers, base URLs, feature flags, etc.) is hardcoded as defaults
 // below so it does not need to live in the Render environment. PORT is
@@ -26,10 +31,11 @@ const requiredEnv = [
   'FACEBOOK_TOKEN_ENCRYPTION_KEY',
 ];
 
+const configProblems = [];
+
 const missing = requiredEnv.filter((key) => !process.env[key]);
 if (missing.length > 0) {
-  console.error('[CONFIG] Missing required environment variables:', missing.join(', '));
-  process.exit(1);
+  configProblems.push(`Missing required environment variables: ${missing.join(', ')}`);
 }
 
 // MANAGEMENT_GROUP_ID must be a valid Telegram supergroup/channel id (-100…).
@@ -37,13 +43,27 @@ if (missing.length > 0) {
 // the env var MUST be updated at that point — we no longer silently override it.
 const managementGroupId = String(process.env.MANAGEMENT_GROUP_ID || '-1002997837889').trim();
 if (!/^-?\d+$/.test(managementGroupId)) {
-  console.error(`[CONFIG] MANAGEMENT_GROUP_ID is not a numeric chat id: "${managementGroupId}"`);
-  process.exit(1);
+  configProblems.push(`MANAGEMENT_GROUP_ID is not a numeric chat id: "${managementGroupId}"`);
 }
 
 const mediaStorageChatId = String(process.env.MEDIA_STORAGE_CHAT_ID || managementGroupId).trim();
 if (!/^-?\d+$/.test(mediaStorageChatId)) {
-  console.error(`[CONFIG] MEDIA_STORAGE_CHAT_ID is not a numeric chat id: "${mediaStorageChatId}"`);
+  configProblems.push(`MEDIA_STORAGE_CHAT_ID is not a numeric chat id: "${mediaStorageChatId}"`);
+}
+
+/**
+ * Fail fast at the application startup boundary when required configuration
+ * is missing or malformed. Called by production entrypoints (index.js,
+ * scripts/migrate.js, scripts/init-db.js, scripts/seed-admin.js) BEFORE any
+ * side effect. Never called merely because a module was imported, so unit
+ * tests can load services without production secrets. Never prints secret
+ * VALUES — only the names of missing variables.
+ */
+function assertRequiredConfig() {
+  if (configProblems.length === 0) return;
+  for (const problem of configProblems) {
+    console.error('[CONFIG]', problem);
+  }
   process.exit(1);
 }
 
@@ -88,6 +108,9 @@ function normalizeOptionalEnv(value) {
 }
 
 module.exports = {
+  assertRequiredConfig,
+  /** Read-only copy for diagnostics/tests; never contains secret values. */
+  configProblems: Object.freeze([...configProblems]),
   botToken: process.env.BOT_TOKEN || '',
   databaseUrl: process.env.DATABASE_URL,
   adminUsername: process.env.ADMIN_USERNAME || 'admin',
