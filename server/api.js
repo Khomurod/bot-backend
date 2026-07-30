@@ -142,6 +142,19 @@ const { publicRouter: raisePublicRouter, adminRouter: raiseAdminRouter } = requi
 app.use('/api/raise/admin', legacyAuthMiddleware, raiseAdminRouter);
 app.use('/api/raise', raisePublicRouter);
 
+// ─── QBQ / SOS employee assessment ───
+// Same discipline as raise: the authenticated admin router mounts on the more
+// specific path first. The public router serves only whitelisted questionnaire
+// content and anonymous aggregates — individual answers stay admin-only. A
+// failure constructing this feature must not take down the rest of the API.
+try {
+  const { publicRouter: sosPublicRouter, adminRouter: sosAdminRouter } = require('./routes/sosRoutes');
+  app.use('/api/sos/admin', legacyAuthMiddleware, sosAdminRouter);
+  app.use('/api/sos', sosPublicRouter);
+} catch (err) {
+  console.error('[API] SOS assessment routes unavailable:', err.message);
+}
+
 // ─── Driver Home-Time Tracking ───
 const { createHomeTimeRouter } = require('./routes/homeTimeRoutes');
 app.use('/api/home-time', createHomeTimeRouter({ authMiddleware: legacyAuthMiddleware }));
@@ -254,7 +267,7 @@ app.use(createMessageManagerRoutes({ authMiddleware: legacyAuthMiddleware, bot }
 app.use(createEmployeeBirthdayRoutes({ db, config, authMiddleware: legacyAuthMiddleware, bot }));
 
 // ─── Catch-all for admin SPA (/admin and public /dispatch share one build) ───
-app.get(['/admin', '/admin/*', '/dispatch', '/dispatch/*', '/raise', '/raise/*', '/recruiters', '/recruiters/*'], (req, res) => {
+app.get(['/admin', '/admin/*', '/dispatch', '/dispatch/*', '/raise', '/raise/*', '/recruiters', '/recruiters/*', '/questions', '/questions/*', '/answers', '/answers/*'], (req, res) => {
   if (!fs.existsSync(adminSpaIndexPath)) {
     return res.status(503).type('text/plain').send(
       'Admin UI build is missing (admin/build/index.html). '
