@@ -37,6 +37,10 @@ const LiveLocationsPage = lazy(() => import("./pages/LiveLocationsPage"));
 const RouteControlPage = lazy(() => import("./pages/RouteControlPage"));
 const TrailerTrackingPage = lazy(() => import("./pages/TrailerTrackingPage"));
 const TrailerDepartmentShell = lazy(() => import("./pages/trailer/TrailerDepartmentShell"));
+// QBQ / SOS assessment: two public bright-themed pages + a full-admin section.
+const SosQuestionsPage = lazy(() => import("./pages/sosPublic/SosQuestionsPage"));
+const SosAnswersPage = lazy(() => import("./pages/sosPublic/SosAnswersPage"));
+const SosAdminPage = lazy(() => import("./pages/sos/SosAdminPage"));
 
 const pageLoadingFallback = (
   <div className="loading">
@@ -90,6 +94,12 @@ function getPageFromPath(pathname) {
   if (pathname === "/recruiters" || pathname.startsWith("/recruiters/")) {
     return "recruiters_public";
   }
+  if (pathname === "/questions" || pathname.startsWith("/questions/")) {
+    return "sos_questions_public";
+  }
+  if (pathname === "/answers" || pathname.startsWith("/answers/")) {
+    return "sos_answers_public";
+  }
   if (pathname === "/admin/trailers" || pathname.startsWith("/admin/trailers/")) {
     return "trailer_department";
   }
@@ -117,6 +127,8 @@ export default function App() {
   const isDispatchPage = page === "dispatch";
   const isRaisePublicPage = page === "raise_public";
   const isRecruitersPublicPage = page === "recruiters_public";
+  const isSosQuestionsPage = page === "sos_questions_public";
+  const isSosAnswersPage = page === "sos_answers_public";
 
   useEffect(() => {
     // Back/forward must move the selected page AND the active sidebar item.
@@ -214,6 +226,14 @@ export default function App() {
     return <LazyPage><RecruitersPublicPage /></LazyPage>;
   }
 
+  // Public QBQ/SOS pages — own bright theme, no admin chrome, no auth.
+  if (isSosQuestionsPage) {
+    return <LazyPage><SosQuestionsPage /></LazyPage>;
+  }
+  if (isSosAnswersPage) {
+    return <LazyPage><SosAnswersPage /></LazyPage>;
+  }
+
   if (checking) {
     return (
       <div className="loading" style={{ minHeight: "100vh" }}>
@@ -273,6 +293,7 @@ export default function App() {
     live_locations: <LiveLocationsPage />,
     route_control: <RouteControlPage />,
     trailer_tracking: <TrailerTrackingPage />,
+    sos_admin: <SosAdminPage />,
     trailer_department: (
       <TrailerDepartmentShell
         section={trailerSection}

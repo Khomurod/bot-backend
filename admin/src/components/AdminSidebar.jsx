@@ -23,6 +23,7 @@ const NAV_SECTIONS = [
     items: [
       { key: 'broadcast', icon: '📢', label: 'Send Message' },
       { key: 'questions', icon: '📝', label: 'Surveys' },
+      { key: 'sos_admin', icon: '🧭', label: 'QBQ / SOS Assessment' },
     ],
   },
   {
