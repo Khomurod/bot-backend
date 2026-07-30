@@ -1,8 +1,9 @@
 /**
- * SOS assessment — PostgreSQL integration tests: migration 0003 applies
+ * SOS assessment — PostgreSQL integration tests: migrations 0003 + 0004 apply
  * idempotently on the real schema, the submission transaction stores full
  * snapshots, duplicates are detectable, deletes cascade, and the aggregate
- * queries feed the anonymous summary correctly.
+ * queries feed the anonymous summary correctly. (Real/test isolation has its
+ * own dedicated suite: tests/sosTestModeIsolationPg.test.js.)
  */
 
 const test = require('node:test');
@@ -12,10 +13,14 @@ const path = require('node:path');
 
 const { createTrailerPgHarness, skipWithoutPg } = require('./helpers/trailerPgHarness');
 
-const MIGRATION_SQL = fs.readFileSync(
-  path.resolve(__dirname, '../database/migrations/0003_sos_assessment.sql'),
+const MIGRATIONS = ['0003_sos_assessment.sql', '0004_sos_test_mode.sql'].map((name) => fs.readFileSync(
+  path.resolve(__dirname, '../database/migrations', name),
   'utf8',
-);
+));
+
+async function applySosMigrations(harness) {
+  for (const sql of MIGRATIONS) await harness.query(sql);
+}
 
 function submissionInput(overrides = {}) {
   return {
@@ -43,25 +48,29 @@ function submissionInput(overrides = {}) {
   };
 }
 
-test('migration 0003 applies twice on the real schema and seeds the settings row', { skip: skipWithoutPg(), timeout: 60000 }, async (t) => {
+test('migrations 0003+0004 apply twice on the real schema and seed the settings row', { skip: skipWithoutPg(), timeout: 60000 }, async (t) => {
   const harness = await createTrailerPgHarness(t);
-  await harness.query(MIGRATION_SQL);
-  await harness.query(MIGRATION_SQL); // idempotency: re-run must be a no-op
+  await applySosMigrations(harness);
+  await applySosMigrations(harness); // idempotency: re-run must be a no-op
 
   const settings = await harness.query('SELECT * FROM sos_settings');
   assert.equal(settings.rows.length, 1);
   assert.equal(settings.rows[0].is_open, true);
+  assert.equal(settings.rows[0].test_is_open, true, '0004 adds the independent test switch');
 
   const { sosAssessment: db } = harness.loadDataLayer(['sosAssessment']);
-  assert.deepEqual((await db.getSettings()).isOpen, true);
-  assert.equal((await db.setOpen(false)).isOpen, false);
-  assert.equal((await db.getSettings()).isOpen, false);
-  assert.equal((await db.setOpen(true)).isOpen, true);
+  assert.equal((await db.getSettings()).isOpen, true);
+  // Each switch toggles independently of the other.
+  assert.equal((await db.setOpen(false, false)).isOpen, false);
+  assert.equal((await db.getSettings()).testIsOpen, true, 'closing REAL leaves TEST open');
+  assert.equal((await db.setOpen(false, true)).testIsOpen, false);
+  assert.equal((await db.getSettings()).isOpen, false, 'toggling TEST leaves REAL as it was');
+  assert.equal((await db.setOpen(true, false)).isOpen, true);
 });
 
 test('submission lifecycle: transactional insert, snapshots, duplicates, cascade delete, aggregates', { skip: skipWithoutPg(), timeout: 60000 }, async (t) => {
   const harness = await createTrailerPgHarness(t);
-  await harness.query(MIGRATION_SQL);
+  await applySosMigrations(harness);
   const { sosAssessment: db } = harness.loadDataLayer(['sosAssessment']);
 
   const created = await db.createSubmission(submissionInput());
@@ -79,18 +88,18 @@ test('submission lifecycle: transactional insert, snapshots, duplicates, cascade
   });
 
   // Token view excludes identity fields.
-  const byToken = await db.getSubmissionByToken(submissionInput().resultToken.slice(0, 8));
+  const byToken = await db.getSubmissionByToken(submissionInput().resultToken.slice(0, 8), false);
   assert.equal(byToken, null);
   const token = (await harness.query('SELECT result_token FROM sos_submissions WHERE id = $1', [created.id])).rows[0].result_token;
-  const view = await db.getSubmissionByToken(token);
+  const view = await db.getSubmissionByToken(token, false);
   assert.equal(view.primaryPattern, 'ownership');
   assert.equal(view.fullName, undefined);
   assert.equal(view.clientIp, undefined);
 
   // Duplicate detection by normalized name + department.
-  assert.ok(await db.findDuplicate('test employee', 'hr'));
-  assert.equal(await db.findDuplicate('test employee', 'safety'), null);
-  assert.equal(await db.findDuplicate('another person', 'hr'), null);
+  assert.ok(await db.findDuplicate('test employee', 'hr', false));
+  assert.equal(await db.findDuplicate('test employee', 'safety', false), null);
+  assert.equal(await db.findDuplicate('another person', 'hr', false), null);
 
   // A failed insert rolls back the submission row too (unique token reuse).
   await assert.rejects(db.createSubmission(submissionInput({ resultToken: token })));
@@ -114,7 +123,7 @@ test('submission lifecycle: transactional insert, snapshots, duplicates, cascade
     })),
   }));
 
-  const summaryRows = await db.getSummaryRows();
+  const summaryRows = await db.getSummaryRows(false);
   assert.equal(summaryRows.submissions.length, 2);
   const dispatchRow = summaryRows.answerPatternRows.find((r) => r.submissionDepartment === 'dispatch');
   assert.deepEqual(dispatchRow, { submissionDepartment: 'dispatch', pattern: 'waiting', count: 10 });
@@ -130,7 +139,7 @@ test('submission lifecycle: transactional insert, snapshots, duplicates, cascade
   assert.equal((await db.listSubmissions({ search: 'dispatcher' })).length, 1);
   assert.equal((await db.listSubmissions({ dispatchTeamId: teamId })).length, 1);
 
-  const stats = await db.getCompletionStats();
+  const stats = await db.getCompletionStats(false);
   assert.equal(stats.total, 2);
   assert.equal(stats.byDepartment.hr, 1);
   assert.deepEqual(stats.byTeam, [{ teamName: 'Team Alpha', count: 1 }]);
@@ -147,7 +156,8 @@ test('submission lifecycle: transactional insert, snapshots, duplicates, cascade
   assert.equal((await harness.query('SELECT COUNT(*)::int AS n FROM sos_answers')).rows[0].n, 10);
   assert.equal(await db.deleteSubmission(created.id), false);
 
-  // Clear-all wipes everything (admin "reset test data").
-  assert.equal(await db.clearAllSubmissions(), 1);
+  // Mode-scoped clear requires an explicit boolean and wipes only that mode.
+  await assert.rejects(() => db.clearSubmissions(), /explicit boolean/);
+  assert.equal(await db.clearSubmissions(false), 1);
   assert.equal((await harness.query('SELECT COUNT(*)::int AS n FROM sos_answers')).rows[0].n, 0);
 });

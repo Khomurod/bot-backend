@@ -1,18 +1,19 @@
 /**
- * SOS assessment — pure aggregation for the public /answers projector page.
+ * SOS assessment — pure aggregation for the public /answers projector pages.
  *
  * PRIVACY: this module is the anonymity boundary. Its output is served to an
- * unauthenticated page, so it must never include names, tokens, IPs, or any
- * per-person record. Groups smaller than MIN_GROUP (k-anonymity) expose only
- * their participant count — never their distributions. Question distributions
- * carry option text + counts only, never the option→pattern mapping (that
- * would publish the scoring key). Enforced by tests/sosAggregation.test.js.
+ * unauthenticated page, so it must never include names, tokens, IPs,
+ * submission ids, or any per-person record — only combined counts. Department
+ * and dispatch-team results are shown for ANY group size (including one or two
+ * respondents, as explicitly requested for this internal team event); privacy
+ * is protected by never emitting identity fields, not by hiding small groups.
+ * Question distributions carry option text + counts only, never the
+ * option→pattern mapping (that would publish the scoring key). Enforced by
+ * tests/sosAggregation.test.js.
  */
 
 const { PATTERNS, DEPARTMENTS } = require('./constants');
 const content = require('./content');
-
-const MIN_GROUP = 3;
 
 function emptyPatternCounts() {
   const counts = {};
@@ -43,22 +44,16 @@ function patternMetaUz() {
   return meta;
 }
 
-function buildGroup({ count, primaryCounts, answerCounts }) {
-  if (count < MIN_GROUP) return { count, suppressed: true };
-  return { count, suppressed: false, primaryCounts, answerPatternCounts: answerCounts };
-}
-
 /**
- * Builds the full anonymous summary for /answers.
+ * Builds the full anonymous summary for /answers and /answers/test.
  *
  * @param {Object} input
- * @param {boolean} input.open questionnaire open flag
+ * @param {boolean} input.open questionnaire open flag (for the mode being summarized)
  * @param {Array<{department, dispatchTeamId, dispatchTeamName, primaryPattern}>} input.submissions
  * @param {Array<{submissionDepartment, pattern, count}>} input.answerPatternRows
  * @param {Array<{questionKey, optionKey, count}>} input.questionOptionRows
- * @param {number} [input.k]
  */
-function buildSummary({ open, submissions, answerPatternRows = [], questionOptionRows = [], k = MIN_GROUP }) {
+function buildSummary({ open, submissions, answerPatternRows = [], questionOptionRows = [] }) {
   const total = submissions.length;
 
   const companyPrimary = emptyPatternCounts();
@@ -96,8 +91,7 @@ function buildSummary({ open, submissions, answerPatternRows = [], questionOptio
     deptAnswers.get(row.submissionDepartment)[row.pattern] += Number(row.count) || 0;
   }
 
-  // Question distributions: option text (uz) + counts only. Grouped by
-  // department; emitted only for departments above the anonymity threshold.
+  // Question distributions: option text (uz) + counts only.
   const questionCounts = new Map();
   for (const row of questionOptionRows) {
     if (!questionCounts.has(row.questionKey)) questionCounts.set(row.questionKey, new Map());
@@ -107,13 +101,14 @@ function buildSummary({ open, submissions, answerPatternRows = [], questionOptio
   const departmentsOut = [];
   for (const dept of DEPARTMENTS) {
     const data = deptData.get(dept.key);
-    const group = buildGroup({
+    const out = {
+      key: dept.key,
+      labelUz: dept.label.uz,
       count: data.count,
       primaryCounts: data.primaryCounts,
-      answerCounts: deptAnswers.get(dept.key) || emptyPatternCounts(),
-    });
-    const out = { key: dept.key, labelUz: dept.label.uz, ...group };
-    if (!group.suppressed) {
+      answerPatternCounts: deptAnswers.get(dept.key) || emptyPatternCounts(),
+    };
+    if (data.count > 0) {
       out.topPatterns = topPatterns(data.primaryCounts);
       const tips = content.presentationUz.departmentTips[dept.key];
       if (tips) { out.technique = tips.technique; out.sosQuestions = tips.sosQuestions; }
@@ -131,21 +126,16 @@ function buildSummary({ open, submissions, answerPatternRows = [], questionOptio
 
   const teamsOut = Array.from(teamData.values())
     .sort((a, b) => a.teamName.localeCompare(b.teamName))
-    .map((team) => {
-      const group = buildGroup({ count: team.count, primaryCounts: team.primaryCounts, answerCounts: undefined });
-      const out = { teamName: team.teamName, count: group.count, suppressed: group.suppressed };
-      if (!group.suppressed) {
-        out.primaryCounts = team.primaryCounts;
-        out.topPatterns = topPatterns(team.primaryCounts);
-      }
-      return out;
-    });
+    .map((team) => ({
+      teamName: team.teamName,
+      count: team.count,
+      primaryCounts: team.primaryCounts,
+      topPatterns: topPatterns(team.primaryCounts),
+    }));
 
-  const companySuppressed = total < k;
   return {
     open,
     total,
-    minGroup: k,
     patternMeta: patternMetaUz(),
     presentation: {
       title: content.presentationUz.title,
@@ -155,17 +145,14 @@ function buildSummary({ open, submissions, answerPatternRows = [], questionOptio
       techniques: content.presentationUz.techniques,
       practices: content.presentationUz.practices,
     },
-    company: companySuppressed
-      ? { suppressed: true }
-      : {
-          suppressed: false,
-          primaryCounts: companyPrimary,
-          answerPatternCounts: companyAnswers,
-          topPatterns: topPatterns(companyPrimary, 3),
-        },
+    company: {
+      primaryCounts: companyPrimary,
+      answerPatternCounts: companyAnswers,
+      topPatterns: topPatterns(companyPrimary, 3),
+    },
     departments: departmentsOut,
     dispatchTeams: teamsOut,
   };
 }
 
-module.exports = { buildSummary, MIN_GROUP, topPatterns };
+module.exports = { buildSummary, topPatterns };

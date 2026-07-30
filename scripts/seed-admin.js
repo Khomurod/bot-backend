@@ -2,6 +2,8 @@
  * Seed the initial admin user.
  * Run: node scripts/seed-admin.js
  */
+require('../config/config').assertRequiredConfig();
+
 const bcrypt = require('bcryptjs');
 const config = require('../config/config');
 const db = require('../database/db');

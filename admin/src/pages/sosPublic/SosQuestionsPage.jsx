@@ -14,8 +14,6 @@ import { SosWelcome, SosDetails, SosStatusCard } from "./SosIntroScreens";
 import SosQuestionFlow from "./SosQuestionFlow";
 import SosResultScreen from "./SosResultScreen";
 
-const TOKEN_KEY = "sosResultToken";
-
 /** Fisher–Yates copy; called once per questionnaire load so back-nav is stable. */
 function shuffled(list) {
   const copy = [...list];
@@ -26,7 +24,10 @@ function shuffled(list) {
   return copy;
 }
 
-export default function SosQuestionsPage() {
+export default function SosQuestionsPage({ isTest = false }) {
+  // Separate token storage per mode: a rehearsal on /questions/test must not
+  // overwrite the employee's real result token (and vice versa).
+  const TOKEN_KEY = isTest ? "sosResultTokenTest" : "sosResultToken";
   const [lang, setLang] = useState("uz");
   const [screen, setScreen] = useState("welcome");
   const [meta, setMeta] = useState(null);
@@ -44,10 +45,10 @@ export default function SosQuestionsPage() {
   const savedToken = typeof localStorage !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null;
 
   useEffect(() => {
-    document.title = "Savol Ortidagi Savol (SOS)";
+    document.title = isTest ? "TEST — Savol Ortidagi Savol (SOS)" : "Savol Ortidagi Savol (SOS)";
     (async () => {
       try {
-        setMeta(await getSosMeta());
+        setMeta(await getSosMeta(isTest));
       } catch (err) {
         setMetaError(true);
       }
@@ -58,7 +59,7 @@ export default function SosQuestionsPage() {
     setBusy(true);
     setSubmitError("");
     try {
-      const data = await getSosQuestionnaire(details.department);
+      const data = await getSosQuestionnaire(details.department, isTest);
       setForm(details);
       setContentVersion(data.contentVersion);
       setQuestions(data.questions.map((q) => ({ ...q, options: shuffled(q.options) })));
@@ -86,7 +87,7 @@ export default function SosQuestionsPage() {
         answers: questions.map((q) => ({ questionKey: q.key, optionKey: answers[q.key] })),
         confirmDuplicate: confirmDuplicate === true,
       };
-      const data = await submitSosAssessment(payload);
+      const data = await submitSosAssessment(payload, isTest);
       try { localStorage.setItem(TOKEN_KEY, data.resultToken); } catch (_) { /* private mode */ }
       setResult(data.result);
       setScreen("result");
@@ -104,7 +105,7 @@ export default function SosQuestionsPage() {
     if (!savedToken) return;
     setBusy(true);
     try {
-      const stored = await getSosResult(savedToken);
+      const stored = await getSosResult(savedToken, isTest);
       setLang(stored.language);
       setResult(stored);
       setScreen("result");
@@ -127,6 +128,7 @@ export default function SosQuestionsPage() {
             <div>
               <div className="sos-brand-title">{t.appTitle}</div>
               <div className="sos-brand-sub">Savol Ortidagi Savol</div>
+              {isTest && <span className="sos-test-badge">🧪 {t.testBadge}</span>}
             </div>
           </div>
           {showLangSwitcher && (
@@ -144,6 +146,8 @@ export default function SosQuestionsPage() {
             </div>
           )}
         </header>
+
+        {isTest && <div className="sos-test-banner">🧪 {t.testNote}</div>}
 
         {screen === "welcome" && (
           <SosWelcome

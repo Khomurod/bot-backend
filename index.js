@@ -1,6 +1,11 @@
 /**
  * Main entry point for the dispatch and feedback hub.
  */
+// Fail fast on missing/malformed required configuration BEFORE any module
+// side effects. This is the startup boundary for config validation — the
+// config module itself never exits at import time (unit tests import it).
+require('./config/config').assertRequiredConfig();
+
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');

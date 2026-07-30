@@ -2,6 +2,8 @@
  * Initialize the database schema.
  * Run: node scripts/init-db.js
  */
+require('../config/config').assertRequiredConfig();
+
 const db = require('../database/db');
 
 (async () => {

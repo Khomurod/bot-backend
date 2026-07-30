@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Telegram Driver Feedback System with bot, API, and admin panel",
   "main": "index.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "postinstall": "npm ci --prefix admin && npm run build --prefix admin",
     "start": "node --max-old-space-size=256 index.js",

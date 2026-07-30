@@ -28,6 +28,18 @@ export function PatternChip({ pattern }) {
   );
 }
 
+export function ModeBadge({ isTest }) {
+  return (
+    <span style={{
+      borderRadius: 999, padding: "2px 10px", fontSize: 12, fontWeight: 700,
+      background: isTest ? "rgba(124,58,237,0.2)" : "rgba(34,197,94,0.15)",
+      color: isTest ? "#a78bfa" : "#22c55e",
+    }}>
+      {isTest ? "🧪 TEST" : "REAL"}
+    </span>
+  );
+}
+
 export default function SosSubmissionsTable({
   rows, filters, onFiltersChange, onOpenDetail, onDelete, departmentLabels, busy,
 }) {
@@ -36,6 +48,16 @@ export default function SosSubmissionsTable({
   return (
     <div className="card">
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+        <select
+          className="form-input"
+          style={{ maxWidth: 190 }}
+          value={filters.mode}
+          onChange={(e) => onFiltersChange({ ...filters, mode: e.target.value })}
+        >
+          <option value="real">REAL submissions</option>
+          <option value="test">🧪 TEST submissions</option>
+          <option value="all">All (combined view)</option>
+        </select>
         <select
           className="form-input"
           style={{ maxWidth: 220 }}
@@ -81,6 +103,7 @@ export default function SosSubmissionsTable({
             <thead>
               <tr style={{ textAlign: "left", opacity: 0.7 }}>
                 <th style={{ padding: "8px 10px" }}>#</th>
+                <th style={{ padding: "8px 10px" }}>Mode</th>
                 <th style={{ padding: "8px 10px" }}>Full name</th>
                 <th style={{ padding: "8px 10px" }}>Department</th>
                 <th style={{ padding: "8px 10px" }}>Team</th>
@@ -95,6 +118,7 @@ export default function SosSubmissionsTable({
               {rows.map((row) => (
                 <tr key={row.id} style={{ borderTop: "1px solid rgba(148,163,184,0.15)" }}>
                   <td style={{ padding: "8px 10px", opacity: 0.7 }}>{row.id}</td>
+                  <td style={{ padding: "8px 10px" }}><ModeBadge isTest={row.isTest} /></td>
                   <td style={{ padding: "8px 10px", fontWeight: 600 }}>
                     {row.fullName}
                     {row.duplicateCount > 1 && (
@@ -116,7 +140,7 @@ export default function SosSubmissionsTable({
                     <button className="btn" style={{ marginRight: 6 }} onClick={() => onOpenDetail(row.id)} disabled={busy}>
                       Open
                     </button>
-                    <button className="btn" style={{ color: "#f87171" }} onClick={() => onDelete(row.id)} disabled={busy}>
+                    <button className="btn" style={{ color: "#f87171" }} onClick={() => onDelete(row.id, row.isTest)} disabled={busy}>
                       Delete
                     </button>
                   </td>

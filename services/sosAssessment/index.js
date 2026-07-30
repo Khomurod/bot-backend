@@ -43,7 +43,12 @@ function buildResultPayload({ language, primaryPattern, secondaryPattern, patter
   };
 }
 
-async function getMeta() {
+/** The open switch for the requested mode (real vs test are independent). */
+function openFlagFor(settings, isTest) {
+  return isTest === true ? settings.testIsOpen : settings.isOpen;
+}
+
+async function getMeta(isTest) {
   const settings = await db.getSettings();
   let dispatchTeams = [];
   try {
@@ -53,19 +58,22 @@ async function getMeta() {
     console.error('[SOS] failed to load dispatch teams:', err.message);
   }
   return {
-    open: settings.isOpen,
+    open: openFlagFor(settings, isTest),
+    isTest: isTest === true,
     contentVersion: content.CONTENT_VERSION,
     departments: content.DEPARTMENTS,
     dispatchTeams,
   };
 }
 
-async function getQuestionnaire(departmentKey) {
+async function getQuestionnaire(departmentKey, isTest) {
   if (!DEPARTMENT_KEYS.includes(departmentKey)) {
     throw serviceError('UNKNOWN_DEPARTMENT', 'Unknown department', 400);
   }
   const settings = await db.getSettings();
-  if (!settings.isOpen) throw serviceError('SOS_CLOSED', 'The questionnaire is closed', 403, { closed: true });
+  if (!openFlagFor(settings, isTest)) throw serviceError('SOS_CLOSED', 'The questionnaire is closed', 403, { closed: true });
+  // Same content modules serve both modes — the test flow can never drift
+  // from the approved 70 questions, translations, or scoring.
   return {
     contentVersion: content.CONTENT_VERSION,
     department: departmentKey,
@@ -74,8 +82,9 @@ async function getQuestionnaire(departmentKey) {
 }
 
 async function submitAssessment(input) {
+  const isTest = input.isTest === true;
   const settings = await db.getSettings();
-  if (!settings.isOpen) throw serviceError('SOS_CLOSED', 'The questionnaire is closed', 403, { closed: true });
+  if (!openFlagFor(settings, isTest)) throw serviceError('SOS_CLOSED', 'The questionnaire is closed', 403, { closed: true });
 
   const fullName = typeof input.fullName === 'string' ? input.fullName.trim() : '';
   if (fullName.length < 3 || fullName.length > 120) {
@@ -102,8 +111,10 @@ async function submitAssessment(input) {
   // Deterministic server-side scoring from option keys (throws typed 400s).
   const scored = scoreAnswers(input.department, input.answers);
 
+  // Duplicate detection is mode-scoped: a rehearsal on /questions/test never
+  // blocks (or is blocked by) the same person's real submission.
   const nameNormalized = normalizeName(fullName);
-  const duplicate = await db.findDuplicate(nameNormalized, input.department);
+  const duplicate = await db.findDuplicate(nameNormalized, input.department, isTest);
   if (duplicate && input.confirmDuplicate !== true) {
     throw serviceError('DUPLICATE', 'A submission with this name already exists', 409, {
       duplicate: true,
@@ -126,6 +137,7 @@ async function submitAssessment(input) {
     resultToken,
     duplicateConfirmed: duplicate ? true : false,
     clientIp: input.clientIp || null,
+    isTest,
     answers: scored.answerSnapshots,
   });
 
@@ -141,11 +153,12 @@ async function submitAssessment(input) {
   };
 }
 
-async function getResultByToken(token) {
+async function getResultByToken(token, isTest) {
   if (typeof token !== 'string' || !/^[a-f0-9]{32}$/.test(token)) {
     throw serviceError('NOT_FOUND', 'Result not found', 404);
   }
-  const stored = await db.getSubmissionByToken(token);
+  // Mode-scoped lookup: a real token 404s on the test route and vice versa.
+  const stored = await db.getSubmissionByToken(token, isTest);
   if (!stored) throw serviceError('NOT_FOUND', 'Result not found', 404);
   return buildResultPayload({
     language: stored.language,
@@ -156,17 +169,29 @@ async function getResultByToken(token) {
   });
 }
 
-/** Anonymous aggregates for /answers — k-anonymity applied inside buildSummary. */
-async function getPublicSummary() {
-  const [settings, rows] = await Promise.all([db.getSettings(), db.getSummaryRows()]);
-  return buildSummary({ open: settings.isOpen, ...rows });
+/** Anonymous aggregates for /answers (real) or /answers/test — one mode only. */
+async function getPublicSummary(isTest) {
+  const [settings, rows] = await Promise.all([db.getSettings(), db.getSummaryRows(isTest === true)]);
+  return buildSummary({ open: openFlagFor(settings, isTest), ...rows });
 }
 
 // ─────────────────────────── Admin helpers ───────────────────────────
 
+/** Both modes side by side, each computed from mode-scoped SQL. */
 async function getAdminStatus() {
-  const [settings, stats] = await Promise.all([db.getSettings(), db.getCompletionStats()]);
-  return { open: settings.isOpen, updatedAt: settings.updatedAt, contentVersion: content.CONTENT_VERSION, ...stats };
+  const [settings, realStats, testStats] = await Promise.all([
+    db.getSettings(),
+    db.getCompletionStats(false),
+    db.getCompletionStats(true),
+  ]);
+  return {
+    open: settings.isOpen,
+    testOpen: settings.testIsOpen,
+    updatedAt: settings.updatedAt,
+    contentVersion: content.CONTENT_VERSION,
+    real: realStats,
+    test: testStats,
+  };
 }
 
 /** Resolves stored keys to display text for the admin detail view. */
@@ -205,7 +230,7 @@ module.exports = {
   listSubmissions: db.listSubmissions,
   setOpen: db.setOpen,
   deleteSubmission: db.deleteSubmission,
-  clearAllSubmissions: db.clearAllSubmissions,
+  clearSubmissions: db.clearSubmissions,
   PATTERNS,
   serviceError,
 };

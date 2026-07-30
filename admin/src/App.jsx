@@ -94,6 +94,14 @@ function getPageFromPath(pathname) {
   if (pathname === "/recruiters" || pathname.startsWith("/recruiters/")) {
     return "recruiters_public";
   }
+  // TEST-mode SOS pages get their own page keys so back/forward between the
+  // real and test URLs remounts the page with the right mode.
+  if (pathname === "/questions/test" || pathname.startsWith("/questions/test/")) {
+    return "sos_questions_test";
+  }
+  if (pathname === "/answers/test" || pathname.startsWith("/answers/test/")) {
+    return "sos_answers_test";
+  }
   if (pathname === "/questions" || pathname.startsWith("/questions/")) {
     return "sos_questions_public";
   }
@@ -127,8 +135,9 @@ export default function App() {
   const isDispatchPage = page === "dispatch";
   const isRaisePublicPage = page === "raise_public";
   const isRecruitersPublicPage = page === "recruiters_public";
-  const isSosQuestionsPage = page === "sos_questions_public";
-  const isSosAnswersPage = page === "sos_answers_public";
+  const isSosQuestionsPage = page === "sos_questions_public" || page === "sos_questions_test";
+  const isSosAnswersPage = page === "sos_answers_public" || page === "sos_answers_test";
+  const isSosTestMode = page === "sos_questions_test" || page === "sos_answers_test";
 
   useEffect(() => {
     // Back/forward must move the selected page AND the active sidebar item.
@@ -227,11 +236,12 @@ export default function App() {
   }
 
   // Public QBQ/SOS pages — own bright theme, no admin chrome, no auth.
+  // key= forces a clean remount when navigating between real and test mode.
   if (isSosQuestionsPage) {
-    return <LazyPage><SosQuestionsPage /></LazyPage>;
+    return <LazyPage><SosQuestionsPage key={isSosTestMode ? "test" : "real"} isTest={isSosTestMode} /></LazyPage>;
   }
   if (isSosAnswersPage) {
-    return <LazyPage><SosAnswersPage /></LazyPage>;
+    return <LazyPage><SosAnswersPage key={isSosTestMode ? "test" : "real"} isTest={isSosTestMode} /></LazyPage>;
   }
 
   if (checking) {
