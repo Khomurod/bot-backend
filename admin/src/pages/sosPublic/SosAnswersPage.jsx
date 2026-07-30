@@ -7,6 +7,10 @@
  *
  * Test mode adds a clear TEST banner and an admin-authenticated test-data
  * cleanup control (deletes is_test rows only — enforced server-side).
+ *
+ * Both modes also offer the 10-minute presentation timer. It is a pure frontend
+ * overlay: it never reads or writes SOS data, and rendering it behind a single
+ * `timerOpen` flag guarantees one instance — so it cannot start twice.
  */
 import { useEffect, useState } from "react";
 import "./sosPublic.css";
@@ -16,12 +20,14 @@ import {
   CompanySection, TechniquesSection, DepartmentsSection, TeamsSection, PracticesSection,
 } from "./SosAnswersSections";
 import SosTestCleanup from "./SosTestCleanup";
+import SosPresentationTimer from "./SosPresentationTimer";
 
 const REFRESH_MS = 20_000;
 
 export default function SosAnswersPage({ isTest = false }) {
   const [summary, setSummary] = useState(null);
   const [stale, setStale] = useState(false);
+  const [timerOpen, setTimerOpen] = useState(false);
 
   async function load() {
     try {
@@ -75,6 +81,13 @@ export default function SosAnswersPage({ isTest = false }) {
             <span className="intro">{p.centralQuestionIntro}</span>
             “{p.centralQuestion}”
           </div>
+          <button
+            type="button"
+            className="sos-btn sos-btn--primary sos-timer-launch"
+            onClick={() => setTimerOpen(true)}
+          >
+            ⏱️ 10 daqiqalik taymer
+          </button>
         </div>
 
         {!summary.open && (
@@ -114,6 +127,10 @@ export default function SosAnswersPage({ isTest = false }) {
           Natijalar anonim va umumlashtirilgan — ismlar va shaxsiy javob varaqlari koʻrsatilmaydi
         </div>
       </div>
+
+      {timerOpen && (
+        <SosPresentationTimer isTest={isTest} onClose={() => setTimerOpen(false)} />
+      )}
     </div>
   );
 }
