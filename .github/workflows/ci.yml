@@ -98,9 +98,11 @@ jobs:
 
       # NO application env on purpose: this job proves the unit suite runs with
       # no production secrets and no database. Any skip fails the job.
+      # pipefail is REQUIRED: without it the exit status of `node --test | tee`
+      # is tee's (always 0), so failing tests would report a green job.
       - name: Run the Node unit test suite (no secrets, no database)
         run: |
-          set -e
+          set -eo pipefail
           UNIT_FILES=$(ls tests/*.test.js | grep -v 'Pg\.test\.js$')
           node --test --test-concurrency=1 $UNIT_FILES 2>&1 | tee unit-results.txt
           if grep -qE '^# skipped [1-9]' unit-results.txt; then
@@ -171,11 +173,15 @@ jobs:
           npm run migrate
           npm run migrate:status
 
-      # Guard against the *Pg suites silently self-skipping: a skipped test is
-      # not a passing test, so fail loudly if the whole class vanishes.
+      # pipefail is REQUIRED: without it the exit status of `node --test | tee`
+      # is tee's (always 0). This job reported SUCCESS for a run with 2 failing
+      # tests until pipefail was added — a real false green.
+      #
+      # The skip guard is separate: the *Pg suites self-skip without
+      # TEST_DATABASE_URL, and a skipped test is not a passing test.
       - name: Run the PostgreSQL integration tests
         run: |
-          set -e
+          set -eo pipefail
           node --test --test-concurrency=1 tests/*Pg.test.js 2>&1 | tee pg-results.txt
           if grep -qE '^# skipped [1-9]' pg-results.txt; then
             echo "::error::integration tests were skipped — TEST_DATABASE_URL is not reaching them"
