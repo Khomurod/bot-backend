@@ -17,6 +17,8 @@
   var TAB_KEY = 'qbq.token';
   var ADMIN_KEY = 'token'; // the key admin/src/api.js already uses
   var pending = null;
+  // Last-resort holder for the token when storage is blocked (private mode).
+  var cached = '';
 
   function read(storage, key) {
     try {
@@ -39,12 +41,17 @@
     cached = value;
   }
 
-  var cached = '';
-
   function currentToken() {
     return token() || cached;
   }
 
+  /**
+   * Forget this page's session after a rejected save.
+   *
+   * Deliberately does NOT touch localStorage: that key belongs to the admin
+   * panel, and signing someone out of /admin because a presentation save was
+   * refused would be a surprising side effect of pressing Save.
+   */
   function clear() {
     cached = '';
     try {
