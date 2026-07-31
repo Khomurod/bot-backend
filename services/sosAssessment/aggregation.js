@@ -13,6 +13,7 @@
  */
 
 const { PATTERNS, DEPARTMENTS } = require('./constants');
+const { dispatchTeamOrder } = require('./dispatchTeams');
 const content = require('./content');
 
 function emptyPatternCounts() {
@@ -72,7 +73,9 @@ function buildSummary({ open, submissions, answerPatternRows = [], questionOptio
       if (PATTERNS.includes(sub.primaryPattern)) dept.primaryCounts[sub.primaryPattern] += 1;
     }
     if (sub.department === 'dispatch' && sub.dispatchTeamName) {
-      const key = String(sub.dispatchTeamId ?? sub.dispatchTeamName);
+      // Grouped by the exact team NAME — the same key the questionnaire, the
+      // admin list and the CSV export use, so one team is never split in two.
+      const key = sub.dispatchTeamName;
       if (!teamData.has(key)) {
         teamData.set(key, { teamName: sub.dispatchTeamName, count: 0, primaryCounts: emptyPatternCounts() });
       }
@@ -124,8 +127,11 @@ function buildSummary({ open, submissions, answerPatternRows = [], questionOptio
     departmentsOut.push(out);
   }
 
+  // Canonical team order (1–6), so the projector lists the teams the way they
+  // are numbered rather than alphabetically. Any legacy name sorts after them.
   const teamsOut = Array.from(teamData.values())
-    .sort((a, b) => a.teamName.localeCompare(b.teamName))
+    .sort((a, b) => (dispatchTeamOrder(a.teamName) - dispatchTeamOrder(b.teamName))
+      || a.teamName.localeCompare(b.teamName))
     .map((team) => ({
       teamName: team.teamName,
       count: team.count,

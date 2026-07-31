@@ -90,7 +90,9 @@ export async function setSosOpen(open, mode = "real") {
 
 export async function listSosSubmissions(filters = {}) {
   const params = new URLSearchParams();
-  for (const key of ["department", "teamId", "pattern", "search", "mode"]) {
+  // `team` is one of the six authoritative dispatch-team keys (see
+  // services/sosAssessment/dispatchTeams.js), not a database row id.
+  for (const key of ["department", "team", "pattern", "search", "mode"]) {
     if (filters[key]) params.set(key, filters[key]);
   }
   const qs = params.toString();

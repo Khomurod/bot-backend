@@ -20,6 +20,7 @@
 
 const express = require('express');
 const sos = require('../../services/sosAssessment');
+const { findDispatchTeamByKey } = require('../../services/sosAssessment/dispatchTeams');
 const { toCsv } = require('./csvSafe');
 
 function sendServiceError(res, err, fallback = 'Request failed') {
@@ -31,8 +32,17 @@ function sendServiceError(res, err, fallback = 'Request failed') {
 // Light in-memory sliding-window limiter for the unauthenticated write path.
 // Buckets are per mode+IP so rehearsals on the test page cannot consume the
 // real questionnaire's budget for an office IP (and vice versa).
+//
+// The cap is sized for a WHOLE ROOM behind one NAT address, not one person.
+// `trust proxy` means this is the real client IP, and a company questionnaire is
+// filled by everyone on the same office Wi-Fi at the same time — at 12 per
+// window a 40-person session had 29 people rejected with HTTP 429. A load test
+// of the same burst showed ~4.5 ms of server CPU per submission, so the cap is
+// not what protects the box; it exists to stop scripted flooding, and 60 per
+// quarter hour per address still does that while leaving a 40-person room room
+// to spare (retries, duplicate confirmations, a reload or two).
 const SUBMIT_WINDOW_MS = 15 * 60 * 1000;
-const SUBMIT_MAX_PER_WINDOW = 12;
+const SUBMIT_MAX_PER_WINDOW = 60;
 const submitHits = new Map();
 
 function submitRateLimited(bucket) {
@@ -75,6 +85,9 @@ function buildPublicRouter(isTest) {
       const result = await sos.submitAssessment({
         fullName: body.fullName,
         department: body.department,
+        dispatchTeamKey: body.dispatchTeamKey,
+        // Forwarded ONLY so the service can recognise a pre-deployment client
+        // and send it through the reload flow. It is never stored.
         dispatchTeamId: body.dispatchTeamId,
         language: body.language,
         contentVersion: body.contentVersion,
@@ -149,9 +162,17 @@ adminRouter.get('/submissions', async (req, res) => {
   try {
     const mode = parseMode(req.query.mode);
     if (!mode) return res.status(400).json({ error: 'mode must be real, test, or all' });
+    // ?team= is one of the six authoritative team KEYS; an unknown key is a 400
+    // rather than a silently unfiltered list.
+    let dispatchTeamName;
+    if (req.query.team) {
+      const team = findDispatchTeamByKey(String(req.query.team));
+      if (!team) return res.status(400).json({ error: 'Unknown dispatch team' });
+      dispatchTeamName = team.name;
+    }
     const rows = await sos.listSubmissions({
       department: req.query.department || undefined,
-      dispatchTeamId: req.query.teamId ? Number.parseInt(req.query.teamId, 10) : undefined,
+      dispatchTeamName,
       pattern: req.query.pattern || undefined,
       search: req.query.search || undefined,
       mode,

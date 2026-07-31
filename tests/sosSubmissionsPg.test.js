@@ -137,7 +137,9 @@ test('submission lifecycle: transactional insert, snapshots, duplicates, cascade
   assert.equal((await db.listSubmissions({ department: 'dispatch' })).length, 1);
   assert.equal((await db.listSubmissions({ pattern: 'builder' })).length, 1);
   assert.equal((await db.listSubmissions({ search: 'dispatcher' })).length, 1);
-  assert.equal((await db.listSubmissions({ dispatchTeamId: teamId })).length, 1);
+  // Teams filter by their exact snapshotted NAME, not by the legacy FK id.
+  assert.equal((await db.listSubmissions({ dispatchTeamName: 'Team Alpha' })).length, 1);
+  assert.equal((await db.listSubmissions({ dispatchTeamName: 'Nobody / Nowhere' })).length, 0);
 
   const stats = await db.getCompletionStats(false);
   assert.equal(stats.total, 2);

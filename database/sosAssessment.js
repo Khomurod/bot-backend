@@ -152,13 +152,15 @@ async function getSubmissionByToken(resultToken, isTest) {
  * Admin list. `mode` is explicit: 'real' | 'test' | 'all' (combined view the
  * admin selects deliberately). duplicateCount never counts across modes.
  */
-async function listSubmissions({ department, dispatchTeamId, pattern, search, mode = 'real', limit = 500 } = {}) {
+async function listSubmissions({ department, dispatchTeamName, pattern, search, mode = 'real', limit = 500 } = {}) {
   const where = [];
   const values = [];
   const add = (sqlForIndex, value) => { values.push(value); where.push(sqlForIndex(`$${values.length}`)); };
   if (mode !== 'all') add((i) => `is_test = ${i}`, mode === 'test');
   if (department) add((i) => `department = ${i}`, department);
-  if (dispatchTeamId) add((i) => `dispatch_team_id = ${i}`, dispatchTeamId);
+  // Teams are identified by their exact snapshotted NAME, not by the legacy
+  // dispatch_team_id foreign key — see services/sosAssessment/dispatchTeams.js.
+  if (dispatchTeamName) add((i) => `dispatch_team_name = ${i}`, dispatchTeamName);
   if (pattern) add((i) => `(primary_pattern = ${i} OR secondary_pattern = ${i})`, pattern);
   if (search) add((i) => `full_name ILIKE ${i}`, `%${search}%`);
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';

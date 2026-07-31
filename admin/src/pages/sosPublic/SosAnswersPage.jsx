@@ -21,6 +21,7 @@ import {
 } from "./SosAnswersSections";
 import SosTestCleanup from "./SosTestCleanup";
 import SosPresentationTimer from "./SosPresentationTimer";
+import { primeChimeAudio } from "./sosTimerChime";
 
 const REFRESH_MS = 20_000;
 
@@ -84,7 +85,12 @@ export default function SosAnswersPage({ isTest = false }) {
           <button
             type="button"
             className="sos-btn sos-btn--primary sos-timer-launch"
-            onClick={() => setTimerOpen(true)}
+            onClick={() => {
+              // Start the audio context HERE, inside the click: ten minutes
+              // later there is no user gesture to satisfy autoplay policy.
+              primeChimeAudio();
+              setTimerOpen(true);
+            }}
           >
             ⏱️ 10 daqiqalik taymer
           </button>

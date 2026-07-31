@@ -12,7 +12,7 @@
 
 const crypto = require('crypto');
 const db = require('../../database/sosAssessment');
-const { listDispatchTeams } = require('../../database/raiseApproval');
+const { publicDispatchTeams, findDispatchTeamByKey } = require('./dispatchTeams');
 const content = require('./content');
 const { scoreAnswers, normalizeName, SosValidationError } = require('./scoring');
 const { buildSummary } = require('./aggregation');
@@ -50,19 +50,15 @@ function openFlagFor(settings, isTest) {
 
 async function getMeta(isTest) {
   const settings = await db.getSettings();
-  let dispatchTeams = [];
-  try {
-    dispatchTeams = (await listDispatchTeams({ includeInactive: false }))
-      .map((t) => ({ id: t.id, name: t.name }));
-  } catch (err) {
-    console.error('[SOS] failed to load dispatch teams:', err.message);
-  }
   return {
     open: openFlagFor(settings, isTest),
     isTest: isTest === true,
     contentVersion: content.CONTENT_VERSION,
     departments: content.DEPARTMENTS,
-    dispatchTeams,
+    // The authoritative in-code list — no database read, so the team choices
+    // cannot vary between the real and test flows or drift with unrelated
+    // operational records.
+    dispatchTeams: publicDispatchTeams(),
   };
 }
 
@@ -96,15 +92,28 @@ async function submitAssessment(input) {
     throw serviceError('STALE_CONTENT', 'The questionnaire was updated — please reload the page', 409, { staleContent: true });
   }
 
-  let dispatchTeamId = null;
+  // Dispatch REQUIRES one of the six authoritative teams. dispatch_team_id stays
+  // NULL on purpose: it is a foreign key into the unrelated Raise Approval
+  // dispatch_teams table, and the exact snapshotted name is the identity here.
   let dispatchTeamName = null;
   if (input.department === 'dispatch') {
-    const teamId = Number.parseInt(input.dispatchTeamId, 10);
-    if (!Number.isInteger(teamId)) throw serviceError('TEAM_REQUIRED', 'Please select your dispatch team', 400);
-    const teams = await listDispatchTeams({ includeInactive: false });
-    const team = teams.find((t) => t.id === teamId);
+    const hasKey = !(input.dispatchTeamKey === undefined || input.dispatchTeamKey === null || input.dispatchTeamKey === '');
+    // A page loaded BEFORE this deployment still sends the old numeric
+    // `dispatchTeamId`. Those ids belong to the unrelated Raise Approval
+    // dispatch_teams rows, so translating one would file the person under the
+    // WRONG team — worse than failing. The questions themselves did not change,
+    // so CONTENT_VERSION cannot flag it either. Route it into the SAME
+    // stale-content flow the page already has, which tells the employee to
+    // reload and pick their team, instead of an unexplained "select your team"
+    // error after they have answered everything.
+    if (!hasKey && input.dispatchTeamId !== undefined && input.dispatchTeamId !== null && input.dispatchTeamId !== '') {
+      throw serviceError('STALE_CONTENT', 'The questionnaire was updated — please reload the page', 409, { staleContent: true });
+    }
+    if (!hasKey) {
+      throw serviceError('TEAM_REQUIRED', 'Please select your dispatch team', 400);
+    }
+    const team = findDispatchTeamByKey(input.dispatchTeamKey);
     if (!team) throw serviceError('UNKNOWN_TEAM', 'Unknown dispatch team', 400);
-    dispatchTeamId = team.id;
     dispatchTeamName = team.name;
   }
 
@@ -127,7 +136,7 @@ async function submitAssessment(input) {
     fullName,
     nameNormalized,
     department: input.department,
-    dispatchTeamId,
+    dispatchTeamId: null,
     dispatchTeamName,
     language: input.language,
     contentVersion: content.CONTENT_VERSION,
