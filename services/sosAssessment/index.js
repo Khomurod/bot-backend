@@ -97,7 +97,19 @@ async function submitAssessment(input) {
   // dispatch_teams table, and the exact snapshotted name is the identity here.
   let dispatchTeamName = null;
   if (input.department === 'dispatch') {
-    if (input.dispatchTeamKey === undefined || input.dispatchTeamKey === null || input.dispatchTeamKey === '') {
+    const hasKey = !(input.dispatchTeamKey === undefined || input.dispatchTeamKey === null || input.dispatchTeamKey === '');
+    // A page loaded BEFORE this deployment still sends the old numeric
+    // `dispatchTeamId`. Those ids belong to the unrelated Raise Approval
+    // dispatch_teams rows, so translating one would file the person under the
+    // WRONG team — worse than failing. The questions themselves did not change,
+    // so CONTENT_VERSION cannot flag it either. Route it into the SAME
+    // stale-content flow the page already has, which tells the employee to
+    // reload and pick their team, instead of an unexplained "select your team"
+    // error after they have answered everything.
+    if (!hasKey && input.dispatchTeamId !== undefined && input.dispatchTeamId !== null && input.dispatchTeamId !== '') {
+      throw serviceError('STALE_CONTENT', 'The questionnaire was updated — please reload the page', 409, { staleContent: true });
+    }
+    if (!hasKey) {
       throw serviceError('TEAM_REQUIRED', 'Please select your dispatch team', 400);
     }
     const team = findDispatchTeamByKey(input.dispatchTeamKey);

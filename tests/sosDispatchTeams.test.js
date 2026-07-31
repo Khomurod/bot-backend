@@ -190,6 +190,43 @@ test('a non-dispatch department stores no team even if a key is sent', async () 
   assert.equal(created[0].dispatchTeamId, null);
 });
 
+test('a pre-deployment client sending the old numeric id gets the RELOAD flow', async () => {
+  // The old bundle sends dispatchTeamId, not dispatchTeamKey. Those ids belong to
+  // the unrelated dispatch_teams rows, so they must never be translated into one
+  // of the six — the employee is asked to reload and choose instead.
+  for (const legacyId of [1, 3, 42, '5']) {
+    const created = [];
+    const service = loadService(created);
+    await assert.rejects(
+      service.submitAssessment(dispatchInput({ dispatchTeamId: legacyId })),
+      (err) => err.code === 'STALE_CONTENT' && err.status === 409 && err.extra.staleContent === true,
+      `legacy id ${JSON.stringify(legacyId)} must trigger the reload flow, not a team guess`,
+    );
+    assert.deepEqual(created, [], 'nothing may be stored from a stale payload');
+  }
+});
+
+test('a fresh client is unaffected when both fields somehow arrive', async () => {
+  const created = [];
+  const service = loadService(created);
+  await service.submitAssessment(dispatchInput({ dispatchTeamKey: 'team_2', dispatchTeamId: 99 }));
+  assert.equal(created[0].dispatchTeamName, 'Charles / Leo / Steven',
+    'the KEY wins; the legacy id is only ever a stale-client signal');
+  assert.equal(created[0].dispatchTeamId, null);
+});
+
+test('a non-dispatch in-flight submission still succeeds after the change', async () => {
+  const created = [];
+  const service = loadService(created);
+  const content = require('../services/sosAssessment/content');
+  await service.submitAssessment({
+    ...dispatchInput(),
+    department: 'safety',
+    answers: content.getQuestions('safety').map((q) => ({ questionKey: q.key, optionKey: q.options[0].key })),
+  });
+  assert.equal(created.length, 1, 'only the dispatch payload shape changed');
+});
+
 // ─────────────── summaries use the same exact names ───────────────
 
 const submission = (department, primaryPattern, dispatchTeamName = null) => ({

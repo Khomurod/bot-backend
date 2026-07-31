@@ -86,6 +86,9 @@ function buildPublicRouter(isTest) {
         fullName: body.fullName,
         department: body.department,
         dispatchTeamKey: body.dispatchTeamKey,
+        // Forwarded ONLY so the service can recognise a pre-deployment client
+        // and send it through the reload flow. It is never stored.
+        dispatchTeamId: body.dispatchTeamId,
         language: body.language,
         contentVersion: body.contentVersion,
         answers: body.answers,

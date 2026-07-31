@@ -277,6 +277,45 @@ test('an unknown team key is a 400, never an unfiltered list', async () => {
   });
 });
 
+test('the legacy dispatchTeamId is forwarded so the service can spot a stale client', async () => {
+  // A page loaded before the team change still sends dispatchTeamId. The route
+  // must pass it through — not silently drop it — so the service can answer with
+  // the reload flow instead of an unexplained "select your team".
+  const seen = [];
+  await withServer({
+    submitAssessment: async (input) => {
+      seen.push({ key: input.dispatchTeamKey, legacyId: input.dispatchTeamId });
+      return { resultToken: 'd'.repeat(32), result: { language: 'uz' } };
+    },
+  }, async (base) => {
+    await fetch(`${base}/api/sos/submissions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fullName: 'Old Bundle', department: 'dispatch', dispatchTeamId: 4,
+        language: 'uz', contentVersion: 1, answers: [],
+      }),
+    });
+    assert.deepEqual(seen[0], { key: undefined, legacyId: 4 });
+  });
+});
+
+test('a stale-client dispatch submission surfaces the reload flag over HTTP', async () => {
+  await withServer({
+    submitAssessment: async () => {
+      throw serviceError('STALE_CONTENT', 'reload', 409, { staleContent: true });
+    },
+  }, async (base) => {
+    const res = await fetch(`${base}/api/sos/submissions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fullName: 'Old Bundle', department: 'dispatch', dispatchTeamId: 4, language: 'uz', contentVersion: 1, answers: [] }),
+    });
+    assert.equal(res.status, 409);
+    assert.equal((await res.json()).staleContent, true);
+  });
+});
+
 test('the CSV export carries the exact team name', async () => {
   await withServer({
     listSubmissions: async () => ([{
