@@ -1,0 +1,198 @@
+/**
+ * Full-screen SOS presentation timer — part of the bright SOS design language
+ * (same warm background, same ink, same accent as sosPublic.css), scaled up for
+ * a projector or a TV at the back of a room.
+ *
+ * Kept in its own stylesheet so sosPublic.css stays focused on the questionnaire
+ * and results pages; it is imported by SosPresentationTimer.jsx only.
+ *
+ * The countdown and the message are two absolutely-positioned layers in the same
+ * centred stage — no layout shift, no reflow, and no timer of its own driving
+ * the animation.
+ *
+ * The fade is SEQUENTIAL, not a cross-fade: the outgoing layer transitions with
+ * no delay while the incoming one carries a transition-delay equal to the fade
+ * duration, so the countdown is fully gone before the message appears (and vice
+ * versa). Two texts never overlap on the projector.
+ */
+
+.sos-timer {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  color-scheme: light;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 3vh, 48px);
+  background:
+    radial-gradient(1400px 700px at 82% -140px, #ffedd5 0%, rgba(255, 237, 213, 0) 62%),
+    radial-gradient(1200px 600px at -140px 34%, #e0f2fe 0%, rgba(224, 242, 254, 0) 58%),
+    #fffdf8;
+  color: #1f2937;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+
+.sos-timer, .sos-timer * { box-sizing: border-box; }
+
+/* TEST mode stays unmistakable, but parked in a corner so it never competes
+   with the countdown for attention. */
+.sos-timer-test {
+  position: absolute;
+  top: clamp(12px, 2.5vh, 28px);
+  left: clamp(12px, 2.5vw, 32px);
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: #7c3aed;
+  color: #fff;
+  font-size: clamp(13px, 1.4vw, 19px);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.35);
+}
+
+/* ─── Cross-fading stage ─── */
+.sos-timer-stage {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  max-width: 1600px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sos-timer-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  opacity: 0;
+  transform: scale(0.985);
+  transition: opacity 600ms ease, transform 600ms ease; /* leaving: immediately */
+  pointer-events: none;
+}
+.sos-timer-layer.is-visible {
+  opacity: 1;
+  transform: scale(1);
+  transition-delay: 600ms; /* arriving: only once the other layer has gone */
+}
+
+.sos-timer-digits {
+  font-size: clamp(84px, 21vw, 380px);
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  color: #1f2937;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 8px 32px rgba(15, 23, 42, 0.12);
+}
+.sos-timer-caption {
+  margin-top: clamp(8px, 1.6vh, 22px);
+  font-size: clamp(15px, 2vw, 34px);
+  font-weight: 700;
+  color: #ea580c;
+  letter-spacing: 0.01em;
+}
+
+.sos-timer-message {
+  margin: 0;
+  max-width: 22ch;
+  padding: 0 clamp(12px, 4vw, 64px);
+  font-size: clamp(28px, 6.4vw, 108px);
+  font-weight: 800;
+  line-height: 1.22;
+  color: #1f2937;
+  text-wrap: balance;
+}
+
+.sos-timer-done {
+  font-size: clamp(22px, 3.4vw, 56px);
+  font-weight: 900;
+  color: #008300;
+  text-align: center;
+  padding: clamp(8px, 1.6vh, 20px) clamp(16px, 3vw, 40px);
+}
+.sos-timer-paused {
+  font-size: clamp(15px, 1.8vw, 28px);
+  font-weight: 800;
+  color: #0369a1;
+  text-align: center;
+  padding: 4px 0;
+}
+
+/* ─── Subtle progress indicator: how much of the ten minutes is left ─── */
+.sos-timer-progress {
+  width: min(100%, 1600px);
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+  margin-bottom: clamp(12px, 2vh, 26px);
+}
+.sos-timer-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f59e0b, #ea580c);
+  transition: width 300ms linear;
+}
+
+/* ─── Unobtrusive controls: readable, but out of the way ─── */
+.sos-timer-controls {
+  display: flex;
+  gap: clamp(8px, 1.2vw, 16px);
+  flex-wrap: wrap;
+  justify-content: center;
+  opacity: 0.45;
+  transition: opacity 200ms ease;
+}
+.sos-timer:hover .sos-timer-controls,
+.sos-timer:focus-within .sos-timer-controls { opacity: 1; }
+
+.sos-timer-btn {
+  border: 1.5px solid #e5e7eb;
+  background: #fff;
+  color: #4b5563;
+  border-radius: 999px;
+  padding: 10px 20px;
+  font-size: clamp(14px, 1.2vw, 20px);
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  min-height: 44px;
+  transition: border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+.sos-timer-btn:hover { border-color: #ea580c; color: #ea580c; }
+.sos-timer-btn:focus-visible { outline: 3px solid rgba(249, 115, 22, 0.5); outline-offset: 2px; }
+.sos-timer-btn--exit { color: #b91c1c; }
+.sos-timer-btn--exit:hover { border-color: #b91c1c; color: #b91c1c; }
+
+/* ─── The launch button on /answers and /answers/test ─── */
+.sos-timer-launch {
+  margin: 0 auto 18px;
+  display: inline-flex;
+}
+
+@media (max-width: 640px) {
+  .sos-timer-message { font-size: clamp(24px, 8vw, 44px); max-width: 18ch; }
+  .sos-timer-controls { opacity: 1; }
+  .sos-timer-btn { padding: 9px 14px; }
+}
+
+/* Landscape phones and short projector windows: keep the digits from
+   overflowing a very low viewport. */
+@media (max-height: 480px) {
+  .sos-timer-digits { font-size: clamp(60px, 22vh, 180px); }
+  .sos-timer-caption { font-size: clamp(13px, 4vh, 22px); }
+  .sos-timer-message { font-size: clamp(22px, 9vh, 52px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sos-timer-layer { transition: opacity 200ms linear; transform: none; }
+  .sos-timer-layer.is-visible { transform: none; transition-delay: 200ms; }
+  .sos-timer-progress-fill { transition: none; }
+}

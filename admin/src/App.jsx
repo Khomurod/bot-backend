@@ -138,6 +138,12 @@ export default function App() {
   const isSosQuestionsPage = page === "sos_questions_public" || page === "sos_questions_test";
   const isSosAnswersPage = page === "sos_answers_public" || page === "sos_answers_test";
   const isSosTestMode = page === "sos_questions_test" || page === "sos_answers_test";
+  // Public URLs render their own full-bleed page with no admin chrome and no
+  // auth. A token that happens to be in the browser must never move them: a
+  // Trailer-only account opening /answers/test used to be bounced into the
+  // Trailer department, hijacking the SOS presentation and the test cleanup.
+  const isPublicPage = isRaisePublicPage || isRecruitersPublicPage
+    || isSosQuestionsPage || isSosAnswersPage;
 
   useEffect(() => {
     // Back/forward must move the selected page AND the active sidebar item.
@@ -165,7 +171,9 @@ export default function App() {
           if (!verified) localStorage.removeItem("token");
           setSession(verified);
           setAuthed(Boolean(verified));
-          if (verified && !verified.permissions?.includes('admin.full_access') && verified.permissions?.some((p) => p.startsWith('trailer'))) {
+          if (verified && !isPublicPage
+              && !verified.permissions?.includes('admin.full_access')
+              && verified.permissions?.some((p) => p.startsWith('trailer'))) {
             openTrailerDepartmentOnLoad(verified.permissions);
           }
         }
