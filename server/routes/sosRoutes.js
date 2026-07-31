@@ -32,8 +32,17 @@ function sendServiceError(res, err, fallback = 'Request failed') {
 // Light in-memory sliding-window limiter for the unauthenticated write path.
 // Buckets are per mode+IP so rehearsals on the test page cannot consume the
 // real questionnaire's budget for an office IP (and vice versa).
+//
+// The cap is sized for a WHOLE ROOM behind one NAT address, not one person.
+// `trust proxy` means this is the real client IP, and a company questionnaire is
+// filled by everyone on the same office Wi-Fi at the same time — at 12 per
+// window a 40-person session had 29 people rejected with HTTP 429. A load test
+// of the same burst showed ~4.5 ms of server CPU per submission, so the cap is
+// not what protects the box; it exists to stop scripted flooding, and 60 per
+// quarter hour per address still does that while leaving a 40-person room room
+// to spare (retries, duplicate confirmations, a reload or two).
 const SUBMIT_WINDOW_MS = 15 * 60 * 1000;
-const SUBMIT_MAX_PER_WINDOW = 12;
+const SUBMIT_MAX_PER_WINDOW = 60;
 const submitHits = new Map();
 
 function submitRateLimited(bucket) {

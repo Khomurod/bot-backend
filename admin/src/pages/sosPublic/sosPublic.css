@@ -104,13 +104,23 @@
 
 .sos-field { margin-bottom: 18px; }
 .sos-label { display: block; font-size: 15px; font-weight: 700; color: var(--sos-ink); margin-bottom: 8px; }
-.sos-input, .sos-select {
+/* The `.sos-*` class alone is NOT enough here. index.css styles bare inputs with
+   `input:not([type=…])` repeated six times — specificity (0,6,1) — which beat
+   `.sos-input` (0,1,0) and painted the dark admin background onto the bright
+   questionnaire. These selectors mirror that same chain scoped under .sos-root,
+   giving (0,7,1), so the SOS pages own their own controls without touching the
+   admin theme. Keep the `.sos-root` prefix if this rule is ever edited. */
+.sos-root input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]).sos-input,
+.sos-root select.sos-select {
   width: 100%; padding: 14px 16px; font-size: 17px; border-radius: 14px;
   border: 1.5px solid var(--sos-line); background: #fff; color: var(--sos-ink);
   outline: none; transition: border-color 0.15s ease, box-shadow 0.15s ease;
   min-height: 52px; appearance: auto;
 }
-.sos-input:focus, .sos-select:focus { border-color: var(--sos-accent); box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.18); }
+.sos-root input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]).sos-input:focus,
+.sos-root select.sos-select:focus {
+  border-color: var(--sos-accent); box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.18);
+}
 .sos-input::placeholder { color: #9ca3af; }
 
 .sos-error { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 12px 14px; font-size: 14.5px; margin: 12px 0; }
