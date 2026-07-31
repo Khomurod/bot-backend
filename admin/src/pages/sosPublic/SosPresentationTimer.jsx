@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./sosTimer.css";
 import useSosTimer from "./useSosTimer";
-import playCompletionChime from "./sosTimerChime";
+import playCompletionChime, { primeChimeAudio } from "./sosTimerChime";
 import { formatClock } from "./sosTimerModel";
 
 export default function SosPresentationTimer({
@@ -26,6 +26,7 @@ export default function SosPresentationTimer({
   totalMs,
   tickMs,
   chime = playCompletionChime,
+  primeAudio = primeChimeAudio,
 }) {
   const rootRef = useRef(null);
   const [nativeFullscreen, setNativeFullscreen] = useState(false);
@@ -42,6 +43,17 @@ export default function SosPresentationTimer({
 
   const timer = useSosTimer({ totalMs, seed, tickMs, onFinish: handleFinish });
   const { status, finished, phase, message, remainingMs, remainingFraction } = timer;
+
+  // Restart is a user gesture too — re-prime, so a run started after the browser
+  // suspended the context still chimes. Guarded for the same reason as the chime.
+  const primeRef = useRef(primeAudio);
+  primeRef.current = primeAudio;
+  const restart = useCallback(() => {
+    try {
+      if (primeRef.current) primeRef.current();
+    } catch (_) { /* presentation audio is best-effort */ }
+    timer.restart();
+  }, [timer.restart]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isFullscreenElement = () => typeof document !== "undefined"
     && rootRef.current != null
@@ -162,7 +174,7 @@ export default function SosPresentationTimer({
         {status === "paused" && (
           <button type="button" className="sos-timer-btn" onClick={timer.resume}>▶ Davom etish</button>
         )}
-        <button type="button" className="sos-timer-btn" onClick={timer.restart}>⟲ Qaytadan (10:00)</button>
+        <button type="button" className="sos-timer-btn" onClick={restart}>⟲ Qaytadan (10:00)</button>
         <button type="button" className="sos-timer-btn sos-timer-btn--exit" onClick={close}>✕ Chiqish</button>
       </div>
     </div>

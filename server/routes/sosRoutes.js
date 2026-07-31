@@ -20,6 +20,7 @@
 
 const express = require('express');
 const sos = require('../../services/sosAssessment');
+const { findDispatchTeamByKey } = require('../../services/sosAssessment/dispatchTeams');
 const { toCsv } = require('./csvSafe');
 
 function sendServiceError(res, err, fallback = 'Request failed') {
@@ -75,7 +76,7 @@ function buildPublicRouter(isTest) {
       const result = await sos.submitAssessment({
         fullName: body.fullName,
         department: body.department,
-        dispatchTeamId: body.dispatchTeamId,
+        dispatchTeamKey: body.dispatchTeamKey,
         language: body.language,
         contentVersion: body.contentVersion,
         answers: body.answers,
@@ -149,9 +150,17 @@ adminRouter.get('/submissions', async (req, res) => {
   try {
     const mode = parseMode(req.query.mode);
     if (!mode) return res.status(400).json({ error: 'mode must be real, test, or all' });
+    // ?team= is one of the six authoritative team KEYS; an unknown key is a 400
+    // rather than a silently unfiltered list.
+    let dispatchTeamName;
+    if (req.query.team) {
+      const team = findDispatchTeamByKey(String(req.query.team));
+      if (!team) return res.status(400).json({ error: 'Unknown dispatch team' });
+      dispatchTeamName = team.name;
+    }
     const rows = await sos.listSubmissions({
       department: req.query.department || undefined,
-      dispatchTeamId: req.query.teamId ? Number.parseInt(req.query.teamId, 10) : undefined,
+      dispatchTeamName,
       pattern: req.query.pattern || undefined,
       search: req.query.search || undefined,
       mode,

@@ -64,7 +64,7 @@ export function SosWelcome({ t, meta, metaError, savedToken, busy, error, onStar
 export function SosDetails({ t, lang, meta, busy, error, onBack, onContinue }) {
   const [fullName, setFullName] = useState("");
   const [department, setDepartment] = useState("");
-  const [dispatchTeamId, setDispatchTeamId] = useState("");
+  const [dispatchTeamKey, setDispatchTeamKey] = useState("");
   const [validation, setValidation] = useState("");
 
   const departments = meta?.departments || [];
@@ -74,9 +74,10 @@ export function SosDetails({ t, lang, meta, busy, error, onBack, onContinue }) {
   function handleContinue() {
     if (fullName.trim().length < 3) return setValidation(t.nameRequired);
     if (!department) return setValidation(t.departmentRequired);
-    if (isDispatch && !dispatchTeamId) return setValidation(t.teamRequired);
+    // Dispatch cannot continue without a team — the server enforces this too.
+    if (isDispatch && !dispatchTeamKey) return setValidation(t.teamRequired);
     setValidation("");
-    return onContinue({ fullName: fullName.trim(), department, dispatchTeamId });
+    return onContinue({ fullName: fullName.trim(), department, dispatchTeamKey });
   }
 
   return (
@@ -101,7 +102,7 @@ export function SosDetails({ t, lang, meta, busy, error, onBack, onContinue }) {
           id="sos-dept"
           className="sos-select"
           value={department}
-          onChange={(e) => { setDepartment(e.target.value); setDispatchTeamId(""); }}
+          onChange={(e) => { setDepartment(e.target.value); setDispatchTeamKey(""); }}
         >
           <option value="">{t.departmentPlaceholder}</option>
           {departments.map((d) => (
@@ -111,16 +112,18 @@ export function SosDetails({ t, lang, meta, busy, error, onBack, onContinue }) {
       </div>
       {isDispatch && (
         <div className="sos-field">
-          <label className="sos-label" htmlFor="sos-team">{t.dispatchTeam}</label>
+          <label className="sos-label" htmlFor="sos-team">{t.dispatchTeam} *</label>
           <select
             id="sos-team"
             className="sos-select"
-            value={dispatchTeamId}
-            onChange={(e) => setDispatchTeamId(e.target.value)}
+            required
+            aria-required="true"
+            value={dispatchTeamKey}
+            onChange={(e) => setDispatchTeamKey(e.target.value)}
           >
             <option value="">{t.dispatchTeamPlaceholder}</option>
             {teams.map((team) => (
-              <option key={team.id} value={team.id}>{team.name}</option>
+              <option key={team.key} value={team.key}>{team.name}</option>
             ))}
           </select>
         </div>

@@ -25,6 +25,14 @@ function advance(ms) {
   act(() => { vi.advanceTimersByTime(ms); });
 }
 
+/**
+ * Moves the WALL CLOCK forward WITHOUT letting the interval fire — the exact
+ * window between the target finish time passing and the tick that notices it.
+ */
+function skewClock(ms) {
+  act(() => { vi.setSystemTime(Date.now() + ms); });
+}
+
 const clock = () => screen.getByTestId("sos-timer-clock").textContent;
 const phase = () => screen.getByTestId("sos-timer").dataset.phase;
 const status = () => screen.getByTestId("sos-timer").dataset.status;
@@ -135,6 +143,84 @@ describe("controls", () => {
     fireEvent.click(screen.getByRole("button", { name: /Qaytadan/ }));
     fireEvent.click(screen.getByRole("button", { name: /Qaytadan/ }));
     expect(vi.getTimerCount()).toBe(1);
+  });
+});
+
+describe("pause after the countdown has already reached zero", () => {
+  test("Pause between zero and the next tick finishes instead of freezing at 00:00", () => {
+    setup({ totalMs: 60_000 });
+    // The target finish instant passes, but no tick has run yet, so the timer is
+    // still nominally running and Pause is still on screen.
+    skewClock(61_000);
+    expect(status()).toBe("running");
+    fireEvent.click(screen.getByRole("button", { name: /Pauza/ }));
+
+    expect(status()).toBe("finished");
+    expect(clock()).toBe("00:00");
+    expect(screen.getByTestId("sos-timer-done").textContent).toMatch(/Vaqt tugadi/);
+    expect(screen.queryByTestId("sos-timer-paused")).toBeNull();
+    // Nothing can resume a spent timer, and nothing is left ticking.
+    expect(screen.queryByRole("button", { name: /Davom etish/ })).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("the completion chime still fires on that path", () => {
+    const chime = vi.fn();
+    setup({ totalMs: 30_000, chime });
+    skewClock(31_000);
+    fireEvent.click(screen.getByRole("button", { name: /Pauza/ }));
+    expect(chime).toHaveBeenCalledTimes(1);
+  });
+
+  test("landing exactly on zero also finishes rather than pausing", () => {
+    setup({ totalMs: 20_000 });
+    skewClock(20_000); // remaining is exactly 0
+    fireEvent.click(screen.getByRole("button", { name: /Pauza/ }));
+    expect(status()).toBe("finished");
+    expect(clock()).toBe("00:00");
+  });
+
+  test("a genuine mid-run pause is unaffected and still resumes", () => {
+    setup({ totalMs: 60_000 });
+    advance(10_000);
+    fireEvent.click(screen.getByRole("button", { name: /Pauza/ }));
+    expect(status()).toBe("paused");
+    expect(clock()).toBe("00:50");
+    fireEvent.click(screen.getByRole("button", { name: /Davom etish/ }));
+    expect(status()).toBe("running");
+  });
+
+  test("restart recovers from the finished-by-pause state", () => {
+    setup({ totalMs: 60_000 });
+    skewClock(61_000);
+    fireEvent.click(screen.getByRole("button", { name: /Pauza/ }));
+    expect(status()).toBe("finished");
+    fireEvent.click(screen.getByRole("button", { name: /Qaytadan/ }));
+    expect(status()).toBe("running");
+    expect(clock()).toBe("01:00");
+    advance(5_000);
+    expect(clock()).toBe("00:55");
+  });
+});
+
+describe("audio is primed from the user gesture", () => {
+  test("Restart re-primes the audio context, since it is also a click", () => {
+    const primeAudio = vi.fn();
+    setup({ primeAudio });
+    expect(primeAudio).not.toHaveBeenCalled(); // mounting is not a gesture
+    fireEvent.click(screen.getByRole("button", { name: /Qaytadan/ }));
+    expect(primeAudio).toHaveBeenCalledTimes(1);
+    expect(status()).toBe("running");
+    expect(clock()).toBe("10:00");
+  });
+
+  test("a throwing prime cannot stop the restart", () => {
+    const primeAudio = vi.fn(() => { throw new Error("audio blocked"); });
+    setup({ primeAudio, totalMs: 60_000 });
+    advance(10_000);
+    expect(() => fireEvent.click(screen.getByRole("button", { name: /Qaytadan/ }))).not.toThrow();
+    expect(clock()).toBe("01:00");
+    expect(status()).toBe("running");
   });
 });
 

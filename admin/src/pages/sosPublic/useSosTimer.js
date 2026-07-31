@@ -62,17 +62,29 @@ export default function useSosTimer({
 
   // Guarded through a ref rather than a setStatus updater: the updater must stay
   // pure (React may call it twice), and these transitions also move the refs.
+  //
+  // There is no "paused at 00:00" state. Between the instant the target finish
+  // time passes and the next tick that notices it, the timer is still nominally
+  // running — pausing in that window must land on the FINISHED state, not freeze
+  // a spent clock that Continue could never move.
   const pause = useCallback(() => {
     if (statusRef.current !== "running") return;
     const left = Math.max(0, (endsAtRef.current ?? Date.now()) - Date.now());
     remainingRef.current = left;
     endsAtRef.current = null;
     setRemainingMs(left);
-    setStatus("paused");
+    setStatus(left <= 0 ? "finished" : "paused");
   }, []);
 
   const resume = useCallback(() => {
     if (statusRef.current !== "paused") return;
+    // Defensive: a paused timer with nothing left belongs in the finished state.
+    if (remainingRef.current <= 0) {
+      endsAtRef.current = null;
+      setRemainingMs(0);
+      setStatus("finished");
+      return;
+    }
     endsAtRef.current = Date.now() + remainingRef.current;
     setStatus("running");
   }, []);

@@ -317,3 +317,83 @@ test('admin status toggle targets one mode; detail/delete behave as before', asy
     assert.equal((await fetch(`${base}/api/sos/admin/submissions/9`, { method: 'DELETE', headers: authHeaders })).status, 404);
   }, calls);
 });
+
+// ─────────────── dispatch teams over HTTP ───────────────
+// The six authoritative teams (services/sosAssessment/dispatchTeams.js) must
+// survive the HTTP boundary unchanged: the submit body carries the team KEY, the
+// admin filter resolves a key to the exact stored NAME, an unknown key is a 400
+// rather than a silently unfiltered list, and the CSV carries the exact name.
+
+test('a submission passes the dispatch team KEY through to the service', async () => {
+  const calls = [];
+  await withServer({
+    submitAssessment: async (input) => {
+      calls.push({ name: 'submitAssessment', args: { dispatchTeamKey: input.dispatchTeamKey } });
+      return { resultToken: 'c'.repeat(32), result: { language: 'uz' } };
+    },
+  }, async (base) => {
+    const res = await fetch(`${base}/api/sos/submissions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fullName: 'Dispatcher One', department: 'dispatch', dispatchTeamKey: 'team_4',
+        language: 'uz', contentVersion: 1, answers: [],
+      }),
+    });
+    assert.equal(res.status, 201);
+    assert.equal(calls[0].args.dispatchTeamKey, 'team_4');
+  }, calls);
+});
+
+test('the admin team filter resolves a key to the exact stored team name', async () => {
+  const seen = [];
+  await withServer({
+    listSubmissions: async (filters) => { seen.push(filters); return []; },
+  }, async (base) => {
+    for (const [key, name] of [
+      ['team_1', 'Anthony / Allen / Scott'],
+      ['team_2', 'Charles / Leo / Steven'],
+      ['team_3', 'Smith / Colin / Kevin'],
+      ['team_4', 'Franky / Sam / Ali'],
+      ['team_5', 'Tony / Andy / Max'],
+      ['team_6', 'Aaron / Jack'],
+    ]) {
+      const res = await fetch(`${base}/api/sos/admin/submissions?mode=all&team=${key}`, { headers: authHeaders });
+      assert.equal(res.status, 200, key);
+      assert.equal(seen[seen.length - 1].dispatchTeamName, name, key);
+    }
+    // No team filter means no team constraint at all.
+    await fetch(`${base}/api/sos/admin/submissions?mode=all`, { headers: authHeaders });
+    assert.equal(seen[seen.length - 1].dispatchTeamName, undefined);
+  });
+});
+
+test('an unknown team key is a 400, never an unfiltered list', async () => {
+  const seen = [];
+  await withServer({
+    listSubmissions: async (filters) => { seen.push(filters); return []; },
+  }, async (base) => {
+    for (const bad of ['team_7', 'Team%20Alpha', '1', 'nope']) {
+      const res = await fetch(`${base}/api/sos/admin/submissions?mode=all&team=${bad}`, { headers: authHeaders });
+      assert.equal(res.status, 400, bad);
+    }
+    assert.deepEqual(seen, [], 'a rejected filter must never reach the database');
+  });
+});
+
+test('the CSV export carries the exact team name', async () => {
+  await withServer({
+    listSubmissions: async () => ([{
+      id: 5, isTest: false, fullName: 'Dispatcher One', department: 'dispatch',
+      dispatchTeamName: 'Smith / Colin / Kevin', language: 'uz',
+      primaryPattern: 'builder', secondaryPattern: null, duplicateCount: 1,
+      patternScores: { victim: 0, complaint: 0, waiting: 0, blame: 0, ownership: 4, builder: 6 },
+      createdAt: new Date('2026-07-31T09:00:00Z'),
+    }]),
+  }, async (base) => {
+    const res = await fetch(`${base}/api/sos/admin/submissions?mode=real&format=csv`, { headers: authHeaders });
+    assert.equal(res.status, 200);
+    const csv = await res.text();
+    assert.match(csv, /Smith \/ Colin \/ Kevin/);
+  });
+});

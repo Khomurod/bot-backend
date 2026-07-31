@@ -32,7 +32,7 @@ export default function SosQuestionsPage({ isTest = false }) {
   const [screen, setScreen] = useState("welcome");
   const [meta, setMeta] = useState(null);
   const [metaError, setMetaError] = useState(false);
-  const [form, setForm] = useState({ fullName: "", department: "", dispatchTeamId: "" });
+  const [form, setForm] = useState({ fullName: "", department: "", dispatchTeamKey: "" });
   const [questions, setQuestions] = useState(null);
   const [contentVersion, setContentVersion] = useState(null);
   const [answers, setAnswers] = useState({});
@@ -81,7 +81,7 @@ export default function SosQuestionsPage({ isTest = false }) {
       const payload = {
         fullName: form.fullName,
         department: form.department,
-        dispatchTeamId: form.department === "dispatch" ? Number(form.dispatchTeamId) : undefined,
+        dispatchTeamKey: form.department === "dispatch" ? form.dispatchTeamKey : undefined,
         language: lang,
         contentVersion,
         answers: questions.map((q) => ({ questionKey: q.key, optionKey: answers[q.key] })),
