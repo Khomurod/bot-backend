@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<!--
+  QBQ remote controller (/qbq/remote).
+
+  Self-contained: no CDN, no external font, no image. It controls nothing until
+  a presenter's pairing code is entered, so opening this URL by itself is inert.
+
+  The token lives in sessionStorage purely so a refresh on the phone can rejoin
+  the same live session — it dies with the tab and with the session.
+-->
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>SOS — Masofaviy boshqaruv</title>
+<style>
+  :root{--bg:#12161C;--paper:#F4F1EA;--amber:#F5B23D;--teal:#84C7CD;--mute:#8B929C;--red:#E0705F}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--paper);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    display:flex;flex-direction:column;padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));gap:14px}
+  h1{margin:0;font-size:17px;font-weight:700;letter-spacing:0.02em}
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .dot{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--mute)}
+  .dot i{width:9px;height:9px;border-radius:50%;background:var(--mute);font-style:normal}
+  body[data-state="live"] .dot i{background:var(--teal)}
+  body[data-state="error"] .dot i{background:var(--red)}
+
+  .card{background:#1A1F27;border:1px solid #2A303A;border-radius:14px;padding:16px}
+  .msg{font-size:14px;line-height:1.5;color:var(--mute)}
+  .msg b{color:var(--paper)}
+
+  /* Pairing */
+  #pair label{display:block;font-size:13px;color:var(--mute);margin-bottom:8px}
+  #pair input{width:100%;font:inherit;font-size:28px;letter-spacing:0.22em;text-align:center;
+    text-transform:uppercase;padding:14px 10px;border-radius:11px;border:1px solid #2A303A;
+    background:#0E1218;color:var(--amber)}
+  #pair input:focus{outline:2px solid var(--amber);outline-offset:1px}
+  #pair button{width:100%;margin-top:12px;font:inherit;font-size:17px;font-weight:600;padding:15px;
+    border:none;border-radius:11px;background:var(--amber);color:#12161C}
+  #pair .err{display:none;margin-top:10px;font-size:13px;color:var(--red);line-height:1.45}
+  #pair[data-error="1"] .err{display:block}
+
+  /* Controls */
+  #controls{display:none;flex:1;flex-direction:column;gap:14px}
+  body[data-state="live"] #controls{display:flex}
+  body[data-state="live"] #pair{display:none}
+
+  .readout{display:flex;gap:10px}
+  .readout div{flex:1;background:#1A1F27;border:1px solid #2A303A;border-radius:12px;padding:12px;text-align:center}
+  .readout span{display:block;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--mute)}
+  .readout strong{display:block;margin-top:5px;font-size:24px;font-variant-numeric:tabular-nums}
+
+  .nav{display:flex;gap:12px;flex:1;min-height:150px}
+  .nav button{flex:1;font:inherit;font-size:19px;font-weight:600;border:none;border-radius:16px;
+    background:#232A34;color:var(--paper);display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:8px}
+  .nav button:active{background:#2E3745}
+  .nav button svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:2.1}
+  .nav button[data-act="next"]{background:var(--amber);color:#12161C}
+  .nav button[data-act="next"]:active{background:#E0A233}
+
+  .zoom{display:flex;gap:10px}
+  .zoom button{flex:1;font:inherit;font-size:17px;font-weight:600;padding:17px 8px;border:none;
+    border-radius:14px;background:#232A34;color:var(--paper)}
+  .zoom button:active{background:#2E3745}
+
+  #end{width:100%;font:inherit;font-size:15px;padding:13px;border:1px solid #2A303A;border-radius:12px;
+    background:transparent;color:var(--mute)}
+  button{cursor:pointer;touch-action:manipulation}
+  button:disabled{opacity:0.45}
+</style>
+</head>
+<body data-state="idle">
+
+<div class="bar">
+  <h1>SOS — Masofaviy boshqaruv</h1>
+  <span class="dot"><i></i><em data-status>Ulanmagan</em></span>
+</div>
+
+<div class="card" id="pair">
+  <label for="code">Prezentatsiya ekranidagi kodni kiriting</label>
+  <input id="code" inputmode="latin" autocomplete="off" autocapitalize="characters"
+         spellcheck="false" maxlength="8" placeholder="——————">
+  <button type="button" id="connect">Ulanish</button>
+  <p class="err" data-error></p>
+</div>
+
+<p class="msg" id="hint">
+  Prezentatsiya ochiq kompyuterda yuqoridagi <b>masofaviy boshqaruv</b> tugmasini bosing va
+  chiqqan kodni shu yerga kiriting.
+</p>
+
+<div id="controls">
+  <div class="readout">
+    <div><span>Slayd</span><strong data-slide>–</strong></div>
+    <div><span>Jami</span><strong data-total>–</strong></div>
+    <div><span>Masshtab</span><strong data-zoom>–</strong></div>
+  </div>
+
+  <div class="nav">
+    <button type="button" data-act="prev">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 5 8 12 15 19"></polyline></svg>
+      Oldingi
+    </button>
+    <button type="button" data-act="next">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 5 16 12 9 19"></polyline></svg>
+      Keyingi
+    </button>
+  </div>
+
+  <div class="zoom">
+    <button type="button" data-act="zoomOut">− Kichik</button>
+    <button type="button" data-act="reset">100%</button>
+    <button type="button" data-act="zoomIn">+ Katta</button>
+  </div>
+
+  <button type="button" id="end">Sessiyani tugatish</button>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var KEY = 'qbq.remote';
+  var body = document.body;
+  var statusEl = document.querySelector('[data-status]');
+  var pairCard = document.getElementById('pair');
+  // Scoped to the message element: the #pair card itself also carries a
+  // data-error flag once an attempt fails, so a bare [data-error] would match it.
+  var errEl = document.querySelector('#pair .err');
+  var codeInput = document.getElementById('code');
+  var hint = document.getElementById('hint');
+  var slideEl = document.querySelector('[data-slide]');
+  var totalEl = document.querySelector('[data-total]');
+  var zoomEl = document.querySelector('[data-zoom]');
+
+  var token = '';
+  var source = null;
+  // Monotonic per-remote counter. The server ignores anything at or below the
+  // last value it accepted, so a retry — or a double-fired touch event — can
+  // never advance two slides.
+  var seq = 0;
+
+  function store(value) {
+    try { value ? sessionStorage.setItem(KEY, value) : sessionStorage.removeItem(KEY); }
+    catch (e) { /* private mode: the session simply ends with the tab */ }
+  }
+
+  function restore() {
+    try { return sessionStorage.getItem(KEY) || ''; } catch (e) { return ''; }
+  }
+
+  function setStatus(state, text) {
+    body.setAttribute('data-state', state);
+    statusEl.textContent = text;
+  }
+
+  function showError(message) {
+    pairCard.setAttribute('data-error', '1');
+    errEl.textContent = message;
+  }
+
+  function render(state) {
+    if (!state) return;
+    slideEl.textContent = state.total ? String(state.slide + 1) : '–';
+    totalEl.textContent = state.total ? String(state.total) : '–';
+    zoomEl.textContent = state.zoom ? Math.round(state.zoom * 100) + '%' : '–';
+  }
+
+  function connectStream() {
+    if (source) source.close();
+    source = new EventSource('/api/qbq/stream?token=' + encodeURIComponent(token));
+    source.onmessage = function (event) {
+      var data;
+      try { data = JSON.parse(event.data); } catch (e) { return; }
+      if (!data) return;
+      if (data.type === 'state') {
+        setStatus('live', 'Ulangan');
+        hint.style.display = 'none';
+        render(data.state);
+      } else if (data.type === 'ended' || data.type === 'replaced') {
+        // Either the presenter ended it or this phone was replaced by another.
+        drop(data.type === 'replaced'
+          ? 'Boshqa qurilma ulandi.'
+          : 'Sessiya tugadi.');
+      }
+    };
+    source.onerror = function () {
+      // EventSource retries on its own; only report, never resend commands.
+      if (body.getAttribute('data-state') === 'live') setStatus('error', 'Ulanish tiklanmoqda…');
+    };
+  }
+
+  function drop(message) {
+    if (source) { source.close(); source = null; }
+    token = '';
+    store('');
+    seq = 0;
+    setStatus('idle', 'Ulanmagan');
+    hint.style.display = '';
+    pairCard.removeAttribute('data-error');
+    if (message) showError(message);
+    codeInput.value = '';
+  }
+
+  function pair(code) {
+    return fetch('/api/qbq/pair', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: code }),
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (!res.ok) {
+          throw new Error(res.status === 429
+            ? 'Juda ko‘p urinish. Bir oz kutib, qaytadan urinib ko‘ring.'
+            : 'Kod noto‘g‘ri yoki muddati o‘tgan.');
+        }
+        return data;
+      });
+    });
+  }
+
+  document.getElementById('connect').addEventListener('click', function () {
+    var code = codeInput.value.trim().toUpperCase();
+    pairCard.removeAttribute('data-error');
+    if (code.length < 6) return showError('Kod 6 ta belgidan iborat.');
+    setStatus('idle', 'Ulanmoqda…');
+    pair(code)
+      .then(function (data) {
+        token = data.remoteToken;
+        store(token);
+        seq = 0;
+        render(data.state);
+        connectStream();
+        setStatus('live', 'Ulangan');
+        hint.style.display = 'none';
+      })
+      .catch(function (err) {
+        setStatus('error', 'Ulanmadi');
+        showError(err.message);
+      });
+  });
+
+  codeInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') document.getElementById('connect').click();
+  });
+
+  function send(action) {
+    // A dropped session must go quiet rather than keep firing at the server.
+    if (!token) return;
+    seq += 1;
+    fetch('/api/qbq/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ action: action, seq: seq }),
+    })
+      .then(function (res) {
+        if (res.status === 401 || res.status === 403) {
+          drop('Sessiya tugagan. Yangi kod bilan ulaning.');
+        }
+        // The response body is deliberately NOT rendered. It carries the state
+        // from BEFORE the presenter applied this command, so painting it would
+        // race the SSE stream and could only ever show a stale slide number.
+        // The stream is the single source of truth for what the deck is doing.
+      })
+      .catch(function () { setStatus('error', 'Buyruq yuborilmadi'); });
+  }
+
+  document.querySelectorAll('[data-act]').forEach(function (button) {
+    button.addEventListener('click', function () { send(button.getAttribute('data-act')); });
+  });
+
+  document.getElementById('end').addEventListener('click', function () {
+    if (token) {
+      fetch('/api/qbq/disconnect', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token },
+      }).catch(function () {});
+    }
+    drop('');
+  });
+
+  // A refresh on the phone rejoins the same live session; the first thing the
+  // stream sends is a state snapshot, so the slide number is never stale.
+  var saved = restore();
+  if (saved) {
+    token = saved;
+    setStatus('idle', 'Ulanmoqda…');
+    connectStream();
+  }
+})();
+</script>
+</body>
+</html>

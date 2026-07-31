@@ -159,6 +159,21 @@ try {
   console.error('[API] SOS assessment routes unavailable:', err.message);
 }
 
+// ─── QBQ presentation hosting (/qbq) ───
+// Serves the uploaded SOS deck as one self-contained document, plus its remote
+// controller. Page routes are public and are mounted on their own /qbq prefix,
+// so they cannot shadow /admin, /questions, /answers, /dispatch or any /api
+// route. Reading saved edits is public; SAVING one goes through the same
+// full-admin gate as the rest of the admin API. A failure here must not take
+// down the API — the deck is a standalone feature.
+try {
+  const { createQbqPageRoutes, createQbqApiRoutes } = require('./routes/qbqRoutes');
+  app.use(createQbqPageRoutes());
+  app.use('/api/qbq', createQbqApiRoutes({ authMiddleware: legacyAuthMiddleware }));
+} catch (qbqMountError) {
+  console.error('[QBQ] route mount failed — main app continues without /qbq:', qbqMountError.message);
+}
+
 // ─── Driver Home-Time Tracking ───
 const { createHomeTimeRouter } = require('./routes/homeTimeRoutes');
 app.use('/api/home-time', createHomeTimeRouter({ authMiddleware: legacyAuthMiddleware }));
