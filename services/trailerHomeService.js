@@ -37,13 +37,16 @@ async function fetchAttention() {
     SELECT 'trailers_needing_review', COUNT(*)::int, MIN(t.updated_at)
       FROM trailers t WHERE t.needs_review = TRUE AND t.active = TRUE
   `);
+  // /trailers is the department's public-facing slug. The admin panel parses
+  // these through the shared navigation catalog, which still accepts the old
+  // /admin/trailers form — so an old client reading a new link keeps working.
   const LINKS = {
-    pickups_due: '/admin/trailers/rentals?tab=upcoming_pickups',
-    overdue_returns: '/admin/trailers/rentals?tab=needs_attention',
-    overdue_invoices: '/admin/trailers/money?tab=overdue',
-    unknown_messages: '/admin/trailers/trailers?tab=updates&view=unknown',
-    failed_notifications: '/admin/trailers/money?tab=needs_attention',
-    trailers_needing_review: '/admin/trailers/trailers?tab=needs_attention',
+    pickups_due: '/trailers/rentals?tab=upcoming_pickups',
+    overdue_returns: '/trailers/rentals?tab=needs_attention',
+    overdue_invoices: '/trailers/money?tab=overdue',
+    unknown_messages: '/trailers/trailers?tab=updates&view=unknown',
+    failed_notifications: '/trailers/money?tab=needs_attention',
+    trailers_needing_review: '/trailers/trailers?tab=needs_attention',
   };
   return res.rows
     .filter((r) => r.count > 0)

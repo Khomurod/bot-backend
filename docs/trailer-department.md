@@ -1,5 +1,51 @@
 # Trailer Department operations
 
+## URLs
+
+`/trailers` is the department's public-facing slug and the canonical location of
+every page:
+
+| URL | Opens |
+| --- | --- |
+| `/trailers` | The department at the first section the account may open (Home for most) |
+| `/trailers/{section}` | `home`, `rentals`, `trailers`, `money`, `more` |
+| `/trailers/{section}?tab=…&…` | A sub-tab, a selected record, and list filters |
+
+Direct entry, a browser refresh, and a deep link all work: the Express catch-all
+in `server/api.js` serves the admin SPA for `/trailers` and `/trailers/*`, and
+the SPA resolves the section from the path. The build is shared with `/admin`
+and `/dispatch`, which is only possible because Vite's `base` is `/admin/` — the
+asset URLs are absolute, so the same `index.html` loads under any slug.
+
+Back and forward move between sections: in-app navigation pushes a history
+entry per section, and the shell re-reads the path on `popstate`.
+
+### The old `/admin/trailers` URLs
+
+They keep working. `/admin/trailers/...` still serves the SPA, which rewrites the
+location to the matching `/trailers/...` URL with `history.replaceState` — a
+replace, not a push, so Back does not bounce off the old URL. Nothing is lost in
+the rewrite:
+
+- the section, including pre-redesign section keys (`/admin/trailers/map`
+  → `/trailers/trailers?tab=map`, `/admin/trailers/companies`
+  → `/trailers/more?tab=companies`);
+- the selected record and every filter in the query string.
+
+`admin/src/pages/trailer/trailerNavigation.js` is the single source for this
+mapping; every path helper there accepts either prefix.
+
+### Signing in
+
+A user sent to the login gate from a trailer URL returns to that exact page.
+Accounts with only `trailer_*` permissions land in the department automatically —
+at the page they asked for if there was one, otherwise at their default section.
+Full administrators reach it from the normal admin sidebar (Operations → Trailer
+Department), which expands to the sections they may open.
+
+Trailer **Tracking** (`/admin`, Operations → Trailer Tracking) is a separate
+operational monitoring feature and is unaffected by any of this.
+
 ## Feature flag
 
 The rental and asset-management APIs are **enabled by default**. `TRAILER_DEPARTMENT_ENABLED` controls them:
@@ -14,6 +60,24 @@ The rental and asset-management APIs are **enabled by default**. `TRAILER_DEPART
 Setting `TRAILER_DEPARTMENT_ENABLED=false` makes every `/api/trailer-department/*` endpoint return `404 Trailer Department is disabled.` The single exception is `GET /api/trailer-department/status`, which stays available to authenticated admins and returns `{ "enabled": false }` so the admin panel can explain the state instead of showing a page full of failed requests.
 
 A **server restart or redeploy is required** after changing the value — the flag is read once at boot. Production deployment and environment-variable changes remain manual.
+
+While the flag is `false`, `/trailers` still loads: the shell shows the
+disabled panel rather than a page of failed requests, so the kill switch is
+visible instead of looking like an outage.
+
+### Deployment
+
+No Render environment-variable change is required to enable the department — an
+absent `TRAILER_DEPARTMENT_ENABLED` means enabled. Two things are worth checking
+once after a deploy:
+
+1. If `TRAILER_DEPARTMENT_ENABLED` is currently set to `false` (or to any value
+   that is not `true`/`false`) in the Render service, the department stays off.
+   Remove the variable or set it to `true`, then restart. **Change this by hand
+   in the Render dashboard** — deployment settings are never automated from this
+   repository.
+2. `/trailers` is served by the application, not by a static host, so no
+   rewrite/redirect rule needs to be added anywhere.
 
 Existing trailer tracking remains available under its current routes and permission gates.
 

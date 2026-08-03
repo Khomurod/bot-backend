@@ -6,8 +6,14 @@
  * The server permission middleware stays authoritative — this only decides what
  * is worth showing. Old section keys keep working: trailerSectionFromPath maps
  * every legacy key to its new home (and trailerLegacyTab to the right sub-tab).
+ *
+ * `/trailers` is the public-facing slug. `/admin/trailers` was the original one
+ * and stays readable forever: every path helper accepts either prefix, and
+ * canonicalTrailerUrl rewrites a legacy URL to its `/trailers` equivalent
+ * without dropping the section, the record, the filters, or the sub-tab.
  */
-export const TRAILER_BASE_PATH = "/admin/trailers";
+export const TRAILER_BASE_PATH = "/trailers";
+export const TRAILER_LEGACY_BASE_PATH = "/admin/trailers";
 export const TRAILER_DEFAULT_SECTION = "home";
 
 const MANAGER_PERMISSIONS = [
@@ -72,11 +78,35 @@ export function trailerSectionPath(key) {
 }
 
 /**
- * Reads the section out of /admin/trailers/{section}. Legacy keys land on
- * their new section; unknown paths fall back to Home.
+ * The path segments after the department root, for either prefix:
+ * `/trailers/money` and `/admin/trailers/money` both yield ["money"].
+ * Returns null when the path is not a Trailer Department path at all.
+ */
+function trailerPathSegments(pathname) {
+  const segments = String(pathname || "").split("/").filter(Boolean);
+  if (segments[0] === "admin") segments.shift();
+  if (segments[0] !== "trailers") return null;
+  return segments.slice(1);
+}
+
+/** True for /trailers, /trailers/…, /admin/trailers and /admin/trailers/…. */
+export function isTrailerPath(pathname) {
+  return trailerPathSegments(pathname) !== null;
+}
+
+/** True only for the superseded /admin/trailers prefix. */
+export function isLegacyTrailerPath(pathname) {
+  const path = String(pathname || "");
+  return path === TRAILER_LEGACY_BASE_PATH || path.startsWith(`${TRAILER_LEGACY_BASE_PATH}/`);
+}
+
+/**
+ * Reads the section out of /trailers/{section} (or the legacy
+ * /admin/trailers/{section}). Legacy section keys land on their new section;
+ * unknown paths fall back to Home.
  */
 export function trailerSectionFromPath(pathname) {
-  const key = String(pathname || "").split("/")[3] || "";
+  const key = trailerPathSegments(pathname)?.[0] || "";
   if (TRAILER_SECTIONS.some((section) => section.key === key)) return key;
   if (TRAILER_LEGACY_SECTIONS[key]) return TRAILER_LEGACY_SECTIONS[key].section;
   return TRAILER_DEFAULT_SECTION;
@@ -84,8 +114,28 @@ export function trailerSectionFromPath(pathname) {
 
 /** The sub-tab a legacy deep link should open inside its new section. */
 export function trailerLegacyTab(pathname) {
-  const key = String(pathname || "").split("/")[3] || "";
+  const key = trailerPathSegments(pathname)?.[0] || "";
   return TRAILER_LEGACY_SECTIONS[key]?.tab || null;
+}
+
+/**
+ * The canonical `/trailers/…` URL for any Trailer Department location.
+ *
+ * A bookmark on `/admin/trailers/map?trailer=42` must not lose anything: the
+ * legacy `map` key becomes section `trailers` with `?tab=map`, and every other
+ * query parameter (`trailer=42`) survives untouched. An explicit `?tab=` in the
+ * original URL wins over the one implied by the legacy section key.
+ *
+ * Returns null when `pathname` is not a Trailer Department path.
+ */
+export function canonicalTrailerUrl(pathname, search = "") {
+  if (!isTrailerPath(pathname)) return null;
+  const section = trailerSectionFromPath(pathname);
+  const params = new URLSearchParams(search || "");
+  const legacyTab = trailerLegacyTab(pathname);
+  if (legacyTab && !params.get("tab")) params.set("tab", legacyTab);
+  const query = params.toString();
+  return trailerSectionPath(section) + (query ? `?${query}` : "");
 }
 
 /** Home when permitted, otherwise the first section the user may open. */

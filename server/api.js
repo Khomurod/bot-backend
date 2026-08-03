@@ -286,7 +286,13 @@ app.use(createMessageManagerRoutes({ authMiddleware: legacyAuthMiddleware, bot }
 app.use(createEmployeeBirthdayRoutes({ db, config, authMiddleware: legacyAuthMiddleware, bot }));
 
 // ─── Catch-all for admin SPA (/admin and public /dispatch share one build) ───
-app.get(['/admin', '/admin/*', '/dispatch', '/dispatch/*', '/raise', '/raise/*', '/recruiters', '/recruiters/*', '/questions', '/questions/*', '/answers', '/answers/*'], (req, res) => {
+// /trailers is the Trailer Department's public-facing slug. It must be listed
+// here for a direct hit, a refresh, or a deep link to reach index.html instead
+// of a 404 — the SPA then resolves the section from the path. The legacy
+// /admin/trailers URLs keep working through the /admin/* entry above; the SPA
+// rewrites them to /trailers in place. Asset URLs are absolute (/admin/assets/…
+// via Vite's `base`), so the same index.html works under either prefix.
+app.get(['/admin', '/admin/*', '/trailers', '/trailers/*', '/dispatch', '/dispatch/*', '/raise', '/raise/*', '/recruiters', '/recruiters/*', '/questions', '/questions/*', '/answers', '/answers/*'], (req, res) => {
   if (!fs.existsSync(adminSpaIndexPath)) {
     return res.status(503).type('text/plain').send(
       'Admin UI build is missing (admin/build/index.html). '

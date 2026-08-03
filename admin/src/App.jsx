@@ -5,7 +5,10 @@ import LoginPage from "./pages/LoginPage";
 import { AuthProvider } from "./context/AuthContext";
 import AdminSidebar from "./components/AdminSidebar";
 import {
+  canonicalTrailerUrl,
   defaultTrailerSection,
+  isLegacyTrailerPath,
+  isTrailerPath,
   trailerSectionFromPath,
   trailerSectionPath,
 } from "./pages/trailer/trailerNavigation";
@@ -108,10 +111,25 @@ function getPageFromPath(pathname) {
   if (pathname === "/answers" || pathname.startsWith("/answers/")) {
     return "sos_answers_public";
   }
-  if (pathname === "/admin/trailers" || pathname.startsWith("/admin/trailers/")) {
+  // /trailers is the canonical Trailer Department slug; /admin/trailers stays
+  // recognized so old bookmarks resolve before they are rewritten.
+  if (isTrailerPath(pathname)) {
     return "trailer_department";
   }
   return "groups";
+}
+
+/**
+ * Rewrite a legacy /admin/trailers URL to its /trailers equivalent in place.
+ *
+ * replaceState, not pushState: the legacy URL must not become a back-button
+ * stop that immediately re-redirects. Section, sub-tab, record and filters all
+ * survive (canonicalTrailerUrl carries the query string across).
+ */
+function normalizeTrailerUrl() {
+  if (!isLegacyTrailerPath(window.location.pathname)) return;
+  const next = canonicalTrailerUrl(window.location.pathname, window.location.search);
+  if (next) window.history.replaceState({}, "", next);
 }
 
 function getPathForPage(page) {
@@ -147,7 +165,10 @@ export default function App() {
 
   useEffect(() => {
     // Back/forward must move the selected page AND the active sidebar item.
+    // Also runs once on mount, which is where a bookmarked /admin/trailers URL
+    // gets rewritten to /trailers before anything reads it.
     const handlePopState = () => {
+      normalizeTrailerUrl();
       const nextPage = getPageFromPath(window.location.pathname);
       setPage(nextPage);
       if (nextPage === "trailer_department") {
@@ -186,13 +207,24 @@ export default function App() {
     })();
   }, []);
 
-  /** Trailer-only accounts land straight in the department on first paint. */
+  /**
+   * Trailer-only accounts land straight in the department on first paint.
+   *
+   * A user who asked for a specific trailer page — a deep link, or a login
+   * redirect back to the page that bounced them — keeps that page and its query
+   * string. Only an account arriving from somewhere else gets the default
+   * section.
+   */
   function openTrailerDepartmentOnLoad(permissions) {
-    const section = defaultTrailerSection(permissions);
+    normalizeTrailerUrl();
+    const requested = isTrailerPath(window.location.pathname);
+    const section = requested
+      ? trailerSectionFromPath(window.location.pathname)
+      : defaultTrailerSection(permissions);
     setPage("trailer_department");
     setTrailerSection(section);
     setTrailerExpanded(true);
-    window.history.replaceState({}, "", trailerSectionPath(section));
+    if (!requested) window.history.replaceState({}, "", trailerSectionPath(section));
   }
 
   const navigateToTrailerSection = (sectionKey, query) => {
@@ -261,16 +293,20 @@ export default function App() {
   }
 
   if (!authed) {
-    // Covers /dispatch too: after login, getPageFromPath restores the
-    // originally requested page, so the user lands back on Dispatch Center.
+    // Covers /dispatch and /trailers too: after login, getPageFromPath restores
+    // the originally requested page, so the user lands back where they asked
+    // for — Dispatch Center, or the exact trailer section they bookmarked.
     return (
       <LoginPage
         onLogin={(loginSession) => {
           setAuthed(true);
           setSession(loginSession);
           const trailerOnly = !loginSession?.permissions?.includes('admin.full_access') && loginSession?.permissions?.some((p) => p.startsWith('trailer'));
-          if (trailerOnly) openTrailerDepartmentOnLoad(loginSession.permissions);
-          else setPage(getPageFromPath(window.location.pathname));
+          if (trailerOnly || isTrailerPath(window.location.pathname)) {
+            openTrailerDepartmentOnLoad(loginSession.permissions);
+          } else {
+            setPage(getPageFromPath(window.location.pathname));
+          }
         }}
       />
     );
