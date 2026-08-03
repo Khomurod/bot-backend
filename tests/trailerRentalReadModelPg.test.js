@@ -144,7 +144,7 @@ test('home aggregates: attention, today, summary and activity', async (t) => {
   const data = await home.getTrailerHome();
   const overdueReturns = data.attention.find((r) => r.type === 'overdue_returns');
   assert.equal(overdueReturns.count, 1);
-  assert.ok(overdueReturns.link.includes('/admin/trailers/rentals'));
+  assert.ok(overdueReturns.link.includes('/trailers/rentals'));
   assert.equal(data.summary.rented, 1);
   assert.equal(data.summary.available, 1);
   assert.equal(data.summary.overdue_returns, 1);

@@ -70,6 +70,7 @@ describe.each(["/answers", "/answers/test", "/questions", "/questions/test"])(
 describe("the admin entry point", () => {
   test("still sends a Trailer-only account into the Trailer department", async () => {
     renderAt("/admin");
-    await waitFor(() => expect(window.location.pathname).toMatch(/^\/admin\/trailers/));
+    // /trailers is the department's canonical slug.
+    await waitFor(() => expect(window.location.pathname).toMatch(/^\/trailers/));
   });
 });

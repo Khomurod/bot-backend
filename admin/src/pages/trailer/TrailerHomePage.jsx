@@ -7,6 +7,7 @@ import {
   GUIDE_STEPS, isOnboardingDismissed, dismissOnboarding,
 } from "./homeOnboarding";
 import HomeGuide from "./HomeGuide";
+import { trailerSectionFromPath } from "./trailerNavigation";
 
 const ATTENTION_COPY = {
   pickups_due: (c) => `${c} pickup${c > 1 ? "s" : ""} due today or overdue`,
@@ -17,11 +18,19 @@ const ATTENTION_COPY = {
   trailers_needing_review: (c) => `${c} trailer${c > 1 ? "s" : ""} need${c > 1 ? "" : "s"} review`,
 };
 
-/** Attention link → section + query the in-app navigation understands. */
+/**
+ * Attention link → section + query the in-app navigation understands.
+ *
+ * The catalog does the parsing so a server-supplied link works under either
+ * prefix (/trailers/… or the legacy /admin/trailers/…) and legacy section keys
+ * still resolve to their new section.
+ */
 function linkTarget(link) {
   const url = new URL(link, window.location.origin);
-  const section = url.pathname.split("/")[3] || "home";
-  return { section, query: url.searchParams.toString() };
+  return {
+    section: trailerSectionFromPath(url.pathname),
+    query: url.searchParams.toString(),
+  };
 }
 
 function timeAgo(value) {

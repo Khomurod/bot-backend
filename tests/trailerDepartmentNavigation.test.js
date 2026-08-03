@@ -78,15 +78,63 @@ test('every legacy section key routes to its new destination', async () => {
 
 test('routes and active sections stay synchronized', async () => {
   const { trailerSectionPath, trailerSectionFromPath, defaultTrailerSection } = await catalog();
-  assert.equal(trailerSectionPath('money'), '/admin/trailers/money');
-  assert.equal(trailerSectionFromPath('/admin/trailers/money'), 'money');
-  assert.equal(trailerSectionFromPath('/admin/trailers'), 'home');
+  assert.equal(trailerSectionPath('money'), '/trailers/money');
+  assert.equal(trailerSectionFromPath('/trailers/money'), 'money');
+  assert.equal(trailerSectionFromPath('/trailers'), 'home');
   // An unknown or stale deep link must not leave the sidebar without a match.
-  assert.equal(trailerSectionFromPath('/admin/trailers/bogus'), 'home');
+  assert.equal(trailerSectionFromPath('/trailers/bogus'), 'home');
 
   assert.equal(defaultTrailerSection(['admin.full_access']), 'home');
   // Home needs a view permission — without one the first permitted section wins.
   assert.equal(defaultTrailerSection(['trailer_settings.manage']), 'more');
+});
+
+test('/trailers is the canonical slug and /admin/trailers still resolves', async () => {
+  const {
+    TRAILER_BASE_PATH, TRAILER_LEGACY_BASE_PATH,
+    isTrailerPath, isLegacyTrailerPath, trailerSectionFromPath,
+  } = await catalog();
+  assert.equal(TRAILER_BASE_PATH, '/trailers');
+  assert.equal(TRAILER_LEGACY_BASE_PATH, '/admin/trailers');
+
+  for (const path of ['/trailers', '/trailers/money', '/admin/trailers', '/admin/trailers/money']) {
+    assert.ok(isTrailerPath(path), `${path} must be recognized as a department path`);
+  }
+  // Nothing else may be swallowed — /admin and the tracking page are separate.
+  for (const path of ['/admin', '/admin/users', '/dispatch', '/questions', '/', '']) {
+    assert.ok(!isTrailerPath(path), `${path} must not be treated as a department path`);
+  }
+
+  assert.ok(isLegacyTrailerPath('/admin/trailers/money'));
+  assert.ok(!isLegacyTrailerPath('/trailers/money'));
+  // Both prefixes parse to the same section.
+  assert.equal(trailerSectionFromPath('/admin/trailers/money'), 'money');
+  assert.equal(trailerSectionFromPath('/trailers/money'), 'money');
+});
+
+test('a legacy URL is canonicalized without losing section, tab, or filters', async () => {
+  const { canonicalTrailerUrl } = await catalog();
+
+  assert.equal(canonicalTrailerUrl('/admin/trailers'), '/trailers/home');
+  assert.equal(canonicalTrailerUrl('/admin/trailers/money'), '/trailers/money');
+  // A legacy section key becomes its new section PLUS the sub-tab it meant.
+  assert.equal(canonicalTrailerUrl('/admin/trailers/map'), '/trailers/trailers?tab=map');
+  assert.equal(canonicalTrailerUrl('/admin/trailers/companies'), '/trailers/more?tab=companies');
+  // The selected record and every filter survive the rewrite.
+  assert.equal(
+    canonicalTrailerUrl('/admin/trailers/map', '?trailer=42&status=active'),
+    '/trailers/trailers?trailer=42&status=active&tab=map',
+  );
+  assert.equal(
+    canonicalTrailerUrl('/admin/trailers/payments', '?invoice=7'),
+    '/trailers/money?invoice=7',
+  );
+  // An explicit ?tab= wins over the one the legacy key implies.
+  assert.equal(canonicalTrailerUrl('/admin/trailers/map', '?tab=list'), '/trailers/trailers?tab=list');
+  // Already-canonical URLs are stable (idempotent rewrite).
+  assert.equal(canonicalTrailerUrl('/trailers/money', '?invoice=7'), '/trailers/money?invoice=7');
+  // Not a department path at all.
+  assert.equal(canonicalTrailerUrl('/admin/users'), null);
 });
 
 test('the old horizontal Trailer Department navigation is gone', () => {
@@ -125,11 +173,31 @@ test('the sidebar nests permitted children under Trailer Department', () => {
   assert.ok(/nav-subitem/.test(item), 'children must render as indented sub-items');
 });
 
-test('navigating to a child pushes /admin/trailers/{section}', () => {
+test('navigating to a child pushes /trailers/{section}', () => {
   const app = read('App.jsx');
   assert.ok(/navigateToTrailerSection = \(sectionKey/.test(app));
   assert.ok(/window\.history\.pushState\(\{\}, "", nextPath\)/.test(app));
   assert.ok(/trailerSectionPath\(sectionKey\)/.test(app));
   // Back/forward must resync both the page and the highlighted child.
   assert.ok(/setTrailerSection\(trailerSectionFromPath\(window\.location\.pathname\)\)/.test(app));
+  // A bookmarked /admin/trailers URL is rewritten in place, never pushed.
+  assert.ok(/normalizeTrailerUrl\(\)/.test(app), 'the legacy prefix must be normalized on entry');
+  assert.ok(/window\.history\.replaceState\(\{\}, "", next\)/.test(app),
+    'the rewrite must replace the entry so Back does not bounce');
+});
+
+test('the server serves the SPA for /trailers deep links and refreshes', () => {
+  const api = fs.readFileSync(path.resolve(__dirname, '../server/api.js'), 'utf8');
+  const catchAll = api.split('Catch-all for admin SPA')[1].split('\n})')[0];
+  for (const route of ["'/trailers'", "'/trailers/*'", "'/admin'", "'/admin/*'"]) {
+    assert.ok(catchAll.includes(route), `${route} must reach the SPA index.html`);
+  }
+  assert.ok(catchAll.includes('adminSpaIndexPath'), 'the catch-all must send the built index.html');
+});
+
+test('the server home links point at the canonical /trailers slug', () => {
+  const home = fs.readFileSync(path.resolve(__dirname, '../services/trailerHomeService.js'), 'utf8');
+  const links = home.split('const LINKS = {')[1].split('};')[0];
+  assert.ok(!/\/admin\/trailers/.test(links), 'attention links must use the /trailers slug');
+  assert.ok(/'\/trailers\/rentals\?tab=upcoming_pickups'/.test(links));
 });
