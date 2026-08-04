@@ -29,6 +29,7 @@ const visionPath = path.resolve(__dirname, '../services/trailerVisionService.js'
 const geoPath = path.resolve(__dirname, '../services/trailerGeocodeService.js');
 const dbPath = path.resolve(__dirname, '../database/db.js');
 const detectionPath = path.resolve(__dirname, '../services/trailerMasterList/detection.js');
+const { purgeTrailerMonitorModules } = require('./helpers/trailerMonitorCache');
 
 const SCREENSHOT_TEXT =
   'Trailer DROP OFF address\ntrl # VM709984\n1375 Jersey Ave, North Brunswick Township, NJ 08902, United States';
@@ -153,10 +154,9 @@ function loadMonitor({ settings = {}, aiResult: ai, pendingInstruction = null } 
   };
   const fakeVision = { photoDescriptor: () => null, extractTrailerUnitsFromTelegramImage: async () => null, isVisionConfigured: () => false };
 
-  // detectionPath captures `db` at require time, so it MUST be purged with the
-  // monitor — otherwise it stays bound to a previous test's fake db and quietly
-  // records into the wrong state.
-  for (const p of [monitorPath, contextPath, verifierPath, detectionPath]) delete require.cache[p];
+  // Every module that captured a collaborator at require time must be purged
+  // with the monitor — including its stage modules. See the helper.
+  purgeTrailerMonitorModules([monitorPath, contextPath, verifierPath, detectionPath]);
   require.cache[dbPath] = { exports: fakeDb };
   require.cache[visionPath] = { exports: fakeVision };
   require.cache[geoPath] = { exports: { geocodeTrailerLocation: async () => ({ lat: null, lng: null, source: 'text_only', confidence: 0 }) } };
