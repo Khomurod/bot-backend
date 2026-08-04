@@ -8,7 +8,19 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const src = fs.readFileSync(path.resolve(__dirname, '../admin/src/pages/TrailerTrackingPage.jsx'), 'utf8');
+/**
+ * The whole Trailer Tracking page: the tab shell plus every component behind it
+ * in ./trailerTracking. Reading the set rather than one file keeps this guard
+ * about the FEATURE — which tabs exist, and that no map tab does — instead of
+ * which file a tab definition happens to live in.
+ */
+const PAGES = path.resolve(__dirname, '../admin/src/pages');
+const COMPONENTS = path.join(PAGES, 'trailerTracking');
+const src = [fs.readFileSync(path.join(PAGES, 'TrailerTrackingPage.jsx'), 'utf8')]
+  .concat(fs.readdirSync(COMPONENTS)
+    .filter((f) => f.endsWith('.jsx') || f.endsWith('.js'))
+    .map((f) => fs.readFileSync(path.join(COMPONENTS, f), 'utf8')))
+  .join('\n');
 
 test('admin Trailer Tracking has no Map / Locations tab', () => {
   assert.ok(!/key:\s*["']map["']/.test(src), 'a map tab key is still defined');
