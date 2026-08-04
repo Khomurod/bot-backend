@@ -18,7 +18,18 @@ const path = require('node:path');
 
 const read = (p) => fs.readFileSync(path.resolve(__dirname, p), 'utf8');
 const liveLocations = read('../admin/src/pages/LiveLocationsPage.jsx');
-const adminApi = read('../admin/src/api.js');
+
+/**
+ * The whole admin API client: the re-export façade at api.js plus every domain
+ * module behind it. Reading the set rather than one file keeps these guards
+ * about WHAT the client calls, not which file the call happens to live in.
+ */
+const adminApiDir = path.resolve(__dirname, '../admin/src/api');
+const adminApi = [read('../admin/src/api.js')]
+  .concat(fs.readdirSync(adminApiDir)
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => fs.readFileSync(path.join(adminApiDir, f), 'utf8')))
+  .join('\n');
 
 // ── unified trailer state only ──
 
