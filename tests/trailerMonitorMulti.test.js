@@ -23,6 +23,7 @@ const verifierPath = path.resolve(__dirname, '../services/trailerSemanticVerifie
 const visionPath = path.resolve(__dirname, '../services/trailerVisionService.js');
 const dbPath = path.resolve(__dirname, '../database/db.js');
 const detectionPath = path.resolve(__dirname, '../services/trailerMasterList/detection.js');
+const { purgeTrailerMonitorModules } = require('./helpers/trailerMonitorCache');
 const geoPath = path.resolve(__dirname, '../services/trailerGeocodeService.js');
 
 /** Approving normalized AI result: one confirmed completed event per unit. */
@@ -95,10 +96,9 @@ function loadMonitor({ aiResult } = {}) {
     isVisionConfigured: () => false,
   };
 
-  // detectionPath captures `db` at require time, so it MUST be purged with the
-  // monitor — otherwise it stays bound to a previous test's fake db and quietly
-  // records into the wrong state.
-  for (const p of [monitorPath, contextPath, verifierPath, detectionPath]) delete require.cache[p];
+  // Every module that captured a collaborator at require time must be purged
+  // with the monitor — including its stage modules. See the helper.
+  purgeTrailerMonitorModules([monitorPath, contextPath, verifierPath, detectionPath]);
   require.cache[dbPath] = { exports: fakeDb };
   require.cache[visionPath] = { exports: fakeVision };
   // Geocoding disabled in settings, but stub anyway so nothing can hit network.

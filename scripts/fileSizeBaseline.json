@@ -29,7 +29,6 @@
     "services/mileageBonusService.js": 612,
     "services/raiseApprovalService.js": 683,
     "services/trailerMessageParser.js": 674,
-    "services/trailerMonitorService.js": 837,
     "tests/dispatchPinnedContext.test.js": 519,
     "tests/routeControlRoutes.test.js": 505
   }
