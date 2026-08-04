@@ -21,13 +21,9 @@ const { resolveTrailerByUnitOrAlias } = require('./aliases');
 /** Master-data fields carried on a trailer record. */
 const TRAILER_FIELDS = ['make', 'model', 'mc_number', 'plate_number', 'type', 'vin', 'year', 'ownership_status'];
 
-/** Trim to a bounded string, or null for empty/blank. Never throws. */
-function s(value, max = 500) {
-  if (value == null) return null;
-  const t = String(value).trim();
-  if (!t) return null;
-  return t.length > max ? t.slice(0, max) : t;
-}
+// Shared with the Trailer Tracking data layer — one definition, so the two can
+// never disagree about how a value is trimmed on its way into a column.
+const { boundedText: s } = require('../sqlValues');
 
 /**
  * `source` values that may bring a trailer onto the master list through this
