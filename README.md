@@ -2,6 +2,16 @@
 
 A Telegram bot-based feedback and communication system for trucking companies. Collects driver feedback, broadcasts announcements, and processes Facebook leads (via a separate WenzeLeadBots token) — all managed through a web admin panel.
 
+> **Orientation:** this README is a setup and endpoint reference. For what the
+> application is, who uses it, how the features relate, and what must not be
+> broken, read **[`APP_BRIEF.md`](APP_BRIEF.md)** — the central brief, and the
+> first thing an AI agent should read. Working rules and per-feature invariants
+> are in [`CLAUDE.md`](CLAUDE.md).
+>
+> The README below predates several major features (the Trailer Department,
+> Trailer Tracking, Route Control, home time, raises, the QBQ/SOS assessment).
+> Where it disagrees with `APP_BRIEF.md` or the code, the code wins.
+
 ## Features
 
 - **Telegram Bot** — Detects groups, registers drivers, sends multilingual questions, collects answers

@@ -2,6 +2,21 @@
 
 Guidance for AI-assisted work (Claude Code and similar agents) in this repository.
 
+# Start with the App Brief
+
+**[`APP_BRIEF.md`](APP_BRIEF.md) is the central brief for this application — read
+it before any task.** It covers what the app is for, who uses it, the features
+and workflows, permissions, integrations, background jobs, cross-feature
+dependencies, and the decisions that must not be broken. This file (CLAUDE.md)
+holds the working rules and the detailed per-feature invariants; the brief holds
+the understanding you need to apply them.
+
+**The brief is a living document.** After completing any meaningful change —
+feature, fix, removal, behavioral/integration/workflow/permission/schema change —
+re-read it and update whatever your work made untrue, **as part of the same
+task**. A task is not complete while the brief and the application disagree. The
+maintenance rule is stated in full at the top of `APP_BRIEF.md`.
+
 # Mandatory Codebase Memory Workflow
 
 Before beginning ANY coding, debugging, refactoring, audit, database, testing, or
