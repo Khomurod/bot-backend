@@ -29,9 +29,8 @@ const SUMMARY = {
     techniques: [],
     practices: [],
   },
-  company: { patternTotals: {}, questions: [] },
-  departments: [],
-  dispatchTeams: [],
+  patternMeta: {},
+  company: { primaryPatterns: [], topPatterns: [] },
 };
 
 async function renderPage(isTest) {

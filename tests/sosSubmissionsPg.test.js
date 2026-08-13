@@ -123,12 +123,17 @@ test('submission lifecycle: transactional insert, snapshots, duplicates, cascade
     })),
   }));
 
+  // The public summary is company-wide: one primary pattern per respondent and
+  // nothing else — no department, team, answer or option data is even selected.
   const summaryRows = await db.getSummaryRows(false);
   assert.equal(summaryRows.submissions.length, 2);
-  const dispatchRow = summaryRows.answerPatternRows.find((r) => r.submissionDepartment === 'dispatch');
-  assert.deepEqual(dispatchRow, { submissionDepartment: 'dispatch', pattern: 'waiting', count: 10 });
-  const q1b = summaryRows.questionOptionRows.find((r) => r.optionKey === 'dispatch_q01_b');
-  assert.equal(q1b.count, 1);
+  assert.deepEqual(Object.keys(summaryRows), ['submissions']);
+  assert.deepEqual(
+    summaryRows.submissions.map((s) => s.primaryPattern).sort(),
+    ['ownership', 'waiting'],
+  );
+  assert.ok(summaryRows.submissions.every((s) => Object.keys(s).length === 1));
+  assert.ok(!JSON.stringify(summaryRows).includes('Team Alpha'), 'no team snapshot in the public rows');
 
   // Admin list + filters + duplicate badge counts.
   const all = await db.listSubmissions();

@@ -10,6 +10,16 @@ module.exports = {
     ru: "Фокус на обстоятельствах",
     en: "Focus on circumstances",
   },
+  /**
+   * A short, made-up example of how this tendency sounds — used on the public
+   * /answers screen. Authored here, never taken from a submitted answer, so the
+   * projector can illustrate a pattern without quoting any employee.
+   */
+  exampleThought: {
+    uz: "Nega bu doim aynan menga boʻlyapti?",
+    ru: "Почему это всегда происходит именно со мной?",
+    en: "Why does this always happen to me?",
+  },
   headline: {
     uz: "Javoblaringizga koʻra, muammo yuz berganda diqqatingiz avvalo sharoitning nоqulayligi va vaziyatning adolatsizligiga qaratilishi mumkin.",
     ru: "Судя по вашим ответам, при возникновении проблемы ваше внимание в первую очередь может направляться на неудобство обстоятельств и несправедливость ситуации.",

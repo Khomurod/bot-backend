@@ -11,8 +11,8 @@
  *    must never write its foreign key);
  *  - that Dispatch REQUIRES a team and rejects anything not in the list;
  *  - that a submission stores the exact name, byte-for-byte;
- *  - that team summaries group by that same name and list the teams 1–6 in
- *    canonical order.
+ *  - that the team is questionnaire/admin vocabulary ONLY: no team result and no
+ *    team name ever appears in the public /answers summary.
  */
 
 const test = require('node:test');
@@ -227,13 +227,16 @@ test('a non-dispatch in-flight submission still succeeds after the change', asyn
   assert.equal(created.length, 1, 'only the dispatch payload shape changed');
 });
 
-// ─────────────── summaries use the same exact names ───────────────
+// ─────────────── teams stay OUT of the public summary ───────────────
+// The team a person belongs to is questionnaire and admin vocabulary only. The
+// public /answers pages show one company-wide picture, so no team result — and
+// no team NAME — may appear in that payload, at any group size.
 
 const submission = (department, primaryPattern, dispatchTeamName = null) => ({
   department, primaryPattern, dispatchTeamName, dispatchTeamId: null,
 });
 
-test('team summaries group by exact name and list the teams in canonical order', () => {
+test('a dispatch respondent counts toward the company total, with no team breakdown', () => {
   const summary = buildSummary({
     open: true,
     submissions: [
@@ -244,45 +247,26 @@ test('team summaries group by exact name and list the teams in canonical order',
       submission('hr', 'builder'),
     ],
   });
-  assert.deepEqual(
-    summary.dispatchTeams.map((t) => t.teamName),
-    ['Anthony / Allen / Scott', 'Tony / Andy / Max', 'Aaron / Jack'],
-    'canonical positions 1, 5, 6 — not alphabetical',
-  );
-  const first = summary.dispatchTeams[0];
-  assert.equal(first.count, 2, 'two people from the same team are one group');
-  assert.equal(first.primaryCounts.ownership, 1);
-  assert.equal(first.primaryCounts.waiting, 1);
-  // Department totals are unaffected by the team grouping.
-  assert.equal(summary.departments.find((d) => d.key === 'dispatch').count, 4);
-  assert.equal(summary.total, 5);
+  assert.equal(summary.total, 5, 'every respondent counts exactly once, company-wide');
+  const byPattern = Object.fromEntries(summary.company.primaryPatterns.map((r) => [r.pattern, r.count]));
+  assert.deepEqual(byPattern, { victim: 0, complaint: 0, waiting: 1, blame: 1, ownership: 1, builder: 2 });
+  assert.equal(summary.dispatchTeams, undefined, 'no dispatch-team section may exist');
+  assert.equal(summary.departments, undefined, 'no department section may exist');
 });
 
-test('all six teams can appear at once, in order 1 to 6', () => {
-  const summary = buildSummary({
-    open: true,
-    submissions: EXPECTED.map((name) => submission('dispatch', 'builder', name)),
-  });
-  assert.deepEqual(summary.dispatchTeams.map((t) => t.teamName), EXPECTED);
-  assert.ok(summary.dispatchTeams.every((t) => t.count === 1));
-});
-
-test('a legacy team name is preserved but sorts after all six', () => {
+test('no team name reaches the public summary, even with all six represented', () => {
   const summary = buildSummary({
     open: true,
     submissions: [
-      submission('dispatch', 'builder', 'Team Alpha'),
-      submission('dispatch', 'builder', 'Aaron / Jack'),
+      ...EXPECTED.map((name) => submission('dispatch', 'builder', name)),
+      submission('dispatch', 'ownership', 'Team Alpha'), // a legacy stored name
     ],
   });
-  assert.deepEqual(summary.dispatchTeams.map((t) => t.teamName), ['Aaron / Jack', 'Team Alpha']);
-});
-
-test('summaries never leak a name, token or id for a team member', () => {
-  const summary = buildSummary({
-    open: true,
-    submissions: [submission('dispatch', 'builder', 'Franky / Sam / Ali')],
-  });
-  const serialized = JSON.stringify(summary.dispatchTeams);
-  assert.ok(!/fullName|resultToken|clientIp|"id"/.test(serialized));
+  const serialized = JSON.stringify(summary);
+  for (const name of [...EXPECTED, 'Team Alpha']) {
+    assert.ok(!serialized.includes(name), `${name} must never be published`);
+  }
+  assert.ok(!/teamName|dispatchTeam|team_[1-6]/.test(serialized), 'no team field of any kind');
+  assert.ok(!/fullName|resultToken|clientIp/.test(serialized));
+  assert.equal(summary.total, 7);
 });

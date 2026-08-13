@@ -213,46 +213,22 @@ async function clearSubmissions(isTest) {
   return res.rows.length;
 }
 
-/** Rows for aggregation.buildSummary — anonymous by construction, one mode only. */
+/**
+ * Rows for aggregation.buildSummary — anonymous by construction, one mode only.
+ *
+ * The public /answers summary is COMPANY-WIDE, so this reads exactly one column:
+ * each respondent's primary pattern. Department, dispatch team, per-answer
+ * patterns and question/option distributions are deliberately NOT selected — the
+ * public payload has no place to put them, and data that is never read cannot
+ * leak. Those columns are still stored and are served by the admin API.
+ */
 async function getSummaryRows(isTest) {
-  const mode = isTest === true;
-  const [subs, patterns, options] = await Promise.all([
-    query(
-      'SELECT department, dispatch_team_id, dispatch_team_name, primary_pattern FROM sos_submissions WHERE is_test = $1',
-      [mode],
-    ),
-    query(
-      `SELECT s.department AS submission_department, a.pattern, SUM(a.weight)::float AS count
-         FROM sos_answers a JOIN sos_submissions s ON s.id = a.submission_id
-        WHERE s.is_test = $1
-        GROUP BY s.department, a.pattern`,
-      [mode],
-    ),
-    query(
-      `SELECT a.question_key, a.option_key, COUNT(*)::int AS count
-         FROM sos_answers a JOIN sos_submissions s ON s.id = a.submission_id
-        WHERE s.is_test = $1
-        GROUP BY a.question_key, a.option_key`,
-      [mode],
-    ),
-  ]);
+  const subs = await query(
+    'SELECT primary_pattern FROM sos_submissions WHERE is_test = $1',
+    [isTest === true],
+  );
   return {
-    submissions: subs.rows.map((r) => ({
-      department: r.department,
-      dispatchTeamId: r.dispatch_team_id,
-      dispatchTeamName: r.dispatch_team_name,
-      primaryPattern: r.primary_pattern,
-    })),
-    answerPatternRows: patterns.rows.map((r) => ({
-      submissionDepartment: r.submission_department,
-      pattern: r.pattern,
-      count: Number(r.count),
-    })),
-    questionOptionRows: options.rows.map((r) => ({
-      questionKey: r.question_key,
-      optionKey: r.option_key,
-      count: Number(r.count),
-    })),
+    submissions: subs.rows.map((r) => ({ primaryPattern: r.primary_pattern })),
   };
 }
 

@@ -10,6 +10,12 @@ module.exports = {
     ru: "Поиск источника ошибки",
     en: "Tracing the source of the mistake",
   },
+  /** Authored example of how this tendency sounds (see results/victim.js). */
+  exampleThought: {
+    uz: "Bu xatoni kim qildi?",
+    ru: "Кто допустил эту ошибку?",
+    en: "Who made this mistake?",
+  },
   headline: {
     uz: "Javoblaringizga koʻra, muammo yuz berganda diqqatingiz avvalo xato qayerda va kim tomonidan qilinganini aniqlashga qaratilishi mumkin.",
     ru: "Судя по вашим ответам, при возникновении проблемы ваше внимание в первую очередь может направляться на то, где и кем была допущена ошибка.",
