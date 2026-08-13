@@ -27,13 +27,13 @@ after deploy on the live service.
   (`git status`; `.env` is git-ignored — keep it that way).
 - ☐ **[MANUAL]** You read `docs/architecture/module-map.md` for the feature you
   touched, including its "Risks / Do NOT touch yet" notes.
-- ☐ **[AUTO]** **Schema changes update the DB docs.** If this change touched
-  the schema (a new forward migration in `database/migrations/`, or a
-  `database/baseline/*.sql` segment), you ran `npm run db:docs` and committed the
-  regenerated `docs/database/*`, and updated `docs/database/table-metadata.json`
-  for any new/retired table. If you edited a baseline segment, you also ran
-  `npm run build:schema` and committed the regenerated `database/schema.sql`
-  (`npm run build:schema:check` must pass).
+- ☐ **[AUTO]** **Schema changes keep the baseline in sync.** If this change
+  touched the schema (a new forward migration in `database/migrations/`, or a
+  `database/baseline/*.sql` segment) and you edited a baseline segment, you also
+  ran `npm run build:schema` and committed the regenerated
+  `database/schema.sql` (`npm run build:schema:check` must pass). Update
+  `docs/database/table-metadata.json` for any new or retired table. Generated
+  schema references are **not** committed — see `docs/database/README.md`.
 
 ---
 
