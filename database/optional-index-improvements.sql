@@ -1,6 +1,7 @@
 -- optional-index-improvements.sql
 --
--- OPT-IN, operator-reviewed database improvements from docs/database/audit-report.md.
+-- OPT-IN, operator-reviewed database improvements. Background and the standing
+-- deferred schema decisions: docs/database/migration-notes.md.
 -- NOT applied automatically (not part of schema.sql / initializeDatabase). Review
 -- each table's read/write volume and real index usage first, then run manually:
 --

@@ -1,438 +1,139 @@
-# 🚛 Telegram Driver Feedback System
+# 🚛 Wenze Trucking Operations Hub (`bot-backend`)
 
-A Telegram bot-based feedback and communication system for trucking companies. Collects driver feedback, broadcasts announcements, and processes Facebook leads (via a separate WenzeLeadBots token) — all managed through a web admin panel.
+A Telegram-bot and web platform for a trucking company: driver feedback and
+surveys, broadcasts, dispatch and route operations, a trailer rental department,
+recruiting and Facebook lead capture — all managed from a React admin panel.
 
-> **Orientation:** this README is a setup and endpoint reference. For what the
-> application is, who uses it, how the features relate, and what must not be
-> broken, read **[`APP_BRIEF.md`](APP_BRIEF.md)** — the central brief, and the
-> first thing an AI agent should read. Working rules and per-feature invariants
-> are in [`CLAUDE.md`](CLAUDE.md).
->
-> The README below predates several major features (the Trailer Department,
-> Trailer Tracking, Route Control, home time, raises, the QBQ/SOS assessment).
-> Where it disagrees with `APP_BRIEF.md` or the code, the code wins.
+This README is the **setup and operations entry point**. It deliberately does
+not describe the features in depth.
 
-## Features
-
-- **Telegram Bot** — Detects groups, registers drivers, sends multilingual questions, collects answers
-- **Management Reporting** — All responses forwarded to management group in English
-- **Multilingual** — English, Russian, Uzbek with AI-powered auto-translation (OpenAI)
-- **Broadcast Messages** — Send announcements to all driver groups with multilingual support
-- **Scheduled Broadcasts** — One-time or weekly recurring sends in Central Time
-- **Media Support** — Photo/video attachments (single or albums), above/below positioning
-- **Leads-Bot (WenzeLeadBots)** — Facebook/Meta lead capture, auto-SMS, and RingCentral reply forwarding (Python verifier + Node worker on `TELEGRAM_BOT_TOKEN`)
-- **Facebook Self-Serve Connect** — `/connect` in a leads Telegram group (WenzeLeadBots only) opens Facebook login, lets an admin choose Pages, and routes new leads into that group
-- **Admin Panel** — React-based web interface for groups, questions, broadcasts, and responses
-- **JWT Auth** — Secure admin panel with bcrypt + JWT
-- **Recruiter Call KPIs (RingCentral)** — per-number JWT credentials in Settings → RingCentral, background call-log sync, admin "Recruiter KPIs" dashboard, and a public gamified daily leaderboard at `/recruiters` (today-only, names + call counts, no phone numbers)
-- **Dispatch ETA (Wenze Feedback)** — `/location`, `/status`, `/load`, `/update` in driver groups; test hub interactive `/status` when `DISPATCH_ETA_TEST_GROUP_ID` is set
-
-## Driver group commands (Wenze Feedback / `BOT_TOKEN`)
-
-| Command | Where | Description |
-|---|---|---|
-| `/location` | Driver group | Live truck location pin + summary |
-| `/status` | Driver group | Current load/ETA snapshot for that group |
-| `/status` | **Automatic updating (Test)** hub (`DISPATCH_ETA_TEST_GROUP_ID`) | Bot asks for a driver name (first, last, or full); disambiguates duplicates; posts that driver's status into the hub |
-| `/cancel` | Test hub (during lookup) | Cancels an in-progress `/status` name lookup |
-| `/load` | Driver group | Resolved pickup/delivery context |
-| `/update` | Driver group | Triggers immediate ETA update (if enabled for that group) |
-
-Set `DISPATCH_ETA_TEST_GROUP_ID` to the Telegram chat id of **Automatic updating (Test)** (example production value: `-5289094495`).
-
-## Creator-only messaging panel from Telegram (Wenze Support Bot / `BOT_TOKEN`)
-
-The bot exposes a control panel that **only the single authorized creator** may
-use, so messages can be sent from Telegram itself without opening the admin
-panel. Handlers live in `bot/creatorBroadcastHandlers.js`.
-
-| Command | Where | Description |
-|---|---|---|
-| `/panel` (also `/start`, `/broadcast`) | Private chat with the bot | Opens the panel: two buttons — **📢 Send Broadcast Message** and **✉️ Send Single Message**. |
-| `/cancel` | Private chat (mid-flow) | Aborts the in-progress flow. |
-
-**📢 Send Broadcast Message** — pick one audience, then send any message:
-- 🚚 Active drivers · 🇺🇸 English · 🇷🇺 Russian · 🇺🇿 Uzbek drivers · 🌐 All groups
-  · 🧑‍💼 Employee group · 🏢 Other company groups.
-
-**✉️ Send Single Message** — type part of a group's name, pick the matching
-group, then send any message to just that one group.
-
-- **Delivery is verbatim.** Whatever the creator sends — text, photo, video,
-  document, audio, voice, animation — is copied to the target group(s) in its
-  exact original format (same media, caption, and formatting) via Telegram's
-  `copyMessage`, with no "forwarded from" header.
-- **Authorization is by numeric Telegram user id only** — never by username, which
-  can change. The authorized id is `2117922421`, shared with the creator-only
-  message manager via the `CREATOR_USER_ID` constant in
-  `bot/creatorMessageManager.js` (single source of truth; no new env var). To
-  change the authorized creator, update that constant.
-- Any other user (group admins, drivers, dispatchers) is politely denied; for
-  non-creators `/start` falls through to the normal private-chat flow.
-- Audiences resolve through the shared `resolveBroadcastTargetGroups` targeting
-  service (`services/broadcastTargetService.js`), the same one the admin panel
-  and scheduler use.
-
-## Datatruck peer bot (Wenze Feedback / `BOT_TOKEN`)
-
-When `@datatruck_driver_bot` posts in an **active driver group**, `@wenzefeedback_bot` can:
-
-- React with 👍 (and sometimes 🔥) to **load-related** messages
-- Reply with a short **AI-generated playful roast** when Datatruck posts failure text (e.g. unknown command)
-
-**Prerequisite:** Enable **Bot-to-Bot Communication Mode** for `@wenzefeedback_bot` in @BotFather (Bot settings). Privacy mode must remain **off** so Wenze receives group messages from other bots.
-
-| Variable | Default | Description |
-|---|---|---|
-| `DATATRUCK_PEER_ENABLED` | `true` | Set `false` to disable reactions and banter |
-| `DATATRUCK_PEER_BOT_USERNAME` | `datatruck_driver_bot` | Username of the peer bot (no `@`) |
-| `DATATRUCK_LOAD_FLAME_CHANCE` | `0.35` | Probability of adding 🔥 on load messages |
-| `DATATRUCK_BANTER_MAX_PER_HOUR_PER_CHAT` | `10` | Max reactions + roasts per driver group per hour |
-
-Uses existing `GROQ_API_KEY` / `GEMINI_API_KEY` for banter text (fallback lines if AI unavailable).
-
-## Mileage bonus workflow
-
-The admin **Mileage Bonuses** page computes company-driver progress from the
-Datatruck OpenAPI and sends milestone cards to the configured Telegram group.
-Runs are serialized across instances and recorded in `mileage_bonus_runs`;
-failed scheduled runs retry with exponential backoff.
-
-- `Active` drivers are calculated and may receive new cards. Switching a
-  driver to `Inactive` freezes the stored progress and disregards open cards.
-- `Resend` creates a new current card, then removes the previous card and any
-  tracked rejection follow-up. Paid bonuses cannot be resent.
-- `Disregard` records an auditable terminal status and deletes the Telegram
-  card. Telegram limits deletion of older messages; when deletion is refused,
-  the bot removes the inline buttons so the task is no longer actionable.
-- Configure immutable `MILEAGE_BONUS_ACCOUNTING_USER_IDS` in production.
-  Username authorization is a compatibility fallback only when no IDs exist.
-
-| Variable | Description |
+| To understand… | Read |
 |---|---|
-| `DATATRUCK_API_TOKEN` | Read-only Datatruck OpenAPI token |
-| `DATATRUCK_COMPANY` | Datatruck company subdomain |
-| `MILEAGE_BONUS_GROUP_CHAT_ID` | Telegram destination for bonus cards |
-| `MILEAGE_BONUS_ACCOUNTING_USER_IDS` | Comma-separated Telegram numeric IDs allowed to decide cards |
-| `MILEAGE_BONUS_ACCOUNTING_USERNAMES` | Compatibility fallback usernames |
+| What the app is, who uses it, how features relate, what must not be broken | **[`APP_BRIEF.md`](APP_BRIEF.md)** — start here |
+| How to work in this repository (rules, safety, testing) | [`CLAUDE.md`](CLAUDE.md) |
+| The implementation workflow for a change | [`.claude/skills/implement/SKILL.md`](.claude/skills/implement/SKILL.md) — `/implement` |
+| Which module owns what | [`docs/architecture/module-map.md`](docs/architecture/module-map.md) |
+| The real HTTP surface | `server/api.js` (mounting order) and `server/routes/` |
+| Database schema and migrations | [`docs/database/`](docs/database/) |
+| Deployment checks | [`docs/deployment/pre-deploy-checklist.md`](docs/deployment/pre-deploy-checklist.md), `render.yaml` |
 
-## Datatruck BOL/POD delivery (admin-controlled)
+## Tech stack
 
-When a driver uploads a **Bill of Lading** or **Proof of Delivery** to Datatruck,
-the bot forwards the file to Telegram. A polling service scans recently-picked-up
-and recently-delivered orders from the read-only Datatruck OpenAPI, reads each
-order's inline `documents` array, matches the order to its driver group by
-**driver name only** (never truck/unit number), and posts the document with a
-short caption.
-
-Routing, the master on/off switch, and the central group are configured in the
-Admin Panel under **Settings → BOL / POD** (not env). The feature is **OFF by
-default** — nothing is forwarded to any group until an administrator enables it.
-See [docs/architecture/bol-pod-forwarding.md](docs/architecture/bol-pod-forwarding.md)
-for the full design.
-
-- **Delivery modes:** the matched **driver group only**, one **central group
-  only**, or **both** — each destination tracked and retried independently.
-- **Idempotent:** every (order, document) pair is delivered at most once per
-  destination, guarded by a UNIQUE signature in `datatruck_document_deliveries`.
-- **No backfill spam:** documents uploaded before the feature first activated
-  are baselined as historical and never sent. `DATATRUCK_DOC_SINCE` can only
-  make this cutoff stricter; it cannot release older documents.
-- **Retryable:** a failed send, or a document whose group does not exist yet,
-  stays eligible for a later scan up to an attempt cap (exponential backoff).
-- **Never guesses a driver group:** an unmatched document is marked
-  *needs review* (`skipped_no_group`) rather than sent to an unrelated group.
-- **Deterministic classification:** BOL vs POD comes from Datatruck's
-  authoritative document type; the AI vision fallback is off by default.
-
-| Variable | Default | Description |
-|---|---|---|
-| `DATATRUCK_DOC_DELIVERY_ENABLED` | `true` | Env kill-switch; the admin master toggle (default OFF) is the primary gate |
-| `BOL_POD_AI_FALLBACK_ENABLED` | `false` | Enable the defensive AI vision fallback for documents whose type metadata cannot decide |
-| `DATATRUCK_DOC_POLL_MINUTES` | `15` | How often to scan for new uploads |
-| `DATATRUCK_DOC_LOOKBACK_DAYS` | `7` | How far back (by delivery time) to scan |
-| `DATATRUCK_DOC_SINCE` | _(activation time)_ | ISO cutoff; documents uploaded before are treated as backfill |
-| `DATATRUCK_DOC_MAX_FILE_MB` | `45` | Max size to download+upload when Telegram cannot fetch the URL itself |
-| `DATATRUCK_DOC_MEDIA_BASE_URL` | `https://tms-datatruck.s3-accelerate.amazonaws.com/static/` | Prepended to the relative `file_link` storage key to build the fetchable document URL |
-
-> Datatruck's API returns `file_link` as a **relative storage key** (e.g.
-> `2026/6/27/<uuid>/<file>.pdf`), not a full URL. The service resolves it
-> against `DATATRUCK_DOC_MEDIA_BASE_URL`; already-absolute links pass through
-> unchanged, so if Datatruck later returns full URLs no config change is needed.
-
-## Tech Stack
-
-- **Backend:** Node.js, Telegraf, Express.js
+- **Backend:** Node.js 20, Telegraf, Express
 - **Database:** PostgreSQL (Supabase / Neon compatible)
-- **Frontend:** React + Vite
-- **Translation:** integrated AI (Groq with Gemini fallback)
-- **Leads-Bot:** Python, FastAPI
+- **Frontend:** React + Vite (plain JS, no type checking)
+- **AI:** Groq with Gemini fallback (translation, classification, reports)
+- **Leads bot:** Python, FastAPI
 
-## Quick Start
+## Quick start
 
 ### 1. Install dependencies
 
 ```bash
-npm install
-cd admin && npm install && cd ..
-pip install -r leads-bot/requirements.txt  # optional, for leads-bot
+npm install                                # also builds the admin panel (postinstall)
+pip install -r leads-bot/requirements.txt  # optional, for the leads bot
 ```
 
-### 2. Configure environment
-
-Copy `.env.example` to `.env` and fill in your values:
+### 2. Configure the environment
 
 ```bash
 cp .env.example .env
 ```
 
-Required variables:
+**`.env.example` is the authoritative, commented list of every variable.** The
+minimum needed to boot:
 
 | Variable | Description |
 |---|---|
-| `BOT_TOKEN` | Telegram bot token |
+| `BOT_TOKEN` | Telegram bot token (Wenze Feedback) |
 | `DATABASE_URL` | PostgreSQL connection string |
-| `ADMIN_USERNAME` | Admin panel username |
-| `ADMIN_PASSWORD` | Admin panel password |
+| `JWT_SECRET` | Secret for admin JWTs |
 | `MANAGEMENT_GROUP_ID` | Telegram management group ID |
-| `JWT_SECRET` | Secret for JWT tokens |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | Seeded admin panel credentials |
 
-Optional variables:
+> `BOT_TOKEN` (Wenze Feedback) and `TELEGRAM_BOT_TOKEN` (WenzeLeadBots) are
+> **different bots** — do not swap them.
 
-| Variable | Description |
-|---|---|
-| `EMPLOYEE_GROUP_ID` | Telegram employee group ID (employee birthdays, home-time notices, raise-approval announcements) |
-| `MEDIA_STORAGE_CHAT_ID` | Optional storage chat used to upload media and capture reusable `file_id`s |
-| `GROQ_API_KEY` | Groq API key (AI reports, insights, chat annotation, dispatch parsing, broadcast auto-translation) |
-| `GROQ_AI_MODEL` | Optional Groq model for reports/insights (default: `llama-3.3-70b-versatile`) |
-| `GROQ_AI_FAST_MODEL` | Optional fast Groq model for annotation batches (default: `llama-3.1-8b-instant`) |
-| `GROQ_AI_FALLBACK_MODELS` | Comma-separated Groq models to try when one hits rate limits (limits are **per model**) |
-| `ANNOTATOR_GROQ_MODELS` | Optional annotator-only Groq chain (defaults to fast model + `GROQ_AI_FALLBACK_MODELS`) |
-| `ANNOTATOR_RATE_LIMIT_COOLDOWN_MS` | Pause between annotator batches when all Groq models return 429 (default: `15000`) |
-| `GEMINI_API_KEY` | Google Gemini key (dispatch parsing, pinned-context; fallback for annotation and broadcast auto-translation when Groq is unavailable) |
-| `GEMINI_TEXT_MODELS` | Gemini model chain, highest free-tier quota first (default starts with `gemini-3.1-flash-lite`) |
-| `LOCATION_DRIVER_NAME_STRICT` | If `true`, `/location` blocks when Telegram group driver name does not match Samsara vehicle label (default: warn and still send pin) |
-| `DISPATCH_ETA_TEST_GROUP_ID` | Telegram chat id for **Automatic updating (Test)** — receives test-mode ETA posts and interactive `/status` lookups |
-| `DATATRUCK_PEER_ENABLED` | Enable 👍/🔥 reactions and AI banter for `@datatruck_driver_bot` in driver groups (default: on; set `false` to disable) |
-| `DATATRUCK_PEER_BOT_USERNAME` | Peer bot username without `@` (default: `datatruck_driver_bot`) |
-| `DATATRUCK_LOAD_FLAME_CHANCE` | `0`–`1` chance to add 🔥 on Datatruck load posts (default: `0.35`) |
-| `DATATRUCK_BANTER_MAX_PER_HOUR_PER_CHAT` | Rate limit for peer reactions + roasts per driver group (default: `10`) |
-| `PORT` | API server port (default: 3001) |
-| `LEADS_BOT_PORT` | Leads-Bot internal port (default: 8000) |
-| `RENDER_EXTERNAL_URL` | Public base URL used for `/connect` and webhook callbacks |
-| `META_APP_ID` | Meta app id used for Facebook login |
-| `META_APP_SECRET` | Meta app secret |
-| `WEBHOOK_VERIFY_TOKEN` | Meta webhook verify token |
-| `META_LOGIN_CONFIG_ID` | Optional Facebook Login for Business configuration id |
-| `FACEBOOK_TOKEN_ENCRYPTION_KEY` | Secret used to encrypt stored Page tokens |
-| `LEADS_INTERNAL_SHARED_SECRET` | Shared secret between Python webhook verifier and Node app |
-| `TELEGRAM_BOT_TOKEN` | **WenzeLeadBots** token — `/connect`, lead alerts, connect confirmations |
-| `TELEGRAM_CHAT_ID` | Telegram group id for **Wenze Facebook Leads** (RingCentral inbound SMS/MMS forwards and reply-to-SMS on those messages) |
-| `BOT_TOKEN` | **Wenze Feedback** token — driver feedback only (not Facebook leads) |
-| `BITRIX24_ENABLED` | Set `true` to also create CRM records in Bitrix24 when a Facebook lead arrives |
-| `BITRIX24_WEBHOOK_URL` | Bitrix24 incoming webhook base URL (scope: `crm`), e.g. `https://wenze.bitrix24.com/rest/1/…/` |
-| `BITRIX24_ENTITY` | `lead` (default) or `deal` — deals require `BITRIX24_DEAL_CATEGORY_ID` and `BITRIX24_DEAL_STAGE_ID` |
-| `BITRIX24_STATUS_ID` | Optional lead stage override (e.g. `INCOMING`); also set in `config/bitrix24LeadFieldMap.json` |
-| `BITRIX24_FIELD_MAP` | Optional JSON override for field mapping (`defaults`, `custom`, `statusId`) |
-| `BITRIX24_FIELD_MAP_BY_FORM_ID` | Optional per-Facebook-form overrides keyed by form id |
+Configuration is validated at the **startup boundary**, not at import time, so
+modules can be unit-tested without any of it.
 
-### 3. Initialize database
+### 3. Initialize the database
 
 ```bash
 npm run init-db
 ```
 
-The database structure is documented in [`docs/database/`](docs/database/) and is
-generated from the live schema. **After any schema change, refresh the docs:**
+The schema is applied automatically on every boot: the generated baseline
+`database/schema.sql` (built from `database/baseline/*.sql`) runs verbatim, then
+any pending forward migrations in `database/migrations/`. **New schema changes go
+in a forward migration** — `npm run migrate:new -- <name>`. Never hand-edit
+`database/schema.sql`. See [`docs/database/migration-notes.md`](docs/database/migration-notes.md).
 
-```bash
-DATABASE_URL='postgresql://…' npm run db:docs   # read-only introspection; masks secrets, no row data
-```
-
-See [`docs/database/README.md`](docs/database/README.md). **Every schema-changing
-PR must run `npm run db:docs` and commit the regenerated `docs/database/*`.**
-
-### 4. Seed admin user
+### 4. Seed the admin user and start
 
 ```bash
 npm run seed-admin
+npm start          # bot + API (port 3001) + leads-bot subprocess
 ```
 
-### 5. Build admin panel
+Development mode:
 
 ```bash
-cd admin && npm run build && cd ..
+npm start                    # terminal 1: backend
+npm run dev --prefix admin   # terminal 2: admin dev server
 ```
 
-### 6. Start the system
+## Development commands
 
 ```bash
-npm start
+node --test --test-concurrency=1 tests/*.test.js   # Node suite (bash glob)
+npm test                                           # Node suite + Python leads tests
+npm test --prefix admin                            # admin component tests
+npm run build --prefix admin                       # admin production build
+npm run lint:filesize                              # 500-line file-size limit
+npm run build:schema                               # regenerate schema.sql from baseline/
+npm run build:schema:check                         # verify it is in sync (CI gate)
+npm run migrate / migrate:status / migrate:new     # forward migrations
+npm run db:docs                                    # on-demand DB reference (needs a database)
 ```
 
-This starts the Telegram bot, API server (port 3001), and Leads-Bot (Python) subprocess.
-
-### Development mode
-
-```bash
-# Terminal 1: Start backend
-npm start
-
-# Terminal 2: Start admin dev server
-cd admin && npm run dev
-```
+The Node suite passes clean with **no secrets and no database**, so any failure
+is a real failure. The `*Pg.test.js` integration tests skip without
+`TEST_DATABASE_URL` — a skipped test is not a passing test. CI
+(`.github/workflows/ci.yml`) fails on any skip.
 
 ## Deployment (Render)
 
-1. Set all environment variables in the Render dashboard
-2. The `render.yaml` handles build and start commands automatically
-3. Health check endpoint: `/api/health`
-4. After first deploy, run `npm run init-db` and `npm run seed-admin` via shell
+1. Set every environment variable in the Render dashboard — deployment settings
+   are never automated from this repository.
+2. `render.yaml` supplies the build and start commands.
+3. Health check: `/api/health`.
+4. After the first deploy, run `npm run init-db` and `npm run seed-admin` from
+   the shell.
 
-## Project Structure
+Run through [`docs/deployment/pre-deploy-checklist.md`](docs/deployment/pre-deploy-checklist.md)
+before shipping.
+
+> **Pushing a feature branch to this repository auto-opens and auto-merges a PR
+> into `main` within seconds.** Review the complete diff *before* pushing.
+
+## Project layout
 
 ```
-├── index.js                     # Entry point (bot + API + leads-bot)
-├── bot/
-│   ├── bot.js                   # Telegram bot (Telegraf) — surveys, broadcasts
-│   ├── dispatchStatusLookupHandlers.js  # Test hub interactive /status
-│   └── dispatchStatusLookupSession.js   # In-memory lookup sessions
-├── server/
-│   ├── api.js                   # Express API server + leads-bot proxy
-│   └── routes/facebookLeadsRoutes.js  # Admin API for lead auto-SMS config
-├── database/
-│   ├── db.js                    # Database helpers (groups, drivers, questions)
-│   ├── schema.sql               # Baseline schema (GENERATED from baseline/; auto-applied on boot)
-│   ├── baseline/                # Per-domain baseline segments (source of schema.sql)
-│   ├── migrations/              # Versioned, run-once forward migrations
-│   └── migrate/                 # Migration runner + schema_migrations ledger
-├── services/
-│   └── translationService.js    # OpenAI translation service
-├── config/
-│   └── config.js                # Environment configuration
-├── admin/                       # React admin panel (Vite)
-│   └── src/
-│       ├── App.jsx              # Main app component
-│       ├── api.js               # API client
-│       └── pages/FacebookLeadsPage.jsx  # Lead auto-SMS templates
-│       └── index.css            # Styles
-├── leads-bot/                   # Facebook leads processor (Python/FastAPI)
-│   ├── main.py                  # Entry point
-│   ├── webhook_server.py        # Webhook handler
-│   ├── graph.py                 # Meta Graph API client
-│   ├── sms.py                   # SMS notifications
-│   └── config.py                # Python config
-├── scripts/
-│   ├── init-db.js               # Database initializer
-│   ├── seed-admin.js            # Admin seeder
-│   ├── migrate-media.js         # Media column migration
-│   └── migrate-multi-media.js   # Multi-media migration
-├── render.yaml                  # Render deployment config
-└── package.json
+index.js                  Entry point — starts the bot, API, and leads-bot
+bot/                      Telegraf handlers (handler order in bot.js is behavior)
+server/
+  api.js                  Express assembly + mounting order
+  routes/                 One router per feature
+services/                 Business logic; packages for large features
+database/
+  schema.sql              GENERATED baseline, applied on boot
+  baseline/               Source segments for schema.sql
+  migrations/             Run-once forward migrations
+  <feature>.js            Queries (db.js is mostly a re-export seam)
+admin/src/                React admin panel (pages, api client)
+leads-bot/                Python FastAPI lead processor
+scripts/                  Operational and maintenance scripts
+tests/                    Node test suite (*Pg.test.js need a database)
+docs/                     Architecture, database, deployment, feature docs
 ```
-
-## API Endpoints
-
-### Auth
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| POST | `/api/auth/login` | No | Admin login |
-| GET | `/api/auth/verify` | Yes | Verify JWT |
-
-### Groups
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| GET | `/api/groups` | Yes | List driver groups |
-| PUT | `/api/groups/:id/language` | Yes | Set group language (en/ru/uz) |
-
-### Questions & Surveys
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| GET | `/api/questions` | Yes | List all questions |
-| GET | `/api/questions/:id` | Yes | Get question with options |
-| POST | `/api/questions` | Yes | Create question |
-| POST | `/api/questions/:id/send` | Yes | Send to all driver groups |
-| POST | `/api/questions/send-test` | Yes | Send test preview to management |
-| PUT | `/api/questions/:id/deactivate` | Yes | Deactivate question |
-| GET | `/api/responses/:questionId` | Yes | Get responses |
-
-### Broadcasts
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| POST | `/api/broadcast/send` | Yes | Send broadcast to all groups |
-| POST | `/api/broadcast/test` | Yes | Send test to management group |
-
-### Translation
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| POST | `/api/translate` | Yes | Translate text blocks (EN → RU/UZ) |
-
-### Media
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| POST | `/api/upload-media` | Yes | Upload photo/video to Telegram |
-
-`/api/upload-media` must stage the file in a Telegram chat briefly so Telegram returns a reusable `file_id`. Set `MEDIA_STORAGE_CHAT_ID` to a private storage chat if you do not want uploads to use the management group. If `MEDIA_STORAGE_CHAT_ID` is not set, the app falls back to `MANAGEMENT_GROUP_ID`.
-
-### Scheduled Messages
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| POST | `/api/scheduled-messages` | Yes | Create a one-time or weekly recurring broadcast |
-| GET | `/api/scheduled-messages` | Yes | List scheduled broadcasts and next run times |
-| PUT | `/api/scheduled-messages/:id/send-now` | Yes | Send a scheduled broadcast immediately |
-| PUT | `/api/scheduled-messages/:id/cancel` | Yes | Cancel a pending scheduled broadcast |
-
-### Leads-Bot Proxy
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| ALL | `/webhook` | No | Facebook webhook (proxied to Python) |
-| ALL | `/rc-webhook` | No | RingCentral webhook (proxied to Python) |
-
-## Facebook Connect Flow
-
-1. Configure the Meta app's Webhooks product to point at `https://YOUR-DOMAIN/webhook`
-2. Make sure the Meta app can request the Page permissions you need, especially `leads_retrieval`, `pages_show_list`, `pages_read_engagement`, and `pages_manage_metadata`
-3. Add **WenzeLeadBots** (`TELEGRAM_BOT_TOKEN`) to your **Wenze Facebook Leads** Telegram group
-4. Set `TELEGRAM_CHAT_ID` on Render to that group's numeric chat id (supergroup ids look like `-100…`) so RingCentral SMS replies forward to the same group
-5. In that group, a group admin sends `/connect` to **WenzeLeadBots** (not Wenze Feedback)
-6. Click the button, sign in to Facebook, and select one or more Pages
-7. New leads post to the connected Telegram group via WenzeLeadBots; after a successful auto-SMS, a notice is posted there: `AutoMessage sent via SMS to {phone}:` followed by the **exact SMS text** in monospace
-8. **Reply in Telegram** to that notice (in the page group) or to an inbound **SMS/MMS Reply Received** in Wenze Facebook Leads (`TELEGRAM_CHAT_ID`) to send SMS via RingCentral (confirmation appears in-thread)
-
-### Bitrix24 dual delivery (optional)
-
-When `BITRIX24_ENABLED=true`, each Facebook lead is still sent to Telegram first, then synced to Bitrix24 via the incoming webhook (`crm.lead.add` by default). Bitrix failures are logged only — they do not block Telegram or webhook processing.
-
-1. In Bitrix24 (`wenze.bitrix24.com`): **Developer resources → Incoming webhook** with `crm` scope
-2. Set `BITRIX24_WEBHOOK_URL` to the webhook base (must end with `/` or the app normalizes it)
-3. Discover field API names and **INCOMING** status id, then update `config/bitrix24LeadFieldMap.json`:
-
-   ```bash
-   BITRIX24_WEBHOOK_URL=https://wenze.bitrix24.com/rest/1/your-secret/ npm run discover-bitrix-fields
-   ```
-
-   Merge `statusId` and `UF_CRM_*` ids from `config/bitrix24LeadFieldMap.discovered.json` into `bitrix24LeadFieldMap.json`. Custom questions can use `matchTitle` hints until you paste explicit `bitrixField` names.
-
-4. Redeploy with `BITRIX24_ENABLED=true`
-5. Test with [Meta Lead Ads Testing Tool](https://developers.facebook.com/tools/lead-ads-testing/) or a live form on a connected Page (e.g. **ENglish Company Drivers - New One**, form id `1489274899611047`)
-6. Confirm in **Leads → Incoming**: name, email, phone, and custom columns are on the lead card; **Comments** contains only tracking metadata (Page, Form ID, Leadgen ID)
-7. Check Render logs for `[Bitrix24] Unmapped Meta field` and add keys to `custom` in the field map if needed
-
-If Bitrix native Facebook Lead Ads forms are also active, the same Meta lead may appear twice in Bitrix — prefer this bot-backend path as the single CRM source until duplicates are ruled out.
-
-### Lead auto-SMS templates (admin)
-
-In the admin panel, open **Facebook Leads** to configure global automated SMS copy for new lead submissions:
-
-- Edit message templates with clickable placeholders (`{first_name}`, `{phone}`, `{rep_name}`, etc.)
-- Add **time rules** (e.g. Mon–Fri 08:00–17:00 → “Can I call you now?”) and a **fallback** message for outside those hours
-- Preview the message that would send right now; view connected Pages and webhook log retries
-
-SMS text is stored in the database and applied by the Node lead worker (not hardcoded in `.env`).
-
-**Render checklist:** `BOT_TOKEN` ≠ `TELEGRAM_BOT_TOKEN`; `ENABLE_LEADS_BOT` is not `false`; deploy logs show `[LEADS-BOT] Starting Python process`.
-
-### Health
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| GET | `/api/health` | No | Health check |

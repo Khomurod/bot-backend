@@ -40,10 +40,11 @@ scale the *depth* of each step to the real risk of the change.
 
 Before editing anything:
 
-- Read `CLAUDE.md` and perform any pre-work it makes mandatory (for example a
-  codebase-memory / index server it requires you to consult first). If a
-  mandated tool is unavailable, say so explicitly and continue — never claim
-  you used it when you did not.
+- Read `CLAUDE.md` and perform any pre-work it makes mandatory. Use the optional
+  accelerators it lists when they are actually available and the task is big
+  enough to benefit; their absence never blocks the work, and you never need to
+  claim — or apologize for — a tool you did not use. **Never state you used a
+  tool unless you actually called it successfully.**
 - Read the parts of the App Brief that cover the affected area, plus its
   "must not break" / preserved-decisions section.
 - Check for other repository instructions that apply: nested `CLAUDE.md` files,

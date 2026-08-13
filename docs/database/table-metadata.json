@@ -1,5 +1,5 @@
 {
-  "_comment": "Human-authored context merged into docs/database/schema-current.md by scripts/generate-db-docs.js. Keys: purpose, status (active|legacy|retired|historical), service (which app/service uses it), sourceOfTruth, danger (data-safety note). Tables not listed here are documented from structure + schema.sql comments alone and default to status 'active'. Update this when you add/retire a table.",
+  "_comment": "Human-authored context merged in by scripts/generate-db-docs.js when you generate a database reference on demand (npm run db:docs; output is NOT committed - see docs/database/README.md). Keys: purpose, status (active|legacy|retired|historical), service (which app/service uses it), sourceOfTruth, danger (data-safety note). Tables not listed here are documented from structure + schema.sql comments alone and default to status 'active'. Update this when you add/retire a table.",
   "tables": {
     "groups": {
       "purpose": "Every Telegram group the bot manages — driver groups, dispatch/office groups, etc. Internal integer `id` is the FK target used everywhere; `telegram_group_id` (bigint) is the real Telegram chat id. `group_type='driver'` + a unit number in `group_name` is how the Samsara integration routes safety-event videos to the right driver group.",

@@ -78,15 +78,39 @@ segments — day-to-day changes are forward migrations.
   `CREATE TABLE IF NOT EXISTS` in `src/db.js → initPgDb()`. `bot-backend` remains
   the canonical owner of `safety_event_*` (music/settings) tables.
 
-## Deferred / opt-in improvements (see `audit-report.md`)
+## Deferred / opt-in improvements
+
+These are the standing conclusions of a 2026-07 structural schema audit. The
+audit report itself has been retired; the decisions that outlived it are here.
 
 - **`database/optional-index-improvements.sql`** — operator-reviewed, additive
   FK indexes (safe) plus commented redundant-index drops (reversible). Run
   manually after reviewing index usage; it is **not** part of `schema.sql`.
   (A good candidate to convert into a forward migration once reviewed.)
-- **Timestamp standardization (`timestamp` → `timestamptz`)** — DEFERRED, since
-  it reinterprets stored values. Do it per-column in a maintenance window with a
-  backup; see the audit report for the exact `ALTER` form and rollback.
+- **Timestamp standardization (`timestamp` → `timestamptz`)** — DEFERRED, and
+  deliberately so: the conversion **reinterprets** every stored value, because
+  `ALTER COLUMN … TYPE timestamptz USING col AT TIME ZONE 'UTC'` assumes the
+  naive values are UTC. The app writes `NOW()`/`new Date()` on a UTC server, so
+  that is *likely* true — **verify per column before converting**. Do it
+  table-by-table in a maintenance window with a backup:
+
+  ```sql
+  -- Verify the column's values really are UTC first, then, in a transaction:
+  ALTER TABLE drivers
+    ALTER COLUMN created_at TYPE timestamptz USING created_at AT TIME ZONE 'UTC';
+  ```
+
+### Two findings that are NOT bugs — do not "fix" them
+
+- **`driver_road_history` has two indexes on `home_arrived_at`** (`…_bonus`,
+  `…_unposted`). They are **partial indexes with different `WHERE` clauses**, so
+  both earn their keep. They are not redundant duplicates; leave them.
+- **A few Telegram ids are stored as `text`, on purpose**:
+  `message_group_settings.{dispatch_review_group_id, mileage_bonus_group_id,
+  road_bonus_group_id}` and `raise_rounds.employee_chat_id`. Those fields are
+  admin-editable, allow blanks, and fall back to env vars, so `text` avoids
+  cast/empty-string friction. Everywhere else a Telegram id is `bigint`. If this
+  is ever normalized, validate that every stored value parses to `bigint` first.
 
 ## Rollback guidance
 

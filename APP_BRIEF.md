@@ -104,7 +104,9 @@ Hard constraints of this deployment:
   `services/memoryWatchdog.js` can log pressure but is **off unless
   `MEMORY_WATCHDOG_ENABLED='true'`**.
 - **The Samsara poller was moved out of this process on purpose** — it caused
-  OOM kills. **Do not re-add it here.** See `SAMSARA-SEPARATION-GUIDE.md`.
+  OOM kills. **Do not re-add it here.** The live-GPS lookup that remains in this
+  app is a different, much smaller thing and must keep working. See
+  `docs/architecture/samsara-separation.md`.
 - **All Telegram traffic is pinned to IPv4** via `services/telegramAgent.js`.
   The host's IPv6 path to `api.telegram.org` black-holes multi-packet upload
   bodies. **Do not remove that agent.**
@@ -592,14 +594,12 @@ after-the-fact record of what was sent (§4).
   Additive only: new columns must be nullable or defaulted, never `DROP`. A bad
   statement can crash-loop production. See `docs/database/migration-notes.md`.
 - **~113 tables** (109 in the baseline + 4 from migrations).
-- ⚠️ **`docs/database/schema-current.md` and `relationships.md` are STALE.** They
-  are generated from a live-database introspection (`npm run db:docs`) that has
-  not been re-run recently: they describe 76 tables and are missing the RBAC
-  tables (`roles`, `permissions`), the whole agreements model
-  (`trailer_rental_agreements`, `trailer_rental_items`), `trailer_media_blobs`,
-  `trailer_aliases`, and the SOS tables. Use them for orientation only —
-  **`database/baseline/*.sql` plus `database/migrations/` is the real schema.**
-  If you make a schema change, regenerating those docs is the right fix.
+- **`database/baseline/*.sql` plus `database/migrations/` is the real schema** —
+  read those, not a snapshot. Committed generated snapshots
+  (`schema-current.md`, `relationships.md`) used to live in `docs/database/` and
+  drifted to 76 tables while the baseline grew past 100; they have been removed
+  and are now gitignored. `npm run db:docs` still generates a reference on demand
+  against a reachable database. See `docs/database/README.md`.
 
 ### `groups` is the hub of the data model
 
@@ -647,8 +647,10 @@ repos** — coordinate it.
 
 ## 9. Decisions and behavior that must be preserved
 
-`CLAUDE.md` holds the full, authoritative invariant list with the tests that
-guard each one. The highest-consequence items:
+The full per-feature invariants, with the tests that guard each one, live in
+`docs/architecture/route-control.md` and
+`docs/architecture/trailer-invariants.md`; `CLAUDE.md` links to them and holds
+the repository-wide working rules. The highest-consequence items:
 
 1. **Signed-URL media transport.** Route Control screenshots and trailer media
    reach Telegram as short-lived HMAC-signed HTTPS URLs
@@ -735,13 +737,14 @@ guard each one. The highest-consequence items:
   purpose (§9.5). Do not "clean this up" without a migration plan.
 - **The legacy trailer screenshot importer is intentionally disabled**, not
   broken (§9.2).
-- **Known stale docs — do not trust these two over the code:**
-  - `docs/database/schema-current.md` / `relationships.md` — generated snapshots
-    that are well behind the baseline (§8).
-  - `docs/trailer-department.md` line ~92 says to create a Supabase bucket
-    *"before enabling uploads"* and lists it as a rollout step. That predates the
-    database-storage fallback: **uploads work with no Supabase at all** (§9.3).
-    Supabase is an optional upgrade, not a prerequisite.
+- **The two documents previously flagged as stale here have been resolved**: the
+  drifted generated schema snapshots were removed (§8), and the "create a
+  Supabase bucket before enabling uploads" instruction in
+  `docs/trailer-department.md` was corrected to describe the database-storage
+  fallback (§9.3). No document is currently known to contradict the code — but
+  that is a statement about what has been checked, not a guarantee. If you find
+  one that disagrees with the code, **the code wins** and the document gets
+  fixed in the same task.
 - **No frontend type checking or lint.** The admin SPA is plain JS + Vite; a
   successful `npm run build --prefix admin` plus its component tests is the
   validation.
@@ -749,10 +752,13 @@ guard each one. The highest-consequence items:
   special-cased public paths (`/dispatch`, `/raise`, `/recruiters`, `/questions`,
   `/answers`, `/trailers`) which `App.jsx` reads from `window.location`. Pages
   are lazy-loaded behind a chunk-error boundary.
-- **Committed artifacts, not runtime logic**: `app.log` / `admin.log` (snapshots,
-  not live logs), `scratch/`, `brain/`, `reports/`, `.cursor/`, the
-  `SOS Prezentatsiya … .html` deck (served at `/qbq`), `eng.traineddata`
-  (Tesseract OCR data), and a Russian-language book text file.
+- **Committed artifacts, not runtime logic**: the `SOS Prezentatsiya … .html`
+  deck (**used** — `server/qbq/template.js` serves it at `/qbq`),
+  `eng.traineddata` (Tesseract OCR data), `birthdays.csv` (read by
+  `scripts/import-birthdays.js`), and a Russian-language book text file that
+  nothing references. The old committed log snapshots (`app.log`, `admin.log`)
+  and the `scratch/`, `brain/`, `reports/` and `.cursor/` working directories
+  have been removed and gitignored — nothing in the application read them.
 - `package.json` declares `engines.node` twice (`>=20`, then `>=18.0.0` — the
   later wins). CI and Render both use Node 20.
 
@@ -816,9 +822,12 @@ npm run build:schema:check                        # schema.sql is in sync with b
 | Schema (authoritative) | `database/baseline/*.sql` (source) → `database/schema.sql` (generated); new work in `database/migrations/` |
 | Admin UI | `admin/src/App.jsx`, `admin/src/pages/`, `admin/src/api/` |
 | Telegram handlers and send helpers | `bot/bot.js` (order!), `bot/handlers/`, `bot/senders.js` |
-| Per-feature invariants + the tests that guard them | `CLAUDE.md` |
-| Database reference | `docs/database/` — but see the staleness warning in §8 |
-| What was removed and why | `docs/ARCHIVED_FEATURES.md`, `docs/architecture/retired-*.md` |
+| How to work in this repo (rules, safety, testing) | `CLAUDE.md` |
+| The implementation workflow | `.claude/skills/implement/SKILL.md` (`/implement`) |
+| Route Control + media-transport invariants | `docs/architecture/route-control.md` |
+| Trailer master list / storage / agreements invariants | `docs/architecture/trailer-invariants.md` |
+| Database: authoritative schema + migration rules | `database/baseline/`, `database/migrations/`, `docs/database/` |
+| What was removed and why | `docs/ARCHIVED_FEATURES.md`, `docs/architecture/retired-*.md`, `docs/architecture/samsara-separation.md` |
 | Trailer Department operations | `docs/trailer-department.md` |
 | Deployment checks | `docs/deployment/pre-deploy-checklist.md`, `render.yaml` |
 

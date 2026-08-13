@@ -61,7 +61,7 @@ organization should converge toward.
 | Concern | Current location |
 |---|---|
 | Samsara safety events, alerts, videos, safety captions, safety idempotency, poller retry | **External repo** `samsara-integration` (own Render service). See its `docs/architecture/module-map.md`. |
-| Separation rationale | `SAMSARA-SEPARATION-GUIDE.md`, `render.yaml` (note at bottom), `index.js:72-78` |
+| Separation rationale | `samsara-separation.md`, `render.yaml` (note at bottom), `index.js:72-78` |
 
 > **Do NOT re-add** the Samsara safety poller to this repo. It was removed on
 > purpose to stop OOM kills. The two services cooperate only through the shared
@@ -154,7 +154,7 @@ organization should converge toward.
 | React admin panel (Vite) | `admin/` → `admin/src/App.jsx`, `api.js`, `pages/*.jsx`, `components/Shared.jsx`; built to `admin/build/`, served at `/admin` |
 | Settings (ELD creds, RingCentral, integrations) | `server/routes/settingsRoutes.js` (`/api/settings`), `database/eldSettings.js` |
 | Permissions / feature toggles | `services/groupAccessService.js`, `groupAccessConstants.js`, `bot_access_settings` table, admin `GroupAccessPage.jsx`; env flags via `isEnabled()` in `index.js` |
-| Logs / sent-message browser | `server/routes/botMessagesRoutes.js` (`/api/bot-messages`), `services/botMessageAdminService.js`, `admin/src/pages/BotMessagesPage.jsx`, files `app.log` / `admin.log` |
+| Logs / sent-message browser | `server/routes/botMessagesRoutes.js` (`/api/bot-messages`), `services/botMessageAdminService.js`, `admin/src/pages/BotMessagesPage.jsx` — database-backed; it does not read any log file |
 | Health / config | `server/api.js` `/health` + `/api/health` (`runHealthCheck` pings DB + Meta creds), `config/config.js`, `config/telegramBotTokens.js`, `.env.example`, `render.yaml` |
 | Auth | JWT (HS256-pinned `authMiddleware`), bcrypt login w/ per-IP rate limiting, `internalSharedSecretGuard` |
 

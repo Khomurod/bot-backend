@@ -1,15 +1,16 @@
 # CLAUDE.md
 
-Guidance for AI-assisted work (Claude Code and similar agents) in this repository.
+Working rules for AI-assisted development (Claude Code and similar agents) in
+this repository. This file is **how to work here**. It is deliberately short —
+what the application *is* lives in the App Brief, and deep per-feature rules live
+in the specialized docs linked at the bottom.
 
 # Start with the App Brief
 
 **[`APP_BRIEF.md`](APP_BRIEF.md) is the central brief for this application — read
 it before any task.** It covers what the app is for, who uses it, the features
 and workflows, permissions, integrations, background jobs, cross-feature
-dependencies, and the decisions that must not be broken. This file (CLAUDE.md)
-holds the working rules and the detailed per-feature invariants; the brief holds
-the understanding you need to apply them.
+dependencies, and the decisions that must not be broken.
 
 **The brief is a living document.** After completing any meaningful change —
 feature, fix, removal, behavioral/integration/workflow/permission/schema change —
@@ -17,24 +18,47 @@ re-read it and update whatever your work made untrue, **as part of the same
 task**. A task is not complete while the brief and the application disagree. The
 maintenance rule is stated in full at the top of `APP_BRIEF.md`.
 
-# Mandatory Codebase Memory Workflow
+# The implementation workflow
 
-Before beginning ANY coding, debugging, refactoring, audit, database, testing, or
-documentation task in this repository:
+For any real change to how the application behaves, follow
+[`.claude/skills/implement/SKILL.md`](.claude/skills/implement/SKILL.md) —
+understand → investigate → implement → test → self-review → verify →
+documentation → report. Invoke it with `/implement <what you want to be true>`.
+That skill owns the universal process; this file owns the repository-specific
+rules it has to obey.
 
-1. Use `codebase-memory-mcp` to recall the application architecture
-   (`get_architecture`, `search_graph`, `trace_path`, `get_code_snippet`).
-2. Query it for the specific feature involved in the task.
-3. Inspect the current source code AFTER consulting memory — memory may be
-   incomplete or stale; the source is the truth.
-4. Do not edit files before completing these steps.
-5. After meaningful architectural or behavioral changes, update
-   codebase-memory-mcp (re-index the repository and/or record an ADR with
-   `manage_adr`).
-6. Never state that codebase-memory-mcp was used unless it was actually called
-   successfully.
-7. If codebase-memory-mcp is unavailable, explicitly report that before
-   continuing.
+# Orientation and optional tools
+
+**The current source code is the truth.** Every document in this repository,
+including this one and the App Brief, can lag behind the code. Verify important
+conclusions against the source before you rely on them.
+
+To orient yourself in a task, use whatever is actually available to you:
+`APP_BRIEF.md`, the current source, repository search and navigation, the
+specialized docs below, the tests, and `git log` / `git diff` where history is
+relevant. **That is always sufficient to work here.** No task in this repository
+requires a machine-specific or local-only service to begin.
+
+Optional accelerators — use them when they are present and the task is big
+enough to benefit, and never let their absence block or delay work:
+
+- **codebase-memory-mcp** — architecture, orientation and impact analysis
+  (`get_architecture`, `search_graph`, `trace_path`, `get_code_snippet`). It is
+  an **optional accelerator, not a prerequisite.** If it is connected and the
+  task is substantial (cross-cutting change, unfamiliar feature, impact
+  analysis), consult it first, then **confirm what it told you against the
+  current source** — its index may be stale or incomplete. If it is not
+  available, proceed normally with the sources above; there is no need to warn
+  the user about its absence during ordinary work. Update or re-index it after
+  meaningful architectural change **only when it is actually available**.
+- **Context7** — current public library and API documentation only. Never send
+  private source code, passwords, tokens, `.env` values, or company information
+  to it.
+- **Gitleaks** — read-only secret checks: `gitleaks dir . --redact`. Report the
+  file name, line number and finding type only; never print a discovered value,
+  and never let it rewrite files.
+
+**Never claim you used a tool you did not actually call successfully.**
 
 # Safety Rules
 
@@ -50,13 +74,44 @@ documentation task in this repository:
   `database/migrations/` (tracked in the `schema_migrations` ledger). Put NEW
   changes in a forward migration (`npm run migrate:new -- <name>`); do not
   hand-edit `database/schema.sql`. See `docs/database/migration-notes.md`.
-- Never trust old repository memory without checking the current source code.
-- Run the relevant tests before claiming success, and report exact test results
+- Never point a local process at production tokens or the production database —
+  `node index.js` with production env polls the production bot and sends real
+  messages to real drivers.
+- Run the relevant tests before claiming success, and report exact results
   (command, pass/fail counts). Do not claim a test passed unless it was run.
 - Do not merge without reviewing the final diff.
   **Repository-specific caution:** pushing a feature branch to this repository
   auto-opens AND auto-merges a PR into `main` within seconds — review the
-  complete diff BEFORE pushing.
+  complete diff **BEFORE** pushing.
+
+# Testing expectations
+
+```
+node --test --test-concurrency=1 tests/*.test.js   # bash glob (PowerShell does not expand it)
+npm test                                           # Node suite + Python leads tests
+npm run build --prefix admin                       # admin production build
+npm test --prefix admin                            # admin component tests
+npm run lint:filesize                              # 500-line limit
+npm run build:schema:check                         # schema.sql in sync with baseline/
+```
+
+- **The Node suite passes clean with no secrets and no database**, so **any
+  failure is a real failure.** There is no "expected failures in a bare
+  environment" allowance — do not dismiss one that way. (If you see mass
+  failures, check that `npm install` has run; a bare clone dies at
+  `require('dotenv')`.) The verified baseline is recorded in `APP_BRIEF.md` §11.
+- **`*Pg.test.js` need `TEST_DATABASE_URL` and SKIP without it — a skipped test
+  is not a passing test.** Say so plainly rather than folding skips into a green
+  summary. The harness (`tests/helpers/trailerPgHarness.js`) creates a throwaway
+  **database** per test (not a schema — `schema.sql` guards look up constraints
+  by name with no schema filter) and applies the real, complete `schema.sql`. The
+  database must be **UTF8** (`TEMPLATE template0`), because `schema.sql` contains
+  box-drawing characters in comments.
+- **CI** (`.github/workflows/ci.yml`) runs static checks + the admin build, the
+  Node unit suite with no application env at all, and the PostgreSQL integration
+  suite against a real Postgres 16 container. **Both test jobs fail on ANY skip.**
+- Prefer the test endpoints over real sends when validating manually (see
+  `APP_BRIEF.md` §11).
 
 # Maintainability
 
@@ -114,206 +169,21 @@ baseline to work around the rule.
 - Tests must be reorganized when they become oversized, rather than consolidated
   into giant files.
 
-# Tool Usage
+# Per-feature invariants — read before touching these areas
 
-- **codebase-memory-mcp** = understands this project. Use its graph tools before
-  searching application code. This project is indexed, and automatic indexing
-  and watching are enabled.
-- **Context7** = checks the latest instructions. Use it only for current public
-  library and API documentation. Never send private source code, passwords,
-  tokens, `.env` values, or company information to Context7.
-- **Gitleaks** = protects passwords and API keys. Run read-only checks with
-  `gitleaks dir . --redact`. Report only the file name, line number, and finding
-  type; never print a discovered value or change files automatically.
+Each of these features carries hard invariants that were written after a
+production incident or a near miss. **Read the linked document before changing
+that area**, and run the tests it names.
 
-# Test Commands
+| Area | Read first |
+|---|---|
+| Route Control, route screenshots, Telegram media transport | [`docs/architecture/route-control.md`](docs/architecture/route-control.md) |
+| Trailer master list, trailer storage, rental agreements, Trailer Department safety rules | [`docs/architecture/trailer-invariants.md`](docs/architecture/trailer-invariants.md) |
+| Trailer Department operations (URLs, feature flag, storage config) | [`docs/trailer-department.md`](docs/trailer-department.md) |
+| Database changes, migrations, deferred schema decisions | [`docs/database/`](docs/database/) |
+| What was deliberately removed and must not be resurrected | [`docs/ARCHIVED_FEATURES.md`](docs/ARCHIVED_FEATURES.md), [`docs/architecture/retired-*.md`](docs/architecture/) |
+| Module ownership map | [`docs/architecture/module-map.md`](docs/architecture/module-map.md) |
+| Deployment checks | [`docs/deployment/pre-deploy-checklist.md`](docs/deployment/pre-deploy-checklist.md) |
 
-```
-node --test --test-concurrency=1 tests/*.test.js   # bash glob (PowerShell does not expand it)
-npm run build --prefix admin
-```
-
-Some test files require environment/database access and fail in a bare local
-environment — compare against `main` before attributing failures to a change.
-
-# Key Feature Notes
-
-- **Route Control** (`services/routeControl/`, reached through the
-  `services/routeControlService.js` compatibility façade — that façade is
-  re-export only; add new code to a focused module in the package and export it
-  from `services/routeControl/index.js`): destination
-  auto-completion (default 50 mi — single authoritative constant in
-  `services/routeControlConstants.js`) runs for EVERY lifecycle-active route,
-  including tracking-pending ones, and does NOT require Google Maps to be
-  enabled. Off-route warnings require Settings → GMaps `enabled` and
-  tracking-active. Completion is atomic (`completeRouteAssignment`,
-  `WHERE status='active' RETURNING *`) — only the winner writes the audit event.
-  The FINAL destination coordinate is taken from the parsed/manual point, and
-  when that is address-only it falls back to the END of the computed route
-  polyline (never a waypoint); existing routes self-heal from their polyline on
-  the next monitor pass, so no admin re-creation is needed.
-- **Route screenshots** (`route_assignment_attachments`): one per assignment,
-  enforced by a unique index; replacement is a single UPSERT — never
-  delete-then-insert.
-
-  **Telegram screenshot transport is a permanent invariant — do not regress it:**
-
-  - Route Control must send screenshots to Telegram as short-lived, HMAC-signed
-    HTTPS URLs produced by
-    `services/routeControl/screenshotMediaReference.js`. This applies to both
-    `editMessageMedia` for existing messages and `sendPhoto` for new messages.
-  - Never change these calls back to raw `Buffer`/`{ source: file_data }` input,
-    multipart upload, or another implementation that uploads screenshot bytes
-    directly from Render to `api.telegram.org`. That production path repeatedly
-    stalled without a Telegram response even though the browser upload and
-    database storage had succeeded.
-  - Telegram must fetch the bytes through
-    `/api/route-screenshot-media/:id`. That endpoint must remain protected by a
-    short expiry, HMAC signature, assignment binding, and screenshot-content
-    version binding. It must not expose a permanent or unsigned public image
-    URL, and signed URLs or query strings must never be logged.
-  - Replacing a screenshot must invalidate URLs for the previous image. Admin
-    previews remain authenticated separately.
-  - Existing text-only Telegram messages must continue to be converted in place
-    with `editMessageMedia` using the same stored chat ID and message ID; never
-    silently post a replacement message.
-  - Before changing this workflow, run and preserve:
-    `tests/telegramUrlMediaTransport.test.js`,
-    `tests/routeScreenshotMediaReference.test.js`,
-    `tests/routeScreenshotMediaRoutes.test.js`, Route Control edit/delivery
-    tests, and Admin screenshot-status tests. The transport test must continue
-    proving that real Telegraf requests use `application/json`, not multipart.
-
-- **Trailer master list** (`database/trailerMasterList/`, `services/trailerMasterList/`):
-  `trailers` is the single authoritative master list.
-
-  **No code path may create a trailer from a detection — this is a permanent
-  invariant:**
-
-  - A trailer may join the list ONLY through an approved master-list import or
-    explicit, permission-gated manual creation. A Telegram message or an AI
-    detection must NEVER create one. `ensureTrailerForDetection` RESOLVES ONLY
-    (exact unit number, then active alias, following `merged_into_trailer_id` to
-    the survivor) and returns null for an unknown unit; callers must then queue a
-    `trailer_unmatched_mentions` review record, never insert a trailer.
-  - Enforcement lives in the DATA ACCESS LAYER, not only in routes:
-    `upsertTrailerByUnitNumber` throws `TRAILER_NOT_IN_MASTER_LIST` for any
-    source other than `admin_manual`. Approved-import trailers are created ONLY
-    inside the reconciliation transaction (`reconciliation.js` `createApproved`,
-    direct INSERT). The legacy screenshot importer (`trailerImportService.js`
-    `commitRows` and `POST /api/trailers/import/:batchId/commit`) is DISABLED —
-    it returned official trailers with no reconciliation. Do not re-enable a
-    second import authority; route image imports through the master-list flow.
-    Guarded by `tests/trailerLegacyImportGuard.test.js`.
-  - "Official" means `active AND master_status = 'active'`. `active` keeps its
-    legacy soft-delete meaning and is deliberately NOT mirrored from
-    `master_status`; both must hold. Pending-review, archived and merged trailers
-    keep ALL their history but must never appear on a map, in a default list, or
-    in a rental picker.
-  - Archive and merge NEVER delete: a merge reassigns every history table to the
-    survivor and keeps both identifiers resolving as aliases. A trailer with an
-    open rental cannot be archived or merged.
-  - Master-list imports STAGE only. Reconciliation applies approved decisions in
-    ONE transaction; a failure rolls back every master-list change and leaves the
-    staged import intact.
-  - Before changing this, run and preserve: `tests/trailerAutoCreationGuard.test.js`
-    (its static scan fails if a new `INSERT INTO trailers` site appears — update
-    `KNOWN_CREATION_SITES` only deliberately), `tests/trailerMasterListPg.test.js`,
-    `tests/trailerMasterListReconcile.test.js`.
-
-- **Trailer Department file storage** (`services/trailerStorage/`, reached through
-  the `services/trailerStorageService.js` re-export-only façade): uploads must
-  work with NO Supabase bucket configured.
-
-  - Requiring Supabase was a production outage: every upload threw 503, so the
-    required pickup photo never stored, so "Confirm Pickup and Activate" failed.
-    Never reintroduce a hard Supabase dependency on the upload path.
-  - Backend selection is automatic: Supabase when fully configured, otherwise
-    `database` (bytes in `trailer_media_blobs`). Reads follow `storage_backend`
-    recorded ON THE ROW, never the current configuration, so files written before
-    Supabase is configured keep working after it is.
-  - Bytes live in `trailer_media_blobs`, separate from `trailer_media` metadata:
-    never select BYTEA in a list query.
-  - Telegram fetches media via short-lived HMAC-signed URLs
-    (`/api/trailer-media/:id`) — same invariant as Route Control screenshots.
-    Never a permanent or unsigned public URL; never log a signed URL or query
-    string. The variant (original/preview) is part of the signature.
-  - Inspections complete ONLY through `completeInspection()`, which verifies the
-    required photo's metadata AND bytes inside a transaction. `saveInspection()`
-    always writes a draft and ignores `completed`, so a failed upload can never
-    leave a completed inspection.
-  - Before changing this, run and preserve: `tests/trailerStoragePg.test.js`,
-    `tests/trailerStorageFallback.test.js`, `tests/trailerMediaRoutes.test.js`,
-    `tests/trailerInspectionAtomicityPg.test.js`.
-
-- **Multi-trailer rental agreements** (`database/trailerAgreements/`,
-  `services/trailerAgreements/`, `services/trailerPricing/`, reached through
-  `server/routes/trailerAgreementRoutes.js` at `/api/trailer-agreements`):
-  one company can rent many trailers under one agreement, each trailer an
-  independent `trailer_rental_items` row with its own pickup/return/pricing.
-
-  - `trailer_rental_agreements` is the header; `trailer_rental_items` is one
-    row per trailer. Agreement status is DERIVED from item statuses by the pure
-    `services/trailerAgreements/statusDerivation.js` — never set directly — and
-    re-derived inside the SAME transaction as every item change.
-  - History is AMENDMENT-BASED: add/remove/replace/rate/amount/extend changes
-    append an immutable `trailer_rental_amendments` row. There is no amendment
-    UPDATE path.
-  - Availability is enforced by the DB: an EXCLUDE-gist overlap constraint
-    (`trailer_rental_items_no_overlap`) and a partial unique "one active item per
-    trailer". Only official trailers (`active AND master_status='active'`) may be
-    added.
-  - Invoicing writes `trailer_invoice_lines` (immutable once finalized;
-    corrections via adjustments/credits) AND maintains the legacy
-    `trailer_invoices` column totals as a denormalized sum, so every existing
-    reader keeps working. Combined = one invoice for all items; separate = one
-    per item.
-  - LEGACY BACKFILL is production-critical and idempotent: `schema.sql` creates
-    one agreement + one item per existing `trailer_rentals` row, guarded by
-    `legacy_rental_id` (INSERT-only, fill-NULLs-only), and connects existing
-    invoices/inspections/movements/media. Re-running on every boot is a strict
-    no-op. The old `trailer_rentals` table and `/rentals/*` endpoints stay fully
-    functional — nothing is dropped.
-  - Before changing this, run and preserve: `tests/trailerAgreementsPg.test.js`,
-    `tests/trailerAgreementStatus.test.js`, `tests/trailerPricing.test.js`.
-
-- **Trailer Department safety invariants** (Phase 6 hardening):
-  - USER SCOPING (`server/routes/adminUserScope.js`): a Trailer Manager
-    (`trailer_users.manage` WITHOUT `users.manage`) sees and edits ONLY accounts
-    whose roles are all `trailer_`-prefixed. Out-of-scope accounts return 404
-    (never 403) so their existence cannot be inferred. The last active super
-    administrator cannot be deactivated or demoted.
-  - OVERPAYMENTS (`database/trailerFinance.js`, `database/trailerCredits.js`): a
-    payment above the outstanding balance is REJECTED unless the caller holds
-    `trailer_payments.record_overpayment` AND confirms; the excess is then banked
-    as a `trailer_company_credits` row and applied later through an audited
-    ledger. Never silently swallow an overpayment.
-  - SNOOZED REMINDERS (`database/trailerNotifications.js`): `resumeExpiredSnoozes`
-    restores `reminder_state='snoozed'` invoices whose `snoozed_until<=NOW()` to
-    active BEFORE reminders are enqueued, so an expired snooze always resumes.
-  - GRACE PERIOD: `due_at` is the payment deadline ONLY; grace is applied exactly
-    once, at reminder time. Never bake grace into `due_at`.
-  - OPTIMISTIC LOCKING: trailers, agreements, items, companies and invoices carry
-    a `version` column. A write bumps it; a caller that sends a stale version gets
-    HTTP 409, never a silent overwrite.
-  - AI EVENT LINKING (`linkTrailerEventToRental`): links to a SPECIFIC validated
-    movement, never "the newest one"; refuses to relink an already-linked event
-    or steal a movement already linked elsewhere.
-  - AUDIT REDACTION (`database/trailerAudit.js` `redact`): recursively strips
-    passwords, hashes, tokens, secrets and signed-URL material at any depth.
-  - Before changing these, run and preserve: `tests/adminUserScope.test.js`,
-    `tests/trailerOverpaymentPg.test.js`, `tests/trailerReminderResumePg.test.js`,
-    `tests/trailerEventLinkPg.test.js`, `tests/trailerAuditRedact.test.js`.
-
-# PostgreSQL integration tests
-
-`*Pg.test.js` need `TEST_DATABASE_URL` and SKIP without it — a skipped test is
-not a passing test. The harness (`tests/helpers/trailerPgHarness.js`) creates a
-throwaway DATABASE per test and applies the real, complete `schema.sql` into it.
-
-- **Per-database, not per-schema, and not stubbed tables.** `schema.sql` contains
-  guards that check `pg_constraint` / `information_schema` by constraint NAME
-  with no schema filter; several schemas in one database make them see each
-  other's constraints and misfire. One database per test mirrors production.
-- The database must be **UTF8** (`TEMPLATE template0`) — `schema.sql` contains
-  box-drawing characters in comments.
+The highest-consequence invariants are summarized in `APP_BRIEF.md` §9. The
+linked documents hold the full rules and the tests that guard them.

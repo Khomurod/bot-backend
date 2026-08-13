@@ -89,21 +89,54 @@ Authentication does not use cookies, so cookie-based CSRF does not apply. XSS an
 
 ## Private storage
 
-Create a private Supabase Storage bucket named `trailer-private` (or the value of `TRAILER_STORAGE_BUCKET`) before enabling uploads. Configure these server-only values:
+**Uploads work with no Supabase configured. Supabase is an optional upgrade, not
+a prerequisite — never make it one again.** Requiring it was a production
+outage: every upload threw 503, so the required pickup photo never stored, so
+"Confirm Pickup and Activate" failed.
+
+The storage backend is selected automatically:
+
+| Configuration | Backend | Where the bytes live |
+| --- | --- | --- |
+| Supabase fully configured | `supabase` | The private bucket |
+| Anything else (including nothing configured) | `database` | `trailer_media_blobs` |
+
+Reads follow the `storage_backend` recorded **on the row**, never the current
+configuration, so files written before Supabase is configured keep working
+after it is configured. See
+[`architecture/trailer-invariants.md`](architecture/trailer-invariants.md) §2 for
+the full storage invariants.
+
+To use Supabase, create a private Storage bucket named `trailer-private` (or the
+value of `TRAILER_STORAGE_BUCKET`) and configure these server-only values:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `TRAILER_STORAGE_BUCKET`
 
-Never expose the service-role key through the React build or a public environment variable. PostgreSQL stores bucket/object paths only. The API checks permissions and issues five-minute signed URLs.
+Never expose the service-role key through the React build or a public
+environment variable. PostgreSQL stores bucket/object paths only. Media is served
+to Telegram and the admin panel through short-lived HMAC-signed URLs
+(`/api/trailer-media/:id`) — never a permanent or unsigned public URL, and a
+signed URL is never logged.
 
-## Manual rollout
+## Operational checklist
 
-1. Apply `database/schema.sql` and verify that every existing administrator has the `super_admin` role.
-2. Sign in as `Trailer` with the initial password `Trailer123`, then change it through the authenticated password-change endpoint.
-3. Create the private bucket and configure the server-only credentials.
-4. Configure payment and overdue Telegram group IDs. Send a successful test to both groups before enabling reminders.
-5. In staging, review one existing trailer as available and complete a pickup, return, invoice, receipt upload, payment, and reversal test.
-6. Leave `TRAILER_DEPARTMENT_ENABLED` unset (or `true`) and monitor `trailer_notification_jobs` failures and `trailer_audit_log`. Set it to `false` and restart the server only to shut the department off.
+The department is live; this is the recurring check-list, not a one-time
+rollout.
 
-Do not automate production environment-variable changes or deployment from this workflow.
+1. Verify every administrator account still carries the roles it should, and
+   that at least one active super administrator exists (the last one cannot be
+   deactivated or demoted).
+2. Confirm payment and overdue Telegram group IDs are configured, and send a
+   successful test to both groups before enabling or re-enabling reminders.
+3. After a schema or pricing change, exercise the full loop in staging: pickup,
+   return, invoice, receipt upload, payment, and reversal.
+4. Leave `TRAILER_DEPARTMENT_ENABLED` unset (or `true`). Monitor
+   `trailer_notification_jobs` failures and `trailer_audit_log`. Set it to
+   `false` and restart the server only to shut the department off.
+5. Storage needs no action — uploads fall back to the database when Supabase is
+   not configured (see **Private storage** above).
+
+Do not automate production environment-variable changes or deployment from this
+workflow. Change them by hand in the Render dashboard.
