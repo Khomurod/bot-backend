@@ -108,14 +108,14 @@ test('real and test data are fully isolated across every operation', { skip: ski
   const realRows = await db.getSummaryRows(false);
   assert.equal(realRows.submissions.length, 2);
   assert.ok(realRows.submissions.every((s) => s.primaryPattern === 'ownership'));
-  assert.equal(realRows.answerPatternRows.find((r) => r.pattern === 'waiting'), undefined,
-    'test answers never reach the real summary');
+  assert.ok(!realRows.submissions.some((s) => s.primaryPattern === 'waiting'),
+    'test respondents never reach the real summary');
 
   const testRows = await db.getSummaryRows(true);
   assert.equal(testRows.submissions.length, 1);
   assert.equal(testRows.submissions[0].primaryPattern, 'waiting');
-  assert.equal(testRows.answerPatternRows.find((r) => r.pattern === 'ownership'), undefined,
-    'real answers never reach the test summary');
+  assert.ok(!testRows.submissions.some((s) => s.primaryPattern === 'ownership'),
+    'real respondents never reach the test summary');
 
   assert.equal((await db.getCompletionStats(false)).total, 2, 'real totals exclude test');
   assert.equal((await db.getCompletionStats(true)).total, 1, 'test totals exclude real');
@@ -169,5 +169,14 @@ test('the public summary payloads for each mode carry no identity fields', { ski
     assert.ok(!json.includes('result_token') && !json.includes('resultToken'));
     assert.ok(!json.includes('client_ip') && !json.includes('127.0.0.1'));
     assert.equal(summary.total, 1, 'each mode sees exactly its own single submission');
+    // The public summary is company-wide only: the department each respondent
+    // picked is stored, but the summary query never even selects it.
+    assert.ok(!json.includes('department') && !json.includes('"hr"'), 'no department data may be published');
+    assert.ok(!json.includes('dispatch_team') && !json.includes('dispatchTeam'), 'no team data may be published');
+    assert.deepEqual(
+      Object.keys((await db.getSummaryRows(isTest)).submissions[0]),
+      ['primaryPattern'],
+      'the public summary reads one column per respondent and nothing else',
+    );
   }
 });

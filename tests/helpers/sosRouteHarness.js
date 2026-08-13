@@ -33,7 +33,7 @@ function defaultServiceStub(calls) {
     getQuestionnaire: async (dept, isTest) => { track('getQuestionnaire', { dept, isTest }); return { contentVersion: 1, department: dept, questions: [] }; },
     submitAssessment: async (input) => { track('submitAssessment', { isTest: input.isTest }); return { resultToken: 'a'.repeat(32), result: { language: 'uz' } }; },
     getResultByToken: async (token, isTest) => { track('getResultByToken', { token, isTest }); throw serviceError('NOT_FOUND', 'Result not found', 404); },
-    getPublicSummary: async (isTest) => { track('getPublicSummary', { isTest }); return { open: true, total: 0, company: {}, departments: [], dispatchTeams: [] }; },
+    getPublicSummary: async (isTest) => { track('getPublicSummary', { isTest }); return { open: true, total: 0, company: { primaryPatterns: [], topPatterns: [] } }; },
     getAdminStatus: async () => ({ open: true, testOpen: true, real: { total: 2 }, test: { total: 1 } }),
     getAdminSubmissionDetail: async (id) => (id === 7
       ? { id: 7, fullName: 'Jane Doe', isTest: false, answers: [] }

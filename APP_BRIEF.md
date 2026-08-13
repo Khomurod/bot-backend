@@ -346,6 +346,16 @@ group — no status change, no driver reply.
   at `/answers`, in UZ/RU/EN, scoring six thinking patterns
   (`victim, complaint, waiting, blame, ownership, builder`) with deterministic
   tie-breaking.
+- **`/answers` is ONE company-wide result view.** Per pattern it shows the share
+  of RESPONDENTS whose **primary** pattern it is (`people with that primary /
+  total respondents`, each row rounded on its own — never a share of individual
+  answers), the head count behind that share, and a short **authored** example
+  quote from `content/results/*.js` (`exampleThought`) — never a submitted
+  answer. **Department and dispatch-team results are deliberately absent from the
+  public surface**: no per-group counts or pattern breakdowns, no question
+  distributions, no ranking between groups. `getSummaryRows` selects exactly one
+  column (`primary_pattern`), so the public payload has no group data to hide;
+  the underlying rows are untouched and remain available through the admin API.
 - **The public surface is aggregate-only, with one deliberate exception**: a
   submitter can re-view **their own** result via `GET /api/sos/results/:token`
   (32-hex token; the `/api/sos/test/...` twin 404s on a real token and vice
@@ -402,7 +412,7 @@ prefixed key and may never claim a reserved key or `super_`/`admin_` prefix
 |---|---|
 | `/raise/*`, `/api/raise/:token/*` | Per-**round** token (expiring) + per-team OTP, used by dispatchers |
 | `/recruiters`, `GET /api/recruiters/public-stats` | Public; names + KPI numbers only |
-| `/questions`, `/answers`, `/api/sos/*` (non-admin) | Public; whitelisted content and anonymous aggregates only |
+| `/questions`, `/answers`, `/api/sos/*` (non-admin) | Public; whitelisted content and anonymous **company-wide** aggregates only (no department or dispatch-team results) |
 | `/qbq`, `/qbq/remote`, `GET /api/qbq/*` | Public read; **saving is full-admin**; rate-limited pairing |
 | `/employee-birthday-form`, `POST /api/submit-employee-birthday` | Public form |
 | `/facebook/connect/:sessionToken`, `/facebook/oauth/*` | Session token |
@@ -776,8 +786,8 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-08-13, deps installed, no `TEST_DATABASE_URL`): **2064 tests,
-  1930 pass, 0 fail, 134 skipped** (the skips are the `*Pg` integration tests),
+  baseline (2026-08-13, deps installed, no `TEST_DATABASE_URL`): **2069 tests,
+  1935 pass, 0 fail, 134 skipped** (the skips are the `*Pg` integration tests),
   exit 0. **So any failure is a real failure** — there is no "expected failures"
   allowance. *(An older internal doc claimed ~19 expected failures in a bare
   environment; that is no longer true and must not be used to excuse one.)* If

@@ -3,8 +3,9 @@
  *
  * These SIX teams are the only choices offered on /questions and /questions/test,
  * the only values accepted by a submission, and the vocabulary used everywhere
- * downstream (admin list, detail, CSV export, /answers and /answers/test
- * department and team summaries, filters).
+ * downstream (admin list, detail, CSV export, filters). The PUBLIC /answers
+ * pages show one company-wide picture and carry no team results at all, so no
+ * team name from this list ever reaches an unauthenticated page.
  *
  * DELIBERATELY NOT the `dispatch_teams` table. That table belongs to Raise
  * Approval / Driver Groups; its rows are unrelated operational records that came

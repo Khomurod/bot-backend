@@ -10,6 +10,12 @@ module.exports = {
     ru: "Созидательный подход",
     en: "Builder mindset",
   },
+  /** Authored example of how this tendency sounds (see results/victim.js). */
+  exampleThought: {
+    uz: "Bu muammo takrorlanmasligi uchun nimani yaxshilay olaman?",
+    ru: "Что я могу улучшить, чтобы эта проблема не повторялась?",
+    en: "What can I improve so this problem does not repeat?",
+  },
   headline: {
     uz: "Javoblaringizga koʻra, siz muammoni yechish bilan cheklanmay, u takrorlanmasligi uchun jarayonni ham yaxshilashga intilasiz.",
     ru: "Судя по вашим ответам, вы не ограничиваетесь решением проблемы — вы стремитесь улучшить процесс, чтобы она не повторялась.",

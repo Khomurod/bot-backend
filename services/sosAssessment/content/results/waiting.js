@@ -10,6 +10,12 @@ module.exports = {
     ru: "Осторожное ожидание",
     en: "Careful waiting",
   },
+  /** Authored example of how this tendency sounds (see results/victim.js). */
+  exampleThought: {
+    uz: "Qachon ular buni hal qiladi?",
+    ru: "Когда они наконец это решат?",
+    en: "When will they finally fix this?",
+  },
   headline: {
     uz: "Javoblaringizga koʻra, muammo yuz berganda birinchi tabiiy qadamingiz koʻpincha toʻliq maʼlumot, koʻrsatma yoki masʼul xodimni kutish boʻlishi mumkin.",
     ru: "Судя по вашим ответам, при возникновении проблемы вашим первым естественным шагом часто может быть ожидание полной информации, указаний или ответственного сотрудника.",

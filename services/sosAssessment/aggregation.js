@@ -1,19 +1,26 @@
 /**
  * SOS assessment — pure aggregation for the public /answers projector pages.
  *
+ * ONE COMPANY-WIDE PICTURE. The public summary answers a single question:
+ * "how do we, as one company, tend to react?" It reports, per thinking pattern,
+ * the share of RESPONDENTS whose PRIMARY tendency is that pattern, how many
+ * people that is, and an authored example of how that thinking sounds.
+ *
  * PRIVACY: this module is the anonymity boundary. Its output is served to an
- * unauthenticated page, so it must never include names, tokens, IPs,
- * submission ids, or any per-person record — only combined counts. Department
- * and dispatch-team results are shown for ANY group size (including one or two
- * respondents, as explicitly requested for this internal team event); privacy
- * is protected by never emitting identity fields, not by hiding small groups.
- * Question distributions carry option text + counts only, never the
- * option→pattern mapping (that would publish the scoring key). Enforced by
- * tests/sosAggregation.test.js.
+ * unauthenticated page, so it must never include names, tokens, IPs, submission
+ * ids, or any per-person record — only combined counts. It also carries NO
+ * department or dispatch-team results: no per-group counts, no per-group pattern
+ * breakdowns, no question distributions, no ranking between groups. Those were
+ * removed deliberately (a small group's numbers are close to a personal result,
+ * and public group rankings turn a self-reflection exercise into a comparison);
+ * the data still exists in the database and is reachable through the ADMIN API
+ * only. Question distributions are gone too, so the option→pattern mapping (the
+ * scoring key) cannot be reconstructed from the public payload. The example
+ * quotes come from content/results/*.js — authored text, never a submitted
+ * answer. Enforced by tests/sosAggregation.test.js.
  */
 
-const { PATTERNS, DEPARTMENTS } = require('./constants');
-const { dispatchTeamOrder } = require('./dispatchTeams');
+const { PATTERNS } = require('./constants');
 const content = require('./content');
 
 function emptyPatternCounts() {
@@ -37,6 +44,8 @@ function patternMetaUz() {
     const block = content.getPatternResult(pattern);
     meta[pattern] = {
       name: block.name.uz,
+      // An authored illustration of the pattern — NOT anyone's submitted answer.
+      example: block.exampleThought.uz,
       positive: block.strengths[0].uz,
       risk: block.risks[0].uz,
       sosQuestion: block.sosQuestions[0].uz,
@@ -46,98 +55,43 @@ function patternMetaUz() {
 }
 
 /**
- * Builds the full anonymous summary for /answers and /answers/test.
+ * Whole-number percentages of RESPONDENTS per pattern, in canonical order.
+ *
+ * The denominator is the number of RESPONDENTS — never the number of individual
+ * answers — so "18%" always means "18% of the people who filled the form".
+ *
+ * Each row is rounded on its own (`count / total × 100`, nearest whole number),
+ * because on a projector every row has to survive being checked by hand: 9 of 33
+ * people reads as 27%, and no redistribution may push it to 28% to make the
+ * column add up. Rounding therefore leaves the displayed percentages summing to
+ * 100 ± a couple of points; the head counts are the exact figures and they always
+ * add up to the total. A pattern with zero respondents is always exactly 0%.
+ */
+function primaryPatternShares(counts, total) {
+  return PATTERNS.map((pattern) => {
+    const count = counts[pattern] || 0;
+    return {
+      pattern,
+      count,
+      percent: total > 0 ? Math.round((count * 100) / total) : 0,
+    };
+  });
+}
+
+/**
+ * Builds the full anonymous, company-wide summary for /answers and /answers/test.
  *
  * @param {Object} input
  * @param {boolean} input.open questionnaire open flag (for the mode being summarized)
- * @param {Array<{department, dispatchTeamId, dispatchTeamName, primaryPattern}>} input.submissions
- * @param {Array<{submissionDepartment, pattern, count}>} input.answerPatternRows
- * @param {Array<{questionKey, optionKey, count}>} input.questionOptionRows
+ * @param {Array<{primaryPattern: string}>} input.submissions one entry per respondent
  */
-function buildSummary({ open, submissions, answerPatternRows = [], questionOptionRows = [] }) {
+function buildSummary({ open, submissions = [] }) {
   const total = submissions.length;
 
-  const companyPrimary = emptyPatternCounts();
-  const deptData = new Map();
-  const teamData = new Map();
-
-  for (const dept of DEPARTMENTS) {
-    deptData.set(dept.key, { key: dept.key, labelUz: dept.label.uz, count: 0, primaryCounts: emptyPatternCounts() });
-  }
-
+  const primaryCounts = emptyPatternCounts();
   for (const sub of submissions) {
-    if (PATTERNS.includes(sub.primaryPattern)) companyPrimary[sub.primaryPattern] += 1;
-    const dept = deptData.get(sub.department);
-    if (dept) {
-      dept.count += 1;
-      if (PATTERNS.includes(sub.primaryPattern)) dept.primaryCounts[sub.primaryPattern] += 1;
-    }
-    if (sub.department === 'dispatch' && sub.dispatchTeamName) {
-      // Grouped by the exact team NAME — the same key the questionnaire, the
-      // admin list and the CSV export use, so one team is never split in two.
-      const key = sub.dispatchTeamName;
-      if (!teamData.has(key)) {
-        teamData.set(key, { teamName: sub.dispatchTeamName, count: 0, primaryCounts: emptyPatternCounts() });
-      }
-      const team = teamData.get(key);
-      team.count += 1;
-      if (PATTERNS.includes(sub.primaryPattern)) team.primaryCounts[sub.primaryPattern] += 1;
-    }
+    if (PATTERNS.includes(sub.primaryPattern)) primaryCounts[sub.primaryPattern] += 1;
   }
-
-  const companyAnswers = emptyPatternCounts();
-  const deptAnswers = new Map();
-  for (const row of answerPatternRows) {
-    if (!PATTERNS.includes(row.pattern)) continue;
-    companyAnswers[row.pattern] += Number(row.count) || 0;
-    if (!deptAnswers.has(row.submissionDepartment)) deptAnswers.set(row.submissionDepartment, emptyPatternCounts());
-    deptAnswers.get(row.submissionDepartment)[row.pattern] += Number(row.count) || 0;
-  }
-
-  // Question distributions: option text (uz) + counts only.
-  const questionCounts = new Map();
-  for (const row of questionOptionRows) {
-    if (!questionCounts.has(row.questionKey)) questionCounts.set(row.questionKey, new Map());
-    questionCounts.get(row.questionKey).set(row.optionKey, Number(row.count) || 0);
-  }
-
-  const departmentsOut = [];
-  for (const dept of DEPARTMENTS) {
-    const data = deptData.get(dept.key);
-    const out = {
-      key: dept.key,
-      labelUz: dept.label.uz,
-      count: data.count,
-      primaryCounts: data.primaryCounts,
-      answerPatternCounts: deptAnswers.get(dept.key) || emptyPatternCounts(),
-    };
-    if (data.count > 0) {
-      out.topPatterns = topPatterns(data.primaryCounts);
-      const tips = content.presentationUz.departmentTips[dept.key];
-      if (tips) { out.technique = tips.technique; out.sosQuestions = tips.sosQuestions; }
-      out.questions = (content.getQuestions(dept.key) || []).map((q) => {
-        const counts = questionCounts.get(q.key) || new Map();
-        return {
-          key: q.key,
-          textUz: q.text.uz,
-          options: q.options.map((o) => ({ key: o.key, textUz: o.text.uz, count: counts.get(o.key) || 0 })),
-        };
-      });
-    }
-    departmentsOut.push(out);
-  }
-
-  // Canonical team order (1–6), so the projector lists the teams the way they
-  // are numbered rather than alphabetically. Any legacy name sorts after them.
-  const teamsOut = Array.from(teamData.values())
-    .sort((a, b) => (dispatchTeamOrder(a.teamName) - dispatchTeamOrder(b.teamName))
-      || a.teamName.localeCompare(b.teamName))
-    .map((team) => ({
-      teamName: team.teamName,
-      count: team.count,
-      primaryCounts: team.primaryCounts,
-      topPatterns: topPatterns(team.primaryCounts),
-    }));
 
   return {
     open,
@@ -152,13 +106,11 @@ function buildSummary({ open, submissions, answerPatternRows = [], questionOptio
       practices: content.presentationUz.practices,
     },
     company: {
-      primaryCounts: companyPrimary,
-      answerPatternCounts: companyAnswers,
-      topPatterns: topPatterns(companyPrimary, 3),
+      // One row per pattern, canonical order, percentages of respondents.
+      primaryPatterns: primaryPatternShares(primaryCounts, total),
+      topPatterns: topPatterns(primaryCounts, 3),
     },
-    departments: departmentsOut,
-    dispatchTeams: teamsOut,
   };
 }
 
-module.exports = { buildSummary, topPatterns };
+module.exports = { buildSummary, topPatterns, primaryPatternShares };

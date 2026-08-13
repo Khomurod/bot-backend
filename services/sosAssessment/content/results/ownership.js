@@ -10,6 +10,12 @@ module.exports = {
     ru: "Личная инициатива",
     en: "Personal initiative",
   },
+  /** Authored example of how this tendency sounds (see results/victim.js). */
+  exampleThought: {
+    uz: "Hozir men nima qila olaman?",
+    ru: "Что я могу сделать прямо сейчас?",
+    en: "What can I do right now?",
+  },
   headline: {
     uz: "Javoblaringizga koʻra, muammo yuz berganda birinchi savolingiz koʻpincha «Hozir men nima qila olaman?» boʻladi.",
     ru: "Судя по вашим ответам, при возникновении проблемы вашим первым вопросом чаще всего бывает «Что я могу сделать сейчас?».",

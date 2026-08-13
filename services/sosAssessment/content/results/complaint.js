@@ -10,6 +10,12 @@ module.exports = {
     ru: "Проговаривание проблемы",
     en: "Voicing the problem",
   },
+  /** Authored example of how this tendency sounds (see results/victim.js). */
+  exampleThought: {
+    uz: "Yana oʻsha muammo — bu yerda hech narsa toʻgʻri ishlamaydi.",
+    ru: "Опять та же проблема — здесь ничего не работает как надо.",
+    en: "The same problem again — nothing here works the way it should.",
+  },
   headline: {
     uz: "Javoblaringizga koʻra, muammo paydo boʻlganda birinchi qadamingiz koʻpincha nima notoʻgʻri ekanini aytib, tushuntirib berish boʻlishi mumkin.",
     ru: "Судя по вашим ответам, при появлении проблемы вашим первым шагом часто может быть желание проговорить и объяснить, что именно не так.",

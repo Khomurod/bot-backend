@@ -1,9 +1,9 @@
 /**
  * Public /answers (real) and /answers/test — the live SOS presentation screen.
  * Entirely in Uzbek, projector-friendly, auto-updating (20s visibility-aware
- * polling). Receives ONLY anonymous aggregates from the mode's summary API —
- * names and individual results never reach this page. Department and
- * dispatch-team results are shown for any group size.
+ * polling). Receives ONLY anonymous, COMPANY-WIDE aggregates from the mode's
+ * summary API — names, individual results and any department or dispatch-team
+ * breakdown never reach this page (the API does not send them).
  *
  * Test mode adds a clear TEST banner and an admin-authenticated test-data
  * cleanup control (deletes is_test rows only — enforced server-side).
@@ -17,7 +17,7 @@ import "./sosPublic.css";
 import { getSosSummary } from "../../api/sos";
 import useVisibleInterval from "../../utils/useVisibleInterval";
 import {
-  CompanySection, TechniquesSection, DepartmentsSection, TeamsSection, PracticesSection,
+  CompanySection, TechniquesSection, PracticesSection,
 } from "./SosAnswersSections";
 import SosTestCleanup from "./SosTestCleanup";
 import SosPresentationTimer from "./SosPresentationTimer";
@@ -59,6 +59,8 @@ export default function SosAnswersPage({ isTest = false }) {
   const p = summary.presentation;
   const hasData = summary.total > 0;
   const questionsUrl = `${window.location.origin}/questions${isTest ? "/test" : ""}`;
+  const top = summary.company.topPatterns?.[0];
+  const topRow = top && (summary.company.primaryPatterns || []).find((r) => r.pattern === top);
 
   return (
     <div className="sos-root sos-answers">
@@ -105,10 +107,12 @@ export default function SosAnswersPage({ isTest = false }) {
             <div className="sos-stat-value">{summary.total}</div>
             <div className="sos-stat-label">toʻldirilgan soʻrovnoma</div>
           </div>
-          <div className="sos-stat">
-            <div className="sos-stat-value">{summary.departments.filter((d) => d.count > 0).length}</div>
-            <div className="sos-stat-label">ishtirok etgan boʻlim</div>
-          </div>
+          {topRow && (
+            <div className="sos-stat">
+              <div className="sos-stat-value">{topRow.percent}%</div>
+              <div className="sos-stat-label">{summary.patternMeta[top].name} — eng koʻp uchragan uslub</div>
+            </div>
+          )}
         </div>
 
         {!hasData && (
@@ -123,14 +127,13 @@ export default function SosAnswersPage({ isTest = false }) {
 
         {hasData && <CompanySection summary={summary} />}
         <TechniquesSection presentation={p} />
-        {hasData && <DepartmentsSection summary={summary} />}
-        {hasData && <TeamsSection summary={summary} />}
         <PracticesSection presentation={p} />
 
         {isTest && <SosTestCleanup onCleared={load} />}
 
         <div className="sos-footer-note">
-          Natijalar anonim va umumlashtirilgan — ismlar va shaxsiy javob varaqlari koʻrsatilmaydi
+          Natijalar anonim va butun kompaniya boʻyicha umumlashtirilgan — ismlar, shaxsiy javob
+          varaqlari, boʻlim va jamoa kesimidagi natijalar koʻrsatilmaydi
         </div>
       </div>
 

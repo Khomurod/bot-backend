@@ -166,6 +166,17 @@ function validateContent() {
         }
       }
     }
+    // The authored example thought shown on the public /answers screen. It is a
+    // short one-line quote in every language — long text would not read on a
+    // projector, and it must stay authored content, never a stored answer.
+    for (const lang of LANGUAGES) {
+      const text = block.exampleThought && block.exampleThought[lang];
+      if (!text || !text.trim()) {
+        problems.push(`results/${pattern}.exampleThought: missing ${lang}`);
+      } else if (text.trim().length > 120) {
+        problems.push(`results/${pattern}.exampleThought: ${lang} is too long for the projector`);
+      }
+    }
     for (const listField of ['strengths', 'risks', 'techniques', 'sosQuestions']) {
       const list = block[listField];
       if (!Array.isArray(list) || list.length < 2) {

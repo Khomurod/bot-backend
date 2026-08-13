@@ -1,26 +1,57 @@
 /**
- * /answers — presentation sections (all Uzbek). Every section renders only
- * anonymous aggregated data (no names, tokens, or individual records).
- * Department and dispatch-team results render for ANY group size — including
- * a single respondent — as explicitly requested for this internal event.
+ * /answers — presentation sections (all Uzbek).
+ *
+ * ONE company-wide picture: "this is how we, as one company, tend to react".
+ * There are deliberately NO department or dispatch-team sections, no group
+ * comparisons and no question distributions — the public summary API does not
+ * send them at all (see services/sosAssessment/aggregation.js).
+ *
+ * Every number here is a share of RESPONDENTS whose primary tendency is that
+ * pattern, and every example quote is authored content from the assessment
+ * itself — never anyone's submitted answer.
  */
-import { useState } from "react";
 
-const PATTERN_ORDER = ["victim", "complaint", "waiting", "blame", "ownership", "builder"];
-
-function PatternBars({ counts, meta }) {
-  const max = Math.max(1, ...PATTERN_ORDER.map((p) => counts[p] || 0));
+function CompanyPatternRow({ row, meta }) {
+  const info = meta[row.pattern];
   return (
-    <div className="sos-bars">
-      {PATTERN_ORDER.map((p) => (
-        <div key={p} className="sos-bar-row">
-          <div className="sos-bar-label">{meta[p].name}</div>
-          <div className="sos-bar-track">
-            <div className={`sos-bar-fill sos-fill-${p}`} style={{ width: `${((counts[p] || 0) / max) * 100}%` }} />
-          </div>
-          <div className="sos-bar-value">{Math.round((counts[p] || 0) * 10) / 10}</div>
-        </div>
-      ))}
+    <li className="sos-pattern-row" data-pattern={row.pattern}>
+      <div className="sos-pattern-head">
+        <span className="sos-pattern-name">{info.name}</span>
+        <span className="sos-pattern-figures">
+          <b className="sos-pattern-percent">{row.percent}%</b>
+          <span className="sos-pattern-count">{row.count} kishi</span>
+        </span>
+      </div>
+      <div className="sos-bar-track">
+        <div
+          className={`sos-bar-fill sos-fill-${row.pattern}`}
+          style={{ width: `${row.percent}%` }}
+        />
+      </div>
+      <p className="sos-pattern-example">
+        <span className="label">Misol javob:</span> “{info.example}”
+      </p>
+    </li>
+  );
+}
+
+export function CompanySection({ summary }) {
+  const meta = summary.patternMeta;
+  const rows = summary.company.primaryPatterns || [];
+  return (
+    <div className="sos-card">
+      <div className="sos-card-kicker">Kompaniya boʻyicha umumiy manzara</div>
+      <h2>Biz, bitta jamoa sifatida, qanday javob beramiz</h2>
+      <p className="sos-pattern-intro">
+        Har bir foiz — asosiy javob uslubi shu turga kirgan xodimlarning barcha
+        ishtirokchilarga nisbatan ulushi. Jami {summary.total} ta javob.
+      </p>
+      <ul className="sos-patterns">
+        {rows.map((row) => (
+          <CompanyPatternRow key={row.pattern} row={row} meta={meta} />
+        ))}
+      </ul>
+      <TopPatternStory topPatterns={summary.company.topPatterns} meta={meta} />
     </div>
   );
 }
@@ -29,35 +60,13 @@ function TopPatternStory({ topPatterns, meta }) {
   if (!topPatterns || topPatterns.length === 0) return null;
   const main = meta[topPatterns[0]];
   return (
-    <div style={{ marginTop: 12 }}>
+    <div className="sos-pattern-story">
       <p style={{ marginBottom: 6 }}>
         Eng koʻp uchragan javob uslubi: <b>{main.name}</b>.
       </p>
       <p style={{ marginBottom: 6 }}>✅ <b>Yaxshi tomoni:</b> {main.positive}</p>
       <p style={{ marginBottom: 6 }}>⚠️ <b>Eʼtibor beriladigan jihati:</b> {main.risk}</p>
       <p style={{ marginBottom: 0 }}>💬 <b>Foydali SOS savoli:</b> “{main.sosQuestion}”</p>
-    </div>
-  );
-}
-
-export function CompanySection({ summary }) {
-  const meta = summary.patternMeta;
-  const company = summary.company;
-  return (
-    <div className="sos-card">
-      <div className="sos-card-kicker">Kompaniya boʻyicha umumiy manzara</div>
-      <h2>Butun jamoaning SOS profili</h2>
-      <div className="sos-grid">
-        <div>
-          <p style={{ fontWeight: 700, marginBottom: 8 }}>Asosiy javob uslubi boʻyicha (odamlar soni)</p>
-          <PatternBars counts={company.primaryCounts} meta={meta} />
-        </div>
-        <div>
-          <p style={{ fontWeight: 700, marginBottom: 8 }}>Barcha javoblar boʻyicha (ball ulushi)</p>
-          <PatternBars counts={company.answerPatternCounts} meta={meta} />
-          <TopPatternStory topPatterns={company.topPatterns} meta={meta} />
-        </div>
-      </div>
     </div>
   );
 }
@@ -74,101 +83,6 @@ export function TechniquesSection({ presentation }) {
           <span className="to">“{tech.to}”</span>
         </div>
       ))}
-    </div>
-  );
-}
-
-function QuestionDistributions({ questions }) {
-  const [open, setOpen] = useState(false);
-  const answered = questions.filter((q) => q.options.some((o) => o.count > 0));
-  if (answered.length === 0) return null;
-  return (
-    <div className="sos-qdist">
-      <button type="button" className="sos-toggle-link" onClick={() => setOpen(!open)}>
-        {open ? "▲ Savollar boʻyicha taqsimotni yashirish" : "▼ Savollar boʻyicha taqsimotni koʻrish"}
-      </button>
-      {open && answered.map((q, qi) => {
-        const max = Math.max(1, ...q.options.map((o) => o.count));
-        return (
-          <div key={q.key} style={{ marginBottom: 14 }}>
-            <div className="sos-qdist-q">{qi + 1}. {q.textUz}</div>
-            {q.options.map((o) => (
-              <div key={o.key} className="sos-qdist-opt">
-                <div className="sos-qdist-text">{o.textUz}</div>
-                <div className="sos-qdist-meter">
-                  <div className="sos-qdist-track">
-                    <div className="sos-qdist-fill" style={{ width: `${(o.count / max) * 100}%` }} />
-                  </div>
-                  <div className="sos-qdist-n">{o.count}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-export function DepartmentsSection({ summary }) {
-  const meta = summary.patternMeta;
-  const active = summary.departments.filter((d) => d.count > 0);
-  if (active.length === 0) return null;
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <div className="sos-card" style={{ marginBottom: 18 }}>
-        <div className="sos-card-kicker">Boʻlimlar kesimida</div>
-        <h2>Har bir boʻlimning oʻz manzarasi</h2>
-        <p style={{ marginBottom: 0 }}>
-          Maqsad — taqqoslash yoki baholash emas: har bir boʻlim oʻz kuchli tomonini va oʻsish nuqtasini koʻradi.
-        </p>
-      </div>
-      <div className="sos-grid">
-        {active.map((dept) => (
-          <div key={dept.key} className="sos-card">
-            <h2>
-              {dept.labelUz}
-              <span className="sos-badge">{dept.count} ta javob</span>
-            </h2>
-            <PatternBars counts={dept.primaryCounts} meta={meta} />
-            <TopPatternStory topPatterns={dept.topPatterns} meta={meta} />
-            {dept.technique && <div className="sos-technique">🛠 {dept.technique}</div>}
-            {dept.sosQuestions && dept.sosQuestions.map((q) => (
-              <div key={q} className="sos-q-chip" style={{ marginTop: 8 }}>“{q}”</div>
-            ))}
-            {dept.questions && <QuestionDistributions questions={dept.questions} />}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export function TeamsSection({ summary }) {
-  const meta = summary.patternMeta;
-  const teams = summary.dispatchTeams || [];
-  if (teams.length === 0) return null;
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <div className="sos-card" style={{ marginBottom: 18 }}>
-        <div className="sos-card-kicker">Dispetcherlik jamoalari</div>
-        <h2>Jamoalar kesimida</h2>
-        <p style={{ marginBottom: 0 }}>
-          Har bir jamoa — bitta katta jamoaning qismi. Natijalar reyting emas, oʻsish uchun koʻzgu.
-        </p>
-      </div>
-      <div className="sos-grid">
-        {teams.map((team) => (
-          <div key={team.teamName} className="sos-card">
-            <h2>
-              {team.teamName}
-              <span className="sos-badge">{team.count} ta javob</span>
-            </h2>
-            <PatternBars counts={team.primaryCounts} meta={meta} />
-            <TopPatternStory topPatterns={team.topPatterns} meta={meta} />
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

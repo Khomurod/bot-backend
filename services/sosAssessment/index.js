@@ -178,7 +178,11 @@ async function getResultByToken(token, isTest) {
   });
 }
 
-/** Anonymous aggregates for /answers (real) or /answers/test — one mode only. */
+/**
+ * Anonymous COMPANY-WIDE aggregates for /answers (real) or /answers/test — one
+ * mode only. No department or dispatch-team results are computed or served here;
+ * that breakdown is admin-only (see aggregation.js for the reasoning).
+ */
 async function getPublicSummary(isTest) {
   const [settings, rows] = await Promise.all([db.getSettings(), db.getSummaryRows(isTest === true)]);
   return buildSummary({ open: openFlagFor(settings, isTest), ...rows });
