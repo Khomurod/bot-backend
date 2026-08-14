@@ -1,19 +1,17 @@
 /**
  * SOS assessment content — Updaters department (10 questions).
  *
- * Scope: driver location/status updates, pickup and delivery confirmations,
- * unclear ETAs, unreachable drivers, ELD/GPS tracking gaps, late updates
- * discovered after the fact, urgent broker/customer requests, shift handoffs,
- * communication with dispatch and drivers, conflicting data, escalation,
- * preventing missed updates.
+ * Scope: broker and customer status updates, ELD signal gaps and the customer
+ * tracking link, position mismatches, ETA while loading is still running,
+ * delivery confirmations, shift handoff notes, long unexplained stops, seal and
+ * pallet data after loading, morning update waves under growing volume.
  *
- * Authoring rules (see tests/sosContent.test.js):
- *  - every question offers 5 plausible options mapped to 5 of the 6 patterns;
- *  - no option is obviously "correct", careless, or ridiculous;
- *  - the strongest QBQ option varies in position and length;
- *  - no option ever invents an ETA, guesses a location, or hides uncertainty
- *    from a broker/customer — "say what is confirmed and when you will know
- *    more" is the standard.
+ * Authoring rules: see the header of ./hr.js — all five options must read as
+ * competent and choosable, the six tendencies are loci of first action rather
+ * than keyword formulas. Hard constraints for this department: no option may
+ * invent or guess a position or an ETA, pass unverified data to a customer as
+ * confirmed, or sit on a possible emergency. A less accountable instinct shows
+ * up as a different FIRST MOVE, never as fabricated tracking information.
  */
 
 module.exports = {
@@ -28,29 +26,29 @@ module.exports = {
       },
       options: [
         { key: "updaters_q01_a", pattern: "ownership", text: {
-          uz: "Brokerga tasdiqlangan faktni beraman — ELDdagi oxirgi joylashuv va uning vaqtini aytaman, haydovchiga chiqayotganimni ochiq aytib, yarim soat ichida oʻzim qayta qoʻngʻiroq qilishga soʻz beraman.",
-          ru: "Дам брокеру подтверждённый факт — последнюю позицию по ELD и её время, честно скажу, что вызваниваю водителя, и пообещаю сам перезвонить в течение получаса.",
-          en: "Give the broker the confirmed fact — the last ELD position and its time — say openly that I am chasing the driver, and promise to call back myself within half an hour.",
+          uz: "Brokerga tasdiqlangan faktni beraman — ELD boʻyicha oxirgi joylashuv va vaqti; haydovchini izlayotganimni aytaman va yarim soatda oʻzim qayta bogʻlanaman.",
+          ru: "Дам брокеру подтверждённый факт — последнюю позицию по ELD и её время, открыто скажу, что ищу водителя, и сам перезвоню в течение получаса.",
+          en: "I would give the broker the confirmed fact — the last ELD position and its time — say openly that I am chasing the driver, and call back myself within half an hour.",
         } },
         { key: "updaters_q01_b", pattern: "complaint", text: {
-          uz: "Hamkasblarga brokerlar javobni shu zahoti talab qilishini, haydovchilar esa telefon koʻtarmasligini aytaman — biz doim ana shu ikki oʻt orasida qolamiz.",
-          ru: "Скажу коллегам, что брокеры требуют ответ немедленно, а водители не берут трубку — мы вечно оказываемся между двух огней.",
-          en: "Tell my coworkers that brokers demand an answer instantly while drivers do not pick up — we always end up caught between the two fires.",
+          uz: "Javob beraman, lekin rahbarga aytaman: broker darhol javob talab qiladi, haydovchi esa koʻtarmaydi — aloqa talabi belgilanmasa, biz har kuni ikki oʻt orasida qolamiz.",
+          ru: "Ответ дам, но скажу руководителю: брокер требует ответ сразу, а водитель не берёт трубку — пока не установят требование по связи, мы каждый день между двух огней.",
+          en: "I would answer, but tell my lead the broker demands an answer instantly while the driver does not pick up — with no contact requirement set, we stay between two fires.",
         } },
         { key: "updaters_q01_c", pattern: "builder", text: {
-          uz: "Brokerga oxirgi tasdiqlangan joylashuvni aytaman, haydovchi va dispetcherga parallel yozaman, masala yopilgach esa shu brokerning yuklari boʻyicha doimiy update jadvalini kelishib olishni taklif qilaman.",
-          ru: "Назову брокеру последнюю подтверждённую позицию, параллельно напишу водителю и диспетчеру, а после закрытия вопроса предложу согласовать постоянный график обновлений по грузам этого брокера.",
-          en: "Tell the broker the last confirmed position, message the driver and the dispatcher in parallel, and once it is settled, propose a standing update schedule for this broker’s loads.",
+          uz: "Brokerga oxirgi tasdiqlangan joylashuvni aytaman, haydovchi va dispetcherga parallel yozaman, keyin bu broker yuklari uchun doimiy update jadvalini kelishaman.",
+          ru: "Сообщу брокеру последнюю подтверждённую позицию, параллельно напишу водителю и диспетчеру, а затем согласую постоянный график апдейтов по грузам этого брокера.",
+          en: "I would tell the broker the last confirmed position, message the driver and the dispatcher in parallel, then agree a standing update schedule for this broker’s loads.",
         } },
         { key: "updaters_q01_d", pattern: "waiting", text: {
-          uz: "Brokerdan ozgina vaqt soʻrayman: ikki soat oldingi maʼlumot eskirgan boʻlishi mumkin, haydovchining oʻzi tasdiqlamaguncha aniq bir gap aytmaganim toʻgʻriroq boʻladi.",
-          ru: "Попрошу у брокера немного времени: данные двухчасовой давности могли устареть, и пока водитель сам не подтвердит, правильнее не называть ничего определённого.",
-          en: "Ask the broker for a little time: two-hour-old data may be stale, and until the driver himself confirms, it is safer not to state anything definite.",
+          uz: "Brokerdan biroz vaqt soʻrayman: ikki soatlik maʼlumot eskirgan boʻlishi mumkin, haydovchi tasdiqlamaguncha aniq gap aytmaslik toʻgʻriroq.",
+          ru: "Попрошу у брокера немного времени: данные двухчасовой давности могут быть устаревшими, и пока водитель не подтвердит, точнее ничего не утверждать.",
+          en: "I would ask the broker for a little time: two-hour-old data may be stale, and until the driver confirms it is sounder to state nothing definite.",
         } },
         { key: "updaters_q01_e", pattern: "victim", text: {
-          uz: "Nega bunday shoshilinch qoʻngʻiroqlar doim mening smenamga toʻgʻri keladi, deb oʻylayman — kun tinch oʻtayotgan edi, endi hamma eʼtibor menga qadaladi.",
-          ru: "Подумаю: почему такие срочные звонки всегда выпадают на мою смену — день шёл спокойно, а теперь всё внимание будет приковано ко мне.",
-          en: "Wonder why these urgent calls always land on my shift — the day was going smoothly, and now all the attention is about to be fixed on me.",
+          uz: "Rahbarga aytib qoʻyaman: haydovchi telefonni koʻtarishi menda emas, broker esa javobni darhol talab qiladi — bu mening ish sifatim deb baholanmasligi kerak.",
+          ru: "Скажу руководителю: берёт ли водитель трубку, от меня не зависит, а брокер требует ответ немедленно — такие звонки не стоит считать качеством моей работы.",
+          en: "I would tell my lead whether the driver picks up is not in my hands while the broker wants an answer instantly — that is not a measure of my work.",
         } },
       ],
     },
@@ -63,29 +61,29 @@ module.exports = {
       },
       options: [
         { key: "updaters_q02_a", pattern: "waiting", text: {
-          uz: "Bunday uzilishlar aloqasiz hududlarda tez-tez boʻladi va odatda oʻz-oʻzidan tiklanadi — signal qaytishini kutaman, shundan keyin holatga qarab ish tutaman.",
-          ru: "Такие обрывы часто случаются в зонах без связи и обычно восстанавливаются сами — подожду возвращения сигнала и уже тогда буду действовать по ситуации.",
-          en: "Gaps like this happen often in dead zones and usually restore on their own — I will wait for the signal to come back and act on the situation then.",
+          uz: "Bunday uzilishlar aloqa boʻlmagan joylarda tez-tez boʻladi va oʻzi tiklanadi — signal qaytishini kutib, shundan keyin holatga qarab harakat qilaman.",
+          ru: "Такие разрывы часто бывают в зонах без покрытия и восстанавливаются сами — подожду возврата сигнала и уже тогда буду действовать по ситуации.",
+          en: "Gaps like this are common in dead zones and usually restore themselves — I would wait for the signal to return and act on the situation then.",
         } },
         { key: "updaters_q02_b", pattern: "builder", text: {
-          uz: "Haydovchidan haqiqiy joylashuvni tasdiqlab tizimga kiritaman, signal tiklangunicha updatelarni qoʻlda berib turaman va uskunani tekshirtirish uchun bu trakni ELD masʼuliga xabar qilaman.",
-          ru: "Уточню у водителя реальную позицию и внесу её в систему, до восстановления сигнала буду давать обновления вручную и сообщу об этом траке ответственному за ELD, чтобы проверили оборудование.",
-          en: "Confirm the real position with the driver and log it, keep the updates going manually until the signal returns, and report this truck to the ELD owner so the unit gets checked.",
+          uz: "Haydovchi bilan real joylashuvni tasdiqlab yozaman, signal qaytguncha updatelarni qoʻlda yuritaman va bu trakni ELD egasiga tekshirish uchun belgilayman.",
+          ru: "Подтвержу с водителем реальную позицию и зафиксирую её, до возврата сигнала буду вести апдейты вручную и отмечу этот трак на проверку владельцу ELD.",
+          en: "I would confirm the real position with the driver and log it, keep the updates manual until the signal returns, and flag this truck to the ELD owner for a check.",
         } },
         { key: "updaters_q02_c", pattern: "blame", text: {
-          uz: "Avval bu trakning ELD qurilmasiga kim masʼulligini va avvalgi uzilishlar haqidagi ogohlantirishlar kimga borganini aniqlayman — kamchilik qaysi boʻlimda ekanini bilish kerak.",
-          ru: "Сначала выясню, кто отвечает за ELD-устройство этого трака и кому уходили предупреждения о прошлых обрывах — надо понять, в каком отделе упущение.",
-          en: "First find out who is responsible for this truck’s ELD unit and who received the alerts about earlier gaps — we need to know which department dropped this.",
+          uz: "Bu trakning ELD qurilmasi kimda ekanini va oldingi uzilish ogohlantirishlarini kim olganini aniqlayman — uzilish qayerda boʻlsa, tuzatish ham oʻsha yerda.",
+          ru: "Выясню, за кем закреплено ELD-устройство этого трака и кто получал предыдущие оповещения о разрывах: где разрыв, там и исправление.",
+          en: "I would establish who owns this truck’s ELD unit and who received the earlier gap alerts — where the break is, that is where the fix belongs.",
         } },
         { key: "updaters_q02_d", pattern: "ownership", text: {
-          uz: "Hoziroq haydovchi bilan bogʻlanib, haqiqiy joylashuvi va holatini aniqlayman, soʻng tasdiqlangan maʼlumotni tizimga kiritaman — mijoz koʻrayotgan manzara yana toʻgʻri boʻlishi kerak.",
-          ru: "Прямо сейчас свяжусь с водителем, уточню реальную позицию и статус, затем внесу подтверждённые данные в систему — картина у клиента должна снова стать верной.",
-          en: "Reach the driver right now, confirm his actual position and status, then post the verified information in the system — the picture the customer sees needs to be accurate again.",
+          uz: "Haydovchiga hoziroq bogʻlanib, real joylashuvi va holatini tasdiqlayman va tekshirilgan maʼlumotni tizimga kiritaman — mijoz koʻrgan manzara toʻgʻri boʻlishi kerak.",
+          ru: "Прямо сейчас свяжусь с водителем, подтвержу его реальную позицию и статус и внесу проверенные данные в систему: картина, которую видит клиент, должна быть верной.",
+          en: "I would reach the driver right now, confirm his real position and status, and enter the verified data in the system — what the customer sees has to be right.",
         } },
         { key: "updaters_q02_e", pattern: "complaint", text: {
-          uz: "Bu ELD qurilmalari doim uzilib qolishini yana bir bor aytaman — texnika muammosi yillar davomida hal boʻlmaydi, oqibatini esa har safar bizning boʻlim koʻtaradi.",
-          ru: "В который раз скажу, что эти ELD-устройства постоянно отваливаются — проблема с техникой годами не решается, а последствия каждый раз ложатся на наш отдел.",
-          en: "Say once more that these ELD units keep dropping out — the equipment problem has gone unsolved for years, and every time our department carries the consequences.",
+          uz: "Qoʻlda yuritaman va uskuna masalasini yigʻilishga olib chiqaman: bu ELD qurilmalari doim uzilib qoladi, oqibatini esa bizning boʻlim koʻtaradi.",
+          ru: "Буду вести вручную и вынесу вопрос техники на совещание: эти ELD-устройства постоянно отваливаются, а последствия тянет наш отдел.",
+          en: "I would keep it manual and take the equipment question to the meeting: these units keep dropping out while our department carries the consequences.",
         } },
       ],
     },
@@ -98,29 +96,29 @@ module.exports = {
       },
       options: [
         { key: "updaters_q03_a", pattern: "victim", text: {
-          uz: "Qaysi maʼlumotni bersam ham, notoʻgʻri chiqsa javobi menga qolishi xayolimdan oʻtadi — tizim bilan haydovchi orasidagi tafovutlar uchun oxirida doim biz javob beramiz.",
-          ru: "Мелькнёт мысль: какие данные ни передай, если они окажутся неверными, отвечать мне — за расхождения между системой и водителями в итоге всегда отдуваемся мы.",
-          en: "It crosses my mind that whichever data I pass on, if it proves wrong the answer lands on me — in the end it is always us answering for gaps between the system and the drivers.",
+          uz: "Tizim va haydovchi maʼlumoti mos kelmasa ham, javob bizdan soʻraladi — qaysi maʼlumot qaysi manbadan kelganini yozib qoʻyaman.",
+          ru: "Даже когда данные системы и водителя не сходятся, ответ спрашивают у нас — зафиксирую, какие данные пришли из какого источника.",
+          en: "Even when the system and the driver disagree the answer is asked of us — I would record which data came from which source.",
         } },
         { key: "updaters_q03_b", pattern: "waiting", text: {
-          uz: "Manzara bir-biriga mos kelmaguncha brokerga qatʼiy javob bermay turaman — GPS yangilanishini kutaman: ziddiyatli maʼlumot uzatgandan koʻra biroz kechiktirgan maʼqul.",
-          ru: "Пока картина не сойдётся, не буду давать брокеру определённый ответ — дождусь обновления GPS: лучше небольшая задержка, чем переданное противоречие.",
-          en: "Hold off on a definite answer to the broker until the picture lines up — wait for the GPS to refresh: a short delay is better than passing on a contradiction.",
+          uz: "Manzara mos kelmaguncha brokerga aniq javob bermayman — GPS yangilanishini kutaman: qisqa kechikish qarama-qarshi maʼlumot yuborishdan yaxshi.",
+          ru: "Пока картина не сойдётся, точного ответа брокеру не дам — дождусь обновления GPS: короткая задержка лучше, чем противоречивые данные.",
+          en: "Until the picture lines up I would give the broker no definite answer — I would wait for the GPS to refresh: a short delay beats sending a contradiction.",
         } },
         { key: "updaters_q03_c", pattern: "ownership", text: {
-          uz: "Haydovchidan joyini tasdiqlashni soʻrayman — masalan, lokatsiya yoki kirish belgisini yuborsin — qaysi maʼlumot toʻgʻriligini aniqlab, brokerga tasdiqlangan statusni oʻzim yetkazaman.",
-          ru: "Попрошу водителя подтвердить местоположение — например, прислать геометку или отметку о заезде, — определю, какие данные верны, и сам передам брокеру подтверждённый статус.",
-          en: "Ask the driver to confirm where he is — say, by sending a location pin or his check-in — establish which data is right, and pass the confirmed status to the broker myself.",
+          uz: "Haydovchidan joylashuv pini yoki check-inini soʻrayman, qaysi maʼlumot toʻgʻri ekanini aniqlab, brokerga tasdiqlangan statusni oʻzim beraman.",
+          ru: "Попрошу у водителя пин локации или check-in, определю, какие данные верны, и сам передам брокеру подтверждённый статус.",
+          en: "I would ask the driver for a location pin or his check-in, establish which data is right, and pass the broker the confirmed status myself.",
         } },
         { key: "updaters_q03_d", pattern: "blame", text: {
-          uz: "Avval bu tafovut kimning xatosidan chiqqanini aniqlayman — trak tizimda notoʻgʻri biriktirilganmi yoki haydovchi boshqa yukni aytayaptimi; xatoga kim yoʻl qoʻygan boʻlsa, oʻsha toʻgʻrilasin.",
-          ru: "Сначала разберусь, чья ошибка дала расхождение — трак неверно прикреплён в системе или водитель говорит о другом грузе; кто допустил ошибку, тот пусть и исправляет.",
-          en: "First work out whose mistake created the mismatch — the truck is attached wrong in the system, or the driver is talking about another load; whoever made the error should fix it.",
+          uz: "Tafovut qayerdan chiqqanini aniqlayman — trak tizimda notoʻgʻri biriktirilganmi yoki haydovchi boshqa yuk haqida gapiryaptimi; tuzatish xato boʻlgan joyda boʻlishi kerak.",
+          ru: "Определю, откуда взялось расхождение: трак неверно привязан в системе или водитель говорит о другом грузе; исправлять надо там, где ошибка.",
+          en: "I would work out where the mismatch came from — the truck attached wrong in the system, or the driver talking about another load; the fix belongs at the error.",
         } },
         { key: "updaters_q03_e", pattern: "builder", text: {
-          uz: "Joyni haydovchi orqali tasdiqlab, brokerga aniq statusni beraman, soʻng tizimdagi biriktiruvni tekshirtirib xatoni tuzattiraman — keyingi smena ham shu tafovutga qoqilmasin.",
-          ru: "Подтвержу позицию через водителя и дам брокеру точный статус, затем добьюсь проверки привязки в системе и исправления ошибки — чтобы следующая смена не споткнулась о то же расхождение.",
-          en: "Confirm the position through the driver and give the broker an accurate status, then get the system assignment checked and corrected — so the next shift does not trip over the same mismatch.",
+          uz: "Joylashuvni haydovchi orqali tasdiqlab brokerga aniq status beraman, keyin tizimdagi biriktirishni tekshirtiraman — keyingi smena shu tafovutga urilmasligi kerak.",
+          ru: "Подтвержу позицию через водителя и дам брокеру точный статус, а затем добьюсь проверки привязки в системе: следующая смена не должна упереться в то же расхождение.",
+          en: "I would confirm the position through the driver and give the broker an accurate status, then get the system assignment checked so the next shift does not hit it.",
         } },
       ],
     },
@@ -133,29 +131,29 @@ module.exports = {
       },
       options: [
         { key: "updaters_q04_a", pattern: "builder", text: {
-          uz: "Mijozga holatni boricha aytib, trak yoʻlga chiqishi bilan aniq ETA berishga kelishaman, dispetcherdan yuklashning kutilayotgan tugash vaqtini surishtiraman va besh soatlik kutish haqida uni ogohlantiraman.",
-          ru: "Скажу клиенту как есть и договорюсь, что точное ETA дам сразу после выезда, уточню у диспетчера ожидаемое время окончания погрузки и предупрежу его о пятичасовом простое.",
-          en: "Tell the customer how things stand and agree to send a firm ETA right after departure, ask dispatch for the expected loading finish time, and flag the five-hour detention to them.",
+          uz: "Mijozga holatni aytib, yoʻlga chiqqach aniq ETA yuborishni kelishaman, dispetcherlikdan yuklash tugash vaqtini soʻrayman va besh soatlik kutishni ularga belgilayman.",
+          ru: "Скажу клиенту, как есть, и договорюсь прислать точное ETA после выезда, запрошу у диспетчерской ожидаемое время окончания погрузки и отмечу им пятичасовой простой.",
+          en: "I would tell the customer where things stand and agree to send a firm ETA after departure, ask dispatch for the expected finish, and flag the five-hour wait to them.",
         } },
         { key: "updaters_q04_b", pattern: "blame", text: {
-          uz: "Avval bu yuk mijozga qanday muddat bilan sotilganini koʻraman — unga boʻlmaydigan vaqt vaʼda qilingan boʻlsa, endi mijozga buni vaʼda bergan tomon tushuntirgani toʻgʻri boʻladi.",
-          ru: "Сначала посмотрю, с какими сроками этот груз продали клиенту — если ему пообещали нереальное время, объясняться по-хорошему должна та сторона, которая это обещала.",
-          en: "First look at what timeline this load was sold with — if the customer was promised an unrealistic window, the side that made that promise should really be the one explaining.",
+          uz: "Bu yuk qanday muddat bilan sotilganini koʻraman — mijozga real boʻlmagan oyna vaʼda qilingan boʻlsa, tushuntirish ham oʻsha tomondan kelishi toʻgʻri.",
+          ru: "Посмотрю, с каким сроком продавали этот груз: если клиенту обещали нереальное окно, объяснять правильнее той стороне.",
+          en: "I would look at what timeline this load was sold on — if the customer was promised an unrealistic window, the explanation rightly comes from that side.",
         } },
         { key: "updaters_q04_c", pattern: "victim", text: {
-          uz: "Mendan oʻzimga umuman bogʻliq boʻlmagan raqam talab qilinayotgani alam qiladi — yuklashni men boshqarmayman, lekin kechikish uchun gapni baribir men eshitaman.",
-          ru: "Обидно, что с меня требуют цифру, которая от меня никак не зависит — погрузкой управляю не я, но выслушивать за задержку буду именно я.",
-          en: "It stings that I am being asked for a number that does not depend on me at all — I do not control the loading, yet I am the one who will hear about the delay.",
+          uz: "Mendan menga bogʻliq boʻlmagan raqam soʻralmoqda — yuklashni men boshqarmayman, shuning uchun kutish vaqtini oʻzim qayd etib boraman.",
+          ru: "С меня спрашивают цифру, которая от меня не зависит — погрузкой управляю не я, поэтому сам буду фиксировать время простоя.",
+          en: "I am asked for a number that does not depend on me — I do not run the loading, so I would log the waiting time myself.",
         } },
         { key: "updaters_q04_d", pattern: "complaint", text: {
-          uz: "Mijozga bu yuklash joyi doim sekin ishlashini, bunday kutishlar bizda tez-tez boʻlib turishini aytaman — afsuski, bu bizga bogʻliq boʻlmagan eski muammo.",
-          ru: "Скажу клиенту, что этот грузоотправитель всегда работает медленно и такие ожидания случаются часто — увы, это давняя проблема, которая от нас не зависит.",
-          en: "Let the customer know this shipper always works slowly and waits like this happen often — sadly, an old problem that is out of our hands.",
+          uz: "Mijozga holatni aytaman, ammo asosiy gap boshqada: bu shipper doim sekin ishlaydi va bunday kutishlar tez-tez boʻladi.",
+          ru: "Клиенту скажу, как есть, но суть в другом: этот шиппер всегда работает медленно, и такие простои случаются часто.",
+          en: "I would tell the customer where things stand, but the real point is elsewhere: this shipper is always slow and waits like this are frequent.",
         } },
         { key: "updaters_q04_e", pattern: "ownership", text: {
-          uz: "Mijozga hozirgi holatni ochiq aytaman — yuklash tugamagan, aniq vaqt hali yoʻq — va trak yoʻlga chiqishi bilan birinchi boʻlib unga oʻzim xabar berishga soʻz beraman.",
-          ru: "Открыто скажу клиенту текущее положение — погрузка не завершена, точного времени пока нет — и дам слово, что сообщу ему первым, как только трак выедет.",
-          en: "Openly tell the customer where things stand — loading is not finished and there is no exact time yet — and give my word to notify him first as soon as the truck rolls.",
+          uz: "Mijozga borligicha aytaman — yuklash tugamagan va hozir aniq vaqt yoʻq — va trak yoʻlga chiqishi bilan birinchi navbatda unga xabar berishimni aytaman.",
+          ru: "Скажу клиенту как есть — погрузка не окончена и точного времени пока нет — и пообещаю сообщить ему первым, как только трак выедет.",
+          en: "I would tell the customer exactly where it stands — loading unfinished, no exact time yet — and give my word to notify him first the moment the truck rolls.",
         } },
       ],
     },
@@ -168,29 +166,29 @@ module.exports = {
       },
       options: [
         { key: "updaters_q05_a", pattern: "complaint", text: {
-          uz: "Jamoada kechki smenaga tushadigan yuk hajmi bilan qaysidir update tushib qolishi tabiiy ekanini aytaman — ish shunday tashkil etilgan ekan, hammasiga ulgurishning iloji yoʻq.",
-          ru: "Замечу в команде, что при объёме грузов вечерней смены какое-то обновление неизбежно выпадает — при такой организации работы успеть всё просто невозможно.",
-          en: "Point out to the team that with the evening shift’s load volume, some update inevitably slips — with the work organized like this, keeping up with everything is simply impossible.",
+          uz: "Tasdiqni yuboraman, lekin jamoada aytaman: kechki smenadagi yuk hajmida bitta update oʻtkazib yuborilishi muqarrar — ish tartibi koʻrilmasa, bu qaytadi.",
+          ru: "Подтверждение отправлю, но в команде скажу: при объёме вечерней смены пропуск одного апдейта неизбежен — пока не пересмотрят порядок работы, это повторится.",
+          en: "I would send the confirmation, but say in the team that at the evening shift’s volume a missed update is inevitable — unrevised, the routine guarantees a repeat.",
         } },
         { key: "updaters_q05_b", pattern: "ownership", text: {
-          uz: "Hoziroq brokerga tasdiqlangan yetkazib berish vaqti va hujjatni yuboraman, kechikish uchun uzr soʻrayman va bugun savollariga oʻzim javob berishimni yozaman.",
-          ru: "Прямо сейчас отправлю брокеру подтверждённое время доставки и документ, извинюсь за задержку и напишу, что сегодня на его вопросы отвечаю лично я.",
-          en: "Send the broker the confirmed delivery time and the paperwork right now, apologize for the delay, and write that I am personally handling his questions today.",
+          uz: "Brokerga tasdiqlangan yetkazish vaqtini va hujjatlarni hoziroq yuboraman, kechikish uchun uzr soʻrayman va bugun uning savollari bilan oʻzim shugʻullanishimni yozaman.",
+          ru: "Прямо сейчас отправлю брокеру подтверждённое время доставки и документы, извинюсь за задержку и напишу, что сегодня его вопросами занимаюсь лично я.",
+          en: "I would send the broker the confirmed delivery time and the paperwork right now, apologize for the delay, and write that I am handling his questions personally today.",
         } },
         { key: "updaters_q05_c", pattern: "victim", text: {
-          uz: "Kechagi smenada oʻtkazib yuborilgan xato uchun bugun mening kunim buzilayotganidan ranjiyman — xatni birinchi boʻlib ochganim uchun barcha savollar endi menga qaraydi.",
-          ru: "Станет обидно, что из-за промаха вчерашней смены испорчен мой день — раз письмо первым открыл я, все вопросы теперь смотрят в мою сторону.",
-          en: "Feel hurt that yesterday’s shift’s miss is wrecking my day — since I was the one who opened the email first, all the questions now look my way.",
+          uz: "Bu update kechki smenada oʻtkazib yuborilgan — xatni ertalab birinchi men ochdim, shuning uchun kim nima qilgani aniq boʻlishi kerak.",
+          ru: "Этот апдейт пропустили в вечернюю смену — письмо утром я лишь открыл первым, и должно быть ясно, кто что сделал.",
+          en: "This update was missed on the evening shift — I only opened the email first, and who did what should be clear.",
         } },
         { key: "updaters_q05_d", pattern: "builder", text: {
-          uz: "Brokerga tasdiqni yuborib uzr soʻrayman, soʻng smena yopilishida yuborilmagan updatelarni tekshiradigan qisqa roʻyxat joriy qilishni taklif qilaman — bunday xato ertalabgacha yashamasin.",
-          ru: "Отправлю брокеру подтверждение и извинюсь, а затем предложу ввести короткую проверку неотправленных обновлений при закрытии смены — чтобы такая ошибка не доживала до утра.",
-          en: "Send the broker the confirmation with an apology, then propose a short end-of-shift check of unsent updates — so a miss like this never survives until morning.",
+          uz: "Brokerga uzr bilan tasdiq yuboraman, keyin smena oxirida yuborilmagan updatelarni tekshirishni qisqa qadam qilib kiritaman — bunday xato ertalabgacha yetmasligi kerak.",
+          ru: "Отправлю брокеру подтверждение с извинением, а затем введу проверку неотправленных апдейтов в конце смены: такая ошибка не должна доживать до утра.",
+          en: "I would send the broker the confirmation with an apology, then add a short end-of-shift check for unsent updates — a miss like this should not survive to morning.",
         } },
         { key: "updaters_q05_e", pattern: "waiting", text: {
-          uz: "Xatda rahbariyat ham nusxada turibdi — javob yozishdan oldin rahbar qanday pozitsiya tanlashini kutaman: brokerga ikki xil javob ketib qolmasligi kerak.",
-          ru: "В копии письма стоит руководство — прежде чем отвечать, дождусь, какую позицию выберет руководитель: брокеру не должны уйти два разных ответа.",
-          en: "Management is on the copy line — before replying, I will wait to see what position the manager takes: the broker must not receive two different answers.",
+          uz: "Rahbariyat nusxada — javob berishdan oldin rahbar qanday pozitsiya olishini bilib olaman: broker bir masalada ikki xil javob olmasligi kerak.",
+          ru: "Руководство в копии — прежде чем отвечать, узнаю позицию руководителя: брокер не должен получить по одному вопросу два разных ответа.",
+          en: "Management is on copy — before replying I would learn my lead’s position: the broker must not receive two different answers on one question.",
         } },
       ],
     },
@@ -203,29 +201,29 @@ module.exports = {
       },
       options: [
         { key: "updaters_q06_a", pattern: "blame", text: {
-          uz: "Avval yozuvlarni kim shu holatda qoldirganini aniqlab, rahbarga bildiraman — har kim oʻz smenasini qanday topshirganiga oʻzi javob berishi kerak.",
-          ru: "Сначала установлю, кто оставил записи в таком виде, и сообщу руководителю — каждый должен сам отвечать за то, как передал свою смену.",
-          en: "First establish who left the notes in this state and let the manager know — everyone should answer for how they handed over their own shift.",
+          uz: "Izohlarni shu holatda kim qoldirganini aniqlab, rahbarga bildiraman — smena qanday topshirilgani belgilanmasa, keyingi smena ham shunday oʻtadi.",
+          ru: "Выясню, кто оставил заметки в таком виде, и сообщу руководителю: если не обозначить, как передали смену, следующая пройдёт так же.",
+          en: "I would establish who left the notes in this state and let my lead know — unless how the shift was handed over is marked, the next one goes the same way.",
         } },
         { key: "updaters_q06_b", pattern: "waiting", text: {
-          uz: "Oldingi smenadagi hamkasb bir necha soatdan keyin aloqaga chiqadi — chala maʼlumot bilan aralashgandan koʻra, undan hammasini aniqlab olgunimcha oʻsha yuklarga tegmay turaman.",
-          ru: "Коллега с прошлой смены выйдет на связь через несколько часов — чем действовать с неполными данными, лучше не трогать эти грузы, пока всё у него не уточню.",
-          en: "The coworker from the last shift will be reachable in a few hours — rather than act on partial data, I will leave those loads alone until I can clarify everything with him.",
+          uz: "Oldingi smenadagi hamkasb bir necha soatdan keyin bogʻlanadi — chala maʼlumot bilan harakat qilgandan koʻra, u bilan aniqlashtirib keyin davom etaman.",
+          ru: "Коллега с прошлой смены выйдет на связь через несколько часов — вместо действий по неполным данным уточню у него и продолжу после этого.",
+          en: "The coworker from the last shift is reachable in a few hours — rather than act on partial data I would clarify with him and continue after that.",
         } },
         { key: "updaters_q06_c", pattern: "builder", text: {
-          uz: "Tizim va yozishmalar orqali holatlarni oʻzim tiklab, noaniq yuklarni birma-bir tekshiraman, soʻng har bir yuk uchun majburiy bandlari bor topshiruv shablonini joriy qilishni taklif qilaman.",
-          ru: "Сам восстановлю статусы по системе и переписке, проверю неясные грузы по одному, а затем предложу ввести шаблон передачи смены с обязательными пунктами по каждому грузу.",
-          en: "Rebuild the statuses myself from the system and the message history, verify the unclear loads one by one, then propose a handoff template with mandatory fields for every load.",
+          uz: "Statuslarni tizim va xabarlar tarixidan oʻzim tiklayman, noaniq yuklarni bittalab tekshiraman, keyin har yuk uchun majburiy maydonlari bor topshiruv shablonini kiritaman.",
+          ru: "Сам восстановлю статусы по системе и истории сообщений, проверю неясные грузы по одному, а затем введу шаблон передачи с обязательными полями.",
+          en: "I would rebuild the statuses from the system and message history, check the unclear loads one by one, then introduce a handoff template with required fields.",
         } },
         { key: "updaters_q06_d", pattern: "ownership", text: {
-          uz: "Noaniq yuklardan boshlayman: tizim tarixini koʻrib chiqaman, kerak boʻlsa haydovchilarga qoʻngʻiroq qilaman va har bir yukning hozirgi holatini oʻzim aniqlab olaman.",
-          ru: "Начну с неясных грузов: просмотрю историю в системе, где нужно — позвоню водителям, и сам выясню текущее состояние каждого груза.",
-          en: "Start with the unclear loads: go through the system history, call the drivers where needed, and establish the current state of every load myself.",
+          uz: "Noaniq yuklardan boshlayman: tizim tarixini koʻraman, kerak boʻlsa haydovchilarga qoʻngʻiroq qilaman va har yukning hozirgi holatini oʻzim aniqlayman.",
+          ru: "Начну с неясных грузов: посмотрю историю в системе, при необходимости позвоню водителям и сам установлю текущее состояние каждого груза.",
+          en: "I would start with the unclear loads: go through the system history, call the drivers where needed, and establish the current state of each load myself.",
         } },
         { key: "updaters_q06_e", pattern: "complaint", text: {
-          uz: "Topshiruv yozuvlari necha oydan beri yuzaki yuritilayotganini yana bir bor koʻtaraman — chala yozuvlar bilan smena qabul qilish har safar lotereyaga oʻxshab qolyapti.",
-          ru: "Ещё раз подниму вопрос, что записи передачи месяцами ведутся поверхностно — принимать смену с половинными записями каждый раз как лотерея.",
-          en: "Raise once again that the handoff notes have been kept superficial for months — taking over a shift on half-filled notes is a lottery every single time.",
+          uz: "Statuslarni oʻzim tiklayman, keyin topshiruv talabini rahbarlar oldiga qoʻyaman: izohlar necha oydan beri yuzaki yuritiladi.",
+          ru: "Статусы восстановлю сам, а затем поставлю перед руководителями требование к передаче: заметки месяцами ведутся поверхностно.",
+          en: "I would rebuild the statuses myself, then put the handoff requirement to the leads: the notes have been kept shallow for months.",
         } },
       ],
     },
@@ -238,29 +236,29 @@ module.exports = {
       },
       options: [
         { key: "updaters_q07_a", pattern: "victim", text: {
-          uz: "Biror gap boʻlgan boʻlsa, birinchi savol «updater qayoqqa qaragan» boʻlishini oʻylayman — bir vaqtning oʻzida oʻnlab trakni kuzatayotganimizni esa hech kim hisobga olmaydi.",
-          ru: "Подумаю: если что-то случилось, первым вопросом будет «куда смотрел апдейтер» — а то, что мы следим за десятками траков одновременно, никто не учтёт.",
-          en: "Think that if something has happened, the first question will be “where was the updater looking” — while no one will account for us watching dozens of trucks at once.",
+          uz: "Dispetcherga xabar beraman va rahbarga aytib qoʻyaman: bir vaqtda oʻnlab trakni kuzatamiz — biror narsa boʻlsa, birinchi savol updaterga qaralmasligi kerak.",
+          ru: "Сообщу диспетчеру и скажу руководителю: мы следим за десятками траков одновременно — если что-то случится, первый вопрос не должен быть к апдейтеру.",
+          en: "I would notify the dispatcher and tell my lead we watch dozens of trucks at once — if something has happened, the first question should not be the updater’s.",
         } },
         { key: "updaters_q07_b", pattern: "ownership", text: {
-          uz: "Vaziyatni shu zahoti dispetcherga yetkazaman: aniq joylashuvni, qancha vaqtdan beri turganini va haydovchi aloqaga chiqmayotganini aytaman — bunday holat ustida oʻtirib boʻlmaydi.",
-          ru: "Немедленно передам ситуацию диспетчеру: точную позицию, сколько времени стоит трак и что водитель не выходит на связь — с таким сидеть нельзя.",
-          en: "Escalate to the dispatcher this minute: the exact position, how long the truck has been sitting, and that the driver is unreachable — this is not something to sit on.",
+          uz: "Dispetcherga shu daqiqada chiqaraman: aniq joylashuv, trak qancha vaqt turgani va haydovchi bilan aloqa yoʻqligi — bu ushlab turiladigan narsa emas.",
+          ru: "Прямо сейчас выведу диспетчеру: точная позиция, сколько трак стоит и что связи с водителем нет — это не то, с чем можно сидеть.",
+          en: "I would escalate to the dispatcher this minute: the exact position, how long it has stood, and that the driver is unreachable — this is not something to sit on.",
         } },
         { key: "updaters_q07_c", pattern: "complaint", text: {
-          uz: "Haydovchilar dam olishda telefonini oʻchirib qoʻyishi odatga aylanganini aytaman — har safargi bunday jimlik bizga qancha asabga tushishini faqat oʻzimiz bilamiz.",
-          ru: "Замечу, что у водителей вошло в привычку выключать телефон на отдыхе — сколько нервов нам стоит каждая такая тишина, знаем только мы.",
-          en: "Say that drivers have made a habit of switching their phones off on breaks — only we know how many nerves each of these silences costs us.",
+          uz: "Dispetcherga xabar beraman, lekin jamoada aytaman: haydovchilar dam olishda telefonni oʻchirishga oʻrgangan — aloqa talabi kuchaytirilmasa, bunday sukunatlar davom etadi.",
+          ru: "Сообщу диспетчеру, но в команде скажу: водители привыкли выключать телефон на отдыхе — пока не усилят требование по связи, такие молчания продолжатся.",
+          en: "I would notify the dispatcher, but say in the team drivers have got used to switching phones off on breaks — untightened, these silences continue.",
         } },
         { key: "updaters_q07_d", pattern: "builder", text: {
-          uz: "Dispetcherga faktlarni darhol yetkazib, zaxira raqamlar orqali urinishni davom ettiraman; masala hal boʻlgach, «aloqa yoʻq va uzoq toʻxtash» holatlari uchun aniq eskalatsiya tartibini taklif qilaman.",
-          ru: "Сразу передам факты диспетчеру и продолжу пробовать запасные контакты; когда ситуация разрешится, предложу закрепить чёткий порядок эскалации для случаев «нет связи и долгая стоянка».",
-          en: "Pass the facts to the dispatcher at once and keep trying backup contacts; once it is resolved, propose a defined escalation rule for “no contact plus a long stop” cases.",
+          uz: "Faktlarni dispetcherga darhol yetkazaman va zaxira kontaktlarga urinaman; masala yopilgach, «aloqa yoʻq va uzoq toʻxtash» holatlari uchun eskalatsiya qoidasini kelishaman.",
+          ru: "Немедленно передам факты диспетчеру и попробую резервные контакты, а после согласую правило эскалации для таких случаев.",
+          en: "I would pass the facts to the dispatcher at once and try the backup contacts, then agree an escalation rule for “no contact plus a long stop”.",
         } },
         { key: "updaters_q07_e", pattern: "blame", text: {
-          uz: "Avval dispetcher bundan xabardor-xabardor emasligini tekshiraman — u haydovchi bilan gaplashib bizga aytmagan boʻlsa, xavotirning sababi ham, javobgarligi ham oʻsha tomonda.",
-          ru: "Сначала проверю, знает ли об этом диспетчер — если он говорил с водителем и не сообщил нам, то и причина тревоги, и ответственность за неё на той стороне.",
-          en: "First check whether the dispatcher already knows — if he spoke with the driver and did not tell us, both the cause of the alarm and the answerability for it sit on that side.",
+          uz: "Dispetcher allaqachon bilishi mumkin — avval shuni tekshiraman: haydovchi bilan gaplashib bizga aytmagan boʻlsa, uzilish ham, javob ham oʻsha tomonda.",
+          ru: "Диспетчер может уже знать — сначала проверю это: если он говорил с водителем и нам не сказал, и разрыв, и ответ на той стороне.",
+          en: "The dispatcher may already know — I would check that first: if he spoke with the driver and did not tell us, both the break and the answer sit on that side.",
         } },
       ],
     },
@@ -273,64 +271,64 @@ module.exports = {
       },
       options: [
         { key: "updaters_q08_a", pattern: "ownership", text: {
-          uz: "Hoziroq dispetcherdan yangi vaqtni tasdiqlab olaman va brokerga tuzatilgan updateni oʻzim yuboraman — mijozdagi maʼlumot bugunoq toʻgʻri holatga kelishi kerak.",
-          ru: "Сразу уточню у диспетчера новое время и сам отправлю брокеру исправленное обновление — данные у клиента должны стать верными уже сегодня.",
-          en: "Confirm the new time with the dispatcher right away and send the broker a corrected update myself — the customer’s information needs to be right again today.",
+          uz: "Yangi vaqtni dispetcher bilan hoziroq tasdiqlab, brokerga tuzatilgan updateni oʻzim yuboraman — mijozning maʼlumoti bugun toʻgʻri boʻlishi kerak.",
+          ru: "Прямо сейчас подтвержу новое время у диспетчера и сам отправлю брокеру исправленное обновление: информация у клиента должна стать верной сегодня.",
+          en: "I would confirm the new time with the dispatcher right now and send the broker a corrected update myself — the customer’s information has to be right today.",
         } },
         { key: "updaters_q08_b", pattern: "blame", text: {
-          uz: "Rahbarga vaqtni dispetcher oʻzgartirgani-yu bizga bildirilmaganini yozaman — notoʻgʻri update kimning kamchiligi tufayli ketgani aniq qayd etilishi kerak.",
-          ru: "Напишу руководителю, что время изменил диспетчер и нас не уведомили — должно быть чётко зафиксировано, из-за чьего упущения ушло неверное обновление.",
-          en: "Write to the manager that dispatch changed the time without notifying us — it should be recorded clearly whose omission caused the wrong update to go out.",
+          uz: "Dispetcherlik vaqtni bizga aytmasdan oʻzgartirganini rahbarga yozaman — notoʻgʻri update qaysi uzilishdan chiqqani aniq qayd etilishi kerak.",
+          ru: "Напишу руководителю, что диспетчерская изменила время, не сказав нам: должно быть чётко зафиксировано, из какого разрыва вышел неверный апдейт.",
+          en: "I would write to my lead that dispatch changed the time without telling us — it should be clearly on record which break produced the wrong update.",
         } },
         { key: "updaters_q08_c", pattern: "waiting", text: {
-          uz: "Tuzatishga shoshilmayman: dispetcher boʻshagach yangi vaqtni oʻzi tasdiqlasin — broker orqali kelgan gap biz uchun rasmiy manba emas, yana bir xato yuborib qoʻyishni istamayman.",
-          ru: "Не буду спешить с исправлением: пусть диспетчер, когда освободится, сам подтвердит время — слова через брокера для нас не официальный источник, не хочу отправить ещё одну ошибку.",
-          en: "Not rush the correction: let the dispatcher confirm the time himself once he frees up — word passed through the broker is not an official source for us, and I would rather not send another error.",
+          uz: "Tuzatishni shoshmayman: dispetcher boʻshagach vaqtni oʻzi tasdiqlasin — broker orqali kelgan gap bizga rasmiy manba emas, yana xato yubormaslik kerak.",
+          ru: "С исправлением не спешу: пусть диспетчер сам подтвердит время, когда освободится — слова через брокера для нас не официальный источник, второй ошибки быть не должно.",
+          en: "I would not rush the correction: let the dispatcher confirm the time himself when free — word via the broker is not an official source, and a second error is worse.",
         } },
         { key: "updaters_q08_d", pattern: "victim", text: {
-          uz: "Bizni aniqlik uchun baholashadi-yu, maʼlumot esa orqamizdan oʻzgaraveradi — xatoni broker aytib berganda esa izza boʻlib qoladigan yana biz boʻlamiz.",
-          ru: "Неприятно: нас оценивают за точность, а данные меняют у нас за спиной — и когда об ошибке сообщает брокер, краснеть приходится нам.",
-          en: "It feels unfair: we are judged on accuracy while the inputs change behind our backs — and when it is the broker who reports the error, we are the ones left red-faced.",
+          uz: "Rahbarga aniq aytaman: bizdan aniqlik talab qilinadi, kirish maʼlumoti esa bizdan orqada oʻzgaradi — xatoni broker aytgani mening ishim deb koʻrilmasligi kerak.",
+          ru: "Прямо скажу руководителю: точности требуют от нас, а входные данные меняются за нашей спиной — то, что об ошибке сказал брокер, не стоит считать моей работой.",
+          en: "I would tell my lead plainly accuracy is demanded of us while the inputs change behind our backs — the broker catching it is not a measure of my work.",
         } },
         { key: "updaters_q08_e", pattern: "builder", text: {
-          uz: "Yangi vaqtni tasdiqlab, brokerga tuzatilgan update yuboraman, soʻng dispetcher bilan kelishib olaman: har bir vaqt oʻzgarishi shu zahoti updatelar kanaliga yozib boriladi.",
-          ru: "Подтвержу новое время и отправлю брокеру исправленное обновление, а затем договорюсь с диспетчером: каждый перенос сразу пишется в канал обновлений.",
-          en: "Confirm the new time and send the broker a corrected update, then agree with the dispatcher that every appointment change is posted to the updates channel immediately.",
+          uz: "Yangi vaqtni tasdiqlab brokerga tuzatilgan update yuboraman, keyin dispetcher bilan har apoyntment oʻzgarishi update kanaliga darhol yozilishini kelishaman.",
+          ru: "Подтвержу новое время и отправлю брокеру исправленное обновление, а затем договорюсь с диспетчером сразу писать любое изменение аппоинтмента в канал апдейтов.",
+          en: "I would confirm the new time and send the broker a corrected update, then agree with the dispatcher that every appointment change is posted to the updates channel.",
         } },
       ],
     },
     {
       key: "updaters_q09",
       text: {
-        uz: "Haydovchi yuklanib yoʻlga chiqqanini aytdi, lekin plomba raqami bilan palletlar sonini yubormagan. Brokerning tizimi bu maʼlumotlarni yuklashdan keyin bir soat ichida talab qiladi. Haydovchi hozir harakatda. Birinchi navbatda nima qilasiz?",
+        uz: "Haydovchi yuklanib yoʻlga chiqqanini aytdi, lekin plomba raqami bilan palletlar sonini yubormadi. Brokerning tizimi bu maʼlumotlarni yuklashdan keyin bir soat ichida talab qiladi. Haydovchi hozir harakatda. Birinchi navbatda nima qilasiz?",
         ru: "Водитель сообщил, что загрузился и выехал, но не прислал номер пломбы и количество паллет. Система брокера требует эти данные в течение часа после погрузки. Водитель сейчас в движении. Что вы сделаете в первую очередь?",
         en: "The driver reported he is loaded and rolling, but did not send the seal number or the pallet count. The broker’s system requires this data within an hour of loading. The driver is on the move now. What would you do first?",
       },
       options: [
         { key: "updaters_q09_a", pattern: "builder", text: {
-          uz: "Maʼlumotni BOL rasmidan olib kiritaman, topilmasa haydovchidan xavfsiz toʻxtaganda yuborishini soʻrayman, keyin esa plomba va pallet sonini yuklash qoʻngʻirogʻining doimiy bandiga aylantiraman.",
-          ru: "Возьму данные с фото BOL, а если их там нет — попрошу водителя прислать на безопасной остановке; затем сделаю пломбу и число паллет постоянным пунктом звонка о погрузке.",
-          en: "Pull the data from the BOL photo, or ask the driver to send it at a safe stop, then make the seal and pallet count a permanent item of the loaded call.",
+          uz: "Maʼlumotni BOL suratidan olaman yoki haydovchidan xavfsiz toʻxtashda soʻrayman, keyin plomba va pallet sonini «yuklandi» qoʻngʻirogʻining doimiy bandi qilaman.",
+          ru: "Возьму данные с фото BOL или попрошу у водителя на безопасной остановке, а затем сделаю пломбу и число паллет постоянным пунктом звонка «загрузился».",
+          en: "I would take the data from the BOL photo or ask the driver at a safe stop, then make the seal and pallet count a permanent item of the “loaded” call.",
         } },
         { key: "updaters_q09_b", pattern: "complaint", text: {
-          uz: "Haydovchilar «yuklandim» deb ikki ogʻiz yozadi-da, vazifa bajarildi deb hisoblaydi — har bir raqamni undirish har safar alohida kurashga aylanishini aytaman.",
-          ru: "Поделюсь с коллегами: водители пишут «загрузился» в два слова и считают дело сделанным — выбивание каждой цифры всякий раз превращается в отдельную борьбу.",
-          en: "Say that drivers write “loaded” in two words and consider the job done — prying every number out of them turns into its own battle every single time.",
+          uz: "Maʼlumotni olaman, lekin rahbarga aytaman: haydovchilar «yuklandim» deb yozib, ishni tugagan deb hisoblaydi — talab aniq belgilanmasa, har safar shunday boʻladi.",
+          ru: "Данные получу, но скажу руководителю: водители пишут «загрузился» и считают дело сделанным — пока требование не прописано ясно, так будет каждый раз.",
+          en: "I would get the data, but tell my lead drivers write “loaded” and consider the job done — until the requirement is stated clearly, this happens every time.",
         } },
         { key: "updaters_q09_c", pattern: "victim", text: {
-          uz: "Muddat oʻtib ketsa, gap haydovchiga emas, bizga tegishi koʻnglimni xira qiladi — maʼlumotni yubormagan u-yu, hisob beradigan biz boʻlamiz.",
-          ru: "Досадно, что если срок будет сорван, спросят не с водителя, а с нас — данные не прислал он, а отчитываться придётся нам.",
-          en: "It is galling that if the deadline slips, the questions will come to us, not the driver — he is the one who did not send the data, yet we will be the ones reporting on it.",
+          uz: "Plomba raqamini haydovchi yubormadi, muddat buzilsa esa savol bizga keladi — soʻrov qachon ketganini hoziroq yozib qoʻyaman.",
+          ru: "Номер пломбы не прислал водитель, а при нарушении срока вопрос придёт к нам — прямо сейчас зафиксирую, когда ушёл запрос.",
+          en: "The driver did not send the seal number yet a missed deadline brings the question to us — I would record right now when the request went out.",
         } },
         { key: "updaters_q09_d", pattern: "waiting", text: {
-          uz: "Haydovchi baribir yaqin orada yonilgʻi yoki tanaffus uchun toʻxtaydi — harakatdagi odamni chalgʻitmay, maʼlumotni oʻshanda yuborishini kutaman.",
-          ru: "Водитель всё равно скоро остановится на заправку или перерыв — не буду отвлекать человека за рулём и дождусь данных тогда.",
-          en: "The driver will stop for fuel or a break soon anyway — rather than distract a man behind the wheel, I will wait for the data to arrive then.",
+          uz: "Haydovchi baribir tez orada yoqilgʻi yoki dam olish uchun toʻxtaydi — rulda odamni chalgʻitmasdan, maʼlumot oʻsha toʻxtashda kelishini kutaman.",
+          ru: "Водитель всё равно скоро остановится на заправку или отдых — не отвлекая человека за рулём, возьму данные именно на этой остановке.",
+          en: "The driver will stop for fuel or rest soon anyway — rather than distract a man at the wheel, I would let the numbers come at that stop instead.",
         } },
         { key: "updaters_q09_e", pattern: "ownership", text: {
-          uz: "Avval haydovchi yuborgan hujjat rasmlarini koʻraman — kerakli raqamlar odatda BOLda turadi; topilmasa, haydovchidan xavfsiz toʻxtashda yuborishini soʻrab, muddat ichida oʻzim kiritaman.",
-          ru: "Сначала проверю фото документов от водителя — нужные цифры обычно есть в BOL; если их нет, попрошу прислать на безопасной остановке и сам внесу всё в срок.",
-          en: "First check the document photos the driver sent — the numbers are usually on the BOL; if not, ask him to send them at a safe stop and enter everything within the deadline myself.",
+          uz: "Avval haydovchi yuborgan hujjat suratlarini tekshiraman — raqamlar koʻpincha BOLda; boʻlmasa, xavfsiz toʻxtashda soʻrab, hammasini muddat ichida oʻzim kiritaman.",
+          ru: "Сначала проверю присланные водителем фото документов — цифры обычно в BOL; если нет, попрошу на безопасной остановке и сам внесу всё в срок.",
+          en: "I would first check the document photos the driver sent — the numbers are usually on the BOL; if not, I would ask at a safe stop and enter it all in time.",
         } },
       ],
     },
@@ -343,29 +341,29 @@ module.exports = {
       },
       options: [
         { key: "updaters_q10_a", pattern: "complaint", text: {
-          uz: "Yigʻilishda bir kishiga tushayotgan yuk soni bilan hozirgi jadvalda kechikishlar tabiiy ekanini aytaman — hajm oshgani haqida necha marta gapirganmiz.",
-          ru: "Скажу на планёрке, что при таком количестве грузов на человека задержки при нынешнем графике естественны — про выросший объём говорили уже не раз.",
-          en: "Say at the meeting that with this many loads per person, delays are natural under the current schedule — the grown volume has been raised more than once.",
+          uz: "Yigʻilishda aytaman: bir odamga tushayotgan yuk soni bilan hozirgi tartibda kechikish tabiiy — oʻsgan hajm bir necha marta aytilgan, qaror esa yuqorida.",
+          ru: "Скажу на совещании: при таком числе грузов на человека и текущем порядке опоздания естественны — о выросшем объёме говорили не раз, а решение выше.",
+          en: "I would say at the meeting that with this load count per person and the current routine, late updates are natural — the growth has been raised, the call is above me.",
         } },
         { key: "updaters_q10_b", pattern: "builder", text: {
-          uz: "Ertalabki ishni qayta quraman: statuslarni bir kun oldin kechqurun tayyorlab qoʻyaman, soʻng jamoaga ertalabki updatelarni muhimlik boʻyicha ikki toʻlqinga boʻlishni taklif qilaman.",
-          ru: "Перестрою утро: буду готовить статусы с вечера, а затем предложу команде разбить утренние обновления на две волны по приоритету.",
-          en: "Restructure the morning: prepare the statuses the evening before, then propose to the team splitting the morning updates into two waves by priority.",
+          uz: "Ertalabni qayta tuzaman: statuslarni kechqurundan tayyorlayman, keyin ertalabki updatelarni ustuvorlik boʻyicha ikki toʻlqinga boʻlishni taklif qilaman.",
+          ru: "Перестрою утро: статусы подготовлю с вечера, а затем предложу команде разделить утренние апдейты на две волны по приоритету.",
+          en: "I would rebuild the morning: prepare the statuses the evening before, then propose splitting the morning updates into two priority waves.",
         } },
         { key: "updaters_q10_c", pattern: "ownership", text: {
-          uz: "Bugunoq oʻz ertalabki tartibimni koʻrib chiqaman: birinchi soatni nima yeb qoʻyayotganini aniqlayman va asosiy mijozlarning updatelarini eng boshiga qoʻyaman.",
-          ru: "Сегодня же разберу своё утро: пойму, что съедает первый час, и поставлю обновления ключевых клиентов в самое начало.",
-          en: "Go through my own morning today: figure out what eats up the first hour and move the key customers’ updates to the very start.",
+          uz: "Bugun oʻz ertalabimni koʻrib chiqaman: birinchi soatni nima yeyayotganini aniqlayman va asosiy mijozlar updateini eng boshiga koʻchiraman.",
+          ru: "Сегодня разберу собственное утро: выясню, что съедает первый час, и передвину апдейты ключевых клиентов в самое начало.",
+          en: "I would go through my own morning today: work out what eats the first hour and move the key customers’ updates to the very start.",
         } },
         { key: "updaters_q10_d", pattern: "blame", text: {
-          uz: "Avval kechikkan updatelar aynan kimning yuklariga toʻgʻri kelganini koʻraman — sabab boshqa boʻlim maʼlumotni kech berishida boʻlsa, savolni oʻsha yerga qoʻyish kerak.",
-          ru: "Сначала посмотрю, по чьим именно грузам были опоздания — если причина в том, что другой отдел поздно даёт данные, вопрос нужно ставить там.",
-          en: "First look at exactly whose loads the late updates involved — if the cause is another department handing data over late, that is where the question should be put.",
+          uz: "Kechikkan updatelar aynan kimning yuklarida boʻlganini koʻraman — sabab maʼlumotni boshqa boʻlim kech berishi boʻlsa, savol ham oʻsha yerga qoʻyilishi kerak.",
+          ru: "Посмотрю, по чьим именно грузам апдейты опаздывали: если причина в том, что данные поздно даёт другой отдел, вопрос надо ставить там.",
+          en: "I would look at whose loads the late updates involved — if the cause is another department handing data over late, the question belongs there.",
         } },
         { key: "updaters_q10_e", pattern: "waiting", text: {
-          uz: "Hajm oshganini rahbariyat ham koʻrib turibdi — jadval yoki shtat boʻyicha qaror chiqishini kutaman: har kim tartibni oʻzicha oʻzgartirsa, umumiy ishda chalkashlik boʻladi.",
-          ru: "Руководство само видит рост объёма — дождусь решения по графику или штату: если каждый начнёт менять порядок по-своему, в общей работе будет путаница.",
-          en: "Management can see the volume growth themselves — I will wait for a decision on the schedule or staffing: if everyone reshuffles the routine their own way, shared work turns chaotic.",
+          uz: "Hajm oshganini rahbariyat oʻzi koʻrib turadi — jadval yoki xodim boʻyicha qarorni kutaman: har kim tartibni oʻzicha oʻzgartirsa, umumiy ish chalkashadi.",
+          ru: "Рост объёма руководство видит и само — дождусь решения по графику или по людям: если каждый перестроит порядок по-своему, общая работа спутается.",
+          en: "Management can see the growth themselves — I would wait for a decision on the schedule or staffing: if everyone reshapes the routine their own way, it tangles.",
         } },
       ],
     },

@@ -346,6 +346,25 @@ group — no status change, no driver reply.
   at `/answers`, in UZ/RU/EN, scoring six thinking patterns
   (`victim, complaint, waiting, blame, ownership, builder`) with deterministic
   tie-breaking.
+- **The answer options are written to be un-gameable, and that is a hard
+  requirement, not a style preference** (`CONTENT_VERSION = 2`). All five options
+  in every question must read as competent, professionally defensible and
+  genuinely choosable; the six patterns differ by the person's **locus of first
+  action**, never by one option sounding morally superior. The key must not be
+  recoverable from the SHAPE of the options either — no phrase, no length
+  pattern and no tone may belong to a single pattern inside a department. This is
+  enforced by `tests/sosAnswerKeyLeakage.test.js` (lexical monopolies, longest /
+  shortest-option distribution, banned self-pitying tone, and per-question guards
+  that keep a safety hold or an out-of-service unit in **all five** options).
+  Rewriting content here means re-running that suite, not just `validateContent`.
+- **Bump `CONTENT_VERSION` when a rewrite changes what an option key MEANS**, not
+  only when keys or pattern mappings change: a page held open across the deploy
+  would otherwise show old wording and be scored against new semantics.
+  `submitAssessment` rejects a stale version with `STALE_CONTENT` (409) and the
+  page reloads. Stored submissions keep their own `content_version`, option keys
+  and computed result forever — but the admin detail view resolves those keys
+  through the CURRENT modules, so **read `content_version` before quoting an old
+  answer verbatim**.
 - **`/answers` is ONE company-wide result view.** Per pattern it shows the share
   of RESPONDENTS whose **primary** pattern it is (`people with that primary /
   total respondents`, each row rounded on its own — never a share of individual

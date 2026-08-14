@@ -5,11 +5,27 @@
  * missing driver documents, driver expectations/complaints/relationships,
  * candidate no-shows, recruiting handoffs, retention communication.
  *
- * Authoring rules (see tests/sosContent.test.js):
- *  - every question offers 5 plausible options mapped to 5 of the 6 patterns;
- *  - no option is obviously "correct", careless, or ridiculous;
- *  - the strongest QBQ option varies in position and length;
- *  - options never encourage skipping required documents or process controls.
+ * Authoring rules (enforced by tests/sosContent.test.js and
+ * tests/sosAnswerKeyLeakage.test.js):
+ *  - every question offers 5 options mapped to 5 of the 6 patterns;
+ *  - ALL FIVE must read as competent, defensible and choosable. No option may
+ *    sound lazy, self-pitying, careless or embarrassing — the difference is
+ *    WHERE the person's first instinct points, not who is the better employee;
+ *  - the six tendencies are loci of first action, never keyword formulas:
+ *      victim     → my own position/exposure first (is my work being judged on
+ *                   inputs I did not control?)
+ *      complaint  → the recurring condition is the real subject; the change is
+ *                   asked of whoever has the authority for it
+ *      waiting    → confirmed information, the proper owner, the defined
+ *                   sequence — action is triggered from outside
+ *      blame      → locate the break so the correction lands where it belongs
+ *      ownership  → this case is mine to close now, with honest information
+ *      builder    → change the mechanism, sometimes at the cost of this case
+ *  - no reusable tell: "today/right now", "so it does not repeat", a named
+ *    rule, warmth toward the driver and process language must all appear across
+ *    SEVERAL patterns, never in one only;
+ *  - no option may encourage skipping required documents, misinforming a
+ *    candidate or driver, or bypassing a process control.
  */
 
 module.exports = {
@@ -18,70 +34,70 @@ module.exports = {
     {
       key: "hr_q01",
       text: {
-        uz: "Nomzod haydovchi kecha orientatsiyaga kelishini tasdiqlagan edi, lekin bugun kelmadi va telefonini koʻtarmayapti. Birinchi navbatda, katta ehtimol bilan nima qilasiz?",
+        uz: "Haydovchi nomzod kecha orientatsiyaga kelishini tasdiqlagan edi, lekin bugun kelmadi va telefonini koʻtarmayapti. Birinchi navbatda, katta ehtimol bilan nima qilasiz?",
         ru: "Кандидат-водитель вчера подтвердил, что придёт на ориентацию, но сегодня не пришёл и не берёт трубку. Что вы, скорее всего, сделаете в первую очередь?",
         en: "A driver candidate confirmed yesterday that he would come to orientation, but today he did not show up and is not answering his phone. What would you most likely do first?",
       },
       options: [
         { key: "hr_q01_a", pattern: "complaint", text: {
-          uz: "Hamkasblarga bu haftada nechanchi nomzod soʻnggi daqiqada gʻoyib boʻlayotganini aytaman — bunday nomzodlar bilan reja qilish juda qiyin.",
-          ru: "Скажу коллегам, что это уже который кандидат за неделю пропадает в последний момент — с такими кандидатами очень трудно что-то планировать.",
-          en: "Tell my coworkers this is yet another candidate this week who vanished at the last minute — it is really hard to plan anything with candidates like these.",
+          uz: "Bugungi oʻrinni oʻzim toʻldiraman, lekin rahbarga bu haftadagi uchinchi no-show ekanini aytaman — har birini alohida yopib yurish asl sababni koʻrsatmaydi.",
+          ru: "Закрою сегодняшнее место сам, но скажу руководителю, что это третий no-show за неделю: закрывая случаи по одному, настоящую причину мы не увидим.",
+          en: "I would cover today’s slot myself, but tell my lead this is the third no-show this week — closing them one at a time hides the real cause.",
         } },
         { key: "hr_q01_b", pattern: "ownership", text: {
-          uz: "Boshqa raqamlar va messenjer orqali yozib koʻraman, soʻng zaxira nomzodlar roʻyxatini ochib, boʻsh qolgan oʻrin uchun keyingi qadamni bugunoq belgilayman.",
-          ru: "Попробую написать через мессенджер и другие номера, затем открою резервный список кандидатов и уже сегодня определю следующий шаг по освободившемуся месту.",
-          en: "Try reaching him by text and any other numbers, then open my backup candidate list and decide today what the next step is for the open spot.",
+          uz: "Boshqa raqam va messenjerdan yozib koʻraman; javob boʻlmasa, zaxira roʻyxatdan kimni chaqirishni oʻzim tanlab, boʻsh oʻrinni bugun yopaman.",
+          ru: "Напишу через мессенджер и другие номера; если ответа нет, сам выберу из резервного списка, кого позвать, и закрою свободное место сегодня.",
+          en: "I would try another number and messenger; if there is no answer I would pick the backup myself and close the empty seat today.",
         } },
         { key: "hr_q01_c", pattern: "waiting", text: {
-          uz: "Balki yoʻlda muammo boʻlgandir — kun oxirigacha kutaman: oʻzi bogʻlanmasa, ertaga qayta urinib koʻraman.",
-          ru: "Возможно, что-то случилось в дороге — подожду до конца дня: если сам не выйдет на связь, попробую снова завтра.",
-          en: "Maybe something happened on the road — I will wait until the end of the day, and if he does not reach out himself, I will try again tomorrow.",
+          uz: "Nomzodni yoʻqotilgan deb hisoblashdan oldin aniq sabab bilinishi kerak — kun oxirigacha xabar kutaman va faqat shundan keyin oʻrniga odam chaqiraman.",
+          ru: "Прежде чем считать кандидата потерянным, нужна ясная причина — до конца дня жду от него весточки и только потом зову кого-то на его место.",
+          en: "Before writing a candidate off I want a real reason — I would hold the seat until the end of the day and only then call someone else in.",
         } },
         { key: "hr_q01_d", pattern: "victim", text: {
-          uz: "Nega aynan mening nomzodlarim shunday qiladi, deb oʻylayman — qancha vaqt sarflaymanu, oxirida hammasi bekor ketadi.",
-          ru: "Подумаю: почему именно с моими кандидатами так происходит — столько времени вкладываю, а в итоге всё впустую.",
-          en: "Wonder why this keeps happening with my candidates in particular — I put in so much time and it all ends up wasted.",
+          uz: "Rahbarimga bugunoq aytib qoʻyaman: guruh toʻlmagani nomzod kelmagani sababli — bu mening qanday ishlaganimga bogʻliq emasligi koʻrinib turishi kerak.",
+          ru: "Сразу скажу руководителю: группа недобрана из-за неявки кандидата — должно быть видно, что дело не в том, как я вёл этого кандидата.",
+          en: "I would tell my lead today that the group is short because the candidate did not come — it should be visible that this is not about how I worked the file.",
         } },
         { key: "hr_q01_e", pattern: "builder", text: {
-          uz: "Nomzodga xabar qoldiraman, oʻrniga zaxiradagi nomzodni chaqiraman, soʻng kelgusida no-show kamayishi uchun orientatsiyadan bir kun oldin qoʻshimcha eslatma qoʻngʻirogʻini jarayonga kiritaman.",
-          ru: "Оставлю кандидату сообщение, приглашу резервного кандидата, а затем добавлю в процесс дополнительный напоминающий звонок за день до ориентации, чтобы таких неявок стало меньше.",
-          en: "Leave the candidate a message, call in a backup candidate, and then add an extra reminder call one day before orientation to our process so no-shows become less frequent.",
+          uz: "Oʻrnini odatdagi tartibda toʻldiraman, kuchimni esa tasdiqlash tartibiga sarflayman: bir kun oldin qoʻngʻiroq doimiy qadam boʻlsa, bunday holat kamayadi.",
+          ru: "Место закрою обычным порядком, а силы вложу в сам порядок подтверждения: если звонок за день до ориентации станет постоянным шагом, таких случаев будет меньше.",
+          en: "I would fill the seat the usual way and put my effort into the confirmation step: with a call one day before orientation as a fixed step, this gets rarer.",
         } },
       ],
     },
     {
       key: "hr_q02",
       text: {
-        uz: "Birinchi haftasini ishlayotgan haydovchi sizga qoʻngʻiroq qilib, unga vaʼda qilingan shartlar (masalan, mil narxi) haqiqatga toʻgʻri kelmayotganini aytmoqda va jahli chiqqan. Birinchi navbatda nima qilasiz?",
-        ru: "Водитель, работающий первую неделю, звонит вам и возмущается: условия, которые ему обещали (например, ставка за милю), не совпадают с реальностью. Что вы сделаете в первую очередь?",
+        uz: "Birinchi haftasini ishlayotgan haydovchi qoʻngʻiroq qilib, unga vaʼda qilingan shartlar (masalan, mil narxi) haqiqatga toʻgʻri kelmayotganini aytmoqda va jahli chiqqan. Birinchi navbatda nima qilasiz?",
+        ru: "Водитель, работающий первую неделю, звонит и возмущается: условия, которые ему обещали (например, ставка за милю), не совпадают с реальностью. Что вы сделаете в первую очередь?",
         en: "A driver in his first week calls you upset: the terms he was promised (for example, the per-mile rate) do not match reality. What would you do first?",
       },
       options: [
         { key: "hr_q02_a", pattern: "blame", text: {
-          uz: "Avval uni kim ishga olganini va unga aynan nima deyilganini aniqlayman — bu chalkashlikka yoʻl qoʻygan odam masalani oʻzi hal qilishi kerak.",
-          ru: "Сначала выясню, кто его нанимал и что именно ему говорили — тот, кто допустил эту путаницу, и должен разбираться.",
-          en: "First find out who hired him and what exactly he was told — the person who created this confusion should be the one to sort it out.",
+          uz: "Avval offerni kim tuzganini va unga aynan nima deyilganini aniqlayman — tafovut qayerda paydo boʻlganini bilmasak, tuzatish ham toʻgʻri joyga tushmaydi.",
+          ru: "Сначала выясню, кто готовил оффер и что именно ему говорили: не зная, где возникло расхождение, исправление уйдёт не туда.",
+          en: "First I would establish who built the offer and what exactly he was told — without knowing where the gap appeared, the correction lands in the wrong place.",
         } },
         { key: "hr_q02_b", pattern: "builder", text: {
-          uz: "Haydovchini tinglayman, hujjatdagi shartlarni birga koʻrib chiqaman va masalani yopgach, kelgusida shartlar yozma ravishda, bir xil shablonda yuborilishini taklif qilaman.",
-          ru: "Выслушаю водителя, вместе сверим условия по документам, а после решения вопроса предложу, чтобы условия всегда отправлялись письменно по единому шаблону.",
-          en: "Listen to the driver, go over the documented terms together, and once it is resolved, propose that terms always be sent in writing using one standard template going forward.",
+          uz: "Bugungi savolga hujjat asosida javob beraman, eʼtiborimni esa shartlarni yozma yuborish tartibiga qarataman: bitta shablon boʻlsa, bunday suhbatlar kamayadi.",
+          ru: "На сегодняшний вопрос отвечу по документам, а внимание направлю на сам порядок отправки условий: с единым шаблоном таких разговоров станет меньше.",
+          en: "I would answer today’s question from the documents and turn my attention to how terms get sent: one written template makes these calls rarer.",
         } },
         { key: "hr_q02_c", pattern: "waiting", text: {
-          uz: "Bu masala boʻyicha oʻzim bir narsa deyishdan oldin rahbarim yoki buxgalteriya aniq javob berguncha kutishni maʼqul koʻraman — notoʻgʻri gap aytib qoʻymaslik uchun.",
-          ru: "Предпочту подождать, пока руководитель или бухгалтерия дадут точный ответ, прежде чем что-то говорить самому — чтобы не сказать лишнего.",
-          en: "Prefer to wait until my manager or accounting gives an exact answer before saying anything myself — so I do not tell him something wrong.",
+          uz: "Raqamlar boʻyicha buxgalteriya bilan aniqlashtirmasdan javob bermayman — notoʻgʻri son aytib keyin tuzatgandan koʻra, bir necha soatdan keyin aniq javob berish toʻgʻri.",
+          ru: "Не буду отвечать по цифрам, пока не сверюсь с бухгалтерией: лучше дать точный ответ через несколько часов, чем назвать неверную сумму и потом её исправлять.",
+          en: "I would not answer on the numbers before checking with accounting — one exact answer a few hours later beats a wrong figure I have to walk back.",
         } },
         { key: "hr_q02_d", pattern: "ownership", text: {
-          uz: "Hoziroq uning offerini va shartnomasini ochib, haydovchi bilan band-band solishtiraman: qayerda tafovut borligini oʻzim aniqlab, bugun unga aniq javob beraman.",
-          ru: "Сразу открою его оффер и договор и вместе с водителем сверю пункт за пунктом: сам найду, где расхождение, и сегодня же дам ему конкретный ответ.",
-          en: "Pull up his offer and contract right away and compare them point by point with the driver: find where the gap is myself and give him a concrete answer today.",
+          uz: "Offeri va shartnomasini ochib, haydovchi bilan band-band solishtiraman va bugun aniq javob beraman: vaʼda bilan hujjat qayerda ajralganini koʻrsataman.",
+          ru: "Открою его оффер и договор, сверю с водителем пункт за пунктом и сегодня же дам конкретный ответ — покажу, где обещание расходится с документом.",
+          en: "I would open his offer and contract, go through them with him point by point, and give him a firm answer today — showing where the promise and the paperwork part.",
         } },
         { key: "hr_q02_e", pattern: "victim", text: {
-          uz: "Yana rekruterlar aybdor boʻlib qoldik, deb oʻylayman — shartlarni biz belgilamaymiz, lekin nima uchundir haydovchining gʻazabi doim bizga tushadi.",
-          ru: "Подумаю: опять крайними оказались рекрутеры — условия ведь определяем не мы, но злость водителя почему-то всегда достаётся нам.",
-          en: "Think that recruiters ended up being the fall guys again — we do not set the terms, yet somehow the driver’s anger always lands on us.",
+          uz: "Shartlarni rekruting belgilamaydi — buni haydovchiga ham, rahbarga ham aniq aytaman, chunki bunday suhbatlar oxirida mening ishim deb yozilib qoladi.",
+          ru: "Условия задаёт не рекрутинг — скажу это и водителю, и руководителю: иначе такие разговоры в итоге записывают на мою работу, а не на порядок оформления.",
+          en: "Recruiting does not set the terms — I would make that clear to the driver and to my lead, because these calls end up recorded as my work.",
         } },
       ],
     },
@@ -94,99 +110,99 @@ module.exports = {
       },
       options: [
         { key: "hr_q03_a", pattern: "waiting", text: {
-          uz: "Hujjatlarni yiggʻan hamkasb ertalab ishga kelganda oʻzi toʻldirsin — uning vazifasini men qilib qoʻysam, keyin doim menga qolib ketadi.",
-          ru: "Пусть коллега, который собирал документы, сам дособерёт утром — если я сделаю его работу, потом это всегда будет на мне.",
-          en: "Let the coworker who collected the documents complete them in the morning — if I do his work now, it will always end up on my plate.",
+          uz: "Hujjatni yigʻgan hamkasb ertalab keladi — bitta jildni ikki kishi aralashtirib yubormaslik uchun kartani u soʻraydi, men jadvalni shunga moslayman.",
+          ru: "Коллега, собиравший документы, будет с утра — чтобы двое не путались в одной папке, карту запросит он, а я подстрою расписание под это.",
+          en: "The coworker who built the file is in first thing — so two people are not digging in one folder, he requests the card and I fit the schedule around it.",
         } },
         { key: "hr_q03_b", pattern: "ownership", text: {
-          uz: "Hoziroq nomzodga qoʻngʻiroq qilib, kartani bugun kechqurun rasm qilib yuborishini soʻrayman — ertaga orientatsiya toʻxtab qolmasligi uchun oʻzim hal qilaman.",
-          ru: "Прямо сейчас позвоню кандидату и попрошу сфотографировать и прислать карту сегодня вечером — сам решу вопрос, чтобы завтра ориентация не сорвалась.",
-          en: "Call the candidate right now and ask him to photograph and send the card tonight — handle it myself so orientation does not stall tomorrow.",
+          uz: "Nomzodga oʻzim qoʻngʻiroq qilib, kartani bugun kechqurun suratga olib yuborishini soʻrayman — ertaga orientatsiya toʻxtab qolmasligi mening qoʻlimda.",
+          ru: "Сам позвоню кандидату и попрошу вечером сфотографировать и прислать карту — чтобы ориентация завтра не встала, и это в моих руках.",
+          en: "I would call the candidate myself and ask him to photograph and send the card tonight — keeping orientation on its feet tomorrow is within my reach.",
         } },
         { key: "hr_q03_c", pattern: "blame", text: {
-          uz: "Avval rahbarga hujjatlarni kim yigʻganini va cheklist nima uchun bajarilmaganini yozib qoʻyaman — har kim oʻz kamchiligiga javob berishi kerak.",
-          ru: "Сначала напишу руководителю, кто собирал документы и почему не был выполнен чек-лист — каждый должен отвечать за свои упущения.",
-          en: "First write to the manager about who collected the documents and why the checklist was not followed — everyone should answer for their own misses.",
+          uz: "Cheklist qaysi qadamda uzilganini oʻzim aniqlab, kartani hujjatlarni yigʻgan hamkasb soʻraydi — oʻsha qadam nomlanmasa, keyingi guruhda ham shu takrorlanadi.",
+          ru: "Сам определю, на каком шаге порвался чек-лист, а карту запросит тот, кто собирал документы: если этот шаг не назвать, повторится и в следующей группе.",
+          en: "I would pin down myself which checklist step broke and have the coworker who built the file request the card — unnamed, that step repeats with the next group.",
         } },
         { key: "hr_q03_d", pattern: "builder", text: {
-          uz: "Nomzoddan kartani soʻrayman, hamkasbni xolis ogohlantiraman va orientatsiyadan bir kun oldin hujjatlarni ikki kishi tekshiradigan qisqa nazorat bosqichini taklif qilaman.",
-          ru: "Запрошу карту у кандидата, спокойно предупрежу коллегу и предложу ввести короткую проверку документов вторым человеком за день до ориентации.",
-          en: "Request the card from the candidate, give the coworker a calm heads-up, and suggest a short second-person document check one day before each orientation.",
+          uz: "Kartani soʻrayman va orientatsiyadan bir kun oldin hujjatlarni ikkinchi odam tekshiradigan nazoratni kiritaman: bu jildni tuzatish bitta ish, tartibdagi teshik doimiy.",
+          ru: "Запрошу карту и введу короткую проверку документов вторым человеком за день до ориентации: в этой папке один пробел, а в порядке — постоянная дыра.",
+          en: "I would request the card and add a short second-person check the day before orientation: this file has one gap, the procedure has a standing hole.",
         } },
         { key: "hr_q03_e", pattern: "complaint", text: {
-          uz: "Ichimda «yana oxirgi kunda hammasi mening boʻynimga tushdi» deb norozi boʻlaman — hujjatlar bilan har safar shu ahvol takrorlanadi.",
-          ru: "Про себя возмущусь: «опять всё всплыло в последний день и легло на меня» — с документами каждый раз одна и та же история.",
-          en: "Grumble to myself that “once again everything surfaced on the last day and landed on me” — it is the same story with documents every time.",
+          uz: "Kartani soʻrayman va shu bilan birga masalani rahbariyat oldiga qoʻyaman: hujjatlar oxirgi kunda toʻliqmas chiqishi birinchi marta emas.",
+          ru: "Карту запрошу и одновременно поставлю вопрос перед руководством: неполная папка в последний день — уже не новость.",
+          en: "I would request the card and at the same time put the issue to management: our document routine lets a file turn up incomplete on the last day.",
         } },
       ],
     },
     {
       key: "hr_q04",
       text: {
-        uz: "Dispetcher sizga yangi haydovchi yuk boʻyicha yangilanish (update) tartibini umuman bilmasligini aytdi va onbording sifatidan norozi. Birinchi navbatda nima qilasiz?",
+        uz: "Dispetcher sizga yangi haydovchi yuk boʻyicha update berish tartibini umuman bilmasligini aytdi va onbording sifatidan norozi. Birinchi navbatda nima qilasiz?",
         ru: "Диспетчер говорит вам, что новый водитель совсем не знает порядок обновлений по грузу (updates), и недоволен качеством онбординга. Что вы сделаете в первую очередь?",
         en: "A dispatcher tells you that a new driver does not know the load-update procedure at all and is unhappy with the quality of onboarding. What would you do first?",
       },
       options: [
         { key: "hr_q04_a", pattern: "victim", text: {
-          uz: "Onbordingda oʻttiz mavzuni oʻtamiz, hammasini eslab qolish haydovchining ishi — nima boʻlsa, baribir HR aybdor boʻlib chiqaveradi, deb oʻylayman.",
-          ru: "Подумаю: на онбординге мы разбираем десятки тем, запомнить их — задача водителя, но что бы ни случилось, виноватым всё равно делают HR.",
-          en: "Think that we cover dozens of topics in onboarding and remembering them is the driver’s job — yet whatever happens, HR always ends up being blamed.",
+          uz: "Bitta holat butun onbordingga baho boʻlib qolmasligi uchun dispetcherga bu mavzu oʻtilganini koʻrsataman — aks holda oʻsha baho mening ishimga yoziladi.",
+          ru: "Чтобы один случай не стал оценкой всего онбординга, покажу диспетчеру, что тема разбирается — иначе эта оценка запишется на мою работу.",
+          en: "So one case does not become a verdict on all of onboarding, I would show the dispatcher the topic is covered — that verdict is recorded against my work.",
         } },
         { key: "hr_q04_b", pattern: "waiting", text: {
-          uz: "Bu bitta holatmi yoki tizimli muammomi — bilish uchun yana bir-ikki shunday signal kelguncha kuzataman, keyin xulosa chiqaraman.",
-          ru: "Понаблюдаю: единичный это случай или системная проблема — дождусь ещё одного-двух таких сигналов и тогда сделаю выводы.",
-          en: "Watch to see whether this is a one-off or a systemic problem — wait for one or two more signals like this and then draw conclusions.",
+          uz: "Bitta holat boʻyicha materialni oʻzgartirmayman — keyingi guruhdan ham shu signal kelsa, demak muammo tizimli va shundan keyin qayta koʻraman.",
+          ru: "Из-за одного случая материалы менять не буду — если тот же сигнал придёт и от следующей группы, значит проблема системная, и тогда пересмотрю.",
+          en: "I would not rework the materials over one case — if the next group sends the same signal it is systemic, and that is when I would redo it.",
         } },
         { key: "hr_q04_c", pattern: "builder", text: {
-          uz: "Haydovchiga update tartibini qisqa qilib qayta tushuntiraman, soʻng onbording materialiga bir sahifalik yodnoma qoʻshib, dispetcher bilan birga uni kelgusi guruhlar uchun ham tasdiqlab olaman.",
-          ru: "Коротко заново объясню водителю порядок обновлений, затем добавлю в материалы онбординга одностраничную памятку и согласую её с диспетчером для следующих групп.",
-          en: "Briefly re-explain the update procedure to the driver, then add a one-page cheat sheet to the onboarding materials and confirm it with dispatch for future groups as well.",
+          uz: "Update tartibini bir sahifalik yodnoma qilib, dispetcherlik bilan kelishib onbording materialiga kiritaman — keyingi guruhlar buni bir xil eshitadi.",
+          ru: "Сделаю из порядка обновлений одностраничную памятку, согласую с диспетчерской и вложу в материалы онбординга — следующие группы услышат одно и то же.",
+          en: "I would turn the procedure into a one-page sheet, agree it with dispatch and put it in the onboarding pack — then every new group hears the same thing.",
         } },
         { key: "hr_q04_d", pattern: "complaint", text: {
-          uz: "Dispetcherga onbording kunlari juda tigʻiz ekanini, bitta xodim hamma narsani ulgurtira olmasligini tushuntiraman — sharoitga qarab ish qilamiz-da.",
-          ru: "Объясню диспетчеру, что дни онбординга перегружены и один сотрудник физически не успевает всё, — работаем как позволяют условия.",
-          en: "Explain to the dispatcher that onboarding days are overloaded and one employee physically cannot cover everything — we work with the conditions we have.",
+          uz: "Haydovchiga tushuntiraman, ammo asosiy gap boshqada: onbording kuni juda tigʻiz va kamchilik shundan chiqadi — buni yigʻilishda ochiq qoʻyaman.",
+          ru: "Водителю объясню, но суть в другом: день онбординга перегружен, и пробелы идут отсюда — вынесу это на совещание.",
+          en: "I would explain it to the driver, but the real point is elsewhere: the onboarding day is packed and that is where gaps come from — I would raise it at the meeting.",
         } },
         { key: "hr_q04_e", pattern: "ownership", text: {
-          uz: "Bugunoq haydovchi bilan bogʻlanib, update tartibini oʻzim qayta tushuntiraman va tushunganini qisqa savollar bilan tekshirib olaman.",
-          ru: "Сегодня же свяжусь с водителем, сам заново объясню порядок обновлений и парой коротких вопросов проверю, что он понял.",
-          en: "Contact the driver today, re-explain the update procedure myself, and check with a couple of quick questions that he understood.",
+          uz: "Bugun haydovchi bilan bogʻlanib, update tartibini oʻzim qayta tushuntiraman, bir-ikki savol bilan tushunganini tekshiraman va dispetcherga yopilganini aytaman.",
+          ru: "Сегодня же свяжусь с водителем, сам заново объясню порядок обновлений, парой вопросов проверю, что он понял, и скажу диспетчеру, что вопрос закрыт.",
+          en: "I would reach the driver today, walk him through the procedure again myself, check with a question or two that it landed, and tell the dispatcher it is closed.",
         } },
       ],
     },
     {
       key: "hr_q05",
       text: {
-        uz: "Kuchli nomzod hamma bosqichdan oʻtdi, hujjatlar tayyor edi — lekin u toʻsatdan javob bermay qoʻydi. Reja boʻyicha u keyingi haftadan ishga chiqishi kerak edi. Birinchi navbatda nima qilasiz?",
+        uz: "Kuchli nomzod hamma bosqichdan oʻtdi, hujjatlari tayyor edi — lekin u toʻsatdan javob bermay qoʻydi. Reja boʻyicha u keyingi haftadan ishga chiqishi kerak edi. Birinchi navbatda nima qilasiz?",
         ru: "Сильный кандидат прошёл все этапы, документы были готовы — но он внезапно перестал отвечать. По плану он должен был выйти со следующей недели. Что вы сделаете в первую очередь?",
         en: "A strong candidate passed every step and his documents were ready — but he suddenly stopped responding. He was supposed to start next week. What would you do first?",
       },
       options: [
         { key: "hr_q05_a", pattern: "ownership", text: {
-          uz: "Bugun boshqa vaqtda va boshqa kanal orqali yana urinib koʻraman, qisqa va samimiy xabar qoldiraman, shu bilan birga oʻrin boʻsh qolmasligi uchun zaxira variantni harakatga keltiraman.",
-          ru: "Сегодня попробую ещё раз в другое время и по другому каналу, оставлю короткое доброжелательное сообщение и параллельно запущу резервный вариант, чтобы место не простаивало.",
-          en: "Try again today at a different time through a different channel, leave a short friendly message, and at the same time activate a backup option so the spot does not sit empty.",
+          uz: "Bugun boshqa vaqtda va boshqa kanaldan yana urinaman, qisqa xabar qoldiraman va oʻrin boʻsh qolmasligi uchun zaxira variantni oʻzim harakatga keltiraman.",
+          ru: "Сегодня попробую ещё раз в другое время и по другому каналу, оставлю короткое сообщение и сам запущу резервный вариант, чтобы место не простаивало.",
+          en: "I would try again today at another hour through another channel, leave a short message, and start the backup option myself so the seat does not sit empty.",
         } },
         { key: "hr_q05_b", pattern: "victim", text: {
-          uz: "Shuncha mehnatdan keyin nomzodlar shunchaki gʻoyib boʻlishi menga juda alam qiladi — bizning mehnatimiz ularga hech narsa emasdek.",
-          ru: "Мне обидно, что после стольких усилий кандидаты просто исчезают — как будто наш труд для них ничего не значит.",
-          en: "It stings that after so much effort candidates simply vanish — as if our work means nothing to them.",
+          uz: "Nomzod hamma bosqichdan oʻtgan, hujjatlari tayyor edi — buni hozirdan yozib qoʻyaman, chunki reja bajarilmasa, savol birinchi menga keladi.",
+          ru: "Кандидат прошёл все этапы, документы были готовы — зафиксирую это сейчас: если план не выполнится, вопрос придёт сначала ко мне.",
+          en: "The candidate cleared every step with his papers ready — I would put that on record now, because if the plan comes short the question reaches me first.",
         } },
         { key: "hr_q05_c", pattern: "waiting", text: {
-          uz: "Balki oilaviy ishlari chiqib qolgandir — bosim qilmay, ishga chiqish sanasigacha oʻzi bogʻlanishini kutaman.",
-          ru: "Возможно, у него семейные обстоятельства — не буду давить и подожду до даты выхода: вдруг сам объявится.",
-          en: "Maybe he has family circumstances — I will not push and will wait until his start date in case he reaches out himself.",
+          uz: "Bosim qilmayman — bunday paytda ketma-ket qoʻngʻiroq nomzodni butunlay yoʻqotadi; ishga chiqish sanasigacha bitta xabar qoldirib, javobini kutaman.",
+          ru: "Давить не стану — звонки один за другим в такой момент теряют кандидата совсем; оставлю одно сообщение и до даты выхода дам ему ответить самому.",
+          en: "I would not push — back-to-back calls at this point lose a candidate for good; I would leave one message and let his answer come before his start date.",
         } },
         { key: "hr_q05_d", pattern: "builder", text: {
-          uz: "Yana bir-ikki kanaldan urinaman, zaxira nomzodni tayyorlayman va shu bilan birga «hujjat tayyor — ishga chiqquncha» oraliqda nomzod bilan muntazam aloqa rejasini joriy qilishni taklif qilaman.",
-          ru: "Попробую ещё пару каналов, подготовлю резервного кандидата и заодно предложу ввести план регулярных контактов с кандидатом на отрезке «документы готовы — выход на работу».",
-          en: "Try a couple more channels, prepare a backup candidate, and also propose a regular check-in plan for candidates during the “documents ready to start date” window.",
+          uz: "Zaxira nomzodni tayyorlayman va «hujjat tayyor — ishga chiqish» oraligʻida muntazam aloqa rejasini joriy qilaman: nomzodlar aynan shu oraliqda yoʻqoladi.",
+          ru: "Подготовлю резервного кандидата и налажу план регулярных контактов на отрезке «документы готовы — выход»: кандидаты теряются именно здесь.",
+          en: "I would prepare a backup and set up a regular contact plan for the “papers ready to start date” stretch — that is exactly where candidates disappear.",
         } },
         { key: "hr_q05_e", pattern: "blame", text: {
-          uz: "Avval uning fayli boʻyicha kim bilan ishlaganini koʻrib chiqaman — balki keyingi bosqichda kimdir qoʻpol muomala qilgan yoki hujjatlarini kechiktirgandir; sabab oʻsha yerdan chiqadi.",
-          ru: "Сначала посмотрю, кто ещё работал с его файлом — возможно, на следующем этапе кто-то был резок или затянул с документами; причина наверняка там.",
-          en: "First review who else handled his file — maybe someone at the next step was rough with him or delayed his paperwork; the cause is probably there.",
+          uz: "Uning fayli keyingi bosqichda kim bilan ishlaganini koʻraman — muomala yoki hujjat kechikishi sabab boʻlgan boʻlsa, gapni oʻsha bosqich bilan qilamiz.",
+          ru: "Посмотрю, с кем его файл работал на следующем этапе — если причина в тоне разговора или в задержке документов, разговаривать надо с тем этапом.",
+          en: "I would look at who handled his file at the next step — if the tone or a paperwork delay caused it, that step is where the conversation belongs.",
         } },
       ],
     },
@@ -199,29 +215,29 @@ module.exports = {
       },
       options: [
         { key: "hr_q06_a", pattern: "waiting", text: {
-          uz: "Treyler masalasi treyler boʻlimida hal boʻladi — ular javob berguncha haydovchidan biroz sabr soʻrayman, aniq maʼlumotsiz vaʼda bermayman.",
-          ru: "Вопрос трейлеров решается в трейлерном отделе — попрошу водителя немного подождать их ответа и не буду ничего обещать без точной информации.",
-          en: "Trailer questions are decided by the Trailer Department — I will ask the driver for a little patience until they answer and will not promise anything without exact information.",
+          uz: "Treylerni almashtirish qarori treyler boʻlimida — ularning javobisiz variant aytmayman; haydovchiga aniq muddat aytish uchun aynan shu javob kerak.",
+          ru: "Решение о замене трейлера — за трейлерным отделом; без их ответа вариантов называть не буду: именно он нужен, чтобы дать водителю точный срок.",
+          en: "Swapping a trailer is the Trailer Department’s call — I would name no option before their answer, since a firm date for the driver depends on it.",
         } },
         { key: "hr_q06_b", pattern: "blame", text: {
-          uz: "Kim unga «yangi treyler» deb vaʼda berganini aniqlayman — asossiz vaʼda bergan odam endi haydovchining oldida oʻzi javob bersin.",
-          ru: "Выясню, кто пообещал ему «новый трейлер» — пусть тот, кто дал необоснованное обещание, сам и объясняется с водителем.",
-          en: "Find out who promised him a “new trailer” — the person who made an unfounded promise should be the one to face the driver.",
+          uz: "Unga «yangi treyler» degan gap qaysi bosqichda aytilganini aniqlaymiz — vaʼda qayerda berilgan boʻlsa, javob ham oʻsha yerdan kelishi kerak.",
+          ru: "Выясним, на каком этапе ему сказали про «новый трейлер» — где было дано обещание, оттуда должен прийти и ответ.",
+          en: "We would establish at which step the words “a new trailer” were said — the answer has to come from wherever the promise was made.",
         } },
         { key: "hr_q06_c", pattern: "ownership", text: {
-          uz: "Haydovchini tinchlantirib, bugunoq treyler boʻlimi bilan oʻzim gaplashaman va unga aniq holatni — nima mumkinu nima mumkin emasligini — ochiq aytaman.",
-          ru: "Успокою водителя, сегодня же сам поговорю с трейлерным отделом и честно скажу ему реальную картину — что возможно, а что нет.",
-          en: "Reassure the driver, talk to the Trailer Department myself today, and give him the honest picture — what is possible and what is not.",
+          uz: "Haydovchini tinchlantirib, bugunoq treyler boʻlimi bilan oʻzim gaplashaman va real holatni — nima mumkin, nima yoʻqligini — unga ochiq aytaman.",
+          ru: "Успокою водителя, сегодня же сам поговорю с трейлерным отделом и честно расскажу ему реальную картину: что возможно, а что нет.",
+          en: "I would settle the driver down, talk to the Trailer Department myself today, and give him the real picture — what is possible and what is not.",
         } },
         { key: "hr_q06_d", pattern: "complaint", text: {
-          uz: "Rahbariyatga rekruting vaʼdalari bilan real imkoniyatlar orasidagi farq haydovchilarni ketkazayotganini yana bir bor aytaman — bu haqda necha marta gapirganmiz.",
-          ru: "Ещё раз скажу руководству, что разрыв между обещаниями рекрутинга и реальными возможностями теряет нам водителей — сколько раз об этом говорили.",
-          en: "Point out to management once again that the gap between recruiting promises and real capacity is costing us drivers — we have raised this so many times.",
+          uz: "Masalani yopishga harakat qilaman — va uskuna vaʼdalari bilan real imkoniyat orasidagi farqni rahbariyat oldida yana bir bor ochiq qoʻyaman.",
+          ru: "Постараюсь закрыть вопрос — и снова открыто поставлю перед руководством разрыв между обещаниями по технике и реальными возможностями.",
+          en: "I would try to close the case — and put the gap between equipment promises and real capacity to management once again, as a leading reason drivers leave.",
         } },
         { key: "hr_q06_e", pattern: "builder", text: {
-          uz: "Haydovchi bilan variantlarni kelishaman (muddat yoki almashtirish), treyler boʻlimi bilan reja tuzaman va kelgusida uskuna boʻyicha vaʼdalar faqat yozma tasdiq bilan berilishini yoʻlga qoʻyishni taklif qilaman.",
-          ru: "Согласую с водителем варианты (срок или замену), составлю план с трейлерным отделом и предложу правило: обещания по технике даются только с письменным подтверждением.",
-          en: "Agree on options with the driver (a timeline or a swap), make a plan with the Trailer Department, and propose a rule that equipment promises are only made with written confirmation.",
+          uz: "Uskuna boʻyicha vaʼdalar faqat treyler boʻlimining yozma tasdigʻi bilan berilishini yoʻlga qoʻyaman — bu suhbatni osonlashtirmaydi, lekin keyingi oʻntasini oldini oladi.",
+          ru: "Введу правило: обещания по технике даются только с письменным подтверждением трейлерного отдела — этот разговор легче не станет, но следующие десять не случатся.",
+          en: "I would make it the rule that equipment promises need the Trailer Department’s written confirmation — it will not ease this call, but it prevents the next ten.",
         } },
       ],
     },
@@ -234,29 +250,29 @@ module.exports = {
       },
       options: [
         { key: "hr_q07_a", pattern: "builder", text: {
-          uz: "Eskirgan joylar roʻyxatini tuzaman, tegishli boʻlimlardan aniq matnni soʻrab yangilayman va materiallarni har chorakda bir marta koʻrib chiqish tartibini taklif qilaman.",
-          ru: "Составлю список устаревших мест, запрошу у профильных отделов точные формулировки, обновлю материалы и предложу пересматривать их раз в квартал.",
-          en: "List the outdated sections, request exact wording from the relevant departments, update the materials, and propose reviewing them once a quarter.",
+          uz: "Eskirgan joylarni roʻyxatga olib, boʻlimlardan aniq matnni soʻrayman va materiallarni har chorakda koʻrib chiqishni yoʻlga qoʻyaman: bitta tahrir yetmaydi.",
+          ru: "Составлю список устаревших мест, запрошу у отделов точные формулировки и налажу пересмотр материалов раз в квартал: от одной правки документ снова устареет.",
+          en: "I would list the stale sections, get exact wording from the departments and set up a quarterly review — one edit and the document just goes stale again.",
         } },
         { key: "hr_q07_b", pattern: "victim", text: {
-          uz: "Bunday kamchiliklarni doim men payqayman, lekin materiallarni yangilash hech qachon mening vazifamga kiritilmagan — ortiqcha yuk yana menga tushayotganidan charchayman.",
-          ru: "Такие недочёты всегда замечаю я, хотя обновление материалов никогда не входило в мои обязанности — устаёшь от того, что лишняя нагрузка снова ложится на меня.",
-          en: "I am always the one who notices these gaps, even though updating the materials was never part of my job — it is tiring that the extra load lands on me again.",
+          uz: "Kamchiliklarni koʻryapman, lekin materiallarni yangilash mening vazifamda emas — shuni rahbar bilan oldin kelishib olaman, keyin orientatsiyani oʻtkazaman.",
+          ru: "Пробелы я вижу, но обновление материалов не моя задача — сначала проясню это с руководителем, а потом проведу ориентацию.",
+          en: "I can see the gaps, but updating the materials is not my remit — I would settle that with my lead first and then run the orientation.",
         } },
         { key: "hr_q07_c", pattern: "complaint", text: {
-          uz: "Materiallar necha yildan beri yangilanmaganini hamkasblarga aytaman — hujjatlarni tartibda saqlash faqat bitta odamning ishi boʻlmasligi kerak-ku.",
-          ru: "Скажу коллегам, что материалы не обновлялись годами — поддержание документов в порядке не должно быть заботой одного человека.",
-          en: "Tell coworkers the materials have not been updated in years — keeping documents in order should not be one person’s burden.",
+          uz: "Rahbariyat oldida ochiq qoʻyaman: materiallar necha yildan beri yangilanmagan va bu bitta odamning boʻsh vaqtiga tashlab qoʻyilgan ish emas — masʼul va vaqt ajratilishi kerak.",
+          ru: "Открыто поставлю вопрос перед руководством: материалы годами не обновлялись, и это не работа на чьё-то свободное время — нужен ответственный и выделенное время.",
+          en: "I would put it openly to management: the materials have gone years without an update, and this is not spare-time work — it needs an owner and real time.",
         } },
         { key: "hr_q07_d", pattern: "ownership", text: {
-          uz: "Eng koʻp chalkashlik keltirayotgan ikki-uch boʻlimni bugunoq oʻzim toʻgʻrilab, keyingi orientatsiyadan boshlab yangilangan variantdan foydalanaman.",
-          ru: "Сегодня же сам исправлю два-три раздела, которые путают больше всего, и со следующей ориентации буду использовать обновлённую версию.",
-          en: "Fix the two or three sections causing the most confusion myself today and use the updated version starting with the next orientation.",
+          uz: "Eng koʻp chalkashlik keltirayotgan ikki-uch boʻlimni bugunoq oʻzim toʻgʻrilab, keyingi orientatsiyadan yangilangan variantda ishlayman.",
+          ru: "Сегодня же сам поправлю два-три раздела, которые путают больше всего, и со следующей ориентации буду работать по обновлённой версии.",
+          en: "I would fix the two or three sections that confuse people most myself today and run the next orientation from the updated version.",
         } },
         { key: "hr_q07_e", pattern: "blame", text: {
-          uz: "Avval bu materiallar uchun kim masʼul etib tayinlanganini aniqlayman — vazifa unga biriktirilgan boʻlsa, nima uchun bajarilmaganini soʻrash kerak.",
-          ru: "Сначала выясню, кто был назначен ответственным за эти материалы — если задача закреплена за ним, надо спросить, почему она не выполнялась.",
-          en: "First establish who was assigned as owner of these materials — if the task was theirs, they should be asked why it was not done.",
+          uz: "Bu materiallar kimga biriktirilganini aniqlab, yangilashni oʻsha odam bilan birga qilamiz — hujjatni yon tomondan tuzatsam, keyingi safar yana eskirib qoladi.",
+          ru: "Выясню, за кем закреплены эти материалы, и обновлять будем вместе с ним: правя документ со стороны, я лишь оставлю его снова устаревать.",
+          en: "I would find out who these materials are assigned to and do the update with that person — patched from the side, it is left to go stale again.",
         } },
       ],
     },
@@ -269,29 +285,29 @@ module.exports = {
       },
       options: [
         { key: "hr_q08_a", pattern: "complaint", text: {
-          uz: "Nomzodga bizda boʻlimlar orasida yagona tizim yoʻqligini, shuning uchun shunday boʻlishini tushuntiraman — afsuski, bu bizning eski muammomiz.",
-          ru: "Объясню кандидату, что у нас нет единой системы между отделами, поэтому так и выходит — увы, это наша давняя проблема.",
-          en: "Explain to the candidate that we lack a single system between departments, which is why this happens — sadly, it is a long-standing problem of ours.",
+          uz: "Nomzoddan uzr soʻrayman, keyin masalani boʻlim rahbarlari oldida qoʻyaman: yagona hujjat yoʻqligi har bir nomzodda shunday takrorlanadi.",
+          ru: "Извинюсь перед кандидатом, а затем поставлю вопрос перед руководителями отделов: без единого документа это повторяется на каждом кандидате.",
+          en: "I would apologize to the candidate, then put the issue to the department leads: with no shared document this repeats on every candidate.",
         } },
         { key: "hr_q08_b", pattern: "victim", text: {
-          uz: "Boshqa boʻlimlarning ishi tufayli nomzod oldida noqulay ahvolga tushganimdan ranjiyman — jarayonning bu qismi umuman menga bogʻliq emas-ku.",
-          ru: "Мне неприятно, что из-за работы других отделов я оказываюсь в неловком положении перед кандидатом — эта часть процесса от меня вообще не зависит.",
-          en: "Feel hurt that other departments’ work puts me in an awkward spot with the candidate — that part of the process does not depend on me at all.",
+          uz: "Nomzoddan uzr soʻrayman, lekin jarayonning bu qismi menda emas — nomzodning taassuroti mening ishim deb oʻqilmasligi uchun buni oydinlashtirib qoʻyaman.",
+          ru: "Извинюсь перед кандидатом, но эта часть процесса не моя — проясню это с руководителем, чтобы впечатление кандидата не читали как качество моей работы.",
+          en: "I would apologize to the candidate, but that part of the flow is not mine — I would get that clear so his impression is not read as my work.",
         } },
         { key: "hr_q08_c", pattern: "ownership", text: {
-          uz: "Nomzoddan uzr soʻrab, uning maʼlumotlarini oʻzim bitta hujjatga jamlayman va keyingi bosqich xodimiga toʻliq holda oʻzim uzataman — nomzod endi qayta soʻralmasligi uchun.",
-          ru: "Извинюсь перед кандидатом, сам соберу его данные в один документ и лично передам следующему сотруднику в полном виде — чтобы кандидата больше не переспрашивали.",
-          en: "Apologize to the candidate, gather his information into one document myself, and hand it personally to the next person in full — so the candidate is not asked again.",
+          uz: "Uzr soʻrab, uning maʼlumotlarini oʻzim bitta hujjatga jamlayman va keyingi bosqich xodimiga toʻliq holda uzataman — qayta soʻralmasligi shu bilan hal boʻladi.",
+          ru: "Извинюсь, сам соберу его данные в один документ и передам следующему сотруднику в полном виде — переспрашивать больше не придётся.",
+          en: "I would apologize, gather his details into one document myself and hand it to the next step in full — that ends the re-asking.",
         } },
         { key: "hr_q08_d", pattern: "builder", text: {
-          uz: "Uzr soʻrab maʼlumotni oʻzim yetkazaman, soʻng xavfsizlik boʻlimi bilan birga nomzodni uzatishda toʻldiriladigan qisqa yagona anketa formasini kelishib olaman.",
-          ru: "Извинюсь и сам передам данные, а затем согласую с отделом безопасности короткую единую форму передачи кандидата между этапами.",
-          en: "Apologize and pass the data along myself, then agree with Safety on a short shared handoff form used whenever a candidate moves between steps.",
+          uz: "Xavfsizlik boʻlimi bilan bosqichlar orasida toʻldiriladigan bitta qisqa forma kelishib olaman — bu nomzodga yordam bermaydi, lekin takrorlanish toʻxtaydi.",
+          ru: "Согласую с отделом безопасности одну короткую форму передачи кандидата между этапами — этому кандидату это не поможет, но повторение прекратится.",
+          en: "I would agree one short handoff form with Safety for moving a candidate between steps — it does not help this candidate, but the repetition stops.",
         } },
         { key: "hr_q08_e", pattern: "blame", text: {
-          uz: "Avval qaysi bosqichda savollar takrorlanganini aniqlayman — biz yiggʻan maʼlumotni keyingi boʻlim qayta soʻrayotgan boʻlsa, ular oʻz jarayonini toʻgʻrilashi kerak.",
-          ru: "Сначала определю, на каком этапе продублировали вопросы — если следующий отдел заново спрашивает то, что мы уже собрали, пусть исправляют свой процесс.",
-          en: "First pinpoint at which step the questions were duplicated — if the next department re-asks what we already collected, they need to fix their process.",
+          uz: "Savollar qaysi bosqichda takrorlanganini aniqlayman — biz yigʻgan maʼlumot keyingi boʻlimga yetib bormagan boʻlsa, oʻsha uzilishni ular yopishi kerak.",
+          ru: "Определю, на каком этапе вопросы продублировались: если собранные нами данные не дошли до следующего отдела, закрывать этот разрыв им.",
+          en: "I would pin down at which step the questions doubled — if what we collected never reached the next department, they are the ones to close that break.",
         } },
       ],
     },
@@ -304,29 +320,29 @@ module.exports = {
       },
       options: [
         { key: "hr_q09_a", pattern: "waiting", text: {
-          uz: "Bu dispetcherlik ichki masalasi — aralashsam noqulay boʻladi. Haydovchiga rasmiy tartibda murojaat qilishni aytib, oʻsha yerdan javob kutishni maslahat beraman.",
-          ru: "Это внутренний вопрос диспетчерской — вмешиваться неудобно. Посоветую водителю обратиться по официальной линии и ждать ответа оттуда.",
-          en: "This is an internal dispatch matter — stepping in would be awkward. I will advise the driver to raise it through the official channel and wait for their answer.",
+          uz: "Haydovchini tinglayman, lekin uning oʻrniga gapirmayman — rasmiy tartibda murojaat qilsa, masala hujjat bilan yuradi; oradan aralashsam, ikkita versiya paydo boʻladi.",
+          ru: "Водителя выслушаю, но говорить за него не буду: если он обратится по официальной линии, вопрос пойдёт документально; вмешаюсь посередине — появятся две версии.",
+          en: "I would hear him out but not speak for him — raised through the official channel the case moves on paper; stepping in between creates two versions of it.",
         } },
         { key: "hr_q09_b", pattern: "builder", text: {
-          uz: "Haydovchini diqqat bilan tinglayman, roziligini olib, mohiyatni dispetcherlik rahbariga bezarar shaklda yetkazaman va bir haftadan soʻng haydovchidan ahvolni oʻzim soʻrab qoʻyaman — masala unutilib ketmasligi uchun.",
-          ru: "Внимательно выслушаю, с согласия водителя корректно передам суть руководителю диспетчерской и сам перезвоню водителю через неделю узнать, как дела, — чтобы вопрос не потерялся.",
-          en: "Listen carefully, and with the driver’s consent pass the substance tactfully to the dispatch lead, then check back with the driver myself in a week — so the issue does not get lost.",
+          uz: "Roziligini olib mohiyatni dispetcherlik rahbariga yetkazaman, keyin yangi haydovchilar bilan ikkinchi oy suhbatini doimiy qadam qilaman.",
+          ru: "С его согласия передам суть руководителю диспетчерской, а затем сделаю постоянным шагом беседу с новыми водителями на втором месяце.",
+          en: "With his consent I would pass the substance to the dispatch lead, then make a second-month talk with new drivers a standing step.",
         } },
         { key: "hr_q09_c", pattern: "blame", text: {
-          uz: "Bu dispetcherning ishlash uslubi haqida shikoyatlar oldin ham boʻlgan — rahbariyat nihoyat oʻsha xodim bilan jiddiy shugʻullanishi kerakligini aytaman.",
-          ru: "Про стиль работы этого диспетчера жаловались и раньше — скажу, что руководству пора наконец всерьёз заняться этим сотрудником.",
-          en: "There have been complaints about this dispatcher’s style before — I will say management finally needs to deal seriously with that employee.",
+          uz: "Bu dispetcher boʻyicha shunday gaplar oldin ham boʻlgan — holatni uning rahbariga aniq koʻrsataman, tuzatish oʻsha yerda boʻlmasa, keyingi haydovchi ham shu bilan keladi.",
+          ru: "По этому диспетчеру такое говорили и раньше — покажу картину его руководителю: пока не исправят там, следующий водитель придёт с тем же.",
+          en: "There have been remarks about this dispatcher before — I would lay the case out for his lead; uncorrected there, the next driver arrives with the same thing.",
         } },
         { key: "hr_q09_d", pattern: "ownership", text: {
-          uz: "Haydovchini toʻliq tinglayman va roziligini olib, uning fikrini dispetcherlik rahbariga bugunoq yetkazaman — men qila oladigan foydali qadam shu.",
-          ru: "Полностью выслушаю водителя и с его согласия сегодня же донесу его точку зрения до руководителя диспетчерской — это полезный шаг, который в моих силах.",
-          en: "Hear the driver out fully and, with his consent, bring his perspective to the dispatch lead today — that is the useful step within my power.",
+          uz: "Haydovchini toʻliq tinglab, roziligini olib, fikrini dispetcherlik rahbariga bugunoq oʻzim yetkazaman va bir hafta oʻtib undan ahvolni soʻrab qoʻyaman.",
+          ru: "Полностью выслушаю водителя, с его согласия сегодня же сам донесу его позицию руководителю диспетчерской и через неделю спрошу у него, как дела.",
+          en: "I would hear the driver out fully, with his consent carry his view to the dispatch lead myself today, and check back with him in a week.",
         } },
         { key: "hr_q09_e", pattern: "complaint", text: {
-          uz: "Haydovchiga hamdardlik bildirib, dispetcherlar yukni koʻp olishga oʻrgangani uchun haydovchilar bilan muloqotga vaqt qolmayotganini aytaman — bu koʻpchilikning ogʻriqli joyi.",
-          ru: "Посочувствую водителю и скажу, что диспетчеры привыкли гнать объёмы и на общение с водителями времени не остаётся — это больная тема у многих.",
-          en: "Sympathize with the driver and say dispatchers are used to chasing volume, so there is no time left for communicating with drivers — a sore spot for many.",
+          uz: "Haydovchiga hamdardlik bildiraman va rahbariyatga aytaman: dispetcher-haydovchi munosabati boʻyicha bunday qoʻngʻiroq tez-tez keladi — bu alohida holat emas.",
+          ru: "Посочувствую водителю и скажу руководству: звонки про отношения диспетчера и водителя приходят регулярно — это не отдельный случай.",
+          en: "I would sympathize with the driver and tell management calls about dispatcher–driver relations come in regularly — this is not an isolated case.",
         } },
       ],
     },
@@ -339,29 +355,29 @@ module.exports = {
       },
       options: [
         { key: "hr_q10_a", pattern: "victim", text: {
-          uz: "Reja tuzilganda bozor ahvoli soʻralmagan edi — endi esa natija mendan talab qilinmoqda; sharoitni hisobga olmasdan baholanish adolatsiz tuyuladi.",
-          ru: "Когда составляли план, состояние рынка никто не спрашивал — а результат теперь требуют с меня; оценивать без учёта условий кажется несправедливым.",
-          en: "No one asked about market conditions when the plan was set — yet the results are now demanded of me; being judged without regard to circumstances feels unfair.",
+          uz: "Reja tuzilganda bozor holati ham, byudjet ham men bilan kelishilmagan edi — natija muhokama qilinganda men birinchi shuni oʻrtaga qoʻyaman.",
+          ru: "Ни состояние рынка, ни бюджет со мной не согласовывали, когда ставили план — обсуждая результат, я начну именно с этого и покажу свои реальные возможности.",
+          en: "Neither market conditions nor the budget were agreed with me when the plan was set — that is what I would put on the table first when results are discussed.",
         } },
         { key: "hr_q10_b", pattern: "complaint", text: {
-          uz: "Rahbariyatga eʼlon byudjeti va platformalar eskirganini, raqobatchilar koʻproq toʻlayotganini aytaman — bu sharoitda sifatli oqim kutish qiyin.",
-          ru: "Скажу руководству, что бюджет и площадки объявлений устарели, а конкуренты платят больше — в таких условиях трудно ждать качественного потока.",
-          en: "Tell management the ad budget and platforms are outdated and competitors pay more — it is hard to expect quality flow under these conditions.",
+          uz: "Rahbariyatga eʼlon byudjeti va platformalar eskirganini, raqobatchilar koʻproq toʻlayotganini ochiq aytaman — bu qaror menda emas, lekin oqim sifati shunga bogʻliq.",
+          ru: "Открыто скажу руководству, что бюджет и площадки объявлений устарели, а конкуренты платят больше: это решение не на моём уровне, но качество потока зависит именно от него.",
+          en: "I would tell management openly that the ad budget and platforms are outdated while competitors pay more — that decision is not mine, yet the flow depends on it.",
         } },
         { key: "hr_q10_c", pattern: "ownership", text: {
-          uz: "Soʻnggi ellikta lidni oʻzim tahlil qilib, qaysi manba va matn sifatli nomzod berayotganini aniqlayman va kuchimni oʻsha kanallarga qarataman.",
-          ru: "Сам разберу последние пятьдесят лидов, определю, какие источники и тексты дают качественных кандидатов, и сосредоточу усилия на этих каналах.",
-          en: "Analyze the last fifty leads myself, identify which sources and ad copy bring qualified candidates, and focus my effort on those channels.",
+          uz: "Soʻnggi ellikta lidni oʻzim koʻrib chiqib, qaysi manba va qaysi eʼlon matni sifatli nomzod berayotganini aniqlayman va kuchimni shu kanallarga qarataman.",
+          ru: "Сам разберу последние пятьдесят лидов, определю, какие источники и какие тексты объявлений дают качественных кандидатов, и сосредоточусь на этих каналах.",
+          en: "I would go through the last fifty leads myself, work out which source and which ad copy bring qualified candidates, and put my effort into those channels.",
         } },
         { key: "hr_q10_d", pattern: "waiting", text: {
-          uz: "Bozor mavsumiy oʻzgaradi — keskin xulosa qilmay, keyingi ikki haftadagi oqimni kuzatib, soʻng yondashuvni oʻzgartirish kerakmi-yoʻqmi hal qilaman.",
-          ru: "Рынок меняется по сезону — не буду делать резких выводов, посмотрю на поток ближайшие две недели и потом решу, менять ли подход.",
-          en: "The market shifts with the season — rather than jumping to conclusions, I will watch the flow for the next two weeks and then decide whether to change the approach.",
+          uz: "Bozor mavsumiy oʻzgaradi — ikki haftalik oqimni bir xil sharoitda oʻlchab olaman va kanalni faqat shundan keyin oʻzgartiraman, aks holda nimasi ishlaganini bilmaymiz.",
+          ru: "Рынок меняется по сезону — две недели измерю поток в одинаковых условиях и только потом сменю канал, иначе так и не поймём, что именно сработало.",
+          en: "The market moves with the season — I would measure two weeks of flow under the same conditions and change channels only then, or we never learn what worked.",
         } },
         { key: "hr_q10_e", pattern: "builder", text: {
-          uz: "Manbalar tahlilini qilib eng samaralisiga oʻtaman, eʼlon matnida talablarni aniqroq yozaman va rahbariyatga haftalik qisqa hisobot yuborib borishni yoʻlga qoʻyaman — jarayon shaffof boʻlishi uchun.",
-          ru: "Проанализирую источники и переключусь на самые результативные, пропишу требования в объявлениях чётче и налажу короткий еженедельный отчёт руководству — чтобы процесс был прозрачным.",
-          en: "Analyze the sources and shift to the best performers, state the requirements more clearly in the ads, and set up a short weekly report to management so the process stays transparent.",
+          uz: "Eʼlon matnida talablarni aniqroq yozib, manbalar boʻyicha haftalik oʻlchov jadvalini kiritaman: bu oy raqamini koʻtarmaydi, keyingi oylarda esa taxmin qolmaydi.",
+          ru: "Пропишу требования в объявлениях чётче и налажу еженедельный замер по источникам: цифру этого месяца это не поднимет, зато дальше догадок не останется.",
+          en: "I would state the requirements more precisely in the ads and set up a weekly measurement by source — it will not lift this month’s number, but guesswork ends.",
         } },
       ],
     },

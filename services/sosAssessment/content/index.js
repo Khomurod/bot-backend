@@ -4,8 +4,25 @@
  * All question/option/result text lives in these versioned code modules, NOT in
  * the database. Submissions snapshot option keys + pattern/weight + computed
  * result, so editing content never changes a stored result. Bump
- * CONTENT_VERSION on any change to question/option KEYS or PATTERN MAPPINGS
- * (pure wording fixes do not require a bump).
+ * CONTENT_VERSION on any change to question/option KEYS or PATTERN MAPPINGS,
+ * and on any rewrite large enough that an option key no longer *means* what it
+ * meant (a typo fix or a single reworded clause does not require a bump).
+ *
+ * Version history:
+ *   1 — initial 7 × 10 × 5 set.
+ *   2 — full anti-gaming rewrite of all 350 answer options in UZ/RU/EN. Keys,
+ *       scenarios and pattern mappings are unchanged, but every option was
+ *       reworded so the desirable answer is no longer identifiable from tone or
+ *       shape. Bumped because a page loaded against v1 shows v1 wording while
+ *       the server would score v2 semantics: submitting that mix would file an
+ *       answer the person never read. `submitAssessment` rejects a stale
+ *       version with STALE_CONTENT (409) and the page reloads.
+ *
+ * NOTE on stored history: a submission keeps its own `content_version`, its
+ * option keys and its computed result forever, so results never move. The admin
+ * detail view resolves those keys through the CURRENT modules, so a v1 row is
+ * displayed with v2 wording — read `content_version` before quoting an old
+ * answer verbatim.
  *
  * SECURITY: `toPublicQuestions()` is a WHITELIST serializer — the public
  * questionnaire payload must never contain `pattern`/`weight`, otherwise the
@@ -15,7 +32,7 @@
 
 const { PATTERNS, LANGUAGES, DEPARTMENTS, DEPARTMENT_KEYS } = require('../constants');
 
-const CONTENT_VERSION = 1;
+const CONTENT_VERSION = 2;
 
 const departments = {
   hr: require('./hr'),

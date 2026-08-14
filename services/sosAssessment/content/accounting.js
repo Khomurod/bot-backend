@@ -1,19 +1,18 @@
 /**
  * SOS assessment content — Accounting department (10 questions).
  *
- * Scope: driver deductions and explaining them, weekly driver settlements,
- * missing receipts and reimbursements, driver pay questions and disputed
- * amounts, missing settlement documents, communicating while an
- * investigation is still open, following up with drivers, coordination
- * with dispatch/safety, preventing repeated misunderstandings, accuracy
- * and fairness toward drivers.
+ * Scope: settlements and deductions, dispatch data needed to close pay, cash
+ * reimbursements and receipts, fuel-card disputes, detention pay, the escrow
+ * line, missing PODs, toll disputes, cross-department reviews that block a
+ * deduction, reconciliation errors.
  *
- * Authoring rules (see tests/sosContent.test.js):
- *  - every question offers 5 plausible options mapped to 5 of the 6 patterns;
- *  - no option is obviously "correct", careless, or ridiculous;
- *  - the strongest QBQ option varies in position and length;
- *  - no option encourages changing payments without evidence, bypassing
- *    accounting controls, or making unsupported promises to a driver.
+ * Authoring rules: see the header of ./hr.js — all five options must read as
+ * competent and choosable, the six tendencies are loci of first action rather
+ * than keyword formulas. Hard constraints for this department: no option may
+ * pay or reimburse without the required document, hide or quietly absorb an
+ * error, promise an amount that is not confirmed, or bypass an accounting
+ * control. A less accountable instinct shows up as a different FIRST MOVE,
+ * never as weakened financial controls.
  */
 
 module.exports = {
@@ -28,29 +27,29 @@ module.exports = {
       },
       options: [
         { key: "accounting_q01_a", pattern: "victim", text: {
-          uz: "Haydovchilarning jahli doim buxgalteriyaga tushishi alam qiladi — ushlanmalarni boshqa boʻlimlar kiritadi, biz faqat hisoblaymiz, lekin javobni negadir biz beramiz.",
-          ru: "Мне обидно, что злость водителей всегда достаётся бухгалтерии — удержания подают другие отделы, мы лишь считаем, а отвечать почему-то приходится нам.",
-          en: "It stings that drivers’ anger always lands on accounting — other departments submit the deductions, we only calculate, yet somehow we are the ones who answer.",
+          uz: "Rahbarga aytib qoʻyaman: ushlanmani boshqa boʻlim kiritadi, biz faqat hisoblaymiz — haydovchining noroziligi buxgalteriya ishining sifati deb baholanmasligi kerak.",
+          ru: "Скажу руководителю: удержание вносит другой отдел, а мы только считаем и объясняем — недовольство водителя не стоит считать качеством работы бухгалтерии.",
+          en: "I would tell my manager another department enters the deduction and we only calculate — the driver’s anger is not a verdict on accounting’s work.",
         } },
         { key: "accounting_q01_b", pattern: "builder", text: {
-          uz: "Ushlanmaning asosini topib, haydovchiga band-band tushuntiraman, soʻng har bir ushlanma yoniga qisqa izoh yozib borishni taklif qilaman — bunday qoʻngʻiroqlar kamayishi uchun.",
-          ru: "Найду основание удержания, объясню водителю пункт за пунктом, а затем предложу добавлять короткое пояснение к каждому удержанию в расчёте — чтобы таких звонков стало меньше.",
-          en: "Find the paperwork behind the deduction, walk the driver through it point by point, then propose adding a short note next to every deduction on settlements so such calls become rarer.",
+          uz: "Ushlanma asosidagi hujjatni topib, haydovchiga band-band tushuntiraman, keyin har ushlanma yoniga qisqa izoh chiqishini yoʻlga qoʻyaman.",
+          ru: "Найду документ-основание удержания, объясню водителю по пунктам, а затем налажу короткое пояснение рядом с каждым удержанием.",
+          en: "I would find the document behind the deduction, walk the driver through it point by point, then get a short note printed next to every deduction.",
         } },
         { key: "accounting_q01_c", pattern: "blame", text: {
-          uz: "Avval bu ushlanmani qaysi boʻlim kiritganini aniqlayman — summa hujjatsiz qoʻyilgan boʻlsa, haydovchiga oʻsha boʻlim oʻzi tushuntirib bersin.",
-          ru: "Сначала выясню, какой отдел подал это удержание — если сумму внесли без документов, пусть тот отдел сам и объясняется с водителем.",
-          en: "First establish which department submitted this deduction — if the amount was entered without documents, that department should be the one to explain it to the driver.",
+          uz: "Bu ushlanmani qaysi boʻlim kiritganini aniqlayman — hujjatsiz kiritilgan boʻlsa, tushuntirish ham, tuzatish ham oʻsha boʻlimdan boshlanishi kerak.",
+          ru: "Определю, какой отдел внёс это удержание: если внесли без документов, и объяснение, и исправление должны начинаться там.",
+          en: "I would establish which department entered this deduction — if it went in without documents, both explanation and correction start there.",
         } },
         { key: "accounting_q01_d", pattern: "ownership", text: {
-          uz: "Hoziroq uning hisob-kitobini va asos hujjatlarni ochaman, ushlanma nima uchun ekanini oʻzim aniqlab, bugunoq haydovchiga aniq javob beraman.",
-          ru: "Прямо сейчас открою его расчёт и подтверждающие документы, сам разберусь, за что удержание, и сегодня же дам водителю конкретный ответ.",
-          en: "Pull up his settlement and the backing documents right now, work out myself what the deduction is for, and give the driver a concrete answer today.",
+          uz: "Uning settlementini va asos hujjatlarini hoziroq ochib, ushlanma nima uchun boʻlganini oʻzim aniqlayman va bugun haydovchiga aniq javob beraman.",
+          ru: "Прямо сейчас открою его расчёт и документы-основания, сам разберусь, за что удержание, и сегодня же дам водителю конкретный ответ.",
+          en: "I would open his settlement and the backing documents right now, establish myself what the deduction is for, and give him a concrete answer today.",
         } },
         { key: "accounting_q01_e", pattern: "complaint", text: {
-          uz: "Har hafta shu ahvol takrorlanishini aytaman: ushlanmalar izohsiz keladi, haydovchilar esa jahl bilan bizga qoʻngʻiroq qiladi — bunday tartibda ishlash juda ogʻir.",
-          ru: "Скажу, что каждую неделю одно и то же: удержания приходят без пояснений, а водители злятся и звонят нам — работать в таком порядке очень тяжело.",
-          en: "Point out that every week it is the same: deductions arrive without explanations and angry drivers call us — it is very hard to work this way.",
+          uz: "Haydovchiga oʻzim javob beraman, lekin rahbarga aytaman: ushlanmalar izohsiz keladi va qoʻngʻiroqlar bizga tushadi — har hafta shu holat.",
+          ru: "Водителю отвечу сам, но скажу руководителю: удержания приходят без пояснений, а звонки идут к нам — так будет каждую неделю.",
+          en: "I would answer the driver myself, but tell my manager deductions arrive with no note while the calls land on us — every week the same.",
         } },
       ],
     },
@@ -63,29 +62,29 @@ module.exports = {
       },
       options: [
         { key: "accounting_q02_a", pattern: "ownership", text: {
-          uz: "Oʻzim hoziroq dispetcher bilan bogʻlanib, ikkala reys boʻyicha tasdiqni soʻrayman va haydovchiga bugunoq holat qanday ekanini xabar qilaman.",
-          ru: "Сам прямо сейчас свяжусь с диспетчером, запрошу подтверждение по обоим рейсам и сегодня же сообщу водителю, как обстоят дела.",
-          en: "Contact the dispatcher myself right now, request confirmation on both loads, and let the driver know today exactly where things stand.",
+          uz: "Dispetcherga hoziroq oʻzim bogʻlanib, ikki reys boʻyicha tasdiqni soʻrayman va haydovchiga bugun ahvol qanday ekanini aniq aytaman.",
+          ru: "Прямо сейчас сам свяжусь с диспетчером, запрошу подтверждение по двум рейсам и сегодня же ясно скажу водителю, как обстоят дела.",
+          en: "I would contact the dispatcher myself right now, request confirmation on both loads, and tell the driver today exactly where things stand.",
         } },
         { key: "accounting_q02_b", pattern: "complaint", text: {
-          uz: "Dispetcherlik maʼlumotlarni doim oxirgi daqiqada berishini yana bir bor aytaman — grafik hech qachon ishlamaydi, tanbeh esa oxirida buxgalteriyaga tegadi.",
-          ru: "Ещё раз скажу, что диспетчерская вечно присылает данные в последний момент — график никогда не работает, а упрёки в итоге достаются бухгалтерии.",
-          en: "Say once again that dispatch always sends data at the last minute — the schedule never works, and in the end the reproaches land on accounting.",
+          uz: "Tasdiqni soʻrayman va masalani yigʻilishga olib chiqaman: dispetcherlik maʼlumotni doim oxirgi daqiqada beradi, hisob-kitob kuni esa shunday oʻtadi.",
+          ru: "Подтверждение запрошу и вынесу вопрос на совещание: диспетчерская всегда даёт данные в последнюю минуту, и день расчёта проходит именно так.",
+          en: "I would chase the confirmation and take the issue to the meeting: dispatch always sends data at the last minute, and settlement day goes exactly this way.",
         } },
         { key: "accounting_q02_c", pattern: "victim", text: {
-          uz: "Biz oʻz qismimizni doim vaqtida qilamiz, lekin toʻlov kechiksa, haydovchi baribir buxgalterni aybdor deb biladi — bu adolatsizlikka koʻnikish qiyin.",
-          ru: "Свою часть мы всегда делаем вовремя, но если выплата задерживается, водитель всё равно считает виноватым бухгалтера — с этой несправедливостью трудно смириться.",
-          en: "We always do our part on time, but when pay is late the driver still sees the accountant as the guilty one — that unfairness is hard to accept.",
+          uz: "Oʻz qismimizni oʻz vaqtida bajaramiz, lekin toʻlov kechiksa haydovchi buxgalterni aybdor koʻradi — kechikish qaysi qadamda boʻlganini bugun yozib qoʻyaman.",
+          ru: "Свою часть мы делаем вовремя, но при задержке выплаты водитель видит виноватым бухгалтера — сегодня зафиксирую, на каком шаге задержка.",
+          en: "We do our part on time, yet a late payment makes the accountant the culprit — today I would record at which step the delay actually sat.",
         } },
         { key: "accounting_q02_d", pattern: "waiting", text: {
-          uz: "Reys tasdiqlari — dispetcherlik vazifasi: ularning maʼlumotini kutaman, chunki tekshirilmagan raqamlar bilan hisoblasam, keyin tuzatishlar yanada koʻp muammo chiqaradi.",
-          ru: "Подтверждения рейсов — задача диспетчерской: дождусь их данных, ведь расчёт по непроверенным цифрам потом обернётся ещё большими корректировками.",
-          en: "Load confirmations are dispatch’s job: I will wait for their data, because calculating from unverified numbers only creates bigger corrections later.",
+          uz: "Reys tasdigʻi dispetcherlikda — tekshirilmagan raqam bilan hisoblasam, keyin tuzatish kattaroq boʻladi; maʼlumotni kutaman va haydovchiga sababini aytaman.",
+          ru: "Подтверждение по рейсам — за диспетчерской: посчитав по непроверенным цифрам, я потом получу более крупную корректировку; дождусь данных и скажу водителю причину.",
+          en: "Load confirmation is dispatch’s — calculating on unverified numbers means a bigger correction later; I would wait for the data and tell the driver why.",
         } },
         { key: "accounting_q02_e", pattern: "builder", text: {
-          uz: "Tasdiqlarni hozir soʻrab chiqaman, haydovchiga nima kutilayotgani va qachon xabar berishimni aytaman, soʻng dispetcherlik bilan hafta oʻrtasida maʼlumot topshirish muddatini kelishishni taklif qilaman.",
-          ru: "Сейчас запрошу подтверждения, скажу водителю, что именно ожидается и когда я выйду на связь, а затем предложу диспетчерской ввести срок сдачи данных в середине недели.",
-          en: "Chase the confirmations now, tell the driver what is pending and when he will hear from me, then propose a midweek data-submission deadline with dispatch so settlements stop stalling.",
+          uz: "Tasdiqlarni bugun soʻrab olaman, haydovchiga nima kutilayotganini aytaman, keyin dispetcherlik bilan hafta oʻrtasida maʼlumot topshirish muddatini kelishaman.",
+          ru: "Подтверждения соберу сегодня, скажу водителю, чего ждём, а затем согласую с диспетчерской срок сдачи данных в середине недели.",
+          en: "I would collect the confirmations today, tell the driver what is pending, then agree a midweek data deadline with dispatch.",
         } },
       ],
     },
@@ -98,29 +97,29 @@ module.exports = {
       },
       options: [
         { key: "accounting_q03_a", pattern: "complaint", text: {
-          uz: "Haydovchilar naqd toʻlab chekni yoʻqotishi doim takrorlanishini aytaman — keyin esa buxgalteriya bu chalkashlikka qandaydir yechim topishi kutilaveradi.",
-          ru: "Скажу, что это повторяется постоянно: водители платят наличными и теряют чеки, а потом от бухгалтерии ждут, что она как-то найдёт выход.",
-          en: "Say this keeps happening: drivers pay cash and lose the receipts, and then accounting is expected to somehow find a way out of the muddle.",
+          uz: "Variantlarni tushuntiraman, ammo asosiy gap boshqada: haydovchilar naqd toʻlaydi va chekni yoʻqotadi — yoʻldagi xarajat tartibi koʻrilishi kerak.",
+          ru: "Варианты объясню, но суть в другом: водители платят наличными и теряют чеки — порядок расходов в дороге надо пересмотреть.",
+          en: "I would explain the options, but the real point is elsewhere: drivers pay cash and lose receipts, and the on-road expense procedure needs revisiting.",
         } },
         { key: "accounting_q03_b", pattern: "waiting", text: {
-          uz: "Hujjatsiz men hech narsa qila olmayman — soʻrovni chetga qoʻyib turaman: chekni topsa yoki tiklasa, oʻshanda rasmiylashtiramiz.",
-          ru: "Без документа я ничего сделать не могу — отложу запрос: найдёт или восстановит чек, тогда и оформим.",
-          en: "Without a document I cannot do anything — I will set the request aside: once he finds or restores the receipt, we will process it then.",
+          uz: "Hujjatsiz toʻlov qilib boʻlmaydi — soʻrovni ochiq qoldiraman va haydovchiga aytaman: chekni topsa yoki nusxasini tiklasa, keyingi hisob-kitobda oʻtkazaman.",
+          ru: "Без документа выплату сделать нельзя — оставлю запрос открытым и скажу водителю: найдёт чек или восстановит копию, проведу в следующем расчёте.",
+          en: "No payment happens without a document — I would leave the request open and tell the driver: once he finds or restores it, it goes in the next settlement.",
         } },
         { key: "accounting_q03_c", pattern: "builder", text: {
-          uz: "Haydovchi bilan birga ustaxonaga qoʻngʻiroq qilib chek nusxasini soʻrayman, hujjat kelgach qoplashni rasmiylashtiraman va haydovchilarga chekni darhol suratga olish haqida qisqa eslatma tarqatishni taklif qilaman.",
-          ru: "Вместе с водителем позвоню в мастерскую за копией счёта, оформлю возмещение, когда документ придёт, и предложу разослать водителям короткую памятку — сразу фотографировать каждый чек.",
-          en: "Call the shop with the driver for a copy of the invoice, process the reimbursement once the document arrives, and propose a short reminder to drivers to photograph every receipt immediately.",
+          uz: "Haydovchi bilan birga shopdan invoys nusxasini soʻrayman, hujjat kelgach qoplaymiz, keyin chekni darhol suratga olish eslatmasini yoʻlga qoʻyaman.",
+          ru: "Вместе с водителем запрошу копию инвойса у шопа, после документа возместим, а затем налажу напоминание сразу фотографировать чеки.",
+          en: "I would request an invoice copy from the shop with the driver, reimburse once it arrives, then make photographing every receipt a standing rule.",
         } },
         { key: "accounting_q03_d", pattern: "blame", text: {
-          uz: "Avval bu taʼmirni kim maʼqullaganini dispetcherlikdan aniqlayman — xarajat oldindan kelishilmagan boʻlsa, savol buxgalteriyaga emas, ruxsat bergan odamga berilishi kerak.",
-          ru: "Сначала уточню у диспетчерской, кто одобрил этот ремонт — если расход не был согласован заранее, вопрос должен идти не к бухгалтерии, а к тому, кто разрешил.",
-          en: "First check with dispatch who approved this repair — if the expense was not agreed in advance, the question should go to whoever allowed it, not to accounting.",
+          uz: "Bu taʼmirni dispetcherlikda kim tasdiqlaganini aniqlayman — xarajat oldindan kelishilmagan boʻlsa, savol ham, tuzatish ham oʻsha yerdan boshlanadi.",
+          ru: "Выясню, кто в диспетчерской согласовал этот ремонт: если расход не согласовали заранее, и вопрос, и исправление начинаются там.",
+          en: "I would find out who in dispatch approved this repair — if the expense was not agreed in advance, both question and fix start there.",
         } },
         { key: "accounting_q03_e", pattern: "ownership", text: {
-          uz: "Haydovchiga chek oʻrnini bosadigan hujjatlarni aniq aytaman, bugunoq ustaxonadan nusxa olishiga yordam beraman va hujjat kelishi bilan summa hisob-kitobiga qoʻshilishini tushuntiraman.",
-          ru: "Объясню водителю, какие документы заменят чек, сегодня же помогу получить копию из мастерской и скажу, что сумма попадёт в расчёт, как только документ придёт.",
-          en: "Tell the driver exactly which documents can replace the receipt, help him get a copy from the shop today, and explain that the amount goes into his settlement as soon as it arrives.",
+          uz: "Haydovchiga chek oʻrnini bosadigan hujjatlarni aniq aytaman, bugun shopdan nusxa olishga oʻzim yordam beraman va kelgach settlementga tushishini tushuntiraman.",
+          ru: "Точно скажу водителю, какие документы заменяют чек, сегодня сам помогу получить копию у шопа и объясню, что по её поступлении сумма войдёт в расчёт.",
+          en: "I would tell the driver exactly which documents replace a receipt, help him get a copy from the shop today, and explain when it enters his settlement.",
         } },
       ],
     },
@@ -133,29 +132,29 @@ module.exports = {
       },
       options: [
         { key: "accounting_q04_a", pattern: "blame", text: {
-          uz: "Avval xato kimniki ekanini aniqlab olaman — provaydernikimi yoki haydovchi oʻzi unutgan xaridmi: aybdor tomon aniq boʻlgach, javobni oʻsha tomon bersin.",
-          ru: "Сначала разберусь, чья это ошибка — провайдера или самого водителя, забывшего о покупке: когда виновная сторона ясна, пусть она и отвечает.",
-          en: "First pin down whose mistake it is — the provider’s or the driver’s own forgotten purchase: once the party at fault is clear, let that side give the answer.",
+          uz: "Xato kimda ekanini aniqlayman — provayderdami yoki haydovchi esdan chiqargan xariddami; javob qaysi tomonda boʻlsa, tushuntirish ham oʻsha tomondan kelishi kerak.",
+          ru: "Определю, чья ошибка — провайдера или забытая самим водителем покупка: у какой стороны ответ, оттуда должно идти и объяснение.",
+          en: "I would establish whose error it is — the provider’s or a purchase the driver forgot; whichever side holds the answer should give the explanation.",
         } },
         { key: "accounting_q04_b", pattern: "ownership", text: {
-          uz: "Bilganimni ochiq aytaman: eʼtiroz qaysi kuni yuborilgani, javob hali kelmagani — va juma kuni, javob boʻlmasa ham, oʻzim qoʻngʻiroq qilishimni bildiraman.",
-          ru: "Честно скажу, что известно: когда отправлен спор и что ответа пока нет, — и предупрежу, что в пятницу сам ему позвоню, даже если ответа ещё не будет.",
-          en: "Tell him honestly what is known: when the dispute was filed and that no reply has come — and that I will call him myself on Friday even if there is still no answer.",
+          uz: "Bilganimni borligicha aytaman: eʼtiroz qachon berilgan va javob kelmagan — hamda juma kuni javob boʻlmasa ham oʻzim qoʻngʻiroq qilishimni aytaman.",
+          ru: "Скажу как есть: когда подана претензия и что ответа нет — и что в пятницу сам позвоню, даже если ответа так и не будет.",
+          en: "I would tell him what is known: when the dispute was filed and that no reply has come — and that I will call him on Friday even without an answer.",
         } },
         { key: "accounting_q04_c", pattern: "waiting", text: {
-          uz: "Provayder javob bermaguncha aytadigan yangilik yoʻq — taxmin bilan gapirsam, haydovchini faqat chalgʻitaman; javob kelishi bilan albatta bogʻlanishimizni aytaman.",
-          ru: "Пока провайдер не ответил, новостей нет — предположениями я только запутаю водителя; скажу, что мы обязательно свяжемся, как только придёт ответ.",
-          en: "Until the provider responds there is no news — guesses would only confuse the driver; I will say we will definitely reach out as soon as the answer comes.",
+          uz: "Provayder javob bermaguncha yangilik yoʻq — taxmin haydovchini chalkashtiradi; javob kelishi bilan albatta bogʻlanishimizni aytaman.",
+          ru: "Пока провайдер не ответит, новостей нет — догадки только запутают водителя; скажу, что обязательно свяжемся, как только придёт ответ.",
+          en: "Until the provider replies there is no news — a guess only confuses the driver; I would say we will reach out the moment the answer comes.",
         } },
         { key: "accounting_q04_d", pattern: "builder", text: {
-          uz: "Haydovchiga hozirgi holat va keyingi aloqa sanasini aytaman, soʻng ochiq eʼtirozlarning umumiy roʻyxatini yuritishni boshlayman — bunday qoʻngʻiroqqa istalgan hamkasb javob bera olishi uchun.",
-          ru: "Назову водителю текущий статус и дату следующего контакта, а затем заведу общий список открытых споров со сроками — чтобы на такой звонок мог ответить любой коллега.",
-          en: "Give the driver the current status and a date for my next update, then start a shared list of open disputes with due dates — so any colleague can answer such a call.",
+          uz: "Haydovchiga hozirgi holatni va keyingi xabar sanasini aytaman, keyin ochiq eʼtirozlarni muddatlari bilan umumiy roʻyxatga kiritaman — har hamkasb javob bera olsin.",
+          ru: "Скажу водителю текущий статус и дату следующего сообщения, а затем внесу открытые претензии со сроками в общий список: отвечать сможет любой коллега.",
+          en: "I would give the driver the current status and a date for my next update, then put open disputes with due dates on a shared list any colleague can answer from.",
         } },
         { key: "accounting_q04_e", pattern: "victim", text: {
-          uz: "Haydovchilar buxgalter ularning pulini atayin ushlab turgandek gapiradi — men ham provayderning javobiga qaramman, lekin bu qoʻngʻiroqlarning hammasi menga keladi.",
-          ru: "Водители говорят так, будто бухгалтер нарочно держит их деньги — я так же завишу от ответа провайдера, но все эти звонки достаются мне.",
-          en: "Drivers talk as if the accountant is deliberately holding their money — I depend on the provider’s reply just like they do, yet all these calls come to me.",
+          uz: "Javob provayderda, lekin qoʻngʻiroqlar bizga keladi — shu chegarani rahbar bilan oldin aniq qilib olaman, keyin javob berishni davom ettiraman.",
+          ru: "Ответ у провайдера, а звонки идут к нам — сначала проясню эту границу с руководителем, а потом продолжу отвечать.",
+          en: "The answer is the provider’s while the calls come to us — I would settle that boundary with my manager first, then keep answering.",
         } },
       ],
     },
@@ -168,29 +167,29 @@ module.exports = {
       },
       options: [
         { key: "accounting_q05_a", pattern: "builder", text: {
-          uz: "Hisobning tasdiqlangan va kutilayotgan qismlarini tushuntirib, qachon yangilik berishimni aytaman, soʻng varaqqa «kutilayotgan summalar» qatorini qoʻshishni taklif qilaman — haydovchi buni oldindan koʻrsin.",
-          ru: "Объясню, что в расчёте подтверждено, а что ожидается, назову дату, когда дам новости, и предложу добавить в расчётный лист строку «ожидаемые суммы» — чтобы водитель видел это заранее.",
-          en: "Explain what is confirmed and what is pending, name the date I will update him, then propose adding a “pending amounts” line to the settlement sheet so drivers see it upfront.",
+          uz: "Nima tasdiqlangan, nima kutilayotganini tushuntiraman, xabar sanasini aytaman, keyin varaqqa «kutilayotgan summalar» qatorini kiritishni yoʻlga qoʻyaman.",
+          ru: "Объясню, что подтверждено и что в ожидании, назову дату следующего сообщения, а затем налажу в расчётном листе строку «ожидаемые суммы».",
+          en: "I would explain what is confirmed and what is pending, name the date I will update him, then get a “pending amounts” line added to the settlement sheet.",
         } },
         { key: "accounting_q05_b", pattern: "complaint", text: {
-          uz: "Brokerlar detentionni haftalab tasdiqlamasligini, haydovchilar esa pulni buxgalteriya ushlab turibdi deb oʻylashini aytaman — bu sohaning eski dardi, qoʻlimizdan kam narsa keladi.",
-          ru: "Скажу, что брокеры неделями не подтверждают detention, а водители думают, что деньги держит бухгалтерия, — это старая боль отрасли, и от нас тут мало что зависит.",
-          en: "Say brokers take weeks to confirm detention while drivers think accounting is holding the money — an old industry pain, and little of it depends on us.",
+          uz: "Tushuntiraman va bu tartib haqida savol qoʻyaman: brokerlar detentionni haftalab tasdiqlaydi, haydovchi esa pulni biz ushlab turgandek koʻradi.",
+          ru: "Объясню и поставлю вопрос об этом порядке: брокеры подтверждают detention неделями, а водитель считает, что деньги держим мы.",
+          en: "I would explain it and put a question about that order: brokers take weeks to confirm detention while the driver thinks we hold the money.",
         } },
         { key: "accounting_q05_c", pattern: "ownership", text: {
-          uz: "Hisobni haydovchi bilan qatorma-qator koʻrib chiqaman, detention yoʻqolmaganini — tasdiq kutilayotganini koʻrsataman va bugunoq dispetcherlikdan soʻrov holatini oʻzim aniqlayman.",
-          ru: "Пройду с водителем расчёт строка за строкой, покажу, что detention не потерялся, а ждёт подтверждения, и сегодня же сам уточню у диспетчерской статус запроса.",
-          en: "Go through the settlement with the driver line by line, show that the detention is not lost but awaiting confirmation, and check the claim status with dispatch myself today.",
+          uz: "Settlementni haydovchi bilan qator-qator koʻrib chiqaman, detention yoʻqolmagani va tasdiq kutilayotganini koʻrsataman va bugun dispetcherlikdan holatni soʻrayman.",
+          ru: "Разберу расчёт с водителем строка за строкой, покажу, что detention не потерян и ждёт подтверждения, и сегодня же узнаю статус у диспетчерской.",
+          en: "I would go through the settlement with him line by line, show the detention is not lost but awaiting confirmation, and check its status with dispatch today.",
         } },
         { key: "accounting_q05_d", pattern: "victim", text: {
-          uz: "Toʻlov ozgina kam chiqsa ham, aybdor sifatida buxgalterga qarashadi — brokerning sustligi uchun har safar men javob berishim adolatdan emasdek tuyuladi.",
-          ru: "Стоит выплате оказаться чуть меньше — виноватым смотрят на бухгалтера; отвечать каждый раз за медлительность брокера кажется несправедливым.",
-          en: "The moment pay comes out even a little lower, the accountant is looked at as the culprit — answering every time for a broker’s slowness feels unjust.",
+          uz: "Rahbarga aniq aytaman: broker sekinligi uchun javob bergan buxgalter boʻladi — bunday qoʻngʻiroqlar bizning ish sifatimiz deb baholanmasligi kerak.",
+          ru: "Прямо скажу руководителю: за медлительность брокера отвечает бухгалтер — такие звонки не стоит считать качеством нашей работы.",
+          en: "I would tell my manager plainly the accountant answers for the broker’s slowness — calls like this are not a measure of our work.",
         } },
         { key: "accounting_q05_e", pattern: "blame", text: {
-          uz: "Avval dispetcherlik detention soʻrovini oʻz vaqtida yuborgan-yubormaganini tekshiraman — kechiktirgan boʻlishsa, haydovchiga tushuntirishni ham oʻshalar berishi toʻgʻri boʻladi.",
-          ru: "Сначала проверю, вовремя ли диспетчерская отправила запрос на detention — если затянули, то и объясняться с водителем правильнее им.",
-          en: "First check whether dispatch submitted the detention request on time — if they delayed it, it is only right that they be the ones to explain to the driver.",
+          uz: "Detention soʻrovi dispetcherlikdan oʻz vaqtida ketganmi tekshiraman — kechiktirilgan boʻlsa, haydovchiga tushuntirish ham oʻsha tomondan kelishi toʻgʻri.",
+          ru: "Проверю, вовремя ли ушёл запрос на detention из диспетчерской: если задержали, объяснять водителю правильнее той стороне.",
+          en: "I would check whether dispatch filed the detention claim on time — if they delayed it, the explanation to the driver rightly comes from them.",
         } },
       ],
     },
@@ -203,29 +202,29 @@ module.exports = {
       },
       options: [
         { key: "accounting_q06_a", pattern: "waiting", text: {
-          uz: "Varaq shakli dasturda markazlashgan holda sozlanadi — format yuqorida oʻzgartirilmaguncha, qoʻngʻiroqlarga kelganicha javob beraverishdan boshqa yoʻl yoʻq.",
-          ru: "Форма листа настраивается в программе централизованно — пока формат не изменят наверху, остаётся отвечать на звонки по мере поступления.",
-          en: "The sheet format is configured centrally in the software — until the format is changed higher up, there is little to do but keep answering the calls as they come.",
+          uz: "Varaq formati dasturda markazlashgan sozlanadi — format yuqorida oʻzgarmaguncha, qoʻngʻiroqlarga javob berib turishdan boshqa aniq yoʻl yoʻq.",
+          ru: "Формат листа настраивается в программе централизованно — пока формат не изменят выше, ясного пути, кроме ответов на звонки, нет.",
+          en: "The sheet format is configured centrally in the software — until it is changed higher up, there is no clear path beyond answering the calls.",
         } },
         { key: "accounting_q06_b", pattern: "ownership", text: {
-          uz: "Bugunoq escrow qatorini oddiy tilda tushuntiradigan qisqa matn yozaman va shu savol bilan murojaat qilgan har bir haydovchiga oʻzim yuborib boraman.",
-          ru: "Сегодня же напишу короткое объяснение строки escrow простым языком и буду сам отправлять его каждому водителю, который обращается с этим вопросом.",
-          en: "Write a short plain-language explanation of the escrow line today and start sending it myself to every driver who comes with this question.",
+          uz: "Bugun escrow qatori haqida sodda tilda qisqa izoh yozaman va shu savol bilan kelgan har bir haydovchiga oʻzim yuborib boraman.",
+          ru: "Сегодня напишу короткое пояснение про строку escrow простым языком и сам буду отправлять его каждому водителю с этим вопросом.",
+          en: "I would write a short plain-language explanation of the escrow line today and send it myself to every driver who comes with this question.",
         } },
         { key: "accounting_q06_c", pattern: "complaint", text: {
-          uz: "Varaqning koʻrinishi oʻqib boʻlmas darajada ekanini necha marta aytganman — bunday formatda haydovchilar tushunmasligi tabiiy, dastur esa ishni yanada chigallashtiradi.",
-          ru: "Сколько раз я говорил, что лист нечитаемый — естественно, что водители не понимают такой формат, а программа только всё усложняет.",
-          en: "I have said many times the sheet is unreadable — no wonder drivers do not understand this format, and the software only makes it more tangled.",
+          uz: "Izoh yozaman, keyin varaq formatini rahbarlar oldiga qoʻyaman: hozirgi koʻrinishida u oʻqib boʻlmaydigan darajada va savollar shundan chiqadi.",
+          ru: "Пояснение напишу, а затем поставлю перед руководителями вопрос о формате листа: в текущем виде он нечитаем.",
+          en: "I would write the note, then put the sheet format to the leads: as it stands the sheet is simply unreadable.",
         } },
         { key: "accounting_q06_d", pattern: "victim", text: {
-          uz: "Kunimning yarmi bitta qatorni qayta-qayta tushuntirishga ketadi — bu mehnatni hech kim hisobga olmaydi, asosiy ishlarim esa orqada qolib, javobini yana oʻzim beraman.",
-          ru: "Полдня уходит на то, чтобы снова и снова объяснять одну строку — этот труд никто не учитывает, а основные задачи копятся, и отвечать за них снова мне.",
-          en: "Half my day goes to explaining the same line over and over — nobody counts that work, while my main tasks pile up and I am the one answering for them.",
+          uz: "Kunimning yarmi bir xil qatorni tushuntirishga ketadi — bu vaqtni oʻlchab, oylik hisobotimga qoʻshib boraman.",
+          ru: "Полдня уходит на объяснение одной и той же строки — буду замерять это время и включать его в свой месячный отчёт.",
+          en: "Half my day goes into explaining the same line — I would measure that time and include it in my monthly report.",
         } },
         { key: "accounting_q06_e", pattern: "builder", text: {
-          uz: "Escrow boʻyicha bir sahifalik sodda yodnoma tayyorlayman va uni onbordingga hamda har bir hisob-kitob bilan birga yuborilishini kelishib olaman — bir xil savollar takrorlanmasligi uchun.",
-          ru: "Подготовлю одностраничную простую памятку по escrow и договорюсь, чтобы её включили в онбординг и отправляли вместе с каждым расчётом — чтобы одни и те же вопросы не повторялись.",
-          en: "Prepare a simple one-page escrow explainer and arrange for it to go into onboarding and out with every settlement — so the same questions stop repeating.",
+          uz: "Bir sahifalik oddiy escrow izohini tayyorlab, uni onbordingga va har settlement bilan ketadigan qilib kelishaman — savollar shu bilan kamayadi.",
+          ru: "Подготовлю одностраничное простое пояснение про escrow и согласую, чтобы оно шло в онбординг и с каждым расчётом: вопросов станет меньше.",
+          en: "I would prepare a simple one-page escrow explainer and arrange for it to go into onboarding and out with every settlement — the questions then thin out.",
         } },
       ],
     },
@@ -238,29 +237,29 @@ module.exports = {
       },
       options: [
         { key: "accounting_q07_a", pattern: "ownership", text: {
-          uz: "Barcha kanallarni — ilova, pochta, dispetcher chatini — hoziroq oʻzim koʻrib chiqaman; hujjat chindan boʻlmasa, haydovchidan suratini toʻgʻridan-toʻgʻri menga yuborishini soʻrab, masalani bugun yopaman.",
-          ru: "Сам сейчас проверю все каналы — приложение, почту, чат с диспетчером; если документа действительно нет, попрошу водителя прислать фото напрямую мне и закрою вопрос сегодня.",
-          en: "Check every channel myself right now — the app, email, the dispatch chat; if it truly is not there, ask the driver to send a photo directly to me and close this today.",
+          uz: "Hamma kanalni hoziroq oʻzim tekshiraman — ilova, pochta, dispetcher chati; topilmasa, haydovchidan surat soʻrab bugun yopaman.",
+          ru: "Прямо сейчас сам проверю все каналы — приложение, почту, чат диспетчера; если его действительно нет, попрошу водителя прислать фото напрямую мне и закрою сегодня.",
+          en: "I would check every channel myself right now — the app, email, the dispatch chat; if it truly is not there, I would ask him to send me a photo and close it today.",
         } },
         { key: "accounting_q07_b", pattern: "blame", text: {
-          uz: "Avval hujjat qayerda yoʻqolganini aniqlash kerak — haydovchi rostdan yuklagan boʻlsa, uni yoʻqotgan tizim yoki boʻlim javob bersin, undan keyin qidiruvga tushaman.",
-          ru: "Сначала нужно установить, где потерялся документ — если водитель действительно загрузил его, пусть отвечает система или отдел, который его потерял, а потом уже начну поиски.",
-          en: "First it must be established where the document was lost — if the driver really uploaded it, the system or department that lost it should answer, and then I will start searching.",
+          uz: "Hujjat qaysi bosqichda yoʻqolganini aniqlash kerak — haydovchi haqiqatan yuklagan boʻlsa, yoʻqotgan tizim yoki boʻlim javob berishi kerak, izlash shundan keyin.",
+          ru: "Нужно установить, на каком шаге документ потерялся: если водитель действительно загрузил, отвечать должна потерявшая система или отдел, поиск — после этого.",
+          en: "It has to be established where the document was lost — if he really uploaded it, the system or department that lost it answers, and the search follows.",
         } },
         { key: "accounting_q07_c", pattern: "builder", text: {
-          uz: "Hujjatni haydovchidan qaytadan olib, hisobni yopaman, soʻng hujjat qabul qilinganda haydovchiga avtomatik tasdiq borishini yoʻlga qoʻyishni taklif qilaman — «men yuborganman» bahslari yoʻqolishi uchun.",
-          ru: "Получу документ от водителя заново, закрою расчёт, а затем предложу настроить автоматическое подтверждение водителю о приёме документа — чтобы споры «я же отправлял» исчезли.",
-          en: "Get the document from the driver again, close the settlement, then propose an automatic received-confirmation to drivers whenever a document comes in — so the “I did send it” disputes disappear.",
+          uz: "Hujjatni haydovchidan qayta olib settlementni yopaman, keyin hujjat kelganda avtomatik tasdiq ketishini taklif qilaman — «yuborgandim» bahsi shu bilan tugaydi.",
+          ru: "Возьму документ у водителя заново и закрою расчёт, а затем предложу автоматическое подтверждение получения документа: спор «я же отправлял» на этом заканчивается.",
+          en: "I would get the document from the driver again and close the settlement, then propose an automatic receipt confirmation — the “I did send it” dispute ends there.",
         } },
         { key: "accounting_q07_d", pattern: "complaint", text: {
-          uz: "Ilova hujjatlarni tez-tez yoʻqotishini, suratlar esa koʻpincha oʻqib boʻlmas holda kelishini taʼkidlayman — hisob yuritishdan koʻra qogʻoz qidirishga koʻproq vaqt ketadi.",
-          ru: "Замечу, что приложение то и дело теряет документы, а фото часто приходят нечитаемыми — на поиски бумаг уходит больше времени, чем на сам учёт.",
-          en: "Note that the app keeps losing documents and photos often arrive unreadable — more time goes into hunting paperwork than into the actual accounting.",
+          uz: "Hujjatni qayta olaman, ammo asosiy muammo boshqada: ilova hujjatlarni yoʻqotadi, suratlar oʻqilmas keladi va bu masala boʻlim darajasida hal boʻlmaydi.",
+          ru: "Документ возьму заново, но главная проблема в другом: приложение теряет документы, а фото приходят нечитаемыми.",
+          en: "I would re-collect the document, but the main problem sits elsewhere: the app loses files and photos arrive unreadable.",
         } },
         { key: "accounting_q07_e", pattern: "waiting", text: {
-          uz: "Haydovchidan hujjatni rasmiy kanal orqali qayta yuklashni soʻrayman va tizimda paydo boʻlishini kutaman — hujjatsiz yopib boʻlmaydi, summa keyingi toʻlov davriga kiradi.",
-          ru: "Попрошу водителя загрузить документ заново через официальный канал и подожду, пока он появится в системе — без документа закрыть нельзя, сумма войдёт в следующий период выплат.",
-          en: "Ask the driver to re-upload the document through the official channel and wait for it to appear in the system — it cannot be closed without it, so the amount goes into the next pay cycle.",
+          uz: "Haydovchidan hujjatni rasmiy kanal orqali qayta yuklashini soʻrayman va tizimda paydo boʻlishini kutaman — hujjatsiz yopilmaydi, summa keyingi siklga oʻtadi.",
+          ru: "Попрошу водителя заново загрузить документ по официальному каналу и дождусь появления в системе: без документа не закрыть, сумма уйдёт в следующий цикл.",
+          en: "I would ask the driver to re-upload through the official channel and wait for it to appear — it cannot close without the document, so it moves to the next cycle.",
         } },
       ],
     },
@@ -273,29 +272,29 @@ module.exports = {
       },
       options: [
         { key: "accounting_q08_a", pattern: "victim", text: {
-          uz: "Muddatni provayder buzdi, lekin haydovchi oldida yolgʻonchi boʻlib men qolaman — bergan soʻzim oʻzimga bogʻliq boʻlmagan odamlarga qarab turishi juda noqulay.",
-          ru: "Срок сорвал провайдер, а лжецом перед водителем окажусь я — неприятно, что моё слово зависит от людей, на которых я не могу повлиять.",
-          en: "The provider broke the deadline, yet I am the one who ends up looking like a liar to the driver — it is unpleasant that my word depends on people I cannot influence.",
+          uz: "Muddatni provayder buzdi, haydovchi oldida esa men vaʼdasini bajarmagan boʻlib qolaman — provayder bilan yozishmani bugun saqlab qoʻyaman.",
+          ru: "Срок нарушил провайдер, а перед водителем невыполненным обещанием выгляжу я — переписку с провайдером сохраню сегодня же.",
+          en: "The provider missed the deadline while I am the one looking unreliable to the driver — I would save that correspondence today.",
         } },
         { key: "accounting_q08_b", pattern: "builder", text: {
-          uz: "Haydovchi qoʻngʻiroq qilmasidan oldin oʻzim chiqaman: hisobot kelmaganini va yangi sanani aytaman, provayderga takroriy soʻrov yuboraman va ochiq masalalarni nazorat sanalari bilan roʻyxatga olib boraman.",
-          ru: "Выйду на связь раньше, чем позвонит водитель: скажу, что отчёта нет, назову новую дату, отправлю провайдеру повторный запрос и заведу список открытых вопросов с контрольными датами.",
-          en: "Reach out before the driver calls: say the report has not come, give a new date, send the provider a repeat request, and keep open items on a list with control dates.",
+          uz: "Haydovchi qoʻngʻiroq qilishidan oldin oʻzim bogʻlanaman, yangi sanani aytaman, provayderga qayta soʻrov yuboraman va ochiq masalalarni roʻyxatga olaman.",
+          ru: "Свяжусь сам, прежде чем водитель позвонит, назову новую дату, отправлю провайдеру повторный запрос и внесу открытые вопросы в список с контрольными датами.",
+          en: "I would reach out before the driver calls, give a new date, send the provider a repeat request, and put open items on a list with control dates.",
         } },
         { key: "accounting_q08_c", pattern: "waiting", text: {
-          uz: "Yangiliksiz qoʻngʻiroq qilsam, haydovchini bekorga asabiylashtiraman — yaxshisi hisobotni bir-ikki kun boʻlsa ham kutib, keyin toʻliq javob bilan chiqqanim maʼqul.",
-          ru: "Звонок без новостей только зря его раздражит — лучше подождать отчёт, пусть даже день-два, и выйти на связь сразу с полным ответом.",
-          en: "Calling with no news would only irritate him for nothing — better to wait for the report, even a day or two, and come back with the complete answer at once.",
+          uz: "Yangilik yoʻq holda qoʻngʻiroq qilsam, uni bekorga bezovta qilaman — hisobotni bir-ikki kun kutib, chalasi emas, toʻliq javobni bir yoʻla beraman.",
+          ru: "Звонок без новостей только зря его растревожит — лучше подождать отчёт день-два и дать сразу полный ответ, а не половину картины.",
+          en: "A call with no news only unsettles him for nothing — I would wait a day or two for the report and give the complete answer at once, not half a picture.",
         } },
         { key: "accounting_q08_d", pattern: "ownership", text: {
-          uz: "Kun oxirigacha haydovchiga oʻzim qoʻngʻiroq qilib, maʼlumot hali kelmaganini ochiq aytaman va aniq yangi sana beraman, soʻng provayderdan hisobotni yana talab qilaman.",
-          ru: "До конца дня сам позвоню водителю, честно скажу, что данные ещё не пришли, назову конкретную новую дату, а затем снова затребую отчёт у провайдера.",
-          en: "Call the driver myself before the end of the day, tell him honestly the data has not arrived, give him a specific new date, and then push the provider for the report again.",
+          uz: "Kun tugashidan oldin haydovchiga oʻzim qoʻngʻiroq qilib, maʼlumot kelmaganini rost aytaman, aniq yangi sana beraman va provayderni yana qistayman.",
+          ru: "До конца дня сам позвоню водителю, честно скажу, что данные не пришли, дам конкретную новую дату и снова надавлю на провайдера.",
+          en: "I would call the driver myself before the end of the day, say honestly the data has not come, give a specific new date, and push the provider again.",
         } },
         { key: "accounting_q08_e", pattern: "blame", text: {
-          uz: "Avval provayder muddatni buzganini yozma qayd qilib qoʻyaman — masala kattaroq joyga chiqsa, kechikish buxgalteriyadan emasligi hujjat bilan koʻrinib tursin.",
-          ru: "Сначала письменно зафиксирую, что провайдер сорвал срок — если вопрос поднимется выше, пусть по документам будет видно, что задержка не со стороны бухгалтерии.",
-          en: "First put on record in writing that the provider missed the deadline — if the matter goes higher, the documents should show the delay is not on accounting’s side.",
+          uz: "Provayder muddatni buzganini yozma qayd etaman — masala yuqoriga chiqsa, kechikish buxgalteriya tomonida boʻlmaganini hujjat koʻrsatishi kerak.",
+          ru: "Письменно зафиксирую, что провайдер нарушил срок: если вопрос пойдёт выше, документы должны показать, что задержка не на стороне бухгалтерии.",
+          en: "I would record in writing that the provider missed the deadline — if this goes higher, the file should show the delay was not accounting’s.",
         } },
       ],
     },
@@ -308,29 +307,29 @@ module.exports = {
       },
       options: [
         { key: "accounting_q09_a", pattern: "blame", text: {
-          uz: "Kechikish toʻliq xavfsizlik boʻlimi tomonida — haydovchiga masala aynan qaysi boʻlimda turganini aytaman: savollar ham oʻsha yerga borishi kerak, biz xulosasiz hech narsa qilolmaymiz.",
-          ru: "Задержка целиком на стороне отдела безопасности — скажу водителю, в каком именно отделе стоит вопрос: туда и должны идти звонки, без заключения мы ничего не решаем.",
-          en: "The delay is entirely on Safety’s side — I will tell the driver exactly which department is holding it: that is where the calls should go, since we decide nothing without their review.",
+          uz: "Kechikish xavfsizlik boʻlimida — haydovchiga qaysi boʻlim ushlab turganini aniq aytaman: xulosasiz biz hech narsa kiritmaymiz, savol ham oʻsha yerga borishi kerak.",
+          ru: "Задержка в отделе безопасности — прямо скажу водителю, какой отдел держит вопрос: без заключения мы ничего не вносим, и спрашивать надо там.",
+          en: "The delay is Safety’s — I would tell the driver exactly which department is holding it: we enter nothing without the review, and the question belongs there.",
         } },
         { key: "accounting_q09_b", pattern: "victim", text: {
-          uz: "Boshqa boʻlimning sustligi uchun qoʻngʻiroqlarni yana buxgalteriya qabul qilyapti — biz hech narsani hal qilolmaymiz, lekin haydovchining butun xavotiri bizga toʻkiladi.",
-          ru: "За медлительность другого отдела звонки снова принимает бухгалтерия — решить мы ничего не можем, но вся тревога водителя выливается на нас.",
-          en: "Once again accounting is fielding the calls for another department’s slowness — we cannot decide anything, yet all the driver’s anxiety is poured onto us.",
+          uz: "Qaror bizda emas, lekin haydovchining xavotiri bizga toʻkiladi — soʻrov qachon yuborilgani va javob kelmaganini yozib qoʻyaman.",
+          ru: "Решение не за нами, а тревога водителя выливается на нас — зафиксирую, когда ушёл запрос и что ответа до сих пор нет.",
+          en: "The decision is not ours yet the driver’s anxiety pours onto us — I would record when the request went out and that no answer came.",
         } },
         { key: "accounting_q09_c", pattern: "ownership", text: {
-          uz: "Haydovchiga hozirgi holatni ochiq aytaman: tayyor xulosasiz hech qanday ushlanma kiritilmaydi — va bugunoq xavfsizlik boʻlimidan muddatni soʻrab, unga yetkazaman.",
-          ru: "Честно объясню водителю текущее положение: без готового заключения никакое удержание не вносится, — и сегодня же запрошу у отдела безопасности срок и передам его водителю.",
-          en: "Tell the driver the honest current picture: no deduction is entered without a finished review — and ask Safety today for a timeline so I can pass it on to him.",
+          uz: "Haydovchiga rost manzarani aytaman: xulosa boʻlmasa, ushlanma kiritilmaydi — va bugun xavfsizlik boʻlimidan muddat soʻrab, uni haydovchiga yetkazaman.",
+          ru: "Скажу водителю честную картину: без заключения удержание не вносится — и сегодня же запрошу срок у отдела безопасности и передам его водителю.",
+          en: "I would give the driver the honest picture — no review, no deduction entered — and ask Safety today for a timeline to pass on to him.",
         } },
         { key: "accounting_q09_d", pattern: "complaint", text: {
-          uz: "Haydovchiga hamdardlik bildirib, bizda boʻlimlararo soʻrovlar doim haftalab yotishini aytaman — bu jarayon azaldan shunaqa sekin, oʻzimiz ham qiynalamiz.",
-          ru: "Посочувствую водителю и скажу, что межотдельские запросы у нас всегда лежат неделями — процесс исстари такой медленный, мы и сами от этого страдаем.",
-          en: "Sympathize with the driver and say cross-department requests always sit for weeks here — the process has been this slow forever, and we suffer from it too.",
+          uz: "Haydovchiga hamdardlik bildiraman va bugun boʻlim rahbarlari oldida savol qoʻyaman: boʻlimlar orasidagi soʻrovlar haftalab turadi.",
+          ru: "Водителю посочувствую и сегодня поставлю вопрос перед руководителями отделов: межотдельские запросы лежат неделями.",
+          en: "I would sympathize with the driver and today put the question to the department leads: cross-department requests sit for weeks.",
         } },
         { key: "accounting_q09_e", pattern: "builder", text: {
-          uz: "Bugun xavfsizlikdan holatni aniqlab, haydovchiga qachon xabar berishimni aytaman, soʻng bunday koʻriklar uchun standart muddat kelishishni taklif qilaman — haydovchilar toʻlovi taqdirini taxmin qilib yurmasligi uchun.",
-          ru: "Сегодня уточню статус у безопасности и скажу водителю, когда выйду на связь, а затем предложу согласовать стандартный срок таких разборов — чтобы водители не гадали о судьбе своей выплаты.",
-          en: "Clarify the status with Safety today and tell the driver when he will hear from me, then propose a standard turnaround for such reviews — so drivers are not left guessing about their pay.",
+          uz: "Bugun xavfsizlik boʻlimidan holatni aniqlab, haydovchiga qachon xabar berishimni aytaman, keyin bunday xulosalar uchun standart muddat kelishishni taklif qilaman.",
+          ru: "Сегодня уточню статус у отдела безопасности, скажу водителю, когда его извещу, а затем предложу согласовать стандартный срок для таких заключений.",
+          en: "I would clarify the status with Safety today, tell the driver when he will hear from me, then propose a standard turnaround for reviews like this.",
         } },
       ],
     },
@@ -343,29 +342,29 @@ module.exports = {
       },
       options: [
         { key: "accounting_q10_a", pattern: "complaint", text: {
-          uz: "Bunday hajm va doimiy shoshilinchda xatolar boʻlishi tabiiy ekanini yana takrorlayman — hammasini bitta odam tekshirsa, sifatni kutish qiyin; ish tartibi shunga olib kelyapti.",
-          ru: "Повторю в очередной раз, что при таких объёмах и вечной спешке ошибки неизбежны — когда всё проверяет один человек, трудно ждать качества; сам порядок работы к этому ведёт.",
-          en: "Repeat once more that with these volumes and constant rushing errors are inevitable — when one person checks everything, quality is hard to expect; the way work is set up leads to this.",
+          uz: "Tuzatishni jarayonga qoʻyaman, lekin rahbarga aytaman: bu hajm va shoshilishda xato muqarrar — hammasini bitta odam tekshirsa, sifat kutish qiyin.",
+          ru: "Исправление поставлю в процесс, но скажу руководителю: при таком объёме и спешке ошибки неизбежны — когда всё проверяет один человек, качества ждать трудно.",
+          en: "I would put the correction into the process, but tell my manager errors are inevitable at this volume and pace — with one person checking, quality is hard.",
         } },
         { key: "accounting_q10_b", pattern: "victim", text: {
-          uz: "Xatoni topgan odam oxirida uning javobgariga aylanadi — shoshilinch grafikni men tanlamaganman, lekin gap-soʻz baribir faylga oxirgi tekkan odamga, yaʼni menga qaytadi.",
-          ru: "Кто нашёл ошибку, тот в итоге за неё и отвечает — авральный график выбирал не я, но разговоры всё равно вернутся к тому, кто последним касался файла, то есть ко мне.",
-          en: "Whoever finds the error ends up answering for it — I did not choose the rushed schedule, yet the talk will still come back to the last person who touched the file, meaning me.",
+          uz: "Xatoni qayd etib tuzatishga qoʻyaman va rahbarga aytib qoʻyaman: jadvalni men belgilamaganman — xato faylni oxirgi ochgan odamga yozilmasligi kerak.",
+          ru: "Зафиксирую ошибку и поставлю на исправление, а руководителю скажу: график задавал не я — ошибку не стоит записывать на того, кто последним открыл файл.",
+          en: "I would log the error for correction and tell my manager I did not set the pace — the mistake should not be written down to whoever touched the file last.",
         } },
         { key: "accounting_q10_c", pattern: "waiting", text: {
-          uz: "Tuzatishlar odatda oy yakunida jamlab kiritiladi — yopilgan haftaga hozir yolgʻiz oʻzim tegsam, chalkashlik koʻpayishi mumkin; masalani navbatdagi solishtiruvda koʻtaraman.",
-          ru: "Корректировки обычно вносятся пакетом в конце месяца — если я сейчас в одиночку трону закрытую неделю, путаницы может стать больше; подниму вопрос на ближайшей сверке.",
-          en: "Corrections are usually entered in a batch at month-end — if I touch a closed week alone right now, there may be more confusion; I will raise it at the next reconciliation.",
+          uz: "Tuzatishlar odatda oy oxirida jamlab kiritiladi — yopilgan haftaga yolgʻiz tegsam chalkashlik chiqadi; keyingi solishtiruvda tartib boʻyicha kiritaman.",
+          ru: "Корректировки обычно вносят пакетом в конце месяца — трогая закрытую неделю в одиночку, я создам путаницу; внесу по порядку на следующей сверке.",
+          en: "Corrections normally go in as a month-end batch — touching a closed week alone creates confusion; I would enter it at the next reconciliation.",
         } },
         { key: "accounting_q10_d", pattern: "builder", text: {
-          uz: "Xatoni hujjatlashtirib, tuzatishni belgilangan tartibda rasmiylashtiraman, haydovchiga oʻzim xabar beraman va oʻsha haftaning boshqa hisoblarida ham shu xato bor-yoʻqligini tekshirib chiqaman.",
-          ru: "Задокументирую ошибку, оформлю корректировку по установленному порядку, сам сообщу водителю и проверю, нет ли той же ошибки в других расчётах за ту неделю.",
-          en: "Document the error, put the correction through the standard process, tell the driver myself, and check whether the same slip is in any other settlements from that week.",
+          uz: "Xatoni hujjatlashtiraman, tuzatishni standart jarayondan oʻtkazaman, haydovchiga oʻzim aytaman va oʻsha haftadagi boshqa settlementlarni ham tekshiraman.",
+          ru: "Задокументирую ошибку, проведу исправление стандартным процессом, сам скажу водителю и проверю, нет ли той же ошибки в других расчётах той недели.",
+          en: "I would document the error, put the correction through the standard process, tell the driver myself, and check the week’s other settlements for the same slip.",
         } },
         { key: "accounting_q10_e", pattern: "ownership", text: {
-          uz: "Bugunoq xatoni rahbarga bildirib, tuzatishni amaldagi tartib boʻyicha rasmiylashtiraman va haydovchiga nima boʻlgani hamda tuzatish qachon aks etishini oʻzim aytaman.",
-          ru: "Сегодня же сообщу об ошибке руководителю, оформлю корректировку по действующему порядку и сам скажу водителю, что произошло и когда исправление отразится в расчёте.",
-          en: "Report the error to my manager today, put the correction through the current process, and tell the driver myself what happened and when the correction will show in his settlement.",
+          uz: "Xato haqida bugun rahbarga aytaman, tuzatishni amaldagi jarayondan oʻtkazaman va haydovchiga nima boʻlgani va tuzatish qachon koʻrinishini oʻzim tushuntiraman.",
+          ru: "Об ошибке сегодня скажу руководителю, проведу исправление действующим процессом и сам объясню водителю, что произошло и когда исправление будет видно.",
+          en: "I would report the error to my manager today, put the correction through the current process, and explain to the driver myself what happened and when it shows.",
         } },
       ],
     },

@@ -1,18 +1,18 @@
 /**
  * SOS assessment content — Dispatch department (10 questions).
  *
- * Scope: late pickups and deliveries, unreachable drivers and unclear ETAs,
- * broker load changes/cancellations, HOS limits vs delivery windows, mid-route
- * equipment issues, driver misunderstandings of load instructions, shift
- * handoffs and team coverage, cross-department dependencies (trailer/yard),
- * preventing repeated communication failures.
+ * Scope: broker communication and ETAs, appointments and rate cons, driver
+ * contact gaps, HOS-constrained planning, breakdowns on the road, trailer
+ * availability, detention and TONU claims, shift handoffs, covering a
+ * teammate's board, recurring update complaints.
  *
- * Authoring rules (see tests/sosContent.test.js):
- *  - every question offers 5 plausible options mapped to 5 of the 6 patterns;
- *  - no option is obviously "correct", careless, or ridiculous;
- *  - the strongest QBQ option varies in position and length;
- *  - no option encourages unsafe driving, HOS violations, pressuring drivers,
- *    or hiding/false information toward brokers and customers.
+ * Authoring rules: see the header of ./hr.js — all five options must read as
+ * competent and choosable, the six tendencies are loci of first action rather
+ * than keyword formulas. Hard constraints for this department: no option may
+ * invent an ETA or a location, misinform a broker or a driver, plan a trip that
+ * cannot be run legally on the driver's remaining hours, or skip a documented
+ * claim. A less accountable instinct shows up as a different FIRST MOVE, never
+ * as dishonest or illegal dispatching.
  */
 
 module.exports = {
@@ -27,29 +27,29 @@ module.exports = {
       },
       options: [
         { key: "dispatch_q01_a", pattern: "waiting", text: {
-          uz: "Tirbandlik tarqalib ketishi ham mumkin — aniq necha soat kechikishi maʼlum boʻlmaguncha brokerga xabar bermayman: notoʻgʻri raqam aytib, keyin qayta tuzatishdan foyda yoʻq.",
-          ru: "Пробка может и рассосаться — не буду сообщать брокеру, пока не станет ясно, на сколько именно он опоздает: назвать неверное время и потом переправлять нет смысла.",
-          en: "The traffic may still clear — I will not message the broker until it is clear exactly how late he will be: giving a wrong time and correcting it later helps no one.",
+          uz: "Tirbandlik tarqashi mumkin — qancha kechikishi aniq boʻlmaguncha brokerga vaqt aytmayman: avval bir son, keyin boshqasini aytish ishonchni buzadi.",
+          ru: "Пробка может рассосаться — не назову брокеру время, пока не станет ясно, на сколько он опаздывает: сначала одна цифра, потом другая — это и подрывает доверие.",
+          en: "The traffic may still clear — I would not give the broker a time until the delay is clear: one figure now and another later is what breaks trust.",
         } },
         { key: "dispatch_q01_b", pattern: "victim", text: {
-          uz: "Nega aynan mening reyslarimda doim shunday boʻladi, deb oʻylayman — avariya menga bogʻliq emas, lekin kechikkan pickup baribir mening koʻrsatkichimga yoziladi.",
-          ru: "Подумаю: почему такое случается именно на моих рейсах — авария от меня не зависит, но опоздание на погрузку всё равно запишут на мой счёт.",
-          en: "Wonder why this always happens on my loads in particular — the accident is not my doing, yet the late pickup will still be counted against me.",
+          uz: "Rahbarga bugunoq aytib qoʻyaman: kechikish yoʻldagi avariya sababli boʻlgan — kechikkan pickup mening koʻrsatkichimda qolsa, buni albatta ajratib koʻrish kerak.",
+          ru: "Сегодня же скажу руководителю, что опоздание вызвано аварией на дороге: если опоздавшая погрузка останется на моих показателях, это обязательно надо разделять.",
+          en: "I would tell my lead today that the delay comes from a road accident: if the late pickup lands on my numbers, that has to be separated from my own work.",
         } },
         { key: "dispatch_q01_c", pattern: "builder", text: {
-          uz: "Brokerga hoziroq halol yangi ETA beraman, shipperdan kechroq oyna soʻrayman va bundan keyin ertalabki pickuplar oldidan yoʻl holatini tekshirishni odat qilaman.",
-          ru: "Сразу дам брокеру честное новое ETA, спрошу у шиппера более позднее окно и впредь возьму за правило проверять дорожную обстановку перед утренними погрузками.",
-          en: "Give the broker an honest new ETA right away, ask the shipper about a later window, and from now on make it a habit to check road conditions before morning pickups.",
+          uz: "Brokerga rost yangi ETA beraman va ertalabki pickuplardan oldin yoʻl holatini tekshirishni doimiy qadam qilaman — bu safar emas, keyingi safar vaqt qozonadi.",
+          ru: "Дам брокеру честное новое ETA и сделаю постоянным шагом проверку обстановки на дороге перед утренними погрузками: время это выиграет не сейчас, а в следующий раз.",
+          en: "I would give the broker an honest new ETA and make a road-conditions check before morning pickups a standing step — it buys time next time, not this one.",
         } },
         { key: "dispatch_q01_d", pattern: "ownership", text: {
-          uz: "Hoziroq brokerga qoʻngʻiroq qilib, vaziyatni va yangi taxminiy vaqtni ochiq aytaman, shipper kechroq qabul qila olishini aniqlayman va haydovchini yoʻl davomida xabardor qilib boraman.",
-          ru: "Прямо сейчас позвоню брокеру, честно опишу ситуацию и новое ориентировочное время, уточню, примет ли шиппер позже, и буду держать водителя в курсе.",
-          en: "Call the broker right now, lay out the situation and the new estimated time honestly, confirm whether the shipper can still receive him later, and keep the driver posted.",
+          uz: "Hoziroq brokerga qoʻngʻiroq qilib holatni va taxminiy yangi vaqtni rost aytaman, shipper keyinroq qabul qila oladimi aniqlayman va haydovchini xabardor qilib boraman.",
+          ru: "Прямо сейчас позвоню брокеру, честно назову ситуацию и примерное новое время, выясню, примет ли шиппер позже, и буду держать водителя в курсе.",
+          en: "I would call the broker right now, give the situation and an honest estimated new time, check whether the shipper can still take him later, and keep the driver posted.",
         } },
         { key: "dispatch_q01_e", pattern: "complaint", text: {
-          uz: "Jamoadagilarga bu yoʻnalishda apoyntmentlar juda tigʻiz qoʻyilishini aytaman — real transit vaqtini hech kim soʻramaydi, oqibatini esa dispetcher koʻtaradi.",
-          ru: "Скажу коллегам, что аппоинтменты на этом направлении ставят слишком плотно — реальное время в пути никто не спрашивает, а расхлёбывает потом диспетчер.",
-          en: "Tell my teammates that appointments on this lane are set way too tight — nobody asks about realistic transit time, and dispatch ends up dealing with the fallout.",
+          uz: "Brokerni ogohlantiraman, lekin jamoada aytaman: bu yoʻnalishda apoyntmentlar juda tigʻiz qoʻyiladi — real transit vaqti hisobga olinmasa, bu har hafta qaytadi.",
+          ru: "Брокера предупрежу, но в команде скажу: на этом направлении аппоинтменты ставят слишком плотно — пока не учитывают реальное транзитное время, это будет каждую неделю.",
+          en: "I would warn the broker, but say in the team that appointments on this lane are set far too tight — with real transit time ignored, this comes back weekly.",
         } },
       ],
     },
@@ -62,29 +62,29 @@ module.exports = {
       },
       options: [
         { key: "dispatch_q02_a", pattern: "ownership", text: {
-          uz: "ELD dagi joylashuvni oʻzim tekshirib, brokerga hozirgi real holat boʻyicha halol oraliq maʼlumot beraman va haydovchi toʻxtashi bilan aniq ETA ni tasdiqlab yuborishimni aytaman.",
-          ru: "Сам проверю позицию по ELD, дам брокеру честную промежуточную информацию по фактическому местоположению и скажу, что подтвержу точное ETA, как только водитель остановится.",
-          en: "Check the ELD position myself, give the broker an honest interim update based on the actual location, and say I will confirm the exact ETA as soon as the driver stops.",
+          uz: "ELD boʻyicha joylashuvni oʻzim tekshirib, brokerga real joylashuvga asoslangan oraliq javob beraman va haydovchi toʻxtagach aniq ETA ni tasdiqlashimni aytaman.",
+          ru: "Сам проверю позицию по ELD, дам брокеру промежуточный ответ на основе реального местоположения и скажу, что точное ETA подтвержу, как только водитель остановится.",
+          en: "I would check the ELD position myself, give the broker an interim answer from the real location, and say I will confirm the exact ETA once the driver stops.",
         } },
         { key: "dispatch_q02_b", pattern: "complaint", text: {
-          uz: "Ish kunimning yarmi javob bermaydigan haydovchilarni qidirishga ketayotganini yana his qilaman — oddiy update uchun ham har safar butun boshli qidiruv boshlanadi.",
-          ru: "В который раз отмечу, что половина рабочего дня уходит на поиски не отвечающих водителей — ради обычного апдейта каждый раз целая спецоперация.",
-          en: "Note once again that half my workday goes to chasing drivers who do not answer — even a routine update turns into a whole search operation every time.",
+          uz: "Oraliq javobni oʻzim beraman, lekin rahbarga hoziroq aytaman: ish kunimning yarmi javob bermaydigan haydovchini qidirishga ketadi.",
+          ru: "Промежуточный ответ дам сам, но прямо сейчас скажу руководителю: полдня уходит на поиск водителя, который не отвечает.",
+          en: "I would give the interim answer myself, but tell my lead right now that half my day goes into chasing a driver who does not answer.",
         } },
         { key: "dispatch_q02_c", pattern: "blame", text: {
-          uz: "Avval bu haydovchiga aloqa qoidalarini kim tushuntirganini aniqlayman — onbordingda bu aniq aytilmagan boʻlsa, masalani oʻsha bosqichga masʼul xodimlar hal qilishi kerak.",
-          ru: "Сначала выясню, кто объяснял этому водителю правила связи — если на онбординге это не проговорили, вопросом должны заняться те, кто отвечает за тот этап.",
-          en: "First find out who explained the communication rules to this driver — if onboarding never covered them, the people who own that step should handle the issue.",
+          uz: "Bu haydovchiga aloqa qoidalarini kim tushuntirganini koʻraman — onbordingda oʻtilmagan boʻlsa, tuzatish oʻsha bosqichda, har kunlik qidiruvda emas.",
+          ru: "Посмотрю, кто объяснял этому водителю правила связи: если на онбординге это не прошли, исправлять надо там, а не ежедневным поиском.",
+          en: "I would look at who explained the contact rules to this driver — if onboarding skipped them, the fix belongs at that step, not in a daily search.",
         } },
         { key: "dispatch_q02_d", pattern: "waiting", text: {
-          uz: "Katta ehtimol u shunchaki rulda yoki aloqa yoʻq hududda — taxmin aytib xato qilmaslik uchun haydovchi oʻzi toʻxtab bogʻlanmaguncha brokerga javobni kechiktirib turaman.",
-          ru: "Скорее всего, он просто за рулём или вне зоны связи — чтобы не передавать догадки, придержу ответ брокеру, пока водитель сам не выйдет на связь на остановке.",
-          en: "Most likely he is simply driving or out of coverage — to avoid passing on guesses, I will hold the answer to the broker until the driver himself checks in at a stop.",
+          uz: "Brokerga hozir aniq ETA yoʻqligini ochiq aytaman va haydovchi toʻxtab bogʻlangach beraman — taxminiy son keyin tuzatilsa, ishonch koʻproq yoʻqoladi.",
+          ru: "Открыто скажу брокеру, что точного ETA сейчас нет, и дам его, когда водитель остановится и выйдет на связь: догадка, которую потом правят, стоит дороже.",
+          en: "I would tell the broker openly there is no exact ETA yet and give it once the driver stops and checks in — a guess corrected later costs more trust.",
         } },
         { key: "dispatch_q02_e", pattern: "builder", text: {
-          uz: "Brokerga GPS boʻyicha halol oraliq update yuboraman, haydovchini qidirishda davom etaman, u chiqqach esa keyingi reyslar uchun har toʻxtashda qisqa xabar berish tartibini kelishib olaman.",
-          ru: "Отправлю брокеру честный промежуточный апдейт по GPS, продолжу искать водителя, а когда он выйдет на связь, договорюсь с ним о коротком сообщении на каждой остановке в следующих рейсах.",
-          en: "Send the broker an honest GPS-based interim update, keep trying the driver, and once he surfaces, agree with him on a short message at every stop for future trips.",
+          uz: "Brokerga GPS asosidagi oraliq maʼlumot yuboraman, haydovchini izlashda davom etaman va bogʻlangach, keyingi reyslarda har toʻxtashda qisqa xabar berishni kelishaman.",
+          ru: "Отправлю брокеру промежуточные данные по GPS, продолжу искать водителя, а когда он выйдет на связь, договорюсь с ним о коротком сообщении на каждой остановке.",
+          en: "I would send the broker a GPS-based interim update, keep trying the driver, and once he surfaces agree a short message at every stop for future trips.",
         } },
       ],
     },
@@ -97,29 +97,29 @@ module.exports = {
       },
       options: [
         { key: "dispatch_q03_a", pattern: "blame", text: {
-          uz: "Avval tungi smena izoh qoldirmaganini rahbarga qayd qilib qoʻyaman — bu kimning kamchiligi ekani hozir belgilanmasa, keyin hammasi mening xatoyimdek koʻrinadi.",
-          ru: "Сначала зафиксирую для руководителя, что ночная смена не оставила заметок — если сейчас не обозначить, чьё это упущение, потом всё будет выглядеть моей ошибкой.",
-          en: "First put on record for the lead that the night shift left no notes — if it is not made clear now whose gap this is, it will later look like my mistake.",
+          uz: "Tungi smena izoh qoldirmaganini rahbarga hoziroq aniq koʻrsataman — uzilishni hozir belgilamasak, ertaga ham xuddi shunday smena topshiriladi.",
+          ru: "Прямо сейчас ясно покажу руководителю, что ночная смена не оставила заметок: не обозначим разрыв — смену так же передадут и завтра.",
+          en: "I would show my lead right now that the night shift left no notes — unless the break is marked, the shift is handed over the same way tomorrow.",
         } },
         { key: "dispatch_q03_b", pattern: "builder", text: {
-          uz: "Rate con va ELD dan holatni oʻzim tiklayman, apoyntmentni tasdiqlayman, soʻng smenalar orasida qisqa yozma topshirish shablonini taklif qilaman — kontekst boshqa yoʻqolmasligi uchun.",
-          ru: "Сам восстановлю картину по рейт-кону и ELD, подтвержу аппоинтмент, а затем предложу короткий письменный шаблон передачи смены — чтобы контекст больше не терялся.",
-          en: "Rebuild the picture from the rate con and ELD myself, confirm the appointment, and then propose a short written shift-handoff template so context stops getting lost.",
+          uz: "Rate con va ELD dan manzarani oʻzim tiklayman, apoyntmentni tasdiqlaman, keyin qisqa yozma smena topshirish shablonini yoʻlga qoʻyaman.",
+          ru: "Сам восстановлю картину по rate con и ELD, подтвержу аппоинтмент, а затем налажу короткий письменный шаблон передачи смены.",
+          en: "I would rebuild the picture myself from the rate con and the ELD, confirm the appointment, then set up a short written shift-handoff template.",
         } },
         { key: "dispatch_q03_c", pattern: "waiting", text: {
-          uz: "Tungi dispetcherga xabar yozib qoʻyaman va u uygʻonguncha kutaman — tafsilotlar unda, chala maʼlumot bilan ish qilsam, vaziyatni yanada chalkashtirib yuborishim mumkin.",
-          ru: "Напишу ночному диспетчеру и подожду, пока он проснётся — детали у него, а действия с неполной информацией могут только сильнее всё запутать.",
-          en: "Message the night dispatcher and wait until he wakes up — he holds the details, and acting on incomplete information could tangle things up even more.",
+          uz: "Tungi dispetcherga yozib qoʻyaman va uygʻonishini kutaman — tafsilot unda; toʻliqmas maʼlumot bilan harakat qilsam, kelishilgan narsani buzib qoʻyishim mumkin.",
+          ru: "Напишу ночному диспетчеру и подожду, пока он проснётся: детали у него; действуя по неполным данным, я могу сломать то, что уже согласовано.",
+          en: "I would message the night dispatcher and wait for him to wake — the details are his; acting on partial data risks breaking what is already agreed.",
         } },
         { key: "dispatch_q03_d", pattern: "victim", text: {
-          uz: "Tungi smenaning chala ishlari nega doim ertalabkilarga qolishidan charchadim — har kunim oʻz reyslarim oʻrniga birovning ortidan tozalashdan boshlanadi.",
-          ru: "Опять недоделки ночной смены достались утренним — каждый мой день начинается не с собственных рейсов, а с разгребания чужого.",
-          en: "The night shift's loose ends land on the morning crew yet again — my every day starts with cleaning up after someone instead of running my own loads.",
+          uz: "Ertalabki smena tungi smenaning tugallanmagan ishlaridan boshlanadi — natijam shunga qarab oʻlchanmasligi uchun buni hozirdan yozib qoʻyaman.",
+          ru: "Утренняя смена начинается с незакрытых дел ночной — чтобы мой результат не мерили так же, зафиксирую это уже сейчас.",
+          en: "The morning shift starts on the night shift’s loose ends — I would put that on record now so my result is not measured as if it had not.",
         } },
         { key: "dispatch_q03_e", pattern: "ownership", text: {
-          uz: "Rate con ni ochib, haydovchiga qoʻngʻiroq qilaman va yetishmayotgan tafsilotlarni oʻzim aniqlab, broker qoʻngʻirogʻidan oldin yetkazish apoyntmentini tasdiqlab qoʻyaman.",
-          ru: "Открою рейт-кон, позвоню водителю, сам соберу недостающие детали и подтвержу аппоинтмент на выгрузку до звонка брокера.",
-          en: "Open the rate con, call the driver, fill in the missing details myself, and confirm the delivery appointment before the broker calls.",
+          uz: "Rate conni ochib, haydovchiga qoʻngʻiroq qilaman, yetishmayotgan maʼlumotni oʻzim toʻldiraman va broker qoʻngʻiroq qilishidan oldin yetkazish apoyntmentini tasdiqlayman.",
+          ru: "Открою rate con, позвоню водителю, сам заполню недостающие данные и подтвержу аппоинтмент на выгрузку до звонка брокера.",
+          en: "I would open the rate con, call the driver, fill in the missing details myself, and confirm the delivery appointment before the broker calls.",
         } },
       ],
     },
@@ -132,29 +132,29 @@ module.exports = {
       },
       options: [
         { key: "dispatch_q04_a", pattern: "complaint", text: {
-          uz: "Jamoaga bu broker yana bekor qilganini aytaman — ular uchun bu shunchaki xat, biz esa har safar yoqilgʻi va vaqtni bekorga sarflaymiz.",
-          ru: "Скажу команде, что этот брокер снова отменил — для них это просто письмо, а мы каждый раз впустую жжём топливо и время.",
-          en: "Tell the team this broker has cancelled on us yet again — for them it is just an email, while we burn fuel and hours for nothing every time.",
+          uz: "Haydovchiga aytaman, lekin jamoada aytaman: bu broker yana bekor qildi — u bilan ishlash shartlari qayta koʻrilmasa, bekor qilishlar shunday davom etadi.",
+          ru: "Водителю скажу, но в команде отмечу: этот брокер снова отменил — пока не пересмотрят условия работы с ним, отмены так и будут продолжаться.",
+          en: "I would tell the driver, but note in the team that this broker has cancelled again — unless the terms we work with him on are revisited, this continues.",
         } },
         { key: "dispatch_q04_b", pattern: "ownership", text: {
-          uz: "Darhol haydovchiga qoʻngʻiroq qilib, vaziyatni toʻgʻridan-toʻgʻri aytaman va uning hozirgi nuqtasidan yangi yuk qidirishni shu zahoti boshlayman — kun boʻsh ketmasligi kerak.",
-          ru: "Сразу позвоню водителю, скажу всё как есть и тут же начну искать новый груз от его текущей точки — день не должен пропасть.",
-          en: "Call the driver immediately, tell him straight what happened, and start searching for a new load from his current position right away — the day should not go to waste.",
+          uz: "Haydovchiga darhol qoʻngʻiroq qilib boʻlganini borligicha aytaman va shu joydan yangi yuk izlashni hoziroq boshlayman — kuni bekor ketmasligi kerak.",
+          ru: "Сразу позвоню водителю, скажу как есть и прямо сейчас начну искать новый груз от его текущей точки — день не должен пропасть.",
+          en: "I would call the driver at once, tell him straight what happened, and start looking for a new load from his position right now — the day should not be lost.",
         } },
         { key: "dispatch_q04_c", pattern: "victim", text: {
-          uz: "Bunday bekor qilishlar negadir doim mening boardimga toʻgʻri keladi — boshqalarning qarori uchun oxirida mening haydovchim va mening raqamlarim jabr koʻradi.",
-          ru: "Такие отмены почему-то всегда приходятся на мой борд — за чужие решения в итоге страдают мой водитель и мои показатели.",
-          en: "Somehow these cancellations always land on my board — in the end my driver and my numbers take the hit for decisions made by others.",
+          uz: "Bekor qilish qarori brokerda, boʻsh yurilgan mil esa mening reysimda — hisobotni shu ikkisi alohida koʻrinadigan qilib bugun tayyorlab qoʻyaman.",
+          ru: "Решение об отмене принимал брокер, а порожние мили остались на моём рейсе; отчёт подготовлю так, чтобы это было видно отдельно.",
+          en: "The cancellation was the broker’s call while the empty miles sit on my trip — I would build my report so those two show separately.",
         } },
         { key: "dispatch_q04_d", pattern: "builder", text: {
-          uz: "Haydovchiga ochiq aytib, yaqin atrofdan reload qidiraman va rate con shartlariga koʻra brokerdan TONU (bekor qilish toʻlovi) soʻrab, yozishmani hujjatlashtirib qoʻyaman.",
-          ru: "Честно сообщу водителю, начну искать релоад поблизости и по условиям рейт-кона запрошу у брокера TONU (компенсацию за отмену), сохранив всю переписку.",
-          en: "Tell the driver honestly, start hunting a reload nearby, and per the rate con request TONU (a cancellation fee) from the broker, keeping the correspondence documented.",
+          uz: "Haydovchiga rost aytaman, yaqindan reload izlayman va rate con boʻyicha TONU soʻrab, yozishmani hujjat qilib qoʻyaman — bunday holatlar uchun tartib shu.",
+          ru: "Водителю скажу честно, поищу reload рядом и по rate con запрошу TONU, зафиксировав переписку документально — для таких случаев порядок именно такой.",
+          en: "I would tell the driver honestly, hunt a reload nearby, and claim TONU per the rate con with the correspondence on file — that is the procedure for these cases.",
         } },
         { key: "dispatch_q04_e", pattern: "blame", text: {
-          uz: "Avval bekor qilish xabari oldinroq kelgan-kelmaganini tekshiraman — u kimningdir pochtasida oʻqilmay yotgan boʻlsa, haydovchiga tushuntirishdan oldin buni kim oʻtkazib yuborgani aniq boʻlishi kerak.",
-          ru: "Сначала проверю, не приходило ли уведомление об отмене раньше — если оно лежало непрочитанным в чьей-то почте, до разговора с водителем должно быть ясно, кто его пропустил.",
-          en: "First check whether the cancellation notice arrived earlier — if it sat unread in someone's inbox, it should be clear who missed it before I explain things to the driver.",
+          uz: "Bekor qilish xabari avval kelganmi tekshiraman — kimningdir pochtasida oʻqilmay turgan boʻlsa, gap oʻsha odam bilan, haydovchiga tushuntirishdan oldin.",
+          ru: "Проверю, не пришло ли извещение об отмене раньше: если оно лежало непрочитанным у кого-то в почте, разговор будет с ним, ещё до объяснений водителю.",
+          en: "I would check whether the cancellation notice came earlier — if it sat unread in someone’s inbox, the conversation is with them before the driver.",
         } },
       ],
     },
@@ -167,29 +167,29 @@ module.exports = {
       },
       options: [
         { key: "dispatch_q05_a", pattern: "builder", text: {
-          uz: "Brokerga bugunoq halol hisob-kitob bilan chiqib, apoyntmentni surishni kelishaman, soʻngra yuk qabul qilinishidan oldin soatlarni tekshirish qadamini jarayonga kiritishni taklif qilaman.",
-          ru: "Сегодня же выйду на брокера с честным расчётом и согласую перенос аппоинтмента, а затем предложу добавить в процесс проверку часов до принятия груза.",
-          en: "Go to the broker today with the honest math and agree on moving the appointment, then propose adding an hours check before any load is accepted to our process.",
+          uz: "Bugun brokerga rost hisobni koʻrsatib apoyntmentni koʻchirishni kelishaman, keyin yuk olishdan oldin soatlarni tekshirish qadamini jarayonga kiritaman.",
+          ru: "Сегодня покажу брокеру честный расчёт и договорюсь о переносе аппоинтмента, а затем внесу в процесс проверку часов до принятия груза.",
+          en: "I would show the broker the honest math today and agree a new appointment, then add an hours check before a load is accepted to our process.",
         } },
         { key: "dispatch_q05_b", pattern: "waiting", text: {
-          uz: "Soatlar hali oʻzgarishi mumkin — dam olish qanday tushishiga qarab manzara ertaga aniqroq boʻladi; brokerga xom raqam aytmasdan, aniq hisob chiqquncha kutaman.",
-          ru: "Часы ещё могут измениться — в зависимости от того, как ляжет отдых, завтра картина будет точнее; не буду называть брокеру сырые цифры и дождусь точного расчёта.",
-          en: "The hours may still shift — depending on how his rest falls, tomorrow's picture will be clearer; rather than give the broker rough numbers, I will wait for the exact math.",
+          uz: "Soatlar dam olishga qarab oʻzgaradi — brokerga taxminiy son bermay, ertalabki aniq hisobni olib, shundan keyin yangi oyna soʻrayman.",
+          ru: "Часы меняются в зависимости от отдыха — не стану давать брокеру примерную цифру, возьму точный утренний расчёт и уже потом попрошу новое окно.",
+          en: "The hours shift with how his rest falls — rather than give the broker a rough figure, I would take the exact morning math and ask for a new window then.",
         } },
         { key: "dispatch_q05_c", pattern: "complaint", text: {
-          uz: "Yukni band qilishda haydovchining soatlari bilan hech kim qiziqmasligini yana bir bor taʼkidlayman — jadval qogʻozda chiroyli, amalda esa dispetcher ilojsiz ahvolda qoladi.",
-          ru: "В очередной раз скажу, что при бронировании груза часами водителя никто не интересуется — на бумаге график красивый, а в реальности диспетчер остаётся в безвыходном положении.",
-          en: "Point out once more that whoever books the loads never asks about the driver's hours — the schedule looks fine on paper, and in real life dispatch is left with no way out.",
+          uz: "Apoyntmentni koʻchiraman, lekin rahbarga aytaman: yuk olinayotganda haydovchining soati soʻralmaydi — bu tartib oʻzgarmasa, dispetcher har safar chiqish yoʻlsiz qoladi.",
+          ru: "Аппоинтмент перенесу, но скажу руководителю: при взятии груза часы водителя не спрашивают — пока порядок не изменится, диспетчер каждый раз без выхода.",
+          en: "I would move the appointment, but tell my lead nobody asks about the driver’s hours when a load is booked — unchanged, dispatch is left with no way out.",
         } },
         { key: "dispatch_q05_d", pattern: "ownership", text: {
-          uz: "Avval hisobni haydovchi bilan birga qayta tekshiraman, soʻng brokerga bugunoq qoʻngʻiroq qilib, real yetib borish vaqtini ochiq aytaman va yangi oynani soʻrayman.",
-          ru: "Сначала перепроверю расчёт вместе с водителем, затем сегодня же позвоню брокеру, открыто назову реальное время прибытия и попрошу новое окно.",
-          en: "Recheck the math together with the driver first, then call the broker today, state the realistic arrival time openly, and ask for a new window.",
+          uz: "Avval haydovchi bilan hisobni qayta tekshiraman, keyin bugun brokerga qoʻngʻiroq qilib real yetib borish vaqtini ochiq aytaman va yangi oyna soʻrayman.",
+          ru: "Сначала пересчитаю вместе с водителем, затем сегодня же позвоню брокеру, открыто назову реальное время прибытия и попрошу новое окно.",
+          en: "I would recheck the math with the driver first, then call the broker today, state the realistic arrival time openly, and ask for a new window.",
         } },
         { key: "dispatch_q05_e", pattern: "victim", text: {
-          uz: "Yana jismonan ulgurib boʻlmaydigan reys menga tushdi, deb oʻylayman — kechikish mening statistikamga yoziladi, uni shunday band qilganlar esa hech narsa yoʻqotmaydi.",
-          ru: "Подумаю: мне опять достался физически невыполнимый рейс — опоздание запишут в мою статистику, а те, кто его так забронировал, ничего не теряют.",
-          en: "Think that once again I got a physically impossible trip — the late delivery goes into my stats, while those who booked it this way lose nothing.",
+          uz: "Rahbarga aniq aytaman: bu reys soat boʻyicha imkonsiz edi — kechikish mening koʻrsatkichimda qolsa, uni kim rejalashtirgani bilan birga koʻrilishi kerak.",
+          ru: "Прямо скажу руководителю: этот рейс по часам был невозможен — если опоздание останется на моих показателях, смотреть надо вместе с тем, кто его планировал.",
+          en: "I would tell my lead plainly the trip was impossible on the hours — if the delay stays on my numbers, it should be read alongside who planned it that way.",
         } },
       ],
     },
@@ -202,29 +202,29 @@ module.exports = {
       },
       options: [
         { key: "dispatch_q06_a", pattern: "victim", text: {
-          uz: "Eng eski treylerlar negadir doim mening haydovchilarimga tushadi — har bir buzilish oxirida mening kechikkan yukim va mening jahli chiqqan brokerimga aylanadi.",
-          ru: "Самые старые трейлеры почему-то всегда достаются моим водителям — каждая поломка в итоге превращается в мой опоздавший груз и моего злого брокера.",
-          en: "Somehow the oldest trailers always end up with my drivers — every breakdown eventually turns into my late load and my angry broker.",
+          uz: "Uskuna holati ham, uni yardan chiqarish qarori ham menda emas — shuni rahbar bilan oldin aniq qilaman, keyin reys boʻyicha harakat qilaman.",
+          ru: "Ни состояние техники, ни решение выпустить её с ярда не в моих руках — сначала проясню это с руководителем, а потом займусь рейсом.",
+          en: "Neither the equipment’s condition nor the decision to release it is mine — I would settle that with my lead first, then work the trip.",
         } },
         { key: "dispatch_q06_b", pattern: "blame", text: {
-          uz: "Avval bu treyler oxirgi marta qachon koʻrikdan oʻtganini va uni yarddan kim chiqarganini aniqlayman — texnik nosozlik uchun javobgarlik shop zimmasida boʻlishi kerak.",
-          ru: "Сначала выясню, когда этот трейлер последний раз проходил осмотр и кто выпустил его со двора — ответственность за техническую неисправность должна лежать на шопе.",
-          en: "First establish when this trailer last passed inspection and who released it from the yard — responsibility for a mechanical failure should sit with the shop.",
+          uz: "Bu treyler oxirgi marta qachon koʻrikdan oʻtgani va yardan kim chiqarganini aniqlayman — nosozlik masʼulligi shopda va javob ham oʻsha yerdan chiqadi.",
+          ru: "Выясню, когда этот трейлер последний раз проходил осмотр и кто выпустил его с ярда: ответственность за поломку на стороне шопа, оттуда и ответ.",
+          en: "I would establish when this trailer last passed inspection and who released it — a mechanical failure sits with the shop, and the answer comes from there.",
         } },
         { key: "dispatch_q06_c", pattern: "waiting", text: {
-          uz: "Haydovchi road service chaqirsin — usta yetib kelib, taʼmir muddatini aytmaguncha hech kimni bezovta qilmayman: aniq vaqt boʻlmasa, brokerga qoʻngʻiroqdan maʼno kam.",
-          ru: "Пусть водитель вызовет road service — пока мастер не приедет и не назовёт срок ремонта, никого дёргать не буду: без точного времени звонок брокеру бессмыслен.",
-          en: "Have the driver call road service — until the mechanic arrives and names a repair time, I will not stir anyone up: calling the broker without exact timing has little point.",
+          uz: "Haydovchiga road service chaqirtiraman — mexanik kelib taʼmir vaqtini aytmaguncha brokerga vaqt aytmayman; aniqsiz son keyin ikki marta tuzatiladi.",
+          ru: "Попрошу водителя вызвать road service — пока механик не приедет и не назовёт время ремонта, брокеру время называть не буду: неточную цифру потом правят дважды.",
+          en: "I would have the driver call road service — until the mechanic names a repair time I would give the broker no time; a vague figure gets corrected twice.",
         } },
         { key: "dispatch_q06_d", pattern: "builder", text: {
-          uz: "Road service ni tezda joʻnataman, brokerga taxminiy muddat bilan halol ogohlantirish beraman va reysdan soʻng bu treylerni tekshiruvga yozdirib, holatini shopga maʼlum qilaman.",
-          ru: "Быстро организую road service, честно предупрежу брокера с ориентировочным сроком и после рейса запишу этот трейлер на проверку, сообщив о его состоянии в шоп.",
-          en: "Get road service moving fast, give the broker an honest heads-up with a rough timeline, and after the trip book this trailer for a checkup, flagging its condition to the shop.",
+          uz: "Road service ni tez ishga solaman, brokerni taxminiy muddat bilan ogohlantiraman, keyin reysdan soʻng bu treylerni tekshiruvga yozib, holatini shopga belgilaman.",
+          ru: "Быстро запущу road service, предупрежу брокера с примерным сроком, а после рейса запишу этот трейлер на проверку и отмечу его состояние шопу.",
+          en: "I would get road service moving fast, warn the broker with a rough timeline, then book this trailer for a check after the trip and flag its condition to the shop.",
         } },
         { key: "dispatch_q06_e", pattern: "ownership", text: {
-          uz: "Haydovchi uchun road service ni darhol oʻzim chaqiraman va brokerga yetkazish surilishi mumkinligini hoziroq halol aytaman — taʼmir vaqti aniqlashishi bilan yangilab boraman.",
-          ru: "Сразу сам вызову водителю road service и уже сейчас честно скажу брокеру, что выгрузка может сдвинуться, — как только станет ясен срок ремонта, буду обновлять информацию.",
-          en: "Arrange road service for the driver myself right away and tell the broker honestly now that delivery may slip — then keep him updated as soon as the repair time is clear.",
+          uz: "Haydovchi uchun road service ni oʻzim hoziroq tashkil qilaman va brokerga kechikish boʻlishi mumkinligini hozir rost aytaman, taʼmir vaqti aniq boʻlgach yangilaman.",
+          ru: "Сам прямо сейчас организую водителю road service и честно скажу брокеру, что доставка может сдвинуться, а как станет ясно время ремонта — обновлю.",
+          en: "I would arrange road service for the driver myself right now and tell the broker honestly that delivery may slip, updating him once the repair time is clear.",
         } },
       ],
     },
@@ -237,29 +237,29 @@ module.exports = {
       },
       options: [
         { key: "dispatch_q07_a", pattern: "ownership", text: {
-          uz: "Treyler boʻlimi bilan hoziroq boshqa boʻsh treyler qidiraman; mos varianti topilmasa, brokerni oldindan ogohlantirib, halol yangi pickup vaqtini kelishaman.",
-          ru: "Сразу вместе с трейлерным отделом поищу другой свободный трейлер; если подходящего не найдётся, заранее предупрежу брокера и честно согласую новое время погрузки.",
-          en: "Search for another available trailer with the Trailer Department right now; if nothing suitable turns up, warn the broker early and honestly agree on a new pickup time.",
+          uz: "Treyler boʻlimi bilan hoziroq boshqa boʻsh treyler izlayman; mos keladigani boʻlmasa, brokerni erta ogohlantirib, yangi pickup vaqtini rost kelishaman.",
+          ru: "Прямо сейчас поищу с трейлерным отделом другой свободный трейлер; если подходящего нет, заранее предупрежу брокера и честно согласую новое время погрузки.",
+          en: "I would look for another free trailer with the Trailer Department right now; if nothing fits, I would warn the broker early and agree a new pickup time honestly.",
         } },
         { key: "dispatch_q07_b", pattern: "complaint", text: {
-          uz: "Hamkasblarga treyler statuslariga ishonib boʻlmasligini aytib beraman — tizimdagi maʼlumotning yarmi eskirgan, dispetcher esa buni doim eng nozik daqiqada bilib oladi.",
-          ru: "Поделюсь с командой наболевшим: статусам трейлеров верить нельзя — половина данных в системе устарела, а диспетчер узнаёт об этом всегда в самый неподходящий момент.",
-          en: "Tell my coworkers the trailer statuses cannot be trusted — half the data in the system is stale, and dispatch always finds out at the worst possible moment.",
+          uz: "Almashtirishga harakat qilaman, lekin jamoada aytaman: treyler statuslariga ishonib boʻlmaydi — statusni kim yangilashi belgilanmasa, bu har hafta qaytadi.",
+          ru: "Попробую найти замену, но в команде скажу: статусам трейлеров доверять нельзя — пока не определят, кто их обновляет, это будет каждую неделю.",
+          en: "I would try for a swap, but say in the team that trailer statuses cannot be trusted — until it is settled who updates them, this comes back weekly.",
         } },
         { key: "dispatch_q07_c", pattern: "builder", text: {
-          uz: "Bugun masalani almashtirish yoki halol qayta kelishuv bilan yopaman, soʻng treyler boʻlimiga tayyor statusi faqat shop tasdigʻidan keyin qoʻyilishini taklif qilaman.",
-          ru: "Сегодня закрою вопрос заменой или честным переносом, а затем предложу трейлерному отделу правило: статус «готов» ставится только после подтверждения шопа.",
-          en: "Close today with a substitute trailer or an honest reschedule, then propose to the Trailer Department that the ready status be set only after the shop confirms it.",
+          uz: "Bugunni zaxira treyler yoki rost koʻchirish bilan yopaman, keyin treyler boʻlimiga «tayyor» statusi faqat shop tasdigʻidan keyin qoʻyilishini taklif qilaman.",
+          ru: "Сегодняшний день закрою подменным трейлером или честным переносом, а затем предложу трейлерному отделу ставить статус «готов» только после подтверждения шопа.",
+          en: "I would close today with a substitute trailer or an honest reschedule, then propose to the Trailer Department that “ready” be set only after the shop confirms.",
         } },
         { key: "dispatch_q07_d", pattern: "blame", text: {
-          uz: "Avval notoʻgʻri statusni kim qoʻyganini yozma tasdiqlatib olaman — kechikish sababi treyler boʻlimida ekani hujjatda qolsin, keyin bu dispetcher xatosi sanalmasin.",
-          ru: "Сначала письменно зафиксирую, кто поставил неверный статус — причина задержки в трейлерном отделе, и это должно остаться в документах, чтобы потом не считали ошибкой диспетчера.",
-          en: "First get it confirmed in writing who set the wrong status — the delay originates in the Trailer Department, and that should be on record so it is not counted as a dispatch error.",
+          uz: "Notoʻgʻri statusni kim qoʻyganini yozma aniqlab olaman — kechikish treyler boʻlimida boshlangan boʻlsa, oʻsha uzilishni ular yopishi kerak.",
+          ru: "Письменно выясню, кто поставил неверный статус: если задержка началась в трейлерном отделе, закрывать этот разрыв им.",
+          en: "I would establish in writing who set the wrong status — if the delay started in the Trailer Department, they are the ones to close it.",
         } },
         { key: "dispatch_q07_e", pattern: "waiting", text: {
-          uz: "Shopdan taʼmir qancha davom etishini soʻrayman va ular aniq chiqish vaqtini aytmaguncha boshqa qadamlarni toʻxtatib turaman — aniqliksiz qilingan qaror vaziyatni ogʻirlashtirishi mumkin.",
-          ru: "Спрошу у шопа, сколько продлится ремонт, и придержу остальные шаги, пока они не назовут точное время выхода — решение без ясности может только усложнить ситуацию.",
-          en: "Ask the shop how long the repair will run and hold the other steps until they name an exact release time — a decision made without clarity could make things worse.",
+          uz: "Shopdan taʼmir qancha davom etishini soʻrayman va aniq chiqish vaqti aytilmaguncha boshqa qadam qoʻymayman — aniqsizlikda qilingan almashtirish ikki yukni buzadi.",
+          ru: "Спрошу у шопа, сколько продлится ремонт, и до точного времени выхода других шагов делать не буду: замена вслепую ломает сразу два груза.",
+          en: "I would ask the shop how long the repair runs and take no further step before an exact release time — a swap made blind breaks two loads instead of one.",
         } },
       ],
     },
@@ -272,29 +272,29 @@ module.exports = {
       },
       options: [
         { key: "dispatch_q08_a", pattern: "waiting", text: {
-          uz: "Hozir u qizishib turibdi — bahslashish faqat yomonlashtiradi. Yuk topshirilib, u tinchlangach, hammasini xotirjam muhokama qilamiz; masala shoshilinch yechim talab qilmaydi.",
-          ru: "Сейчас он на взводе — спор только всё усугубит. Обсудим спокойно, когда груз будет сдан и он остынет; вопрос не требует немедленного решения.",
-          en: "He is worked up right now — arguing will only make it worse. We will talk it through calmly once the load is delivered and he cools down; this does not need an instant fix.",
+          uz: "Hozir jahli chiqqan — bahslashsam yomonlashadi. Yuk tushirilgach xotirjam gaplashamiz; detention soʻrovini esa vaqtlar aniq boʻlgach yuboraman.",
+          ru: "Он сейчас на эмоциях — спор только ухудшит. Спокойно поговорим после выгрузки, а запрос на detention отправлю, когда будут точные времена.",
+          en: "He is worked up — arguing makes it worse. We would talk calmly after unloading, and I would file the detention claim once the times are confirmed.",
         } },
         { key: "dispatch_q08_b", pattern: "builder", text: {
-          uz: "Uni tinchlantirib, check-in maʼlumotlarini qayta yuboraman, aniq vaqtlar bilan detention soʻrovini rasmiylashtiraman va muhim koʻrsatmalarga haydovchidan qisqa tasdiq javobini soʻrashni yoʻlga qoʻyaman.",
-          ru: "Успокою его, заново отправлю данные по check-in, оформлю запрос detention с точным временем и начну просить у водителей короткое подтверждение на важные инструкции.",
-          en: "Calm him down, resend the check-in details, file a detention request with the exact times, and start asking drivers for a short confirming reply to key instructions.",
+          uz: "Tinchlantiraman, check-in maʼlumotini qayta yuboraman, aniq vaqtlar bilan detention soʻrayman va muhim koʻrsatmalarga haydovchidan qisqa tasdiq olishni boshlaymiz.",
+          ru: "Успокою, повторно отправлю данные check-in, запрошу detention с точными временами и начнём брать у водителей короткое подтверждение по ключевым инструкциям.",
+          en: "I would calm him down, resend the check-in details, claim detention with exact times, and start taking a short confirmation from drivers on key instructions.",
         } },
         { key: "dispatch_q08_c", pattern: "victim", text: {
-          uz: "Har bir haydovchiga koʻrsatmalarni oʻz vaqtida yuboraman, lekin ular oʻqilmasa ham, oxirida barcha norozilik baribir dispetcherga yogʻiladi — bu juda charchatadi.",
-          ru: "Я вовремя отправляю инструкции каждому водителю, но даже когда их не читают, всё недовольство в итоге всё равно выливается на диспетчера — это выматывает.",
-          en: "I send instructions to every driver on time, yet even when they go unread, all the frustration still pours down on dispatch in the end — it is exhausting.",
+          uz: "Koʻrsatmalar oʻz vaqtida yuborilgan — oʻqilmagan xabar sababli chiqqan norozilik meni oʻlchamasligi uchun yuborilgan vaqtni yozib qoʻyaman.",
+          ru: "Инструкции ушли вовремя — чтобы недовольство из-за непрочитанного сообщения не мерило меня, зафиксирую время отправки.",
+          en: "The instructions went out on time — I would record the send time so anger over an unread message does not measure me.",
         } },
         { key: "dispatch_q08_d", pattern: "ownership", text: {
-          uz: "Bahslashmasdan tinglayman, check-in qadamlarini shu zahoti qayta yuboraman va kirish-chiqish vaqtlarini olib, bugunoq brokerga detention soʻrovini joʻnataman.",
-          ru: "Выслушаю не споря, тут же заново отправлю шаги check-in, возьму время въезда и выезда и сегодня же отправлю брокеру запрос на detention.",
-          en: "Listen without arguing, resend the check-in steps right away, take down the in and out times, and send the broker a detention request today.",
+          uz: "Bahslashmay tinglayman, check-in qadamlarini darhol qayta yuboraman, kirish-chiqish vaqtlarini yozib olaman va bugun brokerga detention soʻrovini yuboraman.",
+          ru: "Выслушаю без спора, сразу повторно отправлю шаги check-in, запишу времена въезда и выезда и сегодня же отправлю брокеру запрос на detention.",
+          en: "I would listen without arguing, resend the check-in steps at once, take down the in and out times, and send the broker a detention claim today.",
         } },
         { key: "dispatch_q08_e", pattern: "blame", text: {
-          uz: "Avval yozishmalar tarixini ochib, koʻrsatmalar qachon va kimga yuborilganini aniqlayman — xato haydovchi tomonida ekani hujjat bilan koʻrinib tursa, gaplashish oson boʻladi.",
-          ru: "Сначала открою историю переписки и уточню, когда и кому отправлялись инструкции — пусть по документам будет видно, что упущение на стороне водителя, тогда разговор будет проще.",
-          en: "First open the message history and pin down when and to whom the instructions were sent — once the record shows the miss is on the driver's side, the conversation gets easier.",
+          uz: "Xabarlar tarixini ochib, koʻrsatma qachon va kimga ketganini aniqlayman — yozuv haydovchi tomonini koʻrsatsa, suhbat ham, tuzatish ham osonlashadi.",
+          ru: "Открою историю сообщений и определю, когда и кому ушла инструкция: если запись показывает сторону водителя, и разговор, и исправление станут проще.",
+          en: "I would open the message history and pin down when and to whom the instruction went — with the record pointing at the driver’s side, both talk and fix get easier.",
         } },
       ],
     },
@@ -307,29 +307,29 @@ module.exports = {
       },
       options: [
         { key: "dispatch_q09_a", pattern: "complaint", text: {
-          uz: "Kimdir kasal boʻlsa, doim shu ahvol boshlanishini taʼkidlayman — hech kim boshqaning boardini bilmaydi, oxirida esa haydovchilar oʻrtada qolib ketadi.",
-          ru: "Замечу, что стоит кому-то заболеть — начинается одно и то же: чужой борд никто не знает, а крайними в итоге остаются водители.",
-          en: "Remark that the same thing starts every time someone is out sick — nobody knows anyone else's board, and in the end the drivers are the ones left hanging.",
+          uz: "Haydovchiga javob beraman, lekin rahbarga aytaman: kimdir kasal boʻlsa, hech kim boshqaning boardini bilmaydi — almashinuv tartibi belgilanmagani shunga olib keladi.",
+          ru: "Водителю отвечу, но скажу руководителю: когда кто-то болеет, чужой борд не знает никто — к этому и приводит отсутствие порядка подмены.",
+          en: "I would answer the driver, but tell my lead that when someone is out nobody knows another’s board — the missing cover procedure is what leads here.",
         } },
         { key: "dispatch_q09_b", pattern: "ownership", text: {
-          uz: "Reysni tizimdan oʻzim ochib, rate con boʻyicha haydovchiga hoziroq javob beraman va nima deganimni hamkasbimga yozib qoldiraman — u chiqqanda hammasi aniq boʻlsin.",
-          ru: "Сам открою рейс в системе, отвечу водителю прямо сейчас по рейт-кону и напишу коллеге, что именно я ему сказал, — чтобы по выходе у него была полная картина.",
-          en: "Open the trip in the system myself, answer the driver right now based on the rate con, and leave my teammate a note on exactly what I told him — so he returns to a full picture.",
+          uz: "Reysni tizimda oʻzim ochib, rate con asosida haydovchiga hoziroq javob beraman va hamkasbimga nima deganimni aniq yozib qoldiraman.",
+          ru: "Сам открою рейс в системе, отвечу водителю прямо сейчас по rate con и оставлю коллеге точную запись о том, что именно я сказал.",
+          en: "I would open the trip in the system myself, answer the driver right now from the rate con, and leave my teammate an exact note of what I told him.",
         } },
         { key: "dispatch_q09_c", pattern: "waiting", text: {
-          uz: "Reys tarixini bilmay koʻrsatma bersam, hamkasbimning kelishuvlariga zid chiqishi mumkin — haydovchidan biroz kutishini soʻrab, bu boardga masʼul qilib belgilangan odamni aniqlayman.",
-          ru: "Если дам указание, не зная истории рейса, оно может пойти вразрез с договорённостями коллеги — попрошу водителя немного подождать и уточню, кого назначили ответственным за этот борд.",
-          en: "If I give directions without knowing the trip's history, I may contradict what my teammate arranged — I will ask the driver to hold on and find out who was assigned to cover that board.",
+          uz: "Reys tarixini bilmasdan koʻrsatma bersam, hamkasbim kelishganiga qarshi chiqishim mumkin — haydovchidan biroz kutishni soʻrab, bu boardni kim olganini aniqlayman.",
+          ru: "Дав указание без знания истории рейса, я могу пойти против того, что уже согласовал коллега — попрошу водителя немного подождать и выясню, кто взял этот борд.",
+          en: "Giving direction without the trip’s history risks contradicting what my teammate agreed — I would ask the driver to hold and find out who has that board.",
         } },
         { key: "dispatch_q09_d", pattern: "builder", text: {
-          uz: "Tizim boʻyicha hoziroq javob beraman, hamkasbga izoh qoldiraman va shu voqeadan soʻng har bir reys izohlari umumiy tizimda yuritilishini taklif qilaman — istalgan dispetcher oʻrnini bosa olishi uchun.",
-          ru: "Отвечу прямо сейчас по системе, оставлю коллеге заметку, а после этого случая предложу вести заметки по каждому рейсу в общей системе — чтобы любой диспетчер мог подменить.",
-          en: "Answer right now from the system, leave a note for my teammate, and after this propose keeping notes on every trip in the shared system — so any dispatcher can step in.",
+          uz: "Hozir tizimdan javob beraman, izoh qoldiraman, keyin har reys boʻyicha izoh yuritishni tartibga aylantiraman — shunda har qanday dispetcher oʻrnini bosa oladi.",
+          ru: "Сейчас отвечу по системе, оставлю заметку, а затем сделаю порядком ведение заметок по каждому рейсу: тогда подменить сможет любой диспетчер.",
+          en: "I would answer from the system now, leave a note, then make per-trip notes the procedure — with that, any dispatcher can step in.",
         } },
         { key: "dispatch_q09_e", pattern: "victim", text: {
-          uz: "Boshqalarning haydovchilari negadir doim aynan meni topadi — oʻz boardim oʻzimga yetarli, bunday kunlarda esa ikki kishining ishini bitta oʻzim tortaman.",
-          ru: "Чужие водители почему-то всегда находят именно меня — своего борда хватает с головой, а в такие дни я один тяну работу за двоих.",
-          en: "Other people's drivers somehow always find me of all people — my own board is plenty, and on days like this I end up pulling two jobs alone.",
+          uz: "Bugun ikki board menda va ikkinchisining tarixini bilmayman — oʻz reyslarimda kechikish boʻlsa, qaysi qadam qaysi boardda boʻlganini yozib qoʻyaman.",
+          ru: "Сегодня на мне два борда, и истории второго я не знаю — если по моим рейсам будут задержки, зафиксирую, к какому борду относится каждый шаг.",
+          en: "I am carrying two boards today and do not know the history of the second — if my own trips slip, I would record which board each step belonged to.",
         } },
       ],
     },
@@ -342,29 +342,29 @@ module.exports = {
       },
       options: [
         { key: "dispatch_q10_a", pattern: "builder", text: {
-          uz: "Shu brokerning yuklari uchun oddiy umumiy update jadvalini taklif qilaman va birinchi loyihasini bugunoq oʻz reyslarimda sinab, jamoaga koʻrsataman.",
-          ru: "Предложу простой общий график апдейтов по грузам этого брокера и первый вариант сегодня же обкатаю на своих рейсах, показав команде.",
-          en: "Propose a simple shared update schedule for this broker's loads and pilot the first draft on my own trips today to show the team.",
+          uz: "Bu broker yuklari uchun oddiy umumiy update jadvalini taklif qilaman va birinchi variantni bugun oʻz reyslarimda sinab, jamoaga koʻrsataman.",
+          ru: "Предложу простой общий график апдейтов по грузам этого брокера и сегодня обкатаю первый вариант на своих рейсах, чтобы показать команде.",
+          en: "I would propose a simple shared update schedule for this broker’s loads and pilot the first version on my own trips today to show the team.",
         } },
         { key: "dispatch_q10_b", pattern: "blame", text: {
-          uz: "Avval loglardan aynan qaysi reyslarda va kimning navbatchiligida updatelar oʻtkazib yuborilganini aniqlayman — butun jamoa tanqid qilinishidan oldin manzara aniq boʻlishi kerak.",
-          ru: "Сначала по логам определю, на каких именно рейсах и в чью смену были пропущены апдейты — прежде чем критиковать всю команду, картина должна быть точной.",
-          en: "First go through the logs to identify exactly which trips and whose shifts missed the updates — the picture should be accurate before the whole team takes the criticism.",
+          uz: "Loglardan qaysi reyslarda va kimning smenasida update oʻtkazib yuborilganini aniqlayman — manzara aniq boʻlmasa, tanbeh butun jamoaga bir xil tarqaladi.",
+          ru: "По логам определю, на каких рейсах и в чью смену апдейты пропустили: без точной картины замечание ровным слоем ляжет на всю команду.",
+          en: "I would use the logs to pin down which trips and whose shifts missed the updates — without an exact picture the criticism covers the whole team evenly.",
         } },
         { key: "dispatch_q10_c", pattern: "complaint", text: {
-          uz: "Har birimizda oʻnlab trucklar borligini eslataman — bu broker esa deyarli har soatda update kutadi; bunday hajmda kechikishlarsiz ishlash amalda juda qiyin.",
-          ru: "Напомню, что у каждого из нас десятки траков, а этот брокер ждёт апдейт чуть ли не каждый час — работать без опозданий при таких объёмах на практике очень трудно.",
-          en: "Point out that each of us runs dozens of trucks while this broker expects an update almost every hour — working without slips at that volume is very hard in practice.",
+          uz: "Oʻz reyslarimni tartibga solaman, lekin yigʻilishda aytaman: har birimizda oʻnlab trak, broker esa deyarli har soatda update kutadi — hajm koʻrilmasa, bu qaytadi.",
+          ru: "Свои рейсы приведу в порядок, но на совещании скажу: у каждого из нас десятки траков, а брокер ждёт апдейт почти каждый час — без пересмотра объёма это повторится.",
+          en: "I would put my own trips in order, but say at the meeting each of us runs dozens of trucks while this broker expects updates almost hourly — unaddressed, it repeats.",
         } },
         { key: "dispatch_q10_d", pattern: "victim", text: {
-          uz: "Oʻz updatelarimni doim vaqtida yuboraman, lekin shikoyat butun jamoaga qaratilgani uchun endi men ham aybdorlar qatoridaman — puxta ishlaganim hisobga olinmaydi.",
-          ru: "Свои апдейты я всегда отправляю вовремя, но жалоба адресована всей команде, и теперь я в том же списке виноватых — моя аккуратная работа в расчёт не берётся.",
-          en: "I always send my updates on time, but the complaint names the whole team, so now I am on the same list of culprits — my careful work counts for nothing.",
+          uz: "Updatelarimni oʻz vaqtida yuboraman va shikoyat jamoaga yozilgan — shuning uchun oʻz reyslarim boʻyicha yozuvni hozirdan tayyorlab qoʻyaman.",
+          ru: "Свои апдейты я отправляю вовремя, а жалоба адресована всей команде — поэтому по своим рейсам подготовлю выписку заранее, до разбора.",
+          en: "My own updates go out on time while the complaint names the whole team — so I would have the record for my own trips ready before the review.",
         } },
         { key: "dispatch_q10_e", pattern: "ownership", text: {
-          uz: "Bugunoq shu broker boʻyicha oʻz reyslarimni koʻrib chiqaman, har bir update vaqtiga eslatma qoʻyaman va bugungi updatelarni kutilgan muddatdan oldinroq joʻnataman.",
-          ru: "Сегодня же пройдусь по своим рейсам этого брокера, поставлю напоминание на каждое время апдейта и сегодняшние апдейты отправлю раньше ожидаемого срока.",
-          en: "Go through my own trips for this broker today, set a reminder for each update time, and send today's updates ahead of when they are expected.",
+          uz: "Bugun shu broker boʻyicha oʻz reyslarimni koʻrib chiqaman, har update vaqtiga eslatma qoʻyaman va bugungi updatelarni kutilganidan oldin yuboraman.",
+          ru: "Сегодня разберу свои рейсы по этому брокеру, поставлю напоминание на каждое время апдейта и отправлю сегодняшние раньше, чем их ждут.",
+          en: "I would go through my own trips for this broker today, set a reminder for each update time, and send today’s updates before they are expected.",
         } },
       ],
     },

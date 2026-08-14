@@ -1,18 +1,18 @@
 /**
  * SOS assessment content — Safety department (10 questions).
  *
- * Scope: driver safety violations, repeated violations, retraining and driver
- * resistance to it, missing/late safety documents, accident follow-up,
- * roadside DOT inspections, dispatch pressure vs. safety holds, preventive
- * safety work, corrective action, safety communication with drivers.
+ * Scope: HOS/ELD, telematics and coaching, refresher training, driver medical
+ * certificates, driver-facing cameras, incident documentation and insurance,
+ * DOT roadside inspections and CSA, safety holds, fleet event trends, policy
+ * bulletins.
  *
- * Authoring rules (see tests/sosContent.test.js):
- *  - every question offers 5 plausible options mapped to 5 of the 6 patterns;
- *  - no option is obviously "correct", careless, or ridiculous;
- *  - the strongest QBQ option varies in position and length;
- *  - NO option — including the negative ones — ever suggests bending FMCSA/HOS
- *    rules, skipping documents or evidence, lifting a safety hold, or dodging
- *    escalation; the flaw in negative options is mindset, never rule-breaking.
+ * Authoring rules: see the header of ./hr.js — all five options must read as
+ * competent and choosable, the six tendencies are loci of first action rather
+ * than keyword formulas, and no option may soften a required control. In this
+ * department that is absolute: nothing here may let a driver run over hours,
+ * lift a safety hold informally, release unsafe equipment, delay a required
+ * report, or leave an incident undocumented. A less accountable instinct is
+ * expressed by a different FOCUS, never by unsafe conduct.
  */
 
 module.exports = {
@@ -27,29 +27,29 @@ module.exports = {
       },
       options: [
         { key: "safety_q01_a", pattern: "waiting", text: {
-          uz: "ELD baʼzan notoʻgʻri yozib qoʻyadi — haydovchi loglarini tasdiqlashini va haftalik log tekshiruvi natijasini kutaman: tasdiqlanmagan maʼlumot bilan gap ochmayman.",
-          ru: "ELD иногда пишет с ошибками — дождусь, пока водитель заверит логи и пройдёт еженедельная проверка: не буду поднимать вопрос по неподтверждённым данным.",
-          en: "ELD sometimes records things wrong — I will wait for the driver to certify his logs and for the weekly log audit: no point raising it on unconfirmed data.",
+          uz: "Haydovchi loglarni tasdiqlamaguncha yozuvga qoidabuzarlik kiritmayman — tasdiqlanmagan maʼlumot asosida qoʻyilgan yozuvni keyin tuzatish ancha qiyin.",
+          ru: "Не стану заносить нарушение в его дело, пока он не заверит логи: запись, сделанная по непроверенным данным, потом исправляется куда труднее.",
+          en: "I would not enter a violation before he certifies his logs — a record made on unconfirmed data is far harder to correct afterwards.",
         } },
         { key: "safety_q01_b", pattern: "complaint", text: {
-          uz: "Hamkasblarga har oy HOS mavzusini qaytadan tushuntirayotganimizni, ahvol esa oʻzgarmayotganini aytaman — treninglar haydovchilarga yetib bormayapti.",
-          ru: "Скажу коллегам, что мы каждый месяц заново объясняем тему HOS, а картина не меняется — тренинги до водителей просто не доходят.",
-          en: "Tell my coworkers that we re-explain HOS every single month and nothing changes — the trainings are simply not getting through to drivers.",
+          uz: "Holatni oʻzim tartib boʻyicha yozaman, lekin rahbarga aytaman: HOS ni har oy qayta tushuntiramiz, oshib ketishlar esa kamaymadi — trening formati koʻrilishi kerak.",
+          ru: "Случай задокументирую сам, но скажу руководителю: HOS мы объясняем каждый месяц, а превышений не стало меньше — пересматривать надо сам формат обучения.",
+          en: "I would document the case myself, but tell my manager we re-explain HOS monthly yet overages have not dropped — the training format needs revisiting.",
         } },
         { key: "safety_q01_c", pattern: "ownership", text: {
-          uz: "Bugunoq logni oʻzim ochib, oshib ketish qayerda boshlanganini aniqlayman, haydovchi bilan sababini gaplashaman va holatni belgilangan tartib boʻyicha rasmiylashtiraman.",
-          ru: "Сегодня же сам открою лог, определю, где началось превышение, поговорю с водителем о причине и оформлю случай по установленному порядку.",
-          en: "Open the log myself today, pinpoint where the overage began, talk with the driver about the cause, and document the case according to procedure.",
+          uz: "Bugun logni oʻzim ochib, oshib ketish qayerdan boshlanganini aniqlayman, haydovchi bilan sababini gaplashaman va holatni tartib boʻyicha hujjatlashtiraman.",
+          ru: "Сегодня сам открою лог, найду, откуда пошло превышение, поговорю с водителем о причине и задокументирую случай по регламенту.",
+          en: "I would open the log myself today, find where the overage began, talk the cause through with the driver, and document the case per procedure.",
         } },
         { key: "safety_q01_d", pattern: "victim", text: {
-          uz: "Soatni haydovchi oshiradi, hisobini esa xavfsizlik boʻlimi beradi — nega har bir buzilish oxir-oqibat mening boʻynimga tushishini tushunmayman.",
-          ru: "Часы превышает водитель, а отчитывается отдел безопасности — не понимаю, почему каждое нарушение в итоге ложится на меня.",
-          en: "The driver is the one who goes over his hours, yet Safety answers for it — I do not understand why every violation ultimately lands on me.",
+          uz: "Rahbarga aniq aytaman: soatni haydovchi oshiradi, reja dispetcherlikda tuziladi — koʻrsatkich baholanganda bu ikkisi menda emasligi hisobga olinishi kerak.",
+          ru: "Прямо скажу руководителю: часы превышает водитель, план строит диспетчерская — оценивая показатель, стоит учитывать, что ни то, ни другое не в моих руках.",
+          en: "I would tell my manager plainly that the driver runs the hours and dispatch builds the plan — neither is mine, and that should count when the number is judged.",
         } },
         { key: "safety_q01_e", pattern: "builder", text: {
-          uz: "Holatni rasmiylashtirib haydovchi bilan gaplashaman, soʻng limitga bir soat qolganda haydovchi va dispetcherga ogohlantirish boradigan tartibni yoʻlga qoʻyishni taklif qilaman.",
-          ru: "Оформлю случай и поговорю с водителем, а затем предложу настроить предупреждение водителю и диспетчеру, когда до лимита остаётся час.",
-          en: "Document the case and talk with the driver, then propose setting up an alert to the driver and dispatcher whenever one hour remains before the limit.",
+          uz: "Holatni hujjatlashtirib, limitgacha bir soat qolganda haydovchi va dispetcherga ogohlantirish borishini yoʻlga qoʻyaman — bitta suhbat bu yigirma daqiqani qaytarmaydi.",
+          ru: "Задокументирую случай и налажу оповещение водителю и диспетчеру за час до лимита: одним разговором эти двадцать минут не вернёшь.",
+          en: "I would document the case and set up an alert to driver and dispatcher one hour before the limit — one conversation does not give those minutes back.",
         } },
       ],
     },
@@ -62,29 +62,29 @@ module.exports = {
       },
       options: [
         { key: "safety_q02_a", pattern: "builder", text: {
-          uz: "Qoidada belgilangan keyingi choraga bugunoq oʻtaman va har bir takror buzilishdan keyin qaysi qadam kelishini haydovchilarga oldindan eʼlon qilinadigan aniq shkalani taklif qilaman.",
-          ru: "Сегодня же перейду к следующей мере по правилам и предложу понятную шкалу: какой шаг следует за каждым повторным нарушением, объявленную водителям заранее.",
-          en: "Move to the next corrective step today as the policy requires, and propose a clear ladder announced to drivers in advance: which step follows each repeat violation.",
+          uz: "Siyosat talab qilgan keyingi qadamni qoʻyaman va takroriy holatlarda qaysi chora kelishini haydovchilarga oldindan eʼlon qilaman: nima kutilishini bilmagan odam xulqini oʻzgartirmaydi.",
+          ru: "Применю следующий шаг, который требует политика, и заранее объявлю водителям, какая мера идёт за каким повтором: не зная, что его ждёт, человек поведение не меняет.",
+          en: "I would apply the next step the policy requires and publish to drivers in advance which measure follows which repeat — nobody changes without knowing what is coming.",
         } },
         { key: "safety_q02_b", pattern: "blame", text: {
-          uz: "Avval birinchi suhbatni kim oʻtkazganini va u qanday rasmiylashtirilganini tekshiraman — dastlabki qadam chala qilingan boʻlsa, takror aynan shundan kelib chiqqan boʻlishi mumkin.",
-          ru: "Сначала проверю, кто проводил первую беседу и как она была оформлена — если начальный шаг сделали кое-как, повтор мог пойти именно оттуда.",
-          en: "First check who held the initial conversation and how it was documented — if that first step was done halfway, the repeat may stem from exactly that.",
+          uz: "Avval birinchi suhbat kim tomonidan va qanday hujjatlashtirilganini koʻraman — birinchi qadam yarim bajarilgan boʻlsa, takrorlanish aynan shundan boshlangan.",
+          ru: "Сначала посмотрю, кем и как была задокументирована первая беседа: если первый шаг сделали наполовину, повтор начался именно оттуда.",
+          en: "First I would look at who held the first conversation and how it was documented — if that step was half done, the repeat started right there.",
         } },
         { key: "safety_q02_c", pattern: "waiting", text: {
-          uz: "Bunday qarorlar oy yakunidagi xavfsizlik yigʻilishida birgalikda koʻrib chiqiladi — holatni roʻyxatga qoʻshaman va yigʻilishgacha qoʻshimcha chora qoʻllamay turaman.",
-          ru: "Такие решения у нас разбираются на месячном собрании по безопасности — внесу случай в список и до собрания воздержусь от дополнительных мер.",
-          en: "Decisions like this are reviewed at the monthly safety meeting — I will add the case to the list and hold off on further measures until then.",
+          uz: "Standart ogohlantirish tartib boʻyicha ketadi; qoʻshimcha chora esa oylik xavfsizlik yigʻilishida — holatni roʻyxatga qoʻshaman va qarorni birgalikda belgilaymiz.",
+          ru: "Стандартное уведомление уйдёт по регламенту, а дополнительная мера — на месячном совещании по безопасности: внесу случай в список, и решим сообща.",
+          en: "The standard notice goes out per procedure; any further measure belongs to the monthly safety meeting — I would list the case so the decision is a shared one.",
         } },
         { key: "safety_q02_d", pattern: "complaint", text: {
-          uz: "Rahbarga suhbatlarning bunday haydovchilarga taʼsiri yoʻqligini aytaman — bir oyda uch marta takrorlangan boʻlsa, gap bilan natija chiqmasligi koʻrinib turibdi.",
-          ru: "Скажу руководителю, что беседы на таких водителей не действуют — если за месяц три повтора, словами результата явно не добиться.",
-          en: "Tell my manager that conversations do not work on drivers like this — three repeats in one month makes it clear words alone get no result.",
+          uz: "Keyingi qadamni qoʻyaman va choralar tizimini yigʻilishga olib chiqaman: bir oyda uch marta takrorlanish suhbat xulqni oʻzgartirmasligini koʻrsatadi.",
+          ru: "Следующий шаг применю и вынесу на совещание саму систему мер: три повтора за месяц показывают, что беседа поведение не меняет.",
+          en: "I would apply the next step and take the measures themselves to the meeting: three repeats in a month show conversations do not change behavior.",
         } },
         { key: "safety_q02_e", pattern: "ownership", text: {
-          uz: "Uning tezlik hisobotini oʻzim koʻrib chiqaman, bugun haydovchi bilan ochiq gaplashaman va qoidada nazarda tutilgan navbatdagi chorani rasmiylashtiraman.",
-          ru: "Сам просмотрю его отчёт по скорости, сегодня открыто поговорю с водителем и оформлю следующую меру, предусмотренную правилами.",
-          en: "Review his speed report myself, have a direct conversation with the driver today, and document the next step that the policy prescribes.",
+          uz: "Tezlik hisobotini oʻzim koʻrib chiqib, bugun haydovchi bilan toʻgʻridan-toʻgʻri gaplashaman va siyosat belgilagan keyingi qadamni hujjatlashtiraman.",
+          ru: "Сам разберу отчёт по скорости, сегодня же поговорю с водителем напрямую и задокументирую следующий шаг, предписанный политикой.",
+          en: "I would go through his speed report myself, talk to the driver directly today, and document the next step the policy prescribes.",
         } },
       ],
     },
@@ -97,29 +97,29 @@ module.exports = {
       },
       options: [
         { key: "safety_q03_a", pattern: "complaint", text: {
-          uz: "Hamkasblarga tajribali haydovchilar bilan ishlash eng ogʻir ekanini aytaman — ular har qanday xavfsizlik talabini oʻzlariga hujum sifatida qabul qiladi.",
-          ru: "Скажу коллегам, что с опытными водителями тяжелее всего — любое требование по безопасности они воспринимают как выпад в свой адрес.",
-          en: "Tell coworkers that experienced drivers are the hardest to work with — they take any safety requirement as a personal attack.",
+          uz: "Talab oʻz kuchida qoladi. Shu bilan birga bitta masalani ochiq qoʻyaman: trening tayinlash tartibi tajribali haydovchilarga tushunarli tilda yozilishi kerak.",
+          ru: "Требование останется в силе. Заодно поставлю один вопрос: порядок назначения тренинга нужно изложить на языке, понятном опытным водителям.",
+          en: "The requirement stands. Alongside it I would put one question openly: how training is assigned needs saying in language that reaches senior drivers.",
         } },
         { key: "safety_q03_b", pattern: "ownership", text: {
-          uz: "U bilan bugun gaplashib, treningga sabab boʻlgan aniq hodisalarni sanalari bilan koʻrsataman, savollarini tinglayman va talab kuchda qolishini xotirjam tushuntiraman.",
-          ru: "Сегодня поговорю с ним, покажу конкретные события с датами, из-за которых назначен тренинг, выслушаю его вопросы и спокойно объясню, что требование остаётся в силе.",
-          en: "Talk with him today, show the specific dated events that triggered the training, hear his questions out, and calmly explain that the requirement stands.",
+          uz: "Bugun u bilan gaplashib, treningga sabab boʻlgan aniq sanali hodisalarni koʻrsataman, savollarini eshitaman va talab oʻz kuchida qolishini xotirjam aytaman.",
+          ru: "Сегодня поговорю с ним, покажу конкретные события с датами, из-за которых назначен тренинг, выслушаю его вопросы и спокойно скажу, что требование остаётся.",
+          en: "I would talk with him today, show the specific dated events behind the assignment, hear his questions out, and say calmly that the requirement stands.",
         } },
         { key: "safety_q03_c", pattern: "blame", text: {
-          uz: "Avval kamera tizimini sozlagan pudratchi hodisalarni notoʻgʻri belgilamaganini tekshiraman — chegaralar xato qoʻyilgan boʻlsa, javobni haydovchidan emas, oʻsha tomondan soʻrash kerak.",
-          ru: "Сначала проверю, не размечает ли события неверно система камер, которую настраивал подрядчик, — если пороги выставлены с ошибкой, спрашивать нужно с них, а не с водителя.",
-          en: "First check whether the camera system the vendor configured is flagging events incorrectly — if the thresholds are off, the answer should come from them, not the driver.",
+          uz: "Avval kamera tizimi hodisalarni toʻgʻri belgilayotganini tekshiraman — sozlama chegarasi notoʻgʻri boʻlsa, tuzatish provayder tomonida, haydovchida emas.",
+          ru: "Сначала проверю, верно ли камеры отмечают события: если пороги настроены неправильно, исправлять надо у поставщика, а не у водителя.",
+          en: "First I would check the cameras are flagging events correctly — if the thresholds are wrong, the correction sits with the vendor, not with the driver.",
         } },
         { key: "safety_q03_d", pattern: "builder", text: {
-          uz: "Hodisalar yozuvini u bilan birga koʻrib chiqaman va talabni saqlab qolaman, soʻng trening tayinlanganda haydovchiga oʻz videolarini darhol koʻrsatish tartibini taklif qilaman — eʼtiroz kamayadi.",
-          ru: "Разберу записи событий вместе с ним и оставлю требование в силе, а затем предложу сразу показывать водителю его собственные видео при назначении тренинга — возражений станет меньше.",
-          en: "Go through the event recordings with him and keep the requirement, then propose showing drivers their own videos right when training is assigned — it will cut down the pushback.",
+          uz: "Talabni bekor qilmayman, lekin trening tayinlanganda haydovchiga oʻz videosini koʻrsatish tartibini kiritaman — bahs koʻpincha aynan shu bosqichda tugaydi.",
+          ru: "Требование не отменю, но введу порядок: при назначении тренинга водителю показывают его собственное видео — спор чаще всего заканчивается именно здесь.",
+          en: "I would not lift the requirement, but I would make showing a driver his own footage part of assigning training — the argument usually ends right there.",
         } },
         { key: "safety_q03_e", pattern: "victim", text: {
-          uz: "Haydovchilar bilan tortishish doim menga qoladi: boshqalar vaʼda berib yaxshi boʻlib qolaveradi, talab qoʻygani uchun esa butun norozilik xavfsizlikka yogʻiladi.",
-          ru: "Спорить с водителями всегда достаётся мне: другие раздают обещания и остаются хорошими, а всё недовольство сыплется на безопасность, потому что требуем мы.",
-          en: "Arguing with drivers always falls to me: others hand out promises and stay the good guys, while all the resentment pours onto Safety because we do the demanding.",
+          uz: "Talab qilish har doim xavfsizlik boʻlimiga tushadi — haydovchi bilan munosabatim faqat shu rol orqali oʻlchanmasligi uchun buni rahbar bilan kelishib olaman.",
+          ru: "Требовать всегда приходится отделу безопасности — чтобы мои отношения с водителями не мерили только через эту роль, проясню это с руководителем.",
+          en: "The demanding always lands on Safety — so my driver relations are not measured through that role alone, I would settle it with my manager first.",
         } },
       ],
     },
@@ -132,29 +132,29 @@ module.exports = {
       },
       options: [
         { key: "safety_q04_a", pattern: "victim", text: {
-          uz: "Birovning hujjati deb yugurish yana menga qoldi — muddat oʻtib ketsa, eslatmalarni oʻz vaqtida yuborganimga qaramay, aybdor baribir xavfsizlik boʻladi.",
-          ru: "Опять мне бегать из-за чужого документа — если срок пройдёт, виноватой всё равно окажется безопасность, хотя напоминания я отправил вовремя.",
-          en: "Once again I am the one chasing someone else’s document — if the date slips, Safety will still be blamed, even though I sent the reminders on time.",
+          uz: "Rahbarga bugunoq yozib qoʻyaman: eslatmalar oʻz vaqtida ketgan va hujjat haydovchining oʻz masʼuliyatida — muddat oʻtsa, buni mening kuzatuvim deb baholash toʻgʻri emas.",
+          ru: "Сегодня же отмечу руководителю: напоминания ушли вовремя, а документ — ответственность самого водителя; если срок сорвётся, считать это моим недосмотром неверно.",
+          en: "I would note to my manager today that the reminders went out on time and the document is the driver’s own duty — a slip should not be read as my oversight.",
         } },
         { key: "safety_q04_b", pattern: "waiting", text: {
-          uz: "Haydovchi hozir yuk ostida — chalgʻitmay, reysni topshirib qaytgunicha kutaman: masalani yuzma-yuz, xotirjam hal qilamiz, hali besh kun vaqt bor.",
-          ru: "Водитель сейчас под грузом — не буду отвлекать и подожду, пока он сдаст рейс: решим вопрос лично и спокойно, пять дней ещё есть.",
-          en: "He is under a load right now — rather than distract him, I will wait until he delivers: we will settle it face to face and calmly, there are still five days.",
+          uz: "Hozir yuk ostida — chalgʻitmayman, yetkazib bergandan keyin gaplashaman; besh kun bor va yuzma-yuz suhbatda imtihon sanasini birga belgilab olamiz.",
+          ru: "Он сейчас под грузом — отвлекать не буду, поговорю после выгрузки; пять дней есть, и при личном разговоре вместе назначим дату осмотра.",
+          en: "He is under a load — I would not distract him and would talk after delivery; there are five days, and face to face we can set the exam date together.",
         } },
         { key: "safety_q04_c", pattern: "builder", text: {
-          uz: "Dispetcher orqali bugunoq bogʻlanib, yoʻnalishi boʻyidagi klinikadan dam olish vaqtiga qabul topishga yordam beraman, keyin barcha muddatlarni umumiy kalendarga oldinroq eslatmalar bilan kiritaman.",
-          ru: "Сегодня же свяжусь с ним через диспетчера, помогу найти клинику по его маршруту на время отдыха, а затем занесу все сроки в общий календарь с более ранними напоминаниями.",
-          en: "Reach him through dispatch today, help find a clinic along his route for his off-duty time, then put every expiry date into a shared calendar with earlier reminders.",
+          uz: "Bugun dispetcherlik orqali bogʻlanaman va barcha muddatlarni oldindan ogohlantirishli kalendarga joriy qilaman — bu holatni oxirgi haftaga kuzatuv usuli olib keldi.",
+          ru: "Свяжусь сегодня через диспетчерскую и внесу все сроки в общий календарь с ранними предупреждениями: к последней неделе привёл сам способ отслеживания.",
+          en: "I would reach him through dispatch today and put every expiry into a shared calendar with early warnings — the tracking method is what brought this to the last week.",
         } },
         { key: "safety_q04_d", pattern: "blame", text: {
-          uz: "Avval uning fayli nega shu ahvolga yetganini aniqlayman — muddatlarni kuzatish kimga biriktirilgan boʻlsa, ish nima uchun oxirgi besh kunga qolganini oʻsha tushuntirsin.",
-          ru: "Сначала выясню, почему его файл дошёл до такого состояния — за кем закреплён контроль сроков, тот пусть и объяснит, почему всё осталось на последние пять дней.",
-          en: "First establish how his file got to this point — whoever is assigned to track expirations should explain why it came down to the last five days.",
+          uz: "Avval bu fayl qanday shu holatga kelganini oʻzim aniqlayman — muddatlarni kuzatish kimga biriktirilgan boʻlsa, ish ham oʻsha odamdan boshlanadi.",
+          ru: "Сначала сам выясню, как этот файл дошёл до такого: за кем закреплено отслеживание сроков, с того человека и начинается работа.",
+          en: "First I would establish myself how this file got here — whoever owns expiry tracking is the person the work starts with.",
         } },
         { key: "safety_q04_e", pattern: "ownership", text: {
-          uz: "Dispetcher orqali hoziroq unga chiqaman, sanani va sertifikatsiz haydash mumkin emasligini aniq aytaman, tibbiy koʻrikka qanday ulgurishini u bilan bugunoq rejalashtiraman.",
-          ru: "Прямо сейчас выйду на него через диспетчера, чётко назову дату и что без сертификата ездить нельзя, и сегодня же спланирую с ним, как он успеет пройти осмотр.",
-          en: "Get through to him via dispatch right now, state the date clearly and that he cannot drive without the certificate, and plan with him today how he will fit in the exam.",
+          uz: "Dispetcherlik orqali hoziroq bogʻlanaman, sanani va sertifikatsiz yoʻlga chiqa olmasligini aniq aytaman va imtihonni qachon oʻtishini bugun birga rejalashtiramiz.",
+          ru: "Свяжусь через диспетчерскую прямо сейчас, ясно назову дату и что без сертификата он ехать не может, и сегодня же спланируем с ним, когда он пройдёт осмотр.",
+          en: "I would get through via dispatch right now, state the date and that he cannot drive without the certificate, and plan with him today when he fits the exam in.",
         } },
       ],
     },
@@ -167,29 +167,29 @@ module.exports = {
       },
       options: [
         { key: "safety_q05_a", pattern: "ownership", text: {
-          uz: "Bugun unga qoʻngʻiroq qilib, xavotirini oxirigacha tinglayman, kamera nimani yozishi va yozuvlar qanday ishlatilishini aniq tushuntiraman, qoida hammaga birdek tegishli ekanini halol aytaman.",
-          ru: "Сегодня позвоню ему, дослушаю его опасения до конца, точно объясню, что записывает камера и как используются записи, и честно скажу, что правило одно для всех.",
-          en: "Call him today, hear his concerns out fully, explain exactly what the camera records and how footage is used, and tell him honestly that the rule applies to everyone.",
+          uz: "Bugun oʻzim qoʻngʻiroq qilib xavotirini toʻliq eshitaman, kamera nimani yozadi va yozuv qanday ishlatiladi — tushuntiraman, qoida hamma uchun ekanini ochiq aytaman.",
+          ru: "Сегодня сам позвоню, полностью выслушаю его опасения, объясню, что именно камера пишет и как используется запись, и честно скажу, что правило одно для всех.",
+          en: "I would call him myself today, hear his concerns out in full, explain what the camera records and how footage is used, and say openly the rule is for everyone.",
         } },
         { key: "safety_q05_b", pattern: "victim", text: {
-          uz: "Qarorni rahbariyat qabul qiladi, gʻazabni esa biz eshitamiz — har yangi jihozda haydovchining birinchi qoʻngʻirogʻi nega aynan xavfsizlikka kelishini bilmayman.",
-          ru: "Решение принимает руководство, а гнев выслушиваем мы — не знаю, почему при каждом новшестве первый звонок водителя достаётся именно безопасности.",
-          en: "Management makes the decision, but we absorb the anger — I do not know why, with every new device, the driver’s first call lands on Safety.",
+          uz: "Qarorni kompaniya qabul qildi, haydovchining birinchi qoʻngʻirogʻi esa bizga tushadi — bu farq koʻrinib turishi uchun holatni hozirdan qayd etaman.",
+          ru: "Решение принимала компания, а первый звонок водителя приходит к нам — чтобы эта разница была видна, зафиксирую ситуацию уже сейчас.",
+          en: "The company took the decision while the driver’s first call lands on us — I would put the situation on record now so that difference stays visible.",
         } },
         { key: "safety_q05_c", pattern: "complaint", text: {
-          uz: "Xavfsizlik menejeriga kameralar haydovchilarga hech qanday tushuntirishsiz oʻrnatilganini aytaman — har safar shu: avval joriy qilamiz, keyin norozilik toʻlqinini yigʻamiz.",
-          ru: "Скажу менеджеру по безопасности, что камеры поставили без всяких разъяснений водителям — каждый раз так: сначала внедряем, потом собираем волну недовольства.",
-          en: "Tell the safety manager the cameras went in without any explanation to drivers — it is the same every time: first we roll it out, then we collect the wave of resentment.",
+          uz: "Haydovchi bilan hoziroq gaplashaman, ammo asosiy muammo boshqada: kameralar haydovchilarga tushuntirilmasdan oʻrnatildi — buni uskunani joriy qilganlar bilishi kerak.",
+          ru: "С водителем поговорю прямо сейчас, но главная проблема в другом: камеры поставили, ничего водителям не объяснив — и знать об этом должны те, кто их внедрял.",
+          en: "I would talk to the driver right now, but the real problem sits elsewhere: the cameras went in with no explanation, and the people who rolled them out should know.",
         } },
         { key: "safety_q05_d", pattern: "waiting", text: {
-          uz: "Bunday suhbat telefonda yaxshi chiqmaydi — haydovchi keyingi safar bazaga kelganda yuzma-yuz gaplashaman; ungacha masala biroz sovushi ham foydali.",
-          ru: "Такой разговор по телефону не получится — поговорю лично, когда водитель в следующий раз приедет на базу; до тех пор вопросу даже полезно немного остыть.",
-          en: "A talk like this will not go well by phone — I will speak with him in person the next time he is at the yard; letting it cool a little until then even helps.",
+          uz: "Bunday suhbat telefonda yaxshi chiqmaydi — yardga kelganda yuzma-yuz gaplashaman; qoida bekor boʻlmaydi, lekin ishonch telefon orqali tiklanmaydi.",
+          ru: "Такой разговор по телефону не выходит — поговорю лично, когда он будет на ярде; правило не отменяется, но доверие по телефону не возвращают.",
+          en: "A conversation like this does not work by phone — I would talk face to face at the yard; the rule does not change, but trust is not rebuilt over a call.",
         } },
         { key: "safety_q05_e", pattern: "builder", text: {
-          uz: "U bilan yozuv haydovchini oqlagan real holatlarni koʻrsatib gaplashaman, soʻng barcha haydovchilar uchun «kamera nimani yozadi, nimani yozmaydi» degan qisqa yodnoma tayyorlayman.",
-          ru: "Поговорю с ним, показав реальные случаи, где запись оправдала водителя, а затем подготовлю для всех водителей короткую памятку «что камера пишет, а что нет».",
-          en: "Talk with him using real cases where footage cleared a driver, then prepare a short one-pager for all drivers on what the camera does and does not record.",
+          uz: "Yozuv haydovchini himoya qilgan real holatlarni koʻrsatib gaplashaman, keyin butun flot uchun kamera nimani yozadi va nimani yozmasligi haqida izoh tarqataman.",
+          ru: "Поговорю, показав реальные случаи, где запись защитила водителя, а затем разошлю по флоту пояснение, что камера пишет и чего не пишет.",
+          en: "I would talk with him using real cases where footage cleared a driver, then send the whole fleet a note on what the camera does and does not record.",
         } },
       ],
     },
@@ -202,29 +202,29 @@ module.exports = {
       },
       options: [
         { key: "safety_q06_a", pattern: "blame", text: {
-          uz: "Avval hodisa haqidagi xabar menga nega bir kun kechikib yetganini aniqlayman — zanjir qaysi boʻgʻinda uzilgan boʻlsa, kechikish uchun oʻsha javob berishi kerak.",
-          ru: "Сначала выясню, почему сообщение о происшествии дошло до меня с опозданием на сутки — в каком звене порвалась цепочка, тому и отвечать за задержку.",
-          en: "First find out why word of the incident reached me a day late — whichever link in the chain broke is the one that should answer for the delay.",
+          uz: "Avval hodisa haqidagi xabar menga nega bir kun kech yetganini oʻzim aniqlayman — zanjir qayerda uzilgan boʻlsa, ertaga ham shu joyda uziladi.",
+          ru: "Сначала сам выясню, почему известие о происшествии дошло до меня на день позже: где порвалась цепочка, там она порвётся и завтра.",
+          en: "First I would establish myself why word of the incident reached me a day late — wherever the chain broke, it breaks there again tomorrow.",
         } },
         { key: "safety_q06_b", pattern: "builder", text: {
-          uz: "Haydovchini dispetcher orqali ham toptirib, nimani suratga olishini bandma-band aytib turaman, hujjatlar yigʻilgach esa kabinada saqlanadigan «hodisadan keyingi qadamlar» varagʻini tayyorlayman.",
-          ru: "Найду водителя в том числе через диспетчера, продиктую по пунктам, что снять, а когда документы будут собраны — подготовлю лист «шаги после происшествия», который будет храниться в кабине.",
-          en: "Track the driver down through dispatch as well, walk him item by item through what to photograph, and once the documents are in, prepare a “steps after an incident” sheet kept in the cab.",
+          uz: "Dispetcherlik orqali ham haydovchini topaman va hujjatlar yopilgach, kabinada turadigan «hodisadan keyingi qadamlar» varagʻini tayyorlayman.",
+          ru: "Найду водителя и через диспетчерскую, а когда документы закроем, подготовлю памятку «шаги после происшествия», которая лежит в кабине.",
+          en: "I would track the driver down through dispatch as well, and once the documents are in, prepare a “steps after an incident” sheet that lives in the cab.",
         } },
         { key: "safety_q06_c", pattern: "waiting", text: {
-          uz: "Hodisadan keyin haydovchiga oʻziga kelish uchun vaqt kerak — kechgacha kutaman: shipper hududida kameralar bor, asosiy dalillar baribir yigʻiladi.",
-          ru: "После происшествия водителю нужно время прийти в себя — подожду до вечера: на территории шиппера есть камеры, основные материалы всё равно соберутся.",
-          en: "After an incident a driver needs time to collect himself — I will wait until evening: the shipper’s yard has cameras, so the key evidence will come together anyway.",
+          uz: "Hodisadan keyin haydovchiga oʻziga kelish uchun vaqt kerak — kechgacha bosim qilmayman; shipper hududida kamera bor, asosiy dalil baribir yigʻiladi.",
+          ru: "После происшествия водителю нужно время прийти в себя — до вечера давить не буду; на территории шиппера есть камеры, основные доказательства соберутся всё равно.",
+          en: "After an incident a driver needs time to collect himself — I would not press until evening; the shipper’s yard has cameras, so the key evidence comes together anyway.",
         } },
         { key: "safety_q06_d", pattern: "ownership", text: {
-          uz: "Hoziroq oʻzim qoʻngʻiroq qilaman, kerakli fotolar va xat boʻyicha birma-bir yoʻnaltiraman, hozir yubora olganini qabul qilib, qolgan maʼlumotni shipperdan oʻzim soʻrayman.",
-          ru: "Прямо сейчас сам позвоню, по пунктам сориентирую его по нужным фото и объяснительной, приму то, что он может отправить сразу, а остальное запрошу у шиппера сам.",
-          en: "Call him myself right now, guide him point by point through the needed photos and statement, take whatever he can send immediately, and request the rest from the shipper myself.",
+          uz: "Oʻzim hoziroq qoʻngʻiroq qilib, kerakli foto va tushuntirish xatini band-band aytaman, yuborishga ulgurganini olaman, qolganini shipperdan oʻzim soʻrayman.",
+          ru: "Сам позвоню прямо сейчас, по пунктам проговорю нужные фото и объяснительную, возьму то, что он успеет прислать, а остальное запрошу у шиппера сам.",
+          en: "I would call him myself right now, walk him point by point through the photos and statement, take what he can send, and request the rest from the shipper myself.",
         } },
         { key: "safety_q06_e", pattern: "complaint", text: {
-          uz: "Orientatsiyada hodisadan keyingi tartibni necha marta oʻtamiz, baribir har bir holat maʼlumotni tomchilab undirishga aylanadi — buni yana bir bor taʼkidlayman.",
-          ru: "Сколько ни разбираем порядок действий после происшествия на ориентации, каждый случай всё равно превращается в выпрашивание информации по капле — лишний раз это отмечу.",
-          en: "No matter how often we cover post-incident steps at orientation, every case still turns into squeezing information out drop by drop — I will note that once again.",
+          uz: "Hujjatlarni oʻzim yigʻaman va masalani yana bir bor oʻrtaga qoʻyaman: hodisadan keyingi qadamlarni necha marta oʻtsak ham, maʼlumot tomchilab keladi.",
+          ru: "Документы соберу сам и ещё раз поставлю вопрос: сколько бы раз мы ни разбирали шаги после происшествия, информация каждый раз идёт по капле.",
+          en: "I would gather the documents myself and raise the question once more: however often we cover post-incident steps, the information still comes drop by drop.",
         } },
       ],
     },
@@ -237,29 +237,29 @@ module.exports = {
       },
       options: [
         { key: "safety_q07_a", pattern: "complaint", text: {
-          uz: "Ichimda norozi boʻlaman: mashina servisdan endigina chiqqan edi-ku — texnik tayyorgarlik oqsar ekan, bizning koʻrsatkich ham oqsayveradi.",
-          ru: "Про себя возмущусь: машина ведь только что вышла из сервиса — пока хромает техническая подготовка, будет хромать и наш показатель.",
-          en: "Grumble to myself that the truck just came out of the shop — as long as maintenance readiness limps, our score will keep limping right along with it.",
+          uz: "Hisobotni yuritaman, lekin rahbarga aytaman: trak yaqinda shopdan chiqqan edi — texnik tayyorgarlik nazorati oʻzgarmasa, CSA raqami ham oʻzgarmaydi.",
+          ru: "Отчёт проведу, но скажу руководителю: трак недавно вышел из шопа — пока не изменится контроль технической готовности, цифра CSA не изменится.",
+          en: "I would process the report, but tell my manager the truck had just left the shop — until maintenance readiness control changes, the CSA number will not.",
         } },
         { key: "safety_q07_b", pattern: "victim", text: {
-          uz: "CSA koʻrsatkichi uchun mendan soʻrashadi, nuqsonlar esa men boshqarmaydigan joylardan chiqadi — boshqalarning ishi boʻyicha baholanish ogʻir.",
-          ru: "За показатель CSA спрашивают с меня, а дефекты приходят из зон, которыми я не управляю, — тяжело, когда тебя оценивают по чужой работе.",
-          en: "I answer for the CSA score, yet the defects come from areas I do not control — it is hard being graded on other people’s work.",
+          uz: "CSA koʻrsatkichi menda, nosozliklar esa men boshqarmaydigan joyda paydo boʻladi — hisobotni shu ikkisi alohida koʻrinadigan qilib tayyorlayman.",
+          ru: "Показатель CSA на мне, а неисправности появляются там, где я не управляю — отчёт подготовлю так, чтобы эти две вещи были видны отдельно.",
+          en: "The CSA score is on me while the defects arise where I have no control — I would build the report so those two are visible separately.",
         } },
         { key: "safety_q07_c", pattern: "ownership", text: {
-          uz: "Bugunoq tekshiruv hisobotini olib, yozuvni sinchiklab oʻrganaman, taʼmir hujjatlashtirilganiga ishonch hosil qilaman va haydovchiga keyingi qadamlarni tushuntiraman.",
-          ru: "Сегодня же получу отчёт инспекции, внимательно изучу запись, удостоверюсь, что ремонт задокументирован, и объясню водителю дальнейшие шаги.",
-          en: "Get the inspection report today, study the entry closely, make sure the repair is documented, and explain the next steps to the driver.",
+          uz: "Bugun inspeksiya hisobotini olib, yozuvni batafsil oʻrganaman, taʼmir hujjatlashtirilganiga ishonch hosil qilaman va haydovchiga keyingi qadamlarni tushuntiraman.",
+          ru: "Сегодня получу отчёт инспекции, детально разберу запись, удостоверюсь, что ремонт задокументирован, и объясню водителю следующие шаги.",
+          en: "I would get the inspection report today, study the entry closely, make sure the repair is documented, and explain the next steps to the driver.",
         } },
         { key: "safety_q07_d", pattern: "blame", text: {
-          uz: "Avval nuqson qayerda oʻtkazib yuborilganini aniqlayman: haydovchi pre-trip koʻrigini chala qilganmi yoki servis soʻnggi taʼmirda koʻrmay qolganmi — javobgar aniq boʻlishi kerak.",
-          ru: "Сначала определю, где пропустили дефект: водитель провёл pre-trip поверхностно или сервис не заметил при последнем обслуживании — ответственный должен быть назван.",
-          en: "First determine where the defect was missed: did the driver skim his pre-trip or did the shop overlook it at the last service — the responsible party has to be named.",
+          uz: "Nosozlik qaysi bosqichda oʻtkazib yuborilganini aniqlayman — pre-tripda yoki oxirgi servisda; ish faqat uzilgan bosqichning oʻzida oʻzgaradi.",
+          ru: "Определю, на каком шаге неисправность пропустили — на пре-трипе или на последнем сервисе: меняется только тот шаг, где произошёл разрыв.",
+          en: "I would determine at which step the defect was missed — the pre-trip or the last service; only the step where it broke actually changes.",
         } },
         { key: "safety_q07_e", pattern: "builder", text: {
-          uz: "Hisobot va taʼmirni rasmiylashtiraman, dalillar yetarli boʻlsa DataQ orqali eʼtiroz tayyorlayman, soʻng servis bilan tez-tez uchraydigan nuqson turlarini oyma-oy koʻrib borishni kelishaman.",
-          ru: "Оформлю отчёт и ремонт, при достаточных основаниях подготовлю оспаривание через DataQ, а затем договорюсь с сервисом ежемесячно разбирать самые частые типы нарушений.",
-          en: "Process the report and the repair, prepare a DataQ challenge if the evidence supports one, then agree with the shop to review the most frequent violation types month by month.",
+          uz: "Hisobot va taʼmirni yopib, dalil yetarli boʻlsa DataQ eʼtirozini tayyorlayman, keyin shop bilan eng koʻp uchraydigan qoidabuzarliklarni har oy koʻrib chiqishni kelishaman.",
+          ru: "Закрою отчёт и ремонт, при достаточных доказательствах подготовлю оспаривание DataQ, а затем согласую с шопом ежемесячный разбор самых частых нарушений.",
+          en: "I would close the report and the repair, prepare a DataQ challenge if the evidence supports it, then agree a monthly review of the commonest violations with the shop.",
         } },
       ],
     },
@@ -272,29 +272,29 @@ module.exports = {
       },
       options: [
         { key: "safety_q08_a", pattern: "waiting", text: {
-          uz: "Bunday toʻxtatuv boʻyicha qaror yakka tartibda qabul qilinmaydi — xavfsizlik menejeri tushdan keyin qaytadi, dispetcherga oʻsha paytgacha kutib turishni aytaman.",
-          ru: "Решение по такой блокировке не принимается в одиночку — менеджер по безопасности вернётся после обеда, скажу диспетчеру подождать до этого момента.",
-          en: "A hold like this is not decided single-handedly — the safety manager is back after lunch, so I will tell the dispatcher to hold on until then.",
+          uz: "Bunday toʻxtatuvni bir kishi olib tashlamaydi — xavfsizlik rahbari tushdan keyin keladi; dispetcherga toʻxtatuv kuchda ekanini va qaror shu yerdan chiqishini aytaman.",
+          ru: "Такую блокировку не снимают в одиночку — руководитель по безопасности будет после обеда; скажу диспетчеру, что блокировка в силе и решение придёт оттуда.",
+          en: "A hold like this is not lifted single-handedly — the safety manager is in after lunch; I would tell the dispatcher the hold stands and the decision comes from there.",
         } },
         { key: "safety_q08_b", pattern: "builder", text: {
-          uz: "Toʻxtatuv sababini dispetcherga tushuntiraman, trening bugun masofadan tugatilishi mumkinligini tekshiraman va bunday holatlar oldindan koʻrinishi uchun toʻxtatuvlarni dispetcherlar taxtasida belgilashni taklif qilaman.",
-          ru: "Объясню диспетчеру причину блокировки, проверю, можно ли завершить тренинг сегодня дистанционно, и предложу отмечать блокировки на доске диспетчеров, чтобы такие случаи были видны заранее.",
-          en: "Explain the reason for the hold to the dispatcher, check whether the training can be finished remotely today, and propose flagging holds on the dispatch board so cases like this surface earlier.",
+          uz: "Toʻxtatuv sababini dispetcherga tushuntiraman, treningni bugun masofadan yopish mumkinmi tekshiraman va toʻxtatuvlar dispetcher boardida koʻrinishini yoʻlga qoʻyaman.",
+          ru: "Объясню диспетчеру причину блокировки, проверю, можно ли закрыть тренинг сегодня удалённо, и налажу отображение блокировок на борде диспетчера.",
+          en: "I would explain the reason for the hold to the dispatcher, check whether the training can be closed remotely today, and get holds shown on the dispatch board.",
         } },
         { key: "safety_q08_c", pattern: "victim", text: {
-          uz: "Yuk kechiksa «xavfsizlik toʻsqinlik qildi» deyishadi, treningni chala qoldirgan esa haydovchi — nega noqulay vaziyatda doim biz qolishimizni tushunish qiyin.",
-          ru: "Если груз задержится, скажут «безопасность помешала», хотя тренинг не завершил водитель — трудно понять, почему в неловком положении всегда оказываемся мы.",
-          en: "If the load runs late, people will say “Safety got in the way,” though it was the driver who left the training unfinished — hard to see why we always end up the bad guys.",
+          uz: "Yuk kechiksa «xavfsizlik toʻsdi» deb qoladi, holbuki treningni haydovchi yopmagan — shuning uchun toʻxtatuv sababini bugun yozma qayd etaman.",
+          ru: "Если груз опоздает, скажут «безопасность помешала», хотя тренинг не закрыл водитель — поэтому причину блокировки зафиксирую сегодня письменно.",
+          en: "A late load becomes “Safety got in the way”, though the driver left the training open — so I would put the reason for the hold in writing today.",
         } },
         { key: "safety_q08_d", pattern: "ownership", text: {
-          uz: "Toʻxtatuvni saqlagan holda darhol nima qolganini aniqlayman va dispetcherga halol muddat aytaman — haydovchi qachon tayyor boʻlishini bilsa, u yukni real rejalashtira oladi.",
-          ru: "Сохраняя блокировку, сразу уточню, что именно осталось пройти, и назову диспетчеру честный срок — зная, когда водитель будет готов, он сможет реально спланировать груз.",
-          en: "Keep the hold in place, immediately find out exactly what remains to complete, and give the dispatcher an honest timeline — knowing when the driver will be ready lets him plan the load realistically.",
+          uz: "Toʻxtatuvni saqlab, aynan nima qolganini hoziroq aniqlayman va dispetcherga rost muddat aytaman — qachon tayyor boʻlishini bilsa, yukni real rejalashtiradi.",
+          ru: "Блокировку сохраню, прямо сейчас выясню, что именно осталось, и дам диспетчеру честный срок: зная, когда водитель будет готов, он спланирует груз реально.",
+          en: "I would keep the hold, find out right now exactly what is left, and give the dispatcher an honest timeline — knowing when the driver is ready, he can plan for real.",
         } },
         { key: "safety_q08_e", pattern: "blame", text: {
-          uz: "Avval shuni qayd etaman: yuk haydovchi holati tekshirilmay band qilingan — rejalashtirishdagi bu xato dispetcherlik tomonida, kechikish javobgarligi ham oʻsha yerda boʻlishi kerak.",
-          ru: "Сначала зафиксирую: груз забронировали, не проверив статус водителя, — эта ошибка планирования на стороне диспетчерской, там же должна быть и ответственность за задержку.",
-          en: "First put on record that the load was booked without checking the driver’s status — that planning miss is on dispatch’s side, and the responsibility for the delay should sit there too.",
+          uz: "Toʻxtatuv kuchida qoladi, men esa yuk haydovchining statusi tekshirilmasdan olinganini hoziroq yozib qoʻyaman — bu uzilish dispetcherlik tomonida.",
+          ru: "Блокировка остаётся в силе, а я прямо сейчас зафиксирую, что груз взяли, не проверив статус водителя: этот разрыв на стороне диспетчерской.",
+          en: "The hold stands, and I would put on record right now that the load was booked without checking the driver’s status — that break is on dispatch’s side.",
         } },
       ],
     },
@@ -307,29 +307,29 @@ module.exports = {
       },
       options: [
         { key: "safety_q09_a", pattern: "ownership", text: {
-          uz: "Bugun maʼlumotni haydovchi, yoʻnalish va vaqt kesimida oʻzim tahlil qilib, hodisalar eng koʻp toʻplangan guruhni aniqlayman va oʻsha haydovchilar bilan suhbatlarni boshlayman.",
-          ru: "Сегодня сам разберу данные по водителям, маршрутам и времени, определю группу с наибольшим числом событий и начну беседы с этими водителями.",
-          en: "Break the data down myself today by driver, route, and time, identify the group with the most events, and start conversations with those drivers.",
+          uz: "Bugun maʼlumotni haydovchi, yoʻnalish va vaqt boʻyicha oʻzim ajrataman, hodisasi eng koʻp guruhni aniqlayman va oʻsha haydovchilar bilan suhbatni boshlayman.",
+          ru: "Сегодня сам разложу данные по водителям, маршрутам и времени, найду группу с наибольшим числом событий и начну разговоры с этими водителями.",
+          en: "I would break the data down myself today by driver, route and time, find the group with the most events, and start the conversations with those drivers.",
         } },
         { key: "safety_q09_b", pattern: "complaint", text: {
-          uz: "Bu har doim ish qizigan mavsumda takrorlanadi — jadval shunchalik zich tuzilsa, xavfsizlik koʻrsatkichlari pastga ketaverishini yigʻilishda yana aytaman.",
-          ru: "Это повторяется каждый горячий сезон — на собрании ещё раз скажу, что при настолько плотных графиках показатели безопасности неизбежно ползут вниз.",
-          en: "This repeats every busy season — at the meeting I will say once more that with schedules packed this tight, safety numbers inevitably slide.",
+          uz: "Tahlilni qilaman, lekin yigʻilishda aytaman: bu har mavsumda qaytadi — jadval shunday tigʻiz boʻlsa, xavfsizlik raqamlari muqarrar pasayadi.",
+          ru: "Анализ сделаю, но на совещании скажу: это повторяется каждый сезон — при таком плотном графике показатели безопасности неизбежно проседают.",
+          en: "I would run the analysis, but say at the meeting this comes back every season — with schedules this tight, the safety numbers inevitably slide.",
         } },
         { key: "safety_q09_c", pattern: "builder", text: {
-          uz: "Tahlildan chiqqan asosiy xulosalarni dispetcherlik bilan boʻlishaman va flotimizning real hodisalariga asoslangan qisqa haftalik xavfsizlik eslatmalarini yoʻlga qoʻyaman.",
-          ru: "Поделюсь главными выводами анализа с диспетчерской и запущу короткие еженедельные заметки по безопасности, основанные на реальных событиях нашего флота.",
-          en: "Share the key findings of the analysis with dispatch and start short weekly safety notes built on our own fleet’s real events.",
+          uz: "Tahlil natijasini dispetcherlik bilan boʻlishaman va oʻz flotimizning real hodisalariga asoslangan qisqa haftalik xavfsizlik xabarlarini yoʻlga qoʻyaman.",
+          ru: "Поделюсь результатами анализа с диспетчерской и налажу короткие еженедельные сводки по безопасности на реальных событиях нашего флота.",
+          en: "I would share the findings with dispatch and start short weekly safety notes built on our own fleet’s real events.",
         } },
         { key: "safety_q09_d", pattern: "victim", text: {
-          uz: "Ogohlantirishlarim avariya boʻlmaguncha hech kimga kerak emas — keyin esa «xavfsizlik qayoqqa qaragan» deb birinchi navbatda mendan soʻrashadi; shu tartib charchatadi.",
-          ru: "Мои предупреждения никому не нужны, пока не случится авария, — а потом первым спросят с меня: «куда смотрела безопасность»; этот порядок выматывает.",
-          en: "Nobody needs my warnings until an accident happens — and then I am the first to be asked where Safety was looking; that pattern wears you down.",
+          uz: "Ogohlantirishlarim avariya boʻlmaguncha eʼtiborga olinmaydi — shuning uchun bu oy kimga nima aytganimni oʻzim yozib boraman.",
+          ru: "Мои предупреждения не воспринимают, пока не случится аварии — поэтому в этом месяце сам буду записывать, кому и что я сказал.",
+          en: "My warnings are not taken up until there is an accident — so this month I would keep my own record of who I told what and when.",
         } },
         { key: "safety_q09_e", pattern: "waiting", text: {
-          uz: "Bir oylik oʻsish hali tendensiya emas — yana bir oy maʼlumot toʻplab, manzara aniq boʻlgandagina chora koʻraman: har tebranishga darhol reaksiya qilish ham toʻgʻri emas.",
-          ru: "Рост за один месяц — ещё не тенденция: соберу данные ещё за месяц и приму меры, только когда картина будет ясной, — реагировать на каждое колебание тоже неправильно.",
-          en: "One month of growth is not yet a trend — I will gather another month of data and act only when the picture is clear; reacting to every fluctuation is not right either.",
+          uz: "Bir oylik oʻsish hali tendensiya emas — yana bir oylik maʼlumot yigʻaman va manzara aniq boʻlganda chora koʻraman; har tebranishga reaksiya raqamni buzadi.",
+          ru: "Рост за один месяц ещё не тренд — соберу данные ещё за месяц и приму меры, когда картина будет ясной: реакция на каждое колебание портит статистику.",
+          en: "One month of growth is not a trend yet — I would gather another month and act when the picture is clear; reacting to every wobble distorts the numbers.",
         } },
       ],
     },
@@ -342,29 +342,29 @@ module.exports = {
       },
       options: [
         { key: "safety_q10_a", pattern: "builder", text: {
-          uz: "Yangilanishni qisqa va sodda shaklda — ovozli xabar va bir sahifalik yodnoma qilib — qayta yuboraman, har bir haydovchidan tasdiq soʻrayman va muhim xabarlar uchun shu tartibni doimiy qilaman.",
-          ru: "Разошлю обновление заново в коротком простом виде — голосовым сообщением и памяткой на страницу, попрошу подтверждение от каждого водителя и закреплю этот порядок для важных сообщений.",
-          en: "Resend the update in a short, simple form — a voice message and a one-page memo, ask each driver for a confirmation, and make that the standard for important notices.",
+          uz: "Yangilanishni ovozli xabar va bir sahifalik yodnoma shaklida qayta yuboraman va muhim xabarlar uchun tasdiq olishni doimiy tartibga aylantiraman.",
+          ru: "Перешлю обновление голосовым сообщением и одностраничной памяткой и сделаю подтверждение получения постоянным порядком для важных рассылок.",
+          en: "I would resend the update as a voice message and a one-page memo, and make a read-confirmation the standing procedure for important notices.",
         } },
         { key: "safety_q10_b", pattern: "blame", text: {
-          uz: "Avval xabar qaysi boʻgʻinda yoʻqolganini aniqlayman — dispetcherlar uni nazorat qoʻngʻiroqlarida ogʻzaki yetkazishi kerak edi; qilmagan boʻlsa, kamchilik oʻsha tomonda.",
-          ru: "Сначала выясню, в каком звене потерялось сообщение — диспетчеры должны были устно доносить его на контрольных звонках; если не делали, недоработка на их стороне.",
-          en: "First identify where the message got lost — dispatchers were supposed to relay it verbally on check calls; if they did not, the gap is on their side.",
+          uz: "Xabar qaysi bosqichda yoʻqolganini aniqlayman — dispetcherlar check-callda ogʻzaki yetkazishi kerak edi; qilinmagan boʻlsa, gap ular bilan boʻladi.",
+          ru: "Определю, на каком шаге сообщение потерялось: диспетчеры должны были передать его словами на чек-колле; если не передали, разговор будет с ними.",
+          en: "I would pin down where the message got lost — dispatchers were to relay it verbally on check calls; if they did not, the conversation is with them.",
         } },
         { key: "safety_q10_c", pattern: "ownership", text: {
-          uz: "Bugundan haydovchilarga oʻzim qoʻngʻiroq qilib, asosiy oʻzgarishlarni ogʻzaki yetkazaman va kim bilan gaplashganimni roʻyxat qilib boraman — qoida ishlashi uchun avval u yetib borishi kerak.",
-          ru: "С сегодняшнего дня начну сам обзванивать водителей, устно доносить главные изменения и вести список, с кем уже поговорил, — чтобы правило работало, оно сначала должно дойти.",
-          en: "Starting today, call the drivers myself, deliver the key changes verbally, and keep a list of who I have reached — for a rule to work, it first has to get through.",
+          uz: "Bugundan haydovchilarga oʻzim qoʻngʻiroq qilib, asosiy oʻzgarishlarni ogʻzaki yetkazaman va kimga yetganini roʻyxat qilib boraman.",
+          ru: "С сегодняшнего дня сам обзвоню водителей, передам ключевые изменения словами и буду вести список тех, до кого дошло.",
+          en: "Starting today I would call the drivers myself, deliver the key changes verbally, and keep a list of who I have reached.",
         } },
         { key: "safety_q10_d", pattern: "waiting", text: {
-          uz: "Reys paytida haydovchilar xabarlarga kam qaraydi — yana bir hafta beraman: uyga dam olishga chiqqanda koʻpchiligi baribir oʻqib oladi, keyin holatni qayta tekshiraman.",
-          ru: "В рейсе водители редко смотрят сообщения — дам ещё неделю: на домашнем отдыхе большинство всё равно прочитает, потом проверю ситуацию заново.",
-          en: "Drivers rarely check messages while on a run — I will give it another week: most will read it during their home time anyway, and then I will re-check.",
+          uz: "Haydovchi reysda xabarni kam ochadi — yana bir hafta beraman: koʻpchilik uyda oʻqiydi, shundan keyin oʻzim qayta tekshiraman.",
+          ru: "В рейсе водитель сообщения открывает редко — дам ещё неделю: большинство прочтёт дома, и тогда сам проверю снова.",
+          en: "Drivers rarely open messages on a run — I would give it another week: most read at home, and then I would re-check them myself.",
         } },
         { key: "safety_q10_e", pattern: "complaint", text: {
-          uz: "Toʻlovga aloqasi boʻlmagan xabarni haydovchilar ochib ham koʻrmasligini yana bir bor qayd etaman — har bir qoida yangilanishi bizda aynan shu ahvolda tarqaladi.",
-          ru: "В который раз отмечу, что сообщения, не связанные с оплатой, водители даже не открывают — каждое обновление правил у нас расходится именно так.",
-          en: "Note once again that drivers do not even open messages unrelated to pay — every policy update at our company spreads exactly like this.",
+          uz: "Qayta yuboraman va xabar yetkazish kanali haqida savol qoʻyaman: toʻlovga tegishli boʻlmagan xabarlar shunchaki ochilmaydi, qoida esa shunday tarqaladi.",
+          ru: "Перешлю и поставлю вопрос о самом канале доставки: сообщения не про оплату просто не открывают, а правило расходится именно так.",
+          en: "I would resend it and put a question about the delivery channel itself: messages not about pay simply go unopened, and that is how a rule spreads.",
         } },
       ],
     },
