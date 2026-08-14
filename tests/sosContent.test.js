@@ -56,8 +56,8 @@ test('the strongest options do not sit in a fixed position', () => {
         if (o.pattern === 'builder') builderPositions.add(i);
       });
     }
-    assert.ok(ownershipPositions.size >= 3, `${dept}: ownership always in ${[...ownershipPositions]}`);
-    assert.ok(builderPositions.size >= 3, `${dept}: builder always in ${[...builderPositions]}`);
+    assert.ok(ownershipPositions.size >= 4, `${dept}: ownership only in ${[...ownershipPositions]}`);
+    assert.ok(builderPositions.size >= 4, `${dept}: builder only in ${[...builderPositions]}`);
   }
 });
 
@@ -67,7 +67,7 @@ test('option lengths within a question stay comparable (no giveaway by size)', (
       for (const lang of LANGUAGES) {
         const lengths = q.options.map((o) => o.text[lang].length);
         const ratio = Math.max(...lengths) / Math.min(...lengths);
-        assert.ok(ratio <= 2.6, `${q.key} ${lang}: length ratio ${ratio.toFixed(2)}`);
+        assert.ok(ratio <= 1.8, `${q.key} ${lang}: length ratio ${ratio.toFixed(2)}`);
       }
     }
   }

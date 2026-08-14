@@ -1,21 +1,17 @@
 /**
  * SOS assessment content — Samsara Monitoring department (10 questions).
  *
- * Scope: safety alerts (harsh braking, distraction, following distance),
- * missing video for an event, delayed platform notifications, communicating
- * events to drivers, false/unclear alerts, camera issues, escalation to and
- * follow-up with Safety, repeated risky behavior, system outages, monitoring
- * gaps between shifts, making sure no event is silently missed.
+ * Scope: event alerts and video, AI camera detections, camera health, feed
+ * latency, repeat-offender patterns, false positives and sensitivity, shift
+ * queues and handoffs, platform outages, escalations to Safety, queue filters
+ * that hide events.
  *
- * Authoring rules (see tests/sosContent.test.js):
- *  - every question offers 5 plausible options mapped to 5 of the 6 patterns;
- *  - no option is obviously "correct", careless, or ridiculous;
- *  - the strongest QBQ option varies in position and length;
- *  - no option encourages ignoring a safety event, marking events reviewed
- *    without reviewing them, or accusing a driver without evidence;
- *  - platform data genuinely can be late or incomplete — negative options may
- *    lean on that fact, but ownership options verify what they can and
- *    escalate honestly.
+ * Authoring rules: see the header of ./hr.js — all five options must read as
+ * competent and choosable, the six tendencies are loci of first action rather
+ * than keyword formulas. Hard constraints for this department: no option may
+ * hide, delete or downgrade a real event, classify an event dishonestly, or
+ * leave a serious event unreported to Safety. A less accountable instinct shows
+ * up as a different FIRST MOVE, never as suppressed monitoring data.
  */
 
 module.exports = {
@@ -30,29 +26,29 @@ module.exports = {
       },
       options: [
         { key: "samsara_q01_a", pattern: "victim", text: {
-          uz: "Chala hodisalar negadir doim mening smenamga toʻgʻri keladi, deb oʻylayman — videoni platforma yozmagan boʻlsa ham, «nima boʻlgan» degan savol baribir mendan soʻraladi.",
-          ru: "Подумаю: неполные события почему-то всегда выпадают на мою смену — видео не записала платформа, а объяснять, что произошло, всё равно придётся мне.",
-          en: "Think that incomplete events somehow always land on my shift — the platform failed to record the video, yet I will be the one asked to explain what happened.",
+          uz: "Rahbarga aytib qoʻyaman: video platformada yuklanmagan — hodisa chala baholansa, buni mening ishimning kamchiligi deb koʻrish toʻgʻri boʻlmaydi.",
+          ru: "Скажу руководителю: видео не загрузилось на стороне платформы — если событие оценено неполно, считать это недоработкой моей работы неверно.",
+          en: "I would tell my lead the video failed to upload on the platform’s side — if the event ends up half-assessed, that is not a gap in my work.",
         } },
         { key: "samsara_q01_b", pattern: "builder", text: {
-          uz: "Kameradan videoni qayta soʻrayman, hozir bor maʼlumotlarni jurnalga qayd qilaman, klip kelmasa esa shu mashinada yuklanish muammosi takrorlanmayaptimi — tarixini ham tekshirib qoʻyaman.",
-          ru: "Запрошу видео с камеры повторно, зафиксирую в журнале имеющиеся данные, а если ролик так и не придёт, проверю, не повторяется ли на этом грузовике проблема с загрузкой.",
-          en: "Re-request the video from the camera, log the data we do have, and if the clip never arrives, check the history to see whether uploads keep failing on this particular truck.",
+          uz: "Kameradan videoni qayta soʻrayman, mavjud maʼlumotni yozaman va klip kelmasa, shu trakda yuklashlar tez-tez uzilyaptimi — tarixni tekshiraman.",
+          ru: "Запрошу видео с камеры повторно, зафиксирую имеющиеся данные, а если клип так и не придёт — проверю историю, часто ли срываются загрузки на этом траке.",
+          en: "I would re-request the video from the camera, log the data we have, and if no clip arrives, check the history for whether uploads keep failing on this truck.",
         } },
         { key: "samsara_q01_c", pattern: "complaint", text: {
-          uz: "Hamkasblarga Samsara har ikkinchi hodisada videoni yuklamay qoʻyayotganini aytaman — shunday tizim bilan hodisalarga toʻliq va adolatli baho berish juda qiyin-da.",
-          ru: "Скажу коллегам, что Samsara через раз не подгружает видео — с такой системой полноценно и справедливо оценивать события просто трудно.",
-          en: "Tell my coworkers that Samsara fails to upload video every other time — with a system like this it is genuinely hard to assess events fully and fairly.",
+          uz: "Hodisani oʻzim maʼlumot boʻyicha yopaman, lekin rahbarga aytaman: video har ikkinchi holatda yuklanmaydi va baho chala boʻlaveradi.",
+          ru: "Событие закрою сам по данным, но скажу руководителю: видео не загружается через раз, и оценка так и остаётся неполной.",
+          en: "I would close the event on the data myself, but tell my lead video fails to upload every other time and assessments stay half-blind.",
         } },
         { key: "samsara_q01_d", pattern: "ownership", text: {
-          uz: "Bor maʼlumotlarni — tezlik grafigi, joylashuv, vaqt — hoziroq oʻzim tahlil qilaman va hodisani «video mavjud emas» degan halol izoh bilan faktlar asosida qayd qilaman.",
-          ru: "Прямо сейчас сам разберу имеющиеся данные — график скорости, место, время — и зафиксирую событие с честной пометкой «видео недоступно», опираясь на факты.",
-          en: "Analyze the data that is available right now — the speed graph, location, time — and record the event with an honest “video unavailable” note based on the facts.",
+          uz: "Hozir mavjud maʼlumotni — tezlik grafigi, joylashuv, vaqt — oʻzim tahlil qilaman va hodisani «video yoʻq» izohi bilan faktga asoslab yozaman.",
+          ru: "Сам разберу то, что есть сейчас — график скорости, местоположение, время — и запишу событие по фактам с пометкой «видео недоступно».",
+          en: "I would analyze what is available right now — the speed graph, location, time — and record the event on the facts with a “video unavailable” note.",
         } },
         { key: "samsara_q01_e", pattern: "waiting", text: {
-          uz: "Video baʼzan mashina aloqa zonasiga qaytgach keyinroq yuklanadi — hodisani ochiq qoldirib, klip tushishini kutaman: toʻliq material bilan baho berish toʻgʻriroq boʻladi.",
-          ru: "Видео иногда подгружается позже, когда машина возвращается в зону связи — оставлю событие открытым и подожду ролик: оценивать правильнее по полному материалу.",
-          en: "Video sometimes uploads later once the truck is back in coverage — I will leave the event open and wait for the clip, since a full picture makes for a fairer review.",
+          uz: "Trak aloqa zonasiga qaytgach video keyin yuklanishi mumkin — hodisani ochiq qoldirib klipni kutaman, chunki toʻliq manzara adolatliroq baho beradi.",
+          ru: "Видео может загрузиться позже, когда трак вернётся в зону покрытия — оставлю событие открытым и дождусь клипа: полная картина даёт более справедливую оценку.",
+          en: "The video may upload later once the truck is back in coverage — I would leave the event open for the clip, since a full picture gives a fairer assessment.",
         } },
       ],
     },
@@ -65,29 +61,29 @@ module.exports = {
       },
       options: [
         { key: "samsara_q02_a", pattern: "ownership", text: {
-          uz: "Haydovchi toʻxtagan payt qoʻngʻiroq qilib, videoda nima koʻringanini xotirjam aytaman, uning izohini eshitaman va suhbat natijasini hodisa yoniga qayd qilib qoʻyaman.",
-          ru: "Позвоню, когда водитель остановится, спокойно опишу, что видно на видео, выслушаю его объяснение и зафиксирую итог разговора рядом с событием.",
-          en: "Call once the driver is stopped, calmly describe what the video shows, hear his side of it, and log the outcome of the conversation next to the event.",
+          uz: "Haydovchi toʻxtagach qoʻngʻiroq qilib, video nimani koʻrsatayotganini xotirjam aytaman, uning izohini eshitaman va suhbat natijasini hodisa yoniga yozib qoʻyaman.",
+          ru: "Позвоню, когда водитель остановится, спокойно расскажу, что показывает видео, выслушаю его объяснение и запишу итог разговора рядом с событием.",
+          en: "I would call once the driver is stopped, calmly describe what the video shows, hear his account, and log the outcome of the conversation next to the event.",
         } },
         { key: "samsara_q02_b", pattern: "waiting", text: {
-          uz: "Haydovchi hozir reysda — bunday suhbat uni battar chalgʻitishi mumkin. Reys tugab, oʻzi bogʻlanganida aytganim maʼqul; unga qadar hodisa hech qayoqqa qochmaydi.",
-          ru: "Водитель сейчас в рейсе — такой разговор может отвлечь его ещё больше. Лучше сказать, когда рейс закончится и он сам выйдет на связь; до тех пор событие никуда не денется.",
-          en: "The driver is on a run right now — a talk like this could distract him even more. Better to mention it once the trip ends and he checks in himself; the event is not going anywhere.",
+          uz: "Hozir haydovchi yoʻlda — bunday suhbat uni yana chalgʻitadi; reys tugagach oʻzi bogʻlanganda aytaman, hodisa esa yozuvda turadi.",
+          ru: "Сейчас водитель в пути — такой разговор отвлечёт его ещё больше; скажу, когда он выйдет на связь после рейса, а событие останется в записи.",
+          en: "The driver is rolling right now — a talk like this distracts him further; I would raise it when he checks in after the trip, with the event on record.",
         } },
         { key: "samsara_q02_c", pattern: "blame", text: {
-          uz: "Avval xavfsizlik boʻlimi u bilan ilgari shu mavzuda ishlaganmi-yoʻqmi, koʻraman — oldin ham oʻqitilgan boʻlsa-yu takrorlansa, endi bu ularning zonasi, ular shugʻullansin.",
-          ru: "Сначала посмотрю, работал ли с ним отдел безопасности по этой теме раньше — если инструктаж уже был, а нарушение повторилось, то это их зона, пусть они и занимаются.",
-          en: "First check whether Safety has already coached him on this — if he was coached before and it repeated, that is their lane now, and they should be the ones handling it.",
+          uz: "Xavfsizlik boʻlimi u bilan bu mavzuda ishlaganmi tekshiraman — oldin ishlangan va takrorlangan boʻlsa, tuzatish oʻsha bosqichda kuchga kiradi.",
+          ru: "Проверю, работал ли с ним отдел безопасности по этой теме: если работали и повторилось, исправление действует именно на том шаге.",
+          en: "I would check whether Safety has already coached him on this — if they had and it repeated, the correction takes effect at that step.",
         } },
         { key: "samsara_q02_d", pattern: "builder", text: {
-          uz: "Haydovchi toʻxtashi bilanoq u bilan hurmat saqlab gaplashaman, hodisani tartib boʻyicha xavfsizlik boʻlimiga uzataman va bir hafta uning hodisalarini alohida kuzatib boraman.",
-          ru: "Как только водитель остановится, уважительно поговорю с ним, передам событие в отдел безопасности по регламенту и неделю буду отдельно следить за его событиями, чтобы это не повторялось.",
-          en: "Talk with the driver respectfully as soon as he stops, pass the event to Safety per procedure, and watch his events closely for a week to make sure it does not repeat.",
+          uz: "Haydovchi toʻxtagach hurmat bilan gaplashaman, hodisani tartib boʻyicha xavfsizlik boʻlimiga uzataman va bir hafta uning hodisalarini alohida kuzataman.",
+          ru: "Когда водитель остановится, поговорю уважительно, передам событие в отдел безопасности по регламенту и неделю буду отдельно следить за его событиями.",
+          en: "I would talk with him respectfully once he stops, pass the event to Safety per procedure, and watch his events separately for a week.",
         } },
         { key: "samsara_q02_e", pattern: "complaint", text: {
-          uz: "Ichimda telefon bilan bogʻliq hodisalar oy sayin koʻpayib borayotganidan norozi boʻlaman — haydovchilar ogohlantirishlarimizni jiddiy qabul qilmayapti, gapirishdan deyarli hech narsa oʻzgarmaydi.",
-          ru: "Про себя отмечу, что событий с телефоном месяц от месяца всё больше — водители не воспринимают наши предупреждения всерьёз, и от разговоров почти ничего не меняется.",
-          en: "Note to myself that phone events keep growing month after month — drivers do not take our warnings seriously, and talking to them barely changes anything.",
+          uz: "Haydovchiga aytaman va masalani yigʻilishga olib chiqaman: telefon hodisalari har oy oʻsadi, ogohlantirish formati esa oʻzgarmayapti.",
+          ru: "Водителю скажу и вынесу вопрос на совещание: события с телефоном растут каждый месяц, а формат предупреждений не меняется.",
+          en: "I would notify the driver and take the issue to the meeting: phone events grow every month while the notification format stays the same.",
         } },
       ],
     },
@@ -100,29 +96,29 @@ module.exports = {
       },
       options: [
         { key: "samsara_q03_a", pattern: "blame", text: {
-          uz: "Avval shu kunlarda kim navbatchilik qilganini aniqlayman — kamchilik kimniki ekani ochiq boʻlmasa, uch kunlik «koʻr» mashina uchun javob oxiri menga yopishib qolishi mumkin.",
-          ru: "Сначала выясню, кто дежурил в эти дни — если не станет ясно, чьё это упущение, отвечать за три «слепых» дня в итоге может прийтись мне.",
-          en: "First establish who was on duty those days — unless it is clear whose miss this was, answering for three blind days could easily end up on me.",
+          uz: "Oʻsha kunlar kim smenada boʻlganini oʻzim aniqlayman — uzilishni belgilamasak, uch kunlik koʻrlik keyingi oyda ham qaytadi.",
+          ru: "Сам выясню, кто был в смене в те дни: если не обозначить разрыв, три дня слепоты повторятся и в следующем месяце.",
+          en: "I would establish myself who was on shift those days — unless the break is marked, three blind days come back next month.",
         } },
         { key: "samsara_q03_b", pattern: "ownership", text: {
-          uz: "Hoziroq haydovchi bilan bogʻlanib, linzani artish yoki toʻsiqni olib tashlashni soʻrayman, tasvir qaytganini oʻzim tekshiraman va uch kunlik uzilishni sanalari bilan halol qayd qilaman.",
-          ru: "Сразу свяжусь с водителем, попрошу протереть объектив или убрать помеху, сам проверю, что картинка вернулась, и честно зафиксирую трёхдневный пробел с датами.",
-          en: "Contact the driver right away to wipe the lens or clear the obstruction, verify myself that the picture is back, and honestly log the three-day gap with its dates.",
+          uz: "Haydovchi bilan darhol bogʻlanib linzani tozalashini soʻrayman, tasvir qaytganini oʻzim tekshiraman va uch kunlik boʻshliqni sanalari bilan rost yozib qoʻyaman.",
+          ru: "Сразу свяжусь с водителем и попрошу очистить объектив, сам проверю, что картинка вернулась, и честно зафиксирую трёхдневный пробел с датами.",
+          en: "I would contact the driver at once to clear the lens, verify myself that the picture is back, and log the three-day gap honestly with its dates.",
         } },
         { key: "samsara_q03_c", pattern: "victim", text: {
-          uz: "Buni payqagan odam sifatida «nega uch kun koʻrilmadi» degan savollar endi menga beriladi — oʻsha smenalar meniki boʻlmasa ham; ziyraklik uchun shunday «mukofot» alam qiladi.",
-          ru: "Раз это заметил я, вопросы «почему три дня никто не видел» теперь достанутся мне — хотя смены были не мои; обидная «награда» за внимательность.",
-          en: "Since I am the one who spotted it, the questions about why nobody saw it for three days will now come to me — even though those were not my shifts; a stinging reward for being attentive.",
+          uz: "Buni men topdim, lekin oʻsha kunlar mening smenam emas edi — uch kunlik boʻshliq kimga tegishli ekanini sanalar bilan yozib qoʻyaman.",
+          ru: "Нашёл это я, хотя те дни были не моей смены — зафиксирую с датами, к чьей смене относится каждый день трёхдневного пробела.",
+          en: "I found it, but those days were not my shifts — I would record with dates whose shifts the three-day gap belongs to.",
         } },
         { key: "samsara_q03_d", pattern: "complaint", text: {
-          uz: "Rahbarga kamera parki eskirib borayotganini, bunday «koʻr» mashinalar tez-tez chiqib turishini aytaman — shunday texnika bilan toʻliq monitoring haqida gapirish qiyin.",
-          ru: "Скажу руководителю, что парк камер стареет и такие «слепые» машины появляются постоянно — с такой техникой говорить о полном мониторинге сложно.",
-          en: "Tell the lead that the camera fleet is aging and blind trucks like this keep appearing — with equipment like that, full monitoring is a hard promise to keep.",
+          uz: "Kamerani ishga solaman, ammo asosiy gap boshqada: kamera parki qarigan va bunday koʻr traklar paydo boʻlaveradi.",
+          ru: "Камеру верну в работу, но суть в другом: парк камер старый, и такие слепые траки будут появляться и дальше.",
+          en: "I would get the camera working, but the real point is elsewhere: the camera fleet is aging and blind trucks keep appearing.",
         } },
         { key: "samsara_q03_e", pattern: "builder", text: {
-          uz: "Bugun haydovchi bilan kamerani ishga keltiraman, soʻng har smena boshida kameralar holatini bir daqiqalik tekshirish odatini taklif qilaman — «koʻr» kamera boshqa kunlab turib qolmasligi uchun.",
-          ru: "Сегодня же вместе с водителем верну камеру в строй, а затем предложу минутную проверку состояния камер в начале каждой смены — чтобы «слепая» камера больше не висела днями.",
-          en: "Get the camera working with the driver today, then propose a one-minute camera-health check at the start of every shift — so a blind camera never sits unnoticed for days again.",
+          uz: "Bugun haydovchi bilan kamerani ishga solaman, keyin har smena boshida bir daqiqalik kamera holati tekshiruvini yoʻlga qoʻyaman — koʻr kamera kunlab turmasligi kerak.",
+          ru: "Сегодня с водителем верну камеру в работу, а затем налажу минутную проверку состояния камер в начале каждой смены: слепая камера не должна висеть днями.",
+          en: "I would get the camera working with the driver today, then set up a one-minute camera-health check at every shift start — no camera should sit blind for days.",
         } },
       ],
     },
@@ -135,29 +131,29 @@ module.exports = {
       },
       options: [
         { key: "samsara_q04_a", pattern: "builder", text: {
-          uz: "Hodisani hozir koʻrib, xavfsizlik boʻlimiga haqiqiy vaqti bilan uzataman, kechikishni qaydnomaga yozaman va shunday holatlar oʻtib ketmasligi uchun hodisalar tarixini davriy qoʻlda koʻzdan kechirishni taklif qilaman.",
-          ru: "Сразу разберу событие и передам его в отдел безопасности с реальным временем, занесу задержку в учёт и предложу периодически вручную просматривать историю событий на случай таких опозданий.",
-          en: "Review the event now and send it to Safety with the real occurrence time, log the delay, and propose a periodic manual sweep of event history to catch late arrivals like this.",
+          uz: "Hodisani hozir koʻrib, real vaqti bilan xavfsizlik boʻlimiga yuboraman, kechikishni yozaman va hodisa tarixini davriy qoʻlda koʻrib chiqishni kiritaman.",
+          ru: "Просмотрю событие сейчас, отправлю в отдел безопасности с реальным временем, зафиксирую задержку и введу периодический ручной просмотр истории событий.",
+          en: "I would review the event now, send it to Safety with the real time of occurrence, log the delay, and set up a periodic manual sweep of event history.",
         } },
         { key: "samsara_q04_b", pattern: "waiting", text: {
-          uz: "Kechikish platforma tomonida — bunday uzilishlarni Samsara odatda oʻzi bartaraf qiladi. Hodisalarni kelgan tartibida koʻraveraman, tizim izga tushguncha biror narsani oʻzgartirmay turaman.",
-          ru: "Задержка на стороне платформы — такие сбои Samsara обычно устраняет сама. Буду разбирать события по мере поступления и, пока система не выровняется, ничего менять не стану.",
-          en: "The delay is on the platform’s side — Samsara usually resolves glitches like this itself. I will keep working events as they arrive and change nothing until the system settles.",
+          uz: "Kechikish platforma tomonida — Samsara bunday uzilishlarni oʻzi tuzatadi; hodisalarni kelgan tartibda ishlab, tizim barqarorlashguncha tartibni oʻzgartirmayman.",
+          ru: "Задержка на стороне платформы — Samsara такие сбои устраняет сама; буду обрабатывать события по мере поступления и не менять порядок, пока система не стабилизируется.",
+          en: "The delay is the platform’s — Samsara resolves glitches like this itself; I would work events as they arrive and change nothing until the system settles.",
         } },
         { key: "samsara_q04_c", pattern: "ownership", text: {
-          uz: "Kechikkaniga qaramay hodisani hozir toʻliq koʻrib chiqaman, jurnalga sodir boʻlgan haqiqiy vaqtini yozaman va xavfsizlik boʻlimiga kech kelganini ochiq aytaman — atayin ushlab qolinmaganini bilishsin.",
-          ru: "Несмотря на опоздание, полностью разберу событие сейчас, укажу в журнале реальное время происшествия и прямо скажу отделу безопасности, что оно пришло с задержкой — чтобы никто не решил, что его придержали.",
-          en: "Review the event fully right now despite the delay, log the actual time it happened, and tell Safety openly that it arrived late — so no one assumes it was sat on.",
+          uz: "Kechikkan boʻlsa ham hodisani hozir toʻliq koʻrib chiqaman, sodir boʻlgan real vaqtini yozaman va xavfsizlik boʻlimiga kech kelganini ochiq aytaman.",
+          ru: "Несмотря на задержку, полностью разберу событие сейчас, зафиксирую реальное время происшествия и открыто скажу отделу безопасности, что оно пришло поздно.",
+          en: "Despite the delay I would review the event fully now, log the actual time it happened, and tell Safety openly that it arrived late.",
         } },
         { key: "samsara_q04_d", pattern: "blame", text: {
-          uz: "Avval olti soat platforma hisobidan ketganini hujjatlashtiraman — kelish vaqtining skrinshotini olib qoʻyaman: savol tugʻilsa, kechikish kimning tomonida boʻlgani aniq boʻlsin.",
-          ru: "Сначала задокументирую, что шесть часов потерялись на стороне платформы — сделаю скриншот времени поступления: если возникнут вопросы, должно быть ясно, чья это задержка.",
-          en: "First document that the six hours were lost on the platform’s side — screenshot the arrival timestamp so that if questions come up, it is clear whose delay this was.",
+          uz: "Olti soat platforma tomonida yoʻqolganini hujjat qilib qoʻyaman — kelish vaqtini skrinshot qilaman, savol chiqsa, kechikish qayerda boʻlgani aniq koʻrinadi.",
+          ru: "Задокументирую, что шесть часов потерялись на стороне платформы: сделаю скриншот времени поступления, чтобы при вопросах было ясно, чья это задержка.",
+          en: "I would document that the six hours were lost on the platform’s side — a screenshot of the arrival time makes clear whose delay it was if questions come.",
         } },
         { key: "samsara_q04_e", pattern: "victim", text: {
-          uz: "Platforma kechiksa ham, javob baribir bizdan soʻraladi, deb oʻylayman — olti soatlik hodisa oʻtib ketgani uchun hech kim Samsaradan emas, monitoringdan xafa boʻladi.",
-          ru: "Подумаю: даже когда опаздывает платформа, спрашивают всё равно с нас — за событие шестичасовой давности претензии будут не к Samsara, а к мониторингу.",
-          en: "Think that even when the platform is late, the questions still come to us — nobody will hold Samsara accountable for a six-hour-old event, they will hold monitoring.",
+          uz: "Rahbarga aniq aytaman: platforma kechiksa ham savol bizga keladi — olti soatlik kechikish monitoring ishining sifati deb baholanmasligi kerak.",
+          ru: "Прямо скажу руководителю: даже когда опаздывает платформа, спрашивают нас — шестичасовую задержку не стоит считать качеством работы мониторинга.",
+          en: "I would tell my lead plainly that even when the platform is late the questions come to us — a six-hour delay is not the quality of monitoring’s work.",
         } },
       ],
     },
@@ -170,29 +166,29 @@ module.exports = {
       },
       options: [
         { key: "samsara_q05_a", pattern: "complaint", text: {
-          uz: "Ichimda standart ogohlantirishlar ishlamasligini yana bir bor qayd etaman — haydovchilar ularni ochib ham oʻqimaydi, shuning uchun hech narsa oʻzgarmayotganiga hayron boʻlmasa ham boʻladi.",
-          ru: "Про себя в очередной раз отмечу, что стандартные уведомления не работают — водители их даже не открывают, так что удивляться, что ничего не меняется, не приходится.",
-          en: "Note once again to myself that the standard notifications do not work — drivers do not even open them, so it is no surprise that nothing is changing.",
+          uz: "Standart xabarni yuboraman va ogohlantirish tizimi haqida savol qoʻyaman: bu xabarlar ishlamayapti, uchinchi hodisa toʻrtinchisiga aylanadi.",
+          ru: "Стандартное уведомление отправлю и поставлю вопрос о самой системе оповещений: они не работают, а третье событие станет четвёртым.",
+          en: "I would send the standard notice and put a question about the alert system itself: these notices do not work, and the third event becomes the fourth.",
         } },
         { key: "samsara_q05_b", pattern: "waiting", text: {
-          uz: "Takrorlanayotgan hodisalarni xavfsizlik boʻlimi oylik tahlilda baribir koʻradi — bu holat oʻsha yerda ham chiqadi. Ungacha tartib boʻyicha standart ogohlantirish yuborishda davom etaman.",
-          ru: "Повторяющиеся события отдел безопасности всё равно разбирает в месячном обзоре — этот случай там всплывёт. А до тех пор продолжу отправлять стандартные уведомления по регламенту.",
-          en: "Safety reviews repeat events in its monthly analysis anyway — this case will surface there. Until then I will keep sending the standard notifications per procedure.",
+          uz: "Takroriy hodisalarni xavfsizlik boʻlimi oylik tahlilda koʻradi — bu holat oʻsha yerda chiqadi; shu vaqtgacha tartib boʻyicha standart xabarlarni yuborib turaman.",
+          ru: "Повторные события отдел безопасности видит в месячном анализе — этот случай там и всплывёт; до тех пор буду по регламенту отправлять стандартные уведомления.",
+          en: "Safety sees repeat events in its monthly analysis — this case surfaces there; until then I would keep sending the standard notices per procedure.",
         } },
         { key: "samsara_q05_c", pattern: "builder", text: {
-          uz: "Uch hodisani kliplari bilan bitta xulosaga jamlab, bugunoq xavfsizlik boʻlimiga takrorlanayotgan holat sifatida uzataman va haftasiga uch oʻxshash hodisa yiqqan haydovchini avtomatik belgilash qoidasini taklif qilaman.",
-          ru: "Соберу три события с роликами в одну сводку, сегодня же передам в отдел безопасности как повторяющуюся картину и предложу правило: три однотипных события за неделю — автоматическая пометка водителя.",
-          en: "Compile the three events with clips into one summary, escalate it to Safety today as a repeating pattern, and propose a rule that auto-flags any driver with three similar events in a week.",
+          uz: "Uch hodisani kliplar bilan bitta xulosaga jamlab bugun xavfsizlik boʻlimiga uzataman va haftada uchta oʻxshash hodisa avtomatik belgilanishini taklif qilaman.",
+          ru: "Сведу три события с клипами в одну сводку, передам сегодня в отдел безопасности и предложу автоматически помечать три схожих события за неделю.",
+          en: "I would combine the three events with clips into one summary for Safety today and propose auto-flagging any three similar events in a week.",
         } },
         { key: "samsara_q05_d", pattern: "victim", text: {
-          uz: "Men hammasini tartib boʻyicha yuboryapman, lekin ertaga bu haydovchi biror narsaga uchrasa, javob yana monitoringdan soʻraladi — taʼsir qilolmaydigan xatti-harakat uchun nega biz javobgar boʻlishimiz kerak?",
-          ru: "Я всё отправляю по регламенту, но случись с этим водителем что-то завтра — спросят снова с мониторинга; почему мы должны отвечать за поведение, на которое не можем повлиять?",
-          en: "I send everything by the book, yet if something happens to this driver tomorrow, monitoring will be the one answering — why should we be responsible for behavior we cannot control?",
+          uz: "Hammasini tartib boʻyicha yuboraman, xulq esa haydovchida — shu chegarani rahbar bilan oldin aniq qilib olaman, keyin ishni davom ettiraman.",
+          ru: "Всё отправляю по регламенту, а поведение — за водителем; сначала проясню эту границу с руководителем, а потом продолжу работу.",
+          en: "I send everything per procedure while the behavior is the driver’s — I would settle that boundary with my lead first, then carry on.",
         } },
         { key: "samsara_q05_e", pattern: "ownership", text: {
-          uz: "Uchala hodisani oʻzim solishtirib, nimasi oʻxshashligini aniqlayman, haydovchi bilan xotirjam gaplashib, nima halaqit berayotganini soʻrayman va holatni bugun xavfsizlik boʻlimiga yetkazaman.",
-          ru: "Сам сопоставлю все три события, найду, что в них общего, спокойно поговорю с водителем о том, что ему мешает, и сегодня же доведу ситуацию до отдела безопасности.",
-          en: "Compare the three events myself to see what they share, talk calmly with the driver about what is getting in his way, and bring the situation to Safety today.",
+          uz: "Uch hodisani oʻzim solishtirib nimasi umumiy ekanini koʻraman, haydovchi bilan xotirjam gaplashaman va holatni bugun xavfsizlik boʻlimiga chiqaraman.",
+          ru: "Сам сравню три события и посмотрю, что у них общего, спокойно поговорю с водителем и сегодня же выведу ситуацию в отдел безопасности.",
+          en: "I would compare the three events myself to see what they share, talk calmly with the driver, and raise the situation with Safety today.",
         } },
       ],
     },
@@ -205,29 +201,29 @@ module.exports = {
       },
       options: [
         { key: "samsara_q06_a", pattern: "builder", text: {
-          uz: "Videoni telemetriya bilan solishtirib, tasdiqlansa hodisani sabab koʻrsatib yolgʻon deb rasmiylashtiraman, haydovchiga u hisobga oʻtmasligini aytaman va joyni belgilab qoʻyaman — shu uchastkada takrorlansa, Samsaraga xabar qilamiz.",
-          ru: "Сверю видео с телеметрией, при подтверждении оформлю событие как ложное с указанием причины, сообщу водителю, что оно не будет засчитано, и отмечу место — если на этом участке повторится, сообщим в Samsara.",
-          en: "Check the video against the telemetry, file the event as false with the reason if that holds, tell the driver it will not count, and note the spot — repeat triggers there get reported to Samsara.",
+          uz: "Videoni telemetriya bilan solishtiraman, tasdiqlansa hodisani sabab bilan yolgʻon deb belgilayman va joyni yozib qoʻyaman — takrorlansa Samsaraga xabar qilamiz.",
+          ru: "Сверю видео с телеметрией, при подтверждении помечу событие ложным с указанием причины и зафиксирую участок: при повторах сообщим в Samsara.",
+          en: "I would check the video against the telemetry, file the event as false with the reason if that holds, and note the spot — repeats there get reported to Samsara.",
         } },
         { key: "samsara_q06_b", pattern: "complaint", text: {
-          uz: "Smenadagilarga sezgirlik sozlamalari har kuni shunday shovqin berayotganini aytaman — yolgʻon hodisalar orasida haqiqiylarini ilgʻash tobora qiyin boʻlib boryapti.",
-          ru: "Скажу смене, что настройки чувствительности каждый день дают такой шум — среди ложных событий всё труднее выцеплять настоящие.",
-          en: "Tell the shift that the sensitivity settings generate noise like this every single day — real events are getting harder and harder to pick out among the false ones.",
+          uz: "Hodisani koʻrib chiqaman, lekin smenada aytaman: sezgirlik sozlamalari har kuni shunday shovqin beradi — sozlama koʻrilmasa, real hodisalarni ajratish qiyinlashadi.",
+          ru: "Событие разберу, но в смене скажу: настройки чувствительности каждый день дают такой шум — пока их не пересмотрят, отличать реальные события всё труднее.",
+          en: "I would review the event, but say in the shift that the sensitivity settings produce this noise daily — unrevised, picking out real events keeps getting harder.",
         } },
         { key: "samsara_q06_c", pattern: "blame", text: {
-          uz: "Avval ogohlantirish chegaralarini oxirgi marta kim sozlaganini aniqlayman — sozlamalar monitoring bilan kelishilmay oʻzgartirilgan boʻlsa, bu shovqin oʻsha oʻzgartirgan tomonning zimmasida.",
-          ru: "Сначала выясню, кто последним настраивал пороги срабатывания — если параметры меняли, не согласовав с мониторингом, этот шум на совести того, кто их менял.",
-          en: "First find out who last tuned the alert thresholds — if the settings were changed without checking with monitoring, this noise is on whoever changed them.",
+          uz: "Ogohlantirish chegaralarini oxirgi kim sozlaganini aniqlayman — monitoring bilan kelishmasdan oʻzgartirilgan boʻlsa, tuzatish ham oʻsha yerda boʻlishi kerak.",
+          ru: "Выясню, кто последним настраивал пороги алертов: если их меняли без согласования с мониторингом, исправлять надо там.",
+          en: "I would find out who last tuned the alert thresholds — if they were changed without checking with monitoring, that is where it gets corrected.",
         } },
         { key: "samsara_q06_d", pattern: "ownership", text: {
-          uz: "Klipni tezlik va G-kuch maʼlumotlari bilan oʻzim solishtiraman; hodisa chindan yolgʻon boʻlsa, izoh yozib shunday rasmiylashtiraman va haydovchiga tekshirilib, hisobdan chiqarilganini aytaman.",
-          ru: "Сам сверю ролик с данными скорости и перегрузок; если событие действительно ложное, оформлю его с пояснением и скажу водителю, что оно проверено и снято.",
-          en: "Compare the clip with the speed and g-force data myself; if the event really is false, file it with an explanation and tell the driver it was reviewed and cleared.",
+          uz: "Klipni tezlik va g-force maʼlumotlari bilan oʻzim solishtiraman; hodisa haqiqatan yolgʻon boʻlsa, izoh bilan belgilayman va haydovchiga koʻrib chiqilganini aytaman.",
+          ru: "Сам сверю клип с данными скорости и g-force; если событие действительно ложное, помечу с пояснением и скажу водителю, что оно разобрано.",
+          en: "I would compare the clip with the speed and g-force data myself; if the event really is false, I would file it with an explanation and tell the driver it was reviewed.",
         } },
         { key: "samsara_q06_e", pattern: "waiting", text: {
-          uz: "Hozircha hech qanday belgi qoʻymay turaman — bunday holatni qanday tasniflash boʻyicha xavfsizlik boʻlimi javob bergunicha hodisa ochiq tursin: notoʻgʻri tasnif keyin qimmatga tushishi mumkin.",
-          ru: "Пока не буду ставить никаких отметок — пусть событие висит открытым, пока отдел безопасности не подскажет, как классифицировать такие случаи: неверная классификация потом может дорого обойтись.",
-          en: "Hold off on marking anything for now — leave the event open until Safety advises how to classify cases like this, since a wrong classification could be costly later.",
+          uz: "Hozircha belgilamayman — bunday holatlarni qanday tasniflashni xavfsizlik boʻlimi aytgach yopaman; notoʻgʻri tasnif keyin qimmatga tushadi.",
+          ru: "Пока помечать не буду — закрою, когда отдел безопасности скажет, как классифицировать такие случаи: неверная классификация потом обходится дорого.",
+          en: "I would not classify it yet — I would close it once Safety advises how such cases are classified; a wrong classification is costly later.",
         } },
       ],
     },
@@ -240,29 +236,29 @@ module.exports = {
       },
       options: [
         { key: "samsara_q07_a", pattern: "ownership", text: {
-          uz: "Eng jiddiy hodisalardan boshlab qolgan navbatni hoziroq oʻzim koʻrib chiqaman va rahbarga uzilish boʻlganini ochiq aytaman — kun manzarasi aniq boʻlishi kerak.",
-          ru: "Прямо сейчас сам начну разбирать очередь, начиная с самых серьёзных событий, и открыто скажу руководителю, что был пропуск — картина дня должна быть точной.",
-          en: "Start clearing the queue myself right now, most serious events first, and tell the lead openly that there was a gap — the day’s picture has to be accurate.",
+          uz: "Navbatni hoziroq eng jiddiylaridan boshlab oʻzim tozalayman va rahbarga boʻshliq borligini ochiq aytaman — kunning manzarasi aniq boʻlishi kerak.",
+          ru: "Прямо сейчас начну сам разбирать очередь с самых серьёзных и открыто скажу руководителю, что был пробел: картина дня должна быть точной.",
+          en: "I would start clearing the queue myself right now, most serious first, and tell my lead openly there was a gap — the day’s picture has to be accurate.",
         } },
         { key: "samsara_q07_b", pattern: "victim", text: {
-          uz: "Smenam yana birovning qoldigʻini tozalashdan boshlanyapti — boshqalarning soatlarini yopaman, oxirida esa koʻrsatkichlari sust chiqqan xodim men boʻlib qolaman.",
-          ru: "Моя смена опять начинается с чужих хвостов — разгребаю чужие часы, а в итоге сотрудником с просевшими показателями окажусь я.",
-          en: "My shift is starting with someone else’s backlog again — I clear their hours, and in the end I will be the one whose numbers look slow.",
+          uz: "Smenam boshqaning navbatidan boshlanadi — ularning soatlarini tozalaganim koʻrinib turishi uchun buni topshiruv izohiga yozaman.",
+          ru: "Моя смена начинается с чужой очереди — чтобы было видно, что я разбирал именно их часы, отмечу это в заметке передачи смены.",
+          en: "My shift starts on someone else’s queue — I would note in the handoff that I cleared their hours, so it stays visible.",
         } },
         { key: "samsara_q07_c", pattern: "builder", text: {
-          uz: "Avval jiddiylarini saralab yopaman, soʻng smena topshirishda navbat holati yoziladigan qisqa qabul-topshirish qaydnomasini taklif qilaman — uzilish soatlab emas, topshirish paytida sezilsin.",
-          ru: "Сначала отсортирую и закрою серьёзные, а затем предложу короткую передаточную записку со статусом очереди при смене — чтобы пропуск замечали в момент передачи, а не спустя часы.",
-          en: "Triage and clear the serious ones first, then propose a short handoff note with queue status at every shift change — so a gap is caught at handover, not hours later.",
+          uz: "Jiddiylarini avval yopaman, keyin har smena almashuvida navbat holati yozilgan qisqa topshiruv izohini kelishib olaman — boʻshliq topshirishda koʻrinishi kerak.",
+          ru: "Сначала закрою серьёзные, затем согласую короткую заметку передачи с состоянием очереди при каждой смене: пробел должен быть виден при передаче.",
+          en: "I would close the serious ones first, then set up a short handoff note with queue status at every shift change — a gap should surface at handover.",
         } },
         { key: "samsara_q07_d", pattern: "blame", text: {
-          uz: "Avval jurnaldan oʻsha soatlarda kim ishlaganini va navbat nega toʻxtab qolganini aniqlayman — uzilish kimdan chiqqani ochiqlanmasa, xuddi shu holat yana takrorlanaveradi.",
-          ru: "Сначала посмотрю по журналу, кто работал в те часы и почему очередь стояла, — пока не станет ясно, чей это пропуск, то же самое будет повторяться снова.",
-          en: "First check the logs for who was on in those hours and why the queue stood still — until it is clear whose gap this was, the same thing will just keep happening.",
+          uz: "Loglardan oʻsha soatlarda kim boʻlgani va navbat nega toʻxtaganini aniqlayman — uzilish qayerda boʻlganini belgilamasak, xuddi shu takrorlanadi.",
+          ru: "По логам выясню, кто был в те часы и почему очередь встала: если не обозначить разрыв, то же самое повторится.",
+          en: "I would use the logs to establish who was on in those hours and why the queue stalled — unless the break is marked, the same thing repeats.",
         } },
         { key: "samsara_q07_e", pattern: "complaint", text: {
-          uz: "Hamkasblarga tungi smenada odam yetishmasligini, bunday navbatlar shunchaki muqarrar ekanini aytaman — bu haqda hamma biladi, lekin jadval oʻzgargani yoʻq.",
-          ru: "Скажу коллегам, что людей в ночную смену не хватает и такие очереди просто неизбежны — об этом все знают, но график так и не поменяли.",
-          en: "Tell coworkers the night shift is understaffed and queues like this are simply inevitable — everyone knows about it, yet the schedule has never changed.",
+          uz: "Navbatni tozalayman, lekin rahbarga aytaman: tungi smenada odam yetmaydi va bunday navbatlar shundan chiqadi — jadval koʻrilmasa, bu qaytadi.",
+          ru: "Очередь разберу, но скажу руководителю: в ночной смене не хватает людей, и такие очереди идут отсюда — без пересмотра графика это вернётся.",
+          en: "I would clear the queue, but tell my lead the night shift is short-staffed and queues like this come from that — with the schedule unchanged, it returns.",
         } },
       ],
     },
@@ -275,29 +271,29 @@ module.exports = {
       },
       options: [
         { key: "samsara_q08_a", pattern: "waiting", text: {
-          uz: "Muammo yetkazib beruvchi tomonida — bizga bogʻliq narsa yoʻq. Holat sahifasida «bartaraf etildi» degan belgi chiqishini kutaman, keyin odatdagidek ishlashda davom etaman.",
-          ru: "Проблема на стороне поставщика — от нас тут ничего не зависит. Дождусь на странице статуса отметки «устранено» и продолжу работать в обычном режиме.",
-          en: "The problem is on the vendor’s side — there is nothing that depends on us here. I will wait for the status page to show resolved and then carry on as usual.",
+          uz: "Muammo provayder tomonida — holat sahifasi tiklanishni koʻrsatgach navbatni toʻliq koʻrib chiqaman; uzilish davomida ortiqcha xabar tarqatib chalkashlik qilmayman.",
+          ru: "Проблема на стороне поставщика — разберу очередь полностью, когда страница статуса покажет восстановление; во время сбоя не буду разносить лишние сообщения.",
+          en: "The problem is the vendor’s — I would review the whole queue once the status page shows it restored, without spreading extra messages during the outage.",
         } },
         { key: "samsara_q08_b", pattern: "builder", text: {
-          uz: "Rahbar va xavfsizlik boʻlimini darhol ogohlantiraman, uzilish davrida dispetcherlardan haydovchilardagi shoshilinch holatlarni telefon orqali yetkazib turishni soʻrayman, soʻng shunday holatlar uchun qisqa yozma tartib taklif qilaman.",
-          ru: "Сразу предупрежу руководителя и отдел безопасности, попрошу диспетчеров на время сбоя передавать срочное от водителей по телефону, а затем предложу короткий письменный порядок действий на такие случаи.",
-          en: "Alert the lead and Safety at once, ask dispatch to phone in anything urgent from drivers while the outage lasts, and afterwards propose a short written procedure for cases like this.",
+          uz: "Rahbar va xavfsizlik boʻlimini darhol ogohlantiraman, uzilish davomida shoshilinch holatlarni dispetcherlik telefon orqali yetkazishini soʻrayman, keyin qisqa yozma tartib tayyorlaymiz.",
+          ru: "Сразу предупрежу руководителя и отдел безопасности, попрошу диспетчерскую передавать срочное по телефону, пока идёт сбой, а затем подготовим короткий письменный порядок.",
+          en: "I would alert my lead and Safety at once, ask dispatch to phone in anything urgent while the outage lasts, then draft a short written procedure for these cases.",
         } },
         { key: "samsara_q08_c", pattern: "blame", text: {
-          uz: "Avval uzilish platformada boʻlgani hujjatlashtirilishini taʼminlayman — holat sahifasining skrinshotini rahbariyatga yuboraman: bu boʻshliq keyin monitoring aybiga yozib qoʻyilmasin.",
-          ru: "Первым делом позабочусь, чтобы было задокументировано: сбой у платформы — отправлю руководству скриншот страницы статуса, чтобы этот пробел потом не записали на мониторинг.",
-          en: "First make sure it is documented that the outage is the platform’s — send management a screenshot of the status page so the gap does not get pinned on monitoring later.",
+          uz: "Uzilish platformada ekanini hujjat qilib qoʻyaman — holat sahifasi skrinshotini rahbariyatga yuboraman, boʻshliq keyin monitoringga yozilmasligi kerak.",
+          ru: "Задокументирую, что сбой на платформе: отправлю руководству скриншот страницы статуса, чтобы пробел потом не записали на мониторинг.",
+          en: "I would document that the outage is the platform’s — a screenshot of the status page to management, so the gap is not later pinned on monitoring.",
         } },
         { key: "samsara_q08_d", pattern: "victim", text: {
-          uz: "Shunday uzilish aynan mening smenamga toʻgʻri kelganini qarang — shu oynada yoʻlda biror narsa boʻlsa, «nega koʻrmadingiz» deb mendan soʻrashadi, platforma esa meniki emas.",
-          ru: "Надо же, такой сбой выпал именно на мою смену — случись что-то на дороге в это окно, «почему не видели» спросят у меня, хотя платформа не моя.",
-          en: "Of course an outage like this lands on my shift — if anything happens on the road during this window, I will be asked why nobody saw it, though the platform is not mine.",
+          uz: "Uzilish mening smenamga tushdi, lekin platforma bizda emas — oyna qachon boshlangani va kimga tegishli ekanini hozirdan yozaman.",
+          ru: "Сбой пришёлся на мою смену, но платформа не наша — уже сейчас запишу, когда началось окно и к кому оно относится.",
+          en: "The outage landed on my shift but the platform is not ours — I would record now when the window began and whose it is.",
         } },
         { key: "samsara_q08_e", pattern: "ownership", text: {
-          uz: "Rahbar va xavfsizlik boʻlimini jonli monitoring toʻxtaganidan darhol xabardor qilaman, uzilish boshlangan vaqtni yozib qoʻyaman va aloqa tiklangach, «koʻr» oynadagi hamma hodisani oʻzim koʻrib chiqaman.",
-          ru: "Сразу предупрежу руководителя и отдел безопасности, что живой мониторинг остановился, зафиксирую время начала сбоя, а после восстановления сам просмотрю все события «слепого» окна.",
-          en: "Alert the lead and Safety right away that live monitoring is down, note when the outage began, and once it is restored, review every event from the blind window myself.",
+          uz: "Rahbar va xavfsizlik boʻlimiga jonli monitoring toʻxtaganini hoziroq aytaman, uzilish boshlangan vaqtni yozaman va tiklangach koʻr oyna hodisalarini oʻzim koʻrib chiqaman.",
+          ru: "Прямо сейчас сообщу руководителю и отделу безопасности, что живой мониторинг остановлен, зафиксирую время начала сбоя и после восстановления сам разберу события слепого окна.",
+          en: "I would tell my lead and Safety right now that live monitoring is down, note when the outage began, and review every event from the blind window myself afterwards.",
         } },
       ],
     },
@@ -310,29 +306,29 @@ module.exports = {
       },
       options: [
         { key: "samsara_q09_a", pattern: "complaint", text: {
-          uz: "Yaqin hamkasbimga eskalatsiyalarimiz xavfsizlik boʻlimida javobsiz yotib qolayotganini aytaman — biz belgilaymiz, ular ochmaydi ham; bunda monitoring mehnatining maʼnosi qolmayapti.",
-          ru: "Поделюсь с коллегой, что наши эскалации лежат в отделе безопасности без ответа — мы отмечаем, а там даже не открывают; смысл работы мониторинга так теряется.",
-          en: "Tell a close coworker that our escalations just sit unanswered with Safety — we flag things and they do not even open them; monitoring’s work loses its meaning that way.",
+          uz: "Ikkinchi hodisani ham yuboraman, keyin javob muddati masalasini rahbarlar oldida qoʻyaman: uzatishlarimiz javobsiz qolmasligi kerak.",
+          ru: "Второе событие тоже отправлю, а затем поставлю перед руководителями вопрос о сроке ответа: наши передачи не должны оставаться без ответа.",
+          en: "I would send the second event too, then put the response-time question to the leads: our escalations should not go unanswered.",
         } },
         { key: "samsara_q09_b", pattern: "victim", text: {
-          uz: "Monitoring nima qilmasin, natija baribir boshqalarga bogʻliq — men hammasini oʻz vaqtida uzatganman, endi biror narsa yuz bersa, aybdor baribir qandaydir yoʻl bilan men boʻlib chiqaman.",
-          ru: "Что бы мониторинг ни делал, итог всё равно зависит от других — я всё передал вовремя, но если теперь что-то случится, виноватым каким-то образом снова окажусь я.",
-          en: "Whatever monitoring does, the outcome depends on others — I escalated everything on time, yet if something happens now, the blame will somehow land on me anyway.",
+          uz: "Hammasini oʻz vaqtida uzatdim, natija esa boshqa boʻlimda — uzatish vaqtini va javob yoʻqligini bugun qayd etaman.",
+          ru: "Всё передал вовремя, а результат в другом отделе — сегодня зафиксирую время передачи и отсутствие ответа.",
+          en: "I escalated on time while the outcome sits with another department — today I would record the send time and the missing reply.",
         } },
         { key: "samsara_q09_c", pattern: "ownership", text: {
-          uz: "Bugunoq xavfsizlik boʻlimiga oʻzim chiqaman: ishni qayta yuboraman, yangi ogohlantirishni ham qoʻshaman va suhbat oʻtkazilgan-oʻtkazilmaganini toʻgʻridan-toʻgʻri soʻrayman; ikkala hodisani jurnalda bogʻlab qoʻyaman.",
-          ru: "Сегодня же сам выйду на отдел безопасности: повторно отправлю кейс, приложу новый алерт и прямо спрошу, была ли проведена беседа; оба события свяжу в журнале.",
-          en: "Reach out to Safety myself today: resend the case, attach the new alert, and ask directly whether the coaching happened; link both events together in the log.",
+          uz: "Bugun xavfsizlik boʻlimiga oʻzim murojaat qilaman: holatni qayta yuboraman, yangi ogohlantirishni qoʻshaman va suhbat boʻlgan-boʻlmaganini toʻgʻridan-toʻgʻri soʻrayman.",
+          ru: "Сегодня сам обращусь в отдел безопасности: повторно отправлю случай, приложу новый алерт и напрямую спрошу, была ли беседа с водителем.",
+          en: "I would reach out to Safety myself today: resend the case, attach the new alert, and ask directly whether the coaching conversation happened.",
         } },
         { key: "samsara_q09_d", pattern: "builder", text: {
-          uz: "Ikkala hodisani bogʻlab xavfsizlik rahbariga yozaman, bugun kim qadam tashlashini aniq kelishib olaman va har bir eskalatsiya uchun tasdiq hamda muddat belgilash qoidasini taklif qilaman — ishlar jimgina osilib qolmasligi uchun.",
-          ru: "Напишу руководителю отдела безопасности, связав оба события, договорюсь, кто и что делает сегодня, и предложу правило: каждая эскалация получает подтверждение и срок — чтобы кейсы не зависали молча.",
-          en: "Write to the Safety lead linking both events, agree on who acts today, and propose that every escalation gets an acknowledgment and a deadline — so cases can never hang silently.",
+          uz: "Xavfsizlik rahbariga ikki hodisani bogʻlab yozaman, bugun kim harakat qilishini kelishaman va har uzatishga tasdiq va muddat belgilanishini taklif qilaman.",
+          ru: "Напишу руководителю по безопасности, связав два события, договорюсь, кто действует сегодня, и предложу закрепить подтверждение и срок для каждой передачи.",
+          en: "I would write to the Safety lead linking both events, agree who acts today, and propose an acknowledgment and a deadline for every escalation.",
         } },
         { key: "samsara_q09_e", pattern: "blame", text: {
-          uz: "Avval eskalatsiya oʻz vaqtida yetkazilganini koʻrsatuvchi yozishmalarni yigʻib qoʻyaman — bu haydovchi biror hodisaga uchrasa, kechikish bizda emas, xavfsizlik boʻlimida boʻlgani hujjat bilan aniq tursin.",
-          ru: "Сначала соберу переписку, подтверждающую, что эскалация была передана вовремя, — если с этим водителем что-то случится, должно быть документально ясно, что задержка не у нас, а в отделе безопасности.",
-          en: "First gather the correspondence showing the escalation went out on time — if something happens with this driver, it must be documented that the delay was Safety’s, not ours.",
+          uz: "Uzatish oʻz vaqtida ketganini koʻrsatadigan yozishmani yigʻaman — bu haydovchi bilan biror narsa boʻlsa, kechikish qayerda boʻlgani hujjatda turishi kerak.",
+          ru: "Соберу переписку, показывающую, что передача ушла вовремя: если с этим водителем что-то случится, в документах должно быть видно, где произошла задержка.",
+          en: "I would collect the correspondence showing the escalation went out on time — if something happens, the record must show where the delay sat.",
         } },
       ],
     },
@@ -340,34 +336,34 @@ module.exports = {
       key: "samsara_q10",
       text: {
         uz: "Tarixni koʻrib chiqayotib, bir hafta oldingi jiddiy hodisa — video bilan qayd etilgan xavfli manevr — umuman koʻrilmaganini tasodifan aniqladingiz: u navbat filtri sababli odatiy roʻyxatga tushmagan. Birinchi navbatda nima qilasiz?",
-        ru: "Просматривая историю, вы случайно обнаружили серьёзное событие недельной давности — опасный манёвр, записанный на видео, — которое никто так и не просмотрел: из-за фильтра очереди оно не попало в обычный список. Что вы сделаете в первую очередь?",
+        ru: "Просматривая историю, вы случайно обнаружили серьёзное событие недельной давности — опасный маневр, записанный на видео, — которое никто так и не просмотрел: из-за фильтра очереди оно не попало в обычный список. Что вы сделаете в первую очередь?",
         en: "Going through the history, you stumble on a serious week-old event — a dangerous maneuver caught on video — that no one ever reviewed: a queue filter kept it out of the usual list. What would you do first?",
       },
       options: [
         { key: "samsara_q10_a", pattern: "waiting", text: {
-          uz: "Bir hafta oldingi hodisani qanday rasmiylashtirishni aniqlash uchun rahbarim qaytishini kutaman — eski hodisani notoʻgʻri kiritib chalkashlik chiqargandan koʻra, ertaga aniqlik bilan qilingani tuzuk.",
-          ru: "Подожду возвращения руководителя, чтобы уточнить, как оформлять событие недельной давности, — лучше внести его завтра правильно, чем создать путаницу неверной записью.",
-          en: "Wait for my supervisor to be back so I can ask how to file a week-old event — better to enter it correctly tomorrow than create confusion with a wrong record.",
+          uz: "Hodisani xavfsizlik boʻlimiga bugun yuboraman, lekin bir hafta oldingi yozuvni qanday rasmiylashtirishni rahbarimdan soʻrab, ertaga toʻgʻri kiritaman.",
+          ru: "Событие отправлю в отдел безопасности сегодня, но как оформить запись недельной давности, спрошу у руководителя и внесу правильно завтра.",
+          en: "I would send the event to Safety today, but ask my supervisor how a week-old entry is filed and enter it correctly tomorrow.",
         } },
         { key: "samsara_q10_b", pattern: "ownership", text: {
-          uz: "Hodisani hozir toʻliq koʻrib chiqaman, xavfsizlik boʻlimiga filtr sababli kech topilganini yashirmay uzataman va oʻsha filtr ortida yana koʻrilmagan hodisalar qolmaganini darrov tekshiraman.",
-          ru: "Полностью разберу событие сейчас, передам его в отдел безопасности, не скрывая, что оно нашлось поздно из-за фильтра, и сразу проверю, не осталось ли за этим фильтром других непросмотренных событий.",
-          en: "Review the event fully now, send it to Safety without hiding that the filter surfaced it late, and immediately check whether more unreviewed events sit behind that same filter.",
+          uz: "Hodisani hozir toʻliq koʻrib chiqaman, filtr sababli kech chiqqanini yashirmasdan xavfsizlik boʻlimiga yuboraman va shu filtr ortida yana koʻrilmagani bormi tekshiraman.",
+          ru: "Полностью разберу событие сейчас, отправлю в отдел безопасности, не скрывая, что из-за фильтра оно всплыло поздно, и проверю, нет ли за тем же фильтром других непросмотренных.",
+          en: "I would review the event fully now, send it to Safety without hiding that the filter surfaced it late, and check whether more sit behind that same filter.",
         } },
         { key: "samsara_q10_c", pattern: "victim", text: {
-          uz: "Filtrni men sozlamaganman, lekin topgan men boʻlganim uchun bir haftalik oʻtkazib yuborish boʻyicha savollar endi menga beriladi — sinchkovlik uchun jazolanayotgandek his qilaman.",
-          ru: "Фильтр настраивал не я, но раз нашёл его я, вопросы о недельном пропуске теперь зададут мне — ощущение, будто наказывают за внимательность.",
-          en: "I did not set up that filter, but since I found the event, the questions about a week-long miss will come to me — it feels like being punished for paying attention.",
+          uz: "Filtrni men sozlamaganman, lekin hodisani men topdim — shuning uchun topilgan vaqtni va filtr sozlamasini oʻzim yozib qoʻyaman.",
+          ru: "Фильтр настраивал не я, но событие нашёл я — поэтому сам зафиксирую время находки и настройку фильтра.",
+          en: "I did not configure the filter though I found the event — so I would record the time of the find and the filter setting myself.",
         } },
         { key: "samsara_q10_d", pattern: "complaint", text: {
-          uz: "Jamoa chatiga navbat filtrlari chalkash sozlanganini, hodisalar shu tarzda «koʻzdan yashirinib» qolayotganini yozaman — interfeys shunday ishlar ekan, oʻtkazib yuborishlar boʻlaverishi tayin.",
-          ru: "Напишу в командный чат, что фильтры очереди настроены запутанно и события вот так «прячутся» — пока интерфейс работает таким образом, пропуски будут неизбежны.",
-          en: "Write in the team chat that the queue filters are set up confusingly and events keep hiding like this — as long as the interface works this way, misses are guaranteed.",
+          uz: "Hodisani chiqaraman, lekin jamoada aytaman: navbat filtrlari chalkash sozlangan va hodisalar shunday yashirinadi — interfeys shu holatda qolsa, oʻtkazib yuborish muqarrar.",
+          ru: "Событие выведу, но в команде скажу: фильтры очереди настроены путано, и события так и прячутся — пока интерфейс такой, пропуски неизбежны.",
+          en: "I would raise the event, but say in the team the queue filters are set up confusingly and events hide this way — with this interface, misses are guaranteed.",
         } },
         { key: "samsara_q10_e", pattern: "builder", text: {
-          uz: "Hodisani bugun koʻrib, haqiqiy vaqtini koʻrsatib eskalatsiya qilaman, muammoli filtrni toʻgʻrilataman va hech narsa koʻrinmay qolmasligi uchun haftalik toʻliq tarix tekshiruvini joriy etishni taklif qilaman.",
-          ru: "Сегодня же разберу событие и эскалирую его с реальным временем, добьюсь исправления проблемного фильтра и предложу еженедельную сверку полной истории — чтобы ничто не могло остаться незамеченным.",
-          en: "Review and escalate the event today with its real timing, get the faulty filter fixed, and propose a weekly full-history cross-check so nothing can ever sit unseen again.",
+          uz: "Hodisani bugun real vaqti bilan chiqaraman, filtrni tuzattiraman va haftalik toʻliq tarix solishtiruvini yoʻlga qoʻyaman — hech narsa koʻrilmay qolmasligi kerak.",
+          ru: "Выведу событие сегодня с его реальным временем, добьюсь исправления фильтра и налажу еженедельную сверку полной истории: ничто не должно оставаться непросмотренным.",
+          en: "I would raise the event today with its real timing, get the filter fixed, and set up a weekly full-history cross-check so nothing sits unseen.",
         } },
       ],
     },
