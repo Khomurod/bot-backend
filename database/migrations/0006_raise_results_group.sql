@@ -1,0 +1,35 @@
+-- Migration 0006: raise results group
+-- migrate:kind: schema
+--
+-- Splits the Driver Raise Review workflow's ONE Telegram destination into TWO
+-- independent routing settings, because they have two different audiences:
+--
+--   message_group_settings.dispatch_review_group_id  (existing, unchanged)
+--     → the weekly / "Send now" review REQUEST with the tokenized link, asking
+--       a dispatch team to mark who qualifies for the higher rate.
+--
+--   message_group_settings.raise_results_group_id    (added here)
+--     → the RESULT posted after a dispatch team successfully submits: who
+--       qualifies for the higher rate and who stays at the lower one. This is
+--       accounting/payroll information, not a task for dispatch.
+--
+-- Additive and idempotent: ADD COLUMN IF NOT EXISTS, nullable, no default. The
+-- existing dispatch_review_group_id and every other stored value are left
+-- exactly as they are, so the review request keeps working untouched through
+-- the deploy.
+--
+-- The new column is deliberately NOT seeded from dispatch_review_group_id.
+-- Copying it would keep posting results into the dispatch group — the exact
+-- behavior this split removes — and would look like an admin had intentionally
+-- pointed both settings at the same group. Until an admin fills the field in
+-- (Settings → Telegram Groups, or the RAISE_RESULTS_GROUP_CHAT_ID env
+-- fallback), a submitted review is still saved in full and the service logs the
+-- clear "not configured" error instead of sending it to the wrong audience.
+-- Same rule as every other category: no hidden default, no silent fallback.
+--
+-- Keep it additive and idempotent (IF NOT EXISTS / ON CONFLICT). Review the
+-- full diff before pushing — this repo can auto-deploy. See
+-- database/migrations/README.md.
+
+ALTER TABLE message_group_settings
+  ADD COLUMN IF NOT EXISTS raise_results_group_id TEXT NULL;

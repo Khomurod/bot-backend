@@ -26,7 +26,6 @@
     "services/fuelStopAlertService.js": 637,
     "services/liveLocationsService.js": 766,
     "services/mileageBonusService.js": 612,
-    "services/raiseApprovalService.js": 683,
     "services/trailerMessageParser.js": 674,
     "tests/dispatchPinnedContext.test.js": 519,
     "tests/routeControlRoutes.test.js": 505
