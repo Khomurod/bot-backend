@@ -42,7 +42,7 @@
       "service": "admin (Settings → GMaps), routeControlService"
     },
     "message_group_settings": {
-      "purpose": "Single-row (id=1) map of message category → destination Telegram group id (stored as text). Telegram group ids are not secrets.",
+      "purpose": "Single-row (id=1) map of message category → destination Telegram group id (stored as text). Telegram group ids are not secrets. The driver-raise workflow uses TWO independent categories: dispatch_review_group_id for the review REQUEST, raise_results_group_id for the submitted RESULT sent to accounting. No category falls back to another.",
       "status": "active",
       "service": "admin (Settings → Telegram Groups), bonus/review senders"
     },

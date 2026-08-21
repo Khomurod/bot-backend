@@ -106,8 +106,9 @@ audit report itself has been retired; the decisions that outlived it are here.
   `…_unposted`). They are **partial indexes with different `WHERE` clauses**, so
   both earn their keep. They are not redundant duplicates; leave them.
 - **A few Telegram ids are stored as `text`, on purpose**:
-  `message_group_settings.{dispatch_review_group_id, mileage_bonus_group_id,
-  road_bonus_group_id}` and `raise_rounds.employee_chat_id`. Those fields are
+  `message_group_settings.{dispatch_review_group_id, raise_results_group_id,
+  mileage_bonus_group_id, road_bonus_group_id}` and
+  `raise_rounds.employee_chat_id`. Those fields are
   admin-editable, allow blanks, and fall back to env vars, so `text` avoids
   cast/empty-string friction. Everywhere else a Telegram id is `bigint`. If this
   is ever normalized, validate that every stored value parses to `bigint` first.

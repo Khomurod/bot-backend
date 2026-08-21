@@ -224,6 +224,19 @@ Hard constraints of this deployment:
   - One open round at a time. Each round mints **one** `raise_rounds.access_token`
     (default 48h TTL) and the service posts that single link to the configured
     Dispatch Rate Review Telegram group.
+  - **TWO independent Telegram destinations, two audiences** — both admin-set in
+    Settings → Telegram Groups, and **neither is a fallback for the other**:
+    the review **request** (weekly and "Send now") goes only to
+    `dispatch_review_group_id`; the **submitted result** — who moves to
+    `rate_high`, who stays at `rate_low`, with team, submitter and pay period —
+    goes only to `raise_results_group_id` (accounting). Posting a pay decision
+    back to the dispatch group was the old behavior and must not return. An admin
+    *may* enter the same ID in both; the application must never do it for them.
+    A missing **request** group is a hard error: no round is opened, nothing is
+    sent. A missing **results** group never costs a submission — the response is
+    saved, one clear `[RAISE]` configuration error is logged, `submitResponse`
+    reports `results_posted: false` with a `results_notice`, and nothing is
+    re-sent or retried (a retry could duplicate the notification).
   - A **dispatcher** opens the link, selects their dispatch team, enters their own
     contact, and verifies an OTP (channel is `raise_settings.otp_channel`: Gmail
     App Password or RingCentral SMS) before submitting their team's picks.
@@ -513,11 +526,12 @@ Render environment, and new non-secret config belongs there as a default rather
 than as a new required variable.
 
 **But "has a default" is not universal, and the exceptions are deliberate.** The
-three bonus/review Telegram group IDs (`mileageBonusGroupId`, `roadBonusGroupId`,
-`dispatchReviewGroupId`) resolve to `''` on purpose: *"deliberately NO hardcoded
-group-id default"*. When a category has neither a DB value nor an env value, the
-message is **not sent** and a clear configuration error is logged — never a
-silent send to a stale old group. Do not "restore the missing default".
+four bonus/review Telegram group IDs (`mileageBonusGroupId`, `roadBonusGroupId`,
+`dispatchReviewGroupId`, `raiseResultsGroupId`) resolve to `''` on purpose:
+*"deliberately NO hardcoded group-id default"*. When a category has neither a DB
+value nor an env value, the message is **not sent** and a clear configuration
+error is logged — never a silent send to a stale old group, and never a fallback
+to another category's group. Do not "restore the missing default".
 
 **Required-secret validation happens at the startup boundary**
 (`assertRequiredConfig()`, called by `index.js` and the db scripts). The
@@ -805,11 +819,13 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-08-13, deps installed, no `TEST_DATABASE_URL`): **2069 tests,
-  1935 pass, 0 fail, 134 skipped** (the skips are the `*Pg` integration tests),
-  exit 0. **So any failure is a real failure** — there is no "expected failures"
-  allowance. *(An older internal doc claimed ~19 expected failures in a bare
-  environment; that is no longer true and must not be used to excuse one.)* If
+  baseline (2026-08-21, deps installed, no `TEST_DATABASE_URL`): **2094 tests,
+  1956 pass, 0 fail, 138 skipped** (the skips are the `*Pg` integration tests),
+  exit 0. With a database (`TEST_DATABASE_URL`) the `*Pg` suites run instead of
+  skipping: **209 tests, 209 pass, 0 skipped.** **So any failure is a real
+  failure** — there is no "expected failures" allowance. *(An older internal doc
+  claimed ~19 expected failures in a bare environment; that is no longer true and
+  must not be used to excuse one.)* If
   you see mass failures, check `npm install` has run — a bare clone dies at
   `require('dotenv')`.
 - **`*Pg.test.js` need `TEST_DATABASE_URL` and skip without it. A skipped test is

@@ -38,7 +38,8 @@ INSERT INTO eld_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 --
 -- Telegram group IDs are NOT secrets — they are stored and shown in plaintext so
 -- an admin can read and edit them. Each category has its OWN destination; enter
--- the same ID in several fields to share a group. When a *_group_id is NULL the
+-- the same ID in several fields to deliberately share a group — no category is
+-- ever an automatic fallback for another. When a *_group_id is NULL the
 -- app falls back to the matching optional environment variable, and when neither
 -- is set the message is NOT sent and a clear configuration error is logged.
 CREATE TABLE IF NOT EXISTS message_group_settings (
@@ -48,9 +49,14 @@ CREATE TABLE IF NOT EXISTS message_group_settings (
   -- Extra Week / Road Bonus summary posted when a driver comes home over the
   -- road allowance (services/roadBonusNotifierService).
   road_bonus_group_id TEXT NULL,
-  -- 72–75 CPM / Dispatch Rate Review request + result summary
-  -- (services/raiseApprovalService).
+  -- 72–75 CPM / Dispatch Rate Review REQUEST only — the weekly (or "Send now")
+  -- message with the tokenized link asking a dispatch team to fill in the
+  -- review (services/raiseApprovalService).
   dispatch_review_group_id TEXT NULL,
+  -- The submitted RESULT of that review (who qualifies for the higher rate, who
+  -- stays at the lower one) goes to accounting, NOT back to dispatch. Column
+  -- raise_results_group_id is added by database/migrations/0006 — an
+  -- independent setting that is never a fallback for dispatch_review_group_id.
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

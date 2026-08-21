@@ -139,6 +139,7 @@ after deploy on the live service.
 | G4 | Approval result is logged (audit trail). | **[MANUAL]** Check `raise_round_picks` / audit rows record who decided. |
 | G5 | **No duplicate approval messages.** | **[AUTO]** `service_runs` idempotency; **[MANUAL]** re-trigger does not double-send. |
 | G6 | **No unauthorized approval is possible.** | **[AUTO]** accounting-only guard in `mileageBonusHandlers`; **[MANUAL]** non-authorized user is rejected. |
+| G7 | **Raise review request and result go to their OWN groups.** The request belongs to dispatch, the pay decision to accounting — and neither falls back to the other. | **[AUTO]** `raiseApproval.test.js` (wrong-destination + missing-config cases), `messageRoutingSettings.test.js`, `messageGroupSettingsPg.test.js`; **[MANUAL]** after deploy, set **both** fields in Settings → Telegram Groups — the new *Driver Raise Results → ACCOUNTING* field starts empty on purpose, and until it is filled in a submitted review is saved but not posted anywhere (a `[RAISE] … not configured` log line). |
 
 ---
 

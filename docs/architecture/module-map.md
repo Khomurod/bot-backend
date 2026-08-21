@@ -124,9 +124,10 @@ organization should converge toward.
 | Concern | Current files |
 |---|---|
 | Mileage bonus milestone payouts | `services/mileageBonusService.js`, `mileageBonusConstants.js`, `mileageBonusMessages.js`, `roadBonusNotifierService.js`, `bot/mileageBonusHandlers.js` (accounting-only Paid/Rejected buttons), `database/mileageBonus.js`, admin `MileageBonusPage.jsx` |
-| 75¢/mile raise approval workflow | `services/raiseApprovalService.js`, `server/routes/raiseRoutes.js` (public + admin), `database/raiseApproval.js`, admin `RaiseApprovalPage.jsx`, public `RaisePublicPage.jsx` |
+| 75¢/mile raise approval workflow | `services/raiseApprovalService.js` (round lifecycle + weekly schedule + public surface) over `services/raise/` (`notifications.js` = the two Telegram destinations, `dispatcherFlow.js` = the tokenized link flow, `teamRoster.js` = team drivers/members, `errors.js`), `server/routes/raiseRoutes.js` (public + admin), `database/raiseApproval.js`, admin `RaiseApprovalPage.jsx`, public `RaisePublicPage.jsx` |
 | OTP verification (Gmail SMTP or RingCentral SMS) | `services/otpService.js`, `raise_otp` table |
 | Approval audit trail / dispatch teams | tables `dispatch_teams`, `dispatch_team_drivers`, `raise_rounds`, `raise_round_submissions`, `raise_round_picks`, `raise_settings` |
+| Raise Telegram routing (two audiences) | `database/messageRoutingSettings.js` categories `dispatchReview` (the review REQUEST → dispatch) and `raiseResults` (the submitted RESULT → accounting), admin `settings/TelegramGroupsTab.jsx` |
 
 ### 6. AI / Insights Module
 
