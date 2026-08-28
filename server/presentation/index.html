@@ -1,1046 +1,1322 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="One connected operations platform for dispatch, drivers, trailers, safety, recruiting and management — built for trucking companies." />
-  <meta name="robots" content="noindex" />
-  <title>One Connected Operations Platform for Trucking Companies</title>
-  <style>
-    /* ───────────────────────────────────────────────
-       Owner-facing product presentation — design system
-       Dark trucking-operations look, projector-friendly.
-       All data on this page is fictional / sanitized.
-       ─────────────────────────────────────────────── */
-    :root {
-      --bg: #070b16;
-      --bg-2: #0b1120;
-      --panel: rgba(255, 255, 255, 0.045);
-      --panel-2: rgba(255, 255, 255, 0.07);
-      --line: rgba(148, 163, 184, 0.18);
-      --line-strong: rgba(148, 163, 184, 0.34);
-      --ink: #eef2f8;
-      --muted: #a2b0c8;
-      --muted-2: #6b7896;
-      --teal: #2dd4bf;
-      --teal-deep: #0f766e;
-      --amber: #f59e0b;
-      --amber-deep: #d97706;
-      --sky: #38bdf8;
-      --violet: #a78bfa;
-      --rose: #fb7185;
-      --green: #34d399;
-      --radius: 16px;
-      --radius-lg: 24px;
-      --shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.72);
-      --maxw: 1160px;
-      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wenze Operations Hub</title>
+<meta name="description" content="Route control and fuel coordination for trucking fleets.">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --night:#070A10; --deep:#0A0E16; --ink:#0D1220;
+  --paper:#F3F1EC; --onpaper:#12151C; --onpaper-soft:rgba(18,21,28,.56);
+  --amber:#F2A24C; --amber-soft:rgba(242,162,76,.16);
+  --mint:#5BD0BC; --coral:#F0705C; --steel:#9FB4D0;
+  --w1:rgba(255,255,255,.94); --w2:rgba(255,255,255,.62); --w3:rgba(255,255,255,.38); --w4:rgba(255,255,255,.16);
+  --line:rgba(255,255,255,.08);
+  --d:'Instrument Serif',Georgia,serif;
+  --s:'Manrope',system-ui,-apple-system,sans-serif;
+  --pad:clamp(22px,5.2vw,96px);
+  --display:clamp(46px,8.4vw,124px);
+  --act:clamp(38px,6.6vw,94px);
+  --h2:clamp(30px,4.2vw,62px);
+  --body:clamp(15px,1.05vw,17px);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--night);color:var(--w1);font-family:var(--s);font-size:var(--body);
+  font-weight:400;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:hidden;text-wrap:pretty}
+h1,h2,h3,p,figure,ul{margin:0}
+ul{list-style:none;padding:0}
+a{color:var(--amber);text-decoration:none}
+a:hover{color:#F8BB78}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+svg{display:block}
+.wrap{max-width:1600px;margin:0 auto;padding-inline:var(--pad)}
+.serif{font-family:var(--d);font-weight:400;letter-spacing:-.012em;line-height:.98}
+.tnum{font-variant-numeric:tabular-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+:focus-visible{outline:2px solid var(--amber);outline-offset:4px;border-radius:4px}
 
-    * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
-    body {
-      margin: 0;
-      font-family: var(--font);
-      color: var(--ink);
-      background: var(--bg);
-      line-height: 1.6;
-      overflow-x: hidden;
-    }
-    body::before {
-      content: "";
-      position: fixed; inset: 0; z-index: -2;
-      background:
-        radial-gradient(1100px 700px at 12% -8%, rgba(45, 212, 191, 0.16), transparent 60%),
-        radial-gradient(900px 640px at 100% 0%, rgba(245, 158, 11, 0.12), transparent 55%),
-        radial-gradient(1200px 900px at 50% 120%, rgba(56, 189, 248, 0.10), transparent 60%),
-        linear-gradient(180deg, #060a14 0%, #070b16 40%, #05080f 100%);
-    }
-    body::after {
-      content: "";
-      position: fixed; inset: 0; z-index: -1;
-      background-image:
-        linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
-      background-size: 48px 48px;
-      mask-image: radial-gradient(circle at 50% 18%, #000 0%, transparent 78%);
-      -webkit-mask-image: radial-gradient(circle at 50% 18%, #000 0%, transparent 78%);
-      opacity: 0.5;
-    }
+/* ── chrome ────────────────────────────────────────────── */
+.top{position:fixed;inset:0 0 auto 0;z-index:70;display:flex;align-items:center;justify-content:space-between;
+  gap:18px;padding:16px var(--pad);transition:color .5s}
+.top::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
+  background:linear-gradient(to bottom,rgba(7,10,16,.72),transparent);transition:opacity .5s}
+.top.light{color:var(--onpaper)}
+.top.light::before{opacity:0}
+.mark{display:flex;align-items:center;gap:11px;font-weight:600;font-size:15px;letter-spacing:-.015em}
+.mark svg{width:19px;height:19px;flex:none}
+.top nav{display:flex;align-items:center;gap:10px}
+.lang{display:flex;gap:2px;padding:3px;border-radius:999px;background:rgba(255,255,255,.07)}
+.top.light .lang{background:rgba(18,21,28,.07)}
+.lang button{padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.04em;
+  opacity:.5;transition:background .25s,opacity .25s}
+.lang button[aria-pressed="true"]{opacity:1;background:rgba(255,255,255,.13)}
+.top.light .lang button[aria-pressed="true"]{background:rgba(18,21,28,.1)}
+.ghost{padding:9px 17px;border-radius:999px;border:1px solid var(--w4);font-size:13px;font-weight:500;
+  transition:border-color .25s,background .25s}
+.top.light .ghost{border-color:rgba(18,21,28,.18)}
+.ghost:hover{border-color:currentColor;background:rgba(255,255,255,.05)}
 
-    a { color: inherit; text-decoration: none; }
-    img { max-width: 100%; }
-    .wrap { width: min(var(--maxw), 92%); margin: 0 auto; }
+/* ── map stage primitives ──────────────────────────────── */
+.stage{position:absolute;inset:0;overflow:hidden;background:
+  radial-gradient(140% 110% at 22% 8%,#101A2C 0%,#0A0E16 46%,#070A10 100%)}
+.stage > svg{position:absolute;inset:0;width:100%;height:100%}
+.hero .stage::after,.end .stage::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(100deg,rgba(7,10,16,.9) 0%,rgba(7,10,16,.62) 34%,rgba(7,10,16,.12) 62%,transparent 78%)}
+.vig{position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(120% 95% at 50% 46%,transparent 34%,rgba(7,10,16,.62) 88%)}
+.grain{position:absolute;inset:0;pointer-events:none;opacity:.5;mix-blend-mode:overlay;
+  background-image:radial-gradient(rgba(255,255,255,.09) .5px,transparent .5px);background-size:3px 3px}
 
-    /* ─── Top nav ─── */
-    header.nav {
-      position: sticky; top: 0; z-index: 50;
-      backdrop-filter: blur(14px);
-      background: rgba(7, 11, 22, 0.74);
-      border-bottom: 1px solid var(--line);
-    }
-    .nav-inner { display: flex; align-items: center; gap: 18px; height: 62px; }
-    .brand { display: flex; align-items: center; gap: 11px; font-weight: 800; letter-spacing: -0.02em; }
-    .brand .logo {
-      width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
-      background: linear-gradient(135deg, var(--teal), var(--teal-deep));
-      box-shadow: 0 8px 24px -8px var(--teal-deep); font-size: 18px;
-    }
-    .brand small { display: block; font-weight: 500; font-size: 11px; color: var(--muted-2); letter-spacing: 0.02em; }
-    .nav-links { margin-left: auto; display: flex; gap: 22px; font-size: 14px; color: var(--muted); }
-    .nav-links a { transition: color .2s; }
-    .nav-links a:hover { color: var(--ink); }
-    .nav-actions { display: flex; align-items: center; gap: 10px; }
-    .present-btn {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; cursor: pointer;
-      border: 1px solid var(--line-strong); color: var(--ink); background: rgba(255,255,255,0.04);
-      transition: border-color .2s, background .2s;
-    }
-    .present-btn:hover { border-color: var(--teal); background: rgba(45,212,191,0.08); }
-    .nav-cta {
-      padding: 9px 16px; border-radius: 999px; font-size: 13px; font-weight: 700;
-      background: linear-gradient(135deg, var(--amber), var(--amber-deep));
-      color: #1a1206; box-shadow: 0 10px 24px -10px var(--amber-deep);
-    }
-    @media (max-width: 980px) { .nav-links { display: none; } }
-    @media (max-width: 620px) { .nav-cta { display: none; } }
+/* ── hero ──────────────────────────────────────────────── */
+.hero{position:relative;height:100svh;overflow:hidden}
+.hero .inner{position:absolute;inset:auto 0 0 0;z-index:3;padding:0 0 clamp(46px,9svh,104px)}
+.hero h1{font-size:var(--display);max-width:15ch}
+.hero h1 em{font-style:italic;color:var(--amber)}
+.heroline{display:flex;align-items:flex-end;justify-content:space-between;gap:40px;flex-wrap:wrap;
+  margin-top:clamp(26px,4svh,44px);padding-top:22px;border-top:1px solid var(--line)}
+.hero p{max-width:34ch;color:var(--w2);font-size:clamp(15px,1.2vw,19px);line-height:1.45}
+.trip{display:flex;align-items:center;gap:14px;color:var(--w2);font-size:14px;white-space:nowrap}
+.trip b{color:var(--w1);font-weight:500}
+.trip i{display:block;width:clamp(30px,6vw,74px);height:1px;background:linear-gradient(90deg,var(--w4),var(--amber))}
+.cue{position:absolute;left:var(--pad);bottom:20px;z-index:4;display:flex;align-items:center;gap:10px;
+  font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--w3)}
+.cue i{width:22px;height:1px;background:var(--w3);transform-origin:left;animation:sweep 2.6s infinite}
+@keyframes sweep{0%,100%{transform:scaleX(.3);opacity:.4}50%{transform:scaleX(1);opacity:1}}
 
-    #progress {
-      position: fixed; top: 0; left: 0; height: 3px; width: 0%;
-      background: linear-gradient(90deg, var(--teal), var(--sky), var(--amber));
-      z-index: 60; box-shadow: 0 0 14px rgba(45, 212, 191, 0.7);
-    }
+/* ── acts ──────────────────────────────────────────────── */
+.act{position:relative;height:var(--h,320svh)}
+#s-route{--h:760svh}
+#s-fuel{--h:560svh}
+#s-cc{--h:320svh}
+#s-conv{--h:300svh}
+.pin{position:relative;height:100svh;overflow:hidden;will-change:transform}
+.actnum{position:absolute;left:var(--pad);top:clamp(84px,13svh,124px);z-index:5;
+  font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);
+  opacity:0;transform:translateY(10px);transition:opacity .7s,transform .7s}
+.actnum.on{opacity:1;transform:none}
+.acttitle{position:absolute;left:var(--pad);right:var(--pad);top:clamp(116px,18svh,180px);z-index:5;
+  font-size:var(--act);max-width:13ch;pointer-events:none;
+  opacity:0;transform:translateY(22px);transition:opacity .8s,transform .8s}
+.acttitle.on{opacity:1;transform:none}
+.acttitle em{font-style:italic;color:var(--amber)}
 
-    /* ─── Section scaffolding ─── */
-    section { padding: 90px 0; position: relative; }
-    .eyebrow {
-      display: inline-flex; align-items: center; gap: 8px;
-      font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
-      color: var(--teal); padding: 6px 13px; border-radius: 999px;
-      background: rgba(45, 212, 191, 0.10); border: 1px solid rgba(45, 212, 191, 0.24);
-    }
-    .eyebrow.amber { color: var(--amber); background: rgba(245, 158, 11, 0.10); border-color: rgba(245, 158, 11, 0.26); }
-    h1, h2, h3 { letter-spacing: -0.025em; line-height: 1.1; margin: 0; }
-    .h-sec { font-size: clamp(28px, 4.2vw, 44px); font-weight: 800; margin: 16px 0 14px; }
-    .lead { font-size: clamp(16px, 1.7vw, 19px); color: var(--muted); max-width: 720px; }
-    .section-head { max-width: 760px; margin-bottom: 44px; }
+/* captions */
+.caps{position:absolute;left:var(--pad);right:var(--pad);bottom:clamp(34px,7svh,74px);z-index:6;
+  min-height:64px;pointer-events:none}
+.cap{position:absolute;inset:auto auto 0 0;display:flex;align-items:center;gap:13px;
+  opacity:0;transform:translateY(14px);transition:opacity .55s cubic-bezier(.2,.7,.3,1),transform .55s cubic-bezier(.2,.7,.3,1)}
+.cap.on{opacity:1;transform:none}
+.cap i{width:7px;height:7px;border-radius:50%;background:var(--mint);flex:none;
+  box-shadow:0 0 0 5px rgba(91,208,188,.14)}
+.cap.warn i{background:var(--coral);box-shadow:0 0 0 5px rgba(240,112,92,.16)}
+.cap.gold i{background:var(--amber);box-shadow:0 0 0 5px var(--amber-soft)}
+.cap span{font-size:clamp(17px,1.75vw,27px);font-weight:500;letter-spacing:-.02em}
+.cap small{display:block;margin-top:3px;font-size:13px;font-weight:400;color:var(--w3);letter-spacing:0}
 
-    /* Reveal-on-scroll */
-    .reveal { opacity: 0; transform: translateY(28px); transition: opacity .7s cubic-bezier(.2,.7,.2,1), transform .7s cubic-bezier(.2,.7,.2,1); }
-    .reveal.in { opacity: 1; transform: none; }
-    .reveal.d1 { transition-delay: .08s; }
-    .reveal.d2 { transition-delay: .16s; }
-    .reveal.d3 { transition-delay: .24s; }
-    @media (prefers-reduced-motion: reduce) {
-      .reveal { opacity: 1 !important; transform: none !important; }
-      * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
-    }
+/* fine print — the precise rule, kept quiet */
+.fine{position:absolute;right:var(--pad);bottom:clamp(34px,7svh,74px);z-index:6;max-width:23ch;text-align:right;
+  font-size:12.5px;line-height:1.5;color:var(--w3);opacity:0;transition:opacity .6s}
+.fine.on{opacity:1}
 
-    /* Cards + grids */
-    .card {
-      background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
-      padding: 24px; position: relative; transition: transform .3s, border-color .3s, background .3s;
-    }
-    .card:hover { transform: translateY(-4px); border-color: var(--line-strong); background: var(--panel-2); }
-    .grid { display: grid; gap: 18px; }
-    .g2 { grid-template-columns: repeat(2, 1fr); }
-    .g3 { grid-template-columns: repeat(3, 1fr); }
-    @media (max-width: 900px) { .g3 { grid-template-columns: repeat(2, 1fr); } }
-    @media (max-width: 620px) { .g2, .g3 { grid-template-columns: 1fr; } }
+/* telegram */
+.tgwrap{position:absolute;right:var(--pad);top:50%;z-index:7;width:min(392px,40vw);
+  transform:translateY(-50%);pointer-events:none}
+.tg{border-radius:20px;background:linear-gradient(#1C2330,#161C27);border:1px solid rgba(255,255,255,.09);
+  box-shadow:0 40px 90px -30px rgba(0,0,0,.95),0 0 0 1px rgba(255,255,255,.03) inset;
+  overflow:hidden;opacity:0;transform:translateY(26px) scale(.96);
+  transition:opacity .7s cubic-bezier(.2,.75,.3,1),transform .7s cubic-bezier(.2,.75,.3,1)}
+.tg.on{opacity:1;transform:none}
+.tgh{display:flex;align-items:center;gap:11px;padding:13px 17px;border-bottom:1px solid rgba(255,255,255,.06)}
+.av{width:30px;height:30px;border-radius:50%;flex:none;display:grid;place-items:center;
+  background:linear-gradient(140deg,#2E8FD6,#1B6BB0);font-size:12px;font-weight:700;color:#fff}
+.tgh b{font-size:13.5px;font-weight:600;letter-spacing:-.01em}
+.tgh small{display:block;font-size:11.5px;font-weight:400;color:var(--w3)}
+.msg{padding:15px 17px}
+.msg .from{font-size:12px;font-weight:600;color:#6FB2E8;letter-spacing:.01em}
+.msg p{margin-top:6px;font-size:14px;line-height:1.5;color:var(--w1)}
+.msg .meta{margin-top:8px;font-size:13px;color:var(--w2);line-height:1.55}
+.msg .meta b{font-weight:600;color:var(--w1)}
+.reply{margin:0 17px 16px;padding:13px 15px;border-radius:14px;background:rgba(242,162,76,.09);
+  border:1px solid rgba(242,162,76,.22);opacity:0;transform:translateY(10px);
+  transition:opacity .5s .12s,transform .5s .12s}
+.reply.on{opacity:1;transform:none}
+.reply .from{color:var(--amber)}
+.reply.alert{background:rgba(240,112,92,.09);border-color:rgba(240,112,92,.24)}
+.reply.alert .from{color:var(--coral)}
 
-    .ic {
-      width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center;
-      font-size: 22px; margin-bottom: 14px;
-      background: rgba(255,255,255,0.05); border: 1px solid var(--line);
-    }
-    .card h3 { font-size: 18px; font-weight: 700; margin-bottom: 7px; }
-    .card p { font-size: 14.5px; color: var(--muted); margin: 0; }
+/* fuel distance hero numeral */
+.dist{position:absolute;left:var(--pad);top:clamp(150px,24svh,240px);z-index:6;
+  text-align:left;opacity:0;transition:opacity .6s}
+.dist.on{opacity:1}
+.dist .n{font-family:var(--d);font-size:clamp(84px,15vw,220px);line-height:.86;letter-spacing:-.03em;
+  transition:color .5s}
+.dist .n.hot{color:var(--amber)}
+.dist .u{margin-top:8px;font-size:12.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--w3);max-width:14ch}
 
-    .btn {
-      display: inline-flex; align-items: center; gap: 9px; padding: 13px 22px; border-radius: 12px;
-      font-weight: 700; font-size: 15px; transition: transform .2s, box-shadow .2s; cursor: pointer; border: 0;
-    }
-    .btn.primary { background: linear-gradient(135deg, var(--teal), var(--teal-deep)); color: #04211d; box-shadow: 0 16px 34px -14px var(--teal); }
-    .btn.ghost { border: 1px solid var(--line-strong); color: var(--ink); background: rgba(255,255,255,0.03); }
-    .btn:hover { transform: translateY(-2px); }
-    .btn-row { display: flex; flex-wrap: wrap; gap: 12px; }
+/* ── command center ────────────────────────────────────── */
+.cc{position:relative;height:100svh;overflow:hidden}
+.cchead{position:absolute;left:var(--pad);top:clamp(92px,15svh,150px);z-index:5;max-width:19ch}
+.cchead h2{font-size:var(--h2)}
+.cchead p{margin-top:14px;max-width:30ch;color:var(--w2);font-size:15px}
+.mk{cursor:pointer}
+.mk .halo{transition:opacity .3s}
+.mk .plate{opacity:0;transition:opacity .25s}
+.mk:hover .plate,.mk.sel .plate,.mk:focus-visible .plate{opacity:1}
+.ccpanel{position:absolute;z-index:8;width:268px;padding:18px 20px;border-radius:18px;
+  background:rgba(20,26,36,.93);backdrop-filter:blur(22px);border:1px solid rgba(255,255,255,.1);
+  box-shadow:0 34px 80px -26px rgba(0,0,0,.95);opacity:0;transform:translateY(8px);pointer-events:none;
+  transition:opacity .24s,transform .24s}
+.ccpanel.on{opacity:1;transform:none}
+.ccpanel .pill{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;
+  font-size:11.5px;font-weight:600;letter-spacing:.02em}
+.ccpanel .pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.ccpanel h4{margin-top:13px;font-size:21px;font-weight:600;letter-spacing:-.025em}
+.ccpanel .unit{font-size:12.5px;color:var(--w3);margin-top:2px}
+.ccpanel .row{margin-top:15px;padding-top:13px;border-top:1px solid rgba(255,255,255,.09);
+  display:flex;justify-content:space-between;gap:14px;font-size:13.5px}
+.ccpanel .row span:first-child{color:var(--w3)}
+.ccpanel .note{margin-top:12px;font-size:13px;line-height:1.5;color:var(--w2)}
+.cckey{position:absolute;left:var(--pad);bottom:clamp(30px,6svh,64px);z-index:5;
+  display:flex;flex-wrap:wrap;gap:9px 20px}
+.cckey b{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:500;color:var(--w2)}
+.cckey b i{width:7px;height:7px;border-radius:50%}
+.cclist{display:none}
 
-    /* ─── HERO ─── */
-    .hero { padding-top: 66px; padding-bottom: 48px; overflow: hidden; }
-    .hero-grid { display: grid; grid-template-columns: 1.02fr 0.98fr; gap: 42px; align-items: center; }
-    @media (max-width: 940px) { .hero-grid { grid-template-columns: 1fr; } }
-    .hero h1 { font-size: clamp(34px, 5.6vw, 60px); font-weight: 900; }
-    .hero h1 .grad {
-      background: linear-gradient(120deg, var(--teal) 10%, var(--sky) 50%, var(--amber) 95%);
-      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-    }
-    .hero .lead { margin: 22px 0 24px; max-width: 560px; font-size: clamp(16px, 2vw, 19px); }
-    .hero-badges { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 28px; }
-    .hbadge {
-      font-size: 12.5px; font-weight: 600; color: var(--ink);
-      padding: 8px 13px; border-radius: 999px; border: 1px solid var(--line);
-      background: rgba(255,255,255,0.04); display: inline-flex; gap: 7px; align-items: center;
-    }
-    .hbadge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 8px var(--teal); }
+/* ── convergence ───────────────────────────────────────── */
+.conv{position:relative}
+.conv .pin{display:grid;place-items:center;background:var(--night)}
+.convhead{position:absolute;left:var(--pad);right:var(--pad);top:clamp(88px,14svh,140px);z-index:4;text-align:center}
+.convhead h2{font-size:var(--h2);transition:opacity .5s,transform .5s}
+.convhead .b{position:absolute;left:0;right:0;top:0}
+.convhead .b.off{opacity:0;transform:translateY(-14px)}
+.convhead p{margin-top:14px;color:var(--w2);font-size:15.5px}
+.field{position:relative;width:min(1140px,90vw);height:min(520px,52svh);margin-top:clamp(72px,13svh,132px)}
+.frame{position:absolute;inset:0;border-radius:24px;border:1px solid rgba(242,162,76,.3);
+  background:linear-gradient(160deg,rgba(242,162,76,.055),rgba(255,255,255,.012));
+  opacity:0;transform:scale(.96);transition:opacity .6s,transform .6s}
+.frame b{position:absolute;left:50%;bottom:-13px;transform:translateX(-50%);padding:4px 16px;border-radius:999px;
+  background:var(--night);color:var(--amber);font-size:11.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
+.frag{position:absolute;left:0;top:0;padding:13px 18px;border-radius:13px;white-space:nowrap;
+  background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.1);
+  font-size:14px;font-weight:500;color:var(--w2);will-change:transform}
+.thread{position:absolute;inset:0;pointer-events:none}
 
-    /* Command-center hero visual */
-    .console {
-      position: relative; border-radius: var(--radius-lg); padding: 18px; max-width: 100%;
-      background: linear-gradient(160deg, rgba(20,30,52,0.92), rgba(10,16,30,0.92));
-      border: 1px solid var(--line-strong); box-shadow: var(--shadow);
-    }
-    .console-top { display: flex; align-items: center; gap: 7px; margin-bottom: 14px; }
-    .console-top i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
-    .console-top .l { font-size: 12px; color: var(--muted-2); margin-left: 8px; }
+/* ── capabilities (quiet) ──────────────────────────────── */
+.quiet{background:var(--paper);color:var(--onpaper);padding:clamp(84px,13vh,168px) 0}
+.quiet h2{font-size:var(--h2);max-width:17ch}
+.quiet .lede{margin-top:16px;max-width:44ch;color:var(--onpaper-soft);font-size:16.5px}
+.caps2{margin-top:clamp(44px,7vh,84px);display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));
+  gap:clamp(30px,4vw,68px)}
+.caps2 h3{font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--amber);
+  padding-bottom:12px;border-bottom:1px solid rgba(18,21,28,.14)}
+.caps2 li{padding:13px 0;border-bottom:1px solid rgba(18,21,28,.07);font-size:15.5px;font-weight:500}
+.caps2 li small{display:block;margin-top:3px;font-size:13.5px;font-weight:400;color:var(--onpaper-soft)}
+.caps2 li em{font-style:normal;margin-left:8px;padding:2px 7px;border-radius:5px;font-size:10.5px;font-weight:700;
+  letter-spacing:.1em;text-transform:uppercase;color:#8A5A15;background:rgba(242,162,76,.22)}
+.stack{margin-top:clamp(48px,7vh,88px);padding-top:26px;border-top:1px solid rgba(18,21,28,.14);
+  display:flex;flex-wrap:wrap;gap:8px 26px;align-items:center}
+.stack span{font-size:14px;font-weight:500;color:var(--onpaper-soft)}
+.stack span b{font-weight:600;color:var(--onpaper)}
+.limit{margin-top:clamp(44px,6vh,72px);max-width:62ch;font-size:15.5px;color:var(--onpaper-soft)}
+.limit b{font-weight:600;color:var(--onpaper)}
 
-    /* Reusable mock map */
-    .mapbox {
-      position: relative; height: 230px; border-radius: 14px; overflow: hidden;
-      background:
-        radial-gradient(circle at 50% 60%, rgba(45,212,191,0.10), transparent 62%),
-        #060c17;
-      border: 1px solid var(--line);
-    }
-    .mapbox svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-    .marker { position: absolute; transform: translate(-50%, -50%); }
-    .m-truck {
-      width: 16px; height: 16px; border-radius: 50%;
-      background: var(--teal); box-shadow: 0 0 0 4px rgba(45,212,191,0.18), 0 0 14px var(--teal);
-      border: 2px solid #04211d;
-    }
-    .m-truck.late { background: var(--amber); box-shadow: 0 0 0 4px rgba(245,158,11,0.2), 0 0 14px var(--amber); }
-    .m-trailer {
-      width: 13px; height: 13px; border-radius: 3px;
-      background: rgba(167,139,250,0.9); border: 2px solid #1a1330; box-shadow: 0 0 10px rgba(167,139,250,0.6);
-      display: grid; place-items: center; font-size: 8px; font-weight: 800; color: #1a1330;
-    }
-    .m-trailer.dropped { background: rgba(148,163,184,0.85); box-shadow: none; }
-    .m-move { animation: mtruck 9s ease-in-out infinite; }
-    @keyframes mtruck {
-      0%   { left: 24%; top: 62%; }
-      45%  { left: 52%; top: 44%; }
-      55%  { left: 52%; top: 44%; }
-      100% { left: 76%; top: 34%; }
-    }
-    .map-chip {
-      position: absolute; padding: 8px 11px; border-radius: 10px; font-size: 11.5px; font-weight: 600;
-      background: rgba(13,20,36,0.94); border: 1px solid var(--line-strong); box-shadow: var(--shadow);
-    }
-    .map-chip .sub { color: var(--muted-2); font-weight: 500; }
-    .console-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-top: 14px; }
-    .cstat { background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; }
-    .cstat b { display: block; font-size: 15px; font-weight: 800; color: var(--ink); }
-    .cstat span { font-size: 11px; color: var(--muted-2); }
-    .float-card {
-      position: absolute; padding: 11px 14px; border-radius: 13px; font-size: 12.5px; font-weight: 600;
-      background: rgba(13,20,36,0.96); border: 1px solid var(--line-strong); box-shadow: var(--shadow);
-      display: flex; align-items: center; gap: 9px; z-index: 3;
-    }
-    .float-card .em { font-size: 18px; }
-    .fc1 { top: -16px; right: -12px; animation: floaty 6s ease-in-out infinite; }
-    .fc2 { bottom: 96px; left: -20px; animation: floaty 7s ease-in-out infinite .8s; }
-    @keyframes floaty { 0%,100% { transform: translateY(0);} 50% { transform: translateY(-10px);} }
-    @media (max-width: 540px) { .fc1, .fc2 { display: none; } }
+/* ── closing ───────────────────────────────────────────── */
+.end{position:relative;min-height:100svh;display:flex;align-items:center;overflow:hidden;
+  padding:clamp(112px,15svh,190px) 0 clamp(44px,8svh,88px)}
+.end .inner{position:relative;z-index:3;width:100%}
+.end h2{font-size:clamp(38px,6.4vw,96px);max-width:15ch}
+.end h2 em{font-style:italic;color:var(--amber)}
+.cta{display:inline-flex;align-items:center;gap:13px;margin-top:clamp(34px,5svh,54px);
+  padding:17px 32px;border-radius:999px;background:var(--amber);color:#0A0D14;
+  font-size:15.5px;font-weight:600;letter-spacing:-.01em;transition:transform .25s,box-shadow .25s}
+.cta:hover{color:#0A0D14;transform:translateY(-2px);box-shadow:0 20px 44px -14px rgba(242,162,76,.55)}
+.foot{margin-top:clamp(56px,10svh,110px);padding-top:22px;border-top:1px solid var(--line);
+  display:flex;flex-wrap:wrap;gap:10px 28px;justify-content:space-between;font-size:13px;color:var(--w3)}
 
-    /* Before / After */
-    .ba-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    @media (max-width: 760px) { .ba-grid { grid-template-columns: 1fr; } }
-    .ba {
-      border-radius: var(--radius); padding: 26px; border: 1px solid var(--line);
-    }
-    .ba.before { background: rgba(251,113,133,0.05); border-color: rgba(251,113,133,0.22); }
-    .ba.after { background: rgba(45,212,191,0.06); border-color: rgba(45,212,191,0.28); }
-    .ba h3 { font-size: 15px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 14px; display: flex; align-items: center; gap: 9px; }
-    .ba.before h3 { color: var(--rose); }
-    .ba.after h3 { color: var(--teal); }
-    .ba ul { list-style: none; margin: 0; padding: 0; }
-    .ba li { font-size: 14.5px; color: var(--muted); padding: 8px 0 8px 26px; position: relative; border-bottom: 1px solid var(--line); }
-    .ba li:last-child { border-bottom: 0; }
-    .ba li::before { position: absolute; left: 0; top: 8px; font-size: 13px; }
-    .ba.before li::before { content: "✕"; color: var(--rose); }
-    .ba.after li::before { content: "✓"; color: var(--teal); }
+/* ── presentation mode ─────────────────────────────────── */
+.pbar{position:fixed;left:50%;bottom:26px;z-index:90;display:flex;align-items:center;gap:6px;padding:7px;
+  border-radius:999px;background:rgba(16,21,30,.92);backdrop-filter:blur(22px);
+  border:1px solid rgba(255,255,255,.1);box-shadow:0 26px 60px -20px rgba(0,0,0,.9);
+  transform:translate(-50%,150%);transition:transform .45s cubic-bezier(.2,.7,.3,1)}
+body.present .pbar{transform:translate(-50%,0)}
+.pbar button{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;transition:background .2s}
+.pbar button:hover{background:rgba(255,255,255,.09)}
+.pbar button:disabled{opacity:.25;cursor:default}
+.pbar .lbl{padding:0 14px;font-size:12.5px;color:var(--w2);white-space:nowrap}
+.pbar .lbl b{color:var(--w1);font-weight:600}
+.dots{display:flex;gap:4px;padding:0 6px}
+.dots i{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.24);transition:all .3s}
+.dots i.on{background:var(--amber);width:17px;border-radius:3px}
+body.present .top,body.present .cue{opacity:0;pointer-events:none}
 
-    /* Product demos */
-    .demo-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 26px; }
-    .demo-tab {
-      padding: 10px 16px; border-radius: 999px; font-size: 13.5px; font-weight: 600; cursor: pointer;
-      border: 1px solid var(--line); color: var(--muted); background: rgba(255,255,255,0.02); transition: all .25s;
-    }
-    .demo-tab:hover { color: var(--ink); border-color: var(--line-strong); }
-    .demo-tab.active { color: #04211d; background: linear-gradient(135deg, var(--teal), var(--teal-deep)); border-color: transparent; }
-    .demo-panel { display: none; }
-    .demo-panel.active { display: block; animation: fadeUp .5s; }
-    @keyframes fadeUp { from { opacity: 0; transform: translateY(12px);} to { opacity: 1; transform: none; } }
-    .demo-grid { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 34px; align-items: center; }
-    @media (max-width: 900px) { .demo-grid { grid-template-columns: 1fr; } }
-    .demo-copy h3 { font-size: clamp(22px, 3vw, 28px); font-weight: 800; margin-bottom: 12px; }
-    .demo-copy p { font-size: 15.5px; color: var(--muted); margin: 0 0 16px; max-width: 480px; }
-    .benefit-line {
-      display: inline-flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 600; color: var(--teal);
-      padding: 10px 15px; border-radius: 12px; background: rgba(45,212,191,0.08); border: 1px solid rgba(45,212,191,0.24);
-    }
-    .beta-badge {
-      display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; letter-spacing: .08em;
-      text-transform: uppercase; color: var(--amber); padding: 4px 10px; border-radius: 999px;
-      background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.34); margin-left: 10px; vertical-align: middle;
-    }
-
-    /* Mock UI panel (screenshot-style) */
-    .mock {
-      border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line-strong);
-      background: linear-gradient(160deg, #0c1424, #0a1120); box-shadow: var(--shadow);
-    }
-    .mock-bar { display: flex; align-items: center; gap: 7px; padding: 11px 14px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,0.02); }
-    .mock-bar i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-    .mock-bar .t { font-size: 12px; color: var(--muted-2); margin-left: 8px; font-weight: 600; }
-    .mock-body { padding: 16px; }
-
-    /* Filter chips */
-    .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
-    .chip {
-      font-size: 11.5px; font-weight: 600; padding: 5px 11px; border-radius: 999px;
-      border: 1px solid var(--line); color: var(--muted); background: rgba(255,255,255,0.03);
-    }
-    .chip.on { color: #04211d; background: var(--teal); border-color: transparent; }
-    .chip.on.violet { color: #1a1330; background: var(--violet); }
-    .chip.on.slate { color: #0b1120; background: rgba(148,163,184,0.9); }
-
-    /* Telegram chat mock */
-    .phone {
-      max-width: 330px; margin: 0 auto; border-radius: 28px; padding: 16px;
-      background: linear-gradient(170deg, #101827, #0a0f1c); border: 1px solid var(--line-strong);
-      box-shadow: var(--shadow); position: relative;
-    }
-    .phone .notch { width: 84px; height: 6px; border-radius: 999px; background: var(--line-strong); margin: 2px auto 14px; }
-    .chat { display: flex; flex-direction: column; gap: 9px; min-height: 320px; }
-    .bubble { max-width: 84%; padding: 10px 13px; border-radius: 15px; font-size: 13.5px; opacity: 0; transform: translateY(10px); }
-    .bubble.in { opacity: 1; transform: none; transition: all .5s; }
-    .bubble.them { align-self: flex-start; background: #1b2436; border-bottom-left-radius: 4px; }
-    .bubble.me { align-self: flex-end; background: linear-gradient(135deg, var(--teal-deep), #0b5a54); color: #eafffb; border-bottom-right-radius: 4px; }
-    .bubble small { display: block; font-size: 10px; color: var(--muted-2); margin-top: 3px; }
-    .bubble.me small { color: rgba(234,255,251,0.65); }
-    .bubble .xl { color: var(--sky); }
-
-    /* Data rows (trailer / recruiting / automation) */
-    .row {
-      display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      padding: 11px 13px; border-radius: 11px; border: 1px solid var(--line);
-      background: rgba(255,255,255,0.02); margin-bottom: 9px; font-size: 13.5px;
-    }
-    .row .lft { display: flex; align-items: center; gap: 10px; }
-    .row .unit { font-weight: 700; }
-    .row .meta { color: var(--muted-2); font-size: 12px; }
-    .pill { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
-    .pill.green { color: #052e23; background: var(--green); }
-    .pill.slate { color: #0b1120; background: rgba(148,163,184,0.9); }
-    .pill.amber { color: #1a1206; background: var(--amber); }
-    .pill.violet { color: #1a1330; background: var(--violet); }
-    .pill.teal { color: #04211d; background: var(--teal); }
-
-    /* Timeline (trailer history + day-in-op) */
-    .tl { position: relative; margin: 4px 0 0; }
-    .tl .ev { position: relative; padding: 0 0 16px 22px; }
-    .tl .ev:not(:last-child)::before { content: ""; position: absolute; left: 5px; top: 14px; bottom: -2px; width: 2px; background: linear-gradient(var(--teal), rgba(45,212,191,0.15)); }
-    .tl .ev::after { content: ""; position: absolute; left: 0; top: 5px; width: 12px; height: 12px; border-radius: 50%; background: rgba(45,212,191,0.15); border: 2px solid var(--teal); }
-    .tl .ev h5 { margin: 0 0 2px; font-size: 13.5px; font-weight: 700; }
-    .tl .ev p { margin: 0; font-size: 12.5px; color: var(--muted-2); }
-
-    /* Progress ring (recruiting) */
-    .ring-wrap { display: flex; align-items: center; gap: 18px; margin-bottom: 16px; }
-    .ring { position: relative; width: 116px; height: 116px; flex: none; }
-    .ring svg { transform: rotate(-90deg); }
-    .ring .rc { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 10; }
-    .ring .rp { fill: none; stroke: var(--teal); stroke-width: 10; stroke-linecap: round; stroke-dasharray: 326.7; stroke-dashoffset: 326.7; transition: stroke-dashoffset 1.4s cubic-bezier(.2,.7,.2,1); }
-    .ring.play .rp { stroke-dashoffset: 78; } /* ~76% of goal */
-    .ring .rl { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
-    .ring .rl b { font-size: 20px; font-weight: 800; display: block; }
-    .ring .rl span { font-size: 10px; color: var(--muted-2); }
-    .bar-wrap { margin-bottom: 10px; }
-    .bar-wrap .lbl { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 5px; color: var(--muted); }
-    .bar { height: 9px; border-radius: 999px; background: rgba(255,255,255,0.07); overflow: hidden; }
-    .bar > i { display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--sky), var(--teal)); transition: width 1.4s cubic-bezier(.2,.7,.2,1); }
-    .bar-wrap.play .bar > i { width: var(--w, 60%); }
-
-    /* Day-in-op timeline */
-    .day-flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-    @media (max-width: 900px) { .day-flow { grid-template-columns: repeat(2, 1fr); } }
-    @media (max-width: 520px) { .day-flow { grid-template-columns: 1fr; } }
-    .day-step { border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; background: var(--panel); position: relative; }
-    .day-step .n { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-weight: 800; font-size: 14px;
-      background: rgba(45,212,191,0.12); border: 1px solid rgba(45,212,191,0.4); color: var(--teal); margin-bottom: 12px; }
-    .day-step h4 { font-size: 14.5px; margin: 0 0 5px; }
-    .day-step p { font-size: 13px; color: var(--muted); margin: 0; }
-
-    /* Benefits */
-    .value-card .k { font-size: 16px; font-weight: 700; margin-bottom: 7px; display: flex; gap: 9px; align-items: center; }
-
-    /* Integrations */
-    .int-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-    @media (max-width: 820px) { .int-grid { grid-template-columns: repeat(2, 1fr); } }
-    @media (max-width: 520px) { .int-grid { grid-template-columns: 1fr; } }
-    .int {
-      display: flex; align-items: center; gap: 13px; padding: 16px; border-radius: 14px;
-      border: 1px solid var(--line); background: var(--panel); transition: border-color .3s, transform .3s;
-    }
-    .int:hover { border-color: var(--line-strong); transform: translateY(-3px); }
-    .int .ig { width: 42px; height: 42px; border-radius: 11px; display: grid; place-items: center; font-size: 20px; flex: none;
-      background: rgba(255,255,255,0.05); border: 1px solid var(--line); }
-    .int b { font-size: 14.5px; display: block; }
-    .int span { font-size: 12.5px; color: var(--muted-2); }
-
-    /* Closing */
-    .closing {
-      text-align: center; border-radius: var(--radius-lg); padding: 62px 28px; position: relative; overflow: hidden;
-      background: linear-gradient(150deg, rgba(45,212,191,0.12), rgba(245,158,11,0.08));
-      border: 1px solid var(--line-strong);
-    }
-    .closing h2 { font-size: clamp(26px, 4vw, 42px); max-width: 820px; margin: 0 auto 16px; }
-    .closing .lead { margin: 0 auto; }
-
-    footer { padding: 40px 0 60px; border-top: 1px solid var(--line); color: var(--muted-2); font-size: 13px; }
-    .foot-inner { display: flex; flex-wrap: wrap; gap: 14px; justify-content: space-between; align-items: center; }
-    .demo-note { font-size: 12px; color: var(--muted-2); text-align: center; margin-top: 20px; }
-
-    /* ─────────── Presentation Mode ─────────── */
-    #pm-ui { display: none; }
-    body.presenting { overflow-y: scroll; scroll-snap-type: y mandatory; scroll-behavior: smooth; }
-    body.presenting header.nav { display: none; }
-    body.presenting #progress { display: none; }
-    body.presenting section {
-      min-height: 100vh; display: flex; flex-direction: column; justify-content: center;
-      scroll-snap-align: start; padding: 84px 0 72px;
-    }
-    body.presenting footer { scroll-snap-align: start; }
-    body.presenting .reveal { opacity: 1 !important; transform: none !important; }
-    body.presenting #pm-ui { display: block; }
-    /* Presentation control bar */
-    #pm-bar {
-      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 70;
-      display: flex; align-items: center; gap: 12px; padding: 9px 14px; border-radius: 999px;
-      background: rgba(10,16,30,0.92); border: 1px solid var(--line-strong); box-shadow: var(--shadow);
-      backdrop-filter: blur(10px);
-    }
-    #pm-bar button {
-      width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line-strong); cursor: pointer;
-      background: rgba(255,255,255,0.05); color: var(--ink); font-size: 15px; display: grid; place-items: center;
-    }
-    #pm-bar button:hover { border-color: var(--teal); color: var(--teal); }
-    #pm-count { font-size: 13px; font-weight: 700; color: var(--muted); min-width: 52px; text-align: center; }
-    #pm-exit { font-size: 12px; font-weight: 700; color: var(--muted); cursor: pointer; padding-left: 6px; border-left: 1px solid var(--line); }
-    #pm-exit:hover { color: var(--rose); }
-    #pm-dots { position: fixed; right: 20px; top: 50%; transform: translateY(-50%); z-index: 70; display: flex; flex-direction: column; gap: 10px; }
-    #pm-dots i { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.22); transition: background .2s, transform .2s; cursor: pointer; }
-    #pm-dots i.active { background: var(--teal); transform: scale(1.4); }
-    @media (max-width: 620px) { #pm-dots { display: none; } }
-  </style>
+/* ── responsive ────────────────────────────────────────── */
+@media (max-width:1000px){
+  .tgwrap{left:auto;right:var(--pad);top:auto;bottom:clamp(122px,20svh,190px);width:auto;max-width:min(420px,66vw);transform:none}
+  .caps{bottom:clamp(24px,5svh,48px);min-height:56px}
+  .fine{display:none}
+  .acttitle{top:clamp(102px,15svh,150px)}
+  .dist{left:auto;right:var(--pad);top:clamp(96px,15svh,150px);text-align:right}
+  .dist .n{font-size:clamp(64px,17vw,120px)}
+  .dist .u{font-size:11px;max-width:15ch;margin-left:auto}
+  .cchead{max-width:none;right:var(--pad)}
+  .ccpanel{display:none!important}
+  .cclist{display:block;position:absolute;left:var(--pad);right:var(--pad);bottom:clamp(26px,5svh,58px);z-index:6;
+    padding:14px 16px;border-radius:16px;background:rgba(12,17,26,.82);backdrop-filter:blur(18px);
+    border:1px solid rgba(255,255,255,.08)}
+  .cclist div{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+  .cclist div:last-child{border-bottom:0}
+  .cclist i{width:7px;height:7px;border-radius:50%;flex:none}
+  .cclist b{font-weight:600}
+  .cclist span{margin-left:auto;color:var(--w3);font-size:12.5px}
+  .cckey{display:none}
+  .frag{font-size:12.5px;padding:10px 14px}
+}
+@media (max-width:640px){
+  .hero h1{max-width:none}
+  .heroline{gap:18px}
+  .trip{font-size:12.5px}
+  .cap span{font-size:16px}
+  .cap small{font-size:12px}
+  .tgwrap{max-width:none}
+  .msg p{font-size:13.5px}
+  .top .ghost{display:none}
+  .frag{font-size:11px;padding:8px 11px;border-radius:10px}
+  .field{height:min(430px,52svh)}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
+    transition-duration:.001ms!important}
+}
+</style>
 </head>
 <body>
-  <div id="progress"></div>
 
-  <!-- ─── NAV ─── -->
-  <header class="nav">
-    <div class="wrap nav-inner">
-      <div class="brand">
-        <span class="logo">🚛</span>
-        <span>Fleet Ops<small>Trucking Operations Platform</small></span>
-      </div>
-      <nav class="nav-links">
-        <a href="#overview">Overview</a>
-        <a href="#demos">Product Demos</a>
-        <a href="#day">A Day in the Operation</a>
-        <a href="#benefits">Owner Benefits</a>
-        <a href="#integrations">Integrations</a>
-      </nav>
-      <div class="nav-actions">
-        <button class="present-btn" id="startPresent" type="button">▶ Presentation Mode</button>
-        <a class="nav-cta" href="#closing">Book a demo</a>
-      </div>
+<header class="top" id="top">
+  <div class="mark">
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M3 17V8.5a1 1 0 0 1 1-1h9.2a1 1 0 0 1 1 1V17" stroke="#F2A24C" stroke-width="1.7"/>
+      <path d="M14.2 11h3.1a1 1 0 0 1 .83.44L20.6 15a1 1 0 0 1 .17.56V17" stroke="#F2A24C" stroke-width="1.7"/>
+      <circle cx="7.4" cy="17.4" r="2.1" stroke="#fff" stroke-width="1.7"/>
+      <circle cx="17.3" cy="17.4" r="2.1" stroke="#fff" stroke-width="1.7"/>
+    </svg>
+    <span>Wenze Operations Hub</span>
+  </div>
+  <nav>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="ru" aria-pressed="false">RU</button>
     </div>
-  </header>
+    <button type="button" class="ghost" id="presBtn" data-ru="Режим показа">Presentation</button>
+  </nav>
+</header>
 
-  <!-- ─── 1. HERO ─── -->
-  <section class="hero" id="hero">
-    <div class="wrap hero-grid">
-      <div class="reveal in">
-        <span class="eyebrow">One connected operations platform</span>
-        <h1>Run your trucking operation from <span class="grad">one connected platform</span>.</h1>
-        <p class="lead">See trucks, trailers, loads, driver communication, safety activity, recruiting performance and automated workflows in one place — instead of scattered across a dozen tools.</p>
-        <div class="hero-badges">
-          <span class="hbadge"><span class="dot"></span>Live fleet visibility</span>
-          <span class="hbadge"><span class="dot"></span>Driver communication</span>
-          <span class="hbadge"><span class="dot"></span>Trailer accountability</span>
-          <span class="hbadge"><span class="dot"></span>Dispatch automation</span>
-          <span class="hbadge"><span class="dot"></span>Recruiting performance</span>
-          <span class="hbadge"><span class="dot"></span>Management oversight</span>
-        </div>
-        <div class="btn-row">
-          <a class="btn primary" href="#demos">See how it works ↓</a>
-          <a class="btn ghost" href="#overview">Explore the platform</a>
-        </div>
-      </div>
-
-      <div class="reveal in d2">
-        <div class="console">
-          <div class="console-top">
-            <i style="background:#fb7185"></i><i style="background:#f59e0b"></i><i style="background:#34d399"></i>
-            <span class="l">operations command center · demo view</span>
-          </div>
-          <div class="mapbox">
-            <svg viewBox="0 0 400 230" preserveAspectRatio="none" aria-hidden="true">
-              <path d="M20 150 Q140 90 220 120 T392 70" fill="none" stroke="rgba(45,212,191,0.45)" stroke-width="2" stroke-dasharray="5 6"/>
-              <path d="M15 190 Q120 165 210 175 T388 160" fill="none" stroke="rgba(245,158,11,0.4)" stroke-width="2" stroke-dasharray="5 6"/>
-            </svg>
-            <div class="marker m-truck m-move" style="left:24%; top:62%"></div>
-            <div class="marker m-truck" style="left:70%; top:38%"></div>
-            <div class="marker m-trailer" style="left:44%; top:70%">L</div>
-            <div class="marker m-trailer dropped" style="left:60%; top:52%">E</div>
-            <div class="map-chip" style="right:12px; top:12px;">Load LD&#8209;5821 <span class="sub">· Dallas → Memphis · ETA 3:30 PM</span></div>
-          </div>
-          <div class="console-stats">
-            <div class="cstat"><b>Trucks</b><span>live on the map</span></div>
-            <div class="cstat"><b>Trailers</b><span>loaded / empty</span></div>
-            <div class="cstat"><b>Exceptions</b><span>surfaced early</span></div>
-          </div>
-          <div class="float-card fc1"><span class="em">💬</span> Driver message · auto&#8209;translated</div>
-          <div class="float-card fc2"><span class="em">⚠️</span> Delay flagged before the appointment</div>
-        </div>
-      </div>
+<!-- ══════════ HERO ══════════ -->
+<section class="hero" id="s-hero">
+  <div class="stage"><svg id="mapHero" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+    <div class="vig"></div><div class="grain"></div></div>
+  <div class="inner"><div class="wrap">
+    <h1 class="serif" data-ru="Каждая миля<em> под наблюдением</em>.">Every mile,<em> accounted for</em>.</h1>
+    <div class="heroline">
+      <p data-ru="Контроль маршрутов и координация заправок для автопарков, которые не могут позволить себе догадки.">Route control and fuel coordination for fleets that cannot afford to guess.</p>
+      <div class="trip"><b>Chattanooga, TN</b><i></i><b>Louisville, KY</b></div>
     </div>
-    <p class="demo-note wrap">All names, numbers and locations on this page are fictional demo examples — not live operational data.</p>
-  </section>
+  </div></div>
+  <div class="cue"><i></i><span data-ru="Прокрутите">Scroll to drive</span></div>
+</section>
 
-  <!-- ─── 2. THE OPERATIONAL PROBLEM ─── -->
-  <section id="problem">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="eyebrow amber">The operational problem</span>
-        <h2 class="h-sec">Your operation runs across too many disconnected places</h2>
-        <p class="lead">Telegram chats, the TMS, ELD/GPS, recruiting tools, phone systems and spreadsheets each hold one piece of the picture. Staff spend the day checking systems and re-typing information between them.</p>
+<!-- ══════════ ACT I — ROUTE ══════════ -->
+<section class="act" id="s-route">
+  <div class="pin">
+    <div class="stage"><svg id="mapRoute" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+      <div class="vig"></div><div class="grain"></div></div>
+    <div class="actnum" id="rNum" data-ru="Акт I — Контроль маршрута">Act I — Route Control</div>
+    <h2 class="acttitle serif" id="rTitle" data-ru="Маршрут, который<em> следит за собой</em>.">A route that<em> watches itself</em>.</h2>
+
+    <div class="tgwrap"><div class="tg" id="rTg">
+      <div class="tgh"><div class="av">4417</div><div><b>Unit # 4417</b><small data-ru="Группа водителя · 3 участника">Driver group · 3 members</small></div></div>
+      <div class="msg">
+        <div class="from" data-ru="Диспетчерская">Dispatch</div>
+        <p data-ru="🚚 Маршрут назначен">🚚 Route assigned</p>
+        <div class="meta"><b>Chattanooga, TN → Louisville, KY</b><br><span data-ru="1 остановка · Открыть в Google Maps">1 stop · Open in Google Maps</span></div>
       </div>
-      <div class="ba-grid">
-        <div class="ba before reveal">
-          <h3>🕳️ Before — scattered</h3>
-          <ul>
-            <li>Information spread across many separate tools</li>
-            <li>Staff manually checking systems all day</li>
-            <li>Delayed, one-off driver communication</li>
-            <li>Unclear who has which trailer, and where</li>
-            <li>Repetitive administrative tasks by hand</li>
-            <li>Weak visibility for management</li>
-          </ul>
-        </div>
-        <div class="ba after reveal d1">
-          <h3>🎯 After — connected</h3>
-          <ul>
-            <li>One connected operational view</li>
-            <li>Updates surface automatically</li>
-            <li>Clear ownership, status and history</li>
-            <li>Trailer responsibility is always traceable</li>
-            <li>Routine work runs as automated workflows</li>
-            <li>Earlier intervention, fewer missed details</li>
-          </ul>
-        </div>
+      <div class="reply alert" id="rReply">
+        <div class="from">Route Control</div>
+        <p style="margin-top:6px;font-size:13.5px;line-height:1.5" data-ru="🧭 Похоже, вы отклонились от назначенного маршрута (примерно 1.4 мили). Вернитесь на маршрут или свяжитесь с диспетчером.">🧭 You appear to be off the assigned route (about 1.4 mi off). Please return to the planned route, or contact dispatch.</p>
       </div>
+    </div></div>
+
+    <div class="caps" id="rCaps">
+      <div class="cap gold" data-at="0"><i></i><div><span data-ru="Маршрут назначен">Route assigned</span><small data-ru="Ссылка Google Maps разобрана в геометрию маршрута">Google Maps link parsed into route geometry</small></div></div>
+      <div class="cap" data-at="1"><i></i><div><span data-ru="Доставлено водителю">Delivered to the driver</span><small data-ru="Отслеживание начинается после доставки сообщения">Tracking begins once the message lands</small></div></div>
+      <div class="cap" data-at="2"><i></i><div><span data-ru="На маршруте · 0.1 мили от линии">On route · 0.1 mi off the line</span><small data-ru="Живой GPS от Samsara">Live GPS from Samsara</small></div></div>
+      <div class="cap warn" data-at="3"><i></i><div><span data-ru="Обнаружено отклонение · 1.4 мили">Deviation detected · 1.4 mi</span><small data-ru="Три проверки подряд вне маршрута">Three consecutive checks off route</small></div></div>
+      <div class="cap warn" data-at="4"><i></i><div><span data-ru="Водитель предупреждён в своей группе">Driver warned in their own group</span><small data-ru="Затем пауза 30 минут">A 30-minute cooldown follows</small></div></div>
+      <div class="cap" data-at="5"><i></i><div><span data-ru="Вернулся на маршрут">Back on the planned route</span><small data-ru="Каждая проверка записана для диспетчерской">Every check logged for dispatch</small></div></div>
+      <div class="cap gold" data-at="6"><i></i><div><span data-ru="В пределах 50 миль — маршрут закрывается сам">Within 50 mi — the route closes itself</span><small data-ru="Без сообщения, без ручного закрытия">No message, no manual closing</small></div></div>
     </div>
-  </section>
+    <div class="fine" id="rFine" data-ru="Счётчик начинается после 250 метров от линии. Стоящий грузовик не засчитывается. GPS старше 15 минут — тоже.">A counter starts past 250 m off the line. A parked truck never counts. Neither does GPS older than 15 minutes.</div>
+  </div>
+</section>
 
-  <!-- ─── 3. PLATFORM OVERVIEW ─── -->
-  <section id="overview">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="eyebrow">Platform overview</span>
-        <h2 class="h-sec">One connected platform for dispatch, drivers, trailers, safety, recruiting and management</h2>
-        <p class="lead">Drivers keep using Telegram in their own language. Your office teams work from one web platform. The system keeps both sides in sync and does the repetitive work automatically.</p>
+<!-- ══════════ ACT II — FUEL ══════════ -->
+<section class="act" id="s-fuel">
+  <div class="pin">
+    <div class="stage"><svg id="mapFuel" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+      <div class="vig"></div><div class="grain"></div></div>
+    <div class="actnum" id="fNum" data-ru="Акт II — Мониторинг топлива">Act II — Fuel Monitoring</div>
+    <h2 class="acttitle serif" id="fTitle" data-ru="Тот же рейс.<em> Следующее решение.</em>">Same trip.<em> Next decision.</em></h2>
+
+    <div class="dist" id="fDist"><div class="n serif tnum" id="fNum2">187</div><div class="u" data-ru="миль до назначенной заправки">miles to the assigned stop</div></div>
+
+    <div class="tgwrap"><div class="tg" id="fTg">
+      <div class="tgh"><div class="av" style="background:linear-gradient(140deg,#E09A45,#B87424)">⛽</div>
+        <div><b data-ru="Топливный отдел">Fuel Department</b><small data-ru="в группе юнита # 4417">in Unit # 4417 group</small></div></div>
+      <div class="msg">
+        <div class="from">FUEL MONITORING DEPARTMENT 👍</div>
+        <p><b>Midway Travel Center</b></p>
+        <div class="meta">1420 Corridor Rd, Elizabethtown, KY 42701<br><span data-ru="Пожалуйста, заправьтесь на этой станции.">Please fuel up at this station.</span></div>
       </div>
-      <div class="grid g3">
-        <div class="card reveal">
-          <div class="ic">🗺️</div>
-          <h3>See the whole fleet</h3>
-          <p>Trucks, trailers, loads and exceptions on one operational map — plan versus reality at a glance.</p>
-        </div>
-        <div class="card reveal d1">
-          <div class="ic">💬</div>
-          <h3>Connect drivers &amp; office</h3>
-          <p>Two-way driver messaging with automatic translation, keeping the road and the back office together.</p>
-        </div>
-        <div class="card reveal d2">
-          <div class="ic">🛻</div>
-          <h3>Track every trailer</h3>
-          <p>Know who has each trailer, whether it is loaded or dropped, and what condition was reported.</p>
-        </div>
-        <div class="card reveal">
-          <div class="ic">🦺</div>
-          <h3>Act on safety faster</h3>
-          <p>Safety events reach the right people quickly, with the video and details attached.</p>
-        </div>
-        <div class="card reveal d1">
-          <div class="ic">📞</div>
-          <h3>Measure recruiting</h3>
-          <p>See real recruiter call time and follow-up so leads are answered and effort is visible.</p>
-        </div>
-        <div class="card reveal d2">
-          <div class="ic">⚙️</div>
-          <h3>Automate the routine</h3>
-          <p>Reminders, approvals, updates and reports run on their own so staff focus on exceptions.</p>
-        </div>
+      <div class="reply" id="fReply">
+        <div class="from">Wenze</div>
+        <p style="margin-top:6px;font-size:13.5px;line-height:1.5">⛽ <span style="color:#6FB2E8">@m_reyes</span> <span data-ru="— вы примерно в 42 милях от назначенной заправки. Пожалуйста, заправьтесь там, как указано.">— you're about 42 miles from your assigned fuel stop. Please fuel up there as instructed.</span></p>
       </div>
+    </div></div>
+
+    <div class="caps" id="fCaps">
+      <div class="cap gold" data-at="0"><i></i><div><span data-ru="Топливный отдел назначает станцию">The Fuel Department assigns a stop</span><small data-ru="Заголовок сообщения — единственный триггер">The message header is the only trigger</small></div></div>
+      <div class="cap" data-at="1"><i></i><div><span data-ru="Адрес геокодирован">Address geocoded</span><small data-ru="👍 подтверждает, что станция под наблюдением">A 👍 confirms the stop is being watched</small></div></div>
+      <div class="cap" data-at="2"><i></i><div><span data-ru="Радиус 50 миль активен">50-mile radius armed</span><small data-ru="Проверки планируются по расчётному подходу">Checks are scheduled around the estimated approach</small></div></div>
+      <div class="cap warn" data-at="3"><i></i><div><span data-ru="Грузовик входит в радиус">The truck enters the radius</span><small data-ru="Напоминание отвечает на исходное сообщение">The reminder replies to the original message</small></div></div>
+      <div class="cap gold" data-at="4"><i></i><div><span data-ru="Никто никого не искал">Nobody had to chase anyone</span><small data-ru="Водитель предупреждён вовремя, руководство не вмешивалось">The driver was reminded in time; management never intervened</small></div></div>
     </div>
-  </section>
+    <div class="fine" id="fFine" data-ru="Расстояние по прямой от живого GPS. Платформа просыпается незадолго до границы, затем проверяет чаще по мере приближения.">Straight-line distance from live GPS. The platform wakes shortly before the boundary, then checks tightly as it closes in.</div>
+  </div>
+</section>
 
-  <!-- ─── 4. INTERACTIVE PRODUCT DEMONSTRATIONS ─── -->
-  <section id="demos">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="eyebrow amber">See it in action</span>
-        <h2 class="h-sec">Product demonstrations</h2>
-        <p class="lead">Pick an area to see how it actually works, what happens, and why it matters to the owner. These are sanitized demo views modeled on the real platform.</p>
-      </div>
-
-      <div class="demo-tabs reveal" role="tablist">
-        <button class="demo-tab active" data-demo="fleet" type="button">🗺️ Dispatch &amp; Fleet</button>
-        <button class="demo-tab" data-demo="comms" type="button">💬 Driver Communication</button>
-        <button class="demo-tab" data-demo="trailer" type="button">🛻 Trailer Tracking</button>
-        <button class="demo-tab" data-demo="safety" type="button">🦺 Safety &amp; Monitoring</button>
-        <button class="demo-tab" data-demo="recruit" type="button">📞 Recruiting &amp; KPIs</button>
-        <button class="demo-tab" data-demo="auto" type="button">⚙️ Workflow Automation</button>
-      </div>
-
-      <!-- A. Dispatch & Fleet -->
-      <div class="demo-panel active" data-panel="fleet">
-        <div class="demo-grid">
-          <div class="mock reveal">
-            <div class="mock-bar"><i style="background:#38bdf8"></i><i style="background:#a78bfa"></i><i style="background:#2dd4bf"></i><span class="t">Dispatch Map</span></div>
-            <div class="mock-body">
-              <div class="chips">
-                <span class="chip on">All assets</span>
-                <span class="chip">Trucks only</span>
-                <span class="chip">Trailers only</span>
-                <span class="chip on violet">Loaded</span>
-                <span class="chip on slate">Dropped / Empty</span>
-                <span class="chip">With driver</span>
-              </div>
-              <div class="mapbox" style="height:250px;">
-                <svg viewBox="0 0 400 250" preserveAspectRatio="none" aria-hidden="true">
-                  <path d="M30 180 Q150 120 230 140 T388 90" fill="none" stroke="rgba(45,212,191,0.4)" stroke-width="2" stroke-dasharray="5 6"/>
-                </svg>
-                <div class="marker m-truck m-move" style="left:24%; top:62%"></div>
-                <div class="marker m-truck late" style="left:66%; top:44%"></div>
-                <div class="marker m-trailer" style="left:40%; top:72%">L</div>
-                <div class="marker m-trailer dropped" style="left:56%; top:34%">E</div>
-                <div class="marker m-trailer" style="left:80%; top:60%">L</div>
-                <div class="map-chip" style="left:10px; bottom:10px;">Truck 214 · Michael R. <span class="sub">· ETA 3:30 PM · on time</span></div>
-                <div class="map-chip" style="right:10px; top:10px; color:var(--amber);">⚠ Truck 388 <span class="sub">· running 40 min late</span></div>
-              </div>
-            </div>
-          </div>
-          <div class="demo-copy reveal d1">
-            <h3>Dispatch &amp; fleet visibility</h3>
-            <p>Dispatch sees trucks, trailers, loads and exceptions in one operational view. Filter to trucks only or trailers only, and see loaded, empty, dropped and with-driver trailers at a glance.</p>
-            <p>Delays are highlighted automatically — a late truck is flagged before the appointment is missed.</p>
-            <span class="benefit-line">💡 Faster decisions and fewer surprises</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- B. Driver Communication -->
-      <div class="demo-panel" data-panel="comms">
-        <div class="demo-grid">
-          <div class="reveal">
-            <div class="phone">
-              <div class="notch"></div>
-              <div class="chat" data-chat>
-                <div class="bubble them" data-b>Привет! Когда я смогу взять home time?<small>Driver · Russian</small></div>
-                <div class="bubble them" data-b><span class="xl">🌐 "Hi! When can I take home time?"</span><small>Auto-translated for the office</small></div>
-                <div class="bubble me" data-b>Home time approved for Fri–Mon. Confirmation sent ✅<small>Office · from the dashboard</small></div>
-                <div class="bubble them" data-b>/status<small>Driver command</small></div>
-                <div class="bubble me" data-b>Load LD-5821 · Dallas → Memphis · ETA 3:30 PM 🚚<small>Automatic reply</small></div>
-                <div class="bubble me" data-b>📢 Reminder: submit your paperwork by Friday.<small>Scheduled message to the group</small></div>
-              </div>
-            </div>
-          </div>
-          <div class="demo-copy reveal d1">
-            <h3>Driver communication</h3>
-            <p>Drivers keep using Telegram in English, Russian or Uzbek while the office manages every conversation from one dashboard. Messages are auto-translated both directions.</p>
-            <p>Home-time requests, status lookups, broadcasts and scheduled reminders all flow through the same channel drivers already use.</p>
-            <span class="benefit-line">💡 Faster communication, no new app for drivers</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- C. Trailer Tracking (Beta) -->
-      <div class="demo-panel" data-panel="trailer">
-        <div class="demo-grid">
-          <div class="mock reveal">
-            <div class="mock-bar"><i style="background:#38bdf8"></i><i style="background:#a78bfa"></i><i style="background:#2dd4bf"></i><span class="t">Trailer Tracking</span></div>
-            <div class="mock-body">
-              <div class="row">
-                <div class="lft"><span style="font-size:18px;">🛻</span><div><div class="unit">TRL-1084</div><div class="meta">Driver: Michael R. · Truck 214</div></div></div>
-                <span class="pill teal" data-trailer-status>With driver · Loaded</span>
-              </div>
-              <div class="row">
-                <div class="lft"><span style="font-size:18px;">🛻</span><div><div class="unit">TRL-2260</div><div class="meta">Last seen: Memphis, TN yard</div></div></div>
-                <span class="pill slate">Dropped · Empty</span>
-              </div>
-              <div style="margin:14px 0 8px; font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted-2);">TRL-1084 · event history</div>
-              <div class="tl">
-                <div class="ev"><h5>Condition reported — good</h5><p>Photo &amp; note reviewed and approved · today 2:10 PM</p></div>
-                <div class="ev"><h5>Status changed → Dropped · Empty</h5><p>Verified before the status was updated · yesterday</p></div>
-                <div class="ev"><h5>Picked up by Michael R.</h5><p>Trailer assigned to Truck 214 · Mon</p></div>
-              </div>
-            </div>
-          </div>
-          <div class="demo-copy reveal d1">
-            <h3>Trailer tracking <span class="beta-badge">Beta</span></h3>
-            <p>Know where every trailer was left, who had it, and what condition was reported. Each trailer shows its current driver, loaded or dropped state, latest location and a full event history.</p>
-            <p>Status changes and condition reports go through a review and approval step, so the record stays trustworthy.</p>
-            <span class="benefit-line">💡 Clear trailer responsibility and history</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- D. Safety & Monitoring -->
-      <div class="demo-panel" data-panel="safety">
-        <div class="demo-grid">
-          <div class="mock reveal">
-            <div class="mock-bar"><i style="background:#fb7185"></i><i style="background:#f59e0b"></i><i style="background:#34d399"></i><span class="t">Safety &amp; Monitoring</span></div>
-            <div class="mock-body">
-              <div class="row" style="border-color:rgba(245,158,11,0.35); background:rgba(245,158,11,0.06);">
-                <div class="lft"><span style="font-size:18px;">🎥</span><div><div class="unit">Speeding event · Truck 214</div><div class="meta">Dashcam video delivered to the driver group</div></div></div>
-                <span class="pill amber">Review</span>
-              </div>
-              <div class="row" style="border-color:rgba(251,113,133,0.35); background:rgba(251,113,133,0.06);">
-                <div class="lft"><span style="font-size:18px;">⛽</span><div><div class="unit">Fuel stop check · Truck 388</div><div class="meta">Fuel activity far from the truck's GPS location</div></div></div>
-                <span class="pill" style="color:#fff; background:var(--rose);">Flagged</span>
-              </div>
-              <div style="margin:14px 0 8px; font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted-2);">Recent safety activity</div>
-              <div class="tl">
-                <div class="ev"><h5>Speeding event reviewed</h5><p>Video shared with driver &amp; safety · resolved</p></div>
-                <div class="ev"><h5>Fuel-location mismatch cleared</h5><p>Confirmed legitimate after check · logged</p></div>
-              </div>
-            </div>
-          </div>
-          <div class="demo-copy reveal d1">
-            <h3>Safety &amp; monitoring</h3>
-            <p>Safety events reach the right people quickly, with the evidence attached. Speeding-event dashcam video is delivered straight to the driver group so the team can follow up right away.</p>
-            <p>Fuel-stop activity is checked against the truck's GPS location, flagging swipes that don't line up.</p>
-            <span class="benefit-line">💡 Faster safety response and better accountability</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- E. Recruiting & KPIs -->
-      <div class="demo-panel" data-panel="recruit">
-        <div class="demo-grid">
-          <div class="mock reveal">
-            <div class="mock-bar"><i style="background:#38bdf8"></i><i style="background:#a78bfa"></i><i style="background:#2dd4bf"></i><span class="t">Recruiter KPIs · today</span></div>
-            <div class="mock-body">
-              <div class="ring-wrap">
-                <div class="ring" data-ring>
-                  <svg width="116" height="116"><circle class="rc" cx="58" cy="58" r="52"></circle><circle class="rp" cx="58" cy="58" r="52"></circle></svg>
-                  <div class="rl"><b>1h 54m</b><span>of 2h 30m talk</span></div>
-                </div>
-                <div style="flex:1;">
-                  <div class="bar-wrap" data-bar><div class="lbl"><span>Outbound calls</span><span>114 / 150</span></div><div class="bar"><i style="--w:76%"></i></div></div>
-                  <div class="bar-wrap" data-bar><div class="lbl"><span>Real conversations</span><span>27 / 35</span></div><div class="bar"><i style="--w:77%"></i></div></div>
-                  <p style="font-size:12px; color:var(--muted-2); margin:6px 0 0;">Main KPI: real call duration — short calls don't count toward it.</p>
-                </div>
-              </div>
-              <div style="margin:6px 0 8px; font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted-2);">Leaderboard · today</div>
-              <div class="row"><div class="lft"><span class="pill teal">1</span><span class="unit">Sarah K.</span></div><span class="meta">2h 18m · 138 calls</span></div>
-              <div class="row"><div class="lft"><span class="pill violet">2</span><span class="unit">Daniel M.</span></div><span class="meta">1h 54m · 114 calls</span></div>
-              <div class="row"><div class="lft"><span class="pill slate">3</span><span class="unit">Alex T.</span></div><span class="meta">1h 32m · 96 calls</span></div>
-            </div>
-          </div>
-          <div class="demo-copy reveal d1">
-            <h3>Recruiting &amp; KPI visibility</h3>
-            <p>Track recruiter activity and real call time. Management can see whether recruiters are actually spending enough time speaking with candidates — not just dialing.</p>
-            <p>New leads from Facebook and Indeed get an instant follow-up, and a daily leaderboard keeps the effort visible. History is viewable by date.</p>
-            <span class="benefit-line">💡 Better accountability and faster lead follow-up</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- F. Workflow Automation -->
-      <div class="demo-panel" data-panel="auto">
-        <div class="demo-grid">
-          <div class="mock reveal">
-            <div class="mock-bar"><i style="background:#38bdf8"></i><i style="background:#a78bfa"></i><i style="background:#2dd4bf"></i><span class="t">Automated workflows</span></div>
-            <div class="mock-body">
-              <div class="row"><div class="lft"><span style="font-size:17px;">🏠</span><div><div class="unit">Home-time request</div><div class="meta">Michael R. · Fri–Mon</div></div></div><span class="pill green" data-approve>Approved</span></div>
-              <div class="row"><div class="lft"><span style="font-size:17px;">📈</span><div><div class="unit">Driver raise request</div><div class="meta">Verified · awaiting manager</div></div></div><span class="pill amber">Pending</span></div>
-              <div class="row"><div class="lft"><span style="font-size:17px;">🏁</span><div><div class="unit">Mileage bonus</div><div class="meta">Milestone reached · card sent</div></div></div><span class="pill teal">Auto</span></div>
-              <div class="row"><div class="lft"><span style="font-size:17px;">📅</span><div><div class="unit">Scheduled message</div><div class="meta">Weekly safety reminder</div></div></div><span class="pill violet">Recurring</span></div>
-              <div class="row"><div class="lft"><span style="font-size:17px;">🎂</span><div><div class="unit">Birthday greeting</div><div class="meta">Sent automatically from the roster</div></div></div><span class="pill teal">Auto</span></div>
-            </div>
-          </div>
-          <div class="demo-copy reveal d1">
-            <h3>Workflow automation</h3>
-            <p>Routine work continues automatically while staff focus on exceptions. Scheduled messages, mileage-bonus milestones, home-time and raise approvals and birthday greetings run on their own — with a clear trail.</p>
-            <span class="benefit-line">💡 Less manual work and fewer forgotten tasks</span>
-          </div>
-        </div>
-      </div>
-
-      <p class="demo-note">Trailer Tracking is currently in Beta. All figures shown are illustrative demo data.</p>
+<!-- ══════════ COMMAND CENTER ══════════ -->
+<section class="act" id="s-cc">
+  <div class="pin">
+    <div class="stage"><svg id="mapCC" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+      <div class="vig"></div><div class="grain"></div></div>
+    <div class="cchead">
+      <h2 class="serif" data-ru="Один грузовик — это история. Автопарк — это операция.">One truck is a story. A fleet is an operation.</h2>
+      <p data-ru="Наведите на любой грузовик. Данные вымышленные.">Hover any truck. Data shown is fictional.</p>
     </div>
-  </section>
-
-  <!-- ─── 5. A DAY IN THE OPERATION ─── -->
-  <section id="day">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="eyebrow">A day in the operation</span>
-        <h2 class="h-sec">How one load connects every department</h2>
-        <p class="lead">The same information flows from dispatch to the driver, to safety, to management — without anyone re-typing it.</p>
-      </div>
-      <div class="day-flow">
-        <div class="day-step reveal"><div class="n">1</div><h4>Load arrives</h4><p>A new load and its stops appear from the TMS.</p></div>
-        <div class="day-step reveal d1"><div class="n">2</div><h4>Dispatch sees it</h4><p>The assigned driver and live truck location show on the map.</p></div>
-        <div class="day-step reveal d2"><div class="n">3</div><h4>Driver is updated</h4><p>The driver gets the route and details in Telegram.</p></div>
-        <div class="day-step reveal d3"><div class="n">4</div><h4>ETA is watched</h4><p>The system flags dispatch if the truck starts running late.</p></div>
-        <div class="day-step reveal"><div class="n">5</div><h4>Trailer updates</h4><p>A pickup or drop updates the trailer's status and history.</p></div>
-        <div class="day-step reveal d1"><div class="n">6</div><h4>Exceptions surface</h4><p>Safety or fuel issues are raised automatically.</p></div>
-        <div class="day-step reveal d2"><div class="n">7</div><h4>Management sees results</h4><p>Leadership reviews the outcome through dashboards.</p></div>
-        <div class="day-step reveal d3"><div class="n">8</div><h4>Routine runs itself</h4><p>Reminders, approvals and reports happen automatically.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─── 6. OWNER BENEFITS ─── -->
-  <section id="benefits">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="eyebrow amber">What the owner gets</span>
-        <h2 class="h-sec">Business value for your company</h2>
-        <p class="lead">Less scattered work, more visibility, and a clear record of who did what.</p>
-      </div>
-      <div class="grid g3">
-        <div class="card value-card reveal"><div class="k">🔎 Better operational visibility</div><p>See what is happening across dispatch, drivers, trailers, safety and recruiting.</p></div>
-        <div class="card value-card reveal d1"><div class="k">⚡ Faster decisions</div><p>Important changes and exceptions appear before they become bigger problems.</p></div>
-        <div class="card value-card reveal d2"><div class="k">⚙️ Less manual work</div><p>Automated updates, reminders, approvals and reports reduce repetitive work.</p></div>
-        <div class="card value-card reveal"><div class="k">🧾 Clear accountability</div><p>Know who handled a trailer, who reported a condition, and who approved a change.</p></div>
-        <div class="card value-card reveal d1"><div class="k">💬 Better driver communication</div><p>Drivers use Telegram in their preferred language while office teams work from the dashboard.</p></div>
-        <div class="card value-card reveal d2"><div class="k">📊 Measurable team performance</div><p>Review recruiter KPIs, communication activity, workflows and operational history.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─── 7. INTEGRATIONS ─── -->
-  <section id="integrations">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <span class="eyebrow">Works with your tools</span>
-        <h2 class="h-sec">Works with the systems your company already uses</h2>
-        <p class="lead">The platform securely connects your existing operational systems into one place — no rip-and-replace.</p>
-      </div>
-      <div class="int-grid">
-        <div class="int reveal"><span class="ig">✈️</span><div><b>Telegram</b><span>Driver communication</span></div></div>
-        <div class="int reveal d1"><span class="ig">📦</span><div><b>Datatruck</b><span>Load and stop information</span></div></div>
-        <div class="int reveal d2"><span class="ig">🛰️</span><div><b>Samsara</b><span>Truck location &amp; safety events</span></div></div>
-        <div class="int reveal"><span class="ig">📞</span><div><b>RingCentral</b><span>Recruiting calls &amp; KPIs</span></div></div>
-        <div class="int reveal d1"><span class="ig">🗂️</span><div><b>Bitrix24</b><span>Lead &amp; CRM workflow</span></div></div>
-        <div class="int reveal d2"><span class="ig">📣</span><div><b>Meta / Facebook</b><span>Recruiting leads</span></div></div>
-        <div class="int reveal"><span class="ig">📄</span><div><b>Indeed</b><span>Recruiting leads</span></div></div>
-        <div class="int reveal d1"><span class="ig">🧭</span><div><b>Factor &amp; Leader ELD</b><span>Truck location data</span></div></div>
-        <div class="int reveal d2"><span class="ig">🗺️</span><div><b>Google Maps</b><span>Routing &amp; locations</span></div></div>
-      </div>
-      <p class="demo-note">Securely connects your existing operational systems into one platform. No credentials or account details are shown here.</p>
-    </div>
-  </section>
-
-  <!-- ─── 8. CLOSING ─── -->
-  <section id="closing" style="padding-bottom:70px;">
-    <div class="wrap">
-      <div class="closing reveal">
-        <span class="eyebrow">One connected platform</span>
-        <h2 style="margin-top:16px;">One connected operations platform for dispatch, drivers, trailers, safety, recruiting and management.</h2>
-        <p class="lead">See it running on your own operation — a short live walkthrough is the fastest way to understand the fit.</p>
-        <div class="btn-row" style="justify-content:center; margin-top:26px;">
-          <a class="btn primary" href="#demos">Revisit the demos</a>
-          <button class="btn ghost" id="startPresent2" type="button">▶ Start Presentation Mode</button>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <footer>
-    <div class="wrap foot-inner">
-      <div class="brand"><span class="logo">🚛</span><span>Fleet Ops<small>Trucking Operations Platform</small></span></div>
-      <div style="text-align:right;">
-        Product overview · for demonstration purposes.<br />
-        <span style="color:var(--muted);">All examples are fictional. No live, private or customer data is shown.</span>
-      </div>
-    </div>
-  </footer>
-
-  <!-- Presentation Mode UI -->
-  <div id="pm-ui" aria-hidden="true">
-    <div id="pm-dots"></div>
-    <div id="pm-bar">
-      <button id="pm-prev" type="button" aria-label="Previous section">‹</button>
-      <span id="pm-count">1 / 8</span>
-      <button id="pm-next" type="button" aria-label="Next section">›</button>
-      <span id="pm-exit" role="button" tabindex="0">Esc · Exit</span>
+    <div class="ccpanel" id="ccPanel" role="status"></div>
+    <div class="cclist" id="ccList"></div>
+    <div class="cckey">
+      <b><i style="background:#5BD0BC"></i><span data-ru="На маршруте">On route</span></b>
+      <b><i style="background:#F0705C"></i><span data-ru="Отклонение">Route deviation</span></b>
+      <b><i style="background:#F2A24C"></i><span data-ru="Подъезд к заправке">Fuel stop approaching</span></b>
+      <b><i style="background:#9FB4D0"></i><span data-ru="Подъезд к выгрузке">Delivery approaching</span></b>
     </div>
   </div>
+</section>
 
-  <script>
-    (function () {
-      var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+<!-- ══════════ CONVERGENCE ══════════ -->
+<section class="act conv" id="s-conv">
+  <div class="pin">
+    <div class="convhead">
+      <div class="b" id="cvA"><h2 class="serif" data-ru="Восемь систем, ни одна не разговаривает с другой.">Eight systems, none of them talking.</h2>
+        <p data-ru="Каждый ответ находится где-то ещё.">Every answer lives somewhere else.</p></div>
+      <div class="b off" id="cvB"><h2 class="serif" data-ru="Одна связанная операционная платформа.">One connected operations platform.</h2>
+        <p data-ru="Одна операционная картина.">One operational picture.</p></div>
+    </div>
+    <div class="field" id="field">
+      <svg class="thread" id="threads" viewBox="0 0 1000 560" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <div class="frame" id="frame"><b data-ru="Wenze Operations Hub">Wenze Operations Hub</b></div>
+    </div>
+  </div>
+</section>
 
-      /* Scroll progress bar */
-      var bar = document.getElementById('progress');
-      function onScroll() {
-        var h = document.documentElement;
-        var denom = (h.scrollHeight - h.clientHeight) || 1;
-        bar.style.width = ((h.scrollTop / denom) * 100) + '%';
+<!-- ══════════ CAPABILITIES ══════════ -->
+<section class="quiet" id="s-cap">
+  <div class="wrap">
+    <h2 class="serif" data-ru="Маршрут и топливо — это то, что вы видели. Вот что стоит за ними.">Route and fuel are what you watched. This is what stands behind them.</h2>
+    <p class="lede" data-ru="Одни и те же groups водителей, одни и те же интеграции, одна и та же база данных.">The same driver groups, the same integrations, the same database.</p>
+
+    <div class="caps2">
+      <div>
+        <h3 data-ru="Водители">Drivers</h3>
+        <ul>
+          <li data-ru="Связь"><span>Communication</span><small data-ru="Опросы, рассылки и запланированные сообщения на EN, RU и UZ.">Surveys, broadcasts and scheduled messages in EN, RU and UZ.</small></li>
+          <li><span data-ru="Диспетчерские команды">Dispatch commands</span><small data-ru="/load, /location, /status и /update прямо в группе водителя.">/load, /location, /status and /update inside the driver's group.</small></li>
+          <li><span data-ru="Домашнее время">Home time</span><small data-ru="Состояние дом/рейс. Два напоминания, затем передача человеку.">A home/road state machine. Two reminders, then a human.</small></li>
+          <li><span data-ru="Бонус за пробег">Mileage bonus</span><small data-ru="Мили из Datatruck. Выплату подтверждает только бухгалтерия.">Miles from Datatruck. Only accounting confirms a payout.</small></li>
+        </ul>
+      </div>
+      <div>
+        <h3 data-ru="Операции">Operations</h3>
+        <ul>
+          <li><span data-ru="Живые локации">Live locations</span><small data-ru="Карта автопарка из Samsara, Factor ELD и Leader ELD — только после входа.">A fleet map from Samsara, Factor ELD and Leader ELD — behind a login.</small></li>
+          <li><span data-ru="Документы BOL / POD">BOL / POD documents</span><small data-ru="Подбираются к нужной группе и пересылаются один раз.">Matched to the right group and forwarded once.</small></li>
+          <li><span data-ru="Трейлерный отдел">Trailer Department</span><small data-ru="Договоры, осмотры с фото, счета. База не даёт сдать трейлер дважды.">Agreements, photo inspections, invoices. No double-booking.</small></li>
+          <li><span data-ru="Отслеживание трейлеров">Trailer Tracking</span><em>Beta</em><small data-ru="Неуверенные случаи уходят в очередь на проверку, а не водителю.">Unsure cases go to a review queue, never to the driver.</small></li>
+        </ul>
+      </div>
+      <div>
+        <h3 data-ru="Рост и безопасность">Growth &amp; safety</h3>
+        <ul>
+          <li><span data-ru="Лиды и найм">Leads &amp; recruiting</span><small data-ru="Facebook и Indeed → авто-SMS с зеркалированием ответов → Bitrix24.">Facebook and Indeed → auto-SMS with reply mirroring → Bitrix24.</small></li>
+          <li><span data-ru="KPI рекрутеров">Recruiting KPIs</span><small data-ru="Журналы RingCentral становятся таблицей лидеров. Номера не публикуются.">RingCentral logs become a leaderboard. Numbers stay private.</small></li>
+          <li><span data-ru="Маршрутизация оповещений">Safety alert routing</span><small data-ru="Оповещения с видеорегистраторов попадают в нужную группу водителя.">Dashcam alerts reach the correct driver group.</small></li>
+          <li><span data-ru="Проверка дублей">Duplicate check</span><small data-ru="Каждые 15 минут. Отчёт идёт администраторам, не водителям.">Every 15 minutes. The report goes to admins, not drivers.</small></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="stack">
+      <span><b>Telegram</b></span><span><b>Datatruck</b> TMS</span><span><b>Samsara</b></span>
+      <span><b>Factor ELD</b></span><span><b>Leader ELD</b></span><span><b>Google Maps</b></span>
+      <span><b>RingCentral</b></span><span><b>Bitrix24</b></span><span><b>Meta</b></span><span><b>Indeed</b></span>
+    </div>
+    <p class="limit" data-ru="<b>Чего платформа не делает.</b> Она не сверяет топливные транзакции с GPS, не решает вопрос выплаты без человека и не создаёт трейлер из обнаружения. Каждое действие с деньгами подтверждает человек."><b>What the platform does not do.</b> It does not reconcile fuel-card transactions against GPS, it does not decide a payout without a person, and it never creates a trailer from a detection. Every money action is confirmed by a human.</p>
+  </div>
+</section>
+
+<!-- ══════════ CLOSING ══════════ -->
+<section class="end" id="s-end">
+  <div class="stage"><svg id="mapEnd" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true"></svg>
+    <div class="vig"></div><div class="grain"></div></div>
+  <div class="inner"><div class="wrap">
+    <h2 class="serif" data-ru="Ваши грузовики уже едут.<em> Пусть операция знает, что дальше.</em>">Your trucks are already moving.<em> Let the operation know what happens next.</em></h2>
+    <a class="cta" href="https://t.me/tomr_robins0n" target="_blank" rel="noopener noreferrer">
+      <span data-ru="Поговорить в Telegram">Talk to us on Telegram</span><span aria-hidden="true">→</span></a>
+    <div class="foot">
+      <span data-ru="Wenze Operations Hub · Обзор продукта">Wenze Operations Hub · Product overview</span>
+      <span data-ru="Все данные на этой странице вымышленные">All data on this page is fictional</span>
+    </div>
+  </div></div>
+</section>
+
+<div class="pbar" id="pbar" role="group" aria-label="Presentation controls">
+  <button type="button" id="pPrev" aria-label="Previous"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+  <div class="dots" id="pDots" aria-hidden="true"></div>
+  <div class="lbl"><b id="pNum">1</b> <span id="pLbl"></span></div>
+  <button type="button" id="pNext" aria-label="Next"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg></button>
+  <button type="button" id="pExit" aria-label="Exit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+</div>
+
+<script>
+(function(){
+"use strict";
+var NS='http://www.w3.org/2000/svg';
+var MQ=window.matchMedia('(prefers-reduced-motion: reduce)');
+var reduced=MQ.matches;
+try{MQ.addEventListener('change',function(e){reduced=e.matches;});}catch(e){}
+var clamp=function(v,a,b){return v<a?a:(v>b?b:v);};
+var lerp=function(a,b,t){return a+(b-a)*t;};
+var ease=function(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;};
+var $=function(s,r){return (r||document).querySelector(s);};
+var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));};
+function el(n,a){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);return e;}
+
+/* ─────────── world geography ─────────── */
+var W=4400,H=2600;
+function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;var t=Math.imul(seed^seed>>>15,1|seed);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return ((t^t>>>14)>>>0)/4294967296;};}
+
+/* ── real geography ──────────────────────────────────────
+   Actual lat/lon, Mercator-projected onto the world canvas.
+   Corridor follows I-24 (Chattanooga→Nashville) then I-65 (Nashville→Louisville). */
+var GEO_CITIES=[
+  {n:'Chattanooga',  la:35.0456,lo:-85.3097,t:1},
+  {n:'Manchester',   la:35.4817,lo:-86.0886,t:0},
+  {n:'Murfreesboro', la:35.8456,lo:-86.3903,t:0},
+  {n:'Nashville',    la:36.1627,lo:-86.7816,t:1},
+  {n:'Clarksville',  la:36.5298,lo:-87.3595,t:0},
+  {n:'Cookeville',   la:36.1628,lo:-85.5016,t:0},
+  {n:'Bowling Green',la:36.9903,lo:-86.4436,t:0},
+  {n:'Somerset',     la:37.0920,lo:-84.6041,t:0},
+  {n:'Elizabethtown',la:37.6939,lo:-85.8591,t:0},
+  {n:'Huntsville',   la:34.7304,lo:-86.5861,t:0},
+  {n:'Louisville',   la:38.2527,lo:-85.7585,t:1}
+];
+var CORRIDOR=[
+  [35.0456,-85.3097],[35.0730,-85.6250],[35.2431,-85.8383],[35.4817,-86.0886],
+  [35.8456,-86.3903],[36.1627,-86.7816],[36.4695,-86.6519],[36.7226,-86.5772],
+  [36.9903,-86.4436],[37.2739,-85.8908],[37.6939,-85.8591],[37.9884,-85.7158],
+  [38.2527,-85.7585]
+];
+/* off-route excursion: leaves I-65 near Munfordville, loops east, rejoins before Elizabethtown */
+var DETOUR=[[37.3320,-85.6100],[37.4450,-85.4520],[37.5760,-85.5480],[37.6350,-85.7450]];
+
+var PROJ=(function(){
+  function my(la){var p=la*Math.PI/180;return Math.log(Math.tan(Math.PI/4+p/2));}
+  var las=[],los=[];
+  GEO_CITIES.forEach(function(c){las.push(c.la);los.push(c.lo);});
+  CORRIDOR.concat(DETOUR).forEach(function(p){las.push(p[0]);los.push(p[1]);});
+  var laMin=Math.min.apply(null,las),laMax=Math.max.apply(null,las);
+  var loMin=Math.min.apply(null,los),loMax=Math.max.apply(null,los);
+  var padLo=(loMax-loMin)*0.17,padLa=(laMax-laMin)*0.13;
+  loMin-=padLo;loMax+=padLo;laMin-=padLa;laMax+=padLa;
+  var y0=my(laMin),y1=my(laMax);
+  var k=Math.min(W/(loMax-loMin),H/(y1-y0));
+  var ox=(W-(loMax-loMin)*k)/2,oy=(H-(y1-y0)*k)/2;
+  return function(la,lo){return {x:ox+(lo-loMin)*k,y:H-oy-(my(la)-y0)*k};};
+})();
+
+function smoothPath(pts){
+  if(pts.length<2)return '';
+  var d='M '+pts[0].x.toFixed(1)+' '+pts[0].y.toFixed(1);
+  for(var i=0;i<pts.length-1;i++){
+    var p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||pts[i+1];
+    d+=' C '+(p1.x+(p2.x-p0.x)/6).toFixed(1)+' '+(p1.y+(p2.y-p0.y)/6).toFixed(1)+
+       ' '+(p2.x-(p3.x-p1.x)/6).toFixed(1)+' '+(p2.y-(p3.y-p1.y)/6).toFixed(1)+
+       ' '+p2.x.toFixed(1)+' '+p2.y.toFixed(1);
+  }
+  return d;
+}
+function P2(p){return PROJ(p[0],p[1]);}
+
+var PLANNED=smoothPath(CORRIDOR.map(P2));
+var ACTUAL=(function(){
+  var pts=CORRIDOR.slice(0,10).map(P2);
+  DETOUR.forEach(function(p){pts.push(P2(p));});
+  for(var j=10;j<CORRIDOR.length;j++)pts.push(P2(CORRIDOR[j]));
+  return smoothPath(pts);
+})();
+
+var CITIES=GEO_CITIES.map(function(c){var p=PROJ(c.la,c.lo);return {x:p.x,y:p.y,n:c.n,t:c.t};});
+var ORIGIN=P2(CORRIDOR[0]),DEST=P2(CORRIDOR[CORRIDOR.length-1]);
+var STATION=PROJ(37.6939,-85.8591);
+
+
+var WORLD=null;
+function world(){ if(!WORLD) WORLD=buildWorld(7); return WORLD.cloneNode(true); }
+
+function buildWorld(seed){
+  var r=rng(seed),g=el('g',{}),f=function(n){return n.toFixed(0);};
+  var X0=-500,Y0=-500,X1=W+500,Y1=H+500;
+
+  var defs=el('defs',{});
+  var cg=el('radialGradient',{id:'city-glow'});
+  cg.appendChild(el('stop',{offset:'0','stop-color':'#9CC0F0','stop-opacity':'.20'}));
+  cg.appendChild(el('stop',{offset:'.55','stop-color':'#7FA8DE','stop-opacity':'.07'}));
+  cg.appendChild(el('stop',{offset:'1','stop-color':'#7FA8DE','stop-opacity':'0'}));
+  defs.appendChild(cg);
+  g.appendChild(defs);
+
+  /* ── water ── */
+  var wat=el('g',{});
+  wat.appendChild(el('path',{d:'M -500 1660 C 300 1560 780 1760 1260 1670 C 1740 1580 2020 1380 2520 1430 '+
+    'C 3020 1480 3380 1300 3900 1360 C 4300 1406 4600 1360 4900 1340 L 4900 1500 C 4600 1524 4300 1512 3900 1540 '+
+    'C 3380 1578 3060 1636 2560 1610 C 2040 1583 1760 1740 1280 1806 C 820 1869 300 1810 -500 1800 Z',
+    fill:'#0A1524'}));
+  wat.appendChild(el('ellipse',{cx:'760',cy:'520',rx:'340',ry:'156',fill:'#0A1524',transform:'rotate(-14 760 520)'}));
+  wat.appendChild(el('ellipse',{cx:'3840',cy:'2060',rx:'290',ry:'128',fill:'#0A1524',transform:'rotate(9 3840 2060)'}));
+  g.appendChild(wat);
+
+  /* ── terrain relief ── */
+  var ter=el('g',{fill:'none',stroke:'rgba(150,184,228,.05)','stroke-width':'1.8'});
+  for(var c=0;c<34;c++){
+    var tx=X0+r()*(X1-X0),ty=Y0+r()*(Y1-Y0),rx=200+r()*440,ry=100+r()*210,rot=r()*180;
+    ter.appendChild(el('ellipse',{cx:f(tx),cy:f(ty),rx:f(rx),ry:f(ry),
+      transform:'rotate('+rot.toFixed(1)+' '+f(tx)+' '+f(ty)+')'}));
+  }
+  g.appendChild(ter);
+
+  /* ── city glow (under the roads) ── */
+  var glow=el('g',{});
+  CITIES.forEach(function(ct){
+    var rr=ct.t?520:280;
+    glow.appendChild(el('circle',{cx:ct.x,cy:ct.y,r:rr,fill:'url(#city-glow)'}));
+  });
+  g.appendChild(glow);
+
+  /* ── road lattice ── */
+  var step=132;
+  var cols=Math.ceil((X1-X0)/step),rows=Math.ceil((Y1-Y0)/step);
+  var P=[];
+  for(var i=0;i<=rows;i++){
+    P[i]=[];
+    for(var j=0;j<=cols;j++){
+      P[i][j]={x:X0+j*step+(r()-.5)*step*.7,y:Y0+i*step+(r()-.5)*step*.7};
+    }
+  }
+  function cityPull(p){
+    // bend the lattice gently toward city centres so roads converge on towns
+    for(var k=0;k<CITIES.length;k++){
+      var ct=CITIES[k],dx=ct.x-p.x,dy=ct.y-p.y,d=Math.sqrt(dx*dx+dy*dy),R=ct.t?620:340;
+      if(d<R&&d>1){var f2=(1-d/R)*(ct.t?.30:.20);p.x+=dx*f2;p.y+=dy*f2;}
+    }
+    return p;
+  }
+  for(i=0;i<=rows;i++)for(j=0;j<=cols;j++)cityPull(P[i][j]);
+
+  function chain(get,n,gapRate){
+    var d='',open=false,prev=null;
+    for(var q=0;q<=n;q++){
+      if(r()<gapRate){open=false;prev=null;continue;}
+      var p=get(q);
+      if(!open){d+='M'+f(p.x)+' '+f(p.y);open=true;}
+      else{
+        var mx=(prev.x+p.x)/2+(r()-.5)*26,my=(prev.y+p.y)/2+(r()-.5)*26;
+        d+='Q'+f(mx)+' '+f(my)+' '+f(p.x)+' '+f(p.y);
       }
-      document.addEventListener('scroll', onScroll, { passive: true });
-      onScroll();
+      prev=p;
+    }
+    return d;
+  }
+  var minorD='',artD='';
+  for(i=0;i<=rows;i++){
+    var dd=chain(function(j){return P[i][j];},cols,.14);
+    if(i%5===2)artD+=dd;else minorD+=dd;
+  }
+  for(j=0;j<=cols;j++){
+    (function(jj){
+      var dd=chain(function(i2){return P[i2][jj];},rows,.16);
+      if(jj%5===3)artD+=dd;else minorD+=dd;
+    })(j);
+  }
+  g.appendChild(el('path',{d:minorD,fill:'none',stroke:'rgba(158,190,232,.10)','stroke-width':'1.5',
+    'stroke-linecap':'round','stroke-linejoin':'round'}));
+  g.appendChild(el('path',{d:artD,fill:'none',stroke:'rgba(186,212,242,.20)','stroke-width':'2.8',
+    'stroke-linecap':'round','stroke-linejoin':'round'}));
 
-      /* Reveal on scroll */
-      if ('IntersectionObserver' in window && !reduce) {
-        var io = new IntersectionObserver(function (entries) {
-          entries.forEach(function (e) {
-            if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
-          });
-        }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
-        document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
-      } else {
-        document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('in'); });
-      }
+  /* ── dense street grids inside towns ── */
+  var townD='';
+  CITIES.forEach(function(ct){
+    var R=ct.t?310:170,n=ct.t?10:6,base=r()*.6-.3;
+    var ca=Math.cos(base),sa=Math.sin(base);
+    function rot(px,py){var dx=px-ct.x,dy=py-ct.y;return {x:ct.x+dx*ca-dy*sa,y:ct.y+dx*sa+dy*ca};}
+    function span(off){var v=R*R-off*off;return v>0?Math.sqrt(v):0;}
+    for(var a=1;a<n;a++){
+      var off=-R+ (a/n)*2*R;
+      var hx=span(off)*(.82+r()*.18);
+      if(hx<24)continue;
+      var A=rot(ct.x-hx,ct.y+off+(r()-.5)*14),B=rot(ct.x+hx,ct.y+off+(r()-.5)*14);
+      townD+='M'+f(A.x)+' '+f(A.y)+'L'+f(B.x)+' '+f(B.y);
+      var hy=span(off)*(.72+r()*.2);
+      if(hy<24)continue;
+      var C=rot(ct.x+off+(r()-.5)*14,ct.y-hy),D=rot(ct.x+off+(r()-.5)*14,ct.y+hy);
+      townD+='M'+f(C.x)+' '+f(C.y)+'L'+f(D.x)+' '+f(D.y);
+    }
+  });
+  g.appendChild(el('path',{d:townD,fill:'none',stroke:'rgba(176,204,240,.15)','stroke-width':'1.6',
+    'stroke-linecap':'round'}));
 
-      /* Product demo tabs */
-      var tabs = document.querySelectorAll('.demo-tab');
-      var panels = document.querySelectorAll('.demo-panel');
-      function activateDemo(key) {
-        tabs.forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-demo') === key); });
-        panels.forEach(function (p) { p.classList.toggle('active', p.getAttribute('data-panel') === key); });
-        if (key === 'comms') playChat();
-        if (key === 'recruit') playRings();
-      }
-      tabs.forEach(function (tab) {
-        tab.addEventListener('click', function () { activateDemo(tab.getAttribute('data-demo')); });
+  /* ── interstates ── */
+  var hw=[
+    'M -500 2460 C 500 2340 1100 2080 1720 1900 C 2340 1720 2960 1420 4900 880',
+    'M -500 900 C 400 990 1100 1200 1920 1130 C 2740 1060 3440 810 4900 620',
+    'M 520 -500 C 640 600 780 1240 920 3100',
+    'M 2260 -500 C 2180 700 2360 1520 2540 3100',
+    'M 3560 -500 C 3460 820 3640 1620 3820 3100',
+    'M -500 1960 C 600 1890 1620 2010 2660 1900 C 3460 1816 4100 1940 4900 1880'
+  ];
+  var cas=el('g',{fill:'none',stroke:'#05080E','stroke-width':'13','stroke-linecap':'round'});
+  var fil=el('g',{fill:'none',stroke:'rgba(206,226,250,.34)','stroke-width':'5.5','stroke-linecap':'round'});
+  hw.forEach(function(d){cas.appendChild(el('path',{d:d}));fil.appendChild(el('path',{d:d}));});
+  g.appendChild(cas);g.appendChild(fil);
+
+  return g;
+}
+
+/* ─────────── map instance ─────────── */
+function Map3(svgId,opts){
+  var svg=$('#'+svgId);
+  var defs=el('defs',{});
+  var glow=el('filter',{id:svgId+'-glow',x:'-60%',y:'-60%',width:'220%',height:'220%'});
+  glow.appendChild(el('feGaussianBlur',{stdDeviation:'11',result:'b'}));
+  var mg=el('feMerge',{});mg.appendChild(el('feMergeNode',{in:'b'}));mg.appendChild(el('feMergeNode',{in:'SourceGraphic'}));
+  glow.appendChild(mg);defs.appendChild(glow);
+  svg.appendChild(defs);
+
+  var cam=el('g',{});svg.appendChild(cam);
+  cam.appendChild(world());
+
+  var layer=el('g',{});cam.appendChild(layer);   // routes, in world space
+  var over=el('g',{});cam.appendChild(over);     // counter-scaled overlays
+  var pins=[];
+
+  function addPin(x,y,build){var gg=el('g',{});gg.appendChild(build());over.appendChild(gg);
+    pins.push({el:gg,x:x,y:y});return gg;}
+
+  var api={svg:svg,cam:cam,layer:layer,over:over,k:1,
+    addPin:addPin,
+    cityLabels:function(){
+      CITIES.forEach(function(ct){
+        addPin(ct.x,ct.y,function(){
+          var gg=el('g',{});
+          gg.appendChild(el('circle',{cx:0,cy:0,r:ct.t?4:2.6,fill:'rgba(214,230,250,.72)'}));
+          var t=el('text',{x:ct.t?12:9,y:4.5,'font-family':'Manrope,sans-serif',
+            'font-size':ct.t?13:10.5,'font-weight':ct.t?'600',
+            'letter-spacing':ct.t?'.09em':'.06em',
+            fill:ct.t?'rgba(226,238,252,.82)':'rgba(198,216,240,.5)'});
+          t.textContent=ct.t?ct.n.toUpperCase():ct.n;
+          gg.appendChild(t);return gg;
+        });
       });
+    },
+    look:function(x,y,k){
+      api.k=k;
+      cam.setAttribute('transform','translate('+(800-x*k).toFixed(2)+' '+(450-y*k).toFixed(2)+') scale('+k.toFixed(4)+')');
+      var inv=1/k;
+      for(var i=0;i<pins.length;i++)
+        pins[i].el.setAttribute('transform','translate('+pins[i].x+' '+pins[i].y+') scale('+inv.toFixed(4)+')');
+    }
+  };
+  return api;
+}
 
-      /* Telegram chat staggered reveal */
-      function playChat() {
-        var chat = document.querySelector('[data-chat]');
-        if (!chat) return;
-        var bubbles = chat.querySelectorAll('[data-b]');
-        bubbles.forEach(function (b, i) {
-          b.classList.remove('in');
-          setTimeout(function () { b.classList.add('in'); }, reduce ? 0 : i * 480);
-        });
-      }
+/* truck marker (top-down, points +x) */
+function truckMarker(color,scale){
+  var s=scale||1,g=el('g',{});
+  g.appendChild(el('ellipse',{cx:0,cy:0,rx:34*s,ry:15*s,fill:color,opacity:'.13'}));
+  var b=el('g',{});
+  b.appendChild(el('rect',{x:-26*s,y:-8.5*s,width:34*s,height:17*s,rx:3*s,
+    fill:'#E7EDF6',stroke:'rgba(9,13,20,.85)','stroke-width':1.2*s}));
+  b.appendChild(el('rect',{x:-24*s,y:-6*s,width:6*s,height:12*s,rx:1.5*s,fill:'rgba(9,13,20,.16)'}));
+  b.appendChild(el('rect',{x:9*s,y:-9.5*s,width:15*s,height:19*s,rx:3.5*s,
+    fill:color,stroke:'rgba(9,13,20,.85)','stroke-width':1.2*s}));
+  b.appendChild(el('rect',{x:19*s,y:-6.5*s,width:4.5*s,height:13*s,rx:1.6*s,fill:'rgba(255,255,255,.5)'}));
+  [-19,-11,11].forEach(function(px){
+    b.appendChild(el('rect',{x:px*s,y:-11*s,width:6*s,height:3.4*s,rx:1.4*s,fill:'rgba(9,13,20,.7)'}));
+    b.appendChild(el('rect',{x:px*s,y:7.6*s,width:6*s,height:3.4*s,rx:1.4*s,fill:'rgba(9,13,20,.7)'}));
+  });
+  g.appendChild(b);
+  return g;
+}
+function mapPin(color,glyph){
+  var g=el('g',{});
+  g.appendChild(el('ellipse',{cx:0,cy:2,rx:9,ry:3.4,fill:'rgba(0,0,0,.5)'}));
+  g.appendChild(el('path',{d:'M0 0 C -11 -13 -15 -19 -15 -25 A 15 15 0 0 1 15 -25 C 15 -19 11 -13 0 0 Z',
+    fill:color,stroke:'rgba(8,11,18,.6)','stroke-width':'1.4'}));
+  if(glyph){
+    var t=el('text',{x:0,y:-20,'text-anchor':'middle','font-size':'14','font-family':'Manrope,sans-serif'});
+    t.textContent=glyph;g.appendChild(t);
+  } else g.appendChild(el('circle',{cx:0,cy:-25,r:5,fill:'rgba(8,11,18,.55)'}));
+  return g;
+}
+function maxGap(aPath,pPath){
+  var La=aPath.getTotalLength(),Lp=pPath.getTotalLength(),N=130,best=null,cache=[];
+  for(var j=0;j<=N;j++)cache.push(pPath.getPointAtLength(Lp*j/N));
+  for(var i=0;i<=N;i++){
+    var pa=aPath.getPointAtLength(La*i/N),bd=Infinity,bp=null;
+    for(var k=0;k<=N;k++){
+      var pp=cache[k],d=(pp.x-pa.x)*(pp.x-pa.x)+(pp.y-pa.y)*(pp.y-pa.y);
+      if(d<bd){bd=d;bp=pp;}
+    }
+    if(!best||bd>best.d)best={d:bd,a:pa,p:bp,t:i/N};
+  }
+  return best;
+}
+function rider(p){
+  var L=p.getTotalLength();
+  return {len:L,at:function(t){
+    t=clamp(t,0,1);var d=L*t;
+    var a=p.getPointAtLength(Math.max(0,d-1.2)),b=p.getPointAtLength(Math.min(L,d+1.2));
+    var pt=p.getPointAtLength(d);
+    return {x:pt.x,y:pt.y,a:Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI};
+  }};
+}
+function dasher(p){var L=p.getTotalLength();p.style.strokeDasharray=L+' '+L;
+  return function(t){p.style.strokeDashoffset=(L*(1-clamp(t,0,1))).toFixed(1);};}
 
-      /* Recruiting rings/bars fill */
-      function playRings() {
-        document.querySelectorAll('[data-ring]').forEach(function (r) {
-          r.classList.remove('play'); void r.offsetWidth; r.classList.add('play');
-        });
-        document.querySelectorAll('[data-bar]').forEach(function (b) {
-          b.classList.remove('play'); void b.offsetWidth; b.classList.add('play');
-        });
-      }
+function routePair(layer,plannedD,actualD){
+  var g=el('g',{});
+  var pc=el('path',{d:plannedD,fill:'none',stroke:'#05070C','stroke-width':'15','stroke-linecap':'round'});
+  var pl=el('path',{d:plannedD,fill:'none',stroke:'rgba(216,232,254,.58)','stroke-width':'4.5',
+    'stroke-linecap':'round','stroke-dasharray':'15 15'});
+  var ac=el('path',{d:actualD,fill:'none',stroke:'#05070C','stroke-width':'17','stroke-linecap':'round'});
+  var ag=el('path',{d:actualD,fill:'none',stroke:'#F2A24C','stroke-width':'16','stroke-linecap':'round',
+    opacity:'.20',filter:'blur(9px)'});
+  var al=el('path',{d:actualD,fill:'none',stroke:'#F2A24C','stroke-width':'7','stroke-linecap':'round'});
+  g.appendChild(pc);g.appendChild(pl);g.appendChild(ac);g.appendChild(ag);g.appendChild(al);
+  layer.appendChild(g);
+  return {plannedCase:pc,planned:pl,actualCase:ac,actual:al,glow:ag};
+}
 
-      /* Play the active demo's animation when the demos section scrolls into view */
-      if ('IntersectionObserver' in window) {
-        var demoSection = document.getElementById('demos');
-        if (demoSection) {
-          var dobs = new IntersectionObserver(function (entries) {
-            entries.forEach(function (e) {
-              if (e.isIntersecting) {
-                var active = document.querySelector('.demo-tab.active');
-                if (active) { var k = active.getAttribute('data-demo'); if (k === 'comms') playChat(); if (k === 'recruit') playRings(); }
-              }
-            });
-          }, { threshold: 0.3 });
-          dobs.observe(demoSection);
-        }
-      }
-      // Rings play by default (fleet is default tab); prime them so switching feels instant
-      playRings();
+/* ─────────── scroll engine ─────────── */
+var scenes=[],raf=0;
+function reg(sel,fn){var e=$(sel);if(!e)return;scenes.push({el:e,fn:fn,last:-1,pin:e.querySelector(':scope > .pin')});}
+function measure(){
+  var vh=window.innerHeight;
+  for(var i=0;i<scenes.length;i++){
+    var s=scenes[i],r=s.el.getBoundingClientRect();
+    if(s.pin){
+      var off=clamp(-r.top,0,Math.max(0,s.el.offsetHeight-vh));
+      s.pin.style.transform='translate3d(0,'+off.toFixed(1)+'px,0)';
+    }
+    var span=s.el.offsetHeight-vh;
+    var p=span>0?clamp(-r.top/span,0,1):(r.top<=0?1:0);
+    if(Math.abs(p-s.last)>0.0006){s.last=p;s.fn(p);}
+  }
+  var bar=$('#top'),q=$('#s-cap').getBoundingClientRect();
+  bar.classList.toggle('light',q.top<=58&&q.bottom>=58);
+}
+window.addEventListener('scroll',function(){if(!raf)raf=requestAnimationFrame(function(){raf=0;measure();});},{passive:true});
+window.addEventListener('resize',function(){layoutConv();measure();},{passive:true});
 
-      /* ─── Presentation Mode ─── */
-      var slides = Array.prototype.slice.call(document.querySelectorAll('section'));
-      var dotsWrap = document.getElementById('pm-dots');
-      var count = document.getElementById('pm-count');
-      var current = 0;
-      var presenting = false;
+/* caption driver */
+function caps(rootSel){
+  var list=$$(rootSel+' .cap');
+  var cur=-1;
+  return function(i){
+    if(i===cur)return;cur=i;
+    list.forEach(function(c){c.classList.toggle('on',Number(c.dataset.at)===i);});
+  };
+}
 
-      // Build dots once
-      slides.forEach(function (s, i) {
-        var d = document.createElement('i');
-        d.addEventListener('click', function () { goTo(i); });
-        dotsWrap.appendChild(d);
-      });
-      var dots = dotsWrap.querySelectorAll('i');
+/* ─────────── language ─────────── */
+var lang='en';
+function setLang(next){
+  lang=next;document.documentElement.lang=next;
+  $$('[data-ru]').forEach(function(e){
+    if(!e.dataset.en)e.dataset.en=e.innerHTML;
+    e.innerHTML=next==='ru'?e.dataset.ru:e.dataset.en;
+  });
+  $$('.lang button').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.lang===next));});
+  buildCC();layoutConv();
+  if(present)goTo(idx);
+}
+$$('.lang button').forEach(function(b){b.addEventListener('click',function(){setLang(b.dataset.lang);});});
 
-      function updateIndicator() {
-        count.textContent = (current + 1) + ' / ' + slides.length;
-        dots.forEach(function (d, i) { d.classList.toggle('active', i === current); });
-      }
-      function goTo(i) {
-        current = Math.max(0, Math.min(slides.length - 1, i));
-        slides[current].scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
-        updateIndicator();
-      }
-      function enterPresent() {
-        if (presenting) return;
-        presenting = true;
-        document.body.classList.add('presenting');
-        document.getElementById('pm-ui').setAttribute('aria-hidden', 'false');
-        // Start from whichever section is closest to the current scroll position
-        var closest = 0, best = Infinity;
-        slides.forEach(function (s, i) {
-          var d = Math.abs(s.getBoundingClientRect().top);
-          if (d < best) { best = d; closest = i; }
-        });
-        current = closest;
-        updateIndicator();
-        setTimeout(function () { goTo(current); }, 30);
-      }
-      function exitPresent() {
-        if (!presenting) return;
-        presenting = false;
-        document.body.classList.remove('presenting');
-        document.getElementById('pm-ui').setAttribute('aria-hidden', 'true');
-      }
+/* ─────────── hero ─────────── */
+(function(){
+  var m=Map3('mapHero',{seed:7});m.cityLabels();
+  var rp=routePair(m.layer,PLANNED,PLANNED);
+  rp.actual.setAttribute('opacity','.95');
+  var path=rp.actual,ride=rider(path);
+  var tk=m.addPin(0,0,function(){return truckMarker('#F2A24C',1);});
+  m.addPin(DEST.x,DEST.y,function(){return mapPin('#5BD0BC');});
+  function frame(t){
+    var p=ride.at(t);
+    tk.setAttribute('transform','translate('+p.x.toFixed(1)+' '+p.y.toFixed(1)+') scale('+(1/1.0).toFixed(3)+') rotate('+p.a.toFixed(1)+')');
+    m.look(p.x-120,p.y-60,.96);
+    // counter-rotate handled by writing transform after look()
+    tk.setAttribute('transform','translate('+p.x.toFixed(1)+' '+p.y.toFixed(1)+') scale('+(1/m.k).toFixed(3)+') rotate('+p.a.toFixed(1)+')');
+  }
+  if(reduced){frame(.34);return;}
+  var t0=performance.now(),live=true;
+  if('IntersectionObserver' in window)
+    new IntersectionObserver(function(e){live=e[0].isIntersecting;if(live)loop();},{threshold:0}).observe($('#s-hero'));
+  function loop(now){
+    if(!live)return;
+    frame(.06+((((now||performance.now())-t0)/64000)%.88));
+    requestAnimationFrame(loop);
+  }
+  frame(.06);loop();
+})();
 
-      // Track current slide while scrolling in presentation mode
-      if ('IntersectionObserver' in window) {
-        var so = new IntersectionObserver(function (entries) {
-          if (!presenting) return;
-          entries.forEach(function (e) {
-            if (e.isIntersecting) {
-              var idx = slides.indexOf(e.target);
-              if (idx > -1) { current = idx; updateIndicator(); }
-            }
-          });
-        }, { threshold: 0.5 });
-        slides.forEach(function (s) { so.observe(s); });
-      }
+var CARD_BIAS=470;
+/* ─────────── ACT I — route ─────────── */
+(function(){
+  var m=Map3('mapRoute',{seed:7});m.cityLabels();
+  var rp=routePair(m.layer,PLANNED,ACTUAL);
+  var drawP=dasher(rp.planned),drawPC=dasher(rp.plannedCase);
+  var drawA=dasher(rp.actual),drawAC=dasher(rp.actualCase);
+  var ride=rider(rp.actual);
+  var tk=m.addPin(0,0,function(){return truckMarker('#F2A24C',1);});
+  m.addPin(ORIGIN.x,ORIGIN.y,function(){return mapPin('#9FB4D0');});
+  var dest=m.addPin(DEST.x,DEST.y,function(){return mapPin('#5BD0BC');});
+  dest.style.opacity=0;dest.style.transition='opacity .6s';
 
-      document.getElementById('startPresent').addEventListener('click', enterPresent);
-      var sp2 = document.getElementById('startPresent2');
-      if (sp2) sp2.addEventListener('click', enterPresent);
-      document.getElementById('pm-prev').addEventListener('click', function () { goTo(current - 1); });
-      document.getElementById('pm-next').addEventListener('click', function () { goTo(current + 1); });
-      var exitEl = document.getElementById('pm-exit');
-      exitEl.addEventListener('click', exitPresent);
-      exitEl.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') exitPresent(); });
+  // deviation measure, taken from the actual geometry
+  var GAP=maxGap(rp.actual,rp.planned);
+  var dev=el('g',{opacity:'0'});
+  dev.appendChild(el('path',{d:'M '+GAP.p.x.toFixed(0)+' '+GAP.p.y.toFixed(0)+' L '+GAP.a.x.toFixed(0)+' '+GAP.a.y.toFixed(0),
+    stroke:'#F0705C','stroke-width':'3','stroke-dasharray':'9 9'}));
+  dev.appendChild(el('circle',{cx:GAP.p.x.toFixed(0),cy:GAP.p.y.toFixed(0),r:'7',fill:'#F0705C'}));
+  dev.appendChild(el('circle',{cx:GAP.a.x.toFixed(0),cy:GAP.a.y.toFixed(0),r:'7',fill:'#F0705C'}));
+  m.layer.appendChild(dev);
+  dev.style.transition='opacity .5s';
+  var devLbl=m.addPin((GAP.p.x+GAP.a.x)/2,(GAP.p.y+GAP.a.y)/2,function(){
+    var g=el('g',{});
+    g.appendChild(el('rect',{x:'8',y:'-15',width:'72',height:'30',rx:'8',fill:'rgba(240,112,92,.16)',
+      stroke:'rgba(240,112,92,.55)','stroke-width':'1.2'}));
+    var t=el('text',{x:'44',y:'5','text-anchor':'middle','font-family':'Manrope,sans-serif','font-size':'14',
+      'font-weight':'600',fill:'#F0705C'});t.textContent='1.4 mi';g.appendChild(t);return g;
+  });
+  devLbl.style.opacity=0;devLbl.style.transition='opacity .5s';
 
-      document.addEventListener('keydown', function (e) {
-        if (!presenting) return;
-        if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === 'ArrowDown') { e.preventDefault(); goTo(current + 1); }
-        else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'ArrowUp') { e.preventDefault(); goTo(current - 1); }
-        else if (e.key === 'Escape') { exitPresent(); }
-        else if (e.key === 'Home') { goTo(0); }
-        else if (e.key === 'End') { goTo(slides.length - 1); }
-      });
-    })();
-  </script>
+  var ring=el('circle',{cx:DEST.x.toFixed(0),cy:DEST.y.toFixed(0),r:'330',fill:'none',stroke:'#5BD0BC','stroke-width':'3',
+    'stroke-dasharray':'12 14',opacity:'0'});
+  m.layer.appendChild(ring);ring.style.transition='opacity .6s';
+
+  var setCap=caps('#rCaps');
+  var tg=$('#rTg'),reply=$('#rReply');
+
+  reg('#s-route',function(p){
+    var e=clamp((p-.03)/.94,0,1);
+
+    // route draw
+    var dr=clamp(e/.10,0,1);drawPC(dr);drawP(dr);
+    // truck travel
+    var tv=clamp((e-.10)/.84,0,1);
+    drawAC(tv);drawA(tv);
+    var pt=ride.at(tv);
+
+    // camera: tight follow → wide on the deviation → pull out over the destination
+    var lead=lerp(170,50,clamp((e-.40)/.26,0,1));
+    var cx=pt.x+lead*Math.cos(pt.a*Math.PI/180),cy=pt.y+lead*Math.sin(pt.a*Math.PI/180)-40;
+    cx+=CARD_BIAS;   // the message card owns the right side; ride the truck clear of it
+    var k=1.02;
+    var dv=clamp(1-Math.abs(tv-GAP.t)/.19,0,1);                  // deviation framing window
+    if(dv>0){
+      var gx=(GAP.a.x+GAP.p.x)/2,gy=(GAP.a.y+GAP.p.y)/2;
+      cx=lerp(cx,gx,dv);cy=lerp(cy,gy,dv);k=lerp(k,.70,dv);
+    }
+    var out=clamp((tv-.90)/.10,0,1);                             // arrival framing
+    if(out>0){cx=lerp(cx,DEST.x-140,out);cy=lerp(cy,DEST.y+90,out);k=lerp(k,.52,out);}
+    m.look(cx,cy,k);
+    tk.setAttribute('transform','translate('+pt.x.toFixed(1)+' '+pt.y.toFixed(1)+') scale('+(1/m.k).toFixed(3)+') rotate('+pt.a.toFixed(1)+')');
+
+    // stage — pinned to where the truck actually is on the deviation lobe
+    var gt=GAP.t;
+    var st = tv<.05?0 : tv<.17?1 : tv<(gt-.13)?2 : tv<(gt+.04)?3 : tv<(gt+.16)?4 : tv<.90?5 : 6;
+    setCap(st);
+    $('#rNum').classList.toggle('on',e>.01&&e<.16);
+    $('#rTitle').classList.toggle('on',e>.02&&e<.16);
+    $('#rFine').classList.toggle('on',st>=3&&st<=5);
+    tg.classList.toggle('on',st>=1&&st<=5);
+    reply.classList.toggle('on',st>=4);
+    dev.style.opacity=(st===3||st===4)?1:0;
+    devLbl.style.opacity=(st===3||st===4)?1:0;
+    ring.style.opacity=st>=6?1:0;
+    dest.style.opacity=st>=5?1:0;
+  });
+})();
+
+/* ─────────── ACT II — fuel ─────────── */
+(function(){
+  var m=Map3('mapFuel',{seed:7});m.cityLabels();
+  var rp=routePair(m.layer,PLANNED,PLANNED);
+  var ride=rider(rp.actual);
+  // start this act where act I ended
+  var T0=.64,T1=1.0;
+  var tk=m.addPin(0,0,function(){return truckMarker('#F2A24C',1);});
+
+  var radius=el('circle',{cx:STATION.x,cy:STATION.y,r:'560',fill:'rgba(242,162,76,.05)',
+    stroke:'rgba(242,162,76,.5)','stroke-width':'3','stroke-dasharray':'14 16'});
+  m.layer.appendChild(radius);
+  var radLbl=m.addPin(STATION.x,STATION.y-560,function(){
+    var g=el('g',{});
+    var t=el('text',{x:'0',y:'-14','text-anchor':'middle','font-family':'Manrope,sans-serif','font-size':'13',
+      'font-weight':'700','letter-spacing':'.16em',fill:'rgba(242,162,76,.85)'});
+    t.textContent='50 MI';g.appendChild(t);return g;});
+
+  var stn=m.addPin(STATION.x,STATION.y,function(){return mapPin('#F2A24C','⛽');});
+  var stnLbl=m.addPin(STATION.x,STATION.y,function(){
+    var g=el('g',{});
+    var t=el('text',{x:'22',y:'-22','font-family':'Manrope,sans-serif','font-size':'13','font-weight':'600',
+      fill:'rgba(246,222,190,.9)'});t.textContent='Midway Travel Center';g.appendChild(t);return g;});
+  var dest=m.addPin(DEST.x,DEST.y,function(){return mapPin('#5BD0BC');});
+
+  [radius,radLbl,stn,stnLbl].forEach(function(n){n.style.opacity=0;n.style.transition='opacity .7s';});
+
+  var setCap=caps('#fCaps');
+  var tg=$('#fTg'),reply=$('#fReply'),dist=$('#fDist'),num=$('#fNum2');
+
+  reg('#s-fuel',function(p){
+    var e=clamp((p-.03)/.94,0,1);
+    var tv=lerp(T0,T1,clamp((e-.06)/.88,0,1));
+    var pt=ride.at(tv);
+
+    // tighter, more intimate framing than Act I; slow zoom-in toward the station
+    var k=lerp(1.18,1.5,clamp((e-.3)/.5,0,1));
+    k=lerp(k,1.05,clamp((e-.88)/.12,0,1));
+    var bias=lerp(0,(STATION.x-pt.x)*.34,clamp((e-.2)/.5,0,1));
+    m.look(pt.x+bias+60,pt.y-70,k);
+    tk.setAttribute('transform','translate('+pt.x.toFixed(1)+' '+pt.y.toFixed(1)+') scale('+(1/m.k).toFixed(3)+') rotate('+pt.a.toFixed(1)+')');
+
+    var st = e<.12?0 : e<.30?1 : e<.56?2 : e<.80?3 : 4;
+    setCap(st);
+    $('#fNum').classList.toggle('on',e>.01&&e<.18);
+    $('#fTitle').classList.toggle('on',e>.02&&e<.18);
+    $('#fFine').classList.toggle('on',st>=2&&st<=3);
+    tg.classList.toggle('on',(e>.04&&st<=1)||st>=3);
+    reply.classList.toggle('on',st>=3);
+    [stn,stnLbl].forEach(function(n){n.style.opacity=st>=1?1:0;});
+    radius.style.opacity=st>=2?1:0;radLbl.style.opacity=st>=2?1:0;
+
+    // distance numeral — hero of the approach beat, then it hands over to the card
+    var show=st===2;
+    dist.classList.toggle('on',show);
+    var d=Math.max(0,Math.round(lerp(187,18,clamp((e-.14)/.72,0,1))));
+    num.textContent=d;
+    num.classList.toggle('hot',d<=50);
+    // radius pulse as it arms
+    var ra=clamp((e-.42)/.14,0,1);
+    radius.setAttribute('r',(560*(0.6+0.4*ease(ra))).toFixed(0));
+  });
+})();
+
+/* ─────────── command center ─────────── */
+var FLEET_GEO=[
+  {u:'4417',d:'M. Reyes',      la:36.9903,lo:-86.4436, s:'route',to:'Louisville, KY',   eta:'14:20',
+   en:'On the assigned route — 0.1 mi off the line.',ru:'На маршруте — 0.1 мили от линии.'},
+  {u:'2208',d:'A. Novak',      la:37.6939,lo:-85.8591, s:'fuel', to:'Columbus, OH',     eta:'17:05',
+   en:'42 mi from the assigned fuel stop — reminder sent.',ru:'42 мили до заправки — напоминание отправлено.'},
+  {u:'3610',d:'D. Whitfield',  la:36.1627,lo:-86.7816,s:'dev',  to:'Indianapolis, IN', eta:'12:48',
+   en:'Off route 3 of 3 — driver warned in the group.',ru:'Вне маршрута 3 из 3 — водитель предупреждён.'},
+  {u:'1155',d:'J. Okafor',     la:38.2527,lo:-85.7585, s:'deliv',to:'Cleveland, OH',    eta:'10:30',
+   en:'Within 50 mi of destination — the route will close itself.',ru:'В пределах 50 миль — маршрут закроется сам.'},
+  {u:'5072',d:'S. Lindqvist',  la:35.4817,lo:-86.0886,s:'route',to:'Nashville, TN',    eta:'19:12',
+   en:'Tracking active since the route message was delivered.',ru:'Отслеживание активно с момента доставки.'},
+  {u:'6394',d:'R. Castellanos',la:37.092,lo:-84.6041,s:'fuel', to:'Charlotte, NC',    eta:'21:40',
+   en:'Approaching the assigned station — 61 mi out.',ru:'Подъезжает к станции — 61 миля.'},
+  {u:'8820',d:'T. Bauer',      la:36.1628,lo:-85.5016,s:'route',to:'Memphis, TN',      eta:'16:02',
+   en:'On the assigned route — no events today.',ru:'На маршруте — событий сегодня нет.'},
+  {u:'7431',d:'K. Adeyemi',    la:34.7304,lo:-86.5861,s:'deliv',to:'Atlanta, GA',      eta:'09:15',
+   en:'Approaching the delivery — ETA updates going out.',ru:'Подъезжает к выгрузке — обновления ETA идут.'}
+];
+var FLEET=FLEET_GEO.map(function(t){var p=PROJ(t.la,t.lo);t.x=p.x;t.y=p.y;return t;});
+var SC={route:'#5BD0BC',dev:'#F0705C',fuel:'#F2A24C',deliv:'#9FB4D0'};
+var SL={route:{en:'On route',ru:'На маршруте'},dev:{en:'Route deviation',ru:'Отклонение'},
+        fuel:{en:'Fuel stop approaching',ru:'Подъезд к заправке'},deliv:{en:'Delivery approaching',ru:'Подъезд к выгрузке'}};
+var LB={dest:{en:'Destination',ru:'Назначение'},eta:{en:'ETA',ru:'ETA'},unit:{en:'Unit',ru:'Юнит'}};
+var ccMap=null,ccMarks=[],ccPath=null;
+function ccHeading(x,y){
+  if(!ccPath)return 0;
+  var L=ccPath.getTotalLength(),bd=Infinity,bt=0;
+  for(var i=0;i<=120;i++){
+    var p=ccPath.getPointAtLength(L*i/120),d=(p.x-x)*(p.x-x)+(p.y-y)*(p.y-y);
+    if(d<bd){bd=d;bt=i/120;}
+  }
+  var a=ccPath.getPointAtLength(Math.max(0,L*bt-14)),b=ccPath.getPointAtLength(Math.min(L,L*bt+14));
+  return Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI;
+}
+function buildCC(){
+  if(!ccMap){
+    ccMap=Map3('mapCC',{seed:7});ccMap.cityLabels();
+    var rp=routePair(ccMap.layer,PLANNED,PLANNED);
+    rp.actual.setAttribute('opacity','.4');rp.actualCase.setAttribute('opacity','.5');
+    rp.glow.setAttribute('opacity','.1');ccPath=rp.actual;
+  }
+  ccMarks.forEach(function(m){m.el.remove();});ccMarks=[];
+  var panel=$('#ccPanel'),list=$('#ccList');
+  if(list)list.innerHTML='';
+  FLEET.forEach(function(t,i){
+    var c=SC[t.s];
+    var g=ccMap.addPin(t.x,t.y,function(){
+      var gg=el('g',{class:'mk',tabindex:'0',role:'button'});
+      gg.setAttribute('aria-label','Unit '+t.u+' — '+SL[t.s][lang]);
+      gg.appendChild(el('circle',{class:'halo',cx:0,cy:0,r:30,fill:c,opacity:'.11'}));
+      var tm=truckMarker(c,1.05);
+      tm.setAttribute('transform','rotate('+ccHeading(t.x,t.y).toFixed(1)+')');
+      gg.appendChild(tm);
+      var pl=el('g',{class:'plate'});
+      pl.appendChild(el('rect',{x:-24,y:-40,width:48,height:19,rx:9,fill:'rgba(10,14,22,.9)',
+        stroke:'rgba(255,255,255,.18)','stroke-width':1}));
+      var tx=el('text',{x:0,y:-26.5,'text-anchor':'middle','font-family':'Manrope,sans-serif',
+        'font-size':11.5,'font-weight':'700',fill:'#fff'});tx.textContent=t.u;
+      pl.appendChild(tx);gg.appendChild(pl);
+      return gg;
+    });
+    var node=g.firstChild;
+    function open(){
+      ccMarks.forEach(function(m){m.node.classList.remove('sel');});
+      node.classList.add('sel');
+      panel.innerHTML='<span class="pill" style="color:'+c+';background:'+c+'1f"><i></i>'+SL[t.s][lang]+'</span>'+
+        '<h4>'+t.d+'</h4><div class="unit">'+LB.unit[lang]+' # '+t.u+'</div>'+
+        '<div class="row"><span>'+LB.dest[lang]+'</span><span>'+t.to+'</span></div>'+
+        '<div class="row" style="border:0;padding-top:8px;margin-top:6px"><span>'+LB.eta[lang]+'</span><span>'+t.eta+' CST</span></div>'+
+        '<div class="note">'+t[lang]+'</div>';
+      var host=$('#s-cc .pin'),r=host.getBoundingClientRect();
+      var pr=node.getBoundingClientRect();
+      var px=pr.left-r.left+pr.width/2,py=pr.top-r.top;
+      panel.style.left=clamp(px+26,16,Math.max(16,r.width-284))+'px';
+      panel.style.top=clamp(py-40,74,Math.max(74,r.height-250))+'px';
+      panel.classList.add('on');
+    }
+    node.addEventListener('mouseenter',open);
+    node.addEventListener('focus',open);
+    node.addEventListener('click',function(e){e.stopPropagation();open();});
+    node.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}});
+    ccMarks.push({el:g,node:node,open:open});
+    if(list){
+      var row=document.createElement('div');
+      row.innerHTML='<i style="background:'+c+'"></i><b>'+t.u+'</b> '+t.d+'<span>'+t.to+'</span>';
+      list.appendChild(row);
+    }
+  });
+  var host=$('#s-cc .pin');
+  if(host&&!host._wired){host._wired=true;
+    host.addEventListener('click',function(){$('#ccPanel').classList.remove('on');});}
+}
+buildCC();
+reg('#s-cc',function(p){
+  var e=clamp((p-.05)/.9,0,1);
+  var k=lerp(.30,.44,ease(e));
+  ccMap.look(lerp(2300,2500,ease(e)),lerp(1500,1260,ease(e)),k);
+  if(e>.4&&!ccMap._shown){ccMap._shown=true;setTimeout(function(){if(ccMarks[1])ccMarks[1].open();},260);}
+});
+
+/* ─────────── convergence ─────────── */
+var FRAGS=[
+  {en:'Telegram',ru:'Telegram'},{en:'Datatruck TMS',ru:'Datatruck TMS'},
+  {en:'Samsara / ELD',ru:'Samsara / ELD'},{en:'Fuel chat',ru:'Топливный чат'},
+  {en:'Spreadsheets',ru:'Таблицы'},{en:'Phone calls',ru:'Звонки'},
+  {en:'Recruiting inbox',ru:'Почта найма'},{en:'Safety tools',ru:'Безопасность'}
+];
+var AFTER=[
+  {en:'Dispatch',ru:'Диспетчерская'},{en:'Route Control',ru:'Контроль маршрута'},
+  {en:'Fuel Monitoring',ru:'Мониторинг топлива'},{en:'Drivers',ru:'Водители'},
+  {en:'Documents',ru:'Документы'},{en:'Trailers',ru:'Трейлеры'},
+  {en:'Recruiting',ru:'Найм'},{en:'Safety',ru:'Безопасность'}
+];
+var fragEls=[],threadEls=[];
+function layoutConv(){
+  var field=$('#field');if(!field)return;
+  var wpx=field.clientWidth,hpx=field.clientHeight;
+  var svg=$('#threads');
+  if(!fragEls.length){
+    for(var i=0;i<8;i++){
+      var d=document.createElement('div');d.className='frag';field.appendChild(d);
+      fragEls.push(d);
+      var l=el('path',{fill:'none','stroke-width':'1'});svg.appendChild(l);threadEls.push(l);
+    }
+  }
+  var r=rng(19);
+  fragEls.forEach(function(d,i){
+    d.textContent=FRAGS[i][lang];
+    var w=d.offsetWidth,h=d.offsetHeight;
+    var col=i%4,row=(i/4)|0;
+    // scattered start — jittered ring, so nothing collides
+    var ang=(i/8)*Math.PI*2+(r()-.5)*.42;
+    var sx=wpx*0.5+Math.cos(ang)*wpx*(0.30+r()*0.12)-w/2;
+    var sy=hpx*0.5+Math.sin(ang)*hpx*(0.32+r()*0.13)-h/2;
+    var rot=(r()-.5)*20;
+    // aligned end — 4 x 2 grid, centred in the frame
+    var padx=wpx*0.07, cw=(wpx-padx*2)/4;
+    var ex=padx+cw*col+cw/2-w/2;
+    var ey=hpx*0.5+(row?1:-1)*(h*0.9)-h/2;
+    d._s=[clamp(sx,4,wpx-w-4),clamp(sy,4,hpx-h-4),rot];
+    d._e=[clamp(ex,4,wpx-w-4),clamp(ey,4,hpx-h-4),0];
+  });
+  paintConv(scenes.length?undefined:0);
+}
+function paintConv(p){
+  if(p===undefined)p=($('#s-conv')?clamp(-$('#s-conv').getBoundingClientRect().top/Math.max(1,$('#s-conv').offsetHeight-window.innerHeight),0,1):0);
+  var e=ease(clamp((p-.16)/.6,0,1));
+  var after=e>.5;
+  $('#cvA').classList.toggle('off',after);
+  $('#cvB').classList.toggle('off',!after);
+  $('#frame').style.opacity=clamp((e-.42)/.4,0,1);
+  $('#frame').style.transform='scale('+lerp(.96,1,clamp((e-.42)/.4,0,1)).toFixed(3)+')';
+  var pts=[];
+  fragEls.forEach(function(d,i){
+    var x=lerp(d._s[0],d._e[0],e),y=lerp(d._s[1],d._e[1],e),rot=lerp(d._s[2],d._e[2],e);
+    d.style.transform='translate3d('+x.toFixed(1)+'px,'+y.toFixed(1)+'px,0) rotate('+rot.toFixed(2)+'deg)';
+    d.style.opacity=lerp(.62,1,e);
+    d.style.borderColor=after?'rgba(242,162,76,.34)':'rgba(255,255,255,.1)';
+    d.style.color=after?'rgba(255,255,255,.95)':'rgba(255,255,255,.62)';
+    if(after&&d.textContent!==AFTER[i][lang])d.textContent=AFTER[i][lang];
+    if(!after&&d.textContent!==FRAGS[i][lang])d.textContent=FRAGS[i][lang];
+    pts.push([x+d.offsetWidth/2,y+d.offsetHeight/2]);
+  });
+  var fw=$('#field').clientWidth||1,fh=$('#field').clientHeight||1;
+  threadEls.forEach(function(l,i){
+    var a=pts[i],b=pts[(i+3)%8];
+    var sx=a[0]/fw*1000,sy=a[1]/fh*560,ex=b[0]/fw*1000,ey=b[1]/fh*560;
+    l.setAttribute('d','M'+sx.toFixed(1)+' '+sy.toFixed(1)+' L'+ex.toFixed(1)+' '+ey.toFixed(1));
+    l.setAttribute('stroke',after?'rgba(242,162,76,'+(0.16*(e-.5)*2).toFixed(3)+')'
+                                 :'rgba(240,112,92,'+(0.22*(1-e*2)).toFixed(3)+')');
+    l.setAttribute('stroke-dasharray',after?'none':'3 6');
+  });
+}
+layoutConv();
+reg('#s-conv',paintConv);
+
+/* ─────────── closing map ─────────── */
+(function(){
+  var m=Map3('mapEnd',{seed:7});
+  var rp=routePair(m.layer,PLANNED,PLANNED);
+  rp.actual.setAttribute('opacity','.75');
+  var ride=rider(rp.actual);
+  var tk=m.addPin(0,0,function(){return truckMarker('#F2A24C',1);});
+  function frame(t){
+    var p=ride.at(t);
+    m.look(p.x+180,p.y-40,.72);
+    tk.setAttribute('transform','translate('+p.x.toFixed(1)+' '+p.y.toFixed(1)+') scale('+(1/m.k).toFixed(3)+') rotate('+p.a.toFixed(1)+')');
+  }
+  if(reduced){frame(.6);return;}
+  var live=false,t0=performance.now();
+  if('IntersectionObserver' in window)
+    new IntersectionObserver(function(e){live=e[0].isIntersecting;if(live){t0=performance.now()-24000;loop();}},
+      {threshold:0}).observe($('#s-end'));
+  function loop(now){if(!live)return;frame((((now||performance.now())-t0)/78000)%1);requestAnimationFrame(loop);}
+  frame(.3);
+})();
+
+/* ─────────── presentation mode ─────────── */
+var SLIDES=[
+  {id:'s-hero',p:0,  en:'Opening',ru:'Начало'},
+  {id:'s-route',p:.05,en:'Route assigned',ru:'Маршрут назначен'},
+  {id:'s-route',p:.16,en:'Delivered to the driver',ru:'Доставлено водителю'},
+  {id:'s-route',p:.32,en:'On route',ru:'На маршруте'},
+  {id:'s-route',p:.50,en:'Deviation detected',ru:'Отклонение'},
+  {id:'s-route',p:.66,en:'Driver warned',ru:'Предупреждение'},
+  {id:'s-route',p:.80,en:'Back on route',ru:'Вернулся'},
+  {id:'s-route',p:.95,en:'Route closes itself',ru:'Маршрут закрыт'},
+  {id:'s-fuel',p:.06, en:'Stop assigned',ru:'Станция назначена'},
+  {id:'s-fuel',p:.24, en:'Geocoded',ru:'Геокодировано'},
+  {id:'s-fuel',p:.46, en:'50-mile radius',ru:'Радиус 50 миль'},
+  {id:'s-fuel',p:.70, en:'Reminder sent',ru:'Напоминание'},
+  {id:'s-fuel',p:.92, en:'Nobody chased',ru:'Никто не искал'},
+  {id:'s-cc',p:.55,   en:'Command center',ru:'Командный центр'},
+  {id:'s-conv',p:.12, en:'Scattered',ru:'Разрозненно'},
+  {id:'s-conv',p:.80, en:'Converged',ru:'Связано'},
+  {id:'s-cap',p:0,    en:'Capabilities',ru:'Возможности'},
+  {id:'s-end',p:0,    en:'Closing',ru:'Финал'}
+];
+var present=false,idx=0;
+SLIDES.forEach(function(){$('#pDots').insertAdjacentHTML('beforeend','<i></i>');});
+var dotEls=$$('#pDots i');
+function slideY(s){
+  var e=document.getElementById(s.id);if(!e)return 0;
+  var top=e.getBoundingClientRect().top+window.pageYOffset;
+  var span=e.offsetHeight-window.innerHeight;
+  if(span>0)return top+span*s.p;
+  return top-Math.max(0,(window.innerHeight-e.offsetHeight)/2);
+}
+function goTo(i){
+  idx=clamp(i,0,SLIDES.length-1);
+  window.scrollTo({top:slideY(SLIDES[idx]),behavior:'auto'});
+  measure();
+  $('#pNum').textContent=String(idx+1);
+  $('#pLbl').textContent='/ '+SLIDES.length+' · '+SLIDES[idx][lang];
+  dotEls.forEach(function(d,k){d.classList.toggle('on',k===idx);});
+  $('#pPrev').disabled=idx===0;$('#pNext').disabled=idx===SLIDES.length-1;
+}
+function nearest(){var y=window.pageYOffset,b=0,bd=Infinity;
+  SLIDES.forEach(function(s,i){var d=Math.abs(slideY(s)-y);if(d<bd){bd=d;b=i;}});return b;}
+function setPresent(on){
+  present=on;document.body.classList.toggle('present',on);
+  $('#presBtn').setAttribute('aria-pressed',String(on));
+  if(on){goTo(nearest());$('#pNext').focus();}
+}
+$('#presBtn').addEventListener('click',function(){setPresent(!present);});
+$('#pExit').addEventListener('click',function(){setPresent(false);});
+$('#pPrev').addEventListener('click',function(){goTo(idx-1);});
+$('#pNext').addEventListener('click',function(){goTo(idx+1);});
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'&&present){setPresent(false);return;}
+  if(!present)return;
+  if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){e.preventDefault();goTo(idx+1);}
+  else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();goTo(idx-1);}
+  else if(e.key==='Home'){e.preventDefault();goTo(0);}
+  else if(e.key==='End'){e.preventDefault();goTo(SLIDES.length-1);}
+});
+(function(){var sx=0,sy=0;
+  document.addEventListener('touchstart',function(e){if(!present)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;},{passive:true});
+  document.addEventListener('touchend',function(e){if(!present)return;
+    var dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;
+    if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.4)goTo(idx+(dx<0?1:-1));},{passive:true});
+})();
+
+/* ─────────── boot ─────────── */
+window.addEventListener('load',function(){layoutConv();measure();});
+measure();
+})();
+</script>
 </body>
 </html>
