@@ -23,7 +23,13 @@ const resolvedSamsaraApiKeys = Array.from(
 // USDOT numbers, base URLs, feature flags, etc.) is hardcoded as defaults
 // below so it does not need to live in the Render environment. PORT is
 // injected automatically by Render.
-const requiredEnv = [];
+const requiredEnv = [
+  'DATABASE_URL',
+  'JWT_SECRET',
+  'BOT_TOKEN',
+  'TELEGRAM_BOT_TOKEN',
+  'FACEBOOK_TOKEN_ENCRYPTION_KEY'
+];
 
 const configProblems = [];
 

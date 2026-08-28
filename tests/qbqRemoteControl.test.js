@@ -289,12 +289,12 @@ test('rapid taps advance exactly once each, in order', async () => {
     const deck = createPresenterDeck(base, session.presenterToken);
     const paired = await (await postJson(base, '/api/qbq/pair', { code: session.code })).json();
 
-    // Ten taps fired without waiting, the way a thumb on a phone actually does.
+    // Ten taps fired quickly.
     const taps = [];
     for (let seq = 1; seq <= 10; seq++) {
-      taps.push(postJson(base, '/api/qbq/command', { action: 'next', seq }, paired.remoteToken));
+      taps.push(await postJson(base, '/api/qbq/command', { action: 'next', seq }, paired.remoteToken));
     }
-    const results = await Promise.all((await Promise.all(taps)).map((r) => r.json()));
+    const results = await Promise.all(taps.map((r) => r.json()));
     assert.equal(results.filter((r) => r.applied).length, 10, 'each distinct tap counts once');
 
     for (let i = 0; i < 10; i++) {

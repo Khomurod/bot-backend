@@ -1,3 +1,4 @@
+process.env.MILEAGE_BONUS_ACCOUNTING_USER_IDS = '';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');

@@ -3,6 +3,8 @@
  * The gate is a pure function so intents/thresholds/grounding are tested
  * directly; normalizeAiResult is tested for server-side re-grounding.
  */
+delete process.env.GEMINI_API_KEY;
+
 process.env.BOT_TOKEN ||= 'test-bot-token';
 process.env.TELEGRAM_BOT_TOKEN ||= 'test-bot-token';
 process.env.DATABASE_URL ||= 'postgresql://user:password@localhost:5432/test';
@@ -234,7 +236,7 @@ test('normalizeAiResult rejects structurally invalid output', () => {
 // ── verifier availability / multilingual prompt ──
 
 test('verifyTrailerSemantics fails closed as unavailable without an API key', async () => {
-  // GEMINI_API_KEY is unset in the test env → mandatory verification cannot run.
+  // GEMINI_API_KEY is unset in the test env (see top of file) → mandatory verification cannot run.
   const res = await sv.verifyTrailerSemantics({ currentText: 'picked up trailer 403279' }, []);
   assert.equal(res.status, 'unavailable');
 });
