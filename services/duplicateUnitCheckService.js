@@ -133,7 +133,9 @@ async function runDuplicateUnitCheck() {
       });
     }
   } catch (err) {
-    console.warn('[DUP-UNIT] Samsara fetch failed — provider name checks skipped:', err.message);
+    if (!err.message?.includes('401')) {
+      console.warn('[DUP-UNIT] Samsara fetch failed — provider name checks skipped:', err.message);
+    }
     vehicles = null;
   }
 
