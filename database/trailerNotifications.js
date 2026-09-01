@@ -19,6 +19,26 @@ async function claimTrailerNotificationJob(){
   }catch(e){try{await client.query('ROLLBACK');}catch(_){}client.release();throw e;}
 }
 
+/**
+ * Earliest moment a job could become claimable, or null when none can.
+ *
+ * The predicate MIRRORS claimTrailerNotificationJob() above minus its
+ * `available_at<=NOW()` due filter — the worker sleeps until this timestamp, so
+ * a row counted here that the claim would then reject (an exhausted `attempts`
+ * job, say) would wake the worker forever. Keep the two in step.
+ *
+ * The stale-`processing` takeover is deliberately not modelled beyond its
+ * available_at: that recovery is what the worker's slow idle sweep is for.
+ */
+async function getNextTrailerNotificationDueAt(){
+  const res=await query(
+    `SELECT MIN(available_at) AS next_due_at
+       FROM trailer_notification_jobs
+      WHERE (status IN ('pending','failed') OR (status='processing' AND locked_at<NOW()-INTERVAL '5 minutes'))
+        AND attempts<8`);
+  return res.rows[0]?.next_due_at??null;
+}
+
 async function markTrailerNotificationSent(id,{chatId,messageId}){
   const res=await query(`WITH updated AS (UPDATE trailer_notification_jobs SET status='sent',telegram_chat_id=$2,
     telegram_message_id=$3,sent_at=NOW(),last_error=NULL,updated_at=NOW() WHERE id=$1 RETURNING *)
@@ -155,5 +175,5 @@ async function listCompanyReminderHistory(companyId){
   return res.rows;
 }
 
-module.exports={claimTrailerNotificationJob,markTrailerNotificationSent,markTrailerNotificationFailed,getPaymentNotificationContext,
+module.exports={claimTrailerNotificationJob,getNextTrailerNotificationDueAt,markTrailerNotificationSent,markTrailerNotificationFailed,getPaymentNotificationContext,
   enqueueOverdueReminders,resumeExpiredSnoozes,getOverdueNotificationContext,retryTrailerNotification,listCompanyReminderHistory};

@@ -5,6 +5,7 @@ const { isLoadLikeChatMessage } = require('./loadTextPatterns');
 const datatruckLoadService = require('./datatruckLoadService');
 
 const { callGroqWithFallback, INTERACTIVE_MAX_RETRY_WAIT_MS } = require('./groqClient');
+const { prepareImagePartForAi } = require('./aiImagePrep');
 const {
   callGeminiGenerateContent,
   getPinnedContextGeminiModels,
@@ -300,7 +301,7 @@ function buildPinnedContextPrompt({ pinnedText, extractedRawText, multipleMedia 
   return lines.join('\n');
 }
 
-function buildPinnedContextAiParts({
+async function buildPinnedContextAiParts({
   pinnedText,
   extractedRawText,
   sourceFile,
@@ -331,13 +332,9 @@ function buildPinnedContextAiParts({
     inlineCandidates.push(sourceFile);
   }
 
+  // Images are resized/re-encoded first; PDFs pass through untouched.
   for (const sf of inlineCandidates) {
-    parts.push({
-      inline_data: {
-        mime_type: sf.mimetype,
-        data: sf.buffer.toString('base64'),
-      },
-    });
+    parts.push(await prepareImagePartForAi(sf.buffer, sf.mimetype));
   }
 
   parts.push({ text: prompt });
@@ -397,7 +394,7 @@ async function requestPinnedContextFromGemini({
 }) {
   const contents = [
     {
-      parts: buildPinnedContextAiParts({
+      parts: await buildPinnedContextAiParts({
         pinnedText,
         extractedRawText,
         sourceFile,

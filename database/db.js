@@ -55,7 +55,42 @@ const trailerAvailabilityDb = require('./trailerAvailability');
  * fail-fast behavior the single-file schema apply has always had.
  */
 async function initializeDatabase() {
-  console.log('[DB] Mock active — skipping schema and migrations.');
+  const schemaPath = path.join(__dirname, 'schema.sql');
+  const schema = fs.readFileSync(schemaPath, 'utf-8');
+  try {
+    const baselineStart = process.hrtime.bigint();
+    await pool.query(schema);
+    const baselineMs = Number((process.hrtime.bigint() - baselineStart) / 1000000n);
+    console.log('[DB] Database tables verified/created.');
+
+    // Forward migrations: record the baseline in the ledger and apply any
+    // pending versioned migrations. Additive around the baseline above.
+    await runMigrations(pool, {
+      migrationsDir: MIGRATIONS_DIR,
+      baselineChecksum: checksum(schema),
+      baselineMs,
+    });
+
+    // Auto-tag employee group if EMPLOYEE_GROUP_ID is set
+    if (config.employeeGroupId) {
+      await pool.query(
+        `UPDATE groups SET group_type = 'employee' WHERE telegram_group_id = $1 AND group_type != 'employee'`,
+        [config.employeeGroupId]
+      );
+    }
+
+    await facebookLeadsDb.seedFacebookLeadAutoMessageDefaults();
+
+    await pool.query(
+      `UPDATE groups SET status_source = 'bot'
+       WHERE group_type = 'driver' AND status_source IS NULL`
+    );
+
+    await employeeBirthdaysDb.ensureEmployeeBirthdaySettings();
+  } catch (err) {
+    console.error('[DB] Error initializing database:', err.message);
+    throw err;
+  }
 }
 
 

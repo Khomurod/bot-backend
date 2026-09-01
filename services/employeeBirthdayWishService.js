@@ -7,12 +7,23 @@ const config = require('../config/config');
 const { bot } = require('../bot/bot');
 const { safeSend, sendTelegramHtmlChunks, sanitizeCompanyReportHtmlForTelegram } = require('./telegramHtml');
 const { generateEmployeeBirthdayMessage } = require('./employeeBirthdayMessage');
+const { createDailyWakeTimer } = require('./dailyWakeSchedule');
 
-const POLL_MS = 60 * 1000;
+const DEFAULT_TZ = 'Asia/Tashkent';
+/**
+ * Fallback schedule, used only if the settings row cannot be read at all.
+ * Mirrors the schema defaults for `employee_birthday_settings` (00:00
+ * Asia/Tashkent) so a failed read plans the same wake the database would.
+ */
+const FALLBACK_SEND = { send_hour: 0, send_minute: 0, timezone: DEFAULT_TZ };
 
-let serviceTimer = null;
+let wakeTimer = null;
 let serviceStopped = false;
 let tickRunning = false;
+// Last settings seen by a tick. The wake planner needs the send hour/zone to
+// decide when to come back, and reading them again right after the tick would
+// double this service's idle query count for no new information.
+let lastKnownSettings = FALLBACK_SEND;
 
 function formatNamesList(employees) {
   return employees.map((e) => `${e.first_name} ${e.last_name}`.trim()).join(', ');
@@ -114,7 +125,8 @@ function isPastEmployeeBirthdaySchedule(now, settings) {
 
 async function checkAndRunScheduled() {
   const settings = await db.getEmployeeBirthdaySettings();
-  const tz = settings.timezone || 'Asia/Tashkent';
+  lastKnownSettings = settings || FALLBACK_SEND;
+  const tz = settings.timezone || DEFAULT_TZ;
   const now = DateTime.now().setZone(tz);
   const isoDate = now.toISODate();
 
@@ -128,20 +140,33 @@ function shouldRunEmployeeBirthdayAt(settings, now) {
   return now.hour === settings.send_hour && now.minute === settings.send_minute;
 }
 
+/**
+ * One scheduler pass. Resolves `{ retry }`: a failed send throws out of
+ * `runEmployeeBirthdayWishes` after releasing its day claim, so it must come
+ * back on the fast cadence rather than sleeping until the next send hour.
+ */
 async function tick() {
-  if (tickRunning) return;
+  if (tickRunning) return { retry: false };
   tickRunning = true;
   try {
     await checkAndRunScheduled();
+    return { retry: false };
   } catch (err) {
     console.error('[EMP-BIRTHDAY] Tick error:', err.message);
+    return { retry: true };
   } finally {
     tickRunning = false;
   }
 }
 
+/** The configured send moment on `isoDate`, from the last settings a tick saw. */
+function scheduledForIsoDate(isoDate) {
+  return getEmployeeBirthdayScheduledTime(isoDate, lastKnownSettings);
+}
+
 function startEmployeeBirthdayWishService() {
   db.getEmployeeBirthdaySettings().then((settings) => {
+    if (settings) lastKnownSettings = settings;
     const pad = (n) => String(n).padStart(2, '0');
     console.log(
       `[EMP-BIRTHDAY] Service started — wishes at ${pad(settings.send_hour)}:${pad(settings.send_minute)} ${settings.timezone}`
@@ -151,17 +176,22 @@ function startEmployeeBirthdayWishService() {
   });
 
   serviceStopped = false;
-  tick();
-  serviceTimer = setInterval(() => {
-    if (!serviceStopped) tick();
-  }, POLL_MS);
+  wakeTimer = createDailyWakeTimer({
+    label: 'EMP-BIRTHDAY',
+    runTick: tick,
+    // Each tick refreshes lastKnownSettings, so an admin changing the send
+    // time is picked up on the following wake — at most one hour later.
+    now: () => DateTime.now().setZone(lastKnownSettings.timezone || DEFAULT_TZ),
+    scheduledFor: scheduledForIsoDate,
+  });
+  wakeTimer.start();
 }
 
 function stopEmployeeBirthdayWishService() {
   serviceStopped = true;
-  if (serviceTimer) {
-    clearInterval(serviceTimer);
-    serviceTimer = null;
+  if (wakeTimer) {
+    wakeTimer.stop();
+    wakeTimer = null;
   }
 }
 

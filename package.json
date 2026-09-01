@@ -7,10 +7,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "cd admin && npm run build",
-    "postinstall": "cd admin && npm install",
-    "start": "node index.js",
-    "test": "node --test --test-concurrency=1 tests/*.test.js",
+    "postinstall": "npm ci --prefix admin && npm run build --prefix admin",
+    "start": "node --max-old-space-size=256 index.js",
+    "test": "node --test --test-concurrency=1 tests/*.test.js && python -m unittest discover -s leads-bot -p \"test_*.py\"",
     "lint:filesize": "node scripts/checkFileSize.js",
     "lint:filesize:list": "node scripts/checkFileSize.js --list",
     "bot": "node bot/bot.js",

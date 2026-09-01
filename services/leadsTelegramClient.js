@@ -13,7 +13,11 @@ function toSupergroupStyleChatId(chatId) {
 }
 
 function ensureLeadsBotToken() {
-  return String(leadsBotToken || 'mock:token').trim();
+  const token = String(leadsBotToken || '').trim();
+  if (!token) {
+    throw new Error('TELEGRAM_BOT_TOKEN is not configured (WenzeLeadBots)');
+  }
+  return token;
 }
 
 function getLeadsTelegram() {

@@ -32,7 +32,7 @@ const { installBotSentMessageTracking } = require('../services/botSentMessageReg
 // config.js already validates DATABASE_URL, MANAGEMENT_GROUP_ID (BOT_TOKEN has a code default)
 // and exits on missing values — no need to re-check here.
 
-const bot = new Telegraf(config.botToken || 'mock:token', { telegram: telegramClientOptions });
+const bot = new Telegraf(config.botToken, { telegram: telegramClientOptions });
 installBotSentMessageTracking(bot.telegram, db);
 // Disabled leftover debug instrumentation. This previously POSTed to a
 // hardcoded localhost agent-ingest endpoint on every command, which is a dead
@@ -102,10 +102,6 @@ async function launchBotWithRetry(delayMs = BOT_LAUNCH_RETRY_MS) {
   botRunning = true;
 
   async function startPollingAfterClearingWebhook() {
-    if (!config.botToken || config.botToken === 'mock:token' || config.botToken === 'your-telegram-bot-token') {
-       console.log('[BOT] Mock token active, skipping Telegram polling launch.');
-       return;
-    }
     // If this bot ever had a webhook URL set, Telegram will reject or fight long-polling
     // until the webhook is removed. Same symptom as "two getUpdates" for operators.
     if (process.env.TELEGRAM_SKIP_DELETE_WEBHOOK_BEFORE_POLL !== 'true') {

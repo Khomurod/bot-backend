@@ -2,11 +2,21 @@
 
 const db = require('../database/db');
 const storage = require('./trailerStorageService');
+const { createQueueWakeScheduler, resolveSweepMs } = require('./jobQueueScheduler');
+
+/**
+ * Overdue reminders are enqueued on the hour configured in trailer settings, so
+ * this sweep only has to be finer than an hour to never miss one.
+ */
+const REMINDER_SWEEP_MS = 5 * 60 * 1000;
 
 let telegram = null;
-let timer = null;
+let scheduler = null;
 let reminderTimer = null;
 let running = false;
+let draining = false;
+let drainQueued = false;
+let workerStopped = false;
 
 function esc(value){return String(value??'—').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function usd(value){return `$${Number(value||0).toFixed(2)}`;}
@@ -80,13 +90,14 @@ async function sendOverdue(job){
   return{chatId:row.overdue_reminder_group_id,messageId:sent.message_id};
 }
 
+/** Claim and deliver at most one job. Resolves true when one was claimed. */
 async function processOne(){
-  if(running||!telegram)return;
+  if(running||!telegram)return false;
   running=true;
   let job;
   try{
     job=await db.claimTrailerNotificationJob();
-    if(!job)return;
+    if(!job)return false;
     let result;
     if(job.job_type==='payment_confirmation')result=await sendPayment(job);
     else if(job.job_type==='overdue_reminder')result=await sendOverdue(job);
@@ -96,25 +107,74 @@ async function processOne(){
     if(job)await db.markTrailerNotificationFailed(job.id,error);
     console.error('[TRAILER-NOTIFY] worker error:',error.message);
   }finally{running=false;}
+  return Boolean(job);
+}
+
+/**
+ * Drain every claimable job, then sleep until the next one is genuinely due.
+ *
+ * Replaces a blanket 15-second poll. A burst of receipts now goes out back to
+ * back instead of one per tick, and an empty queue costs nothing at all.
+ */
+async function drainQueue(){
+  if(!telegram)return;
+  if(draining){drainQueued=true;return;}
+  draining=true;
+  let drainedCleanly=false;
+  try{
+    while(await processOne());
+    drainedCleanly=true;
+  }finally{
+    draining=false;
+    if(drainQueued){drainQueued=false;setImmediate(pokeTrailerNotificationQueue);}
+    else if(drainedCleanly&&scheduler)void scheduler.afterDrain();
+  }
+}
+
+/**
+ * Deliver now. Called by the producer the moment a job is written (a recorded
+ * payment, a freshly enqueued overdue reminder), so nothing waits for a timer.
+ */
+function pokeTrailerNotificationQueue(){
+  if(workerStopped||!telegram)return;
+  drainQueue().catch((error)=>console.error('[TRAILER-NOTIFY] drain error:',error.message));
 }
 
 async function enqueueReminders(){
-  try{await db.enqueueOverdueReminders();}catch(error){console.error('[TRAILER-REMINDER] enqueue error:',error.message);}
+  try{
+    const enqueued=await db.enqueueOverdueReminders();
+    // Deliver what was just enqueued now rather than on a later tick.
+    if(enqueued)pokeTrailerNotificationQueue();
+  }catch(error){console.error('[TRAILER-REMINDER] enqueue error:',error.message);}
 }
 
 function startTrailerNotificationService(botTelegram){
-  if(timer)return;
+  if(scheduler)return;
   telegram=botTelegram;
-  timer=setInterval(processOne,15_000);timer.unref?.();
-  reminderTimer=setInterval(enqueueReminders,5*60_000);reminderTimer.unref?.();
-  setTimeout(processOne,5_000).unref?.();
+  workerStopped=false;
+  const sweepMs=resolveSweepMs(process.env.TRAILER_NOTIFY_SWEEP_MS);
+  scheduler=createQueueWakeScheduler({
+    onWake:pokeTrailerNotificationQueue,
+    getNextDueAt:db.getNextTrailerNotificationDueAt,
+    sweepMs,
+  });
+  scheduler.start();
+  reminderTimer=setInterval(enqueueReminders,REMINDER_SWEEP_MS);reminderTimer.unref?.();
+  // Recover anything left pending by a restart immediately, not on a sweep.
+  setTimeout(pokeTrailerNotificationQueue,5_000).unref?.();
   setTimeout(enqueueReminders,10_000).unref?.();
-  console.log('[TRAILER-NOTIFY] Durable payment/reminder worker started.');
+  console.log(
+    `[TRAILER-NOTIFY] Durable payment/reminder worker started — delivery on enqueue, `
+    +`retries on their own available_at, idle sweep every ${Math.round(sweepMs/1000)}s.`
+  );
 }
 
 function stopTrailerNotificationService(){
-  if(timer)clearInterval(timer);if(reminderTimer)clearInterval(reminderTimer);
-  timer=null;reminderTimer=null;telegram=null;
+  workerStopped=true;
+  if(scheduler)scheduler.stop();
+  if(reminderTimer)clearInterval(reminderTimer);
+  scheduler=null;reminderTimer=null;telegram=null;
 }
 
-module.exports={startTrailerNotificationService,stopTrailerNotificationService,processOne,enqueueReminders,paymentMessage,overdueMessage};
+module.exports={startTrailerNotificationService,stopTrailerNotificationService,processOne,drainQueue,
+  pokeTrailerNotificationQueue,enqueueReminders,paymentMessage,overdueMessage};

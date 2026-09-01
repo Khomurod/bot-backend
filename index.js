@@ -186,7 +186,75 @@ function scheduleLeadsRestart(reason) {
 }
 
 function startLeadsBot() {
-  console.log('[LEADS] Disabled in AI Studio (no Python runtime)');
+  if (
+    isShuttingDown
+    || !isEnabled('ENABLE_LEADS_BOT', true)
+    || (leadsProcess && leadsProcess.exitCode === null)
+  ) {
+    return;
+  }
+
+  const leadsDir = path.join(__dirname, 'leads-bot');
+  const scriptPath = path.join(leadsDir, 'main.py');
+  if (!fs.existsSync(scriptPath)) {
+    console.error(`[LEADS] Missing entry point: ${scriptPath}`);
+    scheduleLeadsRestart('entry point missing');
+    return;
+  }
+
+  const pythonBin = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
+  const rootPort = Number.parseInt(process.env.PORT || '3001', 10);
+  const leadsPort = Number.parseInt(process.env.LEADS_BOT_PORT || '8000', 10);
+
+  try {
+    const child = spawn(pythonBin, ['-u', scriptPath], {
+      cwd: leadsDir,
+      env: {
+        ...process.env,
+        PORT: String(leadsPort),
+        LOCAL_API_BASE_URL: process.env.LOCAL_API_BASE_URL || `http://127.0.0.1:${rootPort}`,
+        PYTHONUNBUFFERED: '1',
+        MALLOC_ARENA_MAX: process.env.MALLOC_ARENA_MAX || '2',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+
+    leadsProcess = child;
+    console.log(`[LEADS] Started PID ${child.pid}`);
+    writeChildOutput('LEADS', child.stdout, console.log);
+    writeChildOutput('LEADS', child.stderr, console.error);
+
+    const stableTimer = setTimeout(() => {
+      if (leadsProcess === child && child.exitCode === null) {
+        leadsRestartDelayMs = CHILD_RESTART_BASE_MS;
+      }
+    }, 30_000);
+    stableTimer.unref?.();
+
+    child.once('error', (error) => {
+      clearTimeout(stableTimer);
+      if (leadsProcess === child) leadsProcess = null;
+      console.error('[LEADS] Process error:', error);
+      scheduleLeadsRestart(error.message);
+    });
+
+    child.once('exit', (code, signal) => {
+      clearTimeout(stableTimer);
+      if (leadsProcess === child) leadsProcess = null;
+      if (isShuttingDown) return;
+      if (code === 78) {
+        console.error('[LEADS] Exited with EX_CONFIG (78) — permanent config error, will NOT restart.');
+        leadsCircuitOpen = true;
+        return;
+      }
+      scheduleLeadsRestart(`exit code=${code} signal=${signal || 'none'}`);
+    });
+  } catch (error) {
+    leadsProcess = null;
+    console.error('[LEADS] Failed to spawn:', error);
+    scheduleLeadsRestart(error.message);
+  }
 }
 
 function killWithEscalation(child, label) {

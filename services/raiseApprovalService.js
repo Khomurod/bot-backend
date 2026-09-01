@@ -41,10 +41,12 @@ const notifications = require('./raise/notifications');
 const teamRoster = require('./raise/teamRoster');
 const dispatcherFlow = require('./raise/dispatcherFlow');
 const { computeNextWeeklyOccurrence, describeWeeklySchedule } = require('./scheduledMessageUtils');
+const { createDueTimeWakeTimer } = require('./dueTimeWakeTimer');
 
-const POLL_MS = 60 * 1000;
-
-let serviceTimer = null;
+// The weekly round stores next_run_at, so the scheduler sleeps until it is due
+// rather than asking PostgreSQL every minute whether a once-a-week event has
+// arrived. recomputeNextRun() re-arms the moment an admin changes the schedule.
+let wakeTimer = null;
 let serviceStopped = false;
 let tickRunning = false;
 
@@ -148,26 +150,38 @@ async function recomputeNextRun(settings) {
     timezone: settings.schedule_timezone,
   });
   await ra.updateRaiseSettings({ next_run_at: next ? next.toUTC().toISO() : null });
+  // The admin panel calls this after a schedule change; re-arm so a new time
+  // takes effect immediately rather than on the next capped wake.
+  wakeTimer?.rearm(next ? next.toMillis() : null);
   return next;
 }
 
+/**
+ * One scheduler pass. Resolves `{ retry, nextRunAtMs }` so the wake chain knows
+ * when to come back: the stored next_run_at when the schedule is healthy, or
+ * the fast retry cadence when an auto-send failed and released its claim.
+ */
 async function tick() {
-  if (tickRunning) return;
+  if (tickRunning) return { retry: false };
   tickRunning = true;
   try {
     const settings = await ra.getRaiseSettings();
-    if (!settings || !settings.enabled || !settings.schedule_enabled) return;
+    // Disabled: nothing to compute. The capped wake still re-reads settings, so
+    // re-enabling from the admin panel is picked up without a restart.
+    if (!settings || !settings.enabled || !settings.schedule_enabled) return { retry: false };
 
     if (!settings.next_run_at) {
-      await recomputeNextRun(settings);
-      return;
+      const next = await recomputeNextRun(settings);
+      return { retry: false, dueAtMs: next ? next.toMillis() : null };
     }
     const now = DateTime.now();
-    if (DateTime.fromISO(settings.next_run_at) > now) return;
+    const dueAt = DateTime.fromISO(settings.next_run_at);
+    if (dueAt > now) return { retry: false, dueAtMs: dueAt.toMillis() };
 
     const def = defaultPreviousWeek(settings.schedule_timezone);
     // Idempotent: at most one auto-send per pay period across restarts.
     const claimed = await db.claimServiceRun('raise', `weekly:${def.periodEnd}`);
+    let sendFailed = false;
     if (claimed) {
       try {
         await openRoundAndPost({
@@ -177,13 +191,16 @@ async function tick() {
         });
         console.log(`[RAISE] Weekly round opened for ${def.periodStart}→${def.periodEnd}`);
       } catch (err) {
+        sendFailed = true;
         await db.unclaimServiceRun('raise', `weekly:${def.periodEnd}`).catch(() => {});
         console.error('[RAISE] Weekly auto-send failed (will retry):', err.message);
       }
     }
-    await recomputeNextRun(settings);
+    const next = await recomputeNextRun(settings);
+    return { retry: sendFailed, dueAtMs: next ? next.toMillis() : null };
   } catch (err) {
     console.error('[RAISE] Scheduler tick error:', err.message);
+    return { retry: true };
   } finally {
     tickRunning = false;
   }
@@ -197,16 +214,16 @@ function startRaiseApprovalService() {
   teamRoster.backfillLegacyTeamDriverLinks().catch((err) => {
     console.error('[RAISE] Legacy team-driver backfill failed (non-fatal):', err.message);
   });
-  setTimeout(() => { if (!serviceStopped) tick(); }, 12 * 1000).unref?.();
-  serviceTimer = setInterval(() => { if (!serviceStopped) tick(); }, POLL_MS);
-  serviceTimer.unref?.();
+  // First pass shortly after boot, then sleep until next_run_at is actually due.
+  wakeTimer = createDueTimeWakeTimer({ label: 'RAISE', runTick: tick });
+  wakeTimer.start(12 * 1000);
 }
 
 function stopRaiseApprovalService() {
   serviceStopped = true;
-  if (serviceTimer) {
-    clearInterval(serviceTimer);
-    serviceTimer = null;
+  if (wakeTimer) {
+    wakeTimer.stop();
+    wakeTimer = null;
   }
 }
 

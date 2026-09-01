@@ -15,6 +15,7 @@
  */
 const db = require('../database/db');
 const { normalizeUnitNumber } = require('./trailerMessageParser');
+const { prepareImagePartsForAi } = require('./aiImagePrep');
 // NOTE: geminiClient (AI vision) is required LAZILY inside extractFromImages so
 // its module + any base64/image work stays off the boot path — the import
 // endpoint is the only caller and it runs rarely.
@@ -40,9 +41,10 @@ async function extractFromImages(files) {
     err.status = 503;
     throw err;
   }
-  const images = (Array.isArray(files) ? files : [])
-    .filter((f) => f?.buffer && f?.mimetype?.startsWith('image/') && f.buffer.length <= MAX_INLINE_BYTES)
-    .map((f) => ({ inline_data: { mime_type: f.mimetype, data: f.buffer.toString('base64') } }));
+  const images = await prepareImagePartsForAi(
+    (Array.isArray(files) ? files : [])
+      .filter((f) => f?.buffer && f?.mimetype?.startsWith('image/') && f.buffer.length <= MAX_INLINE_BYTES)
+  );
 
   if (!images.length) {
     const err = new Error('No readable image files were uploaded.');

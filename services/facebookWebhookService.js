@@ -21,11 +21,20 @@ const {
   renderLeadSmsTemplate,
 } = require('./facebookLeadSmsTemplate');
 const { createCrmRecordFromLead } = require('./bitrix24Service');
+const {
+  createQueueWakeScheduler,
+  resolveSweepMs,
+} = require('./jobQueueScheduler');
 
 let telegramClient = null;
-let workerInterval = null;
+let scheduler = null;
 let drainInProgress = false;
 let drainQueued = false;
+// Set once stopFacebookWebhookWorker() has run. A drain queued on setImmediate
+// (by startup, or by a webhook that landed mid-shutdown) must not open new
+// queries while the pool is draining. Nothing is lost: the event is already
+// persisted as 'pending' and the next boot's recovery drain claims it.
+let workerStopped = false;
 
 function configureFacebookLeadTelegram(telegram) {
   telegramClient = telegram;
@@ -277,6 +286,11 @@ async function processFacebookWebhookEvent(eventRow) {
   throw new Error(`Unsupported Facebook webhook event type: ${eventRow.event_type}`);
 }
 
+function triggerDrain() {
+  if (workerStopped) return;
+  drainFacebookWebhookQueue().catch(err => console.error('[WebhookWorker] Drain error:', err.message));
+}
+
 async function drainFacebookWebhookQueue() {
   if (drainInProgress) {
     drainQueued = true;
@@ -284,6 +298,11 @@ async function drainFacebookWebhookQueue() {
   }
 
   drainInProgress = true;
+  // Only a drain that ran the claim loop to exhaustion proves nothing is due.
+  // If it threw (no Telegram client, database down) the queue may still hold
+  // due rows, and arming a precise wake for a past timestamp would spin — the
+  // idle sweep retries that case instead.
+  let drainedCleanly = false;
   try {
     ensureTelegramConfigured();
     while (true) {
@@ -300,15 +319,31 @@ async function drainFacebookWebhookQueue() {
         }
       }
     }
+    drainedCleanly = true;
   } finally {
     drainInProgress = false;
     if (drainQueued) {
       drainQueued = false;
-      setImmediate(() => {
-        drainFacebookWebhookQueue().catch(err => console.error('[WebhookWorker] Drain error:', err.message));
-      });
+      setImmediate(triggerDrain);
+    } else if (drainedCleanly && scheduler) {
+      // Nothing is due right now: sleep until the earliest scheduled retry
+      // rather than re-asking PostgreSQL on a fixed tick.
+      void scheduler.afterDrain();
     }
   }
+}
+
+/**
+ * Earliest `next_retry_at` among events still awaiting work, or null when the
+ * queue is quiet. One query per drain replaces the old fixed-interval polling.
+ */
+async function getNextFacebookRetryDueAt() {
+  const res = await db.query(`
+    SELECT MIN(next_retry_at) AS next_due_at
+      FROM facebook_webhook_events
+     WHERE status IN ('pending', 'failed')
+  `);
+  return res.rows[0]?.next_due_at ?? null;
 }
 
 async function enqueueVerifiedFacebookPayload(payload) {
@@ -319,9 +354,8 @@ async function enqueueVerifiedFacebookPayload(payload) {
 
   const inserted = await db.insertFacebookWebhookEvents(events);
   if (inserted.length) {
-    setImmediate(() => {
-      drainFacebookWebhookQueue().catch(err => console.error('[WebhookWorker] Drain error:', err.message));
-    });
+    // Immediate, on this tick — a lead never waits for a timer.
+    setImmediate(triggerDrain);
   }
 
   return { received: events.length, inserted: inserted.length };
@@ -330,9 +364,7 @@ async function enqueueVerifiedFacebookPayload(payload) {
 async function retryFacebookWebhookEvent(identifier) {
   const event = await db.resetFacebookWebhookEventByIdentifier(identifier);
   if (event) {
-    setImmediate(() => {
-      drainFacebookWebhookQueue().catch(err => console.error('[WebhookWorker] Drain error:', err.message));
-    });
+    setImmediate(triggerDrain);
   }
   return event;
 }
@@ -342,8 +374,11 @@ async function getFacebookWebhookLog(limit = 50) {
 }
 
 async function startFacebookWebhookWorker() {
-  if (workerInterval) return;
+  if (scheduler) return;
+  workerStopped = false;
 
+  // Crash recovery: a row left 'processing' by a killed instance is re-queued
+  // with its attempt budget preserved, so a restart never strands a lead.
   try {
     await db.query(`
       UPDATE facebook_webhook_events
@@ -359,19 +394,27 @@ async function startFacebookWebhookWorker() {
     console.error('[WebhookWorker] Recovery error:', err.message);
   }
 
-  workerInterval = setInterval(() => {
-    drainFacebookWebhookQueue().catch(err => console.error('[WebhookWorker] Drain error:', err.message));
-  }, 5000);
-  workerInterval.unref?.();
-  setImmediate(() => {
-    drainFacebookWebhookQueue().catch(err => console.error('[WebhookWorker] Drain error:', err.message));
+  const sweepMs = resolveSweepMs(process.env.FACEBOOK_WEBHOOK_SWEEP_MS);
+  scheduler = createQueueWakeScheduler({
+    onWake: triggerDrain,
+    getNextDueAt: getNextFacebookRetryDueAt,
+    sweepMs,
   });
+  scheduler.start();
+  console.log(
+    `[WebhookWorker] Event-driven; retries wake on their own next_retry_at, `
+    + `idle sweep every ${Math.round(sweepMs / 1000)}s.`
+  );
+
+  // Recover pending work immediately at startup — not on the first sweep.
+  setImmediate(triggerDrain);
 }
 
 async function stopFacebookWebhookWorker() {
-  if (workerInterval) {
-    clearInterval(workerInterval);
-    workerInterval = null;
+  workerStopped = true;
+  if (scheduler) {
+    scheduler.stop();
+    scheduler = null;
   }
   while (drainInProgress) {
     await new Promise((resolve) => setTimeout(resolve, 100));

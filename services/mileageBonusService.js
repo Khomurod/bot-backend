@@ -13,7 +13,10 @@
  *   a missed or failed Wednesday run is caught up and retried with backoff.
  */
 const { DateTime } = require('luxon');
-const { randomUUID } = require('node:crypto');
+const { createDueTimeWakeTimer } = require('./dueTimeWakeTimer');
+const {
+  serviceError, makeRunKey, retryDelayMinutes, getOrderPickupIso, tripMiles,
+} = require('./mileageBonus/runHelpers');
 const mb = require('../database/mileageBonus');
 const { bot } = require('../bot/bot');
 const { safeSend } = require('./telegramHtml');
@@ -23,55 +26,22 @@ const messageGroups = require('../database/messageRoutingSettings');
 const {
   PROGRAM_START_ISO,
   SCHEDULE_TIMEZONE,
-  INCLUDE_EMPTY_MILES,
   CREDIT_TEAM_CO_DRIVER,
   MILEAGE_BONUS_TIERS,
   normalizeDriverName,
-  toMiles,
   computePayPeriodEnd,
   mostRecentScheduledRun,
+  nextScheduledRun,
   driverPeriodStart,
   tiersReached,
   nextTier,
 } = require('./mileageBonusConstants');
-
-const POLL_MS = 60 * 1000;
 
 let serviceTimer = null;
 let serviceStopped = false;
 let tickRunning = false;
 let activeRun = null; // Promise lock so manual + scheduled runs never overlap.
 let lastRunSummary = null;
-
-function serviceError(code, message, status = 400) {
-  const err = new Error(message);
-  err.code = code;
-  err.status = status;
-  return err;
-}
-
-function makeRunKey(trigger, mode) {
-  return `${trigger}:${mode}:${DateTime.now().toUTC().toFormat('yyyyLLdd-HHmmss')}:${randomUUID()}`;
-}
-
-function retryDelayMinutes(attemptCount) {
-  return Math.min(60, 5 * (2 ** Math.max(0, Number(attemptCount || 1) - 1)));
-}
-
-function getOrderPickupIso(order) {
-  return order.pickup_time
-    || order.pickup_appointment_time
-    || order.delivery_time
-    || order.created_datetime
-    || null;
-}
-
-function tripMiles(order) {
-  const trip = order.trip || {};
-  const loaded = toMiles(trip.mile ?? order.total_miles);
-  const empty = INCLUDE_EMPTY_MILES ? toMiles(trip.empty_mile) : 0;
-  return loaded + empty;
-}
 
 /**
  * Fetch + aggregate cumulative miles per active company driver.
@@ -554,12 +524,16 @@ async function isRunActive() {
 
 // ─── Weekly scheduler (Wednesday 07:00 Central, sleep-safe catch-up) ───
 
+// One pass, resolving { dueAtMs } so the wake chain sleeps until the next Wed
+// 07:00 instead of leasing a run key every minute for a weekly job. The run key
+// stays the MOST RECENT occurrence, preserving the sleep-safe catch-up.
 async function tick() {
-  if (tickRunning || activeRun) return;
+  if (tickRunning || activeRun) return { retry: false };
   tickRunning = true;
+  const now = DateTime.now().setZone(SCHEDULE_TIMEZONE);
+  const dueAtMs = nextScheduledRun(now).toMillis();
   try {
-    if (!datatruck.isConfigured()) return;
-    const now = DateTime.now().setZone(SCHEDULE_TIMEZONE);
+    if (!datatruck.isConfigured()) return { retry: false, dueAtMs };
     const scheduledRun = mostRecentScheduledRun(now);
     const runKey = `weekly:${scheduledRun.toISODate()}`;
     const result = await runMileageBonusCheck({
@@ -568,8 +542,10 @@ async function tick() {
     if (!result?.skipped && !result?.busy) {
       console.log(`[MILEAGE-BONUS] Weekly run completed for ${runKey}`);
     }
+    return { retry: false, dueAtMs };
   } catch (err) {
     console.error('[MILEAGE-BONUS] Scheduler tick error:', err.message);
+    return { retry: true };
   } finally {
     tickRunning = false;
   }
@@ -581,16 +557,16 @@ function startMileageBonusService() {
     `[MILEAGE-BONUS] Service started — weekly check Wednesday 07:00 ${SCHEDULE_TIMEZONE}`
     + (datatruck.isConfigured() ? '' : ' (Datatruck API not configured yet — idle)')
   );
-  // Defer the first tick briefly so the bot/telegram is fully ready.
-  setTimeout(() => { if (!serviceStopped) tick(); }, 10 * 1000).unref?.();
-  serviceTimer = setInterval(() => { if (!serviceStopped) tick(); }, POLL_MS);
-  serviceTimer.unref?.();
+  // Defer the first tick briefly so the bot/telegram is fully ready, then sleep
+  // until the next scheduled run rather than polling every minute.
+  serviceTimer = createDueTimeWakeTimer({ label: 'MILEAGE-BONUS', runTick: tick });
+  serviceTimer.start(10 * 1000);
 }
 
 function stopMileageBonusService() {
   serviceStopped = true;
   if (serviceTimer) {
-    clearInterval(serviceTimer);
+    serviceTimer.stop();
     serviceTimer = null;
   }
 }

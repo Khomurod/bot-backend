@@ -9,6 +9,7 @@ const crypto=require('node:crypto');
 const storage=require('../../services/trailerStorageService');
 const {processTrailerUpload,safeFilename}=require('../../services/trailerImageService');
 const {errorPayload}=require('../../services/trailerErrorMessages');
+const {pokeTrailerNotificationQueue}=require('../../services/trailerNotificationService');
 const {toCsv}=require('./csvSafe');
 
 const upload=multer({
@@ -215,6 +216,9 @@ function createTrailerDepartmentRoutes({db,config,authMiddleware,requirePermissi
           &&(req.body.confirm_overpayment==='true'||req.body.confirm_overpayment===true);
         const result=await db.recordTrailerPayment({...req.body,allow_overpayment:allowOverpayment},actor(req),descriptor);
         if(result.duplicate&&descriptor?.uploadedPaths)await storage.removeObjects(descriptor.uploadedPaths);
+        // recordTrailerPayment queued a payment_confirmation job; deliver it on
+        // this request rather than leaving it for the worker's idle sweep.
+        if(!result.duplicate)pokeTrailerNotificationQueue();
         res.status(result.duplicate?200:201).json(result);
       }catch(e){if(descriptor?.uploadedPaths)await storage.removeObjects(descriptor.uploadedPaths);next(e);}finally{await cleanupFiles(req.file?[req.file]:[]);}
     });

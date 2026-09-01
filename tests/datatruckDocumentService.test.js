@@ -95,8 +95,11 @@ function loadService({
   require.cache[configPath] = { exports: configMock };
   require.cache[telegrafPath] = {
     exports: {
+      // Faithful to Telegraf 4.x: fromURL returns the URL STRING (Telegram
+      // fetches it, so no filename can be attached), while fromBuffer carries
+      // the bytes and the filename. See tests/bolPodDirectFetch.test.js.
       Input: {
-        fromURL: (url, filename) => ({ kind: 'url', url, filename }),
+        fromURL: (url) => url.toString(),
         fromBuffer: (buffer, filename) => ({ kind: 'buffer', buffer, filename }),
       },
     },
@@ -165,9 +168,10 @@ test('driver_group mode: forwards a new BOL by driver name (truck number ignored
   assert.equal(summary.backfillSuppressed, 0);
   assert.equal(calls.sent.length, 1);
   assert.equal(calls.sent[0].chatId, '-1002614');
-  assert.equal(calls.sent[0].file.kind, 'url');
+  // A bare URL string: Telegram fetches the PDF, Render never relays its bytes.
+  assert.equal(typeof calls.sent[0].file, 'string');
   assert.equal(
-    calls.sent[0].file.url,
+    calls.sent[0].file,
     'https://tms-datatruck.s3-accelerate.amazonaws.com/static/2026/6/15/uuid/bol_scan.pdf'
   );
   assert.equal(calls.sent[0].extra.parse_mode, 'HTML');
@@ -216,7 +220,10 @@ test('forwards a new POD by uploader driver name', async () => {
   assert.equal(summary.driverSent, 1);
   assert.equal(calls.sent[0].chatId, '-1000008');
   assert.match(calls.sent[0].extra.caption, /Proof of Delivery/);
-  assert.equal(calls.sent[0].file.filename, 'POD_L-500.pdf');
+  // Telegram fetches the URL itself, so what it receives is the resolved link —
+  // the document type lives in the caption, not a filename we can set here.
+  assert.equal(typeof calls.sent[0].file, 'string', 'no bytes relayed through Render');
+  assert.match(calls.sent[0].file, /pod_scan\.pdf$/);
 });
 
 test('sends BOL and POD from the same order as two idempotent deliveries', async () => {
@@ -239,7 +246,10 @@ test('sends BOL and POD from the same order as two idempotent deliveries', async
   assert.equal(calls.upserts.length, 2);
   assert.equal(calls.sent.length, 2);
   assert.notEqual(calls.upserts[0].signature, calls.upserts[1].signature);
-  assert.deepEqual(calls.sent.map((call) => call.file.filename), ['BOL_L-500.pdf', 'POD_L-500.pdf']);
+  // Both go out as bare URLs for Telegram to fetch; the captions distinguish them.
+  assert.deepEqual(calls.sent.map((call) => call.file), ['https://x/bol.pdf', 'https://x/pod.pdf']);
+  assert.match(calls.sent[0].extra.caption, /Bill of Lading/);
+  assert.match(calls.sent[1].extra.caption, /Proof of Delivery/);
 });
 
 test('suppresses documents uploaded before the activation cutoff', async () => {
