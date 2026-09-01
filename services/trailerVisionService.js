@@ -14,6 +14,7 @@
  */
 const { callGeminiJson, GEMINI_API_KEY } = require('./geminiClient');
 const { isValidTrailerUnitFormat, normalizeUnitCandidate } = require('./trailerUnitValidation');
+const { prepareImagePartForAi } = require('./aiImagePrep');
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // bound base64 memory cost
 const VISION_TIMEOUT_MS = 25_000;
@@ -135,7 +136,7 @@ async function extractTrailerUnitsFromTelegramImage(telegram, { fileId, fileUniq
       callGeminiJson({
         systemText,
         userText,
-        extraParts: [{ inline_data: { mime_type: 'image/jpeg', data: buffer.toString('base64') } }],
+        extraParts: [await prepareImagePartForAi(buffer, 'image/jpeg')],
         maxOutputTokens: 500,
         maxRetryWaitMs: 4_000,
         validateParsed: (p) => p && typeof p === 'object' && Array.isArray(p.trailerUnits),

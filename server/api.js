@@ -307,8 +307,8 @@ app.get(['/admin', '/admin/*', '/trailers', '/trailers/*', '/dispatch', '/dispat
 let httpServer = null;
 
 function startServer() {
-  httpServer = app.listen(3000, '0.0.0.0', () => {
-    console.log(`[API] Server running on port 3000 (0.0.0.0)`);
+  httpServer = app.listen(config.port, () => {
+    console.log(`[API] Server running on port ${config.port}`);
   });
 }
 

@@ -2,11 +2,12 @@ const { DateTime } = require('luxon');
 const db = require('../database/db');
 const { bot } = require('../bot/bot');
 const { safeSend } = require('./telegramHtml');
+const { createDailyWakeTimer } = require('./dailyWakeSchedule');
 
 const DRIVER_BIRTHDAY_HOUR = 8;   // 8 AM Central Time
 const TZ = 'America/Chicago';
 
-let serviceTimer = null;
+let wakeTimer = null;
 let serviceStopped = false;
 
 function escapeHtml(str) {
@@ -22,10 +23,16 @@ function extractDriverName(groupName) {
   return name || 'Driver';
 }
 
+/**
+ * Send today's driver wishes. Returns the number of groups whose send failed
+ * (their run claim was released, so they are retried) — the wake scheduler uses
+ * it to choose between the fast retry cadence and sleeping until tomorrow.
+ */
 async function processDriverBirthdays(isoDate, month, day) {
+  let failures = 0;
   try {
     const birthdayGroups = await db.getGroupsWithBirthdayToday(month, day);
-    if (birthdayGroups.length === 0) return;
+    if (birthdayGroups.length === 0) return failures;
 
     console.log(`[BIRTHDAY] Found ${birthdayGroups.length} driver birthday(s) today`);
 
@@ -52,13 +59,16 @@ async function processDriverBirthdays(isoDate, month, day) {
         );
         console.log(`[BIRTHDAY] Sent wish to ${group.group_name}`);
       } catch (err) {
+        failures += 1;
         await db.unclaimServiceRun('birthday', runKey).catch(() => {});
         console.error(`[BIRTHDAY] Failed to send to ${group.group_name} (will retry):`, err.message);
       }
     }
   } catch (err) {
+    failures += 1;
     console.error('[BIRTHDAY] Error processing driver birthdays:', err.message);
   }
+  return failures;
 }
 
 function getDriverBirthdayScheduledTime(isoDate) {
@@ -74,38 +84,51 @@ function isPastDriverBirthdaySchedule(now) {
   return now >= getDriverBirthdayScheduledTime(now.toISODate());
 }
 
+/**
+ * One scheduler pass. Resolves `{ retry }` so a failed send comes back on the
+ * fast cadence instead of waiting out the long sleep.
+ *
+ * Before the send hour this returns without touching the database at all, which
+ * is what makes the capped hourly wake essentially free.
+ */
 async function checkAndSendBirthdays() {
   try {
     const now = DateTime.now().setZone(TZ);
     const isoDate = now.toISODate();
 
-    if (!isPastDriverBirthdaySchedule(now)) return;
+    if (!isPastDriverBirthdaySchedule(now)) return { retry: false };
 
-    // Idempotency is now per-group (driver:<groupId>:<isoDate>) inside
-    // processDriverBirthdays, so a failed group retries next tick without a
-    // day-level guard blocking it.
-    await processDriverBirthdays(isoDate, now.month, now.day);
+    // Idempotency is per-group (driver:<groupId>:<isoDate>) inside
+    // processDriverBirthdays, so a failed group retries on a later pass without
+    // a day-level guard blocking it.
+    const failures = await processDriverBirthdays(isoDate, now.month, now.day);
+    return { retry: failures > 0 };
   } catch (err) {
     console.error('[BIRTHDAY] Tick error:', err.message);
+    return { retry: true };
   }
 }
 
 function startBirthdayService() {
   console.log(
-    `[BIRTHDAY] Driver service started — wishes at ${DRIVER_BIRTHDAY_HOUR}:00 ${TZ}`
+    `[BIRTHDAY] Driver service started — wishes at ${DRIVER_BIRTHDAY_HOUR}:00 ${TZ}, `
+    + 'waking on schedule instead of polling every minute'
   );
   serviceStopped = false;
-  checkAndSendBirthdays();
-  serviceTimer = setInterval(() => {
-    if (!serviceStopped) checkAndSendBirthdays();
-  }, 60 * 1000);
+  wakeTimer = createDailyWakeTimer({
+    label: 'BIRTHDAY',
+    runTick: checkAndSendBirthdays,
+    now: () => DateTime.now().setZone(TZ),
+    scheduledFor: getDriverBirthdayScheduledTime,
+  });
+  wakeTimer.start();
 }
 
 function stopBirthdayService() {
   serviceStopped = true;
-  if (serviceTimer) {
-    clearInterval(serviceTimer);
-    serviceTimer = null;
+  if (wakeTimer) {
+    wakeTimer.stop();
+    wakeTimer = null;
   }
 }
 

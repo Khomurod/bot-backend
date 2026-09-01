@@ -124,6 +124,11 @@ function mostRecentScheduledRun(now) {
   return candidate;
 }
 
+/** Next scheduled weekly run (Wed 07:00 Central) strictly after `now`. */
+function nextScheduledRun(now) {
+  return mostRecentScheduledRun(now).plus({ days: 7 });
+}
+
 /** Per-driver counting window start: max(hire date, program start). */
 function driverPeriodStart(hireDateIso) {
   const programStart = DateTime.fromISO(PROGRAM_START_ISO, { zone: SCHEDULE_TIMEZONE }).startOf('day');
@@ -163,6 +168,7 @@ module.exports = {
   toMiles,
   computePayPeriodEnd,
   mostRecentScheduledRun,
+  nextScheduledRun,
   driverPeriodStart,
   tiersReached,
   nextTier,

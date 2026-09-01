@@ -516,6 +516,21 @@ fail closed; the trailer monitor fails closed to review.
 untrusted and is fenced (`<driver_transcript>` plus sanitizers) before reaching
 any model. See `tests/aiTranscriptFence.test.js`. Never remove the fencing.
 
+**Every image sent to a model goes through `services/aiImagePrep.js`.** It
+EXIF-rotates, bounds the long edge to 1600px, re-encodes JPEG and strips
+metadata — turning a typical 12 MP phone photo from several megabytes into a
+couple of hundred KB, which matters because base64 inflates the payload another
+third on the way out of Render. The models downsample internally, so recognition
+of VINs, trailer numbers and document text is unaffected (`tests/aiImagePrep.test.js`).
+Two rules: it shrinks only the **transient copy sent outbound** — stored
+originals stay untouched (`trailerImageService.processTrailerUpload` persists
+them as evidence) — and it **fails open**, passing PDFs and undecodable buffers
+straight through so a model never simply receives nothing. Callers:
+`trailerVisionService`, `trailerImportService`, `trailerMasterList/extraction`,
+`homeTimeImportService`, `dispatchPinnedContextService`,
+`server/services/dispatchParserService`. Do not add a new `toString('base64')`
+image path that bypasses it.
+
 ### Configuration model
 
 Only **five** environment variables are required (`config/config.js`
@@ -558,24 +573,37 @@ timer started from `index.js` and stopped by the shared shutdown coordinator.
 Most of them poll on a **short, cheap tick and gate internally** on a
 time-of-day or on due rows — so the tick cadence is not the business cadence.
 
+**Jobs with a KNOWN next due time now sleep until it** instead of polling
+(`services/dueTimeWakeTimer.js` for weekly jobs, `services/dailyWakeSchedule.js`
+for once-a-day jobs, `services/jobQueueScheduler.js` for durable queues). Those
+wakes land ON the due moment, so they are more punctual than the poll they
+replaced, not less. Every sleep is **capped** (an hour) so a config change is
+picked up without a restart, and a failed send always re-arms on a short retry
+cadence. Queue workers additionally drain **on the producer's event**, so a
+Facebook lead or a trailer payment receipt is delivered on the same tick it
+arrives — the sweep is only a crash/lost-wake backstop. Guarded by
+`tests/facebookWebhookImmediateProcessing.test.js` (a lead is still delivered
+without any timer firing), `tests/jobQueueScheduler.test.js` and
+`tests/backgroundWakeTimers.test.js`.
+
 | Service | Tick | What it does |
 |---|---|---|
 | `schedulerService` | 60s + hourly retention | delivers due `scheduled_messages` |
 | `dispatchEtaUpdateService` | 90s | per-group ETA updates, `FOR UPDATE SKIP LOCKED` claims |
-| `birthdayService` (drivers) | 60s | wishes at an hour/timezone **hardcoded in the module** (08:00 America/Chicago) — there is no settings row or env var for it |
-| `employeeBirthdayWishService` | 60s | wishes at the `send_hour` / `send_minute` / `timezone` from `employee_birthday_settings` |
+| `birthdayService` (drivers) | sleeps to the next 08:00, re-checks hourly (was 60s) | wishes at an hour/timezone **hardcoded in the module** (08:00 America/Chicago) — there is no settings row or env var for it |
+| `employeeBirthdayWishService` | sleeps to the configured send time, re-checks hourly (was 60s) | wishes at the `send_hour` / `send_minute` / `timezone` from `employee_birthday_settings` |
 | `groupStatusAiService` | 60s | AI classification of group activity |
-| `mileageBonusService` | 60s | milestone detection → bonus notification |
-| `raiseApprovalService` | 60s | weekly raise round auto-send, `service_runs` dedupe |
+| `mileageBonusService` | sleeps to the next Wed 07:00, capped 1h (was 60s) | milestone detection → bonus notification |
+| `raiseApprovalService` | sleeps to `next_run_at`, capped 1h; re-armed on a settings save (was 60s) | weekly raise round auto-send, `service_runs` dedupe |
 | `fuelStopAlertService` | 150s | fuel-stop proximity replies |
 | `homeTimeReminderService` | 5 min (first tick +30s) | the two clarification reminders |
 | `roadBonusNotifierService` | 10 min (first tick +20s) | retry safety net for road-bonus summaries |
 | `datatruckDocumentService` | `DATATRUCK_DOC_POLL_MINUTES` (15) | new BOL/POD → matching driver group, deduped |
 | `duplicateUnitCheckService` | 15 min (first tick +90s) | duplicate-unit / name-mismatch reports |
 | `routeControlService` (monitor) | settings-driven, floor 30s | destination completion + off-route warnings |
-| `trailerNotificationService` | 15s queue + 5 min reminders | trailer payment/overdue notifications; **only when the department flag is on** |
+| `trailerNotificationService` | drains on enqueue; retry wakes on `available_at`; 15 min idle sweep (was a 15s poll) + 5 min reminder enqueue | trailer payment/overdue notifications; **only when the department flag is on** |
 | `recruiterCallSyncService` | self-rescheduling `setTimeout` | RingCentral call-log sync |
-| `facebookWebhookService` worker | queue-driven | verified Meta webhook events with retry |
+| `facebookWebhookService` worker | drains on arrival; retry wakes on `next_retry_at`; 15 min idle sweep (was a 5s poll) | verified Meta webhook events with retry |
 | `memoryWatchdog` | **off by default**; 15 min when on | heap/RSS pressure logging. Requires `MEMORY_WATCHDOG_ENABLED='true'`; `MEMORY_WATCHDOG_INTERVAL_MS` is clamped to ≥60s |
 | Python leads child | supervised process | Meta + RingCentral webhook intake |
 
@@ -702,6 +730,16 @@ the repository-wide working rules. The highest-consequence items:
    stalled in production. Signed URLs and query strings are never logged.
    Existing text-only messages are converted **in place** with
    `editMessageMedia`, never replaced with a new post.
+   BOL/POD forwarding follows the same rule for the same reason plus bandwidth:
+   `datatruckDocumentService` passes the Datatruck URL to `Input.fromURL(url)`,
+   which in Telegraf 4.x is *literally* `url.toString()` — a plain string form
+   field, so **Telegram's servers** fetch the file and the bytes never enter this
+   process. `Input.fromURLStream(url, filename)` is the near-identical-looking
+   trap: it returns `{url, filename}`, which makes Telegraf fetch the file itself
+   and pipe it through Render. Never swap it in. The download-and-upload fallback
+   (over Telegram's ~20MB URL limit, expired presigned links, URLs needing the
+   Datatruck token) must stay — delivery reliability wins there.
+   Guarded by `tests/bolPodDirectFetch.test.js`.
 2. **No code path may create a trailer from a detection.** A trailer joins the
    master list only through an approved import or permission-gated manual
    creation. `ensureTrailerForDetection` resolves only and returns null for an
@@ -819,10 +857,11 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-08-21, deps installed, no `TEST_DATABASE_URL`): **2094 tests,
-  1956 pass, 0 fail, 138 skipped** (the skips are the `*Pg` integration tests),
+  baseline (2026-09-01, deps installed, no `TEST_DATABASE_URL`): **2145 tests,
+  2007 pass, 0 fail, 138 skipped** (the skips are the `*Pg` integration tests),
   exit 0. With a database (`TEST_DATABASE_URL`) the `*Pg` suites run instead of
-  skipping: **209 tests, 209 pass, 0 skipped.** **So any failure is a real
+  skipping: **209 tests, 209 pass, 0 skipped.** The Python leads worker adds
+  **17 tests** (`python -m unittest discover -s leads-bot -p "test_*.py"`). **So any failure is a real
   failure** — there is no "expected failures" allowance. *(An older internal doc
   claimed ~19 expected failures in a bare environment; that is no longer true and
   must not be used to excuse one.)* If

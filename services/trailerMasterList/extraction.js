@@ -18,6 +18,7 @@
 'use strict';
 
 const { normalizeUnitNumber } = require('./normalize');
+const { prepareImagePartForAi } = require('../aiImagePrep');
 
 /** Fields extracted per trailer row. unit_number is the identity. */
 const EXTRACTED_FIELDS = [
@@ -141,7 +142,7 @@ async function extractRowsFromImage(image, imageIndex) {
 
   const { parsed, text } = await callGeminiJson({
     userText: PROMPT,
-    extraParts: [{ inline_data: { mime_type: image.mimeType, data: image.bytes.toString('base64') } }],
+    extraParts: [await prepareImagePartForAi(image.bytes, image.mimeType)],
     maxOutputTokens: 8000,
     validateParsed: (p) => Array.isArray(p?.trailers),
   });

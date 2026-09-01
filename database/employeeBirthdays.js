@@ -79,13 +79,7 @@ async function ensureEmployeeBirthdaySettings() {
 async function getEmployeeBirthdaySettings() {
   await ensureEmployeeBirthdaySettings();
   const res = await query('SELECT * FROM employee_birthday_settings WHERE id = 1');
-  return res.rows[0] || {
-    timezone: 'Asia/Tashkent',
-    send_hour: 9,
-    send_minute: 0,
-    ai_instructions: '',
-    fallback_template: ''
-  };
+  return res.rows[0];
 }
 
 async function updateEmployeeBirthdaySettings({

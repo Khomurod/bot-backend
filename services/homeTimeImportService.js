@@ -16,6 +16,7 @@ const db = require('../database/db');
 const ht = require('../database/homeTime');
 const { callGeminiJson } = require('./geminiClient');
 const { isoDateOrNull, normalizeStatus, matchCandidate } = require('./homeTimeImportHelpers');
+const { prepareImagePartsForAi } = require('./aiImagePrep');
 
 const MAX_INLINE_BYTES = 6 * 1024 * 1024; // per image, keep prompts sane
 
@@ -24,9 +25,10 @@ const MAX_INLINE_BYTES = 6 * 1024 * 1024; // per image, keep prompts sane
  *   [{ name, status:'road'|'home'|null, since_date, history:[{from,to}], notes }]
  */
 async function extractFromImages(files) {
-  const images = (Array.isArray(files) ? files : [])
-    .filter((f) => f?.buffer && f?.mimetype?.startsWith('image/') && f.buffer.length <= MAX_INLINE_BYTES)
-    .map((f) => ({ inline_data: { mime_type: f.mimetype, data: f.buffer.toString('base64') } }));
+  const images = await prepareImagePartsForAi(
+    (Array.isArray(files) ? files : [])
+      .filter((f) => f?.buffer && f?.mimetype?.startsWith('image/') && f.buffer.length <= MAX_INLINE_BYTES)
+  );
 
   if (!images.length) {
     const err = new Error('No readable image files were uploaded.');

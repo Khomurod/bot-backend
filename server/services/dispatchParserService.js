@@ -15,6 +15,7 @@ function getCreateWorker() {
 }
 
 const { callGroqWithFallback } = require('../../services/groqClient');
+const { prepareImagePartForAi } = require('../../services/aiImagePrep');
 const {
   callGeminiGenerateContent,
   GEMINI_DISPATCH_MODELS,
@@ -211,7 +212,7 @@ async function calculateDrivingMiles(origin, destination) {
   }
 }
 
-function buildDispatchGeminiParts(rawText, sourceFile) {
+async function buildDispatchGeminiParts(rawText, sourceFile) {
   const parts = [];
   const canInlineSourceFile = Boolean(
     sourceFile?.buffer
@@ -223,13 +224,9 @@ function buildDispatchGeminiParts(rawText, sourceFile) {
     && sourceFile.buffer.length <= MAX_INLINE_GEMINI_FILE_BYTES
   );
 
+  // An image is resized/re-encoded first; a PDF passes through untouched.
   if (canInlineSourceFile) {
-    parts.push({
-      inline_data: {
-        mime_type: sourceFile.mimetype,
-        data: sourceFile.buffer.toString('base64'),
-      },
-    });
+    parts.push(await prepareImagePartForAi(sourceFile.buffer, sourceFile.mimetype));
   }
 
   const promptText = [
@@ -929,7 +926,7 @@ async function requestDispatchTemplateFromGemini(rawText, sourceFile) {
     throw failure;
   }
 
-  const contents = [{ parts: buildDispatchGeminiParts(rawText, sourceFile) }];
+  const contents = [{ parts: await buildDispatchGeminiParts(rawText, sourceFile) }];
 
   try {
     const { text, model } = await callGeminiGenerateContent({
