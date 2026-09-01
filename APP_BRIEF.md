@@ -581,7 +581,10 @@ replaced, not less. Every sleep is **capped** (an hour) so a config change is
 picked up without a restart, and a failed send always re-arms on a short retry
 cadence. Queue workers additionally drain **on the producer's event**, so a
 Facebook lead or a trailer payment receipt is delivered on the same tick it
-arrives — the sweep is only a crash/lost-wake backstop. See §11.
+arrives — the sweep is only a crash/lost-wake backstop. Guarded by
+`tests/facebookWebhookImmediateProcessing.test.js` (a lead is still delivered
+without any timer firing), `tests/jobQueueScheduler.test.js` and
+`tests/backgroundWakeTimers.test.js`.
 
 | Service | Tick | What it does |
 |---|---|---|
