@@ -34,13 +34,16 @@ const BASELINE_PATH = path.join(__dirname, 'fileSizeBaseline.json');
 // Explicit included roots — anything outside these is not hand-written app code.
 const INCLUDE_DIRS = [
   'bot', 'database', 'scripts', 'server', 'services', 'tests',
-  'admin/src', 'fleet/src',
+  'admin/src', 'fleet/src', 'leads-bot', 'config', 'utils',
 ];
-const INCLUDE_EXT = new Set(['.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx']);
+// CLAUDE.md states the 500-line rule for every hand-written source or test
+// file, not just JavaScript — the Python leads worker is hand-written code too.
+const INCLUDE_EXT = new Set(['.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.py']);
 
 // Generated / vendored / build output — never hand-written.
 const EXCLUDE_DIR_NAMES = new Set([
   'node_modules', 'build', 'dist', 'coverage', '.git', 'vendor', '__generated__',
+  '__pycache__',
 ]);
 // Generated or machine-maintained files, and documented schema exceptions.
 const EXCLUDE_FILE_PATTERNS = [
