@@ -9,18 +9,27 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
+const { purgeDataLayer, POOL_PATH } = require('./helpers/purgeDataLayer');
+
 function loadRc() {
   const rcPath = path.resolve(__dirname, '../database/routeControl.js');
-  const dbPath = path.resolve(__dirname, '../database/db.js');
-  delete require.cache[rcPath];
   const calls = [];
-  require.cache[dbPath] = {
+  // database/pool.js is the seam every data-layer module destructures `query`
+  // from, so stubbing it covers database/routeControl/* as well as the façade.
+  // purgeDataLayer() then drops anything that captured the real `query` first.
+  require.cache[POOL_PATH] = {
+    id: POOL_PATH,
+    filename: POOL_PATH,
+    loaded: true,
     exports: {
       async query(sql, values) { calls.push({ sql, values }); return { rows: [{ id: values[0] }] }; },
     },
   };
+  purgeDataLayer();
   return { rc: require(rcPath), calls };
 }
+
+test.after(() => { delete require.cache[POOL_PATH]; purgeDataLayer(); });
 
 test('recordDriverGroupMessageEdit: only edit timestamp + error by default (other columns untouched)', async () => {
   const { rc, calls } = loadRc();

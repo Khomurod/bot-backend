@@ -13,6 +13,8 @@ process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY ||= 'test-encryption-key';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+
+const { purgeDataLayer, POOL_PATH } = require('./helpers/purgeDataLayer');
 const express = require('express');
 const { DateTime } = require('luxon');
 
@@ -86,13 +88,18 @@ function makeDbMock({ recruiters = RECRUITERS, calls = CALLS, settings = SETTING
 }
 
 function loadApp(dbMock) {
-  const dbPath = path.resolve(__dirname, '../database/db.js');
-  const rcPath = path.resolve(__dirname, '../database/ringcentral.js');
   const routePath = path.resolve(__dirname, '../server/routes/recruiterRoutes.js');
   const syncPath = path.resolve(__dirname, '../services/recruiterCallSyncService.js');
   const callSvcPath = path.resolve(__dirname, '../services/ringCentralCallService.js');
-  for (const p of [dbPath, rcPath, routePath, syncPath, callSvcPath]) delete require.cache[p];
-  require.cache[dbPath] = { exports: dbMock };
+  // Stub the POOL, the seam every data-layer module destructures `query` from,
+  // so database/ringcentral/* binds to the mock as the single file used to.
+  require.cache[POOL_PATH] = {
+    id: POOL_PATH, filename: POOL_PATH, loaded: true, exports: dbMock,
+  };
+  purgeDataLayer([routePath, syncPath, callSvcPath]);
+  // The settings cache is module state in database/ringcentral/settings.js; a
+  // fresh require gives each case its own, but be explicit about it.
+  require('../database/ringcentral').invalidateSettingsCache();
 
   const { createRecruiterRouter } = require(routePath);
   const app = express();
