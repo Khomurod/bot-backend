@@ -12,6 +12,12 @@ os.environ.setdefault("META_PAGE_ACCESS_TOKEN", "test-page-token")
 os.environ.setdefault("LEADS_INTERNAL_SHARED_SECRET", "test-internal-secret")
 
 import webhook_server as wh
+# _forward_ringcentral_inbound_to_telegram resolves its collaborators
+# (the attachment download, the Telegram senders, the SMS-mirror registration)
+# in webhook/ringcentral.py, so that is the module patch.object must target —
+# patching webhook_server would leave the real functions in place, silently.
+from webhook import connect_command as cc
+from webhook import ringcentral as rc
 
 
 class TestRingcentralAttachmentHelpers(unittest.TestCase):
@@ -72,8 +78,8 @@ class TestRingcentralForwardHtml(unittest.TestCase):
 
 class TestRingcentralForwardAsync(unittest.IsolatedAsyncioTestCase):
     async def test_text_only_uses_html_send_message(self):
-        with patch.object(wh, "_send_telegram_html", new_callable=AsyncMock, return_value=9001) as send_msg:
-            with patch.object(wh, "_register_inbound_sms_mirror", new_callable=AsyncMock) as register:
+        with patch.object(rc, "_send_telegram_html", new_callable=AsyncMock, return_value=9001) as send_msg:
+            with patch.object(rc, "_register_inbound_sms_mirror", new_callable=AsyncMock) as register:
                 await wh._forward_ringcentral_inbound_to_telegram(
                     {
                         "from": {"phoneNumber": "+15550001111"},
@@ -89,8 +95,8 @@ class TestRingcentralForwardAsync(unittest.IsolatedAsyncioTestCase):
                 register.assert_awaited_once_with("+15550001111", "hello", 9001)
 
     async def test_text_only_skips_register_without_message_id(self):
-        with patch.object(wh, "_send_telegram_html", new_callable=AsyncMock, return_value=None):
-            with patch.object(wh, "_request_register_sms_mirror", new_callable=AsyncMock) as register_api:
+        with patch.object(rc, "_send_telegram_html", new_callable=AsyncMock, return_value=None):
+            with patch.object(cc, "_request_register_sms_mirror", new_callable=AsyncMock) as register_api:
                 await wh._forward_ringcentral_inbound_to_telegram(
                     {
                         "from": {"phoneNumber": "+15550001111"},
@@ -103,13 +109,13 @@ class TestRingcentralForwardAsync(unittest.IsolatedAsyncioTestCase):
     async def test_single_image_send_photo(self):
         fake_png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
         with patch.object(
-            wh,
+            rc,
             "download_ringcentral_attachment",
             new_callable=AsyncMock,
             return_value=(fake_png, "image/png"),
         ):
-            with patch.object(wh, "_send_telegram_upload", new_callable=AsyncMock, return_value=8001) as upload:
-                with patch.object(wh, "_register_inbound_sms_mirror", new_callable=AsyncMock) as register:
+            with patch.object(rc, "_send_telegram_upload", new_callable=AsyncMock, return_value=8001) as upload:
+                with patch.object(rc, "_register_inbound_sms_mirror", new_callable=AsyncMock) as register:
                     await wh._forward_ringcentral_inbound_to_telegram(
                         {
                             "from": {"phoneNumber": "+15550001111"},
@@ -127,18 +133,18 @@ class TestRingcentralForwardAsync(unittest.IsolatedAsyncioTestCase):
     async def test_two_images_prefers_media_group(self):
         img = b"\xff\xd8\xff\xe0" + b"\x00" * 20
         with patch.object(
-            wh,
+            rc,
             "download_ringcentral_attachment",
             new_callable=AsyncMock,
             return_value=(img, "image/jpeg"),
         ):
             with patch.object(
-                wh,
+                rc,
                 "_send_telegram_media_group_photos",
                 new_callable=AsyncMock,
                 return_value=7001,
             ) as album:
-                with patch.object(wh, "_register_inbound_sms_mirror", new_callable=AsyncMock) as register:
+                with patch.object(rc, "_register_inbound_sms_mirror", new_callable=AsyncMock) as register:
                     await wh._forward_ringcentral_inbound_to_telegram(
                         {
                             "from": {"phoneNumber": "+15550003333"},
@@ -156,21 +162,21 @@ class TestRingcentralForwardAsync(unittest.IsolatedAsyncioTestCase):
     async def test_media_group_fallback_to_individual(self):
         img = b"\xff\xd8\xff\xe0" + b"\x00" * 20
         with patch.object(
-            wh,
+            rc,
             "download_ringcentral_attachment",
             new_callable=AsyncMock,
             return_value=(img, "image/jpeg"),
         ):
             with patch.object(
-                wh,
+                rc,
                 "_send_telegram_media_group_photos",
                 new_callable=AsyncMock,
                 return_value=None,
             ):
                 with patch.object(
-                    wh, "_send_telegram_upload", new_callable=AsyncMock, return_value=6001
+                    rc, "_send_telegram_upload", new_callable=AsyncMock, return_value=6001
                 ) as upload:
-                    with patch.object(wh, "_register_inbound_sms_mirror", new_callable=AsyncMock) as register:
+                    with patch.object(rc, "_register_inbound_sms_mirror", new_callable=AsyncMock) as register:
                         await wh._forward_ringcentral_inbound_to_telegram(
                             {
                                 "from": {"phoneNumber": "+15550004444"},
