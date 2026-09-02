@@ -777,10 +777,15 @@ the repository-wide working rules. The highest-consequence items:
 
 ### Code-structure rules (enforced by CI)
 
-- **500-line hard maximum** for hand-written `.js/.jsx/.mjs/.cjs/.ts/.tsx` under
-  `bot`, `database`, `scripts`, `server`, `services`, `tests`, `admin/src`.
+- **500-line hard maximum** for hand-written `.js/.jsx/.mjs/.cjs/.ts/.tsx/.py`
+  under `bot`, `database`, `scripts`, `server`, `services`, `tests`, `admin/src`,
+  `config`, `utils` and `leads-bot` (the Python worker is hand-written code too).
+  The repo-root `index.js` is the one hand-written file outside those roots.
   `npm run lint:filesize` enforces it; `scripts/fileSizeBaseline.json` records
-  legacy violations and **may only ever shrink**. Do not add entries to it.
+  legacy violations and **may only ever shrink**. Never add an entry to excuse a
+  NEW violation — the only legitimate addition is a pre-existing file the
+  scanner previously could not see (that is how `leads-bot/webhook_server.py`
+  was recorded).
 - Prefer a **re-export-only façade plus focused modules** when an import path must
   be preserved. `services/routeControlService.js` → `services/routeControl/*` is
   the reference example: 18 lines, pure re-export, nothing of its own.
