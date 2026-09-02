@@ -90,4 +90,5 @@ module.exports = {
   // settings
   getTrailerSettings: settings.getTrailerSettings,
   updateTrailerSettings: settings.updateTrailerSettings,
+  markTrailerSettingsGroupTested: settings.markTrailerSettingsGroupTested,
 };

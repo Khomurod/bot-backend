@@ -33,21 +33,9 @@ function createAiReportsRoutes({
     try {
       const type = req.query.type === 'company' ? 'company' : 'driver';
       const includeSent = req.query.includeSent === 'true';
-      let reports;
-      if (includeSent) {
-        const result = await db.query(
-          `SELECT ar.*, COALESCE(g.group_name, 'Global Driver Groups') AS group_name
-           FROM ai_reports ar
-           LEFT JOIN groups g ON g.id = ar.group_id
-           WHERE ar.report_type = $1
-           ORDER BY ar.generated_at DESC
-           LIMIT 100`,
-          [type]
-        );
-        reports = result.rows;
-      } else {
-        reports = await db.getPendingAiReports(type);
-      }
+      const reports = includeSent
+        ? await db.listRecentAiReportsByType(type)
+        : await db.getPendingAiReports(type);
       res.json(reports);
     } catch (err) {
       console.error('[API] Error fetching AI reports:', err.message);
@@ -76,11 +64,7 @@ function createAiReportsRoutes({
       if (reportType === 'company') {
         logs = await db.getChatLogsForActiveDriverGroups(daysBack);
       } else {
-        const groupRes = await db.query(
-          `SELECT id, group_name FROM groups WHERE id = $1 AND group_type = 'driver' AND active = TRUE`,
-          [groupId]
-        );
-        const group = groupRes.rows[0];
+        const group = await db.getActiveDriverGroupById(groupId);
         if (!group) {
           return res.status(404).json({ error: 'Group not found' });
         }
@@ -260,16 +244,8 @@ function createAiReportsRoutes({
   router.get('/api/ai-insights/reports', authMiddleware, async (req, res) => {
     try {
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
-      const rows = await db.query(
-        `SELECT id, group_id, report_text, report_type, status, generated_at, sent_at
-           FROM ai_reports
-          WHERE report_type = 'company'
-            AND report_text LIKE '%"format":"insights_v2"%'
-          ORDER BY generated_at DESC
-          LIMIT $1`,
-        [limit]
-      );
-      res.json(rows.rows.map((r) => {
+      const rows = await db.listInsightsV2Reports(limit);
+      res.json(rows.map((r) => {
         let meta = null;
         try { meta = JSON.parse(r.report_text); } catch (_) { /* noop */ }
         return { ...r, meta };

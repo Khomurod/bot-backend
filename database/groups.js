@@ -252,6 +252,19 @@ async function getGroupsByLanguages(languages) {
 }
 
 
+/**
+ * One ACTIVE driver group by internal id, for validating a caller-supplied
+ * groupId before acting on it. Returns only the identity columns — callers that
+ * need the whole row use getGroupByIdAnyType().
+ */
+async function getActiveDriverGroupById(groupId) {
+  const res = await query(
+    `SELECT id, group_name FROM groups WHERE id = $1 AND group_type = 'driver' AND active = TRUE`,
+    [groupId]
+  );
+  return res.rows[0] || null;
+}
+
 module.exports = {
   upsertGroup,
   reactivateGroupOnBotJoin,
@@ -268,6 +281,7 @@ module.exports = {
   getOtherCompanyGroups,
   searchGroupsByName,
   getGroupByIdAnyType,
+  getActiveDriverGroupById,
   getGroupBySamsaraId,
   setGroupLanguage,
   setGroupBirthday,

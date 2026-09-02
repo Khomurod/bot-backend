@@ -30,6 +30,48 @@ async function getPendingAiReports(type = 'driver') {
   return res.rows;
 }
 
+/**
+ * Every report of one type, drafts AND already-sent, newest first.
+ *
+ * The sibling getPendingAiReports() is the same shape filtered to
+ * status='draft'; this is the admin panel's "include sent" view, which is
+ * capped because the table is append-only and grows without bound.
+ */
+async function listRecentAiReportsByType(type = 'driver', limit = 100) {
+  const normalizedType = type === 'company' ? 'company' : 'driver';
+  const res = await query(
+    `SELECT ar.*, COALESCE(g.group_name, 'Global Driver Groups') AS group_name
+           FROM ai_reports ar
+           LEFT JOIN groups g ON g.id = ar.group_id
+           WHERE ar.report_type = $1
+           ORDER BY ar.generated_at DESC
+           LIMIT 100`,
+    [normalizedType]
+  );
+  return res.rows;
+}
+
+/**
+ * Reports produced by the AI Insights v2 pipeline, newest first.
+ *
+ * They are stored in the same ai_reports table as the HITL drafts and are told
+ * apart by a marker inside the JSON payload, so the LIKE is the only available
+ * discriminator — there is no format column. Kept verbatim from the route it
+ * used to live in; changing it would change which reports the panel lists.
+ */
+async function listInsightsV2Reports(limit = 20) {
+  const res = await query(
+    `SELECT id, group_id, report_text, report_type, status, generated_at, sent_at
+           FROM ai_reports
+          WHERE report_type = 'company'
+            AND report_text LIKE '%"format":"insights_v2"%'
+          ORDER BY generated_at DESC
+          LIMIT $1`,
+    [limit]
+  );
+  return res.rows;
+}
+
 async function getAiReportById(reportId) {
   const res = await query(
     `SELECT ar.*, COALESCE(g.group_name, 'Global Driver Groups') AS group_name
@@ -259,6 +301,8 @@ async function deleteInsightsForReport(reportId) {
 module.exports = {
   saveAiReport,
   getPendingAiReports,
+  listRecentAiReportsByType,
+  listInsightsV2Reports,
   getAiReportById,
   updateAiReportStatus,
   discardAiReport,

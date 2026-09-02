@@ -88,13 +88,14 @@ test('api /ai-reports/generate routes company and driver correctly', async () =>
     async getAiReportById(id) {
       return { id, status: 'draft', report_type: id === 1 ? 'company' : 'driver' };
     },
-    async query(sql) {
-      if (sql.includes('FROM groups')) {
-        calls.groupValidation += 1;
-        return { rows: [{ id: 88, group_name: 'Driver Group' }] };
-      }
-      return { rows: [] };
+    // The route validates the group through the data layer, not by running SQL
+    // of its own, so this asserts on the named database function rather than
+    // sniffing a query string.
+    async getActiveDriverGroupById(groupId) {
+      calls.groupValidation += 1;
+      return { id: groupId, group_name: 'Driver Group' };
     },
+    async query() { return { rows: [] }; },
   };
 
   const aiMock = {
