@@ -17,7 +17,7 @@
  * buildDriverMention is PURE (no DB) and unit-tested; resolveDriverMentionForGroup
  * is the thin DB-backed wrapper.
  */
-const { normalizeTelegramUsername } = require('./telegramUsername');
+const { normalizeTelegramUsername } = require('../lib/telegram/telegramUsername');
 
 /** Minimal HTML escape for Telegram HTML parse_mode (& < > only). */
 function escapeHtml(text) {

@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test');const assert=require('node:assert/strict');
-const{calculateBillableDays,calculateInvoice}=require('../services/trailerBillingService');
+const{calculateBillableDays,calculateInvoice}=require('../lib/trailers/trailerBilling');
 
 test('calendar-day billing counts local dates inclusively',()=>{
   const result=calculateBillableDays({startAt:'2026-07-16T04:30:00Z',endAt:'2026-07-16T06:30:00Z',billingMethod:'calendar_day',timezone:'America/Chicago'});

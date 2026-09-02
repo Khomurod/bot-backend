@@ -4,7 +4,7 @@ const {
   buildNormalizedDriverKey,
   inferDriverType,
   isInactiveGroup,
-} = require('./driverProfileParse');
+} = require('../lib/drivers/driverProfileParse');
 
 function buildBaseDirectoryRow(row = {}) {
   const displayName = buildDriverDisplayName({

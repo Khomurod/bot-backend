@@ -34,7 +34,7 @@ const messageGroups = require('../database/messageRoutingSettings');
 const {
   homeTimePolicyApplies, DEFAULT_ROAD_ALLOWANCE_WEEKS, DAYS_PER_WEEK,
 } = require('./homeTimeConstants');
-const { inferDriverType } = require('./driverProfileParse');
+const { inferDriverType } = require('../lib/drivers/driverProfileParse');
 
 // Safety-net sweep cadence. The primary post happens at the transition; this
 // only catches legs the transition could not deliver, so a relaxed interval is

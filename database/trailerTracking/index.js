@@ -28,7 +28,7 @@
 
 // The single owner of unit-number normalization, shared with the master-list
 // and Telegram ingest paths so matching can never drift between them.
-const { normalizeUnitNumber } = require('../../services/trailerMasterList/normalize');
+const { normalizeUnitNumber } = require('../../lib/trailers/normalize');
 // The master list (reads + the single restricted creation path).
 const masterTrailers = require('../trailerMasterList/masterTrailers');
 // Kept in its own module for the size budget; part of the tracking surface.

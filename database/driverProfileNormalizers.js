@@ -5,11 +5,11 @@
  * database/driverProfiles.js and database/groupMembers.js.
  * Extracted verbatim from database/driverProfiles.js.
  */
-const { parseGroupName } = require('../services/driverGroupTitle');
+const { parseGroupName } = require('../lib/drivers/driverGroupTitle');
 const {
   parseDriverFromGroupName,
   buildDriverDisplayName,
-} = require('../services/driverProfileParse');
+} = require('../lib/drivers/driverProfileParse');
 
 function normalizeProfileLanguage(language) {
   return ['en', 'ru', 'uz'].includes(language) ? language : 'en';

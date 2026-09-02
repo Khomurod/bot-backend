@@ -4,7 +4,7 @@
  * driverGroupTitle name matchers.
  */
 const { DateTime } = require('luxon');
-const { normalizePersonName, driverNamesMatch } = require('./driverGroupTitle');
+const { normalizePersonName, driverNamesMatch } = require('../lib/drivers/driverGroupTitle');
 
 function isoDateOrNull(value) {
   if (!value) return null;

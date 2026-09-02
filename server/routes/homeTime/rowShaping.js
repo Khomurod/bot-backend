@@ -8,7 +8,7 @@
  * Split out of server/routes/homeTimeRoutes.js.
  */
 const { DateTime } = require('luxon');
-const { inferDriverType, isInactiveGroup } = require('../../../services/driverProfileParse');
+const { inferDriverType, isInactiveGroup } = require('../../../lib/drivers/driverProfileParse');
 const groupAccess = require('../../../services/groupAccessService');
 
 // Supported efficiency date-range windows (days). 'all' = no lower bound.

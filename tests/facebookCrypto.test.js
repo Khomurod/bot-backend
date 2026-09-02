@@ -7,7 +7,7 @@ process.env.MANAGEMENT_GROUP_ID ||= '-1001234567890';
 process.env.JWT_SECRET ||= 'test-jwt-secret';
 process.env.PORT ||= '3001';
 
-const { encryptText, decryptText } = require('../services/facebookCrypto');
+const { encryptText, decryptText } = require('../lib/security/facebookCrypto');
 
 test('facebook token encryption round-trips plaintext', () => {
   const plain = 'EAAB-test-token-123';

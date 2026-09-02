@@ -18,7 +18,7 @@ function loadHandler(fakes = {}) {
     rc: path.resolve(__dirname, '../database/routeControl.js'),
     service: path.resolve(__dirname, '../services/routeControlService.js'),
     html: path.resolve(__dirname, '../services/telegramHtml.js'),
-    consts: path.resolve(__dirname, '../services/routeControlConstants.js'),
+    consts: path.resolve(__dirname, '../lib/routeControl/routeControlConstants.js'),
   };
   for (const p of Object.values(paths)) delete require.cache[p];
 

@@ -14,7 +14,7 @@ function loadHandlersWithMocks({
   const etaPath = path.resolve(__dirname, '../services/dispatchEtaUpdateService.js');
   const sessionPath = path.resolve(__dirname, '../bot/dispatchStatusLookupSession.js');
   const driverLookupPath = path.resolve(__dirname, '../services/driverStatusLookupService.js');
-  const driverTitlePath = path.resolve(__dirname, '../services/driverGroupTitle.js');
+  const driverTitlePath = path.resolve(__dirname, '../lib/drivers/driverGroupTitle.js');
 
   for (const p of [
     handlersPath,

@@ -281,7 +281,7 @@ never reach an AI call).
   the Telegram post).
 - **Self-serve Page connect**: `/connect` in a leads group starts a
   session-token-gated OAuth flow; Page tokens are encrypted
-  (`services/facebookCrypto.js`).
+  (`lib/security/facebookCrypto.js`).
 - **Indeed leads** arrive from a Gmail Apps Script
   (`docs/gmail-indeed-apps-script.gs`) to `/api/internal/indeed/lead`.
 - **Recruiter KPIs**: RingCentral call logs sync into `ringcentral_calls`. The
@@ -425,7 +425,7 @@ group — no status change, no driver reply.
 keys: `super_admin`, `trailer_manager`, `trailer_employee`,
 `trailer_accounting`, `trailer_viewer`. Custom roles always get a `custom_`
 prefixed key and may never claim a reserved key or `super_`/`admin_` prefix
-(`services/rbac/roleKeys.js`).
+(`lib/rbac/roleKeys.js`).
 
 - **`admin.full_access`** is the gate for the whole company-wide admin API. In
   `server/api.js` most routers are mounted behind
@@ -678,7 +678,7 @@ Every driver and staff Telegram group is a `groups` row: `telegram_group_id`,
 `group_type` (`driver` / `employee` / other), `language` (en/ru/uz), `active`,
 plus unit and driver parsed from the Telegram title (convention
 `WENZE UNIT # <unit> <NAME> (COMPANY DRIVER)`, parsed by
-`services/driverGroupTitle.js`). `driver_profiles` hangs off it one-to-one.
+`lib/drivers/driverGroupTitle.js`). `driver_profiles` hangs off it one-to-one.
 **Nearly every feature joins to `groups`** — surveys, broadcasts, dispatch, home
 time, fuel, bonuses, Route Control, trailer monitoring.
 

@@ -10,7 +10,7 @@ const {
   isInactiveGroup,
   buildDriverDisplayName,
   buildNormalizedDriverKey,
-} = require('../services/driverProfileParse');
+} = require('../lib/drivers/driverProfileParse');
 const { normalizeType } = require('../services/driverProfileAiParser');
 
 test('inferDriverType: company driver only when the name marks it', () => {

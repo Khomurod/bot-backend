@@ -14,7 +14,7 @@
  */
 'use strict';
 
-const normalize = require('./normalize');
+const normalize = require('../../lib/trailers/normalize');
 const reconcile = require('./reconcile');
 const extraction = require('./extraction');
 const imageIngest = require('./imageIngest');

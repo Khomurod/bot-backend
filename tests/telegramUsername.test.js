@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   normalizeTelegramUsername, isValidTelegramUsername, formatTelegramUsername,
-} = require('../services/telegramUsername');
+} = require('../lib/telegram/telegramUsername');
 
 test('normalizeTelegramUsername strips @, trims, lowercases', () => {
   assert.equal(normalizeTelegramUsername('@John_Dispatch'), 'john_dispatch');

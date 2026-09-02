@@ -11,7 +11,7 @@
 // samsara owns unit-number normalization; a second copy would let the map's
 // matching drift away from the provider's.
 const samsara = require('../samsaraLocationService');
-const { extractDriverNameFromGroupTitle } = require('../driverGroupTitle');
+const { extractDriverNameFromGroupTitle } = require('../../lib/drivers/driverGroupTitle');
 
 function toNumberOrNull(value) {
   if (value == null || value === '') return null;

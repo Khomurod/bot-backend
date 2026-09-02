@@ -2,7 +2,7 @@
  * Connected Facebook PAGES — database helpers.
  *
  * One row per Page a leads group is wired to, holding the ENCRYPTED Page access
- * token (services/facebookCrypto.js owns the cipher). Split out of
+ * token (lib/security/facebookCrypto.js owns the cipher). Split out of
  * database/facebookLeads.js, which re-exports every symbol here.
  */
 const { pool, query } = require('../pool');

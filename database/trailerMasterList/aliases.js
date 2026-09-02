@@ -16,7 +16,7 @@
 'use strict';
 
 const { query } = require('../pool');
-const { normalizeUnitNumber } = require('../../services/trailerMasterList/normalize');
+const { normalizeUnitNumber } = require('../../lib/trailers/normalize');
 
 /** A trailer is official only when it is both active and master-list active. */
 const OFFICIAL_PREDICATE = "t.active AND t.master_status = 'active'";

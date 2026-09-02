@@ -11,7 +11,7 @@ const RAW_KEY = 'AIzaSyFakeSecretKey1234';
 function loadModule({ config = {} } = {}) {
   const modPath = path.resolve(__dirname, '../database/gmapsSettings.js');
   const dbPath = path.resolve(__dirname, '../database/db.js');
-  const cryptoPath = path.resolve(__dirname, '../services/facebookCrypto.js');
+  const cryptoPath = path.resolve(__dirname, '../lib/security/facebookCrypto.js');
   const configPath = path.resolve(__dirname, '../config/config.js');
   for (const p of [modPath, dbPath, cryptoPath, configPath]) delete require.cache[p];
 
@@ -112,7 +112,7 @@ test('route completion radius defaults to 50 mi and clamps to the 1–100 range'
 });
 
 test('the single authoritative radius constant is exported and used everywhere', () => {
-  const { ROUTE_COMPLETION_RADIUS_MILES } = require('../services/routeControlConstants');
+  const { ROUTE_COMPLETION_RADIUS_MILES } = require('../lib/routeControl/routeControlConstants');
   assert.equal(ROUTE_COMPLETION_RADIUS_MILES.DEFAULT, 50);
   assert.equal(ROUTE_COMPLETION_RADIUS_MILES.MIN, 1);
   assert.equal(ROUTE_COMPLETION_RADIUS_MILES.MAX, 100);

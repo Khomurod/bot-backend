@@ -4,11 +4,11 @@
  *
  * Extracted so ./settings.js and ./recruiters.js can both use them without
  * either importing the other (and without the copy CLAUDE.md forbids). The
- * cipher itself is services/facebookCrypto.js.
+ * cipher itself is lib/security/facebookCrypto.js.
  *
  * Split out of database/ringcentral.js.
  */
-const { decryptText } = require('../../services/facebookCrypto');
+const { decryptText } = require('../../lib/security/facebookCrypto');
 
 function safeDecrypt(payload) {
   if (!payload) return '';

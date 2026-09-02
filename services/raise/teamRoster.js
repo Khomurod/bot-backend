@@ -11,7 +11,7 @@ const ra = require('../../database/raiseApproval');
 const datatruck = require('../datatruckApiService');
 const { normalizeDriverName } = require('../mileageBonusConstants');
 const driverDirectory = require('../driverGroupDirectoryService');
-const { normalizeTelegramUsername, isValidTelegramUsername } = require('../telegramUsername');
+const { normalizeTelegramUsername, isValidTelegramUsername } = require('../../lib/telegram/telegramUsername');
 const { serviceError } = require('./errors');
 
 // ─── Company-driver candidate list (Datatruck) ───

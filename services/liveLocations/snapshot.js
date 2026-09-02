@@ -12,7 +12,7 @@ const datatruck = require('../datatruckApiService');
 const datatruckLoads = require('../datatruckLoadService');
 const { getEldConfig } = require('../../database/eldSettings');
 const { listCanonicalDriverGroups } = require('../driverGroupDirectoryService');
-const { extractDriverNameFromGroupTitle } = require('../driverGroupTitle');
+const { extractDriverNameFromGroupTitle } = require('../../lib/drivers/driverGroupTitle');
 const { SNAPSHOT_TTL_MS, STALE_MINUTES, ETA_CONCURRENCY } = require('./constants');
 const { nowMs, snapshotCache, snapshotInFlight } = require('./caches');
 const {

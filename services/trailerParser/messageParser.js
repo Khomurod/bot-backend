@@ -6,7 +6,7 @@
  *
  * Split out of services/trailerMessageParser.js, which re-exports this.
  */
-const { normalizeUnitNumber } = require('../trailerMasterList/normalize');
+const { normalizeUnitNumber } = require('../../lib/trailers/normalize');
 const { norm } = require('./vocabulary');
 const {
   hasTrailerKeyword, extractUnitNumber, extractLocation, extractCondition, extractDate,

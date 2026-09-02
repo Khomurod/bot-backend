@@ -9,7 +9,7 @@
 
 const { query } = require('../pool');
 const { boundedText: s } = require('../sqlValues');
-const { normalizeUnitNumber } = require('../../services/trailerMasterList/normalize');
+const { normalizeUnitNumber } = require('../../lib/trailers/normalize');
 
 const PLANNED_ACTIONS = new Set(['pickup', 'dropoff']);
 const INSTRUCTION_STATES = new Set(['pending', 'confirmed', 'superseded', 'cancelled']);

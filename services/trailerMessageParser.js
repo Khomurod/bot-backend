@@ -13,11 +13,11 @@
  *   ./trailerParser/messageParser.js   one message → one structured result
  *   ./trailerParser/eventParser.js     multi-trailer message → one event each
  *
- * `normalizeUnitNumber` is re-exported from services/trailerMasterList/normalize —
+ * `normalizeUnitNumber` is re-exported from lib/trailers/normalize —
  * the single owner shared with the database layer. An independent copy here
  * would let parser matching drift away from master-list matching.
  */
-const { normalizeUnitNumber } = require('./trailerMasterList/normalize');
+const { normalizeUnitNumber } = require('../lib/trailers/normalize');
 const {
   TRAILER_KEYWORDS, PICKUP_PHRASES, DROPOFF_PHRASES, CONDITION_KEYWORDS,
 } = require('./trailerParser/vocabulary');

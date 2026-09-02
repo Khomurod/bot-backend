@@ -12,7 +12,7 @@
 const {
   isValidTrailerUnitFormat, isNonTrailerContextNumber,
 } = require('../trailerUnitValidation');
-const { normalizeUnitNumber } = require('../trailerMasterList/normalize');
+const { normalizeUnitNumber } = require('../../lib/trailers/normalize');
 const { norm } = require('./vocabulary');
 const {
   hasTrailerKeyword, extractLocation, extractCondition, extractDate,

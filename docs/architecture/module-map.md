@@ -71,7 +71,7 @@ organization should converge toward.
 
 | Concern | Current files |
 |---|---|
-| Unit-number & driver-name parsing from group titles | `services/driverGroupTitle.js` (central parser, reused widely) |
+| Unit-number & driver-name parsing from group titles | `lib/drivers/driverGroupTitle.js` (central parser, reused widely) |
 | Driver/unit fuzzy lookup vs group titles | `services/driverStatusLookupService.js` |
 | Truck GPS fallback chain (Samsara → Factor ELD → Leader ELD) | `services/liveLocationResolver.js` (orchestrator, `withTransientRetries`) |
 | Samsara GPS lookup | `services/samsaraLocationService.js` |

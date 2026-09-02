@@ -16,7 +16,7 @@ function escapeHtml(str) {
   ));
 }
 
-const { extractDriverNameFromGroupTitle } = require('./driverGroupTitle');
+const { extractDriverNameFromGroupTitle } = require('../lib/drivers/driverGroupTitle');
 
 function extractDriverName(groupName) {
   const name = extractDriverNameFromGroupTitle(groupName);

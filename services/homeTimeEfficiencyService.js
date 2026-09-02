@@ -29,7 +29,7 @@
  */
 const { DateTime } = require('luxon');
 const { homeTimePolicyApplies, DAYS_PER_WEEK } = require('./homeTimeConstants');
-const { inferDriverType } = require('./driverProfileParse');
+const { inferDriverType } = require('../lib/drivers/driverProfileParse');
 const { isoDateOnly, resolveRequestReturnDate } = require('./homeTimeDateResolver');
 
 const CATEGORY = {

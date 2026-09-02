@@ -1,5 +1,5 @@
 const db = require('../database/db');
-const { decryptText } = require('./facebookCrypto');
+const { decryptText } = require('../lib/security/facebookCrypto');
 const { sendAutoMessageSentNotice } = require('./facebookLeadSmsMirrorService');
 const { safeSend } = require('./telegramHtml');
 const {

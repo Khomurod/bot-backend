@@ -10,7 +10,7 @@
  */
 const { query } = require('./db');
 const config = require('../config/config');
-const { encryptText, decryptText } = require('../services/facebookCrypto');
+const { encryptText, decryptText } = require('../lib/security/facebookCrypto');
 
 // The location resolver runs on a hot path (per group, repeatedly). Cache the
 // decrypted effective config briefly so we don't hit the DB on every ping.

@@ -15,7 +15,7 @@ const ht = require('../../../database/homeTime');
 const {
   homeTimePolicyApplies, computeNextEligibleHomeTime, computeRoadBonus, wholeDaysBetween,
 } = require('../../../services/homeTimeConstants');
-const { isInactiveGroup } = require('../../../services/driverProfileParse');
+const { isInactiveGroup } = require('../../../lib/drivers/driverProfileParse');
 const { parseDateInput } = require('../homeTimeRouteHelpers');
 const {
   listCanonicalDriverGroups,

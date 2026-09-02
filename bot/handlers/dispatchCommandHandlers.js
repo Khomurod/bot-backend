@@ -13,7 +13,7 @@ const {
   buildLocationSummaryLines,
   buildStrictMismatchBlockMessage,
   isLocationDriverNameStrict,
-} = require('../../services/driverGroupTitle');
+} = require('../../lib/drivers/driverGroupTitle');
 const {
   triggerDispatchEtaNowByGroupId,
   NO_CURRENT_LOAD_INFO_MESSAGE,

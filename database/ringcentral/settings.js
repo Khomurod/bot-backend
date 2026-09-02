@@ -13,7 +13,7 @@
  */
 const { query } = require('../pool');
 const config = require('../../config/config');
-const { encryptText } = require('../../services/facebookCrypto');
+const { encryptText } = require('../../lib/security/facebookCrypto');
 const { safeDecrypt, maskKey } = require('./secrets');
 const { DEFAULT_TARGET_TALK_SECONDS, formatTalkLabel } = require('./kpiMath');
 

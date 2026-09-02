@@ -136,7 +136,7 @@ const fakeDb = {
 
 // ── collaborators stubbed at the module seam ──
 require.cache[require.resolve('../database/db')] = { exports: fakeDb };
-require.cache[require.resolve('../services/facebookCrypto')] = {
+require.cache[require.resolve('../lib/security/facebookCrypto')] = {
   exports: { decryptText: () => 'page-access-token' },
 };
 

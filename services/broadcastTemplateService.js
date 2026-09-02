@@ -9,7 +9,7 @@ const PLACEHOLDER_DEFS = [
   { key: 'date_of_birth', label: 'Date of birth', required: true },
   { key: 'date_of_start', label: 'Date of start', required: true },
 ];
-const { parseGroupName, extractUnitFromGroupName } = require('./driverGroupTitle');
+const { parseGroupName, extractUnitFromGroupName } = require('../lib/drivers/driverGroupTitle');
 
 const ALLOWED_KEYS = new Set(PLACEHOLDER_DEFS.map((p) => p.key));
 const TOKEN_PATTERN = /\{([a-z][a-z0-9_]*)\}/gi;

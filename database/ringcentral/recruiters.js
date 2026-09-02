@@ -11,7 +11,7 @@
  * Split out of database/ringcentral.js, which re-exports every symbol here.
  */
 const { query } = require('../pool');
-const { encryptText } = require('../../services/facebookCrypto');
+const { encryptText } = require('../../lib/security/facebookCrypto');
 const { safeDecrypt, maskKey } = require('./secrets');
 const { getRcConfig } = require('./settings');
 

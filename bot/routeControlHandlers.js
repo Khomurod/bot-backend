@@ -17,8 +17,8 @@ const ra = require('../database/raiseApproval');
 const rc = require('../database/routeControl');
 const routeControl = require('../services/routeControlService');
 const { safeSend } = require('../services/telegramHtml');
-const { normalizeTelegramUsername, formatTelegramUsername } = require('../services/telegramUsername');
-const { isGlobalRouteAdmin } = require('../services/routeControlConstants');
+const { normalizeTelegramUsername, formatTelegramUsername } = require('../lib/telegram/telegramUsername');
+const { isGlobalRouteAdmin } = require('../lib/routeControl/routeControlConstants');
 const {
   detectRouteAssignment,
   extractGoogleMapsLinks,

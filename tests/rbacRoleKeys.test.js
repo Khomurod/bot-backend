@@ -7,7 +7,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { slugify, isReservedRoleKey, generateCustomRoleKey } = require('../services/rbac/roleKeys');
+const { slugify, isReservedRoleKey, generateCustomRoleKey } = require('../lib/rbac/roleKeys');
 
 test('slugify normalizes a display name', () => {
   assert.equal(slugify('Yard Supervisor'), 'yard_supervisor');

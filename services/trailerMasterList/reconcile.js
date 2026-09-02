@@ -17,7 +17,7 @@
  */
 'use strict';
 
-const { normalizeUnitNumber, confusableSkeleton, suggestSimilar } = require('./normalize');
+const { normalizeUnitNumber, confusableSkeleton, suggestSimilar } = require('../../lib/trailers/normalize');
 
 /** Fields carried from an extracted row onto a trailer master record. */
 const MASTER_FIELDS = ['make', 'model', 'mc_number', 'plate_number', 'type', 'vin', 'year', 'ownership_status'];

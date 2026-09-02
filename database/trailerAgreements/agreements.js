@@ -12,7 +12,7 @@
 'use strict';
 
 const { query, pool } = require('../pool');
-const { deriveAgreementStatus } = require('../../services/trailerAgreements/statusDerivation');
+const { deriveAgreementStatus } = require('../../lib/trailers/statusDerivation');
 const { nextNumber } = require('../trailerRentals');
 
 const CREATE_STATUS = new Set(['draft']);

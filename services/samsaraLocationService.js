@@ -3,7 +3,7 @@ const {
   extractDriverNameFromVehicleLabel,
   driverNamesMatch,
   scoreVehicleNameMatch,
-} = require('./driverGroupTitle');
+} = require('../lib/drivers/driverGroupTitle');
 
 const DEFAULT_SAMSARA_API_BASE = 'https://api.samsara.com';
 const REQUEST_TIMEOUT_MS = 20_000;

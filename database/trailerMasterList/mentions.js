@@ -11,7 +11,7 @@
 'use strict';
 
 const { query } = require('../pool');
-const { normalizeUnitNumber, suggestSimilar } = require('../../services/trailerMasterList/normalize');
+const { normalizeUnitNumber, suggestSimilar } = require('../../lib/trailers/normalize');
 
 /**
  * Queue an unmatched mention, preserving the evidence needed to review it.

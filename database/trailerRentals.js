@@ -2,7 +2,7 @@
 
 const { pool, query } = require('./pool');
 const { insertTrailerAudit } = require('./trailerAudit');
-const { calculateInvoice } = require('../services/trailerBillingService');
+const { calculateInvoice } = require('../lib/trailers/trailerBilling');
 const { assertTrailerAvailable } = require('./trailerAvailability');
 
 const REQUIRED_INSPECTION_FIELDS = ['overall_condition','tires','lights','doors','roof','floor','exterior','interior','landing_gear'];

@@ -6,7 +6,7 @@
  * and Proofs of Delivery to the matching driver's Telegram group. Everything
  * in this module is side-effect free so it can be unit-tested in isolation.
  */
-const { normalizePersonName } = require('./driverGroupTitle');
+const { normalizePersonName } = require('../lib/drivers/driverGroupTitle');
 
 // The only Datatruck document types that may be delivered to driver groups.
 const BOL_FILE_TYPE = 'bill_of_lading';

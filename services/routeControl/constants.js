@@ -4,7 +4,7 @@
  * No business logic and no requires beyond the shared radius constant, so every
  * other Route Control module can depend on this without creating a cycle.
  */
-const { ROUTE_COMPLETION_RADIUS_MILES } = require('../routeControlConstants');
+const { ROUTE_COMPLETION_RADIUS_MILES } = require('../../lib/routeControl/routeControlConstants');
 
 const POLL_MS_MIN = 30 * 1000;
 const METERS_PER_MILE = 1609.34;

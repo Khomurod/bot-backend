@@ -10,7 +10,7 @@ const {
   findVehicleByUnit,
   selectVehicleByUnit,
 } = require('../services/samsaraLocationService');
-const { extractDriverNameFromGroupTitle } = require('../services/driverGroupTitle');
+const { extractDriverNameFromGroupTitle } = require('../lib/drivers/driverGroupTitle');
 
 test('extractUnitNumberFromGroupName supports UNIT # pattern', () => {
   assert.equal(

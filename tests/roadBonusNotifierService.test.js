@@ -16,7 +16,7 @@ function loadService({ settings, rows, groupId = ROAD_BONUS_GROUP_ID }) {
   const htPath = path.resolve(__dirname, '../database/homeTime.js');
   const htmlPath = path.resolve(__dirname, '../services/telegramHtml.js');
   const mgPath = path.resolve(__dirname, '../database/messageRoutingSettings.js');
-  const parsePath = path.resolve(__dirname, '../services/driverProfileParse.js');
+  const parsePath = path.resolve(__dirname, '../lib/drivers/driverProfileParse.js');
 
   for (const p of [servicePath, htPath, htmlPath, mgPath, parsePath]) delete require.cache[p];
 
