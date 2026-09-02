@@ -351,13 +351,6 @@ function buildDispatchFieldsFromObject(aiObject) {
 }
 
 module.exports = {
-  matchFirstGroup,
-  extractSection,
-  inferDispatchLoadType,
-  isDispatchDetailLine,
-  parseDispatchLocationLines,
-  inferDeliveryFallbackFromRawText,
-  extractStopDetails,
   extractDispatchFields,
   parseDispatchTemplate,
   mergeDispatchFields,

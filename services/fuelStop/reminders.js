@@ -198,7 +198,6 @@ async function sendManualFuelReminder(groupId) {
 
 module.exports = {
   buildReminderBody,
-  resolveLiveTitle,
   processFuelAlert,
   buildManualReminderText,
   sendManualFuelReminder,

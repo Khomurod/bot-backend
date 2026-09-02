@@ -77,8 +77,6 @@ async function narrateBatch(cardsContext) {
 }
 
 module.exports = {
-  BATCH_SYSTEM_PROMPT,
-  buildBatchCardPrompt,
   parseBatchCardNarratives,
   narrateBatch,
 };

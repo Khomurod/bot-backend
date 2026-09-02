@@ -3,7 +3,6 @@ import * as api from "../../api";
 import useVisibleInterval from "../../utils/useVisibleInterval";
 import { AUTO_REFRESH_MS } from "./constants";
 
-const DEFAULT_ZOOM = 4;
 
 // Module-level cache of the last successful snapshot. It lives outside the
 // component so navigating away from Live Locations and back does NOT cold-start

@@ -26,7 +26,7 @@ export const ACCEPTED_MIME_TYPES = new Set([
   "image/webp",
 ]);
 
-export function getFileExtension(mimeType) {
+function getFileExtension(mimeType) {
   if (mimeType === "application/pdf") return "pdf";
   if (mimeType === "image/jpeg") return "jpg";
   if (mimeType === "image/png") return "png";

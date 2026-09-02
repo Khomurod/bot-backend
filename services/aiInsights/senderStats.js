@@ -105,7 +105,6 @@ function topEvidence(messages, predicate, n = MAX_EVIDENCE_PER_CARD) {
 module.exports = {
   excerpt,
   safeUrlForRow,
-  groupBySender,
   computeSenderStats,
   computeSenderBucketsWithStats,
   topEvidence,

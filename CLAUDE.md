@@ -135,21 +135,43 @@ npm run build:schema:check                         # schema.sql in sync with bas
   splitting them would break their tooling.
 - Prefer a small compatibility façade plus focused internal modules when an
   existing import path must be preserved. `services/routeControlService.js` →
-  `services/routeControl/*` is the reference example.
+  `services/routeControl/*` is the reference example; `database/homeTime.js` →
+  `database/homeTime/*` and `server/routes/trailerDepartmentRoutes.js` →
+  `server/routes/trailerDepartment/*` follow the same shape.
+- A façade must be composition or re-export ONLY. When a spread
+  (`...module`) would widen the public surface with internals, list the keys
+  explicitly and say why in the file's header — `database/ringcentral.js` does
+  this to keep four helpers private.
+- Reformatting to pack more code onto fewer lines is not a fix. A file of 285
+  physical lines that is ~679 lines at normal density is over the limit in
+  substance; `server/routes/trailerDepartmentRoutes.js` was reformatted and
+  split rather than left to satisfy the counter.
 
 ### Checking the limit
 
 ```
-npm run lint:filesize        # enforce: fails on NEW violations
-npm run lint:filesize:list   # list every file currently over the limit
+npm run lint:filesize        # enforce: fails on ANY file over the limit
+npm run lint:filesize:list   # list every file over the limit (same scan, report only)
 ```
 
-Legacy violations that predate this rule are recorded in
-`scripts/fileSizeBaseline.json`. That baseline may only ever **shrink**: a file
-that is not listed fails the check if it exceeds the limit, a listed file fails
-if it grows, and a listed file that drops to/below 500 lines must be removed
-from the baseline so the win is locked in. Do not add new entries to the
-baseline to work around the rule.
+**There is no baseline and no exemption list.** Every hand-written source, test
+and config file in the repository is at or under 500 lines, so the rule is
+literally true and a new violation cannot be waved through by editing a JSON
+file. `scripts/fileSizeBaseline.json` is gone;
+`tests/checkFileSize.test.js` asserts it stays gone.
+
+The scanner walks from the repository ROOT and skips only what is provably not
+hand-written (installed dependencies, build output, caches, minified or
+generated files). It is a deny-list, not an allow-list: an earlier version
+walked a hard-coded list of INCLUDED directories and silently missed whole
+areas as the tree grew — first `leads-bot/` and its Python, then
+`admin/vite.config.js` and its siblings one level above `admin/src`. Inverting
+the default means a new directory of hand-written code is covered the moment it
+is created.
+
+`tests/checkFileSize.test.js` covers the scanner itself: the limit's exact
+boundary, line counting against `wc -l`, each excluded category, and — the
+sentinel — that the repository has no file over the limit.
 
 ## Module design
 
@@ -166,6 +188,13 @@ baseline to work around the rule.
 - Shared mutable state must have one clearly documented owner.
 - Avoid "utils.js" dumping grounds and modules that exist only to re-export a
   single trivial function.
+- **Pure helpers and constants live in `lib/`, the layer BELOW the database.**
+  Anything with no I/O and no mutable state that more than one layer needs
+  belongs there, in a domain subdirectory — see [`lib/README.md`](lib/README.md)
+  for the charter and the rule for adding to it. Nine such modules used to sit
+  in `services/`, a layer above the database, which forced nineteen
+  `database/**` modules to depend upward. `database/**` now depends on nothing
+  above it.
 - Tests must be reorganized when they become oversized, rather than consolidated
   into giant files.
 

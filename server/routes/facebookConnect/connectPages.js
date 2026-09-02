@@ -232,7 +232,6 @@ function renderConnectResultPage({ title, message, detailLines = [] }) {
 
 module.exports = {
   escapeHtml,
-  renderFacebookCardPage,
   renderConnectLandingPage,
   renderPagePicker,
   renderConnectResultPage,

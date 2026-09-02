@@ -79,7 +79,5 @@ function createHomeTimeImportRoutes({ authMiddleware }) {
 }
 
 module.exports = {
-  MAX_SCREENSHOT_BATCH_BYTES,
-  SCREENSHOT_MIME_TYPES,
   createHomeTimeImportRoutes,
 };

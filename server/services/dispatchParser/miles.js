@@ -64,6 +64,5 @@ async function enrichWithMiles(fields) {
 }
 
 module.exports = {
-  calculateDrivingMiles,
   enrichWithMiles,
 };

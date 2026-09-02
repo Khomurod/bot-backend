@@ -297,8 +297,6 @@ async function getSnapshot({ force = false } = {}) {
 }
 
 module.exports = {
-  listActiveUnits,
   buildSnapshot,
-  decorateCacheStatus,
   getSnapshot,
 };

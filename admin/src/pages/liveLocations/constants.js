@@ -14,14 +14,6 @@ export const AUTO_REFRESH_MS = 45000;
 export const DEFAULT_CENTER = [39.5, -98.35]; // continental US
 export const DEFAULT_ZOOM = 4;
 
-// Module-level cache of the last successful snapshot. It lives outside the
-// component so navigating away from Live Locations and back does NOT cold-start
-// the page: on remount we render this immediately and refresh quietly in the
-// background. Kept tiny (one snapshot, not GPS history) and never persisted to
-// disk, so it holds no secrets beyond the current page's own data.
-let lastGoodSnapshot = null;
-let lastGoodAt = null;
-
 export function clockTime(date) {
   try {
     return new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });

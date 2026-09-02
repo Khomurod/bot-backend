@@ -167,7 +167,6 @@ function shouldUseAiFallback(parsed) {
 
 module.exports = {
   findUnitTokens,
-  parseSegmentForUnit,
   parseTrailerMessageEvents,
   shouldUseAiFallback,
 };

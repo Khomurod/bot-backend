@@ -168,9 +168,6 @@ async function requestPinnedContextFromGemini({
 }
 
 module.exports = {
-  buildPinnedContextPrompt,
-  buildPinnedContextAiParts,
-  buildPinnedContextGroqMessages,
   requestPinnedContextFromGroq,
   requestPinnedContextFromGemini,
 };

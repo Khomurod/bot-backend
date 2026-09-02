@@ -134,4 +134,4 @@ function createTrailerDepartmentMediaRoutes({ db, requirePermission }) {
   return router;
 }
 
-module.exports = { UPLOADABLE_MEDIA_TYPES, createTrailerDepartmentMediaRoutes };
+module.exports = { createTrailerDepartmentMediaRoutes };

@@ -24,16 +24,6 @@ function parseRetryAfterMs(response) {
   return 0;
 }
 
-function isGroqTransientError(status, message) {
-  return status === 429
-    || status === 503
-    || status >= 500
-    || /rate limit/i.test(message || '')
-    || /too many requests/i.test(message || '')
-    || /service unavailable/i.test(message || '')
-    || /try again/i.test(message || '');
-}
-
 function isGeminiQuotaExhaustedError(status, message) {
   if (status !== 429) return false;
   const normalized = String(message || '').toLowerCase();
@@ -78,7 +68,6 @@ function safeParseJsonObject(text) {
 module.exports = {
   sleep,
   parseRetryAfterMs,
-  isGroqTransientError,
   isGeminiQuotaExhaustedError,
   isGeminiTransientError,
   stripMarkdownFences,

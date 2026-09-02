@@ -73,7 +73,6 @@ function escapeHtmlSafe(text) {
 }
 
 module.exports = {
-  EFFICIENCY_RANGES,
   resolveEfficiencySinceIso,
   displayName,
   resolveDriverType,

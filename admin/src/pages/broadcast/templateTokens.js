@@ -12,7 +12,7 @@
  *
  * Split out of admin/src/pages/BroadcastPage.jsx.
  */
-export const TEMPLATE_TOKEN_PATTERN = /\{([a-z][a-z0-9_]*)\}/gi;
+const TEMPLATE_TOKEN_PATTERN = /\{([a-z][a-z0-9_]*)\}/gi;
 export const DEFAULT_BROADCAST_PLACEHOLDER_KEYS = [
   'driver_name',
   'first_name',
