@@ -7,7 +7,7 @@ const {
   driverNamesMatch,
   scoreVehicleNameMatch,
   buildLocationSummaryLines,
-} = require('../services/driverGroupTitle');
+} = require('../lib/drivers/driverGroupTitle');
 
 test('extractDriverNameFromGroupTitle parses WENZE unit group titles', () => {
   assert.equal(

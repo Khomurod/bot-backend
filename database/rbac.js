@@ -2,7 +2,7 @@
 
 const { query, pool } = require('./pool');
 const { insertTrailerAudit } = require('./trailerAudit');
-const { generateCustomRoleKey, isReservedRoleKey } = require('../services/rbac/roleKeys');
+const { generateCustomRoleKey, isReservedRoleKey } = require('../lib/rbac/roleKeys');
 
 async function auditRbac(client, actorId, action, entityType, entityId, oldValues, newValues) {
   const actor = actorId ? await getAdminAuthorization(actorId, client) : null;

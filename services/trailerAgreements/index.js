@@ -14,7 +14,7 @@ const activation = require('./activation');
 const returns = require('./returns');
 const invoicing = require('./invoicing');
 const amendmentOps = require('./amendmentOps');
-const { deriveAgreementStatus } = require('./statusDerivation');
+const { deriveAgreementStatus } = require('../../lib/trailers/statusDerivation');
 const { estimateAgreement } = require('./estimate');
 
 module.exports = {

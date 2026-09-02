@@ -10,7 +10,7 @@
  */
 const { query } = require('./db');
 const config = require('../config/config');
-const { encryptText, decryptText } = require('../services/facebookCrypto');
+const { encryptText, decryptText } = require('../lib/security/facebookCrypto');
 
 const CACHE_TTL_MS = 30_000;
 let cache = null;
@@ -54,8 +54,8 @@ function floatClamp(value, fallback, min, max) {
 }
 
 // Auto-complete radius (miles) around the final destination. The single
-// authoritative default/range lives in services/routeControlConstants.js.
-const { ROUTE_COMPLETION_RADIUS_MILES } = require('../services/routeControlConstants');
+// authoritative default/range lives in lib/routeControl/routeControlConstants.js.
+const { ROUTE_COMPLETION_RADIUS_MILES } = require('../lib/routeControl/routeControlConstants');
 const COMPLETION_RADIUS_MIN = ROUTE_COMPLETION_RADIUS_MILES.MIN;
 const COMPLETION_RADIUS_MAX = ROUTE_COMPLETION_RADIUS_MILES.MAX;
 const COMPLETION_RADIUS_DEFAULT = ROUTE_COMPLETION_RADIUS_MILES.DEFAULT;

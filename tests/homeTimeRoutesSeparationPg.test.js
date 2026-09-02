@@ -24,6 +24,7 @@ const http = require('node:http');
 const { Pool } = require('pg');
 
 const { skipWithoutPg } = require('./helpers/trailerPgHarness');
+const { purgeDataLayer, jsFilesUnder } = require('./helpers/purgeDataLayer');
 
 const REPO = path.resolve(__dirname, '..');
 const POOL_PATH = require.resolve('../database/pool');
@@ -69,17 +70,21 @@ async function createApiHarness(t) {
 
   // Every module that captured `query` at load time must be re-required so it
   // binds to the throwaway database. Missing one leaves it pointed at the real
-  // pool and the test silently exercises the wrong database.
-  const reload = [
-    '../database/db', '../database/homeTime', '../database/homeTimeClarification',
-    '../database/homeTimeInternalAlertOutbox', '../database/homeTimeExpiry',
-    '../services/homeTimeSilentModeTransition',
-    '../services/homeTimeInternalAlert',
-    '../server/routes/homeTimeRoutes', '../server/routes/homeTimeDecisionRoutes',
-    '../server/routes/homeTimeRequestRoutes',
-  ];
-  for (const p of reload) delete require.cache[require.resolve(p)];
-  t.after(() => { for (const p of reload) delete require.cache[require.resolve(p)]; });
+  // pool and the test silently exercises the wrong database — so the data layer
+  // is purged by WALKING database/, not from a hand-written list that goes stale
+  // the moment a module there is split into a package.
+  const reload = purgeDataLayer([
+    ...[
+      '../services/homeTimeSilentModeTransition',
+      '../services/homeTimeInternalAlert',
+      '../server/routes/homeTimeRoutes', '../server/routes/homeTimeDecisionRoutes',
+      '../server/routes/homeTimeRequestRoutes',
+    ].map((spec) => require.resolve(spec)),
+    // …and the per-area sub-routers behind the façade, by walking the directory
+    // so a module added by a later split is covered without editing this list.
+    ...jsFilesUnder(path.resolve(__dirname, '../server/routes/homeTime')),
+  ]);
+  t.after(() => { for (const p of reload) delete require.cache[p]; });
 
   const express = require('express');
   const { createHomeTimeRouter } = require('../server/routes/homeTimeRoutes');

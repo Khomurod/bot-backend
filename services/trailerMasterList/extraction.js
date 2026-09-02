@@ -17,7 +17,7 @@
  */
 'use strict';
 
-const { normalizeUnitNumber } = require('./normalize');
+const { normalizeUnitNumber } = require('../../lib/trailers/normalize');
 const { prepareImagePartForAi } = require('../aiImagePrep');
 
 /** Fields extracted per trailer row. unit_number is the identity. */

@@ -87,7 +87,7 @@ company can rent many trailers under one agreement, each trailer an independent
 
 - `trailer_rental_agreements` is the header; `trailer_rental_items` is one row
   per trailer. Agreement status is **derived** from item statuses by the pure
-  `services/trailerAgreements/statusDerivation.js` — never set directly — and
+  `lib/trailers/statusDerivation.js` — never set directly — and
   re-derived inside the **same transaction** as every item change.
 - History is **amendment-based**: add/remove/replace/rate/amount/extend changes
   append an immutable `trailer_rental_amendments` row. There is no amendment

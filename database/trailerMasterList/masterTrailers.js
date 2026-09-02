@@ -15,7 +15,7 @@
 'use strict';
 
 const { query } = require('../pool');
-const { normalizeUnitNumber } = require('../../services/trailerMasterList/normalize');
+const { normalizeUnitNumber } = require('../../lib/trailers/normalize');
 const { resolveTrailerByUnitOrAlias } = require('./aliases');
 
 /** Master-data fields carried on a trailer record. */

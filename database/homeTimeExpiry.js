@@ -5,7 +5,7 @@
  * across the reminder sweep, the duplicate guard, and the expiry sweep.
  */
 const { query } = require('./db');
-const { OPEN_REQUEST_STATUSES } = require('./homeTime');
+const { OPEN_REQUEST_STATUSES } = require('./homeTime/requests');
 
 /**
  * Every still-open request (a posted card awaiting a decision, or any awaiting /

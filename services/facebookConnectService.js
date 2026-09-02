@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const config = require('../config/config');
 const db = require('../database/db');
-const { encryptText, decryptText } = require('./facebookCrypto');
+const { encryptText, decryptText } = require('../lib/security/facebookCrypto');
 const {
   buildFacebookLoginUrl,
   exchangeCodeForAccessToken,

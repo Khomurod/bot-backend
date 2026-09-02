@@ -20,7 +20,7 @@
 
 const { pool } = require('../pool');
 const { insertTrailerAudit } = require('../trailerAudit');
-const { normalizeUnitNumber } = require('../../services/trailerMasterList/normalize');
+const { normalizeUnitNumber } = require('../../lib/trailers/normalize');
 
 /**
  * Tables holding a trailer's history, all keyed by trailer_id. A merge moves

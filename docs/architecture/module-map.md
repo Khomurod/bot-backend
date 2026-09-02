@@ -71,7 +71,7 @@ organization should converge toward.
 
 | Concern | Current files |
 |---|---|
-| Unit-number & driver-name parsing from group titles | `services/driverGroupTitle.js` (central parser, reused widely) |
+| Unit-number & driver-name parsing from group titles | `lib/drivers/driverGroupTitle.js` (central parser, reused widely) |
 | Driver/unit fuzzy lookup vs group titles | `services/driverStatusLookupService.js` |
 | Truck GPS fallback chain (Samsara → Factor ELD → Leader ELD) | `services/liveLocationResolver.js` (orchestrator, `withTransientRetries`) |
 | Samsara GPS lookup | `services/samsaraLocationService.js` |
@@ -172,6 +172,43 @@ organization should converge toward.
 | Background wake scheduling | `services/jobQueueScheduler.js` (durable queues: drain on the producer's event, arm one timer for the earliest due row, slow idle sweep as the backstop), `services/dueTimeWakeTimer.js` (weekly jobs with a stored `next_run_at`), `services/dailyWakeSchedule.js` (once-a-day jobs). All sleeps are capped so a config change applies without a restart; a failed send re-arms on the short retry cadence. Replaced the fixed 5s/15s/60s polls — see `APP_BRIEF.md` §7. |
 | Outbound AI image preparation | `services/aiImagePrep.js` — EXIF-rotate, bound the long edge, re-encode JPEG, strip metadata for **every** image sent to a model. Shrinks only the transient outbound copy; stored originals stay untouched. Do not add a `toString('base64')` image path that bypasses it. |
 | Logging / error handling | `console` structured prefixes (`[DB]`, `[API]`, `[LEADS]`, `[SHUTDOWN]`), global `uncaughtException` / `unhandledRejection` handlers (suppresses Telegram 409 polling conflicts) |
+| **Pure helpers / constants** — the bottom layer | `lib/` — nine modules with no I/O and no mutable state, in domain subdirectories: `lib/security/facebookCrypto.js`, `lib/rbac/roleKeys.js`, `lib/drivers/{driverGroupTitle,driverProfileParse}.js`, `lib/telegram/telegramUsername.js`, `lib/routeControl/routeControlConstants.js`, `lib/trailers/{normalize,statusDerivation,trailerBilling}.js`. They used to live in `services/`, a layer ABOVE the database, which forced nineteen `database/**` modules to depend upward; `database/**` now depends on nothing above it. See [`lib/README.md`](../../lib/README.md) for the charter and the rule for adding to it. |
+
+---
+
+## Façade + package shape (where a named file is now a directory)
+
+Many entries above name a file that is a **composition-or-re-export-only
+façade** over a sibling package. The import path is the stable seam; the
+implementation is one module per responsibility. No hand-written file in the
+repository exceeds 500 lines (`npm run lint:filesize`, no baseline).
+
+| Façade (stable import path) | Package |
+|---|---|
+| `database/homeTime.js` | `database/homeTime/{settings,driverState,roadHistory,requests}.js` |
+| `database/facebookLeads.js` | `database/facebookLeads/{connectSessions,pageConnections,webhookEvents,autoMessages,smsMirrors}.js` |
+| `database/raiseApproval.js` | `database/raiseApproval/{settings,teams,teamMembers,teamDrivers,rounds,otp}.js` |
+| `database/ringcentral.js` | `database/ringcentral/{kpiMath,secrets,settings,recruiters,calls,kpiQueries}.js` — **explicit key list**, so four internal helpers stay private |
+| `database/routeControl.js` | `database/routeControl/{assignments,screenshots,monitorState,driverMessages,monitorEvents}.js` |
+| `server/routes/settingsRoutes.js` | `server/routes/settings/{eld,ringcentral,messageGroup,gmaps,safetyEvent,bolPod}Routes.js` |
+| `server/routes/homeTimeRoutes.js` | `server/routes/homeTime/{rowShaping,tracker,import,settings,groupAccess}Routes.js` — registration ORDER is load-bearing |
+| `server/routes/facebookConnectRoutes.js` | `server/routes/facebookConnect/{connectPages,internal,oauth,inspection}Routes.js` — one guard per file, three different auth models |
+| `server/routes/trailerDepartmentRoutes.js` | `server/routes/trailerDepartment/{shared,trailer,company,rental,media,accounting,settings,report}Routes.js` — error handler registered LAST |
+| `server/services/dispatchParserService.js` | `server/services/dispatchParser/*.js` (9 modules) |
+| `services/dispatchPinnedContextService.js` | `services/pinnedContext/*.js` |
+| `services/liveLocationsService.js` | `services/liveLocations/*.js` |
+| `services/aiInsightsService.js` | `services/aiInsights/*.js` |
+| `services/trailerMessageParser.js` | `services/trailerParser/*.js` |
+| `services/fuelStopAlertService.js` | `services/fuelStop/*.js` — `telegramClient.js` is the single owner of the shared client |
+| `services/mileageBonusService.js` | `services/mileageBonus/*.js` — `runState.js` owns the run lock |
+| `bot/senders.js` | `bot/senders/{messageText,mediaSender,questionSenders,broadcastSenders,confirmationSenders}.js` |
+| `leads-bot/webhook_server.py` | `leads-bot/webhook/{state,meta_signature,hub_client,telegram_client,connect_command,ringcentral,lead_processing}.py` |
+
+Admin pages follow the same shape — a container that only lays out and wires,
+over `admin/src/pages/<area>/` holding data hooks and presentational sections:
+`dispatch/`, `homeTime/`, `broadcast/`, `routeControl/`, `liveLocations/`,
+`groups/`, `facebookLeads/`, `raiseApproval/`, plus
+`admin/src/components/shared/` for the message-composer pieces.
 
 ---
 

@@ -75,7 +75,7 @@ it** — it was a *consumer* of shared GPS/Datatruck/ETA helpers, never a provid
 - Shared helpers stay: `services/liveLocationResolver.js` (GPS fallback chain),
   `services/samsaraLocationService.js`, `services/driveHosEldService.js`,
   `services/datatruckLoadService.js` / `datatruckApiService.js`,
-  `services/etaRoutingService.js`, `services/driverGroupTitle.js`,
+  `services/etaRoutingService.js`, `lib/drivers/driverGroupTitle.js`,
   `services/geocoder.js` — all used by Dispatch ETA / GPS / load lookup.
 - **Fuel-stop reminders** (`services/fuelStopAlertService.js`) are a **separate**
   feature and are untouched.

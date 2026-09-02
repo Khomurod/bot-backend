@@ -12,7 +12,7 @@ const assert = require('node:assert/strict');
 
 const {
   normalizeUnitNumber, confusableSkeleton, isConfusablePair, similarity, suggestSimilar,
-} = require('../services/trailerMasterList/normalize');
+} = require('../lib/trailers/normalize');
 const {
   deduplicateRows, detectSnapshotConflicts, diffMatched, reconcileSnapshot,
 } = require('../services/trailerMasterList/reconcile');

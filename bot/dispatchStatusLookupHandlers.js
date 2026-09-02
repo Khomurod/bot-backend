@@ -7,7 +7,7 @@ const {
   isTestHubGroup,
   buildDriverCandidate,
 } = require('../services/driverStatusLookupService');
-const { extractUnitFromGroupName } = require('../services/driverGroupTitle');
+const { extractUnitFromGroupName } = require('../lib/drivers/driverGroupTitle');
 const { runStatusSnapshotDetached } = require('../services/statusSnapshotDetached');
 const session = require('./dispatchStatusLookupSession');
 

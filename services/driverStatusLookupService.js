@@ -4,7 +4,7 @@ const {
   parseGroupName,
   normalizePersonName,
   tokenizePersonName,
-} = require('./driverGroupTitle');
+} = require('../lib/drivers/driverGroupTitle');
 
 const MIN_TOKEN_LENGTH = 3;
 const MIN_MATCH_SCORE = 50;

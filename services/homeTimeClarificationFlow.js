@@ -26,7 +26,7 @@ const {
 } = require('./homeTimeRequestConstants');
 const { wholeDaysBetween } = require('./homeTimeConstants');
 const { statusForMissingFields } = require('./homeTimeDateResolver');
-const { inferDriverType } = require('./driverProfileParse');
+const { inferDriverType } = require('../lib/drivers/driverProfileParse');
 const { buildCardText, buildDecisionButtons } = require('./homeTimeRequestCards');
 const { generateMessage, generateRequestText } = require('./homeTimeMessageComposer');
 const {

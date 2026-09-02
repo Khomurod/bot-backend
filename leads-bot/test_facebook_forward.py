@@ -14,6 +14,9 @@ os.environ.setdefault("LEADS_INTERNAL_SHARED_SECRET", "test-internal-secret")
 os.environ.setdefault("LOCAL_API_BASE_URL", "http://127.0.0.1:3001")
 
 import webhook_server as wh
+# _extract_connect_command reads the bot username from the module that owns it,
+# so the test sets it there rather than on the webhook_server facade.
+from webhook import connect_command as cc
 
 
 class TestFacebookForwardHelpers(unittest.TestCase):
@@ -30,11 +33,11 @@ class TestFacebookForwardHelpers(unittest.TestCase):
         self.assertFalse(wh._verify_signature(b"{}", "md5=abc"))
 
     def test_extract_connect_command_matches_plain_command(self):
-        wh._telegram_bot_username = "wenzeleadbots"
+        cc._telegram_bot_username = "wenzeleadbots"
         self.assertTrue(wh._extract_connect_command("/connect"))
 
     def test_extract_connect_command_matches_bot_mention_only_for_this_bot(self):
-        wh._telegram_bot_username = "wenzeleadbots"
+        cc._telegram_bot_username = "wenzeleadbots"
         self.assertTrue(wh._extract_connect_command("/connect@WenzeLeadBots"))
         self.assertFalse(wh._extract_connect_command("/connect@SomeOtherBot"))
 

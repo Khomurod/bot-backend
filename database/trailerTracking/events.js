@@ -9,7 +9,7 @@
 
 const { query } = require('../pool');
 const { boundedText: s } = require('../sqlValues');
-const { normalizeUnitNumber } = require('../../services/trailerMasterList/normalize');
+const { normalizeUnitNumber } = require('../../lib/trailers/normalize');
 const { normPossession, normCargo, possessionForEventType } = require('./status');
 const { recomputeTrailerCurrentStatus } = require('./currentStatus');
 

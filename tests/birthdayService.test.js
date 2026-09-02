@@ -37,7 +37,7 @@ require.cache[require.resolve('../bot/bot')] = {
 require.cache[require.resolve('../services/telegramHtml')] = {
   exports: { safeSend: async (fn) => fn() },
 };
-require.cache[require.resolve('../services/driverGroupTitle')] = {
+require.cache[require.resolve('../lib/drivers/driverGroupTitle')] = {
   exports: { extractDriverNameFromGroupTitle: () => 'Driver' },
 };
 

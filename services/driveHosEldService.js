@@ -24,7 +24,7 @@ const {
   normalizeUnitNumber,
   computePingAgeMinutes,
 } = require('./samsaraLocationService');
-const { extractDriverNameFromGroupTitle } = require('./driverGroupTitle');
+const { extractDriverNameFromGroupTitle } = require('../lib/drivers/driverGroupTitle');
 
 let reverseGeocode = null;
 try {

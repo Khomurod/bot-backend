@@ -24,6 +24,7 @@ const fs = require('node:fs');
 const { Pool } = require('pg');
 
 const { skipWithoutPg } = require('./helpers/trailerPgHarness');
+const { purgeDataLayer } = require('./helpers/purgeDataLayer');
 
 const REPO = path.resolve(__dirname, '..');
 const POOL_PATH = require.resolve('../database/pool');
@@ -54,16 +55,15 @@ async function createHarness(t) {
       ping: async () => true,
     },
   };
-  const reload = [
-    '../database/db', '../database/homeTime', '../database/homeTimeClarification',
-    '../database/homeTimeInternalAlertOutbox', '../database/homeTimeExpiry',
+  // The data layer is purged by WALKING database/ rather than from a list, which
+  // goes stale the moment a module there is split into a package.
+  const reload = purgeDataLayer([
     '../services/homeTimeSilentModeTransition', '../services/homeTimeInternalAlert',
     '../services/homeTimeReminderService',
-  ];
-  for (const p of reload) delete require.cache[require.resolve(p)];
+  ].map((spec) => require.resolve(spec)));
 
   t.after(async () => {
-    for (const p of reload) delete require.cache[require.resolve(p)];
+    for (const p of reload) delete require.cache[p];
     if (prior) require.cache[POOL_PATH] = prior; else delete require.cache[POOL_PATH];
     await pool.end().catch(() => {});
     try {

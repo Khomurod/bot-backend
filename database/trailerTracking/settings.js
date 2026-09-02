@@ -54,7 +54,28 @@ async function updateTrailerSettings(patch = {}) {
 }
 
 
+/**
+ * Record that a Telegram notification group was successfully test-messaged.
+ *
+ * Reminders cannot be enabled until BOTH groups have a timestamp here, so this
+ * is the write that unlocks that gate — it is called only after a test message
+ * actually reached Telegram.
+ *
+ * The column is chosen from a CLOSED map, never interpolated from caller input.
+ */
+const TESTED_AT_COLUMNS = {
+  payment: 'payment_group_tested_at',
+  overdue: 'overdue_group_tested_at',
+};
+
+async function markTrailerSettingsGroupTested(target) {
+  const column = TESTED_AT_COLUMNS[target === 'payment' ? 'payment' : 'overdue'];
+  await query(`UPDATE trailer_settings SET ${column}=NOW(),updated_at=NOW() WHERE id=1`);
+}
+
 module.exports = {
+  TESTED_AT_COLUMNS,
   getTrailerSettings,
   updateTrailerSettings,
+  markTrailerSettingsGroupTested,
 };

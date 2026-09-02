@@ -1,6 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+
+const { purgeModulePackage } = require('./helpers/purgeDataLayer');
 const { DateTime } = require('luxon');
 
 function deferred() {
@@ -22,7 +24,10 @@ function loadService({
   const datatruckPath = path.resolve(__dirname, '../services/datatruckApiService.js');
   const mgPath = path.resolve(__dirname, '../database/messageRoutingSettings.js');
 
-  for (const p of [servicePath, mbPath, botPath, htmlPath, datatruckPath, mgPath]) delete require.cache[p];
+  // The service is a façade over services/mileageBonus/*; purging only the
+  // façade would leave those siblings holding the PREVIOUS case's stubs.
+  purgeModulePackage(servicePath, path.resolve(__dirname, '../services/mileageBonus'),
+    [mbPath, botPath, htmlPath, datatruckPath, mgPath]);
 
   const mb = {
     async withMileageRunLock(fn) { return { acquired: true, result: await fn() }; },

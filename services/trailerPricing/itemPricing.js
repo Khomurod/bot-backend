@@ -2,7 +2,7 @@
  * Pure per-item rental pricing.
  *
  * Given a rental item and its billable window, compute the base rental amount.
- * Reuses the department's day math (services/trailerBillingService.js) so the
+ * Reuses the department's day math (lib/trailers/trailerBilling.js) so the
  * per-item calculation matches legacy single-trailer invoicing exactly rather
  * than reimplementing calendar/24h/manual day counting.
  *
@@ -10,7 +10,7 @@
  */
 'use strict';
 
-const { calculateBillableDays } = require('../trailerBillingService');
+const { calculateBillableDays } = require('../../lib/trailers/trailerBilling');
 
 function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;

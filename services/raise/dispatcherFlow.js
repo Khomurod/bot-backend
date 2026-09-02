@@ -18,7 +18,7 @@
 const { DateTime } = require('luxon');
 const ra = require('../../database/raiseApproval');
 const otp = require('../otpService');
-const { decryptText } = require('../facebookCrypto');
+const { decryptText } = require('../../lib/security/facebookCrypto');
 const { serviceError } = require('./errors');
 const { postSubmissionResult } = require('./notifications');
 

@@ -10,7 +10,7 @@ const db = require('../database/db');
 const {
   extractUnitFromGroupName,
   parseGroupName,
-} = require('../services/driverGroupTitle');
+} = require('../lib/drivers/driverGroupTitle');
 
 function parseArgs(argv) {
   const args = new Set(argv.slice(2));

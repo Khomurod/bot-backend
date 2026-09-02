@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { deriveAgreementStatus } = require('../services/trailerAgreements/statusDerivation');
+const { deriveAgreementStatus } = require('../lib/trailers/statusDerivation');
 
 const items = (...s) => s.map((item_status) => ({ item_status }));
 

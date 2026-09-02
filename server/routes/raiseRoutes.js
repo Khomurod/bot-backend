@@ -12,7 +12,7 @@ const jwt = require('jsonwebtoken');
 const config = require('../../config/config');
 const ra = require('../../database/raiseApproval');
 const raise = require('../../services/raiseApprovalService');
-const { encryptText } = require('../../services/facebookCrypto');
+const { encryptText } = require('../../lib/security/facebookCrypto');
 const { normalizeDriverName } = require('../../services/mileageBonusConstants');
 
 // Strip secrets and expose only a "configured" flag for the Gmail App Password.

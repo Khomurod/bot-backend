@@ -10,7 +10,7 @@
  * AI misses or when the AI is unavailable, so the result is always complete.
  */
 const { callGeminiJson } = require('./geminiClient');
-const { parseDriverFromGroupName, stripStatusWords } = require('./driverProfileParse');
+const { parseDriverFromGroupName, stripStatusWords } = require('../lib/drivers/driverProfileParse');
 
 function normalizeType(value) {
   return String(value || '').toLowerCase().includes('company') ? 'company_driver' : 'owner';

@@ -1,7 +1,7 @@
 # Route Control — invariants
 
 Read this before changing anything under `services/routeControl/`,
-`services/routeControlConstants.js`, or the route-screenshot endpoints.
+`lib/routeControl/routeControlConstants.js`, or the route-screenshot endpoints.
 
 `services/routeControlService.js` is a **re-export-only compatibility façade**.
 Add new code to a focused module inside `services/routeControl/` and export it
@@ -16,7 +16,7 @@ them is the classic regression here.
 |---|---|---|
 | Runs for | **Every** lifecycle-active route, including tracking-pending ones | Tracking-active routes only |
 | Needs Google Maps enabled? | **No** | **Yes** (Settings → GMaps `enabled`) |
-| Threshold | Default 50 mi — the single authoritative constant lives in `services/routeControlConstants.js` | — |
+| Threshold | Default 50 mi — the single authoritative constant lives in `lib/routeControl/routeControlConstants.js` | — |
 
 - Completion is **atomic**: `completeRouteAssignment` uses
   `WHERE status='active' RETURNING *`, so only the winner of a race writes the

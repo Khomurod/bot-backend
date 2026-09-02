@@ -16,7 +16,7 @@
  */
 const datatruck = require('./datatruckApiService');
 const { inferWindowsFromAiDateTimeStrings } = require('./loadWindowParse');
-const { extractDriverNameFromGroupTitle } = require('./driverGroupTitle');
+const { extractDriverNameFromGroupTitle } = require('../lib/drivers/driverGroupTitle');
 
 // A driver's active order changes on the scale of hours, not seconds. A few
 // minutes of caching collapses the many on-demand reads into one API call.

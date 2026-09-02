@@ -17,7 +17,21 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const read = (p) => fs.readFileSync(path.resolve(__dirname, p), 'utf8');
-const liveLocations = read('../admin/src/pages/LiveLocationsPage.jsx');
+
+/**
+ * The whole Live Locations page: the container plus every module in its
+ * package. Read as a SET for the same reason as the admin API client below —
+ * these guards are about what the page does, not which file inside it happens
+ * to do it. The page was one 800-line component and is now a container over
+ * ./liveLocations/*; reading the directory means a further split cannot
+ * silently drop one of these invariants from the check.
+ */
+const liveLocationsDir = path.resolve(__dirname, '../admin/src/pages/liveLocations');
+const liveLocations = [read('../admin/src/pages/LiveLocationsPage.jsx')]
+  .concat(fs.readdirSync(liveLocationsDir)
+    .filter((f) => f.endsWith('.js') || f.endsWith('.jsx'))
+    .map((f) => fs.readFileSync(path.join(liveLocationsDir, f), 'utf8')))
+  .join('\n');
 
 /**
  * The whole admin API client: the re-export façade at api.js plus every domain
@@ -40,7 +54,7 @@ test('Admin Live Locations uses the unified trailer states endpoint', () => {
 });
 
 test('Live Locations uses the shared pure filter helper (no inline business logic)', () => {
-  assert.ok(/from ['"]\.\.\/utils\/assetMapFilters['"]/.test(liveLocations), 'imports assetMapFilters');
+  assert.ok(/from ['"](\.\.\/)+utils\/assetMapFilters['"]/.test(liveLocations), 'imports assetMapFilters');
   assert.ok(liveLocations.includes('filterTrailers('), 'filters trailers via the helper');
   assert.ok(liveLocations.includes('buildDriverPositionIndex('), 'builds the driver index once per snapshot');
 });

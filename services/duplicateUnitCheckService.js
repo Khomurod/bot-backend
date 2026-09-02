@@ -23,7 +23,7 @@
 const dup = require('../database/duplicateUnitReports');
 const { getEldConfig } = require('../database/eldSettings');
 const samsara = require('./samsaraLocationService');
-const { driverNamesMatch, extractDriverNameFromVehicleLabel } = require('./driverGroupTitle');
+const { driverNamesMatch, extractDriverNameFromVehicleLabel } = require('../lib/drivers/driverGroupTitle');
 
 const POLL_MS = 15 * 60 * 1000;
 const FIRST_TICK_DELAY_MS = 90 * 1000;

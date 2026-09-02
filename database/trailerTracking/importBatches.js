@@ -7,7 +7,7 @@
 
 const { query } = require('../pool');
 const { boundedText: s } = require('../sqlValues');
-const { normalizeUnitNumber } = require('../../services/trailerMasterList/normalize');
+const { normalizeUnitNumber } = require('../../lib/trailers/normalize');
 
 async function createImportBatch({ uploadedBy = null, fileName = null, parsedCount = 0, errorCount = 0, rawAiResult = null } = {}) {
   const res = await query(
