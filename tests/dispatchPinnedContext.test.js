@@ -2,6 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
+const { purgeModulePackage } = require('./helpers/purgeDataLayer');
+
 function loadPinnedContextWithMocks({ parserMock, dbMock, groqMock, geminiMock } = {}) {
   const servicePath = path.resolve(__dirname, '../services/dispatchPinnedContextService.js');
   const parserPath = path.resolve(__dirname, '../server/services/dispatchParserService.js');
@@ -9,11 +11,10 @@ function loadPinnedContextWithMocks({ parserMock, dbMock, groqMock, geminiMock }
   const groqPath = path.resolve(__dirname, '../services/groqClient.js');
   const geminiPath = path.resolve(__dirname, '../services/geminiClient.js');
 
-  delete require.cache[servicePath];
-  delete require.cache[parserPath];
-  delete require.cache[dbPath];
-  delete require.cache[groqPath];
-  delete require.cache[geminiPath];
+  // The service is a façade over services/pinnedContext/*; purging only the
+  // façade would leave those siblings bound to the PREVIOUS case's mocks.
+  purgeModulePackage(servicePath, path.resolve(__dirname, '../services/pinnedContext'),
+    [parserPath, dbPath, groqPath, geminiPath]);
 
   const realGroq = require('../services/groqClient');
   const realGemini = require('../services/geminiClient');
