@@ -12,7 +12,7 @@ const crypto = require('node:crypto');
 async function getPinnedSnapshotFromDb(groupId) {
   if (!groupId) return null;
   try {
-    const db = require('../database/db');
+    const db = require('../../database/db');
     return await db.getGroupPinnedMessageSnapshot(groupId);
   } catch (err) {
     console.warn('[DISPATCH-ETA] Could not read pinned snapshot from DB:', err.message);

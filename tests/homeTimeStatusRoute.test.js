@@ -8,13 +8,20 @@ const path = require('node:path');
 const express = require('express');
 
 const { DateTime } = require('luxon');
+const { purgeModulePackage } = require('./helpers/purgeDataLayer');
 
 function loadApp({ existing, captured }) {
   const routePath = path.resolve(__dirname, '../server/routes/homeTimeRoutes.js');
+  const routeDir = path.resolve(__dirname, '../server/routes/homeTime');
   const htPath = path.resolve(__dirname, '../database/homeTime.js');
   const dbPath = path.resolve(__dirname, '../database/db.js');
 
-  for (const p of [routePath, htPath, dbPath]) delete require.cache[p];
+  // The sub-router that owns PUT /status captures the `ht` stub at require
+  // time, so purging the façade alone left the PREVIOUS case's stub in place
+  // and later cases asserted against the first case's captured writes. The
+  // whole package is dropped by walking the directory, which cannot miss a
+  // module added by a later split.
+  purgeModulePackage(routePath, routeDir, [htPath, dbPath]);
 
   require.cache[dbPath] = { exports: { async getDriverProfileByGroupId() { return null; } } };
   require.cache[htPath] = {
