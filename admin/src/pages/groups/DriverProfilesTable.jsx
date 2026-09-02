@@ -1,7 +1,5 @@
 import React from "react";
-import {
-  isDriverActive, formatStatusSource, driverLabel, memberOptionLabel,
-} from "./driverProfileShaping";
+import { formatStatusSource, driverLabel } from "./driverProfileShaping";
 
 /**
  * The driver-profile table, including its loading and empty states.
