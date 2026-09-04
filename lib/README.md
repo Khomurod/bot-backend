@@ -13,7 +13,7 @@ what makes it safe for any layer — including `database/` — to depend on.
 
 ## Why it exists
 
-These nine modules used to live under `services/`, a layer *above* the database.
+Nine of these modules used to live under `services/`, a layer *above* the database.
 Nineteen `database/**` modules therefore had to reach upward to use them, which
 inverted the stated dependency direction and made the data layer non-testable in
 isolation. Moving them fixed the direction rather than papering over it with a
@@ -47,3 +47,4 @@ needs a drawer.
 | `trailers/normalize.js` | Trailer-number normalization for the master list and its aliases. |
 | `trailers/statusDerivation.js` | Deriving an agreement's status from its dates and rows. |
 | `trailers/trailerBilling.js` | Rental day counts and money rounding. Pure date/money maths — the `Service` suffix it carried under `services/` was misleading. |
+| `database/failureClassification.js` | Which kind of database failure an error is — unreachable, timed out, out of allowance, permission — as a code + status + human sentence. Used by the query boundary (`database/pool.js`), the route failure helper and the tests; an ordinary SQL error deliberately classifies as nothing. |

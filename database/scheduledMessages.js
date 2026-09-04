@@ -51,9 +51,29 @@ async function getPendingScheduledMessages() {
   return res.rows;
 }
 
-async function getAllScheduledMessages() {
+/**
+ * The admin queue view: every message still in play, plus a bounded slice of
+ * finished history.
+ *
+ * The unbounded version returned EVERY row ever created — each carrying three
+ * full message texts and a media_items JSONB blob — and the Scheduled Messages
+ * page re-read it on a timer, so the same finished history crossed the database
+ * link again and again for as long as a tab stayed open. Live rows
+ * ('pending' and 'processing') are never dropped, because an admin must always
+ * see what is still going to send; only the finished tail is capped.
+ */
+async function getAllScheduledMessages({ historyLimit = 100 } = {}) {
   const res = await query(
-    `SELECT * FROM scheduled_messages ORDER BY created_at DESC`
+    `SELECT * FROM scheduled_messages WHERE status IN ('pending', 'processing')
+     UNION ALL
+     SELECT * FROM (
+       SELECT * FROM scheduled_messages
+       WHERE status NOT IN ('pending', 'processing')
+       ORDER BY created_at DESC
+       LIMIT $1
+     ) recent_history
+     ORDER BY created_at DESC`,
+    [Math.max(1, Number(historyLimit) || 100)]
   );
   return res.rows;
 }

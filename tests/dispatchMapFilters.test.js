@@ -83,7 +83,18 @@ test('trailer markers carry a text glyph and accessible labels (never color-only
 // ── soft failure ──
 
 test('trailer failure degrades softly without touching trucks', () => {
-  assert.ok(liveLocations.includes('keep previous trailers'), 'admin keeps last-known trailers');
+  // The trailer overlay is fetched inside its own try/catch, so its failure
+  // never blanks the trucks…
+  assert.ok(liveLocations.includes('catch (trailerErr)'), 'the trailer fetch has its own catch');
+  assert.ok(
+    !/catch \(trailerErr\)[\s\S]{0,400}setTrailers\(\[\]\)/.test(liveLocations),
+    'a failed trailer fetch must not clear the last-known trailers',
+  );
+  // …but it is REPORTED rather than shown as an empty overlay. "No trailers"
+  // and "we could not load the trailers" are different statements, and the map
+  // is where someone decides a trailer is unaccounted for.
+  assert.ok(liveLocations.includes('setTrailerError(trailerErr)'), 'the failure is recorded');
+  assert.ok(liveLocations.includes('error={trailerError}'), 'and surfaced on the page');
 });
 
 // ── the archived surface really is gone ──

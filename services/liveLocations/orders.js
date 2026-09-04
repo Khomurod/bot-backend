@@ -10,35 +10,39 @@
 const datatruck = require('../datatruckApiService');
 const datatruckLoads = require('../datatruckLoadService');
 const { LOOKBACK_DAYS, LOOKAHEAD_DAYS, ORDERS_TTL_MS } = require('./constants');
-const { nowMs, ordersCache, ordersInFlight } = require('./caches');
+const { nowMs, ordersSlot, ordersInFlightSlot } = require('./caches');
 const { orderSortKey, toNumberOrNull, toIso } = require('./shaping');
 
 // ─── Loads: one Datatruck order-window fetch, matched locally ─────────────────
 async function getActiveOrders(now) {
   if (!datatruck.isConfigured()) return { orders: [], error: null };
-  if (ordersCache && now - ordersCache.at < ORDERS_TTL_MS) {
-    return { orders: ordersCache.orders, error: null };
+  const cached = ordersSlot.get();
+  if (cached && now - cached.at < ORDERS_TTL_MS) {
+    return { orders: cached.orders, error: null };
   }
-  if (ordersInFlight) return ordersInFlight;
+  const running = ordersInFlightSlot.get();
+  if (running) return running;
 
-  ordersInFlight = (async () => {
+  const fetching = (async () => {
     try {
       const startIso = new Date(now - LOOKBACK_DAYS * 86_400_000).toISOString();
       const endIso = new Date(now + LOOKAHEAD_DAYS * 86_400_000).toISOString();
       const orders = await datatruck.fetchOrdersByDocumentWindow(startIso, endIso);
-      ordersCache = { at: now, orders };
+      ordersSlot.set({ at: now, orders });
       return { orders, error: null };
     } catch (err) {
       // Reuse the last good order set (if any) and surface the error.
+      const lastGood = ordersSlot.get();
       return {
-        orders: ordersCache ? ordersCache.orders : [],
+        orders: lastGood ? lastGood.orders : [],
         error: { provider: 'datatruck', code: err.code || 'ERROR', message: err.message },
       };
     } finally {
-      ordersInFlight = null;
+      ordersInFlightSlot.clear();
     }
   })();
-  return ordersInFlight;
+  ordersInFlightSlot.set(fetching);
+  return fetching;
 }
 
 function indexOrdersByDriver(orders, now) {

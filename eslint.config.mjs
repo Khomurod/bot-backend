@@ -1,9 +1,10 @@
 /**
  * Repository lint config — deliberately narrow.
  *
- * ONE RULE MATTERS HERE: `no-undef`. It answers the single question that a
- * successful build does not: does any file reference a name that is neither
- * declared, imported, nor a real global?
+ * ONLY BUGS ARE ERRORS HERE. Every enabled rule reports something that is
+ * broken at runtime, never a matter of style, so a report from this config is
+ * always worth acting on. `no-undef` is the reason it exists; `no-const-assign`
+ * is the reason it grew (see CORRECTNESS_RULES).
  *
  * WHY THIS EXISTS. A module-splitting refactor moved functions into new files
  * and left 26 of their identifiers behind — `getDaysUntilBirthday` in the
@@ -32,6 +33,46 @@
  */
 import globals from 'globals';
 import reactHooks from 'eslint-plugin-react-hooks';
+
+/**
+ * Rules that only ever fire on a real defect.
+ *
+ * `no-undef` catches the class that broke production: 26 identifiers a module
+ * split left behind.
+ *
+ * `no-const-assign` catches its sibling, which broke the live map the same way
+ * and was found while fixing the first. services/liveLocations/caches.js
+ * exported four `let` cache slots BY VALUE; snapshot.js destructured them —
+ * binding consts — and then assigned to them, so every uncached dispatch-map
+ * request died on "Assignment to constant variable" and the TTL cache that
+ * exists to spare the database never held anything.
+ *
+ * The rest are the same shape: silently dropped duplicate keys, a comparison
+ * that can never be true, a `typeof` misspelling, code after a `return`. None
+ * of them can be argued with, and none of them fires on working code — the
+ * repository was clean on all of them at the moment they were added, except
+ * for one genuinely unreachable line.
+ */
+const CORRECTNESS_RULES = {
+  'no-undef': 'error',
+  'no-const-assign': 'error',
+  'no-class-assign': 'error',
+  'no-func-assign': 'error',
+  'no-import-assign': 'error',
+  'no-dupe-args': 'error',
+  'no-dupe-keys': 'error',
+  'no-dupe-class-members': 'error',
+  'no-duplicate-case': 'error',
+  'no-self-assign': 'error',
+  'no-obj-calls': 'error',
+  'no-unreachable': 'error',
+  'no-sparse-arrays': 'error',
+  'no-unsafe-negation': 'error',
+  'no-compare-neg-zero': 'error',
+  'no-constant-binary-expression': 'error',
+  'use-isnan': 'error',
+  'valid-typeof': 'error',
+};
 
 /**
  * The two trees that run in a browser rather than in Node. They are configured
@@ -71,7 +112,7 @@ export default [
       sourceType: 'commonjs',
       globals: { ...globals.node, ...globals.es2021 },
     },
-    rules: { 'no-undef': 'error' },
+    rules: { ...CORRECTNESS_RULES },
   },
   {
     // `.mjs` is ES modules wherever it lives.
@@ -91,7 +132,7 @@ export default [
       globals: { ...globals.browser, ...globals.es2021 },
     },
     rules: {
-      'no-undef': 'error',
+      ...CORRECTNESS_RULES,
       // Registered so existing disable directives resolve; intentionally off.
       'react-hooks/exhaustive-deps': 'off',
       'react-hooks/rules-of-hooks': 'off',
@@ -123,6 +164,6 @@ export default [
       sourceType: 'script',
       globals: { ...globals.browser, ...globals.es2021 },
     },
-    rules: { 'no-undef': 'error' },
+    rules: { ...CORRECTNESS_RULES },
   },
 ];

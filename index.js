@@ -12,6 +12,10 @@ const { spawn } = require('child_process');
 const { bot, startBot, stopBot } = require('./bot/bot');
 const { startServer, stopServer } = require('./server/api');
 const { startScheduler, stopScheduler } = require('./services/schedulerService');
+const {
+  startDatabaseUsageService,
+  stopDatabaseUsageService,
+} = require('./services/databaseUsageService');
 const { startBirthdayService, stopBirthdayService } = require('./services/birthdayService');
 const {
   startGroupStatusAiService,
@@ -331,6 +335,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
   try { stopTrailerNotificationService(); } catch (err) { console.error('[SHUTDOWN] stopTrailerNotificationService failed:', err.message); }
   try { stopMemoryWatchdog(); } catch (err) { console.error('[SHUTDOWN] stopMemoryWatchdog failed:', err.message); }
+  try { stopDatabaseUsageService(); } catch (err) { console.error('[SHUTDOWN] stopDatabaseUsageService failed:', err.message); }
 
   await Promise.allSettled([
     stopFacebookWebhookWorker(),
@@ -356,6 +361,10 @@ async function start() {
 
   assertDistinctTelegramPollingTokens();
   await db.initializeDatabase();
+
+  // Started before any traffic so the month's transfer estimate is adopted from
+  // the database and every later query is counted.
+  startDatabaseUsageService();
 
   configureDispatchEtaTelegram(bot.telegram);
   const { getLeadsTelegram } = require('./services/leadsTelegramClient');

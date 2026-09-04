@@ -14,7 +14,7 @@ const { getEldConfig } = require('../../database/eldSettings');
 const { listCanonicalDriverGroups } = require('../driverGroupDirectoryService');
 const { extractDriverNameFromGroupTitle } = require('../../lib/drivers/driverGroupTitle');
 const { SNAPSHOT_TTL_MS, STALE_MINUTES, ETA_CONCURRENCY } = require('./constants');
-const { nowMs, snapshotCache, snapshotInFlight } = require('./caches');
+const { nowMs, snapshotSlot, snapshotInFlightSlot } = require('./caches');
 const {
   toNumberOrNull, round, toIso, unitNumberForRow, driverNameForGroupRow,
   telegramGroupLinkFor, mapWithConcurrency,
@@ -250,39 +250,44 @@ function decorateCacheStatus(data, { cachedAtMs, servedFromCache, isStale, warni
 async function getSnapshot({ force = false } = {}) {
   const now = nowMs();
   // Fresh cached snapshot within TTL — served from cache, single API budget.
-  if (!force && snapshotCache && now - snapshotCache.at < SNAPSHOT_TTL_MS) {
-    return decorateCacheStatus(snapshotCache.data, {
-      cachedAtMs: snapshotCache.at,
+  // This is the main brake on database and provider traffic: every polling tab
+  // inside one TTL window is answered from memory.
+  const cached = snapshotSlot.get();
+  if (!force && cached && now - cached.at < SNAPSHOT_TTL_MS) {
+    return decorateCacheStatus(cached.data, {
+      cachedAtMs: cached.at,
       servedFromCache: true,
       isStale: false,
     });
   }
   // A build is already running (single-flight) — every concurrent caller shares
   // it, so two admins opening the page together trigger only one provider fetch.
-  if (snapshotInFlight) return snapshotInFlight;
+  const running = snapshotInFlightSlot.get();
+  if (running) return running;
 
-  snapshotInFlight = (async () => {
+  const build = (async () => {
     try {
       const data = await buildSnapshot();
-      snapshotCache = { at: nowMs(), data };
+      const stored = snapshotSlot.set({ at: nowMs(), data });
       return decorateCacheStatus(data, {
-        cachedAtMs: snapshotCache.at,
+        cachedAtMs: stored.at,
         servedFromCache: false,
         isStale: false,
       });
     } catch (err) {
       // Build failed — return the last successful snapshot, flagged stale, with a
       // clear warning. Nothing is wiped; the page keeps showing the last good data.
-      if (snapshotCache) {
+      const lastGood = snapshotSlot.get();
+      if (lastGood) {
         const withError = {
-          ...snapshotCache.data,
+          ...lastGood.data,
           errors: [
-            ...(snapshotCache.data.errors || []),
+            ...(lastGood.data.errors || []),
             { provider: 'snapshot', code: 'BUILD_FAILED', message: err.message },
           ],
         };
         return decorateCacheStatus(withError, {
-          cachedAtMs: snapshotCache.at,
+          cachedAtMs: lastGood.at,
           servedFromCache: true,
           isStale: true,
           warning: 'Live provider refresh failed. Showing last successful snapshot.',
@@ -290,10 +295,11 @@ async function getSnapshot({ force = false } = {}) {
       }
       throw err;
     } finally {
-      snapshotInFlight = null;
+      snapshotInFlightSlot.clear();
     }
   })();
-  return snapshotInFlight;
+  snapshotInFlightSlot.set(build);
+  return build;
 }
 
 module.exports = {

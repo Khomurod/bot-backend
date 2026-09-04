@@ -47,6 +47,8 @@ const dispatchRoutes = require('./routes/dispatchRoutes');
 const { createFacebookLeadsRouter } = require('./routes/facebookLeadsRoutes');
 const { createAuthRoutes } = require('./routes/authRoutes');
 const { createHealthRoutes } = require('./routes/healthRoutes');
+const { createSystemRoutes } = require('./routes/systemRoutes');
+const { createErrorHandler } = require('./middleware/failureResponse');
 const { createLeadsProxyRoutes } = require('./routes/leadsProxyRoutes');
 const { createFacebookConnectRoutes } = require('./routes/facebookConnectRoutes');
 const { createMediaUploadRoutes } = require('./routes/mediaUploadRoutes');
@@ -112,6 +114,7 @@ app.use(createAdminUserRoutes({ db, authMiddleware, requirePermission }));
 
 // ─── Health checks, site root, presentation, Meta compliance pages ───
 app.use(createHealthRoutes({ db, config }));
+app.use(createSystemRoutes({ authMiddleware }));
 
 // Telegram cannot carry an admin session when it fetches photo media. These
 // image bytes are therefore exposed only through a short-lived, HMAC-signed,
@@ -302,6 +305,15 @@ app.get(['/admin', '/admin/*', '/trailers', '/trailers/*', '/dispatch', '/dispat
   }
   res.sendFile(adminSpaIndexPath);
 });
+
+// ─── Terminal error handler ───
+// MUST be last: Express only reaches an error handler mounted after every route.
+// Without one, an error escaping a handler produced Express's default HTML
+// stack page, and the admin panel's fetch layer — seeing HTML where JSON
+// belonged — reported "this tab is running an outdated version" for what was
+// actually a server fault. This answers JSON with a classified code instead
+// (503 + DB_UNAVAILABLE / DB_QUOTA for a database problem, 500 otherwise).
+app.use(createErrorHandler());
 
 // ─── Start server function ───
 let httpServer = null;

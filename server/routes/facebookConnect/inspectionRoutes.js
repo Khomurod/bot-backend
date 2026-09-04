@@ -40,8 +40,6 @@ function createFacebookInspectionRoutes({ proxyAuthGuard }) {
   });
 
   return router;
-
-  return router;
 }
 
 module.exports = { createFacebookInspectionRoutes };

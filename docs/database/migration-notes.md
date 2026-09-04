@@ -73,6 +73,15 @@ segments — day-to-day changes are forward migrations.
   destructive `DROP`/`ALTER … DROP` without an explicit backup and approval
   (`CLAUDE.md`). New columns nullable or defaulted.
 - Pushing this repo can auto-deploy — review the full diff before pushing.
+- **A table whose own writes must stay negligible.**
+  `database_transfer_usage` (migration 0007) records the estimated bytes this
+  app has read from the database per UTC month, so the panel can warn at
+  80/90/95% of the hosted allowance instead of discovering it by hitting it. One
+  row per month, one UPSERT a minute
+  (`services/databaseUsageService.js`), one SELECT at boot. Keep it that way: a
+  meter that writes per query would consume the budget it measures. The numbers
+  are this app's estimate (sampled result sizes), never the provider's
+  accounting — see `database/transferMeter.js`.
 - The `samsara-integration` service shares the database. It creates its own
   `samsara_*` tables (and mirrors `safety_event_video_jobs`) with
   `CREATE TABLE IF NOT EXISTS` in `src/db.js → initPgDb()`. `bot-backend` remains

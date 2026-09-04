@@ -88,12 +88,26 @@ enough to benefit, and never let their absence block or delay work:
 
 ```
 node --test --test-concurrency=1 tests/*.test.js   # bash glob (PowerShell does not expand it)
-npm test                                           # Node suite + Python leads tests
+npm test                                           # gates + Node suite + Python leads tests
 npm run build --prefix admin                       # admin production build
 npm test --prefix admin                            # admin component tests
+npm run lint:undef                                 # undefined identifiers (the check a build is NOT)
+npm run lint:imports                               # an import naming a missing export
 npm run lint:filesize                              # 500-line limit
 npm run build:schema:check                         # schema.sql in sync with baseline/
 ```
+
+- **A green build is not a scope check.** A module split once left 26
+  identifiers behind in files that no longer imported them — including
+  `getDaysUntilBirthday` on the Driver Groups page and `activeRun` in the
+  mileage-bonus scheduler — and `vite build` passed every time, because a
+  bundler treats an unresolved module-scope name as a global and defers the
+  failure to runtime. `lint:undef` (only bug-finding ESLint rules: `no-undef`,
+  `no-const-assign` and a few of the same shape) and `lint:imports` (a declared
+  name whose module does not export it) are the two checks that catch that
+  class. Both run in `npm test` and in CI. **After splitting or moving a
+  module, run them** — they take seconds and they are the difference between a
+  refactor and an outage.
 
 - **The Node suite passes clean with no secrets and no database**, so **any
   failure is a real failure.** There is no "expected failures in a bare

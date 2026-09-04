@@ -94,8 +94,12 @@ export default function LeadsPage() {
     fetchData(mounted);
     return () => { mounted.current = false; };
   }, [fetchData]);
-  // Recurring refresh pauses while the tab is hidden (refreshes on return).
-  useVisibleInterval(() => fetchData(), 15000);
+  // Recurring refresh pauses while the tab is hidden (refreshes on return) and
+  // stops entirely when the section is closed. 45s rather than 15s: the leads
+  // list is a database read per poll per tab, and a recruiter watching this
+  // page gains nothing from three reads a minute — new leads also arrive by
+  // Telegram notification, which does not depend on this page being open.
+  useVisibleInterval(() => fetchData(), 45000);
 
   const copyScript = async () => {
     try {
