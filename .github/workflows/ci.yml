@@ -57,6 +57,17 @@ jobs:
       - name: File-size lint
         run: npm run lint:filesize
 
+      # A build is NOT a scope check: `vite build` shipped 26 undefined
+      # identifiers because a bundler defers an unresolved module-scope name to
+      # runtime. This is the check that catches them.
+      - name: Undefined-identifier lint
+        run: npm run lint:undef
+
+      # The mirror image: a name that IS declared, by an import pointing at a
+      # module that does not export it. Rollup only warns and emits undefined.
+      - name: Local imports resolve to real exports
+        run: npm run lint:imports
+
       - name: Schema baseline is up to date
         run: npm run build:schema:check
 

@@ -2,7 +2,7 @@ import React from "react";
 import { getDaysUntilBirthday } from "../../components/Shared";
 import {
   formatDateValue, profileToDraft, shouldShowTeamInputs,
-  driverLabel, memberOptionLabel,
+  driverLabel, memberOptionLabel, normalizeManualUsername,
 } from "./driverProfileShaping";
 
 /**

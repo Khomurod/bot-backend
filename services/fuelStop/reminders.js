@@ -12,7 +12,7 @@ const db = require('../../database/db');
 const { resolveLiveLocationForGroupTitle } = require('../liveLocationResolver');
 const { haversineMiles } = require('../etaRoutingService');
 const { callGeminiText } = require('../geminiClient');
-const { DEFAULT_RADIUS_MILES } = require('./constants');
+const { DEFAULT_RADIUS_MILES, RETRY_GAP_MIN } = require('./constants');
 const {
   normalizeText, escapeHtml, buildDriverDisplayName, milesLabel, minutesFromNowIso,
   computeNextCheck,

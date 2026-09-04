@@ -7,7 +7,7 @@
  *
  * Split out of server/services/dispatchParserService.js.
  */
-const { MAX_INLINE_GEMINI_FILE_BYTES } = require('./constants');
+const { DISPATCH_GROQ_MODEL, MAX_INLINE_GEMINI_FILE_BYTES } = require('./constants');
 const { isWeakDispatchRawText } = require('./textExtraction');
 const { safeParseJsonObject } = require('./aiFailures');
 const {

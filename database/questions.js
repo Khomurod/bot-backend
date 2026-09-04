@@ -3,7 +3,7 @@
  * Extracted verbatim from database/db.js; database/db.js re-exports these so
  * every existing `require('./db')` / `require('../database/db')` keeps working.
  */
-const { query } = require('./pool');
+const { pool, query } = require('./pool');
 
 // ─── Questions ───
 

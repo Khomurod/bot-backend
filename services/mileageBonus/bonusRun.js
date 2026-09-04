@@ -184,7 +184,7 @@ async function getOverview() {
   const persistedSummary = latestRun?.summary || null;
   return {
     configured: datatruck.isConfigured(),
-    running: Boolean(activeRun) || dbRunning,
+    running: isRunning() || dbRunning,
     lastRun: persistedSummary || getLastRunSummary(),
     lastRunRecord: latestRun,
     tiers: MILEAGE_BONUS_TIERS,

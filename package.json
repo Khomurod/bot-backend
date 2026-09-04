@@ -9,9 +9,12 @@
   "scripts": {
     "postinstall": "npm ci --prefix admin && npm run build --prefix admin",
     "start": "node --max-old-space-size=256 index.js",
-    "test": "node --test --test-concurrency=1 tests/*.test.js && python -m unittest discover -s leads-bot -p \"test_*.py\"",
+    "test": "npm run lint:undef && npm run lint:imports && node --test --test-concurrency=1 tests/*.test.js && python -m unittest discover -s leads-bot -p \"test_*.py\"",
     "lint:filesize": "node scripts/checkFileSize.js",
     "lint:filesize:list": "node scripts/checkFileSize.js --list",
+    "lint:undef": "eslint . --max-warnings 0",
+    "lint:imports": "node scripts/checkImports.js",
+    "lint:imports:list": "node scripts/checkImports.js --list",
     "bot": "node bot/bot.js",
     "server": "node server/api.js",
     "dev": "node index.js",
@@ -45,5 +48,11 @@
     "sharp": "^0.34.4",
     "telegraf": "^4.15.3",
     "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^15.15.0"
   }
 }

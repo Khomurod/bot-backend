@@ -45,7 +45,7 @@ let tickRunning = false;
 // 07:00 instead of leasing a run key every minute for a weekly job. The run key
 // stays the MOST RECENT occurrence, preserving the sleep-safe catch-up.
 async function tick() {
-  if (tickRunning || activeRun) return { retry: false };
+  if (tickRunning || isRunning()) return { retry: false };
   tickRunning = true;
   const now = DateTime.now().setZone(SCHEDULE_TIMEZONE);
   const dueAtMs = nextScheduledRun(now).toMillis();

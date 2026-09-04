@@ -1,6 +1,6 @@
 import React from "react";
 import { timeAgo } from "../../utils/formatTime";
-import { FILTERS, statusColor, fmtEta } from "./constants";
+import { FILTERS, PROVIDER_LABEL, statusColor, fmtEta } from "./constants";
 
 /**
  * The map pane and the unit side panel, side by side.

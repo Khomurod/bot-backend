@@ -15,7 +15,7 @@ import React from "react";
  */
 export function TargetingSection({
   targetType, setTargetType, targetActiveFilter, setTargetActiveFilter,
-  selectedDriverIds, selectedLanguages, driverGroups,
+  selectedDriverIds, setSelectedDriverIds, selectedLanguages, driverGroups,
   forceLanguage, setForceLanguage, toggleDriverId, toggleLanguage,
 }) {
   return (

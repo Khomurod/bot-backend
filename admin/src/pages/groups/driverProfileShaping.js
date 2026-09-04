@@ -1,4 +1,4 @@
-import { sortBySoonestBirthday } from "../../components/Shared";
+import { getDaysUntilBirthday, sortBySoonestBirthday } from "../../components/Shared";
 
 /**
  * Shaping and validating one driver profile for the Driver Groups screen —
