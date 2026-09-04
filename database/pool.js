@@ -8,6 +8,8 @@
  */
 const { Pool } = require('pg');
 const config = require('../config/config');
+const transferMeter = require('./transferMeter');
+const { classifyDatabaseError } = require('../lib/database/failureClassification');
 
 const pool = new Pool({
   connectionString: config.databaseUrl,
@@ -31,17 +33,45 @@ pool.on('error', (err) => {
 });
 
 /**
- * Query helper with logging
- */
-/**
- * Query helper with logging
+ * The one place every database read and write passes through.
+ *
+ * Two things happen here besides the query itself, and both exist because of
+ * the same incident — a hosted database at 4.222 GB of a 5 GB monthly transfer
+ * allowance, with the application unable to tell an outage from an empty table:
+ *
+ *   1. USAGE ACCOUNTING. Each result feeds database/transferMeter.js, which
+ *      estimates the bytes read this month so the panel can warn at 80/90/95%
+ *      instead of discovering the ceiling by hitting it. Sampled, not measured
+ *      on every row — see that module.
+ *
+ *   2. FAILURE CLASSIFICATION. An infrastructure failure gets a `dbFailure`
+ *      tag ({ code, status, message }) attached, so a route can answer "the
+ *      database could not be reached" or "a usage limit was reached" instead of
+ *      a bare 500 — and never an empty list that reads as "no data".
+ *
+ * NEITHER MAY BREAK A QUERY. The accounting is wrapped so a bug in it cannot
+ * fail a request, and the original error object is rethrown UNCHANGED apart
+ * from the added tag: `err.code` stays the SQLSTATE that callers already check
+ * (a '23505' unique-violation path must keep working), and the message is not
+ * rewritten.
  */
 async function query(text, params) {
   try {
     const result = await pool.query(text, params);
+    try {
+      transferMeter.recordQuery(result);
+    } catch (meterError) {
+      // Accounting is best-effort; the query already succeeded.
+    }
     return result;
   } catch (err) {
     console.error('[DB] Query error:', err.message, '\nQuery:', text);
+    const failure = classifyDatabaseError(err);
+    if (failure && !err.dbFailure) {
+      Object.defineProperty(err, 'dbFailure', {
+        value: failure, enumerable: false, configurable: true, writable: true,
+      });
+    }
     throw err;
   }
 }

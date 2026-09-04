@@ -126,6 +126,13 @@
       "status": "active",
       "service": "bot (intake handler), datatruckDocumentService (loop-prevention read)",
       "sourceOfTruth": "This table (mastered here)."
+    },
+    "database_transfer_usage": {
+      "purpose": "One row per UTC month recording this application's ESTIMATE of the bytes it has read from the database, so the admin panel can warn at 80/90/95% of the hosted monthly transfer allowance instead of discovering the ceiling when reads start failing. Written by database/transferUsage.js from the in-memory counters in database/transferMeter.js (sampled result sizes, extrapolated); read once at boot so a Render restart does not reset the month.",
+      "status": "active",
+      "service": "bot-backend (admin diagnostics)",
+      "sourceOfTruth": "This table, for the app's own estimate only. The provider's dashboard is the authority on billed transfer; these numbers are never an invoice.",
+      "danger": "Keep its own write volume negligible — one UPSERT a minute. A meter that wrote per query would consume the budget it measures. Truncating it only loses the current month’s estimate; nothing else depends on it."
     }
   }
 }

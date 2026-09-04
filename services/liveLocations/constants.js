@@ -10,7 +10,11 @@
  */
 
 // ─── Tunables ───────────────────────────────────────────────────────────────
-const SNAPSHOT_TTL_MS = 45 * 1000;          // GPS freshness window (30–60s)
+// 90s, just under the admin page's 2-minute refresh: a single tab is limited by
+// its own interval, and several tabs polling out of phase still collapse onto
+// roughly one build per window instead of one build each. The explicit Refresh
+// button passes force:true and bypasses this.
+const SNAPSHOT_TTL_MS = 90 * 1000;          // GPS freshness window
 
 const ORDERS_TTL_MS = 3 * 60 * 1000;        // Datatruck active-order window cache
 

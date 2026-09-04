@@ -48,7 +48,9 @@ after deploy on the live service.
 | A5 | **Telegram bot connects.** | **[PROD]** Logs show the bot launched; send a command in the test group (see B). |
 | A6 | **Admin panel loads.** | **[AUTO]** admin build succeeds (`npm run build --prefix admin`); **[PROD]** `/admin` returns the SPA. |
 | A7 | **Logs show no critical errors.** | **[PROD]** No `[FATAL]`, no `uncaughtException`, no repeated `[LEADS] CIRCUIT BREAKER OPEN`. |
-| A8 | **Scheduled jobs still run.** | **[PROD]** After boot, logs show the schedulers starting (dispatch ETA, birthday, mileage bonus, fuel, recruiter sync, etc. — all started from `index.js`). |
+| A8 | **Scheduled jobs still run.** | **[PROD]** After boot, logs show the schedulers starting (dispatch ETA, birthday, mileage bonus, fuel, recruiter sync, etc. — all started from `index.js`). They must run with **no admin panel open**; nothing in `server/routes/**` starts one. |
+| A9 | **No undefined identifier or missing import shipped.** A build is not a scope check: 26 of these once passed `vite build` and broke the admin panel at runtime. | **[AUTO]** `npm run lint:undef` and `npm run lint:imports` (both also run in `npm test` and CI). |
+| A10 | **Database transfer allowance is not about to run out.** Exhausting it makes reads fail, and the app cannot tell that from an outage. | **[AUTO]** `GET /api/system/database-usage` reports `level: "ok"`; **[PROD]** no `[DB-USAGE]` threshold warning in the logs, and the panel shows no usage banner. Cross-check the provider dashboard — the app's figure is a sampled estimate. |
 
 ---
 

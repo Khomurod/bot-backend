@@ -37,9 +37,17 @@ export function useLiveSnapshot() {
   const [loading, setLoading] = useState(!lastGoodSnapshot);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  // The message drives the existing consumers (the map hook, the diagnostics
+  // panel); the object is what lets the banner say WHICH failure this was —
+  // an outage, an exhausted transfer allowance, a permission problem.
+  const [errorObject, setErrorObject] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(lastGoodAt);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [trailers, setTrailers] = useState([]);
+  // A failed trailer fetch must not blank the trucks — but it must not pass for
+  // "no trailers" either. The overlay keeps whatever it last had, and this says
+  // why it may be missing or stale.
+  const [trailerError, setTrailerError] = useState(null);
   const [selectedUnit, setSelectedUnit] = useState(null);
 
   const load = useCallback(async ({ initial = false, force = false } = {}) => {
@@ -53,6 +61,7 @@ export function useLiveSnapshot() {
       setSnapshot(data);
       setLastUpdated(at);
       setError(null);
+      setErrorObject(null);
       // Trailers are an OPTIONAL overlay: a failure here must never surface an
       // error or blank the trucks — keep the last-known trailer list. Uses the
       // UNIFIED trailer-state endpoint (TrailerStateService), not the legacy
@@ -60,18 +69,25 @@ export function useLiveSnapshot() {
       try {
         const td = await api.getTrailerStates();
         setTrailers(td.states || []);
-      } catch (_) { /* keep previous trailers */ }
+        setTrailerError(null);
+      } catch (trailerErr) {
+        // Keep the previous trailers on the map, and report the failure: an
+        // empty overlay must never be mistaken for a fleet with no trailers.
+        setTrailerError(trailerErr);
+      }
     } catch (err) {
       // Keep the previously loaded snapshot visible; just surface a banner.
       setError(err.message || "Failed to refresh");
+      setErrorObject(err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
-  useEffect(() => { load({ initial: true }); }, [load]);
-
+  // ONE initial fetch. This effect was duplicated, so opening the page fired
+  // two full snapshot requests (each one a provider fan-out plus a trailer
+  // fetch) every single time.
   useEffect(() => { load({ initial: true }); }, [load]);
 
   // If the selected unit vanishes from a fresh snapshot, drop the selection so
@@ -88,8 +104,8 @@ export function useLiveSnapshot() {
   useVisibleInterval(() => load({ force: false }), AUTO_REFRESH_MS, autoRefresh);
 
   return {
-    snapshot, loading, refreshing, error, lastUpdated,
-    autoRefresh, setAutoRefresh, trailers,
+    snapshot, loading, refreshing, error, errorObject, lastUpdated,
+    autoRefresh, setAutoRefresh, trailers, trailerError,
     selectedUnit, setSelectedUnit, load,
     units: snapshot?.units || [],
     summary: snapshot?.summary || null,

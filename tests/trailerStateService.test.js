@@ -80,3 +80,78 @@ test('approximate_state source renders a dashed marker', () => {
   });
   assert.equal(s.map_marker.dashed, true);
 });
+
+// ─── a database failure must not look like an empty fleet ─────────────────────
+
+/**
+ * These three getters used to catch every error and return `[]` / `null` / an
+ * empty map payload. An unreachable database, an exhausted transfer allowance
+ * and a rejected credential all rendered as "this company owns no trailers" —
+ * on the same screen someone uses to decide a trailer is unaccounted for. The
+ * failure is propagated now, and the route reports which kind it was.
+ */
+const DB_PATH = require.resolve('../database/db');
+
+/** Load trailerStateService with a database module that fails the way an outage does. */
+function loadWithFailingDb(error) {
+  const servicePath = require.resolve('../services/trailerStateService');
+  const realDb = require.cache[DB_PATH];
+  delete require.cache[servicePath];
+  require.cache[DB_PATH] = {
+    id: DB_PATH,
+    filename: DB_PATH,
+    loaded: true,
+    exports: {
+      getUnifiedTrailerStates: async () => { throw error; },
+      getUnifiedTrailerStateById: async () => { throw error; },
+    },
+  };
+  try {
+    return require(servicePath);
+  } finally {
+    delete require.cache[servicePath];
+    if (realDb) require.cache[DB_PATH] = realDb; else delete require.cache[DB_PATH];
+  }
+}
+
+test('a database outage propagates instead of returning an empty trailer list', async () => {
+  const outage = Object.assign(new Error('Connection terminated unexpectedly'), { code: '08006' });
+  const failing = loadWithFailingDb(outage);
+  await assert.rejects(() => failing.getUnifiedTrailerStates(), /Connection terminated/);
+  await assert.rejects(() => failing.getUnifiedTrailerStateById(7), /Connection terminated/);
+  await assert.rejects(() => failing.getTrailerMapPayload(), /Connection terminated/);
+});
+
+test('the map payload still separates mappable trailers when the database answers', async () => {
+  // The happy path must be unchanged by the above: this is the shape the
+  // dispatch map consumes.
+  const servicePath = require.resolve('../services/trailerStateService');
+  const realDb = require.cache[DB_PATH];
+  delete require.cache[servicePath];
+  require.cache[DB_PATH] = {
+    id: DB_PATH,
+    filename: DB_PATH,
+    loaded: true,
+    exports: {
+      getUnifiedTrailerStates: async () => ([
+        { trailer_id: 1, unit_number: 'A1', possession_status: 'dropped', cargo_status: 'empty', current_lat: 40, current_lng: -76 },
+        { trailer_id: 2, unit_number: 'B2', possession_status: 'unknown', cargo_status: 'unknown', status_needs_review: true },
+      ]),
+      getUnifiedTrailerStateById: async () => null,
+    },
+  };
+  let payload;
+  try {
+    const loaded = require(servicePath);
+    payload = await loaded.getTrailerMapPayload();
+  } finally {
+    delete require.cache[servicePath];
+    if (realDb) require.cache[DB_PATH] = realDb; else delete require.cache[DB_PATH];
+  }
+  assert.equal(payload.trailers.length, 1);
+  assert.equal(payload.trailers[0].unit_number, 'A1');
+  assert.equal(payload.noLocation.length, 1);
+  assert.equal(payload.noLocation[0].reason, 'needs review');
+  assert.equal(payload.meta.count, 2);
+  assert.ok(!payload.meta.error, 'a successful payload carries no error flag');
+});

@@ -7,6 +7,7 @@ import { useLeafletMap } from "./liveLocations/useLeafletMap";
 import { DiagnosticsPanel } from "./liveLocations/DiagnosticsPanel";
 import { MapAndUnitList } from "./liveLocations/MapAndUnitList";
 import { TrailerOverlayPanel } from "./liveLocations/TrailerOverlayPanel";
+import PageFailure from "../components/PageFailure";
 
 /**
  * Live Locations — page container.
@@ -37,8 +38,8 @@ export default function LiveLocationsPage() {
 
   const live = useLiveSnapshot();
   const {
-    snapshot, loading, refreshing, error, lastUpdated, autoRefresh, setAutoRefresh,
-    trailers, selectedUnit, setSelectedUnit, load, units, summary, providerErrors,
+    snapshot, loading, refreshing, error, errorObject, lastUpdated, autoRefresh, setAutoRefresh,
+    trailers, trailerError, selectedUnit, setSelectedUnit, load, units, summary, providerErrors,
   } = live;
 
   const filtered = useMemo(() => {
@@ -126,13 +127,36 @@ export default function LiveLocationsPage() {
         </div>
       </div>
 
-      {/* A failed background refresh keeps the last good data on screen. */}
-      {error && (
-        <div className="alert alert-error" style={{ marginTop: 0 }}>
-          ⚠️ {snapshot
-            ? "Could not refresh live data. Showing last successful snapshot."
-            : error}
-        </div>
+      {/* A failed refresh keeps the last good data on screen AND names the
+          cause. It used to collapse every failure into "Could not refresh live
+          data", so a dispatcher could not tell a provider hiccup from an
+          unreachable database or an exhausted transfer allowance. */}
+      {errorObject && (
+        <>
+          <PageFailure
+            variant="inline"
+            error={errorObject}
+            where="Live Locations refresh"
+            onRetry={() => load({ force: true })}
+          />
+          {snapshot && (
+            <div className="alert alert-error" style={{ marginTop: 0 }}>
+              ⚠️ The map below is the last successful snapshot
+              {lastUpdated ? ` (${clockTime(lastUpdated)})` : ""}, not live data.
+            </div>
+          )}
+        </>
+      )}
+      {/* The trailer overlay is optional, so its failure never blanks the
+          trucks — but an overlay with no trailers must not read as a fleet with
+          no trailers. */}
+      {trailerError && (
+        <PageFailure
+          variant="inline"
+          error={trailerError}
+          where="Trailer overlay"
+          onRetry={() => load({ force: true })}
+        />
       )}
       {snapshot?.isStale && !error && (
         <div className="alert alert-error" style={{ marginTop: 0 }}>

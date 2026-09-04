@@ -113,6 +113,16 @@ module.exports = {
   configProblems: Object.freeze([...configProblems]),
   botToken: process.env.BOT_TOKEN || '',
   databaseUrl: process.env.DATABASE_URL,
+  /**
+   * The hosted database's monthly data-transfer allowance, for the usage meter
+   * and its 80/90/95% warnings (services/databaseUsageService.js). Default 5 GB
+   * = the Supabase free-tier allowance this deployment runs on. Setting it does
+   * NOT change any provider limit or billing — it only tells the app what to
+   * measure against.
+   */
+  databaseTransferBudgetBytes: Math.round(
+    (Number.parseFloat(process.env.DATABASE_TRANSFER_BUDGET_GB || '5') || 5) * 1024 * 1024 * 1024,
+  ),
   adminUsername: process.env.ADMIN_USERNAME || 'admin',
   adminPassword: process.env.ADMIN_PASSWORD || '',
   managementGroupId,

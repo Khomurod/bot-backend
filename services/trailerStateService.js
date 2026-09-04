@@ -155,47 +155,49 @@ function normalizeState(row) {
   return state;
 }
 
-/** All trailer states, normalized. Fail-soft: returns [] on any error. */
+/**
+ * All trailer states, normalized.
+ *
+ * IT NO LONGER DEGRADES TO AN EMPTY LIST. These three functions used to catch
+ * every error and return `[]` / `null` / an empty payload, so a database that
+ * was unreachable, out of transfer allowance, or refusing the credentials
+ * looked exactly like a company that owns no trailers: an empty map, an empty
+ * table, no warning anywhere. An admin cannot act on a fault they cannot see,
+ * and "no trailers" is a dangerous thing to state falsely — it is the same
+ * screen someone uses to decide a trailer is unaccounted for.
+ *
+ * The error is propagated instead, and the route turns it into a response that
+ * names the cause (server/middleware/failureResponse.js). The browser keeps the
+ * last good list on screen behind a banner rather than blanking the map, so
+ * nothing is lost by telling the truth here.
+ */
 async function getUnifiedTrailerStates(opts = {}) {
-  try {
-    const rows = await db.getUnifiedTrailerStates(opts);
-    return rows.map(normalizeState);
-  } catch (err) {
-    console.warn('[TRAILER-STATE] getUnifiedTrailerStates failed (degrading to empty):', err.message);
-    return [];
-  }
+  const rows = await db.getUnifiedTrailerStates(opts);
+  return rows.map(normalizeState);
 }
 
-/** One trailer's normalized state, or null. Fail-soft. */
+/** One trailer's normalized state, or null when there is genuinely no such row. */
 async function getUnifiedTrailerStateById(trailerId) {
-  try {
-    const row = await db.getUnifiedTrailerStateById(trailerId);
-    return row ? normalizeState(row) : null;
-  } catch (err) {
-    console.warn('[TRAILER-STATE] getUnifiedTrailerStateById failed:', err.message);
-    return null;
-  }
+  const row = await db.getUnifiedTrailerStateById(trailerId);
+  return row ? normalizeState(row) : null;
 }
 
 /**
  * Operational map payload for the Dispatch Map: mappable trailers (with markers)
  * plus a `noLocation` list (needs-review or no coordinates). Trucks are merged in
- * by the caller/frontend. Fail-soft: returns an empty payload on any error.
+ * by the caller/frontend.
+ *
+ * A failure propagates (see above): an empty map must mean an empty fleet.
  */
 async function getTrailerMapPayload(opts = {}) {
-  try {
-    const states = await getUnifiedTrailerStates(opts);
-    const trailers = [];
-    const noLocation = [];
-    for (const s of states) {
-      if (s.mappable) trailers.push(s);
-      else noLocation.push({ trailer_id: s.trailer_id, unit_number: s.unit_number, display_status: s.display_status, reason: s.needs_review ? 'needs review' : 'no mappable location' });
-    }
-    return { trailers, noLocation, meta: { count: states.length, generatedAt: new Date().toISOString() } };
-  } catch (err) {
-    console.warn('[TRAILER-STATE] getTrailerMapPayload failed:', err.message);
-    return { trailers: [], noLocation: [], meta: { count: 0, error: true } };
+  const states = await getUnifiedTrailerStates(opts);
+  const trailers = [];
+  const noLocation = [];
+  for (const s of states) {
+    if (s.mappable) trailers.push(s);
+    else noLocation.push({ trailer_id: s.trailer_id, unit_number: s.unit_number, display_status: s.display_status, reason: s.needs_review ? 'needs review' : 'no mappable location' });
   }
+  return { trailers, noLocation, meta: { count: states.length, generatedAt: new Date().toISOString() } };
 }
 
 module.exports = {

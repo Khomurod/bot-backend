@@ -12,6 +12,7 @@ process.env.FACEBOOK_TOKEN_ENCRYPTION_KEY ||= 'test-key';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const fs = require('node:fs');
 const express = require('express');
 
 function buildApp(calls) {
@@ -30,7 +31,14 @@ function buildApp(calls) {
     listTrailerEventsNeedingGeocode: async () => [],
     setTrailerEventGeocode: async () => ({}),
   };
+  // Purge the router AND every module it mounts: server/routes/trailer/*.js
+  // destructures db and the geocode service at require time, so a stale copy
+  // would keep recording into a previous test's `calls` object — which reads as
+  // a mysterious "the route did not call the database" failure.
   delete require.cache[routePath];
+  for (const file of fs.readdirSync(path.resolve(__dirname, '../server/routes/trailer'))) {
+    if (file.endsWith('.js')) delete require.cache[path.resolve(__dirname, '../server/routes/trailer', file)];
+  }
   require.cache[dbPath] = { exports: fakeDb };
   require.cache[geoPath] = { exports: { geocodeTrailerLocation: async () => ({ lat: 40, lng: -76, source: 'geocoded', confidence: 75 }) } };
   const { createTrailerRoutes } = require(routePath);

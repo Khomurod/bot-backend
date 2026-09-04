@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import * as api from "../api";
 import { timeAgo } from "../utils/formatTime";
+import useVisibleInterval from "../utils/useVisibleInterval";
 
 export default function ScheduledMessagesPage() {
   const [messages, setMessages] = useState([]);
@@ -20,25 +21,25 @@ export default function ScheduledMessagesPage() {
     }
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-    const fetchData = async () => {
-      try {
-        const data = await api.getScheduledMessages();
-        if (isMounted) setMessages(data);
-      } catch (err) {
-        if (isMounted) setStatus({ type: 'error', text: err.message });
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-    fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
+  // The queue is read once on open and then refreshed on a visible-only timer.
+  // It used to run a bare setInterval every 30s, which kept querying the
+  // database from a background tab (and from a tab left open overnight) for as
+  // long as the browser was alive. useVisibleInterval stops while the tab is
+  // hidden and refreshes once on return; unmounting the section stops it too,
+  // so a queue nobody is looking at costs nothing.
+  const refresh = useCallback(async () => {
+    try {
+      const data = await api.getScheduledMessages();
+      setMessages(data);
+    } catch (err) {
+      setStatus({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+  useVisibleInterval(refresh, 60000);
 
   const handleCancel = async (id) => {
     setProcessing(true);

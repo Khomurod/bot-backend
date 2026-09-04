@@ -604,6 +604,7 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 | `trailerNotificationService` | drains on enqueue; retry wakes on `available_at`; 15 min idle sweep (was a 15s poll) + 5 min reminder enqueue | trailer payment/overdue notifications; **only when the department flag is on** |
 | `recruiterCallSyncService` | self-rescheduling `setTimeout` | RingCentral call-log sync |
 | `facebookWebhookService` worker | drains on arrival; retry wakes on `next_retry_at`; 15 min idle sweep (was a 5s poll) | verified Meta webhook events with retry |
+| `databaseUsageService` | 60s flush | persists the estimated monthly database transfer and logs once at 80/90/95% of the budget |
 | `memoryWatchdog` | **off by default**; 15 min when on | heap/RSS pressure logging. Requires `MEMORY_WATCHDOG_ENABLED='true'`; `MEMORY_WATCHDOG_INTERVAL_MS` is clamped to ≥60s |
 | Python leads child | supervised process | Meta + RingCentral webhook intake |
 
@@ -611,6 +612,64 @@ Event-driven (no timer) but equally live: the driver-group message pipeline
 (`bot/handlers/groupCaptureHandlers.js`) fans a single incoming message out to
 home-time detection, fuel-stop capture, trailer monitoring, auto-reactions,
 pinned-context snapshots, and the recent-message buffer.
+
+**None of this depends on a browser.** Every job above is started by
+`index.js` at boot and stopped only by the shutdown coordinator; no route, no
+login and no admin page starts, feeds or keeps one alive. Route monitoring,
+fuel monitoring, birthdays, Samsara/ELD reads, dispatch ETA, the alert queues
+and the trailer notifications all continue with the admin panel closed — the
+panel is a viewer, never the engine. (Nothing in `server/routes/**` calls a
+`start*Service`; the only interval there is an SSE keep-alive scoped to one open
+QBQ presentation connection.)
+
+### The database transfer budget
+
+The hosted database (Supabase) has a **monthly data-transfer allowance**, and
+this deployment reached **4.222 GB of 5 GB** with nothing in the application
+aware of it. Exhausting it is not a graceful degradation: reads simply start
+failing, and before this work the app could not tell that apart from an outage.
+
+Three mechanisms now keep it in view and in check:
+
+- **A meter.** `database/pool.js` is the single query boundary, so every result
+  feeds `database/transferMeter.js`, which estimates the bytes read this month
+  (sampled result sizes plus a moving average of bytes-per-row — measuring every
+  row would double the work of every large query). `database/transferUsage.js`
+  persists it to `database_transfer_usage` (one row per UTC month, one UPSERT a
+  minute) so a Render restart does not reset the month.
+- **Warnings at 80 / 90 / 95%.** Logged once per threshold per month by
+  `services/databaseUsageService.js`, and shown in the admin panel by
+  `DatabaseUsageBanner` (which reads in-memory counters — the meter performs no
+  query of its own). Both say plainly that the number is this app's estimate,
+  not the provider's invoice. **Nothing throttles or blocks a query on this
+  budget**: enforcement belongs to the provider, and silently refusing reads
+  would turn a warning into an outage. No provider or billing setting is ever
+  changed by the app.
+- **Less traffic to begin with.** The brakes are the server-side TTL caches with
+  single-flight collapsing (Live Locations: 90s snapshot, 3 min order window),
+  the visible-only browser polling below, and bounded list queries (the
+  scheduled-messages queue returns every live row plus a capped tail of finished
+  history instead of the whole table on every poll).
+
+### Browser polling (the admin panel)
+
+Every automatic refresh in the panel goes through
+`admin/src/utils/useVisibleInterval.js`, which **skips ticks while the tab is
+hidden and stops entirely when the section is closed**, then refreshes once on
+return. A dashboard left open overnight therefore costs nothing.
+
+| Page | Interval | Notes |
+|---|---|---|
+| Live Locations | **2 min** | server snapshot cache is 90s, so several tabs collapse onto one build; the explicit Refresh button passes `force=true` |
+| Leads | 45s | new leads also arrive by Telegram, so the page is not the notification path |
+| Scheduled messages | 60s | was an ungated 30s `setInterval` that polled from background tabs forever |
+| Mileage bonuses | 8s | **only while a run is in progress** |
+| Recruiters leaderboard (public) | 60s | only in "today" mode |
+| SOS answers (public) | 20s | live assessment screen |
+
+Do not add a bare `setInterval` that fetches — use the hook, or the next
+dashboard left open on a wall display becomes the largest line in the transfer
+bill.
 
 ### Idempotency ledgers — do not weaken
 
@@ -774,18 +833,54 @@ the repository-wide working rules. The highest-consequence items:
     chains are load-bearing.
 13. **Config validation stays at the startup boundary**, not at import time.
 14. **Do not re-add the Samsara poller to this process** (§2).
+15. **A failure is never rendered as empty data.** A read endpoint that cannot
+    reach the database must say so — status 503 with a `code`
+    (`DB_UNAVAILABLE` / `DB_TIMEOUT` / `DB_QUOTA` / `DB_PERMISSION`) — never
+    answer `200 { states: [] }`. Three trailer endpoints used to do exactly
+    that, so an outage or an exhausted transfer allowance was indistinguishable
+    from a company that owns no trailers, on the same screen someone uses to
+    decide a trailer is unaccounted for. The classification lives in
+    `lib/database/failureClassification.js` (attached at the query boundary by
+    `database/pool.js`), the response shaping in
+    `server/middleware/failureResponse.js`, and the wording in
+    `admin/src/utils/pageFailure.js`. An ordinary SQL error — a unique violation,
+    a typo — must NOT be classified as a database outage, or the warning stops
+    meaning anything. Guarded by `tests/databaseFailureClassification.test.js`,
+    `tests/apiFailureResponse.test.js` and `tests/trailerStateService.test.js`.
+16. **One broken admin section must not break the others.** Every lazy page is
+    wrapped in `PageErrorBoundary`, keyed on the section, so a throw is
+    contained and navigating away really renders the next section. A single
+    latching boundary once made one page's `ReferenceError` display as "Could
+    not load this page" for every section opened afterwards — the whole panel
+    looked dead when one page was. Guarded by
+    `admin/src/components/PageErrorBoundary.test.jsx`.
 
 ### Code-structure rules (enforced by CI)
 
-- **500-line hard maximum** for hand-written `.js/.jsx/.mjs/.cjs/.ts/.tsx/.py`
-  under `bot`, `database`, `scripts`, `server`, `services`, `tests`, `admin/src`,
-  `config`, `utils` and `leads-bot` (the Python worker is hand-written code too).
-  The repo-root `index.js` is the one hand-written file outside those roots.
-  `npm run lint:filesize` enforces it; `scripts/fileSizeBaseline.json` records
-  legacy violations and **may only ever shrink**. Never add an entry to excuse a
-  NEW violation — the only legitimate addition is a pre-existing file the
-  scanner previously could not see (that is how `leads-bot/webhook_server.py`
-  was recorded).
+- **500-line hard maximum** for every hand-written
+  `.js/.jsx/.mjs/.cjs/.ts/.tsx/.py` file in the repository. `npm run
+  lint:filesize` enforces it, walking from the repository ROOT and skipping only
+  what is provably machine-produced (installed dependencies, build output,
+  caches, minified files). **There is no baseline and no exemption list** —
+  `scripts/fileSizeBaseline.json` is gone and `tests/checkFileSize.test.js`
+  asserts it stays gone, so a new violation cannot be waved through by editing a
+  JSON file. The scanner is a deny-list on purpose: an earlier version walked a
+  hard-coded list of INCLUDED directories and silently missed whole areas as the
+  tree grew (first `leads-bot/`, then `admin/vite.config.js` and its siblings).
+- **`npm run lint:undef`** — `eslint .` with only bug-finding rules enabled
+  (`no-undef`, `no-const-assign` and a handful of the same shape; no style
+  rules, so a report is always real). This is the check a build is not: a
+  module split left 26 identifiers behind in files that no longer imported them,
+  and `vite build` passed every time because a bundler treats an unresolved
+  module-scope name as a global and defers the failure to runtime. Coverage is a
+  deny-list, and `tests/checkUndefined.test.js` asserts the rule is in force for
+  every hand-written JS file in the tree.
+- **`npm run lint:imports`** — the mirror image, which no scope check can see: a
+  name that IS declared, by an import pointing at a module that does not export
+  it (Rollup only warns and emits `undefined`). Conservative by design: a module
+  whose export surface is not statically knowable is skipped rather than guessed
+  at. Covered by `tests/checkImports.test.js`, including the false-positive
+  classes that nearly made it useless.
 - Prefer a **re-export-only façade plus focused modules** when an import path must
   be preserved. `services/routeControlService.js` → `services/routeControl/*` is
   the reference example: 18 lines, pure re-export, nothing of its own.
@@ -854,21 +949,22 @@ the repository-wide working rules. The highest-consequence items:
 
 ```bash
 node --test --test-concurrency=1 tests/*.test.js   # Node suite (bash glob)
-npm test                                          # Node suite + Python leads tests
+npm test                                          # gates + Node suite + Python leads tests
 npm run build --prefix admin                      # admin production build
 npm test --prefix admin                           # admin component tests
+npm run lint:undef                                # undefined identifiers (the check a build is NOT)
+npm run lint:imports                              # an import naming a missing export
 npm run lint:filesize                             # 500-line limit
 npm run build:schema:check                        # schema.sql is in sync with baseline/
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-09-02, deps installed, no `TEST_DATABASE_URL`): **2161 tests,
-  2023 pass, 0 fail, 138 skipped** (the skips are the `*Pg` integration tests),
+  baseline (2026-09-04, deps installed, no `TEST_DATABASE_URL`): **2240 tests,
+  2095 pass, 0 fail, 145 skipped** (the skips are the `*Pg` integration tests),
   exit 0. With a database (`TEST_DATABASE_URL`) nothing skips: the whole suite is
-  **2229 tests, 2229 pass, 0 skipped**, of which the `*Pg` suites alone are
-  **209 tests, 209 pass**. The Python leads worker adds
+  **2308 tests, 2308 pass, 0 skipped**. The Python leads worker adds
   **17 tests** (`python -m unittest discover -s leads-bot -p "test_*.py"`), and
-  the admin panel **170** (`npm test --prefix admin`). **So any failure is a real
+  the admin panel **199** (`npm test --prefix admin`). **So any failure is a real
   failure** — there is no "expected failures" allowance. *(An older internal doc
   claimed ~19 expected failures in a bare environment; that is no longer true and
   must not be used to excuse one.)* If
@@ -884,6 +980,8 @@ npm run build:schema:check                        # schema.sql is in sync with b
   build, the Node unit suite with **no application env at all**, and the
   PostgreSQL integration suite against a real Postgres 16 service container.
   **Both test jobs fail on ANY skip.** CI also asserts FleetView stays archived.
+  The static job additionally runs `lint:undef` and `lint:imports` — the two
+  checks a green build does not perform.
 - **Run the suite before claiming success, and report the exact command and
   pass/fail counts.** Never claim a test passed that you did not run.
 - **Prefer test endpoints over real sends** when validating manually:

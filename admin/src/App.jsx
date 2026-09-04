@@ -5,6 +5,7 @@ import LoginPage from "./pages/LoginPage";
 import { AuthProvider } from "./context/AuthContext";
 import AdminSidebar from "./components/AdminSidebar";
 import PageErrorBoundary from "./components/PageErrorBoundary";
+import DatabaseUsageBanner from "./components/DatabaseUsageBanner";
 import {
   canonicalTrailerUrl,
   defaultTrailerSection,
@@ -368,6 +369,9 @@ export default function App() {
             ☰
           </button>
         </div>
+        {/* Shown only at 80%+ of the monthly database transfer allowance, so
+            running out is not discovered by reads starting to fail. */}
+        <DatabaseUsageBanner />
         <LazyPage pageKey={page === "trailer_department" ? `trailer:${trailerSection}` : page}>
           {pages[page] || pages.dispatch}
         </LazyPage>

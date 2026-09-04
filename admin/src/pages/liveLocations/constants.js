@@ -2,15 +2,22 @@
  * Live Locations constants and the small pure formatters the panel renders
  * with.
  *
- * AUTO_REFRESH_MS is 45s deliberately: the snapshot fans out to every location
- * provider, so a shorter interval multiplies upstream API calls without giving
- * a dispatcher newer data than the providers themselves publish. The interval
- * is also gated on tab visibility (see ../../utils/useVisibleInterval), so a
- * background tab stops polling entirely.
+ * AUTO_REFRESH_MS is 2 MINUTES deliberately. The snapshot fans out to every
+ * location provider and reads the canonical driver groups from the database, so
+ * a shorter interval multiplies upstream calls and database traffic without
+ * giving a dispatcher newer data than the providers themselves publish. It was
+ * 45s, which cost nearly three times the reads for no operational gain — the
+ * dominant avoidable source of database egress on this deployment.
+ *
+ * Two further brakes sit either side of it: the interval is gated on tab
+ * visibility (see ../../utils/useVisibleInterval), so a background tab and a
+ * closed section poll nothing at all, and the server holds the assembled
+ * snapshot behind its own TTL cache with single-flight collapsing, so several
+ * admins polling together still cost one build.
  *
  * Split out of admin/src/pages/LiveLocationsPage.jsx.
  */
-export const AUTO_REFRESH_MS = 45000;
+export const AUTO_REFRESH_MS = 120000;
 export const DEFAULT_CENTER = [39.5, -98.35]; // continental US
 export const DEFAULT_ZOOM = 4;
 
