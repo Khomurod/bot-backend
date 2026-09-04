@@ -2,7 +2,7 @@
  * Scheduled messages: queueing, listing, cancelling, and sending early.
  */
 
-import { API_BASE, getHeaders, handleApiError } from './http';
+import { API_BASE, appendTargetActiveFilter, getHeaders, handleApiError } from './http';
 
 // ─── Scheduled Messages API ───
 

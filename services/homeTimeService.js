@@ -24,7 +24,9 @@ const db = require('../database/db');
 const ht = require('../database/homeTime');
 const config = require('../config/config');
 const { safeSend } = require('./telegramHtml');
-const { parseDriverStatus, computeRoadBonus, DAYS_PER_WEEK } = require('./homeTimeConstants');
+const {
+  parseDriverStatus, computeRoadBonus, wholeDaysBetween, DAYS_PER_WEEK,
+} = require('./homeTimeConstants');
 const { inferDriverType } = require('../lib/drivers/driverProfileParse');
 const roadBonus = require('./roadBonusNotifierService');
 

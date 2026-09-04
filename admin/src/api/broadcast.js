@@ -5,7 +5,7 @@
  * and reading back their delivery and click history.
  */
 
-import { API_BASE, getHeaders, handleApiError } from './http';
+import { API_BASE, appendTargetActiveFilter, getHeaders, handleApiError } from './http';
 
 // Support both object and positional arguments for compatibility
 export async function sendBroadcast(dataOrText, parseMode, messages, mediaItems, mediaPosition, groupIds) {

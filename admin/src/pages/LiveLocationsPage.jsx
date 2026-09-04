@@ -68,6 +68,11 @@ export default function LiveLocationsPage() {
     showDiagnostics, error, snapshot, providerErrors,
   });
 
+  // The header toolbar renders the asset-view switch and the "Fit visible"
+  // button, so it needs these three by name.
+  const { assetFilters, setAssetFilter } = assets;
+  const { fitAll } = map;
+
   const cards = summary ? [
     { label: "Units visible", value: filtered.length, color: "#6366f1" },
     { label: "Active loads", value: summary.activeLoads, color: "#22c55e" },

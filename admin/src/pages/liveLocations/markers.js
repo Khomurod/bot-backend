@@ -1,8 +1,8 @@
 import L from "leaflet";
 import { timeAgo } from "../../utils/formatTime";
 import { trailerMarkerStyle, displayTrailerStatus } from "../../utils/trailerState";
-import { cargoGlyph } from "../../utils/assetMapFilters";
-import { statusColor, escapeHtml, fmtEta } from "./constants";
+import { cargoGlyph, trailerAriaLabel } from "../../utils/assetMapFilters";
+import { statusColor, escapeHtml, fmtEta, PROVIDER_LABEL } from "./constants";
 
 /**
  * Leaflet marker icons and popup markup for trucks and trailers.

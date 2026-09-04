@@ -1,4 +1,5 @@
 import React from "react";
+import { friendlyTimezone } from "../../utils/formatTime";
 import { WEEKDAYS, TIMEZONES, emptyRule } from "./constants";
 import { PreviewPanel } from "./PreviewPanel";
 import { PlaceholderChips } from "./PlaceholderChips";

@@ -5,6 +5,7 @@ import { useHomeTimeOverview } from "./homeTime/useHomeTimeOverview";
 import { useHomeTimeImport } from "./homeTime/useHomeTimeImport";
 import { DriverListCard } from "./homeTime/DriverListCard";
 import { ScreenshotImportCard } from "./homeTime/ScreenshotImportCard";
+import { UnlinkedActivityCard } from "./homeTime/UnlinkedActivityCard";
 import { DriverDetailModal } from "./homeTime/DriverDetailModal";
 
 /**
@@ -93,6 +94,8 @@ export default function HomeTimePage() {
       <HomeTimeSettingsCard settings={settings} saving={saving} onSave={saveSettings} />
 
       <ScreenshotImportCard {...importer} />
+
+      <UnlinkedActivityCard unlinkedActivity={overview.unlinkedActivity} />
 
       {isDetailOpen && selectedStatus && (
         <DriverDetailModal {...overview} flash={flash} />

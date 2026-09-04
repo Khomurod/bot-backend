@@ -4,6 +4,7 @@ import * as api from "./api";
 import LoginPage from "./pages/LoginPage";
 import { AuthProvider } from "./context/AuthContext";
 import AdminSidebar from "./components/AdminSidebar";
+import PageErrorBoundary from "./components/PageErrorBoundary";
 import {
   canonicalTrailerUrl,
   defaultTrailerSection,
@@ -52,38 +53,21 @@ const pageLoadingFallback = (
 );
 
 /**
- * A failed lazy chunk (deploy replaced the hashed file, network hiccup) must
- * never leave a blank screen — offer a reload instead.
+ * Shared wrapper for a lazy page: a per-section error boundary plus the
+ * suspense fallback.
+ *
+ * `pageKey` is what keeps sections independent. The boundary it feeds resets
+ * whenever that key changes, so a section that threw cannot leave the boundary
+ * latched and make every section opened afterwards show the same failure — the
+ * production symptom where Driver Groups, Mileage Bonuses "and other sections"
+ * all reported "Could not load this page" because only the first one had
+ * actually failed.
  */
-class ChunkErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { failed: false };
-  }
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-  render() {
-    if (this.state.failed) {
-      return (
-        <div className="loading" style={{ flexDirection: "column", gap: 12 }}>
-          <div>Could not load this page (a new version may have been deployed).</div>
-          <button className="btn btn-primary" onClick={() => window.location.reload()}>
-            Reload
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-/** Shared wrapper: chunk-failure boundary + suspense fallback for lazy pages. */
-function LazyPage({ children }) {
+function LazyPage({ pageKey, children }) {
   return (
-    <ChunkErrorBoundary>
+    <PageErrorBoundary resetKey={pageKey}>
       <Suspense fallback={pageLoadingFallback}>{children}</Suspense>
-    </ChunkErrorBoundary>
+    </PageErrorBoundary>
   );
 }
 
@@ -265,23 +249,23 @@ export default function App() {
   if (isRaisePublicPage) {
     return (
       <main className="main-content" style={{ marginLeft: 0 }}>
-        <LazyPage><RaisePublicPage /></LazyPage>
+        <LazyPage pageKey="raise_public"><RaisePublicPage /></LazyPage>
       </main>
     );
   }
 
   // Full-bleed public leaderboard — no admin chrome, no auth.
   if (isRecruitersPublicPage) {
-    return <LazyPage><RecruitersPublicPage /></LazyPage>;
+    return <LazyPage pageKey="recruiters_public"><RecruitersPublicPage /></LazyPage>;
   }
 
   // Public QBQ/SOS pages — own bright theme, no admin chrome, no auth.
   // key= forces a clean remount when navigating between real and test mode.
   if (isSosQuestionsPage) {
-    return <LazyPage><SosQuestionsPage key={isSosTestMode ? "test" : "real"} isTest={isSosTestMode} /></LazyPage>;
+    return <LazyPage pageKey={page}><SosQuestionsPage key={isSosTestMode ? "test" : "real"} isTest={isSosTestMode} /></LazyPage>;
   }
   if (isSosAnswersPage) {
-    return <LazyPage><SosAnswersPage key={isSosTestMode ? "test" : "real"} isTest={isSosTestMode} /></LazyPage>;
+    return <LazyPage pageKey={page}><SosAnswersPage key={isSosTestMode ? "test" : "real"} isTest={isSosTestMode} /></LazyPage>;
   }
 
   if (checking) {
@@ -317,7 +301,7 @@ export default function App() {
   if (isDispatchPage) {
     return (
       <main className="main-content" style={{ marginLeft: 0 }}>
-        <LazyPage><DispatchPage /></LazyPage>
+        <LazyPage pageKey="dispatch"><DispatchPage /></LazyPage>
       </main>
     );
   }
@@ -384,7 +368,9 @@ export default function App() {
             ☰
           </button>
         </div>
-        <LazyPage>{pages[page] || pages.dispatch}</LazyPage>
+        <LazyPage pageKey={page === "trailer_department" ? `trailer:${trailerSection}` : page}>
+          {pages[page] || pages.dispatch}
+        </LazyPage>
       </main>
     </div>
     </AuthProvider>

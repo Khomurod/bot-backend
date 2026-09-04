@@ -5,7 +5,7 @@
  * on the same records.
  */
 
-import { API_BASE, getHeaders, handleApiError } from './http';
+import { API_BASE, appendTargetActiveFilter, getHeaders, handleApiError } from './http';
 
 export async function getGroups() {
   const res = await fetch(`${API_BASE}/groups`, { headers: getHeaders() });
@@ -65,13 +65,6 @@ export async function runDriverProfilesAiSync(apply = true) {
   });
   if (!res.ok) { await handleApiError(res); }
   return res.json();
-}
-
-function appendTargetActiveFilter(body, targetType, targetActiveFilter) {
-  if (targetType === 'all' || targetType === 'language_groups') {
-    body.target_active_filter = targetActiveFilter || 'active';
-  }
-  return body;
 }
 
 export async function setGroupLanguage(groupId, language) {

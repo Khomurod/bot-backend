@@ -1,5 +1,5 @@
 import React from "react";
-import { formatStatusSource, driverLabel } from "./driverProfileShaping";
+import { formatStatusSource, driverLabel, profileToDraft } from "./driverProfileShaping";
 
 /**
  * The driver-profile table, including its loading and empty states.
@@ -16,7 +16,7 @@ import { formatStatusSource, driverLabel } from "./driverProfileShaping";
 export function DriverProfilesTable({
   loading, displayProfiles, draftsById, savingProfileId,
   statusSort, toggleStatusSort, setOpenProfileId,
-  updateDraft, saveProfilePatch,
+  updateDraft, saveProfilePatch, activeTab,
 }) {
   return (
     <>

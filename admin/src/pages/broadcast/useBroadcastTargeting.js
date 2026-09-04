@@ -83,9 +83,15 @@ export function useBroadcastTargeting() {
     targetType, targetActiveFilter, selectedDriverIds, selectedLanguages,
   };
 
+  // setSelectedDriverIds is part of the returned bag for the targeting
+  // section's Select All / Deselect All button, which replaces the whole
+  // selection at once rather than toggling ids one at a time. It was left
+  // behind when this hook was split out of BroadcastPage, so that button threw
+  // "setSelectedDriverIds is not a function" on every click.
   return {
     targetType, setTargetType, targetActiveFilter, setTargetActiveFilter,
-    selectedDriverIds, selectedLanguages, driverGroups, broadcastPlaceholders,
+    selectedDriverIds, setSelectedDriverIds,
+    selectedLanguages, driverGroups, broadcastPlaceholders,
     forceLanguage, setForceLanguage,
     allowedPlaceholderKeys, unknownTokensIn, toggleDriverId, toggleLanguage,
     validateTargeting, targetPayload,

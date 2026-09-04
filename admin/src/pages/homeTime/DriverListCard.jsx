@@ -1,5 +1,5 @@
 import React from "react";
-import { STATUS_FILTERS, driverTypeLabel } from "../homeTimeViewModel";
+import { STATUS_FILTERS, driverTypeLabel, isCompanyDriver } from "../homeTimeViewModel";
 import {
   fmtDate, money, nextHomeLabel, currentCycleLabel, bonusProgressLabel, sortArrow,
 } from "./labels";
@@ -22,6 +22,7 @@ export function DriverListCard(p) {
     filteredStatuses, unlinkedActivity, selectedFilterLabel,
     statusFilter, setStatusFilter, driverQuery, setDriverQuery,
     sortKey, sortDirection, toggleSort, openDriverDetails,
+    selectedGroupId, isDetailOpen,
   } = p;
 
   /**

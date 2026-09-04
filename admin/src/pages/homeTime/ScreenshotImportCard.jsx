@@ -16,7 +16,6 @@ export function ScreenshotImportCard({
   importing, applyingImport, readScreenshots, applyImport,
 }) {
   return (
-    <>
 
   <div className="card" style={{ marginBottom: 20 }}>
     <h3>Import from screenshots</h3>
@@ -87,47 +86,5 @@ export function ScreenshotImportCard({
       </div>
     )}
   </div>
-
-  {unlinkedActivity.length > 0 && (
-    <div className="card">
-      <h3>Unlinked activity</h3>
-      <p className="home-time-muted" style={{ marginTop: 0 }}>
-        These requests or completed trips do not point to a currently tracked driver status, so they stay visible here instead of disappearing.
-      </p>
-      <div className="table-container">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Type</th>
-              <th>Driver</th>
-              <th>Date</th>
-              <th>Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {unlinkedActivity.map((item) => (
-              <tr key={item.id}>
-                <td>{item.kind === "request" ? "Request" : "Trip"}</td>
-                <td>
-                  <div className="home-time-driver-name">{item.driver_name}</div>
-                  <div className="home-time-subtext">
-                    {driverTypeLabel(item.driver_type)}
-                    {item.unit_number ? ` | Unit ${item.unit_number}` : ""}
-                  </div>
-                </td>
-                <td>{fmtDate(item.timestamp)}</td>
-                <td>
-                  {item.kind === "request"
-                    ? `${requestStatusMeta(item.status, item.clarification_channel).label} | ${fmtDate(item.home_from)} to ${fmtDate(item.home_to)} | ${item.source || "--"}`
-                    : `${fmtDate(item.road_started_at)} to ${fmtDate(item.home_arrived_at)} | ${money(item.bonus_usd)}`}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )}
-    </>
   );
 }

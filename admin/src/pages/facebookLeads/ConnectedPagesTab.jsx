@@ -1,4 +1,5 @@
 import React from "react";
+import { timeAgo } from "../../utils/formatTime";
 
 /**
  * The Facebook Pages whose lead forms feed this system.
