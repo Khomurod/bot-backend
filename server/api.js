@@ -48,6 +48,7 @@ const { createFacebookLeadsRouter } = require('./routes/facebookLeadsRoutes');
 const { createAuthRoutes } = require('./routes/authRoutes');
 const { createHealthRoutes } = require('./routes/healthRoutes');
 const { createSystemRoutes } = require('./routes/systemRoutes');
+const { createRemoteRoutes } = require('./routes/remoteRoutes');
 const { createErrorHandler } = require('./middleware/failureResponse');
 const { createLeadsProxyRoutes } = require('./routes/leadsProxyRoutes');
 const { createFacebookConnectRoutes } = require('./routes/facebookConnectRoutes');
@@ -115,6 +116,13 @@ app.use(createAdminUserRoutes({ db, authMiddleware, requirePermission }));
 // ─── Health checks, site root, presentation, Meta compliance pages ───
 app.use(createHealthRoutes({ db, config }));
 app.use(createSystemRoutes({ authMiddleware }));
+
+// ─── Presenter remote (/remote) ───
+// Public by design and mounted here, ahead of every authenticated router and
+// ahead of the admin SPA catch-all: the phone that opens it is holding a QR
+// code from a projector, not an admin session. It serves one self-contained
+// file and talks to nothing on this server — see server/routes/remoteRoutes.js.
+app.use(createRemoteRoutes());
 
 // Telegram cannot carry an admin session when it fetches photo media. These
 // image bytes are therefore exposed only through a short-lived, HMAC-signed,

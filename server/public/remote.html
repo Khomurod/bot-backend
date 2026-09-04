@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<!--
+  Presenter remote for the Wenzel Weekly Report (GET /remote).
+
+  ONE self-contained file: no build step, no auth, no JWT, no bundler, and the
+  only network dependency is the MQTT broker itself. A presenter's phone is on
+  hotel wifi or LTE while a room waits, so every extra request is another way
+  for this to fail at the worst moment.
+
+  HOW IT PAIRS. The presentation shows a QR encoding
+  https://bot-backend-x9lc.onrender.com/remote#c=<CODE>. The phone's camera app
+  opens that URL, rrInit() reads the code out of the hash and connects with no
+  taps at all. Opening /remote with no code shows the join card instead: scan
+  the QR from inside the page, or type the four-digit code.
+
+  THE PROTOCOL IS FIXED BY THE PRESENTATION — do not "improve" it here. Both
+  sides speak MQTT 3.1.1 over WebSocket against a public broker, QoS 0:
+
+    phone  publishes  wzl/rc/<CODE>/cmd    {type:'cmd',action,value?,at}
+    phone  subscribes wzl/rc/<CODE>/state  {type:'state',index,total,title,
+                                            fullscreen,presenting} | {type:'bye'}
+
+  A public broker carries these messages, so the code is the whole secret and
+  the pad is deliberately dull: it moves slides. Nothing here reads or writes
+  company data, and nothing it can send does anything but change which slide is
+  on the projector.
+
+  ON THE MARKUP: #rcRemote, the rr-* classes and the rr* function names are the
+  same ones the report file uses for its own in-page remote view, so the two
+  stay swappable. The host-side rc* functions and the #rcOffer modal are absent
+  on purpose — on this page the document IS the remote, which is what
+  body[data-remote="1"] says.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B1220">
+<meta name="robots" content="noindex,nofollow">
+<title>Presenter Remote — Wenzel</title>
+<style>
+  /* ---------- 7c. This file used AS the remote ---------- */
+  :root{
+    --rr-bg:#0B1220; --rr-card:#141C2B; --rr-line:#22304A; --rr-ink:#EAF0FA;
+    --rr-mute:#8FA0BC; --rr-accent:#4C8DFF; --rr-good:#34D399; --rr-warn:#FBBF24;
+    --rr-bad:#F87171;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--rr-bg);color:var(--rr-ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:16px;line-height:1.45;
+  }
+  #rcRemote{
+    min-height:100%;display:flex;flex-direction:column;gap:14px;
+    padding:max(14px,env(safe-area-inset-top)) 14px max(14px,env(safe-area-inset-bottom));
+  }
+  /* The page is the remote, so the report's "back to the report" link is dead here. */
+  body[data-remote="1"] #rrExit{display:none}
+
+  .rr-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .rr-title{margin:0;font-size:15px;font-weight:700;letter-spacing:.01em}
+  .rr-live{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--rr-mute)}
+  .rr-live i{width:9px;height:9px;border-radius:50%;background:var(--rr-mute);font-style:normal;flex:none}
+  /* idle = never tried yet, and therefore not a failure: no colour. */
+  #rcRemote[data-link="on"] .rr-live i{background:var(--rr-good)}
+  #rcRemote[data-link="wait"] .rr-live i{background:var(--rr-warn)}
+  #rcRemote[data-link="off"] .rr-live i{background:var(--rr-bad)}
+
+  .rr-card{background:var(--rr-card);border:1px solid var(--rr-line);border-radius:16px;padding:16px}
+  .rr-msg{font-size:13.5px;color:var(--rr-mute);margin:0;min-height:1.45em}
+  .rr-msg b{color:var(--rr-ink)}
+
+  /* views: join card until the presentation answers, then the pad */
+  #rrJoin,#rrPad{display:none;flex:1;flex-direction:column;gap:14px}
+  #rcRemote[data-view="join"] #rrJoin{display:flex}
+  #rcRemote[data-view="pad"] #rrPad{display:flex}
+
+  /* ---------- join ---------- */
+  #rrScan{
+    position:relative;width:100%;aspect-ratio:1/1;max-height:46vh;overflow:hidden;
+    border-radius:14px;background:#070C15;border:1px solid var(--rr-line);
+    display:flex;align-items:center;justify-content:center;
+  }
+  #rrScan video{width:100%;height:100%;object-fit:cover;display:none}
+  #rrScan[data-cam="on"] video{display:block}
+  #rrScan[data-cam="on"] .rr-scan-hint{display:none}
+  .rr-scan-hint{padding:18px;text-align:center;font-size:13.5px;color:var(--rr-mute)}
+  .rr-scan-frame{
+    position:absolute;inset:18%;border:2px solid rgba(76,141,255,.9);border-radius:12px;
+    display:none;pointer-events:none;
+  }
+  #rrScan[data-cam="on"] .rr-scan-frame{display:block}
+
+  .rr-code-row{display:flex;gap:10px}
+  #rrCode{
+    flex:1;min-width:0;font:inherit;font-size:30px;font-weight:700;letter-spacing:.28em;
+    text-align:center;text-transform:uppercase;padding:14px 8px;border-radius:12px;
+    border:1px solid var(--rr-line);background:#0A101C;color:var(--rr-ink);
+    font-variant-numeric:tabular-nums;
+  }
+  #rrCode:focus{outline:2px solid var(--rr-accent);outline-offset:1px}
+  .rr-btn{
+    font:inherit;font-weight:650;border:none;border-radius:12px;padding:15px 16px;
+    background:#1E2A3F;color:var(--rr-ink);cursor:pointer;touch-action:manipulation;
+  }
+  .rr-btn:active{background:#27364F}
+  .rr-btn:disabled{opacity:.45}
+  .rr-btn-primary{background:var(--rr-accent);color:#04102A}
+  .rr-btn-primary:active{background:#3C79E6}
+  .rr-btn-wide{width:100%}
+  #rrJoinBtn{min-width:118px}
+
+  /* ---------- pad ---------- */
+  .rr-read{display:flex;gap:10px}
+  .rr-read div{
+    flex:1;background:var(--rr-card);border:1px solid var(--rr-line);border-radius:14px;
+    padding:11px 8px;text-align:center;min-width:0;
+  }
+  .rr-read span{display:block;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--rr-mute)}
+  .rr-read strong{display:block;margin-top:4px;font-size:22px;font-variant-numeric:tabular-nums}
+  .rr-read em{
+    display:block;margin-top:4px;font-size:13.5px;font-style:normal;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .rr-nav{display:flex;gap:12px;flex:1;min-height:150px}
+  .rr-nav button{
+    flex:1;font:inherit;font-size:18px;font-weight:700;border:none;border-radius:18px;
+    background:#1E2A3F;color:var(--rr-ink);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:6px;cursor:pointer;touch-action:manipulation;
+  }
+  .rr-nav button:active{background:#27364F}
+  .rr-nav button[data-act="next"]{background:var(--rr-accent);color:#04102A}
+  .rr-nav button[data-act="next"]:active{background:#3C79E6}
+  .rr-nav svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+  .rr-row{display:flex;gap:10px}
+  .rr-row .rr-btn{flex:1;font-size:14.5px;padding:14px 6px}
+  .rr-dots{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+  .rr-dots button{
+    width:38px;height:38px;border-radius:11px;border:1px solid var(--rr-line);
+    background:#0A101C;color:var(--rr-mute);font:inherit;font-size:13px;font-weight:650;
+    cursor:pointer;touch-action:manipulation;font-variant-numeric:tabular-nums;
+  }
+  .rr-dots button[aria-current="true"]{background:var(--rr-accent);color:#04102A;border-color:transparent}
+  #rcRemote[data-fs="on"] .rr-row [data-act="fullscreen"]{display:none}
+  #rcRemote[data-fs="off"] .rr-row [data-act="minimize"]{display:none}
+  #rrExit{width:100%;font:inherit;font-size:14px;padding:12px;border:1px solid var(--rr-line);
+    border-radius:12px;background:transparent;color:var(--rr-mute);cursor:pointer}
+</style>
+</head>
+<body>
+
+<div id="rcRemote" data-view="join" data-link="idle">
+
+  <div class="rr-top">
+    <h1 class="rr-title">Presenter Remote</h1>
+    <span class="rr-live"><i></i><em id="rrLink">Not connected</em></span>
+  </div>
+
+  <!-- join: scan the code from the presentation, or type it -->
+  <div id="rrJoin">
+    <div class="rr-card">
+      <div id="rrScan" data-cam="off">
+        <video id="rrVid" playsinline muted autoplay></video>
+        <div class="rr-scan-frame"></div>
+        <p class="rr-scan-hint">
+          Point your camera at the QR code on the presentation, or type the
+          four-digit code below.
+        </p>
+      </div>
+      <button type="button" class="rr-btn rr-btn-wide" id="rrCamBtn" style="margin-top:12px">
+        Start camera
+      </button>
+    </div>
+
+    <div class="rr-card">
+      <div class="rr-code-row">
+        <input id="rrCode" inputmode="numeric" autocomplete="off" autocapitalize="characters"
+               spellcheck="false" maxlength="4" placeholder="0000" aria-label="Four-digit code">
+        <button type="button" class="rr-btn rr-btn-primary" id="rrJoinBtn">Connect</button>
+      </div>
+    </div>
+
+    <p class="rr-msg" id="rrMsgJoin"></p>
+  </div>
+
+  <!-- pad: what the presenter actually uses -->
+  <div id="rrPad">
+    <div class="rr-read">
+      <div><span>Slide</span><strong id="rrPos">–</strong></div>
+      <div><span>Now showing</span><em id="rrTitle">—</em></div>
+    </div>
+
+    <div class="rr-nav">
+      <button type="button" data-act="prev" aria-label="Previous slide">
+        <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+        Prev
+      </button>
+      <button type="button" data-act="next" aria-label="Next slide">
+        <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+        Next
+      </button>
+    </div>
+
+    <div class="rr-row">
+      <button type="button" class="rr-btn" data-act="first">First</button>
+      <button type="button" class="rr-btn" data-act="last">Last</button>
+      <button type="button" class="rr-btn" data-act="fullscreen">Full screen</button>
+      <button type="button" class="rr-btn" data-act="minimize">Exit full</button>
+    </div>
+
+    <div class="rr-dots" id="rrDots"></div>
+
+    <p class="rr-msg" id="rrMsgPad"></p>
+    <button type="button" id="rrExit">Back to the report</button>
+    <button type="button" class="rr-btn rr-btn-wide" id="rrBye">Disconnect</button>
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   12. PHONE REMOTE
+   ========================================================================= */
+(function () {
+  'use strict';
+
+  /**
+   * Public brokers, tried in order — the first one that CONNACKs wins.
+   *
+   * Three of them because one being unreachable from a hotel network or a
+   * carrier that blocks the port is the normal case, not the exception.
+   * The presentation uses this same list, so a phone and a laptop that pick
+   * different brokers would never see each other: KEEP THE ORDER IDENTICAL.
+   */
+  var RC_BROKERS = [
+    'wss://broker.emqx.io:8084/mqtt',
+    'wss://broker.hivemq.com:8884/mqtt',
+    'wss://test.mosquitto.org:8081/mqtt'
+  ];
+  var RC_NS = 'wzl/rc/';
+
+  var RC_KEEPALIVE = 30;          // seconds, MQTT-level
+  var RC_PING_MS = 7000;          // application-level hello/ping cadence
+  var RC_CONNECT_TIMEOUT = 6000;  // per broker, before trying the next one
+  var RC_RETRY_MIN = 1500;        // backoff floor after a link that once worked
+  var RC_RETRY_MAX = 15000;       // and its ceiling
+
+  var el = function (id) { return document.getElementById(id); };
+
+  /* mqtt-lite:start — tests/remoteMqttLite.test.js slices between these two
+     markers and runs the real thing against a stub socket. Byte-level protocol
+     code that nothing executes before a live talk is code that does not work. */
+
+  /* ---------- mqttLite: MQTT 3.1.1 over WebSocket, no dependencies ----------
+   *
+   * Only what this remote needs: CONNECT, SUBSCRIBE, PUBLISH at QoS 0, and
+   * PINGREQ. A library would be a few tens of kilobytes over a phone
+   * connection for the four packet types below.
+   *
+   * Incoming frames are BUFFERED rather than parsed one-frame-one-packet: a
+   * WebSocket carries a byte stream, so a frame can hold half a packet or two
+   * of them, and "it worked in testing" is how that bug ships.
+   */
+  function mqttLite(url, opts) {
+    var textEnc = new TextEncoder();
+    var textDec = new TextDecoder();
+    var ws = new WebSocket(url, 'mqtt');
+    ws.binaryType = 'arraybuffer';
+
+    var api = { publish: publish, subscribe: subscribe, close: close, alive: false };
+    var buf = new Uint8Array(0);
+    var pingTimer = null;
+    var nextPid = 1;
+    var done = false;
+
+    function remainingLength(n) {
+      var out = [];
+      do {
+        var b = n % 128;
+        n = Math.floor(n / 128);
+        if (n > 0) b |= 128;
+        out.push(b);
+      } while (n > 0);
+      return out;
+    }
+
+    function utf8(s) {
+      var b = textEnc.encode(s);
+      return [(b.length >> 8) & 255, b.length & 255].concat(Array.prototype.slice.call(b));
+    }
+
+    function send(bytes) {
+      if (ws.readyState !== 1) return false;
+      try { ws.send(new Uint8Array(bytes)); return true; } catch (e) { return false; }
+    }
+
+    function packet(first, body) {
+      return [first].concat(remainingLength(body.length), body);
+    }
+
+    function publish(topic, text) {
+      return send(packet(0x30, utf8(topic).concat(Array.prototype.slice.call(textEnc.encode(text)))));
+    }
+
+    function subscribe(topic) {
+      var pid = nextPid++ & 0xffff;
+      return send(packet(0x82, [(pid >> 8) & 255, pid & 255].concat(utf8(topic), [0])));
+    }
+
+    function close(graceful) {
+      if (done) return;
+      done = true;
+      if (pingTimer) clearInterval(pingTimer);
+      try { if (graceful && ws.readyState === 1) send([0xE0, 0x00]); } catch (e) { /* closing anyway */ }
+      try { ws.close(); } catch (e) { /* already gone */ }
+    }
+
+    /** One decoded packet, or null while the buffer is still short. */
+    function takePacket() {
+      if (buf.length < 2) return null;
+      var mult = 1, len = 0, i = 1, byte;
+      do {
+        if (i >= buf.length) return null;
+        byte = buf[i++];
+        len += (byte & 127) * mult;
+        mult *= 128;
+        if (mult > 128 * 128 * 128 * 2) return null; // malformed length
+      } while (byte & 128);
+      var total = i + len;
+      if (buf.length < total) return null;
+      var pkt = { type: buf[0] >> 4, flags: buf[0] & 15, body: buf.subarray(i, total) };
+      buf = buf.slice(total);
+      return pkt;
+    }
+
+    function handle(pkt) {
+      if (pkt.type === 2) {                       // CONNACK
+        if (pkt.body.length < 2 || pkt.body[1] !== 0) {
+          if (opts.onError) opts.onError('broker refused the connection');
+          close(false);
+          return;
+        }
+        api.alive = true;
+        // Half the keepalive: one lost PINGRESP must not cost the session.
+        pingTimer = setInterval(function () { send([0xC0, 0x00]); }, (RC_KEEPALIVE / 2) * 1000);
+        if (opts.onConnect) opts.onConnect(api);
+        return;
+      }
+      if (pkt.type === 3) {                       // PUBLISH
+        var qos = (pkt.flags >> 1) & 3;
+        var tLen = (pkt.body[0] << 8) | pkt.body[1];
+        var topic = textDec.decode(pkt.body.subarray(2, 2 + tLen));
+        var off = 2 + tLen + (qos > 0 ? 2 : 0);   // QoS 0 carries no packet id
+        if (opts.onMessage) opts.onMessage(topic, textDec.decode(pkt.body.subarray(off)));
+      }
+      /* SUBACK (9) and PINGRESP (13) need no action: QoS 0 has nothing to
+         confirm, and the ping only had to leave. */
+    }
+
+    ws.onmessage = function (ev) {
+      if (typeof ev.data === 'string') return;
+      var chunk = new Uint8Array(ev.data);
+      var merged = new Uint8Array(buf.length + chunk.length);
+      merged.set(buf, 0);
+      merged.set(chunk, buf.length);
+      buf = merged;
+      for (var pkt = takePacket(); pkt; pkt = takePacket()) handle(pkt);
+    };
+
+    ws.onopen = function () {
+      var clientId = 'wzl-' + Math.random().toString(36).slice(2, 10);
+      // 0x02 = clean session. No will, no auth: the topic is public either way.
+      send(packet(0x10, utf8('MQTT').concat(
+        [4, 0x02, (RC_KEEPALIVE >> 8) & 255, RC_KEEPALIVE & 255],
+        utf8(clientId)
+      )));
+    };
+
+    ws.onerror = function () { if (opts.onError) opts.onError('broker unreachable'); };
+    ws.onclose = function () {
+      api.alive = false;
+      if (pingTimer) clearInterval(pingTimer);
+      if (opts.onClose) opts.onClose();
+    };
+
+    return api;
+  }
+
+  /* mqtt-lite:end */
+
+  /* ---------- remote side ---------- */
+
+  var rrClient = null;
+  var rrCode = '';
+  var rrBroker = 0;
+  var rrPingTimer = null;
+  var rrConnectTimer = null;
+  var rrPaired = false;
+  var rrEverPaired = false;
+  var rrRetryDelay = RC_RETRY_MIN;
+  var rrTotal = 0;
+  var rrIndex = -1;
+  var rrGiveUp = false;
+
+  var rcRemote = el('rcRemote');
+
+  function rrMsg(text) {
+    var target = rcRemote.dataset.view === 'pad' ? el('rrMsgPad') : el('rrMsgJoin');
+    target.textContent = text || '';
+  }
+
+  function rrLink(state, label) {
+    rcRemote.dataset.link = state;
+    el('rrLink').textContent = label;
+  }
+
+  function rrTopic(kind) { return RC_NS + rrCode + '/' + kind; }
+
+  /** Phone → presentation. Silently a no-op when the link is down. */
+  function rrSend(action, value) {
+    if (!rrClient || !rrClient.alive) return;
+    var msg = { type: 'cmd', action: action, at: Date.now() };
+    if (value !== undefined && value !== null) msg.value = value;
+    rrClient.publish(rrTopic('cmd'), JSON.stringify(msg));
+  }
+
+  function rrClearTimers() {
+    if (rrPingTimer) { clearInterval(rrPingTimer); rrPingTimer = null; }
+    if (rrConnectTimer) { clearTimeout(rrConnectTimer); rrConnectTimer = null; }
+  }
+
+  /**
+   * Connect to RC_BROKERS[rrBroker], falling through to the next on failure.
+   *
+   * What happens when the whole list fails depends on whether this code ever
+   * worked. Never paired: stop and say so, because the likely cause is a wrong
+   * code or no internet, and the join screen's Connect button is right there.
+   * Paired before: keep sweeping on a backoff — the presenter is mid-talk and
+   * cannot be asked to do anything.
+   */
+  function rrConnect() {
+    if (!rrCode) return;
+    rrClearTimers();
+    if (rrClient) { rrClient.close(false); rrClient = null; }
+
+    if (rrBroker >= RC_BROKERS.length) {
+      rrBroker = 0;
+      if (rrEverPaired) {
+        // This code worked before, so the deck is probably still up and the
+        // network is not. Keep sweeping with a backoff rather than stranding a
+        // presenter mid-talk on a pad whose only button is Disconnect.
+        rrLink('off', 'Reconnecting…');
+        rrMsg('No connection to the presentation. Still trying…');
+        rrRetryDelay = Math.min(rrRetryDelay * 2, RC_RETRY_MAX);
+        rrConnectTimer = setTimeout(function () { if (rrCode) rrConnect(); }, rrRetryDelay);
+        return;
+      }
+      rrGiveUp = true;
+      rrLink('off', 'No connection');
+      rrMsg('Could not reach any broker. Check the phone’s internet, then tap Connect again.');
+      return;
+    }
+
+    var url = RC_BROKERS[rrBroker];
+    rrLink('wait', 'Connecting…');
+    rrMsg('Connecting to the presentation…');
+
+    var client = null;
+    var wasAlive = false;
+    var handlers = {
+      onConnect: function () {
+        if (client !== rrClient) return;
+        wasAlive = true;
+        if (rrConnectTimer) { clearTimeout(rrConnectTimer); rrConnectTimer = null; }
+        rrGiveUp = false;
+        rrRetryDelay = RC_RETRY_MIN;
+        client.subscribe(rrTopic('state'));
+        rrSend('hello');
+        rrPingTimer = setInterval(function () { rrSend('ping'); }, RC_PING_MS);
+        rrLink('wait', 'Waiting for the deck');
+        rrMsg('Connected. Waiting for the presentation to answer…');
+      },
+      onMessage: function (topic, text) {
+        if (client !== rrClient) return;
+        rrOnState(text);
+      },
+      onError: function () { /* onclose does the failover; avoid doing it twice */ },
+      onClose: function () {
+        if (client !== rrClient) return;
+        rrClearTimers();
+        // `wasAlive`, not `rrPaired`: a broker that accepted us and then dropped
+        // is worth retrying from the top of the list, even if the deck had gone
+        // (a `bye` clears rrPaired while the socket is still perfectly good).
+        if (wasAlive) {
+          rrPaired = false;
+          rrBroker = 0;
+          rrLink('off', 'Reconnecting…');
+          rrMsg('Link dropped. Reconnecting…');
+          rrConnectTimer = setTimeout(function () { if (rrCode) rrConnect(); }, RC_RETRY_MIN);
+        } else {
+          rrBroker += 1;
+          rrConnect();
+        }
+      }
+    };
+
+    try {
+      client = mqttLite(url, handlers);
+    } catch (e) {
+      // `new WebSocket` throws synchronously on a URL a browser will not open.
+      // Unguarded this ended the failover instead of trying the next broker.
+      rrBroker += 1;
+      rrConnect();
+      return;
+    }
+    rrClient = client;
+
+    // A socket that opens but never CONNACKs is the failure mode that hangs a
+    // presenter on a blank screen; treat silence as a dead broker.
+    rrConnectTimer = setTimeout(function () {
+      if (client !== rrClient || client.alive) return;
+      client.close(false);
+    }, RC_CONNECT_TIMEOUT);
+  }
+
+  /** Presentation → phone. */
+  function rrOnState(text) {
+    var msg;
+    try { msg = JSON.parse(text); } catch (e) { return; }
+    if (!msg || typeof msg !== 'object') return;
+
+    if (msg.type === 'bye') {
+      rrPaired = false;
+      rrLink('off', 'Presentation closed');
+      rrMsg('The presentation was closed. Reopen it and scan the code again.');
+      return;
+    }
+    if (msg.type !== 'state') return;
+
+    // The first state is the pairing signal: the deck has answered.
+    var firstState = !rrPaired;
+    rrPaired = true;
+    rrEverPaired = true;
+    rrStopCam();
+    rcRemote.dataset.view = 'pad';
+    rrLink('on', 'Connected');
+    if (firstState) rrMsg('');
+
+    rrTotal = Number(msg.total) || 0;
+    rrIndex = Number(msg.index) || 0;
+    el('rrPos').textContent = rrTotal ? (rrIndex + 1) + ' / ' + rrTotal : String(rrIndex + 1);
+    el('rrTitle').textContent = msg.title || '—';
+    // The deck tells us which way full screen can go, so only offer that one.
+    rcRemote.dataset.fs = msg.fullscreen ? 'on' : 'off';
+    if (msg.presenting === false) rrMsg('The presentation is not in presenting mode.');
+    rrDots();
+  }
+
+  /** One tappable square per slide — this is what `goto` is for. */
+  function rrDots() {
+    var box = el('rrDots');
+    if (!rrTotal) { box.textContent = ''; return; }
+    if (box.childElementCount !== rrTotal) {
+      box.textContent = '';
+      for (var i = 0; i < rrTotal; i += 1) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = String(i + 1);
+        b.dataset.goto = String(i);
+        b.setAttribute('aria-label', 'Go to slide ' + (i + 1));
+        box.appendChild(b);
+      }
+    }
+    Array.prototype.forEach.call(box.children, function (b, i) {
+      if (i === rrIndex) b.setAttribute('aria-current', 'true');
+      else b.removeAttribute('aria-current');
+    });
+  }
+
+  function rrJoinWith(code) {
+    var clean = String(code || '').toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 4);
+    if (clean.length !== 4) {
+      rrMsg('Enter the four-digit code shown on the presentation.');
+      return;
+    }
+    rrCode = clean;
+    el('rrCode').value = clean;
+    rrPaired = false;
+    rrBroker = 0;
+    rrGiveUp = false;
+    rrRetryDelay = RC_RETRY_MIN;
+    rrConnect();
+  }
+
+  function rrLeave() {
+    rrSend('bye');
+    rrClearTimers();
+    if (rrClient) { rrClient.close(true); rrClient = null; }
+    rrCode = '';
+    rrPaired = false;
+    rrEverPaired = false;
+    rrRetryDelay = RC_RETRY_MIN;
+    rrTotal = 0;
+    rrIndex = -1;
+    rcRemote.dataset.view = 'join';
+    rrLink('idle', 'Not connected');
+    rrMsg('Disconnected.');
+  }
+
+  /* ---------- QR scanner ---------- */
+
+  var rrStream = null;
+  var rrScanRaf = 0;
+  var rrDetector = null;
+  var rrCanvas = null;
+
+  function rrStopCam() {
+    if (!rrStream && !rrScanRaf) return;
+    if (rrScanRaf) { cancelAnimationFrame(rrScanRaf); rrScanRaf = 0; }
+    if (rrStream) {
+      // Every track, or the phone keeps its camera light on after pairing.
+      rrStream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) { /* gone */ } });
+      rrStream = null;
+    }
+    el('rrVid').srcObject = null;
+    el('rrScan').dataset.cam = 'off';
+    el('rrCamBtn').textContent = 'Start camera';
+  }
+
+  async function rrStartCam() {
+    if (rrStream) { rrStopCam(); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      rrMsg('This browser cannot open the camera. Type the code instead.');
+      return;
+    }
+    try {
+      rrStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } }, audio: false
+      });
+    } catch (e) {
+      // Denied, or no camera. Typing the code is always available.
+      rrMsg('Camera not available. Type the four-digit code instead.');
+      return;
+    }
+    var vid = el('rrVid');
+    vid.srcObject = rrStream;
+    try { await vid.play(); } catch (e) { /* autoplay attr covers it */ }
+    el('rrScan').dataset.cam = 'on';
+    el('rrCamBtn').textContent = 'Stop camera';
+    rrMsg('Point the camera at the QR code on the presentation.');
+    await rrPrepareDetector();
+    rrScanLoop();
+  }
+
+  /** Native detector where it exists; jsQR only as the fallback. */
+  async function rrPrepareDetector() {
+    if (rrDetector) return;
+    if (window.BarcodeDetector) {
+      try {
+        var formats = await window.BarcodeDetector.getSupportedFormats();
+        if (formats.indexOf('qr_code') >= 0) {
+          rrDetector = new window.BarcodeDetector({ formats: ['qr_code'] });
+          return;
+        }
+      } catch (e) { /* fall through to jsQR */ }
+    }
+    if (!window.jsQR) {
+      await new Promise(function (resolve) {
+        var s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+        s.onload = resolve;
+        s.onerror = resolve;   // resolve either way; the code field still works
+        document.head.appendChild(s);
+      });
+    }
+    if (!window.jsQR) rrMsg('QR scanning is unavailable here. Type the code instead.');
+  }
+
+  function rrScanLoop() {
+    var vid = el('rrVid');
+    var busy = false;
+    var step = async function () {
+      if (!rrStream) return;
+      rrScanRaf = requestAnimationFrame(step);
+      if (busy || vid.readyState < 2) return;
+      busy = true;
+      try {
+        var found = rrDetector ? await rrDetectNative(vid) : rrDetectJsQR(vid);
+        if (found) rrOnScan(found);
+      } catch (e) { /* one bad frame is not an error */ }
+      busy = false;
+    };
+    rrScanRaf = requestAnimationFrame(step);
+  }
+
+  async function rrDetectNative(vid) {
+    var hits = await rrDetector.detect(vid);
+    return hits && hits.length ? hits[0].rawValue : '';
+  }
+
+  function rrDetectJsQR(vid) {
+    if (!window.jsQR) return '';
+    if (!rrCanvas) rrCanvas = document.createElement('canvas');
+    var w = vid.videoWidth, h = vid.videoHeight;
+    if (!w || !h) return '';
+    // Downscale: a phone camera frame is far more pixels than a QR needs, and
+    // full-resolution scanning drops the frame rate to a crawl.
+    var scale = Math.min(1, 640 / Math.max(w, h));
+    rrCanvas.width = Math.round(w * scale);
+    rrCanvas.height = Math.round(h * scale);
+    var ctx = rrCanvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(vid, 0, 0, rrCanvas.width, rrCanvas.height);
+    var data = ctx.getImageData(0, 0, rrCanvas.width, rrCanvas.height);
+    var hit = window.jsQR(data.data, data.width, data.height, { inversionAttempts: 'dontInvert' });
+    return hit ? hit.data : '';
+  }
+
+  /** Pull the code out of whatever the QR encoded. */
+  function rrOnScan(raw) {
+    var text = String(raw || '');
+    var m = text.match(/[#?&]c=([0-9A-Za-z]{4})/) || text.match(/\b(\d{4})\b/);
+    if (!m) return;
+    rrStopCam();
+    rrJoinWith(m[1]);
+  }
+
+  /* ---------- wiring ---------- */
+
+  function rrCodeFromUrl() {
+    var hay = (location.hash || '') + '&' + (location.search || '');
+    var m = hay.match(/[#?&]c=([0-9A-Za-z]{4})/);
+    return m ? m[1] : '';
+  }
+
+  function rrInit() {
+    // This document IS the remote: no host-side rc* controls, no "back to the
+    // report" link, and the report's own remote styling applies.
+    document.body.dataset.remote = '1';
+
+    el('rrJoinBtn').addEventListener('click', function () { rrJoinWith(el('rrCode').value); });
+    el('rrCode').addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') rrJoinWith(el('rrCode').value);
+    });
+    el('rrCamBtn').addEventListener('click', function () { rrStartCam(); });
+    el('rrBye').addEventListener('click', rrLeave);
+
+    el('rrPad').addEventListener('click', function (ev) {
+      var btn = ev.target.closest('button');
+      if (!btn) return;
+      if (btn.dataset.act) rrSend(btn.dataset.act);
+      else if (btn.dataset.goto !== undefined) rrSend('goto', Number(btn.dataset.goto));
+    });
+
+    // A phone that locked its screen mid-talk comes back to a dead socket.
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden || !rrCode || rrGiveUp) return;
+      if (!rrClient || !rrClient.alive) { rrBroker = 0; rrConnect(); }
+    });
+
+    // A code arriving in the hash AFTER load is the same request as one that
+    // was there on load: a phone whose camera app reuses this tab for a second
+    // QR, or a page restored from the back/forward cache, changes the hash
+    // without re-running this function.
+    window.addEventListener('hashchange', function () {
+      var next = rrCodeFromUrl();
+      if (next && next !== rrCode) rrJoinWith(next);
+    });
+
+    // Scanned from the presentation's QR: connect with no taps at all.
+    var code = rrCodeFromUrl();
+    if (code) rrJoinWith(code);
+    else rrMsg('Scan the QR code on the presentation, or type its four-digit code.');
+  }
+
+  window.addEventListener('pagehide', function () {
+    if (rrClient) rrClient.close(true);
+    rrStopCam();
+  });
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', rrInit);
+  } else {
+    rrInit();
+  }
+})();
+</script>
+</body>
+</html>

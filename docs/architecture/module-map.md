@@ -158,6 +158,7 @@ organization should converge toward.
 | Logs / sent-message browser | `server/routes/botMessagesRoutes.js` (`/api/bot-messages`), `services/botMessageAdminService.js`, `admin/src/pages/BotMessagesPage.jsx` — database-backed; it does not read any log file |
 | Health / config | `server/api.js` `/health` + `/api/health` (`runHealthCheck` pings DB + Meta creds), `config/config.js`, `config/telegramBotTokens.js`, `.env.example`, `render.yaml` |
 | Auth | JWT (HS256-pinned `authMiddleware`), bcrypt login w/ per-IP rate limiting, `internalSharedSecretGuard` |
+| Hosted presentations + their remotes | `server/routes/qbqRoutes.js` (`/qbq`, `/qbq/remote`, `/qbq/assets/*`) over `server/qbq/*` + `services/qbq/*`; and `server/routes/remoteRoutes.js` (`/remote`) serving the single self-contained `server/public/remote.html`. **Two different decks and two different transports** — the `/qbq` remote pairs through this server (SSE + session token), `/remote` pairs through a public MQTT broker and keeps no server state at all, because the deck it controls is a standalone file. `APP_BRIEF.md` §4 holds the wire protocol; `tests/remoteMqttLite.test.js` asserts its bytes |
 
 ### 8. Shared Infrastructure Module
 

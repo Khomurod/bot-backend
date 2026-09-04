@@ -402,6 +402,43 @@ group — no status change, no driver reply.
   full admin**) and a phone remote paired by a short code. Pairing codes, session
   tokens, and presentation text are deliberately never logged.
 
+### Presenter remote at `/remote` — a SECOND remote, on a different transport
+
+`GET /remote` serves `server/public/remote.html`: a phone remote for the
+**Wenzel Weekly Report** deck. **Do not conflate it with `/qbq/remote`**, which
+controls the SOS deck. They are separate features and they share no code:
+
+| | `/qbq/remote` | `/remote` |
+|---|---|---|
+| Controls | the SOS deck, hosted here at `/qbq` | the Wenzel Weekly Report, a standalone HTML file that is **not** hosted here |
+| Transport | this server: `POST /api/qbq/...` + SSE | a **public MQTT broker** over WebSocket — the deck can run from a laptop's file system, so there is no shared server to talk through |
+| Pairing | 6-character code, rate-limited server-side, session token | the 4-digit code the deck displays, encoded in a QR as `<origin>/remote#c=<CODE>` |
+| Server state | remote sessions in `services/qbq/remoteSessions` | **none** — this server only serves the file |
+
+**The protocol is fixed by the presentation file.** Both halves must agree
+exactly or the phone and the laptop never see each other:
+
+- brokers, tried in order: `wss://broker.emqx.io:8084/mqtt`,
+  `wss://broker.hivemq.com:8884/mqtt`, `wss://test.mosquitto.org:8081/mqtt`
+  (subprotocol `mqtt`, QoS 0, keepalive 30);
+- the phone **publishes** `wzl/rc/<CODE>/cmd`
+  (`{type:'cmd',action:'hello|ping|next|prev|first|last|goto|fullscreen|minimize|bye',value?,at}`,
+  `hello` on connect and `ping` every 7s) and **subscribes**
+  `wzl/rc/<CODE>/state` (`{type:'state',index,total,title,fullscreen,presenting}`,
+  or `{type:'bye'}` when the deck closes). The first `state` is the pairing
+  signal.
+
+`mqttLite()` inside the page is a hand-written MQTT 3.1.1 client, which is why
+`tests/remoteMqttLite.test.js` slices it out of the page and asserts the actual
+bytes against the spec: a stray packet id at QoS 0 is not a visible bug, it is a
+broker dropping the link while someone presents.
+
+**A public broker carries these messages**, so treat the code as the only
+secret and keep the surface exactly this dull: the page reaches no API on this
+server, reads no company data, and the worst an uninvited listener can do is
+change which slide is on a projector. Do not add anything to this page that
+touches business data.
+
 ---
 
 ## 5. Permissions and access rules
@@ -454,6 +491,7 @@ prefixed key and may never claim a reserved key or `super_`/`admin_` prefix
 | `POST /api/dat-ui/inspect` | Loopback only |
 | `/`, `/health`, `/api/health`, Meta compliance pages (`/privacy-policy.html`, `/terms-of-use`, `/user-data-deletion`) | Public |
 | `/presentation` | Public — the **owner-facing product deck** (`server/presentation/index.html`). A different document from the QBQ deck at `/qbq`; do not conflate them |
+| `/remote` | Public — the **presenter remote** for the Wenzel Weekly Report deck (`server/public/remote.html`). Pairing is the four-digit code the deck itself displays; the page reaches no API on this server and no company data (§4) |
 
 Everything else under `/api/*` requires the admin JWT.
 
@@ -959,10 +997,10 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-09-04, deps installed, no `TEST_DATABASE_URL`): **2240 tests,
-  2095 pass, 0 fail, 145 skipped** (the skips are the `*Pg` integration tests),
+  baseline (2026-09-04, deps installed, no `TEST_DATABASE_URL`): **2269 tests,
+  2124 pass, 0 fail, 145 skipped** (the skips are the `*Pg` integration tests),
   exit 0. With a database (`TEST_DATABASE_URL`) nothing skips: the whole suite is
-  **2308 tests, 2308 pass, 0 skipped**. The Python leads worker adds
+  **2337 tests, 2337 pass, 0 skipped**. The Python leads worker adds
   **17 tests** (`python -m unittest discover -s leads-bot -p "test_*.py"`), and
   the admin panel **199** (`npm test --prefix admin`). **So any failure is a real
   failure** — there is no "expected failures" allowance. *(An older internal doc
