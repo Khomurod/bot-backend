@@ -51,6 +51,7 @@ after deploy on the live service.
 | A8 | **Scheduled jobs still run.** | **[PROD]** After boot, logs show the schedulers starting (dispatch ETA, birthday, mileage bonus, fuel, recruiter sync, etc. — all started from `index.js`). They must run with **no admin panel open**; nothing in `server/routes/**` starts one. |
 | A9 | **No undefined identifier or missing import shipped.** A build is not a scope check: 26 of these once passed `vite build` and broke the admin panel at runtime. | **[AUTO]** `npm run lint:undef` and `npm run lint:imports` (both also run in `npm test` and CI). |
 | A10 | **Database transfer allowance is not about to run out.** Exhausting it makes reads fail, and the app cannot tell that from an outage. | **[AUTO]** `GET /api/system/database-usage` reports `level: "ok"`; **[PROD]** no `[DB-USAGE]` threshold warning in the logs, and the panel shows no usage banner. Cross-check the provider dashboard — the app's figure is a sampled estimate. |
+| A11 | **The presenter remote still loads.** It is used live, in front of a room, from a phone — a 404 here is discovered at the worst possible moment. | **[AUTO]** `tests/remoteRoute.test.js`; **[PROD]** `curl -I https://<host>/remote` returns 200 `text/html`. |
 
 ---
 
