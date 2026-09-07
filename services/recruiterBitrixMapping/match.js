@@ -65,11 +65,15 @@ function indexUsers(users) {
   const byFullName = new Map();
   const byFirstName = new Map();
 
+  // Deduplicated by user id: a profile that stores the same number in both
+  // PERSONAL_MOBILE and WORK_PHONE would otherwise appear twice under one key,
+  // and resolveCandidate reads a key's LENGTH to decide ambiguity — so one
+  // person would look like two and the strongest match would be refused.
   const push = (map, key, user) => {
     if (!key) return;
     const list = map.get(key);
-    if (list) list.push(user);
-    else map.set(key, [user]);
+    if (!list) { map.set(key, [user]); return; }
+    if (!list.some((existing) => existing.id === user.id)) list.push(user);
   };
 
   for (const user of users) {
@@ -192,19 +196,41 @@ function matchRecruitersToBitrixUsers({ recruiters = [], users = [] } = {}) {
     else apply.push(entry);
   }
 
-  // Two recruiters resolving to one profile: neither is safe to write.
-  const counts = new Map();
-  for (const entry of apply) counts.set(entry.bitrixUserId, (counts.get(entry.bitrixUserId) || 0) + 1);
-  const contested = new Set([...counts.entries()].filter(([, n]) => n > 1).map(([id]) => id));
-  if (contested.size) {
-    for (const entry of apply.filter((e) => contested.has(e.bitrixUserId))) {
-      conflicts.push({ ...entry, reason: 'Two recruiters match this same Bitrix user' });
+  // Two recruiters resolving to one profile. This has to consider BOTH tiers,
+  // and across them: counting only the applied ones left two first-name
+  // proposals for the same Bitrix user both confirmable, and the unique index
+  // then decided which recruiter got it by whichever was written first.
+  //
+  // A strong match beats a weak one for the same user — a phone match is not
+  // in doubt just because someone else shares a first name — so the weak
+  // claim becomes the conflict and the strong one still applies. Two claims of
+  // the SAME strength are a real ambiguity and neither is written.
+  const claims = new Map();
+  for (const entry of [...apply, ...propose]) {
+    const list = claims.get(entry.bitrixUserId);
+    if (list) list.push(entry);
+    else claims.set(entry.bitrixUserId, [entry]);
+  }
+
+  const losers = new Set();
+  for (const [, claimants] of claims) {
+    if (claimants.length < 2) continue;
+    const strong = claimants.filter((e) => e.via !== 'first_name');
+    const beaten = strong.length === 1 ? claimants.filter((e) => e !== strong[0]) : claimants;
+    for (const entry of beaten) {
+      losers.add(entry);
+      conflicts.push({
+        ...entry,
+        reason: strong.length === 1
+          ? `Bitrix user matched more strongly by ${strong[0].recruiterName}`
+          : 'Two recruiters match this same Bitrix user',
+      });
     }
   }
 
   return {
-    apply: apply.filter((e) => !contested.has(e.bitrixUserId)),
-    propose,
+    apply: apply.filter((e) => !losers.has(e)),
+    propose: propose.filter((e) => !losers.has(e)),
     alreadyMapped,
     ambiguous,
     conflicts,

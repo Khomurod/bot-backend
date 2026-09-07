@@ -80,8 +80,29 @@ async function previewRecruiterBitrixMapping({ fetchImpl } = {}) {
 }
 
 /**
+ * A confirmation names BOTH the recruiter and the Bitrix user the operator
+ * saw. Apply re-reads the directory, so a recruiter id alone is not enough: if
+ * the portal changed in between, that recruiter can resolve to a different
+ * sole first-name match, and a recruiter-only confirmation would authorize
+ * writing a user nobody reviewed.
+ */
+function normalizeConfirmations(confirm) {
+  const pairs = [];
+  const malformed = [];
+  for (const entry of Array.isArray(confirm) ? confirm : []) {
+    const recruiterId = Number.parseInt(entry?.recruiterId ?? entry, 10);
+    const bitrixUserId = Number.parseInt(entry?.bitrixUserId, 10);
+    if (!Number.isFinite(recruiterId)) continue;
+    if (!Number.isFinite(bitrixUserId)) { malformed.push(recruiterId); continue; }
+    pairs.push({ recruiterId, bitrixUserId });
+  }
+  return { pairs, malformed };
+}
+
+/**
  * Apply the mapping. Writes `bitrix_user_id` for every strong, unambiguous
- * match, plus any first-name proposal whose recruiter id appears in `confirm`.
+ * match, plus any first-name proposal confirmed as a
+ * `{ recruiterId, bitrixUserId }` pair that still resolves the same way.
  *
  * An existing mapping is NEVER overwritten — a stored id is an operator's
  * decision, and a disagreement is reported as a mismatch instead.
@@ -90,19 +111,44 @@ async function applyRecruiterBitrixMapping({ fetchImpl, confirm = [] } = {}) {
   const preview = await previewRecruiterBitrixMapping({ fetchImpl });
   if (!preview.ok) return { ...preview, applied: [], failed: [] };
 
-  const confirmed = new Set(
-    (Array.isArray(confirm) ? confirm : [])
-      .map((value) => Number.parseInt(value, 10))
-      .filter((value) => Number.isFinite(value))
-  );
-
-  const queue = [
-    ...preview.apply,
-    ...preview.propose.filter((entry) => confirmed.has(entry.recruiterId)),
-  ];
+  const { pairs, malformed } = normalizeConfirmations(confirm);
+  const confirmedUserFor = new Map(pairs.map((p) => [p.recruiterId, p.bitrixUserId]));
 
   const applied = [];
   const failed = [];
+
+  // A confirmation that no longer matches the plan is REPORTED, never quietly
+  // dropped and never written: the operator confirmed a specific person.
+  const staleOrUnknown = [];
+  for (const [recruiterId, bitrixUserId] of confirmedUserFor) {
+    const proposal = preview.propose.find((entry) => entry.recruiterId === recruiterId);
+    if (!proposal) {
+      staleOrUnknown.push({
+        recruiterId,
+        bitrixUserId,
+        error: 'That recruiter is no longer proposed for mapping — re-run the match.',
+      });
+    } else if (proposal.bitrixUserId !== bitrixUserId) {
+      staleOrUnknown.push({
+        ...proposal,
+        error: `Confirmed Bitrix user ${bitrixUserId}, but the directory now matches `
+          + `${proposal.bitrixUserId} — re-run the match.`,
+      });
+    }
+  }
+  for (const recruiterId of malformed) {
+    staleOrUnknown.push({
+      recruiterId,
+      error: 'The confirmation did not name a Bitrix user — re-run the match.',
+    });
+  }
+  failed.push(...staleOrUnknown);
+
+  const queue = [
+    ...preview.apply,
+    ...preview.propose.filter((entry) => confirmedUserFor.get(entry.recruiterId) === entry.bitrixUserId),
+  ];
+
   for (const entry of queue) {
     try {
       const recruiter = await rc.updateRecruiter(entry.recruiterId, {
@@ -122,6 +168,7 @@ async function applyRecruiterBitrixMapping({ fetchImpl, confirm = [] } = {}) {
 
 module.exports = {
   FAILURE_MESSAGES,
+  normalizeConfirmations,
   toMatchInput,
   previewRecruiterBitrixMapping,
   applyRecruiterBitrixMapping,

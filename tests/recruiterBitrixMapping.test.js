@@ -1,231 +1,23 @@
 /**
- * Reading the Bitrix user directory, and turning it into recruiter mappings.
+ * Turning the Bitrix user directory into recruiter mappings.
  *
  * `recruiters.bitrix_user_id` is the only link from a Bitrix lead assignment
  * back to a recruiter row, and therefore what decides whose RingCentral number
- * texts a driver. These tests cover the two halves that surround the (pure)
- * matcher: reading `user.get` — including the failure an operator will actually
- * hit, a webhook created without the `user` scope — and applying the plan
- * without ever overwriting an operator's own mapping.
+ * texts a driver. So the properties pinned here are mostly refusals: preview
+ * writes nothing, an existing mapping is never overwritten, a confirmation
+ * must name the Bitrix user that was actually shown, and one rejected row does
+ * not abandon the rest of the plan.
  *
- * THE WEBHOOK URL IS THE CREDENTIAL: a Bitrix inbound webhook authenticates by
- * its path, so a test below asserts it appears nowhere in an API response.
+ * Reading `user.get` itself is covered in recruiterBitrixDirectory.test.js.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 
-process.env.BOT_TOKEN ||= 'test-bot-token';
-process.env.DATABASE_URL ||= 'postgresql://user:password@localhost:5432/test';
-process.env.MANAGEMENT_GROUP_ID ||= '-1001234567890';
-process.env.JWT_SECRET ||= 'test-jwt-secret';
-process.env.PORT ||= '3001';
-
-const CONFIG_PATH = require.resolve('../config/config');
-const BITRIX_PATH = require.resolve('../services/bitrix24Service');
-const RC_PATH = require.resolve('../database/ringcentral');
-const DIR_PATH = require.resolve('../services/recruiterBitrixMapping/directory');
-const MAP_PATH = require.resolve('../services/recruiterBitrixMapping');
-const ROUTE_PATH = require.resolve('../server/routes/recruiter/bitrixMappingRoutes');
-
-const WEBHOOK = 'https://wenze.bitrix24.com/rest/1/super-secret-value/';
-
-const bitrixRow = (id, name, lastName, extra = {}) => ({
-  ID: String(id), NAME: name, LAST_NAME: lastName, ACTIVE: true, ...extra,
-});
-
-/** A fetch that answers user.get pages from a list of bodies. */
-function pagedFetch(pages) {
-  const calls = [];
-  const impl = async (url) => {
-    calls.push(url);
-    const body = pages[calls.length - 1] ?? { result: [] };
-    return { ok: body.__http !== false, status: body.__status || 200, json: async () => body };
-  };
-  return { impl, calls };
-}
-
-function loadModules({ enabled = true, webhookUrl = WEBHOOK, recruiters = [], onUpdate } = {}) {
-  const realConfig = require('../config/config');
-  const seen = { updates: [] };
-
-  require.cache[CONFIG_PATH] = {
-    exports: { ...realConfig, bitrix24Enabled: enabled, bitrix24WebhookUrl: webhookUrl },
-  };
-  require.cache[BITRIX_PATH] = {
-    exports: {
-      isBitrixConfigured: () => Boolean(enabled && webhookUrl),
-      normalizeWebhookBase: (u) => (u ? String(u).replace(/\/?$/, '/') : ''),
-    },
-  };
-  require.cache[RC_PATH] = {
-    exports: {
-      listRecruitersForAdmin: async () => recruiters,
-      updateRecruiter: async (id, payload) => {
-        seen.updates.push({ id, payload });
-        if (onUpdate) return onUpdate(id, payload);
-        return { id, ...payload };
-      },
-    },
-  };
-
-  delete require.cache[DIR_PATH];
-  delete require.cache[MAP_PATH];
-  const directory = require(DIR_PATH);
-  const mapping = require(MAP_PATH);
-  const restore = () => {
-    for (const p of [CONFIG_PATH, BITRIX_PATH, RC_PATH, DIR_PATH, MAP_PATH]) delete require.cache[p];
-  };
-  return { directory, mapping, seen, restore };
-}
-
-// ─── reading the directory ───
-
-test('users are normalized to what matching needs, and junk rows are dropped', async () => {
-  const { impl } = pagedFetch([{
-    result: [
-      bitrixRow(17, 'Alex', 'Smith', { EMAIL: 'a@x.io', WORK_POSITION: 'Recruiter', PERSONAL_MOBILE: '+15550001111' }),
-      { ID: 'not-a-number', NAME: 'Ghost' },
-      { NAME: 'No id at all' },
-    ],
-  }]);
-  const { directory, restore } = loadModules();
-  try {
-    const res = await directory.fetchBitrixUsers({ fetchImpl: impl });
-    assert.equal(res.ok, true);
-    assert.equal(res.total, 1, 'rows without a usable id are not users');
-    assert.deepEqual(res.users[0], {
-      id: 17, firstName: 'Alex', lastName: 'Smith', fullName: 'Alex Smith',
-      email: 'a@x.io', position: 'Recruiter', phones: ['+15550001111'], active: true,
-    });
-  } finally { restore(); }
-});
-
-test('all three phone fields are collected, since any of them may hold the number', async () => {
-  const { impl } = pagedFetch([{
-    result: [bitrixRow(17, 'Alex', 'Smith', {
-      PERSONAL_MOBILE: '+15550001111', WORK_PHONE: '555-000-2222', PERSONAL_PHONE: null,
-    })],
-  }]);
-  const { directory, restore } = loadModules();
-  try {
-    const res = await directory.fetchBitrixUsers({ fetchImpl: impl });
-    assert.deepEqual(res.users[0].phones, ['+15550001111', '555-000-2222']);
-  } finally { restore(); }
-});
-
-test('ACTIVE arrives as a boolean or as Y/N, and both are understood', async () => {
-  const { impl } = pagedFetch([{
-    result: [
-      bitrixRow(1, 'A', 'One', { ACTIVE: false }),
-      bitrixRow(2, 'B', 'Two', { ACTIVE: 'N' }),
-      bitrixRow(3, 'C', 'Three', { ACTIVE: 'Y' }),
-      bitrixRow(4, 'D', 'Four', { ACTIVE: true }),
-    ],
-  }]);
-  const { directory, restore } = loadModules();
-  try {
-    const res = await directory.fetchBitrixUsers({ fetchImpl: impl });
-    assert.deepEqual(res.users.map((u) => u.active), [false, false, true, true]);
-  } finally { restore(); }
-});
-
-test('a nameless user still gets a label, so a picker never shows a blank row', async () => {
-  const { impl } = pagedFetch([{ result: [{ ID: '42' }] }]);
-  const { directory, restore } = loadModules();
-  try {
-    const res = await directory.fetchBitrixUsers({ fetchImpl: impl });
-    assert.equal(res.users[0].fullName, 'Bitrix user 42');
-  } finally { restore(); }
-});
-
-test('paging follows `next` until it stops advancing', async () => {
-  const { impl, calls } = pagedFetch([
-    { result: [bitrixRow(1, 'A', 'One')], next: 50 },
-    { result: [bitrixRow(2, 'B', 'Two')], next: 100 },
-    { result: [bitrixRow(3, 'C', 'Three')] },
-  ]);
-  const { directory, restore } = loadModules();
-  try {
-    const res = await directory.fetchBitrixUsers({ fetchImpl: impl });
-    assert.equal(res.total, 3);
-    assert.deepEqual(calls.map((u) => new URL(u).searchParams.get('start')), ['0', '50', '100']);
-  } finally { restore(); }
-});
-
-test('a `next` that does not advance stops the loop instead of spinning', async () => {
-  const { impl, calls } = pagedFetch([
-    { result: [bitrixRow(1, 'A', 'One')], next: 0 },
-    { result: [bitrixRow(2, 'B', 'Two')] },
-  ]);
-  const { directory, restore } = loadModules();
-  try {
-    const res = await directory.fetchBitrixUsers({ fetchImpl: impl });
-    assert.equal(res.total, 1);
-    assert.equal(calls.length, 1);
-  } finally { restore(); }
-});
-
-test('a webhook without the user scope is named as exactly that', async () => {
-  const { impl } = pagedFetch([{ error: 'ACCESS_DENIED', error_description: 'Access denied' }]);
-  const { directory, mapping, restore } = loadModules();
-  try {
-    const res = await directory.fetchBitrixUsers({ fetchImpl: impl });
-    assert.equal(res.ok, false);
-    assert.equal(res.reason, 'no_user_scope');
-    assert.match(mapping.FAILURE_MESSAGES.no_user_scope, /"user" scope/);
-    assert.match(mapping.FAILURE_MESSAGES.no_user_scope, /by hand/, 'it must say what to do instead');
-  } finally { restore(); }
-});
-
-test('another REST error is reported as itself, not as a scope problem', async () => {
-  const { impl } = pagedFetch([{ error: 'QUERY_LIMIT_EXCEEDED', error_description: 'Too many requests' }]);
-  const { directory, restore } = loadModules();
-  try {
-    const res = await directory.fetchBitrixUsers({ fetchImpl: impl });
-    assert.equal(res.reason, 'rest_error');
-    assert.equal(res.detail, 'Too many requests');
-  } finally { restore(); }
-});
-
-test('a network failure is returned, never thrown', async () => {
-  const { directory, restore } = loadModules();
-  try {
-    const res = await directory.fetchBitrixUsers({
-      fetchImpl: async () => { throw new Error('ECONNREFUSED'); },
-    });
-    assert.equal(res.ok, false);
-    assert.equal(res.reason, 'request_failed');
-    assert.equal(res.detail, 'ECONNREFUSED');
-  } finally { restore(); }
-});
-
-test('an HTTP error with no REST body is still a reported failure', async () => {
-  const { impl } = pagedFetch([{ __http: false, __status: 503 }]);
-  const { directory, restore } = loadModules();
-  try {
-    const res = await directory.fetchBitrixUsers({ fetchImpl: impl });
-    assert.equal(res.reason, 'request_failed');
-    assert.equal(res.detail, 'HTTP 503');
-  } finally { restore(); }
-});
-
-test('Bitrix not configured is a reason, not an attempted request', async () => {
-  const { directory, restore } = loadModules({ enabled: false });
-  try {
-    const res = await directory.fetchBitrixUsers({
-      fetchImpl: async () => { throw new Error('must not be called'); },
-    });
-    assert.equal(res.reason, 'not_configured');
-  } finally { restore(); }
-});
-
-test('only the host of the webhook is ever exposed', async () => {
-  const { directory, restore } = loadModules();
-  try {
-    assert.equal(directory.webhookHost(), 'wenze.bitrix24.com');
-  } finally { restore(); }
-});
+const {
+  DIR_PATH, MAP_PATH, ROUTE_PATH,
+  bitrixRow, pagedFetch, loadModules,
+} = require('./helpers/bitrixMappingHarness');
 
 // ─── preview and apply ───
 
@@ -273,18 +65,80 @@ test('a confirmed first-name proposal is written too', async () => {
   const { impl } = pagedFetch(PORTAL);
   const { mapping, seen, restore } = loadModules({ recruiters: ROWS });
   try {
-    const result = await mapping.applyRecruiterBitrixMapping({ fetchImpl: impl, confirm: ['2'] });
+    const result = await mapping.applyRecruiterBitrixMapping({
+      fetchImpl: impl,
+      confirm: [{ recruiterId: 2, bitrixUserId: 21 }],
+    });
     assert.deepEqual(seen.updates.map((u) => u.id).sort(), [1, 2]);
     assert.deepEqual(result.applied.map((e) => e.recruiterId).sort(), [1, 2]);
+    assert.deepEqual(result.failed, []);
   } finally { restore(); }
 });
 
-test('a confirm list naming nobody in the plan changes nothing extra', async () => {
+test('a confirmation must name the Bitrix user that was shown', async () => {
+  // The operator confirmed a PERSON. Apply re-reads the directory, so a
+  // recruiter id on its own would authorize whoever it resolves to next.
   const { impl } = pagedFetch(PORTAL);
   const { mapping, seen, restore } = loadModules({ recruiters: ROWS });
   try {
-    await mapping.applyRecruiterBitrixMapping({ fetchImpl: impl, confirm: [999, 'junk', null] });
+    const result = await mapping.applyRecruiterBitrixMapping({
+      fetchImpl: impl,
+      confirm: [{ recruiterId: 2, bitrixUserId: 999 }],
+    });
+    assert.deepEqual(seen.updates.map((u) => u.id), [1], 'the proposal is NOT written');
+    assert.equal(result.failed.length, 1);
+    assert.match(result.failed[0].error, /Confirmed Bitrix user 999, but the directory now matches 21/);
+  } finally { restore(); }
+});
+
+test('a bare recruiter id is refused and said out loud, not silently ignored', async () => {
+  const { impl } = pagedFetch(PORTAL);
+  const { mapping, seen, restore } = loadModules({ recruiters: ROWS });
+  try {
+    const result = await mapping.applyRecruiterBitrixMapping({ fetchImpl: impl, confirm: [2] });
     assert.deepEqual(seen.updates.map((u) => u.id), [1]);
+    assert.match(result.failed[0].error, /did not name a Bitrix user/);
+  } finally { restore(); }
+});
+
+test('a confirmation for someone no longer proposed is reported', async () => {
+  const { impl } = pagedFetch(PORTAL);
+  const { mapping, seen, restore } = loadModules({ recruiters: ROWS });
+  try {
+    const result = await mapping.applyRecruiterBitrixMapping({
+      fetchImpl: impl,
+      confirm: [{ recruiterId: 999, bitrixUserId: 21 }],
+    });
+    assert.deepEqual(seen.updates.map((u) => u.id), [1]);
+    assert.match(result.failed[0].error, /no longer proposed/);
+  } finally { restore(); }
+});
+
+test('junk in the confirm list is skipped without disturbing the plan', async () => {
+  const { impl } = pagedFetch(PORTAL);
+  const { mapping, seen, restore } = loadModules({ recruiters: ROWS });
+  try {
+    const result = await mapping.applyRecruiterBitrixMapping({
+      fetchImpl: impl,
+      confirm: [null, 'junk', {}, { bitrixUserId: 21 }],
+    });
+    assert.deepEqual(seen.updates.map((u) => u.id), [1]);
+    assert.deepEqual(result.failed, [], 'nothing identifiable was confirmed, so nothing failed');
+  } finally { restore(); }
+});
+
+test('normalizeConfirmations keeps pairs and separates the id-only ones', async () => {
+  const { mapping, restore } = loadModules();
+  try {
+    const { pairs, malformed } = mapping.normalizeConfirmations([
+      { recruiterId: 2, bitrixUserId: 21 },
+      { recruiterId: '3', bitrixUserId: '22' },
+      5,
+      { recruiterId: 7 },
+      'nonsense',
+    ]);
+    assert.deepEqual(pairs, [{ recruiterId: 2, bitrixUserId: 21 }, { recruiterId: 3, bitrixUserId: 22 }]);
+    assert.deepEqual(malformed, [5, 7]);
   } finally { restore(); }
 });
 

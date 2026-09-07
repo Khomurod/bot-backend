@@ -81,7 +81,12 @@ test("confirming a first-name guess includes exactly that recruiter", async () =
   automapRecruiterBitrixUsers.mockResolvedValueOnce({ ...PLAN, applied: PLAN.apply, failed: [] });
   fireEvent.click(applyButton());
   await waitFor(() => expect(automapRecruiterBitrixUsers).toHaveBeenCalledTimes(2));
-  expect(automapRecruiterBitrixUsers).toHaveBeenLastCalledWith({ apply: true, confirm: [2] });
+  // The PAIR, not just the recruiter: apply re-reads the directory, so the
+  // request has to name the Bitrix user the operator actually looked at.
+  expect(automapRecruiterBitrixUsers).toHaveBeenLastCalledWith({
+    apply: true,
+    confirm: [{ recruiterId: 2, bitrixUserId: 21 }],
+  });
 });
 
 test("everything the matcher refused is shown, not silently dropped", async () => {

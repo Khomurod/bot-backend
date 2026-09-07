@@ -53,8 +53,14 @@ export default function BitrixAutomapPanel({ onMapped }) {
     } finally { setBusy(false); }
   };
 
-  const toggle = (recruiterId) => setConfirmed((prev) => (
-    prev.includes(recruiterId) ? prev.filter((id) => id !== recruiterId) : [...prev, recruiterId]
+  // A confirmation carries the Bitrix user the operator actually SAW, not just
+  // the recruiter: apply re-reads the directory, and a recruiter-only
+  // confirmation would authorize whatever it resolves to the second time.
+  const isConfirmed = (entry) => confirmed.some((c) => c.recruiterId === entry.recruiterId);
+  const toggle = (entry) => setConfirmed((prev) => (
+    prev.some((c) => c.recruiterId === entry.recruiterId)
+      ? prev.filter((c) => c.recruiterId !== entry.recruiterId)
+      : [...prev, { recruiterId: entry.recruiterId, bitrixUserId: entry.bitrixUserId }]
   ));
 
   const willWrite = (plan?.apply?.length || 0) + confirmed.length;
@@ -125,8 +131,8 @@ export default function BitrixAutomapPanel({ onMapped }) {
                 <label key={e.recruiterId} style={{ display: "block", fontSize: 12, color: "#94a3b8", paddingLeft: 4 }}>
                   <input
                     type="checkbox"
-                    checked={confirmed.includes(e.recruiterId)}
-                    onChange={() => toggle(e.recruiterId)}
+                    checked={isConfirmed(e)}
+                    onChange={() => toggle(e)}
                     style={{ marginRight: 6 }}
                   />
                   {e.recruiterName} → Bitrix #{e.bitrixUserId} ({e.bitrixUserName})

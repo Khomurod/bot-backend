@@ -115,6 +115,44 @@ test('a first name alone is PROPOSED, never applied', () => {
   assert.deepEqual(plan.propose.map((e) => [e.bitrixUserId, e.via]), [[17, 'first_name']]);
 });
 
+test('one profile listing the same number twice is one candidate, not an ambiguity', () => {
+  // A Bitrix profile commonly repeats the number across PERSONAL_MOBILE and
+  // WORK_PHONE. Counting it twice would refuse the strongest match there is.
+  const plan = matchRecruitersToBitrixUsers({
+    recruiters: [recruiter(1, 'Alex Smith', '+15550001111')],
+    users: [user(17, 'Alex', 'Smith', { phones: ['+15550001111', '(555) 000-1111', '555-000-1111'] })],
+  });
+  assert.deepEqual(plan.apply.map((e) => [e.bitrixUserId, e.via]), [[17, 'phone']]);
+  assert.equal(plan.ambiguous.length, 0);
+});
+
+test('two first-name PROPOSALS for one Bitrix user are a conflict, not two tickboxes', () => {
+  // Confirming both would have let the unique index pick a winner by write
+  // order — an arbitrary mapping presented as a choice.
+  const plan = matchRecruitersToBitrixUsers({
+    recruiters: [recruiter(1, 'Alex', '+15559990000'), recruiter(2, 'Alex', '+15559991111')],
+    users: [user(17, 'Alex', 'Smith')],
+  });
+  assert.equal(plan.propose.length, 0, 'neither may be offered');
+  assert.equal(plan.apply.length, 0);
+  assert.equal(plan.conflicts.length, 2);
+  assert.match(plan.conflicts[0].reason, /same Bitrix user/i);
+});
+
+test('a strong match beats a first-name claim on the same user, and keeps applying', () => {
+  const plan = matchRecruitersToBitrixUsers({
+    recruiters: [
+      recruiter(1, 'Alex Smith', '+15550001111'),  // phone → 17
+      recruiter(2, 'Alex', '+15559991111'),        // first name → 17
+    ],
+    users: [user(17, 'Alex', 'Smith', { phones: ['+15550001111'] })],
+  });
+  assert.deepEqual(plan.apply.map((e) => [e.recruiterId, e.via]), [[1, 'phone']]);
+  assert.equal(plan.propose.length, 0, 'the weak claim is withdrawn, not left confirmable');
+  assert.deepEqual(plan.conflicts.map((e) => e.recruiterId), [2]);
+  assert.match(plan.conflicts[0].reason, /matched more strongly by Alex Smith/i);
+});
+
 test('two recruiters landing on one Bitrix user disqualifies both', () => {
   const plan = matchRecruitersToBitrixUsers({
     recruiters: [recruiter(1, 'Alex Smith', '+15550001111'), recruiter(2, 'Smith Alex', '+15552223333')],

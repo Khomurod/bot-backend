@@ -106,6 +106,46 @@ test("typing the id by hand still works, and is still explained", async () => {
   expect(screen.getByText(/Or type it from the Bitrix profile URL/i)).toBeTruthy();
 });
 
+test("a mapping written under the card shows up, and an unrelated save cannot wipe it", async () => {
+  // The automap writes bitrix_user_id straight to the row. `form` is seeded at
+  // mount, so before the fix the editor still showed blank and save() sent that
+  // blank back — clearing the mapping that had just been created.
+  const { updateRecruiter } = await import("../../../api");
+  updateRecruiter.mockResolvedValue({ recruiter: { ...RECRUITER, bitrixUserId: 17 } });
+
+  const view = render(<RecruiterCard recruiter={RECRUITER} onMessage={() => {}} onSaved={async () => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+  expect(screen.getByPlaceholderText("e.g. 17").value).toBe("");
+
+  // The automap ran and the parent refreshed the row.
+  view.rerender(
+    <RecruiterCard recruiter={{ ...RECRUITER, bitrixUserId: 17 }} onMessage={() => {}} onSaved={async () => {}} />
+  );
+  await waitFor(() => expect(screen.getByPlaceholderText("e.g. 17").value).toBe("17"));
+
+  // Now change something unrelated and save.
+  fireEvent.change(screen.getByDisplayValue("Alex Smith"), { target: { value: "Alex S." } });
+  fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+  await waitFor(() => expect(updateRecruiter).toHaveBeenCalled());
+  const payload = updateRecruiter.mock.calls[0][1];
+  expect(payload.name).toBe("Alex S.");
+  expect("bitrixUserId" in payload).toBe(false);
+});
+
+test("deliberately emptying the field still clears the mapping", async () => {
+  const { updateRecruiter } = await import("../../../api");
+  updateRecruiter.mockResolvedValue({ recruiter: RECRUITER });
+
+  render(
+    <RecruiterCard recruiter={{ ...RECRUITER, bitrixUserId: 17 }} onMessage={() => {}} onSaved={async () => {}} />
+  );
+  fireEvent.click(screen.getByRole("button", { name: /^Edit$/ }));
+  fireEvent.change(screen.getByPlaceholderText("e.g. 17"), { target: { value: "" } });
+  fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+  await waitFor(() => expect(updateRecruiter).toHaveBeenCalled());
+  expect(updateRecruiter.mock.calls[0][1].bitrixUserId).toBe("");
+});
+
 test("with no loader wired the picker is disabled rather than broken", async () => {
   open({ loadBitrixUsers: undefined });
   expect(screen.getByRole("button", { name: /Pick from Bitrix/i }).disabled).toBe(true);

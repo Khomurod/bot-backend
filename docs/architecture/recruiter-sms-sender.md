@@ -214,6 +214,26 @@ previews; only `{ apply: true }` writes, and the panel always previews first.
 The partial unique index on `bitrix_user_id` is the backstop — a rejected row
 is reported per row and does not abandon the rest of the plan.
 
+**A confirmation names the Bitrix user, not just the recruiter.** `confirm`
+takes `{ recruiterId, bitrixUserId }` pairs. Apply re-reads the directory, so a
+recruiter id alone would authorize whatever that recruiter resolves to the
+*second* time — a different sole first-name match, if the portal changed in
+between. A pair that no longer matches the plan is reported in `failed` ("the
+directory now matches …, re-run the match") and nothing is written for it.
+
+**Collisions are computed across both tiers.** Counting only the strong matches
+left two first-name proposals for one Bitrix user both confirmable, and the
+unique index then picked the winner by write order. A strong match beats a weak
+claim on the same user — a phone match is not in doubt because someone shares a
+first name — so the weak one becomes the conflict and the strong one still
+applies; two claims of equal strength are a real ambiguity and neither is
+written.
+
+**One profile is one candidate.** Bitrix commonly repeats a number across
+`PERSONAL_MOBILE` and `WORK_PHONE`; the phone index is deduplicated by user id,
+because `resolveCandidate` reads a key's length to decide ambiguity and one
+person listed twice would refuse the strongest match available.
+
 **`GET /api/recruiters/bitrix-users`** backs the per-row picker. It returns
 id, name, email, position and active only: phone numbers are matched
 server-side and never need to reach a browser to do it. Like every Bitrix
