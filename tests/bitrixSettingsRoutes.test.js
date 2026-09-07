@@ -23,8 +23,8 @@ process.env.MANAGEMENT_GROUP_ID ||= '-1001234567890';
 process.env.JWT_SECRET ||= 'test-jwt-secret';
 process.env.PORT ||= '3001';
 
-const CONFIG_PATH = require.resolve('../config/config');
 const BITRIX_PATH = require.resolve('../services/bitrix24Service');
+const DB_BITRIX_PATH = require.resolve('../database/bitrix');
 const DIAG_PATH = require.resolve('../services/bitrix24DiagnosticsService');
 const ROUTE_PATH = require.resolve('../server/routes/settings/bitrixRoutes');
 
@@ -37,31 +37,45 @@ function loadApp({
   assignedById = 'Tom Robinson',
   assigneeWaitMs = 25000,
   diagnose = async () => ({ ok: true, steps: [{ label: 'All', ok: true, detail: 'fine' }] }),
+  updateError = null,
 } = {}) {
-  const realConfig = require('../config/config');
-  const seen = { diagnoseArgs: [] };
+  const seen = { diagnoseArgs: [], updates: [] };
+  const host = webhookUrl ? new URL(webhookUrl).host : '';
 
-  require.cache[CONFIG_PATH] = {
+  // The admin view database/bitrix builds — never the URL, only its host.
+  const adminView = () => ({
+    enabled,
+    webhookSet: Boolean(webhookUrl),
+    webhookHost: host,
+    entity,
+    assignedById,
+    sourceId: 'WEB',
+    sourceDescription: '',
+    dealCategoryId: '3',
+    dealStageId: 'C3:NEW',
+    assigneeWaitMs,
+    fromEnv: { enabled: false, webhookUrl: false, entity: false, assignedById: false, assigneeWaitMs: false },
+    updatedAt: '2026-09-07T12:00:00.000Z',
+  });
+
+  require.cache[DB_BITRIX_PATH] = {
     exports: {
-      ...realConfig,
-      bitrix24Enabled: enabled,
-      bitrix24WebhookUrl: webhookUrl,
-      bitrix24AssigneeWaitMs: assigneeWaitMs,
+      getBitrixSettingsForAdmin: async () => adminView(),
+      updateBitrixSettings: async (payload) => {
+        seen.updates.push(payload);
+        if (updateError) throw updateError;
+        return adminView();
+      },
     },
   };
   require.cache[BITRIX_PATH] = {
     exports: {
-      isBitrixConfigured: () => Boolean(enabled && webhookUrl),
-      normalizeWebhookBase: (u) => (u ? String(u) : ''),
-      getBitrixMapperConfig: () => ({
-        entity, assignedById, sourceId: 'WEB', dealCategoryId: '3', dealStageId: 'C3:NEW',
-      }),
+      isBitrixConfigured: async () => Boolean(enabled && webhookUrl),
     },
   };
   require.cache[DIAG_PATH] = {
     exports: {
       diagnoseBitrix: async (args) => { seen.diagnoseArgs.push(args); return diagnose(args); },
-      webhookHost: () => (webhookUrl ? new URL(webhookUrl).host : ''),
     },
   };
 
@@ -73,7 +87,7 @@ function loadApp({
     authMiddleware: (req, _res, next) => { req.admin = { username: 'admin' }; next(); },
   }));
   const restore = () => {
-    for (const path of [CONFIG_PATH, BITRIX_PATH, DIAG_PATH, ROUTE_PATH]) delete require.cache[path];
+    for (const path of [DB_BITRIX_PATH, BITRIX_PATH, DIAG_PATH, ROUTE_PATH]) delete require.cache[path];
   };
   return { app, seen, restore };
 }
@@ -191,4 +205,57 @@ test('both routes are behind the admin guard', async () => {
     await new Promise((resolve) => server.close(resolve));
     delete require.cache[ROUTE_PATH];
   }
+});
+
+// ─── saving: the reason Bitrix moved into the panel ───
+
+test('PUT saves through database/bitrix and answers the masked view', async () => {
+  const { app, seen, restore } = loadApp({ assignedById: '17' });
+  try {
+    const res = await call(app, 'PUT', '/api/settings/bitrix', {
+      enabled: true, entity: 'lead', assignedById: '17', assigneeWaitMs: 30000,
+      webhookUrl: 'https://wenze.bitrix24.com/rest/1/new-secret-value/',
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(seen.updates, [{
+      enabled: true, entity: 'lead', assignedById: '17', assigneeWaitMs: 30000,
+      webhookUrl: 'https://wenze.bitrix24.com/rest/1/new-secret-value/',
+    }]);
+    assert.equal(res.json.settings.assignedById, 17);
+    assert.equal(res.json.settings.assignedByIdIgnored, false);
+    assert.equal(res.json.settings.webhookHost, 'wenze.bitrix24.com');
+    assert.ok(!res.text.includes('secret'), 'the saved URL never comes back, not even a tail');
+  } finally { restore(); }
+});
+
+test('a rejected field is a 400 with the reason, and nothing else about it leaks', async () => {
+  const err = new Error('"Tom Robinson" is not a Bitrix user id — use the number from the profile URL (e.g. 17), or leave it blank.');
+  err.statusCode = 400;
+  const { app, restore } = loadApp({ updateError: err });
+  try {
+    const res = await call(app, 'PUT', '/api/settings/bitrix', { assignedById: 'Tom Robinson' });
+    assert.equal(res.status, 400);
+    assert.match(res.json.error, /not a Bitrix user id/);
+  } finally { restore(); }
+});
+
+test('a database failure on save is a 500 that does not echo internals', async () => {
+  const { app, restore } = loadApp({ updateError: new Error('connection terminated at 10.0.0.5') });
+  try {
+    const res = await call(app, 'PUT', '/api/settings/bitrix', { enabled: true });
+    assert.equal(res.status, 500);
+    assert.equal(res.json.error, 'Failed to save Bitrix24 settings');
+    assert.ok(!res.text.includes('10.0.0.5'));
+  } finally { restore(); }
+});
+
+test('GET reports which values still come from the environment', async () => {
+  const { app, restore } = loadApp();
+  try {
+    const res = await call(app, 'GET', '/api/settings/bitrix');
+    assert.deepEqual(res.json.settings.fromEnv, {
+      enabled: false, webhookUrl: false, entity: false, assignedById: false, assigneeWaitMs: false,
+    });
+    assert.equal(res.json.settings.webhookSet, true);
+  } finally { restore(); }
 });

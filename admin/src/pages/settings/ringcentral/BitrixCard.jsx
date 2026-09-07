@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../../api";
 import BitrixAutomapPanel from "./BitrixAutomapPanel";
+import BitrixSettingsForm from "./BitrixSettingsForm";
 
 /**
  * Bitrix24 — the half of the lead-SMS chain that lives outside this app.
@@ -12,9 +13,10 @@ import BitrixAutomapPanel from "./BitrixAutomapPanel";
  * that never assigns a lead looked exactly like a portal that works — while
  * every lead quietly went out from the shared company number.
  *
- * Read-only with one exception, and it is opt-in: **Diagnose** only reads, and
- * so does the first click of the mapping panel below — that one previews, and
- * writes `bitrix_user_id` on recruiter rows only when the plan is applied.
+ * Three things live here, in the order an operator meets them: the connection
+ * form (the webhook and behaviour, entered here rather than on the host — the
+ * DB row wins over env once saved), **Diagnose** (read-only), and the mapping
+ * panel (previews first; writes `bitrix_user_id` only when applied).
  */
 function Row({ label, value, warn = false }) {
   if (value === null || value === undefined || value === "") return null;
@@ -75,6 +77,8 @@ export default function BitrixCard({ onMessage, onMapped }) {
         <strong>{Math.round((settings?.assigneeWaitMs ?? 0) / 1000)}s</strong> and matches it to the
         <strong> Bitrix24 user ID</strong> on a recruiter row below. No match means the shared number.
       </p>
+
+      <BitrixSettingsForm settings={settings} onSaved={setSettings} onMessage={onMessage} />
 
       <Row label="Portal" value={settings?.webhookHost} />
       <Row label="Creates" value={settings?.entity} />

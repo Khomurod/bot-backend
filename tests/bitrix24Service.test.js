@@ -7,6 +7,14 @@ process.env.MANAGEMENT_GROUP_ID ||= '-1001234567890';
 process.env.JWT_SECRET ||= 'test-jwt-secret';
 process.env.PORT ||= '3001';
 
+// bitrix24Service now reads its settings through database/bitrix → database/pool.
+// No database here: an empty row set means "nothing saved in the app", so the
+// BITRIX24_* env each test sets below is what gets used — the pre-DB behaviour.
+require.cache[require.resolve('../database/pool')] = {
+  exports: { query: async () => ({ rows: [] }), pool: null, ping: async () => true },
+};
+const DB_BITRIX_PATH = require.resolve('../database/bitrix');
+
 test('createCrmRecordFromLead returns not_configured when Bitrix is disabled', async () => {
   const originalEnabled = process.env.BITRIX24_ENABLED;
   const originalUrl = process.env.BITRIX24_WEBHOOK_URL;
@@ -15,6 +23,7 @@ test('createCrmRecordFromLead returns not_configured when Bitrix is disabled', a
 
   delete require.cache[require.resolve('../config/config')];
   delete require.cache[require.resolve('../services/bitrix24Service')];
+  delete require.cache[DB_BITRIX_PATH];
   const { createCrmRecordFromLead } = require('../services/bitrix24Service');
 
   const result = await createCrmRecordFromLead({
@@ -32,6 +41,7 @@ test('createCrmRecordFromLead returns not_configured when Bitrix is disabled', a
   if (originalUrl !== undefined) process.env.BITRIX24_WEBHOOK_URL = originalUrl;
   delete require.cache[require.resolve('../config/config')];
   delete require.cache[require.resolve('../services/bitrix24Service')];
+  delete require.cache[DB_BITRIX_PATH];
 });
 
 test('createCrmRecordFromLead posts to crm.lead.add when configured', async () => {
@@ -45,6 +55,7 @@ test('createCrmRecordFromLead posts to crm.lead.add when configured', async () =
 
   delete require.cache[require.resolve('../config/config')];
   delete require.cache[require.resolve('../services/bitrix24Service')];
+  delete require.cache[DB_BITRIX_PATH];
   const { createCrmRecordFromLead } = require('../services/bitrix24Service');
 
   let capturedUrl = '';
@@ -95,4 +106,5 @@ test('createCrmRecordFromLead posts to crm.lead.add when configured', async () =
   resetCatalogForTests();
   delete require.cache[require.resolve('../config/config')];
   delete require.cache[require.resolve('../services/bitrix24Service')];
+  delete require.cache[DB_BITRIX_PATH];
 });

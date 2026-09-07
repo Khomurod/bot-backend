@@ -13,10 +13,18 @@
  * know who owns it to text from that person's own number, so it asks again
  * after a short, bounded wait rather than trusting the value at creation.
  *
+ * CONFIGURATION IS READ AT CALL TIME, NOT AT LOAD TIME. It comes from
+ * database/bitrix.js — the row an operator edits in Settings → RingCentral →
+ * Bitrix24, falling back to BITRIX24_* env vars for anything never saved — so
+ * every entry point here is async and nothing caches a webhook URL in a
+ * module-scope constant. The field map alone stays file/env-based
+ * (config.bitrix24FieldMap).
+ *
  * Read-only and best-effort throughout: a Bitrix outage degrades the sender
  * choice back to the shared number, it never blocks the lead.
  */
 const config = require('../config/config');
+const { getBitrixConfig } = require('../database/bitrix');
 const { buildBitrixCrmFields } = require('./bitrix24LeadMapper');
 const { loadCatalog } = require('./bitrix24FieldCatalog');
 
@@ -26,26 +34,40 @@ function normalizeWebhookBase(url) {
   return trimmed.endsWith('/') ? trimmed : `${trimmed}/`;
 }
 
-function isBitrixConfigured() {
-  if (!config.bitrix24Enabled) return false;
-  const base = normalizeWebhookBase(config.bitrix24WebhookUrl);
+/** The effective settings plus the (file-based) field map. */
+async function getBitrixRuntimeConfig() {
+  const cfg = await getBitrixConfig();
+  return { ...cfg, fieldMap: config.bitrix24FieldMap };
+}
+
+/** The webhook base URL to call, or '' when none is set. Never log it. */
+async function getWebhookBase() {
+  const cfg = await getBitrixConfig();
+  return normalizeWebhookBase(cfg.webhookUrl);
+}
+
+async function isBitrixConfigured() {
+  const cfg = await getBitrixConfig();
+  if (!cfg.enabled) return false;
+  const base = normalizeWebhookBase(cfg.webhookUrl);
   return Boolean(base && /^https?:\/\//i.test(base));
 }
 
-function getBitrixMapperConfig() {
+async function getBitrixMapperConfig() {
+  const cfg = await getBitrixRuntimeConfig();
   return {
-    entity: config.bitrix24Entity,
-    assignedById: config.bitrix24AssignedById,
-    sourceId: config.bitrix24SourceId,
-    sourceDescription: config.bitrix24SourceDescription,
-    dealCategoryId: config.bitrix24DealCategoryId,
-    dealStageId: config.bitrix24DealStageId,
-    fieldMap: config.bitrix24FieldMap,
+    entity: cfg.entity,
+    assignedById: cfg.assignedById,
+    sourceId: cfg.sourceId,
+    sourceDescription: cfg.sourceDescription,
+    dealCategoryId: cfg.dealCategoryId,
+    dealStageId: cfg.dealStageId,
+    fieldMap: cfg.fieldMap,
   };
 }
 
 async function loadBitrixFieldCatalog(fetchImpl = fetch) {
-  const base = normalizeWebhookBase(config.bitrix24WebhookUrl);
+  const base = await getWebhookBase();
   if (!base) return null;
   try {
     return await loadCatalog(base, fetchImpl);
@@ -65,14 +87,15 @@ function getReadMethod(entity) {
 
 /**
  * How often to re-ask Bitrix who owns a new record, and for how long. The total
- * budget is BITRIX24_ASSIGNEE_WAIT_MS (default 25s) — long enough for a
+ * budget is the "assignee wait" setting (default 25s) — long enough for a
  * distribution rule to run, short enough that a driver's text is not late.
  * 0 disables waiting entirely: one read, then whatever Bitrix said.
  */
 const ASSIGNEE_POLL_INTERVAL_MS = 5000;
 
-function assigneeAttempts() {
-  const budget = Math.max(0, Number(config.bitrix24AssigneeWaitMs) || 0);
+async function assigneeAttempts() {
+  const cfg = await getBitrixConfig();
+  const budget = Math.max(0, Number(cfg.assigneeWaitMs) || 0);
   return 1 + Math.floor(budget / ASSIGNEE_POLL_INTERVAL_MS);
 }
 
@@ -97,11 +120,11 @@ async function createCrmRecordFromLead({
   formId = '',
   fetchImpl = fetch,
 }) {
-  if (!isBitrixConfigured()) {
+  if (!(await isBitrixConfigured())) {
     return { ok: false, reason: 'not_configured' };
   }
 
-  const bitrixConfig = getBitrixMapperConfig();
+  const bitrixConfig = await getBitrixMapperConfig();
   if (bitrixConfig.entity === 'deal') {
     const hasCategory = Number(bitrixConfig.dealCategoryId) > 0;
     const hasStage = Boolean(bitrixConfig.dealStageId);
@@ -109,13 +132,13 @@ async function createCrmRecordFromLead({
       return {
         ok: false,
         reason: 'deal_config_incomplete',
-        error: 'BITRIX24_DEAL_CATEGORY_ID and BITRIX24_DEAL_STAGE_ID are required when BITRIX24_ENTITY=deal',
+        error: 'A deal category and stage are required when the entity is "deal" — set them in Settings → RingCentral → Bitrix24.',
       };
     }
   }
 
   const method = getRestMethod(bitrixConfig.entity);
-  const url = `${normalizeWebhookBase(config.bitrix24WebhookUrl)}${method}.json`;
+  const url = `${await getWebhookBase()}${method}.json`;
   const catalog = bitrixConfig.entity === 'lead'
     ? await loadBitrixFieldCatalog(fetchImpl)
     : null;
@@ -142,12 +165,7 @@ async function createCrmRecordFromLead({
       return { ok: false, reason: 'api_error', error: String(message) };
     }
 
-    const recordId = body.result;
-    return {
-      ok: true,
-      bitrixId: recordId,
-      entity: bitrixConfig.entity,
-    };
+    return { ok: true, bitrixId: body.result, entity: bitrixConfig.entity };
   } catch (err) {
     return { ok: false, reason: 'network_error', error: err.message };
   }
@@ -160,15 +178,15 @@ async function createCrmRecordFromLead({
  *   error?: string}>} `assignedById` is null when Bitrix reports no owner.
  */
 async function getCrmRecordAssignee({ bitrixId, entity, fetchImpl = fetch }) {
-  if (!isBitrixConfigured()) return { ok: false, assignedById: null, reason: 'not_configured' };
+  if (!(await isBitrixConfigured())) return { ok: false, assignedById: null, reason: 'not_configured' };
 
   const id = Number(bitrixId);
   if (!Number.isFinite(id) || id <= 0) {
     return { ok: false, assignedById: null, reason: 'invalid_id' };
   }
 
-  const resolvedEntity = entity || getBitrixMapperConfig().entity;
-  const base = normalizeWebhookBase(config.bitrix24WebhookUrl);
+  const resolvedEntity = entity || (await getBitrixMapperConfig()).entity;
+  const base = await getWebhookBase();
   const url = `${base}${getReadMethod(resolvedEntity)}.json?id=${encodeURIComponent(String(id))}`;
 
   try {
@@ -179,8 +197,7 @@ async function getCrmRecordAssignee({ bitrixId, entity, fetchImpl = fetch }) {
       return { ok: false, assignedById: null, reason: 'api_error', error: String(message) };
     }
     // Bitrix returns every field as a string, ASSIGNED_BY_ID included.
-    const raw = body?.result?.ASSIGNED_BY_ID;
-    const assignedById = Number(raw);
+    const assignedById = Number(body?.result?.ASSIGNED_BY_ID);
     return {
       ok: true,
       assignedById: Number.isFinite(assignedById) && assignedById > 0 ? assignedById : null,
@@ -205,7 +222,8 @@ async function getCrmRecordAssignee({ bitrixId, entity, fetchImpl = fetch }) {
  * @param {number|string} params.bitrixId
  * @param {string} [params.entity]                'lead' | 'deal'
  * @param {(assignedById: number|null) => boolean|Promise<boolean>} [params.isAcceptable]
- * @param {number} [params.attempts]              total reads, including the first
+ * @param {number} [params.attempts]              total reads, including the first;
+ *                                                defaults to the configured wait budget
  * @param {number} [params.intervalMs]            wait between reads
  * @param {(ms:number)=>Promise<void>} [params.sleep]  injected for tests
  * @param {typeof fetch} [params.fetchImpl]
@@ -216,12 +234,12 @@ async function waitForCrmAssignee({
   bitrixId,
   entity,
   isAcceptable = (assignedById) => assignedById != null,
-  attempts = assigneeAttempts(),
+  attempts,
   intervalMs = ASSIGNEE_POLL_INTERVAL_MS,
   sleep = defaultSleep,
   fetchImpl = fetch,
 }) {
-  const total = Math.max(1, Number(attempts) || 1);
+  const total = Math.max(1, Number(attempts ?? await assigneeAttempts()) || 1);
   let last = { ok: false, assignedById: null, reason: 'not_attempted' };
 
   for (let attempt = 1; attempt <= total; attempt += 1) {
@@ -247,6 +265,8 @@ async function waitForCrmAssignee({
 
 module.exports = {
   normalizeWebhookBase,
+  getBitrixRuntimeConfig,
+  getWebhookBase,
   isBitrixConfigured,
   getBitrixMapperConfig,
   loadBitrixFieldCatalog,

@@ -16,6 +16,14 @@ process.env.MANAGEMENT_GROUP_ID ||= '-1001234567890';
 process.env.JWT_SECRET ||= 'test-jwt-secret';
 process.env.PORT ||= '3001';
 
+// The service reads settings through database/bitrix → database/pool. With no
+// database an empty row set means "nothing saved in the app", so the env each
+// case sets is what applies.
+require.cache[require.resolve('../database/pool')] = {
+  exports: { query: async () => ({ rows: [] }), pool: null, ping: async () => true },
+};
+const DB_BITRIX_PATH = require.resolve('../database/bitrix');
+
 const WEBHOOK = 'https://example.bitrix24.com/rest/1/secret/';
 
 /** Load the service with Bitrix configured, isolated from ambient env. */
@@ -30,6 +38,7 @@ function loadBitrix({ enabled = 'true', url = WEBHOOK, entity = 'lead' } = {}) {
   process.env.BITRIX24_ENTITY = entity;
   delete require.cache[require.resolve('../config/config')];
   delete require.cache[require.resolve('../services/bitrix24Service')];
+    delete require.cache[DB_BITRIX_PATH];
   const mod = require('../services/bitrix24Service');
   const restore = () => {
     for (const [key, value] of Object.entries(saved)) {
@@ -38,6 +47,7 @@ function loadBitrix({ enabled = 'true', url = WEBHOOK, entity = 'lead' } = {}) {
     }
     delete require.cache[require.resolve('../config/config')];
     delete require.cache[require.resolve('../services/bitrix24Service')];
+    delete require.cache[DB_BITRIX_PATH];
   };
   return { mod, restore };
 }
@@ -248,17 +258,18 @@ test('the wait budget comes from BITRIX24_ASSIGNEE_WAIT_MS, and 0 means do not w
     process.env.BITRIX24_ASSIGNEE_WAIT_MS = '25000';
     let { mod, restore } = loadBitrix();
     assert.equal(mod.ASSIGNEE_POLL_INTERVAL_MS, 5000);
-    assert.equal(mod.assigneeAttempts(), 6, '25s of budget at 5s a poll');
+    assert.equal(await mod.assigneeAttempts(), 6, '25s of budget at 5s a poll');
     restore();
 
     process.env.BITRIX24_ASSIGNEE_WAIT_MS = '0';
     ({ mod, restore } = loadBitrix());
-    assert.equal(mod.assigneeAttempts(), 1, 'one read, then whatever Bitrix said');
+    assert.equal(await mod.assigneeAttempts(), 1, 'one read, then whatever Bitrix said');
     restore();
   } finally {
     if (saved === undefined) delete process.env.BITRIX24_ASSIGNEE_WAIT_MS;
     else process.env.BITRIX24_ASSIGNEE_WAIT_MS = saved;
     delete require.cache[require.resolve('../config/config')];
     delete require.cache[require.resolve('../services/bitrix24Service')];
+    delete require.cache[DB_BITRIX_PATH];
   }
 });

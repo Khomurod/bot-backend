@@ -100,6 +100,7 @@ organization should converge toward.
 | Keeping the inbound-SMS subscription in step with the roster | `leads-bot/webhook/rc_subscription.py` |
 | Facebook OAuth self-serve connect, Graph client, crypto, formatting | `services/facebookConnectService.js`, `facebookGraphService.js`, `facebookCrypto.js`, `facebookLeadFormatter.js` |
 | Bitrix24 CRM lead create/update + field mapping | `services/bitrix24Service.js`, `bitrix24LeadMapper.js`, `bitrix24FieldMapLoader.js`, `bitrix24FieldCatalog.js`, `config/bitrix24LeadFieldMap*.json` |
+| Bitrix24 settings entered in the app (DB over env, webhook encrypted) | `database/bitrix.js`, `database/migrations/0009_bitrix_settings.sql`, `server/routes/settings/bitrixRoutes.js` (GET/PUT), `admin/src/pages/settings/ringcentral/BitrixSettingsForm.jsx` |
 | "Is Bitrix aligned?" — the admin diagnosis | `services/bitrix24DiagnosticsService.js`, `server/routes/settings/bitrixRoutes.js`, `admin/src/pages/settings/ringcentral/BitrixCard.jsx` |
 | Mapping recruiters to Bitrix users (the automap + the row picker) | `services/recruiterBitrixMapping/` (`directory.js` reads `user.get`, `match.js` is the pure decision, `index.js` previews and applies), `server/routes/recruiter/bitrixMappingRoutes.js`, `admin/src/pages/settings/ringcentral/BitrixAutomapPanel.jsx`, `RecruiterCard.jsx` |
 | Indeed lead intake | `services/indeedLeadService.js`, `docs/gmail-indeed-apps-script.gs` |

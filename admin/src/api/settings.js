@@ -189,6 +189,21 @@ export async function getBitrixSettings() {
 }
 
 /**
+ * Save Bitrix24 settings. Send `webhookUrl` only when replacing it (blank keeps
+ * the stored one) and `clearWebhookUrl: true` to forget it. A rejected field
+ * (a name as the assignee, a non-Bitrix URL) comes back as a 400 and nothing
+ * is written.
+ */
+export async function updateBitrixSettings(payload) {
+  const res = await fetch(`${API_BASE}/settings/bitrix`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.settings || {};
+}
+
+/**
  * Stepwise Bitrix diagnosis: configuration → reachable and scoped → field map
  * → recruiter coverage → the assignee readback the lead SMS sender depends on
  * → what happened to recent leads. Read-only.
