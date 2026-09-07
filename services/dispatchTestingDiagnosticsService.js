@@ -5,7 +5,7 @@ const { calculateEtaToDestination } = require('./etaRoutingService');
 const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
 const { getLiveLocationForGroupTitle } = require('./samsaraLocationService');
 const { getLiveLocationForGroupTitleFromDriveHos } = require('./driveHosEldService');
-const { getEldConfig } = require('../database/eldSettings');
+const { getEldConfig, driveHosProvidersFrom } = require('../database/eldSettings');
 
 function normalizeErrorMessage(err) {
   return String(err?.message || 'Unknown error').replace(/\s+/g, ' ').trim();
@@ -67,12 +67,7 @@ async function checkProviderStatuses(groupTitle) {
   providerStatuses.push(toProviderStatus('Samsara', samsaraLocation, samsaraError));
 
   // ── Fallbacks: Factor ELD → Leader ELD (Drive HoS) ──
-  const driveHosProviders = [
-    { label: 'Factor ELD', enabled: cfg.factorEnabled, companyKey: cfg.factorCompanyKey },
-    { label: 'Leader ELD', enabled: cfg.leaderEnabled, companyKey: cfg.leaderCompanyKey },
-  ];
-
-  for (const provider of driveHosProviders) {
+  for (const provider of driveHosProvidersFrom(cfg)) {
     let location = null;
     let error = null;
     if (!provider.enabled) {

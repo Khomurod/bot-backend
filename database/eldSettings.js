@@ -208,8 +208,32 @@ async function updateEldSettings(payload = {}) {
   return getEldSettingsForAdmin();
 }
 
+/**
+ * The Drive HoS fallback providers, in the order every consumer tries them:
+ * Factor ELD, then Leader ELD.
+ *
+ * WHY IT IS A FUNCTION AND NOT A LIST AT EACH CALL SITE. This literal was
+ * written out identically in services/liveLocationResolver.js (the per-driver
+ * lookup behind /location and ETA) and in
+ * services/dispatchTestingDiagnosticsService.js (the settings page's provider
+ * check). Two copies of "which providers exist and in what order" is how a
+ * newly added provider ends up visible on the diagnostics page and invisible to
+ * the dispatcher typing /location. Pure derivation from the config object —
+ * no I/O, no caching of its own.
+ *
+ * @param {object} cfg the object returned by getEldConfig()
+ * @returns {Array<{label: string, enabled: boolean, companyKey: string}>}
+ */
+function driveHosProvidersFrom(cfg) {
+  return [
+    { label: 'Factor ELD', enabled: Boolean(cfg?.factorEnabled), companyKey: cfg?.factorCompanyKey },
+    { label: 'Leader ELD', enabled: Boolean(cfg?.leaderEnabled), companyKey: cfg?.leaderCompanyKey },
+  ];
+}
+
 module.exports = {
   getEldConfig,
+  driveHosProvidersFrom,
   getEldSettingsForAdmin,
   updateEldSettings,
   invalidateCache,

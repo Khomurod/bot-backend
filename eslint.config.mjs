@@ -78,12 +78,13 @@ const CORRECTNESS_RULES = {
  * their own blocks below and excluded from the Node base so that Node globals
  * do not leak into browser code (flat-config `globals` merge).
  *
- * `server/public/**` is the static-asset directory: scripts there are fetched
- * by a browser, never required by the server.
+ * `server/public/**` and `server/presentation/**` are static-asset directories:
+ * scripts there are fetched by a browser, never required by the server.
  */
 const BROWSER_TREES = [
   'admin/**/*.{js,jsx,mjs}',
   'server/public/**/*.js',
+  'server/presentation/**/*.js',
 ];
 
 export default [
@@ -143,7 +144,7 @@ export default [
   {
     // Static browser assets served straight to a page: plain scripts, browser
     // globals, no bundler and no module system.
-    files: ['server/public/**/*.js'],
+    files: ['server/public/**/*.js', 'server/presentation/**/*.js'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'script',

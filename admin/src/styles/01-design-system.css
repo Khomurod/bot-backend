@@ -1,0 +1,137 @@
+/* ─── Design System ─── */
+:root {
+  /* Native widgets (date/time pickers, datalist, scrollbars) render dark. */
+  color-scheme: dark;
+  --bg-primary: #0f1117;
+  --bg-secondary: #1a1d27;
+  --bg-card: #1e2230;
+  --bg-card-hover: #252a3a;
+  --bg-input: #252a3a;
+  --border: #2d3348;
+  --border-focus: #6366f1;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent: #6366f1;
+  --accent-hover: #818cf8;
+  --accent-soft: rgba(99, 102, 241, 0.15);
+  --success: #22c55e;
+  --success-soft: rgba(34, 197, 94, 0.15);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.15);
+  --danger: #ef4444;
+  --danger-soft: rgba(239, 68, 68, 0.15);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  --transition: all 0.2s ease;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  /* Never allow the page itself to pan sideways; wide content scrolls in place. */
+  overflow-x: hidden;
+}
+
+img,
+video {
+  max-width: 100%;
+}
+
+/* ─── Base form controls ───
+   Bare <input>/<select>/<textarea> (no class) previously fell back to default
+   browser chrome. Give them the same treatment as .form-input so every page
+   looks consistent without touching page logic. Inline styles and the
+   .form-* classes still win where they set the same properties. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+select,
+textarea {
+  padding: 12px 16px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  transition: var(--transition);
+  outline: none;
+  max-width: 100%;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):focus,
+select:focus,
+textarea:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+select:not([multiple]):not([size]) {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+/* Checkboxes and radios pick up the accent everywhere. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* Native file inputs: style the picker button like a small ghost button. */
+input[type="file"] {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+input[type="file"]::file-selector-button {
+  padding: 8px 16px;
+  margin-right: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+input[type="file"]::file-selector-button:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--accent);
+}
+
+/* Dark calendar/clock icons on date & time inputs (Chromium). */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
+}

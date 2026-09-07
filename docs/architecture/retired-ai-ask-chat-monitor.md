@@ -22,7 +22,7 @@ narrative answer. It was the *only* consumer of `aiAskService.js`.
 | Backend service | `services/aiAskService.js` (deleted — `askData`, `compilePlan`, `parsePlan`, `buildMessageLink`) |
 | Backend import | `const { askData } = require('../services/aiAskService')` in `server/api.js` |
 | Tests | `tests/aiAsk.test.js` (deleted) |
-| Dev script | Removed the `POST /api/ai-ask` section from `scripts/e2e-ai-insights-live.js` |
+| Dev script | `scripts/e2e-ai-insights-live.js` exercised this API; it has since been removed too |
 | Dead helper | `humanizeColumn()` in `admin/src/utils/formatTime.js` (was only used by AskDataPanel) |
 | Docs | `docs/architecture/module-map.md` and `docs/deployment/pre-deploy-checklist.md` (H1–H3) updated to drop Ask-the-Data references |
 | Comments/env wording | `services/groqClient.js` consumer list; "Ask Data" wording in `.env.example` and `README.md` |

@@ -1,0 +1,109 @@
+/* ─── Raise Review public page ─── */
+.raise-public-wrap {
+  max-width: 560px;
+  margin: 40px auto;
+  padding: 0 16px 40px;
+}
+
+.raise-public-wrap h2 {
+  margin-bottom: 8px;
+}
+
+.raise-public-wrap .card > p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.55;
+  margin-bottom: 20px;
+}
+
+.raise-otp-input {
+  text-align: center;
+  font-size: 22px !important;
+  letter-spacing: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.raise-driver-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: var(--transition);
+}
+
+.raise-driver-row:hover {
+  border-color: rgba(99, 102, 241, 0.35);
+}
+
+.raise-driver-name {
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.raise-driver-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.raise-steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.raise-step {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  transition: background 0.3s ease;
+}
+
+.raise-step.active {
+  background: linear-gradient(90deg, var(--accent), #a78bfa);
+}
+
+.raise-step.completed {
+  background: var(--success);
+}
+
+.raise-success {
+  text-align: center;
+  padding: 24px 8px;
+}
+
+.raise-success .raise-success-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  background: var(--success-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+}
+
+@media (max-width: 480px) {
+  .raise-public-wrap {
+    margin: 16px auto;
+  }
+
+  .raise-driver-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .raise-driver-actions .btn {
+    flex: 1;
+  }
+}

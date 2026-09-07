@@ -15,7 +15,7 @@ all background services loaded, before network/DB connect):
 | Node runtime baseline | ~42 MB |
 | + config + database (pg) | ~55 MB |
 | + Telegram bot (telegraf + services) | ~78 MB |
-| + Express API (express, fleet, multer) | ~88 MB |
+| + Express API (express, multer) | ~88 MB |
 | **Boot total** | **~88–94 MB** |
 
 Heavy libraries are lazy-loaded and cost nothing until first use:

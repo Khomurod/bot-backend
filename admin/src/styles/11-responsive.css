@@ -1,0 +1,440 @@
+/* ─── Responsive: Quick Query Cards ─── */
+@media (max-width: 768px) {
+  .quick-query-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .wizard-progress {
+    margin-bottom: 24px;
+  }
+
+  .wizard-step-label {
+    font-size: 10px;
+    max-width: 60px;
+  }
+
+  .page-header-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .summary-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Home Time */
+.home-time-toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.home-time-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.home-time-summary-chip,
+.home-time-metric {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.home-time-summary-chip strong,
+.home-time-metric strong {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.home-time-summary-chip span,
+.home-time-metric span,
+.home-time-metric small,
+.home-time-muted,
+.home-time-subtext,
+.home-time-detail-header p,
+.home-time-section-head p {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.home-time-detail-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.home-time-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.home-time-sort-button.active {
+  color: var(--text-primary);
+}
+
+.home-time-sort-arrow {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.home-time-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  flex-wrap: wrap;
+}
+
+.home-time-detail-header h3,
+.home-time-section h4 {
+  margin-bottom: 4px;
+}
+
+.home-time-detail-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.home-time-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.home-time-section {
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.home-time-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 14px;
+}
+
+.home-time-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.home-time-readonly {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+}
+
+.home-time-driver-name {
+  font-weight: 600;
+}
+
+.home-time-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 6, 14, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 1000;
+}
+
+.home-time-modal-card {
+  width: min(1240px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-time-modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+.home-time-modal-kicker {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.home-time-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.home-time-modal-close {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.home-time-modal-body {
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.home-time-row-selected td {
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.home-time-row-selected:hover td {
+  background: rgba(99, 102, 241, 0.16);
+}
+
+.home-time-empty-cell,
+.home-time-empty-box {
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.home-time-empty-box {
+  padding: 32px 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.home-time-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.home-time-activity-item {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.home-time-activity-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 10px;
+}
+
+.home-time-status-pill {
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: rgba(148, 163, 184, 0.14);
+  white-space: nowrap;
+}
+
+.home-time-activity-meta {
+  display: flex;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.home-time-action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1024px) {
+  .home-time-modal-card {
+    width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .home-time-summary-strip,
+  .home-time-metrics,
+  .home-time-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .home-time-activity-top {
+    flex-direction: column;
+  }
+
+  .home-time-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .home-time-modal-backdrop {
+    padding: 12px;
+  }
+
+  .home-time-modal-header {
+    flex-direction: column;
+  }
+}
+
+/* ─── Overflow & responsiveness guards ─── */
+
+/* The fixed sidebar + flex main area: without min-width the content column
+   refuses to shrink below its widest child and pushes off-screen. */
+.main-content {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Long unbroken strings (chat IDs, URLs, driver names) wrap instead of
+   escaping their container. */
+.card,
+td,
+th,
+.alert,
+.lead-card,
+.broadcast-history-item,
+.delivery-row {
+  overflow-wrap: anywhere;
+}
+
+/* Cards containing a table become their own horizontal scroll area, so wide
+   tables never stretch the page. (Inner .table-container scrolls first when
+   present; the card is the fallback.) */
+.card:has(table) {
+  overflow-x: auto;
+}
+
+table {
+  max-width: 100%;
+}
+
+/* Dialogs must never exceed the viewport; they scroll internally. */
+.confirm-dialog {
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+/* Click tracking table (Broadcast history) scrolls inside its box. */
+.click-tracking-table {
+  overflow-x: auto;
+}
+
+/* Sidebar: keep its own scroll when nav grows taller than the viewport. */
+.sidebar-nav {
+  overflow-y: auto;
+}
+
+@media (max-width: 1024px) {
+  .main-content {
+    padding: 24px 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .main-content {
+    padding: 14px 12px;
+  }
+
+  /* 16px stops iOS Safari from auto-zooming focused fields. */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea,
+  .form-input,
+  .form-select,
+  .form-textarea {
+    font-size: 16px;
+  }
+
+  .page-header h2,
+  .page-header-bar h2 {
+    font-size: 22px;
+  }
+
+  .btn {
+    padding: 10px 16px;
+  }
+}
+
+/* ─── Formatting toolbar (Broadcast) modernization ─── */
+.formatting-toolbar .fmt-btn,
+.formatting-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: inherit;
+}
+
+.formatting-toolbar .fmt-btn:hover,
+.formatting-toolbar button:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+.formatting-toolbar .fmt-btn:active,
+.formatting-toolbar button:active {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.formatting-toolbar .divider,
+.formatting-toolbar .fmt-sep {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+  margin: 0 6px;
+  align-self: center;
+}

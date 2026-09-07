@@ -24,20 +24,10 @@ const {
   handleTestHubStatusCommand,
 } = require('../dispatchStatusLookupHandlers');
 
-// Disabled leftover debug instrumentation (see bot/bot.js). No-op kept so the
-// moved call sites stay valid.
-function debugLog() {}
-
 function registerDispatchCommands(bot) {
   // Summarize resolved load context (stored recent loads → pin → chat history). No GPS.
   bot.command('load', async (ctx) => {
     try {
-      // #region agent log
-      debugLog('bot/bot.js:load', '/load handler entered', {
-        chatId: ctx.chat?.id,
-        chatType: ctx.chat?.type,
-      }, 'C');
-      // #endregion
       const chatType = ctx.chat?.type;
       if (chatType !== 'group' && chatType !== 'supergroup') {
         await ctx.reply('Use /load inside a driver group chat.');
@@ -45,15 +35,6 @@ function registerDispatchCommands(bot) {
       }
 
       const group = await db.getGroupByTelegramId(ctx.chat.id);
-      // #region agent log
-      debugLog('bot/bot.js:load', '/load group lookup', {
-        chatId: ctx.chat?.id,
-        found: Boolean(group),
-        groupType: group?.group_type || null,
-        active: group?.active ?? null,
-        groupId: group?.id ?? null,
-      }, 'B');
-      // #endregion
       if (!group || group.group_type !== 'driver' || !group.active) {
         await ctx.reply('This command works only in active driver groups.');
         return;
@@ -92,13 +73,6 @@ function registerDispatchCommands(bot) {
   // Dispatcher helper: post live truck location for this group's unit number.
   bot.command('location', async (ctx) => {
     try {
-      // #region agent log
-      debugLog('bot/bot.js:location', '/location handler entered', {
-        chatId: ctx.chat?.id,
-        chatType: ctx.chat?.type,
-        chatTitle: ctx.chat?.title || '',
-      }, 'C');
-      // #endregion
       const chatType = ctx.chat?.type;
       if (chatType !== 'group' && chatType !== 'supergroup') {
         await ctx.reply('Use /location inside a driver group chat.');
@@ -139,21 +113,7 @@ function registerDispatchCommands(bot) {
 
       await ctx.replyWithLocation(location.latitude, location.longitude);
       await ctx.reply(buildLocationSummaryLines({ location, source }).join('\n'));
-      // #region agent log
-      debugLog('bot/bot.js:location', '/location succeeded', {
-        chatId: ctx.chat?.id,
-        source,
-        hasCoords: Boolean(location?.latitude && location?.longitude),
-      }, 'D');
-      // #endregion
     } catch (err) {
-      // #region agent log
-      debugLog('bot/bot.js:location', '/location failed', {
-        chatId: ctx.chat?.id,
-        error: err?.message || String(err),
-        code: err?.code || null,
-      }, 'D');
-      // #endregion
       console.error('[BOT] /location failed:', err.message);
       await ctx.reply('Could not fetch live location right now. Please try again in a minute.');
     }
@@ -205,12 +165,6 @@ function registerDispatchCommands(bot) {
 function registerStatusCommand(bot) {
   bot.command('status', async (ctx) => {
     try {
-      // #region agent log
-      debugLog('bot/bot.js:status', '/status handler entered', {
-        chatId: ctx.chat?.id,
-        chatType: ctx.chat?.type,
-      }, 'C');
-      // #endregion
       const chatType = ctx.chat?.type;
       if (chatType !== 'group' && chatType !== 'supergroup') {
         await ctx.reply('Use /status inside a driver group chat.');
@@ -218,27 +172,12 @@ function registerStatusCommand(bot) {
       }
 
       const testHub = await isDispatchEtaTestHub(ctx);
-      // #region agent log
-      debugLog('bot/bot.js:status', '/status test hub check', {
-        chatId: ctx.chat?.id,
-        testHub,
-      }, 'E');
-      // #endregion
       if (testHub) {
         await handleTestHubStatusCommand(ctx);
         return;
       }
 
       const group = await db.getGroupByTelegramId(ctx.chat.id);
-      // #region agent log
-      debugLog('bot/bot.js:status', '/status group lookup', {
-        chatId: ctx.chat?.id,
-        found: Boolean(group),
-        groupType: group?.group_type || null,
-        active: group?.active ?? null,
-        groupId: group?.id ?? null,
-      }, 'B');
-      // #endregion
       if (!group || group.group_type !== 'driver' || !group.active) {
         await ctx.reply('This command works only in active driver groups.');
         return;
@@ -256,20 +195,7 @@ function registerStatusCommand(bot) {
         targetMode: 'driver',
         interactive: true,
       }).catch(() => {});
-      // #region agent log
-      debugLog('bot/bot.js:status', '/status snapshot detached', {
-        chatId: ctx.chat?.id,
-        groupId: group.id,
-      }, 'D');
-      // #endregion
     } catch (err) {
-      // #region agent log
-      debugLog('bot/bot.js:status', '/status failed', {
-        chatId: ctx.chat?.id,
-        error: err?.message || String(err),
-        code: err?.code || null,
-      }, 'D');
-      // #endregion
       console.error('[BOT] /status failed:', err.message);
       await ctx.reply('Could not build current status right now. Please try again shortly.');
     }
