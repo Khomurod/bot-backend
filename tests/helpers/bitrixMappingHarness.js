@@ -51,8 +51,9 @@ function loadModules({ enabled = true, webhookUrl = WEBHOOK, recruiters = [], on
   };
   require.cache[BITRIX_PATH] = {
     exports: {
-      isBitrixConfigured: () => Boolean(enabled && webhookUrl),
+      isBitrixConfigured: async () => Boolean(enabled && webhookUrl),
       normalizeWebhookBase: (u) => (u ? String(u).replace(/\/?$/, '/') : ''),
+      getWebhookBase: async () => (enabled && webhookUrl ? String(webhookUrl).replace(/\/?$/, '/') : ''),
     },
   };
   require.cache[RC_PATH] = {

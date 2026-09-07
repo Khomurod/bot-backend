@@ -95,6 +95,14 @@ segments — day-to-day changes are forward migrations.
     (`idx_recruiters_bitrix_user_id … WHERE bitrix_user_id IS NOT NULL`): one
     Bitrix user maps to at most one recruiter, but any number of recruiters may
     have none. Without the uniqueness, a lead's sender would be a coin flip.
+- **Bitrix24 is configured in the app, not on the host** (migration 0009,
+  `bitrix_settings`): one row, `id = 1`, the inbound webhook encrypted with the
+  same AES-256-GCM scheme as every other stored credential. **Every column is
+  nullable on purpose — NULL means "inherit the `BITRIX24_*` env var"**, so an
+  env-only deployment is unchanged until someone saves. `assigned_by_id` is
+  TEXT so that `''` (explicitly nobody) is distinct from NULL (inherit): the env
+  value it has to beat is a NAME Bitrix ignores. The URL path is the credential;
+  `database/bitrix.js` exposes only its host, never a masked tail.
 - The `samsara-integration` service shares the database. It creates its own
   `samsara_*` tables (and mirrors `safety_event_video_jobs`) with
   `CREATE TABLE IF NOT EXISTS` in `src/db.js → initPgDb()`. `bot-backend` remains

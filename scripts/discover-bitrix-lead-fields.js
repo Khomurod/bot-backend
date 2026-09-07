@@ -2,6 +2,11 @@
 /**
  * Discover Bitrix24 lead field API names and INCOMING status id.
  * Usage: BITRIX24_WEBHOOK_URL=https://wenze.bitrix24.com/rest/1/xxx/ node scripts/discover-bitrix-lead-fields.js
+ *
+ * This is a one-off CLI and reads the webhook from the ENVIRONMENT only. The
+ * running app reads it from Settings → RingCentral → Bitrix24 (database/bitrix.js),
+ * so if the webhook was entered there rather than in .env, pass it explicitly on
+ * the command line as above — the script never touches the database.
  */
 require('dotenv').config();
 

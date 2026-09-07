@@ -73,7 +73,7 @@ async function previewRecruiterBitrixMapping({ fetchImpl } = {}) {
     reason: null,
     message: null,
     bitrixUsers: directory.total,
-    bitrixHost: webhookHost(),
+    bitrixHost: await webhookHost(),
     recruiters: recruiters.length,
     ...plan,
   };

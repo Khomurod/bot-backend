@@ -13,8 +13,7 @@
  * path, so the base URL never appears in a return value, a log line or an
  * error message here — only the host, and only where a caller asks for it.
  */
-const config = require('../../config/config');
-const { normalizeWebhookBase, isBitrixConfigured } = require('../bitrix24Service');
+const { isBitrixConfigured, getWebhookBase } = require('../bitrix24Service');
 
 /** Bitrix pages user.get at 50; stop well before a runaway loop. */
 const MAX_PAGES = 40;
@@ -52,9 +51,10 @@ function normalizeBitrixUser(row) {
 }
 
 /** Host only — never the webhook path, which is the credential. */
-function webhookHost() {
+async function webhookHost() {
   try {
-    return new URL(normalizeWebhookBase(config.bitrix24WebhookUrl)).host;
+    const base = await getWebhookBase();
+    return base ? new URL(base).host : '';
   } catch {
     return '';
   }
@@ -66,11 +66,11 @@ function webhookHost() {
  * network failure, because both callers report rather than crash.
  */
 async function fetchBitrixUsers({ fetchImpl = fetch } = {}) {
-  if (!isBitrixConfigured()) {
+  if (!(await isBitrixConfigured())) {
     return { ok: false, users: [], total: 0, reason: 'not_configured' };
   }
 
-  const base = normalizeWebhookBase(config.bitrix24WebhookUrl);
+  const base = await getWebhookBase();
   const users = [];
   let start = 0;
 
@@ -129,11 +129,11 @@ async function fetchBitrixUserById(bitrixId, { fetchImpl = fetch } = {}) {
   if (!Number.isFinite(id) || id <= 0) {
     return { ok: false, user: null, reason: 'invalid_id' };
   }
-  if (!isBitrixConfigured()) {
+  if (!(await isBitrixConfigured())) {
     return { ok: false, user: null, reason: 'not_configured' };
   }
 
-  const base = normalizeWebhookBase(config.bitrix24WebhookUrl);
+  const base = await getWebhookBase();
   let body;
   try {
     const response = await fetchImpl(`${base}user.get.json?ID=${id}`);

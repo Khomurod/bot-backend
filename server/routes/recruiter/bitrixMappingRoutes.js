@@ -45,7 +45,7 @@ function registerRecruiterBitrixMappingRoutes(router, { authMiddleware }) {
       // matched server-side and never have to reach the browser to do it.
       return res.json({
         ok: true,
-        bitrixHost: webhookHost(),
+        bitrixHost: await webhookHost(),
         users: directory.users.map(({ id, fullName, email, position, active }) => ({
           id, fullName, email, position, active,
         })),
@@ -77,7 +77,7 @@ function registerRecruiterBitrixMappingRoutes(router, { authMiddleware }) {
       return res.json({
         ok: true,
         found: Boolean(u),
-        bitrixHost: webhookHost(),
+        bitrixHost: await webhookHost(),
         user: u
           ? { id: u.id, fullName: u.fullName, email: u.email, position: u.position, active: u.active }
           : null,

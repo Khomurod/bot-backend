@@ -554,7 +554,7 @@ as ID-only.
 | **Google Maps** (Routes + Geocoding) | `GOOGLE_MAPS_API_KEY`, Settings → GMaps `enabled` | ETA routing, Route Control geometry, geocoding | off-route warnings stop; destination auto-completion keeps working |
 | **Meta / Facebook** | `META_*`, `WEBHOOK_VERIFY_TOKEN`, `FACEBOOK_TOKEN_ENCRYPTION_KEY` | lead capture, Page connect | events are persisted before processing, then retried |
 | **RingCentral** | `RC_*` env → shared pair in `ringcentral_settings`; **per-recruiter** creds live on the `recruiters` row — an OAuth refresh token (preferred) or its own JWT, plus an optional custom client pair (`resolveRecruiterRcAuth` picks: `oauth` > `jwt` > `none`) | lead auto-SMS **as the assigned recruiter**, two-way mirroring, recruiter call KPIs | per-recruiter send falls back to the shared number and says so; refresh tokens are renewed daily and a dead grant is flagged `rc_auth_error`; SMS-only fallback when an MMS filter rejects |
-| **Bitrix24 CRM** | `BITRIX24_*` + field maps in `config/`; `BITRIX24_ASSIGNEE_WAIT_MS`. **`BITRIX24_ASSIGNED_BY_ID` must be a NUMERIC user id** — a name there is ignored by Bitrix, so leads go to the webhook owner; the mapper warns once and Settings → RingCentral → Bitrix24 reports it as ignored | dual delivery of every Facebook lead, **and reading back who owns it** (`crm.lead.get` → `ASSIGNED_BY_ID`) to pick the SMS sender | best-effort; never blocks the Telegram post, and an unreadable assignee degrades to the shared sending number. A form answer with no Bitrix field is written into the lead's COMMENTS rather than dropped. `POST /api/settings/bitrix/diagnose` reports the whole chain; the webhook URL is a credential and is never returned, only its host |
+| **Bitrix24 CRM** | **Entered in Settings → RingCentral → Bitrix24** and stored in `bitrix_settings` (single row, webhook encrypted); `BITRIX24_*` env vars are the fallback for anything never saved — the DB row wins once set. The field maps stay file/env-based in `config/`. **The assignee must be a NUMERIC user id** — a name there is ignored by Bitrix, so leads go to the webhook owner; the form refuses a name, the mapper warns once, and the card reports an env-supplied name as ignored | dual delivery of every Facebook lead, **and reading back who owns it** (`crm.lead.get` → `ASSIGNED_BY_ID`) to pick the SMS sender | best-effort; never blocks the Telegram post, and an unreadable assignee degrades to the shared sending number. A form answer with no Bitrix field is written into the lead's COMMENTS rather than dropped. `POST /api/settings/bitrix/diagnose` reports the whole chain; the webhook URL is a credential and is never returned, only its host |
 | **AI: Groq and Gemini** | `GROQ_API_KEY`, `GEMINI_API_KEY` | reports, insights, annotation, group-status classification, driver-profile parsing, trailer vision/verification/extraction, fuel detection, home-time intent, translation | **the fallback is per-consumer, not global** — see below |
 | **Supabase Storage** (optional) | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `TRAILER_STORAGE_BUCKET` | trailer media | **optional by design** — with no bucket, bytes go to Postgres (`trailer_media_blobs`); reads follow the backend recorded on the row |
 | **Gmail App Password** | `GMAIL_USER`, `GMAIL_APP_PASSWORD` | raise OTP email | RingCentral SMS is the alternative channel |
@@ -624,9 +624,9 @@ process** — that is what lets tests import services with no production secrets
 `RENDER_EXTERNAL_URL` set, requiring the module throws.
 
 Several integrations are **runtime-editable in the admin Settings tab and the DB
-row wins over env**: `eld_settings`, `ringcentral_settings`, `gmaps_settings`,
-`message_group_settings`, `trailer_settings`, `safety_event_video_settings`,
-`bol_pod_forwarding_settings`.
+row wins over env**: `eld_settings`, `ringcentral_settings`, `bitrix_settings`,
+`gmaps_settings`, `message_group_settings`, `trailer_settings`,
+`safety_event_video_settings`, `bol_pod_forwarding_settings`.
 
 ---
 
@@ -1065,14 +1065,14 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-09-07, deps installed, no `TEST_DATABASE_URL`): **2506 tests,
-  2352 pass, 0 fail, 154 skipped** (the skips are the `*Pg` integration tests),
+  baseline (2026-09-07, deps installed, no `TEST_DATABASE_URL`): **2530 tests,
+  2372 pass, 0 fail, 158 skipped** (the skips are the `*Pg` integration tests),
   exit 0. The unit-only set CI runs — the same glob minus `*Pg.test.js` — is
-  **2352 pass, 0 skipped**. With a database (`TEST_DATABASE_URL`) nothing skips:
-  the whole suite is **2574 tests, 2574 pass, 0 skipped**. The Python leads
+  **2369 pass, 0 skipped**. With a database (`TEST_DATABASE_URL`) nothing skips:
+  the whole suite is **2598 tests, 2598 pass, 0 skipped**. The Python leads
   worker adds **37 tests**
   (`python -m unittest discover -s leads-bot -p "test_*.py"`), and the admin
-  panel **227** (`npm test --prefix admin`). **So any failure is a real
+  panel **237** (`npm test --prefix admin`). **So any failure is a real
   failure** — there is no "expected failures" allowance. *(An older internal doc
   claimed ~19 expected failures in a bare environment; that is no longer true and
   must not be used to excuse one.)* If

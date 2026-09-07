@@ -168,10 +168,37 @@ feature degrades to the old behaviour rather than breaking.
    decide on its own — and note it needs the **`user` scope** on the inbound
    webhook, which a CRM-only webhook does not have.
 4. **Confirm the Bitrix rule actually assigns new leads**, and roughly how
-   fast. If assignment regularly takes longer than
-   `BITRIX24_ASSIGNEE_WAIT_MS`, raise it — or move to a Bitrix outgoing webhook
+   fast. If assignment regularly takes longer than the *wait for a distribution
+   rule* setting (Settings → RingCentral → Bitrix24; env fallback
+   `BITRIX24_ASSIGNEE_WAIT_MS`), raise it — or move to a Bitrix outgoing webhook
    (`ONCRMLEADUPDATE`) instead of polling. Polling was chosen because it needs
    no new public endpoint and no Bitrix-side configuration.
+
+## Where Bitrix is configured
+
+In the app. Settings → RingCentral → Bitrix24 → **Bitrix24 connection** writes
+`bitrix_settings` (`database/bitrix.js`, migration 0009): enabled, the inbound
+webhook (encrypted at rest), entity, the assignee at creation, source id and
+description, deal pipeline, and the assignee wait. **A saved value wins over
+the matching `BITRIX24_*` environment variable; a value never saved inherits
+it** — so an env-only deployment behaves exactly as before until someone
+saves. Every Bitrix caller reads the effective config at call time through
+`bitrix24Service` (`isBitrixConfigured`, `getWebhookBase`,
+`getBitrixMapperConfig` — all async), never from a module-scope constant.
+
+Two rules that are easy to get wrong:
+
+- **The assignee field refuses a name.** The production value was
+  `Tom Robinson`, which Bitrix ignores, so every lead landed on the webhook
+  owner while the config looked effective. The form, the route and
+  `database/bitrix.js` all reject anything that is not a positive integer (a
+  pasted profile URL is cleaned to its number). Blank means "let a Bitrix
+  distribution rule assign", and — because `assigned_by_id` is TEXT — a blank
+  saved in the panel is `''`, which beats the env name, rather than NULL, which
+  would inherit it.
+- **The URL is the credential.** It is never returned to a browser — the admin
+  view carries `webhookHost` and `webhookSet` only, and not even a masked tail,
+  since the tail is part of the token.
 
 ## Mapping recruiters to Bitrix users
 

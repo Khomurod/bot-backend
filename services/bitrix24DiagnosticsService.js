@@ -21,12 +21,11 @@
  * NEVER RETURNS THE WEBHOOK URL. The Bitrix inbound webhook's secret IS its
  * URL, so only the host is ever reported.
  */
-const config = require('../config/config');
 const rc = require('../database/ringcentral');
 const {
   isBitrixConfigured,
   getBitrixMapperConfig,
-  normalizeWebhookBase,
+  getWebhookBase,
   loadBitrixFieldCatalog,
   getCrmRecordAssignee,
 } = require('./bitrix24Service');
@@ -34,8 +33,8 @@ const { resolveFieldMapConfig, loadBitrixFieldMapConfig } = require('./bitrix24F
 const { findFieldByTitleHints } = require('./bitrix24FieldCatalog');
 
 /** The host only — the path carries the secret. */
-function webhookHost() {
-  const base = normalizeWebhookBase(config.bitrix24WebhookUrl);
+async function webhookHost() {
+  const base = await getWebhookBase();
   if (!base) return '';
   try {
     return new URL(base).host;
@@ -68,19 +67,19 @@ function fieldMapVariants() {
 }
 
 /** Configuration that can be judged without calling Bitrix at all. */
-function checkConfiguration(steps) {
-  const configured = isBitrixConfigured();
+async function checkConfiguration(steps) {
+  const configured = await isBitrixConfigured();
   step(
     steps,
     'Bitrix24 enabled and webhook configured',
     configured,
     configured
-      ? `Inbound webhook at ${webhookHost()} (secret not shown).`
-      : 'Set BITRIX24_ENABLED=true and BITRIX24_WEBHOOK_URL. Leads are still posted to Telegram and still texted from the shared number.',
+      ? `Inbound webhook at ${await webhookHost()} (secret not shown).`
+      : 'Turn Bitrix24 on and enter the inbound webhook URL in Settings → RingCentral → Bitrix24. Leads are still posted to Telegram and still texted from the shared number.',
   );
   if (!configured) return false;
 
-  const mapper = getBitrixMapperConfig();
+  const mapper = await getBitrixMapperConfig();
   step(steps, 'Entity', true, `Creating a ${mapper.entity}.`);
   if (mapper.entity === 'deal') {
     const ok = Number(mapper.dealCategoryId) > 0 && Boolean(mapper.dealStageId);
@@ -90,7 +89,7 @@ function checkConfiguration(steps) {
       ok,
       ok
         ? `Category ${mapper.dealCategoryId}, stage ${mapper.dealStageId}.`
-        : 'BITRIX24_DEAL_CATEGORY_ID and BITRIX24_DEAL_STAGE_ID are required when the entity is deal — every lead is rejected until both are set.',
+        : 'A deal category and a deal stage are both required when the entity is deal — set them in Settings → RingCentral → Bitrix24. Every lead is rejected until both are set.',
     );
   }
 
@@ -111,8 +110,8 @@ function checkConfiguration(steps) {
       steps,
       'Assignee at creation',
       false,
-      `BITRIX24_ASSIGNED_BY_ID is "${raw}", which is not a numeric Bitrix user id, so it is IGNORED and leads go to the webhook owner. `
-      + 'Use the id from the Bitrix profile URL (/company/personal/user/<id>/), or clear it if a distribution rule assigns leads.',
+      `The assignee at creation is "${raw}", which is not a numeric Bitrix user id, so it is IGNORED and leads go to the webhook owner. `
+      + 'In Settings → RingCentral → Bitrix24 enter the id from the Bitrix profile URL (/company/personal/user/<id>/), or leave it blank if a distribution rule assigns leads.',
     );
   }
   return true;
@@ -258,7 +257,7 @@ async function checkAssigneeReadback(steps, { db, fetchImpl }) {
       steps,
       'Assignee readback (crm.lead.get)',
       false,
-      `Lead ${lead.bitrix_id} has no responsible person. Leads must be assigned — by a distribution rule or by BITRIX24_ASSIGNED_BY_ID — or the sender has nobody to match.`,
+      `Lead ${lead.bitrix_id} has no responsible person. Leads must be assigned — by a Bitrix distribution rule, or by the "assignee at creation" in Settings → RingCentral → Bitrix24 — or the sender has nobody to match.`,
     );
     return;
   }
@@ -369,7 +368,7 @@ async function checkRecentOutcomes(steps, { db, days = 14 }) {
  */
 async function diagnoseBitrix({ db = require('../database/db'), fetchImpl = fetch, days = 14 } = {}) {
   const steps = [];
-  if (!checkConfiguration(steps)) return { ok: false, steps };
+  if (!(await checkConfiguration(steps))) return { ok: false, steps };
 
   const catalog = await checkReachable(steps, { fetchImpl });
   if (catalog) checkFieldMap(steps, catalog);

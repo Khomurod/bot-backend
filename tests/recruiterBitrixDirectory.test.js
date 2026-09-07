@@ -160,7 +160,7 @@ test('Bitrix not configured is a reason, not an attempted request', async () => 
 test('only the host of the webhook is ever exposed', async () => {
   const { directory, restore } = loadModules();
   try {
-    assert.equal(directory.webhookHost(), 'wenze.bitrix24.com');
+    assert.equal(await directory.webhookHost(), 'wenze.bitrix24.com');
   } finally { restore(); }
 });
 

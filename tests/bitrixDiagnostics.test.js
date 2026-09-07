@@ -70,9 +70,10 @@ function loadDiag({
   };
   require.cache[BITRIX_PATH] = {
     exports: {
-      isBitrixConfigured: () => Boolean(enabled && webhookUrl),
+      isBitrixConfigured: async () => Boolean(enabled && webhookUrl),
       normalizeWebhookBase: (u) => (u ? String(u) : ''),
-      getBitrixMapperConfig: () => ({ entity, assignedById, dealCategoryId, dealStageId, sourceId: 'WEB' }),
+      getWebhookBase: async () => (enabled && webhookUrl ? String(webhookUrl) : ''),
+      getBitrixMapperConfig: async () => ({ entity, assignedById, dealCategoryId, dealStageId, sourceId: 'WEB' }),
       loadBitrixFieldCatalog: async () => {
         if (catalogError) throw catalogError;
         return catalog;
@@ -162,7 +163,8 @@ test('an unconfigured Bitrix stops after saying so, and says leads still get tex
   const result = await run({ enabled: false, webhookUrl: '' });
   assert.equal(result.ok, false);
   assert.equal(result.steps.length, 1, 'no point checking anything else');
-  assert.match(result.steps[0].detail, /BITRIX24_ENABLED/);
+  // It has to say WHERE to configure it — the panel, not an env var on the host.
+  assert.match(result.steps[0].detail, /Settings → RingCentral → Bitrix24/);
   assert.match(result.steps[0].detail, /shared number/i, 'the operator needs to know leads are not lost');
 });
 

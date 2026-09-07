@@ -150,6 +150,11 @@
       "purpose": "Links a Telegram message to the driver phone it mirrors, so a reply typed in the group is relayed as an SMS exactly once. recruiter_id/from_number record WHICH of our numbers the conversation is on, so the reply leaves from the same number that first texted the driver.",
       "status": "active",
       "service": "bot-backend (facebookLeadSmsMirrorService.js), leads-bot inbound forwarder"
+    },
+    "bitrix_settings": {
+      "purpose": "Single-row (id=1) Bitrix24 CRM settings edited in Settings → RingCentral → Bitrix24: enabled, inbound webhook (encrypted — the URL path IS the credential, never returned to a browser), entity, assignee at creation, source, deal pipeline, assignee wait. Every column NULL = inherit the BITRIX24_* env var; the DB row wins once set. assigned_by_id is TEXT so '' (explicitly nobody) differs from NULL (inherit).",
+      "status": "active",
+      "service": "admin (Settings → RingCentral → Bitrix24), bitrix24Service, facebookLeadSmsSender"
     }
   }
 }
