@@ -18,13 +18,25 @@ import { cleanBitrixUserId } from "./bitrixUserId";
  *
  * THE ASSIGNEE FIELD is validated here, not just on the server: the production
  * mistake this replaces was a NAME in that slot, which Bitrix silently ignores.
+ *
+ * TWO RULES THAT CAME FROM THE FIRST DAY IN PRODUCTION:
+ *   • Never pre-fill the assignee with a value this form would then refuse.
+ *     The environment supplied "Tom Robinson"; the form seeded it into the
+ *     field, Save rejected it, and the operator saw "the button does nothing".
+ *     An ignored value is shown in red UNDER the field and the field starts
+ *     blank — saving replaces the ignored value with "nobody" on purpose.
+ *   • Every reason a save did not happen is printed right under the button.
+ *     The tab-level banner is above the fold on a long page; a rejection
+ *     that only lands there is invisible from where the click happened.
  */
 const seed = (s) => ({
   enabled: Boolean(s?.enabled),
   webhookUrl: "",
   clearWebhookUrl: false,
   entity: s?.entity === "deal" ? "deal" : "lead",
-  assignedById: s?.assignedByIdRaw ?? (s?.assignedById != null ? String(s.assignedById) : ""),
+  assignedById: s?.assignedByIdIgnored
+    ? ""
+    : (s?.assignedByIdRaw ?? (s?.assignedById != null ? String(s.assignedById) : "")),
   sourceId: s?.sourceId || "",
   sourceDescription: s?.sourceDescription || "",
   dealCategoryId: s?.dealCategoryId || "",
@@ -38,24 +50,27 @@ const hint = { fontSize: 12, color: "#94a3b8", marginTop: 4 };
 export default function BitrixSettingsForm({ settings, onSaved, onMessage }) {
   const [form, setForm] = useState(() => seed(settings));
   const [saving, setSaving] = useState(false);
-  const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const [error, setError] = useState(null);
+  const setField = (k, v) => { setError(null); setForm((f) => ({ ...f, [k]: v })); };
 
   // A save elsewhere (or a fresh load) changes what is stored; re-seed the
   // non-secret fields so the form never shows a stale assignee or entity.
   useEffect(() => { setForm((f) => ({ ...seed(settings), webhookUrl: f.webhookUrl })); }, [settings]);
 
+  // Inline under the button AND the tab banner — the inline one is the one
+  // the operator is looking at when they click.
+  const fail = (text) => { setError(text); onMessage?.({ type: "error", text }); };
+
   const save = async () => {
+    setError(null);
     const assignee = cleanBitrixUserId(form.assignedById);
     if (!assignee.ok) {
-      onMessage?.({
-        type: "error",
-        text: `"${String(form.assignedById).trim()}" is not a Bitrix user id — use the number from the `
-          + "profile URL (e.g. 17), or leave it blank so a Bitrix distribution rule assigns leads.",
-      });
+      fail(`"${String(form.assignedById).trim()}" is not a Bitrix user id — use the number from the `
+        + "profile URL (e.g. 17), or leave it blank so a Bitrix distribution rule assigns leads.");
       return;
     }
     if (form.entity === "deal" && (!form.dealCategoryId.trim() || !form.dealStageId.trim())) {
-      onMessage?.({ type: "error", text: "A deal needs both a category id and a stage id." });
+      fail("A deal needs both a category id and a stage id.");
       return;
     }
 
@@ -79,7 +94,7 @@ export default function BitrixSettingsForm({ settings, onSaved, onMessage }) {
       onMessage?.({ type: "success", text: "Bitrix24 settings saved." });
       onSaved?.(saved);
     } catch (err) {
-      onMessage?.({ type: "error", text: err.message });
+      fail(err.message);
     } finally {
       setSaving(false);
     }
@@ -133,7 +148,8 @@ export default function BitrixSettingsForm({ settings, onSaved, onMessage }) {
             Numeric only — from the profile URL <code>/company/personal/user/<strong>17</strong>/</code>.
             {settings?.assignedByIdIgnored && (
               <span style={{ color: "#f87171" }}>
-                {" "}Currently "{settings.assignedByIdRaw}", which Bitrix ignores.
+                {" "}Currently "{settings.assignedByIdRaw}", which Bitrix ignores — save with this
+                blank to clear it, or type a user id.
               </span>
             )}
           </div>
@@ -192,6 +208,11 @@ export default function BitrixSettingsForm({ settings, onSaved, onMessage }) {
           <span style={{ fontSize: 12, color: "#94a3b8" }}>Last saved {new Date(settings.updatedAt).toLocaleString()}</span>
         )}
       </div>
+      {error && (
+        <div role="alert" style={{ marginTop: 8, fontSize: 13, color: "#f87171" }}>
+          Not saved: {error}
+        </div>
+      )}
     </div>
   );
 }

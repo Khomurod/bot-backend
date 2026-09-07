@@ -9,7 +9,11 @@
  *   ② a NAME in the assignee slot is refused before it reaches the server —
  *      that is the production mistake this replaces;
  *   ③ a deal needs both pipeline ids;
- *   ④ seconds in the UI become milliseconds on the wire.
+ *   ④ seconds in the UI become milliseconds on the wire;
+ *   ⑤ an assignee the form would refuse is never PRE-FILLED into the field
+ *      (the environment's "Tom Robinson" was, so Save looked dead);
+ *   ⑥ every refused save says why right under the button, not only in the
+ *      tab banner that is off-screen when the click happens.
  */
 import React from "react";
 import { afterEach, expect, test, vi } from "vitest";
@@ -139,4 +143,45 @@ test("a server rejection is shown, not swallowed", async () => {
   fireEvent.change(assigneeField(), { target: { value: "" } });
   fireEvent.click(saveButton());
   await waitFor(() => expect(onMessage).toHaveBeenCalledWith({ type: "error", text: 'Entity must be "lead" or "deal".' }));
+});
+
+test("an ignored environment assignee is shown in red but NOT pre-filled — the field starts blank", () => {
+  open();
+  expect(assigneeField().value).toBe("");
+  expect(screen.getByText(/Currently "Tom Robinson", which Bitrix ignores/)).toBeTruthy();
+});
+
+test("a stored numeric assignee IS pre-filled", () => {
+  open({ ...SETTINGS, assignedById: 17, assignedByIdRaw: "17", assignedByIdIgnored: false });
+  expect(assigneeField().value).toBe("17");
+});
+
+test("saving straight away with the ignored value replaces it with 'nobody' rather than resending the name", async () => {
+  updateBitrixSettings.mockResolvedValue({ ...SETTINGS, assignedByIdRaw: "", assignedByIdIgnored: false });
+  open();
+  fireEvent.click(saveButton());
+  await waitFor(() => expect(updateBitrixSettings).toHaveBeenCalled());
+  expect(updateBitrixSettings.mock.calls[0][0].assignedById).toBe("");
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("a refused assignee is explained right under the Save button", async () => {
+  open();
+  fireEvent.change(assigneeField(), { target: { value: "Tom Robinson" } });
+  fireEvent.click(saveButton());
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toMatch(/^Not saved: /);
+  expect(alert.textContent).toMatch(/not a Bitrix user id/);
+  expect(updateBitrixSettings).not.toHaveBeenCalled();
+});
+
+test("a server rejection is printed under the button too, and editing the field clears it", async () => {
+  updateBitrixSettings.mockRejectedValue(new Error("Entity must be \"lead\" or \"deal\"."));
+  open();
+  fireEvent.click(saveButton());
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toBe('Not saved: Entity must be "lead" or "deal".');
+
+  fireEvent.change(assigneeField(), { target: { value: "17" } });
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
 });
