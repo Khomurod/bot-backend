@@ -1,12 +1,12 @@
 'use strict';
 
 const { query, pool } = require('./pool');
-const { insertTrailerAudit } = require('./trailerAudit');
+const { insertAdminAudit } = require('./adminAudit');
 const { generateCustomRoleKey, isReservedRoleKey } = require('../lib/rbac/roleKeys');
 
 async function auditRbac(client, actorId, action, entityType, entityId, oldValues, newValues) {
   const actor = actorId ? await getAdminAuthorization(actorId, client) : null;
-  await insertTrailerAudit({ adminId: actorId, roleKeys: actor?.role_keys || [], action,
+  await insertAdminAudit({ adminId: actorId, roleKeys: actor?.role_keys || [], action,
     entityType, entityId, oldValues, newValues }, client);
 }
 

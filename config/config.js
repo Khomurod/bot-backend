@@ -2,7 +2,6 @@ require('dotenv').config();
 
 const metaAppCredentials = require('./metaAppCredentials.json');
 const { loadBitrixFieldMapConfig } = require('../services/bitrix24FieldMapLoader');
-const { resolveTrailerDepartmentEnabled } = require('./trailerDepartmentFlag');
 
 const samsaraApiKeysFromEnv = String(process.env.SAMSARA_API_KEYS || '')
   .split(',')
@@ -148,24 +147,6 @@ module.exports = {
   rcJwtToken: process.env.RC_JWT_TOKEN || '',
   rcApiBase: process.env.RC_API_BASE || 'https://platform.ringcentral.com',
   dispatchEtaTestGroupId: String(process.env.DISPATCH_ETA_TEST_GROUP_ID || '-5289094495').trim(),
-  // Trailer Tracking (Beta): the "Automatic updating (Test)" group that receives
-  // unidentified/unclear trailer commands for review. Env fallback only — the
-  // primary, runtime-editable source is trailer_settings.automatic_update_test_group_id.
-  // Defaults to the shared automatic-updating test group.
-  trailerTestGroupId: String(process.env.TRAILER_TEST_GROUP_ID || process.env.DISPATCH_ETA_TEST_GROUP_ID || '-5289094495').trim(),
-  // Enabled unless TRAILER_DEPARTMENT_ENABLED is explicitly "false" (the
-  // emergency kill switch). A restart is required after changing it.
-  trailerDepartmentEnabled: resolveTrailerDepartmentEnabled(process.env.TRAILER_DEPARTMENT_ENABLED),
-  // Master-list snapshot import limits. The whole official trailer list arrives
-  // as many photos, and this runs on a memory-constrained instance, so the caps
-  // are configurable rather than baked in. Images are processed one at a time
-  // from temp disk (services/trailerMasterList/imageIngest.js).
-  trailerMasterImportMaxImages: Number.parseInt(process.env.TRAILER_MASTER_IMPORT_MAX_IMAGES || '12', 10),
-  trailerMasterImportMaxImageBytes: Number.parseInt(process.env.TRAILER_MASTER_IMPORT_MAX_IMAGE_BYTES || String(8 * 1024 * 1024), 10),
-  trailerMasterImportMaxTotalBytes: Number.parseInt(process.env.TRAILER_MASTER_IMPORT_MAX_TOTAL_BYTES || String(64 * 1024 * 1024), 10),
-  supabaseUrl: normalizeOptionalEnv(process.env.SUPABASE_URL),
-  supabaseServiceRoleKey: normalizeOptionalEnv(process.env.SUPABASE_SERVICE_ROLE_KEY),
-  trailerStorageBucket: String(process.env.TRAILER_STORAGE_BUCKET || 'trailer-private').trim(),
   googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   googleGeocodingApiBase: process.env.GOOGLE_GEOCODING_API_BASE || 'https://maps.googleapis.com/maps/api/geocode/json',
   googleRoutesApiBase: process.env.GOOGLE_ROUTES_API_BASE || 'https://routes.googleapis.com/directions/v2:computeRoutes',

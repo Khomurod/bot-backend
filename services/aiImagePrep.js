@@ -5,7 +5,7 @@
  * them by a further ~33%, and every one of those bytes leaves Render as
  * outbound traffic. The vision models do not benefit: they downsample to
  * modest tiles internally, so a 4 MB original and a 400 KB resize read the
- * same trailer number.
+ * same unit number.
  *
  * What this does, once per image:
  *   - honours the EXIF orientation flag (`.rotate()`), so a sideways phone
@@ -17,7 +17,7 @@
  *
  * IMPORTANT — this NEVER replaces a stored original. Inspection photos,
  * rental-agreement scans and payment receipts are evidence and are persisted
- * unmodified by services/trailerImageService.js. This module only shrinks the
+ * unmodified by whatever persisted them. This module only shrinks the
  * transient copy that goes out to the model.
  *
  * Fail-safe: `prepareImageForAi` returns null for anything sharp cannot decode,
@@ -30,7 +30,7 @@
 const sharp = require('sharp');
 
 /**
- * Long-edge bound. 1600px keeps small printed text — VINs, trailer unit
+ * Long-edge bound. 1600px keeps small printed text — VINs, unit
  * numbers, dispatch-sheet rows — comfortably readable while cutting a 12 MP
  * photo by roughly an order of magnitude.
  */

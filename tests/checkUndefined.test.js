@@ -155,10 +155,12 @@ test('browser globals are known in admin files', async () => {
   assert.deepEqual(names, [], 'fetch/localStorage/window/document/navigator must not be flagged');
 });
 
-test('the browser scripts served by the QBQ pages are linted, not ignored', async () => {
-  // These four files were named in `ignores` while a block below claimed to
-  // lint them. Ignore wins, so they were unchecked for their whole life.
-  const names = await undefinedNames('server/qbq/public/probe.js', `
+test('browser scripts served as static assets are linted, not ignored', async () => {
+  // Browser-context files under server/ live outside the CommonJS app but are
+  // still hand-written code. An earlier config named them in `ignores` while a
+  // block below claimed to lint them — ignore wins, so they went unchecked for
+  // their whole life.
+  const names = await undefinedNames('server/public/probe.js', `
     document.addEventListener('click', function () {
       var el = document.querySelector('#x');
       el.textContent = String(neverDeclared);

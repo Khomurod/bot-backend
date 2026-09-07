@@ -16,9 +16,7 @@ test('slugify normalizes a display name', () => {
 });
 
 test('reserved built-in keys and reserved prefixes are protected', () => {
-  for (const k of ['super_admin', 'trailer_manager', 'trailer_viewer']) {
-    assert.equal(isReservedRoleKey(k), true, `${k} should be reserved`);
-  }
+  assert.equal(isReservedRoleKey('super_admin'), true, 'super_admin is the built-in role key');
   assert.equal(isReservedRoleKey('admin_full_access'), true);
   assert.equal(isReservedRoleKey('super_duper'), true);
   assert.equal(isReservedRoleKey('custom_yard_supervisor'), false);

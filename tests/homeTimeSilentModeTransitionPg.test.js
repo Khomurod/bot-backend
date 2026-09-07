@@ -23,7 +23,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { Pool } = require('pg');
 
-const { skipWithoutPg } = require('./helpers/trailerPgHarness');
+const { skipWithoutPg } = require('./helpers/pgHarness');
 const { purgeDataLayer } = require('./helpers/purgeDataLayer');
 
 const REPO = path.resolve(__dirname, '..');

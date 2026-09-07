@@ -440,6 +440,27 @@ CREATE TABLE IF NOT EXISTS trailer_audit_log (
 CREATE INDEX IF NOT EXISTS idx_trailer_audit_entity ON trailer_audit_log(entity_type, entity_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_trailer_audit_admin ON trailer_audit_log(admin_id, created_at DESC);
 
+-- Administrative audit log: who created or changed an admin account, a role, or
+-- a role's permissions, with redacted before/after images (database/rbac.js →
+-- database/adminAudit.js). These rows used to live in trailer_audit_log because
+-- the RBAC schema shipped inside the Trailer Department's baseline segment;
+-- migration 0010 copies them across so the trail is continuous.
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+  id BIGSERIAL PRIMARY KEY,
+  admin_id INTEGER NULL REFERENCES admins(id) ON DELETE SET NULL,
+  role_keys TEXT[] NOT NULL DEFAULT '{}',
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  old_values JSONB NULL,
+  new_values JSONB NULL,
+  reason TEXT NULL,
+  ip_address TEXT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_entity ON admin_audit_log(entity_type, entity_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_admin ON admin_audit_log(admin_id, created_at DESC);
+
 -- Resolve deferred media references now that invoice/payment tables exist.
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'trailer_media_invoice_fk') THEN

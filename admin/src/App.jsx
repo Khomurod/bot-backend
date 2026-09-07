@@ -6,14 +6,6 @@ import { AuthProvider } from "./context/AuthContext";
 import AdminSidebar from "./components/AdminSidebar";
 import PageErrorBoundary from "./components/PageErrorBoundary";
 import DatabaseUsageBanner from "./components/DatabaseUsageBanner";
-import {
-  canonicalTrailerUrl,
-  defaultTrailerSection,
-  isLegacyTrailerPath,
-  isTrailerPath,
-  trailerSectionFromPath,
-  trailerSectionPath,
-} from "./pages/trailer/trailerNavigation";
 
 // Every other page is lazy-loaded so its code is fetched only when the page
 // is opened — the initial admin bundle stays small.
@@ -40,12 +32,6 @@ const RecruiterKpiPage = lazy(() => import("./pages/RecruiterKpiPage"));
 const RecruitersPublicPage = lazy(() => import("./pages/RecruitersPublicPage"));
 const LiveLocationsPage = lazy(() => import("./pages/LiveLocationsPage"));
 const RouteControlPage = lazy(() => import("./pages/RouteControlPage"));
-const TrailerTrackingPage = lazy(() => import("./pages/TrailerTrackingPage"));
-const TrailerDepartmentShell = lazy(() => import("./pages/trailer/TrailerDepartmentShell"));
-// QBQ / SOS assessment: two public bright-themed pages + a full-admin section.
-const SosQuestionsPage = lazy(() => import("./pages/sosPublic/SosQuestionsPage"));
-const SosAnswersPage = lazy(() => import("./pages/sosPublic/SosAnswersPage"));
-const SosAdminPage = lazy(() => import("./pages/sos/SosAdminPage"));
 
 const pageLoadingFallback = (
   <div className="loading">
@@ -82,39 +68,7 @@ function getPageFromPath(pathname) {
   if (pathname === "/recruiters" || pathname.startsWith("/recruiters/")) {
     return "recruiters_public";
   }
-  // TEST-mode SOS pages get their own page keys so back/forward between the
-  // real and test URLs remounts the page with the right mode.
-  if (pathname === "/questions/test" || pathname.startsWith("/questions/test/")) {
-    return "sos_questions_test";
-  }
-  if (pathname === "/answers/test" || pathname.startsWith("/answers/test/")) {
-    return "sos_answers_test";
-  }
-  if (pathname === "/questions" || pathname.startsWith("/questions/")) {
-    return "sos_questions_public";
-  }
-  if (pathname === "/answers" || pathname.startsWith("/answers/")) {
-    return "sos_answers_public";
-  }
-  // /trailers is the canonical Trailer Department slug; /admin/trailers stays
-  // recognized so old bookmarks resolve before they are rewritten.
-  if (isTrailerPath(pathname)) {
-    return "trailer_department";
-  }
   return "groups";
-}
-
-/**
- * Rewrite a legacy /admin/trailers URL to its /trailers equivalent in place.
- *
- * replaceState, not pushState: the legacy URL must not become a back-button
- * stop that immediately re-redirects. Section, sub-tab, record and filters all
- * survive (canonicalTrailerUrl carries the query string across).
- */
-function normalizeTrailerUrl() {
-  if (!isLegacyTrailerPath(window.location.pathname)) return;
-  const next = canonicalTrailerUrl(window.location.pathname, window.location.search);
-  if (next) window.history.replaceState({}, "", next);
 }
 
 function getPathForPage(page) {
@@ -129,37 +83,14 @@ export default function App() {
   const [page, setPage] = useState(() => getPageFromPath(window.location.pathname));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [adminExpanded, setAdminExpanded] = useState(false);
-  const [trailerSection, setTrailerSection] = useState(() =>
-    trailerSectionFromPath(window.location.pathname),
-  );
-  const [trailerExpanded, setTrailerExpanded] = useState(() =>
-    getPageFromPath(window.location.pathname) === "trailer_department",
-  );
   const isDispatchPage = page === "dispatch";
   const isRaisePublicPage = page === "raise_public";
   const isRecruitersPublicPage = page === "recruiters_public";
-  const isSosQuestionsPage = page === "sos_questions_public" || page === "sos_questions_test";
-  const isSosAnswersPage = page === "sos_answers_public" || page === "sos_answers_test";
-  const isSosTestMode = page === "sos_questions_test" || page === "sos_answers_test";
-  // Public URLs render their own full-bleed page with no admin chrome and no
-  // auth. A token that happens to be in the browser must never move them: a
-  // Trailer-only account opening /answers/test used to be bounced into the
-  // Trailer department, hijacking the SOS presentation and the test cleanup.
-  const isPublicPage = isRaisePublicPage || isRecruitersPublicPage
-    || isSosQuestionsPage || isSosAnswersPage;
 
   useEffect(() => {
     // Back/forward must move the selected page AND the active sidebar item.
-    // Also runs once on mount, which is where a bookmarked /admin/trailers URL
-    // gets rewritten to /trailers before anything reads it.
     const handlePopState = () => {
-      normalizeTrailerUrl();
-      const nextPage = getPageFromPath(window.location.pathname);
-      setPage(nextPage);
-      if (nextPage === "trailer_department") {
-        setTrailerSection(trailerSectionFromPath(window.location.pathname));
-        setTrailerExpanded(true);
-      }
+      setPage(getPageFromPath(window.location.pathname));
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -177,11 +108,6 @@ export default function App() {
           if (!verified) localStorage.removeItem("token");
           setSession(verified);
           setAuthed(Boolean(verified));
-          if (verified && !isPublicPage
-              && !verified.permissions?.includes('admin.full_access')
-              && verified.permissions?.some((p) => p.startsWith('trailer'))) {
-            openTrailerDepartmentOnLoad(verified.permissions);
-          }
         }
       } catch (err) {
         localStorage.removeItem("token");
@@ -192,41 +118,7 @@ export default function App() {
     })();
   }, []);
 
-  /**
-   * Trailer-only accounts land straight in the department on first paint.
-   *
-   * A user who asked for a specific trailer page — a deep link, or a login
-   * redirect back to the page that bounced them — keeps that page and its query
-   * string. Only an account arriving from somewhere else gets the default
-   * section.
-   */
-  function openTrailerDepartmentOnLoad(permissions) {
-    normalizeTrailerUrl();
-    const requested = isTrailerPath(window.location.pathname);
-    const section = requested
-      ? trailerSectionFromPath(window.location.pathname)
-      : defaultTrailerSection(permissions);
-    setPage("trailer_department");
-    setTrailerSection(section);
-    setTrailerExpanded(true);
-    if (!requested) window.history.replaceState({}, "", trailerSectionPath(section));
-  }
-
-  const navigateToTrailerSection = (sectionKey, query) => {
-    setPage("trailer_department");
-    setTrailerSection(sectionKey);
-    setTrailerExpanded(true);
-    setMobileMenuOpen(false);
-    const nextPath = trailerSectionPath(sectionKey) + (query ? `?${query}` : "");
-    if (window.location.pathname !== nextPath || query) {
-      window.history.pushState({}, "", nextPath);
-    }
-  };
-
   const navigateToPage = (nextPage) => {
-    if (nextPage === "trailer_department") {
-      return navigateToTrailerSection(defaultTrailerSection(session?.permissions));
-    }
     setPage(nextPage);
     setMobileMenuOpen(false);
 
@@ -260,15 +152,6 @@ export default function App() {
     return <LazyPage pageKey="recruiters_public"><RecruitersPublicPage /></LazyPage>;
   }
 
-  // Public QBQ/SOS pages — own bright theme, no admin chrome, no auth.
-  // key= forces a clean remount when navigating between real and test mode.
-  if (isSosQuestionsPage) {
-    return <LazyPage pageKey={page}><SosQuestionsPage key={isSosTestMode ? "test" : "real"} isTest={isSosTestMode} /></LazyPage>;
-  }
-  if (isSosAnswersPage) {
-    return <LazyPage pageKey={page}><SosAnswersPage key={isSosTestMode ? "test" : "real"} isTest={isSosTestMode} /></LazyPage>;
-  }
-
   if (checking) {
     return (
       <div className="loading" style={{ minHeight: "100vh" }}>
@@ -278,20 +161,14 @@ export default function App() {
   }
 
   if (!authed) {
-    // Covers /dispatch and /trailers too: after login, getPageFromPath restores
-    // the originally requested page, so the user lands back where they asked
-    // for — Dispatch Center, or the exact trailer section they bookmarked.
+    // Covers /dispatch too: after login, getPageFromPath restores the
+    // originally requested page, so the user lands back where they asked for.
     return (
       <LoginPage
         onLogin={(loginSession) => {
           setAuthed(true);
           setSession(loginSession);
-          const trailerOnly = !loginSession?.permissions?.includes('admin.full_access') && loginSession?.permissions?.some((p) => p.startsWith('trailer'));
-          if (trailerOnly || isTrailerPath(window.location.pathname)) {
-            openTrailerDepartmentOnLoad(loginSession.permissions);
-          } else {
-            setPage(getPageFromPath(window.location.pathname));
-          }
+          setPage(getPageFromPath(window.location.pathname));
         }}
       />
     );
@@ -306,8 +183,6 @@ export default function App() {
       </main>
     );
   }
-
-
 
   const pages = {
     dispatch: <DispatchPage />,
@@ -331,15 +206,12 @@ export default function App() {
     recruiter_kpis: <RecruiterKpiPage />,
     live_locations: <LiveLocationsPage />,
     route_control: <RouteControlPage />,
-    trailer_tracking: <TrailerTrackingPage />,
-    sos_admin: <SosAdminPage />,
-    trailer_department: (
-      <TrailerDepartmentShell
-        section={trailerSection}
-        onNavigate={navigateToTrailerSection}
-      />
-    ),
   };
+
+  // Every section is company-wide administration, so an account without
+  // admin.full_access has nothing it can open. Say so plainly rather than
+  // rendering a section whose every request would come back 403.
+  const isFullAdmin = session?.permissions?.includes("admin.full_access");
 
   return (
     <AuthProvider session={session}>
@@ -348,11 +220,7 @@ export default function App() {
         session={session}
         page={page}
         mobileMenuOpen={mobileMenuOpen}
-        trailerSection={trailerSection}
-        trailerExpanded={trailerExpanded}
-        onToggleTrailer={() => setTrailerExpanded((open) => !open)}
         onNavigateToPage={navigateToPage}
-        onNavigateToTrailerSection={navigateToTrailerSection}
         adminExpanded={adminExpanded}
         onToggleAdmin={() => setAdminExpanded(!adminExpanded)}
         onLogout={handleLogout}
@@ -372,9 +240,20 @@ export default function App() {
         {/* Shown only at 80%+ of the monthly database transfer allowance, so
             running out is not discovered by reads starting to fail. */}
         <DatabaseUsageBanner />
-        <LazyPage pageKey={page === "trailer_department" ? `trailer:${trailerSection}` : page}>
-          {pages[page] || pages.dispatch}
-        </LazyPage>
+        {isFullAdmin ? (
+          <LazyPage pageKey={page}>
+            {pages[page] || pages.groups}
+          </LazyPage>
+        ) : (
+          <div className="card">
+            <h2>No sections available</h2>
+            <p>
+              This account does not have administrator access, so there is
+              nothing here it can open. Ask a super administrator to grant the
+              access you need.
+            </p>
+          </div>
+        )}
       </main>
     </div>
     </AuthProvider>

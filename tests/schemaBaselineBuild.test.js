@@ -35,13 +35,6 @@ test('baseline segments are contiguously and uniquely numbered', () => {
   }
 });
 
-test('assembled schema preserves the trailer-department section marker', () => {
-  const assembled = assemble();
-  const marker = '-- TRAILER DEPARTMENT: RENTAL + ASSET MANAGEMENT';
-  const count = assembled.split(marker).length - 1;
-  assert.equal(count, 1, 'the department section marker must appear exactly once (harness slices on it)');
-});
-
 test('assembled schema is pure concatenation (no segment adds a stray body header)', () => {
   // Each segment except the first must NOT start with the generated file header
   // banner — that banner lives only once, prepended by the builder.

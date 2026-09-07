@@ -24,22 +24,7 @@ const chatLogsDb = require('./chatLogs');
 const aiReportsDb = require('./aiReports');
 const employeeBirthdaysDb = require('./employeeBirthdays');
 const facebookLeadsDb = require('./facebookLeads');
-const trailersDb = require('./trailers');
-const trailerMasterListDb = require('./trailerMasterList');
 const rbacDb = require('./rbac');
-const trailerCompaniesDb = require('./trailerCompanies');
-const trailerRentalsDb = require('./trailerRentals');
-const trailerMediaDb = require('./trailerMedia');
-const trailerFinanceDb = require('./trailerFinance');
-const trailerNotificationsDb = require('./trailerNotifications');
-const trailerAuditDb = require('./trailerAudit');
-const trailerAssetsDb = require('./trailerAssets');
-const trailerReportsDb = require('./trailerReports');
-const trailerAgreementsDb = require('./trailerAgreements');
-const trailerCreditsDb = require('./trailerCredits');
-const trailerItemInspectionsDb = require('./trailerItemInspections');
-const trailerOverviewDb = require('./trailerOverview');
-const trailerAvailabilityDb = require('./trailerAvailability');
 
 /**
  * Initialize the database.
@@ -312,20 +297,5 @@ module.exports = {
   ...aiReportsDb,
   ...employeeBirthdaysDb,
   ...facebookLeadsDb,
-  ...trailersDb,
-  ...trailerMasterListDb,
   ...rbacDb,
-  ...trailerCompaniesDb,
-  ...trailerRentalsDb,
-  ...trailerMediaDb,
-  ...trailerFinanceDb,
-  ...trailerNotificationsDb,
-  ...trailerAuditDb,
-  ...trailerAssetsDb,
-  ...trailerReportsDb,
-  ...trailerAgreementsDb,
-  ...trailerCreditsDb,
-  ...trailerItemInspectionsDb,
-  ...trailerOverviewDb,
-  ...trailerAvailabilityDb,
 };

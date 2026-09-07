@@ -59,7 +59,7 @@ const pgError = (message, code) => Object.assign(new Error(message), { code });
 test('a database outage answers 503 with a code the panel understands', () => {
   const res = fakeRes();
   quiet(() => sendFailure(res, pgError('Connection terminated unexpectedly', '08006'), {
-    message: 'Failed to load trailer states',
+    message: 'Failed to load live locations',
   }));
   assert.equal(res.statusCode, 503);
   assert.equal(res.body.code, FAILURE_CODES.DB_UNAVAILABLE);
@@ -91,10 +91,10 @@ test('the tag database/pool.js attaches is honoured without re-classifying', () 
 test('an application error keeps its 500 and the caller\'s own wording', () => {
   const res = fakeRes();
   quiet(() => sendFailure(res, pgError('duplicate key value violates unique constraint', '23505'), {
-    message: 'Failed to save the trailer',
+    message: 'Failed to save the group',
   }));
   assert.equal(res.statusCode, 500);
-  assert.equal(res.body.error, 'Failed to save the trailer');
+  assert.equal(res.body.error, 'Failed to save the group');
   assert.equal(res.body.code, undefined, 'a bug must not be labelled a database outage');
   assert.match(res.body.detail, /duplicate key/);
 });

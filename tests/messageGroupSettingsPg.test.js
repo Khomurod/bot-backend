@@ -22,7 +22,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { createTrailerPgHarness, skipWithoutPg } = require('./helpers/trailerPgHarness');
+const { createPgHarness, skipWithoutPg } = require('./helpers/pgHarness');
 
 const MIGRATION_0006 = fs.readFileSync(
   path.resolve(__dirname, '../database/migrations', '0006_raise_results_group.sql'),
@@ -40,7 +40,7 @@ async function columns(harness) {
 }
 
 test('migration 0006 applies twice and adds a nullable text column', { skip: skipWithoutPg(), timeout: 60000 }, async (t) => {
-  const harness = await createTrailerPgHarness(t);
+  const harness = await createPgHarness(t);
 
   const before = await columns(harness);
   assert.ok(before.has('dispatch_review_group_id'), 'the baseline has the request column');
@@ -63,7 +63,7 @@ test('migration 0006 applies twice and adds a nullable text column', { skip: ski
 });
 
 test('an existing dispatch group survives the migration and is NOT copied to accounting', { skip: skipWithoutPg(), timeout: 60000 }, async (t) => {
-  const harness = await createTrailerPgHarness(t);
+  const harness = await createPgHarness(t);
 
   // A deployment as it looks today: one shared group doing both jobs.
   await harness.query(
@@ -85,7 +85,7 @@ test('an existing dispatch group survives the migration and is NOT copied to acc
 });
 
 test('the baseline schema still applies on top of the migration (boot order)', { skip: skipWithoutPg(), timeout: 90000 }, async (t) => {
-  const harness = await createTrailerPgHarness(t);
+  const harness = await createPgHarness(t);
   await harness.query(MIGRATION_0006);
   await harness.query(
     "UPDATE message_group_settings SET raise_results_group_id = '-1003333333333' WHERE id = 1",
@@ -93,14 +93,14 @@ test('the baseline schema still applies on top of the migration (boot order)', {
 
   // Production re-applies the whole baseline on EVERY boot, after this migration
   // has been recorded. That must neither drop the column nor reset its value.
-  await harness.applyDepartmentSchema();
+  await harness.applySchemaSql();
 
   const row = (await harness.query('SELECT * FROM message_group_settings WHERE id = 1')).rows[0];
   assert.equal(row.raise_results_group_id, '-1003333333333');
 });
 
 test('the real routing module reads and writes the two raise columns independently', { skip: skipWithoutPg(), timeout: 60000 }, async (t) => {
-  const harness = await createTrailerPgHarness(t);
+  const harness = await createPgHarness(t);
   await harness.query(MIGRATION_0006);
 
   const { messageRoutingSettings: routing } = harness.loadDataLayer(['messageRoutingSettings']);

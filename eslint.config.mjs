@@ -19,11 +19,10 @@
  * `npm test` and in CI so the class cannot ship again.
  *
  * COVERAGE IS A DENY-LIST, NOT AN ALLOW-LIST. The first version of this file
- * listed the directories to lint, and ten hand-written files sat outside that
- * list unchecked — the three `.mjs` helpers under `admin/src/pages`, both
- * modules in `utils/`, and all four browser scripts in `server/qbq/public`
- * (named in `ignores`, so the block that claimed to lint them never applied).
- * That is the same blind spot the file-size scanner had before it was inverted.
+ * listed the directories to lint, and hand-written files sat outside that list
+ * unchecked — the three `.mjs` helpers under `admin/src/pages` and both modules
+ * in `utils/`. That is the same blind spot the file-size scanner had before it
+ * was inverted.
  * Everything is linted now, and `tests/checkUndefined.test.js` asserts that
  * every hand-written JS file the repository contains has `no-undef` in force,
  * so a new directory is covered the moment it is created.
@@ -75,13 +74,16 @@ const CORRECTNESS_RULES = {
 };
 
 /**
- * The two trees that run in a browser rather than in Node. They are configured
- * by their own blocks below and excluded from the Node base so that Node
- * globals do not leak into browser code (flat-config `globals` merge).
+ * The trees that run in a browser rather than in Node. They are configured by
+ * their own blocks below and excluded from the Node base so that Node globals
+ * do not leak into browser code (flat-config `globals` merge).
+ *
+ * `server/public/**` is the static-asset directory: scripts there are fetched
+ * by a browser, never required by the server.
  */
 const BROWSER_TREES = [
   'admin/**/*.{js,jsx,mjs}',
-  'server/qbq/public/**/*.js',
+  'server/public/**/*.js',
 ];
 
 export default [
@@ -139,6 +141,17 @@ export default [
     },
   },
   {
+    // Static browser assets served straight to a page: plain scripts, browser
+    // globals, no bundler and no module system.
+    files: ['server/public/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'script',
+      globals: { ...globals.browser, ...globals.es2021 },
+    },
+    rules: { ...CORRECTNESS_RULES },
+  },
+  {
     // Vite/Vitest config files sit inside admin/ but run in Node.
     files: ['admin/vite.config.js', 'admin/vitest.config.js', 'admin/vitest.setup.js'],
     languageOptions: { globals: { ...globals.node } },
@@ -154,16 +167,5 @@ export default [
         beforeAll: 'readonly', afterAll: 'readonly', suite: 'readonly',
       },
     },
-  },
-  {
-    // Scripts served to the browser from the QBQ pages: browser globals, and
-    // classic scripts rather than modules.
-    files: ['server/qbq/public/**/*.js'],
-    languageOptions: {
-      ecmaVersion: 2023,
-      sourceType: 'script',
-      globals: { ...globals.browser, ...globals.es2021 },
-    },
-    rules: { ...CORRECTNESS_RULES },
   },
 ];

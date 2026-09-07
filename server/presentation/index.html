@@ -456,8 +456,6 @@ body.present .top,body.present .cue{opacity:0;pointer-events:none}
         <ul>
           <li><span data-ru="Живые локации">Live locations</span><small data-ru="Карта автопарка из Samsara, Factor ELD и Leader ELD — только после входа.">A fleet map from Samsara, Factor ELD and Leader ELD — behind a login.</small></li>
           <li><span data-ru="Документы BOL / POD">BOL / POD documents</span><small data-ru="Подбираются к нужной группе и пересылаются один раз.">Matched to the right group and forwarded once.</small></li>
-          <li><span data-ru="Трейлерный отдел">Trailer Department</span><small data-ru="Договоры, осмотры с фото, счета. База не даёт сдать трейлер дважды.">Agreements, photo inspections, invoices. No double-booking.</small></li>
-          <li><span data-ru="Отслеживание трейлеров">Trailer Tracking</span><em>Beta</em><small data-ru="Неуверенные случаи уходят в очередь на проверку, а не водителю.">Unsure cases go to a review queue, never to the driver.</small></li>
         </ul>
       </div>
       <div>
@@ -476,7 +474,7 @@ body.present .top,body.present .cue{opacity:0;pointer-events:none}
       <span><b>Factor ELD</b></span><span><b>Leader ELD</b></span><span><b>Google Maps</b></span>
       <span><b>RingCentral</b></span><span><b>Bitrix24</b></span><span><b>Meta</b></span><span><b>Indeed</b></span>
     </div>
-    <p class="limit" data-ru="<b>Чего платформа не делает.</b> Она не сверяет топливные транзакции с GPS, не решает вопрос выплаты без человека и не создаёт трейлер из обнаружения. Каждое действие с деньгами подтверждает человек."><b>What the platform does not do.</b> It does not reconcile fuel-card transactions against GPS, it does not decide a payout without a person, and it never creates a trailer from a detection. Every money action is confirmed by a human.</p>
+    <p class="limit" data-ru="<b>Чего платформа не делает.</b> Она не сверяет топливные транзакции с GPS, не решает вопрос выплаты без человека и не действует по неуверенному распознаванию. Каждое действие с деньгами подтверждает человек."><b>What the platform does not do.</b> It does not reconcile fuel-card transactions against GPS, it does not decide a payout without a person, and it never acts on an uncertain detection. Every money action is confirmed by a human.</p>
   </div>
 </section>
 
@@ -1160,7 +1158,7 @@ var FRAGS=[
 var AFTER=[
   {en:'Dispatch',ru:'Диспетчерская'},{en:'Route Control',ru:'Контроль маршрута'},
   {en:'Fuel Monitoring',ru:'Мониторинг топлива'},{en:'Drivers',ru:'Водители'},
-  {en:'Documents',ru:'Документы'},{en:'Trailers',ru:'Трейлеры'},
+  {en:'Documents',ru:'Документы'},
   {en:'Recruiting',ru:'Найм'},{en:'Safety',ru:'Безопасность'}
 ];
 var fragEls=[],threadEls=[];

@@ -32,5 +32,4 @@ export * from './api/routeControl';
 export * from './api/recruiters';
 export * from './api/liveLocations';
 export * from './api/safetyMusic';
-export * from './api/trailerTracking';
 export * from './api/system';

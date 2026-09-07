@@ -2,11 +2,9 @@ import React, { useMemo, useState } from "react";
 import { timeAgo } from "../utils/formatTime";
 import { clockTime, PROVIDER_LABEL } from "./liveLocations/constants";
 import { useLiveSnapshot } from "./liveLocations/useLiveSnapshot";
-import { useAssetFilters } from "./liveLocations/useAssetFilters";
 import { useLeafletMap } from "./liveLocations/useLeafletMap";
 import { DiagnosticsPanel } from "./liveLocations/DiagnosticsPanel";
 import { MapAndUnitList } from "./liveLocations/MapAndUnitList";
-import { TrailerOverlayPanel } from "./liveLocations/TrailerOverlayPanel";
 import PageFailure from "../components/PageFailure";
 
 /**
@@ -16,16 +14,14 @@ import PageFailure from "../components/PageFailure";
  *
  *   ./liveLocations/constants.js       intervals, filter lists, pure formatters
  *   ./liveLocations/markers.js         Leaflet icons + escaped popup markup
- *   ./liveLocations/storedFilters.js   the per-browser overlay selection
- *   ./liveLocations/useLiveSnapshot.js the snapshot, trailers, auto-refresh
- *   ./liveLocations/useAssetFilters.js the filters + ONE shared trailer dataset
+ *   ./liveLocations/useLiveSnapshot.js the snapshot and the auto-refresh
  *   ./liveLocations/useLeafletMap.js   the map's whole lifecycle and its layers
- *   ./liveLocations/{DiagnosticsPanel,MapAndUnitList,TrailerOverlayPanel}.jsx
+ *   ./liveLocations/{DiagnosticsPanel,MapAndUnitList}.jsx
  *
- * The three hooks are layered rather than merged: the snapshot knows nothing
- * about the map, the filters derive from the snapshot, and the map consumes the
- * filtered result. That order is why a provider failure degrades to a banner
- * over stale markers instead of an empty page.
+ * The two hooks are layered rather than merged: the snapshot knows nothing
+ * about the map, and the map consumes the filtered result. That order is why a
+ * provider failure degrades to a banner over stale markers instead of an empty
+ * page.
  *
  * Truck search/status filtering stays here because BOTH the map and the side
  * panel read the same `filtered` array — computing it twice is how a unit ends
@@ -39,7 +35,7 @@ export default function LiveLocationsPage() {
   const live = useLiveSnapshot();
   const {
     snapshot, loading, refreshing, error, errorObject, lastUpdated, autoRefresh, setAutoRefresh,
-    trailers, trailerError, selectedUnit, setSelectedUnit, load, units, summary, providerErrors,
+    selectedUnit, setSelectedUnit, load, units, summary, providerErrors,
   } = live;
 
   const filtered = useMemo(() => {
@@ -61,17 +57,12 @@ export default function LiveLocationsPage() {
     });
   }, [units, search, filter]);
 
-  const assets = useAssetFilters({ units, trailers, search });
   const map = useLeafletMap({
     filtered, selectedUnit, setSelectedUnit,
-    showTrucks: assets.showTrucks, showTrailers: assets.showTrailers,
-    mappableTrailers: assets.mappableTrailers,
     showDiagnostics, error, snapshot, providerErrors,
   });
 
-  // The header toolbar renders the asset-view switch and the "Fit visible"
-  // button, so it needs these three by name.
-  const { assetFilters, setAssetFilter } = assets;
+  // The header toolbar renders the "Fit visible" button.
   const { fitAll } = map;
 
   const cards = summary ? [
@@ -106,17 +97,6 @@ export default function LiveLocationsPage() {
             {autoRefresh ? "⏱ Auto: On" : "⏱ Auto: Off"}
           </button>
           <button className="btn btn-ghost btn-sm" onClick={fitAll} title="Fit the map to the currently visible filtered markers">🗺 Fit visible</button>
-          <div role="group" aria-label="Asset view" style={{ display: "inline-flex", gap: 4 }}>
-            {[["all", "All assets"], ["trucks", "Trucks only"], ["trailers", "Trailers only"]].map(([v, l]) => (
-              <button key={v}
-                className={`btn btn-sm ${assetFilters.assetView === v ? "btn-primary" : "btn-ghost"}`}
-                onClick={() => setAssetFilter({ assetView: v })}
-                aria-pressed={assetFilters.assetView === v}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
           <button
             className={`btn btn-sm ${showDiagnostics ? "btn-primary" : "btn-ghost"}`}
             onClick={() => setShowDiagnostics((v) => !v)}
@@ -146,17 +126,6 @@ export default function LiveLocationsPage() {
             </div>
           )}
         </>
-      )}
-      {/* The trailer overlay is optional, so its failure never blanks the
-          trucks — but an overlay with no trailers must not read as a fleet with
-          no trailers. */}
-      {trailerError && (
-        <PageFailure
-          variant="inline"
-          error={trailerError}
-          where="Trailer overlay"
-          onRetry={() => load({ force: true })}
-        />
       )}
       {snapshot?.isStale && !error && (
         <div className="alert alert-error" style={{ marginTop: 0 }}>
@@ -202,11 +171,7 @@ export default function LiveLocationsPage() {
         setFilter={setFilter}
         loading={loading}
         snapshot={snapshot}
-        trailerTextOnly={assets.trailerTextOnly}
-        showTrailers={assets.showTrailers}
       />
-
-      <TrailerOverlayPanel {...assets} trailers={trailers} />
     </div>
   );
 }

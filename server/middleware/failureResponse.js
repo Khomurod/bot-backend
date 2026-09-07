@@ -8,7 +8,7 @@
  * nothing. Several were worse: they caught the error and answered `200
  * { states: [] }`, so a database that was unreachable, out of monthly transfer
  * allowance, or refusing credentials looked exactly like a company that owns no
- * trailers. Empty data presented as normal is the failure mode this module
+ * assets. Empty data presented as normal is the failure mode this module
  * exists to remove.
  *
  * `sendFailure` classifies (via the `dbFailure` tag database/pool.js attaches,
@@ -71,10 +71,10 @@ function clientErrorResponse(error) {
  * @param {Error} error the thrown error
  * @param {object} [options]
  * @param {string} [options.message] what the caller was trying to do, e.g.
- *   'Failed to load trailer states'. Used when the failure is not a database
+ *   'Failed to load live locations'. Used when the failure is not a database
  *   infrastructure problem.
  * @param {number} [options.status=500] status for a non-database failure.
- * @param {string} [options.logPrefix] log tag, e.g. '[TRAILER-API]'.
+ * @param {string} [options.logPrefix] log tag, e.g. '[DB-USAGE]'.
  */
 function sendFailure(res, error, options = {}) {
   const { message = 'Server error', status = 500, logPrefix = '[API]' } = options;

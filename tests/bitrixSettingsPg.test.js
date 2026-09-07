@@ -17,13 +17,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { createTrailerPgHarness, skipWithoutPg } = require('./helpers/trailerPgHarness');
+const { createPgHarness, skipWithoutPg } = require('./helpers/pgHarness');
 
 const MIGRATION_PATH = path.join(__dirname, '..', 'database', 'migrations', '0009_bitrix_settings.sql');
 const MIGRATION = fs.readFileSync(MIGRATION_PATH, 'utf8');
 
 test('the migration creates the settings table with its seed row', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   const cols = await harness.query(
     `SELECT column_name, is_nullable, data_type
        FROM information_schema.columns
@@ -44,7 +44,7 @@ test('the migration creates the settings table with its seed row', { skip: skipW
 });
 
 test('applying it twice changes nothing — every boot re-runs the baseline', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   await harness.query("UPDATE bitrix_settings SET entity = 'deal', assigned_by_id = '17' WHERE id = 1");
   await harness.query(MIGRATION);
   const row = (await harness.query('SELECT entity, assigned_by_id FROM bitrix_settings WHERE id = 1')).rows[0];
@@ -53,7 +53,7 @@ test('applying it twice changes nothing — every boot re-runs the baseline', { 
 });
 
 test('there can only ever be the one row', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   await assert.rejects(
     () => harness.query('INSERT INTO bitrix_settings (id) VALUES (2)'),
     (err) => err.code === '23514',
@@ -62,7 +62,7 @@ test('there can only ever be the one row', { skip: skipWithoutPg() }, async (t) 
 });
 
 test('the database refuses an entity that is neither lead nor deal, and a negative wait', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   await assert.rejects(
     () => harness.query("UPDATE bitrix_settings SET entity = 'contact' WHERE id = 1"),
     (err) => err.code === '23514',

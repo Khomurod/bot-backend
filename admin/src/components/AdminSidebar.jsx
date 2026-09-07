@@ -1,6 +1,4 @@
 import React from "react";
-import TrailerNavItem from "./TrailerNavItem";
-import { permittedTrailerSections } from "../pages/trailer/trailerNavigation";
 
 const NAV_SECTIONS = [
   {
@@ -10,8 +8,6 @@ const NAV_SECTIONS = [
       { key: 'dispatch', icon: '🚚', label: 'Dispatch Center' },
       { key: 'live_locations', icon: '📍', label: 'Live Locations' },
       { key: 'route_control', icon: '🧭', label: 'Route Control' },
-      { key: 'trailer_tracking', icon: '🚚', label: 'Trailer Tracking' },
-      { key: 'trailer_department', icon: '🏢', label: 'Trailer Department' },
       { key: 'leads', icon: '📥', label: 'Leads' },
       { key: 'facebook_leads', icon: '👥', label: 'Customer Inquiries' },
       { key: 'recruiter_kpis', icon: '📞', label: 'Recruiter KPIs' },
@@ -23,7 +19,6 @@ const NAV_SECTIONS = [
     items: [
       { key: 'broadcast', icon: '📢', label: 'Send Message' },
       { key: 'questions', icon: '📝', label: 'Surveys' },
-      { key: 'sos_admin', icon: '🧭', label: 'QBQ / SOS Assessment' },
     ],
   },
   {
@@ -51,31 +46,24 @@ const ADMIN_ITEMS = [
 ];
 
 /**
- * The main admin sidebar. Trailer Department stays an Operations item, but
- * renders its permitted pages as nested children — trailer-only accounts see
- * that item and nothing else.
+ * The main admin sidebar.
+ *
+ * Every section here is company-wide administration, so the whole nav is gated
+ * on `admin.full_access`: an account without it has no section to show. (There
+ * used to be one exception — the Trailer Department, which trailer-scoped
+ * accounts could open without full access. That feature is gone.)
  */
 export default function AdminSidebar({
   session,
   page,
   mobileMenuOpen,
-  trailerSection,
-  trailerExpanded,
-  onToggleTrailer,
   onNavigateToPage,
-  onNavigateToTrailerSection,
   adminExpanded,
   onToggleAdmin,
   onLogout,
 }) {
   const isFullAdmin = session?.permissions?.includes('admin.full_access');
-  const visibleSections = NAV_SECTIONS
-    .map((section) => ({
-      ...section,
-      items: section.items.filter((item) => isFullAdmin || item.key === 'trailer_department'),
-    }))
-    .filter((section) => section.items.length);
-  const trailerSections = permittedTrailerSections(session?.permissions);
+  const visibleSections = isFullAdmin ? NAV_SECTIONS : [];
 
   return (
     <aside className={`sidebar ${mobileMenuOpen ? "mobile-open" : ""}`}>
@@ -89,30 +77,16 @@ export default function AdminSidebar({
             <div className="nav-section-header" style={{ borderLeftColor: section.color }}>
               {section.label}
             </div>
-            {section.items.map((item) =>
-              item.key === "trailer_department" ? (
-                <TrailerNavItem
-                  key={item.key}
-                  item={item}
-                  sections={trailerSections}
-                  active={page === "trailer_department"}
-                  activeSection={trailerSection}
-                  expanded={trailerExpanded}
-                  onToggle={onToggleTrailer}
-                  onOpenDepartment={() => onNavigateToPage(item.key)}
-                  onSelectSection={onNavigateToTrailerSection}
-                />
-              ) : (
-                <button
-                  key={item.key}
-                  className={`nav-item ${page === item.key ? "active" : ""}`}
-                  onClick={() => onNavigateToPage(item.key)}
-                >
-                  <span className="nav-icon">{item.icon}</span>
-                  {item.label}
-                </button>
-              ),
-            )}
+            {section.items.map((item) => (
+              <button
+                key={item.key}
+                className={`nav-item ${page === item.key ? "active" : ""}`}
+                onClick={() => onNavigateToPage(item.key)}
+              >
+                <span className="nav-icon">{item.icon}</span>
+                {item.label}
+              </button>
+            ))}
           </div>
         ))}
         {isFullAdmin && <div className="nav-section">
