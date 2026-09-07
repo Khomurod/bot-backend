@@ -31,6 +31,7 @@ const {
   buildRedirectUri,
   buildAuthorizeUrl,
   exchangeAuthorizationCode,
+  clearRecruiterTokenCache,
 } = require('./ringCentralOAuthService');
 
 const CONNECT_SESSION_TTL_MS = 30 * 60 * 1000;
@@ -214,6 +215,13 @@ async function finishConnectCallback({ state, code }) {
       extension,
       refreshToken: tokens.refreshToken,
     });
+    // The stored credential just changed. Without this, an in-memory access
+    // token minted from the PREVIOUS login keeps being used until it expires —
+    // so a recruiter who reconnects to fix a wrong-account sign-in would still
+    // have every send rejected, and the reconnect would look like it did
+    // nothing. (Keying the cache by recruiter is what makes this explicit
+    // invalidation necessary; see ringCentralOAuthService.)
+    clearRecruiterTokenCache(attached.recruiter.id);
     await rc.completeRcConnectSession(session.id, attached.recruiter.id);
     return { ...attached, extension };
   } catch (err) {

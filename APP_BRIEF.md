@@ -666,6 +666,7 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 | `databaseUsageService` | 60s flush | persists the estimated monthly database transfer and logs once at 80/90/95% of the budget |
 | `memoryWatchdog` | **off by default**; 15 min when on | heap/RSS pressure logging. Requires `MEMORY_WATCHDOG_ENABLED='true'`; `MEMORY_WATCHDOG_INTERVAL_MS` is clamped to ≥60s |
 | Python leads child | supervised process | Meta + RingCentral webhook intake |
+| leads-bot RC subscription reconciler | 15 min (first pass +3s) | re-registers the inbound-SMS subscription **only when the recruiter extension set changes**, so a recruiter who onboards after boot has their replies mirrored without a restart |
 
 Event-driven (no timer) but equally live: the driver-group message pipeline
 (`bot/handlers/groupCaptureHandlers.js`) fans a single incoming message out to
@@ -932,14 +933,24 @@ the repository-wide working rules. The highest-consequence items:
     in Telegram and in the CRM, and an exception would cost the text and
     re-run the whole event. Guarded by `tests/facebookLeadSmsSender.test.js`
     and `tests/facebookLeadEventProcessor.test.js`.
-19. **A rotated RingCentral refresh token must be stored before it is used.**
-    A refresh grant issues a NEW refresh token and kills the old one, so
-    dropping it works exactly once and then locks the recruiter out ~7 days
-    later, silently, with their leads going out from the shared number. The
-    rotation is persisted inside `refreshRecruiterTokens()`, and
+19. **A rotated RingCentral refresh token must be stored before it is used,
+    refreshed one-at-a-time per recruiter, and dropped from the cache when the
+    login changes.** A refresh grant issues a NEW refresh token and kills the
+    old one, which makes three things mandatory rather than tidy: persisting
+    the rotation (dropping it works once, then locks the recruiter out ~7 days
+    later with their leads silently going out from the shared number);
+    **serializing** the grant per recruiter, or two concurrent callers spend
+    the same token and the loser's `invalid_grant` flags a healthy recruiter as
+    needing to re-connect (the call-log sync and the refresh job both start at
+    boot); and **invalidating** the access-token cache on a real
+    re-authorization, or a recruiter who reconnects to fix a wrong-account
+    sign-in keeps sending with the old account's token. The cache is keyed by
+    recruiter — not by the credential — because callers hold rows loaded before
+    the rotation, which is exactly why the invalidation has to be explicit.
     `ringCentralTokenRefreshService` renews every stored login daily so a
     recruiter who goes a week without a lead does not expire from disuse.
-    Guarded by `tests/ringCentralOAuthService.test.js` and
+    Guarded by `tests/ringCentralOAuthService.test.js`,
+    `tests/ringCentralConnectService.test.js` and
     `tests/ringCentralTokenRefresh.test.js`.
 
 ### Code-structure rules (enforced by CI)
@@ -1046,11 +1057,11 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-09-07, deps installed, no `TEST_DATABASE_URL`): **2387 tests,
-  2233 pass, 0 fail, 154 skipped** (the skips are the `*Pg` integration tests),
+  baseline (2026-09-07, deps installed, no `TEST_DATABASE_URL`): **2397 tests,
+  2243 pass, 0 fail, 154 skipped** (the skips are the `*Pg` integration tests),
   exit 0. With a database (`TEST_DATABASE_URL`) nothing skips: the whole suite is
-  **2455 tests, 2455 pass, 0 skipped**. The Python leads worker adds
-  **25 tests** (`python -m unittest discover -s leads-bot -p "test_*.py"`), and
+  **2465 tests, 2465 pass, 0 skipped**. The Python leads worker adds
+  **37 tests** (`python -m unittest discover -s leads-bot -p "test_*.py"`), and
   the admin panel **199** (`npm test --prefix admin`). **So any failure is a real
   failure** — there is no "expected failures" allowance. *(An older internal doc
   claimed ~19 expected failures in a bare environment; that is no longer true and

@@ -97,6 +97,7 @@ organization should converge toward.
 | Per-recruiter RingCentral credentials → an access token | `services/ringCentralOAuthService.js` (the only place a JWT or a refresh token becomes a bearer token) |
 | Recruiter self-onboarding ("sign in with RingCentral") | `services/ringCentralConnectService.js`, `server/routes/ringcentralConnect/{index,pages}.js`, `database/ringcentral/connectSessions.js` |
 | Keeping recruiter logins alive (7-day refresh tokens) | `services/ringCentralTokenRefreshService.js` |
+| Keeping the inbound-SMS subscription in step with the roster | `leads-bot/webhook/rc_subscription.py` |
 | Facebook OAuth self-serve connect, Graph client, crypto, formatting | `services/facebookConnectService.js`, `facebookGraphService.js`, `facebookCrypto.js`, `facebookLeadFormatter.js` |
 | Bitrix24 CRM lead create/update + field mapping | `services/bitrix24Service.js`, `bitrix24LeadMapper.js`, `bitrix24FieldMapLoader.js`, `bitrix24FieldCatalog.js`, `config/bitrix24LeadFieldMap*.json` |
 | Indeed lead intake | `services/indeedLeadService.js`, `docs/gmail-indeed-apps-script.gs` |

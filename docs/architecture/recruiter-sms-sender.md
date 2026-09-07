@@ -91,6 +91,24 @@ never dropped.
 bearer token. The same tokens also drive the per-extension call-log read, so
 onboarding by signing in never costs a recruiter their KPI attribution.
 
+**Two rules that a rotating credential forces, and both were bugs first:**
+
+- **One grant at a time per recruiter.** A refresh returns a new refresh token
+  and invalidates the one used, so two callers refreshing at once means the
+  second presents a spent token, gets `invalid_grant`, and a perfectly healthy
+  recruiter is flagged as needing to sign in again. The call-log sync and the
+  daily refresh job both start at boot, so this is a real race, not a
+  theoretical one. Concurrent callers await the same in-flight grant.
+- **The access-token cache is keyed by recruiter, so a new login must
+  invalidate it.** Keying by the credential looks tidier and is wrong: callers
+  pass a `recruiters` row they loaded earlier, so after a rotation their row's
+  token is stale and a credential-keyed cache would miss and send that spent
+  token back. The cost of id-keying is explicit invalidation on a genuine
+  re-authorization — otherwise a recruiter who reconnects to fix a
+  wrong-account sign-in keeps sending with the old account's token until it
+  expires. Both writers of a new login call `clearRecruiterTokenCache()`: the
+  connect flow and the admin "forget sign-in" route.
+
 ## Replies come back on the same number
 
 `facebook_lead_sms_mirrors.recruiter_id` / `.from_number` record which of our
@@ -111,6 +129,21 @@ adds one `message-store/instant` filter per extension, read from
 an **account-admin** subscriber; if RingCentral refuses, registration retries
 with the shared extension alone and logs that recruiter replies will not be
 mirrored — one number covered beats none.
+
+**The subscription is reconciled, not registered once**
+(`leads-bot/webhook/rc_subscription.py`). A recruiter can finish onboarding at
+any time, and registering only at startup would leave their replies reaching
+nobody until the Python worker restarted. Every 15 minutes the roster is
+re-read and the subscription is re-registered **only if the set changed**, so
+the steady state costs one internal request and nothing else. Two rules there
+matter more than they look:
+
+- a **failed** read is not an empty roster. After the first pass a failure skips
+  the tick and leaves the working subscription alone — re-registering with no
+  extensions because the hub was briefly unreachable would silently drop every
+  recruiter's inbound SMS;
+- the **first** pass registers regardless, even with an empty roster, because
+  the shared company number must be watched from boot.
 
 ## Operational prerequisites (not code)
 
@@ -160,4 +193,5 @@ feature degrades to the old behaviour rather than breaking.
 | The whole lead event, in order | `tests/facebookLeadEventProcessor.test.js` |
 | Routes: admin, public connect, internal list | `tests/recruiterSenderRoutes.test.js` |
 | Migration 0008 on real PostgreSQL | `tests/recruiterSenderIdentityPg.test.js` |
-| Inbound recipient extraction (Python) | `leads-bot/test_rc_forward.py` |
+| Inbound recipient extraction, per-extension filters (Python) | `leads-bot/test_rc_forward.py` |
+| The subscription keeping up with the roster (Python) | `leads-bot/test_rc_subscription.py` |

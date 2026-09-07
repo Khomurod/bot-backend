@@ -260,12 +260,22 @@ test('a link cannot be minted before the shared app credentials exist', async ()
 
 test('forgetting a RingCentral sign-in is a distinct, narrow action', async () => {
   const pool = makePool({ recruiters: [{ ...JANE, refresh_token_encrypted: 'enc' }] });
-  const app = loadApp({ pool });
+  const cleared = [];
+  const app = loadApp({
+    pool,
+    oauthService: {
+      getRecruiterAccessToken: async () => ({ accessToken: 't', apiBase: 'https://rc.test', mode: 'oauth' }),
+      clearRecruiterTokenCache: (id) => cleared.push(id),
+    },
+  });
   const res = await call(app, 'DELETE', '/api/recruiters/7/ringcentral-login');
   assert.equal(res.status, 200);
   const update = pool.writes.find((w) => /refresh_token_encrypted = NULL/i.test(w.sql));
   assert.ok(update, 'only the OAuth grant is cleared');
   assert.ok(!/jwt_token_encrypted/i.test(update.sql), 'a pasted JWT is left alone');
+  // Revoking the stored login must revoke the live access token too, or their
+  // sends keep working for up to an hour after it was removed.
+  assert.deepEqual(cleared, [7]);
 
   const bad = await call(app, 'DELETE', '/api/recruiters/0/ringcentral-login');
   assert.equal(bad.status, 400);

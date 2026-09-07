@@ -34,13 +34,41 @@ const REQUEST_TIMEOUT_MS = 25_000;
 /** Renew this long before expiry so an in-flight send never uses a dead token. */
 const TOKEN_SKEW_SECONDS = 60;
 
-/** recruiterId → { accessToken, expiresAt } (epoch seconds). */
+/**
+ * recruiterId → { accessToken, expiresAt } (epoch seconds).
+ *
+ * KEYED BY RECRUITER, NOT BY THE CREDENTIAL, and that is load-bearing: callers
+ * hold a `recruiters` row they loaded earlier, so after a rotation their row's
+ * refresh token is stale. A cache keyed by the credential would miss for them
+ * and send that spent token back to RingCentral, which is exactly the
+ * `invalid_grant` this module exists to avoid.
+ *
+ * The cost of id-keying is that a genuine RE-AUTHORIZATION (a recruiter signing
+ * in again, most importantly to correct a sign-in for the wrong RingCentral
+ * account) must invalidate explicitly, or every send would keep using the
+ * previous account's access token until it expired and be rejected. Both
+ * writers of a new login call clearRecruiterTokenCache(): the connect flow and
+ * the admin "forget sign-in" route.
+ */
 const tokenCache = new Map();
 
 function clearRecruiterTokenCache(recruiterId = null) {
   if (recruiterId === null) tokenCache.clear();
   else tokenCache.delete(recruiterId);
 }
+
+/**
+ * recruiterId → the refresh already in flight for them.
+ *
+ * A refresh grant ROTATES: it returns a new refresh token and invalidates the
+ * one it was called with. So two callers refreshing the same recruiter at once
+ * do not merely duplicate work — the second presents a token the first has
+ * already spent, gets `invalid_grant`, and marks a perfectly healthy recruiter
+ * as needing to sign in again. That race is not hypothetical: the call-log sync
+ * and the daily refresh job both start at boot, and two leads can be assigned
+ * to the same recruiter seconds apart. Concurrent callers await the SAME grant.
+ */
+const inFlightRefreshes = new Map();
 
 function authError(message, code, status = null) {
   const err = new Error(message);
@@ -145,7 +173,18 @@ async function refreshAccessToken({ apiBase, clientId, clientSecret, refreshToke
  *
  * @returns {Promise<{accessToken:string, expiresIn:number}>}
  */
-async function refreshRecruiterTokens(recruiter, auth) {
+function refreshRecruiterTokens(recruiter, auth) {
+  const pending = inFlightRefreshes.get(recruiter.id);
+  if (pending) return pending;
+
+  const started = performRecruiterRefresh(recruiter, auth)
+    .finally(() => { inFlightRefreshes.delete(recruiter.id); });
+  inFlightRefreshes.set(recruiter.id, started);
+  return started;
+}
+
+/** The actual grant. Never call this directly — go through the dedupe above. */
+async function performRecruiterRefresh(recruiter, auth) {
   try {
     const tokens = await refreshAccessToken({
       apiBase: auth.apiBase,
@@ -157,7 +196,12 @@ async function refreshRecruiterTokens(recruiter, auth) {
     if (tokens.refreshToken) {
       await rc.updateRecruiterRefreshToken(recruiter.id, tokens.refreshToken);
     }
-    clearRecruiterTokenCache(recruiter.id);
+    // The ONE place the cache is written, so the nightly refresh job warms it
+    // for the sends that follow instead of leaving them to refresh again.
+    tokenCache.set(recruiter.id, {
+      accessToken: tokens.accessToken,
+      expiresAt: Math.floor(Date.now() / 1000) + tokens.expiresIn,
+    });
     return tokens;
   } catch (err) {
     const note = err.code === 'RC_REFRESH_EXPIRED'
@@ -200,10 +244,6 @@ async function getRecruiterAccessToken(recruiter, globalCfg) {
   }
 
   const tokens = await refreshRecruiterTokens(recruiter, auth);
-  tokenCache.set(recruiter.id, {
-    accessToken: tokens.accessToken,
-    expiresAt: nowSeconds + tokens.expiresIn,
-  });
   return { accessToken: tokens.accessToken, apiBase: auth.apiBase, mode: 'oauth' };
 }
 

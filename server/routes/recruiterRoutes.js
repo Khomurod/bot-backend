@@ -3,6 +3,7 @@ const { DateTime } = require('luxon');
 const rc = require('../../database/ringcentral');
 const { syncNow } = require('../../services/recruiterCallSyncService');
 const { createRecruiterConnectLink } = require('../../services/ringCentralConnectService');
+const { clearRecruiterTokenCache } = require('../../services/ringCentralOAuthService');
 const { registerRecruiterDiagnosticRoutes } = require('./recruiter/diagnosticsRoutes');
 
 /**
@@ -182,6 +183,9 @@ function createRecruiterRouter({ authMiddleware }) {
       if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' });
       const recruiter = await rc.clearRecruiterOAuth(id);
       if (!recruiter) return res.status(404).json({ error: 'Recruiter not found' });
+      // Revoking the stored login must revoke the in-memory access token too,
+      // or their sends keep working for up to an hour after it was removed.
+      clearRecruiterTokenCache(id);
       return res.json({ recruiter });
     } catch (err) {
       console.error('[RECRUITER API] clear RingCentral login failed:', err.message);

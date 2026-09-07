@@ -149,6 +149,135 @@ test('the access token is cached per recruiter, so a burst of leads is one refre
   } finally { fetchSpy.restore(); restore(); }
 });
 
+test('concurrent callers share ONE grant instead of racing on a rotating token', async () => {
+  // The bug this prevents: two callers refresh with the same stored token, the
+  // second presents one the first already spent, gets invalid_grant, and a
+  // perfectly healthy recruiter is marked as needing to sign in again. It is
+  // not hypothetical — the call-log sync and the daily refresh job both start
+  // at boot, and two leads can be assigned to the same recruiter seconds apart.
+  const auth = { mode: 'oauth', refreshToken: 'refresh-1', ...CFG };
+  const { oauth, writes, restore } = loadOAuth({ auth });
+
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const seen = [];
+  const original = global.fetch;
+  global.fetch = async (url, options) => {
+    seen.push(Object.fromEntries(new URLSearchParams(options?.body || '')));
+    await gate;
+    return { ok: true, status: 200, json: async () => ({ access_token: 'access-2', refresh_token: 'refresh-2', expires_in: 3600 }) };
+  };
+
+  try {
+    const both = Promise.all([
+      oauth.getRecruiterAccessToken({ id: 7, name: 'Jane' }, CFG),
+      oauth.refreshRecruiterTokens({ id: 7, name: 'Jane' }, auth),
+    ]);
+    release();
+    const [viaAccessToken, viaRefresh] = await both;
+
+    assert.equal(seen.length, 1, 'exactly one grant reached RingCentral');
+    assert.equal(viaAccessToken.accessToken, 'access-2');
+    assert.equal(viaRefresh.accessToken, 'access-2', 'both callers got the same token');
+    assert.deepEqual(writes.rotations, [{ id: 7, token: 'refresh-2' }], 'stored once');
+    assert.deepEqual(writes.authErrors, [], 'and nobody was wrongly flagged');
+  } finally { global.fetch = original; restore(); }
+});
+
+test('a refresh that fails rejects every waiting caller, and flags once', async () => {
+  const auth = { mode: 'oauth', refreshToken: 'stale', ...CFG };
+  const { oauth, writes, restore } = loadOAuth({ auth });
+  const fetchSpy = tokenFetch([{
+    ok: false,
+    status: 400,
+    json: async () => ({ error: 'invalid_grant', error_description: 'Token not found' }),
+  }]);
+  try {
+    const results = await Promise.allSettled([
+      oauth.getRecruiterAccessToken({ id: 7, name: 'Jane' }, CFG),
+      oauth.getRecruiterAccessToken({ id: 7, name: 'Jane' }, CFG),
+    ]);
+    assert.deepEqual(results.map((r) => r.status), ['rejected', 'rejected']);
+    assert.equal(fetchSpy.seen.length, 1);
+    assert.equal(writes.authErrors.length, 1, 'flagged once, not once per caller');
+  } finally { fetchSpy.restore(); restore(); }
+});
+
+test('the dedupe is per recruiter, not global', async () => {
+  const auth = { mode: 'oauth', refreshToken: 'refresh-1', ...CFG };
+  const { oauth, restore } = loadOAuth({ auth });
+  const fetchSpy = tokenFetch([okToken('r2', 'a1'), okToken('r3', 'a2')]);
+  try {
+    await Promise.all([
+      oauth.getRecruiterAccessToken({ id: 7 }, CFG),
+      oauth.getRecruiterAccessToken({ id: 8 }, CFG),
+    ]);
+    assert.equal(fetchSpy.seen.length, 2, 'two recruiters must not block each other');
+  } finally { fetchSpy.restore(); restore(); }
+});
+
+test('a later refresh is not deduped against a finished one', async () => {
+  const auth = { mode: 'oauth', refreshToken: 'refresh-1', ...CFG };
+  const { oauth, restore } = loadOAuth({ auth });
+  const fetchSpy = tokenFetch([okToken('r2', 'a1'), okToken('r3', 'a2')]);
+  try {
+    await oauth.refreshRecruiterTokens({ id: 7 }, auth);
+    await oauth.refreshRecruiterTokens({ id: 7 }, auth);
+    assert.equal(fetchSpy.seen.length, 2, 'the in-flight entry must be released');
+  } finally { fetchSpy.restore(); restore(); }
+});
+
+test('a caller holding a row loaded BEFORE the rotation still hits the cache', async () => {
+  // Why the cache is keyed by recruiter and not by the credential: callers pass
+  // a row they loaded earlier, so after a rotation their row's refresh token is
+  // stale. A credential-keyed cache would miss and send that spent token back.
+  const staleAuth = { mode: 'oauth', refreshToken: 'refresh-1', ...CFG };
+  const { oauth, restore } = loadOAuth({ auth: staleAuth });
+  const fetchSpy = tokenFetch([okToken('refresh-2', 'access-2')]);
+  try {
+    await oauth.getRecruiterAccessToken({ id: 7 }, CFG);
+    await oauth.getRecruiterAccessToken({ id: 7 }, CFG);
+    assert.equal(fetchSpy.seen.length, 1, 'the second call must not refresh a spent token');
+  } finally { fetchSpy.restore(); restore(); }
+});
+
+test('clearing the cache is what makes a re-authorization take effect', async () => {
+  // The cost of keying by recruiter: a NEW login must invalidate explicitly, or
+  // the previous account's access token keeps being used until it expires and
+  // every send is rejected. The connect flow and the "forget sign-in" route
+  // both call clearRecruiterTokenCache for exactly this reason.
+  const auth = { mode: 'oauth', refreshToken: 'refresh-1', ...CFG };
+  const { oauth, restore } = loadOAuth({ auth });
+  const fetchSpy = tokenFetch([okToken('r2', 'access-old'), okToken('r3', 'access-new')]);
+  try {
+    const before = await oauth.getRecruiterAccessToken({ id: 7 }, CFG);
+    assert.equal(before.accessToken, 'access-old');
+
+    oauth.clearRecruiterTokenCache(7);
+    const after = await oauth.getRecruiterAccessToken({ id: 7 }, CFG);
+    assert.equal(after.accessToken, 'access-new');
+    assert.equal(fetchSpy.seen.length, 2);
+
+    // And a different recruiter's cache is untouched by that clear.
+    oauth.clearRecruiterTokenCache(999);
+    const still = await oauth.getRecruiterAccessToken({ id: 7 }, CFG);
+    assert.equal(still.accessToken, 'access-new');
+    assert.equal(fetchSpy.seen.length, 2);
+  } finally { fetchSpy.restore(); restore(); }
+});
+
+test('the nightly job warms the cache instead of leaving the next send to refresh', async () => {
+  const auth = { mode: 'oauth', refreshToken: 'refresh-1', ...CFG };
+  const { oauth, restore } = loadOAuth({ auth });
+  const fetchSpy = tokenFetch([okToken('r2', 'access-2')]);
+  try {
+    await oauth.refreshRecruiterTokens({ id: 7 }, auth);
+    const next = await oauth.getRecruiterAccessToken({ id: 7 }, CFG);
+    assert.equal(next.accessToken, 'access-2');
+    assert.equal(fetchSpy.seen.length, 1, 'the send after a job refresh costs no grant');
+  } finally { fetchSpy.restore(); restore(); }
+});
+
 test('a token about to expire is refreshed rather than used', async () => {
   const auth = { mode: 'oauth', refreshToken: 'refresh-1', ...CFG };
   const { oauth, restore } = loadOAuth({ auth });

@@ -48,7 +48,10 @@ function loadConnect({
   tokens = { accessToken: 'access-1', refreshToken: 'refresh-1', expiresIn: 3600 },
   cfg = { apiBase: 'https://rc.test', clientId: 'cid', clientSecret: 'sec' },
 } = {}) {
-  const calls = { states: [], stored: [], created: [], completed: [], errors: [], authErrors: [], expired: 0 };
+  const calls = {
+    states: [], stored: [], created: [], completed: [], errors: [], authErrors: [],
+    cacheCleared: [], expired: 0,
+  };
   let nextId = 90;
 
   require.cache[CONFIG_PATH] = { exports: { ...require('../config/config'), publicBaseUrl } };
@@ -109,6 +112,7 @@ function loadConnect({
         if (tokens instanceof Error) throw tokens;
         return tokens;
       },
+      clearRecruiterTokenCache: (id) => { calls.cacheCleared.push(id); },
     },
   };
   delete require.cache[CONNECT_PATH];
@@ -202,6 +206,42 @@ test('an unbound link finds an EXISTING recruiter by their number instead of dup
     assert.equal(result.recruiter.id, 7);
     assert.deepEqual(calls.created, [], 'no duplicate row for a number already on the platform');
     assert.deepEqual(calls.stored, [{ id: 7, refreshToken: 'refresh-1', extensionId: '101', extensionNumber: '1001' }]);
+  } finally { restore(); }
+});
+
+test('a reconnect drops the cached access token from the OLD login', async () => {
+  // Without this, a recruiter who signs in again — most importantly to correct
+  // a sign-in for the wrong RingCentral account — keeps sending with the
+  // previous account's access token until it expires, so every send is
+  // rejected and the reconnect looks like it did nothing.
+  const recruiters = { 7: { id: 7, name: 'Jane Doe', phone_number: '+15550001111' } };
+  const sessions = { tok: { id: 5, session_token: 'tok', recruiter_id: 7, status: 'pending', oauth_state: 'st8', expires_at: future() } };
+  const { connect, calls, restore } = loadConnect({ sessions, recruiters });
+  try {
+    await connect.finishConnectCallback({ state: 'st8', code: 'code-1' });
+    assert.deepEqual(calls.cacheCleared, [7]);
+  } finally { restore(); }
+});
+
+test('a newly created recruiter clears its own (empty) cache entry, harmlessly', async () => {
+  const sessions = { tok: { id: 5, session_token: 'tok', status: 'pending', oauth_state: 'st8', expires_at: future() } };
+  const { connect, calls, restore } = loadConnect({ sessions });
+  try {
+    const result = await connect.finishConnectCallback({ state: 'st8', code: 'code-1' });
+    assert.equal(result.created, true);
+    assert.deepEqual(calls.cacheCleared, [result.recruiter.id]);
+  } finally { restore(); }
+});
+
+test('a FAILED reconnect does not clear anything', async () => {
+  const sessions = { tok: { id: 5, session_token: 'tok', status: 'pending', oauth_state: 'st8', expires_at: future() } };
+  const { connect, calls, restore } = loadConnect({
+    sessions,
+    tokens: { accessToken: 'a', refreshToken: '', expiresIn: 3600 },
+  });
+  try {
+    await assert.rejects(() => connect.finishConnectCallback({ state: 'st8', code: 'code-1' }));
+    assert.deepEqual(calls.cacheCleared, [], 'the old login is still the live one');
   } finally { restore(); }
 });
 

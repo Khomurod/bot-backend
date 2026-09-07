@@ -14,7 +14,6 @@ The names re-exported below are imported here because the routes use them and
 because leads-bot's tests address them through this module; nothing else in the
 tree imports webhook_server.
 """
-import asyncio
 import json
 import logging
 import os
@@ -23,7 +22,6 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse, Response
 
 from config import META_APP_SECRET, WEBHOOK_VERIFY_TOKEN
-from sms import register_sms_webhook
 
 import httpx  # noqa: F401  (tests patch webhook_server.httpx)
 
@@ -32,9 +30,10 @@ from webhook.connect_command import (
     start_connect_command_poller,
     stop_connect_command_poller,
 )
-from webhook.hub_client import (
-    _fetch_ringcentral_sms_extensions,
-    _forward_verified_facebook_payload,
+from webhook.hub_client import _forward_verified_facebook_payload
+from webhook.rc_subscription import (
+    start_rc_subscription_refresher,
+    stop_rc_subscription_refresher,
 )
 from webhook.lead_processing import _process_lead
 from webhook.meta_signature import _verify_signature
@@ -64,33 +63,20 @@ BASE_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://bot-backend-x9lc.onren
 @app.on_event("startup")
 async def _startup_register_rc_webhook():
     """Register background tasks for the leads bot service."""
-    async def _delayed_register():
-        await asyncio.sleep(3)
-        callback = f"{BASE_URL}/rc-webhook"
-        # Watch the shared company extension AND every recruiter extension, so
-        # a driver replying to the recruiter who texted them still shows up in
-        # the hub group. A failure to read the list is not fatal: the shared
-        # extension is still registered.
-        extensions: list[str] = []
-        try:
-            extensions = await _fetch_ringcentral_sms_extensions()
-        except Exception as exc:
-            logger.warning("Could not read recruiter RingCentral extensions: %s", exc)
-        logger.info(
-            "Registering RingCentral SMS webhook → %s (%d recruiter extension(s))",
-            callback,
-            len(extensions),
-        )
-        await register_sms_webhook(callback, extensions)
-
-    asyncio.create_task(_delayed_register())
+    # Watch the shared company extension AND every recruiter extension, so a
+    # driver replying to the recruiter who texted them still shows up in the hub
+    # group. RECONCILED, not registered once: a recruiter can finish RingCentral
+    # onboarding at any time, and until their extension is in the subscription
+    # their replies reach nobody.
+    start_rc_subscription_refresher(f"{BASE_URL}/rc-webhook")
     start_connect_command_poller()
 
 
 @app.on_event("shutdown")
-async def _shutdown_connect_command_poller():
-    """Stop the leads bot Telegram long-poll loop cleanly."""
+async def _shutdown_background_tasks():
+    """Stop the leads bot background loops cleanly."""
     await stop_connect_command_poller()
+    await stop_rc_subscription_refresher()
 
 
 @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
