@@ -55,6 +55,7 @@ function loadDiag({
   recruiters = [JANE],
   recruiterByBitrix = { 17: JANE },
   assignee = { ok: true, assignedById: 17 },
+  convertedDealAssignee = null,
   leadRow = { id: 1, external_id: 'lg-1', bitrix_id: '4242', bitrix_status: 'created' },
   outcomeRows = [{ status: 'created', n: 12 }],
   dbError = null,
@@ -78,7 +79,8 @@ function loadDiag({
         if (catalogError) throw catalogError;
         return catalog;
       },
-      getCrmRecordAssignee: async () => assignee,
+      getCrmRecordAssignee: async () => ({ ...assignee }),
+      getConvertedDealAssignee: async () => convertedDealAssignee,
     },
   };
   // Mirrors the real loader: a form id merges its override over the base map.
@@ -394,4 +396,29 @@ test('a deal portal is not judged against LEAD statuses', async () => {
 
   const lead = await run({ entity: 'lead', mapStatusId: 'NEW' });
   assert.ok(lead.byLabel('lead status'), 'a lead portal still gets the check');
+});
+
+test('the readback follows a converted lead, so the panel does not cry wolf', async () => {
+  // The lead keeps the webhook owner (1, mapped to nobody); the recruiter is on
+  // the deal. Reporting a failure here would contradict what the sender does.
+  const result = await run({
+    assignee: { ok: true, assignedById: 1 },
+    convertedDealAssignee: 17,
+    recruiterByBitrix: { 17: JANE },
+  });
+  const step = result.byLabel('Assignee readback');
+  assert.equal(step.ok, true);
+  assert.match(step.detail, /via converted deal/);
+  assert.match(step.detail, /Jane Doe/);
+});
+
+test('with no converted deal the unmapped owner is still reported, pointing at the matcher', async () => {
+  const result = await run({
+    assignee: { ok: true, assignedById: 1 },
+    convertedDealAssignee: null,
+    recruiterByBitrix: {},
+  });
+  const step = result.byLabel('Assignee readback');
+  assert.equal(step.ok, false);
+  assert.match(step.detail, /Match recruiters to Bitrix users/);
 });
