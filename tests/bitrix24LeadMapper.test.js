@@ -9,6 +9,9 @@ const {
   buildBitrixCrmFields,
   buildTrackingComments,
   buildLeadComments,
+  humanizeMetaKey,
+  buildAnswerLines,
+  resetInertAssignedByWarning,
 } = require('../services/bitrix24LeadMapper');
 const { resetCatalogForTests } = require('../services/bitrix24FieldCatalog');
 
@@ -272,4 +275,122 @@ test('buildBitrixCrmFields includes deal category and stage when entity is deal'
 
 test.after(() => {
   resetCatalogForTests();
+});
+
+/**
+ * AN ANSWER WITH NOWHERE TO GO MUST NOT VANISH.
+ *
+ * The Facebook form asks the two questions a recruiter actually screens on —
+ * "2 years of experience?", "CDL-A over the road?" — and the mapper can only
+ * fill Bitrix fields that exist. The portal has none (see
+ * config/bitrix24LeadFieldMap.discovered.json: "crm.lead.userfield.list
+ * returned no custom fields"), so those answers used to produce a console
+ * warning and nothing else: the recruiter opened the lead in Bitrix and saw a
+ * name and a phone number, as if the driver had answered nothing.
+ */
+test('answers with no Bitrix field are carried in COMMENTS, not dropped', () => {
+  const fields = buildBitrixCrmFields({
+    fieldMap: {
+      full_name: 'Alex Driver',
+      phone_number: '+15559998888',
+      do_you_have_2_years_of_experience: 'Yes',
+      are_you_cdl_a_over_the_road_driver: 'Yes, CDL-A OTR',
+    },
+    leadData: sampleLeadData,
+    connection: sampleConnection,
+    leadgenId: 'lg-1',
+    formId: '',
+    bitrixConfig: baseBitrixConfig,
+    catalog: null,
+  });
+
+  assert.match(fields.COMMENTS, /Answers not stored in a Bitrix field:/);
+  assert.match(fields.COMMENTS, /Do you have 2 years of experience: Yes/);
+  assert.match(fields.COMMENTS, /Are you cdl a over the road driver: Yes, CDL-A OTR/);
+  // The provenance lines are still there, after the answers.
+  assert.match(fields.COMMENTS, /Leadgen ID: lg-1/);
+  assert.ok(
+    fields.COMMENTS.indexOf('Do you have 2 years') < fields.COMMENTS.indexOf('Leadgen ID'),
+    'the answers come first — they are what a recruiter reads',
+  );
+});
+
+test('an answer that DID reach a field is not repeated in COMMENTS', () => {
+  const fields = buildBitrixCrmFields({
+    fieldMap: { full_name: 'Alex Driver', phone_number: '+15559998888', email: 'a@b.c' },
+    leadData: sampleLeadData,
+    connection: sampleConnection,
+    leadgenId: 'lg-1',
+    formId: '',
+    bitrixConfig: baseBitrixConfig,
+    catalog: null,
+  });
+  assert.doesNotMatch(fields.COMMENTS, /Answers not stored/);
+  assert.doesNotMatch(fields.COMMENTS, /15559998888/, 'the phone went into PHONE');
+});
+
+test('buildAnswerLines skips what was mapped, and what is empty', () => {
+  const lines = buildAnswerLines(
+    { full_name: 'Alex', experience: 'Yes', blank: '', cdl: 'No' },
+    new Set(['full_name']),
+  );
+  assert.deepEqual(lines, ['Experience: Yes', 'Cdl: No']);
+});
+
+test('humanizeMetaKey turns a Meta key into something readable', () => {
+  assert.equal(humanizeMetaKey('do_you_have_2_years_of_experience'), 'Do you have 2 years of experience');
+  assert.equal(humanizeMetaKey('cdl'), 'Cdl');
+  assert.equal(humanizeMetaKey(''), '');
+  assert.equal(humanizeMetaKey(null), '');
+});
+
+test('buildTrackingComments without answers is unchanged', () => {
+  const comments = buildTrackingComments({
+    leadData: sampleLeadData, connection: sampleConnection, leadgenId: 'lg-1', formId: '7',
+  });
+  assert.doesNotMatch(comments, /Answers not stored/);
+  assert.match(comments, /^Facebook lead \(bot-backend\)/);
+});
+
+/**
+ * A NAME IN BITRIX24_ASSIGNED_BY_ID IS INERT, and used to be silently so.
+ * Bitrix only accepts the numeric user id, so the production default
+ * ("Tom Robinson") has never assigned anything — every lead goes to the
+ * webhook owner. That matters more now: the assignee is what decides which
+ * recruiter's number texts the driver.
+ */
+test('a non-numeric assignee is ignored, and warned about exactly once', () => {
+  const warnings = [];
+  const original = console.warn;
+  console.warn = (...args) => { if (String(args[0]).includes('ASSIGNED_BY_ID')) warnings.push(args.join(' ')); };
+  resetInertAssignedByWarning();
+  try {
+    const build = (assignedById) => buildBitrixCrmFields({
+      fieldMap: { full_name: 'Alex Driver' },
+      leadData: sampleLeadData,
+      connection: sampleConnection,
+      leadgenId: 'lg-1',
+      formId: '',
+      bitrixConfig: { ...baseBitrixConfig, assignedById },
+      catalog: null,
+    });
+
+    const first = build('Tom Robinson');
+    assert.equal(first.ASSIGNED_BY_ID, undefined, 'a name cannot be a Bitrix user id');
+    build('Tom Robinson');
+    build('Tom Robinson');
+    assert.equal(warnings.length, 1, 'this runs per lead — a repeated warning is one nobody reads');
+    assert.match(warnings[0], /"Tom Robinson"/);
+    assert.match(warnings[0], /company\/personal\/user/, 'says where to find the real id');
+
+    // A real id still works, and a blank one is silent (a rule assigns).
+    assert.equal(build('17').ASSIGNED_BY_ID, 17);
+    resetInertAssignedByWarning();
+    warnings.length = 0;
+    assert.equal(build('').ASSIGNED_BY_ID, undefined);
+    assert.deepEqual(warnings, [], 'not set is the expected setup, not a problem');
+  } finally {
+    console.warn = original;
+    resetInertAssignedByWarning();
+  }
 });

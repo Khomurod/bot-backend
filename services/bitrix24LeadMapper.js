@@ -128,6 +128,11 @@ function applyMappedFields(fieldMap, mapConfig, catalog) {
 
     const resolved = resolveCustomBitrixField(rule, catalog);
     if (!resolved?.name) {
+      // Nowhere to put it — the portal has no matching lead field. The answer
+      // still reaches the CRM in COMMENTS (see buildTrackingComments), because
+      // "do you have 2 years of experience" is the reason a recruiter opens the
+      // lead at all, and silently dropping it makes Bitrix look like the driver
+      // never answered.
       console.warn('[Bitrix24] No Bitrix field for custom Meta key:', metaKey);
       continue;
     }
@@ -138,13 +143,71 @@ function applyMappedFields(fieldMap, mapConfig, catalog) {
   return { fields, mappedMetaKeys, normalizedMap };
 }
 
+/**
+ * Once per process — this runs per lead, and a repeated warning is a warning
+ * nobody reads.
+ */
+let warnedInertAssignedBy = false;
+
+function warnInertAssignedByOnce(value) {
+  if (warnedInertAssignedBy) return;
+  warnedInertAssignedBy = true;
+  console.warn(
+    `[Bitrix24] BITRIX24_ASSIGNED_BY_ID is "${value}", which is not a numeric Bitrix user ID — `
+    + 'it is ignored, and new leads are assigned to the inbound webhook\'s owner. '
+    + 'Set it to the user id from the Bitrix profile URL (/company/personal/user/<id>/), '
+    + 'or leave it blank if a Bitrix distribution rule assigns leads.'
+  );
+}
+
+/** Test seam: forget that the warning was emitted. */
+function resetInertAssignedByWarning() {
+  warnedInertAssignedBy = false;
+}
+
+/** "do_you_have_2_years_of_experience" → "Do you have 2 years of experience". */
+function humanizeMetaKey(key) {
+  const words = String(key || '').split('_').filter(Boolean);
+  if (!words.length) return '';
+  const [first, ...rest] = words;
+  return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(' ');
+}
+
+/**
+ * The lead's answers that no Bitrix field could take, as comment lines.
+ *
+ * This is the safety net for the gap between a Facebook form and a Bitrix
+ * portal: form questions arrive whether or not anyone has created a matching
+ * lead field, and the mapper can only fill fields that exist. Before this, an
+ * unmatched answer produced a console warning and nothing else — the recruiter
+ * opened the lead in Bitrix and saw a name and a phone number, with the
+ * qualifying answers nowhere. Field mapping is still the goal; this makes the
+ * un-mapped case lossy in appearance only.
+ */
+function buildAnswerLines(normalizedMap, mappedMetaKeys) {
+  const lines = [];
+  for (const [key, value] of Object.entries(normalizedMap || {})) {
+    if (!value || mappedMetaKeys.has(key)) continue;
+    const label = humanizeMetaKey(key);
+    if (label) lines.push(`${label}: ${value}`);
+  }
+  return lines;
+}
+
 function buildTrackingComments({
   leadData,
   connection,
   leadgenId,
   formId,
+  answerLines = [],
 }) {
   const lines = ['Facebook lead (bot-backend)', ''];
+  // The answers first: they are what a recruiter reads. Provenance after.
+  if (answerLines.length) {
+    lines.push('Answers not stored in a Bitrix field:');
+    lines.push(...answerLines);
+    lines.push('');
+  }
   if (connection?.page_name) lines.push(`Page: ${connection.page_name}`);
   if (connection?.page_id) lines.push(`Page ID: ${connection.page_id}`);
   if (formId) lines.push(`Form ID: ${formId}`);
@@ -193,7 +256,13 @@ function buildBitrixCrmFields({
   logUnmappedFields(normalizedMap, mappedMetaKeys);
 
   fields.TITLE = fields.TITLE || `Facebook Lead – ${displayName}`;
-  fields.COMMENTS = buildTrackingComments({ leadData, connection, leadgenId, formId });
+  fields.COMMENTS = buildTrackingComments({
+    leadData,
+    connection,
+    leadgenId,
+    formId,
+    answerLines: buildAnswerLines(normalizedMap, mappedMetaKeys),
+  });
 
   if (bitrixConfig.sourceDescription) {
     fields.SOURCE_DESCRIPTION = bitrixConfig.sourceDescription;
@@ -210,6 +279,14 @@ function buildBitrixCrmFields({
   const assignedBy = Number(bitrixConfig.assignedById);
   if (Number.isFinite(assignedBy) && assignedBy > 0) {
     fields.ASSIGNED_BY_ID = assignedBy;
+  } else if (String(bitrixConfig.assignedById || '').trim()) {
+    // Set to something that is not a Bitrix user ID — a NAME, most likely.
+    // Bitrix only accepts the numeric id, so the value is inert and the lead is
+    // assigned to whoever owns the inbound webhook. Worth saying out loud
+    // rather than leaving as a config line that looks effective: the assignee
+    // is now also what decides WHICH RECRUITER'S NUMBER texts the lead
+    // (services/facebookLeadSmsSender.js).
+    warnInertAssignedByOnce(bitrixConfig.assignedById);
   }
 
   if (bitrixConfig.entity === 'deal') {
@@ -226,6 +303,9 @@ function buildBitrixCrmFields({
 
 module.exports = {
   bitrixMultiField,
+  humanizeMetaKey,
+  buildAnswerLines,
+  resetInertAssignedByWarning,
   normalizeMetaFieldKey,
   splitNameFromFieldMap,
   resolveDisplayName,

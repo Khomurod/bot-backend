@@ -24,6 +24,7 @@ const { createMessageGroupSettingsRouter } = require('./settings/messageGroupRou
 const { createGmapsSettingsRouter } = require('./settings/gmapsRoutes');
 const { createSafetyEventSettingsRouter } = require('./settings/safetyEventRoutes');
 const { createBolPodSettingsRouter } = require('./settings/bolPodRoutes');
+const { createBitrixSettingsRouter } = require('./settings/bitrixRoutes');
 
 function createSettingsRouter({ authMiddleware, telegram = null }) {
   const router = express.Router();
@@ -35,6 +36,7 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
   router.use(createGmapsSettingsRouter(deps));
   router.use(createSafetyEventSettingsRouter(deps));
   router.use(createBolPodSettingsRouter(deps));
+  router.use(createBitrixSettingsRouter(deps));
 
   return router;
 }

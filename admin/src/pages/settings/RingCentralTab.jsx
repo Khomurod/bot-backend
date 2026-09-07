@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../api";
 import { KeyField, NumField, Banner } from "./fields";
 import RecruiterCard from "./ringcentral/RecruiterCard";
+import BitrixCard from "./ringcentral/BitrixCard";
 
 // ─────────────────────────────── RingCentral tab ─────────────────────────────
 //
@@ -192,6 +193,8 @@ export default function RingCentralTab() {
         <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save settings"}</button>
         {settings.updatedAt && <span style={{ fontSize: 12, color: "#94a3b8" }}>Last updated {new Date(settings.updatedAt).toLocaleString()}</span>}
       </div>
+
+      <BitrixCard onMessage={setMessage} />
 
       <div className="card" style={{ marginBottom: 16 }}>
         <h3 style={{ marginTop: 0 }}>🔗 Invite A Recruiter To Connect RingCentral</h3>

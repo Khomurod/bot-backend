@@ -26,6 +26,45 @@
 const { classifyDatabaseError } = require('../../lib/database/failureClassification');
 
 /**
+ * What Express's body parser rejects, in words an operator can act on. The
+ * parser runs BEFORE every route — ahead of the auth middleware — so these are
+ * the failures most likely to reach the terminal handler.
+ */
+const BODY_PARSER_MESSAGES = {
+  'entity.parse.failed': 'Request body is not valid JSON',
+  'entity.too.large': 'Request body is too large',
+  'encoding.unsupported': 'Request body encoding is not supported',
+  'charset.unsupported': 'Request body charset is not supported',
+  'request.aborted': 'Request was aborted before it finished',
+};
+
+/**
+ * A status the ERROR ITSELF carries, when the request is at fault.
+ *
+ * Two sources put one there: Express's body parser (a malformed JSON body is
+ * `entity.parse.failed`, status 400) and this repo's own services, several of
+ * which throw with an explicit `statusCode` — 400 for a missing field, 404 for
+ * a record, 502 for a rejected send.
+ *
+ * Only 4xx is adopted. A 5xx on the error is already what the default says, and
+ * "the server broke" is the safer reading of an unexpected one; but answering
+ * 500 to a malformed body tells an operator the SERVER failed when the REQUEST
+ * did, which is the wrong place to go looking. Deliberately 4xx-only, so an
+ * error cannot talk its way into a 2xx or 3xx.
+ *
+ * @returns {{status: number, message: string}|{}} empty when it is not a client
+ *   error, so `sendFailure`'s 500 / 'Server error' defaults still apply.
+ */
+function clientErrorResponse(error) {
+  const raw = Number(error?.status ?? error?.statusCode);
+  if (!Number.isInteger(raw) || raw < 400 || raw > 499) return {};
+  const message = BODY_PARSER_MESSAGES[error?.type]
+    || String(error?.message || '').slice(0, 200)
+    || 'Request could not be processed';
+  return { status: raw, message };
+}
+
+/**
  * Answer a failed request.
  *
  * @param {import('express').Response} res
@@ -62,6 +101,12 @@ function sendFailure(res, error, options = {}) {
  * Four arguments is not optional here — Express identifies an error handler by
  * its arity, and a three-argument function is silently treated as ordinary
  * middleware that never runs on an error.
+ *
+ * This is the ONE place a status is inferred from the error, because it is the
+ * one place with no caller intent to respect: `sendFailure`'s other callers
+ * pass a status deliberately and keep it. A database failure still outranks
+ * everything (an unreachable database is not the request's fault, whatever
+ * status happens to be attached).
  */
 function createErrorHandler() {
   return function handleRouteError(error, req, res, next) {
@@ -71,10 +116,10 @@ function createErrorHandler() {
       return next(error);
     }
     return sendFailure(res, error, {
-      message: 'Server error',
+      ...clientErrorResponse(error),
       logPrefix: `[API] Unhandled error on ${req.method} ${req.originalUrl}`,
     });
   };
 }
 
-module.exports = { sendFailure, createErrorHandler };
+module.exports = { sendFailure, createErrorHandler, clientErrorResponse };

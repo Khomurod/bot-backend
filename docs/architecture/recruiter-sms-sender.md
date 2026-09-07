@@ -171,12 +171,42 @@ feature degrades to the old behaviour rather than breaking.
 
 ## Verifying it without a real lead
 
+- **Settings → RingCentral → Bitrix24 card → Diagnose** — the CRM half of the
+  chain, in the order the lead flow depends on it: configuration → portal
+  reachable and `crm`-scoped → the configured status exists → the form's
+  questions can be stored → how many recruiters are mapped and can send → **the
+  assignee readback on the most recent real lead** → what happened to leads in
+  the last 14 days. Read-only; it creates nothing. The webhook URL is never
+  returned, only its host — a Bitrix inbound webhook authenticates by its path,
+  so the URL *is* the credential.
 - **Settings → RingCentral → a recruiter's row → Diagnose** — credentials →
   auth → number match → **SMS capability** → call-log read. The SMS-capability
   step is the one that predicts a rejected send.
 - **Send test SMS** on the same row sends a real text from that recruiter's
   number to a number you type. There is no default recipient, so it cannot text
   a driver by accident.
+
+## Two Bitrix-side traps
+
+Both were live, both were silent, and both matter more now that the assignee
+decides who texts a lead.
+
+- **`BITRIX24_ASSIGNED_BY_ID` must be a numeric user id.** It was set to a
+  NAME (`Tom Robinson`), and Bitrix only accepts the id, so the value was
+  ignored entirely: every lead was assigned to the inbound webhook's owner. The
+  mapper now warns once per process, and the Diagnose card reports it as
+  *ignored* rather than leaving a config line that looks effective. Take the id
+  from the Bitrix profile URL (`/company/personal/user/<id>/`) — or leave it
+  blank, which is the right setting when a distribution rule assigns leads.
+- **A form answer with no Bitrix field is written into the lead's COMMENTS.**
+  The Facebook form asks the two questions a recruiter screens on ("2 years of
+  experience?", "CDL-A over the road?") and the portal has no custom lead
+  fields for them, so the mapper had nowhere to put them and dropped them with
+  a console warning — the recruiter opened the lead and saw a name and a phone
+  number, as if nothing had been answered. Field mapping is still the goal
+  (create the fields, then `npm run discover-bitrix-fields`); this makes the
+  gap cosmetic instead of lossy. Note the field catalog is cached for the life
+  of the process, so a newly created Bitrix field needs a restart.
 
 ## Tests that guard this
 
@@ -193,5 +223,7 @@ feature degrades to the old behaviour rather than breaking.
 | The whole lead event, in order | `tests/facebookLeadEventProcessor.test.js` |
 | Routes: admin, public connect, internal list | `tests/recruiterSenderRoutes.test.js` |
 | Migration 0008 on real PostgreSQL | `tests/recruiterSenderIdentityPg.test.js` |
+| The Bitrix diagnosis, and that the webhook secret never leaves | `tests/bitrixDiagnostics.test.js`, `tests/bitrixSettingsRoutes.test.js` |
+| Answers reaching the CRM, and the inert-assignee warning | `tests/bitrix24LeadMapper.test.js` |
 | Inbound recipient extraction, per-extension filters (Python) | `leads-bot/test_rc_forward.py` |
 | The subscription keeping up with the roster (Python) | `leads-bot/test_rc_subscription.py` |
