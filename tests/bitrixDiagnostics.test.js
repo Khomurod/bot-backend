@@ -51,6 +51,7 @@ function loadDiag({
   catalogError = null,
   mapCustom = {},
   mapStatusId = 'NEW',
+  byFormId = {},
   recruiters = [JANE],
   recruiterByBitrix = { 17: JANE },
   assignee = { ok: true, assignedById: 17 },
@@ -79,8 +80,19 @@ function loadDiag({
       getCrmRecordAssignee: async () => assignee,
     },
   };
+  // Mirrors the real loader: a form id merges its override over the base map.
   require.cache[MAP_LOADER_PATH] = {
-    exports: { resolveFieldMapConfig: () => ({ custom: mapCustom, statusId: mapStatusId, defaults: {} }) },
+    exports: {
+      loadBitrixFieldMapConfig: () => ({ custom: mapCustom, statusId: mapStatusId, byFormId, defaults: {} }),
+      resolveFieldMapConfig: (formId) => {
+        const override = byFormId[String(formId || '').trim()] || null;
+        return {
+          custom: { ...mapCustom, ...(override?.custom || {}) },
+          statusId: String(override?.statusId || mapStatusId || '').trim(),
+          defaults: {},
+        };
+      },
+    },
   };
   require.cache[CATALOG_PATH] = {
     exports: {
@@ -134,6 +146,7 @@ test('a healthy portal reports ok end to end', async () => {
   const result = await run();
   assert.equal(result.ok, true, JSON.stringify(result.steps, null, 1));
   assert.match(result.byLabel('reachable').detail, /5 lead fields/);
+  assert.match(result.byLabel('lead status').detail, /base map → "NEW"/);
   assert.match(result.byLabel('Assignee readback').detail, /Jane Doe/);
   assert.match(result.byLabel('Assignee readback').detail, /can send/);
 });
@@ -198,7 +211,7 @@ test('a question with no Bitrix field says the answer lands in COMMENTS instead'
   });
   const step = result.byLabel('Form answers');
   assert.equal(step.ok, false);
-  assert.match(step.detail, /1\/3 resolve/);
+  assert.match(step.detail, /base map: 1\/3 resolve/);
   assert.match(step.detail, /do_you_have_2_years_of_experience/);
   assert.match(step.detail, /COMMENTS/, 'nothing is lost — say so');
   assert.match(step.detail, /restart/, 'and warn that the catalog is cached');
@@ -249,14 +262,81 @@ test('no lead created yet is honest rather than alarming', async () => {
   assert.match(step.detail, /nothing to read back/);
 });
 
-test('recruiter coverage counts who can actually text their own leads', async () => {
+/**
+ * PARTIAL COVERAGE IS NOT ALIGNMENT. An active recruiter can be assigned a
+ * lead, so one who cannot text it is a real gap — and a card reading "Bitrix
+ * is aligned" while some recruiters silently fall back to the shared number is
+ * the exact blindness this diagnostic exists to remove. A recruiter who should
+ * not receive leads belongs deactivated, and is excluded already.
+ */
+test('coverage fails while ANY active recruiter cannot text their own leads', async () => {
   const bob = { id: 8, name: 'Bob', phone_number: '+15550002222', active: true, bitrix_user_id: null, jwt_token_encrypted: 'enc' };
   const ada = { id: 9, name: 'Ada', phone_number: '+15550003333', active: true, bitrix_user_id: 18 };
   const result = await run({ recruiters: [JANE, bob, ada] });
   const step = result.byLabel('Recruiters mapped');
+  assert.equal(step.ok, false, 'one ready recruiter out of three is not "aligned"');
   assert.match(step.detail, /1 of 3 active recruiter\(s\) can text their own leads/);
-  assert.match(step.detail, /2 mapped to a Bitrix user/);
-  assert.match(step.detail, /No Bitrix user id: Bob/);
+  assert.match(step.detail, /no Bitrix user id: Bob/);
+  assert.match(step.detail, /no RingCentral credentials: Ada/);
+  assert.match(step.detail, /shared number/);
+  assert.equal(result.ok, false, 'and the whole diagnosis cannot read as aligned');
+});
+
+test('coverage passes only when every active recruiter is ready', async () => {
+  const ada = {
+    id: 9, name: 'Ada', phone_number: '+15550003333', active: true,
+    bitrix_user_id: 18, refresh_token_encrypted: 'enc',
+  };
+  const result = await run({ recruiters: [JANE, ada] });
+  const step = result.byLabel('Recruiters mapped');
+  assert.equal(step.ok, true);
+  assert.match(step.detail, /2 of 2 active recruiter\(s\)/);
+  assert.doesNotMatch(step.detail, /shared number/, 'nothing to warn about');
+});
+
+/**
+ * PER-FORM OVERRIDES ARE PART OF THE EFFECTIVE CONFIG. The mapper resolves its
+ * map with the incoming form id, and byFormId / BITRIX24_FIELD_MAP_BY_FORM_ID
+ * can change both the status and the custom rules. Checking only the base map
+ * would report green while one form's leads use a status the portal lacks, or
+ * resolve none of their fields.
+ */
+test('a form override with a bad status is caught, not hidden behind the base map', async () => {
+  const result = await run({
+    mapStatusId: 'NEW',
+    byFormId: { '1489274899611047': { statusId: 'INCOMING' } },
+  });
+  const step = result.byLabel('lead status');
+  assert.equal(step.ok, false);
+  assert.match(step.detail, /form 1489274899611047 → "INCOMING"/);
+  assert.doesNotMatch(step.detail, /base map → "NEW"/, 'only the broken one is named');
+});
+
+test('a form override whose questions resolve nowhere is caught too', async () => {
+  const result = await run({
+    mapCustom: { phone_ish: { matchTitle: ['phone'] } },
+    byFormId: { '1489274899611047': { custom: { cdl: { matchTitle: ['cdl'] } } } },
+  });
+  const step = result.byLabel('Form answers');
+  assert.equal(step.ok, false);
+  assert.match(step.detail, /form 1489274899611047: 1\/2 resolve, no field for cdl/);
+  assert.match(step.detail, /COMMENTS/);
+});
+
+test('form overrides that are all fine report how many maps were checked', async () => {
+  const result = await run({
+    mapCustom: { phone_ish: { matchTitle: ['phone'] } },
+    byFormId: { '1489274899611047': { custom: { other_phone: { matchTitle: ['phone'] } } } },
+  });
+  const step = result.byLabel('Form answers');
+  assert.equal(step.ok, true);
+  assert.match(step.detail, /across 2 map\(s\)/);
+  assert.match(step.detail, /per-form overrides/);
+
+  const statusStep = result.byLabel('lead status');
+  assert.equal(statusStep.ok, true);
+  assert.match(statusStep.detail, /base map → "NEW"/);
+  assert.match(statusStep.detail, /form 1489274899611047 → "NEW"/, 'the inherited status is checked too');
 });
 
 test('no recruiters at all is a failure, because every lead uses the shared number', async () => {
@@ -264,6 +344,13 @@ test('no recruiters at all is a failure, because every lead uses the shared numb
   const step = result.byLabel('Recruiters mapped');
   assert.equal(step.ok, false);
   assert.match(step.detail, /shared number/);
+});
+
+test('a single mapped question still reports across the base map only', async () => {
+  const result = await run({ mapCustom: { phone_ish: { matchTitle: ['phone'] } } });
+  const step = result.byLabel('Form answers');
+  assert.equal(step.ok, true);
+  assert.match(step.detail, /across 1 map\(s\)/);
 });
 
 test('recent outcomes summarize what actually happened, and failures fail the step', async () => {

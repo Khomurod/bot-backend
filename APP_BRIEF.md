@@ -1057,10 +1057,10 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-09-07, deps installed, no `TEST_DATABASE_URL`): **2436 tests,
-  2282 pass, 0 fail, 154 skipped** (the skips are the `*Pg` integration tests),
+  baseline (2026-09-07, deps installed, no `TEST_DATABASE_URL`): **2441 tests,
+  2287 pass, 0 fail, 154 skipped** (the skips are the `*Pg` integration tests),
   exit 0. With a database (`TEST_DATABASE_URL`) nothing skips: the whole suite is
-  **2504 tests, 2504 pass, 0 skipped**. The Python leads worker adds
+  **2509 tests, 2509 pass, 0 skipped**. The Python leads worker adds
   **37 tests** (`python -m unittest discover -s leads-bot -p "test_*.py"`), and
   the admin panel **199** (`npm test --prefix admin`). **So any failure is a real
   failure** — there is no "expected failures" allowance. *(An older internal doc

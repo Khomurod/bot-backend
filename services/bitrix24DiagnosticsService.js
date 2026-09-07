@@ -30,7 +30,7 @@ const {
   loadBitrixFieldCatalog,
   getCrmRecordAssignee,
 } = require('./bitrix24Service');
-const { resolveFieldMapConfig } = require('./bitrix24FieldMapLoader');
+const { resolveFieldMapConfig, loadBitrixFieldMapConfig } = require('./bitrix24FieldMapLoader');
 const { findFieldByTitleHints } = require('./bitrix24FieldCatalog');
 
 /** The host only — the path carries the secret. */
@@ -47,6 +47,24 @@ function webhookHost() {
 function step(steps, label, ok, detail) {
   steps.push({ label, ok, detail: detail || '' });
   return ok;
+}
+
+/**
+ * Every field map that can actually be USED, not just the base one.
+ *
+ * The mapper resolves its config with the incoming form id
+ * (`resolveFieldMapConfig(formId)`), and `BITRIX24_FIELD_MAP_BY_FORM_ID` /
+ * `byFormId` can override the status and the custom rules per form. Checking
+ * only the base map would report green while leads from an overridden form use
+ * a status the portal does not have, or resolve none of their fields.
+ */
+function fieldMapVariants() {
+  const base = loadBitrixFieldMapConfig();
+  const variants = [{ label: 'base map', config: resolveFieldMapConfig('') }];
+  for (const formId of Object.keys(base.byFormId || {})) {
+    variants.push({ label: `form ${formId}`, config: resolveFieldMapConfig(formId) });
+  }
+  return variants;
 }
 
 /** Configuration that can be judged without calling Bitrix at all. */
@@ -125,50 +143,71 @@ async function checkReachable(steps, { fetchImpl }) {
     `${Object.keys(catalog.fields).length} lead fields, ${(catalog.statuses || []).length} statuses. The crm scope covers crm.lead.get too.`,
   );
 
-  const wanted = String(resolveFieldMapConfig('').statusId || '').trim();
-  if (wanted) {
-    const known = (catalog.statuses || []).some((s) => String(s.STATUS_ID) === wanted);
-    step(
-      steps,
-      'Configured lead status exists',
-      known,
-      known
-        ? `New leads land in "${wanted}".`
-        : `The map sets STATUS_ID "${wanted}", which this portal does not have `
-          + `(it has: ${(catalog.statuses || []).map((s) => s.STATUS_ID).join(', ') || 'none readable'}). Bitrix may reject the lead.`,
-    );
-  }
+  checkStatuses(steps, catalog);
   return catalog;
 }
 
+/** The configured status must exist — for the base map AND every form override. */
+function checkStatuses(steps, catalog) {
+  const known = new Set((catalog.statuses || []).map((s) => String(s.STATUS_ID)));
+  const checked = [];
+  const bad = [];
+  for (const { label, config } of fieldMapVariants()) {
+    const wanted = String(config.statusId || '').trim();
+    if (!wanted) continue;
+    checked.push(`${label} → "${wanted}"`);
+    if (!known.has(wanted)) bad.push(`${label} → "${wanted}"`);
+  }
+  if (!checked.length) return;
+
+  step(
+    steps,
+    'Configured lead status exists',
+    bad.length === 0,
+    bad.length === 0
+      ? `New leads land in: ${checked.join(', ')}.`
+      : `This portal does not have ${bad.join(', ')} `
+        + `(it has: ${[...known].join(', ') || 'none readable'}). Bitrix may reject those leads.`,
+  );
+}
+
 /** Can the form's own questions be stored, or do they only reach COMMENTS? */
+function resolveRuleField(rule, catalog) {
+  if (typeof rule === 'string') return catalog?.fields?.[rule] ? rule : null;
+  if (rule?.bitrixField) return catalog?.fields?.[rule.bitrixField] ? rule.bitrixField : null;
+  if (rule?.matchTitle) return findFieldByTitleHints(catalog?.fields, rule.matchTitle)?.name || null;
+  return null;
+}
+
 function checkFieldMap(steps, catalog) {
-  const custom = resolveFieldMapConfig('').custom || {};
-  const keys = Object.keys(custom);
-  if (!keys.length) {
+  const variants = fieldMapVariants();
+  let mappedTotal = 0;
+  const problems = [];
+
+  for (const { label, config } of variants) {
+    const custom = config.custom || {};
+    const keys = Object.keys(custom);
+    mappedTotal += keys.length;
+    const unmatched = keys.filter((key) => !resolveRuleField(custom[key], catalog));
+    if (unmatched.length) {
+      problems.push(`${label}: ${keys.length - unmatched.length}/${keys.length} resolve, no field for ${unmatched.join(', ')}`);
+    }
+  }
+
+  if (!mappedTotal) {
     step(steps, 'Form answers → Bitrix fields', true, 'No custom questions are mapped.');
     return;
   }
 
-  const unmatched = [];
-  for (const [metaKey, rule] of Object.entries(custom)) {
-    let resolved = null;
-    if (typeof rule === 'string') resolved = catalog?.fields?.[rule] ? rule : null;
-    else if (rule?.bitrixField) resolved = catalog?.fields?.[rule.bitrixField] ? rule.bitrixField : null;
-    else if (rule?.matchTitle) resolved = findFieldByTitleHints(catalog?.fields, rule.matchTitle)?.name || null;
-    if (!resolved) unmatched.push(metaKey);
-  }
-
-  // Not a failure — the answers do reach the CRM, in COMMENTS. It is a
-  // "you asked for fields and there are none" notice.
-  const matched = keys.length - unmatched.length;
+  // Not a failure of the LEAD — the answers do reach the CRM, in COMMENTS. It
+  // is a "you asked for fields and the portal has none" notice.
   step(
     steps,
     'Form answers → Bitrix fields',
-    unmatched.length === 0,
-    unmatched.length === 0
-      ? `All ${keys.length} mapped question(s) resolve to a Bitrix field.`
-      : `${matched}/${keys.length} resolve. No field for: ${unmatched.join(', ')}. `
+    problems.length === 0,
+    problems.length === 0
+      ? `Every mapped question resolves to a Bitrix field, across ${variants.length} map(s) (base + per-form overrides).`
+      : `${problems.join('; ')}. `
         + 'Those answers are written into the lead COMMENTS instead, so nothing is lost — create the lead fields in Bitrix and re-run '
         + '`npm run discover-bitrix-fields` to store them properly. (The field catalog is cached for the life of the process, so a new field needs a restart.)',
   );
@@ -268,14 +307,23 @@ async function checkSenderCoverage(steps) {
   }
   const mapped = recruiters.filter((r) => r.bitrix_user_id);
   const ready = mapped.filter((r) => rc.recruiterCanSendSms(r));
-  const missing = recruiters.filter((r) => !r.bitrix_user_id).map((r) => r.name);
+  const noBitrixId = recruiters.filter((r) => !r.bitrix_user_id).map((r) => r.name);
+  const noCredentials = mapped.filter((r) => !rc.recruiterCanSendSms(r)).map((r) => r.name);
+
+  // EVERY active recruiter, not merely one. An active recruiter can be assigned
+  // a lead, so one who cannot text it is a real gap — and reporting "aligned"
+  // while some of them silently fall back to the shared number is exactly the
+  // blindness this diagnostic exists to remove. A recruiter who should not
+  // receive leads belongs deactivated, and is already excluded above.
+  const gaps = [];
+  if (noBitrixId.length) gaps.push(`no Bitrix user id: ${noBitrixId.join(', ')}`);
+  if (noCredentials.length) gaps.push(`no RingCentral credentials: ${noCredentials.join(', ')}`);
   step(
     steps,
     'Recruiters mapped to Bitrix users',
-    ready.length > 0,
-    `${ready.length} of ${recruiters.length} active recruiter(s) can text their own leads `
-    + `(${mapped.length} mapped to a Bitrix user).`
-    + (missing.length ? ` No Bitrix user id: ${missing.join(', ')}.` : ''),
+    ready.length === recruiters.length,
+    `${ready.length} of ${recruiters.length} active recruiter(s) can text their own leads`
+    + (gaps.length ? ` — ${gaps.join('; ')}. Their leads use the shared number.` : '.'),
   );
 }
 

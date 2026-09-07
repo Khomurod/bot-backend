@@ -174,11 +174,23 @@ feature degrades to the old behaviour rather than breaking.
 - **Settings → RingCentral → Bitrix24 card → Diagnose** — the CRM half of the
   chain, in the order the lead flow depends on it: configuration → portal
   reachable and `crm`-scoped → the configured status exists → the form's
-  questions can be stored → how many recruiters are mapped and can send → **the
-  assignee readback on the most recent real lead** → what happened to leads in
-  the last 14 days. Read-only; it creates nothing. The webhook URL is never
-  returned, only its host — a Bitrix inbound webhook authenticates by its path,
-  so the URL *is* the credential.
+  questions can be stored → **every** active recruiter is mapped and able to
+  send → **the assignee readback on the most recent real lead** → what happened
+  to leads in the last 14 days. Read-only; it creates nothing. The webhook URL
+  is never returned, only its host — a Bitrix inbound webhook authenticates by
+  its path, so the URL *is* the credential.
+
+  Two things it checks that are easy to get wrong by only looking at the base
+  configuration:
+
+  - **every effective field map**, not just the base one. The mapper resolves
+    its map with the incoming form id, and `byFormId` /
+    `BITRIX24_FIELD_MAP_BY_FORM_ID` can override the status and the custom
+    rules per form — so a form override pointing at a status the portal lacks
+    would otherwise hide behind a green base map;
+  - **every** active recruiter, not merely one. An active recruiter can be
+    assigned a lead, so one who cannot text it is a real gap. A recruiter who
+    should not receive leads belongs deactivated.
 - **Settings → RingCentral → a recruiter's row → Diagnose** — credentials →
   auth → number match → **SMS capability** → call-log read. The SMS-capability
   step is the one that predicts a rejected send.
