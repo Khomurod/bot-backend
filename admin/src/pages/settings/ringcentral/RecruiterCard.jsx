@@ -46,7 +46,7 @@ function SenderBadge({ recruiter }) {
   );
 }
 
-export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage }) {
+export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage, bitrixUsers, loadBitrixUsers }) {
   const [expanded, setExpanded] = useState(false);
   const [form, setForm] = useState({
     name: recruiter.name,
@@ -66,6 +66,31 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
   const [smsTo, setSmsTo] = useState("");
   const [smsResult, setSmsResult] = useState(null);
   const [sendingSms, setSendingSms] = useState(false);
+
+  // The Bitrix directory is fetched by the parent so every row shares one
+  // call; this only tracks whether THIS row asked for it yet.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerBusy, setPickerBusy] = useState(false);
+
+  const openPicker = async () => {
+    setPickerBusy(true);
+    try {
+      const users = await loadBitrixUsers?.();
+      // null = the read failed and the page already said why. An empty list is
+      // a DIFFERENT answer and has to be said out loud, or this button just
+      // looks broken.
+      if (!users) return;
+      if (!users.length) {
+        onMessage?.({
+          type: "error",
+          text: "Bitrix returned no users for this webhook. Type the id by hand, or add the "
+            + '"user" scope to the inbound webhook.',
+        });
+        return;
+      }
+      setPickerOpen(true);
+    } finally { setPickerBusy(false); }
+  };
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -228,8 +253,33 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
                 value={form.bitrixUserId}
                 onChange={(e) => setField("bitrixUserId", e.target.value)}
               />
+              {pickerOpen && (bitrixUsers || []).length > 0 ? (
+                <select
+                  className="form-input"
+                  style={{ marginTop: 6 }}
+                  value={String(form.bitrixUserId || "")}
+                  onChange={(e) => setField("bitrixUserId", e.target.value)}
+                >
+                  <option value="">— no Bitrix user —</option>
+                  {(bitrixUsers || []).map((u) => (
+                    <option key={u.id} value={u.id}>
+                      #{u.id} · {u.fullName}{u.position ? ` · ${u.position}` : ""}{u.active === false ? " · deactivated" : ""}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ marginTop: 6 }}
+                  onClick={openPicker}
+                  disabled={pickerBusy || !loadBitrixUsers}
+                >
+                  {pickerBusy ? "Reading Bitrix…" : "Pick from Bitrix"}
+                </button>
+              )}
               <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4, maxWidth: 320 }}>
-                From the Bitrix profile URL: <code>/company/personal/user/<strong>17</strong>/</code>.
+                Or type it from the Bitrix profile URL:{" "}
+                <code>/company/personal/user/<strong>17</strong>/</code>.
                 A lead assigned to this Bitrix user is texted from this number.
               </div>
             </div>

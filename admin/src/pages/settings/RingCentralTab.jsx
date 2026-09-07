@@ -93,6 +93,30 @@ export default function RingCentralTab() {
     setRecruiters(await api.getRecruiters());
   }, []);
 
+  // The Bitrix user directory, fetched at most once per visit and shared by
+  // every recruiter row's picker — each card asking for its own copy would be
+  // one Bitrix REST call per open card.
+  const [bitrixUsers, setBitrixUsers] = useState(null);
+  // Returns the users, or null when the directory could not be read at all —
+  // the caller must not mistake "Bitrix refused" for "the portal is empty".
+  const loadBitrixUsers = useCallback(async () => {
+    if (bitrixUsers) return bitrixUsers;
+    let res;
+    try {
+      res = await api.getBitrixUsers();
+    } catch (err) {
+      setMessage({ type: "error", text: `Bitrix user directory: ${err.message}` });
+      return null;
+    }
+    if (!res?.ok) {
+      setMessage({ type: "error", text: res?.message || "Could not read the Bitrix user directory." });
+      return null;
+    }
+    const users = res.users || [];
+    setBitrixUsers(users);
+    return users;
+  }, [bitrixUsers]);
+
   const addRecruiter = async () => {
     if (!newRec.name.trim() || !newRec.phoneNumber.trim()) {
       setMessage({ type: "error", text: "Recruiter name and phone number are required." });
@@ -194,7 +218,7 @@ export default function RingCentralTab() {
         {settings.updatedAt && <span style={{ fontSize: 12, color: "#94a3b8" }}>Last updated {new Date(settings.updatedAt).toLocaleString()}</span>}
       </div>
 
-      <BitrixCard onMessage={setMessage} />
+      <BitrixCard onMessage={setMessage} onMapped={refreshRecruiters} />
 
       <div className="card" style={{ marginBottom: 16 }}>
         <h3 style={{ marginTop: 0 }}>🔗 Invite A Recruiter To Connect RingCentral</h3>
@@ -294,6 +318,8 @@ export default function RingCentralTab() {
             onSaved={refreshRecruiters}
             onDeleted={refreshRecruiters}
             onMessage={setMessage}
+            bitrixUsers={bitrixUsers}
+            loadBitrixUsers={loadBitrixUsers}
           />
         ))
       )}

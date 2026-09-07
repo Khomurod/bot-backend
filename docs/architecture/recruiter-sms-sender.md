@@ -159,15 +159,72 @@ feature degrades to the old behaviour rather than breaking.
    `https://<RENDER_EXTERNAL_URL>/ringcentral/oauth/callback`. It must match
    byte-for-byte, which is why it is derived from `config.publicBaseUrl` in one
    place (`buildRedirectUri`). The app needs `SMS` and `ReadAccounts`.
-3. **Enter each recruiter's Bitrix24 user ID** (Settings → RingCentral → the
-   recruiter's row). Take it from their Bitrix profile URL:
-   `/company/personal/user/<id>/`. No id means no match, which means the shared
-   number.
+3. **Map each recruiter to their Bitrix24 user.** Settings → RingCentral →
+   Bitrix24 card → **Match recruiters to Bitrix users** reads the portal's user
+   directory and proposes the mapping; the row's **Pick from Bitrix** dropdown
+   and the plain number field are both still there for anything it could not
+   decide. No id means no match, which means the shared number. See
+   *Mapping recruiters to Bitrix users* below for what it will and will not
+   decide on its own — and note it needs the **`user` scope** on the inbound
+   webhook, which a CRM-only webhook does not have.
 4. **Confirm the Bitrix rule actually assigns new leads**, and roughly how
    fast. If assignment regularly takes longer than
    `BITRIX24_ASSIGNEE_WAIT_MS`, raise it — or move to a Bitrix outgoing webhook
    (`ONCRMLEADUPDATE`) instead of polling. Polling was chosen because it needs
    no new public endpoint and no Bitrix-side configuration.
+
+## Mapping recruiters to Bitrix users
+
+`recruiters.bitrix_user_id` is the only link from a Bitrix lead assignment back
+to a recruiter row, so it is what decides whose number texts a driver. It used
+to be filled in by hand: open the Bitrix profile, read the id out of the URL,
+type it into the panel — per recruiter, and again for every new hire.
+
+`services/recruiterBitrixMapping/` does it instead:
+
+| Module | Job |
+|---|---|
+| `directory.js` | reads `user.get` (paged), normalizes to id / name / phones / active |
+| `match.js` | **pure**: decides which Bitrix user is which recruiter |
+| `index.js` | preview and apply, and the only place a row is written |
+
+**Why it refuses more than it accepts.** An unmapped recruiter costs a lead the
+personal touch — it goes out from the shared number. A *wrongly* mapped one
+texts a driver from a colleague's phone and routes the reply to the wrong
+person. So the tiers are deliberately asymmetric:
+
+- **phone** — the recruiter's number is on exactly one Bitrix profile. The
+  strongest signal available, because it is the same number that will send.
+- **name** — the full name matches exactly one profile, in either word order
+  (`Alex Smith` / `Smith Alex`), accents and punctuation ignored.
+- **first_name** — only a first name to go on. **Proposed, never applied**:
+  "Alex" the recruiter and "Alex" in accounting are indistinguishable from
+  here, so an operator ticks the box.
+
+Anything matching two or more profiles is `ambiguous`; two recruiters landing
+on one profile, or a profile that already belongs to someone else, is a
+`conflict`. Neither is written.
+
+**An existing mapping is never overwritten.** A stored id is an operator's
+decision. When a strong signal disagrees with it the disagreement is *reported*
+as a `mismatch` and the row is left alone.
+
+**Preview and apply are separate calls.** `POST /api/recruiters/bitrix-automap`
+previews; only `{ apply: true }` writes, and the panel always previews first.
+The partial unique index on `bitrix_user_id` is the backstop — a rejected row
+is reported per row and does not abandon the rest of the plan.
+
+**`GET /api/recruiters/bitrix-users`** backs the per-row picker. It returns
+id, name, email, position and active only: phone numbers are matched
+server-side and never need to reach a browser to do it. Like every Bitrix
+surface here it returns the webhook's **host** and never its path.
+
+Tests: `tests/recruiterBitrixMatch.test.js` (the tiers and every refusal),
+`tests/recruiterBitrixMapping.test.js` (paging, the missing-`user`-scope case,
+preview-writes-nothing, per-row failure),
+`admin/src/pages/settings/ringcentral/BitrixAutomapPanel.test.jsx` and
+`RecruiterCardBitrixPicker.test.jsx` (the two-step UI, and that an empty
+directory is stated rather than shown as an inert button).
 
 ## Verifying it without a real lead
 
