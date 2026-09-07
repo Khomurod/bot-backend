@@ -1,7 +1,8 @@
 /**
  * Internal server-to-server endpoints called by the Python leads engine
  * (leads-bot/): webhook ingest, lead retry, /connect command setup, SMS mirror
- * registration and the Telegram SMS reply relay.
+ * registration, the Telegram SMS reply relay, and the recruiter extension list
+ * the inbound-SMS subscription is built from.
  *
  * Every route is behind internalSharedSecretGuard — these are NOT public. They
  * keep their full paths (/api/internal/facebook/*) because the Python side
@@ -20,6 +21,7 @@ const {
   enqueueVerifiedFacebookPayload,
   retryFacebookWebhookEvent,
 } = require('../../../services/facebookWebhookService');
+const rc = require('../../../database/ringcentral');
 
 function createFacebookInternalRoutes({ db, internalSharedSecretGuard }) {
   const router = express.Router();
@@ -106,6 +108,11 @@ function createFacebookInternalRoutes({ db, internalSharedSecretGuard }) {
         driverPhone,
         smsBody,
         sourceType,
+        // Which of OUR numbers the driver reached. That number decides who
+        // replies from Telegram, so an inbound SMS to a recruiter's line keeps
+        // the conversation on that line.
+        toNumber: req.body?.toNumber,
+        recruiterId: req.body?.recruiterId,
       });
       return res.json({ status: 'ok', ...result });
     } catch (err) {
@@ -116,6 +123,30 @@ function createFacebookInternalRoutes({ db, internalSharedSecretGuard }) {
       return res.status(status).json({
         error: err.message || 'Failed to register SMS mirror',
       });
+    }
+  });
+
+  /**
+   * The RingCentral extensions inbound SMS must be watched on.
+   *
+   * The Python leads engine registers ONE subscription with one
+   * `message-store/instant?type=SMS` filter per extension, so a driver texting
+   * any recruiter's number still lands in the Telegram hub. It needs the
+   * extension ids to build those filters, and only this app knows them.
+   *
+   * Ids only — no numbers, no names, no credentials.
+   */
+  router.get('/api/internal/ringcentral/sms-extensions', internalSharedSecretGuard, async (req, res) => {
+    try {
+      const recruiters = await rc.listRecruitersWithOwnCredentials();
+      const extensions = recruiters
+        .map((recruiter) => recruiter.rc_extension_id)
+        .filter(Boolean)
+        .map(String);
+      return res.json({ extensions: [...new Set(extensions)] });
+    } catch (err) {
+      console.error('[API] RingCentral sms-extensions failed:', err.message);
+      return res.status(500).json({ error: 'Failed to list RingCentral extensions' });
     }
   });
 

@@ -61,6 +61,37 @@ export async function testRecruiterConnection(id, payload) {
   return res.json();
 }
 
+/**
+ * Mint a personal "sign in with RingCentral" link.
+ * `recruiterId` binds it to an existing recruiter; omit it and the recruiter is
+ * found by (or created from) whichever RingCentral extension signs in.
+ */
+export async function createRecruiterConnectLink(payload) {
+  const res = await fetch(`${API_BASE}/recruiters/connect-link`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Forget a recruiter's RingCentral login (their pasted JWT, if any, stays). */
+export async function clearRecruiterRingCentralLogin(id) {
+  const res = await fetch(`${API_BASE}/recruiters/${id}/ringcentral-login`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Send one real SMS from this recruiter's number to prove it works. */
+export async function sendRecruiterTestSms(id, payload) {
+  const res = await fetch(`${API_BASE}/recruiters/${id}/test-sms`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 /** Stepwise per-number diagnostic (creds → auth → identity → call log). */
 export async function diagnoseRecruiter(id, payload) {
   const res = await fetch(`${API_BASE}/recruiters/${id}/diagnose`, {

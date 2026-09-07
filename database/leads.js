@@ -46,6 +46,25 @@ async function updateLeadBitrixResult(id, { bitrixId = null, status }) {
   );
 }
 
+/**
+ * Who Bitrix assigned the lead to, and which number actually texted them.
+ *
+ * Separate from updateLeadBitrixResult() because the answer arrives LATER: the
+ * record is created first, a distribution rule assigns it, and only then is the
+ * sender known. Best-effort — the Leads tab showing this is never worth failing
+ * a lead over.
+ */
+async function updateLeadSmsSender(id, { assignedById = null, fromNumber = null, recruiterId = null }) {
+  await query(
+    `UPDATE leads
+        SET bitrix_assigned_by_id = COALESCE($2, bitrix_assigned_by_id),
+            sms_from_number = COALESCE($3, sms_from_number),
+            sms_sender_recruiter_id = COALESCE($4, sms_sender_recruiter_id)
+      WHERE id = $1`,
+    [id, assignedById, fromNumber, recruiterId]
+  );
+}
+
 async function listLeads(limit = 100, source = null) {
   const safeLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 100, 1), 500);
   if (source) {
@@ -66,5 +85,6 @@ async function listLeads(limit = 100, source = null) {
 module.exports = {
   createLeadIfNew,
   updateLeadBitrixResult,
+  updateLeadSmsSender,
   listLeads,
 };

@@ -22,11 +22,10 @@ function randomToken(bytes = 24) {
 }
 
 function requirePublicBaseUrl() {
-  const baseUrl = String(config.renderExternalUrl || '').trim();
-  if (!baseUrl) {
+  if (!config.publicBaseUrl) {
     throw new Error('RENDER_EXTERNAL_URL is not configured');
   }
-  return baseUrl.replace(/\/+$/, '');
+  return config.publicBaseUrl;
 }
 
 function getSubscribedFieldsPreference() {

@@ -1,161 +1,18 @@
 import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../api";
 import { KeyField, NumField, Banner } from "./fields";
+import RecruiterCard from "./ringcentral/RecruiterCard";
 
 // ─────────────────────────────── RingCentral tab ─────────────────────────────
-
-/**
- * One recruiter row: name + dedicated number, that number's own JWT token, and
- * a choice between the shared Client ID/Secret (from the credentials card
- * above) or a custom pair for this number. Per-number Test + Diagnose buttons
- * verify the credentials live.
- */
-function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage }) {
-  const [expanded, setExpanded] = useState(false);
-  const [form, setForm] = useState({ name: recruiter.name, phoneNumber: recruiter.phone_number, jwtToken: "", clientId: "", clientSecret: "" });
-  const [useCustom, setUseCustom] = useState(recruiter.usesCustomClient);
-  const [saving, setSaving] = useState(false);
-  const [test, setTest] = useState(null);
-  const [testing, setTesting] = useState(false);
-  const [diag, setDiag] = useState(null);
-  const [diagnosing, setDiagnosing] = useState(false);
-
-  const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      const payload = { name: form.name, phoneNumber: form.phoneNumber };
-      if (form.jwtToken.trim()) payload.jwtToken = form.jwtToken.trim();
-      if (useCustom) {
-        if (form.clientId.trim()) payload.clientId = form.clientId.trim();
-        if (form.clientSecret.trim()) payload.clientSecret = form.clientSecret.trim();
-      } else if (recruiter.usesCustomClient) {
-        // Switched back to the shared pair — clear the stored custom pair.
-        payload.clearClientCreds = true;
-      }
-      await api.updateRecruiter(recruiter.id, payload);
-      setForm((f) => ({ ...f, jwtToken: "", clientId: "", clientSecret: "" }));
-      onMessage({ type: "success", text: `${form.name || recruiter.name} saved.` });
-      await onSaved();
-    } catch (err) { onMessage({ type: "error", text: err.message }); }
-    finally { setSaving(false); }
-  };
-
-  const candidateCreds = () => ({
-    jwtToken: form.jwtToken.trim() || undefined,
-    clientId: useCustom ? (form.clientId.trim() || undefined) : undefined,
-    clientSecret: useCustom ? (form.clientSecret.trim() || undefined) : undefined,
-  });
-
-  const runTest = async () => {
-    setTesting(true); setTest(null);
-    try { setTest(await api.testRecruiterConnection(recruiter.id, candidateCreds())); }
-    catch (err) { setTest({ connected: false, message: err.message }); }
-    finally { setTesting(false); }
-  };
-
-  const runDiagnose = async () => {
-    setDiagnosing(true); setDiag(null);
-    try { setDiag(await api.diagnoseRecruiter(recruiter.id, candidateCreds())); }
-    catch (err) { setDiag({ ok: false, steps: [{ label: "Diagnostic", ok: false, detail: err.message }] }); }
-    finally { setDiagnosing(false); }
-  };
-
-  const toggleActive = async () => {
-    try { await api.updateRecruiter(recruiter.id, { active: !recruiter.active }); await onSaved(); }
-    catch (err) { onMessage({ type: "error", text: err.message }); }
-  };
-
-  const remove = async () => {
-    if (!window.confirm(`Remove recruiter "${recruiter.name}"? Their historical call stats will be unassigned.`)) return;
-    try { await api.deleteRecruiter(recruiter.id); await onDeleted(); }
-    catch (err) { onMessage({ type: "error", text: err.message }); }
-  };
-
-  return (
-    <div className="card" style={{ marginBottom: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <strong>{recruiter.name}</strong>
-          <span style={{ fontFamily: "monospace", fontSize: 13, color: "#94a3b8" }}>{recruiter.phone_number}</span>
-          <span className={`badge ${recruiter.active ? "badge-active" : "badge-inactive"}`}>{recruiter.active ? "Active" : "Inactive"}</span>
-          <span className={`badge ${recruiter.jwtTokenSet ? "badge-active" : "badge-inactive"}`} title={recruiter.jwtTokenSet ? `JWT ${recruiter.jwtTokenMasked}` : "No JWT — falls back to shared company-log matching"}>
-            {recruiter.jwtTokenSet ? "JWT set" : "No JWT"}
-          </span>
-          <span className="badge badge-muted">{recruiter.usesCustomClient ? "Custom app creds" : "Shared app creds"}</span>
-        </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <button className="btn btn-ghost btn-sm" onClick={runTest} disabled={testing}>{testing ? "Testing…" : "Test connection"}</button>
-          <button className="btn btn-ghost btn-sm" onClick={runDiagnose} disabled={diagnosing}>{diagnosing ? "Diagnosing…" : "Diagnose"}</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setExpanded((e) => !e)}>{expanded ? "Close" : "Edit"}</button>
-        </div>
-      </div>
-
-      {test && (
-        <div style={{ fontSize: 12, marginTop: 8, color: test.connected ? "#22c55e" : "#f87171" }}>
-          {test.connected ? "✓" : "✕"} {test.message}
-        </div>
-      )}
-
-      {diag && (
-        <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "rgba(148,163,184,0.08)" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: diag.ok ? "#22c55e" : "#f87171" }}>
-            {diag.ok ? "✓ All checks passed" : "✕ Issues found"}
-          </div>
-          {(diag.steps || []).map((s, idx) => (
-            <div key={idx} style={{ fontSize: 12, marginBottom: 4 }}>
-              <span style={{ color: s.ok ? "#22c55e" : "#f87171" }}>{s.ok ? "✓" : "✕"}</span>{" "}
-              <strong style={{ color: "#cbd5e1" }}>{s.label}:</strong>{" "}
-              <span style={{ color: "#94a3b8" }}>{s.detail}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {expanded && (
-        <div style={{ marginTop: 12, borderTop: "1px solid rgba(148,163,184,0.15)", paddingTop: 12 }}>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <div className="form-group" style={{ marginBottom: 8 }}>
-              <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>Name</label>
-              <input className="form-input" value={form.name} onChange={(e) => setField("name", e.target.value)} />
-            </div>
-            <div className="form-group" style={{ marginBottom: 8 }}>
-              <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>RingCentral number</label>
-              <input className="form-input" value={form.phoneNumber} onChange={(e) => setField("phoneNumber", e.target.value)} />
-            </div>
-          </div>
-          <KeyField
-            label="JWT Token (this number's own)"
-            hint={recruiter.jwtTokenSet ? recruiter.jwtTokenMasked : "not set"}
-            value={form.jwtToken}
-            onChange={(v) => setField("jwtToken", v)}
-          />
-          <div className="form-group" style={{ marginBottom: 8 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-              <input type="checkbox" checked={useCustom} onChange={(e) => setUseCustom(e.target.checked)} />
-              Use a custom Client ID / Client Secret for this number
-            </label>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
-              Off = this number authenticates with the shared Client ID/Secret from the credentials card above.
-            </div>
-          </div>
-          {useCustom && (
-            <div style={{ paddingLeft: 12, borderLeft: "2px solid rgba(148,163,184,0.25)" }}>
-              <KeyField label="Custom Client ID" hint={recruiter.clientIdSet ? recruiter.clientIdMasked : "not set"} value={form.clientId} onChange={(v) => setField("clientId", v)} />
-              <KeyField label="Custom Client Secret" hint={recruiter.clientSecretSet ? recruiter.clientSecretMasked : "not set"} value={form.clientSecret} onChange={(v) => setField("clientSecret", v)} />
-            </div>
-          )}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-            <button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</button>
-            <button className="btn btn-ghost btn-sm" onClick={toggleActive}>{recruiter.active ? "Deactivate" : "Activate"}</button>
-            <button className="btn btn-danger btn-sm" onClick={remove}>Delete</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+//
+// Two things are configured here, and they are not the same thing:
+//   • the SHARED app credentials (Client ID/Secret) every number authenticates
+//     with, plus the KPI targets — the cards below;
+//   • each recruiter's OWN identity: their number, their RingCentral sign-in,
+//     and which Bitrix24 user they are. That mapping is what makes a Facebook
+//     lead go out from the assigned recruiter's number instead of the shared
+//     company line, so a recruiter with no sign-in or no Bitrix id is shown as
+//     such on their row rather than looking configured.
 
 export default function RingCentralTab() {
   const [settings, setSettings] = useState(null);
@@ -171,7 +28,9 @@ export default function RingCentralTab() {
     nonValuableMaxSeconds: 30, realConversationMinSeconds: 60, strongConversationMinSeconds: 180,
     targetTalkMinutes: 150, targetOutbound: 150, targetRealConversations: 35,
   });
-  const [newRec, setNewRec] = useState({ name: "", phoneNumber: "", jwtToken: "", clientId: "", clientSecret: "", useCustom: false });
+  const [newRec, setNewRec] = useState({ name: "", phoneNumber: "", bitrixUserId: "", jwtToken: "", clientId: "", clientSecret: "", useCustom: false });
+  const [inviteName, setInviteName] = useState("");
+  const [inviteUrl, setInviteUrl] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -240,15 +99,24 @@ export default function RingCentralTab() {
     }
     try {
       const payload = { name: newRec.name.trim(), phoneNumber: newRec.phoneNumber.trim() };
+      if (newRec.bitrixUserId.trim()) payload.bitrixUserId = newRec.bitrixUserId.trim();
       if (newRec.jwtToken.trim()) payload.jwtToken = newRec.jwtToken.trim();
       if (newRec.useCustom) {
         if (newRec.clientId.trim()) payload.clientId = newRec.clientId.trim();
         if (newRec.clientSecret.trim()) payload.clientSecret = newRec.clientSecret.trim();
       }
       await api.createRecruiter(payload);
-      setNewRec({ name: "", phoneNumber: "", jwtToken: "", clientId: "", clientSecret: "", useCustom: false });
+      setNewRec({ name: "", phoneNumber: "", bitrixUserId: "", jwtToken: "", clientId: "", clientSecret: "", useCustom: false });
       await refreshRecruiters();
       setMessage({ type: "success", text: "Recruiter added. Use Test connection / Diagnose on the row to verify." });
+    } catch (err) { setMessage({ type: "error", text: err.message }); }
+  };
+
+  const inviteNewRecruiter = async () => {
+    try {
+      const { connectUrl } = await api.createRecruiterConnectLink({ invitedName: inviteName.trim() || undefined });
+      setInviteUrl(connectUrl);
+      setMessage(null);
     } catch (err) { setMessage({ type: "error", text: err.message }); }
   };
 
@@ -257,9 +125,9 @@ export default function RingCentralTab() {
   return (
     <div>
       <p style={{ color: "#94a3b8", marginTop: 0 }}>
-        RingCentral call-log monitoring for recruiter KPIs. The bot polls the company call log,
-        attributes each call to a recruiter by their dedicated direct number, and scores it against
-        the daily targets.
+        RingCentral powers two things: recruiter call KPIs (the bot reads each recruiter's call
+        log and scores it against the daily targets) and <strong>who texts a lead</strong> — a
+        Facebook lead is texted from the number of whoever Bitrix24 assigned it to.
       </p>
       <Banner message={message} />
 
@@ -326,7 +194,39 @@ export default function RingCentralTab() {
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0 }}>➕ Add Recruiter &amp; Number</h3>
+        <h3 style={{ marginTop: 0 }}>🔗 Invite A Recruiter To Connect RingCentral</h3>
+        <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 0 }}>
+          The easy way to add someone: send them a link, they sign in to RingCentral as
+          themselves, and their number and extension are read from their account — nobody
+          has to generate or paste a JWT. If the number is not on the platform yet, the
+          recruiter row is created from it.
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
+          <input
+            className="form-input"
+            style={{ maxWidth: 260 }}
+            placeholder="Their name (optional)"
+            value={inviteName}
+            onChange={(e) => setInviteName(e.target.value)}
+          />
+          <button className="btn btn-primary btn-sm" onClick={inviteNewRecruiter}>Create sign-in link</button>
+        </div>
+        {inviteUrl && (
+          <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "rgba(34,197,94,0.1)" }}>
+            <div style={{ fontSize: 12, color: "#cbd5e1", marginBottom: 4 }}>
+              Send this link to the recruiter. It expires in 30 minutes and works once.
+            </div>
+            <input className="form-input" readOnly value={inviteUrl} onFocus={(e) => e.target.select()} />
+          </div>
+        )}
+        <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 10 }}>
+          After they connect, set their <strong>Bitrix24 user ID</strong> on their row below —
+          that is what matches an assigned lead to their number.
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ marginTop: 0 }}>➕ Add Recruiter &amp; Number Manually</h3>
         <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 0 }}>
           Each recruiter has one dedicated RingCentral direct number, and each number has its own
           JWT token. The Client ID/Secret default to the shared pair above; tick the checkbox to
@@ -340,6 +240,10 @@ export default function RingCentralTab() {
           <div className="form-group" style={{ marginBottom: 8 }}>
             <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>RingCentral number</label>
             <input className="form-input" value={newRec.phoneNumber} placeholder="+1 (470) 480-4679" onChange={(e) => setNewRec((n) => ({ ...n, phoneNumber: e.target.value }))} />
+          </div>
+          <div className="form-group" style={{ marginBottom: 8 }}>
+            <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>Bitrix24 user ID</label>
+            <input className="form-input" inputMode="numeric" placeholder="e.g. 17" value={newRec.bitrixUserId} onChange={(e) => setNewRec((n) => ({ ...n, bitrixUserId: e.target.value }))} />
           </div>
         </div>
         <div className="form-group" style={{ marginBottom: 8 }}>
@@ -370,8 +274,11 @@ export default function RingCentralTab() {
       <div style={{ marginBottom: 8 }}>
         <h3 style={{ margin: "0 0 4px" }}>👤 Recruiters &amp; Assigned Numbers</h3>
         <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 0 }}>
-          Use <strong>Test connection</strong> for a quick check or <strong>Diagnose</strong> for a
-          step-by-step report (credentials → auth → number match → call-log read).
+          A row that says <strong>Sends as self</strong> and carries a <strong>Bitrix #</strong> will
+          text its own leads. Anything else falls back to the shared company number. Use
+          <strong> Test connection</strong> for a quick check, <strong>Diagnose</strong> for a
+          step-by-step report (credentials → auth → number match → SMS capability → call log),
+          or <strong>Send test SMS</strong> on the row to prove it end to end.
         </p>
       </div>
       {recruiters.length === 0 ? (

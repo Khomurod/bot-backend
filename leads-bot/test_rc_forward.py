@@ -16,6 +16,7 @@ import webhook_server as wh
 # (the attachment download, the Telegram senders, the SMS-mirror registration)
 # in webhook/ringcentral.py, so that is the module patch.object must target —
 # patching webhook_server would leave the real functions in place, silently.
+import sms
 from webhook import connect_command as cc
 from webhook import ringcentral as rc
 
@@ -76,6 +77,74 @@ class TestRingcentralForwardHtml(unittest.TestCase):
         self.assertIn("<pre>", fitted)
 
 
+class TestInboundSmsFilters(unittest.TestCase):
+    """One event filter per extension, or a recruiter's replies never arrive.
+
+    RingCentral delivers message-store events PER EXTENSION. `~` is only the
+    subscribing user's own extension — the shared company number — so once
+    recruiters text leads from their own numbers, each of those extensions needs
+    its own filter.
+    """
+
+    def test_shared_extension_only_when_no_recruiters(self):
+        # Byte-identical to the pre-feature subscription.
+        self.assertEqual(sms.inbound_sms_filters(None), list(sms.RC_INBOUND_SMS_MMS_FILTERS))
+        self.assertEqual(sms.inbound_sms_filters([]), list(sms.RC_INBOUND_SMS_MMS_FILTERS))
+
+    def test_adds_sms_and_mms_for_each_recruiter_extension(self):
+        filters = sms.inbound_sms_filters(["101", "102"])
+        self.assertEqual(filters[:2], list(sms.RC_INBOUND_SMS_MMS_FILTERS))
+        for ext in ("101", "102"):
+            for kind in ("SMS", "MMS"):
+                self.assertIn(
+                    f"/restapi/v1.0/account/~/extension/{ext}/message-store/instant?type={kind}",
+                    filters,
+                )
+        self.assertEqual(len(filters), 6)
+
+    def test_ignores_blanks_and_never_duplicates_the_shared_extension(self):
+        filters = sms.inbound_sms_filters(["", "  ", "~", "101", "101"])
+        self.assertEqual(len(filters), 4, filters)
+        self.assertEqual(len(set(filters)), len(filters))
+
+    def test_accepts_ids_that_arrive_as_numbers(self):
+        # The hub returns strings, but a JSON int must not produce "extension/101 ".
+        self.assertIn(
+            "/restapi/v1.0/account/~/extension/101/message-store/instant?type=SMS",
+            sms.inbound_sms_filters([101]),
+        )
+
+
+class TestRingcentralRecipient(unittest.TestCase):
+    """WHICH of our numbers the driver texted decides who replies to them."""
+
+    def test_reads_the_first_recipient_number(self):
+        self.assertEqual(
+            rc._ringcentral_recipient_number(
+                {"to": [{"phoneNumber": "+15550002222"}, {"phoneNumber": "+15550009999"}]}
+            ),
+            "+15550002222",
+        )
+
+    def test_accepts_a_single_object_instead_of_a_list(self):
+        self.assertEqual(
+            rc._ringcentral_recipient_number({"to": {"phoneNumber": "+15550002222"}}),
+            "+15550002222",
+        )
+
+    def test_skips_entries_with_no_number(self):
+        self.assertEqual(
+            rc._ringcentral_recipient_number({"to": [{"name": "nobody"}, {"phoneNumber": "+15550003333"}]}),
+            "+15550003333",
+        )
+
+    def test_missing_recipient_is_empty_not_an_error(self):
+        # An empty result means "we do not know" — the mirror then falls back to
+        # the shared number, which is exactly the pre-recruiter behaviour.
+        self.assertEqual(rc._ringcentral_recipient_number({}), "")
+        self.assertEqual(rc._ringcentral_recipient_number({"to": []}), "")
+
+
 class TestRingcentralForwardAsync(unittest.IsolatedAsyncioTestCase):
     async def test_text_only_uses_html_send_message(self):
         with patch.object(rc, "_send_telegram_html", new_callable=AsyncMock, return_value=9001) as send_msg:
@@ -92,7 +161,7 @@ class TestRingcentralForwardAsync(unittest.IsolatedAsyncioTestCase):
                 text = send_msg.call_args[0][0]
                 self.assertIn("<pre>", text)
                 self.assertIn("hello", text)
-                register.assert_awaited_once_with("+15550001111", "hello", 9001)
+                register.assert_awaited_once_with("+15550001111", "hello", 9001, "+15550002222")
 
     async def test_text_only_skips_register_without_message_id(self):
         with patch.object(rc, "_send_telegram_html", new_callable=AsyncMock, return_value=None):
@@ -128,7 +197,7 @@ class TestRingcentralForwardAsync(unittest.IsolatedAsyncioTestCase):
                     upload.assert_awaited()
                     method = upload.call_args[0][0]
                     self.assertEqual(method, "sendPhoto")
-                    register.assert_awaited_once_with("+15550001111", "see pic", 8001)
+                    register.assert_awaited_once_with("+15550001111", "see pic", 8001, "")
 
     async def test_two_images_prefers_media_group(self):
         img = b"\xff\xd8\xff\xe0" + b"\x00" * 20
@@ -157,7 +226,7 @@ class TestRingcentralForwardAsync(unittest.IsolatedAsyncioTestCase):
                     )
                     album.assert_awaited_once()
                     self.assertEqual(len(album.call_args[0][1]), 2)
-                    register.assert_awaited_once_with("+15550003333", "two", 7001)
+                    register.assert_awaited_once_with("+15550003333", "two", 7001, "")
 
     async def test_media_group_fallback_to_individual(self):
         img = b"\xff\xd8\xff\xe0" + b"\x00" * 20
@@ -188,7 +257,7 @@ class TestRingcentralForwardAsync(unittest.IsolatedAsyncioTestCase):
                             }
                         )
                         self.assertEqual(upload.await_count, 2)
-                        register.assert_awaited_once_with("+15550004444", "x", 6001)
+                        register.assert_awaited_once_with("+15550004444", "x", 6001, "")
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@
  *   ./ringcentral/recruiters.js  recruiter rows and per-recruiter credentials
  *   ./ringcentral/calls.js       raw call records (idempotent upsert)
  *   ./ringcentral/kpiQueries.js  reads windows of calls, scores via kpiMath
+ *   ./ringcentral/connectSessions.js  the short-lived recruiter login links
  *
  * Nothing but re-exports belongs here — see CLAUDE.md → Module design. The keys
  * below are listed EXPLICITLY rather than spread: several sibling modules export
@@ -23,6 +24,7 @@ const settings = require('./ringcentral/settings');
 const recruiters = require('./ringcentral/recruiters');
 const calls = require('./ringcentral/calls');
 const kpiQueries = require('./ringcentral/kpiQueries');
+const connectSessions = require('./ringcentral/connectSessions');
 
 module.exports = {
   // Pure KPI arithmetic
@@ -42,6 +44,9 @@ module.exports = {
 
   // Recruiters
   normalizePhone: recruiters.normalizePhone,
+  normalizeBitrixUserId: recruiters.normalizeBitrixUserId,
+  recruiterCanSendSms: recruiters.recruiterCanSendSms,
+  hasMappedSmsSenders: recruiters.hasMappedSmsSenders,
   listRecruiters: recruiters.listRecruiters,
   listRecruitersForAdmin: recruiters.listRecruitersForAdmin,
   getRecruiterById: recruiters.getRecruiterById,
@@ -50,6 +55,23 @@ module.exports = {
   updateRecruiter: recruiters.updateRecruiter,
   deleteRecruiter: recruiters.deleteRecruiter,
   getRecruiterByNormalizedNumber: recruiters.getRecruiterByNormalizedNumber,
+  getRecruiterByBitrixUserId: recruiters.getRecruiterByBitrixUserId,
+  listRecruitersWithOwnCredentials: recruiters.listRecruitersWithOwnCredentials,
+
+  // Per-recruiter RingCentral OAuth credentials
+  storeRecruiterOAuthTokens: recruiters.storeRecruiterOAuthTokens,
+  updateRecruiterRefreshToken: recruiters.updateRecruiterRefreshToken,
+  markRecruiterAuthError: recruiters.markRecruiterAuthError,
+  clearRecruiterOAuth: recruiters.clearRecruiterOAuth,
+
+  // Recruiter RingCentral login links
+  createRcConnectSession: connectSessions.createRcConnectSession,
+  getRcConnectSessionByToken: connectSessions.getRcConnectSessionByToken,
+  getRcConnectSessionByOAuthState: connectSessions.getRcConnectSessionByOAuthState,
+  setRcConnectSessionOAuthState: connectSessions.setRcConnectSessionOAuthState,
+  completeRcConnectSession: connectSessions.completeRcConnectSession,
+  markRcConnectSessionError: connectSessions.markRcConnectSessionError,
+  expireOldRcConnectSessions: connectSessions.expireOldRcConnectSessions,
 
   // Call records and KPI reads
   upsertCall: calls.upsertCall,

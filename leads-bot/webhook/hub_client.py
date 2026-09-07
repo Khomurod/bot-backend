@@ -31,6 +31,31 @@ async def _forward_verified_facebook_payload(payload: dict) -> dict:
         return resp.json()
 
 
+async def _fetch_ringcentral_sms_extensions() -> list[str]:
+    """RingCentral extension ids inbound SMS must be watched on.
+
+    Recruiters send lead texts from their own numbers, each a separate
+    extension, and RingCentral delivers message-store events per extension. The
+    hub owns the recruiter list, so it is asked rather than guessed.
+
+    Best-effort by design: on any failure this returns [] and the caller
+    subscribes to the shared extension alone — the behaviour before
+    per-recruiter sending — instead of starting with no inbound SMS at all.
+    """
+    if not LEADS_INTERNAL_SHARED_SECRET:
+        return []
+
+    url = f"{LOCAL_API_BASE_URL.rstrip('/')}/api/internal/ringcentral/sms-extensions"
+    headers = {"x-internal-shared-secret": LEADS_INTERNAL_SHARED_SECRET}
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(url, headers=headers)
+        if not resp.is_success:
+            raise RuntimeError(f"Extension list unavailable ({resp.status_code}): {resp.text[:300]}")
+        data = resp.json() if resp.content else {}
+    extensions = data.get("extensions") or []
+    return [str(item).strip() for item in extensions if str(item).strip()]
+
+
 async def _forward_retry_leadgen_to_node(leadgen_id: str) -> dict:
     """Re-queue a lead through the Node worker (uses admin-configured SMS templates)."""
     if not LEADS_INTERNAL_SHARED_SECRET:

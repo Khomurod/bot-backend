@@ -115,6 +115,10 @@ after deploy on the live service.
 | E5 | RingCentral reply received & matched. | **[AUTO]** `facebookLeadSmsMirrorService.test.js`; **[MANUAL]** reply from a phone. |
 | E6 | Two-way reply does not create wrong lead records. | **[AUTO]** mirror table keyed correctly; **[MANUAL]** spot-check. |
 | E7 | Recruiter KPI leaderboard works. | **[AUTO]** `recruiterCallSync.test.js`, `recruiterSyncFallback.test.js`; **[PROD]** `/recruiters`. |
+| E8 | **A lead is texted by the recruiter Bitrix assigned it to**, and every fallback to the shared number is stated in the Telegram thread rather than being silent. | **[AUTO]** `facebookLeadSmsSender.test.js`, `facebookLeadEventProcessor.test.js`, `ringCentralSmsSender.test.js`; **[PROD]** Settings → RingCentral: every active recruiter's row shows **Sends as self** and a **Bitrix #** — a row reading *Shared number* or *Needs RingCentral sign-in* means their leads are going out from `(470) 480-4679`. |
+| E9 | **Each recruiter's number can actually send.** A number missing from the A2P/10DLC (TCR) campaign authenticates fine and then has every send rejected. | **[MANUAL]** Settings → RingCentral → the recruiter's row → **Diagnose** (the *SMS capability* step), then **Send test SMS** to your own phone. Repeat after adding a recruiter. |
+| E10 | **No recruiter's RingCentral login is expiring unnoticed.** Refresh tokens die after 7 days and rotate on use; the daily job renews them and flags a dead grant. | **[PROD]** no `[RC-TOKENS] … must re-connect RingCentral:` line in the logs, and no row in Settings → RingCentral showing *Needs RingCentral sign-in*. |
+| E11 | **The RingCentral redirect URI still matches.** It has to be byte-identical to what the app has registered, so a host or domain change breaks recruiter onboarding. | **[PROD]** `curl -sI https://<host>/ringcentral/connect/x` returns a page (400 is correct for a bad token, 404 means the route is not mounted); the RingCentral app's redirect URI is `https://<host>/ringcentral/oauth/callback`. |
 
 ---
 
