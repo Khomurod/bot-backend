@@ -64,6 +64,45 @@ If that ever bites (a backlog draining after an outage, say), lower
 either way: events are persisted before processing, so a slow drain is late,
 never dropped.
 
+## A converted lead: the recruiter is on the DEAL
+
+This portal runs **Simple CRM**, so the team never works classic Leads. What
+actually happens to a Facebook lead is:
+
+```
+crm.lead.add            → lead 1051, owner 1 (the inbound webhook's owner)
+   │  a Bitrix automation converts it
+   ▼
+Contact 1961 (phone, email)  +  Deal 4219  (category 0, stage NEW, LEAD_ID=1051)
+                                    │  the round-robin rule on stage NEW fires
+                                    ▼
+                             owner 137 — a real recruiter
+```
+
+The lead is left `STATUS_ID = CONVERTED` and **keeps owner 1 forever**. So
+reading only `crm.lead.get → ASSIGNED_BY_ID` finds the webhook owner, who maps
+to no recruiter, and every driver is texted from the shared number — which is
+exactly what happened for the first 69 leads.
+
+`waitForCrmAssignee` therefore follows the conversion: when the record's own
+owner is not someone who can send, it asks
+`crm.deal.list?filter[LEAD_ID]=<lead>` (newest first) and uses that assignee,
+reporting `via: 'converted_deal'`.
+
+Three properties worth keeping:
+
+- **It is asked only when the cheap answer was unusable**, so a record already
+  assigned to a mapped recruiter still costs one read and no delay.
+- **It is re-checked on every pass**, because the conversion and the round-robin
+  are asynchronous — that is the same reason the poll exists at all.
+- **A failure is swallowed**, leaving the record's own assignee in play: this is
+  an enrichment, never a new way to lose a text.
+
+Creating deals directly instead was the obvious-looking alternative and is
+worse: a deal has no `PHONE` field, so the driver's number — which the
+conversion puts on the Contact — would be dropped, and the recruiter could not
+call them.
+
 ## Two guarantees
 
 1. **A lead is never left un-texted.** Nobody mapped, no assignee yet, an
