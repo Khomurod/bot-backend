@@ -180,6 +180,27 @@ export async function updateRingCentralSettings(payload) {
   return data.settings;
 }
 
+/** Bitrix24 configuration, with no secret in it (the webhook URL is one). */
+export async function getBitrixSettings() {
+  const res = await fetch(`${API_BASE}/settings/bitrix`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.settings || {};
+}
+
+/**
+ * Stepwise Bitrix diagnosis: configuration → reachable and scoped → field map
+ * → recruiter coverage → the assignee readback the lead SMS sender depends on
+ * → what happened to recent leads. Read-only.
+ */
+export async function diagnoseBitrix(payload) {
+  const res = await fetch(`${API_BASE}/settings/bitrix/diagnose`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function testRingCentral(payload) {
   const res = await fetch(`${API_BASE}/settings/ringcentral/test`, {
     method: 'POST', headers: getHeaders(), body: JSON.stringify(payload || {}),
