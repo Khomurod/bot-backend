@@ -1065,11 +1065,11 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-09-07, deps installed, no `TEST_DATABASE_URL`): **2530 tests,
-  2372 pass, 0 fail, 158 skipped** (the skips are the `*Pg` integration tests),
+  baseline (2026-09-07, deps installed, no `TEST_DATABASE_URL`): **2532 tests,
+  2374 pass, 0 fail, 158 skipped** (the skips are the `*Pg` integration tests),
   exit 0. The unit-only set CI runs — the same glob minus `*Pg.test.js` — is
-  **2369 pass, 0 skipped**. With a database (`TEST_DATABASE_URL`) nothing skips:
-  the whole suite is **2598 tests, 2598 pass, 0 skipped**. The Python leads
+  **2371 pass, 0 skipped**. With a database (`TEST_DATABASE_URL`) nothing skips:
+  the whole suite is **2600 tests, 2600 pass, 0 skipped**. The Python leads
   worker adds **37 tests**
   (`python -m unittest discover -s leads-bot -p "test_*.py"`), and the admin
   panel **237** (`npm test --prefix admin`). **So any failure is a real

@@ -384,3 +384,14 @@ test('a deal entity with no pipeline is caught before a single lead is rejected'
   const fine = await run({ entity: 'deal', dealCategoryId: '3', dealStageId: 'C3:NEW' });
   assert.equal(fine.byLabel('Deal pipeline').ok, true);
 });
+
+test('a deal portal is not judged against LEAD statuses', async () => {
+  // In Simple CRM mode the team works Deals; a lead status is a value nothing
+  // uses there, so reporting on it would be noise at best and a false red at
+  // worst. The lead case must keep its check.
+  const deal = await run({ entity: 'deal', dealCategoryId: '3', dealStageId: 'C3:NEW', mapStatusId: 'NEW' });
+  assert.equal(deal.byLabel('lead status'), undefined, 'no lead-status step for a deal');
+
+  const lead = await run({ entity: 'lead', mapStatusId: 'NEW' });
+  assert.ok(lead.byLabel('lead status'), 'a lead portal still gets the check');
+});

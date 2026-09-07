@@ -271,6 +271,25 @@ test('buildBitrixCrmFields includes deal category and stage when entity is deal'
 
   assert.equal(fields.CATEGORY_ID, 42);
   assert.equal(fields.STAGE_ID, 'C1:NEW');
+  // STATUS_ID is a LEAD field. A deal's stage is STAGE_ID, so sending both
+  // would be at best ignored and at worst a rejected record.
+  assert.equal(fields.STATUS_ID, undefined, 'a deal must not carry a lead status');
+});
+
+test('a lead still gets its STATUS_ID — the deal rule must not cost leads theirs', () => {
+  const fields = buildBitrixCrmFields({
+    fieldMap: sampleFieldMap,
+    leadData: sampleLeadData,
+    connection: sampleConnection,
+    leadgenId: 'leadgen-abc',
+    formId: '',
+    bitrixConfig: { ...baseBitrixConfig, entity: 'lead' },
+  });
+  // The value comes from the resolved field map, not from this test — what
+  // matters is that a lead still carries one at all.
+  assert.ok(fields.STATUS_ID, 'a lead must still carry its status');
+  assert.equal(fields.CATEGORY_ID, undefined);
+  assert.equal(fields.STAGE_ID, undefined);
 });
 
 test.after(() => {

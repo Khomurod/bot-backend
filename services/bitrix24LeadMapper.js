@@ -271,10 +271,15 @@ function buildBitrixCrmFields({
     fields.SOURCE_ID = bitrixConfig.sourceId;
   }
 
-  const statusId = mapConfig.statusId
-    || (catalog ? findIncomingStatusId(catalog.statuses) : '')
-    || '';
-  if (statusId) fields.STATUS_ID = statusId;
+  // STATUS_ID is a LEAD field. A deal's equivalent is STAGE_ID, set from the
+  // pipeline config below — sending STATUS_ID on a deal is at best ignored and
+  // at worst a rejected record, so it is scoped to leads deliberately.
+  if (bitrixConfig.entity !== 'deal') {
+    const statusId = mapConfig.statusId
+      || (catalog ? findIncomingStatusId(catalog.statuses) : '')
+      || '';
+    if (statusId) fields.STATUS_ID = statusId;
+  }
 
   const assignedBy = Number(bitrixConfig.assignedById);
   if (Number.isFinite(assignedBy) && assignedBy > 0) {

@@ -118,7 +118,7 @@ async function checkConfiguration(steps) {
 }
 
 /** Reachability plus the `crm` scope, proven by reading the lead schema. */
-async function checkReachable(steps, { fetchImpl }) {
+async function checkReachable(steps, { fetchImpl, entity = 'lead' }) {
   let catalog = null;
   try {
     catalog = await loadBitrixFieldCatalog(fetchImpl);
@@ -142,7 +142,9 @@ async function checkReachable(steps, { fetchImpl }) {
     `${Object.keys(catalog.fields).length} lead fields, ${(catalog.statuses || []).length} statuses. The crm scope covers crm.lead.get too.`,
   );
 
-  checkStatuses(steps, catalog);
+  // A deal lands in a pipeline STAGE, not a lead status, so checking lead
+  // statuses on a deal portal would report a value nothing uses.
+  if (entity !== 'deal') checkStatuses(steps, catalog);
   return catalog;
 }
 
@@ -370,7 +372,8 @@ async function diagnoseBitrix({ db = require('../database/db'), fetchImpl = fetc
   const steps = [];
   if (!(await checkConfiguration(steps))) return { ok: false, steps };
 
-  const catalog = await checkReachable(steps, { fetchImpl });
+  const { entity } = await getBitrixMapperConfig();
+  const catalog = await checkReachable(steps, { fetchImpl, entity });
   if (catalog) checkFieldMap(steps, catalog);
 
   await checkSenderCoverage(steps);
