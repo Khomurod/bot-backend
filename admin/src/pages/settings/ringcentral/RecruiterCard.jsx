@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import * as api from "../../../api";
 import { KeyField } from "../fields";
+import { cleanBitrixUserId } from "./bitrixUserId";
 
 /**
  * One recruiter row.
@@ -86,6 +87,31 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerBusy, setPickerBusy] = useState(false);
 
+  // "Check Bitrix user" — confirm the typed id is a real person before saving.
+  const [bitrixCheck, setBitrixCheck] = useState(null);
+  const [checkingBitrix, setCheckingBitrix] = useState(false);
+
+  const checkBitrix = async () => {
+    const cleaned = cleanBitrixUserId(form.bitrixUserId);
+    if (cleaned.cleared) {
+      setBitrixCheck({ ok: false, found: false, message: "Enter a Bitrix user id first." });
+      return;
+    }
+    if (!cleaned.ok) {
+      setBitrixCheck({
+        ok: false, found: false,
+        message: "That is not a numeric Bitrix user id — use the number from the profile URL, e.g. 17.",
+      });
+      return;
+    }
+    // Show the cleaned id (a pasted URL becomes just the number) right away.
+    if (cleaned.value !== String(form.bitrixUserId).trim()) setField("bitrixUserId", cleaned.value);
+    setCheckingBitrix(true); setBitrixCheck(null);
+    try { setBitrixCheck({ id: cleaned.value, ...(await api.checkBitrixUser(cleaned.value)) }); }
+    catch (err) { setBitrixCheck({ ok: false, found: false, message: err.message }); }
+    finally { setCheckingBitrix(false); }
+  };
+
   const openPicker = async () => {
     setPickerBusy(true);
     try {
@@ -109,6 +135,21 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const save = async () => {
+    // A non-numeric id (a pasted URL, "#17", a typo) must NOT be sent: the
+    // server would normalize it to null and clear the mapping while reporting
+    // success — the "it won't save" bug. Reject it here with what to type.
+    const cleanedId = cleanBitrixUserId(form.bitrixUserId);
+    if (!cleanedId.ok) {
+      onMessage({
+        type: "error",
+        text: `"${String(form.bitrixUserId).trim()}" is not a Bitrix user id — use the number `
+          + "from the profile URL (e.g. 17), or clear the field.",
+      });
+      return;
+    }
+    // A pasted profile URL becomes just its number; reflect that in the field.
+    if (cleanedId.value !== String(form.bitrixUserId).trim()) setField("bitrixUserId", cleanedId.value);
+
     setSaving(true);
     try {
       const payload = {
@@ -119,8 +160,8 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
       // deliberately emptied field clears the mapping. Sending it
       // unconditionally is how an unrelated name save used to wipe a mapping
       // the automap had just written under this card.
-      if (String(form.bitrixUserId).trim() !== String(storedBitrixUserId).trim()) {
-        payload.bitrixUserId = String(form.bitrixUserId).trim();
+      if (String(cleanedId.value).trim() !== String(storedBitrixUserId).trim()) {
+        payload.bitrixUserId = String(cleanedId.value).trim();
       }
       if (form.jwtToken.trim()) payload.jwtToken = form.jwtToken.trim();
       if (useCustom) {
@@ -295,6 +336,25 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
                 >
                   {pickerBusy ? "Reading Bitrix…" : "Pick from Bitrix"}
                 </button>
+              )}
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ marginTop: 6, marginLeft: 8 }}
+                onClick={checkBitrix}
+                disabled={checkingBitrix}
+              >
+                {checkingBitrix ? "Checking…" : "Check Bitrix user"}
+              </button>
+              {bitrixCheck && (
+                <div style={{ fontSize: 12, marginTop: 6, color: bitrixCheck.found ? "#22c55e" : "#f87171" }}>
+                  {bitrixCheck.found
+                    ? `✓ #${bitrixCheck.user.id} — ${bitrixCheck.user.fullName}`
+                      + `${bitrixCheck.user.position ? ` · ${bitrixCheck.user.position}` : ""}`
+                      + `${bitrixCheck.user.active === false ? " · deactivated" : ""}`
+                    : bitrixCheck.ok
+                      ? `✗ No Bitrix user #${bitrixCheck.id} exists in this portal.`
+                      : `✗ ${bitrixCheck.message || bitrixCheck.detail || "Could not check this id."}`}
+                </div>
               )}
               <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4, maxWidth: 320 }}>
                 Or type it from the Bitrix profile URL:{" "}

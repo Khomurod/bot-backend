@@ -126,6 +126,20 @@ export async function automapRecruiterBitrixUsers(payload) {
 }
 
 /**
+ * Check one Bitrix user id: is it a real person in the portal, and who?
+ * Answers `{ ok, found, user, message }` rather than throwing when the webhook
+ * cannot read users, so a wrong id can be caught before it is saved.
+ */
+export async function checkBitrixUser(bitrixId) {
+  const res = await fetch(
+    `${API_BASE}/recruiters/bitrix-users/${encodeURIComponent(bitrixId)}`,
+    { headers: getHeaders() },
+  );
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/**
  * Public (no-auth) recruiter stats for the /recruiters leaderboard.
  * No params = today (live); { date } = one historical day;
  * { start, end } = inclusive date range (max 31 days).
