@@ -234,7 +234,11 @@ Two rules that are easy to get wrong:
   pasted profile URL is cleaned to its number). Blank means "let a Bitrix
   distribution rule assign", and — because `assigned_by_id` is TEXT — a blank
   saved in the panel is `''`, which beats the env name, rather than NULL, which
-  would inherit it.
+  would inherit it. **An ignored value inherited from the environment is shown
+  in red under the field but never pre-filled into it** — the first day in
+  production it was, Save refused it, and the operator saw a button that did
+  nothing. Every refused save prints its reason directly under the button;
+  the tab banner alone is off-screen from where the click happened.
 - **The URL is the credential.** It is never returned to a browser — the admin
   view carries `webhookHost` and `webhookSet` only, and not even a masked tail,
   since the tail is part of the token.
