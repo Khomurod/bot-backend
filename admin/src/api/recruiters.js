@@ -102,6 +102,30 @@ export async function diagnoseRecruiter(id, payload) {
 }
 
 /**
+ * The Bitrix24 user directory, so a recruiter's Bitrix id can be picked from a
+ * list instead of copied out of a profile URL. Answers `{ ok: false, message }`
+ * rather than throwing when the webhook cannot read users.
+ */
+export async function getBitrixUsers() {
+  const res = await fetch(`${API_BASE}/recruiters/bitrix-users`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/**
+ * Match recruiters to Bitrix users. Previews by default; pass
+ * `{ apply: true }` to write, and `confirm: [recruiterId]` to include a
+ * first-name-only proposal the operator accepted.
+ */
+export async function automapRecruiterBitrixUsers(payload) {
+  const res = await fetch(`${API_BASE}/recruiters/bitrix-automap`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(payload || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/**
  * Public (no-auth) recruiter stats for the /recruiters leaderboard.
  * No params = today (live); { date } = one historical day;
  * { start, end } = inclusive date range (max 31 days).

@@ -291,6 +291,14 @@ never reach an AI call).
   credentials, rejected send) falls back to the shared number
   `RC_FROM_NUMBER`; **a lead is never left un-texted**, and every fallback an
   operator could fix is stated in the Telegram thread.
+- **The Bitrix mapping can be done from the panel, not by hand.** Settings →
+  RingCentral → Bitrix24 → **Match recruiters to Bitrix users** reads the
+  portal's user directory (`user.get`, so the inbound webhook needs the `user`
+  scope) and maps recruiters to Bitrix users by phone or full name. It applies
+  only strong, unambiguous matches; a first-name-only guess is proposed for
+  confirmation, an existing mapping is never overwritten, and previewing is a
+  separate call from applying. Details and the refusal rules:
+  `docs/architecture/recruiter-sms-sender.md`.
 - **Recruiters attach their own number themselves.** An admin mints a link
   (Settings → RingCentral, or `POST /api/recruiters/connect-link`); the
   recruiter opens `/ringcentral/connect/:token`, signs in to RingCentral, and
@@ -1057,12 +1065,14 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-09-07, deps installed, no `TEST_DATABASE_URL`): **2441 tests,
-  2287 pass, 0 fail, 154 skipped** (the skips are the `*Pg` integration tests),
-  exit 0. With a database (`TEST_DATABASE_URL`) nothing skips: the whole suite is
-  **2509 tests, 2509 pass, 0 skipped**. The Python leads worker adds
-  **37 tests** (`python -m unittest discover -s leads-bot -p "test_*.py"`), and
-  the admin panel **199** (`npm test --prefix admin`). **So any failure is a real
+  baseline (2026-09-07, deps installed, no `TEST_DATABASE_URL`): **2494 tests,
+  2340 pass, 0 fail, 154 skipped** (the skips are the `*Pg` integration tests),
+  exit 0. The unit-only set CI runs — the same glob minus `*Pg.test.js` — is
+  **2337 pass, 0 skipped**. With a database (`TEST_DATABASE_URL`) nothing skips:
+  the whole suite is **2562 tests, 2562 pass, 0 skipped**. The Python leads
+  worker adds **37 tests**
+  (`python -m unittest discover -s leads-bot -p "test_*.py"`), and the admin
+  panel **215** (`npm test --prefix admin`). **So any failure is a real
   failure** — there is no "expected failures" allowance. *(An older internal doc
   claimed ~19 expected failures in a bare environment; that is no longer true and
   must not be used to excuse one.)* If

@@ -5,6 +5,7 @@ const { syncNow } = require('../../services/recruiterCallSyncService');
 const { createRecruiterConnectLink } = require('../../services/ringCentralConnectService');
 const { clearRecruiterTokenCache } = require('../../services/ringCentralOAuthService');
 const { registerRecruiterDiagnosticRoutes } = require('./recruiter/diagnosticsRoutes');
+const { registerRecruiterBitrixMappingRoutes } = require('./recruiter/bitrixMappingRoutes');
 
 /**
  * Recruiter API: who the recruiters are, whose number texts a lead, and how
@@ -18,13 +19,17 @@ const { registerRecruiterDiagnosticRoutes } = require('./recruiter/diagnosticsRo
  *   POST   /connect-link          → mint a "sign in with RingCentral" link so a
  *                                   recruiter can attach their own number
  *   DELETE /:id/ringcentral-login → forget a recruiter's RingCentral login
+ *   GET    /bitrix-users          → the Bitrix user directory, for a picker
+ *   POST   /bitrix-automap        → match recruiters to Bitrix users (preview,
+ *                                   or write with { apply: true })
  *   POST   /sync                  → run a call-log sync now (optional ?full=1)
  *   GET    /stats                 → per-recruiter KPIs vs targets (?date= or ?start=&end=)
  *   GET    /public-stats          → unauthenticated leaderboard stats (today, one
  *                                   day, or a range; never phone numbers/secrets)
  *
  * The live credential checks (/:id/test, /:id/diagnose, /:id/test-sms) live in
- * ./recruiter/diagnosticsRoutes.js.
+ * ./recruiter/diagnosticsRoutes.js, and the Bitrix mapping endpoints in
+ * ./recruiter/bitrixMappingRoutes.js.
  */
 const PUBLIC_MAX_RANGE_DAYS = 31;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -135,6 +140,7 @@ function createRecruiterRouter({ authMiddleware }) {
   });
 
   registerRecruiterDiagnosticRoutes(router, { authMiddleware });
+  registerRecruiterBitrixMappingRoutes(router, { authMiddleware });
 
   router.delete('/:id', authMiddleware, async (req, res) => {
     try {

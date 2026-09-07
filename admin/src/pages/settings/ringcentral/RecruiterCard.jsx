@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import * as api from "../../../api";
 import { KeyField } from "../fields";
 
@@ -46,7 +46,7 @@ function SenderBadge({ recruiter }) {
   );
 }
 
-export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage }) {
+export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage, bitrixUsers, loadBitrixUsers }) {
   const [expanded, setExpanded] = useState(false);
   const [form, setForm] = useState({
     name: recruiter.name,
@@ -67,6 +67,45 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
   const [smsResult, setSmsResult] = useState(null);
   const [sendingSms, setSendingSms] = useState(false);
 
+  // The automap writes bitrix_user_id straight to the row, so the stored value
+  // can change while this card is mounted. `form` is seeded once at mount, so
+  // without this the editor would keep showing the pre-mapping value — and
+  // save() would send it back. `save()` also only submits the field when it
+  // actually differs from what is stored, so the two guards are independent.
+  const storedBitrixUserId = recruiter.bitrixUserId ?? "";
+  useEffect(() => {
+    setForm((f) => (
+      String(f.bitrixUserId) === String(storedBitrixUserId)
+        ? f
+        : { ...f, bitrixUserId: storedBitrixUserId }
+    ));
+  }, [storedBitrixUserId]);
+
+  // The Bitrix directory is fetched by the parent so every row shares one
+  // call; this only tracks whether THIS row asked for it yet.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerBusy, setPickerBusy] = useState(false);
+
+  const openPicker = async () => {
+    setPickerBusy(true);
+    try {
+      const users = await loadBitrixUsers?.();
+      // null = the read failed and the page already said why. An empty list is
+      // a DIFFERENT answer and has to be said out loud, or this button just
+      // looks broken.
+      if (!users) return;
+      if (!users.length) {
+        onMessage?.({
+          type: "error",
+          text: "Bitrix returned no users for this webhook. Type the id by hand, or add the "
+            + '"user" scope to the inbound webhook.',
+        });
+        return;
+      }
+      setPickerOpen(true);
+    } finally { setPickerBusy(false); }
+  };
+
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const save = async () => {
@@ -75,9 +114,14 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
       const payload = {
         name: form.name,
         phoneNumber: form.phoneNumber,
-        // Sent even when blank: "" clears the mapping on purpose.
-        bitrixUserId: String(form.bitrixUserId).trim(),
       };
+      // Sent ONLY when this form changed it — blank included, because a
+      // deliberately emptied field clears the mapping. Sending it
+      // unconditionally is how an unrelated name save used to wipe a mapping
+      // the automap had just written under this card.
+      if (String(form.bitrixUserId).trim() !== String(storedBitrixUserId).trim()) {
+        payload.bitrixUserId = String(form.bitrixUserId).trim();
+      }
       if (form.jwtToken.trim()) payload.jwtToken = form.jwtToken.trim();
       if (useCustom) {
         if (form.clientId.trim()) payload.clientId = form.clientId.trim();
@@ -228,8 +272,33 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
                 value={form.bitrixUserId}
                 onChange={(e) => setField("bitrixUserId", e.target.value)}
               />
+              {pickerOpen && (bitrixUsers || []).length > 0 ? (
+                <select
+                  className="form-input"
+                  style={{ marginTop: 6 }}
+                  value={String(form.bitrixUserId || "")}
+                  onChange={(e) => setField("bitrixUserId", e.target.value)}
+                >
+                  <option value="">— no Bitrix user —</option>
+                  {(bitrixUsers || []).map((u) => (
+                    <option key={u.id} value={u.id}>
+                      #{u.id} · {u.fullName}{u.position ? ` · ${u.position}` : ""}{u.active === false ? " · deactivated" : ""}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ marginTop: 6 }}
+                  onClick={openPicker}
+                  disabled={pickerBusy || !loadBitrixUsers}
+                >
+                  {pickerBusy ? "Reading Bitrix…" : "Pick from Bitrix"}
+                </button>
+              )}
               <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4, maxWidth: 320 }}>
-                From the Bitrix profile URL: <code>/company/personal/user/<strong>17</strong>/</code>.
+                Or type it from the Bitrix profile URL:{" "}
+                <code>/company/personal/user/<strong>17</strong>/</code>.
                 A lead assigned to this Bitrix user is texted from this number.
               </div>
             </div>

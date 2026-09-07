@@ -101,6 +101,7 @@ organization should converge toward.
 | Facebook OAuth self-serve connect, Graph client, crypto, formatting | `services/facebookConnectService.js`, `facebookGraphService.js`, `facebookCrypto.js`, `facebookLeadFormatter.js` |
 | Bitrix24 CRM lead create/update + field mapping | `services/bitrix24Service.js`, `bitrix24LeadMapper.js`, `bitrix24FieldMapLoader.js`, `bitrix24FieldCatalog.js`, `config/bitrix24LeadFieldMap*.json` |
 | "Is Bitrix aligned?" — the admin diagnosis | `services/bitrix24DiagnosticsService.js`, `server/routes/settings/bitrixRoutes.js`, `admin/src/pages/settings/ringcentral/BitrixCard.jsx` |
+| Mapping recruiters to Bitrix users (the automap + the row picker) | `services/recruiterBitrixMapping/` (`directory.js` reads `user.get`, `match.js` is the pure decision, `index.js` previews and applies), `server/routes/recruiter/bitrixMappingRoutes.js`, `admin/src/pages/settings/ringcentral/BitrixAutomapPanel.jsx`, `RecruiterCard.jsx` |
 | Indeed lead intake | `services/indeedLeadService.js`, `docs/gmail-indeed-apps-script.gs` |
 | Recruiter call KPI leaderboard | `services/recruiterCallSyncService.js`, `services/ringCentralCallService.js`, `server/routes/recruiterRoutes.js`, `server/routes/recruiter/diagnosticsRoutes.js`, `database/ringcentral.js`, `admin/src/pages/RecruiterKpiPage.jsx`, `RecruitersPublicPage.jsx`, `admin/src/pages/settings/ringcentral/RecruiterCard.jsx` |
 | Leads admin UI/API | `server/routes/facebookLeadsRoutes.js`, `admin/src/pages/FacebookLeadsPage.jsx`, `LeadsPage.jsx` |

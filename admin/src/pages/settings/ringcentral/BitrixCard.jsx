@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../../api";
+import BitrixAutomapPanel from "./BitrixAutomapPanel";
 
 /**
  * Bitrix24 — the half of the lead-SMS chain that lives outside this app.
@@ -11,7 +12,9 @@ import * as api from "../../../api";
  * that never assigns a lead looked exactly like a portal that works — while
  * every lead quietly went out from the shared company number.
  *
- * Read-only. Nothing here changes Bitrix or this app; **Diagnose** reads.
+ * Read-only with one exception, and it is opt-in: **Diagnose** only reads, and
+ * so does the first click of the mapping panel below — that one previews, and
+ * writes `bitrix_user_id` on recruiter rows only when the plan is applied.
  */
 function Row({ label, value, warn = false }) {
   if (value === null || value === undefined || value === "") return null;
@@ -25,7 +28,7 @@ function Row({ label, value, warn = false }) {
   );
 }
 
-export default function BitrixCard({ onMessage }) {
+export default function BitrixCard({ onMessage, onMapped }) {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [diag, setDiag] = useState(null);
@@ -90,6 +93,8 @@ export default function BitrixCard({ onMessage }) {
           <Row label="Deal stage" value={settings?.dealStageId} />
         </>
       )}
+
+      <BitrixAutomapPanel onMapped={onMapped} />
 
       {diag && (
         <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: "rgba(148,163,184,0.08)" }}>
