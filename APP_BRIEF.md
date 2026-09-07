@@ -282,7 +282,11 @@ never reach an AI call).
   mirrors SMS replies two-way.
 - **The lead's text comes from whoever Bitrix24 assigned it to.** Bitrix assigns
   asynchronously, so `facebookLeadSmsSender.js` re-reads `crm.lead.get` on a
-  bounded poll (`BITRIX24_ASSIGNEE_WAIT_MS`, default 25s at 5s intervals),
+  bounded poll (the *assignee wait* setting, default 25s at 5s intervals) —
+  **and follows a lead into the deal it was converted into**, because in this
+  Simple-CRM portal the round-robin that picks a recruiter fires on the DEAL
+  while the lead keeps the webhook owner forever (see
+  `docs/architecture/recruiter-sms-sender.md`),
   matches `ASSIGNED_BY_ID` to `recruiters.bitrix_user_id`, and sends with that
   recruiter's own RingCentral credentials. **RingCentral refuses an SMS whose
   `from` is another extension's number** — no token, super-admin included, can
@@ -1065,11 +1069,11 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-09-07, deps installed, no `TEST_DATABASE_URL`): **2530 tests,
-  2372 pass, 0 fail, 158 skipped** (the skips are the `*Pg` integration tests),
+  baseline (2026-09-07, deps installed, no `TEST_DATABASE_URL`): **2537 tests,
+  2379 pass, 0 fail, 158 skipped** (the skips are the `*Pg` integration tests),
   exit 0. The unit-only set CI runs — the same glob minus `*Pg.test.js` — is
-  **2369 pass, 0 skipped**. With a database (`TEST_DATABASE_URL`) nothing skips:
-  the whole suite is **2598 tests, 2598 pass, 0 skipped**. The Python leads
+  **2376 pass, 0 skipped**. With a database (`TEST_DATABASE_URL`) nothing skips:
+  the whole suite is **2605 tests, 2605 pass, 0 skipped**. The Python leads
   worker adds **37 tests**
   (`python -m unittest discover -s leads-bot -p "test_*.py"`), and the admin
   panel **237** (`npm test --prefix admin`). **So any failure is a real

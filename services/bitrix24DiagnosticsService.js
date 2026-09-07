@@ -28,6 +28,7 @@ const {
   getWebhookBase,
   loadBitrixFieldCatalog,
   getCrmRecordAssignee,
+  getConvertedDealAssignee,
 } = require('./bitrix24Service');
 const { resolveFieldMapConfig, loadBitrixFieldMapConfig } = require('./bitrix24FieldMapLoader');
 const { findFieldByTitleHints } = require('./bitrix24FieldCatalog');
@@ -118,7 +119,7 @@ async function checkConfiguration(steps) {
 }
 
 /** Reachability plus the `crm` scope, proven by reading the lead schema. */
-async function checkReachable(steps, { fetchImpl }) {
+async function checkReachable(steps, { fetchImpl, entity = 'lead' }) {
   let catalog = null;
   try {
     catalog = await loadBitrixFieldCatalog(fetchImpl);
@@ -142,7 +143,9 @@ async function checkReachable(steps, { fetchImpl }) {
     `${Object.keys(catalog.fields).length} lead fields, ${(catalog.statuses || []).length} statuses. The crm scope covers crm.lead.get too.`,
   );
 
-  checkStatuses(steps, catalog);
+  // A deal lands in a pipeline STAGE, not a lead status, so checking lead
+  // statuses on a deal portal would report a value nothing uses.
+  if (entity !== 'deal') checkStatuses(steps, catalog);
   return catalog;
 }
 
@@ -243,6 +246,22 @@ async function checkAssigneeReadback(steps, { db, fetchImpl }) {
   }
 
   const outcome = await getCrmRecordAssignee({ bitrixId: lead.bitrix_id, fetchImpl });
+  // Follow the SAME path the sender takes: in a Simple-CRM portal the lead keeps
+  // the webhook's owner and the recruiter lands on the deal it was converted
+  // into. Reading only the lead here would report a failure the sender does not
+  // actually have — a panel that cries wolf is worse than no panel.
+  let via = 'crm.lead.get';
+  if (outcome.ok) {
+    const own = outcome.assignedById;
+    const mapped = own == null ? null : await rc.getRecruiterByBitrixUserId(own).catch(() => null);
+    if (!mapped) {
+      const fromDeal = await getConvertedDealAssignee({ leadId: lead.bitrix_id, fetchImpl });
+      if (fromDeal != null) {
+        outcome.assignedById = fromDeal;
+        via = 'converted deal';
+      }
+    }
+  }
   if (!outcome.ok) {
     step(
       steps,
@@ -275,8 +294,8 @@ async function checkAssigneeReadback(steps, { db, fetchImpl }) {
       steps,
       'Assignee readback (crm.lead.get)',
       false,
-      `Lead ${lead.bitrix_id} belongs to Bitrix user ${outcome.assignedById}, who is not mapped to any recruiter. `
-      + 'Enter that id on their row in Settings → RingCentral, or their leads keep going out from the shared number.',
+      `Lead ${lead.bitrix_id} belongs to Bitrix user ${outcome.assignedById} (via ${via}), who is not mapped to any recruiter. `
+      + 'Use "Match recruiters to Bitrix users" above, or enter that id on their row in Settings → RingCentral — otherwise their leads keep going out from the shared number.',
     );
     return;
   }
@@ -286,7 +305,7 @@ async function checkAssigneeReadback(steps, { db, fetchImpl }) {
     'Assignee readback (crm.lead.get)',
     canSend,
     canSend
-      ? `Lead ${lead.bitrix_id} → Bitrix user ${outcome.assignedById} → ${recruiter.name} (${recruiter.phone_number}), who can send.`
+      ? `Lead ${lead.bitrix_id} → Bitrix user ${outcome.assignedById} (via ${via}) → ${recruiter.name} (${recruiter.phone_number}), who can send.`
       : `Lead ${lead.bitrix_id} → ${recruiter.name}, but they have no RingCentral credentials, so their leads use the shared number. Send them a sign-in link.`,
   );
 }
@@ -370,7 +389,8 @@ async function diagnoseBitrix({ db = require('../database/db'), fetchImpl = fetc
   const steps = [];
   if (!(await checkConfiguration(steps))) return { ok: false, steps };
 
-  const catalog = await checkReachable(steps, { fetchImpl });
+  const { entity } = await getBitrixMapperConfig();
+  const catalog = await checkReachable(steps, { fetchImpl, entity });
   if (catalog) checkFieldMap(steps, catalog);
 
   await checkSenderCoverage(steps);

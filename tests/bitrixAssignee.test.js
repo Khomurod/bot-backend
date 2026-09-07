@@ -52,6 +52,29 @@ function loadBitrix({ enabled = 'true', url = WEBHOOK, entity = 'lead' } = {}) {
   return { mod, restore };
 }
 
+/**
+ * A fetch stand-in that routes BY REST METHOD, the way Bitrix does: crm.lead.get
+ * answers from its own queue and crm.deal.list from its own. The call-ordered
+ * `queuedFetch` below cannot express that, and the poll now interleaves the two
+ * (it follows a lead → converted deal when the lead's own owner cannot send),
+ * so a shared queue would let a deal lookup swallow a lead answer.
+ */
+function methodFetch({ leadReads = [], dealRows = [] } = {}) {
+  const seen = { lead: 0, deal: 0, urls: [] };
+  const impl = async (url) => {
+    const text = String(url);
+    seen.urls.push(text);
+    if (text.includes('crm.deal.list')) {
+      seen.deal += 1;
+      return { ok: true, status: 200, json: async () => ({ result: dealRows }) };
+    }
+    seen.lead += 1;
+    const next = leadReads[Math.min(seen.lead - 1, leadReads.length - 1)];
+    return { ok: true, status: 200, json: async () => next };
+  };
+  return { impl, seen };
+}
+
 /** A fetch stand-in that answers each call from a queue and records the URLs. */
 function queuedFetch(responses) {
   const urls = [];
@@ -172,12 +195,15 @@ test('it keeps asking while the record is unassigned, and stops as soon as it is
   const { mod, restore } = loadBitrix();
   try {
     // The real shape: created unassigned, then a distribution rule fires.
-    const fetchImpl = queuedFetch([
-      { result: { ASSIGNED_BY_ID: null } },
-      { result: { ASSIGNED_BY_ID: null } },
-      { result: { ASSIGNED_BY_ID: '17' } },
-      { result: { ASSIGNED_BY_ID: '99' } },
-    ]);
+    const fetchImpl = methodFetch({
+      leadReads: [
+        { result: { ASSIGNED_BY_ID: null } },
+        { result: { ASSIGNED_BY_ID: null } },
+        { result: { ASSIGNED_BY_ID: '17' } },
+        { result: { ASSIGNED_BY_ID: '99' } },
+      ],
+      dealRows: [],   // nothing converted, so only the lead answers matter
+    });
     const sleeps = [];
     const outcome = await mod.waitForCrmAssignee({
       bitrixId: 1,
@@ -190,7 +216,7 @@ test('it keeps asking while the record is unassigned, and stops as soon as it is
     assert.equal(outcome.accepted, true);
     assert.equal(outcome.attempts, 3);
     assert.deepEqual(sleeps, [5000, 5000], 'one wait between each retry, none before the first');
-    assert.equal(fetchImpl.calls(), 3, 'it stops the moment the answer is usable');
+    assert.equal(fetchImpl.seen.lead, 3, 'it stops the moment the answer is usable');
   } finally { restore(); }
 });
 
@@ -218,7 +244,7 @@ test('the caller decides what "usable" means', async () => {
 test('the budget is honoured, and the last answer is still reported', async () => {
   const { mod, restore } = loadBitrix();
   try {
-    const fetchImpl = queuedFetch([{ result: { ASSIGNED_BY_ID: '3' } }]);
+    const fetchImpl = methodFetch({ leadReads: [{ result: { ASSIGNED_BY_ID: '3' } }], dealRows: [] });
     const outcome = await mod.waitForCrmAssignee({
       bitrixId: 1,
       isAcceptable: () => false,
@@ -227,7 +253,7 @@ test('the budget is honoured, and the last answer is still reported', async () =
       sleep: async () => {},
       fetchImpl: fetchImpl.impl,
     });
-    assert.equal(fetchImpl.calls(), 3, 'exactly the attempt budget, never more');
+    assert.equal(fetchImpl.seen.lead, 3, 'exactly the attempt budget of record reads, never more');
     assert.equal(outcome.accepted, false);
     assert.equal(outcome.reason, 'not_acceptable');
     // Who Bitrix DID name still comes back, so the caller can say why it fell back.
@@ -272,4 +298,92 @@ test('the wait budget comes from BITRIX24_ASSIGNEE_WAIT_MS, and 0 means do not w
     delete require.cache[require.resolve('../services/bitrix24Service')];
     delete require.cache[DB_BITRIX_PATH];
   }
+});
+
+// ─── following a lead into the deal it was converted into ───
+//
+// The portal this runs against is Simple CRM: the team never works classic
+// Leads. An automation converts each lead into a Contact + a Deal in the
+// recruitment pipeline, and the round-robin that picks a recruiter fires on the
+// DEAL. The lead keeps the inbound webhook's owner forever, so reading only the
+// lead finds a user who maps to nobody and every driver gets the shared number.
+
+test('a converted lead resolves to the DEAL\'s recruiter, not the webhook owner', async () => {
+  const { mod, restore } = loadBitrix();
+  try {
+    const fetchImpl = methodFetch({
+      leadReads: [{ result: { ASSIGNED_BY_ID: '1' } }],          // the webhook owner
+      dealRows: [{ ID: '4219', ASSIGNED_BY_ID: '137' }],          // Kimberly
+    });
+    const outcome = await mod.waitForCrmAssignee({
+      bitrixId: 1051,
+      isAcceptable: (id) => id === 137,
+      attempts: 3,
+      sleep: async () => {},
+      fetchImpl: fetchImpl.impl,
+    });
+    assert.equal(outcome.assignedById, 137);
+    assert.equal(outcome.accepted, true);
+    assert.equal(outcome.via, 'converted_deal');
+    assert.equal(outcome.attempts, 1, 'found on the first pass — no waiting');
+    assert.match(fetchImpl.seen.urls[1], /crm\.deal\.list.*filter\[LEAD_ID\]=1051/);
+  } finally { restore(); }
+});
+
+test('the newest deal wins when a lead was converted more than once', async () => {
+  const { mod, restore } = loadBitrix();
+  try {
+    const fetchImpl = methodFetch({
+      leadReads: [{ result: { ASSIGNED_BY_ID: '1' } }],
+      dealRows: [{ ID: '4300', ASSIGNED_BY_ID: '35' }, { ID: '4219', ASSIGNED_BY_ID: '137' }],
+    });
+    const outcome = await mod.waitForCrmAssignee({
+      // The webhook owner (1) must be rejected, or the deal is never consulted.
+      bitrixId: 1051, isAcceptable: (id) => id !== 1, attempts: 1, sleep: async () => {}, fetchImpl: fetchImpl.impl,
+    });
+    assert.equal(outcome.assignedById, 35, 'ordered ID DESC, so the first row is the newest');
+  } finally { restore(); }
+});
+
+test('an unusable lead owner with NO converted deal keeps polling, then falls back', async () => {
+  const { mod, restore } = loadBitrix();
+  try {
+    const fetchImpl = methodFetch({ leadReads: [{ result: { ASSIGNED_BY_ID: '1' } }], dealRows: [] });
+    const outcome = await mod.waitForCrmAssignee({
+      bitrixId: 1051,
+      isAcceptable: (id) => id === 137,
+      attempts: 2,
+      sleep: async () => {},
+      fetchImpl: fetchImpl.impl,
+    });
+    assert.equal(outcome.accepted, false);
+    assert.equal(outcome.assignedById, 1, 'who Bitrix named is still reported for the fallback note');
+    assert.equal(fetchImpl.seen.deal, 2, 'the conversion is re-checked on each pass — it happens async');
+  } finally { restore(); }
+});
+
+test('a deal entity never looks for a conversion of itself', async () => {
+  const { mod, restore } = loadBitrix({ entity: 'deal' });
+  try {
+    const fetchImpl = methodFetch({ leadReads: [{ result: { ASSIGNED_BY_ID: '1' } }], dealRows: [] });
+    await mod.waitForCrmAssignee({
+      bitrixId: 4219, isAcceptable: () => false, attempts: 2, sleep: async () => {}, fetchImpl: fetchImpl.impl,
+    });
+    assert.equal(fetchImpl.seen.deal, 0, 'a deal has no LEAD_ID to follow');
+  } finally { restore(); }
+});
+
+test('a failing deal lookup leaves the lead answer intact rather than throwing', async () => {
+  const { mod, restore } = loadBitrix();
+  try {
+    const impl = async (url) => {
+      if (String(url).includes('crm.deal.list')) throw new Error('ECONNRESET');
+      return { ok: true, status: 200, json: async () => ({ result: { ASSIGNED_BY_ID: '1' } }) };
+    };
+    const outcome = await mod.waitForCrmAssignee({
+      bitrixId: 1051, isAcceptable: (id) => id === 137, attempts: 1, sleep: async () => {}, fetchImpl: impl,
+    });
+    assert.equal(outcome.accepted, false);
+    assert.equal(outcome.assignedById, 1);
+  } finally { restore(); }
 });

@@ -172,6 +172,45 @@ async function createCrmRecordFromLead({
 }
 
 /**
+ * The assignee of the DEAL a lead was converted into, or null.
+ *
+ * WHY THIS EXISTS — and it is the whole reason the sender ever worked. In a
+ * Simple-CRM portal the team does not work classic Leads at all: an automation
+ * converts each new lead into a Contact + a Deal in the recruitment pipeline,
+ * and the round-robin rule that picks a recruiter fires on the DEAL's stage.
+ * The lead itself keeps the inbound webhook's owner forever (status CONVERTED,
+ * ASSIGNED_BY_ID = 1), so reading the lead's own assignee finds a user who maps
+ * to no recruiter and every text goes out from the shared number.
+ *
+ * The deal carries a LEAD_ID backlink, so one filtered read crosses the gap.
+ * Newest first, because a lead re-converted by hand can have more than one.
+ */
+async function getConvertedDealAssignee({ leadId, fetchImpl = fetch }) {
+  const id = Number(leadId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+
+  const base = await getWebhookBase();
+  if (!base) return null;
+  const url = `${base}crm.deal.list.json?filter[LEAD_ID]=${encodeURIComponent(String(id))}`
+    + '&select[]=ID&select[]=ASSIGNED_BY_ID&order[ID]=DESC';
+
+  try {
+    const response = await fetchImpl(url, { method: 'GET' });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body.error) return null;
+    const rows = Array.isArray(body.result) ? body.result : [];
+    for (const row of rows) {
+      const assignedById = Number(row?.ASSIGNED_BY_ID);
+      if (Number.isFinite(assignedById) && assignedById > 0) return assignedById;
+    }
+    return null;
+  } catch {
+    // Best-effort: a failure here just leaves the lead's own assignee in play.
+    return null;
+  }
+}
+
+/**
  * Who owns a Bitrix record right now.
  *
  * @returns {Promise<{ok: boolean, assignedById: number|null, reason?: string,
@@ -240,17 +279,30 @@ async function waitForCrmAssignee({
   fetchImpl = fetch,
 }) {
   const total = Math.max(1, Number(attempts ?? await assigneeAttempts()) || 1);
+  const resolvedEntity = entity || (await getBitrixMapperConfig()).entity;
   let last = { ok: false, assignedById: null, reason: 'not_attempted' };
 
   for (let attempt = 1; attempt <= total; attempt += 1) {
     if (attempt > 1) await sleep(Math.max(0, Number(intervalMs) || 0));
-    last = await getCrmRecordAssignee({ bitrixId, entity, fetchImpl });
+    last = await getCrmRecordAssignee({ bitrixId, entity: resolvedEntity, fetchImpl });
     // A configuration or id problem will not fix itself by asking again.
     if (!last.ok && (last.reason === 'not_configured' || last.reason === 'invalid_id')) {
       return { assignedById: null, accepted: false, attempts: attempt, reason: last.reason };
     }
     if (last.ok && await isAcceptable(last.assignedById)) {
       return { assignedById: last.assignedById, accepted: true, attempts: attempt };
+    }
+
+    // The record's own owner is not someone who can send. For a LEAD that is
+    // the normal state in a Simple-CRM portal: the recruiter is on the deal the
+    // lead was converted into (see getConvertedDealAssignee). Asked only when
+    // the cheap answer was unusable, so an already-assigned record still costs
+    // one read.
+    if (last.ok && resolvedEntity !== 'deal') {
+      const fromDeal = await getConvertedDealAssignee({ leadId: bitrixId, fetchImpl });
+      if (fromDeal != null && await isAcceptable(fromDeal)) {
+        return { assignedById: fromDeal, accepted: true, attempts: attempt, via: 'converted_deal' };
+      }
     }
   }
 
@@ -272,6 +324,7 @@ module.exports = {
   loadBitrixFieldCatalog,
   createCrmRecordFromLead,
   getCrmRecordAssignee,
+  getConvertedDealAssignee,
   waitForCrmAssignee,
   assigneeAttempts,
   ASSIGNEE_POLL_INTERVAL_MS,
