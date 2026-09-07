@@ -56,6 +56,10 @@ const {
   stopRecruiterCallSyncService,
 } = require('./services/recruiterCallSyncService');
 const {
+  startRingCentralTokenRefreshService,
+  stopRingCentralTokenRefreshService,
+} = require('./services/ringCentralTokenRefreshService');
+const {
   startRoadBonusNotifierService,
   stopRoadBonusNotifierService,
 } = require('./services/roadBonusNotifierService');
@@ -329,6 +333,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopRaiseApprovalService(); } catch (err) { console.error('[SHUTDOWN] stopRaiseApprovalService failed:', err.message); }
   try { stopFuelStopAlertService(); } catch (err) { console.error('[SHUTDOWN] stopFuelStopAlertService failed:', err.message); }
   try { stopRecruiterCallSyncService(); } catch (err) { console.error('[SHUTDOWN] stopRecruiterCallSyncService failed:', err.message); }
+  try { stopRingCentralTokenRefreshService(); } catch (err) { console.error('[SHUTDOWN] stopRingCentralTokenRefreshService failed:', err.message); }
   try { stopRoadBonusNotifierService(); } catch (err) { console.error('[SHUTDOWN] stopRoadBonusNotifierService failed:', err.message); }
   try { stopHomeTimeReminderService(); } catch (err) { console.error('[SHUTDOWN] stopHomeTimeReminderService failed:', err.message); }
   try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }
@@ -383,6 +388,7 @@ async function start() {
   startRaiseApprovalService();
   startFuelStopAlertService(bot.telegram);
   startRecruiterCallSyncService();
+  startRingCentralTokenRefreshService();
   startRoadBonusNotifierService(bot.telegram);
   startHomeTimeReminderService(bot.telegram);
   startRouteControlService(bot.telegram);

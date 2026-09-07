@@ -192,8 +192,14 @@ async def _request_register_sms_mirror(
     driver_phone: str,
     sms_body: str,
     source_type: str = "inbound_rc",
+    to_number: str | None = None,
 ) -> dict:
-    """Register a Telegram message as replyable via RingCentral SMS."""
+    """Register a Telegram message as replyable via RingCentral SMS.
+
+    `to_number` is OUR number the driver texted. The hub matches it to the
+    recruiter who owns it, so a reply typed in Telegram goes back out from that
+    same number instead of the shared company line.
+    """
     if not LEADS_INTERNAL_SHARED_SECRET:
         raise RuntimeError("LEADS_INTERNAL_SHARED_SECRET is not configured")
 
@@ -205,6 +211,8 @@ async def _request_register_sms_mirror(
         "smsBody": sms_body,
         "sourceType": source_type,
     }
+    if to_number:
+        payload["toNumber"] = to_number
     headers = {"x-internal-shared-secret": LEADS_INTERNAL_SHARED_SECRET}
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(url, json=payload, headers=headers)
@@ -219,8 +227,12 @@ async def _register_inbound_sms_mirror(
     phone: str,
     sms_body: str,
     telegram_message_id: int | None,
+    to_number: str | None = None,
 ) -> None:
-    """Link an inbound RC forward Telegram message to the driver phone for replies."""
+    """Link an inbound RC forward Telegram message to the driver phone for replies.
+
+    `to_number` pins the conversation to the number the driver actually texted.
+    """
     if not telegram_message_id:
         return
     normalized_phone = str(phone or "").strip()
@@ -236,6 +248,7 @@ async def _register_inbound_sms_mirror(
             driver_phone=normalized_phone,
             sms_body=body,
             source_type="inbound_rc",
+            to_number=str(to_number or "").strip() or None,
         )
     except Exception as exc:
         logger.warning(

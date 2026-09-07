@@ -1,26 +1,24 @@
+/**
+ * The durable Facebook webhook QUEUE: intake, dedupe, claim, retry, recovery.
+ *
+ * This module owns when an event runs, not what it means. A lead's own
+ * processing (Telegram post → Bitrix record → `leads` row → auto-SMS from the
+ * assigned recruiter's number) lives in services/facebookLeadEventProcessor.js;
+ * `buildAutoMessageNotification` is re-exported from here because that is where
+ * its callers have always imported it from.
+ *
+ * It also owns the Telegram client for both, configured once at boot and passed
+ * down explicitly — one owner for shared mutable state (CLAUDE.md).
+ */
 const db = require('../database/db');
 const { decryptText } = require('../lib/security/facebookCrypto');
-const { sendAutoMessageSentNotice } = require('./facebookLeadSmsMirrorService');
 const { safeSend } = require('./telegramHtml');
+const { fetchSenderProfile } = require('./facebookGraphService');
+const { formatMessengerMessage } = require('./facebookLeadFormatter');
 const {
-  fetchLeadById,
-  fetchSenderProfile,
-} = require('./facebookGraphService');
-const {
-  buildLeadFieldMap,
-  formatLeadMessage,
-  formatMessengerMessage,
-} = require('./facebookLeadFormatter');
-const { sendSms } = require('./ringCentralSmsService');
-const {
-  resolveAutoSmsForLead,
-  LEGACY_HARDCODED_TEMPLATE,
-} = require('./facebookLeadAutoMessageService');
-const {
-  buildTemplateContext,
-  renderLeadSmsTemplate,
-} = require('./facebookLeadSmsTemplate');
-const { createCrmRecordFromLead } = require('./bitrix24Service');
+  processLeadEvent,
+  buildAutoMessageNotification,
+} = require('./facebookLeadEventProcessor');
 const {
   createQueueWakeScheduler,
   resolveSweepMs,
@@ -101,135 +99,6 @@ async function sendTelegramMessage(chatId, text) {
   return safeSend(() => telegramClient.sendMessage(chatId, text));
 }
 
-function buildAutoMessageNotification(fieldMap, smsResult, leadName, ruleLabel = null) {
-  const name = leadName || 'lead';
-  const phone = fieldMap.phone_number || fieldMap.phone || '';
-  const ruleSuffix = ruleLabel ? ` (${ruleLabel})` : '';
-  if (!phone) {
-    return 'AutoMessage skipped: no phone on lead.';
-  }
-  if (smsResult.reason === 'disabled') {
-    return `AutoMessage skipped for ${name}: auto-SMS is disabled in admin.`;
-  }
-  if (smsResult.ok) {
-    return null;
-  }
-  if (smsResult.reason === 'not_configured') {
-    return `AutoMessage skipped for ${phone} (RingCentral not configured).`;
-  }
-  const detail = smsResult.detail ? `: ${smsResult.detail}` : '';
-  return `AutoMessage failed for ${phone}${detail}`;
-}
-
-async function processLeadEvent(eventRow) {
-  const pageId = String(eventRow.page_id);
-  const payload = eventRow.payload || {};
-  const leadgenId = String(payload.leadgenId || '');
-  if (!leadgenId) {
-    throw new Error('Leadgen payload is missing leadgenId');
-  }
-
-  const connection = await db.getFacebookPageConnectionByPageId(pageId);
-  if (!connection) {
-    throw new Error(`No active Facebook Page connection found for page ${pageId}`);
-  }
-
-  const pageAccessToken = decryptText(connection.access_token_encrypted);
-  const leadData = await fetchLeadById({ leadgenId, pageAccessToken });
-  const fieldMap = buildLeadFieldMap(leadData);
-  const fullName = fieldMap.full_name || fieldMap.first_name || 'Driver';
-  const phone = fieldMap.phone_number || fieldMap.phone || '';
-
-  await sendTelegramMessage(connection.telegram_group_id, formatLeadMessage(leadData));
-
-  let bitrixResult = null;
-  try {
-    const formId = String(payload.value?.form_id || payload.value?.formId || '');
-    bitrixResult = await createCrmRecordFromLead({
-      fieldMap,
-      leadData,
-      connection,
-      leadgenId,
-      formId,
-    });
-    if (!bitrixResult.ok && bitrixResult.reason !== 'not_configured') {
-      console.error('[Bitrix24] Lead sync failed:', bitrixResult.error || bitrixResult.reason);
-    }
-  } catch (bitrixErr) {
-    console.error('[Bitrix24] Lead sync error:', bitrixErr.message);
-  }
-
-  // Best-effort: record the lead for the admin "Leads" tab. Wrapped so it can
-  // never break the Facebook → Telegram/Bitrix/SMS flow.
-  try {
-    let bitrixStatus = 'skipped';
-    if (bitrixResult?.ok) bitrixStatus = 'created';
-    else if (bitrixResult?.reason === 'not_configured') bitrixStatus = 'disabled';
-    else if (bitrixResult) bitrixStatus = 'failed';
-    const recorded = await db.createLeadIfNew({
-      source: 'facebook',
-      externalId: leadgenId,
-      fullName,
-      email: fieldMap.email || null,
-      phone: phone || null,
-      jobTitle: fieldMap.job_title || null,
-      message: fieldMap.message || null,
-      raw: { page_name: connection.page_name, page_id: pageId },
-    });
-    if (recorded) {
-      await db.updateLeadBitrixResult(recorded.id, {
-        bitrixId: bitrixResult?.bitrixId || null,
-        status: bitrixStatus,
-      });
-    }
-  } catch (recordErr) {
-    console.error('[Leads] Failed to record Facebook lead:', recordErr.message);
-  }
-
-  let smsResult = { ok: false, reason: phone ? 'skipped' : 'no_phone' };
-  let ruleLabel = null;
-  let smsBody = null;
-  if (phone) {
-    const resolved = await resolveAutoSmsForLead({
-      fieldMap,
-      pageName: connection.page_name,
-    });
-    ruleLabel = resolved.ruleLabel;
-    if (!resolved.isEnabled) {
-      smsResult = { ok: false, reason: 'disabled' };
-    } else {
-      const template = resolved.template || LEGACY_HARDCODED_TEMPLATE;
-      const context = buildTemplateContext({
-        fieldMap,
-        settings: resolved.settings,
-        pageName: connection.page_name,
-      });
-      smsBody = renderLeadSmsTemplate(template, context);
-      smsResult = await sendSms(phone, smsBody);
-    }
-  }
-
-  if (smsResult.ok && smsBody) {
-    try {
-      await sendAutoMessageSentNotice(telegramClient, connection.telegram_group_id, {
-        phone,
-        smsBody,
-        leadName: fullName,
-        pageId,
-        ruleLabel,
-        ringcentralMessageId: smsResult.messageId,
-      });
-    } catch (noticeErr) {
-      console.error('[FacebookWebhook] Auto-message notice failed:', noticeErr.message);
-    }
-  } else {
-    const autoMessageNotice = buildAutoMessageNotification(fieldMap, smsResult, fullName, ruleLabel);
-    if (autoMessageNotice) {
-      await sendTelegramMessage(connection.telegram_group_id, autoMessageNotice);
-    }
-  }
-}
-
 function buildMessengerText(event) {
   const message = event?.message || {};
   let messageText = message?.text || '';
@@ -276,7 +145,8 @@ async function processMessagingEvent(eventRow) {
 
 async function processFacebookWebhookEvent(eventRow) {
   if (eventRow.event_type === 'leadgen') {
-    await processLeadEvent(eventRow);
+    ensureTelegramConfigured();
+    await processLeadEvent(eventRow, { telegram: telegramClient });
     return;
   }
   if (eventRow.event_type === 'messaging') {

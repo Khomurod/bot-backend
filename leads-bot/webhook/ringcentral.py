@@ -127,17 +127,37 @@ def _attachment_download_filename(att: dict, content_type: str, index: int) -> s
     return f"attachment_{index}{ext}"
 
 
+def _ringcentral_recipient_number(event_body: dict) -> str:
+    """WHICH OF OUR NUMBERS the driver texted.
+
+    Recruiters text leads from their own numbers now, so an inbound message can
+    arrive at any of them. The mirror records this so the Telegram reply leaves
+    from the same number the driver has been talking to. RingCentral sends `to`
+    as a list; the first entry with a number is ours.
+    """
+    recipients = event_body.get("to")
+    if isinstance(recipients, dict):
+        recipients = [recipients]
+    for entry in recipients or []:
+        if isinstance(entry, dict):
+            number = str(entry.get("phoneNumber") or "").strip()
+            if number:
+                return number
+    return ""
+
+
 async def _forward_ringcentral_inbound_to_telegram(event_body: dict) -> None:
     """Forward inbound SMS/MMS to Telegram: text via sendMessage; images/video via upload."""
     from_number = event_body.get("from", {}).get("phoneNumber", "Unknown")
     subject = event_body.get("subject", "(no text)")
     created = event_body.get("creationTime", "")
+    to_number = _ringcentral_recipient_number(event_body)
 
     media_atts = _ringcentral_media_attachments(event_body)
     if not media_atts:
         caption_html = _format_ringcentral_forward_html(from_number, subject, created)
         message_id = await _send_telegram_html(caption_html)
-        await _register_inbound_sms_mirror(from_number, subject, message_id)
+        await _register_inbound_sms_mirror(from_number, subject, message_id, to_number)
         logger.info("SMS reply from %s forwarded to Telegram (text only).", from_number)
         return
 
@@ -166,7 +186,7 @@ async def _forward_ringcentral_inbound_to_telegram(event_body: dict) -> None:
             warning_plain="Could not download MMS attachments — check RingCentral credentials.",
         )
         message_id = await _send_telegram_html(warn_html)
-        await _register_inbound_sms_mirror(from_number, subject, message_id)
+        await _register_inbound_sms_mirror(from_number, subject, message_id, to_number)
         return
 
     photo_compatible: list[tuple[bytes, str, str]] = []
@@ -181,7 +201,7 @@ async def _forward_ringcentral_inbound_to_telegram(event_body: dict) -> None:
     if len(photo_compatible) >= 2 and len(photo_compatible) <= 10 and not other_items:
         album_message_id = await _send_telegram_media_group_photos(caption_html, photo_compatible)
         if album_message_id:
-            await _register_inbound_sms_mirror(from_number, subject, album_message_id)
+            await _register_inbound_sms_mirror(from_number, subject, album_message_id, to_number)
             logger.info("MMS from %s forwarded to Telegram as album (%d).", from_number, len(photo_compatible))
             return
         logger.warning("sendMediaGroup failed; falling back to individual sends.")
@@ -193,5 +213,5 @@ async def _forward_ringcentral_inbound_to_telegram(event_body: dict) -> None:
         uploaded_id = await _send_telegram_upload(method, field, b, fn, ct, cap)
         if idx == 0 and uploaded_id:
             first_message_id = uploaded_id
-    await _register_inbound_sms_mirror(from_number, subject, first_message_id)
+    await _register_inbound_sms_mirror(from_number, subject, first_message_id, to_number)
     logger.info("MMS from %s forwarded to Telegram (%d file(s)).", from_number, len(downloaded))

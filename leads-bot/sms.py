@@ -25,6 +25,36 @@ RC_INBOUND_SMS_MMS_FILTERS: tuple[str, ...] = (
 )
 
 
+def inbound_sms_filters(extension_ids: list[str] | tuple[str, ...] | None = None) -> list[str]:
+    """Event filters covering the shared extension plus each recruiter's own.
+
+    `~` is the extension the subscribing JWT belongs to — the shared company
+    number. Every recruiter who now texts leads from their OWN number is a
+    DIFFERENT extension, and RingCentral delivers message-store events per
+    extension, so each one needs its own filter or their drivers' replies never
+    reach Telegram.
+
+    Watching another extension requires the subscribing user to be an account
+    admin; when that is refused, register_sms_webhook() falls back to `~` alone
+    rather than losing inbound SMS altogether.
+    """
+    filters = list(RC_INBOUND_SMS_MMS_FILTERS)
+    for ext_id in extension_ids or ():
+        ext = str(ext_id).strip()
+        if not ext or ext == "~":
+            continue
+        filters.append(f"/restapi/v1.0/account/~/extension/{ext}/message-store/instant?type=SMS")
+        filters.append(f"/restapi/v1.0/account/~/extension/{ext}/message-store/instant?type=MMS")
+    # De-duplicate while keeping order: `~` may also appear as an explicit id.
+    seen: set[str] = set()
+    unique: list[str] = []
+    for item in filters:
+        if item not in seen:
+            seen.add(item)
+            unique.append(item)
+    return unique
+
+
 def resolve_ringcentral_uri(uri: str) -> str:
     """Make attachment URIs absolute; RingCentral often returns a path under /restapi/..."""
     if not uri or not isinstance(uri, str):
@@ -128,12 +158,15 @@ async def send_sms(to: str, message: str) -> bool:
         return False
 
 
-async def register_sms_webhook(callback_url: str) -> bool:
+async def register_sms_webhook(
+    callback_url: str,
+    extension_ids: list[str] | tuple[str, ...] | None = None,
+) -> bool:
     """Register a RingCentral webhook subscription for incoming SMS.
 
-    Creates a subscription so RingCentral POSTs to callback_url
-    whenever an SMS is received on Tom's number.
-    Returns True on success, False on failure. Never raises.
+    Creates a subscription so RingCentral POSTs to callback_url whenever an SMS
+    arrives on the shared company number or on any recruiter extension in
+    `extension_ids`. Returns True on success, False on failure. Never raises.
     """
     if not all([RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT_TOKEN]):
         logger.info("RingCentral not configured — skipping webhook registration.")
@@ -143,7 +176,8 @@ async def register_sms_webhook(callback_url: str) -> bool:
         token = await _get_access_token()
         headers = {"Authorization": f"Bearer {token}"}
 
-        desired = set(RC_INBOUND_SMS_MMS_FILTERS)
+        wanted_filters = inbound_sms_filters(extension_ids)
+        desired = set(wanted_filters)
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
                 "https://platform.ringcentral.com/restapi/v1.0/subscription",
@@ -181,7 +215,7 @@ async def register_sms_webhook(callback_url: str) -> bool:
                             )
 
             payload = {
-                "eventFilters": list(RC_INBOUND_SMS_MMS_FILTERS),
+                "eventFilters": wanted_filters,
                 "deliveryMode": {
                     "transportType": "WebHook",
                     "address": callback_url,
@@ -196,39 +230,47 @@ async def register_sms_webhook(callback_url: str) -> bool:
             if resp.is_success:
                 sub_id = resp.json().get("id", "?")
                 logger.info(
-                    "RingCentral webhook subscription created (SMS+MMS) (ID: %s) → %s",
+                    "RingCentral webhook subscription created (%d filter(s)) (ID: %s) → %s",
+                    len(wanted_filters),
                     sub_id,
                     callback_url,
                 )
                 return True
-            # Some tenants may reject duplicate MMS filter — retry SMS-only for text-only reliability.
+
+            # Watching other extensions needs an admin subscriber, and some
+            # tenants also reject the MMS filter. Retry with the shared
+            # extension only: covering ONE number beats covering none.
             logger.warning(
-                "RingCentral SMS+MMS subscription failed (%s): %s — retrying SMS-only.",
+                "RingCentral subscription with %d filter(s) failed (%s): %s — retrying the shared extension only.",
+                len(wanted_filters),
                 resp.status_code,
                 resp.text[:300],
             )
-            payload_sms_only = {
-                **payload,
-                "eventFilters": [RC_INBOUND_SMS_MMS_FILTERS[0]],
-            }
-            resp2 = await client.post(
-                "https://platform.ringcentral.com/restapi/v1.0/subscription",
-                json=payload_sms_only,
-                headers=headers,
-            )
-            if resp2.is_success:
-                sub_id = resp2.json().get("id", "?")
-                logger.info(
-                    "RingCentral webhook subscription created (SMS-only fallback) (ID: %s) → %s",
-                    sub_id,
-                    callback_url,
+            for fallback_filters in (
+                list(RC_INBOUND_SMS_MMS_FILTERS),
+                [RC_INBOUND_SMS_MMS_FILTERS[0]],
+            ):
+                if fallback_filters == wanted_filters:
+                    continue
+                retry = await client.post(
+                    "https://platform.ringcentral.com/restapi/v1.0/subscription",
+                    json={**payload, "eventFilters": fallback_filters},
+                    headers=headers,
                 )
-                return True
-            logger.warning(
-                "RingCentral webhook registration failed (%s): %s",
-                resp2.status_code,
-                resp2.text[:300],
-            )
+                if retry.is_success:
+                    sub_id = retry.json().get("id", "?")
+                    logger.warning(
+                        "RingCentral webhook subscription created WITHOUT per-recruiter extensions "
+                        "(ID: %s) → %s. Replies to recruiter numbers will not reach Telegram.",
+                        sub_id,
+                        callback_url,
+                    )
+                    return True
+                logger.warning(
+                    "RingCentral webhook registration failed (%s): %s",
+                    retry.status_code,
+                    retry.text[:300],
+                )
             return False
 
     except Exception as exc:

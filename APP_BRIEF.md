@@ -275,10 +275,29 @@ never reach an AI call).
   Python worker verifies `X-Hub-Signature-256` → posts verified events back to
   `/api/internal/facebook/webhook-events` (shared secret) →
   `facebookWebhookService.js` queues and dedupes (`facebook_webhook_events`,
-  key `leadgen:<pageId>:<leadgen_id>`) → fetches the lead via Graph → formats →
-  posts to the leads Telegram group → fires auto-SMS → mirrors SMS replies
-  two-way → creates a Bitrix24 CRM lead (best-effort; CRM failure never blocks
-  the Telegram post).
+  key `leadgen:<pageId>:<leadgen_id>`) → `facebookLeadEventProcessor.js`
+  fetches the lead via Graph → formats → posts to the leads Telegram group →
+  creates a Bitrix24 CRM lead (best-effort; CRM failure never blocks the
+  Telegram post) → fires auto-SMS **from the assigned recruiter's number** →
+  mirrors SMS replies two-way.
+- **The lead's text comes from whoever Bitrix24 assigned it to.** Bitrix assigns
+  asynchronously, so `facebookLeadSmsSender.js` re-reads `crm.lead.get` on a
+  bounded poll (`BITRIX24_ASSIGNEE_WAIT_MS`, default 25s at 5s intervals),
+  matches `ASSIGNED_BY_ID` to `recruiters.bitrix_user_id`, and sends with that
+  recruiter's own RingCentral credentials. **RingCentral refuses an SMS whose
+  `from` is another extension's number** — no token, super-admin included, can
+  send on someone's behalf — which is why per-recruiter credentials exist at
+  all. Any gap (nobody mapped, no assignee yet, unmapped assignee, broken
+  credentials, rejected send) falls back to the shared number
+  `RC_FROM_NUMBER`; **a lead is never left un-texted**, and every fallback an
+  operator could fix is stated in the Telegram thread.
+- **Recruiters attach their own number themselves.** An admin mints a link
+  (Settings → RingCentral, or `POST /api/recruiters/connect-link`); the
+  recruiter opens `/ringcentral/connect/:token`, signs in to RingCentral, and
+  the app stores an OAuth refresh token plus the extension identity it read
+  back. No secret changes hands, and the sending number cannot be typed wrong.
+  The older path — an admin pasting that recruiter's JWT — still works and is
+  used when there is no login.
 - **Self-serve Page connect**: `/connect` in a leads group starts a
   session-token-gated OAuth flow; Page tokens are encrypted
   (`lib/security/facebookCrypto.js`).
@@ -485,6 +504,7 @@ prefixed key and may never claim a reserved key or `super_`/`admin_` prefix
 | `/qbq`, `/qbq/remote`, `GET /api/qbq/*` | Public read; **saving is full-admin**; rate-limited pairing |
 | `/employee-birthday-form`, `POST /api/submit-employee-birthday` | Public form |
 | `/facebook/connect/:sessionToken`, `/facebook/oauth/*` | Session token |
+| `/ringcentral/connect/:sessionToken`, `/ringcentral/oauth/*` | Session token — single-use, 30-minute `ringcentral_connect_sessions` row; `oauth_state` binds the redirect to the callback. Public because a recruiter has no admin session |
 | `ALL /webhook`, `ALL /rc-webhook` | Raw-body proxied to the Python worker; signature verified there |
 | `/api/internal/*` | `internalSharedSecretGuard` (`LEADS_INTERNAL_SHARED_SECRET`) |
 | `/api/route-screenshot-media/:id`, `/api/trailer-media/:id` | Short-lived HMAC-signed URLs (Telegram has no session) |
@@ -525,8 +545,8 @@ as ID-only.
 | **Samsara + Drive HoS ELD** | admin **Settings** (`eld_settings`) takes precedence over env | `/location`, `/status`, ETA, live map, fuel alerts, Route Control, duplicate-unit check | GPS fallback chain **Samsara → Factor ELD → Leader ELD** with transient retries (`services/liveLocationResolver.js`) |
 | **Google Maps** (Routes + Geocoding) | `GOOGLE_MAPS_API_KEY`, Settings → GMaps `enabled` | ETA routing, Route Control geometry, geocoding | off-route warnings stop; destination auto-completion keeps working |
 | **Meta / Facebook** | `META_*`, `WEBHOOK_VERIFY_TOKEN`, `FACEBOOK_TOKEN_ENCRYPTION_KEY` | lead capture, Page connect | events are persisted before processing, then retried |
-| **RingCentral** | `RC_*` env → shared pair in `ringcentral_settings`; **per-recruiter** creds live on the `recruiters` row (its own JWT always, optional custom client pair — `resolveRecruiterRcAuth`) | lead auto-SMS, two-way mirroring, recruiter call KPIs | SMS-only fallback when an MMS filter rejects; token refresh |
-| **Bitrix24 CRM** | `BITRIX24_*` + field maps in `config/` | dual delivery of every Facebook lead | best-effort; never blocks the Telegram post |
+| **RingCentral** | `RC_*` env → shared pair in `ringcentral_settings`; **per-recruiter** creds live on the `recruiters` row — an OAuth refresh token (preferred) or its own JWT, plus an optional custom client pair (`resolveRecruiterRcAuth` picks: `oauth` > `jwt` > `none`) | lead auto-SMS **as the assigned recruiter**, two-way mirroring, recruiter call KPIs | per-recruiter send falls back to the shared number and says so; refresh tokens are renewed daily and a dead grant is flagged `rc_auth_error`; SMS-only fallback when an MMS filter rejects |
+| **Bitrix24 CRM** | `BITRIX24_*` + field maps in `config/`; `BITRIX24_ASSIGNEE_WAIT_MS` | dual delivery of every Facebook lead, **and reading back who owns it** (`crm.lead.get` → `ASSIGNED_BY_ID`) to pick the SMS sender | best-effort; never blocks the Telegram post, and an unreadable assignee degrades to the shared sending number |
 | **AI: Groq and Gemini** | `GROQ_API_KEY`, `GEMINI_API_KEY` | reports, insights, annotation, group-status classification, driver-profile parsing, trailer vision/verification/extraction, fuel detection, home-time intent, translation | **the fallback is per-consumer, not global** — see below |
 | **Supabase Storage** (optional) | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `TRAILER_STORAGE_BUCKET` | trailer media | **optional by design** — with no bucket, bytes go to Postgres (`trailer_media_blobs`); reads follow the backend recorded on the row |
 | **Gmail App Password** | `GMAIL_USER`, `GMAIL_APP_PASSWORD` | raise OTP email | RingCentral SMS is the alternative channel |
@@ -641,6 +661,7 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 | `routeControlService` (monitor) | settings-driven, floor 30s | destination completion + off-route warnings |
 | `trailerNotificationService` | drains on enqueue; retry wakes on `available_at`; 15 min idle sweep (was a 15s poll) + 5 min reminder enqueue | trailer payment/overdue notifications; **only when the department flag is on** |
 | `recruiterCallSyncService` | self-rescheduling `setTimeout` | RingCentral call-log sync |
+| `ringCentralTokenRefreshService` | daily, plus once at boot | renews each recruiter's RingCentral OAuth login (refresh tokens expire in 7 days and rotate on use) and flags a dead grant as `rc_auth_error` |
 | `facebookWebhookService` worker | drains on arrival; retry wakes on `next_retry_at`; 15 min idle sweep (was a 5s poll) | verified Meta webhook events with retry |
 | `databaseUsageService` | 60s flush | persists the estimated monthly database transfer and logs once at 80/90/95% of the budget |
 | `memoryWatchdog` | **off by default**; 15 min when on | heap/RSS pressure logging. Requires `MEMORY_WATCHDOG_ENABLED='true'`; `MEMORY_WATCHDOG_INTERVAL_MS` is clamped to ≥60s |
@@ -892,6 +913,34 @@ the repository-wide working rules. The highest-consequence items:
     not load this page" for every section opened afterwards — the whole panel
     looked dead when one page was. Guarded by
     `admin/src/components/PageErrorBoundary.test.jsx`.
+17. **An SMS is sent with the credentials of the number it claims to come
+    from.** RingCentral rejects a send whose `from` is not on the token's own
+    extension — a super-admin token cannot send on a colleague's behalf — so
+    `sendSmsAsRecruiter()` always pairs the recruiter's own credential with the
+    recruiter's own number, and `services/ringCentralOAuthService.js` is the
+    only place either credential shape becomes a token. Never "fix" a rejected
+    send by swapping in the shared token: it authenticates and still fails, and
+    the fallback that follows is the shared NUMBER, not a shared token behind
+    someone else's number. Guarded by `tests/ringCentralSmsSender.test.js`.
+18. **A lead is never left un-texted, and a silent fallback is a bug.** Every
+    way the assigned sender can be unavailable — nobody mapped, no assignee
+    yet, an unmapped assignee, expired credentials, a rejected send, a database
+    hiccup — falls back to `RC_FROM_NUMBER` rather than dropping the driver's
+    text, and `facebookLeadSmsSender.js` returns a `fallbackNote` for every one
+    an operator could fix, which the lead's Telegram thread prints. Sender
+    resolution therefore never throws: by the time it runs, the lead is already
+    in Telegram and in the CRM, and an exception would cost the text and
+    re-run the whole event. Guarded by `tests/facebookLeadSmsSender.test.js`
+    and `tests/facebookLeadEventProcessor.test.js`.
+19. **A rotated RingCentral refresh token must be stored before it is used.**
+    A refresh grant issues a NEW refresh token and kills the old one, so
+    dropping it works exactly once and then locks the recruiter out ~7 days
+    later, silently, with their leads going out from the shared number. The
+    rotation is persisted inside `refreshRecruiterTokens()`, and
+    `ringCentralTokenRefreshService` renews every stored login daily so a
+    recruiter who goes a week without a lead does not expire from disuse.
+    Guarded by `tests/ringCentralOAuthService.test.js` and
+    `tests/ringCentralTokenRefresh.test.js`.
 
 ### Code-structure rules (enforced by CI)
 
@@ -997,11 +1046,11 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-09-04, deps installed, no `TEST_DATABASE_URL`): **2269 tests,
-  2124 pass, 0 fail, 145 skipped** (the skips are the `*Pg` integration tests),
+  baseline (2026-09-07, deps installed, no `TEST_DATABASE_URL`): **2387 tests,
+  2233 pass, 0 fail, 154 skipped** (the skips are the `*Pg` integration tests),
   exit 0. With a database (`TEST_DATABASE_URL`) nothing skips: the whole suite is
-  **2337 tests, 2337 pass, 0 skipped**. The Python leads worker adds
-  **17 tests** (`python -m unittest discover -s leads-bot -p "test_*.py"`), and
+  **2455 tests, 2455 pass, 0 skipped**. The Python leads worker adds
+  **25 tests** (`python -m unittest discover -s leads-bot -p "test_*.py"`), and
   the admin panel **199** (`npm test --prefix admin`). **So any failure is a real
   failure** — there is no "expected failures" allowance. *(An older internal doc
   claimed ~19 expected failures in a bare environment; that is no longer true and
@@ -1052,6 +1101,7 @@ npm run build:schema:check                        # schema.sql is in sync with b
 | How to work in this repo (rules, safety, testing) | `CLAUDE.md` |
 | The implementation workflow | `.claude/skills/implement/SKILL.md` (`/implement`) |
 | Route Control + media-transport invariants | `docs/architecture/route-control.md` |
+| Whose number texts a lead (Bitrix assignee → recruiter → SMS), and the RingCentral/TCR prerequisites | `docs/architecture/recruiter-sms-sender.md` |
 | Trailer master list / storage / agreements invariants | `docs/architecture/trailer-invariants.md` |
 | Database: authoritative schema + migration rules | `database/baseline/`, `database/migrations/`, `docs/database/` |
 | What was removed and why | `docs/ARCHIVED_FEATURES.md`, `docs/architecture/retired-*.md`, `docs/architecture/samsara-separation.md` |

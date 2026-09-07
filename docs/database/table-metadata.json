@@ -104,7 +104,7 @@
       "danger": "Contains message content (potential PII). Large table — index-sensitive."
     },
     "leads": {
-      "purpose": "Recruiting leads ingested from external sources (Facebook, Indeed, Bitrix).",
+      "purpose": "Recruiting leads ingested from external sources (Facebook, Indeed, Bitrix), plus who Bitrix assigned each one to (bitrix_assigned_by_id) and which number actually texted the driver (sms_from_number, sms_sender_recruiter_id).",
       "status": "active",
       "service": "leads services, admin"
     },
@@ -133,6 +133,23 @@
       "service": "bot-backend (admin diagnostics)",
       "sourceOfTruth": "This table, for the app's own estimate only. The provider's dashboard is the authority on billed transfer; these numbers are never an invoice.",
       "danger": "Keep its own write volume negligible — one UPSERT a minute. A meter that wrote per query would consume the budget it measures. Truncating it only loses the current month’s estimate; nothing else depends on it."
+    },
+    "ringcentral_connect_sessions": {
+      "purpose": "Short-lived, single-use links a recruiter opens to authorize RingCentral for their OWN number (/ringcentral/connect/:token). The token in the URL is the credential — these routes carry no admin session — so it expires in 30 minutes, is consumed on success, and oauth_state binds the redirect we sent to the callback we accept. Modeled on facebook_connect_sessions.",
+      "status": "active",
+      "service": "bot-backend (services/ringCentralConnectService.js), admin Settings → RingCentral",
+      "danger": "session_token and oauth_state are bearer credentials — never log them, never render them into a page other than the link handed to the invited recruiter."
+    },
+    "recruiters": {
+      "purpose": "One row per recruiter: their dedicated RingCentral direct number, the credentials that let the app act AS them (an OAuth refresh token from /ringcentral/connect, preferred, or a pasted JWT), and bitrix_user_id — the link that makes a Facebook lead assigned to them in Bitrix24 get texted from their number.",
+      "status": "active",
+      "service": "bot-backend (lead auto-SMS, recruiterCallSyncService, ringCentralTokenRefreshService), admin Settings → RingCentral",
+      "danger": "refresh_token_encrypted ROTATES: a RingCentral refresh grant invalidates the token it was called with, so this column is rewritten on every refresh. Restoring an old backup of this row re-installs a dead token and the recruiter silently stops sending. jwt/client secrets are AES-256-GCM (lib/security/facebookCrypto.js) — never returned raw by the API."
+    },
+    "facebook_lead_sms_mirrors": {
+      "purpose": "Links a Telegram message to the driver phone it mirrors, so a reply typed in the group is relayed as an SMS exactly once. recruiter_id/from_number record WHICH of our numbers the conversation is on, so the reply leaves from the same number that first texted the driver.",
+      "status": "active",
+      "service": "bot-backend (facebookLeadSmsMirrorService.js), leads-bot inbound forwarder"
     }
   }
 }

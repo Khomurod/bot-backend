@@ -82,6 +82,19 @@ segments — day-to-day changes are forward migrations.
   meter that writes per query would consume the budget it measures. The numbers
   are this app's estimate (sampled result sizes), never the provider's
   accounting — see `database/transferMeter.js`.
+- **A rotating secret lives in `recruiters.refresh_token_encrypted`**
+  (migration 0008). RingCentral's authorization-code refresh grant returns a
+  NEW refresh token and invalidates the one used, so that column is rewritten
+  on every refresh — it is not a write-once secret like the JWT beside it.
+  Two consequences for anyone touching this table:
+  - **Restoring an old backup of a `recruiters` row re-installs a dead token**,
+    and the recruiter silently stops texting their own leads (the shared number
+    quietly covers for them). Re-authorizing via
+    `/ringcentral/connect/:token` is the fix, not a data edit.
+  - `bitrix_user_id` carries a **partial unique index**
+    (`idx_recruiters_bitrix_user_id … WHERE bitrix_user_id IS NOT NULL`): one
+    Bitrix user maps to at most one recruiter, but any number of recruiters may
+    have none. Without the uniqueness, a lead's sender would be a coin flip.
 - The `samsara-integration` service shares the database. It creates its own
   `samsara_*` tables (and mirrors `safety_event_video_jobs`) with
   `CREATE TABLE IF NOT EXISTS` in `src/db.js → initPgDb()`. `bot-backend` remains

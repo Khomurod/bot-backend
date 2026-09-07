@@ -1,24 +1,26 @@
 /**
  * Recruiter call-KPI sync service.
  *
- * Credentials are per-number: each recruiter's RingCentral number has its OWN
- * JWT token (JWTs are per-user), optionally with its own Client ID/Secret when
- * the number lives under a different RC app (otherwise the shared pair from
- * Settings is used).
+ * Credentials are per-recruiter: either that recruiter's own RingCentral login
+ * (an OAuth refresh token, from /ringcentral/connect) or their own JWT token,
+ * optionally with their own Client ID/Secret when the number lives under a
+ * different RC app (otherwise the shared pair from Settings is used).
  *
  * Sync strategy, per active recruiter:
- *   • has a JWT  → read that user's OWN extension call log and attribute every
- *     record to the recruiter directly (no number matching needed; works
- *     without an admin-role JWT).
- *   • no JWT     → covered by ONE shared-credential pass, attributing by number
- *     match (from=outbound, to=inbound). That pass prefers the company call log
- *     (admin-role JWT); when the shared JWT is NOT an admin (403
+ *   • own credentials → read that user's OWN extension call log and attribute
+ *     every record to the recruiter directly (no number matching needed; works
+ *     without an admin-role JWT). Both credential shapes take this path, so
+ *     onboarding by signing in to RingCentral never costs a recruiter their
+ *     direct attribution.
+ *   • no credentials  → covered by ONE shared-credential pass, attributing by
+ *     number match (from=outbound, to=inbound). That pass prefers the company
+ *     call log (admin-role JWT); when the shared JWT is NOT an admin (403
  *     InsufficientPermissions) it falls back to the shared JWT's own extension
  *     call log — RingCentral extensions can own several direct numbers, so
  *     number matching still attributes those calls to the right recruiters.
- *     JWT-holding recruiters are excluded from this pass so the same call is
- *     never counted twice (extension and company views assign different record
- *     ids to the same call).
+ *     Recruiters covered by the per-recruiter pass are excluded here so the
+ *     same call is never counted twice (extension and company views assign
+ *     different record ids to the same call).
  *
  * Each poll re-fetches from the start of the current day (in the configured
  * timezone) so in-progress calls that finalize later are corrected. Upserts are
@@ -26,7 +28,12 @@
  */
 const { DateTime } = require('luxon');
 const rc = require('../database/ringcentral');
-const { fetchAccountCallLog, fetchExtensionCallLog } = require('./ringCentralCallService');
+const {
+  fetchAccountCallLog,
+  fetchExtensionCallLog,
+  fetchExtensionCallLogWithToken,
+} = require('./ringCentralCallService');
+const { getRecruiterAccessToken } = require('./ringCentralOAuthService');
 
 let schedulerTimer = null;
 let schedulerStopped = true;
@@ -126,25 +133,35 @@ async function syncNow({ full = false } = {}) {
   const dateTo = now.toUTC().toISO();
 
   const recruiters = await rc.listRecruiters({ includeInactive: false });
-  const withJwt = recruiters.filter((r) => r.jwt_token_encrypted);
-  const withoutJwt = recruiters.filter((r) => !r.jwt_token_encrypted);
+  // Resolve each recruiter's auth ONCE — it decrypts up to three columns per
+  // row — and partition on the result.
+  const resolved = recruiters.map((recruiter) => ({
+    recruiter,
+    auth: rc.resolveRecruiterRcAuth(recruiter, cfg),
+  }));
+  const withOwnCreds = resolved.filter((entry) => entry.auth.mode !== 'none');
+  const withoutOwnCreds = resolved
+    .filter((entry) => entry.auth.mode === 'none')
+    .map((entry) => entry.recruiter);
 
   let synced = 0;
   let attributed = 0;
   const perRecruiter = [];
   const errors = [];
 
-  // ── Per-number pass: each recruiter's own extension call log ──
-  for (const recruiter of withJwt) {
-    const auth = rc.resolveRecruiterRcAuth(recruiter, cfg);
-    if (!auth.clientId || !auth.clientSecret || !auth.jwtToken) {
-      const msg = `${recruiter.name}: credentials incomplete (missing ${!auth.jwtToken ? 'JWT' : 'Client ID/Secret'}).`;
+  // ── Per-recruiter pass: each recruiter's own extension call log ──
+  for (const { recruiter, auth } of withOwnCreds) {
+    if (!auth.clientId || !auth.clientSecret) {
+      const msg = `${recruiter.name}: credentials incomplete (missing Client ID/Secret).`;
       errors.push(msg);
       perRecruiter.push({ id: recruiter.id, name: recruiter.name, error: msg });
       continue;
     }
     try {
-      const records = await fetchExtensionCallLog({ cfg: auth, dateFrom, dateTo });
+      const { accessToken } = await getRecruiterAccessToken(recruiter, cfg);
+      const records = await fetchExtensionCallLogWithToken({
+        apiBase: auth.apiBase, accessToken, dateFrom, dateTo,
+      });
       const rows = mapExtensionCalls(records, recruiter);
       const result = await upsertRows(rows);
       synced += result.synced;
@@ -156,10 +173,10 @@ async function syncNow({ full = false } = {}) {
     }
   }
 
-  // ── Fallback pass: company log for numbers without their own JWT ──
-  // JWT-holding recruiters are excluded from attribution here so the same call
-  // (different record id in the account view) is never double-counted.
-  if (withoutJwt.length) {
+  // ── Fallback pass: company log for numbers with no credentials of their own ──
+  // Recruiters covered above are excluded from attribution here so the same
+  // call (different record id in the account view) is never double-counted.
+  if (withoutOwnCreds.length) {
     if (cfg.clientId && cfg.clientSecret && cfg.jwtToken) {
       try {
         let records;
@@ -174,9 +191,9 @@ async function syncNow({ full = false } = {}) {
           console.warn('[RC-SYNC] Company log denied (not admin); using the shared JWT\'s extension log.');
           records = await fetchExtensionCallLog({ cfg, dateFrom, dateTo });
         }
-        const rows = attributeCalls(records, withoutJwt);
-        const jwtIds = new Set(withJwt.map((r) => r.id));
-        const result = await upsertRows(rows.filter((row) => !jwtIds.has(row.recruiterId)));
+        const rows = attributeCalls(records, withoutOwnCreds);
+        const coveredIds = new Set(withOwnCreds.map((entry) => entry.recruiter.id));
+        const result = await upsertRows(rows.filter((row) => !coveredIds.has(row.recruiterId)));
         synced += result.synced;
         attributed += result.attributed;
       } catch (err) {
@@ -184,12 +201,13 @@ async function syncNow({ full = false } = {}) {
       }
     } else {
       errors.push(
-        `${withoutJwt.length} recruiter(s) have no JWT and the shared company credentials are incomplete.`
+        `${withoutOwnCreds.length} recruiter(s) have no RingCentral credentials of their own `
+        + 'and the shared company credentials are incomplete.'
       );
     }
   }
 
-  if (!withJwt.length && !withoutJwt.length) return { skipped: 'no_recruiters' };
+  if (!withOwnCreds.length && !withoutOwnCreds.length) return { skipped: 'no_recruiters' };
 
   const errorSummary = errors.length ? errors.join(' | ') : null;
   await rc.markSyncResult({ error: errorSummary }).catch(() => {});

@@ -105,33 +105,55 @@ async function rcGet({ cfg, accessToken, path }) {
 }
 
 /**
- * Identity of the user the JWT belongs to: extension name/number plus the
- * direct phone numbers on that extension. Used by the per-number Diagnose
- * button to confirm the JWT actually matches the recruiter's assigned number.
+ * Identity of whoever an access token belongs to: extension name/number, the
+ * phone numbers on that extension, and which of them can actually send SMS.
+ *
+ * Split from getExtensionInfo() because the OAuth flow already holds an access
+ * token (it just exchanged an authorization code) and must not mint another —
+ * and because it is that flow that needs `smsNumber`: the number a recruiter's
+ * texts will leave from, which RingCentral requires to be on THIS extension.
  */
-async function getExtensionInfo(cfg) {
-  const accessToken = await getAccessToken(cfg);
+async function getExtensionInfoWithToken({ apiBase, accessToken }) {
+  const cfg = { apiBase };
   const ext = await rcGet({ cfg, accessToken, path: '/restapi/v1.0/account/~/extension/~' });
-  let phoneNumbers = [];
+  let records = [];
   try {
     const numbers = await rcGet({
       cfg, accessToken,
       path: '/restapi/v1.0/account/~/extension/~/phone-number?perPage=100',
     });
-    phoneNumbers = (numbers.records || [])
-      .map((r) => r.phoneNumber)
-      .filter(Boolean);
+    records = (numbers.records || []).filter((r) => r?.phoneNumber);
   } catch (err) {
     // Phone-number read may not be granted; the extension identity is enough.
     console.warn('[RC] extension phone-number read failed:', err.message);
   }
+
+  const details = records.map((r) => ({
+    phoneNumber: r.phoneNumber,
+    usageType: r.usageType || null,
+    features: Array.isArray(r.features) ? r.features : [],
+  }));
+  const smsCapable = details.filter((d) => d.features.includes('SmsSender'));
+  const preferred = smsCapable.find((d) => d.usageType === 'DirectNumber') || smsCapable[0] || null;
+
   return {
     extensionId: ext?.id != null ? String(ext.id) : null,
     extensionNumber: ext?.extensionNumber || null,
     name: ext?.name || ext?.contact?.firstName || null,
     status: ext?.status || null,
-    phoneNumbers,
+    phoneNumbers: details.map((d) => d.phoneNumber),
+    phoneNumberDetails: details,
+    smsNumber: preferred?.phoneNumber || null,
   };
+}
+
+/**
+ * The same identity, for a JWT-authenticated recruiter. Used by the per-number
+ * Diagnose button to confirm the JWT actually matches the assigned number.
+ */
+async function getExtensionInfo(cfg) {
+  const accessToken = await getAccessToken(cfg);
+  return getExtensionInfoWithToken({ apiBase: cfg.apiBase, accessToken });
 }
 
 async function fetchCallLogPage({ cfg, accessToken, dateFrom, dateTo, page, scope = 'account' }) {
@@ -182,8 +204,10 @@ async function fetchCallLogPage({ cfg, accessToken, dateFrom, dateTo, page, scop
   }
 }
 
-async function fetchAllCallLogPages({ cfg, dateFrom, dateTo, scope }) {
-  const accessToken = await getAccessToken(cfg);
+async function fetchAllCallLogPages({ cfg, dateFrom, dateTo, scope, token = null }) {
+  // A caller that already holds a token (an OAuth recruiter's, or one minted
+  // for a diagnostic) passes it in; only the JWT paths mint one here.
+  const accessToken = token || await getAccessToken(cfg);
   const all = [];
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     const payload = await fetchCallLogPage({ cfg, accessToken, dateFrom, dateTo, page, scope });
@@ -213,9 +237,24 @@ async function fetchExtensionCallLog({ cfg, dateFrom, dateTo }) {
   return fetchAllCallLogPages({ cfg, dateFrom, dateTo, scope: 'extension' });
 }
 
+/**
+ * The same per-extension log, for a recruiter authenticated by their own OAuth
+ * login rather than a JWT. Without this, a recruiter who onboarded by signing
+ * in to RingCentral would lose direct call attribution and fall back to
+ * company-log number matching — a silent KPI downgrade for choosing the easier
+ * onboarding path.
+ */
+async function fetchExtensionCallLogWithToken({ apiBase, accessToken, dateFrom, dateTo }) {
+  return fetchAllCallLogPages({
+    cfg: { apiBase }, dateFrom, dateTo, scope: 'extension', token: accessToken,
+  });
+}
+
 module.exports = {
   getAccessToken,
   getExtensionInfo,
+  getExtensionInfoWithToken,
   fetchAccountCallLog,
   fetchExtensionCallLog,
+  fetchExtensionCallLogWithToken,
 };

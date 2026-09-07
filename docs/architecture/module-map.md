@@ -92,10 +92,15 @@ organization should converge toward.
 | Node raw-webhook proxy (preserves `X-Hub-Signature-256`) | `server/api.js` (`proxyToLeadsBot`, mounted before `express.json`) |
 | Verified-payload queue + retry; **lead idempotency** (`facebook_webhook_events`, key `leadgen:<pageId>:<leadgen_id>`) | `services/facebookWebhookService.js` |
 | Auto-SMS templates + two-way RingCentral reply mirroring | `services/facebookLeadAutoMessageService.js`, `facebookLeadSmsTemplate.js`, `facebookLeadSmsMirrorService.js`, `ringCentralSmsService.js` |
+| One lead event: post → CRM → record → text | `services/facebookLeadEventProcessor.js` (the queue that runs it stays in `facebookWebhookService.js`) |
+| **Whose number texts a lead** (Bitrix assignee → recruiter → send) | `services/facebookLeadSmsSender.js`, `services/bitrix24Service.js` (`waitForCrmAssignee`), `database/ringcentral/recruiters.js` (`bitrix_user_id`, `recruiterCanSendSms`) |
+| Per-recruiter RingCentral credentials → an access token | `services/ringCentralOAuthService.js` (the only place a JWT or a refresh token becomes a bearer token) |
+| Recruiter self-onboarding ("sign in with RingCentral") | `services/ringCentralConnectService.js`, `server/routes/ringcentralConnect/{index,pages}.js`, `database/ringcentral/connectSessions.js` |
+| Keeping recruiter logins alive (7-day refresh tokens) | `services/ringCentralTokenRefreshService.js` |
 | Facebook OAuth self-serve connect, Graph client, crypto, formatting | `services/facebookConnectService.js`, `facebookGraphService.js`, `facebookCrypto.js`, `facebookLeadFormatter.js` |
 | Bitrix24 CRM lead create/update + field mapping | `services/bitrix24Service.js`, `bitrix24LeadMapper.js`, `bitrix24FieldMapLoader.js`, `bitrix24FieldCatalog.js`, `config/bitrix24LeadFieldMap*.json` |
 | Indeed lead intake | `services/indeedLeadService.js`, `docs/gmail-indeed-apps-script.gs` |
-| Recruiter call KPI leaderboard | `services/recruiterCallSyncService.js`, `services/ringCentralCallService.js`, `server/routes/recruiterRoutes.js`, `database/ringcentral.js`, `admin/src/pages/RecruiterKpiPage.jsx`, `RecruitersPublicPage.jsx` |
+| Recruiter call KPI leaderboard | `services/recruiterCallSyncService.js`, `services/ringCentralCallService.js`, `server/routes/recruiterRoutes.js`, `server/routes/recruiter/diagnosticsRoutes.js`, `database/ringcentral.js`, `admin/src/pages/RecruiterKpiPage.jsx`, `RecruitersPublicPage.jsx`, `admin/src/pages/settings/ringcentral/RecruiterCard.jsx` |
 | Leads admin UI/API | `server/routes/facebookLeadsRoutes.js`, `admin/src/pages/FacebookLeadsPage.jsx`, `LeadsPage.jsx` |
 
 ### 4. Driver Operations Module
@@ -191,7 +196,7 @@ repository exceeds 500 lines (`npm run lint:filesize`, no baseline).
 | `database/homeTime.js` | `database/homeTime/{settings,driverState,roadHistory,requests}.js` |
 | `database/facebookLeads.js` | `database/facebookLeads/{connectSessions,pageConnections,webhookEvents,autoMessages,smsMirrors}.js` |
 | `database/raiseApproval.js` | `database/raiseApproval/{settings,teams,teamMembers,teamDrivers,rounds,otp}.js` |
-| `database/ringcentral.js` | `database/ringcentral/{kpiMath,secrets,settings,recruiters,calls,kpiQueries}.js` — **explicit key list**, so four internal helpers stay private |
+| `database/ringcentral.js` | `database/ringcentral/{kpiMath,secrets,settings,recruiters,calls,kpiQueries,connectSessions}.js` — **explicit key list**, so four internal helpers stay private |
 | `database/routeControl.js` | `database/routeControl/{assignments,screenshots,monitorState,driverMessages,monitorEvents}.js` |
 | `server/routes/settingsRoutes.js` | `server/routes/settings/{eld,ringcentral,messageGroup,gmaps,safetyEvent,bolPod}Routes.js` |
 | `server/routes/homeTimeRoutes.js` | `server/routes/homeTime/{rowShaping,tracker,import,settings,groupAccess}Routes.js` — registration ORDER is load-bearing |

@@ -198,6 +198,11 @@ module.exports = {
   corsAllowAll: !corsAllowedOrigins.length || process.env.CORS_ALLOW_ALL === 'true',
   nodeEnv: process.env.NODE_ENV || 'development',
   renderExternalUrl: process.env.RENDER_EXTERNAL_URL || '',
+  // The deployment's own public origin, normalized once (no trailing slash).
+  // Every externally visible URL this app builds — OAuth redirect URIs, the
+  // self-serve connect links — must agree byte-for-byte with what the provider
+  // has registered, so they are all derived from this single value.
+  publicBaseUrl: String(process.env.RENDER_EXTERNAL_URL || '').trim().replace(/\/+$/, ''),
   metaAppId: String(process.env.META_APP_ID || metaAppCredentials.metaAppId || '1718688966164172').trim(),
   metaAppSecret: normalizeOptionalEnv(process.env.META_APP_SECRET || metaAppCredentials.metaAppSecret || ''),
   metaLoginConfigId: normalizeOptionalEnv(process.env.META_LOGIN_CONFIG_ID) || '1295127102598424',
@@ -230,6 +235,13 @@ module.exports = {
   bitrix24SourceId: normalizeOptionalEnv(process.env.BITRIX24_SOURCE_ID) || 'WEB',
   bitrix24SourceDescription:
     normalizeOptionalEnv(process.env.BITRIX24_SOURCE_DESCRIPTION) || 'WenzeLeadBots',
+  // How long the lead auto-SMS waits for Bitrix to finish assigning a new lead
+  // before deciding which recruiter's number to text from (ms; 0 = do not wait,
+  // take the owner Bitrix reports on the first read).
+  bitrix24AssigneeWaitMs: Math.max(
+    0,
+    Number.parseInt(process.env.BITRIX24_ASSIGNEE_WAIT_MS || '25000', 10) || 0
+  ),
   bitrix24DealCategoryId: String(process.env.BITRIX24_DEAL_CATEGORY_ID || '').trim(),
   bitrix24DealStageId: String(process.env.BITRIX24_DEAL_STAGE_ID || '').trim(),
   bitrix24FieldMap: loadBitrixFieldMapConfig(),

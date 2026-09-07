@@ -32,7 +32,10 @@ from webhook.connect_command import (
     start_connect_command_poller,
     stop_connect_command_poller,
 )
-from webhook.hub_client import _forward_verified_facebook_payload
+from webhook.hub_client import (
+    _fetch_ringcentral_sms_extensions,
+    _forward_verified_facebook_payload,
+)
 from webhook.lead_processing import _process_lead
 from webhook.meta_signature import _verify_signature
 from webhook.ringcentral import (
@@ -64,8 +67,21 @@ async def _startup_register_rc_webhook():
     async def _delayed_register():
         await asyncio.sleep(3)
         callback = f"{BASE_URL}/rc-webhook"
-        logger.info("Registering RingCentral SMS webhook → %s", callback)
-        await register_sms_webhook(callback)
+        # Watch the shared company extension AND every recruiter extension, so
+        # a driver replying to the recruiter who texted them still shows up in
+        # the hub group. A failure to read the list is not fatal: the shared
+        # extension is still registered.
+        extensions: list[str] = []
+        try:
+            extensions = await _fetch_ringcentral_sms_extensions()
+        except Exception as exc:
+            logger.warning("Could not read recruiter RingCentral extensions: %s", exc)
+        logger.info(
+            "Registering RingCentral SMS webhook → %s (%d recruiter extension(s))",
+            callback,
+            len(extensions),
+        )
+        await register_sms_webhook(callback, extensions)
 
     asyncio.create_task(_delayed_register())
     start_connect_command_poller()

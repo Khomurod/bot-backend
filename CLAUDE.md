@@ -221,6 +221,7 @@ that area**, and run the tests it names.
 | Area | Read first |
 |---|---|
 | Route Control, route screenshots, Telegram media transport | [`docs/architecture/route-control.md`](docs/architecture/route-control.md) |
+| Which recruiter's number texts a lead, per-recruiter RingCentral credentials, the Bitrix assignee lookup | [`docs/architecture/recruiter-sms-sender.md`](docs/architecture/recruiter-sms-sender.md) |
 | Trailer master list, trailer storage, rental agreements, Trailer Department safety rules | [`docs/architecture/trailer-invariants.md`](docs/architecture/trailer-invariants.md) |
 | Trailer Department operations (URLs, feature flag, storage config) | [`docs/trailer-department.md`](docs/trailer-department.md) |
 | Database changes, migrations, deferred schema decisions | [`docs/database/`](docs/database/) |

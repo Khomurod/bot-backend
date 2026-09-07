@@ -123,6 +123,7 @@ const fakeDb = {
   }),
   createLeadIfNew: async () => ({ id: 77 }),
   updateLeadBitrixResult: async () => ({}),
+  updateLeadSmsSender: async () => ({}),
   hasFacebookSenderBeenSeen: async () => false,
   recordFacebookSenderSeen: async () => ({}),
   resetFacebookWebhookEventByIdentifier: async (identifier) => {
@@ -165,6 +166,17 @@ require.cache[require.resolve('../services/ringCentralSmsService')] = {
       sentSms.push({ phone, body });
       return { ok: true, messageId: 'rc-1' };
     },
+    sendSmsAsRecruiter: async () => ({ ok: false, reason: 'recruiter_not_configured' }),
+  },
+};
+// No recruiter is mapped to a Bitrix user here, so the sender choice short-
+// circuits to the shared number without touching the database — this suite is
+// about the QUEUE (immediate drain, dedupe, recovery), not about who sends.
+require.cache[require.resolve('../database/ringcentral')] = {
+  exports: {
+    hasMappedSmsSenders: async () => false,
+    getRecruiterByBitrixUserId: async () => null,
+    recruiterCanSendSms: () => false,
   },
 };
 require.cache[require.resolve('../services/facebookLeadAutoMessageService')] = {
@@ -184,6 +196,7 @@ require.cache[require.resolve('../services/bitrix24Service')] = {
       bitrixLeads.push(leadgenId);
       return { ok: true, bitrixId: 'B-1' };
     },
+    waitForCrmAssignee: async () => ({ assignedById: null, accepted: false, attempts: 1 }),
   },
 };
 require.cache[require.resolve('../services/facebookLeadSmsMirrorService')] = {

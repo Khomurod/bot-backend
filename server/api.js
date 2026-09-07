@@ -52,6 +52,7 @@ const { createRemoteRoutes } = require('./routes/remoteRoutes');
 const { createErrorHandler } = require('./middleware/failureResponse');
 const { createLeadsProxyRoutes } = require('./routes/leadsProxyRoutes');
 const { createFacebookConnectRoutes } = require('./routes/facebookConnectRoutes');
+const { createRingCentralConnectRoutes } = require('./routes/ringcentralConnect');
 const { createMediaUploadRoutes } = require('./routes/mediaUploadRoutes');
 const { createDriverGroupsRoutes } = require('./routes/driverGroupsRoutes');
 const { createDriverProfilesRoutes } = require('./routes/driverProfilesRoutes');
@@ -132,6 +133,9 @@ app.use('/api/route-screenshot-media', createRouteScreenshotMediaRouter());
 
 // ─── Facebook internal endpoints + connect/OAuth flow + leads log ───
 app.use(createFacebookConnectRoutes({ db, internalSharedSecretGuard, proxyAuthGuard }));
+
+// ─── Recruiter self-serve RingCentral login (public: the link is the credential) ───
+app.use(createRingCentralConnectRoutes());
 
 // ─── Media Upload ───
 // `stagingTelegram` is exposed so tests can stub its `callApi` to drive the

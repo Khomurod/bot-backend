@@ -133,6 +133,23 @@ test('registerSmsMirror rejects unknown phone', async () => {
   );
 });
 
+test('the sent notice names the sender, and warns when it was not the assignee', () => {
+  // Two-argument form is unchanged: the shared number needs no explanation.
+  assert.equal(
+    buildAutoMessageSentHtml('+15551234567', 'Hi'),
+    'AutoMessage sent via SMS to +15551234567:\n<pre>Hi</pre>',
+  );
+  const named = buildAutoMessageSentHtml('+15551234567', 'Hi', {
+    name: 'Jane Doe', fromNumber: '+15557770000',
+  });
+  assert.match(named, /to \+15551234567 from Jane Doe \(\+15557770000\):/);
+  assert.match(
+    buildAutoMessageSentHtml('+1555', 'Hi', { fromNumber: '+15557770000' }),
+    /from \+15557770000:/,
+    'a number with no name still identifies the sender',
+  );
+});
+
 test('handleTelegramSmsReply returns 404 when mirror missing', async () => {
   const originalGet = db.getFacebookLeadSmsMirror;
   db.getFacebookLeadSmsMirror = async () => null;
