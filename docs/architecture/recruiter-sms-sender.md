@@ -239,12 +239,29 @@ id, name, email, position and active only: phone numbers are matched
 server-side and never need to reach a browser to do it. Like every Bitrix
 surface here it returns the webhook's **host** and never its path.
 
+**`GET /api/recruiters/bitrix-users/:bitrixId`** is the per-row **Check Bitrix
+user** button — "is this id a real person, and who?". `ok:false` means the
+lookup could not run (bad id, no `user` scope, unreachable); `ok:true` with
+`found:false` means it ran and nobody in the portal has that id. It needs the
+same `user` scope as the directory, and doubles as a scope probe. Same fields,
+same host-only rule.
+
+**Typing an id is validated, not silently coerced.** A recruiter row's id
+field accepts a pasted profile URL (`/company/personal/user/17/`) or a `#17`
+and cleans it to the number; anything that is not ultimately a positive integer
+is **refused with a message**, because the server's `normalizeBitrixUserId`
+turns junk into `null` — and a save that writes `null` clears the mapping while
+reporting success, the "it won't save" symptom. The cleaner is
+`admin/src/pages/settings/ringcentral/bitrixUserId.js` (pure).
+
 Tests: `tests/recruiterBitrixMatch.test.js` (the tiers and every refusal),
-`tests/recruiterBitrixMapping.test.js` (paging, the missing-`user`-scope case,
-preview-writes-nothing, per-row failure),
-`admin/src/pages/settings/ringcentral/BitrixAutomapPanel.test.jsx` and
-`RecruiterCardBitrixPicker.test.jsx` (the two-step UI, and that an empty
-directory is stated rather than shown as an inert button).
+`tests/recruiterBitrixDirectory.test.js` (paging, the missing-`user`-scope
+case, and the single-id check — found / not-found / bad-id / no-scope),
+`tests/recruiterBitrixMapping.test.js` (preview-writes-nothing, per-row
+failure, the check endpoint), and, on the admin side, `bitrixUserId.test.jsx`
+(the cleaner), `BitrixAutomapPanel.test.jsx`, `RecruiterCardBitrixPicker.test.jsx`
+and `RecruiterCardBitrixCheck.test.jsx` (a bad id is refused rather than saved,
+a pasted URL is cleaned, and the check button's answers).
 
 ## Verifying it without a real lead
 

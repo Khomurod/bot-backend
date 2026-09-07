@@ -190,8 +190,8 @@ test('an unreadable directory reports the reason and writes nothing', async () =
 
 // ─── the endpoints ───
 
-function loadApp({ directory, preview, apply } = {}) {
-  const seen = { previews: 0, applies: [] };
+function loadApp({ directory, preview, apply, checkUser } = {}) {
+  const seen = { previews: 0, applies: [], checks: [] };
   require.cache[MAP_PATH] = {
     exports: {
       FAILURE_MESSAGES: { no_user_scope: 'needs the "user" scope' },
@@ -208,6 +208,14 @@ function loadApp({ directory, preview, apply } = {}) {
   require.cache[DIR_PATH] = {
     exports: {
       fetchBitrixUsers: async () => directory || { ok: true, users: [{ id: 17, fullName: 'Alex Smith' }], total: 1 },
+      fetchBitrixUserById: async (id) => {
+        seen.checks.push(id);
+        if (checkUser) return checkUser(id);
+        return {
+          ok: true,
+          user: { id: Number(id), fullName: 'Alex Smith', email: 'a@x.io', position: 'Recruiter', active: true },
+        };
+      },
       webhookHost: () => 'wenze.bitrix24.com',
     },
   };
@@ -288,6 +296,62 @@ test('an unreadable directory answers 200 with the reason, not a 500', async () 
     assert.equal(res.status, 200);
     assert.equal(res.json.ok, false);
     assert.match(res.json.message, /"user" scope/);
+  } finally { restore(); }
+});
+
+test('the check endpoint confirms who an id belongs to, without the phone', async () => {
+  const { app, seen, restore } = loadApp({
+    checkUser: (id) => ({
+      ok: true,
+      user: { id: Number(id), fullName: 'Alex Smith', email: 'a@x.io', position: 'Recruiter', active: true, phones: ['+15550001111'] },
+    }),
+  });
+  try {
+    const res = await call(app, 'GET', '/api/recruiters/bitrix-users/17');
+    assert.equal(res.status, 200);
+    assert.equal(res.json.ok, true);
+    assert.equal(res.json.found, true);
+    assert.equal(res.json.user.fullName, 'Alex Smith');
+    assert.deepEqual(seen.checks, ['17']);
+    assert.ok(!res.text.includes('5550001111'), 'a phone is never needed to confirm an id');
+  } finally { restore(); }
+});
+
+test('a real request for a nonexistent id reports found:false, not an error', async () => {
+  const { app, restore } = loadApp({ checkUser: () => ({ ok: true, user: null }) });
+  try {
+    const res = await call(app, 'GET', '/api/recruiters/bitrix-users/999');
+    assert.equal(res.status, 200);
+    assert.equal(res.json.ok, true);
+    assert.equal(res.json.found, false);
+    assert.equal(res.json.user, null);
+  } finally { restore(); }
+});
+
+test('a webhook without the user scope is named as the fixable thing it is', async () => {
+  const { app, restore } = loadApp({ checkUser: () => ({ ok: false, reason: 'no_user_scope' }) });
+  try {
+    const res = await call(app, 'GET', '/api/recruiters/bitrix-users/17');
+    assert.equal(res.json.ok, false);
+    assert.equal(res.json.found, false);
+    assert.match(res.json.message, /"user" scope/);
+  } finally { restore(); }
+});
+
+test('a non-numeric id is refused with what to type', async () => {
+  const { app, restore } = loadApp({ checkUser: () => ({ ok: false, reason: 'invalid_id' }) });
+  try {
+    const res = await call(app, 'GET', '/api/recruiters/bitrix-users/not-a-number');
+    assert.equal(res.json.ok, false);
+    assert.match(res.json.message, /numeric Bitrix user id/);
+  } finally { restore(); }
+});
+
+test('the check endpoint is admin-guarded', async () => {
+  const { app, restore, authCalls } = loadApp();
+  try {
+    await call(app, 'GET', '/api/recruiters/bitrix-users/17');
+    assert.equal(authCalls(), 1);
   } finally { restore(); }
 });
 

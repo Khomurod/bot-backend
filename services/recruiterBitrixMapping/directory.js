@@ -112,10 +112,58 @@ async function fetchBitrixUsers({ fetchImpl = fetch } = {}) {
   return { ok: true, users, total: users.length, reason: null };
 }
 
+/**
+ * Look up ONE Bitrix user by id — the "is this id a real person?" check behind
+ * the per-recruiter button.
+ *
+ * Returns { ok, user, reason, detail }. `ok:false` means the lookup could not
+ * run (bad id, not configured, no user scope, network); `ok:true` with a null
+ * `user` means it ran and nobody in the portal has that id. Like the directory
+ * read it never throws, because the caller reports rather than crashes.
+ *
+ * Needs the same `user` scope as the directory: a CRM-only webhook answers
+ * ACCESS_DENIED, surfaced as `no_user_scope`.
+ */
+async function fetchBitrixUserById(bitrixId, { fetchImpl = fetch } = {}) {
+  const id = Number.parseInt(bitrixId, 10);
+  if (!Number.isFinite(id) || id <= 0) {
+    return { ok: false, user: null, reason: 'invalid_id' };
+  }
+  if (!isBitrixConfigured()) {
+    return { ok: false, user: null, reason: 'not_configured' };
+  }
+
+  const base = normalizeWebhookBase(config.bitrix24WebhookUrl);
+  let body;
+  try {
+    const response = await fetchImpl(`${base}user.get.json?ID=${id}`);
+    body = await response.json().catch(() => ({}));
+    if (!response.ok && !body?.error) {
+      return { ok: false, user: null, reason: 'request_failed', detail: `HTTP ${response.status}` };
+    }
+  } catch (err) {
+    return { ok: false, user: null, reason: 'request_failed', detail: err.message };
+  }
+
+  if (body?.error) {
+    const code = String(body.error).toUpperCase();
+    return {
+      ok: false, user: null,
+      reason: SCOPE_ERRORS.has(code) ? 'no_user_scope' : 'rest_error',
+      detail: body.error_description || body.error,
+    };
+  }
+
+  const rows = Array.isArray(body?.result) ? body.result : [];
+  const user = rows.map(normalizeBitrixUser).find(Boolean) || null;
+  return { ok: true, user, reason: user ? null : 'not_found' };
+}
+
 module.exports = {
   MAX_PAGES,
   SCOPE_ERRORS,
   normalizeBitrixUser,
   webhookHost,
   fetchBitrixUsers,
+  fetchBitrixUserById,
 };

@@ -163,3 +163,86 @@ test('only the host of the webhook is ever exposed', async () => {
     assert.equal(directory.webhookHost(), 'wenze.bitrix24.com');
   } finally { restore(); }
 });
+
+// ─── checking one id: is this a real person? ───
+
+test('a known id returns exactly that person', async () => {
+  const { impl, calls } = pagedFetch([{
+    result: [bitrixRow(17, 'Alex', 'Smith', { WORK_POSITION: 'Recruiter', PERSONAL_MOBILE: '+15550001111' })],
+  }]);
+  const { directory, restore } = loadModules();
+  try {
+    const res = await directory.fetchBitrixUserById('17', { fetchImpl: impl });
+    assert.equal(res.ok, true);
+    assert.equal(res.user.id, 17);
+    assert.equal(res.user.fullName, 'Alex Smith');
+    assert.equal(res.user.position, 'Recruiter');
+    assert.match(calls[0], /user\.get\.json\?ID=17/, 'it asks Bitrix for just that id');
+  } finally { restore(); }
+});
+
+test('an id nobody has is ok:true with a null user, not an error', async () => {
+  const { impl } = pagedFetch([{ result: [] }]);
+  const { directory, restore } = loadModules();
+  try {
+    const res = await directory.fetchBitrixUserById('999', { fetchImpl: impl });
+    assert.equal(res.ok, true);
+    assert.equal(res.user, null);
+    assert.equal(res.reason, 'not_found');
+  } finally { restore(); }
+});
+
+test('a non-numeric id never reaches Bitrix', async () => {
+  const { directory, restore } = loadModules();
+  try {
+    for (const bad of ['abc', '', '0', '-3', null]) {
+      const res = await directory.fetchBitrixUserById(bad, {
+        fetchImpl: async () => { throw new Error('must not be called'); },
+      });
+      assert.equal(res.ok, false);
+      assert.equal(res.reason, 'invalid_id');
+    }
+  } finally { restore(); }
+});
+
+test('a webhook without the user scope is reported as exactly that', async () => {
+  const { impl } = pagedFetch([{ error: 'ACCESS_DENIED', error_description: 'Access denied' }]);
+  const { directory, restore } = loadModules();
+  try {
+    const res = await directory.fetchBitrixUserById('17', { fetchImpl: impl });
+    assert.equal(res.ok, false);
+    assert.equal(res.reason, 'no_user_scope');
+  } finally { restore(); }
+});
+
+test('another REST error is reported as itself', async () => {
+  const { impl } = pagedFetch([{ error: 'QUERY_LIMIT_EXCEEDED', error_description: 'Too many requests' }]);
+  const { directory, restore } = loadModules();
+  try {
+    const res = await directory.fetchBitrixUserById('17', { fetchImpl: impl });
+    assert.equal(res.reason, 'rest_error');
+    assert.equal(res.detail, 'Too many requests');
+  } finally { restore(); }
+});
+
+test('a network failure while checking is returned, never thrown', async () => {
+  const { directory, restore } = loadModules();
+  try {
+    const res = await directory.fetchBitrixUserById('17', {
+      fetchImpl: async () => { throw new Error('ECONNREFUSED'); },
+    });
+    assert.equal(res.ok, false);
+    assert.equal(res.reason, 'request_failed');
+    assert.equal(res.detail, 'ECONNREFUSED');
+  } finally { restore(); }
+});
+
+test('Bitrix not configured is a reason, not an attempted check', async () => {
+  const { directory, restore } = loadModules({ enabled: false });
+  try {
+    const res = await directory.fetchBitrixUserById('17', {
+      fetchImpl: async () => { throw new Error('must not be called'); },
+    });
+    assert.equal(res.reason, 'not_configured');
+  } finally { restore(); }
+});

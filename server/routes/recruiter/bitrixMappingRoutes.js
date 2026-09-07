@@ -1,13 +1,14 @@
 /**
  * Mapping recruiters to Bitrix users, from the admin panel.
  *
- *   GET  /bitrix-users    → the Bitrix user directory, for a picker instead of
- *                           hunting ids in profile URLs
- *   POST /bitrix-automap  → match recruiters to Bitrix users; previews by
- *                           default, writes only when { apply: true }
+ *   GET  /bitrix-users            → the Bitrix user directory, for a picker
+ *                                   instead of hunting ids in profile URLs
+ *   GET  /bitrix-users/:bitrixId  → check ONE id: is it a real person, and who
+ *   POST /bitrix-automap          → match recruiters to Bitrix users; previews
+ *                                   by default, writes only when { apply:true }
  *
- * Both are admin-guarded. Neither ever returns the Bitrix webhook URL — the
- * URL is the credential, so only its host leaves the server.
+ * All admin-guarded. None ever returns the Bitrix webhook URL — the URL is the
+ * credential, so only its host leaves the server.
  *
  * Split out of ../recruiterRoutes.js, which registers these.
  */
@@ -18,8 +19,14 @@ const {
 } = require('../../../services/recruiterBitrixMapping');
 const {
   fetchBitrixUsers,
+  fetchBitrixUserById,
   webhookHost,
 } = require('../../../services/recruiterBitrixMapping/directory');
+
+/** Why a single-id check could not run, in words an operator can act on. */
+const CHECK_MESSAGES = {
+  invalid_id: 'That is not a numeric Bitrix user id — use the number from the profile URL, e.g. 17.',
+};
 
 function registerRecruiterBitrixMappingRoutes(router, { authMiddleware }) {
   router.get('/bitrix-users', authMiddleware, async (req, res) => {
@@ -46,6 +53,38 @@ function registerRecruiterBitrixMappingRoutes(router, { authMiddleware }) {
     } catch (err) {
       console.error('[RECRUITER API] Bitrix user directory failed:', err.message);
       return res.status(502).json({ error: 'Could not read the Bitrix user directory' });
+    }
+  });
+
+  router.get('/bitrix-users/:bitrixId', authMiddleware, async (req, res) => {
+    try {
+      const result = await fetchBitrixUserById(req.params.bitrixId);
+      if (!result.ok) {
+        return res.json({
+          ok: false,
+          found: false,
+          reason: result.reason,
+          message: CHECK_MESSAGES[result.reason]
+            || FAILURE_MESSAGES[result.reason]
+            || 'Could not check that Bitrix user.',
+          detail: result.detail || null,
+          user: null,
+        });
+      }
+      const u = result.user;
+      // Only what identifies a person — a phone number is never needed to
+      // confirm an id, so it never reaches the browser.
+      return res.json({
+        ok: true,
+        found: Boolean(u),
+        bitrixHost: webhookHost(),
+        user: u
+          ? { id: u.id, fullName: u.fullName, email: u.email, position: u.position, active: u.active }
+          : null,
+      });
+    } catch (err) {
+      console.error('[RECRUITER API] Bitrix user check failed:', err.message);
+      return res.status(502).json({ error: 'Could not check the Bitrix user' });
     }
   });
 
