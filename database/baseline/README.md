@@ -76,12 +76,13 @@ migrations has shipped everywhere.
 | 018 | `ringcentral` | ringcentral_settings, recruiters, ringcentral_calls |
 | 019 | `gmaps_and_route_control` | gmaps_settings, route_assignments(+attachments), route_monitor_events, duplicate_unit_reports |
 | 020 | `safety_events` | safety_event_music_assets, safety_event_video_settings/jobs |
-| 021 | `trailer_tracking` | trailers, trailer_events, trailer_current_status, imports, trailer_settings, pending_instructions, bol_pod_forwarding_settings |
-| 022 | `trailer_department_rbac_rentals` | permissions/roles/RBAC, rentals, inspections, movements, media, invoices, payments, audit_log |
-| 023 | `trailer_master_list` | trailer_aliases, trailer_unmatched_mentions, master_reconciliation_log |
-| 024 | `trailer_media_storage` | trailer_media_blobs |
-| 025 | `trailer_agreements` | rental_agreements/items/amendments, invoice_lines, company_credits(+applications), Phase-4 backfills |
+| 021 | `bol_pod_forwarding` | bol_pod_forwarding_settings |
+| 022 | `rbac_and_admin_users` | permissions, roles, admin_user_roles, role_permissions, admin_audit_log, the `admins` lifecycle columns |
 
-> The trailer-department section marker (`-- TRAILER DEPARTMENT: RENTAL + ASSET
-> MANAGEMENT`, in segment 022) is load-bearing: the PG test harness slices the
-> assembled schema on it. Keep it intact.
+> Segments 021-025 used to be the Trailer Department and Trailer Tracking. That
+> feature was removed; the two things inside it that belonged to the rest of the
+> application — BOL/POD forwarding settings, and the whole RBAC substrate with
+> its audit log — were moved into the two segments above. The trailer tables
+> themselves are no longer created; a database that already has them keeps its
+> rows until an administrator clears them from Settings → Retired feature
+> leftovers.

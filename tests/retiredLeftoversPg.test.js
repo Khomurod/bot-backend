@@ -1,0 +1,148 @@
+'use strict';
+
+/**
+ * The retired-feature cleanup action against a real PostgreSQL database.
+ *
+ * The whole point of the feature is that it removes leftovers and NOTHING else,
+ * so these tests build a database in the shape production is in — the current
+ * schema plus the tables a removed feature left behind, holding rows — and then
+ * prove three things:
+ *
+ *   1. dropping the leftovers leaves every surviving table and its rows intact;
+ *   2. a leftover table still referenced from OUTSIDE the allow-list is
+ *      reported as blocked rather than cascaded away;
+ *   3. the config purge deactivates a retired-only account and deletes the
+ *      retired roles and permissions, while leaving the super administrator,
+ *      the company-wide permissions and a mixed-role account alone.
+ */
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { createPgHarness, skipWithoutPg } = require('./helpers/pgHarness');
+
+/**
+ * A minimal stand-in for what a removed feature left behind: two tables with a
+ * foreign key between them, plus rows. `trailers` and `trailer_events` are on
+ * the allow-list, so this is the real shape the action will meet in production.
+ */
+const LEFTOVER_DDL = `
+CREATE TABLE trailers (
+  id SERIAL PRIMARY KEY,
+  unit_number TEXT UNIQUE NOT NULL
+);
+CREATE TABLE trailer_events (
+  id BIGSERIAL PRIMARY KEY,
+  trailer_id INTEGER NOT NULL REFERENCES trailers(id) ON DELETE CASCADE,
+  note TEXT
+);
+INSERT INTO trailers (unit_number) VALUES ('T-1'), ('T-2');
+INSERT INTO trailer_events (trailer_id, note) SELECT id, 'seen' FROM trailers;
+CREATE TABLE sos_submissions (id SERIAL PRIMARY KEY, name TEXT);
+INSERT INTO sos_submissions (name) VALUES ('anon');
+CREATE TABLE fleet_settings (id SERIAL PRIMARY KEY, k TEXT);
+`;
+
+async function loadLeftovers(harness) {
+  return harness.loadDataLayer(['retiredLeftovers']).retiredLeftovers;
+}
+
+test('dropping the leftovers removes them and touches nothing else', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await createPgHarness(t, { extraDdl: LEFTOVER_DDL });
+  const leftovers = await loadLeftovers(harness);
+
+  const before = await harness.query("SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_schema='public'");
+  await harness.query("INSERT INTO groups (telegram_group_id, group_name) VALUES (-1001, 'WENZE UNIT # 1 TEST')");
+
+  const inventory = await leftovers.getLeftoverInventory();
+  const trailerGroup = inventory.groups.find((g) => g.key === 'trailer');
+  assert.equal(trailerGroup.tables_present, 2, 'only the two seeded trailer tables exist');
+  assert.equal(trailerGroup.total_rows, 4, 'and their rows are counted (2 trailers + 2 events)');
+
+  const result = await leftovers.dropRetiredTables({ groupKeys: ['trailer', 'qbq_sos', 'fleetview'] });
+  assert.deepEqual(result.dropped.sort(), ['fleet_settings', 'sos_submissions', 'trailer_events', 'trailers']);
+  assert.deepEqual(result.blocked, [], 'nothing should be blocked in this shape');
+  assert.ok(result.already_absent.length > 0, 'tables never created are reported as absent, not failed');
+
+  // The surviving schema is untouched, and so are its rows.
+  const after = await harness.query("SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_schema='public'");
+  assert.equal(after.rows[0].n, before.rows[0].n - 4 + 0, 'exactly the four leftover tables are gone');
+  const groups = await harness.query('SELECT COUNT(*)::int AS n FROM groups');
+  assert.equal(groups.rows[0].n, 1, 'the groups row survives');
+  const admins = await harness.query('SELECT COUNT(*)::int AS n FROM admins');
+  assert.ok(admins.rows[0].n >= 0, 'admins is still queryable');
+});
+
+test('a leftover still referenced from outside the allow-list is blocked, never cascaded', { skip: skipWithoutPg() }, async (t) => {
+  // A surviving table pointing at a leftover is not a shape this application
+  // has — but CASCADE would silently delete the referencing rows if it ever
+  // did, so the action must refuse instead.
+  const harness = await createPgHarness(t, {
+    extraDdl: `${LEFTOVER_DDL}
+      CREATE TABLE surviving_reference (
+        id SERIAL PRIMARY KEY,
+        trailer_id INTEGER NOT NULL REFERENCES trailers(id)
+      );
+      INSERT INTO surviving_reference (trailer_id) SELECT id FROM trailers LIMIT 1;`,
+  });
+  const leftovers = await loadLeftovers(harness);
+
+  const result = await leftovers.dropRetiredTables({ groupKeys: ['trailer'] });
+  assert.equal(result.dropped.includes('trailers'), false, 'trailers cannot be dropped');
+  assert.ok(result.blocked.some((b) => b.table === 'trailers'), 'and it is reported as blocked');
+  assert.match(result.blocked.find((b) => b.table === 'trailers').reason, /depend|referenc/i);
+
+  const survivors = await harness.query('SELECT COUNT(*)::int AS n FROM surviving_reference');
+  assert.equal(survivors.rows[0].n, 1, 'the referencing rows are still there');
+});
+
+test('the config purge clears retired RBAC and leaves everything else', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await createPgHarness(t, {
+    extraDdl: `
+      INSERT INTO roles (system_key, display_name) VALUES
+        ('trailer_manager','Trailer Manager'),
+        ('trailer_viewer','Trailer Viewer'),
+        ('custom_dispatcher','Dispatcher');
+      INSERT INTO permissions (permission_key) VALUES
+        ('trailers.view'), ('trailer_payments.reverse'), ('dispatch.view');
+      INSERT INTO role_permissions (role_id, permission_id)
+        SELECT r.id, p.id FROM roles r CROSS JOIN permissions p
+         WHERE r.system_key = 'trailer_manager' AND p.permission_key LIKE 'trailer%';
+      INSERT INTO admins (username, password_hash) VALUES
+        ('trailer-only','x'), ('mixed','y');
+      INSERT INTO admin_user_roles (admin_id, role_id)
+        SELECT a.id, r.id FROM admins a, roles r
+         WHERE a.username = 'trailer-only' AND r.system_key = 'trailer_manager';
+      INSERT INTO admin_user_roles (admin_id, role_id)
+        SELECT a.id, r.id FROM admins a, roles r
+         WHERE a.username = 'mixed' AND r.system_key IN ('trailer_viewer','custom_dispatcher');`,
+  });
+  const leftovers = await loadLeftovers(harness);
+
+  const inventory = await leftovers.getLeftoverInventory();
+  assert.deepEqual(inventory.rbac.roles.map((r) => r.system_key).sort(), ['trailer_manager', 'trailer_viewer']);
+  assert.deepEqual(
+    inventory.rbac.accounts.map((a) => a.username),
+    ['trailer-only'],
+    'only the account whose every role is retired is listed',
+  );
+
+  const result = await leftovers.purgeRetiredRbac({ actorId: null });
+  assert.deepEqual(result.deactivated_accounts.map((a) => a.username), ['trailer-only']);
+  assert.deepEqual(result.deleted_roles.sort(), ['trailer_manager', 'trailer_viewer']);
+  assert.deepEqual(result.deleted_permissions.sort(), ['trailer_payments.reverse', 'trailers.view']);
+
+  const roles = await harness.query('SELECT system_key FROM roles ORDER BY system_key');
+  assert.deepEqual(roles.rows.map((r) => r.system_key), ['custom_dispatcher', 'super_admin']);
+  const perms = await harness.query('SELECT permission_key FROM permissions ORDER BY permission_key');
+  assert.deepEqual(perms.rows.map((p) => p.permission_key),
+    ['admin.full_access', 'dispatch.view', 'roles.manage', 'users.manage']);
+
+  const mixed = await harness.query("SELECT active FROM admins WHERE username = 'mixed'");
+  assert.equal(mixed.rows[0].active, true, 'a mixed-role account keeps working');
+  const off = await harness.query("SELECT active, auth_version FROM admins WHERE username = 'trailer-only'");
+  assert.equal(off.rows[0].active, false);
+  assert.ok(off.rows[0].auth_version > 1, 'the auth_version bump invalidates any outstanding token');
+
+  const audit = await harness.query("SELECT action FROM admin_audit_log WHERE action = 'retired_leftovers.purge_config'");
+  assert.equal(audit.rows.length, 1, 'the purge is recorded in the admin audit log');
+});

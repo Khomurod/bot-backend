@@ -224,3 +224,34 @@ export async function testRingCentral(payload) {
   return res.json();
 }
 
+
+/**
+ * Retired feature leftovers: what a removed feature left in the database.
+ * Read-only; returns row counts plus the confirmation phrase the drop requires.
+ */
+export async function getRetiredLeftovers() {
+  const res = await fetch(`${API_BASE}/settings/retired-leftovers`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Remove the retired role/permission rows and deactivate retired-only accounts. */
+export async function purgeRetiredConfig() {
+  const res = await fetch(`${API_BASE}/settings/retired-leftovers/purge-config`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/**
+ * Permanently drop the selected groups' tables. `confirm` must be the exact
+ * phrase from getRetiredLeftovers(); the server refuses anything else.
+ */
+export async function dropRetiredTables({ groups, confirm }) {
+  const res = await fetch(`${API_BASE}/settings/retired-leftovers/drop-tables`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ groups, confirm }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
