@@ -137,6 +137,21 @@ const RETIRED_PERMISSION_PREFIXES = Object.freeze(['trailer_', 'trailers.']);
 
 const GROUP_KEYS = Object.freeze(Object.keys(RETIRED_GROUPS));
 
+/**
+ * A plain lowercase identifier. Every table name here comes from the frozen
+ * lists above, never from a request — but these names are interpolated into
+ * `DROP TABLE`, so the shape is checked at the interpolation site too. Defence
+ * in depth against a future edit to the lists, not against a caller.
+ */
+const SAFE_IDENTIFIER = /^[a-z][a-z0-9_]*$/;
+
+function assertSafeIdentifier(name) {
+  if (!SAFE_IDENTIFIER.test(name)) {
+    throw new Error(`Refusing to interpolate an unsafe table name: ${JSON.stringify(name)}`);
+  }
+  return name;
+}
+
 function isKnownGroup(key) {
   return Object.prototype.hasOwnProperty.call(RETIRED_GROUPS, key);
 }
@@ -165,9 +180,9 @@ async function inspectTables(tableNames) {
       out.push({ table: name, present: false, rows: null });
       continue;
     }
-    // Safe to interpolate: `name` came from the hard-coded allow-list above,
-    // never from a request. A count() is exact and these tables are idle.
-    const count = await query(`SELECT COUNT(*)::bigint AS n FROM "${name}"`);
+    // Interpolated from the hard-coded allow-list only, and re-checked for
+    // shape. A count() is exact and these tables are idle.
+    const count = await query(`SELECT COUNT(*)::bigint AS n FROM "${assertSafeIdentifier(name)}"`);
     out.push({ table: name, present: true, rows: Number(count.rows[0].n) });
   }
   return out;
@@ -335,9 +350,10 @@ async function dropRetiredTables({ groupKeys, actorId = null } = {}) {
       for (const name of remaining) {
         await client.query('SAVEPOINT drop_one');
         try {
-          // Interpolated from the hard-coded allow-list only — see the module
-          // header. No CASCADE: a dependent outside the list must fail here.
-          await client.query(`DROP TABLE "${name}"`);
+          // Interpolated from the hard-coded allow-list only, and re-checked
+          // for shape — see the module header. No CASCADE: a dependent outside
+          // the list must fail here rather than be taken with it.
+          await client.query(`DROP TABLE "${assertSafeIdentifier(name)}"`);
           await client.query('RELEASE SAVEPOINT drop_one');
           dropped.push(name);
         } catch (err) {
@@ -384,6 +400,7 @@ module.exports = {
   RETIRED_PERMISSION_PREFIXES,
   GROUP_KEYS,
   isKnownGroup,
+  assertSafeIdentifier,
   tablesForGroups,
   getLeftoverInventory,
   retiredOnlyAccounts,

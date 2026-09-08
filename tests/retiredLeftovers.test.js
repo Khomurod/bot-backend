@@ -48,6 +48,20 @@ test('every allow-listed table name is a plain identifier', () => {
   }
 });
 
+test('an unsafe table name is refused at the interpolation site itself', () => {
+  // The lists are frozen and the route validates group keys, so this can only
+  // fire on a future edit to database/retiredLeftovers.js — which is exactly
+  // when a DROP TABLE built by string interpolation needs a second opinion.
+  for (const bad of ['Trailers', 'trailer;DROP', 'public.trailers', 'trailer"x',
+    '', '1trailer', 'trailer table', 'trailer-x']) {
+    assert.throws(() => leftovers.assertSafeIdentifier(bad), /unsafe table name/,
+      `${JSON.stringify(bad)} must be refused`);
+  }
+  for (const good of leftovers.tablesForGroups(leftovers.GROUP_KEYS)) {
+    assert.equal(leftovers.assertSafeIdentifier(good), good);
+  }
+});
+
 test('an unknown group key is rejected, not silently ignored', () => {
   assert.equal(leftovers.isKnownGroup('trailer'), true);
   assert.equal(leftovers.isKnownGroup('groups'), false);
