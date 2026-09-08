@@ -116,9 +116,10 @@ Hard constraints of this deployment:
 - The Python child is supervised with exponential-backoff restart and a
   **circuit breaker** (5 crashes in 3 minutes → stop restarting; exit code 78 =
   permanent config error, never restarted).
-- `main` auto-deploys to Render. **Pushing a feature branch to this repository
-  auto-opens AND auto-merges a PR into `main` within seconds — review the
-  complete diff BEFORE pushing** (`CLAUDE.md`).
+- `main` auto-deploys to Render. A push opens and merges nothing by itself —
+  the agent opens the PR, the repository owner merges it — but the owner may
+  merge at any moment, so **review the complete diff BEFORE pushing**
+  (`CLAUDE.md`).
 
 ### The Telegram bots
 

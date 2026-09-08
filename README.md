@@ -115,8 +115,9 @@ is a real failure. The `*Pg.test.js` integration tests skip without
 Run through [`docs/deployment/pre-deploy-checklist.md`](docs/deployment/pre-deploy-checklist.md)
 before shipping.
 
-> **Pushing a feature branch to this repository auto-opens and auto-merges a PR
-> into `main` within seconds.** Review the complete diff *before* pushing.
+> A push opens no PR and merges nothing by itself, but `main` auto-deploys to
+> Render and the repository owner may merge yours at any moment. **Review the
+> complete diff *before* pushing.**
 
 ## Project layout
 
