@@ -9,9 +9,13 @@
  * prove three things:
  *
  *   1. dropping the leftovers leaves every surviving table and its rows intact;
- *   2. a leftover table still referenced from OUTSIDE the allow-list is
+ *   2. a CIRCULAR foreign key between two leftovers is still removable — no
+ *      ordering of plain `DROP TABLE` can break a cycle, and `trailer_media` ↔
+ *      `trailer_invoices` really was one, so the first version of this feature
+ *      silently left thirteen of twenty-nine tables behind;
+ *   3. a leftover table still referenced from OUTSIDE the allow-list is
  *      reported as blocked rather than cascaded away;
- *   3. the config purge deactivates a retired-only account and deletes the
+ *   4. the config purge deactivates a retired-only account and deletes the
  *      retired roles and permissions, while leaving the super administrator,
  *      the company-wide permissions and a mixed-role account alone.
  */
@@ -70,6 +74,46 @@ test('dropping the leftovers removes them and touches nothing else', { skip: ski
   assert.equal(groups.rows[0].n, 1, 'the groups row survives');
   const admins = await harness.query('SELECT COUNT(*)::int AS n FROM admins');
   assert.ok(admins.rows[0].n >= 0, 'admins is still queryable');
+});
+
+test('a circular foreign key between two leftovers is still removable', { skip: skipWithoutPg() }, async (t) => {
+  // trailer_media referenced trailer_invoices for a receipt, and
+  // trailer_invoices referenced trailer_media back. Neither can be dropped
+  // while the other stands, and CASCADE is not an option — so the internal
+  // foreign keys go first. Nothing outside the doomed set is touched.
+  const harness = await createPgHarness(t, {
+    extraDdl: `
+      CREATE TABLE trailer_invoices (id SERIAL PRIMARY KEY, receipt_id INTEGER);
+      CREATE TABLE trailer_media (id SERIAL PRIMARY KEY, invoice_id INTEGER);
+      ALTER TABLE trailer_media ADD CONSTRAINT tm_inv_fk
+        FOREIGN KEY (invoice_id) REFERENCES trailer_invoices(id);
+      ALTER TABLE trailer_invoices ADD CONSTRAINT ti_media_fk
+        FOREIGN KEY (receipt_id) REFERENCES trailer_media(id);
+      INSERT INTO trailer_invoices (id) VALUES (1);
+      INSERT INTO trailer_media (id, invoice_id) VALUES (1, 1);
+      UPDATE trailer_invoices SET receipt_id = 1 WHERE id = 1;`,
+  });
+  const leftovers = await loadLeftovers(harness);
+
+  const both = ['trailer_invoices', 'trailer_media'];
+  const internal = await leftovers.internalForeignKeys(harness.pool, both);
+  assert.equal(internal.length, 2, 'both directions of the cycle are found');
+
+  const result = await leftovers.dropRetiredTables({ groupKeys: ['trailer'] });
+  assert.deepEqual(result.dropped.sort(), both, 'the cycle is gone');
+  assert.deepEqual(result.blocked, []);
+  assert.equal(result.unlinked_foreign_keys.length, 2, 'and it reports which constraints it removed');
+});
+
+test('an internal-foreign-key sweep never touches a constraint pointing outside the set', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await createPgHarness(t, {
+    extraDdl: `
+      CREATE TABLE trailers (id SERIAL PRIMARY KEY);
+      CREATE TABLE keeper (id SERIAL PRIMARY KEY, trailer_id INTEGER REFERENCES trailers(id));`,
+  });
+  const leftovers = await loadLeftovers(harness);
+  const internal = await leftovers.internalForeignKeys(harness.pool, ['trailers']);
+  assert.deepEqual(internal, [], 'keeper.trailer_id is not in the doomed set, so it is left alone');
 });
 
 test('a leftover still referenced from outside the allow-list is blocked, never cascaded', { skip: skipWithoutPg() }, async (t) => {

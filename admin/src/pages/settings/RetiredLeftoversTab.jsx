@@ -20,6 +20,12 @@ import PageFailure from "../../components/PageFailure";
  * "Delete the stored data" drops tables. It cannot be undone without a database
  * backup, so it needs a typed phrase rather than a click, and the button stays
  * disabled until that phrase matches exactly.
+ *
+ * The result panel reports three things on purpose: what was dropped, what was
+ * already gone, and — if any — what could NOT be dropped because something
+ * still references it. The last one is the reason this never uses `CASCADE`:
+ * a leftover with an unexpected dependent is a question for a person, not a
+ * row to delete silently.
  */
 export default function RetiredLeftoversTab() {
   const [data, setData] = useState(null);
@@ -229,6 +235,14 @@ export default function RetiredLeftoversTab() {
             <ul style={{ margin: 0, paddingLeft: 20 }}>
               <li>{result.res.dropped.length} table(s) dropped{result.res.dropped.length ? `: ${result.res.dropped.join(", ")}` : ""}</li>
               <li>{result.res.already_absent.length} table(s) were already gone</li>
+              {result.res.unlinked_foreign_keys?.length > 0 && (
+                <li>
+                  {result.res.unlinked_foreign_keys.length} foreign key(s) between the
+                  dropped tables were removed first — a circular reference cannot be
+                  dropped any other way, and nothing pointing at a surviving table was
+                  touched.
+                </li>
+              )}
               {result.res.blocked.length > 0 && (
                 <li style={{ color: "#ef4444" }}>
                   {result.res.blocked.length} table(s) could NOT be dropped because something

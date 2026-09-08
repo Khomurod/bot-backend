@@ -18,12 +18,16 @@
  *     HTTP request into SQL. The caller selects GROUPS; a name that is not in
  *     `RETIRED_GROUPS` below cannot be dropped through this path at all, so no
  *     request — malformed, malicious or mistaken — can reach a surviving table.
- *  2. NO `CASCADE`. Drops are attempted repeatedly, in passes, dropping
- *     whatever has no remaining dependents until a pass makes no progress.
- *     That resolves the foreign-key order without a hand-maintained list, and
- *     — this is the point — a table still referenced by something OUTSIDE the
- *     list fails to drop and is REPORTED, instead of quietly taking the
- *     referencing rows with it.
+ *  2. NO `CASCADE`. Two steps instead. First the foreign keys BETWEEN tables
+ *     that are all in the doomed set are dropped — a constraint with one end
+ *     outside the set is never touched, so this cannot reach a surviving
+ *     table, and it is what makes a CIRCULAR foreign key droppable at all
+ *     (`trailer_media` ↔ `trailer_invoices` is one, and no ordering of plain
+ *     `DROP TABLE` can break a cycle). Then the tables are dropped in passes
+ *     until a pass makes no progress. A table still referenced by something
+ *     OUTSIDE the set therefore fails and is REPORTED, instead of quietly
+ *     taking the referencing rows with it — which is exactly what `CASCADE`
+ *     would have done.
  *  3. CONFIRMATION IS THE CALLER'S JOB and it is checked at the route. This
  *     module performs what it is told; the route will not tell it to drop
  *     anything without an exact typed confirmation phrase.
@@ -321,13 +325,37 @@ async function purgeRetiredRbac({ actorId = null } = {}) {
 }
 
 /**
+ * Foreign-key constraints whose referencing AND referenced table are both in
+ * `tables`. Dropping these lets a set with a circular foreign key be removed
+ * without `CASCADE`; a constraint with either end outside the set is not
+ * returned, so a surviving table's integrity is never touched.
+ */
+async function internalForeignKeys(executor, tables) {
+  const res = await executor.query(
+    `SELECT con.conname            AS constraint_name,
+            child.relname          AS child_table
+       FROM pg_constraint con
+       JOIN pg_class  child  ON child.oid  = con.conrelid
+       JOIN pg_class  parent ON parent.oid = con.confrelid
+       JOIN pg_namespace n    ON n.oid     = child.relnamespace
+      WHERE con.contype = 'f'
+        AND n.nspname = 'public'
+        AND child.relname  = ANY($1::text[])
+        AND parent.relname = ANY($1::text[])`,
+    [tables],
+  );
+  return res.rows;
+}
+
+/**
  * Drop the tables of the selected groups.
  *
- * Passes, not CASCADE: each pass tries every remaining table on its own
- * SAVEPOINT, so a table that still has a dependent fails alone and the rest of
- * the pass continues. When a pass drops nothing, whatever is left cannot be
- * dropped without cascading — which is exactly the case that must be reported
- * rather than forced.
+ * Two steps, neither of them CASCADE — see the module header. The foreign keys
+ * internal to the doomed set go first (that is what makes a circular one
+ * droppable), then the tables in passes, each on its own SAVEPOINT so a table
+ * that still has an outside dependent fails alone and the rest of the pass
+ * continues. When a pass drops nothing, whatever is left cannot be dropped
+ * without cascading — exactly the case that must be reported, not forced.
  */
 async function dropRetiredTables({ groupKeys, actorId = null } = {}) {
   const tables = tablesForGroups(groupKeys);
@@ -344,6 +372,23 @@ async function dropRetiredTables({ groupKeys, actorId = null } = {}) {
     const absent = tables.filter((t) => !remaining.includes(t));
     const dropped = [];
     const blocked = [];
+    const unlinked = [];
+
+    // Step one: the foreign keys wholly inside the doomed set.
+    for (const fk of await internalForeignKeys(client, remaining)) {
+      await client.query('SAVEPOINT drop_fk');
+      try {
+        await client.query(
+          `ALTER TABLE "${assertSafeIdentifier(fk.child_table)}" `
+          + `DROP CONSTRAINT "${assertSafeIdentifier(fk.constraint_name)}"`,
+        );
+        await client.query('RELEASE SAVEPOINT drop_fk');
+        unlinked.push(`${fk.child_table}.${fk.constraint_name}`);
+      } catch (err) {
+        await client.query('ROLLBACK TO SAVEPOINT drop_fk');
+        await client.query('RELEASE SAVEPOINT drop_fk');
+      }
+    }
 
     while (remaining.length) {
       const stillRemaining = [];
@@ -373,6 +418,7 @@ async function dropRetiredTables({ groupKeys, actorId = null } = {}) {
       groups: [...groupKeys],
       dropped: dropped.sort(),
       already_absent: absent.sort(),
+      unlinked_foreign_keys: unlinked.sort(),
       blocked,
     };
 
@@ -402,6 +448,7 @@ module.exports = {
   isKnownGroup,
   assertSafeIdentifier,
   tablesForGroups,
+  internalForeignKeys,
   getLeftoverInventory,
   retiredOnlyAccounts,
   purgeRetiredRbac,
