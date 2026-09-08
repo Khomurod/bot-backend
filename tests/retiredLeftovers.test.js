@@ -115,3 +115,51 @@ test('the confirmation phrase is not something typed by reflex', () => {
     assert.notEqual(DROP_CONFIRMATION_PHRASE.toLowerCase(), reflex);
   }
 });
+
+test('the boot baseline never recreates a table this tool can DROP', () => {
+  // The bug this guards, in full: schema.sql is applied VERBATIM on every boot.
+  // Five tables in the "earlier retired features" group were still created by
+  // database/baseline/004_employee_engagement.sql and 015_driver_location.sql,
+  // so an operator who typed the confirmation phrase and dropped them destroyed
+  // the rows for good and then watched the empty tables reappear at the next
+  // restart — with the inventory reporting them as leftovers all over again. A
+  // destructive action that does not stay done is worse than no action.
+  //
+  // The fix was to stop CREATEing them (not to drop them automatically, which
+  // would destroy data without asking). This test is the durable half: adding a
+  // table to a droppable group while a baseline segment still creates it now
+  // fails here instead of in production.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const schema = fs.readFileSync(
+    path.join(__dirname, '..', 'database', 'schema.sql'), 'utf8',
+  );
+
+  const offenders = [];
+  for (const key of leftovers.GROUP_KEYS) {
+    for (const table of leftovers.RETIRED_GROUPS[key].tables) {
+      const creates = new RegExp(
+        `CREATE\\s+TABLE\\s+(IF\\s+NOT\\s+EXISTS\\s+)?(public\\.)?${table}\\b`, 'i',
+      );
+      if (creates.test(schema)) offenders.push(`${key}/${table}`);
+    }
+  }
+  assert.deepEqual(
+    offenders, [],
+    'these tables are droppable AND recreated on boot — remove the CREATE from '
+    + 'database/baseline/*.sql (and run npm run build:schema), or take the table '
+    + 'out of the droppable group',
+  );
+});
+
+test('the sentinel above can actually fail (it is not matching nothing)', () => {
+  // A regex typo would make the guard silently vacuous, so prove the same
+  // matcher fires on a table the baseline really does create.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const schema = fs.readFileSync(
+    path.join(__dirname, '..', 'database', 'schema.sql'), 'utf8',
+  );
+  const surviving = /CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?(public\.)?groups\b/i;
+  assert.ok(surviving.test(schema), 'the baseline does create `groups`');
+});

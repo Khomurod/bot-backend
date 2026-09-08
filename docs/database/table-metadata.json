@@ -89,13 +89,13 @@
       "purpose": "Driver location check-in records.",
       "status": "legacy",
       "service": "bot (check-in/out flow)",
-      "danger": "Related to the retired check-in/check-out feature (see docs/architecture/retired-checkin-checkout-feature.md). Retained for history; verify usage before removing."
+      "danger": "Related to the retired check-in/check-out feature (see docs/architecture/retired-checkin-checkout-feature.md). No code reads it. It is no longer created by database/baseline/, so it exists only on deployments that predate 2026-09; its rows are kept until an operator drops it through Settings -> Retired Leftovers, which needs a backup first."
     },
     "driver_location_monitors": {
       "purpose": "Per-group location-monitor scheduler rows.",
       "status": "legacy",
       "service": "bot (check-in/out flow)",
-      "danger": "Related to the retired check-in/check-out feature. Retained for history; verify usage before removing."
+      "danger": "Related to the retired check-in/check-out feature (see docs/architecture/retired-checkin-checkout-feature.md). No code reads it. It is no longer created by database/baseline/, so it exists only on deployments that predate 2026-09; its rows are kept until an operator drops it through Settings -> Retired Leftovers, which needs a backup first."
     },
     "chat_logs": {
       "purpose": "Captured Telegram group messages used for AI insights/annotations.",

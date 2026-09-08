@@ -119,6 +119,26 @@ Trailer (29): `trailers`, `trailer_aliases`, `trailer_audit_log`,
 QBQ/SOS (4): `sos_settings`, `sos_submissions`, `sos_answers`,
 `qbq_presentation_edits`.
 
+FleetView (9): the `fleet_*` tables archived in 2026-07, created lazily by code
+that no longer exists.
+
+Earlier retired features (5): `driver_location_monitors`,
+`driver_location_checkins`, `employee_votes_polls`, `employee_votes_options`,
+`employee_votes`. Listed for visibility and **never preselected** — they are not
+part of this removal.
+
+**A droppable table must not be in the boot baseline.** `database/schema.sql` is
+applied verbatim on EVERY boot, so a `CREATE TABLE IF NOT EXISTS` for a table
+this tool can drop makes the drop non-durable: the rows are destroyed for good
+and the empty table reappears at the next restart, with the inventory reporting
+it as a leftover again. That was true of all five "earlier" tables when this
+panel was first written. They are no longer created — which deletes nothing, an
+existing deployment keeps its tables and rows until someone clicks — and the two
+lists are now held to each other by a test (`tests/retiredLeftovers.test.js`,
+plus an end-to-end drop-then-reapply-schema check in
+`tests/retiredLeftoversPg.test.js`). If you add a table to a droppable group,
+take its CREATE out of `database/baseline/` and run `npm run build:schema`.
+
 ⚠️ **`trailer_audit_log` is not idle.** Until migration `0010` has run it is
 still where the RBAC audit history lives; after it, the rows exist in both
 places and the old table is safe to drop. The migration runs automatically at

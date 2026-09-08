@@ -22,7 +22,11 @@
   "Checked In / Checked Out" monitor (`driver_location_monitors`,
   `driver_location_checkins`), employee voting polls (`employee_votes*`), and the
   "Ask the Data" / "Chat Monitor" admin panels. See
-  `docs/architecture/retired-*.md`.
+  `docs/architecture/retired-*.md`. Those five tables keep their rows on an
+  existing deployment but are **no longer created by the baseline**: Settings →
+  Retired Leftovers can drop them, and `schema.sql` runs on every boot, so
+  recreating them would silently undo an operator's confirmed deletion.
+  `tests/retiredLeftovers.test.js` holds the two lists to each other.
 - **`bot/locationCheckinHandlers.js` is a deliberate stub, not dead code.** The
   poller that sent check-in prompts is gone, so no new prompts exist — but the
   handler stays registered so a driver tapping an **old** button on an old message

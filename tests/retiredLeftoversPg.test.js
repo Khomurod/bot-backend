@@ -190,3 +190,51 @@ test('the config purge clears retired RBAC and leaves everything else', { skip: 
   const audit = await harness.query("SELECT action FROM admin_audit_log WHERE action = 'retired_leftovers.purge_config'");
   assert.equal(audit.rows.length, 1, 'the purge is recorded in the admin audit log');
 });
+
+test('a drop SURVIVES the next boot — schema.sql does not recreate it', { skip: skipWithoutPg() }, async (t) => {
+  // The regression: schema.sql is applied verbatim on EVERY boot, and the
+  // baseline still created all five "earlier retired features" tables. So the
+  // drop destroyed the rows and the empty tables came back at the next
+  // restart, with the inventory reporting them as leftovers again. The operator
+  // had done something irreversible and had nothing to show for it.
+  //
+  // This runs the real thing: apply the real schema.sql, drop through the real
+  // action, then apply the real schema.sql AGAIN — which is what a reboot does.
+  const harness = await createPgHarness(t);
+  const leftovers = await loadLeftovers(harness);
+
+  const tables = leftovers.RETIRED_GROUPS.earlier.tables;
+  const present = async () => {
+    const res = await harness.query(
+      `SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = ANY($1::text[])
+        ORDER BY table_name`,
+      [tables],
+    );
+    return res.rows.map((row) => row.table_name);
+  };
+
+  // A fresh boot must not create them in the first place.
+  assert.deepEqual(await present(), [], 'a fresh baseline must not create retired tables');
+
+  // Simulate the deployment that still HAS them — with a row, so the drop is
+  // doing real work — then drop them the way the admin action does.
+  await harness.query('CREATE TABLE employee_votes_polls (id SERIAL PRIMARY KEY, question TEXT)');
+  await harness.query("INSERT INTO employee_votes_polls (question) VALUES ('kept until dropped')");
+  assert.deepEqual(await present(), ['employee_votes_polls'], 'seeded the pre-existing table');
+
+  const result = await leftovers.dropRetiredTables({ groupKeys: ['earlier'] });
+  assert.ok(
+    result.dropped.includes('employee_votes_polls'),
+    `expected the drop to report it; saw ${JSON.stringify(result)}`,
+  );
+  assert.deepEqual(await present(), [], 'and it is gone immediately');
+
+  // The reboot: schema.sql is applied verbatim on every boot.
+  await harness.applySchemaSql();
+
+  assert.deepEqual(
+    await present(), [],
+    'a dropped leftover must not reappear after a restart',
+  );
+});

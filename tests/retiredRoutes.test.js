@@ -44,6 +44,11 @@ test('every removed page URL answers 410 Gone with an explanation', async () => 
   await withServer(async (base) => {
     for (const url of [
       '/trailers', '/trailers/', '/trailers/rentals', '/trailers/money/invoices/7',
+      // `/admin/trailers` was the ORIGINAL Trailer Department slug, kept
+      // readable "forever" by a rewrite in the SPA — so real bookmarks are of
+      // both shapes and both must answer the same way.
+      '/admin/trailers', '/admin/trailers/', '/admin/trailers/rentals',
+      '/admin/trailers/money/invoices/7',
       '/questions', '/questions/test', '/answers', '/answers/test',
       '/qbq', '/qbq/remote', '/qbq/assets/qbq-edit.js',
     ]) {
@@ -95,17 +100,42 @@ test('it leaves the admin SPA and unknown paths alone', async () => {
   await withServer(async (base) => {
     assert.match(await (await fetch(`${base}/admin`)).text(), /spa/);
     assert.match(await (await fetch(`${base}/admin/users`)).text(), /spa/);
+    assert.match(await (await fetch(`${base}/admin/live-locations`)).text(), /spa/);
+    // Only the exact `/admin/trailers` segment is retired. A different word
+    // that merely starts with it belongs to the SPA.
+    assert.match(await (await fetch(`${base}/admin/trailersomething`)).text(), /spa/);
     // An unrelated unknown path is still a plain 404, not a "feature removed".
     assert.equal((await fetch(`${base}/nope`)).status, 404);
   });
 });
 
+test('the legacy /admin/trailers bookmark does NOT fall through to the SPA', async () => {
+  // The regression this guards: `/admin/trailers` was not in the retired list,
+  // so it matched the `/admin/*` catch-all and served the shell — which, with
+  // no trailer section left, silently rendered the default Driver Groups page.
+  // A withdrawn bookmark opening an unrelated section is worse than an error.
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/admin/trailers`);
+    assert.equal(res.status, 410, 'the legacy slug must be answered, not absorbed');
+    assert.doesNotMatch(await res.text(), /spa/, 'and must never reach the admin shell');
+  });
+});
+
 test('the path list is explicit — no bare prefixes that could grow greedy', () => {
   for (const p of RETIRED_PAGE_PATHS) {
-    assert.match(p, /^\/[a-z]+(\/\*)?$/, `${p} must be an exact path or a one-level wildcard`);
+    assert.match(
+      p, /^\/[a-z]+(\/[a-z]+)?(\/\*)?$/,
+      `${p} must be an exact path (at most two segments) or a one-level wildcard`,
+    );
   }
   assert.ok(RETIRED_PAGE_PATHS.includes('/trailers'));
   assert.ok(RETIRED_PAGE_PATHS.includes('/qbq/*'));
+  // Both shapes of the Trailer Department URL, canonical and legacy.
+  assert.ok(RETIRED_PAGE_PATHS.includes('/admin/trailers'));
+  assert.ok(RETIRED_PAGE_PATHS.includes('/admin/trailers/*'));
+  // `/admin` itself must never be listed — that is the surviving admin panel.
+  assert.ok(!RETIRED_PAGE_PATHS.includes('/admin'), 'the admin panel survives');
+  assert.ok(!RETIRED_PAGE_PATHS.includes('/admin/*'), 'and so does everything under it');
   // /api is never listed: a JSON client should get a 404, not an HTML page.
   assert.ok(!RETIRED_PAGE_PATHS.some((p) => p.startsWith('/api')), 'API paths must 404, not 410');
 });

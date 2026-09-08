@@ -1,33 +1,16 @@
-CREATE TABLE IF NOT EXISTS employee_votes_polls (
-  id SERIAL PRIMARY KEY,
-  question TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW(),
-  telegram_message_id BIGINT,
-  telegram_chat_id BIGINT,
-  status TEXT DEFAULT 'active'
-);
-
-CREATE TABLE IF NOT EXISTS employee_votes_options (
-  id SERIAL PRIMARY KEY,
-  poll_id INTEGER REFERENCES employee_votes_polls(id) ON DELETE CASCADE,
-  unit_number TEXT NOT NULL,
-  driver_name TEXT,
-  company_name TEXT,
-  driver_type TEXT,
-  group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL
-);
-
-CREATE TABLE IF NOT EXISTS employee_votes (
-  id SERIAL PRIMARY KEY,
-  poll_id INTEGER REFERENCES employee_votes_polls(id) ON DELETE CASCADE,
-  option_id INTEGER REFERENCES employee_votes_options(id) ON DELETE CASCADE,
-  telegram_user_id BIGINT NOT NULL,
-  telegram_username TEXT,
-  telegram_first_name TEXT,
-  unit_number TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(poll_id, telegram_user_id)
-);
+-- ─── Employee Voting Polls — RETIRED, and no longer created here ─────
+-- The employee voting feature (employee_votes_polls, employee_votes_options,
+-- employee_votes) was retired long before the trailer/QBQ removal, and its
+-- three tables sat in this baseline so a fresh init-db matched production.
+--
+-- They are no longer created, because Settings → Retired Leftovers can now DROP
+-- them: a baseline that recreates a droppable table makes that operation
+-- non-durable — the data is destroyed, then the empty tables reappear on the
+-- next boot and the inventory reports them as leftovers all over again.
+-- Removing the CREATE is not itself destructive: an existing deployment keeps
+-- its tables and rows until an operator deliberately drops them.
+--
+-- tests/retiredLeftovers.test.js asserts no droppable table is recreated here.
 
 -- ─── Broadcast Tracking System ───
 

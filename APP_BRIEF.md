@@ -350,10 +350,10 @@ npm run build:schema:check                        # schema.sql is in sync with b
 
 - **The Node suite passes clean with no secrets and no database.** Verified
   baseline (2026-09-08, deps installed, **with** `TEST_DATABASE_URL` against a
-  local PostgreSQL 16): **1874 tests, 1874 pass, 0 fail, 0 skipped**, exit 0.
+  local PostgreSQL 16): **1878 tests, 1878 pass, 0 fail, 0 skipped**, exit 0.
   Split the way CI splits it: the 196 non-`*Pg` files with no application env at
-  all are **1800 pass / 0 skipped**, and the 10 `*Pg` files against a real
-  Postgres are **74 pass / 0 skipped**.
+  all are **1803 pass / 0 skipped**, and the 10 `*Pg` files against a real
+  Postgres are **75 pass / 0 skipped**.
   Without a database the `*Pg` suites skip instead — a skip is not a pass, so
   CI provides a real Postgres and fails on any skip. The Python leads
   worker adds **37 tests**

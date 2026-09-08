@@ -25,8 +25,17 @@ const express = require('express');
 
 // Page prefixes whose feature has been removed. Keep this list exact: a bare
 // prefix would shadow a future route that legitimately reuses the word.
+//
+// `/admin/trailers` is here because it was the Trailer Department's ORIGINAL
+// slug and the code that superseded it promised it would "stay readable
+// forever" — the SPA rewrote such a URL to `/trailers` on mount, so the
+// bookmarks people actually hold are of both shapes. Without this entry the
+// legacy prefix falls through to the `/admin/*` SPA catch-all and the shell,
+// finding no trailer section, silently renders Driver Groups instead: a removed
+// bookmark quietly opening an unrelated page, which is worse than an error.
 const RETIRED_PAGE_PATHS = [
   '/trailers', '/trailers/*',
+  '/admin/trailers', '/admin/trailers/*',
   '/questions', '/questions/*',
   '/answers', '/answers/*',
   '/qbq', '/qbq/*',

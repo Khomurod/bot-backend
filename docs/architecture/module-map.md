@@ -124,9 +124,11 @@ organization should converge toward.
 > **Driver of the Week voting — REMOVED.** The employee "Driver of the Week"
 > voting feature was retired. Its code (bot handlers, API routes, DB helper,
 > admin page, API client functions) was deleted. The Postgres tables
-> `employee_votes_polls`, `employee_votes_options`, `employee_votes` are
-> intentionally **retained** in `database/schema.sql` (marked RETIRED) to
-> preserve historical data; no code references them any more.
+> `employee_votes_polls`, `employee_votes_options`, `employee_votes` keep their
+> historical data on existing deployments, but are **no longer created** by
+> `database/baseline/` — Settings → Retired Leftovers can drop them, and a
+> baseline that recreates a droppable table would undo the drop on the next
+> boot. No code references them either way.
 
 ### 5. Payroll / Bonus / Approval Module
 
