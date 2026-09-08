@@ -273,9 +273,12 @@ repository-wide working rules. The highest-consequence items:
     Retired Leftovers (`database/retiredLeftovers.js`) is the only place the
     application drops anything. A table name never travels from a request into
     SQL — the caller picks from four hard-coded groups. Drops run in passes on
-    savepoints with **no `CASCADE`**, so a leftover still referenced from
-    outside the list fails and is reported rather than silently taking the
-    referencing rows with it. The destructive half needs an exact typed
+    savepoints with **no `CASCADE`**, after first removing the foreign keys
+    whose both ends are inside the doomed set — which is what makes a circular
+    reference droppable without cascading, and never touches a constraint
+    pointing at a surviving table. A leftover still referenced from outside the
+    list fails and is reported rather than silently taking the referencing rows
+    with it. The destructive half needs an exact typed
     confirmation phrase; the reversible half (role/permission rows, account
     deactivation) does not. Guarded by `tests/retiredLeftovers.test.js`,
     `tests/retiredLeftoversRoute.test.js` and

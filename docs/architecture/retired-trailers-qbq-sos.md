@@ -93,9 +93,16 @@ path in the application that drops a table. It shows what is left with live row
 counts, and separates the two weights of action: removing the retired role and
 permission rows (reversible, deactivates rather than deletes accounts) is one
 button, and dropping the tables is another that requires an exact typed
-confirmation phrase and tells you to take a backup first. Drops are
-allow-listed, ordered by dependency and run **without `CASCADE`**, so anything
-still referenced from outside the list is reported rather than silently taken.
+confirmation phrase and tells you to take a backup first.
+
+Drops are allow-listed and run **without `CASCADE`**, in two steps. The foreign
+keys whose referencing *and* referenced table are both in the doomed set go
+first — a constraint with either end outside the set is never touched, and this
+is what makes a **circular** foreign key droppable at all (`trailer_media` ↔
+`trailer_invoices` is one, and no ordering of plain `DROP TABLE` can break a
+cycle). Then the tables go, in passes. Anything still referenced from outside
+the list therefore fails and is reported rather than silently taken, which is
+the entire reason `CASCADE` is not used.
 
 Trailer (29): `trailers`, `trailer_aliases`, `trailer_audit_log`,
 `trailer_company_credit_applications`, `trailer_company_credits`,
