@@ -7,7 +7,7 @@
 |---|---|---|---|
 | **Telegram** (Telegraf 4) | `BOT_TOKEN`, group IDs in `config/config.js`; IPv4 agent | everything | `safeSend` does 429-aware retries with backoff and rethrows permanent errors (403 / chat not found / deactivated / upgraded) immediately — it does **not** downgrade HTML to plain text; that fallback is feature-local (`dispatchEtaUpdateService.js`). 409 polling conflicts are suppressed, not fatal |
 | **Datatruck** (the company TMS, read-only) | `DATATRUCK_API_TOKEN`, `DATATRUCK_COMPANY` | loads/ETA, mileage bonus, BOL/POD forwarding | features degrade to fallbacks (pinned message, chat history) or skip the tick |
-| **Samsara + Drive HoS ELD** | admin **Settings** (`eld_settings`) takes precedence over env | `/location`, `/status`, ETA, live map, fuel alerts, Route Control, duplicate-unit check | GPS fallback chain **Samsara → Factor ELD → Leader ELD** with transient retries (`services/liveLocationResolver.js`) |
+| **Samsara + Drive HoS ELD** | admin **Settings** takes precedence over env. The **Samsara** credential lives in `samsara_settings` (Settings → Samsara) and is shared with the poller; Drive HoS keys and the provider switches stay in `eld_settings`. A Samsara key typed on the Live Location tab is written to `samsara_settings` too, so the two screens cannot disagree | `/location`, `/status`, ETA, live map, fuel alerts, Route Control, duplicate-unit check | GPS fallback chain **Samsara → Factor ELD → Leader ELD** with transient retries (`services/liveLocationResolver.js`) |
 | **Google Maps** (Routes + Geocoding) | `GOOGLE_MAPS_API_KEY`, Settings → GMaps `enabled` | ETA routing, Route Control geometry, geocoding | off-route warnings stop; destination auto-completion keeps working |
 | **Meta / Facebook** | `META_*`, `WEBHOOK_VERIFY_TOKEN`, `FACEBOOK_TOKEN_ENCRYPTION_KEY` | lead capture, Page connect | events are persisted before processing, then retried |
 | **RingCentral** | `RC_*` env → shared pair in `ringcentral_settings`; **per-recruiter** creds live on the `recruiters` row — an OAuth refresh token (preferred) or its own JWT, plus an optional custom client pair (`resolveRecruiterRcAuth` picks: `oauth` > `jwt` > `none`) | lead auto-SMS **as the assigned recruiter**, two-way mirroring, recruiter call KPIs | per-recruiter send falls back to the shared number and says so; refresh tokens are renewed daily and a dead grant is flagged `rc_auth_error`; SMS-only fallback when an MMS filter rejects |
@@ -81,7 +81,25 @@ process** — that is what lets tests import services with no production secrets
 
 Several integrations are **runtime-editable in the admin Settings tab and the DB
 row wins over env**: `eld_settings`, `ringcentral_settings`, `bitrix_settings`,
-`gmaps_settings`, `message_group_settings`,
+`gmaps_settings`, `message_group_settings`, `samsara_settings`,
 `safety_event_video_settings`, `bol_pod_forwarding_settings`.
+
+**`samsara_settings` is read by two processes.** Settings → Samsara is the
+single home for the Samsara connection (API key, base URL, enabled), the
+safety-event switches and missing-video recovery; the separate
+`samsara-integration` poller reads the same row over the shared database and
+picks up a change within a minute, so replacing the API key or moving the
+recovery delay needs no Render redeploy. Two consequences worth knowing:
+
+- The key cannot use `lib/security/facebookCrypto` — the poller holds neither
+  `FACEBOOK_TOKEN_ENCRYPTION_KEY` nor `JWT_SECRET`. It uses the same AES-256-GCM
+  envelope with a key derived from a secret both services already hold; see
+  `lib/security/sharedIntegrationCrypto.js` for exactly what, why, and what it
+  does not protect. `api_key_fingerprint` records which key material wrote a
+  value, so a reader that cannot open one falls back to its environment variable
+  and says so rather than losing Samsara.
+- Every value falls back to the environment **per value**, so the Samsara key
+  currently deployed keeps working with nothing entered and nothing migrated.
+  A save that does not include a key leaves the stored one alone.
 
 ---

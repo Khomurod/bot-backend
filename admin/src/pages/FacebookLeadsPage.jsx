@@ -32,15 +32,21 @@ export default function FacebookLeadsPage() {
   const infra = useLeadsInfrastructure(tab, setStatus);
 
   const { pages, activePages, recentEvents, webhookLog, logLoading } = infra;
-  const { nowPreview, previewTarget, rules, timezone, loading } = auto;
+  const { nowPreview, previewTarget, rules, timezone, loading, recruiterMessages } = auto;
 
   const nowSubtitle = nowPreview?.evaluated_at_iso
     ? `Based on current time in ${friendlyTimezone(timezone)}. Evaluated ${timeAgo(nowPreview.evaluated_at_iso)}.`
     : `Based on current time in ${friendlyTimezone(timezone)}. Uses your unsaved draft rules below.`;
 
-  const editingLabel = previewTarget.kind === "fallback"
-    ? "Fallback (outside hours)"
-    : (rules[previewTarget.index]?.label || `Rule ${previewTarget.index + 1}`);
+  let editingLabel;
+  if (previewTarget.kind === "fallback") {
+    editingLabel = "Fallback (outside hours)";
+  } else if (previewTarget.kind === "recruiter") {
+    const who = recruiterMessages?.[previewTarget.index]?.recruiter_name;
+    editingLabel = who ? `${who}'s message` : "Recruiter message";
+  } else {
+    editingLabel = rules[previewTarget.index]?.label || `Rule ${previewTarget.index + 1}`;
+  }
 
   if (loading) {
     return (

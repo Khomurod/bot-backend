@@ -49,9 +49,20 @@ time, fuel, bonuses and Route Control.
 
 **Cross-repo coupling:** the `samsara-integration` service also reads `groups`
 (for driver-group routing) and reads the `safety_event_video_settings` /
-`safety_event_music_assets` rows this repo's admin Settings tab manages, while
-writing `safety_event_video_jobs`. **A `groups` schema change affects both
-repos** — coordinate it.
+`safety_event_music_assets` / `samsara_settings` rows this repo's admin Settings
+tab manages, while writing `safety_event_video_jobs` and
+`samsara_video_recovery_jobs`. **A `groups` schema change affects both repos** —
+and so does a change to any of those five tables. Coordinate it.
+
+`samsara_settings` (one row, id = 1) is the configuration channel between the
+two services: the Samsara API key, the safety-event switches and everything
+about missing-video recovery. `samsara_video_recovery_jobs` is the durable queue
+that replaced an in-memory timer — one row per safety event alerted without
+video, holding the Telegram messages to fold the clip into, the Samsara
+retrieval it is waiting on, the attempt count and a terminal state that says
+what happened. Neither table ever stores a signed media URL, and the API key is
+encrypted with the shared envelope (`lib/security/sharedIntegrationCrypto.js`),
+not `facebookCrypto` — the poller holds none of this app's secrets.
 
 ### Other relationships worth knowing before you change something
 

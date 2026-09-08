@@ -3,14 +3,17 @@ import { friendlyTimezone } from "../../utils/formatTime";
 import { WEEKDAYS, TIMEZONES, emptyRule } from "./constants";
 import { PreviewPanel } from "./PreviewPanel";
 import { PlaceholderChips } from "./PlaceholderChips";
+import { RecruiterMessagesSection } from "./RecruiterMessagesSection";
 
 /**
  * The auto-reply editor: sender identity, timezone, the ordered time-window
  * rules, the outside-hours fallback, and both previews.
  *
- * RULE ORDER IS PRECEDENCE — the first window that matches a lead's arrival
- * time wins — so the ↑/↓ buttons are functional, not cosmetic, and every move
- * renumbers sort_order through useAutoMessages.
+ * PRECEDENCE, top to bottom: the assigned recruiter's own message (the
+ * Recruiter messages section) beats everything; failing that RULE ORDER IS
+ * PRECEDENCE — the first window that matches a lead's arrival time wins — so
+ * the ↑/↓ buttons are functional, not cosmetic, and every move renumbers
+ * sort_order through useAutoMessages; failing that, the fallback.
  *
  * Presentational: every control calls a handler from useAutoMessages, which
  * owns the debounced previews and the save.
@@ -22,6 +25,7 @@ export function AutoMessagesTab({
   previewTarget, nowPreview, editPreview, nowSubtitle, editingLabel,
   sampleLead, setSampleLead, timezone,
   focusRule, focusFallback, insertPlaceholder, fallbackRef, ruleRefs,
+  recruiterMessages, setRecruiterTemplate, focusRecruiter, recruiterRefs,
   saving, handleSave, handleReset, toggleDay, moveRule,
 }) {
   return (
@@ -91,6 +95,14 @@ export function AutoMessagesTab({
     </div>
 
     <PlaceholderChips placeholders={placeholders} onInsert={insertPlaceholder} />
+
+    <RecruiterMessagesSection
+      recruiterMessages={recruiterMessages}
+      setRecruiterTemplate={setRecruiterTemplate}
+      focusRecruiter={focusRecruiter}
+      recruiterRefs={recruiterRefs}
+      previewTarget={previewTarget}
+    />
 
     <h3>Time rules</h3>
     {rules.map((rule, index) => (

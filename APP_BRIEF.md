@@ -90,8 +90,14 @@ The three cooperate in **two different ways** — do not confuse them:
 
 - **Node hub ↔ Samsara service: shared PostgreSQL only.** Same `DATABASE_URL`,
   no in-process link and no HTTP link between them. The Samsara service reads
-  `groups` for driver-group routing and the safety-event video/music settings this
-  repo manages, and writes `safety_event_video_jobs`.
+  `groups` for driver-group routing, the safety-event video/music settings and
+  the `samsara_settings` row this repo manages, and writes
+  `safety_event_video_jobs` and `samsara_video_recovery_jobs`.
+  **That table IS the configuration channel.** Settings → Samsara is where the
+  Samsara API key, missing-video recovery and its delays are set; the poller
+  picks them up within a minute. Do not add an HTTP link between the two
+  services to exchange settings — the shared database already solves it, and a
+  second channel is a second thing to get out of step.
 - **Node hub ↔ Python leads worker: internal HTTP only.** The worker has **no
   database access whatsoever** — no Postgres driver in
   `leads-bot/requirements.txt`, no `DATABASE_URL` (and `render.yaml` does not
@@ -294,7 +300,28 @@ repository-wide working rules. The highest-consequence items:
     `tests/ringCentralConnectService.test.js` and
     `tests/ringCentralTokenRefresh.test.js`.
 
-14. **Dropping a table is one code path, and it is allow-listed.** Settings →
+14. **A safety alert is never delayed for video, and a missing clip is
+    recovered durably.** The alert goes out immediately, text-only when the
+    dashcam clip has not uploaded; the recovery is a row in
+    `samsara_video_recovery_jobs`, worked by the Samsara service. Three things
+    about it must not be undone: the wait is **durable** (it was an in-memory
+    `setTimeout`, so a redeploy inside the window silently dropped every pending
+    video while the delivered text alert made everything look fine); the
+    retrieval window is **never zero-length** (both paths built it as
+    `start = event.startMs || event.time`, `end = event.endMs || event.time`, so
+    a single-instant event asked Samsara for footage from T to T, which it
+    cannot produce); and the **retrieval id is persisted**, so a retry polls the
+    request already running instead of queueing a second one for the same
+    seconds of video. `samsara_event_id` is UNIQUE and the insert is
+    `ON CONFLICT DO NOTHING`, which is what makes a re-delivered event add
+    nothing. Telegram's part is unchanged and still the safe order — send the
+    video with the original caption, delete the text ONLY on success — and the
+    destinations a send missed stay on the job so a retry never posts a second
+    video where one already landed. The schema and the admin API live here
+    (migration 0013, `database/samsaraSettings.js`,
+    `server/routes/settings/samsaraRoutes.js`); the worker lives in
+    `samsara-integration`.
+15. **Dropping a table is one code path, and it is allow-listed.** Settings →
     Retired Leftovers (`database/retiredLeftovers.js`) is the only place the
     application drops anything. A table name never travels from a request into
     SQL — the caller picks from four hard-coded groups. Drops run in passes on
@@ -308,13 +335,13 @@ repository-wide working rules. The highest-consequence items:
     deactivation) does not. Guarded by `tests/retiredLeftovers.test.js`,
     `tests/retiredLeftoversRoute.test.js` and
     `tests/retiredLeftoversPg.test.js`.
-15. **One great-circle implementation.** `lib/geo/distance.js` owns it, and
+16. **One great-circle implementation.** `lib/geo/distance.js` owns it, and
     `haversineMiles` is `haversineMeters` converted rather than a second
     formula. Four consumers answer "is the truck there yet" from it — route
     completion, tracking start, fuel-stop proximity, ETA remaining distance —
     and two copies with two earth radii is two chances for those answers to
     disagree. `tests/geoDistance.test.js`.
-16. **A static page split into assets keeps an explicit allow-list.** `/remote`
+17. **A static page split into assets keeps an explicit allow-list.** `/remote`
     and `/presentation` were single self-contained files until they passed the
     500-line limit. Their assets are served by named routes, never
     `express.static`: splitting one exposed file must not expose a directory.
@@ -434,7 +461,8 @@ npm run build:schema:check                        # schema.sql is in sync with b
 | How to work in this repo (rules, safety, testing) | `CLAUDE.md` |
 | The implementation workflow | `.claude/skills/implement/SKILL.md` (`/implement`) |
 | Route Control + media-transport invariants | `docs/architecture/route-control.md` |
-| Whose number texts a lead (Bitrix assignee → recruiter → SMS), and the RingCentral/TCR prerequisites | `docs/architecture/recruiter-sms-sender.md` |
+| Whose number texts a lead, WHICH message they send, and the RingCentral/TCR prerequisites | `docs/architecture/recruiter-sms-sender.md` |
+| Samsara settings (the shared `samsara_settings` row, the shared-secret envelope for its API key) and missing-video recovery | `docs/architecture/samsara-settings-and-video-recovery.md` |
 | Database: authoritative schema + migration rules | `database/baseline/`, `database/migrations/`, `docs/database/` |
 | What was removed and why | `docs/ARCHIVED_FEATURES.md`, `docs/architecture/retired-*.md`, `docs/architecture/samsara-separation.md` |
 | Clearing a removed feature's leftover tables and roles | Settings → Retired Leftovers; `database/retiredLeftovers.js` |

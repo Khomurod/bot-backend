@@ -73,8 +73,10 @@ after deploy on the live service.
 ## C. Samsara safety checks (external `samsara-integration` service)
 
 > These run against the **separate** Samsara service. See its own
-> `docs/deployment/pre-deploy-checklist.md`. Verify here only that this hub still
-> shares the `groups` table correctly.
+> `docs/deployment/pre-deploy-checklist.md`. Verify here that this hub still
+> shares the `groups` table correctly **and that the settings row it now writes
+> reaches the poller** — Settings → Samsara is the configuration channel between
+> the two, so a wrong value here is a wrong value there.
 
 | # | What / Why | How to check |
 |---|---|---|
@@ -82,11 +84,13 @@ after deploy on the live service.
 | C2 | Notification goes to the Samsara Notification group. | **[PROD]** Hardcoded notifications group receives it. |
 | C3 | Notification goes to the correct driver group. | **[AUTO]** `samsaraRouting.test.js` (unit + name match); **[MANUAL]** spot-check. |
 | C4 | Event **without** immediate video handled. | **[AUTO]** `samsaraBroadcastDelivery.test.js` (text-first). |
-| C5 | Event **with later** video handled (backfill). | **[AUTO]** `samsaraVideoBackfill.test.js`. |
-| C6 | Event with **no** video does not crash or duplicate. | **[AUTO]** `samsaraVideoRetryDelivery.test.js`. |
-| C7 | Video handling is idempotent. | **[AUTO]** `samsaraIdempotentDelivery.test.js`, in-flight de-dupe. |
+| C5 | Event **with later** video handled (durable recovery). | **[AUTO]** `samsaraVideoRecovery*.test.js` (external repo); **[PROD]** Settings → Samsara → Recovery queue shows jobs moving to *Telegram updated*. |
+| C6 | Event with **no** video does not crash or duplicate. | **[AUTO]** `samsaraVideoRecoveryWorker.test.js` — it ends as *no video available* with a reason, never silently. |
+| C7 | Video handling is idempotent. | **[AUTO]** `samsaraIdempotentDelivery.test.js` + the UNIQUE `samsara_event_id` on the recovery job. |
 | C8 | Samsara polling does not cause memory issues. | **[PROD]** `--max-old-space-size=400`; sequential `pollCoordinator`; bounded queues/sets. |
 | C9 | Samsara failures are logged but do not crash the hub. | **[MANUAL]** Samsara service is isolated; hub keeps running regardless. |
+| C10 | **The Samsara key the panel holds is the one the poller uses.** | **[AUTO]** `sharedIntegrationCrypto.test.js` (same fixed vector both repos); **[PROD]** the poller logs `[VideoRecovery] Settings: source=database key=database …` at boot. `key=environment` with a key saved in the panel means it could not decrypt it — re-save it, or set the same `INTEGRATION_SECRET_KEY` on both services. |
+| C11 | **Replacing the key did not lose the working one.** | **[MANUAL]** Settings → Samsara → **Test connection** with the new key BEFORE saving; a save that omits the key leaves the stored one alone (`samsaraSettings.test.js`). |
 
 ---
 
@@ -116,6 +120,7 @@ after deploy on the live service.
 | E6 | Two-way reply does not create wrong lead records. | **[AUTO]** mirror table keyed correctly; **[MANUAL]** spot-check. |
 | E7 | Recruiter KPI leaderboard works. | **[AUTO]** `recruiterCallSync.test.js`, `recruiterSyncFallback.test.js`; **[PROD]** `/recruiters`. |
 | E8 | **A lead is texted by the recruiter Bitrix assigned it to**, and every fallback to the shared number is stated in the Telegram thread rather than being silent. | **[AUTO]** `facebookLeadSmsSender.test.js`, `facebookLeadEventProcessor.test.js`, `ringCentralSmsSender.test.js`; **[PROD]** Settings → RingCentral: every active recruiter's row shows **Sends as self** and a **Bitrix #** — a row reading *Shared number* or *Needs RingCentral sign-in* means their leads are going out from `(470) 480-4679`. |
+| E8a | **A recruiter's own lead message goes out under their name, and an empty box still works.** | **[AUTO]** `facebookLeadRecruiterMessages.test.js`, `facebookLeadRecruiterFlow.test.js`, `facebookLeadRecruiterRoutes.test.js`; **[PROD]** Facebook Leads → Auto-Reply Setup → *Recruiter messages*: every active recruiter is listed, a filled box shows **custom message** and an empty one **using the time rules**. A recruiter with no **Bitrix #** can never be assigned a lead, so their message would never fire — the row says so. |
 | E8b | **Bitrix is aligned with the sender chain.** The assignee decides whose number texts a lead, so a portal that never assigns, an unmapped Bitrix user, or a status the portal lacks all degrade SMS sending silently. | **[PROD]** Settings → RingCentral → Bitrix24 card → **Diagnose**: every step ✓. Pay attention to *Assignee readback* (it reads the most recent real lead) and to an *ignored* assignee (a name where a numeric id belongs). Bitrix is configured **in this card**, not on Render — the webhook and assignee live in `bitrix_settings` and win over any `BITRIX24_*` env var. **[AUTO]** `bitrixDiagnostics.test.js`, `bitrixSettingsRoutes.test.js`. |
 | E8c | **Every recruiter is mapped to a Bitrix user.** An unmapped recruiter is not an error anywhere — their leads just go out from the shared number. | **[PROD]** Settings → RingCentral → Bitrix24 card → **Match recruiters to Bitrix users**: the preview should list nothing under *No Bitrix user found*, *Matched more than one* or *Conflicts*. Applying writes only strong, unambiguous matches; anything left over is mapped from the row's **Pick from Bitrix** dropdown. Needs the `user` scope on the inbound webhook. | **[AUTO]** `recruiterBitrixMatch.test.js`, `recruiterBitrixMapping.test.js`. |
 | E9 | **Each recruiter's number can actually send.** A number missing from the A2P/10DLC (TCR) campaign authenticates fine and then has every send rejected. | **[MANUAL]** Settings → RingCentral → the recruiter's row → **Diagnose** (the *SMS capability* step), then **Send test SMS** to your own phone. Repeat after adding a recruiter. |

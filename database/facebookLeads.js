@@ -9,6 +9,7 @@
  *   ./facebookLeads/pageConnections.js  connected Pages + encrypted tokens
  *   ./facebookLeads/webhookEvents.js    the verified-event queue and its guards
  *   ./facebookLeads/autoMessages.js     admin-editable auto-SMS config
+ *   ./facebookLeads/recruiterMessages.js  per-recruiter auto-SMS overrides
  *   ./facebookLeads/smsMirrors.js       the two-way SMS mirror ledger
  *
  * Nothing but re-exports belongs here — see CLAUDE.md → Module design.
@@ -17,6 +18,7 @@ const connectSessions = require('./facebookLeads/connectSessions');
 const pageConnections = require('./facebookLeads/pageConnections');
 const webhookEvents = require('./facebookLeads/webhookEvents');
 const autoMessages = require('./facebookLeads/autoMessages');
+const recruiterMessages = require('./facebookLeads/recruiterMessages');
 const smsMirrors = require('./facebookLeads/smsMirrors');
 
 module.exports = {
@@ -24,5 +26,6 @@ module.exports = {
   ...pageConnections,
   ...webhookEvents,
   ...autoMessages,
+  ...recruiterMessages,
   ...smsMirrors,
 };

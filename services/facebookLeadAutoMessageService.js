@@ -92,13 +92,59 @@ async function loadAutoMessageConfig() {
   }
 }
 
-async function resolveAutoSmsForLead({ fieldMap, pageName, at = null } = {}) {
-  const { settings, rules } = await loadAutoMessageConfig();
+/**
+ * The assigned recruiter's own opening line, or null.
+ *
+ * Null covers every "no override" case identically — no row, a blank template,
+ * a parked one, no recruiter resolved at all, or a database hiccup. The caller
+ * then uses the global time-based system exactly as it always did, which is
+ * why a failure here can never cost a lead its text.
+ */
+async function loadRecruiterTemplate(recruiter) {
+  const recruiterId = Number(recruiter?.id);
+  if (!Number.isFinite(recruiterId) || recruiterId <= 0) return null;
+  try {
+    const db = require('../database/db');
+    const row = await db.getFacebookLeadRecruiterMessage(recruiterId);
+    const template = String(row?.message_template || '').trim();
+    return template || null;
+  } catch (err) {
+    console.warn('[FB-LEAD-SMS] Could not load the recruiter auto-message:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Which message this lead gets, and whose name signs it.
+ *
+ * ORDER: the assigned recruiter's own template wins; failing that the global
+ * time-based rules decide, then the outside-hours fallback, then the legacy
+ * hard-coded line. `repName` rides along so `{rep_name}` renders as the person
+ * whose RingCentral number is about to send it.
+ *
+ * The recruiter override deliberately does NOT carry its own schedule. The
+ * master enable switch and the working-hours rules keep their existing meaning
+ * for every lead; a recruiter template only replaces the WORDS.
+ *
+ * @param {object} params
+ * @param {object} [params.recruiter]  the row resolved from the Bitrix assignee
+ */
+async function resolveAutoSmsForLead({ fieldMap, pageName, at = null, recruiter = null, config = null } = {}) {
+  // `config` lets the caller hand in a configuration it has ALREADY loaded.
+  // The processor reads it before resolving the Bitrix assignee — so a
+  // deployment with auto-SMS switched off can skip the assignee poll entirely
+  // — and re-reading it here would make that a second query per lead.
+  const { settings, rules } = config || await loadAutoMessageConfig();
+  const recruiterTemplate = await loadRecruiterTemplate(recruiter);
+  const repName = String(recruiter?.name || '').trim();
 
   if (!settings) {
     return {
-      template: LEGACY_HARDCODED_TEMPLATE,
-      ruleLabel: 'Legacy default',
+      template: recruiterTemplate || LEGACY_HARDCODED_TEMPLATE,
+      ruleLabel: recruiterTemplate ? `${repName || 'Recruiter'}'s message` : 'Legacy default',
+      source: recruiterTemplate ? 'recruiter' : 'legacy',
+      recruiterId: recruiterTemplate ? recruiter.id : null,
+      repName,
       settings: {
         rep_name: 'Tom',
         company_name: 'Wenze trucking company',
@@ -109,9 +155,20 @@ async function resolveAutoSmsForLead({ fieldMap, pageName, at = null } = {}) {
     };
   }
 
-  const picked = resolveTemplateAt({ settings, rules, at });
+  const picked = recruiterTemplate
+    ? {
+      template: recruiterTemplate,
+      ruleLabel: `${repName || 'Recruiter'}'s message`,
+      ruleId: null,
+      source: 'recruiter',
+      atIso: null,
+    }
+    : resolveTemplateAt({ settings, rules, at });
+
   return {
     ...picked,
+    recruiterId: recruiterTemplate ? recruiter.id : null,
+    repName,
     settings,
     isEnabled: settings.is_enabled !== false,
   };
@@ -139,6 +196,9 @@ function previewAutoMessage({
   pageName = '',
   at = null,
   ruleLabel = null,
+  // Who the preview should sign as. The recruiter section passes their name so
+  // `{rep_name}` previews as the person who would actually be texting.
+  repName = '',
 }) {
   const timezone = String(settings?.timezone || 'America/Chicago').trim();
   const picked = template
@@ -152,7 +212,7 @@ function previewAutoMessage({
     }
     : resolveTemplateAt({ settings, rules, at });
 
-  const context = buildTemplateContext({ fieldMap, settings, pageName });
+  const context = buildTemplateContext({ fieldMap, settings, pageName, repName });
   const rendered = renderLeadSmsTemplate(picked.template, context);
   const segments = estimateSmsSegments(rendered);
 
@@ -249,6 +309,40 @@ function serializeSettingsForApi(settings) {
   };
 }
 
+/**
+ * Validate the recruiter section of a save. A BLANK template is valid and means
+ * "no override" — that is how an admin removes one — so only non-blank text is
+ * checked for unknown placeholders.
+ */
+function validateRecruiterMessagePayload(entries) {
+  const errors = [];
+  for (const entry of entries || []) {
+    const template = String(entry?.message_template || '').trim();
+    if (!template) continue;
+    const check = validateTemplate(template);
+    if (check.valid) continue;
+    const who = entry?.recruiter_name || `Recruiter ${entry?.recruiter_id}`;
+    if (check.unknownTokens?.length) {
+      errors.push(`${who}: unknown placeholders ${check.unknownTokens.join(', ')}`);
+    } else {
+      errors.push(`${who}: ${check.error || 'invalid template'}`);
+    }
+  }
+  return errors;
+}
+
+function serializeRecruiterMessageForApi(row) {
+  return {
+    recruiter_id: row.recruiter_id,
+    recruiter_name: row.recruiter_name,
+    active: row.recruiter_active !== false,
+    bitrix_user_id: row.bitrix_user_id ?? null,
+    message_template: row.message_template || '',
+    is_enabled: row.is_enabled !== false,
+    updated_at: row.updated_at || null,
+  };
+}
+
 module.exports = {
   LEGACY_HARDCODED_TEMPLATE,
   normalizeTimeString,
@@ -257,7 +351,10 @@ module.exports = {
   pickActiveRule,
   resolveTemplateAt,
   loadAutoMessageConfig,
+  loadRecruiterTemplate,
   resolveAutoSmsForLead,
+  validateRecruiterMessagePayload,
+  serializeRecruiterMessageForApi,
   previewAutoMessage,
   previewNow,
   previewTemplate,

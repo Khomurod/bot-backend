@@ -9,6 +9,7 @@
  *   ./settings/ringcentralRoutes.js   /ringcentral*    credentials + KPI targets
  *   ./settings/messageGroupRoutes.js  /message-groups  per-category routing
  *   ./settings/gmapsRoutes.js         /gmaps*          Route Control's Maps key
+ *   ./settings/samsaraRoutes.js       /samsara*        Samsara connection + video recovery
  *   ./settings/safetyEventRoutes.js   /safety-events*  dashcam music overlay
  *   ./settings/bolPodRoutes.js        /bol-pod*        document forwarding
  *   ./settings/retiredLeftoversRoutes.js /retired-leftovers*  removed-feature cleanup
@@ -23,6 +24,7 @@ const { createEldSettingsRouter } = require('./settings/eldRoutes');
 const { createRingCentralSettingsRouter } = require('./settings/ringcentralRoutes');
 const { createMessageGroupSettingsRouter } = require('./settings/messageGroupRoutes');
 const { createGmapsSettingsRouter } = require('./settings/gmapsRoutes');
+const { createSamsaraSettingsRouter } = require('./settings/samsaraRoutes');
 const { createSafetyEventSettingsRouter } = require('./settings/safetyEventRoutes');
 const { createBolPodSettingsRouter } = require('./settings/bolPodRoutes');
 const { createBitrixSettingsRouter } = require('./settings/bitrixRoutes');
@@ -36,6 +38,7 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
   router.use(createRingCentralSettingsRouter(deps));
   router.use(createMessageGroupSettingsRouter(deps));
   router.use(createGmapsSettingsRouter(deps));
+  router.use(createSamsaraSettingsRouter(deps));
   router.use(createSafetyEventSettingsRouter(deps));
   router.use(createBolPodSettingsRouter(deps));
   router.use(createBitrixSettingsRouter(deps));
