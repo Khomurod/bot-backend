@@ -238,7 +238,8 @@ that area**, and run the tests it names.
 | Area | Read first |
 |---|---|
 | Route Control, route screenshots, Telegram media transport | [`docs/architecture/route-control.md`](docs/architecture/route-control.md) |
-| Which recruiter's number texts a lead, per-recruiter RingCentral credentials, the Bitrix assignee lookup | [`docs/architecture/recruiter-sms-sender.md`](docs/architecture/recruiter-sms-sender.md) |
+| Which recruiter's number texts a lead, the E.164 `from` rule, per-recruiter RingCentral credentials, inbound-SMS subscriptions | [`docs/architecture/recruiter-sms-sender.md`](docs/architecture/recruiter-sms-sender.md) |
+| The Bitrix assignee lookup, recruiter↔Bitrix mapping, Bitrix connection settings | [`docs/architecture/recruiter-sms-bitrix.md`](docs/architecture/recruiter-sms-bitrix.md) |
 | Database changes, migrations, deferred schema decisions | [`docs/database/`](docs/database/) |
 | What was deliberately removed and must not be resurrected | [`docs/ARCHIVED_FEATURES.md`](docs/ARCHIVED_FEATURES.md), [`docs/architecture/retired-*.md`](docs/architecture/) |
 | Clearing a removed feature's leftover tables, roles and accounts | [`docs/architecture/retired-trailers-qbq-sos.md`](docs/architecture/retired-trailers-qbq-sos.md) |

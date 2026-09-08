@@ -35,18 +35,40 @@ const ACTIONABLE_FALLBACKS = new Set([
   'unassigned',
   'unmapped_assignee',
   'recruiter_not_configured',
+  'recruiter_number_unusable',
   'recruiter_auth_failed',
   'recruiter_send_failed',
+  'recruiter_number_not_on_extension',
+  'recruiter_number_not_sms_capable',
   'crm_lookup_failed',
   'sender_lookup_failed',
+]);
+
+/**
+ * Reasons `sendSmsAsRecruiter` reports precisely enough to surface as-is.
+ * Anything else — an HTTP status, an exception — becomes the generic
+ * `recruiter_send_failed`, because a status code is not something an operator
+ * can act on.
+ */
+const SENDER_REASONS_PASSED_THROUGH = new Set([
+  'recruiter_not_configured',
+  'recruiter_number_unusable',
+  'recruiter_auth_failed',
+  'recruiter_number_not_on_extension',
+  'recruiter_number_not_sms_capable',
 ]);
 
 const FALLBACK_NOTES = {
   unassigned: 'Bitrix had not assigned the lead yet — sent from the shared number.',
   unmapped_assignee: 'The Bitrix user who owns this lead is not mapped to a recruiter — sent from the shared number.',
   recruiter_not_configured: 'has no RingCentral credentials — sent from the shared number.',
+  recruiter_number_unusable: 'has a stored phone number that is not a number a text can be sent from (any format works) — sent from the shared number.',
   recruiter_auth_failed: 'could not authenticate with RingCentral (re-connect their account) — sent from the shared number.',
-  recruiter_send_failed: 'RingCentral refused the send from their number — sent from the shared number.',
+  recruiter_send_failed: 'could not send from their number (RingCentral refused it) — sent from the shared number.',
+  // The two states that used to hide inside recruiter_send_failed as an opaque
+  // MSG-245. They need different fixes, so they say different things.
+  recruiter_number_not_on_extension: 'has a number RingCentral does not list on their extension (check the number in Settings → RingCentral) — sent from the shared number.',
+  recruiter_number_not_sms_capable: 'has a number that cannot send SMS (it needs A2P/10DLC registration in RingCentral) — sent from the shared number.',
   crm_lookup_failed: 'Could not read the Bitrix assignee — sent from the shared number.',
   sender_lookup_failed: 'Could not look up the assigned recruiter — sent from the shared number.',
 };
@@ -144,14 +166,18 @@ async function sendLeadSms({ phone, message, bitrixId = null, entity, waitOption
         recruiter: resolved.recruiter,
         recruiterId: resolved.recruiter.id,
         assignedById: resolved.assignedById,
-        fromNumber: attempt.fromNumber || resolved.recruiter.phone_number || null,
+        // What actually sent — already E.164, and RingCentral's own spelling
+        // when the send had to be corrected. NEVER the stored column: that is
+        // the human-typed value, and recording it as the sender is what made
+        // `sms_from_number` disagree with reality.
+        fromNumber: attempt.fromNumber || null,
         fallbackReason: null,
         fallbackNote: null,
       };
     }
     // Their number could not send. The lead still gets its text.
     fallbackName = resolved.recruiter.name || null;
-    fallbackReason = attempt.reason === 'recruiter_not_configured' || attempt.reason === 'recruiter_auth_failed'
+    fallbackReason = SENDER_REASONS_PASSED_THROUGH.has(attempt.reason)
       ? attempt.reason
       : 'recruiter_send_failed';
     console.warn(

@@ -19,10 +19,16 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { createPgHarness, skipWithoutPg } = require('./helpers/pgHarness');
+const { createPgHarness, skipWithoutPg, allMigrationsSql } = require('./helpers/pgHarness');
 
 const MIGRATION_PATH = path.join(__dirname, '..', 'database', 'migrations', '0008_recruiter_sms_sender_identity.sql');
 const MIGRATION = fs.readFileSync(MIGRATION_PATH, 'utf8');
+
+// The subtests that write THROUGH the data layer need the schema the data
+// layer actually knows, not just 0008's slice of it — a later migration adding
+// a column those writers set would otherwise fail a test that is correct about
+// 0008. The DDL assertions below still name 0008's own columns explicitly.
+const ALL_MIGRATIONS = allMigrationsSql();
 
 /** Column names on a table, as PostgreSQL sees them. */
 async function columnsOf(harness, table) {
@@ -190,7 +196,7 @@ test('a session dies with the recruiter it was created for', { skip: skipWithout
 });
 
 test('the data layer reads and writes the new columns for real', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
   const { ringcentral } = harness.loadDataLayer(['ringcentral']);
 
   const created = await ringcentral.createRecruiter({
@@ -254,7 +260,7 @@ test('the data layer reads and writes the new columns for real', { skip: skipWit
 });
 
 test('the mirror ledger stores its sender through the data layer', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
   const { facebookLeads, ringcentral } = harness.loadDataLayer(['facebookLeads', 'ringcentral']);
 
   const recruiter = await ringcentral.createRecruiter({
@@ -287,7 +293,7 @@ test('the mirror ledger stores its sender through the data layer', { skip: skipW
 });
 
 test('a lead remembers who was assigned it and who texted them', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
   const { leads, ringcentral } = harness.loadDataLayer(['leads', 'ringcentral']);
 
   const recruiter = await ringcentral.createRecruiter({

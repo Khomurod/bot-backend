@@ -27,6 +27,8 @@ const {
 } = require('../../../services/ringCentralCallService');
 const { getRecruiterAccessToken } = require('../../../services/ringCentralOAuthService');
 const { sendSmsAsRecruiter } = require('../../../services/ringCentralSmsService');
+const { phoneKey } = require('../../../lib/phone/e164');
+const { diagnoseSenderNumber } = require('./senderNumberDiagnosis');
 
 /**
  * Resolve the effective auth for a recruiter, letting the request body override
@@ -148,24 +150,21 @@ function registerRecruiterDiagnosticRoutes(router, { authMiddleware }) {
           .filter(Boolean).join(', ');
         step('Extension identity', true, who || 'Resolved.');
 
-        const wanted = rc.normalizePhone(recruiter.phone_number);
-        const extNumbers = (ext.phoneNumbers || []).map(rc.normalizePhone);
-        if (!extNumbers.length) {
-          step('Number match', true, 'Extension phone numbers not readable (permission not granted) — skipped.');
-        } else if (extNumbers.includes(wanted)) {
-          step('Number match', true, `${recruiter.phone_number} belongs to this RingCentral user.`);
-        } else {
-          step('Number match', false,
-            `This login owns ${ext.phoneNumbers.join(', ')} — not ${recruiter.phone_number}. `
-            + 'Calls would be attributed to the wrong person and lead texts would be rejected.');
-        }
+        // Predicts what a REAL send will do — see senderNumberDiagnosis.js for
+        // why comparing only the last ten digits reported a false green.
+        const numberCheck = diagnoseSenderNumber({
+          storedNumber: recruiter.phone_number,
+          extensionPhoneNumbers: ext.phoneNumbers || [],
+        });
+        step(numberCheck.label, numberCheck.ok, numberCheck.detail);
+        const wanted = phoneKey(recruiter.phone_number);
 
         const smsCapable = (ext.phoneNumberDetails || [])
           .filter((d) => d.features.includes('SmsSender'))
           .map((d) => d.phoneNumber);
         if (!ext.phoneNumberDetails?.length) {
           step('SMS capability', true, 'Phone-number details not readable — skipped.');
-        } else if (smsCapable.map(rc.normalizePhone).includes(wanted)) {
+        } else if (smsCapable.map(phoneKey).includes(wanted)) {
           step('SMS capability', true, `${recruiter.phone_number} can send SMS.`);
         } else {
           step('SMS capability', false,

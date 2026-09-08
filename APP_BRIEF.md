@@ -231,14 +231,38 @@ repository-wide working rules. The highest-consequence items:
     looked dead when one page was. Guarded by
     `admin/src/components/PageErrorBoundary.test.jsx`.
 11. **An SMS is sent with the credentials of the number it claims to come
-    from.** RingCentral rejects a send whose `from` is not on the token's own
-    extension — a super-admin token cannot send on a colleague's behalf — so
-    `sendSmsAsRecruiter()` always pairs the recruiter's own credential with the
-    recruiter's own number, and `services/ringCentralOAuthService.js` is the
-    only place either credential shape becomes a token. Never "fix" a rejected
-    send by swapping in the shared token: it authenticates and still fails, and
-    the fallback that follows is the shared NUMBER, not a shared token behind
-    someone else's number. Guarded by `tests/ringCentralSmsSender.test.js`.
+    from, and `from` is always E.164.** RingCentral rejects a send whose `from`
+    is not on the token's own extension — a super-admin token cannot send on a
+    colleague's behalf — so `sendSmsAsRecruiter()` always pairs the recruiter's
+    own credential with the recruiter's own number, and
+    `services/ringCentralOAuthService.js` is the only place either credential
+    shape becomes a token. Never "fix" a rejected send by swapping in the shared
+    token: it authenticates and still fails, and the fallback that follows is
+    the shared NUMBER, not a shared token behind someone else's number.
+    **The second half was a live bug for the feature's first weeks:**
+    `recruiters.phone_number` stores whatever an admin typed, and handing
+    `(470) 480-4679` to RingCentral answers `MSG-245 … Cannot find the phone
+    number which belongs to user` — which reads like broken auth and is not. All
+    sending goes through `lib/phone/e164.js` `toE164()`; `phoneKey()` beside it
+    is for COMPARING only and is not sendable. A `from` rejection is then
+    checked against what the extension really owns rather than reported as an
+    opaque provider error. Guarded by `tests/ringCentralSmsSender.test.js` and
+    `tests/phoneE164.test.js`.
+    - **A lead that already has `sms_from_number` is never texted again.** That
+      column is the record of "this person has heard from us", so the guard in
+      `facebookLeadEventProcessor` closes the admin retry button, the
+      at-least-once crash window, and anything added later — and makes every
+      pre-feature lead structurally immune to a resend. A failed lookup opens
+      the guard: "cannot prove it was sent" must not become "do not send".
+    - **The AutoMessage notice uses the group id AS STORED.** Rewriting it to
+      the `-100` supergroup form unconditionally made Telegram answer
+      `chat not found`, which threw before the mirror insert — costing every
+      lead its `outbound_auto` row and, with it, the anchor a reply threads
+      onto. Convert only on a retryable answer (`sendToChatIdWithFallback`).
+    - **`rc_extension_id` must be populated for every credentialed recruiter,**
+      not just those who signed in through OAuth, or the inbound-SMS
+      subscription cannot watch their number and their drivers' replies reach
+      nobody while their outbound texts work fine.
 12. **A lead is never left un-texted, and a silent fallback is a bug.** Every
     way the assigned sender can be unavailable — nobody mapped, no assignee
     yet, an unmapped assignee, expired credentials, a rejected send, a database
@@ -350,13 +374,13 @@ npm run build:schema:check                        # schema.sql is in sync with b
 
 - **The Node suite passes clean with no secrets and no database.** Verified
   baseline (2026-09-08, deps installed, **with** `TEST_DATABASE_URL` against a
-  local PostgreSQL 16): **1878 tests, 1878 pass, 0 fail, 0 skipped**, exit 0.
-  Split the way CI splits it: the 196 non-`*Pg` files with no application env at
-  all are **1803 pass / 0 skipped**, and the 10 `*Pg` files against a real
-  Postgres are **75 pass / 0 skipped**.
+  local PostgreSQL 16): **1931 tests, 1931 pass, 0 fail, 0 skipped**, exit 0.
+  Split the way CI splits it: the non-`*Pg` files with no application env at
+  all are **1852 pass / 0 skipped**, and the 11 `*Pg` files against a real
+  Postgres are **79 pass / 0 skipped**.
   Without a database the `*Pg` suites skip instead — a skip is not a pass, so
   CI provides a real Postgres and fails on any skip. The Python leads
-  worker adds **37 tests**
+  worker adds **58 tests**
   (`python -m unittest discover -s leads-bot -p "test_*.py"`), and the admin
   panel **105** in 10 files (`npm test --prefix admin`) — down from 242 because
   the 12 admin test files belonging to the removed trailer and QBQ/SOS features

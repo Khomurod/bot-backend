@@ -19,6 +19,57 @@ the reason a rejected send is never "fixed" by falling back to the shared
 *token* — the fallback is the shared **number**, sent with the shared token that
 owns it.
 
+### …and its other half: `from` must be E.164
+
+The same constraint has a second edge, and it is the one that was missed.
+`recruiters.phone_number` holds **whatever an admin typed** — `(470) 480-4679`,
+`4702400064`, `470-419-4110` — and the sender handed that string to RingCentral
+verbatim. RingCentral answered:
+
+```
+InvalidParameter / MSG-245
+Parameter [from] value [(470) 480-4679] is invalid
+[Cannot find the phone number which belongs to user]
+```
+
+which reads like an authentication failure and is not one. The token was right;
+the number was merely unrecognizable. Every lead fell back to the shared number
+while the recruiter's credentials worked perfectly — call-log sync never touches
+`phone_number`, so KPI attribution stayed healthy the whole time and hid it.
+
+**`lib/phone/e164.js` is now the only answer to "what number do we send?"** It
+holds two functions that must never be confused, which is why they sit together:
+
+| | For | Returns |
+|---|---|---|
+| `toE164(v)` | a number you can SEND from or to | `+14704804679`, or `''` when the value cannot be one |
+| `phoneKey(v)` | COMPARING two spellings | the last ten digits, `''` if shorter |
+
+Handing a `phoneKey` to RingCentral fails exactly like the raw column did.
+`toE164` returning `''` is deliberate: a caller must fall back to a number that
+works rather than send a half-normalized string that the provider will reject.
+
+**A rejection is now checked, not guessed at.** When RingCentral refuses a
+`from`, the sender asks `getExtensionInfoWithToken` what that extension actually
+owns and turns MSG-245 into a state an operator can act on:
+
+- the same line spelled differently (a stray country code) → **retried once**
+  with RingCentral's own spelling, reported as `correctedFrom`;
+- not on the extension → `recruiter_number_not_on_extension`;
+- there but not SMS-capable → `recruiter_number_not_sms_capable`
+  (usually A2P/10DLC registration).
+
+This costs nothing on the happy path — it only runs after a rejection.
+`database/ringcentral/recruiters.js` keeps its own lenient `normalizePhone`
+**on purpose**: it writes `phone_number_normalized`, which is
+`TEXT NOT NULL UNIQUE`, and collapsing short values to `''` there would collide.
+
+The operator's typed value is never rewritten. Diagnose reports the mismatch
+instead (`server/routes/recruiter/senderNumberDiagnosis.js`), which is also
+where the old false green lived: it compared last-ten digits, so a stored
+`(470) 480-4679` against RingCentral's `+14704804679` read **"Number match:
+OK"** while every send was rejected.
+
 ## The path a lead takes
 
 ```
@@ -103,6 +154,30 @@ worse: a deal has no `PHONE` field, so the driver's number — which the
 conversion puts on the Contact — would be dropped, and the recruiter could not
 call them.
 
+## Two things that must not happen twice
+
+**The notice goes to the group id AS STORED.** `sendAutoMessageSentNotice` used
+to run the chat id through `toSupergroupStyleChatId()` unconditionally, turning a
+plain group's `-5231255301` into `-1005231255301` — a chat that does not exist.
+Telegram answered `400: Bad Request: chat not found`, `telegramHtml` classifies
+that as permanent, and the throw landed **before** the `insertFacebookLeadSmsMirror`
+call below it. So every lead lost its notice *and* its `outbound_auto` mirror
+row, and with no mirror there is no reply anchor: a recruiter's Telegram reply
+had nothing to thread onto. The lead post a few steps earlier had always used the
+same id verbatim and always worked. `sendToChatIdWithFallback` now tries the
+stored id and converts only on a retryable answer — the pattern `sendLeadsMessage`
+already used.
+
+**A lead that has been texted is never texted again.** `leads.sms_from_number` is
+written only after a send actually left RingCentral, so it is the record of "this
+person has heard from us". `sendAutoSms` checks it, which closes every re-drive
+at once: the admin retry button (which has no `status <> 'completed'` guard), the
+at-least-once window where a process dies after the send and before
+`completeFacebookWebhookEvent`, and anything added later. Every lead processed
+before per-recruiter sending carries the shared number there, so they are all
+structurally immune to being re-texted. A failed lookup opens the guard — "cannot
+prove it was sent" must not become "do not send".
+
 ## Two guarantees
 
 1. **A lead is never left un-texted.** Nobody mapped, no assignee yet, an
@@ -165,9 +240,35 @@ For an inbound SMS to a recruiter's number to reach Telegram at all, the
 subscription must watch that extension: `leads-bot/sms.py → inbound_sms_filters()`
 adds one `message-store/instant` filter per extension, read from
 `GET /api/internal/ringcentral/sms-extensions`. Watching another extension needs
-an **account-admin** subscriber; if RingCentral refuses, registration retries
-with the shared extension alone and logs that recruiter replies will not be
-mirrored — one number covered beats none.
+an **account-admin** subscriber.
+
+**`rc_extension_id` used to be NULL for anyone who did not sign in.** It was
+written by exactly one code path — the OAuth callback — so a recruiter onboarded
+by an admin pasting their JWT had none. They sent leads from their own number
+perfectly well, `listRecruitersWithOwnCredentials()` included them, and then
+`.filter(Boolean)` dropped them from the roster: the driver got a text from a
+line nothing was watching. `services/recruiterExtensionIdentity.js` fills it in
+from RingCentral itself, driven by `ringCentralTokenRefreshService` — which
+already walks every credentialed recruiter, and runs **once at boot**, so a
+deploy repairs production in minutes rather than a day. The internal route now
+warns by name about anyone still missing one instead of dropping them silently.
+
+**A refused filter set sheds one extension at a time.** It used to go straight
+from "everyone" to "nobody": one unusable extension id produced
+`CMN-101 Parameter [eventFilters] value is invalid` and the retry dropped
+**every** recruiter's filter. Now `valid_extension_ids()` refuses a non-numeric
+id locally (naming it, rather than letting it invalidate the whole payload), and
+the ladder gives up capability in the order that costs least — MMS first, then
+recruiters one at a time, then the shared extension alone. The filters
+themselves are logged; they carry no secret, and without them a bad id was
+invisible. The warning also stopped claiming "WITHOUT per-recruiter extensions"
+when the roster was empty and the real loss was MMS.
+
+`hub_client._fetch_ringcentral_sms_extensions` now **raises** when the shared
+secret is unset instead of returning `[]`. Returning an empty list made a
+misconfigured deployment indistinguishable from a company with no recruiters
+onboarded — and `reconcile_rc_subscription` would re-register with no extensions
+rather than leaving the working subscription alone.
 
 **The subscription is reconciled, not registered once**
 (`leads-bot/webhook/rc_subscription.py`). A recruiter can finish onboarding at
@@ -213,125 +314,13 @@ feature degrades to the old behaviour rather than breaking.
    (`ONCRMLEADUPDATE`) instead of polling. Polling was chosen because it needs
    no new public endpoint and no Bitrix-side configuration.
 
-## Where Bitrix is configured
+## Where Bitrix is configured, and how recruiters map to it
 
-In the app. Settings → RingCentral → Bitrix24 → **Bitrix24 connection** writes
-`bitrix_settings` (`database/bitrix.js`, migration 0009): enabled, the inbound
-webhook (encrypted at rest), entity, the assignee at creation, source id and
-description, deal pipeline, and the assignee wait. **A saved value wins over
-the matching `BITRIX24_*` environment variable; a value never saved inherits
-it** — so an env-only deployment behaves exactly as before until someone
-saves. Every Bitrix caller reads the effective config at call time through
-`bitrix24Service` (`isBitrixConfigured`, `getWebhookBase`,
-`getBitrixMapperConfig` — all async), never from a module-scope constant.
-
-Two rules that are easy to get wrong:
-
-- **The assignee field refuses a name.** The production value was
-  `Tom Robinson`, which Bitrix ignores, so every lead landed on the webhook
-  owner while the config looked effective. The form, the route and
-  `database/bitrix.js` all reject anything that is not a positive integer (a
-  pasted profile URL is cleaned to its number). Blank means "let a Bitrix
-  distribution rule assign", and — because `assigned_by_id` is TEXT — a blank
-  saved in the panel is `''`, which beats the env name, rather than NULL, which
-  would inherit it. **An ignored value inherited from the environment is shown
-  in red under the field but never pre-filled into it** — the first day in
-  production it was, Save refused it, and the operator saw a button that did
-  nothing. Every refused save prints its reason directly under the button;
-  the tab banner alone is off-screen from where the click happened.
-- **The URL is the credential.** It is never returned to a browser — the admin
-  view carries `webhookHost` and `webhookSet` only, and not even a masked tail,
-  since the tail is part of the token.
-
-## Mapping recruiters to Bitrix users
-
-`recruiters.bitrix_user_id` is the only link from a Bitrix lead assignment back
-to a recruiter row, so it is what decides whose number texts a driver. It used
-to be filled in by hand: open the Bitrix profile, read the id out of the URL,
-type it into the panel — per recruiter, and again for every new hire.
-
-`services/recruiterBitrixMapping/` does it instead:
-
-| Module | Job |
-|---|---|
-| `directory.js` | reads `user.get` (paged), normalizes to id / name / phones / active |
-| `match.js` | **pure**: decides which Bitrix user is which recruiter |
-| `index.js` | preview and apply, and the only place a row is written |
-
-**Why it refuses more than it accepts.** An unmapped recruiter costs a lead the
-personal touch — it goes out from the shared number. A *wrongly* mapped one
-texts a driver from a colleague's phone and routes the reply to the wrong
-person. So the tiers are deliberately asymmetric:
-
-- **phone** — the recruiter's number is on exactly one Bitrix profile. The
-  strongest signal available, because it is the same number that will send.
-- **name** — the full name matches exactly one profile, in either word order
-  (`Alex Smith` / `Smith Alex`), accents and punctuation ignored.
-- **first_name** — only a first name to go on. **Proposed, never applied**:
-  "Alex" the recruiter and "Alex" in accounting are indistinguishable from
-  here, so an operator ticks the box.
-
-Anything matching two or more profiles is `ambiguous`; two recruiters landing
-on one profile, or a profile that already belongs to someone else, is a
-`conflict`. Neither is written.
-
-**An existing mapping is never overwritten.** A stored id is an operator's
-decision. When a strong signal disagrees with it the disagreement is *reported*
-as a `mismatch` and the row is left alone.
-
-**Preview and apply are separate calls.** `POST /api/recruiters/bitrix-automap`
-previews; only `{ apply: true }` writes, and the panel always previews first.
-The partial unique index on `bitrix_user_id` is the backstop — a rejected row
-is reported per row and does not abandon the rest of the plan.
-
-**A confirmation names the Bitrix user, not just the recruiter.** `confirm`
-takes `{ recruiterId, bitrixUserId }` pairs. Apply re-reads the directory, so a
-recruiter id alone would authorize whatever that recruiter resolves to the
-*second* time — a different sole first-name match, if the portal changed in
-between. A pair that no longer matches the plan is reported in `failed` ("the
-directory now matches …, re-run the match") and nothing is written for it.
-
-**Collisions are computed across both tiers.** Counting only the strong matches
-left two first-name proposals for one Bitrix user both confirmable, and the
-unique index then picked the winner by write order. A strong match beats a weak
-claim on the same user — a phone match is not in doubt because someone shares a
-first name — so the weak one becomes the conflict and the strong one still
-applies; two claims of equal strength are a real ambiguity and neither is
-written.
-
-**One profile is one candidate.** Bitrix commonly repeats a number across
-`PERSONAL_MOBILE` and `WORK_PHONE`; the phone index is deduplicated by user id,
-because `resolveCandidate` reads a key's length to decide ambiguity and one
-person listed twice would refuse the strongest match available.
-
-**`GET /api/recruiters/bitrix-users`** backs the per-row picker. It returns
-id, name, email, position and active only: phone numbers are matched
-server-side and never need to reach a browser to do it. Like every Bitrix
-surface here it returns the webhook's **host** and never its path.
-
-**`GET /api/recruiters/bitrix-users/:bitrixId`** is the per-row **Check Bitrix
-user** button — "is this id a real person, and who?". `ok:false` means the
-lookup could not run (bad id, no `user` scope, unreachable); `ok:true` with
-`found:false` means it ran and nobody in the portal has that id. It needs the
-same `user` scope as the directory, and doubles as a scope probe. Same fields,
-same host-only rule.
-
-**Typing an id is validated, not silently coerced.** A recruiter row's id
-field accepts a pasted profile URL (`/company/personal/user/17/`) or a `#17`
-and cleans it to the number; anything that is not ultimately a positive integer
-is **refused with a message**, because the server's `normalizeBitrixUserId`
-turns junk into `null` — and a save that writes `null` clears the mapping while
-reporting success, the "it won't save" symptom. The cleaner is
-`admin/src/pages/settings/ringcentral/bitrixUserId.js` (pure).
-
-Tests: `tests/recruiterBitrixMatch.test.js` (the tiers and every refusal),
-`tests/recruiterBitrixDirectory.test.js` (paging, the missing-`user`-scope
-case, and the single-id check — found / not-found / bad-id / no-scope),
-`tests/recruiterBitrixMapping.test.js` (preview-writes-nothing, per-row
-failure, the check endpoint), and, on the admin side, `bitrixUserId.test.jsx`
-(the cleaner), `BitrixAutomapPanel.test.jsx`, `RecruiterCardBitrixPicker.test.jsx`
-and `RecruiterCardBitrixCheck.test.jsx` (a bad id is refused rather than saved,
-a pasted URL is cleaned, and the check button's answers).
+Both moved to [`recruiter-sms-bitrix.md`](recruiter-sms-bitrix.md) — the
+Bitrix connection settings, the automap tiers and why it refuses more than it
+accepts, and the two Bitrix-side traps (an assignee field that silently
+ignores a name, and form answers with nowhere to go). This document stays
+about the sending half.
 
 ## Verifying it without a real lead
 
@@ -362,35 +351,20 @@ a pasted URL is cleaned, and the check button's answers).
   number to a number you type. There is no default recipient, so it cannot text
   a driver by accident.
 
-## Two Bitrix-side traps
-
-Both were live, both were silent, and both matter more now that the assignee
-decides who texts a lead.
-
-- **`BITRIX24_ASSIGNED_BY_ID` must be a numeric user id.** It was set to a
-  NAME (`Tom Robinson`), and Bitrix only accepts the id, so the value was
-  ignored entirely: every lead was assigned to the inbound webhook's owner. The
-  mapper now warns once per process, and the Diagnose card reports it as
-  *ignored* rather than leaving a config line that looks effective. Take the id
-  from the Bitrix profile URL (`/company/personal/user/<id>/`) — or leave it
-  blank, which is the right setting when a distribution rule assigns leads.
-- **A form answer with no Bitrix field is written into the lead's COMMENTS.**
-  The Facebook form asks the two questions a recruiter screens on ("2 years of
-  experience?", "CDL-A over the road?") and the portal has no custom lead
-  fields for them, so the mapper had nowhere to put them and dropped them with
-  a console warning — the recruiter opened the lead and saw a name and a phone
-  number, as if nothing had been answered. Field mapping is still the goal
-  (create the fields, then `npm run discover-bitrix-fields`); this makes the
-  gap cosmetic instead of lossy. Note the field catalog is cached for the life
-  of the process, so a newly created Bitrix field needs a restart.
-
 ## Tests that guard this
 
 | Area | Test |
 |---|---|
 | Bitrix assignee read + bounded poll | `tests/bitrixAssignee.test.js` |
 | Sender choice and every fallback | `tests/facebookLeadSmsSender.test.js` |
-| `from` + token always agree | `tests/ringCentralSmsSender.test.js` |
+| `from` is E.164 whatever the row says, and a rejection is checked against the extension | `tests/ringCentralSmsSender.test.js` |
+| `toE164` / `phoneKey` over every production spelling | `tests/phoneE164.test.js` |
+| Diagnose predicting a real send, not a last-ten match | `tests/senderNumberDiagnosis.test.js` |
+| The notice using the stored chat id, and the mirror it writes | `tests/facebookLeadSmsReply.test.js` |
+| A lead already texted is not texted again | `tests/facebookLeadEventProcessor.test.js` |
+| The extension identity backfill | `tests/ringCentralTokenRefresh.test.js` |
+| `fallback_reason` on the mirror, on real PostgreSQL | `tests/smsMirrorFallbackReasonPg.test.js` |
+| The subscription payload, and shedding one extension at a time (Python) | `leads-bot/test_rc_webhook_register.py` |
 | Token exchange, rotation, expiry flagging | `tests/ringCentralOAuthService.test.js` |
 | The connect link, and the wrong-extension warning | `tests/ringCentralConnectService.test.js` |
 | The daily refresh job | `tests/ringCentralTokenRefresh.test.js` |

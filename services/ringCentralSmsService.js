@@ -20,9 +20,25 @@
  * A recruiter-send failure is reported with a `reason` the caller can act on,
  * which is how the lead flow knows to fall back to the shared number and say so
  * out loud instead of dropping the lead's text.
+ *
+ * `from` MUST BE E.164. This is the second half of the same constraint and it
+ * is the one that was missed: `recruiters.phone_number` holds whatever an admin
+ * typed — `(470) 480-4679`, `4702400064`, `470-419-4110` — and handing that
+ * string to RingCentral produces
+ *
+ *   InvalidParameter / MSG-245
+ *   Parameter [from] value [...] is invalid
+ *   [Cannot find the phone number which belongs to user]
+ *
+ * which reads like an authentication problem and is not one: the token is
+ * right, the number is merely unrecognizable. Every send therefore goes through
+ * `toE164`, and a rejection is checked against what the extension actually owns
+ * rather than reported as an opaque provider error.
  */
 const rc = require('../database/ringcentral');
 const { getRecruiterAccessToken } = require('./ringCentralOAuthService');
+const { getExtensionInfoWithToken } = require('./ringCentralCallService');
+const { toE164, sameNumber } = require('../lib/phone/e164');
 
 const RC_PLATFORM_BASE = 'https://platform.ringcentral.com';
 
@@ -125,6 +141,47 @@ async function sendSms(to, message) {
 }
 
 /**
+ * Did RingCentral reject this specifically because it does not recognize
+ * `from`? That is worth a second look at the extension; any other 4xx (an
+ * unregistered A2P campaign, a bad `to`, a blocked recipient) is not.
+ *
+ * Matched on RingCentral's own error code rather than the prose, which is
+ * localized and has changed wording before.
+ */
+function isFromNumberRejection(result) {
+  if (result?.ok) return false;
+  const detail = String(result?.detail || '');
+  if (/MSG-245/.test(detail)) return true;
+  // Same condition, older/alternate spelling: an InvalidParameter naming [from].
+  return /InvalidParameter/i.test(detail) && /\[from\]/i.test(detail);
+}
+
+/**
+ * What does this extension ACTUALLY own? Asked only after a `from` rejection,
+ * so the happy path costs nothing.
+ *
+ * Returns the extension's own spelling of the number we tried (when it is
+ * there at all), whether that number can send SMS, and the extension identity —
+ * which is also how a JWT recruiter's `rc_extension_id` gets discovered, since
+ * only the OAuth sign-in flow ever populated it.
+ */
+async function inspectSenderNumber({ apiBase, accessToken, fromNumber }) {
+  const info = await getExtensionInfoWithToken({ apiBase, accessToken });
+  const details = Array.isArray(info?.phoneNumberDetails) ? info.phoneNumberDetails : [];
+  const owned = details.find((d) => sameNumber(d?.phoneNumber, fromNumber)) || null;
+  return {
+    extensionId: info?.extensionId || null,
+    extensionNumber: info?.extensionNumber || null,
+    owned,
+    // RingCentral's own E.164 for the number we were trying to send from.
+    canonical: owned?.phoneNumber || null,
+    smsCapable: Boolean(owned && (owned.features || []).includes('SmsSender')),
+    // The number RingCentral would have us use instead, when it knows one.
+    smsNumber: info?.smsNumber || null,
+  };
+}
+
+/**
  * Send from ONE recruiter's own RingCentral number, using their own credential.
  *
  * @param {object} recruiter  a `recruiters` row (needs id + phone_number)
@@ -135,16 +192,91 @@ async function sendSms(to, message) {
  *   recruiterId?:number, authMode?:string}>}
  */
 async function sendSmsAsRecruiter(recruiter, to, message) {
-  const fromNumber = String(recruiter?.phone_number || '').trim();
-  if (!recruiter?.id || !fromNumber) {
-    return { ok: false, reason: 'recruiter_not_configured', recruiterId: recruiter?.id ?? null };
+  // The stored column is whatever a human typed. RingCentral needs E.164, and
+  // a value we cannot turn into one is a configuration problem, not a send to
+  // attempt — so it is reported without spending a request.
+  const fromNumber = toE164(recruiter?.phone_number);
+  const toNumber = toE164(to);
+  if (!recruiter?.id) {
+    return { ok: false, reason: 'recruiter_not_configured', recruiterId: null };
+  }
+  if (!fromNumber) {
+    // Distinct from `recruiter_not_configured`: this recruiter HAS credentials,
+    // their stored number just is not one. Reporting it as "no credentials"
+    // sends an operator to re-connect a RingCentral login that is working fine.
+    return {
+      ok: false,
+      reason: 'recruiter_number_unusable',
+      detail: `"${recruiter.phone_number ?? ''}" is not a phone number this can send from.`,
+      recruiterId: recruiter.id,
+    };
   }
 
   try {
     const cfg = await rc.getRcConfig();
     const { accessToken, apiBase, mode } = await getRecruiterAccessToken(recruiter, cfg);
-    const result = await postSms({ apiBase, accessToken, fromNumber, to, message });
-    return { ...result, recruiterId: recruiter.id, authMode: mode };
+    const result = await postSms({ apiBase, accessToken, fromNumber, to: toNumber || to, message });
+    if (result.ok || !isFromNumberRejection(result)) {
+      return { ...result, recruiterId: recruiter.id, authMode: mode };
+    }
+
+    // RingCentral does not recognize the number. Ask it what this extension
+    // owns, so the answer is a named state an operator can act on instead of
+    // MSG-245. NEVER retried with the shared token: that authenticates and
+    // still fails, and the fallback is the shared NUMBER (App Brief §9.11).
+    let seen;
+    try {
+      seen = await inspectSenderNumber({ apiBase, accessToken, fromNumber });
+    } catch (inspectErr) {
+      // The extension read is an enrichment; losing it must not change the
+      // outcome, only how well we can describe it.
+      return {
+        ...result,
+        reason: 'recruiter_send_failed',
+        recruiterId: recruiter.id,
+        authMode: mode,
+        inspectError: inspectErr.message,
+      };
+    }
+
+    // Four distinguishable states, and they need different fixes.
+    if (seen.owned && seen.smsCapable && seen.canonical && seen.canonical !== fromNumber) {
+      // Same line, spelled differently by RingCentral — an admin who typed a
+      // stray country code lands here. Send it their way rather than falling
+      // back to a number the driver has never seen.
+      const retry = await postSms({
+        apiBase, accessToken, fromNumber: seen.canonical, to: toNumber || to, message,
+      });
+      return {
+        ...retry,
+        reason: retry.ok ? undefined : 'recruiter_send_failed',
+        recruiterId: recruiter.id,
+        authMode: mode,
+        correctedFrom: seen.canonical,
+        extensionId: seen.extensionId,
+      };
+    }
+
+    const reason = !seen.owned
+      ? 'recruiter_number_not_on_extension'
+      : !seen.smsCapable
+        ? 'recruiter_number_not_sms_capable'
+        // Owned, SMS-capable, and exactly what we sent — RingCentral is
+        // refusing something its own extension record says should work. Report
+        // the refusal honestly rather than blaming a capability that is there.
+        : 'recruiter_send_failed';
+    return {
+      ...result,
+      reason,
+      recruiterId: recruiter.id,
+      authMode: mode,
+      attemptedFrom: fromNumber,
+      // What they COULD send from, when RingCentral names one. Not used
+      // automatically: silently texting a driver from a different line than the
+      // operator configured is the wrong kind of helpful.
+      extensionSmsNumber: seen.smsNumber,
+      extensionId: seen.extensionId,
+    };
   } catch (err) {
     // Credential problems are the caller's cue to fall back to the shared
     // number, so they are reported distinctly from a rejected message.

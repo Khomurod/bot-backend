@@ -9,6 +9,7 @@
 const crypto = require('node:crypto');
 const config = require('../config/config');
 const { sendSms } = require('./ringCentralSmsService');
+const { toE164 } = require('../lib/phone/e164');
 
 const CODE_LENGTH = 6;
 
@@ -51,14 +52,15 @@ function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 }
 
-function normalizePhone(value) {
-  const digits = String(value || '').replace(/[^\d+]/g, '');
-  if (!digits) return '';
-  if (digits.startsWith('+')) return digits;
-  if (digits.length === 10) return `+1${digits}`; // default US
-  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
-  return digits;
-}
+/**
+ * Kept as a named export because callers and tests use `otp.normalizePhone`.
+ * The logic moved to lib/phone/e164.js, which is where the SMS sender can also
+ * reach it: this module requires ringCentralSmsService, so the sender cannot
+ * require back without a cycle. Sending a number this function could not parse
+ * now yields '' rather than bare digits — a caller must fall back rather than
+ * hand a provider something it will reject.
+ */
+const normalizePhone = toE164;
 
 function getGmailTransport(creds) {
   const { user, pass } = resolveGmailCreds(creds);
