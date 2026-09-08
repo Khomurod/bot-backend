@@ -1,0 +1,97 @@
+<!-- Part of the App Brief. Read ../../APP_BRIEF.md first — it holds the
+     purpose, the topology and the "must not break" list. -->
+
+# §5. Permissions and access rules
+
+### Admin authentication
+
+- `POST /api/auth/login` → bcrypt against `admins`, per-IP rate limiting, HS256
+  JWT. **`authMiddleware` pins `algorithms: ['HS256']`** so an `alg:none` or
+  asymmetric forgery cannot impersonate an admin.
+- The token carries only admin id, username and `auth_version`. **Every
+  authenticated request reloads the account, roles and permissions from
+  PostgreSQL**, so disabling an account, changing a password, or changing a role
+  takes effect immediately. An `auth_version` mismatch invalidates the session.
+- The frontend stores the token in `localStorage`. Auth is header-based, not
+  cookie-based, so cookie CSRF does not apply; XSS and token leakage do. Never
+  put a token in a URL or a log.
+
+### Role-based access control (this replaced the old "any admin can do anything")
+
+`roles`, `permissions`, `role_permissions`, `admin_user_roles`. Built-in role
+key: `super_admin` — the only built-in role left, now that the four
+`trailer_*` roles are gone. Custom roles always get a `custom_`
+prefixed key and may never claim a reserved key or `super_`/`admin_` prefix
+(`lib/rbac/roleKeys.js`).
+
+- **`admin.full_access`** is the gate for the whole company-wide admin API. In
+  `server/api.js` most routers are mounted behind
+  `legacyAuthMiddleware = [authMiddleware, requirePermission('admin.full_access')]`.
+- **`requirePermission` / `requireAllPermissions` are still per-permission
+  gates** (`server/middleware/auth.js`), and `roles`/`permissions` are still
+  database-backed and admin-editable. What is gone is the only feature that
+  used a *partial* scope: the Trailer Department. `admin.full_access` is now
+  the single gate for every section, and an account without it has nothing it
+  can open — the admin SPA says so plainly instead of rendering a page whose
+  every request would 403.
+- **There is no longer a partially-scoped user administrator.** A Trailer
+  Manager (`trailer_users.manage` without `users.manage`) used to see and edit
+  only trailer-only accounts, with out-of-scope targets answering 404 rather
+  than 403 so their existence could not be inferred. That scoping went with
+  the feature; `server/routes/adminUserGuards.js` is what remains, and it
+  keeps the guard that was never about trailers:
+- **The last active super administrator cannot be deactivated or demoted.**
+
+### Non-JWT access paths (be careful changing these)
+
+| Path | Gate |
+|---|---|
+| `/raise/*`, `/api/raise/:token/*` | Per-**round** token (expiring) + per-team OTP, used by dispatchers |
+| `/recruiters`, `GET /api/recruiters/public-stats` | Public; names + KPI numbers only |
+| `/employee-birthday-form`, `POST /api/submit-employee-birthday` | Public form |
+| `/facebook/connect/:sessionToken`, `/facebook/oauth/*` | Session token |
+| `/ringcentral/connect/:sessionToken`, `/ringcentral/oauth/*` | Session token — single-use, 30-minute `ringcentral_connect_sessions` row; `oauth_state` binds the redirect to the callback. Public because a recruiter has no admin session |
+| `ALL /webhook`, `ALL /rc-webhook` | Raw-body proxied to the Python worker; signature verified there |
+| `/api/internal/*` | `internalSharedSecretGuard` (`LEADS_INTERNAL_SHARED_SECRET`) |
+| `/api/route-screenshot-media/:id` | Short-lived HMAC-signed URLs (Telegram has no session) |
+| `POST /api/dat-ui/inspect` | Loopback only |
+| `/`, `/health`, `/api/health`, Meta compliance pages (`/privacy-policy.html`, `/terms-of-use`, `/user-data-deletion`) | Public |
+| `/presentation`, `/presentation/*.css`, `/presentation/*.js` | Public — the **owner-facing product deck**, served from an explicit asset allow-list in `healthRoutes.js` |
+| `/remote`, `/remote/remote.css`, `/remote/remote-*.js` | Public — the **presenter remote** for the Wenzel Weekly Report deck. Pairing is the four-digit code the deck itself displays; the page reaches no API on this server and no company data (§4). Explicit allow-list, not a static mount |
+
+Everything else under `/api/*` requires the admin JWT.
+
+### Telegram-side authorization
+
+Numeric user IDs are the only stable Telegram identity — usernames are
+reassignable. The creator panel checks a hardcoded numeric `CREATOR_USER_ID`
+(`bot/creatorMessageManager.js`), and new gates should be ID-only.
+
+**Two existing gates use a documented ID-or-username pattern** — know this before
+you assume either is ID-only:
+
+| Gate | Behavior |
+|---|---|
+| Mileage-bonus Paid/Rejected (`services/mileageBonusConstants.js` `isAccountingUser`) | checks `MILEAGE_BONUS_ACCOUNTING_USER_IDS` **only if that list is non-empty**; otherwise falls back to a username allow-list with hardcoded defaults |
+| Home-time Approve / Do Not Approve (`services/homeTimeRequestConstants.js` `isHomeTimeApprover`) | same shape: `HOME_TIME_APPROVER_USER_IDS` when set, otherwise `HOME_TIME_APPROVER_USERNAMES` with hardcoded defaults |
+
+Both are deliberate: *"once immutable IDs are configured, usernames no longer
+grant authority."* Configuring the IDs in the environment is what hardens them.
+Do not copy the username fallback into new code, and do not describe either gate
+as ID-only.
+
+---
+
+### Removed features' URLs
+
+`/trailers*`, `/questions*`, `/answers*` and `/qbq*` answer **410 Gone** with a
+short "this feature has been removed" page (`server/routes/retiredRoutes.js`),
+mounted immediately before the admin SPA catch-all so any surviving route still
+wins. They used to resolve to the SPA shell, which would now render an empty
+section. Removed `/api/*` endpoints simply 404, which is the right answer for a
+JSON client.
+
+Old Telegram buttons need no equivalent: **neither removed feature ever
+produced an inline keyboard**, and the `callback_query` catch-all in
+`bot/handlers/surveyCallbackHandlers.js` already acknowledges unknown callback
+data without erroring.

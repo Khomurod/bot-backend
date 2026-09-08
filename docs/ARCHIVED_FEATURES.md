@@ -10,6 +10,31 @@ git so they can be recovered.
 
 ---
 
+## Trailer Department, Trailer Tracking, and QBQ/SOS
+
+**Archived:** 2026-09
+**Pre-removal commit:** `97dd39e013b0c5348441b377f3ae7916993f0e92` (tip of `main`)
+**Full record:** [`architecture/retired-trailers-qbq-sos.md`](architecture/retired-trailers-qbq-sos.md)
+
+Three feature areas removed in one pass: the trailer rental business at
+`/trailers`, the AI monitoring of trailer mentions in driver-group messages,
+and the QBQ/SOS employee assessment with its hosted deck at `/qbq`.
+
+Roughly 35 000 lines. The RBAC substrate, the administrative audit trail and
+the BOL/POD forwarding settings were living inside the removed baseline
+segments and were moved out first; the only test of the auth middleware and the
+repository's only PostgreSQL harness were living inside the removed test files
+and were renamed and kept.
+
+**Tables were NOT dropped**, on the same reasoning as FleetView below: a deploy
+must not destroy history. Unlike FleetView, there is now a supported way to
+clear them — **Settings → Retired Leftovers**, which also lists FleetView's
+nine `fleet_*` tables and the earlier retired features' tables. It is
+allow-listed, non-cascading, confirmation-gated and audited. See the full
+record for the table list and the restore instructions.
+
+---
+
 ## FleetView — Fleet Operations Platform
 
 **Archived:** 2026-07-29
@@ -75,8 +100,11 @@ No `DROP` migration was written. Dropping them would be a destructive change,
 and keeping the rows means a restore recovers the data as well as the code.
 Once the code is gone nothing reads or writes them, so they cost only idle disk.
 
-If you later want the space back, take a backup first and drop them by hand —
-per `CLAUDE.md`, destructive database changes need explicit approval.
+If you later want the space back: **Settings → Retired Leftovers** lists these
+nine tables with their row counts and can drop them, behind a typed
+confirmation. Take a backup first — per `CLAUDE.md`, destructive database
+changes need explicit approval, and that screen is where an administrator gives
+it.
 
 ### Deployment follow-up
 

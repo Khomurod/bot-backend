@@ -8,7 +8,8 @@ in the specialized docs linked at the bottom.
 # Start with the App Brief
 
 **[`APP_BRIEF.md`](APP_BRIEF.md) is the central brief for this application — read
-it before any task.** It covers what the app is for, who uses it, the features
+it before any task.** Its per-area sections live in
+[`docs/brief/`](docs/brief/) and are part of the same document. It covers what the app is for, who uses it, the features
 and workflows, permissions, integrations, background jobs, cross-feature
 dependencies, and the decisions that must not be broken.
 
@@ -116,7 +117,7 @@ npm run build:schema:check                         # schema.sql in sync with bas
   `require('dotenv')`.) The verified baseline is recorded in `APP_BRIEF.md` §11.
 - **`*Pg.test.js` need `TEST_DATABASE_URL` and SKIP without it — a skipped test
   is not a passing test.** Say so plainly rather than folding skips into a green
-  summary. The harness (`tests/helpers/trailerPgHarness.js`) creates a throwaway
+  summary. The harness (`tests/helpers/pgHarness.js`) creates a throwaway
   **database** per test (not a schema — `schema.sql` guards look up constraints
   by name with no schema filter) and applies the real, complete `schema.sql`. The
   database must be **UTF8** (`TEMPLATE template0`), because `schema.sql` contains
@@ -150,16 +151,20 @@ npm run build:schema:check                         # schema.sql in sync with bas
 - Prefer a small compatibility façade plus focused internal modules when an
   existing import path must be preserved. `services/routeControlService.js` →
   `services/routeControl/*` is the reference example; `database/homeTime.js` →
-  `database/homeTime/*` and `server/routes/trailerDepartmentRoutes.js` →
-  `server/routes/trailerDepartment/*` follow the same shape.
+  `database/homeTime/*` follows the same shape. The same idea applies to a
+  static page: `server/public/remote.html` is a document plus `remote.css`,
+  `remote-mqtt.js` and `remote-app.js`, and `server/presentation/index.html` a
+  document plus a stylesheet and three scripts — both served through an
+  explicit route allow-list, never `express.static`.
 - A façade must be composition or re-export ONLY. When a spread
   (`...module`) would widen the public surface with internals, list the keys
   explicitly and say why in the file's header — `database/ringcentral.js` does
   this to keep four helpers private.
 - Reformatting to pack more code onto fewer lines is not a fix. A file of 285
   physical lines that is ~679 lines at normal density is over the limit in
-  substance; `server/routes/trailerDepartmentRoutes.js` was reformatted and
-  split rather than left to satisfy the counter.
+  substance. `admin/src/index.css` was split into twelve ordered partials and
+  the emitted stylesheet verified byte-identical, rather than compacted to
+  satisfy the counter.
 
 ### Checking the limit
 
@@ -167,6 +172,12 @@ npm run build:schema:check                         # schema.sql in sync with bas
 npm run lint:filesize        # enforce: fails on ANY file over the limit
 npm run lint:filesize:list   # list every file over the limit (same scan, report only)
 ```
+
+**Coverage now includes `.css`, `.html` and `.md`**, not just
+`.js/.jsx/.mjs/.cjs/.ts/.tsx/.py`. Excluding them had let a 2 500-line
+stylesheet, a 1 320-line page with its CSS and JS inlined, and an 1 140-line
+brief grow past every other rule in the repository; all three split cleanly.
+`database/schema.sql` and the lockfiles stay excluded — they are generated.
 
 **There is no baseline and no exemption list.** Every hand-written source, test
 and config file in the repository is at or under 500 lines, so the rule is
@@ -222,10 +233,9 @@ that area**, and run the tests it names.
 |---|---|
 | Route Control, route screenshots, Telegram media transport | [`docs/architecture/route-control.md`](docs/architecture/route-control.md) |
 | Which recruiter's number texts a lead, per-recruiter RingCentral credentials, the Bitrix assignee lookup | [`docs/architecture/recruiter-sms-sender.md`](docs/architecture/recruiter-sms-sender.md) |
-| Trailer master list, trailer storage, rental agreements, Trailer Department safety rules | [`docs/architecture/trailer-invariants.md`](docs/architecture/trailer-invariants.md) |
-| Trailer Department operations (URLs, feature flag, storage config) | [`docs/trailer-department.md`](docs/trailer-department.md) |
 | Database changes, migrations, deferred schema decisions | [`docs/database/`](docs/database/) |
 | What was deliberately removed and must not be resurrected | [`docs/ARCHIVED_FEATURES.md`](docs/ARCHIVED_FEATURES.md), [`docs/architecture/retired-*.md`](docs/architecture/) |
+| Clearing a removed feature's leftover tables, roles and accounts | [`docs/architecture/retired-trailers-qbq-sos.md`](docs/architecture/retired-trailers-qbq-sos.md) |
 | Module ownership map | [`docs/architecture/module-map.md`](docs/architecture/module-map.md) |
 | Deployment checks | [`docs/deployment/pre-deploy-checklist.md`](docs/deployment/pre-deploy-checklist.md) |
 

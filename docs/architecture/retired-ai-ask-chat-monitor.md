@@ -53,7 +53,7 @@ A live table of recent driver-group messages that **auto-refreshed every 10s**.
 | API client | `getChatLogs()` in `admin/src/api.js` |
 | Backend route | `GET /api/chat-logs` in `server/api.js` |
 | Backend DB fn | `getRecentChatLogs()` in `database/db.js` (+ its export) — was only called by the chat-logs route |
-| Stray comment | Leftover `// Chat Logs Page` divider in `admin/src/pages/QuestionsPage.jsx` |
+| Stray comment | Leftover `// Chat Logs Page` divider in `admin/src/pages/QuestionsPage.jsx` (the driver **survey** page — unrelated to the removed QBQ/SOS `/questions`) |
 
 The whole "Insights" navigation section (which contained only these two items)
 was removed from the sidebar.
