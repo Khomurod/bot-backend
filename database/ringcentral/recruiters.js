@@ -138,14 +138,31 @@ async function listRecruitersForAdmin({ includeInactive = true } = {}) {
 /** Build the SET fragments for the per-recruiter secret columns. */
 function recruiterSecretSets({ jwtToken, clientId, clientSecret, clearJwtToken, clearClientCreds }, sets, values, startIndex) {
   let i = startIndex;
+  let credentialChanged = false;
   const pushSecret = (column, rawValue, clearFlag) => {
-    if (clearFlag) { sets.push(`${column} = NULL`); return; }
+    if (clearFlag) { sets.push(`${column} = NULL`); credentialChanged = true; return; }
     const value = typeof rawValue === 'string' ? rawValue.trim() : '';
-    if (value) { sets.push(`${column} = $${i++}`); values.push(encryptText(value)); }
+    if (value) {
+      sets.push(`${column} = $${i++}`);
+      values.push(encryptText(value));
+      credentialChanged = true;
+    }
   };
   pushSecret('jwt_token_encrypted', jwtToken, clearJwtToken);
   pushSecret('client_id_encrypted', clientId, clearClientCreds);
   pushSecret('client_secret_encrypted', clientSecret, clearClientCreds);
+
+  // A NEW credential may belong to a DIFFERENT RingCentral account, so the
+  // extension recorded against the old one is no longer this recruiter's.
+  // Leaving it would keep the inbound-SMS subscription watching a stranger's
+  // extension while replies to the number they now text from reach nobody —
+  // and `recruiterExtensionIdentity` only re-reads an identity that is MISSING,
+  // so a stale one is never corrected. Clearing it makes the next pass of
+  // ringCentralTokenRefreshService (boot, then daily) fetch the right one.
+  if (credentialChanged) {
+    sets.push('rc_extension_id = NULL');
+    sets.push('rc_extension_number = NULL');
+  }
   return i;
 }
 

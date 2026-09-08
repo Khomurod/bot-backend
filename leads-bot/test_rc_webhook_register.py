@@ -171,30 +171,61 @@ class RegisterSmsWebhookTests(unittest.TestCase):
         self.assertTrue(any("/extension/102/" in f for f in second), "and so is 102")
         self.assertFalse(any("type=MMS" in f for f in second), "MMS is what was given up")
 
-    def test_extensions_are_shed_one_at_a_time_not_all_at_once(self):
+    def test_one_unwatchable_extension_does_not_cost_the_others(self):
         # The regression: the old ladder went straight from "everyone" to
         # "nobody", so one unwatchable extension cost every other recruiter.
         ok, client = _run(
             FakeClient([
-                _response(400, text="CMN-101"),  # all three, SMS+MMS
-                _response(400, text="CMN-101"),  # all three, SMS only
-                _response(200, {"id": "sub-3"}),  # two of three
+                _response(400, text="CMN-101"),   # all three, SMS+MMS
+                _response(400, text="CMN-101"),   # all three, SMS only
+                _response(200, {"id": "sub-3"}),  # first leave-one-out
             ]),
             ["101", "102", "103"],
         )
         self.assertTrue(ok)
-        final = client.posts[-1]["eventFilters"]
-        watched = sms._extensions_in(final)
-        self.assertEqual(watched, {"101", "102"}, "only the last extension was dropped")
+        watched = sms._extensions_in(client.posts[-1]["eventFilters"])
+        self.assertEqual(len(watched), 2, "exactly one extension was given up")
+
+    def test_a_bad_extension_at_the_FRONT_is_isolated_too(self):
+        # Shedding a suffix only rescues the roster when the bad id happens to
+        # be last, and reconcile_rc_subscription passes it `sorted()` by id —
+        # which says nothing about which one RingCentral refuses. Here 101 is
+        # the bad one, so every attempt that still contains it must fail and
+        # the ladder must go on to exclude it specifically.
+        def answer(n):
+            # 1: all + MMS, 2: all SMS-only, 3: except 101 → the first that works
+            return _response(200, {"id": "sub-9"}) if n >= 3 else _response(400, text="CMN-101")
+
+        class Selective(FakeClient):
+            async def post(self, url, json=None, headers=None):
+                self.posts.append(json or {})
+                return answer(len(self.posts))
+
+        ok, client = _run(Selective([]), ["101", "102", "103"])
+        self.assertTrue(ok)
+        watched = sms._extensions_in(client.posts[-1]["eventFilters"])
+        self.assertEqual(watched, {"102", "103"}, "the bad FIRST extension is the one dropped")
+
+    def test_every_extension_gets_a_turn_at_being_the_excluded_one(self):
+        # Whichever single extension is unwatchable, the ladder reaches an
+        # attempt that leaves exactly it out.
+        ok, client = _run(FakeClient([_response(400, text="CMN-101")] * 20), ["101", "102", "103"])
+        self.assertFalse(ok)
+        excluded = [
+            {"101", "102", "103"} - sms._extensions_in(p["eventFilters"])
+            for p in client.posts
+            if len(sms._extensions_in(p["eventFilters"])) == 2
+        ]
+        self.assertEqual(
+            sorted(next(iter(e)) for e in excluded), ["101", "102", "103"],
+            "each extension is excluded in turn",
+        )
 
     def test_the_shared_number_is_the_last_resort_never_the_first(self):
+        # An account-admin refusal fails EVERY attempt that names another
+        # extension: all+MMS, all SMS-only, and each leave-one-out.
         ok, client = _run(
-            FakeClient([
-                _response(403, text="admin required"),
-                _response(403, text="admin required"),
-                _response(403, text="admin required"),
-                _response(200, {"id": "sub-4"}),
-            ]),
+            FakeClient([_response(403, text="admin required")] * 4 + [_response(200, {"id": "sub-4"})]),
             ["101", "102"],
         )
         self.assertTrue(ok)

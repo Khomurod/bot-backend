@@ -330,12 +330,20 @@ async def register_sms_webhook(
                     f"{len(usable_extensions)} recruiter extension(s), SMS only",
                     inbound_sms_filters(usable_extensions, include_mms=False),
                 ))
-            # 2. Shed recruiters one at a time, newest first, so a single
-            #    unwatchable extension does not cost the others.
-            for drop in range(1, len(usable_extensions)):
-                kept = usable_extensions[: len(usable_extensions) - drop]
+            # 2. Leave ONE extension out at a time, so the unwatchable one is
+            #    isolated wherever it sits in the roster.
+            #
+            #    Shedding a SUFFIX instead — the obvious version — only works if
+            #    the bad extension happens to be last. reconcile_rc_subscription
+            #    passes the roster `sorted()` by id, which has nothing to do with
+            #    which one RingCentral refuses, so a bad id at the front stayed in
+            #    every attempt and every recruiter still lost their inbound SMS.
+            for excluded in usable_extensions:
+                kept = [ext for ext in usable_extensions if ext != excluded]
+                if not kept:
+                    continue  # covered by the shared-only attempts below
                 attempts.append((
-                    f"{len(kept)} recruiter extension(s)",
+                    f"every recruiter extension except {excluded}",
                     inbound_sms_filters(kept),
                 ))
             # 3. The shared number alone, with and then without MMS. One number

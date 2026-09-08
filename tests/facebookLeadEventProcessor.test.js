@@ -371,3 +371,38 @@ test('a failed lookup opens the guard rather than costing a lead its text', asyn
     assert.equal(calls.sends.length, 1);
   } finally { restore(); }
 });
+
+test('a send on a REPLAYED event still records the marker that stops the next one', async () => {
+  // The hole the guard rested on: `createLeadIfNew` returns null on conflict,
+  // so a replay used to skip `updateLeadSmsSender` entirely. Run 1 creates the
+  // row and fails to send; run 2 SUCCEEDS but records nothing; run 3 sees an
+  // unsent lead and texts again — and so on forever.
+  const { processor, telegram, calls, restore } = loadProcessor({
+    leadRow: null,                                    // the insert conflicts
+    existingLead: { id: 42, sms_from_number: null },  // …but the row is there, untexted
+  });
+  try {
+    await processor.processLeadEvent(EVENT, { telegram });
+    assert.equal(calls.sends.length, 1, 'an untexted lead is still texted');
+    assert.deepEqual(calls.senderWrites, [{
+      id: 42, assignedById: 17, fromNumber: '+15557770000', recruiterId: 7,
+    }], 'and the marker is written against the row that already existed');
+  } finally { restore(); }
+});
+
+test('a failed marker write is reported as an error, not a warning', async () => {
+  // It is the difference between "texted once" and "texted on every retry", so
+  // it must not read like a cosmetic miss in the log.
+  const { processor, telegram, restore } = loadProcessor({
+    senderUpdateThrows: new Error('pool timeout'),
+  });
+  const errors = [];
+  const realError = console.error;
+  console.error = (...args) => errors.push(args.join(' '));
+  try {
+    await processor.processLeadEvent(EVENT, { telegram });
+    const joined = errors.join('\n');
+    assert.match(joined, /Could not record the SMS sender/);
+    assert.match(joined, /WILL text .* again/, 'the consequence is spelled out');
+  } finally { console.error = realError; restore(); }
+});

@@ -119,6 +119,13 @@ async function recordLead({ leadgenId, fullName, fieldMap, phone, connection, pa
       });
       return recorded.id;
     }
+    // The insert conflicted, so this lead already has a row — a re-delivered or
+    // replayed event. Its id still matters: `sms_from_number` is written
+    // against it, and that column is what stops the lead being texted twice.
+    // Returning null here meant a send on a REPLAY recorded nothing, so the
+    // guard saw an unsent lead on the next pass and texted again, forever.
+    const existing = await db.getLeadBySourceExternalId('facebook', leadgenId);
+    return existing?.id ?? null;
   } catch (recordErr) {
     console.error('[Leads] Failed to record Facebook lead:', recordErr.message);
   }
@@ -244,7 +251,15 @@ async function processLeadEvent(eventRow, { telegram }) {
         recruiterId: sender.recruiterId,
       });
     } catch (err) {
-      console.warn('[Leads] Could not record the SMS sender:', err.message);
+      // NOT a warning. `sms_from_number` is the marker the duplicate guard
+      // reads, so failing to write it means the next retry of this event will
+      // text the driver a second time. Nothing here can undo the send that
+      // already happened; the point is that it is loud enough to notice.
+      console.error(
+        `[Leads] Could not record the SMS sender for lead ${leadId} — `
+        + `a retry of this event WILL text ${sender.fromNumber ? 'them' : 'the driver'} again: `
+        + err.message
+      );
     }
   }
 
