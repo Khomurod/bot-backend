@@ -85,7 +85,12 @@ jobs:
           set -e
           test ! -d fleet          || { echo "::error::fleet/ is back in the tree"; exit 1; }
           test ! -d server/fleet   || { echo "::error::server/fleet/ is back in the tree"; exit 1; }
-          if grep -rn "mountFleet" --include=*.js . | grep -v node_modules | grep -v '^\./docs/'; then
+          # `docs/` and `tests/` are excluded for the same reason: writing
+          # ABOUT the mount is not mounting it. The archive record names it,
+          # and tests/removedFeaturesStayRemoved.test.js asserts server/api.js
+          # does not contain it — a test that greps for a string necessarily
+          # contains that string. The guard is about the runtime.
+          if grep -rn "mountFleet" --include=*.js . | grep -v node_modules | grep -v '^\./docs/' | grep -v '^\./tests/'; then
             echo "::error::a FleetView mount was reintroduced"; exit 1
           fi
           if grep -n "prefix fleet" package.json; then

@@ -108,6 +108,14 @@
 - Home-time **requests** from drivers get Approve / Do-Not-Approve buttons gated
   on the approver allow-list (see the authorization note in §5 — usernames by
   default, numeric IDs once configured).
+- **Every home-time date is a `America/Chicago` calendar date.** The state
+  machine, the date resolver, the clarification flow and every AI prompt all
+  reason in Central; a UTC instant must be zoned before it becomes a date.
+  `homeTimeRequestService.js` used the process default (UTC on Render), so a
+  driver arriving home after 19:00 Central had TOMORROW recorded as their home
+  start — the window and the bonus math that reads it were a day out. Guarded by
+  `tests/homeTimeCentralDates.test.js`, which pins the instant rather than
+  trusting the clock.
 
 ### Fuel monitor
 
