@@ -173,11 +173,17 @@ npm run lint:filesize        # enforce: fails on ANY file over the limit
 npm run lint:filesize:list   # list every file over the limit (same scan, report only)
 ```
 
-**Coverage now includes `.css`, `.html` and `.md`**, not just
-`.js/.jsx/.mjs/.cjs/.ts/.tsx/.py`. Excluding them had let a 2 500-line
-stylesheet, a 1 320-line page with its CSS and JS inlined, and an 1 140-line
-brief grow past every other rule in the repository; all three split cleanly.
-`database/schema.sql` and the lockfiles stay excluded — they are generated.
+**Coverage now includes `.css`, `.html`, `.md`, `.sql`, `.yml` and `.yaml`**,
+not just `.js/.jsx/.mjs/.cjs/.ts/.tsx/.py`. Excluding the first three had let a
+2 500-line stylesheet, a 1 320-line page with its CSS and JS inlined, and an
+1 140-line brief grow past every other rule in the repository; all three split
+cleanly. SQL and YAML followed because `database/baseline/*.sql` and
+`.github/workflows/*.yml` are hand-written and read by people, and the largest
+baseline segment was already within 25 lines of the limit. The generated
+`database/schema.sql` is excluded **by name** — not by leaving `.sql` out of
+scope, which is what had made the exclusion comment's claim that "the segments
+it is assembled from ARE checked" untrue. `.json` stays out: every JSON file
+over the limit is a lockfile, and a JSON object cannot be given a façade.
 
 **There is no baseline and no exemption list.** Every hand-written source, test
 and config file in the repository is at or under 500 lines, so the rule is

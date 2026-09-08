@@ -180,37 +180,49 @@ test('minified and generated bundles are skipped; ordinary files are not', () =>
   });
 });
 
-test('stylesheets, pages and Markdown ARE in scope; data and generated SQL are not', () => {
+test('stylesheets, pages, Markdown, SQL and YAML are in scope; JSON is not', () => {
   // Excluding CSS/HTML/Markdown on the reasoning that "the rule is about module
   // boundaries" let a 2 500-line stylesheet, a 1 320-line page with its CSS and
   // JS inlined, and an 1 140-line brief grow past every other rule here. They
-  // are hand-written and they split cleanly, so they are checked.
+  // are hand-written and they split cleanly, so they are checked. SQL and YAML
+  // followed: database/baseline/*.sql and .github/workflows/*.yml are read by
+  // people, and the largest baseline segment was within 25 lines of the limit.
   withTree({
     'notes.md': linesOf(9000),
     'styles.css': linesOf(9000),
     'page.html': linesOf(9000),
+    'database/baseline/001_core.sql': linesOf(9000),
+    '.github/workflows/ci.yml': linesOf(9000),
+    'compose.yaml': linesOf(9000),
     'data.json': linesOf(9000),
     'code.js': linesOf(10),
   }, (root) => {
     assert.deepEqual(
       collectSourceFiles(root).sort(),
-      ['code.js', 'notes.md', 'page.html', 'styles.css'],
-      '.json carries no module structure and is usually generated',
+      [
+        '.github/workflows/ci.yml', 'code.js', 'compose.yaml', 'database/baseline/001_core.sql',
+        'notes.md', 'page.html', 'styles.css',
+      ],
+      '.json is data with no meaningful split, and every oversized one is a lockfile',
     );
   });
 });
 
-test('database/schema.sql is excluded because it is generated', () => {
-  // It is assembled from database/baseline/*.sql by scripts/build-schema.js.
-  // The segments it is built from are checked, and each is well under the limit.
+test('database/schema.sql is excluded BY NAME, not by hiding the extension', () => {
+  // It is assembled from database/baseline/*.sql by scripts/build-schema.js, so
+  // it is generated and cannot be split. The segments it is built from ARE
+  // checked — which was only true once .sql entered scope; the exclusion comment
+  // had claimed it while no .sql file was scanned at all.
   withTree({
     'database/schema.sql': linesOf(9000),
     'database/baseline/001_core.sql': linesOf(9000),
+    // A same-named file somewhere else is NOT the generated artifact.
     'other/schema.sql': linesOf(9000),
   }, (root) => {
     assert.deepEqual(
-      collectSourceFiles(root), [],
-      'no .sql file is scanned at all, so the generated baseline cannot fail the gate',
+      collectSourceFiles(root).sort(),
+      ['database/baseline/001_core.sql', 'other/schema.sql'],
+      'only the one generated path escapes; hand-written SQL is subject to the limit',
     );
   });
 });

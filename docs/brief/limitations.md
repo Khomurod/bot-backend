@@ -59,7 +59,8 @@
   `eng.traineddata` is a binary OCR model. Every hand-written source, style,
   page and documentation file is at or under the limit, and
   `npm run lint:filesize` covers `.js/.jsx/.mjs/.cjs/.ts/.tsx/.py` plus
-  `.css/.html/.md`.
+  `.css/.html/.md/.sql/.yml/.yaml` — 851 files. `.json` is the only source-like
+  extension out of scope, and every JSON file over the limit is a lockfile.
 - `package.json` declares `engines.node` twice (`>=20`, then `>=18.0.0` — the
   later wins). CI and Render both use Node 20.
 
