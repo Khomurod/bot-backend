@@ -4,7 +4,8 @@ import { emptyRule, mapPreviewResult } from "./constants";
 
 /**
  * The auto-reply configuration: the settings row, the ordered time-window
- * rules, the fallback template, and the two live previews.
+ * rules, the optional per-recruiter messages, the fallback template, and the
+ * two live previews.
  *
  * TWO PREVIEWS, ON PURPOSE. "Now" answers *what would a lead arriving this
  * second receive* — it evaluates the whole rule set against the current time
@@ -16,7 +17,7 @@ import { emptyRule, mapPreviewResult } from "./constants";
  * unsaved draft, so an admin sees the effect of an edit without saving it to
  * real leads first.
  *
- * The focus target (which rule's textarea, or the fallback) is a ref rather
+ * The focus target (which rule's textarea, which recruiter's, or the fallback) is a ref rather
  * than state because inserting a placeholder must read the caret position at
  * click time; keeping it in state would re-render the chip row and lose the
  * selection.
@@ -28,6 +29,10 @@ export function useAutoMessages(setStatus) {
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState(null);
   const [rules, setRules] = useState([]);
+  // One optional template per active recruiter. The list comes from the server
+  // (driven by the `recruiters` table), so a newly added recruiter appears here
+  // on the next load with an empty template.
+  const [recruiterMessages, setRecruiterMessages] = useState([]);
   const [placeholders, setPlaceholders] = useState([]);
   const [previewTarget, setPreviewTarget] = useState({ kind: "rule", index: 0 });
   const [nowPreview, setNowPreview] = useState(null);
@@ -43,6 +48,7 @@ export function useAutoMessages(setStatus) {
   const focusRef = useRef({ type: "rule", index: 0 });
   const fallbackRef = useRef(null);
   const ruleRefs = useRef({});
+  const recruiterRefs = useRef({});
 
   const timezone = settings?.timezone || "America/Chicago";
 
@@ -56,6 +62,17 @@ export function useAutoMessages(setStatus) {
     setPreviewTarget({ kind: "fallback" });
   };
 
+  const focusRecruiter = (index) => {
+    focusRef.current = { type: "recruiter", index };
+    setPreviewTarget({ kind: "recruiter", index });
+  };
+
+  const setRecruiterTemplate = (index, template) => {
+    setRecruiterMessages((prev) => prev.map((r, i) => (
+      i === index ? { ...r, message_template: template } : r
+    )));
+  };
+
   /** Insert a {token} at the caret of whichever template last had focus. */
   const insertPlaceholder = (token) => {
     const { type, index } = focusRef.current;
@@ -65,6 +82,18 @@ export function useAutoMessages(setStatus) {
       const end = el.selectionEnd ?? el.value.length;
       const next = el.value.slice(0, start) + token + el.value.slice(end);
       setSettings((s) => ({ ...s, fallback_template: next }));
+      return;
+    }
+    if (type === "recruiter" && index != null) {
+      setRecruiterMessages((prev) => prev.map((r, i) => {
+        if (i !== index) return r;
+        const el = recruiterRefs.current[index];
+        const current = r.message_template || "";
+        if (!el) return { ...r, message_template: current + token };
+        const start = el.selectionStart ?? current.length;
+        const end = el.selectionEnd ?? current.length;
+        return { ...r, message_template: current.slice(0, start) + token + current.slice(end) };
+      }));
       return;
     }
     if (type === "rule" && index != null) {
@@ -96,6 +125,7 @@ export function useAutoMessages(setStatus) {
         fallback_template: "",
       });
       setRules(loadedRules);
+      setRecruiterMessages(data.recruiter_messages || []);
       setPlaceholders(data.placeholders || []);
       setPreviewTarget(loadedRules.length ? { kind: "rule", index: 0 } : { kind: "fallback" });
       focusRef.current = loadedRules.length
@@ -128,7 +158,15 @@ export function useAutoMessages(setStatus) {
     let template = "";
     let ruleLabel = "Preview";
 
-    if (previewTarget.kind === "fallback") {
+    let repName = "";
+
+    if (previewTarget.kind === "recruiter") {
+      const entry = recruiterMessages[previewTarget.index];
+      if (!entry) return;
+      template = entry.message_template || "";
+      ruleLabel = `${entry.recruiter_name}'s message`;
+      repName = entry.recruiter_name || "";
+    } else if (previewTarget.kind === "fallback") {
       template = settings.fallback_template || "";
       ruleLabel = "Fallback (outside hours)";
     } else {
@@ -145,12 +183,13 @@ export function useAutoMessages(setStatus) {
         field_map: sampleLead,
         template,
         rule_label: ruleLabel,
+        rep_name: repName,
       });
       setEditPreview(mapPreviewResult(result));
     } catch (err) {
       setEditPreview({ error: err.message });
     }
-  }, [settings, rules, sampleLead, previewTarget]);
+  }, [settings, rules, sampleLead, previewTarget, recruiterMessages]);
 
   useEffect(() => {
     loadConfig();
@@ -173,10 +212,17 @@ export function useAutoMessages(setStatus) {
       const payload = {
         settings,
         rules: rules.map((r, i) => ({ ...r, sort_order: i })),
+        recruiter_messages: recruiterMessages.map((r) => ({
+          recruiter_id: r.recruiter_id,
+          recruiter_name: r.recruiter_name,
+          message_template: r.message_template || "",
+          is_enabled: r.is_enabled !== false,
+        })),
       };
       const saved = await api.saveFacebookLeadAutoMessages(payload);
       setSettings(saved.settings);
       setRules(saved.rules?.length ? saved.rules : rules);
+      if (saved.recruiter_messages) setRecruiterMessages(saved.recruiter_messages);
       setStatus({ type: "success", text: "Auto-message settings saved." });
       setTimeout(() => setStatus(null), 4000);
     } catch (err) {
@@ -229,6 +275,7 @@ export function useAutoMessages(setStatus) {
 
   return {
     loading, saving, settings, setSettings, rules, setRules, placeholders,
+    recruiterMessages, setRecruiterTemplate, focusRecruiter, recruiterRefs,
     previewTarget, nowPreview, editPreview, sampleLead, setSampleLead,
     timezone, focusRule, focusFallback, insertPlaceholder,
     fallbackRef, ruleRefs,

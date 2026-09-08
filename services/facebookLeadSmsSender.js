@@ -153,6 +153,22 @@ function describeSenderFallback({ reason, recruiterName = null }) {
  */
 async function sendLeadSms({ phone, message, bitrixId = null, entity, waitOptions = {} }) {
   const resolved = await resolveLeadSmsRecruiter({ bitrixId, entity, waitOptions });
+  return sendResolvedLeadSms({ phone, message, resolved });
+}
+
+/**
+ * Send with a recruiter ALREADY resolved.
+ *
+ * Why this seam exists: the message itself now depends on who was assigned —
+ * a recruiter's own template and their name in `{rep_name}` — so the caller has
+ * to know the recruiter BEFORE it can render the text. Resolving once and
+ * handing the answer down keeps the Bitrix poll to a single pass per lead;
+ * calling `sendLeadSms` would run it a second time.
+ *
+ * @param {object} params
+ * @param {object} params.resolved  what resolveLeadSmsRecruiter returned
+ */
+async function sendResolvedLeadSms({ phone, message, resolved }) {
   let fallbackReason = resolved.recruiter ? null : resolved.reason;
   let fallbackName = null;
 
@@ -202,6 +218,7 @@ async function sendLeadSms({ phone, message, bitrixId = null, entity, waitOption
 module.exports = {
   resolveLeadSmsRecruiter,
   sendLeadSms,
+  sendResolvedLeadSms,
   describeSenderFallback,
   ACTIONABLE_FALLBACKS,
 };

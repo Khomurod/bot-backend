@@ -6,6 +6,8 @@ const {
   validateAutoMessagePayload,
   serializeRuleForApi,
   serializeSettingsForApi,
+  serializeRecruiterMessageForApi,
+  validateRecruiterMessagePayload,
   resolveTemplateAt,
   normalizeTimeString,
 } = require('../../services/facebookLeadAutoMessageService');
@@ -47,11 +49,24 @@ function createFacebookLeadsRouter({ authMiddleware }) {
         };
       }
 
+      // Driven by the `recruiters` table, so a recruiter added later appears
+      // here with an empty template and needs no code change.
+      let recruiterMessages = [];
+      try {
+        recruiterMessages = (await db.listFacebookLeadRecruiterMessages())
+          .map(serializeRecruiterMessageForApi);
+      } catch (recruiterErr) {
+        // The recruiter section is an enhancement; the page must still load and
+        // save the global rules if this table is unreachable.
+        console.warn('[API] Could not load recruiter auto-messages:', recruiterErr.message);
+      }
+
       return res.json({
         settings: serializeSettingsForApi(settings),
         rules: (rules || []).map(serializeRuleForApi),
         placeholders: listPlaceholders(),
         active_now: activePreview,
+        recruiter_messages: recruiterMessages,
       });
     } catch (err) {
       console.error('[API] GET facebook-leads/auto-messages failed:', err.message);
@@ -87,10 +102,20 @@ function createFacebookLeadsRouter({ authMiddleware }) {
         is_active: rule.is_active !== false,
       }));
 
-      const errors = validateAutoMessagePayload({
-        settings: settingsPayload,
-        rules: rulesPayload,
-      });
+      // Optional. A payload without the key leaves every recruiter template
+      // untouched — an older admin bundle must not silently wipe them.
+      const recruiterInput = Array.isArray(body.recruiter_messages) ? body.recruiter_messages : null;
+      const recruiterPayload = (recruiterInput || []).map((entry) => ({
+        recruiter_id: Number(entry.recruiter_id),
+        recruiter_name: entry.recruiter_name || null,
+        message_template: String(entry.message_template || '').trim(),
+        is_enabled: entry.is_enabled !== false,
+      }));
+
+      const errors = [
+        ...validateAutoMessagePayload({ settings: settingsPayload, rules: rulesPayload }),
+        ...validateRecruiterMessagePayload(recruiterPayload),
+      ];
       if (errors.length) {
         return res.status(400).json({ error: 'Validation failed', details: errors });
       }
@@ -99,6 +124,16 @@ function createFacebookLeadsRouter({ authMiddleware }) {
         settings: settingsPayload,
         rules: rulesPayload,
       });
+
+      let recruiterMessages = [];
+      if (recruiterInput) {
+        recruiterMessages = (await db.replaceFacebookLeadRecruiterMessages(recruiterPayload, {
+          updatedBy: req.admin?.username || null,
+        })).map(serializeRecruiterMessageForApi);
+      } else {
+        recruiterMessages = (await db.listFacebookLeadRecruiterMessages())
+          .map(serializeRecruiterMessageForApi);
+      }
 
       const activeNow = resolveTemplateAt({
         settings: saved.settings,
@@ -109,6 +144,7 @@ function createFacebookLeadsRouter({ authMiddleware }) {
         settings: serializeSettingsForApi(saved.settings),
         rules: saved.rules.map(serializeRuleForApi),
         active_now: activeNow,
+        recruiter_messages: recruiterMessages,
       });
     } catch (err) {
       console.error('[API] PUT facebook-leads/auto-messages failed:', err.message);
@@ -133,6 +169,8 @@ function createFacebookLeadsRouter({ authMiddleware }) {
         pageName: body.page_name || body.pageName || '',
         at: body.at || null,
         ruleLabel: body.rule_label || body.ruleLabel || null,
+        // Lets the recruiter section preview `{rep_name}` as that recruiter.
+        repName: body.rep_name || body.repName || '',
       });
 
       return res.json({

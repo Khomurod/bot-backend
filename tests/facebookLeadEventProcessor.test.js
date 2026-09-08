@@ -6,119 +6,14 @@
  * the CRM record and the `leads` row are best-effort; the text is sent from the
  * assigned recruiter's number and, whatever happens, is sent. These tests
  * assert that shape from the outside, with every collaborator faked.
+ *
+ * The fake world itself lives in tests/helpers/leadProcessorHarness.js, shared
+ * with tests/facebookLeadRecruiterFlow.test.js.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-process.env.BOT_TOKEN ||= 'test-bot-token';
-process.env.DATABASE_URL ||= 'postgresql://user:password@localhost:5432/test';
-process.env.MANAGEMENT_GROUP_ID ||= '-1001234567890';
-process.env.JWT_SECRET ||= 'test-jwt-secret';
-process.env.PORT ||= '3001';
-
-const PATHS = {
-  db: require.resolve('../database/db'),
-  crypto: require.resolve('../lib/security/facebookCrypto'),
-  mirror: require.resolve('../services/facebookLeadSmsMirrorService'),
-  telegramHtml: require.resolve('../services/telegramHtml'),
-  graph: require.resolve('../services/facebookGraphService'),
-  autoMessage: require.resolve('../services/facebookLeadAutoMessageService'),
-  sender: require.resolve('../services/facebookLeadSmsSender'),
-  bitrix: require.resolve('../services/bitrix24Service'),
-  processor: require.resolve('../services/facebookLeadEventProcessor'),
-};
-
-const EVENT = {
-  id: 1,
-  page_id: '9001',
-  event_type: 'leadgen',
-  payload: { leadgenId: 'lg-1', value: { form_id: 'form-7' } },
-};
-
-function loadProcessor({
-  connection = { page_name: 'Wenze Recruiting', telegram_group_id: '-1005555555555', access_token_encrypted: 'enc' },
-  bitrix = { ok: true, bitrixId: 'B-1', entity: 'lead' },
-  bitrixThrows = null,
-  leadRow = { id: 77 },
-  leadRecordThrows = null,
-  autoSms = { isEnabled: true, template: 'Hi {{first_name}}', settings: {}, ruleLabel: 'default' },
-  senderResult = {
-    smsResult: { ok: true, messageId: 'rc-own' },
-    via: 'recruiter',
-    recruiter: { id: 7, name: 'Jane Doe' },
-    recruiterId: 7,
-    assignedById: 17,
-    fromNumber: '+15557770000',
-    fallbackReason: null,
-    fallbackNote: null,
-  },
-  senderUpdateThrows = null,
-  // The duplicate guard's view of the world: an existing `leads` row, or the
-  // failure of the lookup itself.
-  existingLead = null,
-  existingLeadError = null,
-} = {}) {
-  const calls = { telegram: [], notices: [], bitrix: [], leads: [], senderWrites: [], sends: [], textedChecks: [] };
-
-  require.cache[PATHS.db] = {
-    exports: {
-      getFacebookPageConnectionByPageId: async () => connection,
-      createLeadIfNew: async (row) => { calls.leads.push(row); if (leadRecordThrows) throw leadRecordThrows; return leadRow; },
-      updateLeadBitrixResult: async (id, payload) => { calls.leads.push({ bitrixResult: { id, ...payload } }); },
-      updateLeadSmsSender: async (id, payload) => {
-        if (senderUpdateThrows) throw senderUpdateThrows;
-        calls.senderWrites.push({ id, ...payload });
-      },
-      getLeadBySourceExternalId: async (source, externalId) => {
-        calls.textedChecks.push({ source, externalId });
-        if (existingLeadError) throw existingLeadError;
-        return existingLead;
-      },
-    },
-  };
-  require.cache[PATHS.crypto] = { exports: { decryptText: () => 'page-token' } };
-  require.cache[PATHS.mirror] = {
-    exports: { sendAutoMessageSentNotice: async (telegram, chatId, payload) => { calls.notices.push(payload); return { ok: true }; } },
-  };
-  require.cache[PATHS.telegramHtml] = { exports: { safeSend: async (fn) => fn() } };
-  require.cache[PATHS.graph] = {
-    exports: {
-      fetchLeadById: async () => ({
-        id: 'lg-1',
-        field_data: [
-          { name: 'full_name', values: ['Alex Driver'] },
-          { name: 'phone_number', values: ['+15559998888'] },
-        ],
-      }),
-    },
-  };
-  require.cache[PATHS.autoMessage] = {
-    exports: { resolveAutoSmsForLead: async () => autoSms, LEGACY_HARDCODED_TEMPLATE: 'legacy' },
-  };
-  require.cache[PATHS.sender] = {
-    exports: {
-      sendLeadSms: async (args) => {
-        calls.sends.push(args);
-        if (typeof senderResult === 'function') return senderResult(args);
-        return senderResult;
-      },
-    },
-  };
-  require.cache[PATHS.bitrix] = {
-    exports: {
-      createCrmRecordFromLead: async (args) => {
-        calls.bitrix.push(args);
-        if (bitrixThrows) throw bitrixThrows;
-        return bitrix;
-      },
-    },
-  };
-  delete require.cache[PATHS.processor];
-  const processor = require(PATHS.processor);
-  const telegram = { sendMessage: async (chatId, text) => { calls.telegram.push({ chatId, text }); return { message_id: calls.telegram.length }; } };
-  const restore = () => { for (const path of Object.values(PATHS)) delete require.cache[path]; };
-  return { processor, telegram, calls, restore };
-}
+const { PATHS, EVENT, loadProcessor } = require('./helpers/leadProcessorHarness');
 
 test('the lead is posted, filed, and texted from the assigned recruiter', async () => {
   const { processor, telegram, calls, restore } = loadProcessor();
