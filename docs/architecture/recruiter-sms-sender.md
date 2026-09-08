@@ -139,9 +139,15 @@ Three properties are deliberate:
   the resolution is handed to `sendResolvedLeadSms()`. Calling `sendLeadSms()`
   from the processor would re-run the whole bounded poll — one lead, two Bitrix
   waits. That seam is the only reason `sendResolvedLeadSms` exists.
-- **`{rep_name}` is the person who is actually texting** — `buildTemplateContext`
-  takes a `repName` override — falling back to the settings rep name when the
-  lead goes out on the shared number, because then nobody in particular is.
+- **`{rep_name}` is WHOSE LEAD IT IS, not whose number sent it.**
+  `buildTemplateContext` takes a `repName` override, and it is the recruiter
+  Bitrix assigned — which it stays even when that recruiter's own number could
+  not send and the text went out on the shared line. The lead is still theirs
+  and they are the one who will call; signing it "Tom" would leave the driver
+  hearing from one person and called by another. The operator is not left
+  guessing either way: the sender fallback note in the Telegram thread says the
+  shared number was used and why. Only when NO recruiter is resolved does the
+  settings rep name apply — then nobody in particular is texting.
 - **It replaces the WORDS and nothing else.** No per-recruiter schedule, no
   per-recruiter enable switch beyond the template itself. The master auto-SMS
   toggle and the working-hours rules keep their existing meaning for every lead,

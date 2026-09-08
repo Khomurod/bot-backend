@@ -44,6 +44,9 @@ function loadProcessor({
   leadRow = { id: 77 },
   leadRecordThrows = null,
   autoSms = { isEnabled: true, template: 'Hi {first_name}', settings: {}, ruleLabel: 'default', repName: 'Jane Doe' },
+  // What loadAutoMessageConfig() answers. `settings: null` is a deployment
+  // that has never saved any auto-message configuration.
+  autoMessageConfig = { settings: { id: 1, is_enabled: true }, rules: [] },
   // What resolveLeadSmsRecruiter answers. It runs BEFORE the template is
   // picked, because the assigned recruiter decides both the words and the
   // number.
@@ -66,7 +69,7 @@ function loadProcessor({
 } = {}) {
   const calls = {
     telegram: [], notices: [], bitrix: [], leads: [], senderWrites: [], sends: [],
-    textedChecks: [], resolves: [], autoSmsArgs: [],
+    textedChecks: [], resolves: [], autoSmsArgs: [], configLoads: [],
   };
 
   require.cache[PATHS.db] = {
@@ -103,6 +106,12 @@ function loadProcessor({
   };
   require.cache[PATHS.autoMessage] = {
     exports: {
+      // Read BEFORE the Bitrix assignee, so a deployment with auto-SMS off
+      // never pays the assignee-wait budget.
+      loadAutoMessageConfig: async () => {
+        calls.configLoads.push(true);
+        return autoMessageConfig;
+      },
       resolveAutoSmsForLead: async (args) => { calls.autoSmsArgs.push(args); return autoSms; },
       LEGACY_HARDCODED_TEMPLATE: 'legacy',
     },

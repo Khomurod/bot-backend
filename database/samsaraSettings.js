@@ -80,8 +80,45 @@ async function getSettingsRow() {
 }
 
 function intOr(value, fallback) {
+  if (value === null || value === undefined) return fallback;
   const n = Number.parseInt(value, 10);
   return Number.isFinite(n) ? n : fallback;
+}
+
+/** NULL is "not saved" and inherits; only a real boolean overrides. */
+function bool(value, fallback) {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+/**
+ * The environment values these columns inherit when nothing is saved.
+ *
+ * They are the SAME variables the separate Samsara poller has always read, so
+ * a deployment that sets one keeps it until an administrator saves over it in
+ * the panel — which is the whole point of the columns being nullable.
+ */
+function envSpeedingEnabled() {
+  const raw = process.env.SAMSARA_SPEEDING_ENABLED;
+  return raw === undefined || raw === '' ? DEFAULTS.speedingEventsEnabled : raw !== 'false';
+}
+
+function envVideoRecoveryEnabled() {
+  const raw = process.env.SAMSARA_VIDEO_RETRY_ENABLED;
+  return raw === undefined || raw === '' ? DEFAULTS.videoRecoveryEnabled : raw !== 'false';
+}
+
+function envMaxVideoMegabytes() {
+  const bytes = Number.parseInt(process.env.SAMSARA_MAX_VIDEO_BYTES || '0', 10);
+  return Number.isFinite(bytes) && bytes > 0
+    ? Math.max(1, Math.round(bytes / (1024 * 1024)))
+    : DEFAULTS.maxVideoMegabytes;
+}
+
+function envInitialDelaySeconds() {
+  const ms = Number.parseInt(process.env.SAMSARA_VIDEO_RETRY_DELAY_MS || '0', 10);
+  return Number.isFinite(ms) && ms > 0
+    ? Math.round(ms / 1000)
+    : DEFAULTS.videoRecoveryInitialDelaySeconds;
 }
 
 /**
@@ -108,14 +145,17 @@ async function getSamsaraConfig() {
     apiKeyLast4: row?.api_key_last4 || (envKey ? envKey.slice(-4) : null),
     apiBase: (row?.api_base || config.samsaraApiBase || DEFAULT_API_BASE).replace(/\/+$/, ''),
 
-    speedingEventsEnabled: row ? row.speeding_events_enabled !== false : DEFAULTS.speedingEventsEnabled,
-    maxVideoMegabytes: intOr(row?.max_video_megabytes, DEFAULTS.maxVideoMegabytes),
+    // NULL means "nothing saved — inherit the environment", which is why the
+    // seeded row changes nothing. `bool`/`intOr` fall through on NULL; only a
+    // value an administrator actually saved overrides the deployment.
+    speedingEventsEnabled: bool(row?.speeding_events_enabled, envSpeedingEnabled()),
+    maxVideoMegabytes: intOr(row?.max_video_megabytes, envMaxVideoMegabytes()),
 
-    videoRecoveryEnabled: row ? row.video_recovery_enabled !== false : DEFAULTS.videoRecoveryEnabled,
+    videoRecoveryEnabled: bool(row?.video_recovery_enabled, envVideoRecoveryEnabled()),
     videoRecoveryInitialDelaySeconds: intOr(
-      row?.video_recovery_initial_delay_seconds, DEFAULTS.videoRecoveryInitialDelaySeconds
+      row?.video_recovery_initial_delay_seconds, envInitialDelaySeconds()
     ),
-    videoRetrievalEnabled: row ? row.video_retrieval_enabled !== false : DEFAULTS.videoRetrievalEnabled,
+    videoRetrievalEnabled: bool(row?.video_retrieval_enabled, DEFAULTS.videoRetrievalEnabled),
     videoRecoveryRetryIntervalSeconds: intOr(
       row?.video_recovery_retry_interval_seconds, DEFAULTS.videoRecoveryRetryIntervalSeconds
     ),

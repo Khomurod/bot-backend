@@ -129,8 +129,12 @@ async function loadRecruiterTemplate(recruiter) {
  * @param {object} params
  * @param {object} [params.recruiter]  the row resolved from the Bitrix assignee
  */
-async function resolveAutoSmsForLead({ fieldMap, pageName, at = null, recruiter = null } = {}) {
-  const { settings, rules } = await loadAutoMessageConfig();
+async function resolveAutoSmsForLead({ fieldMap, pageName, at = null, recruiter = null, config = null } = {}) {
+  // `config` lets the caller hand in a configuration it has ALREADY loaded.
+  // The processor reads it before resolving the Bitrix assignee — so a
+  // deployment with auto-SMS switched off can skip the assignee poll entirely
+  // — and re-reading it here would make that a second query per lead.
+  const { settings, rules } = config || await loadAutoMessageConfig();
   const recruiterTemplate = await loadRecruiterTemplate(recruiter);
   const repName = String(recruiter?.name || '').trim();
 

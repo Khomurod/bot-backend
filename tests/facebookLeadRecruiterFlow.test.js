@@ -86,3 +86,80 @@ test('an already-texted lead never reaches the recruiter lookup', async () => {
     assert.equal(calls.sends.length, 0);
   } finally { restore(); }
 });
+
+test('auto-SMS switched off costs no Bitrix assignee poll at all', async () => {
+  // Resolving the assignee can wait out the full BITRIX24_ASSIGNEE_WAIT_MS
+  // budget on an unassigned lead, and the webhook queue drains sequentially —
+  // so a deployment that sends no auto-SMS would otherwise delay every later
+  // event behind it for nothing. The master switch is read first.
+  const { processor, telegram, calls, restore } = loadProcessor({
+    autoMessageConfig: { settings: { id: 1, is_enabled: false }, rules: [] },
+  });
+  try {
+    await processor.processLeadEvent(EVENT, { telegram });
+
+    assert.deepEqual(calls.resolves, [], 'no Bitrix lookup');
+    assert.deepEqual(calls.autoSmsArgs, [], 'and no template resolution either');
+    assert.equal(calls.sends.length, 0);
+    assert.equal(calls.telegram.length, 2, 'the lead post, then the skip notice');
+    assert.match(calls.telegram[1].text, /auto-SMS is disabled/);
+  } finally { restore(); }
+});
+
+test('the auto-message configuration is read once and handed down', async () => {
+  // Checking the master switch early must not cost a second query per lead.
+  const { processor, telegram, calls, restore } = loadProcessor();
+  try {
+    await processor.processLeadEvent(EVENT, { telegram });
+    assert.equal(calls.configLoads.length, 1);
+    assert.deepEqual(calls.autoSmsArgs[0].config, { settings: { id: 1, is_enabled: true }, rules: [] });
+  } finally { restore(); }
+});
+
+test('a deployment that never saved any auto-message settings still sends', async () => {
+  // `settings: null` must not read as "disabled" — it is the shipped state
+  // before anyone opens the panel, and those leads have always been texted.
+  const { processor, telegram, calls, restore } = loadProcessor({
+    autoMessageConfig: { settings: null, rules: [] },
+  });
+  try {
+    await processor.processLeadEvent(EVENT, { telegram });
+    assert.equal(calls.resolves.length, 1);
+    assert.equal(calls.sends.length, 1);
+  } finally { restore(); }
+});
+
+test("a sender fallback keeps the assignee's name — the lead is still theirs", async () => {
+  // Sofia owns the lead in Bitrix; her RingCentral send fails, so the text goes
+  // out on the shared number. It still reads "this is Sofia", ON PURPOSE: she
+  // is the one who will call, and signing it "Tom" would leave the driver
+  // hearing from one person and called by another. The operator is told
+  // separately — the fallback note rides into the Telegram thread.
+  const { processor, telegram, calls, restore } = loadProcessor({
+    resolvedRecruiter: { recruiter: { id: 11, name: 'Sofia' }, assignedById: 21, reason: 'assigned' },
+    autoSms: {
+      isEnabled: true,
+      template: 'Hi {first_name}, this is {rep_name}.',
+      settings: { rep_name: 'Tom' },
+      ruleLabel: "Sofia's message",
+      repName: 'Sofia',
+    },
+    senderResult: {
+      smsResult: { ok: true, messageId: 'rc-shared' },
+      via: 'shared',
+      recruiter: null,
+      recruiterId: null,
+      assignedById: 21,
+      fromNumber: '+14704804679',
+      fallbackReason: 'recruiter_auth_failed',
+      fallbackNote: 'Sofia could not authenticate with RingCentral — sent from the shared number.',
+    },
+  });
+  try {
+    await processor.processLeadEvent(EVENT, { telegram });
+
+    assert.equal(calls.sends[0].message, 'Hi Alex, this is Sofia.');
+    assert.equal(calls.notices[0].fromNumber, '+14704804679', 'from the shared number…');
+    assert.match(calls.notices[0].senderNote, /could not authenticate/, '…and the operator is told why');
+  } finally { restore(); }
+});

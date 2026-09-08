@@ -27,19 +27,58 @@ const MIGRATION_PATH = path.join(
 const MIGRATION = fs.readFileSync(MIGRATION_PATH, 'utf8');
 const ALL_MIGRATIONS = allMigrationsSql();
 
-test('the migration applies, re-applies, and seeds the shipped defaults', { skip: skipWithoutPg() }, async (t) => {
+test('the migration applies, re-applies, and seeds a row that changes nothing', { skip: skipWithoutPg() }, async (t) => {
   const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   await harness.query(MIGRATION); // a second boot must change nothing
 
   const rows = await harness.query('SELECT * FROM samsara_settings');
   assert.equal(rows.rows.length, 1, 'exactly one settings row, seeded');
   const row = rows.rows[0];
-  assert.equal(row.enabled, true);
+  assert.equal(row.enabled, true, 'Samsara has always been on, and stays on');
   assert.equal(row.api_key_encrypted, null, 'nothing is stored until an admin saves one');
-  assert.equal(row.video_recovery_enabled, true);
-  assert.equal(row.video_recovery_initial_delay_seconds, 300, 'the 5 minutes the admin panel shows');
-  assert.equal(row.video_retrieval_enabled, true);
-  assert.equal(row.video_recovery_max_attempts, 12);
+
+  // EVERY OPERATIONAL COLUMN IS NULL, and NULL means "inherit the environment".
+  // SQL defaults here would make the seeded row indistinguishable from one an
+  // administrator saved — so this migration would silently overwrite a deployed
+  // SAMSARA_MAX_VIDEO_BYTES or SAMSARA_VIDEO_RETRY_DELAY_MS the moment it ran.
+  for (const column of [
+    'speeding_events_enabled', 'max_video_megabytes',
+    'video_recovery_enabled', 'video_recovery_initial_delay_seconds',
+    'video_retrieval_enabled', 'video_recovery_retry_interval_seconds',
+    'video_recovery_max_attempts',
+    'video_retrieval_window_before_seconds', 'video_retrieval_window_after_seconds',
+  ]) {
+    assert.equal(row[column], null, `${column} must be NULL so the environment still decides`);
+  }
+
+  const columns = await harness.query(
+    `SELECT column_name, is_nullable, column_default FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'samsara_settings'`
+  );
+  for (const c of columns.rows) {
+    if (['id', 'enabled', 'updated_at'].includes(c.column_name)) continue;
+    assert.equal(c.is_nullable, 'YES', `${c.column_name} must be nullable`);
+    assert.equal(c.column_default, null, `${c.column_name} must carry no SQL default`);
+  }
+});
+
+test('the shipped defaults come from code, and reach both services', { skip: skipWithoutPg() }, async (t) => {
+  // With the row seeded NULL, the effective values an operator sees are the
+  // ones in database/samsaraSettings.js DEFAULTS — including the 5-minute
+  // initial delay the admin panel shows.
+  const harness = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
+  const { samsaraSettings } = harness.loadDataLayer(['samsaraSettings']);
+
+  const view = await samsaraSettings.getSamsaraSettingsForAdmin();
+  assert.equal(view.videoRecoveryEnabled, true);
+  assert.equal(view.videoRecoveryInitialDelaySeconds, 300, 'the 5 minutes the admin panel shows');
+  assert.equal(view.videoRetrievalEnabled, true);
+  assert.equal(view.videoRecoveryMaxAttempts, 12);
+
+  // …and a saved value is what then overrides them.
+  await samsaraSettings.updateSamsaraSettings({ videoRecoveryInitialDelaySeconds: 600 });
+  const saved = await harness.query('SELECT video_recovery_initial_delay_seconds FROM samsara_settings WHERE id = 1');
+  assert.equal(saved.rows[0].video_recovery_initial_delay_seconds, 600);
 });
 
 test('an impossible recovery configuration is refused by the database', { skip: skipWithoutPg() }, async (t) => {

@@ -181,6 +181,9 @@ require.cache[require.resolve('../database/ringcentral')] = {
 };
 require.cache[require.resolve('../services/facebookLeadAutoMessageService')] = {
   exports: {
+    // Read before the Bitrix assignee, so auto-SMS being switched off costs no
+    // assignee-wait budget. Enabled here — these cases are about delivery.
+    loadAutoMessageConfig: async () => ({ settings: { id: 1, is_enabled: true }, rules: [] }),
     resolveAutoSmsForLead: async () => ({
       isEnabled: true,
       template: 'Hi {{first_name}}, thanks for applying.',

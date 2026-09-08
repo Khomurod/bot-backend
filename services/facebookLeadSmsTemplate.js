@@ -36,10 +36,17 @@ function parseNameParts(fieldMap = {}) {
  * @param {object} [params.settings]  the auto-message settings row
  * @param {string} [params.pageName]
  * @param {string} [params.repName]
- *   WHO IS ACTUALLY TEXTING. The assigned recruiter's name when one was
- *   resolved, so `{rep_name}` names the person whose number the driver is
- *   about to see — not the generic sender in settings, which stays the answer
- *   when the lead falls back to the shared number.
+ *   WHOSE LEAD THIS IS — the recruiter Bitrix assigned it to, when one was
+ *   resolved. Empty falls back to the generic sender in `settings`.
+ *
+ *   Deliberately NOT "whose number sent it". When Sofia is the assignee but
+ *   her RingCentral send fails and the text goes out on the shared number, the
+ *   driver still reads "this is Sofia" — because the lead is still Sofia's,
+ *   she is the one who will call, and a message signed "Tom" would leave the
+ *   driver hearing from one person and called by another. The operator is told
+ *   separately: the Telegram thread carries the sender fallback note. The
+ *   settings rep name is for the case where nobody was resolved at all, and
+ *   nobody in particular is therefore texting.
  */
 function buildTemplateContext({ fieldMap = {}, settings = {}, pageName = '', repName = '' } = {}) {
   const { firstName, lastName, fullName } = parseNameParts(fieldMap);

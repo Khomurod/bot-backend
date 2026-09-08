@@ -33,6 +33,7 @@ const { fetchLeadById } = require('./facebookGraphService');
 const { buildLeadFieldMap, formatLeadMessage } = require('./facebookLeadFormatter');
 const { resolveLeadSmsRecruiter, sendResolvedLeadSms } = require('./facebookLeadSmsSender');
 const {
+  loadAutoMessageConfig,
   resolveAutoSmsForLead,
   LEGACY_HARDCODED_TEMPLATE,
 } = require('./facebookLeadAutoMessageService');
@@ -189,7 +190,17 @@ async function sendAutoSms({ phone, fieldMap, connection, bitrixResult, leadgenI
     };
   }
 
-  // WHO FIRST, THEN WHAT. The assigned recruiter decides both the number the
+  // THE MASTER SWITCH COMES FIRST, before anything expensive. Resolving the
+  // Bitrix assignee can wait out the full BITRIX24_ASSIGNEE_WAIT_MS budget
+  // (25s by default) on an unassigned lead, and the webhook queue drains
+  // sequentially — so spending it on a deployment that sends no auto-SMS at
+  // all would delay every later event behind it for nothing.
+  const autoMessageConfig = await loadAutoMessageConfig();
+  if (autoMessageConfig.settings && autoMessageConfig.settings.is_enabled === false) {
+    return { smsResult: { ok: false, reason: 'disabled' }, smsBody: null, ruleLabel: null, sender: null };
+  }
+
+  // WHO NEXT, THEN WHAT. The assigned recruiter decides both the number the
   // text leaves from and — when they have written one — the words in it, so the
   // Bitrix assignee is resolved BEFORE the template is picked. Resolving here
   // rather than inside the send also keeps it to one bounded Bitrix poll.
@@ -202,6 +213,7 @@ async function sendAutoSms({ phone, fieldMap, connection, bitrixResult, leadgenI
     fieldMap,
     pageName: connection.page_name,
     recruiter: resolvedSender.recruiter,
+    config: autoMessageConfig,
   });
   if (!resolved.isEnabled) {
     return { smsResult: { ok: false, reason: 'disabled' }, smsBody: null, ruleLabel: resolved.ruleLabel, sender: null };
