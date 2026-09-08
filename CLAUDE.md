@@ -81,9 +81,12 @@ enough to benefit, and never let their absence block or delay work:
 - Run the relevant tests before claiming success, and report exact results
   (command, pass/fail counts). Do not claim a test passed unless it was run.
 - Do not merge without reviewing the final diff.
-  **Repository-specific caution:** pushing a feature branch to this repository
-  auto-opens AND auto-merges a PR into `main` within seconds — review the
-  complete diff **BEFORE** pushing.
+  **Repository-specific caution:** a push here opens and merges nothing by
+  itself — `.github/workflows/` holds only `ci.yml`, so the agent opens the PR
+  and the repository owner merges it (29 minutes to 8 hours later, on PRs
+  #161–#163). The push is still the point of no return, because **`main`
+  auto-deploys to Render** and the owner may merge at any moment without asking
+  for a second look. **Review the complete diff BEFORE pushing.**
 
 # Testing expectations
 
