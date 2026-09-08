@@ -156,6 +156,23 @@ never reach an AI call).
   un-texted**, every fallback an operator could fix is stated in the Telegram
   thread, and the reason is stored on the mirror row (`fallback_reason`) so it
   can be queried rather than only read.
+- **The assigned recruiter chooses the WORDS too, when they have written any.**
+  Facebook Leads → Auto-Reply Setup has a **Recruiter messages** section listing
+  every active recruiter (Sofia, Kimberly, Jaime, and anyone added later — it is
+  driven by the `recruiters` table, not a list in code). One optional template
+  each, deliberately not a second scheduling engine: when the assigned recruiter
+  has a non-blank one it is used, otherwise the existing global time-window
+  rules and the outside-hours fallback decide exactly as before. `{rep_name}`
+  renders as the recruiter who is actually texting, falling back to the settings
+  rep name when the lead goes out on the shared number. The Bitrix assignee is
+  therefore resolved BEFORE the template is picked — one bounded poll per lead,
+  not two — and the same resolution is what sends. A blank template deletes the
+  row, so "no custom message" has exactly one representation, and a database
+  failure reading it silently falls back rather than costing a lead its text.
+  `facebook_lead_recruiter_messages`, guarded by
+  `tests/facebookLeadRecruiterMessages.test.js`,
+  `tests/facebookLeadRecruiterFlow.test.js` and
+  `tests/facebookLeadRecruiterMessagesPg.test.js`.
 - **A lead that has already been texted is never texted again.**
   `leads.sms_from_number` is the record of it, checked before every send, which
   closes the admin retry button and the at-least-once crash window alike — and

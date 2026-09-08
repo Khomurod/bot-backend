@@ -155,6 +155,27 @@
       "purpose": "Single-row (id=1) Bitrix24 CRM settings edited in Settings → RingCentral → Bitrix24: enabled, inbound webhook (encrypted — the URL path IS the credential, never returned to a browser), entity, assignee at creation, source, deal pipeline, assignee wait. Every column NULL = inherit the BITRIX24_* env var; the DB row wins once set. assigned_by_id is TEXT so '' (explicitly nobody) differs from NULL (inherit).",
       "status": "active",
       "service": "admin (Settings → RingCentral → Bitrix24), bitrix24Service, facebookLeadSmsSender"
+    },
+    "facebook_lead_recruiter_messages": {
+      "purpose": "Optional per-recruiter override of the Facebook-lead auto-SMS text, keyed by recruiter_id. Blank or absent means 'use the global time-based Auto Message system' — that is why the admin API deletes a row rather than storing an empty string.",
+      "status": "active",
+      "service": "admin (edited), bot (read when a lead's Bitrix assignee is resolved)",
+      "sourceOfTruth": "This table (mastered here).",
+      "danger": "ON DELETE CASCADE from recruiters. Removing a row is safe — the lead falls back to the global message."
+    },
+    "samsara_settings": {
+      "purpose": "One row (id=1) holding the Samsara connection (API key, base URL, enabled), the safety-event switches and every missing-video recovery control. THE CONFIGURATION CHANNEL between bot-backend and the separate samsara-integration poller, which reads it over the shared database.",
+      "status": "active",
+      "service": "admin (writes), bot (reads), samsara-integration (reads)",
+      "sourceOfTruth": "This table; every column falls back to the matching environment variable when empty, so an existing deployment keeps working untouched.",
+      "danger": "api_key_encrypted uses lib/security/sharedIntegrationCrypto (NOT facebookCrypto) because the poller must open it too. Never return it to a browser. Clearing it hands Samsara back to SAMSARA_API_KEY — if none is set, Samsara stops."
+    },
+    "samsara_video_recovery_jobs": {
+      "purpose": "The durable queue of safety events alerted WITHOUT dashcam video: the Telegram messages to fold the clip into, the Samsara retrieval being waited on, the attempt count and a terminal state. Replaced an in-memory timer that lost every pending video on a redeploy.",
+      "status": "active",
+      "service": "samsara-integration (writes and works them), admin (read-only diagnostics)",
+      "sourceOfTruth": "samsara-integration; bot-backend owns the DDL (migration 0013) and only reads.",
+      "danger": "samsara_event_id is UNIQUE and enqueue is ON CONFLICT DO NOTHING — that is what stops a re-delivered event creating a second recovery and a duplicate Samsara retrieval request. Never store a signed media URL in targets or last_error."
     }
   }
 }

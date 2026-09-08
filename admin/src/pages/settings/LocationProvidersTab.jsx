@@ -139,6 +139,14 @@ export default function LocationProvidersTab() {
           </label>
         </div>
         <KeyField label="Samsara API Key" hint={settings.samsaraApiKeySet ? settings.samsaraApiKeyMasked : "not set"} fromEnv={settings.samsaraFromEnv} value={form.samsaraApiKey} onChange={(v) => setField("samsaraApiKey", v)} />
+        {/* One credential, one home. A key entered here is written to the same
+            row the Samsara tab manages — it is the only copy the separate
+            Samsara poller can read — so the two screens can never disagree
+            about which key is live. */}
+        <div style={{ fontSize: 12, color: "#94a3b8", marginTop: -6, marginBottom: 8 }}>
+          Shared with <strong>Settings → Samsara</strong>, which also covers safety events and
+          missing-video recovery.
+        </div>
         <button className="btn btn-ghost btn-sm" onClick={() => runTest("samsara", { apiKey: form.samsaraApiKey.trim() || undefined })} disabled={testing.samsara}>Test connection</button>
         <TestBadge provider="samsara" /><TestMessage provider="samsara" />
       </div>

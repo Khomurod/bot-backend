@@ -60,12 +60,18 @@ organization should converge toward.
 
 | Concern | Current location |
 |---|---|
-| Samsara safety events, alerts, videos, safety captions, safety idempotency, poller retry | **External repo** `samsara-integration` (own Render service). See its `docs/architecture/module-map.md`. |
+| Samsara safety events, alerts, videos, safety captions, safety idempotency, missing-video recovery | **External repo** `samsara-integration` (own Render service). See its `docs/architecture/module-map.md`. |
+| **Its settings**, and the schema for them | **Here.** `database/samsaraSettings.js`, `server/routes/settings/samsaraRoutes.js`, `admin/src/pages/settings/SamsaraTab.jsx`, migration 0013 |
+| The recovery queue, read-only for diagnostics | `database/samsaraVideoRecovery.js` (never writes — the poller owns the jobs) |
+| The envelope both services open the Samsara API key with | `lib/security/sharedIntegrationCrypto.js` (mirrored in the other repo) |
 | Separation rationale | `samsara-separation.md`, `render.yaml` (note at bottom), `index.js:72-78` |
+| Settings + recovery contract | `samsara-settings-and-video-recovery.md` |
 
 > **Do NOT re-add** the Samsara safety poller to this repo. It was removed on
 > purpose to stop OOM kills. The two services cooperate only through the shared
-> `groups` table and shared Telegram tokens — no in-process link.
+> database and shared Telegram tokens — no in-process link, and **no HTTP link
+> either**: `samsara_settings` is the configuration channel, and adding a second
+> one is how the panel and the poller end up disagreeing.
 
 ### 2. Dispatch Module
 
@@ -201,11 +207,11 @@ repository exceeds 500 lines (`npm run lint:filesize`, no baseline).
 | Façade (stable import path) | Package |
 |---|---|
 | `database/homeTime.js` | `database/homeTime/{settings,driverState,roadHistory,requests}.js` |
-| `database/facebookLeads.js` | `database/facebookLeads/{connectSessions,pageConnections,webhookEvents,autoMessages,smsMirrors}.js` |
+| `database/facebookLeads.js` | `database/facebookLeads/{connectSessions,pageConnections,webhookEvents,autoMessages,recruiterMessages,smsMirrors}.js` |
 | `database/raiseApproval.js` | `database/raiseApproval/{settings,teams,teamMembers,teamDrivers,rounds,otp}.js` |
 | `database/ringcentral.js` | `database/ringcentral/{kpiMath,secrets,settings,recruiters,calls,kpiQueries,connectSessions}.js` — **explicit key list**, so four internal helpers stay private |
 | `database/routeControl.js` | `database/routeControl/{assignments,screenshots,monitorState,driverMessages,monitorEvents}.js` |
-| `server/routes/settingsRoutes.js` | `server/routes/settings/{eld,ringcentral,messageGroup,gmaps,safetyEvent,bolPod}Routes.js` |
+| `server/routes/settingsRoutes.js` | `server/routes/settings/{eld,ringcentral,messageGroup,gmaps,samsara,safetyEvent,bolPod,bitrix,retiredLeftovers}Routes.js` |
 | `server/routes/homeTimeRoutes.js` | `server/routes/homeTime/{rowShaping,tracker,import,settings,groupAccess}Routes.js` — registration ORDER is load-bearing |
 | `server/routes/facebookConnectRoutes.js` | `server/routes/facebookConnect/{connectPages,internal,oauth,inspection}Routes.js` — one guard per file, three different auth models |
 | `server/services/dispatchParserService.js` | `server/services/dispatchParser/*.js` (9 modules) |

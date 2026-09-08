@@ -7,13 +7,18 @@ import React, { Suspense, lazy, useState } from "react";
  * Secrets are write-only from the UI: the API returns only a masked "••••abcd"
  * hint and never the raw value. Leaving a key field blank on Save keeps the
  * stored value.
+ *
+ * The Samsara tab is ONE integration rather than one screen per moving part:
+ * the connection, the safety-event switches, missing-video recovery and the
+ * driver-group music overlay (still its own component, ./settings/
+ * SafetyEventsTab.jsx) all live under it.
  */
 
 const LocationProvidersTab = lazy(() => import("./settings/LocationProvidersTab"));
 const RingCentralTab = lazy(() => import("./settings/RingCentralTab"));
 const TelegramGroupsTab = lazy(() => import("./settings/TelegramGroupsTab"));
 const GmapsTab = lazy(() => import("./settings/GmapsTab"));
-const SafetyEventsTab = lazy(() => import("./settings/SafetyEventsTab"));
+const SamsaraTab = lazy(() => import("./settings/SamsaraTab"));
 const BolPodTab = lazy(() => import("./settings/BolPodTab"));
 const RetiredLeftoversTab = lazy(() => import("./settings/RetiredLeftoversTab"));
 
@@ -30,7 +35,7 @@ export default function SettingsPage() {
         <button className={`btn ${tab === "ringcentral" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("ringcentral")}>📞 RingCentral</button>
         <button className={`btn ${tab === "groups" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("groups")}>💬 Telegram Groups</button>
         <button className={`btn ${tab === "gmaps" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("gmaps")}>🗺️ GMaps</button>
-        <button className={`btn ${tab === "safety" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("safety")}>🎵 Safety Event Music</button>
+        <button className={`btn ${tab === "samsara" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("samsara")}>🛰️ Samsara</button>
         <button className={`btn ${tab === "bolpod" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("bolpod")}>📄 BOL / POD</button>
         <button className={`btn ${tab === "leftovers" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("leftovers")}>🧹 Retired Leftovers</button>
       </div>
@@ -39,7 +44,7 @@ export default function SettingsPage() {
         {tab === "ringcentral" && <RingCentralTab />}
         {tab === "groups" && <TelegramGroupsTab />}
         {tab === "gmaps" && <GmapsTab />}
-        {tab === "safety" && <SafetyEventsTab />}
+        {tab === "samsara" && <SamsaraTab />}
         {tab === "bolpod" && <BolPodTab />}
         {tab === "leftovers" && <RetiredLeftoversTab />}
       </Suspense>

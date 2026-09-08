@@ -11,6 +11,7 @@
 const { query } = require('./db');
 const config = require('../config/config');
 const { encryptText, decryptText } = require('../lib/security/facebookCrypto');
+const samsaraSettings = require('./samsaraSettings');
 
 // The location resolver runs on a hot path (per group, repeatedly). Cache the
 // decrypted effective config briefly so we don't hit the DB on every ping.
@@ -72,15 +73,21 @@ async function getEldConfig() {
   const row = await getSettingsRow();
 
   const envSamsaraKeys = Array.isArray(config.samsaraApiKeys) ? config.samsaraApiKeys : [];
+  // Settings → Samsara is the PRIMARY home for the Samsara credential now, and
+  // it is the only one the separate samsara-integration poller can read. This
+  // legacy column stays ahead of the environment so a key entered here before
+  // the Samsara area existed keeps working untouched.
+  const samsaraCfg = await samsaraSettings.getSamsaraConfig();
+  const sharedSamsaraKey = samsaraCfg.apiKeySource === 'database' ? samsaraCfg.apiKey : '';
   const dbSamsaraKey = safeDecrypt(row?.samsara_api_key_encrypted);
   const samsaraApiKeys = Array.from(new Set(
-    [dbSamsaraKey, config.samsaraApiKey, ...envSamsaraKeys].filter(Boolean)
+    [sharedSamsaraKey, dbSamsaraKey, config.samsaraApiKey, ...envSamsaraKeys].filter(Boolean)
   ));
 
   const effective = {
-    samsaraEnabled: row ? row.samsara_enabled !== false : true,
+    samsaraEnabled: (row ? row.samsara_enabled !== false : true) && samsaraCfg.enabled,
     samsaraApiKeys,
-    samsaraApiBase: config.samsaraApiBase,
+    samsaraApiBase: samsaraCfg.apiBase,
 
     // What the operator configured (DB row → env → default), used for display.
     driveHosApiBaseConfigured: (row?.drivehos_api_base || config.driveHosApiBase || DEFAULT_DRIVEHOS_API_BASE)
@@ -94,6 +101,12 @@ async function getEldConfig() {
     })(),
     driveHosApiBaseLooksLikeDocs: looksLikeDocsUrl(row?.drivehos_api_base || config.driveHosApiBase || ''),
     driveHosProviderKey: safeDecrypt(row?.drivehos_provider_key_encrypted) || config.driveHosProviderKey || '',
+    // Where the effective Samsara key came from, for the admin view.
+    samsaraApiKeySource: (() => {
+      if (sharedSamsaraKey) return 'samsara_settings';
+      if (dbSamsaraKey) return 'legacy_eld_settings';
+      return samsaraApiKeys.length ? 'environment' : 'none';
+    })(),
 
     factorEnabled: row ? row.factor_enabled !== false : true,
     factorCompanyKey: safeDecrypt(row?.factor_company_key_encrypted) || config.factorEldCompanyKey || '',
@@ -125,7 +138,10 @@ async function getEldSettingsForAdmin() {
     samsaraEnabled: cfg.samsaraEnabled,
     samsaraApiKeySet: Boolean(cfg.samsaraApiKeys.length),
     samsaraApiKeyMasked: maskKey(cfg.samsaraApiKeys[0]),
-    samsaraFromEnv: !row?.samsara_api_key_encrypted && Boolean(cfg.samsaraApiKeys.length),
+    samsaraFromEnv: cfg.samsaraApiKeySource === 'environment',
+    // The Samsara credential is managed under Settings → Samsara; this tab
+    // shows it read-only so two pages cannot disagree about which key is live.
+    samsaraApiKeySource: cfg.samsaraApiKeySource,
 
     driveHosApiBase: cfg.driveHosApiBaseConfigured,
     driveHosApiBaseLooksLikeDocs: cfg.driveHosApiBaseLooksLikeDocs,
@@ -180,7 +196,18 @@ async function updateEldSettings(payload = {}) {
   };
 
   pushBool('samsara_enabled', payload.samsaraEnabled);
-  pushSecret('samsara_api_key_encrypted', payload.samsaraApiKey, payload.clearSamsaraApiKey);
+  // A Samsara key entered on THIS tab is written to samsara_settings, not here:
+  // the poller can only read that one, and two stores for one credential is how
+  // the panel and the poller end up using different keys. The legacy column is
+  // still read (above) and still clearable, so nothing already stored is lost.
+  const samsaraKeyInput = typeof payload.samsaraApiKey === 'string' ? payload.samsaraApiKey.trim() : '';
+  if (samsaraKeyInput || payload.clearSamsaraApiKey) {
+    await samsaraSettings.updateSamsaraSettings({
+      apiKey: samsaraKeyInput || undefined,
+      clearApiKey: Boolean(payload.clearSamsaraApiKey),
+    });
+    if (payload.clearSamsaraApiKey) sets.push('samsara_api_key_encrypted = NULL');
+  }
 
   if (typeof payload.driveHosApiBase === 'string' && payload.driveHosApiBase.trim()) {
     sets.push(`drivehos_api_base = $${i++}`);

@@ -40,8 +40,13 @@ They never call each other. They share two things:
 
 1. **The same `DATABASE_URL`.** The Samsara service resolves "which driver group
    belongs to truck #123?" from the shared `groups` table. It also owns its own
-   `samsara_*` tables and writes `safety_event_video_jobs`; `bot-backend` remains
-   the canonical owner of the `safety_event_*` music/settings tables.
+   `samsara_*` cursor/dedup tables and writes `safety_event_video_jobs` and
+   `samsara_video_recovery_jobs`; `bot-backend` remains the canonical owner of
+   the `safety_event_*` music/settings tables **and of `samsara_settings`**,
+   which is how the admin panel configures the poller — the API key, the
+   safety-event switches and everything about missing-video recovery. See
+   [`samsara-settings-and-video-recovery.md`](samsara-settings-and-video-recovery.md).
+   **Do not add an HTTP link between the two services to exchange settings.**
 2. **The same Telegram bot tokens**, so messages still come from the same bots.
 
 Given those two, both behaviors are preserved: safety/camera events go to the

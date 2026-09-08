@@ -80,6 +80,7 @@ Meta → /webhook (raw-body proxy) → Python verifies the signature
          2. crm.lead.add → bitrixId                 (best-effort)
          3. leads row                               (best-effort)
          4. facebookLeadSmsSender.js  ── who sends? ──┐
+            …then WHAT they say (see below)           │
          5. mirror + "AutoMessage sent" notice        │
                                                       ▼
    hasMappedSmsSenders()  no  → shared number, no Bitrix call, no delay
@@ -114,6 +115,43 @@ If that ever bites (a backlog draining after an outage, say), lower
 `BITRIX24_ASSIGNEE_WAIT_MS`; `0` means "one read, then send". Nothing is lost
 either way: events are persisted before processing, so a slow drain is late,
 never dropped.
+
+## The assigned recruiter also chooses the words
+
+The same resolution now decides the MESSAGE, not just the number. Each
+recruiter may have one optional template in
+`facebook_lead_recruiter_messages`, edited under **Facebook Leads → Auto-Reply
+Setup → Recruiter messages**:
+
+```
+resolveLeadSmsRecruiter()  ── the assignee, resolved ONCE ──┐
+                                                            ▼
+        their template?  yes → use it, ruleLabel "<Name>'s message"
+              │ no
+              ▼
+        the existing time-window rules → the outside-hours fallback
+                                       → LEGACY_HARDCODED_TEMPLATE
+```
+
+Three properties are deliberate:
+
+- **Order.** The Bitrix assignee is resolved BEFORE the template is picked, and
+  the resolution is handed to `sendResolvedLeadSms()`. Calling `sendLeadSms()`
+  from the processor would re-run the whole bounded poll — one lead, two Bitrix
+  waits. That seam is the only reason `sendResolvedLeadSms` exists.
+- **`{rep_name}` is the person who is actually texting** — `buildTemplateContext`
+  takes a `repName` override — falling back to the settings rep name when the
+  lead goes out on the shared number, because then nobody in particular is.
+- **It replaces the WORDS and nothing else.** No per-recruiter schedule, no
+  per-recruiter enable switch beyond the template itself. The master auto-SMS
+  toggle and the working-hours rules keep their existing meaning for every lead,
+  so a recruiter template cannot re-enable a disabled system or text outside
+  hours. A blank template DELETES the row, so "no custom message" has exactly
+  one representation, and a database failure reading it falls back silently
+  rather than costing a lead its text.
+
+The listing is driven by the `recruiters` table, so a recruiter hired later
+appears in the panel with an empty box and no code change.
 
 ## A converted lead: the recruiter is on the DEAL
 
@@ -362,6 +400,9 @@ about the sending half.
 | Diagnose predicting a real send, not a last-ten match | `tests/senderNumberDiagnosis.test.js` |
 | The notice using the stored chat id, and the mirror it writes | `tests/facebookLeadSmsReply.test.js` |
 | A lead already texted is not texted again | `tests/facebookLeadEventProcessor.test.js` |
+| Which template a recruiter's lead gets, and every fallback to the global one | `tests/facebookLeadRecruiterMessages.test.js` |
+| The assignee resolved once, before the template, and reused for the send | `tests/facebookLeadRecruiterFlow.test.js` |
+| Migration 0012 and the blank-means-delete rule, on real PostgreSQL | `tests/facebookLeadRecruiterMessagesPg.test.js` |
 | The extension identity backfill | `tests/ringCentralTokenRefresh.test.js` |
 | `fallback_reason` on the mirror, on real PostgreSQL | `tests/smsMirrorFallbackReasonPg.test.js` |
 | The subscription payload, and shedding one extension at a time (Python) | `leads-bot/test_rc_webhook_register.py` |
