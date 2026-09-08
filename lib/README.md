@@ -43,6 +43,7 @@ needs a drawer.
 | `drivers/driverGroupTitle.js` | Parsing a driver group's Telegram title into name / unit / type. |
 | `drivers/driverProfileParse.js` | Driver type inference and the inactive-group verdict. |
 | `telegram/telegramUsername.js` | Normalizing a Telegram `@username` and numeric user id. |
+| `phone/e164.js` | `toE164` (a number you can SEND from — RingCentral rejects anything else) and `phoneKey` / `sameNumber` (comparing two spellings). Two jobs, deliberately side by side: confusing them is what texted every lead from the shared number. |
 | `routeControl/routeControlConstants.js` | Route Control thresholds and label tables. |
 | `geo/distance.js` | Great-circle distance — the single implementation. `haversineMiles` is `haversineMeters` converted, not a second formula, because four consumers answer "is the truck there yet" from it: route completion, tracking start, fuel-stop proximity and ETA remaining distance. |
 | `database/failureClassification.js` | Which kind of database failure an error is — unreachable, timed out, out of allowance, permission — as a code + status + human sentence. Used by the query boundary (`database/pool.js`), the route failure helper and the tests; an ordinary SQL error deliberately classifies as nothing. |

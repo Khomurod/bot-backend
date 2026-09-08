@@ -7,6 +7,7 @@ Uses JWT authentication for a permanent, non-expiring connection.
 If RingCentral credentials are not configured, all functions are no-ops.
 """
 import logging
+import re
 import httpx
 from config import RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT_TOKEN, RC_FROM_NUMBER
 
@@ -25,7 +26,70 @@ RC_INBOUND_SMS_MMS_FILTERS: tuple[str, ...] = (
 )
 
 
-def inbound_sms_filters(extension_ids: list[str] | tuple[str, ...] | None = None) -> list[str]:
+def valid_extension_ids(
+    extension_ids: list[str] | tuple[str, ...] | None = None,
+) -> tuple[list[str], list[str]]:
+    """Split a roster into ids that can become a filter, and ones that cannot.
+
+    A RingCentral extension id is a number. Anything else interpolated into a
+    filter path makes the WHOLE subscription invalid —
+    `CMN-101 Parameter [eventFilters] value is invalid` — and the old code then
+    dropped every recruiter's filter rather than the one bad value, so one
+    malformed row silently cost every recruiter their inbound SMS.
+
+    Refusing it here means the request that goes out is one RingCentral can
+    accept, and the offending value is named in a log instead of being invisible
+    inside a rejected payload.
+
+    Returns (usable, rejected), both in the order given, de-duplicated.
+    """
+    usable: list[str] = []
+    rejected: list[str] = []
+    seen: set[str] = set()
+    for ext_id in extension_ids or ():
+        if ext_id is None:
+            # A hole in the roster is not a bad id — nothing to report.
+            continue
+        ext = str(ext_id).strip()
+        if not ext or ext == "~":
+            # `~` is the shared extension, always covered by the base filters.
+            continue
+        if ext in seen:
+            continue
+        seen.add(ext)
+        if ext.isdigit():
+            usable.append(ext)
+        else:
+            rejected.append(ext)
+    return usable, rejected
+
+
+def extension_filters(extension_id: str, *, include_mms: bool = True) -> list[str]:
+    """The SMS (and optionally MMS) filters for one extension."""
+    base = f"/restapi/v1.0/account/~/extension/{extension_id}/message-store/instant"
+    return [f"{base}?type=SMS"] + ([f"{base}?type=MMS"] if include_mms else [])
+
+
+def _extensions_in(filters: list[str] | tuple[str, ...]) -> set[str]:
+    """Which extension ids a set of filters actually watches.
+
+    Used to say, precisely, which recruiters a degraded subscription lost —
+    rather than the old blanket "WITHOUT per-recruiter extensions", which was
+    wrong whenever the roster was empty or only MMS had been given up.
+    """
+    found: set[str] = set()
+    for item in filters or ():
+        match = re.search(r"/extension/([^/]+)/message-store", str(item))
+        if match and match.group(1) != "~":
+            found.add(match.group(1))
+    return found
+
+
+def inbound_sms_filters(
+    extension_ids: list[str] | tuple[str, ...] | None = None,
+    *,
+    include_mms: bool = True,
+) -> list[str]:
     """Event filters covering the shared extension plus each recruiter's own.
 
     `~` is the extension the subscribing JWT belongs to — the shared company
@@ -35,16 +99,13 @@ def inbound_sms_filters(extension_ids: list[str] | tuple[str, ...] | None = None
     reach Telegram.
 
     Watching another extension requires the subscribing user to be an account
-    admin; when that is refused, register_sms_webhook() falls back to `~` alone
-    rather than losing inbound SMS altogether.
+    admin; when that is refused, register_sms_webhook() sheds extensions one at
+    a time rather than losing every recruiter at once.
     """
-    filters = list(RC_INBOUND_SMS_MMS_FILTERS)
-    for ext_id in extension_ids or ():
-        ext = str(ext_id).strip()
-        if not ext or ext == "~":
-            continue
-        filters.append(f"/restapi/v1.0/account/~/extension/{ext}/message-store/instant?type=SMS")
-        filters.append(f"/restapi/v1.0/account/~/extension/{ext}/message-store/instant?type=MMS")
+    filters = list(RC_INBOUND_SMS_MMS_FILTERS if include_mms else RC_INBOUND_SMS_MMS_FILTERS[:1])
+    usable, _rejected = valid_extension_ids(extension_ids)
+    for ext in usable:
+        filters.extend(extension_filters(ext, include_mms=include_mms))
     # De-duplicate while keeping order: `~` may also appear as an explicit id.
     seen: set[str] = set()
     unique: list[str] = []
@@ -176,7 +237,15 @@ async def register_sms_webhook(
         token = await _get_access_token()
         headers = {"Authorization": f"Bearer {token}"}
 
-        wanted_filters = inbound_sms_filters(extension_ids)
+        usable_extensions, rejected_extensions = valid_extension_ids(extension_ids)
+        if rejected_extensions:
+            logger.warning(
+                "Ignoring %d unusable RingCentral extension id(s) — a non-numeric id makes the "
+                "WHOLE subscription invalid (CMN-101), so it is refused here instead: %s",
+                len(rejected_extensions),
+                ", ".join(rejected_extensions),
+            )
+        wanted_filters = inbound_sms_filters(usable_extensions)
         desired = set(wanted_filters)
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
@@ -237,40 +306,98 @@ async def register_sms_webhook(
                 )
                 return True
 
-            # Watching other extensions needs an admin subscriber, and some
-            # tenants also reject the MMS filter. Retry with the shared
-            # extension only: covering ONE number beats covering none.
+            # Watching another extension needs an admin subscriber, and some
+            # tenants also reject the MMS filter. Shed capability in the order
+            # that costs least, and keep every recruiter we still can: dropping
+            # ALL of them because one was refused is how a single bad row used
+            # to take out everybody's inbound SMS.
+            #
+            # The filters are logged in full. They carry no secret — an account
+            # id is `~` and the rest is an extension number — and without them
+            # a rejected id is invisible in production.
             logger.warning(
-                "RingCentral subscription with %d filter(s) failed (%s): %s — retrying the shared extension only.",
+                "RingCentral subscription with %d filter(s) failed (%s): %s — filters were: %s",
                 len(wanted_filters),
                 resp.status_code,
                 resp.text[:300],
+                ", ".join(wanted_filters),
             )
-            for fallback_filters in (
-                list(RC_INBOUND_SMS_MMS_FILTERS),
-                [RC_INBOUND_SMS_MMS_FILTERS[0]],
-            ):
-                if fallback_filters == wanted_filters:
+
+            attempts: list[tuple[str, list[str]]] = []
+            # 1. SMS only for the extras (MMS is the commonest tenant refusal).
+            if usable_extensions:
+                attempts.append((
+                    f"{len(usable_extensions)} recruiter extension(s), SMS only",
+                    inbound_sms_filters(usable_extensions, include_mms=False),
+                ))
+            # 2. Leave ONE extension out at a time, so the unwatchable one is
+            #    isolated wherever it sits in the roster.
+            #
+            #    Shedding a SUFFIX instead — the obvious version — only works if
+            #    the bad extension happens to be last. reconcile_rc_subscription
+            #    passes the roster `sorted()` by id, which has nothing to do with
+            #    which one RingCentral refuses, so a bad id at the front stayed in
+            #    every attempt and every recruiter still lost their inbound SMS.
+            for excluded in usable_extensions:
+                kept = [ext for ext in usable_extensions if ext != excluded]
+                if not kept:
+                    continue  # covered by the shared-only attempts below
+                attempts.append((
+                    f"every recruiter extension except {excluded}",
+                    inbound_sms_filters(kept),
+                ))
+            # 3. The shared number alone, with and then without MMS. One number
+            #    covered beats none.
+            attempts.append(("the shared extension only", list(RC_INBOUND_SMS_MMS_FILTERS)))
+            attempts.append(("the shared extension only, SMS only", [RC_INBOUND_SMS_MMS_FILTERS[0]]))
+
+            tried: set[tuple[str, ...]] = {tuple(wanted_filters)}
+            for description, fallback_filters in attempts:
+                key = tuple(fallback_filters)
+                if key in tried:
                     continue
+                tried.add(key)
                 retry = await client.post(
                     "https://platform.ringcentral.com/restapi/v1.0/subscription",
                     json={**payload, "eventFilters": fallback_filters},
                     headers=headers,
                 )
-                if retry.is_success:
-                    sub_id = retry.json().get("id", "?")
+                if not retry.is_success:
                     logger.warning(
-                        "RingCentral webhook subscription created WITHOUT per-recruiter extensions "
-                        "(ID: %s) → %s. Replies to recruiter numbers will not reach Telegram.",
+                        "RingCentral webhook registration with %s failed (%s): %s",
+                        description,
+                        retry.status_code,
+                        retry.text[:300],
+                    )
+                    continue
+
+                sub_id = retry.json().get("id", "?")
+                covered = _extensions_in(fallback_filters)
+                dropped = [ext for ext in usable_extensions if ext not in covered]
+                if dropped:
+                    logger.warning(
+                        "RingCentral webhook subscription created with %s (ID: %s) → %s. "
+                        "Extension(s) %s are NOT watched, so replies to those recruiters' "
+                        "numbers will not reach Telegram.",
+                        description,
+                        sub_id,
+                        callback_url,
+                        ", ".join(dropped),
+                    )
+                else:
+                    # No recruiter was lost: what we gave up was MMS on a number
+                    # we ARE watching. Saying "without per-recruiter extensions"
+                    # here — as this used to, even for an empty roster — sends an
+                    # operator looking for the wrong problem.
+                    logger.warning(
+                        "RingCentral webhook subscription created with %s (ID: %s) → %s. "
+                        "Every recruiter extension is still watched; picture messages (MMS) "
+                        "are not delivered.",
+                        description,
                         sub_id,
                         callback_url,
                     )
-                    return True
-                logger.warning(
-                    "RingCentral webhook registration failed (%s): %s",
-                    retry.status_code,
-                    retry.text[:300],
-                )
+                return True
             return False
 
     except Exception as exc:

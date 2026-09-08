@@ -412,6 +412,11 @@ test('a wrong-extension sign-in still succeeds, but the page says so', async () 
 });
 
 test('the internal extension list needs the shared secret and returns ids only', async () => {
+  // Ada has working JWT credentials and no extension recorded. A NULL cannot
+  // become an event filter, so she is still omitted here — but that is a GAP,
+  // not the intended steady state: her drivers' replies reach nobody until
+  // ringCentralTokenRefreshService records her extension. The route now warns
+  // about exactly this instead of dropping her silently.
   const recruiters = [
     { ...JANE, refresh_token_encrypted: 'enc', rc_extension_id: '101' },
     { id: 8, name: 'Bob', phone_number: '+15550002222', jwt_token_encrypted: 'enc', rc_extension_id: '102' },

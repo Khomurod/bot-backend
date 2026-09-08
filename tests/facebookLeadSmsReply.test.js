@@ -35,8 +35,9 @@ function loadMirror({
   recruiterSend = { ok: true, fromNumber: '+15557770000', messageId: 'rc-own' },
   sharedSend = { ok: true, fromNumber: '+14704804679', messageId: 'rc-shared' },
   sentTelegram = [],
+  telegramSendError = null,
 } = {}) {
-  const calls = { asRecruiter: [], shared: [], inserted: [] };
+  const calls = { asRecruiter: [], shared: [], inserted: [], chatIds: [] };
 
   require.cache[DB_PATH] = {
     exports: {
@@ -67,13 +68,21 @@ function loadMirror({
   require.cache[TG_PATH] = {
     exports: {
       sendTelegramHtmlChunks: async (telegram, chatId, html) => {
+        calls.chatIds.push(chatId);
         calls.html = html;
+        // `telegramSendError` lets a test make the FIRST attempt fail the way
+        // Telegram really does, so the id fallback is exercised rather than
+        // stubbed away.
+        if (telegramSendError && calls.chatIds.length === 1) throw telegramSendError;
         return sentTelegram;
       },
       safeSend: async (fn) => fn(),
     },
   };
-  require.cache[LEADS_TG_PATH] = { exports: { toSupergroupStyleChatId: (id) => id } };
+  // NOT stubbed to identity any more. This module's real behaviour — try the
+  // stored id, fall back to the `-100` form only on a retryable error — is the
+  // fix for the production `chat not found`, so the tests must run it.
+  delete require.cache[LEADS_TG_PATH];
 
   delete require.cache[MIRROR_PATH];
   const mirrorService = require(MIRROR_PATH);
@@ -275,5 +284,122 @@ test('a fallback to the shared number is announced in the Telegram notice', asyn
     assert.match(calls.html, /⚠️/);
     assert.match(calls.html, /re-connect their account/);
     assert.equal(calls.inserted[0].recruiterId, null);
+  } finally { restore(); }
+});
+
+// ── the chat id the notice sends to (the production `chat not found`) ──
+
+test('the notice sends to the group id AS STORED, not a -100 rewrite', async () => {
+  // The bug: the notice called toSupergroupStyleChatId() unconditionally, so a
+  // plain group's stored id `-5231255301` became `-1005231255301` — a chat that
+  // does not exist. Telegram answered `400: Bad Request: chat not found`, which
+  // is classified PERMANENT, so it threw before the mirror insert and every
+  // lead lost BOTH its notice and its outbound_auto row. The lead post a few
+  // steps earlier uses the same id verbatim and has always worked.
+  const STORED = '-5231255301';
+  const { mirrorService, calls, restore } = loadMirror({
+    sentTelegram: [{ message_id: 555, chat: { id: Number(STORED) } }],
+  });
+  try {
+    const result = await mirrorService.sendAutoMessageSentNotice({ sendMessage: async () => ({}) }, STORED, {
+      phone: '+15550001111', smsBody: 'Hi Alex', recruiterId: 7, fromNumber: '+15557770000',
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(calls.chatIds, [STORED], 'exactly one send, to the stored id');
+    assert.equal(calls.inserted.length, 1, 'and the mirror row is written');
+    assert.equal(calls.inserted[0].sourceType, 'outbound_auto');
+  } finally { restore(); }
+});
+
+test('a migrated supergroup falls back to the -100 form, and only then', async () => {
+  // The case the unconditional rewrite was trying to serve. It is real, but it
+  // is the exception: try the stored id, and convert only when Telegram says
+  // that chat is gone.
+  const STORED = '-5231255301';
+  const err = new Error('400: Bad Request: chat not found');
+  err.response = { error_code: 400, description: 'Bad Request: chat not found' };
+  const { mirrorService, calls, restore } = loadMirror({
+    telegramSendError: err,
+    sentTelegram: [{ message_id: 777, chat: { id: -1005231255301 } }],
+  });
+  try {
+    const result = await mirrorService.sendAutoMessageSentNotice({ sendMessage: async () => ({}) }, STORED, {
+      phone: '+15550001111', smsBody: 'Hi Alex', recruiterId: 7, fromNumber: '+15557770000',
+    });
+    assert.equal(result.ok, true, 'the retry lands');
+    assert.deepEqual(calls.chatIds, [STORED, '-1005231255301'], 'stored first, then converted');
+    assert.equal(calls.inserted.length, 1);
+    // Telegram's own answer is what a reply will arrive under, so it wins.
+    assert.equal(calls.inserted[0].telegramChatId, -1005231255301);
+    assert.equal(result.telegramMessageId, 777);
+  } finally { restore(); }
+});
+
+test('an already -100 id is not retried against itself', async () => {
+  const STORED = '-1003891925043';
+  const err = new Error('400: Bad Request: chat not found');
+  err.response = { error_code: 400, description: 'Bad Request: chat not found' };
+  const { mirrorService, calls, restore } = loadMirror({ telegramSendError: err });
+  try {
+    await assert.rejects(
+      () => mirrorService.sendAutoMessageSentNotice({ sendMessage: async () => ({}) }, STORED, {
+        phone: '+15550001111', smsBody: 'Hi',
+      }),
+      /chat not found/,
+    );
+    assert.deepEqual(calls.chatIds, [STORED], 'no pointless second attempt');
+    assert.equal(calls.inserted.length, 0);
+  } finally { restore(); }
+});
+
+test('a send failure that is not about the chat id is not retried', async () => {
+  // A blocked bot, a rate limit — converting the id would not help and would
+  // send the same message twice if it did.
+  const err = new Error('403: Forbidden: bot was kicked from the group chat');
+  err.response = { error_code: 403, description: 'Forbidden: bot was kicked' };
+  const { mirrorService, calls, restore } = loadMirror({ telegramSendError: err });
+  try {
+    await assert.rejects(
+      () => mirrorService.sendAutoMessageSentNotice({ sendMessage: async () => ({}) }, '-5231255301', {
+        phone: '+15550001111', smsBody: 'Hi',
+      }),
+      /kicked/,
+    );
+    assert.deepEqual(calls.chatIds, ['-5231255301']);
+  } finally { restore(); }
+});
+
+test('the mirror records WHY a lead is on the shared number, not just that it is', async () => {
+  // recruiter_id IS NULL already told you the shared number sent it. It could
+  // not tell you whether that was "nobody mapped yet" (fine) or "their number
+  // is not on their extension" (fix it today).
+  const { mirrorService, calls, restore } = loadMirror({
+    sentTelegram: [{ message_id: 555, chat: { id: -100999 } }],
+  });
+  try {
+    await mirrorService.sendAutoMessageSentNotice({ sendMessage: async () => ({}) }, -100999, {
+      phone: '+15550001111',
+      smsBody: 'Hi Alex',
+      recruiterId: null,
+      fromNumber: '+14704804679',
+      senderNote: 'Jane Doe has a number RingCentral does not list on their extension',
+      fallbackReason: 'recruiter_number_not_on_extension',
+    });
+    assert.equal(calls.inserted[0].recruiterId, null);
+    assert.equal(calls.inserted[0].fromNumber, '+14704804679');
+    assert.equal(calls.inserted[0].fallbackReason, 'recruiter_number_not_on_extension');
+  } finally { restore(); }
+});
+
+test('a recruiter-sent conversation records no fallback reason', async () => {
+  const { mirrorService, calls, restore } = loadMirror({
+    sentTelegram: [{ message_id: 556, chat: { id: -100999 } }],
+  });
+  try {
+    await mirrorService.sendAutoMessageSentNotice({ sendMessage: async () => ({}) }, -100999, {
+      phone: '+15550001111', smsBody: 'Hi', recruiterId: 7, fromNumber: '+15557770000',
+    });
+    assert.equal(calls.inserted[0].recruiterId, 7);
+    assert.equal(calls.inserted[0].fallbackReason, null, 'nothing to explain');
   } finally { restore(); }
 });

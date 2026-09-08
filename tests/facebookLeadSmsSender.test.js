@@ -26,7 +26,8 @@ const SENDER_PATH = require.resolve('../services/facebookLeadSmsSender');
 const JANE = {
   id: 7,
   name: 'Jane Doe',
-  phone_number: '+15550001111',
+  // Stored as an admin typed it — see tests/ringCentralSmsSender.test.js.
+  phone_number: '(555) 000-1111',
   active: true,
   bitrix_user_id: 17,
   refresh_token_encrypted: 'enc',
@@ -194,7 +195,7 @@ test('a rejected send from their number is a different, still-reported failure',
   try {
     const result = await sender.sendLeadSms({ phone: '+1555', message: 'Hi', bitrixId: 42 });
     assert.equal(result.fallbackReason, 'recruiter_send_failed');
-    assert.match(result.fallbackNote, /refused the send/i);
+    assert.match(result.fallbackNote, /RingCentral refused it/i);
   } finally { restore(); }
 });
 
@@ -257,5 +258,84 @@ test('describeSenderFallback stays quiet about states nobody can act on', async 
     for (const reason of sender.ACTIONABLE_FALLBACKS) {
       assert.equal(typeof sender.describeSenderFallback({ reason }), 'string', reason);
     }
+  } finally { restore(); }
+});
+
+// ── the reason an operator reads is the reason RingCentral gave ──
+
+test('a number RingCentral does not list is reported as that, not as a bare refusal', async () => {
+  // This state used to arrive as an opaque MSG-245 flattened into
+  // `recruiter_send_failed`, so the Telegram note said "RingCentral refused"
+  // and the operator had nothing to check.
+  const { sender, calls, restore } = loadSender({
+    recruiterSend: {
+      ok: false,
+      reason: 'recruiter_number_not_on_extension',
+      attemptedFrom: '+15550001111',
+      extensionSmsNumber: '+15557779999',
+      detail: '{"errorCode":"InvalidParameter","errors":[{"errorCode":"MSG-245"}]}',
+    },
+  });
+  try {
+    const result = await sender.sendLeadSms({ phone: '+15559998888', message: 'Hi', bitrixId: 1051 });
+    assert.equal(result.via, 'shared', 'the lead is still texted');
+    assert.equal(result.fallbackReason, 'recruiter_number_not_on_extension');
+    assert.match(result.fallbackNote, /Jane Doe/);
+    assert.match(result.fallbackNote, /does not list on their extension/);
+    assert.equal(calls.shared.length, 1, 'from the shared number');
+  } finally { restore(); }
+});
+
+test('a number that cannot text names the A2P registration, not the number', async () => {
+  const { sender, restore } = loadSender({
+    recruiterSend: { ok: false, reason: 'recruiter_number_not_sms_capable' },
+  });
+  try {
+    const result = await sender.sendLeadSms({ phone: '+15559998888', message: 'Hi', bitrixId: 1051 });
+    assert.equal(result.via, 'shared');
+    assert.equal(result.fallbackReason, 'recruiter_number_not_sms_capable');
+    assert.match(result.fallbackNote, /A2P\/10DLC/);
+  } finally { restore(); }
+});
+
+test('an unrecognized failure still flattens to the generic refusal', async () => {
+  // A status code is not something an operator can act on, so it must not be
+  // surfaced as if it were a diagnosis.
+  const { sender, restore } = loadSender({
+    recruiterSend: { ok: false, reason: 'http_503', detail: 'upstream unavailable' },
+  });
+  try {
+    const result = await sender.sendLeadSms({ phone: '+15559998888', message: 'Hi', bitrixId: 1051 });
+    assert.equal(result.fallbackReason, 'recruiter_send_failed');
+    assert.match(result.fallbackNote, /RingCentral refused it/);
+  } finally { restore(); }
+});
+
+test('a successful recruiter send records the number that actually sent it', async () => {
+  // `sms_from_number` is written from this. It must be the E.164 that left,
+  // never the human-typed column.
+  const { sender, restore } = loadSender({
+    recruiterSend: { ok: true, fromNumber: '+15550001111', messageId: 'rc-own' },
+  });
+  try {
+    const result = await sender.sendLeadSms({ phone: '+15559998888', message: 'Hi', bitrixId: 1051 });
+    assert.equal(result.via, 'recruiter');
+    assert.equal(result.recruiterId, 7);
+    assert.equal(result.fromNumber, '+15550001111');
+    assert.notEqual(result.fromNumber, JANE.phone_number, 'not the stored spelling');
+    assert.equal(result.fallbackReason, null);
+  } finally { restore(); }
+});
+
+test('a corrected send records RingCentral’s spelling, not what we tried', async () => {
+  const { sender, restore } = loadSender({
+    recruiterSend: {
+      ok: true, fromNumber: '+15550001111', messageId: 'rc-own', correctedFrom: '+15550001111',
+    },
+  });
+  try {
+    const result = await sender.sendLeadSms({ phone: '+15559998888', message: 'Hi', bitrixId: 1051 });
+    assert.equal(result.via, 'recruiter');
+    assert.equal(result.fromNumber, '+15550001111');
   } finally { restore(); }
 });

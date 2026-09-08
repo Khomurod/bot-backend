@@ -64,6 +64,12 @@ function buildAutoMessageNotification(fieldMap, smsResult, leadName, ruleLabel =
   if (smsResult.reason === 'not_configured') {
     return `AutoMessage skipped for ${phone} (RingCentral not configured).`;
   }
+  if (smsResult.reason === 'already_sent') {
+    // A re-driven event, not a failure: this lead had its text the first time
+    // round. Saying "failed" here would send an operator looking for a problem
+    // that is actually the duplicate guard doing its job.
+    return `AutoMessage skipped for ${phone}: this lead was already texted.`;
+  }
   const detail = smsResult.detail ? `: ${smsResult.detail}` : '';
   return `AutoMessage failed for ${phone}${detail}`;
 }
@@ -113,6 +119,13 @@ async function recordLead({ leadgenId, fullName, fieldMap, phone, connection, pa
       });
       return recorded.id;
     }
+    // The insert conflicted, so this lead already has a row — a re-delivered or
+    // replayed event. Its id still matters: `sms_from_number` is written
+    // against it, and that column is what stops the lead being texted twice.
+    // Returning null here meant a send on a REPLAY recorded nothing, so the
+    // guard saw an unsent lead on the next pass and texted again, forever.
+    const existing = await db.getLeadBySourceExternalId('facebook', leadgenId);
+    return existing?.id ?? null;
   } catch (recordErr) {
     console.error('[Leads] Failed to record Facebook lead:', recordErr.message);
   }
@@ -120,13 +133,58 @@ async function recordLead({ leadgenId, fullName, fieldMap, phone, connection, pa
 }
 
 /**
+ * Has this lead already been texted?
+ *
+ * `leads.sms_from_number` is written only after a send actually left
+ * RingCentral, so a row that has one has had its text — and must never get a
+ * second one. Every path that can re-run a finished event goes through here:
+ *
+ *   · the admin "retry" button and the internal / Python retry endpoints, none
+ *     of which check whether the event already completed;
+ *   · the at-least-once window at startup, where an event killed AFTER the send
+ *     and BEFORE `completeFacebookWebhookEvent` is re-claimed;
+ *   · any future throw between the send and the end of the event.
+ *
+ * That also makes every lead processed before this feature immune: they all
+ * carry the shared company number here, so none of them can be re-texted from
+ * a recruiter's line.
+ *
+ * A lookup failure means "cannot prove it was sent", and the guard opens: a
+ * database hiccup must not cost a genuinely new lead its only text.
+ */
+async function alreadyTexted(leadgenId) {
+  if (!leadgenId) return null;
+  try {
+    const existing = await db.getLeadBySourceExternalId('facebook', leadgenId);
+    return existing?.sms_from_number ? existing : null;
+  } catch (err) {
+    console.warn('[Leads] Could not check whether this lead was already texted:', err.message);
+    return null;
+  }
+}
+
+/**
  * Render and send the lead's auto-SMS.
  * @returns {Promise<{smsResult:object, smsBody:string|null, ruleLabel:string|null,
  *   sender:object|null}>}
  */
-async function sendAutoSms({ phone, fieldMap, connection, bitrixResult }) {
+async function sendAutoSms({ phone, fieldMap, connection, bitrixResult, leadgenId = null }) {
   if (!phone) {
     return { smsResult: { ok: false, reason: 'no_phone' }, smsBody: null, ruleLabel: null, sender: null };
+  }
+
+  const texted = await alreadyTexted(leadgenId);
+  if (texted) {
+    console.log(
+      `[Leads] Lead ${leadgenId} was already texted from ${texted.sms_from_number} `
+      + '— not sending again.'
+    );
+    return {
+      smsResult: { ok: false, reason: 'already_sent' },
+      smsBody: null,
+      ruleLabel: null,
+      sender: null,
+    };
   }
 
   const resolved = await resolveAutoSmsForLead({ fieldMap, pageName: connection.page_name });
@@ -180,7 +238,7 @@ async function processLeadEvent(eventRow, { telegram }) {
   });
 
   const { smsResult, smsBody, ruleLabel, sender } = await sendAutoSms({
-    phone, fieldMap, connection, bitrixResult,
+    phone, fieldMap, connection, bitrixResult, leadgenId,
   });
 
   // Who ended up texting the driver — visible in the admin Leads tab. Pure
@@ -193,7 +251,15 @@ async function processLeadEvent(eventRow, { telegram }) {
         recruiterId: sender.recruiterId,
       });
     } catch (err) {
-      console.warn('[Leads] Could not record the SMS sender:', err.message);
+      // NOT a warning. `sms_from_number` is the marker the duplicate guard
+      // reads, so failing to write it means the next retry of this event will
+      // text the driver a second time. Nothing here can undo the send that
+      // already happened; the point is that it is loud enough to notice.
+      console.error(
+        `[Leads] Could not record the SMS sender for lead ${leadId} — `
+        + `a retry of this event WILL text ${sender.fromNumber ? 'them' : 'the driver'} again: `
+        + err.message
+      );
     }
   }
 
@@ -210,6 +276,7 @@ async function processLeadEvent(eventRow, { telegram }) {
         recruiterName: sender?.recruiter?.name || null,
         fromNumber: sender?.fromNumber || null,
         senderNote: sender?.fallbackNote || null,
+        fallbackReason: sender?.fallbackReason || null,
       });
     } catch (noticeErr) {
       console.error('[FacebookWebhook] Auto-message notice failed:', noticeErr.message);

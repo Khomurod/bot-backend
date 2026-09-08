@@ -19,10 +19,16 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { createPgHarness, skipWithoutPg } = require('./helpers/pgHarness');
+const { createPgHarness, skipWithoutPg, allMigrationsSql } = require('./helpers/pgHarness');
 
 const MIGRATION_PATH = path.join(__dirname, '..', 'database', 'migrations', '0008_recruiter_sms_sender_identity.sql');
 const MIGRATION = fs.readFileSync(MIGRATION_PATH, 'utf8');
+
+// The subtests that write THROUGH the data layer need the schema the data
+// layer actually knows, not just 0008's slice of it — a later migration adding
+// a column those writers set would otherwise fail a test that is correct about
+// 0008. The DDL assertions below still name 0008's own columns explicitly.
+const ALL_MIGRATIONS = allMigrationsSql();
 
 /** Column names on a table, as PostgreSQL sees them. */
 async function columnsOf(harness, table) {
@@ -190,7 +196,7 @@ test('a session dies with the recruiter it was created for', { skip: skipWithout
 });
 
 test('the data layer reads and writes the new columns for real', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
   const { ringcentral } = harness.loadDataLayer(['ringcentral']);
 
   const created = await ringcentral.createRecruiter({
@@ -254,7 +260,7 @@ test('the data layer reads and writes the new columns for real', { skip: skipWit
 });
 
 test('the mirror ledger stores its sender through the data layer', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
   const { facebookLeads, ringcentral } = harness.loadDataLayer(['facebookLeads', 'ringcentral']);
 
   const recruiter = await ringcentral.createRecruiter({
@@ -287,7 +293,7 @@ test('the mirror ledger stores its sender through the data layer', { skip: skipW
 });
 
 test('a lead remembers who was assigned it and who texted them', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
   const { leads, ringcentral } = harness.loadDataLayer(['leads', 'ringcentral']);
 
   const recruiter = await ringcentral.createRecruiter({
@@ -311,3 +317,45 @@ test('a lead remembers who was assigned it and who texted them', { skip: skipWit
   assert.equal(row.bitrix_assigned_by_id, 17);
   assert.equal(row.sms_from_number, '+15550001111');
 });
+
+test('replacing a recruiter’s credentials clears the extension recorded against the old one',
+  { skip: skipWithoutPg() }, async (t) => {
+    // A new JWT may belong to a DIFFERENT RingCentral account — that is exactly
+    // what an admin does to fix a wrong-account setup. The extension recorded
+    // against the old credential is then a stranger's, and because
+    // `recruiterExtensionIdentity` only re-reads an identity that is MISSING, a
+    // stale one would never be corrected: the subscription keeps watching the
+    // old extension while replies to the number they now text from reach
+    // nobody.
+    const harness = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
+    const { ringcentral } = harness.loadDataLayer(['ringcentral']);
+
+    const created = await ringcentral.createRecruiter({
+      name: 'Kimberly', phoneNumber: '(470) 419-4110', jwtToken: 'first-account-jwt',
+    });
+    await ringcentral.updateRecruiterRcIdentity(created.id, {
+      extensionId: '80055512', extensionNumber: '101',
+    });
+    const before = await ringcentral.getRecruiterById(created.id);
+    assert.equal(before.rc_extension_id, '80055512');
+
+    // An ordinary edit must NOT throw the identity away — the admin panel sends
+    // no secret unless one was typed, and re-reading it costs a request.
+    await ringcentral.updateRecruiter(created.id, { name: 'Kimberly R.' });
+    const renamed = await ringcentral.getRecruiterById(created.id);
+    assert.equal(renamed.name, 'Kimberly R.');
+    assert.equal(renamed.rc_extension_id, '80055512', 'a rename keeps the identity');
+
+    // Pasting a new credential does.
+    await ringcentral.updateRecruiter(created.id, { jwtToken: 'second-account-jwt' });
+    const swapped = await ringcentral.getRecruiterById(created.id);
+    assert.equal(swapped.rc_extension_id, null, 'the stale extension is dropped');
+    assert.equal(swapped.rc_extension_number, null);
+    assert.ok(swapped.jwt_token_encrypted, 'and the new credential is stored');
+
+    // So does clearing one, which is the same reasoning in reverse.
+    await ringcentral.updateRecruiterRcIdentity(created.id, { extensionId: '80099999' });
+    await ringcentral.updateRecruiter(created.id, { clearJwtToken: true });
+    const cleared = await ringcentral.getRecruiterById(created.id);
+    assert.equal(cleared.rc_extension_id, null);
+  });

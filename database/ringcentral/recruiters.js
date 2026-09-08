@@ -26,7 +26,17 @@ const { encryptText } = require('../../lib/security/facebookCrypto');
 const { safeDecrypt, maskKey } = require('./secrets');
 const { getRcConfig } = require('./settings');
 
-/** Digits-only, last-10 form so "+1 (470) 480-4679" == "4704804679". */
+/**
+ * Digits-only, last-10 form so "+1 (470) 480-4679" == "4704804679".
+ *
+ * DELIBERATELY NOT `lib/phone/e164.js`'s `phoneKey`, which is otherwise the
+ * same function: this one lets a short value through unchanged, and it writes
+ * `recruiters.phone_number_normalized`, which is `TEXT NOT NULL UNIQUE`.
+ * Collapsing every short value to '' — as `phoneKey` does, so an extension
+ * never matches a phone number — would make two such rows collide on that
+ * index. Use `phoneKey` for comparisons and `toE164` for anything sendable;
+ * this stays as the column's own encoding.
+ */
 function normalizePhone(value) {
   const digits = String(value || '').replace(/\D/g, '');
   if (!digits) return '';
@@ -128,14 +138,31 @@ async function listRecruitersForAdmin({ includeInactive = true } = {}) {
 /** Build the SET fragments for the per-recruiter secret columns. */
 function recruiterSecretSets({ jwtToken, clientId, clientSecret, clearJwtToken, clearClientCreds }, sets, values, startIndex) {
   let i = startIndex;
+  let credentialChanged = false;
   const pushSecret = (column, rawValue, clearFlag) => {
-    if (clearFlag) { sets.push(`${column} = NULL`); return; }
+    if (clearFlag) { sets.push(`${column} = NULL`); credentialChanged = true; return; }
     const value = typeof rawValue === 'string' ? rawValue.trim() : '';
-    if (value) { sets.push(`${column} = $${i++}`); values.push(encryptText(value)); }
+    if (value) {
+      sets.push(`${column} = $${i++}`);
+      values.push(encryptText(value));
+      credentialChanged = true;
+    }
   };
   pushSecret('jwt_token_encrypted', jwtToken, clearJwtToken);
   pushSecret('client_id_encrypted', clientId, clearClientCreds);
   pushSecret('client_secret_encrypted', clientSecret, clearClientCreds);
+
+  // A NEW credential may belong to a DIFFERENT RingCentral account, so the
+  // extension recorded against the old one is no longer this recruiter's.
+  // Leaving it would keep the inbound-SMS subscription watching a stranger's
+  // extension while replies to the number they now text from reach nobody —
+  // and `recruiterExtensionIdentity` only re-reads an identity that is MISSING,
+  // so a stale one is never corrected. Clearing it makes the next pass of
+  // ringCentralTokenRefreshService (boot, then daily) fetch the right one.
+  if (credentialChanged) {
+    sets.push('rc_extension_id = NULL');
+    sets.push('rc_extension_number = NULL');
+  }
   return i;
 }
 
@@ -275,6 +302,36 @@ async function storeRecruiterOAuthTokens(id, { refreshToken, extensionId = null,
 }
 
 /**
+ * Record the RingCentral extension a recruiter's credential belongs to.
+ *
+ * WHY THIS EXISTS SEPARATELY from storeRecruiterOAuthTokens: that one runs only
+ * when a recruiter signs in through the OAuth flow, so a recruiter onboarded by
+ * an admin pasting a JWT had `rc_extension_id` NULL forever — they could send
+ * SMS perfectly well, but the inbound-SMS subscription is built one filter per
+ * extension id, so a NULL meant their extension was never watched and every
+ * driver reply to their number reached nobody. `updateRecruiter` has no branch
+ * for these columns and the admin panel has no input for them, so nothing could
+ * fill the gap.
+ *
+ * Identity only: no credential is read or written here.
+ */
+async function updateRecruiterRcIdentity(id, { extensionId = null, extensionNumber = null } = {}) {
+  const ext = extensionId != null && String(extensionId).trim() ? String(extensionId).trim() : null;
+  const num = extensionNumber != null && String(extensionNumber).trim() ? String(extensionNumber).trim() : null;
+  if (!ext && !num) return null;
+  const res = await query(
+    `UPDATE recruiters
+        SET rc_extension_id = COALESCE($2, rc_extension_id),
+            rc_extension_number = COALESCE($3, rc_extension_number),
+            updated_at = NOW()
+      WHERE id = $1
+      RETURNING *`,
+    [id, ext, num]
+  );
+  return res.rows[0] || null;
+}
+
+/**
  * Persist a ROTATED refresh token. RingCentral issues a new refresh token on
  * every refresh and invalidates the old one, so failing to store this is how a
  * working recruiter silently stops sending a week later.
@@ -348,6 +405,7 @@ module.exports = {
   getRecruiterByNormalizedNumber,
   getRecruiterByBitrixUserId,
   storeRecruiterOAuthTokens,
+  updateRecruiterRcIdentity,
   updateRecruiterRefreshToken,
   markRecruiterAuthError,
   clearRecruiterOAuth,

@@ -16,11 +16,22 @@
  * the admin panel renders as "needs to connect RingCentral again" — and never
  * retried in a tight loop: an expired grant is fixed by a person, not a retry.
  *
+ * IT ALSO BACKFILLS THE EXTENSION IDENTITY. `rc_extension_id` was only ever
+ * written by the OAuth sign-in callback, so a recruiter onboarded with a pasted
+ * JWT had none — and the inbound-SMS subscription is built one filter per
+ * extension id, so their drivers' replies reached nobody while their outbound
+ * texts worked perfectly. This is the right place for the repair: the job
+ * already walks every credentialed recruiter, it runs once at boot (so a deploy
+ * fixes production in minutes rather than a day), and the read costs one
+ * request for a recruiter who is missing it and nothing at all for everyone
+ * else.
+ *
  * Runs server-side on its own timer, so it does not depend on anyone having the
  * admin panel open.
  */
 const rc = require('../database/ringcentral');
 const { refreshRecruiterTokens } = require('./ringCentralOAuthService');
+const { needsExtensionIdentity, backfillExtensionIdentity } = require('./recruiterExtensionIdentity');
 
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 /** Small stagger between recruiters so a dozen refreshes are not one burst. */
@@ -38,10 +49,14 @@ function sleep(ms) {
  * Refresh every stored recruiter refresh token once.
  *
  * @returns {Promise<{checked:number, refreshed:number, failed:number,
- *   needsLogin:string[], errors:string[]}>}
+ *   identified:number, missingIdentity:number, needsLogin:string[],
+ *   errors:string[]}>}
  */
 async function refreshAllRecruiterTokens({ delayMs = PER_RECRUITER_DELAY_MS } = {}) {
-  const summary = { checked: 0, refreshed: 0, failed: 0, needsLogin: [], errors: [] };
+  const summary = {
+    checked: 0, refreshed: 0, failed: 0, identified: 0, missingIdentity: 0,
+    needsLogin: [], errors: [],
+  };
 
   let recruiters = [];
   try {
@@ -59,18 +74,40 @@ async function refreshAllRecruiterTokens({ delayMs = PER_RECRUITER_DELAY_MS } = 
 
   for (const recruiter of recruiters) {
     const auth = rc.resolveRecruiterRcAuth(recruiter, cfg);
-    // JWTs do not expire, so there is nothing to keep alive for those rows.
-    if (auth.mode !== 'oauth') continue;
+    if (auth.mode === 'none') continue;
 
-    summary.checked += 1;
-    try {
-      await refreshRecruiterTokens(recruiter, auth);
-      summary.refreshed += 1;
-    } catch (err) {
-      summary.failed += 1;
-      if (err.code === 'RC_REFRESH_EXPIRED') summary.needsLogin.push(recruiter.name || `#${recruiter.id}`);
-      else summary.errors.push(`${recruiter.name || `#${recruiter.id}`}: ${err.message}`);
+    // JWTs do not expire, so there is nothing to keep alive for those rows —
+    // but they DO still need an extension identity, which is why the identity
+    // step below sits outside this branch.
+    let credentialUsable = true;
+    if (auth.mode === 'oauth') {
+      summary.checked += 1;
+      try {
+        await refreshRecruiterTokens(recruiter, auth);
+        summary.refreshed += 1;
+      } catch (err) {
+        summary.failed += 1;
+        credentialUsable = false;
+        if (err.code === 'RC_REFRESH_EXPIRED') summary.needsLogin.push(recruiter.name || `#${recruiter.id}`);
+        else summary.errors.push(`${recruiter.name || `#${recruiter.id}`}: ${err.message}`);
+      }
     }
+
+    // Only for a recruiter who is missing it, and only with a credential that
+    // just worked — asking with a grant we know is dead would just log a
+    // second, confusing failure for the same recruiter.
+    if (credentialUsable && needsExtensionIdentity(recruiter)) {
+      summary.missingIdentity += 1;
+      try {
+        if (await backfillExtensionIdentity(recruiter, cfg)) summary.identified += 1;
+      } catch (err) {
+        summary.errors.push(
+          `${recruiter.name || `#${recruiter.id}`}: could not read their RingCentral extension `
+          + `(their drivers' replies will not be mirrored until this succeeds): ${err.message}`
+        );
+      }
+    }
+
     if (delayMs > 0) await sleep(delayMs);
   }
 
@@ -89,6 +126,13 @@ async function tick() {
       console.log(
         `[RC-TOKENS] Refreshed ${summary.refreshed}/${summary.checked} recruiter login(s), `
         + `${summary.failed} failed${needs}`
+      );
+    }
+    if (summary.missingIdentity) {
+      console.log(
+        `[RC-TOKENS] Recorded the RingCentral extension for ${summary.identified}/`
+        + `${summary.missingIdentity} recruiter(s) that had none. Until a recruiter has one, `
+        + 'the inbound-SMS subscription cannot watch their number and replies to it are not mirrored.'
       );
     }
     for (const message of summary.errors) console.warn('[RC-TOKENS]', message);

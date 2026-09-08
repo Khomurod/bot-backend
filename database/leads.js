@@ -47,6 +47,23 @@ async function updateLeadBitrixResult(id, { bitrixId = null, status }) {
 }
 
 /**
+ * One lead by the identity Meta gave it, or null.
+ *
+ * Exists for the "have we already texted this person?" check.
+ * `createLeadIfNew` cannot answer it: on a re-delivered or replayed event its
+ * `ON CONFLICT DO NOTHING` returns null, which says "not new" but not what the
+ * existing row already knows.
+ */
+async function getLeadBySourceExternalId(source, externalId) {
+  if (!source || !externalId) return null;
+  const res = await query(
+    'SELECT * FROM leads WHERE source = $1 AND external_id = $2',
+    [source, String(externalId)]
+  );
+  return res.rows[0] || null;
+}
+
+/**
  * Who Bitrix assigned the lead to, and which number actually texted them.
  *
  * Separate from updateLeadBitrixResult() because the answer arrives LATER: the
@@ -86,5 +103,6 @@ module.exports = {
   createLeadIfNew,
   updateLeadBitrixResult,
   updateLeadSmsSender,
+  getLeadBySourceExternalId,
   listLeads,
 };

@@ -21,6 +21,7 @@
  *
  * No I/O: the caller supplies both lists and performs the writes.
  */
+const { phoneKey } = require('../../lib/phone/e164');
 
 /** Comparable form of a name: no case, no accents, no punctuation. */
 function normalizeName(value) {
@@ -49,15 +50,6 @@ function fullNameKeys(tokens) {
   return forward === reversed ? [forward] : [forward, reversed];
 }
 
-/**
- * Last 10 digits, the form two phone strings can be compared in regardless of
- * +1, spaces or parentheses. Shorter values (extensions like "104") are NOT
- * comparable and return '' so they never match.
- */
-function phoneKey(value) {
-  const digits = String(value || '').replace(/\D/g, '');
-  return digits.length >= 10 ? digits.slice(-10) : '';
-}
 
 /** Index user ids by every key they can be found under. */
 function indexUsers(users) {

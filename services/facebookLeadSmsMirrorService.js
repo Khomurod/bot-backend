@@ -13,7 +13,7 @@ const db = require('../database/db');
 const rc = require('../database/ringcentral');
 const { sendSms, sendSmsAsRecruiter } = require('./ringCentralSmsService');
 const { sendTelegramHtmlChunks, safeSend } = require('./telegramHtml');
-const { toSupergroupStyleChatId } = require('./leadsTelegramClient');
+const { sendToChatIdWithFallback } = require('./leadsTelegramClient');
 
 function escapeHtml(text) {
   return String(text || '')
@@ -82,19 +82,36 @@ async function sendAutoMessageSentNotice(telegram, chatId, {
   recruiterName = null,
   fromNumber = null,
   senderNote = null,
+  fallbackReason = null,
 }) {
   if (!telegram || chatId == null || chatId === '') {
     return { ok: false, reason: 'not_configured' };
   }
 
-  const sendChatId = toSupergroupStyleChatId(chatId);
   let html = buildAutoMessageSentHtml(phone, smsBody, { name: recruiterName, fromNumber });
   // Why it came from the shared number rather than the assigned recruiter's —
   // an expired RingCentral login otherwise looks identical to success.
   if (senderNote) html += `\n<i>⚠️ ${escapeHtml(senderNote)}</i>`;
-  const sentMessages = await sendTelegramHtmlChunks(telegram, sendChatId, html);
+
+  // The id AS STORED first. This used to be `toSupergroupStyleChatId(chatId)`
+  // unconditionally, which turned the working group id — the same one the lead
+  // post uses verbatim a few steps earlier — into a chat that does not exist.
+  // Telegram answers `400 chat not found`, which telegramHtml classifies as
+  // PERMANENT, so it threw before the mirror insert below and every lead lost
+  // its `outbound_auto` row along with the notice.
+  //
+  // A retry re-sends every chunk. That is safe here because the errors it
+  // retries on — the chat does not exist, or has been replaced — fail the FIRST
+  // chunk, so there is nothing already delivered to duplicate.
+  let sendChatId = chatId;
+  const sentMessages = await sendToChatIdWithFallback(
+    (id) => { sendChatId = id; return sendTelegramHtmlChunks(telegram, id, html); },
+    chatId,
+  );
   const first = sentMessages[0];
   const telegramMessageId = first?.message_id;
+  // Telegram's own answer wins: after a migration it reports the new id, and
+  // that is the id a reply will arrive under.
   const resolvedChatId = first?.chat?.id ?? sendChatId;
 
   if (!telegramMessageId) {
@@ -114,6 +131,9 @@ async function sendAutoMessageSentNotice(telegram, chatId, {
     sourceType: 'outbound_auto',
     recruiterId,
     fromNumber,
+    // Queryable, not just rendered into the note above: "which leads went out
+    // from the shared number last week, and why" is an operational question.
+    fallbackReason,
   });
 
   return { ok: true, telegramMessageId, telegramChatId: resolvedChatId };
@@ -277,12 +297,18 @@ async function sendReplyFromMirror(mirror, text) {
       if (attempt.ok) {
         return {
           smsResult: attempt,
-          sender: { via: 'recruiter', recruiterId, fromNumber: attempt.fromNumber || recruiter.phone_number },
+          // What actually sent, not the human-typed column.
+          sender: { via: 'recruiter', recruiterId, fromNumber: attempt.fromNumber || null },
         };
       }
+      // The detail is RingCentral's own body — the MSG-245 text that names
+      // WHY. It used to be dropped here, so the reply path reported a bare
+      // `http_400` and the same failure was diagnosable on the lead path only.
       console.warn(
         `[FacebookLeadSmsMirror] Reply from ${recruiter.name || `recruiter ${recruiterId}`} failed `
-        + `(${attempt.reason}) — using the shared number.`
+        + `(${attempt.reason}${attempt.detail ? `: ${String(attempt.detail).slice(0, 200)}` : ''})`
+        + `${attempt.attemptedFrom ? ` [tried ${attempt.attemptedFrom}]` : ''}`
+        + ' — using the shared number.'
       );
     }
   }

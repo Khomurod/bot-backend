@@ -143,6 +143,20 @@ function createFacebookInternalRoutes({ db, internalSharedSecretGuard }) {
         .map((recruiter) => recruiter.rc_extension_id)
         .filter(Boolean)
         .map(String);
+
+      // A NULL cannot become an event filter, so dropping it is right — but
+      // dropping it SILENTLY is what hid the bug: a recruiter with a pasted JWT
+      // texted leads from their own number while nothing watched it for a
+      // reply. ringCentralTokenRefreshService backfills the identity (at boot
+      // and daily); this line is how you see that it has not yet.
+      const missing = recruiters.filter((recruiter) => !recruiter.rc_extension_id);
+      if (missing.length) {
+        console.warn(
+          `[API] ${missing.length} recruiter(s) with working RingCentral credentials have no `
+          + 'extension recorded, so inbound SMS to their numbers is not watched: '
+          + `${missing.map((r) => r.name || `#${r.id}`).join(', ')}`
+        );
+      }
       return res.json({ extensions: [...new Set(extensions)] });
     } catch (err) {
       console.error('[API] RingCentral sms-extensions failed:', err.message);

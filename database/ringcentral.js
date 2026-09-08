@@ -60,6 +60,7 @@ module.exports = {
 
   // Per-recruiter RingCentral OAuth credentials
   storeRecruiterOAuthTokens: recruiters.storeRecruiterOAuthTokens,
+  updateRecruiterRcIdentity: recruiters.updateRecruiterRcIdentity,
   updateRecruiterRefreshToken: recruiters.updateRecruiterRefreshToken,
   markRecruiterAuthError: recruiters.markRecruiterAuthError,
   clearRecruiterOAuth: recruiters.clearRecruiterOAuth,

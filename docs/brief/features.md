@@ -146,10 +146,20 @@ never reach an AI call).
   recruiter's own RingCentral credentials. **RingCentral refuses an SMS whose
   `from` is another extension's number** — no token, super-admin included, can
   send on someone's behalf — which is why per-recruiter credentials exist at
-  all. Any gap (nobody mapped, no assignee yet, unmapped assignee, broken
-  credentials, rejected send) falls back to the shared number
-  `RC_FROM_NUMBER`; **a lead is never left un-texted**, and every fallback an
-  operator could fix is stated in the Telegram thread.
+  all. It also refuses one that is not **E.164**, and recruiter numbers are
+  stored as an admin typed them, so every send goes through
+  `lib/phone/e164.js`; a rejection is then checked against what that extension
+  really owns instead of being reported as an opaque `MSG-245`. Any gap (nobody
+  mapped, no assignee yet, unmapped assignee, broken credentials, an unusable
+  stored number, a number not on the extension or not SMS-capable, a rejected
+  send) falls back to the shared number `RC_FROM_NUMBER`; **a lead is never left
+  un-texted**, every fallback an operator could fix is stated in the Telegram
+  thread, and the reason is stored on the mirror row (`fallback_reason`) so it
+  can be queried rather than only read.
+- **A lead that has already been texted is never texted again.**
+  `leads.sms_from_number` is the record of it, checked before every send, which
+  closes the admin retry button and the at-least-once crash window alike — and
+  makes every lead processed before per-recruiter sending immune to a resend.
 - **The Bitrix mapping can be done from the panel, not by hand.** Settings →
   RingCentral → Bitrix24 → **Match recruiters to Bitrix users** reads the
   portal's user directory (`user.get`, so the inbound webhook needs the `user`
@@ -157,7 +167,7 @@ never reach an AI call).
   only strong, unambiguous matches; a first-name-only guess is proposed for
   confirmation, an existing mapping is never overwritten, and previewing is a
   separate call from applying. Details and the refusal rules:
-  `docs/architecture/recruiter-sms-sender.md`.
+  `docs/architecture/recruiter-sms-bitrix.md`.
 - **Recruiters attach their own number themselves.** An admin mints a link
   (Settings → RingCentral, or `POST /api/recruiters/connect-link`); the
   recruiter opens `/ringcentral/connect/:token`, signs in to RingCentral, and

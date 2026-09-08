@@ -38,12 +38,22 @@ async def _fetch_ringcentral_sms_extensions() -> list[str]:
     extension, and RingCentral delivers message-store events per extension. The
     hub owns the recruiter list, so it is asked rather than guessed.
 
-    Best-effort by design: on any failure this returns [] and the caller
-    subscribes to the shared extension alone — the behaviour before
-    per-recruiter sending — instead of starting with no inbound SMS at all.
+    A FAILURE RAISES; it does not return []. The caller distinguishes the two:
+    an empty roster means "no recruiter has their own number yet" and is
+    re-registered, while a failed read leaves the working subscription alone
+    (reconcile_rc_subscription). Returning [] for a failure collapses those
+    into one, and re-registering with no extensions because the hub was
+    briefly unreachable silently drops every recruiter's inbound SMS.
+
+    A missing shared secret used to be the exception — it returned [] — so a
+    misconfigured deployment looked exactly like a company with no recruiters
+    onboarded, with no warning anywhere.
     """
     if not LEADS_INTERNAL_SHARED_SECRET:
-        return []
+        raise RuntimeError(
+            "LEADS_INTERNAL_SHARED_SECRET is not set, so the recruiter extension list "
+            "cannot be read; inbound SMS can only be watched on the shared number."
+        )
 
     url = f"{LOCAL_API_BASE_URL.rstrip('/')}/api/internal/ringcentral/sms-extensions"
     headers = {"x-internal-shared-secret": LEADS_INTERNAL_SHARED_SECRET}

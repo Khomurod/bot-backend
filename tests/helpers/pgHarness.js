@@ -173,7 +173,33 @@ async function createPgHarness(t, options = {}) {
   return { pool, schema, connect, query, applySchemaSql, loadDataLayer };
 }
 
+/**
+ * Every forward migration, concatenated in version order — what a real boot
+ * applies on top of the baseline.
+ *
+ * Why a test wants this rather than just the one migration it is about: these
+ * suites exercise the CURRENT data layer against the schema, and the data layer
+ * only knows the newest shape. A test pinned to migration 0008 alone started
+ * failing the moment 0011 added a column that `insertFacebookLeadSmsMirror`
+ * writes — the test was right about 0008 and wrong about the world. Pass this
+ * as `extraDdl` when a test writes THROUGH the data layer; pass a single
+ * migration when the test is about that migration's own DDL.
+ *
+ * @param {(name: string) => boolean} [filter]  e.g. up-to-a-version
+ * @returns {string}
+ */
+function allMigrationsSql(filter = () => true) {
+  const dir = path.join(__dirname, '..', '..', 'database', 'migrations');
+  return fs.readdirSync(dir)
+    .filter((name) => /^\d{4,}_[a-z0-9_]+\.sql$/.test(name))
+    .filter(filter)
+    .sort()
+    .map((name) => fs.readFileSync(path.join(dir, name), 'utf8'))
+    .join('\n');
+}
+
 module.exports = {
   createPgHarness,
   skipWithoutPg,
+  allMigrationsSql,
 };

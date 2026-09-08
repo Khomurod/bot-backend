@@ -53,8 +53,12 @@ function loadProcessor({
     fallbackNote: null,
   },
   senderUpdateThrows = null,
+  // The duplicate guard's view of the world: an existing `leads` row, or the
+  // failure of the lookup itself.
+  existingLead = null,
+  existingLeadError = null,
 } = {}) {
-  const calls = { telegram: [], notices: [], bitrix: [], leads: [], senderWrites: [], sends: [] };
+  const calls = { telegram: [], notices: [], bitrix: [], leads: [], senderWrites: [], sends: [], textedChecks: [] };
 
   require.cache[PATHS.db] = {
     exports: {
@@ -64,6 +68,11 @@ function loadProcessor({
       updateLeadSmsSender: async (id, payload) => {
         if (senderUpdateThrows) throw senderUpdateThrows;
         calls.senderWrites.push({ id, ...payload });
+      },
+      getLeadBySourceExternalId: async (source, externalId) => {
+        calls.textedChecks.push({ source, externalId });
+        if (existingLeadError) throw existingLeadError;
+        return existingLead;
       },
     },
   };
@@ -304,4 +313,96 @@ test('buildAutoMessageNotification is still exported from the queue service', ()
     null,
     'success is still silent',
   );
+});
+
+// ── the duplicate guard: an old lead is never texted twice ──
+
+test('a lead that already has a from-number is NOT texted again', async () => {
+  // The requirement this exists for: every lead processed before per-recruiter
+  // sending carries the shared company number in `sms_from_number`, so none of
+  // them can be re-texted from a recruiter's line — not by the admin retry
+  // button, not by the at-least-once window at startup, not by anything added
+  // later.
+  const { processor, telegram, calls, restore } = loadProcessor({
+    existingLead: { id: 42, sms_from_number: '+14704804679' },
+  });
+  try {
+    await processor.processLeadEvent(EVENT, { telegram });
+
+    assert.equal(calls.sends.length, 0, 'no send is attempted');
+    assert.deepEqual(calls.textedChecks, [{ source: 'facebook', externalId: 'lg-1' }]);
+    // The lead still reaches Telegram — a re-drive is still useful for that.
+    assert.equal(calls.telegram.length, 2, 'the lead post, then the skip notice');
+    const notice = calls.telegram.map((m) => m.text).join('\n');
+    assert.match(notice, /already texted/i, 'and it says why, honestly');
+    assert.doesNotMatch(notice, /AutoMessage failed/, 'a re-drive is not a failure');
+  } finally { restore(); }
+});
+
+test('a genuinely new lead is texted exactly once', async () => {
+  const { processor, telegram, calls, restore } = loadProcessor({ existingLead: null });
+  try {
+    await processor.processLeadEvent(EVENT, { telegram });
+    assert.equal(calls.sends.length, 1);
+  } finally { restore(); }
+});
+
+test('a lead row with no from-number is still textable', async () => {
+  // Auto-SMS disabled at the time, or no phone on the form: the row exists but
+  // was never texted, so a retry must still be able to send.
+  const { processor, telegram, calls, restore } = loadProcessor({
+    existingLead: { id: 42, sms_from_number: null },
+  });
+  try {
+    await processor.processLeadEvent(EVENT, { telegram });
+    assert.equal(calls.sends.length, 1);
+  } finally { restore(); }
+});
+
+test('a failed lookup opens the guard rather than costing a lead its text', async () => {
+  // "Cannot prove it was sent" must not become "do not send". A database
+  // hiccup on a genuinely new lead would otherwise silently drop the text,
+  // which is the one thing the lead flow guarantees against.
+  const { processor, telegram, calls, restore } = loadProcessor({
+    existingLeadError: new Error('pool timeout'),
+  });
+  try {
+    await processor.processLeadEvent(EVENT, { telegram });
+    assert.equal(calls.sends.length, 1);
+  } finally { restore(); }
+});
+
+test('a send on a REPLAYED event still records the marker that stops the next one', async () => {
+  // The hole the guard rested on: `createLeadIfNew` returns null on conflict,
+  // so a replay used to skip `updateLeadSmsSender` entirely. Run 1 creates the
+  // row and fails to send; run 2 SUCCEEDS but records nothing; run 3 sees an
+  // unsent lead and texts again — and so on forever.
+  const { processor, telegram, calls, restore } = loadProcessor({
+    leadRow: null,                                    // the insert conflicts
+    existingLead: { id: 42, sms_from_number: null },  // …but the row is there, untexted
+  });
+  try {
+    await processor.processLeadEvent(EVENT, { telegram });
+    assert.equal(calls.sends.length, 1, 'an untexted lead is still texted');
+    assert.deepEqual(calls.senderWrites, [{
+      id: 42, assignedById: 17, fromNumber: '+15557770000', recruiterId: 7,
+    }], 'and the marker is written against the row that already existed');
+  } finally { restore(); }
+});
+
+test('a failed marker write is reported as an error, not a warning', async () => {
+  // It is the difference between "texted once" and "texted on every retry", so
+  // it must not read like a cosmetic miss in the log.
+  const { processor, telegram, restore } = loadProcessor({
+    senderUpdateThrows: new Error('pool timeout'),
+  });
+  const errors = [];
+  const realError = console.error;
+  console.error = (...args) => errors.push(args.join(' '));
+  try {
+    await processor.processLeadEvent(EVENT, { telegram });
+    const joined = errors.join('\n');
+    assert.match(joined, /Could not record the SMS sender/);
+    assert.match(joined, /WILL text .* again/, 'the consequence is spelled out');
+  } finally { console.error = realError; restore(); }
 });
