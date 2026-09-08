@@ -54,14 +54,14 @@
     "safety_event_music_assets": {
       "purpose": "Uploaded background-music clips for the driver-group speeding-video overlay. Bytes are stored in Postgres BYTEA (storage_kind='db_bytea') because the samsara-integration poller runs as a SEPARATE process with a DIFFERENT Telegram bot and Telegram file_ids are bot-scoped. Exactly one row is active at a time (partial unique index).",
       "status": "active",
-      "service": "admin (Settings → Safety Event Music, writes), samsara-integration (reads active clip bytes)",
+      "service": "admin (Settings → Samsara, writes), samsara-integration (reads active clip bytes)",
       "sourceOfTruth": "This table (mastered by bot-backend).",
       "danger": "Do not hard-delete the active clip — the app refuses it. Deactivate first. The BYTEA is the only copy of the uploaded music."
     },
     "safety_event_video_settings": {
       "purpose": "Single-row (id=1) config for the driver-group music overlay: enable flags, active music asset, volume, fades, mix-vs-replace, loop behaviour, and a max-video-length cap. `samsara_notification_group_original_video_enabled` documents (and never overrides) the invariant that the notifications group always gets the original video.",
       "status": "active",
-      "service": "admin (Settings → Safety Event Music, writes), samsara-integration (reads)"
+      "service": "admin (Settings → Samsara, writes), samsara-integration (reads)"
     },
     "safety_event_video_jobs": {
       "purpose": "Best-effort observability ledger: one row per driver-group music-overlay attempt (pending→processing→sent/failed/fallback_sent/skipped). Written by the samsara-integration poller.",

@@ -1,7 +1,8 @@
 /**
  * Safety-event video / music-overlay settings + music asset store.
  *
- * Backs Settings → Safety Event Music (admin panel). Two concerns:
+ * Backs the video & music section of Settings → Samsara (admin panel), which
+ * is where the old standalone "Safety Event Music" tab now lives. Two concerns:
  *
  *   1. safety_event_video_settings — a single-row (id = 1) config controlling
  *      the driver-group music overlay (enable flags, volume, fades, mixing).
