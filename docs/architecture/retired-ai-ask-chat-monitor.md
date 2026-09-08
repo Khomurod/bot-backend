@@ -22,7 +22,7 @@ narrative answer. It was the *only* consumer of `aiAskService.js`.
 | Backend service | `services/aiAskService.js` (deleted — `askData`, `compilePlan`, `parsePlan`, `buildMessageLink`) |
 | Backend import | `const { askData } = require('../services/aiAskService')` in `server/api.js` |
 | Tests | `tests/aiAsk.test.js` (deleted) |
-| Dev script | Removed the `POST /api/ai-ask` section from `scripts/e2e-ai-insights-live.js` |
+| Dev script | `scripts/e2e-ai-insights-live.js` exercised this API; it has since been removed too |
 | Dead helper | `humanizeColumn()` in `admin/src/utils/formatTime.js` (was only used by AskDataPanel) |
 | Docs | `docs/architecture/module-map.md` and `docs/deployment/pre-deploy-checklist.md` (H1–H3) updated to drop Ask-the-Data references |
 | Comments/env wording | `services/groqClient.js` consumer list; "Ask Data" wording in `.env.example` and `README.md` |
@@ -53,7 +53,7 @@ A live table of recent driver-group messages that **auto-refreshed every 10s**.
 | API client | `getChatLogs()` in `admin/src/api.js` |
 | Backend route | `GET /api/chat-logs` in `server/api.js` |
 | Backend DB fn | `getRecentChatLogs()` in `database/db.js` (+ its export) — was only called by the chat-logs route |
-| Stray comment | Leftover `// Chat Logs Page` divider in `admin/src/pages/QuestionsPage.jsx` |
+| Stray comment | Leftover `// Chat Logs Page` divider in `admin/src/pages/QuestionsPage.jsx` (the driver **survey** page — unrelated to the removed QBQ/SOS `/questions`) |
 
 The whole "Insights" navigation section (which contained only these two items)
 was removed from the sidebar.

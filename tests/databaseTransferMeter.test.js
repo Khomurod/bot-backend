@@ -164,7 +164,7 @@ test('a missing budget falls back to 5 GB rather than dividing by zero', () => {
 
 test('a bytea column is counted by its length, not expanded into JSON', () => {
   // JSON.stringify turns a Buffer into one array element PER BYTE. Sampling a
-  // trailer-media row that way would allocate hundreds of megabytes on a
+  // media-bearing row that way would allocate hundreds of megabytes on a
   // 512 MB instance — a usage meter must not be able to kill the app.
   const { estimateValueBytes } = meter;
   const blob = Buffer.alloc(2 * 1024 * 1024, 7);

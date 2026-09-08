@@ -16,7 +16,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createTrailerPgHarness, skipWithoutPg } = require('./helpers/trailerPgHarness');
+const { createPgHarness, skipWithoutPg } = require('./helpers/pgHarness');
 
 /** Insert one row and return it. */
 async function insert(harness, { status, text, createdAt }) {
@@ -29,7 +29,7 @@ async function insert(harness, { status, text, createdAt }) {
 }
 
 test('the queue keeps every live message and caps finished history', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t);
+  const harness = await createPgHarness(t);
   const { scheduledMessages } = harness.loadDataLayer(['scheduledMessages']);
 
   const base = Date.parse('2026-01-01T00:00:00Z');
@@ -69,7 +69,7 @@ test('the queue keeps every live message and caps finished history', { skip: ski
 });
 
 test('the default call is valid SQL and returns the queue', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t);
+  const harness = await createPgHarness(t);
   const { scheduledMessages } = harness.loadDataLayer(['scheduledMessages']);
 
   await insert(harness, { status: 'pending', text: 'only one', createdAt: new Date().toISOString() });
@@ -79,7 +79,7 @@ test('the default call is valid SQL and returns the queue', { skip: skipWithoutP
 });
 
 test('an empty table returns an empty list rather than failing', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t);
+  const harness = await createPgHarness(t);
   const { scheduledMessages } = harness.loadDataLayer(['scheduledMessages']);
   assert.deepEqual(await scheduledMessages.getAllScheduledMessages(), []);
 });

@@ -15,7 +15,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createTrailerPgHarness, skipWithoutPg } = require('./helpers/trailerPgHarness');
+const { createPgHarness, skipWithoutPg } = require('./helpers/pgHarness');
 const { runMigrations } = require('../database/migrate/runner');
 const { loadMigrations } = require('../database/migrate/loader');
 const ledger = require('../database/migrate/ledger');
@@ -46,7 +46,7 @@ function tempMigrationsDir(t, files = {}) {
 
 test('empty dir: ledger is created and baseline sentinel recorded', async (t) => {
   if (skipWithoutPg()) { t.skip('set TEST_DATABASE_URL'); return; }
-  const harness = await createTrailerPgHarness(t, { applySchema: false });
+  const harness = await createPgHarness(t, { applySchema: false });
   const dir = tempMigrationsDir(t);
   const logger = captureLogger();
 
@@ -67,7 +67,7 @@ test('empty dir: ledger is created and baseline sentinel recorded', async (t) =>
 
 test('a forward migration applies once and is skipped on re-run', async (t) => {
   if (skipWithoutPg()) { t.skip('set TEST_DATABASE_URL'); return; }
-  const harness = await createTrailerPgHarness(t, { applySchema: false });
+  const harness = await createPgHarness(t, { applySchema: false });
   const dir = tempMigrationsDir(t, {
     '0001_make_widgets.sql':
       '-- migrate:kind: schema\nCREATE TABLE IF NOT EXISTS widgets (id SERIAL PRIMARY KEY, n INT);\n',
@@ -88,7 +88,7 @@ test('a forward migration applies once and is skipped on re-run', async (t) => {
 
 test('migrations apply in ascending version order regardless of readdir order', async (t) => {
   if (skipWithoutPg()) { t.skip('set TEST_DATABASE_URL'); return; }
-  const harness = await createTrailerPgHarness(t, { applySchema: false });
+  const harness = await createPgHarness(t, { applySchema: false });
   const dir = tempMigrationsDir(t, {
     // 0002 depends on the table 0001 creates: only correct order succeeds.
     '0002_seed_widgets.sql': "-- migrate:kind: seed\nINSERT INTO widgets (n) VALUES (42);\n",
@@ -103,7 +103,7 @@ test('migrations apply in ascending version order regardless of readdir order', 
 
 test('a failing migration rolls back atomically and is not recorded', async (t) => {
   if (skipWithoutPg()) { t.skip('set TEST_DATABASE_URL'); return; }
-  const harness = await createTrailerPgHarness(t, { applySchema: false });
+  const harness = await createPgHarness(t, { applySchema: false });
   const dir = tempMigrationsDir(t, {
     // First statement is valid, second is a hard error → whole migration must roll back.
     '0001_partial_fail.sql':
@@ -123,7 +123,7 @@ test('a failing migration rolls back atomically and is not recorded', async (t) 
 
 test('checksum drift on an applied migration warns but does not re-run', async (t) => {
   if (skipWithoutPg()) { t.skip('set TEST_DATABASE_URL'); return; }
-  const harness = await createTrailerPgHarness(t, { applySchema: false });
+  const harness = await createPgHarness(t, { applySchema: false });
   const dir = tempMigrationsDir(t, {
     '0001_make_widgets.sql': 'CREATE TABLE widgets (id SERIAL PRIMARY KEY);\n',
   });
@@ -142,7 +142,7 @@ test('checksum drift on an applied migration warns but does not re-run', async (
 
 test('a no-transaction migration applies and records', async (t) => {
   if (skipWithoutPg()) { t.skip('set TEST_DATABASE_URL'); return; }
-  const harness = await createTrailerPgHarness(t, { applySchema: false });
+  const harness = await createPgHarness(t, { applySchema: false });
   const dir = tempMigrationsDir(t, {
     '0001_concurrent_index.sql':
       '-- migrate:no-transaction\nCREATE TABLE widgets (id SERIAL PRIMARY KEY, n INT);\n'
@@ -160,7 +160,7 @@ test('a no-transaction migration applies and records', async (t) => {
 
 test('baseline sentinel checksum refreshes across runs', async (t) => {
   if (skipWithoutPg()) { t.skip('set TEST_DATABASE_URL'); return; }
-  const harness = await createTrailerPgHarness(t, { applySchema: false });
+  const harness = await createPgHarness(t, { applySchema: false });
   const dir = tempMigrationsDir(t);
   await runMigrations(harness.pool, { migrationsDir: dir, baselineChecksum: 'sha256:aaa', logger: captureLogger() });
   await runMigrations(harness.pool, { migrationsDir: dir, baselineChecksum: 'sha256:bbb', logger: captureLogger() });

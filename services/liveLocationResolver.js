@@ -1,4 +1,4 @@
-const { getEldConfig } = require('../database/eldSettings');
+const { getEldConfig, driveHosProvidersFrom } = require('../database/eldSettings');
 const { getLiveLocationForGroupTitle } = require('./samsaraLocationService');
 const { getLiveLocationForGroupTitleFromDriveHos } = require('./driveHosEldService');
 
@@ -79,12 +79,7 @@ async function resolveLiveLocationForGroupTitle(groupTitle, { unitNumber = null 
   }
 
   // ── Fallbacks: Factor ELD → Leader ELD (Drive HoS) ──
-  const driveHosFallbacks = [
-    { label: 'Factor ELD', enabled: cfg.factorEnabled, companyKey: cfg.factorCompanyKey },
-    { label: 'Leader ELD', enabled: cfg.leaderEnabled, companyKey: cfg.leaderCompanyKey },
-  ];
-
-  for (const provider of driveHosFallbacks) {
+  for (const provider of driveHosProvidersFrom(cfg)) {
     if (location) break;
     if (!provider.enabled || !provider.companyKey) continue;
     try {

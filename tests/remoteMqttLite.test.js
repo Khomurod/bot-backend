@@ -1,20 +1,20 @@
 /**
  * The remote page's hand-rolled MQTT client, at the byte level.
  *
- * `mqttLite()` inside server/public/remote.html speaks MQTT 3.1.1 over a
+ * `mqttLite()` in server/public/remote-mqtt.js speaks MQTT 3.1.1 over a
  * WebSocket with no library, because a phone remote should not pull tens of
  * kilobytes over hotel wifi for four packet types. That trade is only worth
  * making if the packets are RIGHT: a wrong remaining-length byte or a packet id
  * where QoS 0 forbids one is not a visible bug, it is a broker silently
  * dropping the connection while a presenter taps Next in front of a room.
  *
- * So this test slices the real function out of the page (between the
+ * So this test slices the real function out of the shipped file (between the
  * `mqtt-lite` markers) and runs it against a stub socket, asserting the bytes
  * against the spec by hand rather than against the implementation's own
  * encoder. It needs no browser, no broker, no env and no database.
  *
  * The protocol shape asserted here is fixed by the presentation file — if a
- * test below fails after an edit to the page, the page is wrong, not the test.
+ * test below fails after an edit, the edit is wrong, not the test.
  */
 
 'use strict';
@@ -24,14 +24,14 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const PAGE = path.join(__dirname, '..', 'server', 'public', 'remote.html');
+const CLIENT = path.join(__dirname, '..', 'server', 'public', 'remote-mqtt.js');
 
-/** The real mqttLite source, lifted from the page. */
+/** The real mqttLite source, lifted from the file the page loads. */
 function loadMqttLite({ keepalive = 30, socketClass }) {
-  const html = fs.readFileSync(PAGE, 'utf8');
+  const html = fs.readFileSync(CLIENT, 'utf8');
   const start = html.indexOf('/* mqtt-lite:start');
   const end = html.indexOf('/* mqtt-lite:end */');
-  assert.ok(start > 0 && end > start, 'the mqtt-lite markers must still be in the page');
+  assert.ok(start > 0 && end > start, 'the mqtt-lite markers must still be in remote-mqtt.js');
   const source = html.slice(start, end);
   assert.match(source, /function mqttLite\(/, 'the sliced region must contain mqttLite');
 

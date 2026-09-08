@@ -3,10 +3,10 @@
 /**
  * The presenter remote page (`GET /remote`).
  *
- * One public route serving one self-contained file: `server/public/remote.html`
- * is the phone remote for the Wenzel Weekly Report deck. The presentation
- * displays a QR encoding `<origin>/remote#c=<CODE>`, so the phone's camera app
- * opens this URL and the page pairs itself from the hash with no taps.
+ * `server/public/remote.html` is the phone remote for the Wenzel Weekly Report
+ * deck, plus the three assets it loads. The presentation displays a QR encoding
+ * `<origin>/remote#c=<CODE>`, so the phone's camera app opens this URL and the
+ * page pairs itself from the hash with no taps.
  *
  * PUBLIC ON PURPOSE, AND SAFE TO BE. There is no JWT here and no session: the
  * presenter's phone has no admin credentials, and a QR on a projector cannot
@@ -16,9 +16,11 @@
  * of this server's APIs, so an uninvited visitor to `/remote` gets a join card
  * and nothing else.
  *
- * WHY A ROUTE AND NOT `express.static`: a static mount would also expose
- * anything else that ever lands in `server/public/`. One explicit route
- * exposes exactly one file.
+ * WHY EXPLICIT ROUTES AND NOT `express.static`: a static mount would also
+ * expose anything else that ever lands in `server/public/`. These routes
+ * expose exactly the four files named in ASSETS below and nothing else — the
+ * page was one file until it passed the repository's 500-line limit, and the
+ * split must not turn one exposed file into a whole exposed directory.
  *
  * `no-cache` rather than `no-store`: the phone may revalidate, but it must
  * never present a stale copy after a deploy — a remote that speaks last
@@ -28,7 +30,18 @@
 const express = require('express');
 const path = require('node:path');
 
-const REMOTE_HTML = path.join(__dirname, '..', 'public', 'remote.html');
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const REMOTE_HTML = path.join(PUBLIC_DIR, 'remote.html');
+
+/**
+ * The page's own assets, by exact request path. An allow-list, not a mount:
+ * a name that is not a key here is a 404 even if the file exists.
+ */
+const ASSETS = Object.freeze({
+  '/remote/remote.css': { file: 'remote.css', type: 'text/css' },
+  '/remote/remote-mqtt.js': { file: 'remote-mqtt.js', type: 'application/javascript' },
+  '/remote/remote-app.js': { file: 'remote-app.js', type: 'application/javascript' },
+});
 
 function createRemoteRoutes() {
   const router = express.Router();
@@ -51,7 +64,22 @@ function createRemoteRoutes() {
   router.get('/remote', remoteHandler);
   router.get('/remote/', remoteHandler);
 
+  for (const [urlPath, asset] of Object.entries(ASSETS)) {
+    router.get(urlPath, (req, res) => {
+      // Same cache policy as the page: a remote speaking last week's protocol
+      // to this week's deck fails silently, mid-talk.
+      res.set('Cache-Control', 'no-cache');
+      res.type(asset.type);
+      return res.sendFile(path.join(PUBLIC_DIR, asset.file), (err) => {
+        if (err && !res.headersSent) {
+          console.error(`[REMOTE] could not serve ${asset.file}:`, err.message);
+          res.status(404).type('text/plain').send('Not found.');
+        }
+      });
+    });
+  }
+
   return router;
 }
 
-module.exports = { createRemoteRoutes, REMOTE_HTML };
+module.exports = { createRemoteRoutes, REMOTE_HTML, ASSETS };

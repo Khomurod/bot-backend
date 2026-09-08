@@ -1,7 +1,7 @@
 /**
  * Wake-up scheduling for durable job queues.
  *
- * Shared by the Facebook webhook queue and the trailer notification queue —
+ * Used by the Facebook webhook queue —
  * both store rows with a due timestamp, claim them atomically, and back off on
  * failure. Both used to be discovered by a fixed short poll (5s and 15s), which
  * cost tens of thousands of idle PostgreSQL round-trips a day to notice work

@@ -36,10 +36,14 @@ async function extractFromImages(files) {
     throw err;
   }
 
-  const today = DateTime.now().toISODate();
+  // Company time, like every other home-time prompt (see homeTimeIntentService
+  // and homeTimeRequestConstants). Without the zone this is the process default
+  // — UTC on Render — so an evening upload told the model it was already
+  // tomorrow, and "the most recent PAST occurrence" could resolve a day ahead.
+  const today = DateTime.now().setZone('America/Chicago').toISODate();
   const prompt = `You are reading screenshot(s) of a spreadsheet that tracks truck drivers' home time. `
     + `Each data row is one driver. Read EVERY data row across ALL the attached images.\n`
-    + `Today's date is ${today}. Resolve any date written without a year to the most recent PAST `
+    + `Today's date is ${today} (America/Chicago). Resolve any date written without a year to the most recent PAST `
     + `occurrence (never a future year).\n\n`
     + `For each driver return:\n`
     + `- name: the driver's full name (the first column), exactly as written.\n`

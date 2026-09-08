@@ -68,9 +68,17 @@ it** — it was a *consumer* of shared GPS/Datatruck/ETA helpers, never a provid
 
 ## What will be PRESERVED (do NOT break)
 
-- **DB tables `driver_location_monitors` and `driver_location_checkins` are
-  kept** (marked RETIRED in `database/schema.sql`) — historical check-in/dwell
-  data is preserved. **No destructive migration.**
+- **DB tables `driver_location_monitors` and `driver_location_checkins` keep
+  their data** — historical check-in/dwell data is preserved, and there is still
+  **no destructive migration**. What changed (2026-09): `database/baseline/`
+  no longer CREATEs them, because Settings → Retired Leftovers can now drop
+  them and a baseline applied verbatim on every boot would recreate what an
+  operator had just deliberately deleted. Removing the CREATE deletes nothing —
+  an existing deployment keeps both tables and every row until someone clicks —
+  and a fresh install correctly never creates tables no code reads.
+  `database/baseline/015_driver_location.sql` is now the tombstone that records
+  this, and `tests/retiredLeftovers.test.js` asserts the baseline and the
+  droppable inventory can never disagree again.
 - **`database/db.js` is not touched** (per the stability instruction).
 - Shared helpers stay: `services/liveLocationResolver.js` (GPS fallback chain),
   `services/samsaraLocationService.js`, `services/driveHosEldService.js`,

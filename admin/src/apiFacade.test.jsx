@@ -53,9 +53,12 @@ test("no two forwarded modules export the same name", () => {
 });
 
 test("the public surface stays at its known size", () => {
-  // 205 calls at the time api.js was split into domain modules. Growing this is
-  // fine — update the number. A DROP means a call site somewhere just broke.
-  expect(Object.keys(api).length).toBeGreaterThanOrEqual(205);
+  // 192 after the Trailer Department, Trailer Tracking and QBQ/SOS were removed
+  // (it was 205 when api.js was split into domain modules; the trailer domain
+  // modules accounted for the difference). Growing this is fine — update the
+  // number. A DROP that is not a deliberate feature removal means a call site
+  // somewhere just broke.
+  expect(Object.keys(api).length).toBeGreaterThanOrEqual(192);
 });
 
 describe("a sample of calls from every domain still resolves", () => {
@@ -67,7 +70,7 @@ describe("a sample of calls from every domain still resolves", () => {
     "getEmployeeBirthdays", "getFacebookLeadPages", "getMileageBonusOverview",
     "getRaiseSettings", "getHomeTimeOverview", "getGroupAccess", "getFuelMonitor",
     "getBotUsers", "getGmapsSettings", "getRouteAssignments", "getRecruiters",
-    "getLiveLocationsConfig", "getSafetyEventSettings", "getTrailers",
+    "getLiveLocationsConfig", "getSafetyEventSettings",
   ];
   test.each(samples)("api.%s is a function", (name) => {
     expect(typeof api[name]).toBe("function");

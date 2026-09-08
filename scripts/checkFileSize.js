@@ -34,12 +34,28 @@ const LIMIT = 500;
 const REPO_ROOT = path.resolve(__dirname, '..');
 
 /**
- * Extensions treated as hand-written code. Stylesheets, Markdown and data files
- * are deliberately absent: the rule is about code modularity, and a long
- * stylesheet or brief is not a module-boundary problem.
+ * Extensions treated as hand-written code.
+ *
+ * Stylesheets, HTML pages and Markdown were deliberately absent for a while,
+ * on the reasoning that the rule is about module boundaries. That let three
+ * files quietly grow past every other rule in the repository: a 2 500-line
+ * stylesheet, a 1 320-line page with its CSS and JS inlined, and an 1 140-line
+ * brief. Each was a real navigation problem and each split cleanly, so the
+ * scanner now covers them.
+ *
+ * SQL and YAML are covered for the same reason: `database/baseline/*.sql` and
+ * `.github/workflows/*.yml` are hand-written, read by people, and the largest
+ * baseline segment has already been within 25 lines of the limit. The generated
+ * `database/schema.sql` is excluded by name below, not by hiding its extension.
+ *
+ * `.json` stays out. Every JSON file in the tree over the limit is a lockfile,
+ * and the hand-written ones (`package.json`, `docs/database/table-metadata.json`)
+ * are data with no meaningful split — a JSON object cannot be given a façade.
  */
 const SOURCE_EXTENSIONS = new Set([
   '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.py',
+  '.css', '.html', '.md',
+  '.sql', '.yml', '.yaml',
 ]);
 
 /**
@@ -60,10 +76,13 @@ const EXCLUDED_DIRS = new Set([
  * escape the limit, so a wildcard here would reopen the hole this design closes.
  */
 const EXCLUDED_FILE_PATTERNS = [
-  /\.min\.(js|mjs|cjs)$/,
+  /\.min\.(js|mjs|cjs|css)$/,
   /\.bundle\.(js|mjs|cjs)$/,
   /\.generated\.(js|mjs|cjs|jsx|ts|tsx|py)$/,
   /(^|\/)eng\.traineddata$/,
+  // Generated from database/baseline/*.sql by scripts/build-schema.js; the
+  // segments it is assembled from ARE checked, and each is well under the limit.
+  /(^|\/)database\/schema\.sql$/,
 ];
 
 /** Physical line count, matching `wc -l` intent (a trailing newline is not a line). */

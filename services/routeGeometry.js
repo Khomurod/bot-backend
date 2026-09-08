@@ -5,11 +5,8 @@
  * deterministically. Distances are in meters. Points are [lat, lng] pairs.
  */
 
-const EARTH_RADIUS_M = 6_371_000;
+const { EARTH_RADIUS_M, toRadians, haversineMeters } = require('../lib/geo/distance');
 
-function toRadians(deg) {
-  return (deg * Math.PI) / 180;
-}
 
 /**
  * Decode a Google "encoded polyline" string into an array of [lat, lng] pairs.
@@ -46,18 +43,6 @@ function decodePolyline(encoded, precision = 5) {
     points.push([lat / factor, lng / factor]);
   }
   return points;
-}
-
-/** Great-circle distance between two [lat, lng] points, in meters. */
-function haversineMeters(a, b) {
-  const lat1 = toRadians(a[0]);
-  const lat2 = toRadians(b[0]);
-  const dLat = toRadians(b[0] - a[0]);
-  const dLng = toRadians(b[1] - a[1]);
-  const sinDLat = Math.sin(dLat / 2);
-  const sinDLng = Math.sin(dLng / 2);
-  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
-  return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
 /**

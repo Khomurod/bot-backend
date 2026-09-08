@@ -18,7 +18,7 @@ export function MapAndUnitList({
   mapContainerRef, mapError, tileError, mapReady,
   filtered, units, selectedUnit, selectUnit, fitAll,
   search, setSearch, filter, setFilter,
-  loading, snapshot, trailerTextOnly, showTrailers,
+  loading, snapshot,
 }) {
   return (
     <>

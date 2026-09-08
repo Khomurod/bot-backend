@@ -12,7 +12,7 @@
  * were absent from one suite's hand-written reload list, kept the production
  * pool, and eleven assertions failed with no obvious cause. Walking the
  * directory cannot miss a file that did not exist when the list was written —
- * the same reasoning behind the recursive purge inside trailerPgHarness.
+ * the same reasoning behind the recursive purge inside pgHarness.
  */
 'use strict';
 

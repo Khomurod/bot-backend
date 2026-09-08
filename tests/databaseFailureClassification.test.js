@@ -74,7 +74,7 @@ test('a usage ceiling is DB_QUOTA — a limit, not a fault', () => {
 test('rejected credentials or privileges are DB_PERMISSION', () => {
   for (const error of [
     pgError('password authentication failed for user "app"', '28P01'),
-    pgError('permission denied for table trailers', '42501'),
+    pgError('permission denied for table groups', '42501'),
   ]) {
     assert.equal(classifyDatabaseError(error)?.code, FAILURE_CODES.DB_PERMISSION, error.message);
   }
@@ -84,7 +84,7 @@ test('an application bug is NOT reported as a database failure', () => {
   // If a typo or a constraint violation claimed the database was down, someone
   // would go and check the provider status page over their own SQL.
   const notInfrastructure = [
-    pgError('duplicate key value violates unique constraint "trailers_unit_key"', '23505'),
+    pgError('duplicate key value violates unique constraint "groups_telegram_group_id_key"', '23505'),
     pgError('null value in column "unit_number" violates not-null constraint', '23502'),
     pgError('syntax error at or near "SELCT"', '42601'),
     pgError('column "nope" does not exist', '42703'),

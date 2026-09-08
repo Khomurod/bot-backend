@@ -1,8 +1,9 @@
 # 🚛 Wenze Trucking Operations Hub (`bot-backend`)
 
 A Telegram-bot and web platform for a trucking company: driver feedback and
-surveys, broadcasts, dispatch and route operations, a trailer rental department,
-recruiting and Facebook lead capture — all managed from a React admin panel.
+surveys, broadcasts, dispatch and route operations, home time, bonuses and
+raises, recruiting and Facebook lead capture — all managed from a React admin
+panel.
 
 This README is the **setup and operations entry point**. It deliberately does
 not describe the features in depth.

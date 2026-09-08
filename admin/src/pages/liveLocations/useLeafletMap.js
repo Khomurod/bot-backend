@@ -2,16 +2,14 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import * as api from "../../api";
-import { displayTrailerStatus } from "../../utils/trailerState";
-import { getVisibleMapPoints, trailerAriaLabel } from "../../utils/assetMapFilters";
 import { DEFAULT_CENTER, DEFAULT_ZOOM } from "./constants";
-import { markerIcon, popupHtml, trailerIcon, trailerPopupHtml } from "./markers";
+import { markerIcon, popupHtml } from "./markers";
 
 /**
- * The Leaflet map's whole lifecycle: creation, sizing, the three layers
- * (trucks, route, trailers), and the fit/select actions.
+ * The Leaflet map's whole lifecycle: creation, sizing, the two layers
+ * (trucks, route), and the fit/select actions.
  *
- * FOUR THINGS HERE ARE LOAD-BEARING:
+ * THREE THINGS HERE ARE LOAD-BEARING:
  *
  *  1. The map initializes from the CONTAINER ALONE, never from data. The
  *     container is always rendered, so a snapshot that fails to load still
@@ -19,10 +17,7 @@ import { markerIcon, popupHtml, trailerIcon, trailerPopupHtml } from "./markers"
  *  2. A failed TILE fetch is not a map failure. `tileError` warns; `mapError`
  *     is reserved for a genuine Leaflet initialization error, so a flaky tile
  *     CDN cannot make the page look broken.
- *  3. Trucks, route and trailers are three SEPARATE layer groups, each redrawn
- *     by its own effect. Toggling the trailer overlay therefore never
- *     re-renders the truck markers or drops the selected unit's route.
- *  4. invalidateSize() is re-run after anything that changes layout — map
+ *  3. invalidateSize() is re-run after anything that changes layout — map
  *     ready, diagnostics toggled, a banner appearing — because Leaflet
  *     measures once and otherwise renders grey shrunken tiles.
  *
@@ -33,8 +28,8 @@ import { markerIcon, popupHtml, trailerIcon, trailerPopupHtml } from "./markers"
  * Split out of admin/src/pages/LiveLocationsPage.jsx.
  */
 export function useLeafletMap({
-  filtered, selectedUnit, setSelectedUnit, showTrucks, showTrailers,
-  mappableTrailers, showDiagnostics, error, snapshot, providerErrors,
+  filtered, selectedUnit, setSelectedUnit,
+  showDiagnostics, error, snapshot, providerErrors,
 }) {
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(null);
@@ -44,7 +39,6 @@ export function useLeafletMap({
   const mapRef = useRef(null);
   const markerLayerRef = useRef(null);
   const routeLayerRef = useRef(null);
-  const trailerLayerRef = useRef(null);
   const markersByUnit = useRef(new Map());
   const selectedUnitRef = useRef(null);
 
@@ -79,7 +73,6 @@ export function useLeafletMap({
         tiles.addTo(map);
         markerLayerRef.current = L.layerGroup().addTo(map);
         routeLayerRef.current = L.layerGroup().addTo(map);
-        trailerLayerRef.current = L.layerGroup().addTo(map);
         mapRef.current = map;
         // Popup "Center map here" links.
         map.on("popupopen", (e) => {
@@ -139,9 +132,6 @@ export function useLeafletMap({
     if (!map || !layer) return;
     layer.clearLayers();
     markersByUnit.current.clear();
-    // Trailers-only mode: hide the truck layer but keep the units data loaded —
-    // it still powers trailer coordinate derivation and the diagnostics.
-    if (!showTrucks) return;
 
     filtered.forEach((u) => {
       if (!u.location || u.location.lat == null || u.location.lng == null) return;
@@ -154,7 +144,7 @@ export function useLeafletMap({
       marker.addTo(layer);
       markersByUnit.current.set(u.unit, marker);
     });
-  }, [filtered, selectedUnit, mapReady, showTrucks]);
+  }, [filtered, selectedUnit, mapReady]);
 
   // ── Route line for the selected unit ──
   useEffect(() => {
@@ -183,44 +173,18 @@ export function useLeafletMap({
   }, [selectedUnit, mapReady]);
 
 
-  // ── Draw trailer rectangles (overlay). Independent of truck markers so
-  //    toggling/filtering never touches them. ──
-  useEffect(() => {
-    const map = mapRef.current;
-    const layer = trailerLayerRef.current;
-    if (!map || !layer) return;
-    layer.clearLayers();
-    if (!showTrailers) return;
-    const seenAt = new Map(); // co-located rectangles get a small pixel offset
-    mappableTrailers.forEach((entry) => {
-      const key = `${entry.position.lat.toFixed(5)},${entry.position.lng.toFixed(5)}`;
-      const dupIndex = seenAt.get(key) || 0;
-      seenAt.set(key, dupIndex + 1);
-      const marker = L.marker([entry.position.lat, entry.position.lng], {
-        icon: trailerIcon(entry, dupIndex),
-        title: `Trailer ${entry.trailer.unit_number} — ${displayTrailerStatus(entry.trailer)}`,
-        alt: trailerAriaLabel(entry.trailer, entry.quality),
-      });
-      marker.bindPopup(trailerPopupHtml(entry));
-      marker.addTo(layer);
-    });
-  }, [mappableTrailers, showTrailers, mapReady]);
-
-  // Fit to the CURRENTLY VISIBLE filtered markers only (hidden trucks and
-  // filtered-out trailers never affect the bounds). Never throws on empty.
+  // Fit to the CURRENTLY VISIBLE filtered markers only — a unit hidden by the
+  // search or the status filter never affects the bounds. Never throws on empty.
   const fitAll = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
-    const truckPts = showTrucks
-      ? filtered
-        .filter((u) => u.location && u.location.lat != null && u.location.lng != null)
-        .map((u) => [u.location.lat, u.location.lng])
-      : [];
-    const pts = truckPts.concat(getVisibleMapPoints([], showTrailers ? mappableTrailers : []));
+    const pts = filtered
+      .filter((u) => u.location && u.location.lat != null && u.location.lng != null)
+      .map((u) => [u.location.lat, u.location.lng]);
     if (pts.length === 0) return;
     if (pts.length === 1) { map.setView(pts[0], 9); return; }
     map.fitBounds(L.latLngBounds(pts).pad(0.15));
-  }, [filtered, showTrucks, showTrailers, mappableTrailers]);
+  }, [filtered]);
 
   const selectUnit = useCallback((u) => {
     setSelectedUnit(u.unit);

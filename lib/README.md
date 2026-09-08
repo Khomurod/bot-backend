@@ -44,7 +44,5 @@ needs a drawer.
 | `drivers/driverProfileParse.js` | Driver type inference and the inactive-group verdict. |
 | `telegram/telegramUsername.js` | Normalizing a Telegram `@username` and numeric user id. |
 | `routeControl/routeControlConstants.js` | Route Control thresholds and label tables. |
-| `trailers/normalize.js` | Trailer-number normalization for the master list and its aliases. |
-| `trailers/statusDerivation.js` | Deriving an agreement's status from its dates and rows. |
-| `trailers/trailerBilling.js` | Rental day counts and money rounding. Pure date/money maths — the `Service` suffix it carried under `services/` was misleading. |
+| `geo/distance.js` | Great-circle distance — the single implementation. `haversineMiles` is `haversineMeters` converted, not a second formula, because four consumers answer "is the truck there yet" from it: route completion, tracking start, fuel-stop proximity and ETA remaining distance. |
 | `database/failureClassification.js` | Which kind of database failure an error is — unreachable, timed out, out of allowance, permission — as a code + status + human sentence. Used by the query boundary (`database/pool.js`), the route failure helper and the tests; an ordinary SQL error deliberately classifies as nothing. |

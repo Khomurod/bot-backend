@@ -68,8 +68,3 @@ export function escapeHtml(str) {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
-
-/**
- * Trailer rectangle icon. The in-marker glyph (E/L/?/!) keeps the state
- * readable without color; `offsetIndex` nudges co-located rectangles apart.
- */

@@ -1,5 +1,6 @@
 const { DateTime } = require('luxon');
 const config = require('../config/config');
+const { haversineMiles } = require('../lib/geo/distance');
 
 const GEO_USER_AGENT = 'DispatchBot/1.0';
 const APPROX_HIGHWAY_MPH = 52;
@@ -190,17 +191,6 @@ async function geocodePlace(place) {
   return null;
 }
 
-function haversineMiles(lat1, lon1, lat2, lon2) {
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const radiusMiles = 3958.8;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2
-    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return radiusMiles * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-}
-
 function buildEtaOutput({ destination, remainingMiles, etaMinutes, approximate }) {
   const etaChicago = DateTime.now().setZone('America/Chicago').plus({ minutes: etaMinutes });
   return {
@@ -382,7 +372,6 @@ module.exports = {
   calculateEtaToDestination,
   extractDestinationCandidates,
   geocodePlace,
-  haversineMiles,
   sanitizeDestinationQuery,
 };
 

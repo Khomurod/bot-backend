@@ -1,0 +1,91 @@
+/* ─── Sidebar Section Headers ─── */
+.nav-section {
+  margin-bottom: 4px;
+}
+
+.nav-section-header {
+  padding: 10px 20px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: rgba(148, 163, 184, 0.6);
+  margin-top: 12px;
+  border-left: 3px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nav-section:first-child .nav-section-header {
+  margin-top: 0;
+}
+
+.nav-section-toggle {
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-left: 3px solid transparent;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  transition: var(--transition);
+  border-radius: 0;
+}
+
+.nav-section-toggle:hover {
+  color: var(--text-secondary);
+  background: var(--bg-card);
+}
+
+.nav-section-arrow {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+/* ─── Quick Query Cards ─── */
+.quick-query-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.quick-query-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+  transition: var(--transition);
+  font-size: 13px;
+  line-height: 1.4;
+  font-family: inherit;
+  color: var(--text-secondary);
+}
+
+.quick-query-card:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.15);
+}
+
+.quick-query-card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quick-query-icon {
+  font-size: 22px;
+}
+
+.quick-query-label {
+  font-weight: 500;
+}

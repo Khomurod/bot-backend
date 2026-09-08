@@ -34,11 +34,6 @@ const { installBotSentMessageTracking } = require('../services/botSentMessageReg
 
 const bot = new Telegraf(config.botToken, { telegram: telegramClientOptions });
 installBotSentMessageTracking(bot.telegram, db);
-// Disabled leftover debug instrumentation. This previously POSTed to a
-// hardcoded localhost agent-ingest endpoint on every command, which is a dead
-// port in production. Kept as a no-op so existing call sites stay valid.
-function debugLog() {}
-
 // Outbound send family (questions/broadcasts). Created here so the senders
 // close over THIS bot instance and the live db/config module objects.
 const {
@@ -112,12 +107,6 @@ async function launchBotWithRetry(delayMs = BOT_LAUNCH_RETRY_MS) {
       }
       await sleep(400);
     }
-    // #region agent log
-    debugLog('bot/bot.js:launch', 'starting bot.launch polling', {
-      botRunning,
-      botStopRequested,
-    }, 'A');
-    // #endregion
     return bot.launch();
   }
 
@@ -181,47 +170,6 @@ async function startBot() {
     // BEFORE startBot() so the bot never handles a message against a
     // schema that hasn't been migrated yet. Keeping the init out of here
     // also avoids running the schema SQL twice on hot reloads.
-    // #region agent log
-    bot.use(async (ctx, next) => {
-      try {
-        const text = ctx.message?.text || ctx.message?.caption || '';
-        const chatType = ctx.chat?.type;
-        const isGroup = chatType === 'group' || chatType === 'supergroup';
-        const looksLikeCommand = typeof text === 'string' && text.trim().startsWith('/');
-        if (isGroup && looksLikeCommand) {
-          const entities = ctx.message?.entities || ctx.message?.caption_entities || [];
-          const cmdEntity = entities[0];
-          let commandTarget = null;
-          let commandName = null;
-          if (cmdEntity?.type === 'bot_command' && typeof text === 'string') {
-            const slice = text.slice(cmdEntity.offset, cmdEntity.offset + cmdEntity.length);
-            const atIdx = slice.indexOf('@');
-            commandName = atIdx >= 0 ? slice.slice(1, atIdx) : slice.slice(1);
-            commandTarget = atIdx >= 0 ? slice.slice(atIdx + 1) : null;
-          }
-          const botUsername = ctx.botInfo?.username || ctx.me || null;
-          debugLog('bot/bot.js:incoming-command', 'group slash message received', {
-            chatId: ctx.chat?.id,
-            chatTitle: ctx.chat?.title || '',
-            text: text.trim().slice(0, 80),
-            commandName,
-            commandTarget,
-            botUsername,
-            entityOffset: cmdEntity?.offset ?? null,
-            routedToThisBot: !commandTarget || !botUsername
-              || String(commandTarget).toLowerCase() === String(botUsername).toLowerCase(),
-            updateType: ctx.updateType,
-            botRunning,
-            botInitialized,
-          }, commandTarget && botUsername
-            && String(commandTarget).toLowerCase() !== String(botUsername).toLowerCase()
-            ? 'F'
-            : 'A');
-        }
-      } catch (_) { /* ignore */ }
-      return next();
-    });
-    // #endregion
 
     // Group join/leave + user/group capture middleware + group message
     // pipeline (migration, pinned snapshots, home-time, fuel, chat buffer).

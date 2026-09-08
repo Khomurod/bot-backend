@@ -11,6 +11,7 @@
  *   ./settings/gmapsRoutes.js         /gmaps*          Route Control's Maps key
  *   ./settings/safetyEventRoutes.js   /safety-events*  dashcam music overlay
  *   ./settings/bolPodRoutes.js        /bol-pod*        document forwarding
+ *   ./settings/retiredLeftoversRoutes.js /retired-leftovers*  removed-feature cleanup
  *
  * Two conventions hold across all of them: `authMiddleware` guards every route
  * (these read and write credentials), and a stored secret is NEVER returned in
@@ -25,6 +26,7 @@ const { createGmapsSettingsRouter } = require('./settings/gmapsRoutes');
 const { createSafetyEventSettingsRouter } = require('./settings/safetyEventRoutes');
 const { createBolPodSettingsRouter } = require('./settings/bolPodRoutes');
 const { createBitrixSettingsRouter } = require('./settings/bitrixRoutes');
+const { createRetiredLeftoversRouter } = require('./settings/retiredLeftoversRoutes');
 
 function createSettingsRouter({ authMiddleware, telegram = null }) {
   const router = express.Router();
@@ -37,6 +39,7 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
   router.use(createSafetyEventSettingsRouter(deps));
   router.use(createBolPodSettingsRouter(deps));
   router.use(createBitrixSettingsRouter(deps));
+  router.use(createRetiredLeftoversRouter(deps));
 
   return router;
 }

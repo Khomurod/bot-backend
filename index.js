@@ -76,15 +76,10 @@ const {
   stopDuplicateUnitCheckService,
 } = require('./services/duplicateUnitCheckService');
 const {
-  startTrailerNotificationService,
-  stopTrailerNotificationService,
-} = require('./services/trailerNotificationService');
-const {
   startMemoryWatchdog,
   stopMemoryWatchdog,
 } = require('./services/memoryWatchdog');
 const db = require('./database/db');
-const config = require('./config/config');
 
 const DB_DRAIN_TIMEOUT_MS = 5000;
 const CHILD_STOP_TIMEOUT_MS = 10_000;
@@ -338,7 +333,6 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopHomeTimeReminderService(); } catch (err) { console.error('[SHUTDOWN] stopHomeTimeReminderService failed:', err.message); }
   try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
-  try { stopTrailerNotificationService(); } catch (err) { console.error('[SHUTDOWN] stopTrailerNotificationService failed:', err.message); }
   try { stopMemoryWatchdog(); } catch (err) { console.error('[SHUTDOWN] stopMemoryWatchdog failed:', err.message); }
   try { stopDatabaseUsageService(); } catch (err) { console.error('[SHUTDOWN] stopDatabaseUsageService failed:', err.message); }
 
@@ -393,7 +387,6 @@ async function start() {
   startHomeTimeReminderService(bot.telegram);
   startRouteControlService(bot.telegram);
   startDuplicateUnitCheckService();
-  if (config.trailerDepartmentEnabled) startTrailerNotificationService(bot.telegram);
   await startFacebookWebhookWorker();
   startLeadsBot();
   startMemoryWatchdog();

@@ -65,7 +65,7 @@ const MAX_SAMPLE_DEPTH = 3;
  *
  * `JSON.stringify` is deliberately not used: a `bytea` column arrives as a
  * Buffer, and stringifying one expands it to `{"type":"Buffer","data":[…]}` —
- * one array element per byte. Sampling a single trailer-media row that way
+ * one array element per byte. Sampling a single media-bearing row that way
  * could allocate hundreds of megabytes on a 512 MB instance, which is a
  * spectacular way for a usage meter to take down the app it measures. A Buffer
  * is counted by `.length` instead, and the depth cap also means a circular

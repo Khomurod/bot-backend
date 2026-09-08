@@ -179,11 +179,22 @@ function createHealthRoutes({ db, config }) {
   });
 
   // ─── Public product presentation (/presentation) ───
-  // A self-contained, static marketing/overview page describing the whole
-  // platform. It has no dependencies, exposes no data, and is fully isolated —
-  // serving one file means direct browser access and refresh both work in
-  // production regardless of the admin/fleet SPA builds.
-  const presentationHtmlPath = path.join(__dirname, '..', 'presentation', 'index.html');
+  // A static marketing/overview page describing the whole platform. It exposes
+  // no data and is fully isolated from the admin SPA build, so direct browser
+  // access and refresh both work in production regardless of it.
+  //
+  // The page was one self-contained file until it passed the repository's
+  // 500-line limit; its stylesheet and its three scripts are now siblings,
+  // served through the EXPLICIT ALLOW-LIST below rather than a static mount —
+  // a mount would expose anything else that ever lands in the directory.
+  const presentationDir = path.join(__dirname, '..', 'presentation');
+  const presentationHtmlPath = path.join(presentationDir, 'index.html');
+  const PRESENTATION_ASSETS = {
+    '/presentation/presentation.css': { file: 'presentation.css', type: 'text/css' },
+    '/presentation/presentation-engine.js': { file: 'presentation-engine.js', type: 'application/javascript' },
+    '/presentation/presentation-scroll.js': { file: 'presentation-scroll.js', type: 'application/javascript' },
+    '/presentation/presentation-scenes.js': { file: 'presentation-scenes.js', type: 'application/javascript' },
+  };
   function presentationHandler(req, res) {
     res.setHeader('Cache-Control', 'public, max-age=300');
     if (!fs.existsSync(presentationHtmlPath)) {
@@ -193,6 +204,15 @@ function createHealthRoutes({ db, config }) {
   }
   router.get('/presentation', presentationHandler);
   router.get('/presentation/', presentationHandler);
+  for (const [urlPath, asset] of Object.entries(PRESENTATION_ASSETS)) {
+    router.get(urlPath, (req, res) => {
+      const full = path.join(presentationDir, asset.file);
+      if (!fs.existsSync(full)) return res.status(404).type('text/plain').send('Not found.');
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.type(asset.type);
+      return res.sendFile(full);
+    });
+  }
 
   router.get('/privacy-policy.html', (req, res) => {
     res.type('html').send(renderMetaCompliancePage(

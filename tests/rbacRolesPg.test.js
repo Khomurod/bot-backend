@@ -15,7 +15,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
 
-const { createTrailerPgHarness, skipWithoutPg } = require('./helpers/trailerPgHarness');
+const { createPgHarness, skipWithoutPg } = require('./helpers/pgHarness');
 
 const POOL_PATH = require.resolve('../database/pool');
 
@@ -39,7 +39,7 @@ function loadRbac(harness) {
 test('createRole assigns a unique custom_* key and de-duplicates', {
   skip: skipWithoutPg(), timeout: 30000,
 }, async (t) => {
-  const harness = await createTrailerPgHarness(t);
+  const harness = await createPgHarness(t);
   const rbac = loadRbac(harness);
 
   const a = await rbac.createRole({ displayName: 'Yard Supervisor', permissionKeys: [] });
@@ -56,7 +56,7 @@ test('createRole assigns a unique custom_* key and de-duplicates', {
 test('createRole refuses a reserved system key', {
   skip: skipWithoutPg(), timeout: 30000,
 }, async (t) => {
-  const harness = await createTrailerPgHarness(t);
+  const harness = await createPgHarness(t);
   const rbac = loadRbac(harness);
   await assert.rejects(
     () => rbac.createRole({ displayName: 'Sneaky', permissionKeys: [], systemKey: 'super_admin' }),
@@ -67,7 +67,7 @@ test('createRole refuses a reserved system key', {
 test('createRole attaches the requested permissions', {
   skip: skipWithoutPg(), timeout: 30000,
 }, async (t) => {
-  const harness = await createTrailerPgHarness(t);
+  const harness = await createPgHarness(t);
   const rbac = loadRbac(harness);
   // Two permissions that the seed schema defines.
   const perms = await harness.query("SELECT permission_key FROM permissions LIMIT 2");
@@ -83,7 +83,7 @@ test('createRole attaches the requested permissions', {
 test('updateRole enforces optimistic locking', {
   skip: skipWithoutPg(), timeout: 30000,
 }, async (t) => {
-  const harness = await createTrailerPgHarness(t);
+  const harness = await createPgHarness(t);
   const rbac = loadRbac(harness);
   const role = await rbac.createRole({ displayName: 'Editable Role', permissionKeys: [] });
 
@@ -104,7 +104,7 @@ test('updateRole enforces optimistic locking', {
 test('updateRole still protects the super administrator role', {
   skip: skipWithoutPg(), timeout: 30000,
 }, async (t) => {
-  const harness = await createTrailerPgHarness(t);
+  const harness = await createPgHarness(t);
   const rbac = loadRbac(harness);
   const sa = await harness.query("SELECT id, version FROM roles WHERE system_key='super_admin'");
   await assert.rejects(

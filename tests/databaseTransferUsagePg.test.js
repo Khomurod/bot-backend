@@ -19,7 +19,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { createTrailerPgHarness, skipWithoutPg } = require('./helpers/trailerPgHarness');
+const { createPgHarness, skipWithoutPg } = require('./helpers/pgHarness');
 
 const MIGRATION = fs.readFileSync(
   path.join(__dirname, '..', 'database', 'migrations', '0007_database_transfer_usage.sql'),
@@ -34,7 +34,7 @@ function loadUsage(harness) {
 }
 
 test('usage accumulates across flushes and survives a restart', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   const { transferUsage, transferMeter } = loadUsage(harness);
 
   // A first stretch of traffic, flushed.
@@ -71,7 +71,7 @@ test('usage accumulates across flushes and survives a restart', { skip: skipWith
 });
 
 test('a flush with nothing pending writes nothing', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   const { transferUsage } = loadUsage(harness);
   const result = await transferUsage.flushUsage();
   assert.equal(result.written, false);
@@ -80,7 +80,7 @@ test('a flush with nothing pending writes nothing', { skip: skipWithoutPg() }, a
 });
 
 test('a month with no stored row reports not-loaded rather than failing', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   const { transferUsage } = loadUsage(harness);
   const loaded = await transferUsage.loadPersistedUsage();
   assert.equal(loaded.loaded, false);
@@ -88,7 +88,7 @@ test('a month with no stored row reports not-loaded rather than failing', { skip
 });
 
 test('the migration is idempotent, as every migration in this repo must be', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   // Applying it a second time must be a no-op, not a duplicate-table error.
   await harness.query(MIGRATION);
   const columns = await harness.query(

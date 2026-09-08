@@ -8,6 +8,7 @@
  * Split out of services/liveLocationsService.js.
  */
 const eta = require('../etaRoutingService');
+const { haversineMiles } = require('../../lib/geo/distance');
 const { AVG_SPEED_MPH, ETA_TTL_MS, GEOCODE_TTL_MS } = require('./constants');
 const { nowMs, etaCache, geocodeCache } = require('./caches');
 const { normalizeAddressKey, toNumberOrNull, round } = require('./shaping');
@@ -49,7 +50,7 @@ async function computeStraightLineEta(unit, location, nextStopAddress, now, dest
   if (!dest) {
     result = { status: 'unavailable' };
   } else {
-    const miles = eta.haversineMiles(location.lat, location.lng, dest.lat, dest.lng);
+    const miles = haversineMiles(location.lat, location.lng, dest.lat, dest.lng);
     const durationMinutes = Math.round((miles / AVG_SPEED_MPH) * 60);
     result = {
       status: 'ok',

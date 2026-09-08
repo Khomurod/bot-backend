@@ -7,7 +7,7 @@
 const { ROUTE_COMPLETION_RADIUS_MILES } = require('../../lib/routeControl/routeControlConstants');
 
 const POLL_MS_MIN = 30 * 1000;
-const METERS_PER_MILE = 1609.34;
+const { METERS_PER_MILE } = require('../../lib/geo/distance');
 
 // Default auto-complete radius (miles) when GMaps config omits it. The single
 // authoritative value lives in routeControlConstants (50 mi).

@@ -19,7 +19,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { createTrailerPgHarness, skipWithoutPg } = require('./helpers/trailerPgHarness');
+const { createPgHarness, skipWithoutPg } = require('./helpers/pgHarness');
 
 const MIGRATION_PATH = path.join(__dirname, '..', 'database', 'migrations', '0008_recruiter_sms_sender_identity.sql');
 const MIGRATION = fs.readFileSync(MIGRATION_PATH, 'utf8');
@@ -36,7 +36,7 @@ async function columnsOf(harness, table) {
 }
 
 test('the migration adds every column the sender identity needs', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
 
   const recruiters = await columnsOf(harness, 'recruiters');
   for (const column of [
@@ -64,7 +64,7 @@ test('the migration adds every column the sender identity needs', { skip: skipWi
 });
 
 test('applying it twice changes nothing — every boot re-runs the baseline', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   // Deliberately a THIRD application: idempotency has to survive repetition,
   // not just one retry after a mid-way failure.
   await harness.query(MIGRATION);
@@ -81,7 +81,7 @@ test('applying it twice changes nothing — every boot re-runs the baseline', { 
 });
 
 test('one Bitrix user maps to at most one recruiter', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   const insert = (name, number, bitrixUserId) => harness.query(
     `INSERT INTO recruiters (name, phone_number, phone_number_normalized, bitrix_user_id)
      VALUES ($1, $2, $3, $4) RETURNING id`,
@@ -103,7 +103,7 @@ test('one Bitrix user maps to at most one recruiter', { skip: skipWithoutPg() },
 });
 
 test('deleting a recruiter does not delete the history that points at them', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   const inserted = await harness.query(
     `INSERT INTO recruiters (name, phone_number, phone_number_normalized, bitrix_user_id)
      VALUES ('Jane Doe', '+15550001111', '5550001111', 17) RETURNING id`
@@ -139,7 +139,7 @@ test('deleting a recruiter does not delete the history that points at them', { s
 });
 
 test('a connect session is single-use by construction', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   const expires = new Date(Date.now() + 60_000);
 
   await harness.query(
@@ -171,7 +171,7 @@ test('a connect session is single-use by construction', { skip: skipWithoutPg() 
 });
 
 test('a session dies with the recruiter it was created for', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   const inserted = await harness.query(
     `INSERT INTO recruiters (name, phone_number, phone_number_normalized)
      VALUES ('Jane Doe', '+15550001111', '5550001111') RETURNING id`
@@ -190,7 +190,7 @@ test('a session dies with the recruiter it was created for', { skip: skipWithout
 });
 
 test('the data layer reads and writes the new columns for real', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   const { ringcentral } = harness.loadDataLayer(['ringcentral']);
 
   const created = await ringcentral.createRecruiter({
@@ -254,7 +254,7 @@ test('the data layer reads and writes the new columns for real', { skip: skipWit
 });
 
 test('the mirror ledger stores its sender through the data layer', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   const { facebookLeads, ringcentral } = harness.loadDataLayer(['facebookLeads', 'ringcentral']);
 
   const recruiter = await ringcentral.createRecruiter({
@@ -287,7 +287,7 @@ test('the mirror ledger stores its sender through the data layer', { skip: skipW
 });
 
 test('a lead remembers who was assigned it and who texted them', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await createTrailerPgHarness(t, { extraDdl: MIGRATION });
+  const harness = await createPgHarness(t, { extraDdl: MIGRATION });
   const { leads, ringcentral } = harness.loadDataLayer(['leads', 'ringcentral']);
 
   const recruiter = await ringcentral.createRecruiter({

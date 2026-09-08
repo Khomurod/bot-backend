@@ -13,14 +13,11 @@ let lastGoodSnapshot = null;
 let lastGoodAt = null;
 
 /**
- * The live snapshot: truck positions, loads and ETAs, plus the optional
- * trailer-state overlay.
+ * The live snapshot: truck positions, loads and ETAs.
  *
  * A FAILED REFRESH NEVER BLANKS THE MAP. The previous snapshot stays on screen
  * behind a banner, because a dispatcher acting on five-minute-old positions is
- * far better served than one staring at an error page. The trailer fetch is
- * nested in its own try/catch for the same reason: trailers are an overlay, so
- * their failure must not take the trucks down with them.
+ * far better served than one staring at an error page.
  *
  * The module-level cache above survives navigation, so returning to the page
  * renders the last good data immediately and refreshes quietly behind it.
@@ -43,11 +40,6 @@ export function useLiveSnapshot() {
   const [errorObject, setErrorObject] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(lastGoodAt);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [trailers, setTrailers] = useState([]);
-  // A failed trailer fetch must not blank the trucks — but it must not pass for
-  // "no trailers" either. The overlay keeps whatever it last had, and this says
-  // why it may be missing or stale.
-  const [trailerError, setTrailerError] = useState(null);
   const [selectedUnit, setSelectedUnit] = useState(null);
 
   const load = useCallback(async ({ initial = false, force = false } = {}) => {
@@ -62,19 +54,6 @@ export function useLiveSnapshot() {
       setLastUpdated(at);
       setError(null);
       setErrorObject(null);
-      // Trailers are an OPTIONAL overlay: a failure here must never surface an
-      // error or blank the trucks — keep the last-known trailer list. Uses the
-      // UNIFIED trailer-state endpoint (TrailerStateService), not the legacy
-      // raw-row /trailers/map payload.
-      try {
-        const td = await api.getTrailerStates();
-        setTrailers(td.states || []);
-        setTrailerError(null);
-      } catch (trailerErr) {
-        // Keep the previous trailers on the map, and report the failure: an
-        // empty overlay must never be mistaken for a fleet with no trailers.
-        setTrailerError(trailerErr);
-      }
     } catch (err) {
       // Keep the previously loaded snapshot visible; just surface a banner.
       setError(err.message || "Failed to refresh");
@@ -86,8 +65,7 @@ export function useLiveSnapshot() {
   }, []);
 
   // ONE initial fetch. This effect was duplicated, so opening the page fired
-  // two full snapshot requests (each one a provider fan-out plus a trailer
-  // fetch) every single time.
+  // two full snapshot requests (each one a provider fan-out) every time.
   useEffect(() => { load({ initial: true }); }, [load]);
 
   // If the selected unit vanishes from a fresh snapshot, drop the selection so
@@ -105,7 +83,7 @@ export function useLiveSnapshot() {
 
   return {
     snapshot, loading, refreshing, error, errorObject, lastUpdated,
-    autoRefresh, setAutoRefresh, trailers, trailerError,
+    autoRefresh, setAutoRefresh,
     selectedUnit, setSelectedUnit, load,
     units: snapshot?.units || [],
     summary: snapshot?.summary || null,

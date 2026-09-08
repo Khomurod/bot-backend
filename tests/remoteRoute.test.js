@@ -1,13 +1,20 @@
 /**
  * `GET /remote` — the presenter remote page, at the HTTP layer.
  *
- * The whole feature is one public route serving one file, so what matters here
- * is what a phone actually receives: a 200 with HTML, on both spellings of the
- * path, uncached, with the two things the page cannot work without — the
- * `#rcRemote` container and the `wzl/rc/` topic namespace the presentation
- * publishes to. A remote that renders but talks on the wrong namespace fails
- * silently in front of a room, which is why the namespace is asserted as a
- * literal rather than trusted.
+ * The whole feature is a few public routes serving one page and its three
+ * assets, so what matters here is what a phone actually receives: a 200 with
+ * HTML on both spellings of the path, uncached, every asset the document
+ * references actually reachable, and the two things the remote cannot work
+ * without — the `#rcRemote` container and the `wzl/rc/` topic namespace the
+ * presentation publishes to. A remote that renders but talks on the wrong
+ * namespace fails silently in front of a room, which is why the namespace is
+ * asserted as a literal rather than trusted.
+ *
+ * The page was one self-contained file until it passed the repository's
+ * 500-line limit. The protocol assertions below therefore read the DOCUMENT
+ * PLUS ITS ASSETS as one string — these guards are about what the remote does,
+ * not which of its files happens to do it, so a further split cannot silently
+ * drop one of them.
  *
  * No env, no database, no network: the router requires only express and path.
  */
@@ -21,7 +28,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 
-const { createRemoteRoutes, REMOTE_HTML } = require('../server/routes/remoteRoutes');
+const { createRemoteRoutes, REMOTE_HTML, ASSETS } = require('../server/routes/remoteRoutes');
 
 /**
  * The route mounted the way server/api.js mounts it — ahead of stand-ins for
@@ -45,6 +52,27 @@ async function withRemoteServer(fn) {
   }
 }
 
+/**
+ * The document plus every asset it references, concatenated. Asset URLs are
+ * read out of the served HTML rather than hard-coded, so a renamed file is a
+ * fetch failure here instead of a blank page on a phone.
+ */
+async function fetchRemoteBundle(base) {
+  const html = await (await fetch(`${base}/remote`)).text();
+  const refs = [
+    ...html.matchAll(/<script[^>]+src="([^"]+)"/g),
+    ...html.matchAll(/<link[^>]+href="([^"]+\.css)"/g),
+  ].map((m) => m[1]);
+  assert.ok(refs.length >= 3, 'the page must reference its stylesheet and both scripts');
+  const parts = [html];
+  for (const ref of refs) {
+    const res = await fetch(`${base}${ref}`);
+    assert.equal(res.status, 200, `${ref} must be served`);
+    parts.push(await res.text());
+  }
+  return { html, bundle: parts.join('\n'), refs };
+}
+
 test('GET /remote serves the remote page', async () => {
   await withRemoteServer(async (base) => {
     const res = await fetch(`${base}/remote`);
@@ -53,13 +81,14 @@ test('GET /remote serves the remote page', async () => {
 
     const html = await res.text();
     assert.match(html, /id="rcRemote"/, 'the remote container must be in the document');
-    assert.ok(html.includes("RC_NS = 'wzl/rc/'"), 'the topic namespace must match the presentation');
+    const { bundle } = await fetchRemoteBundle(base);
+    assert.ok(bundle.includes("RC_NS = 'wzl/rc/'"), 'the topic namespace must match the presentation');
   });
 });
 
 test('the page carries the protocol the presentation speaks', async () => {
   await withRemoteServer(async (base) => {
-    const html = await (await fetch(`${base}/remote`)).text();
+    const { bundle: html } = await fetchRemoteBundle(base);
 
     // Brokers, in the presentation's order — a phone and a laptop that pick
     // different brokers never see each other.
@@ -88,7 +117,7 @@ test('both pairing paths are wired: a code on load and a code that arrives later
   // fresh load of /remote#c=1234 pairs with no taps, and a hash change on an
   // already-open page (a camera app reusing the tab) pairs too.
   await withRemoteServer(async (base) => {
-    const html = await (await fetch(`${base}/remote`)).text();
+    const { bundle: html } = await fetchRemoteBundle(base);
     assert.ok(html.includes('rrCodeFromUrl()'), 'the code is read out of the URL');
     assert.ok(html.includes("addEventListener('hashchange'"), 'and again when the hash changes');
     assert.ok(html.includes('rrJoinWith(code)'), 'a code found on load joins immediately');
@@ -97,17 +126,36 @@ test('both pairing paths are wired: a code on load and a code that arrives later
   });
 });
 
-test('the page is self-contained: nothing to load before it can pair', async () => {
+test('nothing external has to load before the remote can pair', async () => {
   await withRemoteServer(async (base) => {
-    const html = await (await fetch(`${base}/remote`)).text();
-    // No stylesheet, font, image or eagerly loaded script from anywhere.
-    assert.ok(!/<script[^>]+src=/i.test(html), 'no <script src> in the served document');
+    const { html, bundle, refs } = await fetchRemoteBundle(base);
+    // Every asset is same-origin and served by this route — a phone on hotel
+    // wifi must not wait on a third party to show the join card.
+    for (const ref of refs) {
+      assert.ok(ref.startsWith('/remote/'), `${ref} must be served by this route, not a CDN`);
+    }
+    assert.ok(!/<script[^>]+src="https?:/i.test(html), 'no third-party script');
     assert.ok(!/<link[^>]+href="https?:/i.test(html), 'no external stylesheet or font');
     assert.ok(!/<img[^>]+src="https?:/i.test(html), 'no remote image');
     // The one CDN reference is the QR fallback, injected at runtime and only
     // when the browser has no BarcodeDetector — never on the pairing path.
-    assert.ok(html.includes('cdn.jsdelivr.net'), 'the jsQR fallback is available');
-    assert.ok(html.includes('BarcodeDetector'), 'and is only a fallback');
+    assert.ok(bundle.includes('cdn.jsdelivr.net'), 'the jsQR fallback is available');
+    assert.ok(bundle.includes('BarcodeDetector'), 'and is only a fallback');
+  });
+});
+
+test('each asset is served uncached, and only the allow-listed ones exist', async () => {
+  await withRemoteServer(async (base) => {
+    for (const urlPath of Object.keys(ASSETS)) {
+      const res = await fetch(`${base}${urlPath}`);
+      assert.equal(res.status, 200, `${urlPath} must be served`);
+      assert.match(res.headers.get('cache-control') || '', /no-cache/);
+    }
+    // A static mount would expose the whole directory; these are explicit
+    // routes, so anything not named in ASSETS is a 404 even if it exists.
+    for (const notExposed of ['/remote/remote.html', '/remote/nope.js']) {
+      assert.equal((await fetch(`${base}${notExposed}`)).status, 404, `${notExposed} must not be exposed`);
+    }
   });
 });
 
@@ -156,4 +204,8 @@ test('the file the route points at is the one in the repository', () => {
   // wrong path is a 404 in production and nothing at all in review.
   assert.equal(REMOTE_HTML, path.join(__dirname, '..', 'server', 'public', 'remote.html'));
   assert.ok(fs.existsSync(REMOTE_HTML), 'server/public/remote.html must exist');
+  for (const asset of Object.values(ASSETS)) {
+    const full = path.join(__dirname, '..', 'server', 'public', asset.file);
+    assert.ok(fs.existsSync(full), `server/public/${asset.file} must exist`);
+  }
 });

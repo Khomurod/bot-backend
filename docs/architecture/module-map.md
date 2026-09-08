@@ -124,9 +124,11 @@ organization should converge toward.
 > **Driver of the Week voting — REMOVED.** The employee "Driver of the Week"
 > voting feature was retired. Its code (bot handlers, API routes, DB helper,
 > admin page, API client functions) was deleted. The Postgres tables
-> `employee_votes_polls`, `employee_votes_options`, `employee_votes` are
-> intentionally **retained** in `database/schema.sql` (marked RETIRED) to
-> preserve historical data; no code references them any more.
+> `employee_votes_polls`, `employee_votes_options`, `employee_votes` keep their
+> historical data on existing deployments, but are **no longer created** by
+> `database/baseline/` — Settings → Retired Leftovers can drop them, and a
+> baseline that recreates a droppable table would undo the drop on the next
+> boot. No code references them either way.
 
 ### 5. Payroll / Bonus / Approval Module
 
@@ -167,7 +169,8 @@ organization should converge toward.
 | Logs / sent-message browser | `server/routes/botMessagesRoutes.js` (`/api/bot-messages`), `services/botMessageAdminService.js`, `admin/src/pages/BotMessagesPage.jsx` — database-backed; it does not read any log file |
 | Health / config | `server/api.js` `/health` + `/api/health` (`runHealthCheck` pings DB + Meta creds), `config/config.js`, `config/telegramBotTokens.js`, `.env.example`, `render.yaml` |
 | Auth | JWT (HS256-pinned `authMiddleware`), bcrypt login w/ per-IP rate limiting, `internalSharedSecretGuard` |
-| Hosted presentations + their remotes | `server/routes/qbqRoutes.js` (`/qbq`, `/qbq/remote`, `/qbq/assets/*`) over `server/qbq/*` + `services/qbq/*`; and `server/routes/remoteRoutes.js` (`/remote`) serving the single self-contained `server/public/remote.html`. **Two different decks and two different transports** — the `/qbq` remote pairs through this server (SSE + session token), `/remote` pairs through a public MQTT broker and keeps no server state at all, because the deck it controls is a standalone file. `APP_BRIEF.md` §4 holds the wire protocol; `tests/remoteMqttLite.test.js` asserts its bytes |
+| Presenter remote | `server/routes/remoteRoutes.js` (`/remote` plus an explicit allow-list for `remote.css`, `remote-mqtt.js`, `remote-app.js`). It pairs through a **public MQTT broker** and keeps no server state at all, because the deck it controls is a standalone file that can run from a laptop's file system. `docs/brief/features.md` §4 holds the wire protocol; `tests/remoteMqttLite.test.js` asserts its bytes. (A second hosted deck at `/qbq`, which paired through this server over SSE, went with QBQ/SOS.) |
+| Public product page | `server/routes/healthRoutes.js` serves `/presentation` plus an explicit allow-list for `presentation.css` and three scripts split along real seams: `presentation-engine.js` (map projection, generated world SVG, marker primitives), `presentation-scroll.js` (the scroll/scene framework and the EN/RU state), `presentation-scenes.js` (the scenes, which register with both). `tests/presentationPage.test.js` guards the load order and the asset allow-list |
 
 ### 8. Shared Infrastructure Module
 
@@ -184,7 +187,7 @@ organization should converge toward.
 | Logging / error handling | `console` structured prefixes (`[DB]`, `[API]`, `[LEADS]`, `[SHUTDOWN]`), global `uncaughtException` / `unhandledRejection` handlers (suppresses Telegram 409 polling conflicts), and `server/middleware/failureResponse.js` — `sendFailure()` for a handler's own catch plus the **terminal Express error handler**, mounted last in `server/api.js`. Before it, an error escaping a handler produced Express's HTML stack page, which the admin's fetch layer misread as a stale bundle. |
 | **Failure classification** | `lib/database/failureClassification.js` (pure) turns a pg/socket error into `DB_UNAVAILABLE` / `DB_TIMEOUT` / `DB_QUOTA` / `DB_PERMISSION` + a 503 and a human sentence; an ordinary SQL error stays unclassified on purpose. `admin/src/utils/pageFailure.js` is the browser half of the same vocabulary, and `admin/src/components/{PageFailure,PageErrorBoundary}.jsx` render it per section. |
 | **Database transfer meter** | `database/transferMeter.js` (in-memory accounting, no I/O — so `pool.js` can call it without a cycle), `database/transferUsage.js` (persists to `database_transfer_usage`, one row per UTC month), `services/databaseUsageService.js` (60s flush + one warning per threshold at 80/90/95%), `server/routes/systemRoutes.js` (`GET /api/system/database-usage`, in-memory, no query), `admin/src/components/DatabaseUsageBanner.jsx`. Estimates, clearly labelled as such; **never throttles a query**. See `APP_BRIEF.md` §7. |
-| **Pure helpers / constants** — the bottom layer | `lib/` — ten modules with no I/O and no mutable state, in domain subdirectories: `lib/security/facebookCrypto.js`, `lib/rbac/roleKeys.js`, `lib/drivers/{driverGroupTitle,driverProfileParse}.js`, `lib/telegram/telegramUsername.js`, `lib/routeControl/routeControlConstants.js`, `lib/trailers/{normalize,statusDerivation,trailerBilling}.js`, `lib/database/failureClassification.js`. They used to live in `services/`, a layer ABOVE the database, which forced nineteen `database/**` modules to depend upward; `database/**` now depends on nothing above it. See [`lib/README.md`](../../lib/README.md) for the charter and the rule for adding to it. |
+| **Pure helpers / constants** — the bottom layer | `lib/` — modules with no I/O and no mutable state, in domain subdirectories: `lib/security/facebookCrypto.js`, `lib/rbac/roleKeys.js`, `lib/drivers/{driverGroupTitle,driverProfileParse}.js`, `lib/telegram/telegramUsername.js`, `lib/routeControl/routeControlConstants.js`, `lib/geo/distance.js`, `lib/database/failureClassification.js`. They used to live in `services/`, a layer ABOVE the database, which forced nineteen `database/**` modules to depend upward; `database/**` now depends on nothing above it. See [`lib/README.md`](../../lib/README.md) for the charter and the rule for adding to it. |
 
 ---
 
@@ -205,13 +208,10 @@ repository exceeds 500 lines (`npm run lint:filesize`, no baseline).
 | `server/routes/settingsRoutes.js` | `server/routes/settings/{eld,ringcentral,messageGroup,gmaps,safetyEvent,bolPod}Routes.js` |
 | `server/routes/homeTimeRoutes.js` | `server/routes/homeTime/{rowShaping,tracker,import,settings,groupAccess}Routes.js` — registration ORDER is load-bearing |
 | `server/routes/facebookConnectRoutes.js` | `server/routes/facebookConnect/{connectPages,internal,oauth,inspection}Routes.js` — one guard per file, three different auth models |
-| `server/routes/trailerRoutes.js` | `server/routes/trailer/eventRoutes.js` — the manual-event + correction endpoints, mounted onto the same router (paths and middleware unchanged) |
-| `server/routes/trailerDepartmentRoutes.js` | `server/routes/trailerDepartment/{shared,trailer,company,rental,media,accounting,settings,report}Routes.js` — error handler registered LAST |
 | `server/services/dispatchParserService.js` | `server/services/dispatchParser/*.js` (9 modules) |
 | `services/dispatchPinnedContextService.js` | `services/pinnedContext/*.js` |
 | `services/liveLocationsService.js` | `services/liveLocations/*.js` |
 | `services/aiInsightsService.js` | `services/aiInsights/*.js` |
-| `services/trailerMessageParser.js` | `services/trailerParser/*.js` |
 | `services/fuelStopAlertService.js` | `services/fuelStop/*.js` — `telegramClient.js` is the single owner of the shared client |
 | `services/mileageBonusService.js` | `services/mileageBonus/*.js` — `runState.js` owns the run lock |
 | `bot/senders.js` | `bot/senders/{messageText,mediaSender,questionSenders,broadcastSenders,confirmationSenders}.js` |

@@ -157,38 +157,6 @@ const { publicRouter: raisePublicRouter, adminRouter: raiseAdminRouter } = requi
 app.use('/api/raise/admin', legacyAuthMiddleware, raiseAdminRouter);
 app.use('/api/raise', raisePublicRouter);
 
-// ─── QBQ / SOS employee assessment ───
-// Same discipline as raise: the authenticated admin router mounts on the more
-// specific path first. The public router serves only whitelisted questionnaire
-// content and anonymous aggregates — individual answers stay admin-only. A
-// failure constructing this feature must not take down the rest of the API.
-try {
-  const { publicRouter: sosPublicRouter, publicTestRouter: sosPublicTestRouter, adminRouter: sosAdminRouter } = require('./routes/sosRoutes');
-  app.use('/api/sos/admin', legacyAuthMiddleware, sosAdminRouter);
-  // TEST mode mounts BEFORE the real router so /api/sos/test/* can never fall
-  // through to a real-mode endpoint. The two routers are the same factory with
-  // only the mode flag differing; all isolation is enforced in SQL.
-  app.use('/api/sos/test', sosPublicTestRouter);
-  app.use('/api/sos', sosPublicRouter);
-} catch (err) {
-  console.error('[API] SOS assessment routes unavailable:', err.message);
-}
-
-// ─── QBQ presentation hosting (/qbq) ───
-// Serves the uploaded SOS deck as one self-contained document, plus its remote
-// controller. Page routes are public and are mounted on their own /qbq prefix,
-// so they cannot shadow /admin, /questions, /answers, /dispatch or any /api
-// route. Reading saved edits is public; SAVING one goes through the same
-// full-admin gate as the rest of the admin API. A failure here must not take
-// down the API — the deck is a standalone feature.
-try {
-  const { createQbqPageRoutes, createQbqApiRoutes } = require('./routes/qbqRoutes');
-  app.use(createQbqPageRoutes());
-  app.use('/api/qbq', createQbqApiRoutes({ authMiddleware: legacyAuthMiddleware }));
-} catch (qbqMountError) {
-  console.error('[QBQ] route mount failed — main app continues without /qbq:', qbqMountError.message);
-}
-
 // ─── Driver Home-Time Tracking ───
 const { createHomeTimeRouter } = require('./routes/homeTimeRoutes');
 app.use('/api/home-time', createHomeTimeRouter({ authMiddleware: legacyAuthMiddleware }));
@@ -224,27 +192,6 @@ app.use('/api/recruiters', createRecruiterRouter({ authMiddleware: legacyAuthMid
 
 const { createBotMessagesRouter } = require('./routes/botMessagesRoutes');
 app.use('/api/bot-messages', createBotMessagesRouter({ authMiddleware: legacyAuthMiddleware, telegram: bot.telegram }));
-
-// ─── Trailer Tracking (Beta) ───
-// A trailer-router construction failure must never take down the whole API (the
-// feature is Beta and self-contained); log and continue.
-try {
-  const { createTrailerRoutes } = require('./routes/trailerRoutes');
-  app.use(createTrailerRoutes({ authMiddleware, requirePermission, telegram: bot.telegram }));
-  const { createTrailerDepartmentRoutes } = require('./routes/trailerDepartmentRoutes');
-  app.use(createTrailerDepartmentRoutes({ db, config, authMiddleware, requirePermission, telegram: bot.telegram }));
-  const { createTrailerMasterListRoutes } = require('./routes/trailerMasterListRoutes');
-  app.use(createTrailerMasterListRoutes({ authMiddleware, requirePermission }));
-  const { createTrailerAgreementRoutes } = require('./routes/trailerAgreementRoutes');
-  app.use(createTrailerAgreementRoutes({ authMiddleware, requirePermission }));
-  // Signed, expiring delivery of database-backed media so Telegram can fetch it
-  // by URL. Deliberately outside authMiddleware — Telegram has no session — and
-  // gated entirely by the HMAC signature. Mirrors /api/route-screenshot-media.
-  const { createTrailerMediaRouter } = require('./routes/trailerMediaRoutes');
-  app.use('/api/trailer-media', createTrailerMediaRouter());
-} catch (trailerMountError) {
-  console.error('[TRAILER] route mount failed — main app continues without Trailer API:', trailerMountError.message);
-}
 
 // GET /api/groups/:groupId/members — users the bot has seen in a group, for
 // the Driver Groups "Driver Username" dropdown. Only defines /:groupId/members,
@@ -300,14 +247,17 @@ app.use(createAiReportsRoutes({
 app.use(createMessageManagerRoutes({ authMiddleware: legacyAuthMiddleware, bot }));
 app.use(createEmployeeBirthdayRoutes({ db, config, authMiddleware: legacyAuthMiddleware, bot }));
 
+// ─── Removed features: their old page URLs answer 410 Gone ───
+// Mounted immediately before the SPA catch-all so a surviving route always
+// wins, and so /trailers, /questions, /answers and /qbq stop resolving to the
+// admin shell for sections that no longer exist.
+const { createRetiredRoutes } = require('./routes/retiredRoutes');
+app.use(createRetiredRoutes());
+
 // ─── Catch-all for admin SPA (/admin and public /dispatch share one build) ───
-// /trailers is the Trailer Department's public-facing slug. It must be listed
-// here for a direct hit, a refresh, or a deep link to reach index.html instead
-// of a 404 — the SPA then resolves the section from the path. The legacy
-// /admin/trailers URLs keep working through the /admin/* entry above; the SPA
-// rewrites them to /trailers in place. Asset URLs are absolute (/admin/assets/…
-// via Vite's `base`), so the same index.html works under either prefix.
-app.get(['/admin', '/admin/*', '/trailers', '/trailers/*', '/dispatch', '/dispatch/*', '/raise', '/raise/*', '/recruiters', '/recruiters/*', '/questions', '/questions/*', '/answers', '/answers/*'], (req, res) => {
+// Asset URLs are absolute (/admin/assets/… via Vite's `base`), so the same
+// index.html works under either prefix.
+app.get(['/admin', '/admin/*', '/dispatch', '/dispatch/*', '/raise', '/raise/*', '/recruiters', '/recruiters/*'], (req, res) => {
   if (!fs.existsSync(adminSpaIndexPath)) {
     return res.status(503).type('text/plain').send(
       'Admin UI build is missing (admin/build/index.html). '

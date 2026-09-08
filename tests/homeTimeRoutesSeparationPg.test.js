@@ -23,7 +23,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { Pool } = require('pg');
 
-const { skipWithoutPg } = require('./helpers/trailerPgHarness');
+const { skipWithoutPg } = require('./helpers/pgHarness');
 const { purgeDataLayer, jsFilesUnder } = require('./helpers/purgeDataLayer');
 
 const REPO = path.resolve(__dirname, '..');
@@ -55,7 +55,7 @@ async function createApiHarness(t) {
 
   // Point the app's shared pool at this database, then load the router fresh so
   // every layer below it binds to the throwaway database. database/pool.js
-  // exports { pool, query, ping } — same override shape as trailerPgHarness.
+  // exports { pool, query, ping } — same override shape as pgHarness.
   const prior = require.cache[POOL_PATH];
   require.cache[POOL_PATH] = {
     id: POOL_PATH,

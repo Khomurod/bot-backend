@@ -10,7 +10,7 @@
  */
 const db = require('../../database/db');
 const { resolveLiveLocationForGroupTitle } = require('../liveLocationResolver');
-const { haversineMiles } = require('../etaRoutingService');
+const { haversineMiles } = require('../../lib/geo/distance');
 const { callGeminiText } = require('../geminiClient');
 const { DEFAULT_RADIUS_MILES, RETRY_GAP_MIN } = require('./constants');
 const {

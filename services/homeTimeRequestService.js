@@ -53,6 +53,10 @@ const { classifyHomeTimeRequest, handleApproverMention } = require('./homeTimeAp
 // lives in a focused module; re-exported below so existing importers are unchanged.
 const { announceApproval, applyHomeTimeDecision, expireOutdatedRequest } = require('./homeTimeApproval');
 
+// Company time. Home time is scheduled, reported and reasoned about in Central
+// throughout this subsystem (see homeTimeDateResolver.js, which declares the same).
+const TZ = 'America/Chicago';
+
 /**
  * Confidence floor for accepting a NON-deterministic, AI-detected status change.
  *
@@ -68,6 +72,20 @@ function messageIso(message) {
   const secs = Number(message?.date);
   if (Number.isFinite(secs) && secs > 0) return DateTime.fromSeconds(secs).toUTC().toISO();
   return DateTime.now().toUTC().toISO();
+}
+
+/**
+ * The CALENDAR DATE an instant falls on, in company time (Central).
+ *
+ * Home time is a Central-time business concept: `todayIsoChicago()` above, the
+ * date resolver and every AI prompt in this subsystem all reason in
+ * America/Chicago. Turning a UTC instant into a date WITHOUT a zone uses the
+ * process default instead — UTC in production on Render — so a driver who
+ * arrived home at 19:00 Central got tomorrow's date recorded as their home
+ * start, shifting the whole window and its bonus math by a day.
+ */
+function centralDate(iso) {
+  return DateTime.fromISO(iso).setZone(TZ).toISODate();
 }
 
 /** null when we cannot tell; true/false when the sender matches the group's driver. */
@@ -165,7 +183,7 @@ async function handleActualHomeArrival(telegram, group, message, { homeStartIso 
         // We were waiting only on the arrival date and now the driver is home:
         // fill it from the actual arrival and, if that completes the window, post.
         const settings = await ht.getHomeTimeSettings();
-        const homeStartDate = DateTime.fromISO(homeStartIso).toISODate();
+        const homeStartDate = centralDate(homeStartIso);
         const window = normalizeHomeTimeWindow({
           knownHomeStart: homeStartDate, knownReturnToRoad: open.return_to_road_date,
         });
@@ -178,8 +196,8 @@ async function handleActualHomeArrival(telegram, group, message, { homeStartIso 
 
     const settings = await ht.getHomeTimeSettings();
     const homeStartDate = homeStartIso
-      ? DateTime.fromISO(homeStartIso).toISODate()
-      : DateTime.fromISO(messageIso(message)).toISODate();
+      ? centralDate(homeStartIso)
+      : centralDate(messageIso(message));
 
     // A valid return-to-road date may already be on record from an APPROVED
     // request (registered by the driver earlier, by a manager, or corrected in

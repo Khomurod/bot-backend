@@ -124,12 +124,3 @@ ALTER TABLE safety_event_video_jobs
 ALTER TABLE safety_event_video_jobs
   ADD CONSTRAINT safety_event_video_jobs_status_check
   CHECK (status IN ('pending','processing','sent','compressed_sent','failed','fallback_sent','skipped','failed_too_large'));
-
--- ═══════════════════════════════════════════════════════════════════════════
--- TRAILER TRACKING (Beta)
--- ═══════════════════════════════════════════════════════════════════════════
--- Additive-only. The bot watches driver Telegram groups for trailer pickup /
--- drop-off messages, registers an immutable event per Telegram message, and
--- keeps a per-trailer "current status" row so map/list APIs stay fast. Admins
--- can also import a trailer master list from a screenshot (OCR/vision) and edit
--- records by hand. Nothing here references or revives BOL/POD monitoring.
