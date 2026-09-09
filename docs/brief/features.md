@@ -163,6 +163,43 @@
 - Guarded by `tests/operationsChecks.test.js` and
   `tests/operationalFindingsPg.test.js`.
 
+**Corrections — where the system is allowed to change fleet data.**
+
+- Every action in `services/operations/corrections/actions.js` declares **both
+  `apply` and `revert`**. That pairing is the entry requirement: a correction
+  whose reversal was never written is one nobody can safely enable.
+- Two rules bound what may live in the registry. **The value must already be
+  recorded somewhere else** — every action copies a fact the database already
+  holds, never an inference. And **nothing is destructive**: every action is an
+  UPDATE of a nullable column whose previous value is captured in full. The
+  `home_time.ghost_home_status` finding deliberately has **no** action, because
+  retiring that row would destroy the only record of where a driver was.
+- Each `apply` re-reads its target `FOR UPDATE` and **re-checks its precondition
+  inside the transaction**. A finding can be minutes old; if a human fixed the
+  row by hand in between, the action raises `StaleCorrectionError` and the batch
+  skips it. Being second to a person is a success, not an error.
+  `identity.sync_profile_status` additionally re-confirms `groups.status_source`
+  is still `'bot'`, so the system cannot overrule someone who has taken ownership.
+- One transaction does all of it: run the action, write `operational_corrections`
+  with the complete before/after images, **mirror into `admin_audit_log` via
+  `insertAdminAudit(entry, client)`** — the same transaction, which is what that
+  function's `client` argument exists for, and which brings its recursive secret
+  redactor along — and mark the finding `applied`. **Revert is the same path in
+  reverse**, is itself audited, stamps the original row rather than deleting it,
+  and re-opens the finding.
+- Three guardrails on auto-apply (`corrections/autoApply.js`): **per-check
+  permission, default deny** (`operational_check_settings`, seeded with no rows,
+  because "may close home-time cycles" and "may change a driver's status" are
+  different decisions); **dry run** unless `apply: true`; and a **per-check cap**
+  — a check wanting more than its cap changes *nothing* and files a `serious`
+  finding about itself, since wanting to change hundreds of rows usually means
+  the check is broken, not the fleet.
+- The database is the backstop, not just the code:
+  `operational_corrections_system_is_auto_only` refuses a system-applied
+  correction at any tier but `auto`, and a reversal without an attributed actor
+  is refused outright.
+- Guarded by `tests/operationalCorrectionsPg.test.js`.
+
 - Home-time **requests** from drivers get Approve / Do-Not-Approve buttons gated
   on the approver allow-list (see the authorization note in §5 — usernames by
   default, numeric IDs once configured).
