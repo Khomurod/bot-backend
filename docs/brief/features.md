@@ -105,6 +105,64 @@
   after the second unanswered reminder the flow is flagged for manual follow-up.
 - Reminders respect the driver-messaging switch
   (`home_time_settings.driver_clarification_enabled`).
+- **A chat id saved in Home-Time settings is checked for REACHABILITY, not just
+  shape.** A Telegram group id is negative, and
+  `home_time_settings.internal_clarification_group_id` held `5052301861` for a
+  chat that is really `-5052301861` ("HR Personnel"). It was well-formed, so it
+  saved; it pointed at nothing, so **101 internal alerts failed with "chat not
+  found", exhausted the outbox's six attempts, and no staff alert was delivered
+  at all — for months.** `PUT /api/home-time/settings` now rejects a value whose
+  negation is a group we know, naming it, and — when a Telegram client is
+  available — a chat the bot cannot reach or that is not a group. It stays
+  deliberately permissive where it cannot prove a value wrong: an id we have
+  never captured still saves, because blocking a legitimate destination is its
+  own outage. `services/telegramChatIdCheck.js` + `lib/telegram/chatId.js`;
+  guarded by `tests/telegramChatIdCheck.test.js` and
+  `tests/homeTimeSettingsChatIdRoute.test.js`. Migration 0014 repaired the stored
+  values, rewriting one **only** where the negated id is a group already in
+  `groups` — never inventing a sign it cannot justify
+  (`tests/chatIdSignRepairPg.test.js`).
+- **An exhausted durable queue is countable.** `/api/health` reports
+  `queues.homeTimeInternalAlerts.exhausted` (5-minute cache). It deliberately
+  does **not** affect `healthy` or the status code: Render and the uptime monitor
+  read those, and an undeliverable alert queue is an operator's problem, not a
+  reason to declare the service down. `tests/healthQueueSignal.test.js`.
+
+### Operational consistency (Needs Attention)
+
+- **The system checks its own facts against each other and files a *finding* when
+  they disagree.** `services/operations/consistencyService.js` sweeps every 15
+  minutes: it reads ONE snapshot, runs every pure check in
+  `services/operations/checks/*.js` over it, and upserts into
+  `operational_findings`. All the judgement is in the pure functions; the service
+  only does I/O.
+- **`operational_findings` generalises `duplicate_unit_reports`**, whose upsert /
+  first-seen / auto-resolve shape had been doing this job for one check family
+  since the Route Control work. Migration 0016 carries its rows across **with
+  their open/resolved state and original `first_seen_at`**, so the fleet's
+  existing detection history is not reset. The old table and its service are
+  untouched and still running.
+- Three lifecycle rules keep the page trustworthy, and each exists to stop a
+  specific failure: a recurring condition **updates one row** (46 drivers past
+  their road allowance must not file 46 new rows every sweep); a finding a human
+  **dismissed with a reason stays dismissed** even while the condition holds
+  (re-opening it would overrule the only person who looked); and **auto-resolve
+  is scoped to the checks that actually ran to completion**, so a failed check or
+  a provider outage can never be mistaken for "the problem went away".
+- A **dismissal without a reason is refused by the database**, not the route.
+- `home_time.closable_open_cycle` is the high-value one: `classifyOpenCycles`
+  sorts every open cycle into evidence **class A** (the group is on the road
+  since after this cycle's `home_arrived_at` — `driver_home_status.state_since`
+  IS the observed return), **class B** (a later cycle exists, and a `road→home`
+  insert can only happen from the road state, so that row's `road_started_at` is
+  this return seen from the other side), **class C** (genuinely still home —
+  correctly open) or **N**. Only A and B propose a change, and the proposal
+  deliberately omits `bonus_usd`, so the repair is payout-neutral. The same
+  function will drive the Stage-6 repair batch, so findings and repair agree by
+  construction.
+- Guarded by `tests/operationsChecks.test.js` and
+  `tests/operationalFindingsPg.test.js`.
+
 - Home-time **requests** from drivers get Approve / Do-Not-Approve buttons gated
   on the approver allow-list (see the authorization note in §5 — usernames by
   default, numeric IDs once configured).

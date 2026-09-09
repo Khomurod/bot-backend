@@ -76,6 +76,10 @@ const {
   stopDuplicateUnitCheckService,
 } = require('./services/duplicateUnitCheckService');
 const {
+  startConsistencyService,
+  stopConsistencyService,
+} = require('./services/operations/consistencyService');
+const {
   startMemoryWatchdog,
   stopMemoryWatchdog,
 } = require('./services/memoryWatchdog');
@@ -333,6 +337,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopHomeTimeReminderService(); } catch (err) { console.error('[SHUTDOWN] stopHomeTimeReminderService failed:', err.message); }
   try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
+  try { stopConsistencyService(); } catch (err) { console.error('[SHUTDOWN] stopConsistencyService failed:', err.message); }
   try { stopMemoryWatchdog(); } catch (err) { console.error('[SHUTDOWN] stopMemoryWatchdog failed:', err.message); }
   try { stopDatabaseUsageService(); } catch (err) { console.error('[SHUTDOWN] stopDatabaseUsageService failed:', err.message); }
 
@@ -387,6 +392,9 @@ async function start() {
   startHomeTimeReminderService(bot.telegram);
   startRouteControlService(bot.telegram);
   startDuplicateUnitCheckService();
+  // Runs beside the duplicate-unit scan, whose three report types it generalises;
+  // that service keeps running until its checks are folded in.
+  startConsistencyService();
   await startFacebookWebhookWorker();
   startLeadsBot();
   startMemoryWatchdog();

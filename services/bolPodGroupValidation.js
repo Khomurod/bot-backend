@@ -7,22 +7,13 @@
  * a plain result object ({ ok, ... }) and never throw token/internal details.
  */
 
+const { GROUP_CHAT_TYPES, normalizeChatId } = require('../lib/telegram/chatId');
+const { cleanTelegramError } = require('../lib/telegram/telegramErrors');
+
 // Groups/supergroups/channels are valid document destinations; a private ('private')
-// user chat is not a group and is rejected.
-const VALID_CHAT_TYPES = new Set(['group', 'supergroup', 'channel']);
-
-/** Canonical numeric chat id, or null when not a valid Telegram chat id. */
-function normalizeChatId(raw) {
-  const str = String(raw ?? '').trim();
-  if (!/^-?\d{1,20}$/.test(str)) return null;
-  return str;
-}
-
-/** Strip any accidental bot-token-looking substring from an error message. */
-function cleanTelegramError(err) {
-  const desc = err?.response?.description || err?.description || err?.message || 'unknown error';
-  return String(desc).replace(/bot\d+:[A-Za-z0-9_-]+/gi, 'bot***').slice(0, 300);
-}
+// user chat is not a group and is rejected. Shared with the settings chat-id check
+// rather than restated, so the two screens cannot drift on what counts as a group.
+const VALID_CHAT_TYPES = GROUP_CHAT_TYPES;
 
 async function getBotId(telegram) {
   const me = await telegram.getMe();

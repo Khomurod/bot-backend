@@ -6,6 +6,12 @@
  * it may not. Flipping it runs a transition, so this endpoint delegates rather
  * than writing the row directly.
  *
+ * Both chat-id fields are checked for reachability before the write. They were
+ * only ever checked for SHAPE, and `5052301861` — the "HR Personnel" chat with
+ * its minus sign dropped — is a perfectly shaped id for a chat that does not
+ * exist. Every internal alert raised against it failed and was retried to
+ * exhaustion for months with nothing to show for it.
+ *
  * Split out of server/routes/homeTimeRoutes.js. Distinct from
  * server/routes/settings/* — these are the tracker's own settings, mounted
  * under /api/home-time.
@@ -17,14 +23,29 @@ const {
   isSilencingTransition, applySilentModeTransition,
 } = require('../../../services/homeTimeSilentModeTransition');
 const { buildSettingsPatch } = require('../homeTimeRouteHelpers');
+const { checkChatIdColumns } = require('../../../services/telegramChatIdCheck');
+const { getGroupByTelegramId } = require('../../../database/groups');
 
-function createHomeTimeSettingsRoutes({ authMiddleware }) {
+const CHAT_ID_COLUMNS = ['completed_notify_group_id', 'internal_clarification_group_id'];
+
+function createHomeTimeSettingsRoutes({ authMiddleware, telegram }) {
   const router = express.Router();
 
   router.put('/settings', authMiddleware, async (req, res) => {
     try {
       const { patch, error } = buildSettingsPatch(req.body);
       if (error) return res.status(400).json({ error });
+
+      // Shape is not reachability. Only columns present in the patch are checked,
+      // and clearing one (null) skips the check, so emptying a destination never
+      // has to satisfy it.
+      const reach = await checkChatIdColumns(patch, CHAT_ID_COLUMNS, {
+        getGroupByTelegramId,
+        telegram,
+      });
+      if (reach.error) {
+        return res.status(400).json({ error: reach.error, suggestion: reach.result?.suggestion || null });
+      }
 
       // Detect the true → false flip BEFORE the write, then act AFTER it. The
       // ordering matters: standing reminders down before the write would, if the
