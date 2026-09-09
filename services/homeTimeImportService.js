@@ -121,7 +121,9 @@ async function extractAndMatch(files) {
  * and register their historical home times (deduped). Returns a summary.
  */
 async function applyRows(rows) {
-  const report = { statusesUpdated: 0, historyAdded: 0, historySkipped: 0, skippedRows: 0 };
+  const report = {
+    statusesUpdated: 0, statusFailed: 0, historyAdded: 0, historySkipped: 0, skippedRows: 0,
+  };
 
   for (const row of Array.isArray(rows) ? rows : []) {
     const groupId = Number(row?.group_id);
@@ -159,12 +161,18 @@ async function applyRows(rows) {
           eventAt: sinceIso,
           statusText: 'Imported from screenshot',
           announce: false,
+          // A corrected screenshot often carries the SAME state and a DIFFERENT
+          // date ("still on the road, but left on the 3rd"). Without this the
+          // same-state branch touches only the last-status fields and the road
+          // clock keeps its wrong start — silently, while the import reports
+          // the row as updated.
+          resyncSince: true,
         })
         : null;
-      if (!applied) {
-        // Home-time tracking is off, or the group is gone. Record the state so
-        // the import is not silently a no-op; with tracking off there are no
-        // cycles to keep consistent.
+      if (applied && applied.disabled) {
+        // Tracking is off entirely: record the state so the import is not a
+        // silent no-op. With the feature off there are no cycles to keep
+        // consistent, so a plain write leaks nothing.
         await ht.upsertDriverHomeStatus({
           groupId,
           telegramGroupId,
@@ -173,8 +181,14 @@ async function applyRows(rows) {
           lastStatusText: 'Imported from screenshot',
           lastStatusAt: sinceIso,
         });
+        report.statusesUpdated += 1;
+      } else if (!applied) {
+        // The group is gone, or the transition failed. Do NOT write the state
+        // anyway — that is how the flip-flop moves without its cycle.
+        report.statusFailed += 1;
+      } else {
+        report.statusesUpdated += 1;
       }
-      report.statusesUpdated += 1;
     }
 
     // Historical home times → approved requests (deduped by window).

@@ -136,11 +136,16 @@ async function handleDriverGroupStatus(telegram, group, message) {
  *   previousState:(string|null), eventAt:string} | null}
  */
 async function applyStateTransition(
-  telegram, group, { newState, eventAt, statusText = '', announce = true }
+  telegram, group, { newState, eventAt, statusText = '', announce = true, resyncSince = false }
 ) {
   try {
     const settings = await ht.getHomeTimeSettings();
-    if (!settings || !settings.enabled) return null;
+    // DISABLED and FAILED must be distinguishable. Both used to be `null`, and a
+    // caller that falls back to a direct state write on `null` would then do
+    // exactly the thing this function exists to prevent: move the flip-flop
+    // without its cycle, on a transient database error. `{ disabled: true }` is
+    // truthy with no `.transition`, so every existing caller keeps behaving.
+    if (!settings || !settings.enabled) return { disabled: true, changed: false, transition: null };
 
     const current = await ht.getDriverHomeStatus(group.id);
     const text = String(statusText || '');
@@ -163,14 +168,30 @@ async function applyStateTransition(
     }
 
     // Same state again (e.g. repeated "Status: Home") → just touch, no transition.
+    //
+    // `resyncSince` exists for the screenshot import, and its absence was a
+    // regression: a corrected screenshot saying "still on the road, but left on
+    // the 3rd" carries the SAME state and a DIFFERENT date. The old direct
+    // upsert wrote `state_since`; this branch does not, so the road clock and
+    // every bonus computed from it would keep using the wrong start date while
+    // the import cheerfully reported the row as updated.
+    //
+    // It is opt-in because the driver-message path must NOT have it: a repeated
+    // "Status: Home" would otherwise reset the clock on every message.
     if (current.state === newState) {
       await ht.touchDriverHomeStatus({
         groupId: group.id,
         lastStatusText: text.slice(0, 500),
         lastStatusAt: eventAt,
       });
+      let resynced = false;
+      if (resyncSince && eventAt && String(eventAt) !== String(current.state_since)) {
+        await ht.setDriverHomeState(group.id, { stateSince: eventAt });
+        resynced = true;
+      }
       return {
-        changed: false, transition: null, newState, previousState: current.state, eventAt,
+        changed: resynced, transition: null, newState, previousState: current.state, eventAt,
+        resyncedSince: resynced,
       };
     }
 
@@ -197,6 +218,12 @@ async function applyStateTransition(
         daysOnRoad,
         exceededWeeks,
         bonusUsd,
+        // Born already-claimed on a silent path. The notifier polls for
+        // `bonus_usd > 0 AND bonus_posted_at IS NULL`, so claiming afterwards
+        // leaves a window: insert succeeds, claim fails, and an import of last
+        // quarter fires stale bonuses into a live group an hour later. One
+        // statement has no such window.
+        bonusPostedAt: announce ? null : new Date().toISOString(),
       });
       // When a COMPANY driver went over the road allowance, post ONE extra-week
       // bonus summary to the configured Extra Week / Road Bonus group (the total
@@ -205,13 +232,6 @@ async function applyStateTransition(
       // Idempotent + restart-safe via the leg's bonus_posted_at claim; the
       // roadBonusNotifierService poller re-posts if this send fails. `overLimit`
       // is gated on company_driver, so owner-operators never trigger a post.
-      if (overLimit && !announce) {
-        // Recorded, not announced. Claiming the bonus post marks it as already
-        // handled so `roadBonusNotifierService` does not pick it up later —
-        // otherwise importing a screenshot of last quarter's trips would fire
-        // months of stale bonus summaries into a live group.
-        await ht.claimRoadBonusPost(historyRow.id).catch(() => {});
-      }
       if (overLimit && announce) {
         try {
           await roadBonus.postCompletedRoadLeg(

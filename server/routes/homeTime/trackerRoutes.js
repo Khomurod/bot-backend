@@ -204,13 +204,23 @@ function createHomeTimeTrackerRoutes({ authMiddleware }) {
           statusText: 'Corrected by an administrator',
           announce: false,
         });
-        // `applyStateTransition` returns null when home-time tracking is switched
-        // off entirely. Fall through to the direct write in that case so an admin
-        // edit still lands — with the feature off there are no cycles to keep
-        // consistent, so there is nothing to leak.
-        if (applied) {
+        // Fall through ONLY when tracking is switched off entirely — with the
+        // feature off there are no cycles to keep consistent, so an admin edit
+        // landing as a plain state write leaks nothing.
+        //
+        // A FAILED transition is the opposite case and must not fall through: a
+        // transient error while inserting or closing road history would leave
+        // the flip-flop moved and the cycle untouched, which is precisely the
+        // inconsistency this route was changed to prevent. Better a 500 the
+        // admin can retry than a silent half-write.
+        if (applied && !applied.disabled) {
           const status = await ht.getDriverHomeStatus(groupId);
           return res.json({ status });
+        }
+        if (!applied) {
+          return res.status(500).json({
+            error: 'Could not record the state change. Nothing was written — please retry.',
+          });
         }
       }
 

@@ -70,7 +70,8 @@ function world({ state = 'home', stateSince = '2026-08-25T00:00:00.000Z', settin
         return_to_road_at: null,
         home_days: null,
         linked_request_id: null,
-        bonus_posted_at: null,
+        // Born claimed on a silent path — one statement, no window.
+        bonus_posted_at: row.bonusPostedAt ?? null,
       };
       cycles.push(created);
       return created;
@@ -244,7 +245,7 @@ test('with home-time tracking off, no cycle is invented', async () => {
     newState: 'home', eventAt: '2026-08-25T00:00:00.000Z',
   });
 
-  assert.equal(result, null);
+  assert.equal(result.disabled, true, 'reported as disabled, not as a failure');
   assert.deepEqual(w.cycles, []);
 });
 
@@ -259,4 +260,93 @@ test('an import still records state when tracking is off', async () => {
   assert.equal(report.statusesUpdated, 1, 'the import must not be a silent no-op');
   assert.equal(w.status().state, 'home');
   assert.deepEqual(w.cycles, [], 'and with tracking off there is no cycle to keep consistent');
+});
+
+
+// ─── review findings on #171 ─────────────────────────────────────────────────
+
+test('a corrected import date moves the clock even when the state is unchanged', async () => {
+  const w = world({ state: 'road', stateSince: '2026-07-08T00:00:00.000Z' });
+  const { applyRows } = require('../services/homeTimeImportService');
+
+  // "Still on the road — but they actually left on the 3rd."
+  const report = await applyRows([
+    { group_id: 1, telegram_group_id: -100, status: 'road', since_date: '2026-07-03' },
+  ]);
+
+  assert.equal(w.status().state_since, '2026-07-03T00:00:00.000Z',
+    'the same-state branch used to touch only the last-status fields, so the road '
+    + 'clock kept its wrong start while the import reported the row as updated');
+  assert.equal(report.statusesUpdated, 1);
+});
+
+test('a repeated driver message does NOT reset the clock', async () => {
+  const w = world({ state: 'home', stateSince: '2026-08-25T00:00:00.000Z' });
+  const { applyStateTransition } = require('../services/homeTimeService');
+
+  // The driver-message path must never resync — otherwise every repeated
+  // "Status: Home" restarts the stay.
+  await applyStateTransition(null, GROUP, {
+    newState: 'home', eventAt: '2026-09-01T00:00:00.000Z', statusText: 'Status: Home',
+  });
+
+  assert.equal(w.status().state_since, '2026-08-25T00:00:00.000Z',
+    'resyncSince is opt-in for exactly this reason');
+});
+
+test('"tracking is off" and "it failed" are different answers', async () => {
+  const off = world({ state: 'road', settings: { enabled: false } });
+  const { applyStateTransition } = require('../services/homeTimeService');
+
+  const disabled = await applyStateTransition(null, GROUP, {
+    newState: 'home', eventAt: '2026-08-25T00:00:00.000Z',
+  });
+  assert.equal(disabled.disabled, true, 'disabled is reported, not returned as null');
+  assert.equal(disabled.transition, null, 'and carries no transition, so old callers are unaffected');
+  assert.deepEqual(off.cycles, []);
+
+  // A hard failure still answers null — the two must not be confused, because a
+  // caller that falls back to a direct state write on "disabled" would then move
+  // the flip-flop without its cycle on a transient error.
+  const broken = world({ state: 'road', stateSince: '2026-07-08T00:00:00.000Z' });
+  broken.ht.insertRoadHistory = async () => { throw new Error('database went away'); };
+  // `world()` purges the module cache, so this needs its own require — the
+  // reference above still closes over the first world's stubs.
+  const { applyStateTransition: applyOnBroken } = require('../services/homeTimeService');
+  const failed = await applyOnBroken(null, GROUP, {
+    newState: 'home', eventAt: '2026-08-25T00:00:00.000Z',
+  });
+  assert.equal(failed, null, 'a real failure stays null, and must never be mistaken for disabled');
+});
+
+test('an import whose transition fails does not write the state anyway', async () => {
+  const w = world({ state: 'road', stateSince: '2026-07-08T00:00:00.000Z' });
+  w.ht.insertRoadHistory = async () => { throw new Error('database went away'); };
+  const { applyRows } = require('../services/homeTimeImportService');
+
+  const report = await applyRows([
+    { group_id: 1, telegram_group_id: -100, status: 'home', since_date: '2026-08-25' },
+  ]);
+
+  assert.equal(report.statusFailed, 1);
+  assert.equal(report.statusesUpdated, 0);
+  assert.equal(w.status().state, 'road',
+    'writing the state anyway is exactly how the flip-flop moves without its cycle');
+});
+
+test('a silently recorded bonus is claimed by the INSERT, not by a follow-up', async () => {
+  const w = world({ state: 'road', stateSince: '2026-07-08T00:00:00.000Z' });
+  // If the claim were a separate statement, failing it would leave the row
+  // postable and the notifier would fire a stale bonus an hour later. There is
+  // no separate statement to fail.
+  w.ht.claimRoadBonusPost = async () => { throw new Error('claim must not be needed'); };
+  const { applyStateTransition } = require('../services/homeTimeService');
+
+  await applyStateTransition(null, GROUP, {
+    newState: 'home', eventAt: '2026-08-25T00:00:00.000Z', announce: false,
+  });
+
+  assert.equal(w.cycles.length, 1);
+  assert.ok(w.cycles[0].bonus_posted_at, 'born claimed');
+  assert.deepEqual(w.posted, []);
 });
