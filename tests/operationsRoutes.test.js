@@ -43,7 +43,7 @@ const REPORTED_ONLY = {
 };
 
 function loadApp({
-  findings = [OPEN_FINDING], applyPermission = true, applyImpl, dismissImpl,
+  findings = [OPEN_FINDING], applyPermission = true, applyImpl, dismissImpl, sweepBusy = false,
 } = {}) {
   const routePath = path.resolve(__dirname, '../server/routes/operationsRoutes.js');
   const routeDir = path.resolve(__dirname, '../server/routes/operations');
@@ -90,7 +90,9 @@ function loadApp({
   };
   require.cache[sweepPath] = {
     exports: {
-      async runConsistencySweep() { return { filed: 3, resolved: 1 }; },
+      async runGuardedSweep() {
+        return sweepBusy ? { skipped: true, reason: 'A sweep is already running.' } : { filed: 3, resolved: 1 };
+      },
       getConsistencyStatus() { return { running: true, lastRun: null }; },
     },
   };
@@ -317,6 +319,32 @@ test('a sweep can be run on demand without waiting a quarter of an hour', async 
 
   assert.equal(res.status, 200);
   assert.deepEqual(res.body.sweep, { filed: 3, resolved: 1 });
+});
+
+test('an on-demand sweep goes through the overlap guard, not around it', async () => {
+  // Two overlapping sweeps carry different keepIds sets, so the one that starts
+  // first and commits last resolves findings the newer sweep just re-filed.
+  const { app } = loadApp({ sweepBusy: true });
+
+  const res = await call(app, 'POST', '/api/operations/sweep');
+
+  assert.equal(res.status, 409, 'nothing went wrong — the work is already happening');
+  assert.match(res.body.error, /already running/);
+  assert.equal(res.body.running, true);
+});
+
+test('the correction detail says the audit rows are the SUBJECT\'s, not this one\'s', async () => {
+  const { app } = loadApp();
+  const path = require('node:path').resolve(__dirname, '../database/operationalCorrections.js');
+  const store = require.cache[path].exports;
+  store.getCorrectionById = async () => ({ id: 5, subjectType: 'group', subjectId: '42' });
+
+  const res = await call(app, 'GET', '/api/operations/corrections/5');
+
+  assert.equal(res.status, 200);
+  assert.ok('subjectAudit' in res.body,
+    'admin_audit_log holds no correction id, so calling these one correction\'s trail is a lie');
+  assert.equal('audit' in res.body, false);
 });
 
 test('every check the registry can act on is listed, enabled or not', async () => {

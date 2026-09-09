@@ -48,9 +48,9 @@ export async function getOperationsFinding(id) {
 
 /** Returns { corrections } for the History tab. `live` null = both. */
 export async function getOperationsCorrections({
-  live = null, subjectType = null, subjectId = null, limit = 100,
+  live = null, subjectType = null, subjectId = null, limit = 100, offset = 0,
 } = {}) {
-  const params = new URLSearchParams({ limit: String(limit) });
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (live !== null) params.set('live', String(live));
   if (subjectType) params.set('subjectType', subjectType);
   if (subjectId) params.set('subjectId', subjectId);
@@ -59,7 +59,12 @@ export async function getOperationsCorrections({
   return res.json();
 }
 
-/** Returns { correction, audit } — the audit log's first reader in the admin. */
+/**
+ * Returns { correction, subjectAudit }.
+ *
+ * `subjectAudit` is every correction event for the same SUBJECT, not just this
+ * correction's: `admin_audit_log` holds no correction id to filter on.
+ */
 export async function getOperationsCorrection(id) {
   const res = await fetch(`${API_BASE}/operations/corrections/${id}`, { headers: getHeaders() });
   if (!res.ok) { await handleApiError(res); }

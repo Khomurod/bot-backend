@@ -32,11 +32,16 @@ import useVisibleInterval from '../../utils/useVisibleInterval';
  */
 export const REFRESH_MS = 60000;
 
+/** One page of correction history. Revert lives only on that tab. */
+export const HISTORY_PAGE_SIZE = 50;
+
 export default function useOperations({ flash }) {
   const [tab, setTab] = useState('findings');
   const [summary, setSummary] = useState(null);
   const [findings, setFindings] = useState([]);
   const [corrections, setCorrections] = useState([]);
+  const [historyComplete, setHistoryComplete] = useState(false);
+  const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
   const [checks, setChecks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState(null);
@@ -66,14 +71,45 @@ export default function useOperations({ flash }) {
     }
   }, [includeDismissed]);
 
+  /**
+   * Load the first page of history, replacing whatever is there.
+   *
+   * Paged rather than a fixed newest-100, because Revert lives ONLY on this tab:
+   * a correction that scrolls off the end stops being undoable through the
+   * admin at all. An enabled check can apply up to its cap in a single run, so
+   * "more than a hundred" is not a distant hypothetical.
+   */
   const loadHistory = useCallback(async () => {
     try {
-      const data = await api.getOperationsCorrections({ limit: 100 });
-      setCorrections(data.corrections || []);
+      const data = await api.getOperationsCorrections({ limit: HISTORY_PAGE_SIZE, offset: 0 });
+      const rows = data.corrections || [];
+      setCorrections(rows);
+      setHistoryComplete(rows.length < HISTORY_PAGE_SIZE);
     } catch (err) {
       setFailure(err);
     }
   }, []);
+
+  const loadMoreHistory = useCallback(async () => {
+    setLoadingMoreHistory(true);
+    try {
+      const data = await api.getOperationsCorrections({
+        limit: HISTORY_PAGE_SIZE, offset: corrections.length,
+      });
+      const rows = data.corrections || [];
+      // Append by id so a correction applied since the first page cannot be
+      // shown twice when the offset shifts under us.
+      setCorrections((prev) => {
+        const seen = new Set(prev.map((c) => c.id));
+        return [...prev, ...rows.filter((c) => !seen.has(c.id))];
+      });
+      setHistoryComplete(rows.length < HISTORY_PAGE_SIZE);
+    } catch (err) {
+      setFailure(err);
+    } finally {
+      setLoadingMoreHistory(false);
+    }
+  }, [corrections.length]);
 
   const loadChecks = useCallback(async () => {
     try {
@@ -193,6 +229,7 @@ export default function useOperations({ flash }) {
     includeDismissed, setIncludeDismissed,
     selectedId, detail, openFinding, closeFinding,
     load, loadHistory, loadChecks,
+    loadMoreHistory, historyComplete, loadingMoreHistory,
     applyFinding, dismissFinding, snoozeFinding, revertCorrection,
     setCheckEnabled, runSweep,
   };

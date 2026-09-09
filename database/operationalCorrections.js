@@ -119,12 +119,23 @@ async function summariseCorrections({ sinceIso = null } = {}) {
 }
 
 /**
- * The audit rows behind a correction — the log's first reader since it was
- * created.
+ * Every correction event recorded against ONE SUBJECT — the audit log's first
+ * reader since it was created.
  *
- * Matched on the same `(entity_type, entity_id)` the correction wrote, and
- * scoped to `operational_correction.%` actions so an unrelated edit to the same
- * driver does not appear as part of this correction's story.
+ * Named for the subject, not for a correction, and that precision matters. The
+ * only keys `admin_audit_log` holds are `(entity_type, entity_id)` and an action
+ * string, so a driver corrected three times has three applies and any reverts
+ * under the same pair. There is no correction id in that table to filter on.
+ *
+ * Returning the lot is the honest answer to "what has been done to this
+ * driver?", which is one of the two questions this module exists for. Returning
+ * the lot while CALLING it one correction's trail would be a lie the reader
+ * cannot detect — so the name, the route's field name and this comment all say
+ * subject. If a per-correction trail is ever needed, it needs a correlating
+ * column, not a cleverer predicate.
+ *
+ * Scoped to `operational_correction.%` so an unrelated edit to the same driver
+ * does not appear here at all.
  */
 async function listAuditForSubject({ entityType, entityId, limit = 50 } = {}) {
   const res = await query(

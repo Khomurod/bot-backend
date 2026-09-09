@@ -18,7 +18,7 @@ const express = require('express');
 
 const findingsStore = require('../../../database/operationalFindings');
 const correctionsStore = require('../../../database/operationalCorrections');
-const { runConsistencySweep, getConsistencyStatus } = require('../../../services/operations/consistencyService');
+const { runGuardedSweep, getConsistencyStatus } = require('../../../services/operations/consistencyService');
 const { CHECK_TO_ACTION } = require('../../../services/operations/corrections/actions');
 const { sendFailure } = require('../../middleware/failureResponse');
 
@@ -145,13 +145,23 @@ function createFindingsRouter({ authMiddleware }) {
    * 15 minutes — so it sits on the read gate. It exists because an operator who
    * has just fixed something by hand should not have to wait a quarter of an
    * hour to see the finding clear.
+   *
+   * Through `runGuardedSweep`, NOT `runConsistencySweep`, and the difference is
+   * correctness rather than politeness: two overlapping sweeps carry different
+   * `keepIds` sets, so the one that starts first and commits last resolves
+   * findings the newer sweep just re-filed. A click landing mid-timer would have
+   * done exactly that. 409 rather than an error — nothing went wrong, the work
+   * is already happening.
    */
   router.post('/sweep', authMiddleware, async (req, res) => {
     try {
-      const result = await runConsistencySweep();
-      res.json({ sweep: result, status: getConsistencyStatus() });
+      const result = await runGuardedSweep();
+      if (result?.skipped) {
+        return res.status(409).json({ error: result.reason, running: true });
+      }
+      return res.json({ sweep: result, status: getConsistencyStatus() });
     } catch (err) {
-      sendFailure(res, err, { message: 'The consistency sweep failed', logPrefix: '[OPERATIONS]' });
+      return sendFailure(res, err, { message: 'The consistency sweep failed', logPrefix: '[OPERATIONS]' });
     }
   });
 

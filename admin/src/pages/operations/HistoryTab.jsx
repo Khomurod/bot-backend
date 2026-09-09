@@ -93,7 +93,10 @@ function CorrectionRow({ correction, busy, onRevert }) {
   );
 }
 
-export default function HistoryTab({ corrections, summary, busy, revertCorrection }) {
+export default function HistoryTab({
+  corrections, summary, busy, revertCorrection,
+  loadMoreHistory, historyComplete, loadingMoreHistory,
+}) {
   return (
     <div className="card">
       <div style={{ marginBottom: 8 }}>
@@ -128,6 +131,20 @@ export default function HistoryTab({ corrections, summary, busy, revertCorrectio
               ))}
             </tbody>
           </table>
+          {/* Revert lives only on this tab, so a correction that scrolls off the
+              end stops being undoable through the admin entirely. */}
+          {!historyComplete && (
+            <div style={{ textAlign: "center", marginTop: 12 }}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                disabled={loadingMoreHistory}
+                onClick={loadMoreHistory}
+              >
+                {loadingMoreHistory ? "Loading…" : "Load older corrections"}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
