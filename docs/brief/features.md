@@ -218,6 +218,28 @@
   `operational_corrections_system_is_auto_only` refuses a system-applied
   correction at any tier but `auto`, and a reversal without an attributed actor
   is refused outright.
+- **The page is `admin/src/pages/OperationsPage.jsx`** + `pages/operations/*`
+  (hook, pure labels, list card, detail drawer, History and Automation tabs),
+  served by `/api/operations`. Three tabs in the order the work happens: what is
+  wrong, what has been done about it, and what the system may do by itself —
+  automation last, deliberately, because a page that opens on its switches
+  invites turning things on before reading what they would do.
+  - **Findings are grouped by check.** Forty-six drivers past their road
+    allowance is ONE thing to think about; forty-six flat rows is a page nobody
+    opens twice.
+  - **The drawer leads with evidence, not with a button.** What we think is
+    wrong, *why* we think so (the exact recorded values), what would change as
+    explicit `field: now → would become` rows, and only then the actions.
+  - **A quiet page says why it is quiet.** The summary carries sweep state,
+    because "nothing needs attention" and "the sweep stopped three days ago"
+    look identical and mean opposite things. Severity tiles render at zero
+    rather than vanishing, for the same reason the VideoRecoveryCard's do.
+  - **A failed refresh keeps the last good data and puts a banner over it** —
+    never a reassuring empty list, which is the exact failure mode
+    `server/middleware/failureResponse.js` exists to remove.
+  - The History tab is the **first reader `admin_audit_log` has ever had**. A
+    reverted correction is shown struck through, not removed.
+  - Guarded by `admin/src/pages/operations/{labels,OperationsPage}.test.jsx`.
 - **Revert is an undo, not an overwrite.** Each `revert` locks the target and
   restores the before-image only while every field it changed still holds what
   the correction set it to, and only for the columns that correction actually

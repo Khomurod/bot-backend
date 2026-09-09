@@ -143,16 +143,41 @@ async function runConsistencySweep({ apply = true, db = defaultDb } = {}) {
   return { summary, findings };
 }
 
-async function tick() {
-  // No-overlap guard: a slow sweep must not pile up behind itself.
-  if (tickRunning) return;
+/**
+ * Run a sweep, but never two at once.
+ *
+ * THE GUARD IS NOT ABOUT LOAD, it is about correctness. `resolveClearedFindings`
+ * closes every open finding for the checks that ran EXCEPT the ids this sweep
+ * just filed. Two overlapping sweeps therefore carry two different `keepIds`
+ * sets, and if the one that started FIRST commits LAST it resolves findings the
+ * newer sweep had just re-filed — clearing real problems off the page until the
+ * next run happens to notice them again.
+ *
+ * Exported because the admin's "Run checks now" button must go through the same
+ * door as the timer. It returned early with no explanation before, which is why
+ * an on-demand caller could walk straight past it.
+ *
+ * @returns {{skipped: true, reason: string} | {summary, findings}}
+ */
+async function runGuardedSweep(options = {}) {
+  if (tickRunning) {
+    return { skipped: true, reason: 'A sweep is already running; this one was not started.' };
+  }
   tickRunning = true;
   try {
-    await runConsistencySweep();
+    return await runConsistencySweep(options);
+  } finally {
+    // `finally`, not the success path: a sweep that throws must not wedge the
+    // guard shut and stop every later one, including the timer's.
+    tickRunning = false;
+  }
+}
+
+async function tick() {
+  try {
+    await runGuardedSweep();
   } catch (err) {
     console.error('[CONSISTENCY] sweep error:', err.message);
-  } finally {
-    tickRunning = false;
   }
 }
 
@@ -182,6 +207,7 @@ module.exports = {
   CHECK_MODULES,
   loadSnapshot,
   runConsistencySweep,
+  runGuardedSweep,
   startConsistencyService,
   stopConsistencyService,
   getConsistencyStatus,

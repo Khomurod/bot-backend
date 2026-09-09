@@ -34,6 +34,27 @@ prefixed key and may never claim a reserved key or `super_`/`admin_` prefix
   the single gate for every section, and an account without it has nothing it
   can open — the admin SPA says so plainly instead of rendering a page whose
   every request would 403.
+- **`operations.corrections.apply` is the one narrower permission** (migration
+  0018), and the first the application has had since the Trailer Department went
+  away. It exists because Needs Attention is the first page where *reading* and
+  *acting* are genuinely different acts: a finding says "these two facts of ours
+  disagree, here is the evidence", while applying one closes a driver's home-time
+  cycle or flips their status. `server/routes/operations/correctionsRoutes.js`
+  requires it **INSTEAD of** `admin.full_access`, never OR'd with it — an OR
+  would grant it to everyone who can open the page and separate nothing. Reads,
+  dismissals, snoozes and on-demand sweeps stay on the blanket gate, because none
+  of them can alter a driver record.
+  - The nav still has no per-item permission field, so a role with
+    `admin.full_access` but not this one sees the page and gets a 403 with a
+    readable explanation from the apply buttons. That is deliberate for now:
+    hiding the page would also hide the evidence, and the evidence is the part
+    everyone should be able to read.
+  - **A new permission must be back-filled to `super_admin` in the same
+    migration.** `database/baseline/022_rbac_and_admin_users.sql` CROSS JOINs
+    every permission to that role at SEED time only, so one added later is held
+    by nobody — a migration that inserts the permission row and stops locks every
+    existing administrator out of the feature it was written to enable, and looks
+    entirely correct in review. `tests/operationsCheckSettingsPg.test.js` pins it.
 - **There is no longer a partially-scoped user administrator.** A Trailer
   Manager (`trailer_users.manage` without `users.manage`) used to see and edit
   only trailer-only accounts, with out-of-scope targets answering 404 rather

@@ -32,6 +32,7 @@ const RecruiterKpiPage = lazy(() => import("./pages/RecruiterKpiPage"));
 const RecruitersPublicPage = lazy(() => import("./pages/RecruitersPublicPage"));
 const LiveLocationsPage = lazy(() => import("./pages/LiveLocationsPage"));
 const RouteControlPage = lazy(() => import("./pages/RouteControlPage"));
+const OperationsPage = lazy(() => import("./pages/OperationsPage"));
 
 const pageLoadingFallback = (
   <div className="loading">
@@ -206,6 +207,7 @@ export default function App() {
     recruiter_kpis: <RecruiterKpiPage />,
     live_locations: <LiveLocationsPage />,
     route_control: <RouteControlPage />,
+    operations: <OperationsPage />,
   };
 
   // Every section is company-wide administration, so an account without
