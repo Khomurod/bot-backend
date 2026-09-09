@@ -306,6 +306,32 @@ test('orchestrator: repeated same-status line does nothing conversational', asyn
   assert.equal(sends.length, 0);
 });
 
+test('an APPROVER-TAGGED request past the horizon is asked about too', async () => {
+  // A mention makes a request more official, not more likely to be right about
+  // the year. This path inserts a complete window directly and was gated only on
+  // `isReasonableHomeWindow`'s one-year horizon, so 121–365 days out went in as
+  // `pending` through a different door from the conversational one.
+  const farOut = TODAY.plus({ days: 200 });
+  const { service, telegram, inserts, sends } = loadService({
+    gemini: {
+      json: {
+        is_home_time_request: true, confidence: 'high', dates_specified: true,
+        home_from: farOut.toISODate(), home_to: farOut.plus({ days: 3 }).toISODate(),
+      },
+    },
+  });
+
+  await service.handleApproverMention(telegram, GROUP, {
+    message_id: 10, text: `home ${farOut.toISODate()} @tomr_robins0n`, from: { id: 1, username: 'rep' },
+  });
+
+  assert.equal(inserts.length, 1, 'a clarification is opened rather than a pending request');
+  assert.equal(inserts[0].status, 'awaiting_dates');
+  assert.ok(!inserts[0].homeFrom && !inserts[0].home_from, 'and the far-out date is not written down');
+  assert.equal(sends.some((s) => s.extra?.reply_markup), false,
+    'and no approval card is posted for a window nobody has agreed is real');
+});
+
 test('a home start a year out is ASKED ABOUT, not stored as a request', async () => {
   // Request 139 holds `home_from 2027-01-02`. Nothing questioned it, because
   // `isReasonableWindow`'s horizon is a full year and a mis-parsed year lands
@@ -332,8 +358,11 @@ test('a home start a year out is ASKED ABOUT, not stored as a request', async ()
   assert.equal(inserts.length, 1, 'a clarification is opened');
   assert.ok(!inserts[0].homeFrom && !inserts[0].home_from,
     'and the far-out start is NOT written down — that is the half in dispute');
-  assert.equal(inserts[0].status, 'awaiting_home_start',
-    'the request is waiting on exactly the date that was wrong');
+  assert.ok(!inserts[0].returnToRoadDate && !inserts[0].return_to_road_date,
+    'and neither is the equally far-future return date it was paired with');
+  assert.equal(inserts[0].status, 'awaiting_dates',
+    'a mis-parsed year puts BOTH ends past the horizon, so both are asked about; '
+    + 'keeping the return would let the corrected start merge with a stale one');
   assert.ok(sends.length >= 1, 'the driver is asked');
 });
 

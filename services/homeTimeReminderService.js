@@ -122,8 +122,14 @@ async function runHomeTimeReminderCheck(telegram, { nowIso } = {}) {
     // The reminder itself is still not sent — spec §11 stands, a driver whose
     // group is gone must not be messaged. Only the immortality is fixed.
     if (row.group_active === false) {
+      // `onlyIfGroupInactive` re-checks the reason at UPDATE time: an admin can
+      // reactivate the group between the due-row read and this write, and
+      // nothing reschedules a reminder on reactivation — so a stale read would
+      // cost the newly-active group that reminder permanently.
       // eslint-disable-next-line no-await-in-loop
-      const cleared = await ht.cancelHomeTimeReminderSchedule(row.id).catch(() => null);
+      const cleared = await ht
+        .cancelHomeTimeReminderSchedule(row.id, { onlyIfGroupInactive: true })
+        .catch(() => null);
       if (cleared) standDown += 1;
       continue;
     }

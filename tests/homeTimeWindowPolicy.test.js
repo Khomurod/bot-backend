@@ -92,3 +92,50 @@ test('an operator who raises the allowance is obeyed', () => {
 test('a grace day is allowed on the start, as the calendar check already does', () => {
   assert.equal(classifyWindowAgainstPolicy('2026-08-14', '2026-08-17', opts()).ok, true);
 });
+
+// ─── what the first version of this missed ───────────────────────────────────
+
+test('a far-ahead window disputes BOTH dates, not just the start', () => {
+  // Clearing only the start left the equally far-future return in place. The
+  // driver answers with a corrected near-term start, the resolver merges it with
+  // the stale return, and the result is a `too_long` window — which this design
+  // deliberately accepts. The mis-parsed year would have survived the very
+  // clarification that existed to catch it.
+  //
+  // Both ends are safe to clear because `too_far_ahead` implies it: the return
+  // is always on or after the start, and a return BEFORE the start is already
+  // rejected as `invalid`. So a far-out start means a far-out return too.
+  const v = classifyWindowAgainstPolicy('2027-01-02', '2027-01-05', opts());
+  assert.equal(v.reason, 'too_far_ahead');
+  assert.deepEqual(v.disputedFields, ['home_start', 'return_to_road']);
+});
+
+test('an over-allowance window disputes only the return', () => {
+  const v = classifyWindowAgainstPolicy('2026-08-15', '2026-09-14', opts());
+  assert.deepEqual(v.disputedFields, ['return_to_road']);
+});
+
+test('an accepted window disputes nothing', () => {
+  assert.deepEqual(classifyWindowAgainstPolicy('2026-08-15', '2026-08-19', opts()).disputedFields, []);
+});
+
+test('a PARTIAL window with only a far-ahead start is still caught', () => {
+  // `windowFieldToReask` returned null for anything incomplete, so a driver who
+  // gave only "home 2027-01-02" had it persisted by `createClarification`, which
+  // then asked politely for the return date — with the mis-parsed year already
+  // written down.
+  const v = classifyWindowAgainstPolicy('2027-01-02', null, opts());
+  assert.equal(v.reason, 'too_far_ahead');
+  assert.deepEqual(v.disputedFields, ['home_start']);
+});
+
+test('a partial window with a near-term start is fine', () => {
+  const v = classifyWindowAgainstPolicy('2026-08-20', null, opts());
+  assert.equal(v.ok, true);
+  assert.deepEqual(v.disputedFields, []);
+});
+
+test('a partial window with only a return date is not judged on a missing start', () => {
+  const v = classifyWindowAgainstPolicy(null, '2026-08-20', opts());
+  assert.equal(v.ok, true);
+});

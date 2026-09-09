@@ -181,13 +181,24 @@ marks the stay closed.
   as "reminders still pending → still active". The request therefore stopped
   being reminded AND stopped being expirable: no reminder, no 21-day stale
   sweep, no terminal state, forever. The reminder is still not sent (a driver
-  whose group is gone must not be messaged); only the immortality is fixed.
+  whose group is gone must not be messaged); only the immortality is fixed. The
+  clearing UPDATE re-checks the group's state at write time: an admin can
+  reactivate a group between the due-row read and the write, and nothing
+  reschedules a reminder on reactivation.
 - **A home start past the horizon is asked about, not stored.** `2027-01-02` on
   request 139 is a mis-parsed year that `isReasonableWindow` waved through,
   because a full year is inside its horizon. `classifyWindowAgainstPolicy`
   (pure) separates *"are these dates plausible"* from *"does the company grant
-  them"*, and the service re-opens exactly the disputed half so the existing
-  clarification flow asks about it — no new send path, no new status.
+  them"*, and the service re-opens the disputed dates so the existing
+  clarification flow asks about them — no new send path, no new status.
+  Three things it has to get right, each of them a way the gate leaks:
+  **both** ends are cleared (a corrected near-term start merging with the stale
+  far-future return produces a `too_long` window, which is deliberately
+  accepted — so the mis-parsed year would survive the very clarification meant
+  to catch it); a **partial** window is judged on the date it has (requiring
+  `complete` let "home 2027-01-02" with no return date through); and the
+  **approver-tagged** path gets the same check, because a mention makes a
+  request more official, not more likely to be right about the year.
   **An over-allowance window is deliberately NOT refused**: the subsystem
   already answers that properly, by recording the request and replying with a
   firm reminder of the four-week rule while withholding the 👍. Refusing it

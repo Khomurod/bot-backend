@@ -240,50 +240,90 @@ function classifyWindowAgainstPolicy(homeStart, returnToRoad, {
     ? Math.floor(Number(maxFutureDays)) : DEFAULT_MAX_FUTURE_DAYS;
   const base = { allowanceDays, maxFutureDays: horizonDays };
 
-  if (!isReasonableWindow(homeStart, returnToRoad, referenceIso, timezone)) {
-    return {
-      ok: false, reason: 'invalid', days: null, disputedField: null, ...base,
-    };
-  }
-
-  const start = DateTime.fromISO(toISODate(homeStart, timezone), { zone: timezone });
-  const ret = DateTime.fromISO(toISODate(returnToRoad, timezone), { zone: timezone });
+  // ABSENT and UNPARSEABLE are different failures. A window that simply has no
+  // return date yet is a partial answer to judge on the half it has; a value the
+  // caller supplied that does not parse is `invalid`, and saying "fine so far"
+  // about it would be the same silence this function exists to remove.
+  const absent = (v) => v == null || String(v).trim() === '';
+  const startIso = toISODate(homeStart, timezone);
+  const returnIso = toISODate(returnToRoad, timezone);
+  const unparseable = (!absent(homeStart) && !startIso) || (!absent(returnToRoad) && !returnIso);
   const ref = referenceIso ? DateTime.fromISO(String(referenceIso), { zone: timezone }) : DateTime.now().setZone(timezone);
   const refSafe = ref.isValid ? ref : DateTime.now().setZone(timezone);
 
-  if (start > refSafe.plus({ days: horizonDays })) {
+  /**
+   * A PARTIAL WINDOW IS STILL JUDGED ON THE DATE IT HAS.
+   *
+   * The horizon check used to require a complete window, so "home 2027-01-02"
+   * with no return date sailed past it and `createClarification` wrote the
+   * mis-parsed year down before politely asking for the other half.
+   */
+  const startBeyondHorizon = Boolean(startIso)
+    && DateTime.fromISO(startIso, { zone: timezone }) > refSafe.plus({ days: horizonDays });
+
+  if (!unparseable && (!startIso || !returnIso)) {
+    if (startBeyondHorizon) {
+      return {
+        ok: false, reason: 'too_far_ahead', days: null,
+        disputedField: 'home_start', disputedFields: ['home_start'], ...base,
+      };
+    }
     return {
-      ok: false, reason: 'too_far_ahead', days: computeHomeDays(start.toISODate(), ret.toISODate()),
-      disputedField: 'home_start', ...base,
+      ok: true, reason: null, days: null, disputedField: null, disputedFields: [], ...base,
     };
   }
 
-  const days = computeHomeDays(start.toISODate(), ret.toISODate());
+  if (!isReasonableWindow(homeStart, returnToRoad, referenceIso, timezone)) {
+    return {
+      ok: false, reason: 'invalid', days: null,
+      disputedField: null, disputedFields: [], ...base,
+    };
+  }
+
+  const days = computeHomeDays(startIso, returnIso);
+
+  if (startBeyondHorizon) {
+    // BOTH ends are disputed, and that is safe to assert: a valid window has the
+    // return on or after the start (a return before it is already `invalid`), so
+    // a start past the horizon means the return is past it too. Clearing only
+    // the start left the far-future return in place — the driver's corrected
+    // near-term start then merged with it into a `too_long` window, which this
+    // design deliberately accepts, and the mis-parsed year survived the very
+    // clarification meant to catch it.
+    return {
+      ok: false, reason: 'too_far_ahead', days,
+      disputedField: 'home_start', disputedFields: ['home_start', 'return_to_road'], ...base,
+    };
+  }
+
   if (days != null && days > allowanceDays) {
     return {
-      ok: false, reason: 'too_long', days, disputedField: 'return_to_road', ...base,
+      ok: false, reason: 'too_long', days,
+      disputedField: 'return_to_road', disputedFields: ['return_to_road'], ...base,
     };
   }
 
   return {
-    ok: true, reason: null, days, disputedField: null, ...base,
+    ok: true, reason: null, days, disputedField: null, disputedFields: [], ...base,
   };
 }
 
 /**
- * Re-open the disputed half of an out-of-policy window. PURE.
+ * Re-open the disputed dates of an out-of-policy window. PURE.
  *
  * An out-of-policy answer is a CLARIFICATION, not a rejection and not a value to
- * store. Clearing exactly one date turns a "complete" window back into a partial
- * one, which is the state the existing clarification flow already knows how to
- * ask about — no new send path, no new status, and the driver is asked about the
- * half that is actually in dispute rather than made to repeat both.
+ * store. Clearing the disputed dates turns a "complete" window back into a
+ * partial one, which is the state the existing clarification flow already knows
+ * how to ask about — no new send path, no new status, and the driver is asked
+ * only about what is actually in dispute rather than made to repeat everything.
  */
-function reopenWindowForPolicy(window, disputedField) {
-  if (!window || !disputedField) return window;
+function reopenWindowForPolicy(window, disputedFields) {
+  const disputed = Array.isArray(disputedFields)
+    ? disputedFields : [disputedFields].filter(Boolean);
+  if (!window || !disputed.length) return window;
   return normalizeHomeTimeWindow({
-    homeStart: disputedField === 'home_start' ? null : window.homeStartDate,
-    returnToRoad: disputedField === 'return_to_road' ? null : window.returnToRoadDate,
+    homeStart: disputed.includes('home_start') ? null : window.homeStartDate,
+    returnToRoad: disputed.includes('return_to_road') ? null : window.returnToRoadDate,
   });
 }
 

@@ -18,7 +18,7 @@ const { classifyWindowAgainstPolicy } = require('./homeTimeDateResolver');
 const { todayIsoChicago } = require('./homeTimeClarificationFlow');
 
 /**
- * Which half of a resolved window, if any, has to be asked about again.
+ * Which dates of a resolved window, if any, have to be asked about again.
  *
  * ONLY `too_far_ahead`, and the exclusion is the interesting part.
  *
@@ -34,15 +34,19 @@ const { todayIsoChicago } = require('./homeTimeClarificationFlow');
  * `isReasonableWindow` waved through because a year is inside its horizon. There
  * is nothing to record and nothing to answer — only a date to ask about again.
  *
- * @returns {null|'home_start'|'return_to_road'}
+ * A PARTIAL window is judged too. Requiring `complete` here let "home
+ * 2027-01-02" with no return date through, and `createClarification` wrote the
+ * mis-parsed year down before politely asking for the other half.
+ *
+ * @returns {string[]} the fields to clear — empty when nothing is disputed
  */
-function windowFieldToReask(window, settings) {
-  if (!window?.complete) return null;
+function windowFieldsToReask(window, settings) {
+  if (!window) return [];
   const verdict = classifyWindowAgainstPolicy(window.homeStartDate, window.returnToRoadDate, {
     referenceIso: todayIsoChicago(),
     homeAllowanceDays: settings?.home_allowance_days,
   });
-  return verdict.reason === 'too_far_ahead' ? verdict.disputedField : null;
+  return verdict.reason === 'too_far_ahead' ? verdict.disputedFields : [];
 }
 
 /**
@@ -73,4 +77,4 @@ async function parseHomeTimeDates({ text, todayIso }) {
   return null;
 }
 
-module.exports = { windowFieldToReask, parseHomeTimeDates };
+module.exports = { windowFieldsToReask, parseHomeTimeDates };

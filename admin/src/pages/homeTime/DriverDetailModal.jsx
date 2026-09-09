@@ -32,6 +32,12 @@ export function DriverDetailModal(p) {
     registerRequest, load, flash,
   } = p;
 
+  // A trip with no return date is an OPEN cycle, not a completed one — 74 of 79
+  // production rows. Counted rather than just relabelled, because the tile above
+  // the table was telling the same untruth the table itself used to.
+  const completedTripCount = selectedHistory.filter((t) => t.return_to_road_at).length;
+  const openTripCount = selectedHistory.length - completedTripCount;
+
   return (
     <div className="home-time-modal-backdrop" onClick={() => setIsDetailOpen(false)}>
       <div className="card home-time-modal-card" onClick={(e) => e.stopPropagation()}>
@@ -84,7 +90,8 @@ export function DriverDetailModal(p) {
           </div>
           <div className="home-time-metric">
             <span>Completed trips</span>
-            <strong>{selectedHistory.length}</strong>
+            <strong>{completedTripCount}</strong>
+            {openTripCount > 0 && <small>{openTripCount} still open</small>}
           </div>
           <div className="home-time-metric">
             <span>Lifetime bonus</span>

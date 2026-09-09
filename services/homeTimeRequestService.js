@@ -39,7 +39,7 @@ const {
 const { classifyHomeTimeMessage, isHomeTimeCandidate } = require('./homeTimeIntentService');
 // The "what did the driver say, and may we accept it" half — no Telegram, no
 // cards. Re-exported below so no importer of this module moves.
-const { windowFieldToReask, parseHomeTimeDates } = require('./homeTimeWindowResolution');
+const { windowFieldsToReask, parseHomeTimeDates } = require('./homeTimeWindowResolution');
 const homeTimeStatus = require('./homeTimeService');
 const {
   CALLBACK_PREFIX, buildCardText, buildDecisionButtons, buildDecidedCardText,
@@ -277,8 +277,8 @@ async function handleHomeTimeClarificationReply(telegram, group, message) {
     if (!answers || !gotNewDate) return;
 
     const settings = await ht.getHomeTimeSettings();
-    const reask = windowFieldToReask(verdict.window, settings);
-    if (verdict.window.complete && !reask
+    const reask = windowFieldsToReask(verdict.window, settings);
+    if (verdict.window.complete && !reask.length
       && isReasonableWindow(verdict.window.homeStartDate, verdict.window.returnToRoadDate, todayIsoChicago())) {
       await completeAndRespond(telegram, group, open, verdict.window, message, {
         settings, language: verdict.language,
@@ -286,10 +286,15 @@ async function handleHomeTimeClarificationReply(telegram, group, message) {
       return;
     }
     // A start date past the horizon is a mis-parse, not a request — ask about
-    // that date again rather than storing it (§6.1).
-    const window = reask ? reopenWindowForPolicy(verdict.window, reask) : verdict.window;
-    // Still partial — advance and ask for the remaining date.
-    if (window.missingFields.length && window.missingFields.length < 2) {
+    // those dates again rather than storing them (§6.1).
+    const window = reask.length ? reopenWindowForPolicy(verdict.window, reask) : verdict.window;
+    // Still partial — advance and ask for the remaining date. The `< 2` guard is
+    // about an UNANSWERED clarification, where asking again for both would be
+    // repeating the original question; when this code cleared the fields itself
+    // the driver did answer, and dropping their message in silence would be the
+    // worst of the three outcomes.
+    if (window.missingFields.length
+      && (window.missingFields.length < 2 || reask.length)) {
       await advanceClarification(telegram, group, open, window, message, {
         settings, language: verdict.language,
       });
@@ -389,8 +394,8 @@ async function processHomeTimeMessage(telegram, group, message, { statusResult =
     const { open: shouldOpen, reason: openReason } = shouldOpenRequest(verdict, { text });
     if (shouldOpen) {
       const settings = await ht.getHomeTimeSettings();
-      const reask = windowFieldToReask(verdict.window, settings);
-      if (verdict.window.complete && !reask
+      const reask = windowFieldsToReask(verdict.window, settings);
+      if (verdict.window.complete && !reask.length
         && isReasonableWindow(verdict.window.homeStartDate, verdict.window.returnToRoadDate, todayIsoChicago())) {
         // Reuse the approver flow's card path by opening then immediately completing.
         const created = await createClarification(telegram, group, message, {
@@ -403,7 +408,7 @@ async function processHomeTimeMessage(telegram, group, message, { statusResult =
         return;
       }
       // A start date past the horizon is a mis-parse, not a request (§6.1).
-      const openingWindow = reask
+      const openingWindow = reask.length
         ? reopenWindowForPolicy(verdict.window, reask) : verdict.window;
       await createClarification(telegram, group, message, {
         window: openingWindow,

@@ -30,8 +30,8 @@ function loadService({ due = [], claimResult, settings, cancelResult } = {}) {
         return { ...row, reminder_count: Number(row.reminder_count) + 1 };
       },
       async markHomeTimeClarificationUnanswered(id) { marks.push(id); return { id }; },
-      async cancelHomeTimeReminderSchedule(id) {
-        cancels.push(id);
+      async cancelHomeTimeReminderSchedule(id, opts) {
+        cancels.push({ id, ...(opts || {}) });
         if (typeof cancelResult === 'function') return cancelResult(id);
         return { id, next_reminder_at: null };
       },
@@ -105,7 +105,10 @@ test('an inactive group STANDS DOWN — the schedule is cleared, not just skippe
   assert.equal(res.sent, 0);
   assert.equal(claims.length, 0, 'still no reminder — the group is inactive');
   assert.equal(sends.length, 0);
-  assert.deepEqual(cancels, [1], 'but the schedule must be cleared so the request can expire');
+  assert.deepEqual(cancels, [{ id: 1, onlyIfGroupInactive: true }],
+    'the schedule is cleared so the request can expire — and the reason is '
+    + 're-checked at UPDATE time, because an admin can reactivate the group '
+    + 'between the due-row read and this write and nothing would reschedule it');
   assert.equal(res.standDown, 1, 'and it is counted, not silent');
 });
 
@@ -115,7 +118,7 @@ test('standing down is idempotent — an already-cleared schedule is not re-coun
     cancelResult: () => null, // the UPDATE matches nothing: already NULL
   });
   const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
-  assert.deepEqual(cancels, [1]);
+  assert.equal(cancels.length, 1);
   assert.equal(res.standDown, 0, 'the count is of schedules actually cleared');
 });
 
@@ -149,7 +152,9 @@ test('DISABLED: a due reminder is stood down instead of sent', async () => {
   assert.equal(sends.length, 0, 'nothing may reach the driver group');
   assert.equal(res.sent, 0);
   assert.equal(res.standDown, 1);
-  assert.deepEqual(cancels, [1], 'the schedule is cleared');
+  assert.deepEqual(cancels, [{ id: 1 }],
+    'the schedule is cleared — and WITHOUT the inactive-group guard, because '
+    + 'here the reason is that driver messaging is off, not that the group is');
   assert.equal(claims.length, 0, 'the reminder allowance is NOT consumed');
 });
 
@@ -172,7 +177,7 @@ test('DISABLED: every due row is stood down, none slips through', async () => {
   });
   const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
   assert.equal(sends.length, 0);
-  assert.deepEqual(cancels, [1, 2, 3]);
+  assert.deepEqual(cancels, [{ id: 1 }, { id: 2 }, { id: 3 }]);
   assert.equal(res.standDown, 3);
 });
 
