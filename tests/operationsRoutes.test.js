@@ -272,6 +272,24 @@ test('the summary carries sweep state, so "nothing found" is distinguishable', a
   assert.deepEqual(res.body.corrections, { total: 0, live: 0, reverted: 0, bySystem: 0, byAdmin: 0 });
 });
 
+test("'all' means every status; an absent one still means open", async () => {
+  const seen = [];
+  const findingsPath = require('node:path').resolve(__dirname, '../database/operationalFindings.js');
+  const { app } = loadApp();
+  const store = require.cache[findingsPath].exports;
+  const original = store.listFindings;
+  store.listFindings = async (opts) => { seen.push(opts.status); return [OPEN_FINDING]; };
+
+  await call(app, 'GET', '/api/operations/findings');
+  await call(app, 'GET', '/api/operations/findings?status=all');
+  await call(app, 'GET', '/api/operations/findings?status=dismissed');
+  store.listFindings = original;
+
+  // A stringified null would have filtered on the literal text "null" and
+  // matched nothing, which reads on screen as "there is nothing dismissed".
+  assert.deepEqual(seen, ['open', null, 'dismissed']);
+});
+
 test('the list marks which findings can actually be acted on', async () => {
   const { app } = loadApp({ findings: [OPEN_FINDING, REPORTED_ONLY] });
 

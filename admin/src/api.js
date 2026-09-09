@@ -32,5 +32,6 @@ export * from './api/samsara';
 export * from './api/routeControl';
 export * from './api/recruiters';
 export * from './api/liveLocations';
+export * from './api/operations';
 export * from './api/safetyMusic';
 export * from './api/system';

@@ -58,8 +58,12 @@ function createFindingsRouter({ authMiddleware }) {
 
   router.get('/findings', authMiddleware, async (req, res) => {
     try {
+      // 'all' means no filter at all. A bare absent/empty status has to keep
+      // meaning 'open' — that is what every other caller expects — so the
+      // "show me the dismissed ones too" case needs a word of its own.
+      const status = req.query.status || 'open';
       const rows = await findingsStore.listFindings({
-        status: req.query.status || 'open',
+        status: status === 'all' ? null : status,
         severity: req.query.severity || null,
         checkKey: req.query.checkKey || null,
         tier: req.query.tier || null,
