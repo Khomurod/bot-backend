@@ -17,6 +17,11 @@
   `other_company`, plus an active filter), media via staged Telegram `file_id`s,
   placeholders via `broadcastTemplateService.js`, per-group results in
   `broadcast_deliveries`.
+  `company_drivers` asks `inferDriverType()` (`/company\s+drivers?/i`), the same
+  test the rest of the application uses. It used to match the literal string
+  `'(COMPANY DRIVER)'`, so every real `(COMPANY DRIVERS)` team title was silently
+  dropped from every company-driver broadcast — and nothing anywhere reports a
+  group a broadcast decided not to message.
 - **Scheduled messages** — one-time or weekly, Central Time (Luxon);
   `schedulerService.js` claims due rows and reuses the broadcast path.
 - **Creator panel** — private chat, one allow-listed user ID: pick an audience or
@@ -54,6 +59,18 @@
 - **Duplicate unit check** — every 15 minutes, scans active driver groups for
   duplicate unit numbers and Samsara driver-name mismatches, and stores findings
   in `duplicate_unit_reports`. It **deliberately never messages driver groups.**
+  It is also **the writer of `groups.samsara_vehicle_id`**, because resolving a
+  group to a vehicle is something it already does in order to compare driver
+  names. It writes a link only when the resolution is unambiguous in *both*
+  directions — one vehicle for the unit, a driver name that agrees or is absent,
+  and no other group claiming that vehicle, **in this scan or already in the
+  database** — so a contested unit (unit `001` is on four active groups) links to
+  nobody and stays a report. A group whose own driver is unknown counts as a
+  mismatch against any *named* vehicle: incomplete profile data must not become
+  an authoritative link. A stored link is cleared **only** when another group
+  demonstrably takes the vehicle over; a stale link nobody else claims is left
+  alone, because clearing on absence of evidence would flap the column every
+  fifteen minutes.
 
 ### Payroll-adjacent workflows (real money — change carefully)
 

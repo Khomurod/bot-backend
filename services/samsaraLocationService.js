@@ -17,21 +17,18 @@ try {
   reverseGeocode = null;
 }
 
-function extractUnitNumberFromGroupName(name) {
-  const raw = String(name || '');
-  if (!raw) return null;
+const { extractUnitFromGroupName } = require('../lib/drivers/driverGroupTitle');
 
-  const withUnitAndHash = raw.match(/UNIT\s*#\s*(\d+)/i);
-  if (withUnitAndHash) return withUnitAndHash[1];
-
-  const withHash = raw.match(/#\s*(\d+)/);
-  if (withHash) return withHash[1];
-
-  const withUnitOnly = raw.match(/UNIT\s+(\d+)/i);
-  if (withUnitOnly) return withUnitOnly[1];
-
-  return null;
-}
+/**
+ * Re-exported, not reimplemented.
+ *
+ * This was a byte-for-byte copy of `extractUnitFromGroupName`. Two parsers that
+ * are supposed to agree about which truck a driver is in will eventually stop
+ * agreeing, and the failure is silent: a safety alert routed to the wrong group,
+ * or to none. The name is kept so the module's callers and its own tests do not
+ * move.
+ */
+const extractUnitNumberFromGroupName = extractUnitFromGroupName;
 
 function extractUnitNumberFromVehicleName(name) {
   const raw = String(name || '');
