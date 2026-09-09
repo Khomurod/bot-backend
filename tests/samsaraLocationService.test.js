@@ -152,3 +152,13 @@ test('selectVehicleByUnit: same driver appearing twice (stale + fresh) picks fre
   assert.equal(sel.vehicle.id, 'v-new');
   assert.equal(sel.reason, 'same_driver_duplicate');
 });
+
+test('the unit parser is the SAME function as lib/drivers, not a copy of it', () => {
+  // It was a byte-for-byte duplicate. Two parsers meant to agree about which
+  // truck a driver is in will eventually stop agreeing, and the failure is a
+  // safety alert delivered to the wrong group or to none — so identity is
+  // asserted, not behaviour, because behaviour tests pass right up until
+  // somebody edits one copy.
+  const { extractUnitFromGroupName } = require('../lib/drivers/driverGroupTitle');
+  assert.equal(extractUnitNumberFromGroupName, extractUnitFromGroupName);
+});

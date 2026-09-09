@@ -56,6 +56,13 @@ of those pairs are both active, and one driver's road clock reset mid-cycle when
 their group was recreated, costing about four weeks of accrual and the bonus
 with it.
 
+`samsara_vehicle_id` was NULL on all 209 rows for the whole life of the column —
+indexed, with a reader and a writer, and nothing calling the writer — so every
+cross-system join resolved a driver by parsing a string out of a chat title.
+`duplicateUnitCheckService` now writes it, and `samsara-integration` prefers it
+over the parse when routing a safety alert. The parse stays underneath as the
+fallback, and files a finding whenever it is the one that answered.
+
 **The person layer (`driver_people`, `driver_person_groups`, `driver_units`,
 migration 0015) sits ABOVE `groups` and fixes that additively.** No foreign key
 was repointed and no history moved — a person is resolved *through* the existing

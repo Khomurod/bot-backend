@@ -36,7 +36,7 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 | `homeTimeReminderService` | 5 min (first tick +30s) | the two clarification reminders |
 | `roadBonusNotifierService` | 10 min (first tick +20s) | retry safety net for road-bonus summaries |
 | `datatruckDocumentService` | `DATATRUCK_DOC_POLL_MINUTES` (15) | new BOL/POD → matching driver group, deduped |
-| `duplicateUnitCheckService` | 15 min (first tick +90s) | duplicate-unit / name-mismatch reports |
+| `duplicateUnitCheckService` | 15 min (first tick +90s) | duplicate-unit / name-mismatch reports, **and the only writer of `groups.samsara_vehicle_id`** |
 | `routeControlService` (monitor) | settings-driven, floor 30s | destination completion + off-route warnings |
 | `recruiterCallSyncService` | self-rescheduling `setTimeout` | RingCentral call-log sync |
 | `ringCentralTokenRefreshService` | daily, plus once at boot | renews each recruiter's RingCentral OAuth login (refresh tokens expire in 7 days and rotate on use) and flags a dead grant as `rc_auth_error` |

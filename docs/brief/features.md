@@ -17,6 +17,11 @@
   `other_company`, plus an active filter), media via staged Telegram `file_id`s,
   placeholders via `broadcastTemplateService.js`, per-group results in
   `broadcast_deliveries`.
+  `company_drivers` asks `inferDriverType()` (`/company\s+drivers?/i`), the same
+  test the rest of the application uses. It used to match the literal string
+  `'(COMPANY DRIVER)'`, so every real `(COMPANY DRIVERS)` team title was silently
+  dropped from every company-driver broadcast — and nothing anywhere reports a
+  group a broadcast decided not to message.
 - **Scheduled messages** — one-time or weekly, Central Time (Luxon);
   `schedulerService.js` claims due rows and reuses the broadcast path.
 - **Creator panel** — private chat, one allow-listed user ID: pick an audience or
@@ -54,6 +59,18 @@
 - **Duplicate unit check** — every 15 minutes, scans active driver groups for
   duplicate unit numbers and Samsara driver-name mismatches, and stores findings
   in `duplicate_unit_reports`. It **deliberately never messages driver groups.**
+  It is also **the writer of `groups.samsara_vehicle_id`**, because resolving a
+  group to a vehicle is something it already does in order to compare driver
+  names. It writes a link only when the resolution is unambiguous in *both*
+  directions — one vehicle for the unit, a driver name that agrees or is absent,
+  and no other group claiming that vehicle, **in this scan or already in the
+  database** — so a contested unit (unit `001` is on four active groups) links to
+  nobody and stays a report. A group whose own driver is unknown counts as a
+  mismatch against any *named* vehicle: incomplete profile data must not become
+  an authoritative link. A stored link is cleared **only** when another group
+  demonstrably takes the vehicle over; a stale link nobody else claims is left
+  alone, because clearing on absence of evidence would flap the column every
+  fifteen minutes.
 
 ### Payroll-adjacent workflows (real money — change carefully)
 
@@ -154,6 +171,24 @@ marks the stay closed.
   the older one is unreachable by normal operation. That is why class-B evidence
   exists in the consistency check, and why the ~65 already-open cycles need the
   Stage 3 repair rather than just this fix.
+- **The ~65 already-open cycles are repaired through the Stage 3 registry**, not
+  a script: audited, revertible per row, and payout-neutral (`bonus_usd` is
+  computed at insert and never recomputed). `tests/homeTimeRepairPg.test.js`
+  seeds the exact production shape — 38 class A, 27 class B, 9 class C, 0 class
+  N — against a real PostgreSQL and asserts the repair closes **65 and only 65**.
+- **The default `max_auto_per_run` of 50 silently blocks a 65-row repair.** A
+  capped check reports `eligible: 0`, which is indistinguishable from "found
+  nothing" — so raising the cap is part of the repair, not an afterthought, and
+  `npm run operations:preview` prints `capped` loudly with the fix. The cap that
+  unblocks a batch is exactly its size (`planForCheck` refuses on `wanted > cap`)
+  and the column is `CHECK (max_auto_per_run BETWEEN 1 AND 500)`, so a batch over
+  500 says plainly that no cap can unblock it rather than printing an
+  instruction that leaves the operator capped anyway.
+- `operations:preview` is **dry unless `--apply`, and that includes `--sweep`** —
+  a sweep files findings and resolves cleared ones, which is a write to the table
+  the Needs Attention page reads. An `--apply` run **exits non-zero** when the cap
+  blocked it, a correction failed, or a check module threw, so a runbook cannot
+  record a no-op repair as a success.
 - Guarded by `tests/homeTimeCycleInvariant.test.js`, which asserts the
   **negative**: after a `home → road` change by any route, no open cycle may
   remain. Nothing asserted that before, which is why it broke.
