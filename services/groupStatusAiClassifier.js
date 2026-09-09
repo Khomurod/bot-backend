@@ -7,7 +7,7 @@ const { callGeminiJson, GEMINI_API_KEY } = require('./geminiClient');
 const SYSTEM_TEXT =
   'You classify trucking company Telegram driver group titles. '
   + 'Return JSON only: a single array of objects. No markdown fences or prose. '
-  + 'If unsure, set active to false.';
+  + 'If you cannot tell from the title, set active to "unknown".';
 
 function buildClassificationPrompt(batch) {
   const payload = batch.map((g) => ({ id: g.id, group_name: g.group_name }));
@@ -18,8 +18,9 @@ function buildClassificationPrompt(batch) {
     + '- If the title contains INACTIVE (especially at the end or as a status marker), active=false.\n'
     + '- Titles with only (COMPANY DRIVER) or company markers without INACTIVE are usually active=true.\n'
     + '- OFFLINE, TERMINATED, FIRED, QUIT, ARCHIVED imply active=false.\n'
-    + '- When ambiguous, active=false.\n\n'
-    + 'Return JSON array: [{"id":number,"active":boolean,"reason":string}, ...]\n'
+    + '- When you cannot tell, active="unknown". Never guess. A title with no '
+    + 'status marker at all is "unknown", not active=false.\n\n'
+    + 'Return JSON array: [{"id":number,"active":true|false|"unknown","reason":string}, ...]\n'
     + 'Use exactly the ids provided.\n\n'
     + `Groups:\n${JSON.stringify(payload)}`
   );
@@ -41,6 +42,20 @@ function extractJsonArray(text) {
   }
 }
 
+/**
+ * `true`, `false`, or `null` for "the model could not tell". PURE.
+ *
+ * `row.active === true` used to collapse false, "unsure" and an omitted field
+ * into one answer — and the prompt actively pushed the model there, so an
+ * unreadable title terminated a driver. Anything that is not an explicit
+ * boolean is now an explicit NULL, and null means NO CHANGE downstream.
+ */
+function coerceActive(value) {
+  if (value === true) return true;
+  if (value === false) return false;
+  return null;
+}
+
 function parseClassificationResponse(text, batch) {
   const allowed = new Map(batch.map((g) => [g.id, g]));
   const arr = extractJsonArray(text);
@@ -52,14 +67,23 @@ function parseClassificationResponse(text, batch) {
     if (!allowed.has(id)) continue;
     out.push({
       id,
-      active: row.active === true,
+      active: coerceActive(row?.active),
       reason: typeof row.reason === 'string' ? row.reason.slice(0, 200) : '',
     });
   }
   return out;
 }
 
-/** Heuristic fallback when AI is unavailable (title contains INACTIVE etc.). */
+/**
+ * Deterministic fallback when AI is unavailable — and it only asserts what the
+ * title actually says.
+ *
+ * A marker in the title IS evidence that somebody left. Its ABSENCE is not
+ * evidence that they are still here, and returning `true` for it meant a driver
+ * an operator had marked inactive could be flipped back to active by a scan that
+ * found nothing at all. Same overwrite, facing the other way. So: `false` on a
+ * marker, `null` — no change — on anything else.
+ */
 function classifyGroupHeuristic(group) {
   const name = String(group.group_name || '').toUpperCase();
   const inactivePatterns = [
@@ -70,8 +94,8 @@ function classifyGroupHeuristic(group) {
     /\bQUIT\b/,
     /\bARCHIVED\b/,
   ];
-  const active = !inactivePatterns.some((re) => re.test(name));
-  return { id: group.id, active, reason: 'heuristic' };
+  const marked = inactivePatterns.some((re) => re.test(name));
+  return { id: group.id, active: marked ? false : null, reason: 'heuristic' };
 }
 
 async function classifyBatchViaGroq(batch) {
@@ -164,4 +188,5 @@ module.exports = {
   classifyGroupHeuristic,
   classifyDriverGroups,
   extractJsonArray,
+  coerceActive,
 };
