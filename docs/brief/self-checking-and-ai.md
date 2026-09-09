@@ -169,13 +169,24 @@ feature it belongs to.
   `attemptErrors[]` / `allRateLimited` failure shape, so none of the ~22 call
   sites changed — but the transport, the key and the model chain moved under
   them. Two consequences worth stating:
-  - **What a caller names is a PREFERENCE, not the chain.** A caller that asks
-    for a fast model on an interactive path made a latency decision on purpose,
-    so its models lead *its own provider's* chain; every provider after that uses
-    the chain configured in the admin. A caller that names nothing gets the
-    admin's chain — passing the clients' env defaults instead would put four
-    hardcoded model names in front of the Settings → AI list on every call, and
-    that list would never be reached.
+  - **What a caller names is a PREFERENCE about MODELS, and nothing about
+    providers.** A caller asking for a fast model on an interactive path made a
+    latency decision on purpose, so its models lead *its own provider's* chain;
+    every other provider uses the chain configured in the admin. A caller that
+    names nothing gets the admin's chain — passing the clients' env defaults
+    instead would put four hardcoded model names in front of the Settings → AI
+    list on every call, and that list would never be reached.
+    **The caller does not reorder the roster.** An earlier version let the
+    preferred provider jump the queue, and since every legacy call site prefers
+    Groq, that made the `priority` column decorative and `round_robin` inert:
+    Groq's free allowance would have been burned first on every call regardless
+    of what an operator configured. Provider order is the admin's decision.
+  - **An OpenAI-shaped `messages` prompt is flattened for Gemini**, because two
+    call sites pass `''` as the prompt text and put the whole document in
+    `messages`. Without that, a Gemini provider received an EMPTY prompt — and a
+    model asked nothing still returns well-formed JSON, which both of those sites
+    validate for shape rather than truth. A guessed pickup address arriving as an
+    extracted fact is worse than any failure.
   - **A Gemini-shaped request is only offered to a Gemini provider.** The
     home-time screenshot import sends images; an OpenAI-compatible provider
     would accept the text half and answer confidently about a screenshot it

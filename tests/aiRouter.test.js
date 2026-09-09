@@ -58,9 +58,11 @@ function loadRouter({ providers = [provider()], settings = {}, respond }) {
     },
   };
   const calls = [];
-  const adapter = async ({ model, apiKey, baseUrl }) => {
-    calls.push({ model, apiKey, baseUrl });
-    return respond({ model, baseUrl });
+  // The WHOLE argument object is recorded, not three fields of it. A test that
+  // needs to prove the prompt actually arrived cannot do it from the model name.
+  const adapter = async (args) => {
+    calls.push(args);
+    return respond(args);
   };
   require.cache[OPENAI] = { exports: { callOpenAiChat: adapter, DEFAULT_TIMEOUT_MS: 1000 } };
   require.cache[GEMINI] = { exports: { callGeminiGenerate: adapter, DEFAULT_TIMEOUT_MS: 1000 } };
@@ -294,4 +296,93 @@ test('a timeout is transient and moves on rather than aborting', async () => {
   const result = await router.runCapability({ userText: 'hi' });
   assert.equal(result.provider, 'cerebras');
   assert.deepEqual(calls.map((c) => c.model), ['a', 'b']);
+});
+
+// ─── two defects the Stage 5c rewiring introduced ────────────────────────────
+
+test('an OpenAI-shaped `messages` prompt REACHES a Gemini provider', async () => {
+  // `requestPinnedContextFromGroq` and `requestDispatchTemplateFromGroq` call
+  // `callGroqWithFallback('')` and put the whole document in `messages`. When
+  // the roster reached a Gemini provider, `buildRequest` built contents from
+  // `userText` alone — an EMPTY prompt. A model asked nothing at all still
+  // returns well-formed JSON, and those two sites validate the shape rather
+  // than the truth, so a guessed pickup address would have passed straight
+  // through as an extracted fact. The assertion is on the text, not on the
+  // call: checking only that a call happened passes against the broken version.
+  const { router, calls } = loadRouter({
+    providers: [provider({ providerKey: 'gemini', adapter: 'gemini', modelChain: ['g1'] })],
+    respond: ({ model }) => ({ text: 'ok', model, payload: {}, usage: null }),
+  });
+
+  await router.runCapability({
+    userText: '',
+    messages: [
+      { role: 'system', content: 'You extract load data.' },
+      { role: 'user', content: 'RATE CONFIRMATION — pickup Charlotte NC' },
+    ],
+  });
+
+  assert.match(JSON.stringify(calls[0].contents), /RATE CONFIRMATION/,
+    'the prompt must actually arrive');
+  assert.deepEqual(calls[0].systemInstruction, { parts: [{ text: 'You extract load data.' }] });
+});
+
+test('an assistant turn becomes Gemini\'s `model` role', async () => {
+  const { router, calls } = loadRouter({
+    providers: [provider({ providerKey: 'gemini', adapter: 'gemini', modelChain: ['g1'] })],
+    respond: ({ model }) => ({ text: 'ok', model, payload: {}, usage: null }),
+  });
+
+  await router.runCapability({
+    messages: [
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'reply' },
+      { role: 'user', content: 'second' },
+    ],
+  });
+  assert.deepEqual(calls[0].contents.map((c) => c.role), ['user', 'model', 'user']);
+});
+
+test('the ADMIN decides provider order, not the caller', async () => {
+  // Every legacy call site sets `preferProvider: 'groq'`. Letting that reorder
+  // the roster made the Settings → AI priority column decorative and meant
+  // round-robin never rotated anything — Groq's allowance was burned first on
+  // every call regardless of what an operator had configured.
+  const { router, calls } = loadRouter({
+    providers: [
+      provider({ providerKey: 'cerebras', priority: 1, modelChain: ['cere-1'] }),
+      provider({ providerKey: 'groq', priority: 2, modelChain: ['groq-1'] }),
+    ],
+    respond: ({ model }) => ({ text: 'ok', model, payload: {}, usage: null }),
+  });
+
+  const result = await router.runCapability({ userText: 'hi', preferProvider: 'groq' });
+
+  assert.equal(result.provider, 'cerebras', 'priority 1 goes first, whoever the caller prefers');
+  assert.deepEqual(calls.map((c) => c.model), ['cere-1']);
+});
+
+test('a caller\'s models still lead THEIR provider when the roster reaches it', async () => {
+  // The legitimate half of the preference survives: model choice is a latency
+  // decision somebody made on purpose. It just does not get to reorder the
+  // roster to express it.
+  const { router, calls } = loadRouter({
+    providers: [
+      provider({ providerKey: 'cerebras', priority: 1, modelChain: ['cere-1'] }),
+      provider({ providerKey: 'groq', priority: 2, modelChain: ['groq-1'] }),
+    ],
+    respond: ({ model }) => {
+      if (model !== 'fast-groq') throw httpError(503, 'unavailable');
+      return { text: 'ok', model, payload: {}, usage: null };
+    },
+  });
+
+  const result = await router.runCapability({
+    userText: 'hi', preferProvider: 'groq', preferModels: ['fast-groq'],
+  });
+
+  assert.equal(result.model, 'fast-groq');
+  assert.deepEqual(calls.map((c) => c.model), ['cere-1', 'fast-groq'],
+    'cerebras first by priority; then groq, asked for the caller\'s model before '
+    + 'its own chain — which answered, so the chain behind it was never needed');
 });

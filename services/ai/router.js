@@ -53,18 +53,59 @@ class AiUnavailableError extends Error {
   }
 }
 
+/**
+ * OpenAI-shaped `messages` → Gemini's `contents` + `systemInstruction`.
+ *
+ * NOT a nicety. `requestPinnedContextFromGroq` and
+ * `requestDispatchTemplateFromGroq` both call `callGroqWithFallback('')` and put
+ * the entire document in `messages`. Without this, the moment the roster reached
+ * a Gemini provider it would send `[{ parts: [{ text: '' }] }]` — an EMPTY
+ * prompt — and a model asked nothing at all still returns well-formed JSON.
+ * Both of those sites validate the SHAPE of the answer, not its truth, so a
+ * guessed pickup address would have passed through as an extracted fact. A
+ * confident wrong answer is worse than a failure, and this is how one gets made.
+ */
+function geminiTurnsFromMessages(messages, extraParts) {
+  const systemParts = [];
+  const turns = [];
+  for (const m of messages) {
+    const text = String(m?.content ?? '');
+    if (m?.role === 'system') {
+      systemParts.push({ text });
+      continue;
+    }
+    turns.push({ role: m?.role === 'assistant' ? 'model' : 'user', parts: [{ text }] });
+  }
+  const extras = extraParts || [];
+  if (extras.length) {
+    if (turns.length) turns[turns.length - 1].parts.push(...extras);
+    else turns.push({ role: 'user', parts: [{ text: '' }, ...extras] });
+  }
+  return { systemParts, turns };
+}
+
 /** Prompt → the shape this provider's wire format wants. */
 function buildRequest(provider, {
   systemText, userText, messages, contents, extraParts, generationConfig, systemInstruction,
 }) {
   if (provider.adapter === 'gemini') {
-    const parts = [{ text: userText || '' }, ...(extraParts || [])];
+    // A caller that built its own Gemini-shaped instruction keeps it; a caller
+    // that passed plain text or OpenAI messages gets one built here.
+    let builtContents = contents;
+    let builtSystem = systemInstruction
+      || (systemText ? { parts: [{ text: systemText }] } : null);
+
+    if (!builtContents && Array.isArray(messages) && messages.length) {
+      const { systemParts, turns } = geminiTurnsFromMessages(messages, extraParts);
+      builtContents = turns.length ? turns : [{ role: 'user', parts: [{ text: '' }] }];
+      if (!builtSystem && systemParts.length) builtSystem = { parts: systemParts };
+    } else if (!builtContents) {
+      builtContents = [{ role: 'user', parts: [{ text: userText || '' }, ...(extraParts || [])] }];
+    }
+
     return {
-      contents: contents || [{ role: 'user', parts }],
-      // A caller that built its own Gemini-shaped instruction keeps it; a
-      // caller that passed plain text gets one built here.
-      systemInstruction: systemInstruction
-        || (systemText ? { parts: [{ text: systemText }] } : null),
+      contents: builtContents,
+      systemInstruction: builtSystem,
       generationConfig: generationConfig || {},
     };
   }
@@ -120,27 +161,23 @@ async function callOne(provider, model, request, { timeoutMs, expects, generatio
 }
 
 /**
- * The order providers are asked in, once the caller has a preference.
+ * The models to ask THIS provider for, and nothing about which provider is asked.
  *
- * A WRAPPER OVER A NAMED CLIENT IS ALLOWED TO NAME ITS PROVIDER, and this is
- * why. `callGroqWithFallback` has ~22 call sites, several of which deliberately
- * ask for a fast model on an interactive path — that is a latency decision
- * somebody made, not an accident, and moving model choice into the admin must
- * not silently discard it. So the provider the caller named goes first and its
- * requested models go at the head of ITS chain; every other provider keeps its
- * own configured chain, because a Groq model name means nothing to Gemini.
+ * A caller naming a model made a latency decision on purpose — an interactive
+ * path asking for a fast model — and moving model choice into the admin must not
+ * silently discard it. So its models lead ITS OWN provider's chain, and every
+ * other provider keeps its configured chain, because a Groq model name means
+ * nothing to Gemini.
  *
- * The preference is an ORDERING, never a filter. A cooled or missing preferred
- * provider simply is not first, and the run continues down the roster — which
- * is the cross-provider fallback none of those 22 call sites has today.
+ * WHAT THIS DELIBERATELY DOES NOT DO IS REORDER THE ROSTER. An earlier version
+ * moved the caller's preferred provider to the front, and since every one of the
+ * ~22 legacy call sites sets `preferProvider: 'groq'`, that made the Settings →
+ * AI `priority` column decorative and meant `round_robin` never rotated
+ * anything: Groq's free allowance was burned first on every call regardless of
+ * what an operator had configured. Provider order is the admin's decision.
+ * `preferProvider` survives only as the key saying which provider these models
+ * belong to.
  */
-function orderRoster(providers, preferProvider) {
-  if (!preferProvider) return providers;
-  const preferred = providers.filter((p) => p.providerKey === preferProvider);
-  if (!preferred.length) return providers;
-  return [...preferred, ...providers.filter((p) => p.providerKey !== preferProvider)];
-}
-
 function chainFor(provider, { preferProvider, preferModels }) {
   const configured = provider.modelChain.length ? provider.modelChain : [];
   if (provider.providerKey !== preferProvider || !preferModels?.length) return configured;
@@ -191,12 +228,12 @@ async function runCapability({
     ? roster.providers.filter((p) => p.adapter === needsAdapter)
     : roster.providers;
 
-  const ordered = orderRoster(eligibleProviders(usable, {
+  const ordered = eligibleProviders(usable, {
     now: Date.now(),
     freeOnly: settings.freeOnlyMode === true,
     roundRobin: settings.routingMode === 'round_robin',
     rotation: settings.routingMode === 'round_robin' ? nextRotation() : 0,
-  }), preferProvider);
+  });
 
   const attemptErrors = [];
   const tried = new Set();
@@ -328,5 +365,5 @@ async function runCapability({
 
 module.exports = {
   AiUnavailableError, runCapability, buildRequest, stripFences,
-  orderRoster, chainFor, requiredAdapterFor,
+  chainFor, requiredAdapterFor, geminiTurnsFromMessages,
 };
