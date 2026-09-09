@@ -6,26 +6,16 @@
  * either importing the other (and without the copy CLAUDE.md forbids). The
  * cipher itself is lib/security/facebookCrypto.js.
  *
+ * The two helpers now come from lib/security/secretMasking.js, which is where
+ * they moved once the AI provider table would have become a THIRD copy of the
+ * same eight lines. This file keeps its own names and its '[RC]' log prefix, so
+ * nothing that imports it changed.
+ *
  * Split out of database/ringcentral.js.
  */
-const { decryptText } = require('../../lib/security/facebookCrypto');
+const { maskKey, createSafeDecrypt } = require('../../lib/security/secretMasking');
 
-function safeDecrypt(payload) {
-  if (!payload) return '';
-  try {
-    return decryptText(payload);
-  } catch (err) {
-    console.warn('[RC] Failed to decrypt a stored credential:', err.message);
-    return '';
-  }
-}
-
-function maskKey(value) {
-  const str = String(value || '');
-  if (!str) return null;
-  if (str.length <= 4) return '••••';
-  return `••••${str.slice(-4)}`;
-}
+const safeDecrypt = createSafeDecrypt('[RC]');
 
 module.exports = {
   safeDecrypt,
