@@ -93,83 +93,57 @@ test('readPinnedLoadContext returns cached values when signature is unchanged', 
 });
 
 test('readLoadContextWithFallbacks uses latest load-like chat message when no pin exists', async () => {
-  const originalFetch = global.fetch;
-  const originalGroqKey = process.env.GROQ_API_KEY;
-  try {
-    // Service throws before fetch unless a key is set; the mock supplies Groq-style JSON.
-    process.env.GROQ_API_KEY = 'test-mock-groq-key';
-    delete require.cache[require.resolve('../services/groqClient')];
-    global.fetch = async (_url, options = {}) => {
-      const body = JSON.parse(String(options.body || '{}'));
-      if (body?.model) {
-        return {
-          ok: true,
-          status: 200,
-          headers: { get: () => null },
-          text: async () => JSON.stringify({
-            choices: [
-              {
-                message: {
-                  content: JSON.stringify({
-                    pickup_location: 'Charlotte, NC 28273',
-                    pickup_datetime: '04/29/2026 09:00',
-                    delivery_location: 'Memphis, TN 38118',
-                    delivery_datetime: '04/30/2026 08:00',
-                    destination_query: '5151 E RAINES RD, Memphis, TN 38118',
-                    notes: '',
-                  }),
-                },
-              },
-            ],
-          }),
-        };
-      }
-      throw new Error('Unexpected fetch call');
-    };
+  // Stubbed at the CLIENT boundary, not at global.fetch. This case is about
+  // which text the fallback chain chooses, not about how a completion is
+  // fetched — and since Stage 5c that transport is the AI router, so a fetch
+  // stub would be testing a layer this suite has no opinion about.
+  const extracted = {
+    pickup_location: 'Charlotte, NC 28273',
+    pickup_datetime: '04/29/2026 09:00',
+    delivery_location: 'Memphis, TN 38118',
+    delivery_datetime: '04/30/2026 08:00',
+    destination_query: '5151 E RAINES RD, Memphis, TN 38118',
+    notes: '',
+  };
 
-    const service = loadPinnedContextWithMocks({
-      dbMock: {
-        getGroupPinnedMessageSnapshot: async () => null,
-        getChatLogsForGroup: async () => ([
-          {
-            message_text: '/location',
-            created_at: '2026-04-29T22:00:00.000Z',
-            sender_name: 'Tom',
-            telegram_message_id: '100',
-          },
-          {
-            // Avoid "Live/Live" here — it matches isLikelyStaleStatusMessage and is skipped as stale traffic.
-            message_text: 'RateConfirmation (1).pdf, Load # 370550 PA>OH',
-            created_at: '2026-04-29T21:00:00.000Z',
-            sender_name: 'Leo',
-            telegram_message_id: '99',
-          },
-        ]),
-      },
-    });
-
-    const context = await service.readLoadContextWithFallbacks({
-      telegram: {
-        async getChat() {
-          return {};
+  const service = loadPinnedContextWithMocks({
+    groqMock: {
+      callGroqWithFallback: async () => ({ text: JSON.stringify(extracted), model: 'mock-model' }),
+    },
+    dbMock: {
+      getGroupPinnedMessageSnapshot: async () => null,
+      getChatLogsForGroup: async () => ([
+        {
+          message_text: '/location',
+          created_at: '2026-04-29T22:00:00.000Z',
+          sender_name: 'Tom',
+          telegram_message_id: '100',
         },
-      },
-      chatId: -100123,
-      groupId: 55,
-    });
+        {
+          // Avoid "Live/Live" here — it matches isLikelyStaleStatusMessage and is skipped as stale traffic.
+          message_text: 'RateConfirmation (1).pdf, Load # 370550 PA>OH',
+          created_at: '2026-04-29T21:00:00.000Z',
+          sender_name: 'Leo',
+          telegram_message_id: '99',
+        },
+      ]),
+    },
+  });
 
-    assert.equal(context.source, 'chat-history+ai');
-    assert.equal(context.loadInfoComplete, true);
-    assert.equal(context.fallbackLevel, 3);
-    assert.equal(context.destinationQuery, '5151 E RAINES RD, Memphis, TN 38118');
-  } finally {
-    global.fetch = originalFetch;
-    if (originalGroqKey === undefined) {
-      delete process.env.GROQ_API_KEY;
-    } else {
-      process.env.GROQ_API_KEY = originalGroqKey;
-    }
-  }
+  const context = await service.readLoadContextWithFallbacks({
+    telegram: {
+      async getChat() {
+        return {};
+      },
+    },
+    chatId: -100123,
+    groupId: 55,
+  });
+
+  assert.equal(context.source, 'chat-history+ai');
+  assert.equal(context.loadInfoComplete, true);
+  assert.equal(context.fallbackLevel, 3);
+  assert.equal(context.destinationQuery, '5151 E RAINES RD, Memphis, TN 38118');
 });
 
 test('readLoadContextWithFallbacks prefers stored recent loads over pinned when stored is complete', async () => {

@@ -163,7 +163,53 @@ feature it belongs to.
   `ai_capabilities.may_auto_apply` is `CHECK`ed to FALSE — AI may rank and
   explain a finding, never author or apply a correction. The call log holds **no
   prompts, no completions, no PII**.
-- Guarded by `tests/ai{Classify,Cooldown,Router,SettingsRoutes,GovernancePg}.test.js`.
+- **Every AI call in the application goes through the router** (Stage 5c).
+  `callGroqWithFallback`, `callGeminiText`, `callGeminiJson` and
+  `callGeminiGenerateContent` kept their signatures and their
+  `attemptErrors[]` / `allRateLimited` failure shape, so none of the ~22 call
+  sites changed — but the transport, the key and the model chain moved under
+  them. Two consequences worth stating:
+  - **What a caller names is a PREFERENCE about MODELS, and nothing about
+    providers.** A caller asking for a fast model on an interactive path made a
+    latency decision on purpose, so its models lead *its own provider's* chain;
+    every other provider uses the chain configured in the admin. A caller that
+    names nothing gets the admin's chain — passing the clients' env defaults
+    instead would put four hardcoded model names in front of the Settings → AI
+    list on every call, and that list would never be reached.
+    **The caller does not reorder the roster.** An earlier version let the
+    preferred provider jump the queue, and since every legacy call site prefers
+    Groq, that made the `priority` column decorative and `round_robin` inert:
+    Groq's free allowance would have been burned first on every call regardless
+    of what an operator configured. Provider order is the admin's decision.
+  - **An OpenAI-shaped `messages` prompt is flattened for Gemini**, because two
+    call sites pass `''` as the prompt text and put the whole document in
+    `messages`. Without that, a Gemini provider received an EMPTY prompt — and a
+    model asked nothing still returns well-formed JSON, which both of those sites
+    validate for shape rather than truth. A guessed pickup address arriving as an
+    extracted fact is worse than any failure.
+  - **A Gemini-shaped request is only offered to a Gemini provider.** The
+    home-time screenshot import sends images; an OpenAI-compatible provider
+    would accept the text half and answer confidently about a screenshot it
+    never saw. The roster is filtered, never the request quietly reshaped.
+- **Both clients are now façades that own no transport.** The direct fetch
+  loops, their per-model retry and their backoff sleeps were **deleted**, not
+  left beside the router: two live paths to one API is how the two stop
+  agreeing, and the one no longer exercised is the one that rots. What stays is
+  the vocabulary their call sites use — the env model chains, the rate-limit and
+  auth predicates, Gemini's JSON helpers.
+- **Migration 0021 seeds the roster, and it is the riskiest three lines in
+  Stage 5.** 0019 seeded nothing, which was right while the router had no
+  consumers; once the clients became wrappers, an empty `ai_providers` stopped
+  meaning "unchanged" and started meaning "every AI call fails" — safely, into
+  the deterministic fallbacks, and completely. So 0021 writes down the two
+  providers already in use with **NULL keys** (still inheriting `GROQ_API_KEY` /
+  `GEMINI_API_KEY`) and `ON CONFLICT DO NOTHING`, so an operator's stored key,
+  disable or priority survives a redeploy.
+- Guarded by `tests/ai{Classify,Cooldown,Router,SettingsRoutes,GovernancePg,OffDegradation}.test.js`
+  plus `tests/{groqClient,geminiClientRouting}.test.js`. `aiOffDegradation`
+  is the enforceable form of "deterministic logic must not depend on AI": with
+  the roster empty AND with the master switch off, no provider is contacted at
+  all and the deterministic paths still answer.
 
 ### AI provider terms watcher (Admin → Settings → AI)
 

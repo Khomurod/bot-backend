@@ -53,12 +53,59 @@ class AiUnavailableError extends Error {
   }
 }
 
+/**
+ * OpenAI-shaped `messages` → Gemini's `contents` + `systemInstruction`.
+ *
+ * NOT a nicety. `requestPinnedContextFromGroq` and
+ * `requestDispatchTemplateFromGroq` both call `callGroqWithFallback('')` and put
+ * the entire document in `messages`. Without this, the moment the roster reached
+ * a Gemini provider it would send `[{ parts: [{ text: '' }] }]` — an EMPTY
+ * prompt — and a model asked nothing at all still returns well-formed JSON.
+ * Both of those sites validate the SHAPE of the answer, not its truth, so a
+ * guessed pickup address would have passed through as an extracted fact. A
+ * confident wrong answer is worse than a failure, and this is how one gets made.
+ */
+function geminiTurnsFromMessages(messages, extraParts) {
+  const systemParts = [];
+  const turns = [];
+  for (const m of messages) {
+    const text = String(m?.content ?? '');
+    if (m?.role === 'system') {
+      systemParts.push({ text });
+      continue;
+    }
+    turns.push({ role: m?.role === 'assistant' ? 'model' : 'user', parts: [{ text }] });
+  }
+  const extras = extraParts || [];
+  if (extras.length) {
+    if (turns.length) turns[turns.length - 1].parts.push(...extras);
+    else turns.push({ role: 'user', parts: [{ text: '' }, ...extras] });
+  }
+  return { systemParts, turns };
+}
+
 /** Prompt → the shape this provider's wire format wants. */
-function buildRequest(provider, { systemText, userText, messages, generationConfig }) {
+function buildRequest(provider, {
+  systemText, userText, messages, contents, extraParts, generationConfig, systemInstruction,
+}) {
   if (provider.adapter === 'gemini') {
+    // A caller that built its own Gemini-shaped instruction keeps it; a caller
+    // that passed plain text or OpenAI messages gets one built here.
+    let builtContents = contents;
+    let builtSystem = systemInstruction
+      || (systemText ? { parts: [{ text: systemText }] } : null);
+
+    if (!builtContents && Array.isArray(messages) && messages.length) {
+      const { systemParts, turns } = geminiTurnsFromMessages(messages, extraParts);
+      builtContents = turns.length ? turns : [{ role: 'user', parts: [{ text: '' }] }];
+      if (!builtSystem && systemParts.length) builtSystem = { parts: systemParts };
+    } else if (!builtContents) {
+      builtContents = [{ role: 'user', parts: [{ text: userText || '' }, ...(extraParts || [])] }];
+    }
+
     return {
-      contents: [{ role: 'user', parts: [{ text: userText || '' }] }],
-      systemInstruction: systemText ? { parts: [{ text: systemText }] } : null,
+      contents: builtContents,
+      systemInstruction: builtSystem,
       generationConfig: generationConfig || {},
     };
   }
@@ -69,16 +116,34 @@ function buildRequest(provider, { systemText, userText, messages, generationConf
   return { messages: built };
 }
 
-async function callOne(provider, model, request, { timeoutMs, expects }) {
+/**
+ * A capability that cannot be served by every adapter says so, and the roster
+ * is filtered rather than the request quietly downgraded.
+ *
+ * The one real case today is the home-time screenshot import, which sends
+ * images as `extraParts`. An OpenAI-compatible chat provider would accept the
+ * text half of that request and answer confidently about a screenshot it never
+ * saw — a wrong answer that looks exactly like a right one. Better to have no
+ * provider and let the consumer degrade.
+ */
+function requiredAdapterFor({ contents, extraParts, requireAdapter }) {
+  if (requireAdapter) return requireAdapter;
+  if (contents || (extraParts && extraParts.length)) return 'gemini';
+  return null;
+}
+
+async function callOne(provider, model, request, { timeoutMs, expects, generation = {} }) {
   if (provider.adapter === 'gemini') {
+    const config = { ...request.generationConfig };
+    if (generation.temperature != null) config.temperature = generation.temperature;
+    if (generation.maxTokens != null) config.maxOutputTokens = generation.maxTokens;
+    if (expects === 'json') config.responseMimeType = 'application/json';
     return callGeminiGenerate({
       apiKey: provider.apiKey,
       model,
       contents: request.contents,
       systemInstruction: request.systemInstruction,
-      generationConfig: expects === 'json'
-        ? { ...request.generationConfig, responseMimeType: 'application/json' }
-        : request.generationConfig,
+      generationConfig: config,
       timeoutMs,
     });
   }
@@ -88,8 +153,43 @@ async function callOne(provider, model, request, { timeoutMs, expects }) {
     model,
     messages: request.messages,
     responseFormat: expects === 'json' ? { type: 'json_object' } : null,
+    temperature: generation.temperature ?? 0.2,
+    maxTokens: generation.maxTokens ?? 2000,
+    seed: generation.seed ?? null,
     timeoutMs,
   });
+}
+
+/**
+ * The models to ask THIS provider for, and nothing about which provider is asked.
+ *
+ * A caller naming a model made a latency decision on purpose — an interactive
+ * path asking for a fast model — and moving model choice into the admin must not
+ * silently discard it. So its models lead ITS OWN provider's chain, and every
+ * other provider keeps its configured chain, because a Groq model name means
+ * nothing to Gemini.
+ *
+ * WHAT THIS DELIBERATELY DOES NOT DO IS REORDER THE ROSTER. An earlier version
+ * moved the caller's preferred provider to the front, and since every one of the
+ * ~22 legacy call sites sets `preferProvider: 'groq'`, that made the Settings →
+ * AI `priority` column decorative and meant `round_robin` never rotated
+ * anything: Groq's free allowance was burned first on every call regardless of
+ * what an operator had configured. Provider order is the admin's decision.
+ * `preferProvider` survives only as the key saying which provider these models
+ * belong to.
+ */
+function chainFor(provider, { preferProvider, preferModels }) {
+  const configured = provider.modelChain.length ? provider.modelChain : [];
+  if (provider.providerKey !== preferProvider || !preferModels?.length) return configured;
+  const seen = new Set();
+  const out = [];
+  for (const model of [...preferModels, ...configured]) {
+    const key = String(model || '').trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+  return out;
 }
 
 /** Strip a ```json fence, the way both existing clients already do. */
@@ -112,7 +212,9 @@ function stripFences(text) {
  */
 async function runCapability({
   capability = null, systemText = null, userText = null, messages = null,
+  contents = null, extraParts = null, generationConfig = null, systemInstruction = null,
   expects = 'text', validate = null, timeoutMs = null,
+  preferProvider = null, preferModels = null, generation = null, requireAdapter = null,
 } = {}) {
   const roster = await getRoster();
   if (!roster.available) {
@@ -121,7 +223,12 @@ async function runCapability({
   }
 
   const { settings } = roster;
-  const ordered = eligibleProviders(roster.providers, {
+  const needsAdapter = requiredAdapterFor({ contents, extraParts, requireAdapter });
+  const usable = needsAdapter
+    ? roster.providers.filter((p) => p.adapter === needsAdapter)
+    : roster.providers;
+
+  const ordered = eligibleProviders(usable, {
     now: Date.now(),
     freeOnly: settings.freeOnlyMode === true,
     roundRobin: settings.routingMode === 'round_robin',
@@ -138,22 +245,32 @@ async function runCapability({
     tried.add(provider.providerKey);
     if (!provider.apiKey) {
       attemptErrors.push({
-        provider: provider.providerKey, model: null,
+        provider: provider.providerKey, model: null, status: null,
         kind: FAILURE.CREDENTIAL, message: 'no key configured',
       });
       continue;
     }
 
-    const request = buildRequest(provider, { systemText, userText, messages });
-    const chain = provider.modelChain.length ? provider.modelChain : [null];
+    const request = buildRequest(provider, {
+      systemText, userText, messages, contents, extraParts, generationConfig, systemInstruction,
+    });
+    const chain = chainFor(provider, { preferProvider, preferModels });
+    if (!chain.length) {
+      attemptErrors.push({
+        provider: provider.providerKey, model: null, status: null,
+        kind: FAILURE.CREDENTIAL, message: 'no models configured',
+      });
+      continue;
+    }
 
     for (const model of chain) {
-      if (!model) continue;
       attempts += 1;
       const startedAt = Date.now();
       try {
         const result = await callOne(provider, model, request, {
-          timeoutMs: timeoutMs || settings.requestTimeoutMs, expects,
+          timeoutMs: timeoutMs || settings.requestTimeoutMs,
+          expects,
+          generation: generation || {},
         });
 
         let parsed = null;
@@ -163,7 +280,8 @@ async function runCapability({
           } catch {
             const bad = invalidResponse('Response was not valid JSON');
             attemptErrors.push({
-              provider: provider.providerKey, model, kind: bad.kind, message: bad.reason,
+              provider: provider.providerKey, model, status: null,
+              kind: bad.kind, message: bad.reason,
             });
             await recordAiCall({
               capabilityKey: capability, providerKey: provider.providerKey, model,
@@ -178,7 +296,8 @@ async function runCapability({
           if (verdict !== true) {
             const bad = invalidResponse(verdict?.message || 'Response failed validation');
             attemptErrors.push({
-              provider: provider.providerKey, model, kind: bad.kind, message: bad.reason,
+              provider: provider.providerKey, model, status: null,
+              kind: bad.kind, message: bad.reason,
             });
             await recordAiCall({
               capabilityKey: capability, providerKey: provider.providerKey, model,
@@ -198,15 +317,16 @@ async function runCapability({
           attempts,
         });
         return {
-          text: result.text, parsed, provider: provider.providerKey,
-          model: result.model, attempts,
+          text: result.text, parsed, payload: result.payload || null,
+          provider: provider.providerKey, model: result.model, attempts,
         };
       } catch (err) {
         const verdict = classifyFailure({
           status: err.status ?? null, message: err.message, code: err.code,
         });
         attemptErrors.push({
-          provider: provider.providerKey, model, kind: verdict.kind, message: err.message,
+          provider: provider.providerKey, model, status: err.status ?? null,
+          kind: verdict.kind, message: err.message,
         });
         await recordAiCall({
           capabilityKey: capability, providerKey: provider.providerKey, model,
@@ -243,4 +363,7 @@ async function runCapability({
   );
 }
 
-module.exports = { AiUnavailableError, runCapability, buildRequest, stripFences };
+module.exports = {
+  AiUnavailableError, runCapability, buildRequest, stripFences,
+  chainFor, requiredAdapterFor, geminiTurnsFromMessages,
+};

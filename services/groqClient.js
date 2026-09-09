@@ -1,5 +1,13 @@
 // services/groqClient.js
 //
+// A COMPATIBILITY FAÇADE over `services/ai/router.js` since Stage 5c. It owns
+// no transport any more: the direct fetch loop, its request builder and its
+// sleep/backoff were deleted rather than left beside the router, because two
+// live paths to the same API is exactly how the two stop agreeing — and the one
+// that is no longer exercised is the one that rots. What it still owns is the
+// Groq-shaped vocabulary its callers use: the model chain from the environment,
+// the rate-limit and auth predicates, and Groq's prose `retry-after` form.
+//
 // Shared Groq chat-completions client used by:
 //   - aiAnalysisService.js   (legacy company / driver reports)
 //   - aiAnnotationService.js (per-message classifier)
@@ -9,7 +17,8 @@
 //
 require('dotenv').config();
 
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const { runCapability } = require('./ai/router');
+
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const GROQ_AI_MODEL = process.env.GROQ_AI_MODEL || 'llama-3.3-70b-versatile';
 const GROQ_AI_FAST_MODEL = process.env.GROQ_AI_FAST_MODEL || 'llama-3.1-8b-instant';
@@ -26,7 +35,6 @@ const GROQ_AI_FALLBACK_MODELS = parseModelList(
   DEFAULT_GROQ_FALLBACK_CHAIN
 );
 
-const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_RETRY_WAIT_MS = 35_000;
 const INTERACTIVE_MAX_RETRY_WAIT_MS = 8_000;
 
@@ -56,12 +64,6 @@ function resolveModelChain(opts = {}) {
   }
   const primary = opts.model || GROQ_AI_MODEL;
   return uniqueModels([primary, ...GROQ_AI_FALLBACK_MODELS]);
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
 
 function isAuthOrConfigError(message) {
@@ -103,155 +105,100 @@ function parseRetryAfterMs(response, errorMessage) {
   return 0;
 }
 
-function buildGroqRequestBody(opts, model) {
-  let messages;
-  if (Array.isArray(opts.messages) && opts.messages.length > 0) {
-    messages = opts.messages;
-  } else {
-    messages = [];
-    if (opts.systemText) messages.push({ role: 'system', content: String(opts.systemText) });
-    messages.push({ role: 'user', content: String(opts.promptText ?? '') });
-  }
-
-  const body = {
-    model,
-    messages,
-    temperature: opts.temperature ?? 0.2,
-    max_tokens: opts.maxTokens ?? 2000,
-  };
-
-  if (opts.responseFormat) {
-    body.response_format = opts.responseFormat;
-  }
-  if (opts.seed != null) {
-    body.seed = opts.seed;
-  }
-  if (opts.maxCompletionTokens != null) {
-    body.max_completion_tokens = opts.maxCompletionTokens;
-    delete body.max_tokens;
-  }
-
-  return JSON.stringify(body);
+/**
+ * Only what the CALLER actually named — never the module's env defaults.
+ *
+ * `resolveModelChain` merges a caller's choice with `GROQ_AI_MODEL` and
+ * `GROQ_AI_FALLBACK_MODELS`, which is right for a client that owns its chain and
+ * wrong for one that does not. Passing that merged list as a preference would
+ * put four hardcoded model names in front of the admin's configured chain on
+ * every single call, and the Settings → AI model list would never be reached.
+ * A caller that names nothing gets the roster's chain, which is the point.
+ */
+function requestedModels(opts) {
+  if (Array.isArray(opts.models) && opts.models.length) return uniqueModels(opts.models);
+  if (opts.model) return [String(opts.model)];
+  return null;
 }
 
-async function callGroqOnce(model, opts) {
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+/**
+ * Ask for a completion, Groq first, and fall through to whatever else is on the
+ * roster. Returns { text, model }.
+ *
+ * THE SIGNATURE AND THE FAILURE SHAPE ARE THE CONTRACT, and neither moved. All
+ * ~22 call sites, and every deterministic fallback beneath them, keep working
+ * unchanged — `err.attemptErrors` still carries `{ model, status, message }`
+ * and `err.allRateLimited` is still the flag `aiAnnotationService` reads to
+ * decide its cooldown. What changed is underneath: the transport is
+ * `services/ai/router.js`, so the key comes from the database (NULL inheriting
+ * the environment), the model chain is an admin setting, and a failure is
+ * classified rather than guessed at.
+ *
+ * TWO REAL BEHAVIOUR CHANGES, both of them the point of Stage 5:
+ *
+ *   A dead Groq key no longer ends the call. `isAuthOrConfigError` used to
+ *   abort the whole chain on 401/403, which with more than one provider turns
+ *   one expired credential into a total AI outage. `lib/ai/classify.js` calls
+ *   it CREDENTIAL: stop asking THIS provider, move to the next.
+ *
+ *   The models this caller names are a PREFERENCE, not the whole world. They go
+ *   at the head of Groq's own chain — an interactive path asking for a fast
+ *   model is a latency decision somebody made deliberately — and every provider
+ *   after Groq uses its own configured chain, because a Groq model name means
+ *   nothing to Gemini.
+ */
+async function callGroqWithFallback(promptText, opts = {}) {
+  const preferModels = requestedModels(opts);
 
   try {
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${GROQ_API_KEY}`,
-        'Content-Type': 'application/json',
+    const result = await runCapability({
+      capability: opts.capability || null,
+      preferProvider: 'groq',
+      preferModels,
+      systemText: opts.systemText || null,
+      userText: promptText,
+      messages: Array.isArray(opts.messages) && opts.messages.length ? opts.messages : null,
+      expects: opts.responseFormat?.type === 'json_object' ? 'json' : 'text',
+      validate: typeof opts.validateResult === 'function' ? opts.validateResult : null,
+      timeoutMs: opts.timeoutMs ?? null,
+      generation: {
+        temperature: opts.temperature,
+        maxTokens: opts.maxCompletionTokens ?? opts.maxTokens,
+        seed: opts.seed,
       },
-      body: buildGroqRequestBody(opts, model),
-      signal: controller.signal,
     });
-    clearTimeout(timer);
-
-    const rawText = await response.text().catch(() => '');
-    let payload = {};
-    try {
-      payload = rawText ? JSON.parse(rawText) : {};
-    } catch (_) {
-      payload = {};
-    }
-    const apiMessage = payload?.error?.message || rawText.slice(0, 400);
-
-    if (response.status === 401 || response.status === 403) {
-      const err = new Error(`Groq API ${response.status}: ${apiMessage}`);
-      err.status = response.status;
-      err.model = model;
-      throw err;
-    }
-
-    if (!response.ok) {
-      const err = new Error(`Groq API ${response.status}: ${apiMessage}`);
-      err.status = response.status;
-      err.model = model;
-      err.retryAfterMs = parseRetryAfterMs(response, apiMessage);
-      throw err;
-    }
-
-    const text = String(payload?.choices?.[0]?.message?.content || '').trim();
-    return { text, model, response, payload };
+    return { text: result.text, model: result.model };
   } catch (err) {
-    clearTimeout(timer);
-    if (err.name === 'AbortError') {
-      const timeoutErr = new Error(`Groq API timeout after ${timeoutMs}ms`);
-      timeoutErr.model = model;
-      throw timeoutErr;
-    }
-    throw err;
+    throw asLegacyGroqFailure(err, preferModels || resolveModelChain(opts));
   }
 }
 
 /**
- * Try models in order; on 429/5xx wait (respecting retry-after) then try next model.
- * Returns { text, model }.
+ * Re-shape a router failure into the one twenty-two call sites already read.
+ *
+ * `AiUnavailableError` carries everything needed; this is a rename, not a
+ * translation. The one addition is `aiUnavailable`, so a consumer that wants to
+ * tell "every provider is off" from "Groq said no" can, without any consumer
+ * having to change to keep working.
  */
-async function callGroqWithFallback(promptText, opts = {}) {
-  if (!GROQ_API_KEY) {
-    throw new Error('GROQ_API_KEY is not configured');
-  }
+function asLegacyGroqFailure(err, models) {
+  const attemptErrors = Array.isArray(err.attemptErrors) && err.attemptErrors.length
+    ? err.attemptErrors.map((e) => ({
+      model: e.model || e.provider || null,
+      status: e.status ?? null,
+      message: e.message,
+      provider: e.provider || null,
+      kind: e.kind || null,
+    }))
+    : [{ model: models[0] || null, status: null, message: err.message }];
 
-  const models = resolveModelChain(opts);
-  if (!models.length) {
-    throw new Error('No Groq models configured');
-  }
-
-  const maxRetryWaitMs = opts.maxRetryWaitMs ?? DEFAULT_MAX_RETRY_WAIT_MS;
-  const requestOpts = { ...opts, promptText };
-  const attemptErrors = [];
-
-  for (let i = 0; i < models.length; i += 1) {
-    const model = models[i];
-    try {
-      const result = await callGroqOnce(model, requestOpts);
-      if (typeof opts.validateResult === 'function') {
-        const validation = opts.validateResult(result.text, result.payload);
-        if (validation !== true) {
-          const message = validation?.message || 'Response validation failed';
-          attemptErrors.push({ model, status: null, message });
-          continue;
-        }
-      }
-      return { text: result.text, model: result.model };
-    } catch (err) {
-      const status = err.status || null;
-      const message = err.message || String(err);
-      attemptErrors.push({ model, status, message });
-
-      if (isAuthOrConfigError(message)) {
-        const authErr = new Error(message);
-        authErr.attemptErrors = attemptErrors;
-        throw authErr;
-      }
-
-      const isLast = i === models.length - 1;
-      if (!isLast && isGroqRateLimitError(status, message)) {
-        const waitMs = Math.min(err.retryAfterMs || 750, maxRetryWaitMs);
-        if (waitMs > 0) {
-          await sleep(waitMs);
-        }
-        continue;
-      }
-
-      if (!isLast && status >= 500) {
-        await sleep(Math.min(1000, maxRetryWaitMs));
-        continue;
-      }
-    }
-  }
-
-  const details = attemptErrors.map((e) => `${e.model}: ${e.message}`).join('; ');
-  const failure = new Error(details || 'All Groq models failed');
+  const failure = new Error(
+    attemptErrors.map((e) => `${e.model}: ${e.message}`).join('; ') || err.message
+  );
   failure.attemptErrors = attemptErrors;
-  failure.allRateLimited = attemptErrors.length > 0
-    && attemptErrors.every((e) => isGroqRateLimitError(e.status, e.message));
-  throw failure;
+  failure.allRateLimited = err.allRateLimited === true;
+  failure.aiUnavailable = err.aiUnavailable === true;
+  return failure;
 }
 
 /** Backward-compatible: returns text only, uses full fallback chain from opts.model or GROQ_AI_MODEL. */
@@ -263,14 +210,14 @@ async function callGroqRaw(promptText, opts = {}) {
 module.exports = {
   callGroqRaw,
   callGroqWithFallback,
-  callGroqOnce,
+  asLegacyGroqFailure,
+  requestedModels,
   isAuthOrConfigError,
   isGroqRateLimitError,
   parseRetryAfterMs,
   parseModelList,
   resolveModelChain,
   uniqueModels,
-  GROQ_API_URL,
   GROQ_API_KEY,
   GROQ_AI_MODEL,
   GROQ_AI_FAST_MODEL,

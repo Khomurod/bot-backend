@@ -22,8 +22,11 @@ function load(harness) {
 
 async function harnessWith(t) {
   const harness = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
+  // Migration 0021 already seeds Groq (and Gemini) onto the roster, so this is
+  // a no-op there and still stands up the row on a database that predates it.
   await harness.query(
-    "INSERT INTO ai_providers (provider_key, label, enabled) VALUES ('groq','Groq',TRUE)"
+    "INSERT INTO ai_providers (provider_key, label, enabled) VALUES ('groq','Groq',TRUE) "
+    + 'ON CONFLICT (provider_key) DO UPDATE SET enabled = TRUE'
   );
   return harness;
 }
