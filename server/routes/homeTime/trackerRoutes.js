@@ -17,6 +17,8 @@ const {
 } = require('../../../services/homeTimeConstants');
 const { isInactiveGroup } = require('../../../lib/drivers/driverProfileParse');
 const { parseDateInput } = require('../homeTimeRouteHelpers');
+const groupsDb = require('../../../database/groups');
+const homeTimeStatus = require('../../../services/homeTimeService');
 const {
   listCanonicalDriverGroups,
 } = require('../../../services/driverGroupDirectoryService');
@@ -184,9 +186,47 @@ function createHomeTimeTrackerRoutes({ authMiddleware }) {
         since = DateTime.now().toUTC().toISO();
       }
 
+      // A REAL state change goes through applyStateTransition, not a bare column
+      // write. This route used to call `setDriverHomeState` directly, which moves
+      // the flip-flop and nothing else — so an admin correcting a driver from
+      // home to road left that driver's home-time cycle open forever, and
+      // correcting road to home recorded no cycle at all. That is one of the two
+      // paths behind 74 open cycles out of 79 in production.
+      //
+      // `announce: false` because this is somebody fixing a record, not a driver
+      // reporting news. The bookkeeping must happen; the congratulations must not.
+      if (state && state !== existing.state) {
+        const group = await groupsDb.getGroupByIdAnyType(groupId);
+        if (!group) return res.status(404).json({ error: 'No such group' });
+        const applied = await homeTimeStatus.applyStateTransition(null, group, {
+          newState: state,
+          eventAt: since,
+          statusText: 'Corrected by an administrator',
+          announce: false,
+        });
+        // Fall through ONLY when tracking is switched off entirely — with the
+        // feature off there are no cycles to keep consistent, so an admin edit
+        // landing as a plain state write leaks nothing.
+        //
+        // A FAILED transition is the opposite case and must not fall through: a
+        // transient error while inserting or closing road history would leave
+        // the flip-flop moved and the cycle untouched, which is precisely the
+        // inconsistency this route was changed to prevent. Better a 500 the
+        // admin can retry than a silent half-write.
+        if (applied && !applied.disabled) {
+          const status = await ht.getDriverHomeStatus(groupId);
+          return res.json({ status });
+        }
+        if (!applied) {
+          return res.status(500).json({
+            error: 'Could not record the state change. Nothing was written — please retry.',
+          });
+        }
+      }
+
       const updated = await ht.setDriverHomeState(groupId, { state, stateSince: since });
       if (!updated) return res.status(404).json({ error: 'No tracked status for this group' });
-      res.json({ status: updated });
+      return res.json({ status: updated });
     } catch (err) {
       console.error('[HOME-TIME API] status update failed:', err.message);
       res.status(500).json({ error: 'Failed to update status.' });

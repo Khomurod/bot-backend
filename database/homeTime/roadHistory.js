@@ -11,17 +11,25 @@ const { query } = require('../pool');
 
 // ─── Completed road trips (history) ───
 
+/**
+ * @param {string|null} [bonusPostedAt]  stamp the leg as already-announced.
+ *   Used by the silent paths (an admin correction, a screenshot import): the
+ *   notifier polls for `bonus_usd > 0 AND bonus_posted_at IS NULL`, so a leg
+ *   recorded without announcement must be born claimed. Doing it here rather
+ *   than with a follow-up UPDATE closes the window in which the insert succeeds,
+ *   the claim fails, and months-old bonuses land in a live group an hour later.
+ */
 async function insertRoadHistory({
   groupId, driverName, unitNumber, roadStartedAt, homeArrivedAt,
-  daysOnRoad, exceededWeeks, bonusUsd,
+  daysOnRoad, exceededWeeks, bonusUsd, bonusPostedAt = null,
 }) {
   const res = await query(
     `INSERT INTO driver_road_history
        (group_id, driver_name, unit_number, road_started_at, home_arrived_at,
-        days_on_road, exceeded_weeks, bonus_usd)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        days_on_road, exceeded_weeks, bonus_usd, bonus_posted_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
     [groupId, driverName || null, unitNumber || null, roadStartedAt, homeArrivedAt,
-      daysOnRoad, exceededWeeks, bonusUsd]
+      daysOnRoad, exceededWeeks, bonusUsd, bonusPostedAt]
   );
   return res.rows[0];
 }

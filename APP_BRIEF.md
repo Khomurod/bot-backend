@@ -169,6 +169,7 @@ unchanged, so a reference to "§7" still means the same section.
 | Section | Read it when |
 |---|---|
 | [§4. Features and workflows](docs/brief/features.md) | You are touching any feature: driver comms, dispatch, payroll-adjacent flows, home time, fuel, recruiting, the presenter remote |
+| [§4a. The system checking itself, and the AI that helps](docs/brief/self-checking-and-ai.md) | Operational findings, tiered corrections, the AI routing layer, or the provider terms watcher |
 | [§5. Permissions and access rules](docs/brief/permissions.md) | Auth, roles, permissions, or any route that is *not* behind the admin JWT |
 | [§6. Integrations and configuration](docs/brief/integrations.md) | Telegram, Datatruck, Samsara/ELD, Google Maps, Meta, RingCentral, Bitrix, the AI providers, or where a setting lives |
 | [§7. Automatic and background behavior](docs/brief/background-jobs.md) | Anything on a timer, the database transfer budget, browser polling, or an idempotency ledger |
@@ -402,9 +403,9 @@ npm run build:schema:check                        # schema.sql is in sync with b
 
 - **The Node suite passes clean with no secrets and no database.** Verified
   baseline (2026-09-09, deps installed, **with** `TEST_DATABASE_URL` against a
-  local PostgreSQL 16): **2262 tests, 2262 pass, 0 fail, 0 skipped**, exit 0.
+  local PostgreSQL 16): **2275 tests, 2275 pass, 0 fail, 0 skipped**, exit 0.
   Split the way CI splits it: the non-`*Pg` files with no application env at
-  all are **2072 pass / 0 skipped**, and the 23 `*Pg` files against a real
+  all are **2085 pass / 0 skipped**, and the 23 `*Pg` files against a real
   Postgres are **190 pass / 0 skipped**.
   Without a database the `*Pg` suites skip instead — a skip is not a pass, so
   CI provides a real Postgres and fails on any skip. The Python leads

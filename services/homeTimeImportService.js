@@ -17,6 +17,8 @@ const ht = require('../database/homeTime');
 const { callGeminiJson } = require('./geminiClient');
 const { isoDateOrNull, normalizeStatus, matchCandidate } = require('./homeTimeImportHelpers');
 const { prepareImagePartsForAi } = require('./aiImagePrep');
+const groupsDb = require('../database/groups');
+const homeTimeStatus = require('./homeTimeService');
 
 const MAX_INLINE_BYTES = 6 * 1024 * 1024; // per image, keep prompts sane
 
@@ -119,7 +121,9 @@ async function extractAndMatch(files) {
  * and register their historical home times (deduped). Returns a summary.
  */
 async function applyRows(rows) {
-  const report = { statusesUpdated: 0, historyAdded: 0, historySkipped: 0, skippedRows: 0 };
+  const report = {
+    statusesUpdated: 0, statusFailed: 0, historyAdded: 0, historySkipped: 0, skippedRows: 0,
+  };
 
   for (const row of Array.isArray(rows) ? rows : []) {
     const groupId = Number(row?.group_id);
@@ -132,19 +136,59 @@ async function applyRows(rows) {
     const unitNumber = row.unit_number || null;
 
     // Current state.
+    //
+    // Through `applyStateTransition`, not a bare `upsertDriverHomeStatus`. The
+    // direct write moved the flip-flop and nothing else, so an import that put a
+    // driver back on the road left their home-time cycle open forever, and one
+    // that brought a driver home recorded no cycle at all — one of the two paths
+    // behind 74 open cycles out of 79 in production. It also silently reset the
+    // extra-week bonus watermark on every import, because
+    // `upsertDriverHomeStatus` defaults `roadBonusWeeksNotified` to 0 and this
+    // call never passed one.
+    //
+    // `announce: false`: importing a screenshot of last quarter is bookkeeping,
+    // not news. Nothing is posted, and a bonus recorded this way is marked as
+    // already-posted so the notifier does not fire months of stale summaries
+    // into a live group.
     const status = normalizeStatus(row.status);
     const since = isoDateOrNull(row.since_date);
     if (status && since) {
       const sinceIso = DateTime.fromISO(`${since}T00:00:00`, { zone: 'utc' }).toISO();
-      await ht.upsertDriverHomeStatus({
-        groupId,
-        telegramGroupId,
-        state: status,
-        stateSince: sinceIso,
-        lastStatusText: 'Imported from screenshot',
-        lastStatusAt: sinceIso,
-      });
-      report.statusesUpdated += 1;
+      const group = await groupsDb.getGroupByIdAnyType(groupId);
+      const applied = group
+        ? await homeTimeStatus.applyStateTransition(null, group, {
+          newState: status,
+          eventAt: sinceIso,
+          statusText: 'Imported from screenshot',
+          announce: false,
+          // A corrected screenshot often carries the SAME state and a DIFFERENT
+          // date ("still on the road, but left on the 3rd"). Without this the
+          // same-state branch touches only the last-status fields and the road
+          // clock keeps its wrong start — silently, while the import reports
+          // the row as updated.
+          resyncSince: true,
+        })
+        : null;
+      if (applied && applied.disabled) {
+        // Tracking is off entirely: record the state so the import is not a
+        // silent no-op. With the feature off there are no cycles to keep
+        // consistent, so a plain write leaks nothing.
+        await ht.upsertDriverHomeStatus({
+          groupId,
+          telegramGroupId,
+          state: status,
+          stateSince: sinceIso,
+          lastStatusText: 'Imported from screenshot',
+          lastStatusAt: sinceIso,
+        });
+        report.statusesUpdated += 1;
+      } else if (!applied) {
+        // The group is gone, or the transition failed. Do NOT write the state
+        // anyway — that is how the flip-flop moves without its cycle.
+        report.statusFailed += 1;
+      } else {
+        report.statusesUpdated += 1;
+      }
     }
 
     // Historical home times → approved requests (deduped by window).

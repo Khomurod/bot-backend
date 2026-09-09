@@ -336,10 +336,10 @@ async function processHomeTimeMessage(telegram, group, message, { statusResult =
     if (!group || group.group_type !== 'driver') return;
 
     // 1) A real (deterministic) status transition just happened.
-    if (statusResult && statusResult.transition === 'home_to_road') {
-      await homeTimeStatus.closeHomeStayOnReturn(group, { returnToRoadIso: statusResult.eventAt });
-      return;
-    }
+    // The home stay is already closed: `applyStateTransition` does it as part of
+    // the transition, so no caller has to remember. Forgetting is exactly what
+    // left 74 open cycles in production.
+    if (statusResult && statusResult.transition === 'home_to_road') return;
     if (statusResult && statusResult.transition === 'road_to_home') {
       await handleActualHomeArrival(telegram, group, message, { homeStartIso: statusResult.eventAt });
       return;
@@ -400,9 +400,8 @@ async function processHomeTimeMessage(telegram, group, message, { statusResult =
       });
       if (applied?.transition === 'road_to_home') {
         await handleActualHomeArrival(telegram, group, message, { homeStartIso: applied.eventAt });
-      } else if (applied?.transition === 'home_to_road') {
-        await homeTimeStatus.closeHomeStayOnReturn(group, { returnToRoadIso: applied.eventAt });
       }
+      // home_to_road needs nothing here — applyStateTransition closed the cycle.
       return;
     }
 
