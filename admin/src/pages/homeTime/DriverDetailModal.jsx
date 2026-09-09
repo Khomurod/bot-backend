@@ -287,8 +287,12 @@ export function DriverDetailModal(p) {
           <div className="home-time-section">
             <div className="home-time-section-head">
               <div>
-                <h4>Completed trips</h4>
-                <p>Edit road and home dates here. Company-driver bonuses recalculate automatically on save.</p>
+                <h4>Trips</h4>
+                <p>
+                  Edit road and home dates here. Company-driver bonuses recalculate
+                  automatically on save. A trip with no return date is still OPEN — the
+                  driver has not been recorded as back on the road.
+                </p>
               </div>
             </div>
             <div className="table-container">
@@ -297,6 +301,7 @@ export function DriverDetailModal(p) {
                   <tr>
                     <th>Left</th>
                     <th>Home</th>
+                    <th>Back on road</th>
                     <th>Days out</th>
                     <th>Extra weeks</th>
                     <th>Bonus</th>
@@ -321,6 +326,22 @@ export function DriverDetailModal(p) {
                           value={tripDrafts[trip.id]?.home ?? toDateInput(trip.home_arrived_at)}
                           onChange={(e) => updateTripDraft(trip.id, "home", e.target.value)}
                         />
+                      </td>
+                      {/*
+                        This column is why it exists. The table used to be
+                        titled "Completed trips" and render every road-history
+                        row, so an OPEN cycle — 74 of 79 rows in production —
+                        looked exactly like a finished one, and nothing anywhere
+                        said otherwise.
+                      */}
+                      <td>
+                        {trip.return_to_road_at ? (
+                          fmtDate(trip.return_to_road_at)
+                        ) : (
+                          <span className="badge badge-muted" title="No return-to-road date recorded — this trip is still open.">
+                            Still home
+                          </span>
+                        )}
                       </td>
                       <td>{trip.days_on_road}</td>
                       <td>{trip.exceeded_weeks}</td>
@@ -357,8 +378,8 @@ export function DriverDetailModal(p) {
                   ))}
                   {selectedHistory.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="home-time-empty-cell">
-                        No completed trips yet.
+                      <td colSpan={7} className="home-time-empty-cell">
+                        No trips recorded yet.
                       </td>
                     </tr>
                   )}

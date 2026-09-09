@@ -33,9 +33,13 @@ const {
 } = require('./homeTimeSignals');
 const {
   normalizeHomeTimeWindow, isReasonableWindow,
+  classifyWindowAgainstPolicy, reopenWindowForPolicy,
   isUsableKnownReturnDate, resolveRequestReturnDate, isHomeTimeRequestOutdated,
 } = require('./homeTimeDateResolver');
 const { classifyHomeTimeMessage, isHomeTimeCandidate } = require('./homeTimeIntentService');
+// The "what did the driver say, and may we accept it" half — no Telegram, no
+// cards. Re-exported below so no importer of this module moves.
+const { windowFieldToReask, parseHomeTimeDates } = require('./homeTimeWindowResolution');
 const homeTimeStatus = require('./homeTimeService');
 const {
   CALLBACK_PREFIX, buildCardText, buildDecisionButtons, buildDecidedCardText,
@@ -223,34 +227,6 @@ async function handleActualHomeArrival(telegram, group, message, { homeStartIso 
 }
 
 /**
- * Resolve a home-time window from a driver's free-text reply. AI first, then the
- * deterministic parser. Returns `{ homeFrom, homeTo }` strings or null. Kept for
- * back-compat (the conversational pipeline uses classifyHomeTimeMessage).
- */
-async function parseHomeTimeDates({ text, todayIso }) {
-  const today = todayIso || todayIsoChicago();
-  const prompt = buildHomeTimeDateReplyPrompt({ text, todayLabel: today });
-  try {
-    const { parsed } = await callGeminiJson({
-      userText: prompt,
-      maxOutputTokens: 120,
-      validateParsed: (p) => typeof p?.found === 'boolean',
-    });
-    if (parsed.found && parsed.home_from && parsed.home_to
-      && isReasonableHomeWindow(parsed.home_from, parsed.home_to, today)) {
-      return { homeFrom: String(parsed.home_from), homeTo: String(parsed.home_to) };
-    }
-  } catch (err) {
-    console.warn('[HOME-TIME-REQ] date-reply AI parse failed, using deterministic parser:', err.message);
-  }
-  const window = parseHomeTimeWindowText(text, today);
-  if (window && isReasonableHomeWindow(window.homeFrom, window.homeTo, today)) {
-    return { homeFrom: window.homeFrom, homeTo: window.homeTo };
-  }
-  return null;
-}
-
-/**
  * Plain-text follow-up handler: understand a later message that answers an open
  * clarification even without Telegram's reply feature. Uses the AI intent
  * classifier with the open-clarification context so unrelated chatter (or someone
@@ -301,16 +277,20 @@ async function handleHomeTimeClarificationReply(telegram, group, message) {
     if (!answers || !gotNewDate) return;
 
     const settings = await ht.getHomeTimeSettings();
-    if (verdict.window.complete
+    const reask = windowFieldToReask(verdict.window, settings);
+    if (verdict.window.complete && !reask
       && isReasonableWindow(verdict.window.homeStartDate, verdict.window.returnToRoadDate, todayIsoChicago())) {
       await completeAndRespond(telegram, group, open, verdict.window, message, {
         settings, language: verdict.language,
       });
       return;
     }
+    // A start date past the horizon is a mis-parse, not a request — ask about
+    // that date again rather than storing it (§6.1).
+    const window = reask ? reopenWindowForPolicy(verdict.window, reask) : verdict.window;
     // Still partial — advance and ask for the remaining date.
-    if (verdict.window.missingFields.length && verdict.window.missingFields.length < 2) {
-      await advanceClarification(telegram, group, open, verdict.window, message, {
+    if (window.missingFields.length && window.missingFields.length < 2) {
+      await advanceClarification(telegram, group, open, window, message, {
         settings, language: verdict.language,
       });
     }
@@ -409,7 +389,8 @@ async function processHomeTimeMessage(telegram, group, message, { statusResult =
     const { open: shouldOpen, reason: openReason } = shouldOpenRequest(verdict, { text });
     if (shouldOpen) {
       const settings = await ht.getHomeTimeSettings();
-      if (verdict.window.complete
+      const reask = windowFieldToReask(verdict.window, settings);
+      if (verdict.window.complete && !reask
         && isReasonableWindow(verdict.window.homeStartDate, verdict.window.returnToRoadDate, todayIsoChicago())) {
         // Reuse the approver flow's card path by opening then immediately completing.
         const created = await createClarification(telegram, group, message, {
@@ -421,9 +402,12 @@ async function processHomeTimeMessage(telegram, group, message, { statusResult =
         });
         return;
       }
+      // A start date past the horizon is a mis-parse, not a request (§6.1).
+      const openingWindow = reask
+        ? reopenWindowForPolicy(verdict.window, reask) : verdict.window;
       await createClarification(telegram, group, message, {
-        window: verdict.window,
-        askKind: askKindForWindow(verdict.window),
+        window: openingWindow,
+        askKind: askKindForWindow(openingWindow),
         isUnplanned: false,
         settings,
         language: verdict.language,

@@ -110,8 +110,23 @@ async function runHomeTimeReminderCheck(telegram, { nowIso } = {}) {
   }
 
   for (const row of rows) {
-    // Skip inactive groups (spec §11: stop when the group becomes inactive).
-    if (row.group_active === false) continue;
+    // AN INACTIVE GROUP STANDS DOWN — it does not merely get skipped.
+    //
+    // Skipping before the claim left `next_reminder_at` set, and
+    // `homeTimeDateResolver.isHomeTimeRequestOutdated` reads a set schedule as
+    // "reminders still pending → still active". So the request stopped being
+    // reminded AND stopped being expirable: no reminder, no 21-day stale
+    // sweep, no terminal state, forever. Clearing the schedule is what lets the
+    // expiry sweep finish the job the reminder no longer can.
+    //
+    // The reminder itself is still not sent — spec §11 stands, a driver whose
+    // group is gone must not be messaged. Only the immortality is fixed.
+    if (row.group_active === false) {
+      // eslint-disable-next-line no-await-in-loop
+      const cleared = await ht.cancelHomeTimeReminderSchedule(row.id).catch(() => null);
+      if (cleared) standDown += 1;
+      continue;
+    }
     const isFinal = Number(row.reminder_count) + 1 >= MAX_REMINDERS;
     const nextReminderAt = isFinal
       ? null

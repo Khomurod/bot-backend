@@ -306,6 +306,37 @@ test('orchestrator: repeated same-status line does nothing conversational', asyn
   assert.equal(sends.length, 0);
 });
 
+test('a home start a year out is ASKED ABOUT, not stored as a request', async () => {
+  // Request 139 holds `home_from 2027-01-02`. Nothing questioned it, because
+  // `isReasonableWindow`'s horizon is a full year and a mis-parsed year lands
+  // comfortably inside it. There is nothing here to record and nothing to
+  // answer — only a date to ask about again.
+  const farOut = TODAY.plus({ days: 200 });
+  const { service, telegram, inserts, sends } = loadService({
+    open: null, clarification: null,
+    homeStatus: { state: 'road', state_since: TODAY.minus({ days: 30 }).toUTC().toISO() },
+    gemini: {
+      json: {
+        intent: 'home_time_request', confidence: 95, isActualStatusChange: false,
+        requestedHomeTime: true,
+        homeStartDate: farOut.toISODate(),
+        returnToRoadDate: farOut.plus({ days: 3 }).toISODate(),
+      },
+    },
+  });
+  await service.processHomeTimeMessage(telegram, GROUP, {
+    message_id: 7, text: `home ${farOut.toISODate()} back ${farOut.plus({ days: 3 }).toISODate()}`,
+    from: { id: 900 },
+  }, { statusResult: null, mentionsApprover: false });
+
+  assert.equal(inserts.length, 1, 'a clarification is opened');
+  assert.ok(!inserts[0].homeFrom && !inserts[0].home_from,
+    'and the far-out start is NOT written down — that is the half in dispute');
+  assert.equal(inserts[0].status, 'awaiting_home_start',
+    'the request is waiting on exactly the date that was wrong');
+  assert.ok(sends.length >= 1, 'the driver is asked');
+});
+
 test('orchestrator: AI "actual_home_status" on a brief ERRAND stop does NOT flip the tracker or ask', async () => {
   const { service, telegram, stateTransitions, inserts, sends } = loadService({
     open: null, clarification: null,

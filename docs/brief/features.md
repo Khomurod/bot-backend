@@ -175,6 +175,27 @@ marks the stay closed.
 - Guarded by `tests/homeTimeCycleInvariant.test.js`, which asserts the
   **negative**: after a `home → road` change by any route, no open cycle may
   remain. Nothing asserted that before, which is why it broke.
+- **An inactive group STANDS DOWN; it is not merely skipped.** The reminder
+  service used to `continue` past an inactive group before claiming, leaving
+  `next_reminder_at` set — and `isHomeTimeRequestOutdated` reads a set schedule
+  as "reminders still pending → still active". The request therefore stopped
+  being reminded AND stopped being expirable: no reminder, no 21-day stale
+  sweep, no terminal state, forever. The reminder is still not sent (a driver
+  whose group is gone must not be messaged); only the immortality is fixed.
+- **A home start past the horizon is asked about, not stored.** `2027-01-02` on
+  request 139 is a mis-parsed year that `isReasonableWindow` waved through,
+  because a full year is inside its horizon. `classifyWindowAgainstPolicy`
+  (pure) separates *"are these dates plausible"* from *"does the company grant
+  them"*, and the service re-opens exactly the disputed half so the existing
+  clarification flow asks about it — no new send path, no new status.
+  **An over-allowance window is deliberately NOT refused**: the subsystem
+  already answers that properly, by recording the request and replying with a
+  firm reminder of the four-week rule while withholding the 👍. Refusing it
+  would replace a clear answer with a loop.
+- **The admin no longer calls an open cycle a completed trip.** The table was
+  headed "Completed trips" and rendered every road-history row, so 74 of 79
+  production rows looked finished. It now has a **Back on road** column showing
+  the return date or an explicit *Still home*.
 
 - **Revert is an undo, not an overwrite.** Each `revert` locks the target and
   restores the before-image only while every field it changed still holds what

@@ -4,7 +4,7 @@ const path = require('node:path');
 
 const NOW = '2026-07-13T12:00:00.000Z';
 
-function loadService({ due = [], claimResult, settings } = {}) {
+function loadService({ due = [], claimResult, settings, cancelResult } = {}) {
   const servicePath = path.resolve(__dirname, '../services/homeTimeReminderService.js');
   const htPath = path.resolve(__dirname, '../database/homeTime.js');
   const htmlPath = path.resolve(__dirname, '../services/telegramHtml.js');
@@ -30,7 +30,11 @@ function loadService({ due = [], claimResult, settings } = {}) {
         return { ...row, reminder_count: Number(row.reminder_count) + 1 };
       },
       async markHomeTimeClarificationUnanswered(id) { marks.push(id); return { id }; },
-      async cancelHomeTimeReminderSchedule(id) { cancels.push(id); return { id, next_reminder_at: null }; },
+      async cancelHomeTimeReminderSchedule(id) {
+        cancels.push(id);
+        if (typeof cancelResult === 'function') return cancelResult(id);
+        return { id, next_reminder_at: null };
+      },
     },
   };
   require.cache[htmlPath] = { exports: { safeSend: async (fn) => fn() } };
@@ -88,12 +92,31 @@ test('a lost claim (overlapping worker / restart) does NOT double-send', async (
   assert.equal(sends.length, 0);
 });
 
-test('inactive groups are skipped (no reminder)', async () => {
-  const { service, telegram, claims, sends } = loadService({ due: [dueRow({ group_active: false })] });
+test('an inactive group STANDS DOWN — the schedule is cleared, not just skipped', async () => {
+  // The request became immortal here. Skipping before the claim left
+  // `next_reminder_at` set, and `isHomeTimeRequestOutdated` reads a set schedule
+  // as "reminders still pending → still active" — so the 21-day stale expiry
+  // never fired either, and neither did anything else. 117 of 196 production
+  // requests are `expired`; these are the ones that never even got that far.
+  const { service, telegram, claims, sends, cancels } = loadService({
+    due: [dueRow({ group_active: false })],
+  });
   const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
   assert.equal(res.sent, 0);
-  assert.equal(claims.length, 0);
+  assert.equal(claims.length, 0, 'still no reminder — the group is inactive');
   assert.equal(sends.length, 0);
+  assert.deepEqual(cancels, [1], 'but the schedule must be cleared so the request can expire');
+  assert.equal(res.standDown, 1, 'and it is counted, not silent');
+});
+
+test('standing down is idempotent — an already-cleared schedule is not re-counted', async () => {
+  const { service, telegram, cancels } = loadService({
+    due: [dueRow({ group_active: false })],
+    cancelResult: () => null, // the UPDATE matches nothing: already NULL
+  });
+  const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
+  assert.deepEqual(cancels, [1]);
+  assert.equal(res.standDown, 0, 'the count is of schedules actually cleared');
 });
 
 test('missing-field wording matches the awaiting status', async () => {
