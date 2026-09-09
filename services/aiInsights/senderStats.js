@@ -56,6 +56,9 @@ function computeSenderStats(senderBucket) {
     ack_count: 0,
     toxic_count: 0,
     intents: {},
+    // Messages the annotator never answered for. Kept as a count so a reader
+    // can see the intent distribution is over fewer messages than were sent.
+    unannotated: 0,
   };
   if (!msgs.length) return stats;
   let sSum = 0;
@@ -69,8 +72,18 @@ function computeSenderStats(senderBucket) {
     if ((Number(m.urgency) || 0) >= 2) stats.urgency_high += 1;
     if (m.is_acknowledgement) stats.ack_count += 1;
     if (m.toxic) stats.toxic_count += 1;
-    const intent = m.intent || 'no_signal';
-    stats.intents[intent] = (stats.intents[intent] || 0) + 1;
+    // AN UNANNOTATED MESSAGE IS NOT AN INTENT. It used to be mapped to
+    // `no_signal` here while the anomaly baseline's SQL grouping stored the same
+    // NULL under the key "null" — so identical distributions diverged on a
+    // naming difference and produced false anomaly cards. Both sides now leave
+    // unannotated messages out: they carry no information about intent, and
+    // letting "we never annotated this" compete as an intent category is the
+    // same fabrication in a different place.
+    if (m.intent == null) {
+      stats.unannotated += 1;
+      continue;
+    }
+    stats.intents[m.intent] = (stats.intents[m.intent] || 0) + 1;
   }
   stats.sentiment_avg = Number((sSum / msgs.length).toFixed(2));
   stats.sentiment_min = sMin === 99 ? 0 : sMin;

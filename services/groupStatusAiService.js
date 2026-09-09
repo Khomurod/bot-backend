@@ -33,10 +33,21 @@ async function runClassificationRun() {
   const classifications = await classifyDriverGroups(groups, batchSize);
 
   let updated = 0;
+  let unresolved = 0;
   for (const group of groups) {
     const result = classifications.get(group.id);
     if (!result) continue;
-    const nextActive = !!result.active;
+
+    // AMBIGUITY MEANS NO CHANGE. `!!result.active` turned "I cannot tell" into
+    // `false` and wrote it to `groups.active` — an unreadable chat title marking
+    // a working driver terminated. A model may answer "active" or "inactive";
+    // a third answer exists and it is not a synonym for either.
+    if (result.active !== true && result.active !== false) {
+      unresolved += 1;
+      continue;
+    }
+
+    const nextActive = result.active;
     if (group.active === nextActive && group.status_source === 'ai') {
       continue;
     }
@@ -45,9 +56,12 @@ async function runClassificationRun() {
   }
 
   console.log(
-    `[GROUP-STATUS-AI] Run complete: ${updated}/${groups.length} groups updated`
+    `[GROUP-STATUS-AI] Run complete: ${updated}/${groups.length} groups updated, `
+    + `${unresolved} left unchanged (no confident classification)`
   );
-  return { updated, skipped: groups.length - updated, total: groups.length };
+  return {
+    updated, unresolved, skipped: groups.length - updated, total: groups.length,
+  };
 }
 
 async function checkAndRunScheduled(force = false) {

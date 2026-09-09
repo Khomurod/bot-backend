@@ -133,6 +133,13 @@ function jsDivergence(p, q) {
 
 async function detectAnomalies(currentBuckets, daysBack) {
   const baselineDays = Math.max(SILENT_BASELINE_DAYS, daysBack * 4);
+  // `a.intent IS NOT NULL` — an unannotated message is not an intent, and it
+  // must be excluded HERE as well as in `computeSenderStats`, or the same
+  // message lands in a different bucket in each distribution ("null" from a SQL
+  // grouping, `no_signal` in JS) and identical behaviour reads as a maximal
+  // Jensen-Shannon divergence. `baseTotal >= 8` below is then a threshold of
+  // eight ANNOTATED baseline messages, which is the number it was always meant
+  // to be.
   const baseline = await db.query(
     `SELECT cl.group_id, cl.telegram_user_id, a.intent, COUNT(*)::INT AS c
        FROM chat_logs cl
@@ -140,6 +147,7 @@ async function detectAnomalies(currentBuckets, daysBack) {
       WHERE cl.created_at >= NOW() - ($1 || ' days')::INTERVAL
         AND cl.created_at <  NOW() - ($2 || ' days')::INTERVAL
         AND cl.telegram_user_id IS NOT NULL
+        AND a.intent IS NOT NULL
       GROUP BY cl.group_id, cl.telegram_user_id, a.intent`,
     [baselineDays, daysBack]
   );
@@ -158,6 +166,12 @@ async function detectAnomalies(currentBuckets, daysBack) {
     if (!baseCounts) continue;
     const baseTotal = Object.values(baseCounts).reduce((a, v) => a + v, 0);
     if (baseTotal < 8) continue;
+    // Nothing annotated in the current window is not a change in behaviour, it
+    // is an absence of evidence — and comparing an empty distribution against a
+    // real one scores 0.5, comfortably over the 0.3 threshold. That would turn
+    // "the annotator was down" into an anomaly card about the driver.
+    const currentTotal = Object.values(b.stats.intents).reduce((a, v) => a + v, 0);
+    if (currentTotal === 0) continue;
     const jsd = jsDivergence(
       intentDistribution(b.stats.intents),
       intentDistribution(baseCounts)

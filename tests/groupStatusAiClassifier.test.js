@@ -44,12 +44,19 @@ test('classifyGroupHeuristic marks INACTIVE titles inactive', () => {
   assert.equal(result.reason, 'heuristic');
 });
 
-test('classifyGroupHeuristic keeps active driver titles active', () => {
+test('classifyGroupHeuristic says NOTHING about a title with no status marker', () => {
+  // This used to assert `true`, and that was the bug facing the other way. A
+  // title that does not say INACTIVE is the ABSENCE of evidence, not evidence
+  // that somebody still works here — and returning `true` for it let a scan
+  // that found nothing at all flip a driver an operator had marked inactive
+  // back to active. `null` means no change; a real disagreement between
+  // `groups.active` and `driver_profiles.status` is already a Stage 2 finding
+  // for a human, which is where a decision like that belongs.
   const result = classifyGroupHeuristic({
     id: 6,
     group_name: 'WENZE UNIT # 01 JANE DOE ( COMPANY DRIVER )',
   });
-  assert.equal(result.active, true);
+  assert.equal(result.active, null);
 });
 
 test('upsertGroup ON CONFLICT does not force active = TRUE', () => {

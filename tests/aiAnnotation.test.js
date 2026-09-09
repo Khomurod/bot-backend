@@ -38,7 +38,7 @@ test('normalizeAnnotation coerces and enforces whitelists', () => {
     id: 7,
     role: 'boss', // invalid -> unknown
     role_confidence: 500, // clamp
-    intent: 'weather', // invalid -> no_signal
+    intent: 'weather', // invalid -> null (unannotated), NOT no_signal
     sentiment: 9, // clamp to 2
     urgency: '2',
     is_acknowledgement: 1,
@@ -49,7 +49,12 @@ test('normalizeAnnotation coerces and enforces whitelists', () => {
   assert.equal(n.id, 7);
   assert.equal(n.role, 'unknown');
   assert.equal(n.role_confidence, 100);
-  assert.equal(n.intent, 'no_signal');
+  // 'unknown' is a real value in the ROLE vocabulary and means "I do not know",
+  // so coercing to it is honest. `no_signal` means "I looked and there was
+  // nothing there" — a different assertion from the one a model made when it
+  // claimed something outside the enum. NULL is what the column has always
+  // allowed for "we do not have an intent for this".
+  assert.equal(n.intent, null);
   assert.equal(n.sentiment, 2);
   assert.equal(n.urgency, 2);
   assert.equal(n.is_acknowledgement, true);
@@ -76,7 +81,7 @@ test('parseAnnotationBatchResponse aligns results to input order and fills gaps'
     { id: 11, message_text: 'ok copy', group_name: 'G', sender_name: 'B', created_at: new Date() },
     { id: 12, message_text: 'quitting next week', group_name: 'G', sender_name: 'C', created_at: new Date() },
   ];
-  // Model skipped id 11 — must be filled with no_signal defaults.
+  // Model skipped id 11 — it must be recorded as UNANNOTATED, not filled in.
   const raw = JSON.stringify([
     { id: 10, role: 'driver', role_confidence: 80, intent: 'eta', sentiment: 0, urgency: 0, is_acknowledgement: false, toxic: false, language: 'en', entities: {} },
     { id: 12, role: 'driver', role_confidence: 90, intent: 'quit_signal', sentiment: -2, urgency: 1, is_acknowledgement: false, toxic: false, language: 'en', entities: {} },
@@ -86,7 +91,10 @@ test('parseAnnotationBatchResponse aligns results to input order and fills gaps'
   assert.equal(out[0].id, 10);
   assert.equal(out[0].intent, 'eta');
   assert.equal(out[1].id, 11);
-  assert.equal(out[1].intent, 'no_signal');
+  assert.equal(out[1].intent, null,
+    'a gap the model never mentioned must not be indistinguishable from one it judged');
+  assert.equal(out[1].role, null, 'and it casts no vote in the role consensus');
+  assert.equal(out[1].unannotated, true);
   assert.equal(out[2].id, 12);
   assert.equal(out[2].intent, 'quit_signal');
 });
@@ -95,8 +103,9 @@ test('parseAnnotationBatchResponse survives a mangled response', () => {
   const batch = [{ id: 1, message_text: 'x', group_name: 'G', sender_name: 'A', created_at: new Date() }];
   const out = parseAnnotationBatchResponse('absolute garbage no json here', batch);
   assert.equal(out.length, 1);
-  assert.equal(out[0].intent, 'no_signal');
-  assert.equal(out[0].role, 'unknown');
+  assert.equal(out[0].intent, null, 'nothing was answered, so nothing is claimed');
+  assert.equal(out[0].role, null);
+  assert.equal(out[0].unannotated, true);
 });
 
 test('buildAnnotationPrompt enumerates fields and intents', () => {

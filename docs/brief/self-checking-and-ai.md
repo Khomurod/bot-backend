@@ -159,6 +159,35 @@ feature it belongs to.
   one, so a typo never becomes a silently dead provider. A rejected key answers
   200 with `ok:false` and a failure *class* — "the key is wrong" and "the free
   tier is spent" look identical in a raw error string.
+- **AMBIGUITY MEANS NO CHANGE.** `status_source = 'ai'` is on 168 of 209 groups:
+  a model reads a Telegram chat TITLE and the answer is written to
+  `driver_profiles.status` and `groups.active`. The system prompt used to say
+  *"If unsure, set active to false"*, and `row.active === true` collapsed
+  "false", "unsure" and an omitted field into one answer — so an unreadable
+  title could mark a working driver terminated. The classifier now has a third
+  answer (`null`), and the two writers coerced it in **opposite** directions:
+  `!!null` was `false` and `active === false ? 'inactive' : 'active'` made null
+  mean *active*, so one ambiguous answer could terminate one driver and
+  reinstate another in the same run. Both now leave the status alone and count
+  it. The deterministic fallback follows the same rule: a status marker in a
+  title IS evidence somebody left; its absence is not evidence they are still
+  here.
+- **A gap in a model's answer is recorded as a gap.** The annotator filled
+  messages the model never mentioned with `intent: 'no_signal'`, `role:
+  'unknown'`, confidence 0 — indistinguishable downstream from an annotation it
+  actually produced. `intent` and `role_guess` are nullable and now stay NULL,
+  which is also better arithmetic: the role-consensus query's `MODE() WITHIN
+  GROUP` ignores NULLs, so an unanswered message no longer casts an 'unknown'
+  vote against real ones, and `AVG(role_confidence)` no longer averages in zeros
+  for messages nothing ever judged. An **explicit** `no_signal` is a real answer
+  and is kept. Both sides of the anomaly comparison exclude unannotated
+  messages: `computeSenderStats` mapped a NULL to `no_signal` while the baseline
+  query's SQL grouping stored the same NULL under the key `"null"`, so identical
+  behaviour scored a maximal Jensen-Shannon divergence and produced **false
+  anomaly cards** — a change made to stop fabricating, fabricating somewhere
+  else. A current window with nothing annotated is skipped rather than compared,
+  since an empty distribution scores 0.5 against a real one and would turn "the
+  annotator was down" into a card about the driver.
 - Schema hard lines: a cooldown without a reason is refused, and
   `ai_capabilities.may_auto_apply` is `CHECK`ed to FALSE — AI may rank and
   explain a finding, never author or apply a correction. The call log holds **no

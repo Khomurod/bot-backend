@@ -170,8 +170,14 @@ function normalizeAnnotation(raw, fallbackId) {
   const id = Number.isFinite(Number(raw.id)) ? Number(raw.id) : fallbackId;
   if (!Number.isFinite(id)) return null;
 
+  // 'unknown' is a real value in the ROLE vocabulary and it means "I do not
+  // know", so coercing to it is honest. `no_signal` is not the same kind of
+  // word: it means "I looked and there was nothing there". Relabelling a claim
+  // the model actually made — one outside the enum — as `no_signal` records a
+  // different assertion than the one it made, and nothing downstream can tell.
+  // NULL is what `chat_message_annotations.intent` has always allowed for that.
   const role = VALID_ROLES.includes(String(raw.role)) ? String(raw.role) : 'unknown';
-  const intent = VALID_INTENTS.includes(String(raw.intent)) ? String(raw.intent) : 'no_signal';
+  const intent = VALID_INTENTS.includes(String(raw.intent)) ? String(raw.intent) : null;
   const language = VALID_LANGUAGES.includes(String(raw.language)) ? String(raw.language) : 'other';
 
   let entities = raw.entities;
@@ -214,21 +220,34 @@ function parseAnnotationBatchResponse(responseText, batch) {
     const norm = normalizeAnnotation(row, fallbackId);
     if (norm) byId.set(norm.id, norm);
   });
-  // Ensure we preserve input order and fill gaps with "no_signal" defaults.
+  // Input order is preserved, and A GAP IS RECORDED AS A GAP.
+  //
+  // These used to be filled with a complete, plausible annotation — `intent:
+  // 'no_signal'`, `role: 'unknown'`, confidence 0 — indistinguishable
+  // downstream from one the model actually produced. "The model looked and saw
+  // nothing" and "the model never mentioned this message" became the same
+  // recorded fact.
+  //
+  // NULL is not only honest, it is better arithmetic: `MODE() WITHIN GROUP
+  // (ORDER BY role_guess)` in the role-consensus query IGNORES nulls, so an
+  // unanswered message no longer casts an 'unknown' vote that can outweigh real
+  // ones, and `AVG(role_confidence)` no longer averages in zeros for messages
+  // nothing ever judged.
   return batch.map((input) => {
     const found = byId.get(input.id);
     if (found) return found;
     return {
       id: input.id,
-      role: 'unknown',
-      role_confidence: 0,
-      intent: 'no_signal',
-      sentiment: 0,
-      urgency: 0,
+      role: null,
+      role_confidence: null,
+      intent: null,
+      sentiment: null,
+      urgency: null,
       is_acknowledgement: false,
       toxic: false,
-      language: 'other',
+      language: null,
       entities: null,
+      unannotated: true,
     };
   });
 }

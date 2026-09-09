@@ -88,9 +88,19 @@ async function runUnifiedDriverGroupAiSync({ apply = true } = {}) {
     };
     const classification = classificationMap.get(Number(profile.group_id)) || null;
     const { patch, changedFields } = mergeIdentityPatch(profile, parsed);
-    const nextStatus = classification?.active === false ? 'inactive' : 'active';
+
+    // AMBIGUITY MEANS NO CHANGE, and here it mattered in the opposite direction
+    // from `groupStatusAiService`: `active === false ? 'inactive' : 'active'`
+    // made "I cannot tell" — and a missing classification entirely — mean
+    // ACTIVE, so a driver an operator had marked inactive was reactivated by a
+    // scan that had no opinion about them at all. One ambiguous answer could
+    // terminate one driver and reinstate another in the same run.
+    const resolved = classification && (classification.active === true || classification.active === false)
+      ? classification.active : null;
+    const currentStatus = profile.status || 'active';
+    const nextStatus = resolved === null ? currentStatus : (resolved ? 'active' : 'inactive');
     const statusLocked = profile.status_source === 'manual';
-    const statusChanged = !statusLocked && (profile.status || 'active') !== nextStatus;
+    const statusChanged = !statusLocked && currentStatus !== nextStatus;
     const reviewChanged = (profile.needs_review === true) !== (patch.needs_review === true)
       || (profile.backfill_confidence ?? null) !== (patch.backfill_confidence ?? null);
 
@@ -118,11 +128,15 @@ async function runUnifiedDriverGroupAiSync({ apply = true } = {}) {
         secondary_last_name: patch.secondary_last_name ?? profile.secondary_last_name ?? null,
         driver_type: patch.driver_type ?? profile.driver_type ?? 'owner',
         unit_number: patch.unit_number ?? profile.unit_number ?? null,
-        status: statusLocked ? (profile.status || 'active') : nextStatus,
+        status: statusLocked ? currentStatus : nextStatus,
       },
       changed_fields: [...changedFields, ...(statusChanged ? ['status'] : [])],
       parsed_source: parsed.source,
-      status_source: statusLocked ? 'manual_locked' : (classification ? 'ai' : 'unchanged'),
+      status_source: (() => {
+        if (statusLocked) return 'manual_locked';
+        if (resolved !== null) return 'ai';
+        return classification ? 'ai_unresolved' : 'unchanged';
+      })(),
       needs_review: patch.needs_review === true,
       backfill_confidence: patch.backfill_confidence,
       changed: changedFields.length > 0 || statusChanged || reviewChanged,
