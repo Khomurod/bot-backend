@@ -180,7 +180,14 @@ feature it belongs to.
   GROUP` ignores NULLs, so an unanswered message no longer casts an 'unknown'
   vote against real ones, and `AVG(role_confidence)` no longer averages in zeros
   for messages nothing ever judged. An **explicit** `no_signal` is a real answer
-  and is kept.
+  and is kept. Both sides of the anomaly comparison exclude unannotated
+  messages: `computeSenderStats` mapped a NULL to `no_signal` while the baseline
+  query's SQL grouping stored the same NULL under the key `"null"`, so identical
+  behaviour scored a maximal Jensen-Shannon divergence and produced **false
+  anomaly cards** — a change made to stop fabricating, fabricating somewhere
+  else. A current window with nothing annotated is skipped rather than compared,
+  since an empty distribution scores 0.5 against a real one and would turn "the
+  annotator was down" into a card about the driver.
 - Schema hard lines: a cooldown without a reason is refused, and
   `ai_capabilities.may_auto_apply` is `CHECK`ed to FALSE — AI may rank and
   explain a finding, never author or apply a correction. The call log holds **no
