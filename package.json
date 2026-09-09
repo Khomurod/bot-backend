@@ -30,6 +30,7 @@
     "upload-safety-music": "node scripts/upload-safety-music.js",
     "backfill-driver-profiles": "node scripts/backfill-driver-profiles.js",
     "backfill-driver-people": "node scripts/backfill-driver-people.js",
+    "operations:preview": "node scripts/operations-preview.js",
     "migrate-media": "node scripts/migrate-media.js",
     "migrate-multi-media": "node scripts/migrate-multi-media.js",
     "discover-bitrix-fields": "node scripts/discover-bitrix-lead-fields.js"

@@ -16,7 +16,7 @@
  * never be mistaken for "the problem went away" and silently clear the board.
  */
 const defaultDb = require('../../database/pool');
-const findingsStore = require('../../database/operationalFindings');
+const defaultFindingsStore = require('../../database/operationalFindings');
 const identity = require('./checks/identity');
 const homeTime = require('./checks/homeTime');
 
@@ -82,7 +82,14 @@ async function loadSnapshot(db = defaultDb) {
  * @param {boolean} [options.apply=true]  false = compute and return, write nothing
  * @param {object}  [options.db]          injected like every other data dependency
  */
-async function runConsistencySweep({ apply = true, db = defaultDb } = {}) {
+/**
+ * @param {object} [options]
+ * @param {object} [options.store]  the findings data layer — injected alongside
+ *   `db` for the same reason `runAutoCorrections` takes one: it holds its own
+ *   pool binding, so passing a `db` without a `store` silently splits a sweep
+ *   across two databases. Untestable against a throwaway database without it.
+ */
+async function runConsistencySweep({ apply = true, db = defaultDb, store: findingsStore = defaultFindingsStore } = {}) {
   const snapshot = await loadSnapshot(db);
 
   const findings = [];

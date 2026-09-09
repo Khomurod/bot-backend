@@ -154,6 +154,24 @@ marks the stay closed.
   the older one is unreachable by normal operation. That is why class-B evidence
   exists in the consistency check, and why the ~65 already-open cycles need the
   Stage 3 repair rather than just this fix.
+- **The ~65 already-open cycles are repaired through the Stage 3 registry**, not
+  a script: audited, revertible per row, and payout-neutral (`bonus_usd` is
+  computed at insert and never recomputed). `tests/homeTimeRepairPg.test.js`
+  seeds the exact production shape — 38 class A, 27 class B, 9 class C, 0 class
+  N — against a real PostgreSQL and asserts the repair closes **65 and only 65**.
+- **The default `max_auto_per_run` of 50 silently blocks a 65-row repair.** A
+  capped check reports `eligible: 0`, which is indistinguishable from "found
+  nothing" — so raising the cap is part of the repair, not an afterthought, and
+  `npm run operations:preview` prints `capped` loudly with the fix. The cap that
+  unblocks a batch is exactly its size (`planForCheck` refuses on `wanted > cap`)
+  and the column is `CHECK (max_auto_per_run BETWEEN 1 AND 500)`, so a batch over
+  500 says plainly that no cap can unblock it rather than printing an
+  instruction that leaves the operator capped anyway.
+- `operations:preview` is **dry unless `--apply`, and that includes `--sweep`** —
+  a sweep files findings and resolves cleared ones, which is a write to the table
+  the Needs Attention page reads. An `--apply` run **exits non-zero** when the cap
+  blocked it, a correction failed, or a check module threw, so a runbook cannot
+  record a no-op repair as a success.
 - Guarded by `tests/homeTimeCycleInvariant.test.js`, which asserts the
   **negative**: after a `home → road` change by any route, no open cycle may
   remain. Nothing asserted that before, which is why it broke.
