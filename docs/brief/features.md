@@ -240,6 +240,46 @@
   - The History tab is the **first reader `admin_audit_log` has ever had**. A
     reverted correction is shown struck through, not removed.
   - Guarded by `admin/src/pages/operations/{labels,OperationsPage}.test.jsx`.
+### AI routing and governance (Admin → Settings → AI)
+
+- **AI is an accelerator, never a dependency.** Twelve consumers already degrade
+  to deterministic logic. The master switch being OFF is a supported, tested
+  mode — the whole suite passes with every provider disabled — which is the
+  enforceable form of that rule.
+- **`services/ai/` is ~500 lines and adds ZERO runtime dependencies.** Every
+  mechanism either already existed in `groqClient` (model chains, retry-after
+  parsing, capped waits, abort timeouts) or is a timestamp comparison. ModelMix
+  and ai-fallback were read for their proven shapes; neither is installed.
+- **`lib/ai/classify.js` fixes a live defect.** `groqClient.isAuthOrConfigError`
+  treats 401/403 as fatal and **aborts the whole chain** — defensible with one
+  provider, plainly wrong with several, where it turns one expired credential
+  into a total AI outage. Four classes, and the order they are tested in is the
+  argument: quota language is checked BEFORE the transient status set, because a
+  spent free tier arrives as a 429 and 429 is in that set. A 400/404/422 is OUR
+  request being wrong, so it moves on **without cooling anyone** — one stale
+  model name must not disable a working provider.
+- **`lib/ai/cooldown.js` is the circuit breaker, and it is a timestamp.** A
+  rejected credential cools *indefinitely* — a sentinel, not a long timer, since
+  no elapsed time makes an expired key work — and clears the moment an
+  administrator saves a new one.
+- **Two adapters cover everything.** `openai_chat` serves Groq, Cerebras,
+  Mistral, OpenRouter and Together, so adding one is a `base_url` and a key in a
+  row. Gemini keeps its own adapter and **gains the timeout it has never had**:
+  the existing client passes no signal, so a hung connection hangs the caller
+  forever, reachable from interactive paths.
+- **`enabled` and `cooled_until` are never written by the same code.** `enabled`
+  is a person's decision; the cooldown is the system's temporary opinion. The
+  router writes only the latter.
+- **`/test` proves the CANDIDATE key from the request body**, not the stored
+  one, so a typo never becomes a silently dead provider. A rejected key answers
+  200 with `ok:false` and a failure *class* — "the key is wrong" and "the free
+  tier is spent" look identical in a raw error string.
+- Schema hard lines: a cooldown without a reason is refused, and
+  `ai_capabilities.may_auto_apply` is `CHECK`ed to FALSE — AI may rank and
+  explain a finding, never author or apply a correction. The call log holds **no
+  prompts, no completions, no PII**.
+- Guarded by `tests/ai{Classify,Cooldown,Router,SettingsRoutes,GovernancePg}.test.js`.
+
 - **Revert is an undo, not an overwrite.** Each `revert` locks the target and
   restores the before-image only while every field it changed still holds what
   the correction set it to, and only for the columns that correction actually
