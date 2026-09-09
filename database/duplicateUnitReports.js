@@ -12,7 +12,7 @@ const { query } = require('./db');
 /** Active driver groups with a unit number — the set the sanity check scans. */
 async function listActiveDriverUnits() {
   const res = await query(
-    `SELECT g.id AS group_id, g.group_name, g.telegram_group_id,
+    `SELECT g.id AS group_id, g.group_name, g.telegram_group_id, g.samsara_vehicle_id,
             dp.unit_number, dp.first_name, dp.last_name
      FROM groups g
      LEFT JOIN driver_profiles dp ON dp.group_id = g.id

@@ -9,6 +9,10 @@
  *   - ambiguous_match — a duplicate unit where Samsara has several vehicles and
  *                       none clearly matches the group's driver (the serious case)
  *
+ * It is also the ONE place that resolves a group to a Samsara vehicle without
+ * guessing, so it is where `groups.samsara_vehicle_id` finally gets a writer —
+ * see `resolveVehicleLinks`.
+ *
  * The driver group's driver name is the source of truth. Findings are stored in
  * duplicate_unit_reports for admin review — this service deliberately NEVER
  * messages driver groups (no spam); the /location command surfaces ambiguity to
@@ -23,6 +27,7 @@
 const dup = require('../database/duplicateUnitReports');
 const { getEldConfig } = require('../database/eldSettings');
 const samsara = require('./samsaraLocationService');
+const groups = require('../database/groups');
 const { driverNamesMatch, extractDriverNameFromVehicleLabel } = require('../lib/drivers/driverGroupTitle');
 
 const POLL_MS = 15 * 60 * 1000;
@@ -119,6 +124,108 @@ function analyzeDuplicateUnits(rows, vehicles) {
   return reports;
 }
 
+/**
+ * Which groups can be linked to a Samsara vehicle by ID, from this same scan. PURE.
+ *
+ * `groups.samsara_vehicle_id` has been in the schema, indexed, with a reader
+ * (`getGroupBySamsaraId`) and a writer (`updateGroupSamsaraId`) — and **zero
+ * callers of the writer**, so it is NULL on all 209 rows. Every cross-system
+ * join therefore still resolves a driver by parsing a string out of a chat
+ * title. This is what starts filling it, using a resolution the scan already
+ * performs.
+ *
+ * A LINK IS ONLY WRITTEN WHEN IT IS NOT A GUESS. Four conditions, and the
+ * second and the last are the ones that matter:
+ *
+ *   the unit resolves to exactly one vehicle (`ambiguous` is false — an
+ *   ambiguous unit is already reported and must not be silently decided);
+ *
+ *   the vehicle label's driver name AGREES with the group's driver, or the
+ *   label carries no name at all. A NAME MISMATCH LINKS NOTHING: that case is
+ *   reported as `name_mismatch`, and writing the id anyway would cement the
+ *   wrong truck against a driver in the one column meant to be authoritative;
+ *
+ *   the vehicle has an id to store;
+ *
+ *   and no other group in the same scan resolved to that same vehicle (see the
+ *   comment on the filter below).
+ *
+ * Separate from `analyzeDuplicateUnits` rather than folded into it, so that
+ * function keeps its single responsibility and its existing tests.
+ *
+ * @returns {Array<{groupId:number, vehicleId:string, previousVehicleId:string|null,
+ *                  unitNumber:string, reason:string}>}
+ */
+function resolveVehicleLinks(rows, vehicles) {
+  if (!Array.isArray(vehicles) || !vehicles.length) return [];
+
+  const candidates = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const unit = String(row?.unit_number || '').trim();
+    if (!unit) continue;
+    const driver = groupDriverName(row);
+    const selection = samsara.selectVehicleByUnit(vehicles, unit, { driverNameHint: driver });
+    if (selection.ambiguous || !selection.vehicle) continue;
+
+    const vehicleId = selection.vehicle.id ?? selection.vehicle.vehicleId ?? null;
+    if (vehicleId == null || vehicleId === '') continue;
+
+    const providerDriver = extractDriverNameFromVehicleLabel(selection.vehicle.name, unit);
+    if (driver && providerDriver && !driverNamesMatch(driver, providerDriver)) continue;
+
+    const previous = row.samsara_vehicle_id == null ? null : String(row.samsara_vehicle_id);
+    candidates.push({
+      groupId: row.group_id,
+      vehicleId: String(vehicleId),
+      previousVehicleId: previous,
+      unitNumber: unit,
+      reason: selection.reason,
+    });
+  }
+
+  // FOURTH CONDITION, and the one that only exists once several groups are
+  // considered together: the link must be EXCLUSIVE in both directions.
+  //
+  // Two active groups sharing unit 001 can both resolve to the same vehicle —
+  // `unique_unit` fires per group, and neither call knows about the other. That
+  // is the duplicate-unit problem wearing a different hat, and `getGroupBySamsaraId`
+  // would then answer it with `LIMIT 1`: an arbitrary driver, silently. So a
+  // vehicle claimed by more than one group links to none of them, and the
+  // existing `duplicate_unit` report is left to say why.
+  const groupsPerVehicle = new Map();
+  const vehiclesPerGroup = new Map();
+  for (const c of candidates) {
+    groupsPerVehicle.set(c.vehicleId, (groupsPerVehicle.get(c.vehicleId) || 0) + 1);
+    vehiclesPerGroup.set(c.groupId, (vehiclesPerGroup.get(c.groupId) || 0) + 1);
+  }
+
+  return candidates.filter((c) => groupsPerVehicle.get(c.vehicleId) === 1
+    && vehiclesPerGroup.get(c.groupId) === 1
+    // Already linked to this vehicle — writing it again every 15 minutes would
+    // be 209 pointless UPDATEs an hour.
+    && c.previousVehicleId !== c.vehicleId);
+}
+
+/**
+ * Write the links this scan resolved. Failures are per-row and never abort the
+ * scan: an unlinked group is the status quo, and the reports are the point.
+ */
+async function writeVehicleLinks(links) {
+  let linked = 0;
+  let relinked = 0;
+  for (const link of links) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await groups.updateGroupSamsaraId(link.groupId, link.vehicleId);
+      if (link.previousVehicleId) relinked += 1;
+      else linked += 1;
+    } catch (err) {
+      console.error(`[DUP-UNIT] Failed to link group ${link.groupId} to a Samsara vehicle:`, err.message);
+    }
+  }
+  return { linked, relinked };
+}
+
 /** One full scan. Never messages driver groups — records reports only. */
 async function runDuplicateUnitCheck() {
   const rows = await dup.listActiveDriverUnits();
@@ -155,6 +262,10 @@ async function runDuplicateUnitCheck() {
     : ['duplicate_unit'];
   const resolved = await dup.resolveStaleReports(keepIds, evaluatedTypes);
 
+  const { linked, relinked } = vehicles
+    ? await writeVehicleLinks(resolveVehicleLinks(rows, vehicles))
+    : { linked: 0, relinked: 0 };
+
   const summary = {
     scanned: rows.length,
     checkedProvider: Boolean(vehicles),
@@ -162,11 +273,14 @@ async function runDuplicateUnitCheck() {
     nameMismatches: reports.filter((r) => r.reportType === 'name_mismatch').length,
     ambiguous: reports.filter((r) => r.reportType === 'ambiguous_match').length,
     resolved,
+    linked,
+    relinked,
   };
-  if (reports.length || resolved) {
+  if (reports.length || resolved || linked || relinked) {
     console.log(`[DUP-UNIT] Scan: ${summary.scanned} units, `
       + `${summary.duplicateUnits} duplicate, ${summary.nameMismatches} name-mismatch, `
-      + `${summary.ambiguous} ambiguous; ${resolved} cleared.`);
+      + `${summary.ambiguous} ambiguous; ${resolved} cleared; `
+      + `${linked} vehicle links written, ${relinked} re-pointed.`);
   }
   return summary;
 }
@@ -202,6 +316,8 @@ function stopDuplicateUnitCheckService() {
 }
 
 module.exports = {
+  resolveVehicleLinks,
+  writeVehicleLinks,
   analyzeDuplicateUnits,
   runDuplicateUnitCheck,
   startDuplicateUnitCheckService,

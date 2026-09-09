@@ -3,6 +3,7 @@
  * Default filter is "active" so behavior matches legacy getAllDriverGroups paths.
  */
 const db = require('../database/db');
+const { inferDriverType } = require('../lib/drivers/driverProfileParse');
 
 function normalizeActiveFilter(body) {
   const f = body?.target_active_filter;
@@ -37,7 +38,12 @@ async function resolveBroadcastTargetGroups(body) {
     const source = filter === 'active'
       ? await db.getAllDriverGroups()
       : await db.getDriverGroupsByActiveFilter(filter);
-    return source.filter((g) => g.group_name && g.group_name.includes('(COMPANY DRIVER)'));
+    // `inferDriverType`, not a literal substring. The literal was
+    // '(COMPANY DRIVER)' — with the closing bracket — so every group titled
+    // '(COMPANY DRIVERS)' was silently excluded from every company-driver
+    // broadcast. `/company\s+drivers?/i` is the test the rest of the
+    // application already uses, and it handles both.
+    return source.filter((g) => inferDriverType(g.group_name) === 'company_driver');
   }
 
   if (tt === 'employee') {
