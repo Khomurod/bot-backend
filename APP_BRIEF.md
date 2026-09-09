@@ -169,6 +169,7 @@ unchanged, so a reference to "§7" still means the same section.
 | Section | Read it when |
 |---|---|
 | [§4. Features and workflows](docs/brief/features.md) | You are touching any feature: driver comms, dispatch, payroll-adjacent flows, home time, fuel, recruiting, the presenter remote |
+| [§4a. The system checking itself, and the AI that helps](docs/brief/self-checking-and-ai.md) | Operational findings, tiered corrections, the AI routing layer, or the provider terms watcher |
 | [§5. Permissions and access rules](docs/brief/permissions.md) | Auth, roles, permissions, or any route that is *not* behind the admin JWT |
 | [§6. Integrations and configuration](docs/brief/integrations.md) | Telegram, Datatruck, Samsara/ELD, Google Maps, Meta, RingCentral, Bitrix, the AI providers, or where a setting lives |
 | [§7. Automatic and background behavior](docs/brief/background-jobs.md) | Anything on a timer, the database transfer budget, browser polling, or an idempotency ledger |
