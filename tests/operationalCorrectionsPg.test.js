@@ -13,6 +13,9 @@ const { createPgHarness, skipWithoutPg, allMigrationsSql } = require('./helpers/
 
 const ALL_MIGRATIONS = allMigrationsSql();
 
+/** The observed road transition every fixture below closes its cycle with. */
+const RETURNED_AT = '2026-08-31T00:00:00Z';
+
 function loadModules(harness) {
   const db = { pool: harness.pool, query: harness.query };
   const store = harness.loadDataLayer(['operationalFindings']).operationalFindings;
@@ -49,12 +52,25 @@ async function seedGroup(harness, { telegramId = -9001, name = 'WENZE UNIT # 27 
   return groupId;
 }
 
-async function seedOpenCycle(harness, groupId) {
+/**
+ * An open cycle WITH its class-A evidence: the group is on the road again, since
+ * a moment after the driver got home. The evidence is part of the fixture
+ * because the action re-derives its answer from it at apply time — a cycle with
+ * no recorded return moment is one this registry must refuse to close, and
+ * `refuses a cycle whose evidence has gone` covers that case on purpose.
+ */
+async function seedOpenCycle(harness, groupId, { stateSince = RETURNED_AT } = {}) {
   const r = await harness.query(
     `INSERT INTO driver_road_history
        (group_id, road_started_at, home_arrived_at, days_on_road, bonus_usd, return_to_road_at)
-     VALUES ($1,'2026-07-08','2026-08-25',48,100,NULL) RETURNING id`,
+     VALUES ($1,'2026-07-08T00:00:00Z','2026-08-25T00:00:00Z',48,100,NULL) RETURNING id`,
     [groupId]
+  );
+  await harness.query(
+    `INSERT INTO driver_home_status (group_id, state, state_since, last_status_at)
+     VALUES ($1,'road',$2,$2)
+     ON CONFLICT (group_id) DO UPDATE SET state = 'road', state_since = EXCLUDED.state_since`,
+    [groupId, stateSince]
   );
   return r.rows[0].id;
 }
@@ -93,7 +109,9 @@ test('closing a cycle writes the correction, the audit row and nothing else', { 
   assert.equal(Number(cycle.bonus_usd), 100, 'closing a cycle must be payout-neutral');
 
   assert.equal(correction.initiator, 'system');
-  assert.deepEqual(correction.old_values, { return_to_road_at: null, home_days: null });
+  assert.deepEqual(correction.old_values, {
+    return_to_road_at: null, home_days: null, linked_request_id: null,
+  });
 
   const audit = await harness.query(
     "SELECT * FROM admin_audit_log WHERE action = 'operational_correction.home_time.close_cycle'"

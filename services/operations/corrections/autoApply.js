@@ -20,13 +20,20 @@
  *   own behaviour — which is the outcome that would have caught this class of
  *   mistake before it reached a fleet.
  *
+ * THE CAP IS DECIDED BY A COUNT, NOT BY A PAGE OF ROWS. Asking for the findings
+ * and measuring what came back cannot tell "exactly the cap" from "the cap and
+ * an unknown number more", so at the top of the range — cap 500, 501 eligible —
+ * the guardrail would have read a truncated page as compliant and applied 500
+ * corrections instead of refusing. The batch counts first and lists second.
+ *
  * A stale proposal is skipped, never forced: if a human fixed the row by hand in
- * the minutes since the sweep, the action raises StaleCorrectionError and it is
- * counted as skipped. Being second to a person is a success, not an error.
+ * the minutes since the sweep, or edited the evidence it was built from, the
+ * action raises StaleCorrectionError and it is counted as skipped. Being second
+ * to a person is a success, not an error.
  */
 const defaultDb = require('../../../database/pool');
 const defaultStore = require('../../../database/operationalFindings');
-const { actionForCheck } = require('./actions');
+const { actionForCheck, CHECK_TO_ACTION } = require('./actions');
 const { applyCorrection, StaleCorrectionError } = require('./apply');
 
 const DEFAULT_CAP = 50;
@@ -43,8 +50,9 @@ async function loadCheckSettings(db = defaultDb) {
  * Turn a finding into the payload its action needs.
  *
  * Reads ONLY the finding's own `proposedChange`, which the pure check built from
- * recorded evidence. Nothing is recomputed here — if the proposal is wrong, the
- * check is wrong, and that is a fixable place to be wrong.
+ * recorded evidence. Nothing is recomputed here — the action itself re-derives
+ * the answer from the live rows before it writes anything, which is where a
+ * proposal that has gone stale is caught.
  */
 function payloadFor(finding) {
   const change = finding.proposedChange || {};
@@ -62,6 +70,43 @@ function payloadFor(finding) {
 }
 
 /**
+ * Everything the batch would do for one check, or why it will do nothing.
+ *
+ * Driven by the ACTION REGISTRY rather than by the settings table, so a check
+ * nobody has an opinion about still gets counted as "waiting for permission"
+ * instead of vanishing from the report.
+ */
+async function planForCheck(checkKey, { settings, store }) {
+  const action = actionForCheck(checkKey);
+  const setting = settings.get(checkKey);
+  const cap = (setting && setting.max_auto_per_run) || DEFAULT_CAP;
+
+  if (!setting || setting.auto_apply_enabled !== true) {
+    return { disabled: await store.countFindings({ status: 'open', checkKey, tier: 'auto' }) };
+  }
+
+  // Count, then list — see the header. `wanted` is the real number, so the
+  // finding a capped check files about itself says something true.
+  const wanted = await store.countFindings({ status: 'open', checkKey, tier: 'auto' });
+  if (wanted > cap) return { capped: { checkKey, wanted, cap } };
+
+  const found = await store.listFindings({
+    status: 'open', checkKey, tier: 'auto', limit: cap + 1,
+  });
+  const items = [];
+  let noPayload = 0;
+  for (const finding of found) {
+    const payload = payloadFor(finding);
+    if (!payload) { noPayload += 1; continue; }
+    items.push({ finding, action, payload });
+  }
+  // Re-assert against the page itself: a finding can appear between the count
+  // and the list, and the cap is not a suggestion.
+  if (items.length > cap) return { capped: { checkKey, wanted: items.length, cap }, noPayload };
+  return { items, noPayload };
+}
+
+/**
  * @param {object} [options]
  * @param {boolean} [options.apply=false]  false = dry run, write nothing
  * @param {object}  [options.db]     { pool, query }
@@ -71,42 +116,27 @@ function payloadFor(finding) {
  */
 async function runAutoCorrections({ apply = false, db = defaultDb, store = defaultStore } = {}) {
   const settings = await loadCheckSettings(db);
-  const open = await store.listFindings({ status: 'open', limit: 500 });
-
-  const eligible = [];
-  const skipped = { notAuto: 0, noAction: 0, disabled: 0, noPayload: 0 };
-
-  for (const finding of open) {
-    if (finding.tier !== 'auto') { skipped.notAuto += 1; continue; }
-    const action = actionForCheck(finding.checkKey);
-    if (!action) { skipped.noAction += 1; continue; }
-    const setting = settings.get(finding.checkKey);
-    if (!setting || setting.auto_apply_enabled !== true) { skipped.disabled += 1; continue; }
-    const payload = payloadFor(finding);
-    if (!payload) { skipped.noPayload += 1; continue; }
-    eligible.push({ finding, action, payload, cap: setting.max_auto_per_run || DEFAULT_CAP });
-  }
-
-  // Group by check so the cap is per check, not shared across all of them.
-  const byCheck = new Map();
-  for (const item of eligible) {
-    if (!byCheck.has(item.finding.checkKey)) byCheck.set(item.finding.checkKey, []);
-    byCheck.get(item.finding.checkKey).push(item);
-  }
 
   const plan = [];
   const capped = [];
-  for (const [checkKey, items] of byCheck) {
-    const cap = items[0].cap;
-    if (items.length > cap) {
-      capped.push({ checkKey, wanted: items.length, cap });
-      continue; // change NOTHING for this check — see the header.
-    }
-    plan.push(...items);
+  const skipped = { disabled: 0, noAction: 0, noPayload: 0 };
+
+  for (const checkKey of CHECK_TO_ACTION.keys()) {
+    const result = await planForCheck(checkKey, { settings, store });
+    skipped.disabled += result.disabled || 0;
+    skipped.noPayload += result.noPayload || 0;
+    if (result.capped) capped.push(result.capped);
+    if (result.items) plan.push(...result.items);
+  }
+
+  // A settings row granting auto-apply to a check no action answers grants
+  // nothing. Worth saying out loud rather than ignoring: it is usually a typo.
+  for (const [checkKey, setting] of settings) {
+    if (setting.auto_apply_enabled === true && !actionForCheck(checkKey)) skipped.noAction += 1;
   }
 
   const summary = {
-    open: open.length,
+    open: await store.countFindings({ status: 'open' }),
     eligible: plan.length,
     skipped,
     capped,
@@ -157,7 +187,7 @@ async function runAutoCorrections({ apply = false, db = defaultDb, store = defau
       results.push({ findingId: item.finding.id, correctionId: correction.id, ok: true });
     } catch (err) {
       if (err instanceof StaleCorrectionError || err.stale) {
-        // Somebody fixed it first. That is the system working.
+        // Somebody fixed it first, or the evidence moved. That is the system working.
         summary.stale += 1;
         results.push({ findingId: item.finding.id, ok: false, stale: true, error: err.message });
         continue;
@@ -175,4 +205,6 @@ async function runAutoCorrections({ apply = false, db = defaultDb, store = defau
   return { summary, results, capped };
 }
 
-module.exports = { DEFAULT_CAP, runAutoCorrections, loadCheckSettings, payloadFor };
+module.exports = {
+  DEFAULT_CAP, runAutoCorrections, loadCheckSettings, payloadFor, planForCheck,
+};

@@ -174,12 +174,29 @@
   UPDATE of a nullable column whose previous value is captured in full. The
   `home_time.ghost_home_status` finding deliberately has **no** action, because
   retiring that row would destroy the only record of where a driver was.
-- Each `apply` re-reads its target `FOR UPDATE` and **re-checks its precondition
-  inside the transaction**. A finding can be minutes old; if a human fixed the
-  row by hand in between, the action raises `StaleCorrectionError` and the batch
-  skips it. Being second to a person is a success, not an error.
-  `identity.sync_profile_status` additionally re-confirms `groups.status_source`
-  is still `'bot'`, so the system cannot overrule someone who has taken ownership.
+- Each `apply` locks its target **and its evidence** `FOR UPDATE` and
+  **re-derives the answer inside the transaction** rather than trusting the
+  payload the sweep computed. A finding can be hours old, and the dangerous edit
+  is not "someone closed the cycle first" — that one is easy to spot — but
+  someone moving the rows the proposal was *measured from*. So
+  `home_time.close_cycle` locks every cycle of the group (class-B evidence lives
+  in a sibling row) plus the group's `driver_home_status`, re-runs
+  `classifyOpenCycles` over them, and writes only if the class is still A or B,
+  the return moment is unmoved and the duration still comes out the same.
+  Anything else raises `StaleCorrectionError` and the batch skips it. Being
+  second to a person is a success, not an error.
+  `identity.sync_profile_status` re-confirms `groups.status_source` is still
+  `'bot'`, **holding that row `FOR UPDATE`** — it is the evidence, and reading it
+  unlocked would let someone take ownership in the window before the commit and
+  be overruled anyway.
+- **Closing a cycle also resolves `linked_request_id`**, the same ±3-day lookup
+  the live `closeHomeStayOnReturn` path does, and for the same reason:
+  `homeTimeEfficiencyService.classifyCycle` reads `linked_request_status`, so a
+  cycle closed without it files an over-policy stay a human **approved** as
+  `non_compliant`. One deliberate difference — the repair requires the match to
+  be *unambiguous*. Two decided requests inside the window is a judgement about
+  which one authorized the stay, and the registry's own rule says a judgement
+  call is not its to make: it stands down and leaves the cycle for a person.
 - One transaction does all of it: run the action, write `operational_corrections`
   with the complete before/after images, **mirror into `admin_audit_log` via
   `insertAdminAudit(entry, client)`** — the same transaction, which is what that
@@ -193,12 +210,24 @@
   different decisions); **dry run** unless `apply: true`; and a **per-check cap**
   — a check wanting more than its cap changes *nothing* and files a `serious`
   finding about itself, since wanting to change hundreds of rows usually means
-  the check is broken, not the fleet.
+  the check is broken, not the fleet. **The cap is decided by a `COUNT`, never by
+  the size of a fetched page**: a `LIMIT` can only ever say "at least this many",
+  so at the top of the range (cap 500, 501 eligible) measuring a truncated page
+  read as compliant and would have applied 500 corrections instead of refusing.
 - The database is the backstop, not just the code:
   `operational_corrections_system_is_auto_only` refuses a system-applied
   correction at any tier but `auto`, and a reversal without an attributed actor
   is refused outright.
-- Guarded by `tests/operationalCorrectionsPg.test.js`.
+- **Revert is an undo, not an overwrite.** Each `revert` locks the target and
+  restores the before-image only while every field it changed still holds what
+  the correction set it to, and only for the columns that correction actually
+  recorded — restoring blindly would destroy a later edit, and `?? null` over a
+  column an older correction never captured would turn silence into a deletion.
+- Guarded by `tests/operationalCorrectionsPg.test.js`,
+  `tests/operationalCorrectionEvidencePg.test.js` (the evidence must still hold
+  at apply time; revert refuses over a newer edit; the group row is really
+  locked) and `tests/operationalAutoApplyCap.test.js` (the cap at its boundary,
+  no database needed).
 
 - Home-time **requests** from drivers get Approve / Do-Not-Approve buttons gated
   on the approver allow-list (see the authorization note in §5 — usernames by
