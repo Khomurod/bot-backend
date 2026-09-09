@@ -143,24 +143,38 @@ function analyzeDuplicateUnits(rows, vehicles) {
  *   the vehicle label's driver name AGREES with the group's driver, or the
  *   label carries no name at all. A NAME MISMATCH LINKS NOTHING: that case is
  *   reported as `name_mismatch`, and writing the id anyway would cement the
- *   wrong truck against a driver in the one column meant to be authoritative;
+ *   wrong truck against a driver in the one column meant to be authoritative.
+ *   A group whose own driver is unknown counts as a mismatch against any NAMED
+ *   vehicle — incomplete profile data must not become an authoritative link;
  *
  *   the vehicle has an id to store;
  *
- *   and no other group in the same scan resolved to that same vehicle (see the
- *   comment on the filter below).
+ *   and no other group CLAIMS that vehicle — neither in this scan nor already
+ *   in the database (see the comment on the exclusivity rule below).
+ *
+ * It also returns the CLEARS: a `vehicleId` of null for a group whose stored
+ * link another group has demonstrably taken over. That is the only condition
+ * under which a link is removed.
  *
  * Separate from `analyzeDuplicateUnits` rather than folded into it, so that
  * function keeps its single responsibility and its existing tests.
  *
- * @returns {Array<{groupId:number, vehicleId:string, previousVehicleId:string|null,
- *                  unitNumber:string, reason:string}>}
+ * @returns {Array<{groupId:number, vehicleId:string|null, previousVehicleId:string|null,
+ *                  unitNumber:string|null, reason:string}>} — `vehicleId: null` is a clear
  */
 function resolveVehicleLinks(rows, vehicles) {
   if (!Array.isArray(vehicles) || !vehicles.length) return [];
 
   const candidates = [];
+  const stored = new Map();
+
   for (const row of Array.isArray(rows) ? rows : []) {
+    const previous = row?.samsara_vehicle_id == null ? null : String(row.samsara_vehicle_id);
+    if (previous) {
+      if (!stored.has(previous)) stored.set(previous, []);
+      stored.get(previous).push({ groupId: row.group_id, previousVehicleId: previous });
+    }
+
     const unit = String(row?.unit_number || '').trim();
     if (!unit) continue;
     const driver = groupDriverName(row);
@@ -170,10 +184,14 @@ function resolveVehicleLinks(rows, vehicles) {
     const vehicleId = selection.vehicle.id ?? selection.vehicle.vehicleId ?? null;
     if (vehicleId == null || vehicleId === '') continue;
 
+    // A NAMED VEHICLE NEEDS A GROUP DRIVER TO AGREE WITH. An active profile can
+    // carry a unit number and no name at all, and treating that as "nothing to
+    // disagree with" turns incomplete profile data into an authoritative wrong
+    // link. `driverNamesMatch` is false against an empty name, which is the
+    // answer wanted: only a genuinely NAMELESS label is eligible here.
     const providerDriver = extractDriverNameFromVehicleLabel(selection.vehicle.name, unit);
-    if (driver && providerDriver && !driverNamesMatch(driver, providerDriver)) continue;
+    if (providerDriver && !driverNamesMatch(driver, providerDriver)) continue;
 
-    const previous = row.samsara_vehicle_id == null ? null : String(row.samsara_vehicle_id);
     candidates.push({
       groupId: row.group_id,
       vehicleId: String(vehicleId),
@@ -183,15 +201,21 @@ function resolveVehicleLinks(rows, vehicles) {
     });
   }
 
-  // FOURTH CONDITION, and the one that only exists once several groups are
-  // considered together: the link must be EXCLUSIVE in both directions.
+  // THE EXCLUSIVITY RULE, and it has to count the claims already in the
+  // database — not just the ones this scan proposes.
   //
-  // Two active groups sharing unit 001 can both resolve to the same vehicle —
-  // `unique_unit` fires per group, and neither call knows about the other. That
-  // is the duplicate-unit problem wearing a different hat, and `getGroupBySamsaraId`
-  // would then answer it with `LIMIT 1`: an arbitrary driver, silently. So a
-  // vehicle claimed by more than one group links to none of them, and the
-  // existing `duplicate_unit` report is left to say why.
+  // Two active groups sharing unit 001 can both resolve to the same vehicle:
+  // `selectVehicleByUnit` is called once per group and neither call knows about
+  // the other. That is the duplicate-unit problem wearing a different hat, and
+  // `getGroupBySamsaraId` would answer it with `LIMIT 1` — an arbitrary driver,
+  // silently. So a vehicle claimed by more than one group links to none of
+  // them, and the existing `duplicate_unit` report is left to say why.
+  //
+  // A STORED LINK IS THE SAME KIND OF CLAIM, and it outlives the scan that made
+  // it. When unit 305 moves from one group to another, the old group keeps
+  // holding v-305 and simply stops resolving to it — so counting candidates
+  // alone would let the new group take v-305 while the old one still holds it,
+  // producing exactly the duplicate the rule above exists to prevent.
   const groupsPerVehicle = new Map();
   const vehiclesPerGroup = new Map();
   for (const c of candidates) {
@@ -199,31 +223,84 @@ function resolveVehicleLinks(rows, vehicles) {
     vehiclesPerGroup.set(c.groupId, (vehiclesPerGroup.get(c.groupId) || 0) + 1);
   }
 
-  return candidates.filter((c) => groupsPerVehicle.get(c.vehicleId) === 1
-    && vehiclesPerGroup.get(c.groupId) === 1
-    // Already linked to this vehicle — writing it again every 15 minutes would
-    // be 209 pointless UPDATEs an hour.
-    && c.previousVehicleId !== c.vehicleId);
+  const writes = [];
+  /** groupId → the vehicle it lost. Keyed by both, so a coincidence cannot clear. */
+  const handedOver = new Map();
+
+  for (const c of candidates) {
+    if (groupsPerVehicle.get(c.vehicleId) !== 1) continue;
+    if (vehiclesPerGroup.get(c.groupId) !== 1) continue;
+
+    // Whoever else is still holding this vehicle has demonstrably lost it: this
+    // group resolves to it, uniquely, from the provider's own data. Decided
+    // BEFORE the no-op check below, because a group that is already correctly
+    // linked is the strongest evidence there is that a second holder is stale —
+    // and skipping straight past it is how a duplicate already in the database
+    // survives every future scan.
+    for (const holder of stored.get(c.vehicleId) || []) {
+      if (holder.groupId === c.groupId) continue;
+      handedOver.set(holder.groupId, c.vehicleId);
+    }
+
+    // Already linked to this vehicle — writing it again every fifteen minutes
+    // would be 209 pointless UPDATEs an hour.
+    if (c.previousVehicleId === c.vehicleId) continue;
+    writes.push(c);
+  }
+
+  // A LINK IS ONLY CLEARED WHEN THE VEHICLE DEMONSTRABLY MOVED, never merely
+  // because a group stopped resolving. An ambiguous scan, a half-answered
+  // Samsara page or a title somebody is mid-way through editing all look like
+  // "no resolution", and clearing on absence of evidence would flap the column
+  // every fifteen minutes. A unique stale link is at worst the status quo — the
+  // string parse it replaced would have reached the same group.
+  const written = new Set(writes.map((w) => w.groupId));
+  for (const [vehicleId, holders] of stored) {
+    for (const holder of holders) {
+      if (handedOver.get(holder.groupId) !== vehicleId || written.has(holder.groupId)) continue;
+      writes.push({
+        groupId: holder.groupId,
+        vehicleId: null,
+        previousVehicleId: vehicleId,
+        unitNumber: null,
+        reason: 'handed_over',
+      });
+      written.add(holder.groupId);
+    }
+  }
+
+  return writes;
 }
 
 /**
  * Write the links this scan resolved. Failures are per-row and never abort the
  * scan: an unlinked group is the status quo, and the reports are the point.
+ *
+ * CLEARS GO FIRST. A clear and the write that caused it are two halves of one
+ * handover, and doing them in the other order leaves both groups holding the
+ * same vehicle for as long as it takes — which is precisely the state
+ * `getGroupBySamsaraId`'s `LIMIT 1` answers arbitrarily. If the second half then
+ * fails, a cleared link is the safe half to be left with: NULL falls back to the
+ * string parse that has always run, while a duplicate is believed.
  */
 async function writeVehicleLinks(links) {
   let linked = 0;
   let relinked = 0;
-  for (const link of links) {
+  let cleared = 0;
+  const ordered = [...links].sort((a, b) => (a.vehicleId === null ? -1 : 0) - (b.vehicleId === null ? -1 : 0));
+
+  for (const link of ordered) {
     try {
       // eslint-disable-next-line no-await-in-loop
       await groups.updateGroupSamsaraId(link.groupId, link.vehicleId);
-      if (link.previousVehicleId) relinked += 1;
+      if (link.vehicleId === null) cleared += 1;
+      else if (link.previousVehicleId) relinked += 1;
       else linked += 1;
     } catch (err) {
-      console.error(`[DUP-UNIT] Failed to link group ${link.groupId} to a Samsara vehicle:`, err.message);
+      console.error(`[DUP-UNIT] Failed to update group ${link.groupId}'s Samsara link:`, err.message);
     }
   }
-  return { linked, relinked };
+  return { linked, relinked, cleared };
 }
 
 /** One full scan. Never messages driver groups — records reports only. */
@@ -262,9 +339,9 @@ async function runDuplicateUnitCheck() {
     : ['duplicate_unit'];
   const resolved = await dup.resolveStaleReports(keepIds, evaluatedTypes);
 
-  const { linked, relinked } = vehicles
+  const { linked, relinked, cleared } = vehicles
     ? await writeVehicleLinks(resolveVehicleLinks(rows, vehicles))
-    : { linked: 0, relinked: 0 };
+    : { linked: 0, relinked: 0, cleared: 0 };
 
   const summary = {
     scanned: rows.length,
@@ -275,12 +352,13 @@ async function runDuplicateUnitCheck() {
     resolved,
     linked,
     relinked,
+    cleared,
   };
-  if (reports.length || resolved || linked || relinked) {
+  if (reports.length || resolved || linked || relinked || cleared) {
     console.log(`[DUP-UNIT] Scan: ${summary.scanned} units, `
       + `${summary.duplicateUnits} duplicate, ${summary.nameMismatches} name-mismatch, `
       + `${summary.ambiguous} ambiguous; ${resolved} cleared; `
-      + `${linked} vehicle links written, ${relinked} re-pointed.`);
+      + `${linked} vehicle links written, ${relinked} re-pointed, ${cleared} handed over.`);
   }
   return summary;
 }

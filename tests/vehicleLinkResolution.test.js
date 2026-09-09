@@ -158,7 +158,7 @@ test('writeVehicleLinks counts new links and re-points separately', async () => 
       { groupId: 1, vehicleId: 'v-1', previousVehicleId: null },
       { groupId: 2, vehicleId: 'v-2', previousVehicleId: 'v-old' },
     ]);
-    assert.deepEqual(result, { linked: 1, relinked: 1 });
+    assert.deepEqual(result, { linked: 1, relinked: 1, cleared: 0 });
     assert.deepEqual(calls, [[1, 'v-1'], [2, 'v-2']]);
   } finally {
     groups.updateGroupSamsaraId = original;
@@ -177,8 +177,85 @@ test('one failing write does not abort the rest of the scan', async () => {
       { groupId: 1, vehicleId: 'v-1', previousVehicleId: null },
       { groupId: 2, vehicleId: 'v-2', previousVehicleId: null },
     ]);
-    assert.deepEqual(result, { linked: 1, relinked: 0 });
+    assert.deepEqual(result, { linked: 1, relinked: 0, cleared: 0 });
   } finally {
     groups.updateGroupSamsaraId = original;
   }
+});
+
+// ─── what a SECOND scan has to reckon with ───────────────────────────────────
+//
+// The first version of this only looked at the links a single scan proposed,
+// which is fine on an empty column and wrong forever after. A stored link is a
+// claim on a vehicle that outlives the scan that made it, so the exclusivity
+// rule has to count the claims that are already in the database.
+
+test('a vehicle another group still holds is handed over, not duplicated', () => {
+  // Unit 305 moved from group 1 to group 2. Group 1 still STORES v-305 and no
+  // longer resolves to it. Counting only this scan's candidates, group 2's
+  // write looks unopposed — and both rows end up holding v-305, which
+  // `getGroupBySamsaraId` then answers with LIMIT 1: an arbitrary driver.
+  const links = resolveVehicleLinks(
+    [
+      row(1, '400', 'John', 'Doe', 'v-305'),
+      row(2, '305', 'Jane', 'Roe'),
+    ],
+    [vehicle('v-305', '305 JANE ROE')]
+  );
+
+  const byGroup = new Map(links.map((l) => [l.groupId, l]));
+  assert.equal(byGroup.get(2).vehicleId, 'v-305', 'the group that resolves to it gets it');
+  assert.ok(byGroup.has(1), 'and the old holder must be dealt with in the same pass');
+  assert.equal(byGroup.get(1).vehicleId, null, 'cleared — it demonstrably moved');
+  assert.equal(byGroup.get(1).previousVehicleId, 'v-305');
+});
+
+test('a stale link nobody else claims is LEFT ALONE', () => {
+  // Group 1 holds v-305 and resolves to nothing this run — an ambiguous scan, a
+  // half-answered Samsara page, a title someone is mid-way through editing.
+  // Clearing on absence of evidence would flap the column every fifteen
+  // minutes; a unique stale link is at worst the status quo.
+  const links = resolveVehicleLinks(
+    [row(1, '400', 'John', 'Doe', 'v-305')],
+    [vehicle('v-999', '999 SOMEBODY ELSE')]
+  );
+  assert.deepEqual(links, []);
+});
+
+test('a duplicate already in the database is resolved down to the one that fits', () => {
+  const links = resolveVehicleLinks(
+    [
+      row(1, '400', 'John', 'Doe', 'v-305'),
+      row(2, '305', 'Jane', 'Roe', 'v-305'),
+    ],
+    [vehicle('v-305', '305 JANE ROE')]
+  );
+  assert.deepEqual(
+    links.map((l) => [l.groupId, l.vehicleId]),
+    [[1, null]],
+    'group 2 already holds it correctly, so there is nothing to write there — '
+    + 'and that is exactly what proves group 1 is the stale one'
+  );
+});
+
+// ─── a group with no driver name is not a licence to link anything ───────────
+
+test('a NAMED vehicle is not linked to a group whose driver is unknown', () => {
+  // An active profile can carry a unit number and no name at all. Skipping the
+  // name check there turns incomplete profile data into an authoritative wrong
+  // link — the one column meant to settle which truck a driver is in.
+  const links = resolveVehicleLinks(
+    [{ group_id: 1, group_name: 'WENZE UNIT # 305', unit_number: '305', first_name: '', last_name: '', samsara_vehicle_id: null }],
+    [vehicle('v-305', '305 SOMEBODY ELSE')]
+  );
+  assert.deepEqual(links, []);
+});
+
+test('a NAMELESS vehicle still links to a group whose driver is unknown', () => {
+  const links = resolveVehicleLinks(
+    [{ group_id: 1, group_name: 'WENZE UNIT # 305', unit_number: '305', first_name: '', last_name: '', samsara_vehicle_id: null }],
+    [vehicle('v-305', '305')]
+  );
+  assert.equal(links.length, 1);
+  assert.equal(links[0].vehicleId, 'v-305');
 });

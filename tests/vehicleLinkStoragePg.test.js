@@ -86,3 +86,40 @@ test('the scan row source carries the current link', { skip: skipWithoutPg() }, 
   assert.equal(byId.get(1).samsara_vehicle_id, 'v-100');
   assert.equal(byId.get(2).samsara_vehicle_id, null);
 });
+
+test('a handover leaves exactly one holder of the vehicle', { skip: skipWithoutPg() }, async (t) => {
+  // The write half of the exclusivity rule. Unit 305 moved from group 1 to
+  // group 2; both halves of the handover have to land, or `getGroupBySamsaraId`
+  // answers with LIMIT 1 — an arbitrary driver, silently.
+  const harness = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
+  const layer = harness.loadDataLayer(['groups', 'duplicateUnitReports']);
+  const service = require('../services/duplicateUnitCheckService');
+
+  await seedDriverGroup(harness, {
+    id: 1, telegramId: '-100', name: 'WENZE UNIT # 400 JOHN DOE', unit: '400',
+    first: 'JOHN', last: 'DOE',
+  });
+  await seedDriverGroup(harness, {
+    id: 2, telegramId: '-200', name: 'WENZE UNIT # 305 JANE ROE', unit: '305',
+    first: 'JANE', last: 'ROE',
+  });
+  await layer.groups.updateGroupSamsaraId(1, 'v-305');
+
+  const rows = await layer.duplicateUnitReports.listActiveDriverUnits();
+  const links = service.resolveVehicleLinks(rows, [
+    { id: 'v-305', name: '305 JANE ROE', gps: { time: '2026-09-01T00:00:00Z' } },
+  ]);
+
+  // Written through the real data layer, not the module-level pool.
+  for (const link of links) {
+    // eslint-disable-next-line no-await-in-loop
+    await layer.groups.updateGroupSamsaraId(link.groupId, link.vehicleId);
+  }
+
+  const held = await harness.query(
+    "SELECT id FROM groups WHERE samsara_vehicle_id = 'v-305' ORDER BY id"
+  );
+  assert.deepEqual(held.rows.map((r) => r.id), [2], 'one vehicle, one holder');
+  const found = await layer.groups.getGroupBySamsaraId('v-305');
+  assert.equal(found.id, 2);
+});

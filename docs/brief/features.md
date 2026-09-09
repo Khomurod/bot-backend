@@ -63,8 +63,14 @@
   group to a vehicle is something it already does in order to compare driver
   names. It writes a link only when the resolution is unambiguous in *both*
   directions — one vehicle for the unit, a driver name that agrees or is absent,
-  and no other group in the same scan claiming that vehicle — so a contested
-  unit (unit `001` is on four active groups) links to nobody and stays a report.
+  and no other group claiming that vehicle, **in this scan or already in the
+  database** — so a contested unit (unit `001` is on four active groups) links to
+  nobody and stays a report. A group whose own driver is unknown counts as a
+  mismatch against any *named* vehicle: incomplete profile data must not become
+  an authoritative link. A stored link is cleared **only** when another group
+  demonstrably takes the vehicle over; a stale link nobody else claims is left
+  alone, because clearing on absence of evidence would flap the column every
+  fifteen minutes.
 
 ### Payroll-adjacent workflows (real money — change carefully)
 
