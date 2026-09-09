@@ -174,6 +174,17 @@ app.use('/api/fuel-monitor', createFuelMonitorRouter({ authMiddleware: legacyAut
 const { createLiveLocationsRouter } = require('./routes/liveLocationsRoutes');
 app.use('/api/live-locations', createLiveLocationsRouter({ authMiddleware: legacyAuthMiddleware }));
 
+// Needs Attention. Two gates on purpose: reading a finding is ordinary
+// administration, while APPLYING a correction changes a driver's record, so the
+// write routes require `operations.corrections.apply` INSTEAD of the blanket
+// gate — an OR against `admin.full_access` would separate nothing. Migration
+// 0018 adds the permission and grants it to super_admin.
+const { createOperationsRouter } = require('./routes/operationsRoutes');
+app.use('/api/operations', createOperationsRouter({
+  authMiddleware: legacyAuthMiddleware,
+  applyMiddleware: [authMiddleware, requirePermission('operations.corrections.apply')],
+}));
+
 const { createBotUsersRouter } = require('./routes/botUsersRoutes');
 app.use('/api/bot-users', createBotUsersRouter({ authMiddleware: legacyAuthMiddleware }));
 
