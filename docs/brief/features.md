@@ -154,6 +154,15 @@ marks the stay closed.
   the older one is unreachable by normal operation. That is why class-B evidence
   exists in the consistency check, and why the ~65 already-open cycles need the
   Stage 3 repair rather than just this fix.
+- **The ~65 already-open cycles are repaired through the Stage 3 registry**, not
+  a script: audited, revertible per row, and payout-neutral (`bonus_usd` is
+  computed at insert and never recomputed). `tests/homeTimeRepairPg.test.js`
+  seeds the exact production shape — 38 class A, 27 class B, 9 class C, 0 class
+  N — against a real PostgreSQL and asserts the repair closes **65 and only 65**.
+- **The default `max_auto_per_run` of 50 silently blocks a 65-row repair.** A
+  capped check reports `eligible: 0`, which is indistinguishable from "found
+  nothing" — so raising the cap is part of the repair, not an afterthought, and
+  `npm run operations:preview` prints `capped` loudly with the fix.
 - Guarded by `tests/homeTimeCycleInvariant.test.js`, which asserts the
   **negative**: after a `home → road` change by any route, no open cycle may
   remain. Nothing asserted that before, which is why it broke.
