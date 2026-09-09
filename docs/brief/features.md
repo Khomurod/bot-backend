@@ -321,6 +321,36 @@
 - Ships **disabled**, with automatic suspension a separate switch also off.
 - Guarded by `tests/aiPolicy{Diff,Suspension,Watcher,Pg}.test.js`.
 
+### The home-time cycle invariant
+
+**A change of state must open or close a cycle.** `driver_road_history` is the
+record of a road leg and the home stay that followed it; `return_to_road_at`
+marks the stay closed.
+
+- **`applyStateTransition` owns BOTH halves.** It inserts the cycle on
+  `road → home` and closes it on `home → road`. Closing used to be delegated to
+  the caller, and that seam is what produced **74 open cycles out of 79** in
+  production: two of the four paths that move the flip-flop never made the call.
+  A rule every caller must remember is a rule some caller will forget.
+- The four paths — a driver-group `Status:` line, the AI-detected status, the
+  **admin state flip** (`server/routes/homeTime/trackerRoutes.js`) and the
+  **screenshot import** (`services/homeTimeImportService.js`) — now all go
+  through it. The last two used to write `driver_home_status` directly.
+- **`announce: false`** for the admin and import paths: bookkeeping without
+  congratulations. It also *claims* the bonus post on any cycle it records, so
+  `roadBonusNotifierService` does not fire months of stale summaries into a live
+  group when somebody imports last quarter's screenshot.
+- The import also silently **reset the extra-week watermark** on every run,
+  because `upsertDriverHomeStatus` defaults `roadBonusWeeksNotified` to 0 and the
+  direct call never passed one. Going through the transition fixes that too.
+- **`getOpenHomeStay` is `LIMIT 1`**, so once a second cycle opens for a group
+  the older one is unreachable by normal operation. That is why class-B evidence
+  exists in the consistency check, and why the ~65 already-open cycles need the
+  Stage 3 repair rather than just this fix.
+- Guarded by `tests/homeTimeCycleInvariant.test.js`, which asserts the
+  **negative**: after a `home → road` change by any route, no open cycle may
+  remain. Nothing asserted that before, which is why it broke.
+
 - **Revert is an undo, not an overwrite.** Each `revert` locks the target and
   restores the before-image only while every field it changed still holds what
   the correction set it to, and only for the columns that correction actually

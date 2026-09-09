@@ -17,6 +17,8 @@ const ht = require('../database/homeTime');
 const { callGeminiJson } = require('./geminiClient');
 const { isoDateOrNull, normalizeStatus, matchCandidate } = require('./homeTimeImportHelpers');
 const { prepareImagePartsForAi } = require('./aiImagePrep');
+const groupsDb = require('../database/groups');
+const homeTimeStatus = require('./homeTimeService');
 
 const MAX_INLINE_BYTES = 6 * 1024 * 1024; // per image, keep prompts sane
 
@@ -132,18 +134,46 @@ async function applyRows(rows) {
     const unitNumber = row.unit_number || null;
 
     // Current state.
+    //
+    // Through `applyStateTransition`, not a bare `upsertDriverHomeStatus`. The
+    // direct write moved the flip-flop and nothing else, so an import that put a
+    // driver back on the road left their home-time cycle open forever, and one
+    // that brought a driver home recorded no cycle at all — one of the two paths
+    // behind 74 open cycles out of 79 in production. It also silently reset the
+    // extra-week bonus watermark on every import, because
+    // `upsertDriverHomeStatus` defaults `roadBonusWeeksNotified` to 0 and this
+    // call never passed one.
+    //
+    // `announce: false`: importing a screenshot of last quarter is bookkeeping,
+    // not news. Nothing is posted, and a bonus recorded this way is marked as
+    // already-posted so the notifier does not fire months of stale summaries
+    // into a live group.
     const status = normalizeStatus(row.status);
     const since = isoDateOrNull(row.since_date);
     if (status && since) {
       const sinceIso = DateTime.fromISO(`${since}T00:00:00`, { zone: 'utc' }).toISO();
-      await ht.upsertDriverHomeStatus({
-        groupId,
-        telegramGroupId,
-        state: status,
-        stateSince: sinceIso,
-        lastStatusText: 'Imported from screenshot',
-        lastStatusAt: sinceIso,
-      });
+      const group = await groupsDb.getGroupByIdAnyType(groupId);
+      const applied = group
+        ? await homeTimeStatus.applyStateTransition(null, group, {
+          newState: status,
+          eventAt: sinceIso,
+          statusText: 'Imported from screenshot',
+          announce: false,
+        })
+        : null;
+      if (!applied) {
+        // Home-time tracking is off, or the group is gone. Record the state so
+        // the import is not silently a no-op; with tracking off there are no
+        // cycles to keep consistent.
+        await ht.upsertDriverHomeStatus({
+          groupId,
+          telegramGroupId,
+          state: status,
+          stateSince: sinceIso,
+          lastStatusText: 'Imported from screenshot',
+          lastStatusAt: sinceIso,
+        });
+      }
       report.statusesUpdated += 1;
     }
 

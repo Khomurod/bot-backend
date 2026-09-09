@@ -135,7 +135,9 @@ async function handleDriverGroupStatus(telegram, group, message) {
  * @returns {{changed:boolean, transition:(string|null), newState:string,
  *   previousState:(string|null), eventAt:string} | null}
  */
-async function applyStateTransition(telegram, group, { newState, eventAt, statusText = '' }) {
+async function applyStateTransition(
+  telegram, group, { newState, eventAt, statusText = '', announce = true }
+) {
   try {
     const settings = await ht.getHomeTimeSettings();
     if (!settings || !settings.enabled) return null;
@@ -203,7 +205,14 @@ async function applyStateTransition(telegram, group, { newState, eventAt, status
       // Idempotent + restart-safe via the leg's bonus_posted_at claim; the
       // roadBonusNotifierService poller re-posts if this send fails. `overLimit`
       // is gated on company_driver, so owner-operators never trigger a post.
-      if (overLimit) {
+      if (overLimit && !announce) {
+        // Recorded, not announced. Claiming the bonus post marks it as already
+        // handled so `roadBonusNotifierService` does not pick it up later —
+        // otherwise importing a screenshot of last quarter's trips would fire
+        // months of stale bonus summaries into a live group.
+        await ht.claimRoadBonusPost(historyRow.id).catch(() => {});
+      }
+      if (overLimit && announce) {
         try {
           await roadBonus.postCompletedRoadLeg(
             telegram,
@@ -218,9 +227,19 @@ async function applyStateTransition(telegram, group, { newState, eventAt, status
       }
       console.log(`[HOME-TIME] ${driverName} (${driverType}) home after ${daysOnRoad}d (${exceededWeeks} extra wk, $${bonusUsd} recorded)`);
     }
-    // home → road needs no calculation; the clock simply starts. The completed
-    // home stay (return-to-road time + home duration) is closed by the caller via
-    // closeHomeStayOnReturn so the home-time efficiency dashboard has real data.
+    // home → road: the clock simply starts, AND the open home stay is closed
+    // HERE rather than by the caller.
+    //
+    // This used to be delegated — "closed by the caller via closeHomeStayOnReturn"
+    // — and that seam is what produced 74 open cycles out of 79 in production.
+    // Two of the four paths that move this flip-flop never made that call: the
+    // admin state flip and the screenshot import. The state moved, the cycle
+    // stayed open forever, and nothing swept for the leftovers. A rule that
+    // every caller must remember is a rule that some caller will forget, so the
+    // function that moves the state now owns both halves of the transition.
+    if (previousState === 'home' && newState === 'road') {
+      await closeHomeStayOnReturn(group, { returnToRoadIso: eventAt });
+    }
 
     // Every transition starts a fresh leg → reset the extra-week watermark so
     // the notifier re-counts from zero for the new road trip.

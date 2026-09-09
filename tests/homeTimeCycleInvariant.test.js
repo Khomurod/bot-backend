@@ -1,0 +1,262 @@
+/**
+ * The invariant nothing asserted, which is why it broke.
+ *
+ *   A CHANGE OF STATE MUST OPEN OR CLOSE A CYCLE.
+ *
+ * `driver_road_history.return_to_road_at` had exactly one writer, reachable only
+ * from a driver-group message. Two of the four paths that move
+ * `driver_home_status` never touched a cycle at all — the admin state flip and
+ * the screenshot import — so the flip-flop moved and the cycle stayed open
+ * forever. Production carries 74 open cycles out of 79.
+ *
+ * Every test in this area verified that the CORRECT path did the right thing.
+ * `tests/homeTimeStatusRoute.test.js` is the test that would have caught the
+ * admin leak and by construction could not: its mock has no road-history surface
+ * at all, so the missing close was invisible to it. `applyRows` — the import
+ * writer — had no test whatsoever.
+ *
+ * So this file tests the paths that were wrong, and asserts the negative: after
+ * a `home → road` change, by ANY route, no open cycle may remain.
+ */
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+
+const HT = path.resolve(__dirname, '../database/homeTime.js');
+const GROUPS = path.resolve(__dirname, '../database/groups.js');
+const ROAD_BONUS = path.resolve(__dirname, '../services/roadBonusPoster.js');
+const DB = path.resolve(__dirname, '../database/db.js');
+
+/**
+ * An in-memory home-time world: one group, one status row, a cycle table.
+ *
+ * Modelled on the real semantics rather than the real SQL — `closeHomeStay` only
+ * closes a still-open row, and `getOpenHomeStay` returns the NEWEST open one,
+ * which is the LIMIT 1 that makes an older open cycle unreachable.
+ */
+function world({ state = 'home', stateSince = '2026-08-25T00:00:00.000Z', settings = {} } = {}) {
+  const cycles = [];
+  let status = state
+    ? { group_id: 1, state, state_since: stateSince, road_bonus_weeks_notified: 3 }
+    : null;
+  const posted = [];
+
+  const ht = {
+    async getHomeTimeSettings() {
+      return { enabled: true, road_allowance_weeks: 4, bonus_per_week: 100, ...settings };
+    },
+    async getDriverHomeStatus() { return status; },
+    async upsertDriverHomeStatus(patch) {
+      status = {
+        group_id: 1,
+        state: patch.state,
+        state_since: patch.stateSince,
+        road_bonus_weeks_notified: patch.roadBonusWeeksNotified ?? 0,
+      };
+    },
+    async touchDriverHomeStatus() {},
+    async setDriverHomeState(groupId, { state: s, stateSince: since }) {
+      if (!status) return null;
+      status = { ...status, state: s || status.state, state_since: since || status.state_since };
+      return status;
+    },
+    async insertRoadHistory(row) {
+      const created = {
+        id: cycles.length + 1,
+        group_id: row.groupId,
+        road_started_at: row.roadStartedAt,
+        home_arrived_at: row.homeArrivedAt,
+        bonus_usd: row.bonusUsd,
+        return_to_road_at: null,
+        home_days: null,
+        linked_request_id: null,
+        bonus_posted_at: null,
+      };
+      cycles.push(created);
+      return created;
+    },
+    async getOpenHomeStay() {
+      // Newest open row only — the real LIMIT 1.
+      const open = cycles.filter((c) => c.return_to_road_at == null);
+      return open.length ? open[open.length - 1] : null;
+    },
+    async closeHomeStay(id, { returnToRoadAt, homeDays, linkedRequestId }) {
+      const row = cycles.find((c) => c.id === id && c.return_to_road_at == null);
+      if (!row) return null;
+      row.return_to_road_at = returnToRoadAt;
+      row.home_days = homeDays ?? null;
+      row.linked_request_id = linkedRequestId ?? row.linked_request_id;
+      return row;
+    },
+    async claimRoadBonusPost(id) {
+      const row = cycles.find((c) => c.id === id && c.bonus_posted_at == null);
+      if (!row) return null;
+      row.bonus_posted_at = new Date().toISOString();
+      return row;
+    },
+    async findDecidedRequestNearDate() { return null; },
+    async expireOpenClarificationsForGroup() {},
+  };
+
+  require.cache[HT] = { exports: ht };
+  // `resolveDriverLabel` reads the profile through database/db, not homeTime —
+  // and it SWALLOWS a failure, falling back to inferring the type from the group
+  // title. Without this mock the driver reads as an owner-operator, `overLimit`
+  // is false, and the bonus assertions below silently test nothing.
+  require.cache[DB] = {
+    exports: {
+      async getDriverProfileByGroupId() {
+        return { first_name: 'A', last_name: 'ONE', unit_number: '27', driver_type: 'company_driver' };
+      },
+    },
+  };
+  require.cache[GROUPS] = {
+    exports: {
+      async getGroupByIdAnyType() {
+        return { id: 1, telegram_group_id: -100, group_name: 'WENZE UNIT # 27 A', group_type: 'driver' };
+      },
+    },
+  };
+  require.cache[ROAD_BONUS] = {
+    exports: {
+      async postCompletedRoadLeg(_t, row) { posted.push(row.id); },
+    },
+  };
+
+  for (const p of [
+    '../services/homeTimeService',
+    '../services/homeTimeImportService',
+  ]) delete require.cache[require.resolve(p)];
+
+  return { cycles, posted, ht, status: () => status };
+}
+
+const openCycles = (cycles) => cycles.filter((c) => c.return_to_road_at == null);
+const GROUP = { id: 1, telegram_group_id: -100, group_name: 'WENZE UNIT # 27 A', group_type: 'driver' };
+
+// ─── the invariant, on the path that was already correct ─────────────────────
+
+test('a driver-group home→road message closes the cycle', async () => {
+  const w = world({ state: 'road', stateSince: '2026-07-08T00:00:00.000Z' });
+  const { applyStateTransition } = require('../services/homeTimeService');
+
+  // road → home opens a cycle...
+  await applyStateTransition(null, GROUP, { newState: 'home', eventAt: '2026-08-25T00:00:00.000Z' });
+  assert.equal(w.cycles.length, 1);
+  assert.equal(openCycles(w.cycles).length, 1);
+
+  // ...and home → road must close it.
+  await applyStateTransition(null, GROUP, { newState: 'road', eventAt: '2026-08-31T00:00:00.000Z' });
+  assert.deepEqual(openCycles(w.cycles), [], 'no open cycle may survive a home→road change');
+  assert.equal(w.cycles[0].home_days, 6);
+});
+
+// ─── the two paths that were wrong ───────────────────────────────────────────
+
+test('an ADMIN flipping home→road closes the cycle', async () => {
+  const w = world({ state: 'road', stateSince: '2026-07-08T00:00:00.000Z' });
+  const { applyStateTransition } = require('../services/homeTimeService');
+  await applyStateTransition(null, GROUP, { newState: 'home', eventAt: '2026-08-25T00:00:00.000Z' });
+  assert.equal(openCycles(w.cycles).length, 1);
+
+  // The admin route's effective call, after the fix.
+  await applyStateTransition(null, GROUP, {
+    newState: 'road', eventAt: '2026-08-31T00:00:00.000Z',
+    statusText: 'Corrected by an administrator', announce: false,
+  });
+
+  assert.deepEqual(openCycles(w.cycles), [],
+    'an admin correcting a driver used to leave the cycle open forever');
+});
+
+test('an ADMIN flipping road→home opens a cycle, silently', async () => {
+  const w = world({ state: 'road', stateSince: '2026-07-08T00:00:00.000Z' });
+  const { applyStateTransition } = require('../services/homeTimeService');
+
+  await applyStateTransition(null, GROUP, {
+    newState: 'home', eventAt: '2026-08-25T00:00:00.000Z', announce: false,
+  });
+
+  assert.equal(w.cycles.length, 1, 'the road leg is recorded, not lost');
+  assert.deepEqual(w.posted, [], 'but nobody is congratulated for a correction');
+  assert.ok(w.cycles[0].bonus_posted_at,
+    'and the notifier is told it is handled, or it posts the bonus an hour later anyway');
+});
+
+test('a SCREENSHOT IMPORT keeps cycles consistent and announces nothing', async () => {
+  const w = world({ state: 'road', stateSince: '2026-07-08T00:00:00.000Z' });
+  const { applyRows } = require('../services/homeTimeImportService');
+
+  // Import says: this driver is home since 25 Aug.
+  await applyRows([{ group_id: 1, telegram_group_id: -100, status: 'home', since_date: '2026-08-25' }]);
+  assert.equal(w.cycles.length, 1, 'the import opens the cycle it implies');
+  assert.deepEqual(w.posted, [], 'importing last quarter must not fire stale bonus posts');
+
+  // A later import says: back on the road.
+  await applyRows([{ group_id: 1, telegram_group_id: -100, status: 'road', since_date: '2026-08-31' }]);
+  assert.deepEqual(openCycles(w.cycles), [],
+    'the import used to move the flip-flop and leave the cycle open');
+});
+
+test('the import no longer resets the extra-week watermark', async () => {
+  const w = world({ state: 'road', stateSince: '2026-07-08T00:00:00.000Z' });
+  const { applyRows } = require('../services/homeTimeImportService');
+
+  // Same state as already recorded — nothing should change.
+  await applyRows([{ group_id: 1, telegram_group_id: -100, status: 'road', since_date: '2026-07-08' }]);
+
+  assert.equal(w.status().road_bonus_weeks_notified, 3,
+    'the old direct write defaulted this to 0 on every import, re-arming posted milestones');
+});
+
+// ─── the structural blind spot the repair exists for ─────────────────────────
+
+test('a second open cycle hides the first — the reason class B evidence exists', async () => {
+  const w = world({ state: 'road', stateSince: '2026-07-08T00:00:00.000Z' });
+  const { applyStateTransition } = require('../services/homeTimeService');
+
+  // Simulate the damage already in production: two cycles opened without a close
+  // between them, as the old import could do.
+  await w.ht.insertRoadHistory({
+    groupId: 1, roadStartedAt: '2026-06-01T00:00:00.000Z', homeArrivedAt: '2026-07-01T00:00:00.000Z',
+  });
+  await w.ht.insertRoadHistory({
+    groupId: 1, roadStartedAt: '2026-07-08T00:00:00.000Z', homeArrivedAt: '2026-08-25T00:00:00.000Z',
+  });
+  assert.equal(openCycles(w.cycles).length, 2);
+
+  await applyStateTransition(null, GROUP, { newState: 'home', eventAt: '2026-08-26T00:00:00.000Z' });
+  await applyStateTransition(null, GROUP, { newState: 'road', eventAt: '2026-08-31T00:00:00.000Z' });
+
+  // Only the newest closes: `getOpenHomeStay` is LIMIT 1. The older rows are
+  // structurally unreachable by normal operation and need the Stage 3 repair.
+  assert.ok(openCycles(w.cycles).length >= 2,
+    'normal operation cannot reach an older open cycle — that is what the repair is for');
+});
+
+// ─── with the feature off, nothing pretends otherwise ────────────────────────
+
+test('with home-time tracking off, no cycle is invented', async () => {
+  const w = world({ state: 'road', settings: { enabled: false } });
+  const { applyStateTransition } = require('../services/homeTimeService');
+
+  const result = await applyStateTransition(null, GROUP, {
+    newState: 'home', eventAt: '2026-08-25T00:00:00.000Z',
+  });
+
+  assert.equal(result, null);
+  assert.deepEqual(w.cycles, []);
+});
+
+test('an import still records state when tracking is off', async () => {
+  const w = world({ state: 'road', settings: { enabled: false } });
+  const { applyRows } = require('../services/homeTimeImportService');
+
+  const report = await applyRows([
+    { group_id: 1, telegram_group_id: -100, status: 'home', since_date: '2026-08-25' },
+  ]);
+
+  assert.equal(report.statusesUpdated, 1, 'the import must not be a silent no-op');
+  assert.equal(w.status().state, 'home');
+  assert.deepEqual(w.cycles, [], 'and with tracking off there is no cycle to keep consistent');
+});
