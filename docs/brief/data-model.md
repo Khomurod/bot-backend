@@ -47,6 +47,47 @@ plus unit and driver parsed from the Telegram title (convention
 **Nearly every feature joins to `groups`** — surveys, broadcasts, dispatch, home
 time, fuel, bonuses and Route Control.
 
+**But a `groups` row is three real-world things at once** — a PERSON
+(`driver_birthday`), a TRUCK (`samsara_vehicle_id`, the unit parsed out of the
+title) and a TELEGRAM CHAT (`telegram_group_id`) — and all 20 of those foreign
+keys bind a driver's history to the *chat*. Recreate the chat and the human
+starts from zero: in production, 20 people hold two `driver_profiles` each, two
+of those pairs are both active, and one driver's road clock reset mid-cycle when
+their group was recreated, costing about four weeks of accrual and the bonus
+with it.
+
+**The person layer (`driver_people`, `driver_person_groups`, `driver_units`,
+migration 0015) sits ABOVE `groups` and fixes that additively.** No foreign key
+was repointed and no history moved — a person is resolved *through* the existing
+join. Three rules are worth knowing before touching it:
+
+- `driver_people.normalized_key` is **indexed, not unique**. Two humans really do
+  normalize alike; a UNIQUE constraint on a normalized name is the bug that
+  already exists in `mileage_bonus_progress.driver_normalized_name TEXT UNIQUE`,
+  where colliding drivers merge and one silently stops being paid.
+- A merge is `merged_into_person_id` — a **pointer, not a deletion**. Both people
+  and all their history stay; undoing it is one column back to NULL.
+- Two partial unique indexes hold the invariants the database never had:
+  one open association per group, and one open unit per person **and** one open
+  person per unit. Unit `001` currently sits on four active groups; that is now
+  unrepresentable, so the backfill leaves contested units unclaimed and reports
+  them rather than picking a winner.
+
+Unit numbers are stored **exactly as written** — `001`, `01` and `1` are three
+different trucks in this fleet, and normalizing the zeros away would fabricate
+collisions.
+
+`npm run backfill-driver-people` populates it. **It is a dry run unless you pass
+`--apply`**, it is safe to re-run (a group that already belongs to somebody is
+skipped), and it only links two groups automatically when they share a
+`driver_profiles.telegram_user_id` — a hard anchor. A shared *name* is reported
+as a candidate and never merged. Guarded by `tests/personBackfillPlan.test.js`,
+`tests/personIdentityLayerPg.test.js` and `tests/personBackfillPg.test.js`.
+
+**Nothing in the application reads the person layer yet.** It is deliberately
+inert until a later stage wires it in, which is what makes adding it incapable
+of changing existing behaviour.
+
 **Cross-repo coupling:** the `samsara-integration` service also reads `groups`
 (for driver-group routing) and reads the `safety_event_video_settings` /
 `safety_event_music_assets` / `samsara_settings` rows this repo's admin Settings
