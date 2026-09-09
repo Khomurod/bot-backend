@@ -36,6 +36,7 @@
 const {
   StaleCorrectionError, sameInstant, assertUnchangedSince,
 } = require('./evidence');
+const { abandonExhaustedInternalAlerts } = require('./alertActions');
 const { classifyOpenCycles, daysBetween } = require('../checks/homeTime');
 
 /** ±days around the home arrival, matching `findDecidedRequestNearDate`. */
@@ -302,6 +303,7 @@ const syncProfileStatus = {
 const ACTIONS = new Map([
   [closeHomeTimeCycle.key, closeHomeTimeCycle],
   [syncProfileStatus.key, syncProfileStatus],
+  [abandonExhaustedInternalAlerts.key, abandonExhaustedInternalAlerts],
 ]);
 
 /**
@@ -313,6 +315,7 @@ const ACTIONS = new Map([
 const CHECK_TO_ACTION = new Map([
   ['home_time.closable_open_cycle', closeHomeTimeCycle.key],
   ['identity.status_disagreement', syncProfileStatus.key],
+  ['home_time.exhausted_internal_alerts', abandonExhaustedInternalAlerts.key],
 ]);
 
 function getAction(actionKey) {

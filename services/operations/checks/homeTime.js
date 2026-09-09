@@ -278,11 +278,64 @@ function checkGhostHomeStatus({ homeStatus = [], groupsById = new Map() }) {
     });
 }
 
+/**
+ * The pile of internal alerts nobody will ever receive.
+ *
+ * ONE finding for the whole pile, deliberately. 98 rows in production, every
+ * one at attempts = 6 = MAX_ATTEMPTS, every one `400: Bad Request: chat not
+ * found` — because `internal_clarification_group_id` held `5052301861` where
+ * the chat is `-5052301861`. They are not 98 problems. They are one problem
+ * that happened 98 times, and filing 98 findings would bury every other row on
+ * the page under a single dropped minus sign.
+ *
+ * The condition is the PILE, so the subject is the queue rather than any
+ * request — which also means the unique constraint keeps it to exactly one row
+ * however many times the sweep runs.
+ *
+ * Tier `auto` because the correction invents nothing: it moves rows from
+ * "failed" to "abandoned" and touches neither the alert text nor the attempt
+ * count nor `internal_alert_last_error`. What was lost stays answerable; only
+ * the claim that somebody is still trying to deliver it goes away. The alerts
+ * are emphatically NOT re-driven — firing months of stale home-time alerts into
+ * a live staff chat would be its own incident.
+ */
+function checkExhaustedInternalAlerts({ exhaustedInternalAlerts = null }) {
+  const pile = exhaustedInternalAlerts;
+  if (!pile || !pile.count) return [];
+
+  return [{
+    checkKey: 'home_time.exhausted_internal_alerts',
+    subjectType: 'outbox',
+    subjectId: 'home_time_internal_alerts',
+    title: `${pile.count} internal home-time alert(s) exhausted every retry and were never delivered`,
+    severity: 'warning',
+    tier: 'auto',
+    confidence: 100,
+    evidence: {
+      count: pile.count,
+      oldestAt: pile.oldestAt,
+      requestIds: pile.requestIds,
+      // The error the queue itself recorded, so the finding says WHY without a
+      // reader having to go and look.
+      lastError: pile.lastError,
+    },
+    proposedChange: {
+      table: 'home_time_requests',
+      column: 'internal_alert_state',
+      from: 'failed',
+      to: 'abandoned',
+      requestIds: pile.requestIds,
+      note: 'Marks them terminal. Does NOT re-send them.',
+    },
+  }];
+}
+
 const CHECKS = [
   checkClosableCycles,
   checkHomeStayPastAllowance,
   checkRoadClockPastAllowance,
   checkGhostHomeStatus,
+  checkExhaustedInternalAlerts,
 ];
 
 const CHECK_KEYS = [
@@ -290,6 +343,7 @@ const CHECK_KEYS = [
   'home_time.home_stay_past_allowance',
   'home_time.road_clock_past_allowance',
   'home_time.ghost_home_status',
+  'home_time.exhausted_internal_alerts',
 ];
 
 function runHomeTimeChecks(snapshot) {
@@ -308,4 +362,5 @@ module.exports = {
   checkHomeStayPastAllowance,
   checkRoadClockPastAllowance,
   checkGhostHomeStatus,
+  checkExhaustedInternalAlerts,
 };

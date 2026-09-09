@@ -189,6 +189,19 @@ marks the stay closed.
   the Needs Attention page reads. An `--apply` run **exits non-zero** when the cap
   blocked it, a correction failed, or a check module threw, so a runbook cannot
   record a no-op repair as a success.
+- **The 98 undeliverable internal alerts get a terminal state, not a retry.**
+  Every one sat at attempts = 6 = MAX_ATTEMPTS with `400: Bad Request: chat not
+  found` — a dropped minus sign in `internal_clarification_group_id`. Migration
+  0014 fixed the id; it must not fix the pile, because re-driving months of
+  stale home-time alerts into a live staff chat would be its own incident.
+  Migration 0022 widens the state CHECK to allow `'abandoned'` and **moves
+  nothing** — the move is a Tier-1 correction, dry-run first, audited,
+  revertible, applied by a person. `'failed'` is the outbox's *"still looking at
+  this"* state and is what `/api/health` reports, so leaving them there reports
+  98 problems forever and trains everyone to ignore the number: the exact
+  failure that let the original 101 sit unnoticed. Nothing is deleted — the row,
+  the attempt count and `internal_alert_last_error` all stay, so what was lost is
+  still answerable. **One** finding for the pile, not 98.
 - Guarded by `tests/homeTimeCycleInvariant.test.js`, which asserts the
   **negative**: after a `home → road` change by any route, no open cycle may
   remain. Nothing asserted that before, which is why it broke.

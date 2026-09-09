@@ -41,7 +41,7 @@ let lastRun = null;
  * and a read-only sweep must not write.
  */
 async function loadSnapshot(db = defaultDb) {
-  const [groups, profiles, roadHistory, homeStatus, settings] = await Promise.all([
+  const [groups, profiles, roadHistory, homeStatus, settings, exhausted] = await Promise.all([
     db.query(
       `SELECT id, group_name, group_type, active, status_source, status_updated_at,
               bot_member_status, bot_access_checked_at, last_message_seen_at
@@ -62,6 +62,15 @@ async function loadSnapshot(db = defaultDb) {
     ),
     db.query('SELECT group_id, state, state_since FROM driver_home_status'),
     db.query('SELECT home_allowance_days, road_allowance_weeks FROM home_time_settings WHERE id = 1'),
+    // The exhausted internal-alert pile. Ids and the recorded error only — never
+    // the alert BODY, which is driver correspondence and has no business in a
+    // finding's evidence.
+    db.query(
+      `SELECT id, requested_at, internal_alert_last_error
+         FROM home_time_requests
+        WHERE internal_alert_state = 'failed'
+        ORDER BY requested_at ASC`
+    ),
   ]);
 
   return {
@@ -72,6 +81,12 @@ async function loadSnapshot(db = defaultDb) {
     roadHistory: roadHistory.rows,
     homeStatus: homeStatus.rows,
     settings: settings.rows[0] || {},
+    exhaustedInternalAlerts: {
+      count: exhausted.rows.length,
+      oldestAt: exhausted.rows[0]?.requested_at || null,
+      requestIds: exhausted.rows.map((r) => r.id),
+      lastError: exhausted.rows[0]?.internal_alert_last_error || null,
+    },
   };
 }
 
