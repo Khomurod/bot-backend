@@ -113,6 +113,34 @@ test('a NULL destination stays NULL', { skip: skipWithoutPg() }, async (t) => {
   assert.equal(row.completed, null);
 });
 
+test('an over-range all-digit value cannot abort the migration — and so cannot stop boot', { skip: skipWithoutPg() }, async (t) => {
+  // The OLD validator was /^-?\d+$/ with no length cap, so a value longer than
+  // BIGINT can hold is persistable. A numeric cast on it raises "bigint out of
+  // range", and because migrations run inside initializeDatabase(), that would
+  // take down application STARTUP — worse than the undelivered alerts this
+  // migration fixes. The comparison is TEXT for exactly this reason.
+  const harness = await createPgHarness(t, { extraDdl: PRIOR_MIGRATIONS });
+  await seedGroup(harness);
+  await setHomeTime(harness, '99999999999999999999', '123456789012345678901234567890');
+
+  await harness.query(MIGRATION); // must not throw
+
+  const row = await homeTimeIds(harness);
+  assert.equal(row.internal, '99999999999999999999', 'left exactly as it was');
+  assert.equal(row.completed, '123456789012345678901234567890');
+});
+
+test('a value at the BIGINT boundary is handled without a cast', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await createPgHarness(t, { extraDdl: PRIOR_MIGRATIONS });
+  await seedGroup(harness);
+  // One past BIGINT max — the classic off-by-one that a range guard would miss.
+  await setHomeTime(harness, '9223372036854775808', null);
+
+  await harness.query(MIGRATION);
+
+  assert.equal((await homeTimeIds(harness)).internal, '9223372036854775808');
+});
+
 test('the same rule covers every message_group_settings destination', { skip: skipWithoutPg() }, async (t) => {
   const harness = await createPgHarness(t, { extraDdl: PRIOR_MIGRATIONS });
   await seedGroup(harness);

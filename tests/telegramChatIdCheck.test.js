@@ -42,14 +42,39 @@ test('signFlipCandidate flips in both directions and only for real ids', () => {
   assert.equal(signFlipCandidate('nope'), null);
 });
 
-test('a chat id we already hold as a group is accepted without asking Telegram', async () => {
+test('a chat id we hold a row for is STILL probed when a client is available', async () => {
+  // A `groups` row outlives the bot's access: deactivateGroup only flips
+  // `active`, and bot_member_status='left' on an active group is common enough
+  // that Stage 2 has a check for it. Historical presence is not reachability.
   let probed = false;
-  const telegram = { async getChat() { probed = true; throw new Error('should not be called'); } };
+  const telegram = {
+    async getChat() { probed = true; return { type: 'supergroup', title: 'HR Personnel' }; },
+  };
   const r = await checkChatId('-5052301861', { getGroupByTelegramId: knownGroups, telegram });
+
+  assert.equal(r.ok, true);
+  assert.equal(r.status, 'known_group');
+  assert.equal(probed, true, 'a stale row must not be trusted as current access');
+});
+
+test('a chat we have a row for but can no longer reach is REJECTED', async () => {
+  // The exact regression: the bot was removed, the row remains, and without a
+  // probe an admin could save it and recreate the silent-failure this prevents.
+  const telegram = {
+    async getChat() { throw new Error('403: Forbidden: bot was kicked from the supergroup chat'); },
+  };
+  const r = await checkChatId('-5052301861', { getGroupByTelegramId: knownGroups, telegram });
+
+  assert.equal(r.ok, false);
+  assert.equal(r.status, 'unreachable');
+  assert.match(r.message, /kicked/);
+});
+
+test('with no Telegram client, a known row is still the best answer available', async () => {
+  const r = await checkChatId('-5052301861', { getGroupByTelegramId: knownGroups });
   assert.equal(r.ok, true);
   assert.equal(r.status, 'known_group');
   assert.equal(r.groupName, 'HR Personnel');
-  assert.equal(probed, false, 'a known group must not cost a Telegram round-trip');
 });
 
 test('the production bug: a dropped minus sign is rejected and the real chat named', async () => {

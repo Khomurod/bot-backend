@@ -37,13 +37,29 @@
 -- settingsRoutes.js now rejects a save whose negation is a known group, naming
 -- it — so this class cannot be re-entered through the admin panel.
 
+-- ─────────────────────────────────────────────────────────────────────────
+-- WHY THE COMPARISON IS TEXT, NOT NUMERIC.
+--
+-- The obvious form is `g.telegram_group_id = -1 * s.<col>::BIGINT`, and it is a
+-- boot-time landmine. These columns are TEXT and the OLD validator was
+-- `/^-?\d+$/` with NO length cap, so an all-digit value longer than BIGINT can
+-- hold is persistable. The regex would pass it, the cast would raise
+-- "bigint out of range", and because migrations run inside
+-- initializeDatabase(), the application would fail to BOOT — a far worse
+-- outcome than the undelivered alerts this migration exists to fix.
+--
+-- Casting the BIGINT column to TEXT instead is total: every telegram_group_id
+-- converts, no stored value is ever cast, and '-' || '5052301861' matches
+-- '-5052301861' exactly. There is no overflow path left to guard.
+-- ─────────────────────────────────────────────────────────────────────────
+
 UPDATE home_time_settings AS s
    SET internal_clarification_group_id = '-' || s.internal_clarification_group_id,
        updated_at = NOW()
  WHERE s.internal_clarification_group_id ~ '^[1-9][0-9]*$'
    AND EXISTS (
      SELECT 1 FROM groups g
-      WHERE g.telegram_group_id = -1 * s.internal_clarification_group_id::BIGINT
+      WHERE g.telegram_group_id::TEXT = '-' || s.internal_clarification_group_id
    );
 
 UPDATE home_time_settings AS s
@@ -52,7 +68,7 @@ UPDATE home_time_settings AS s
  WHERE s.completed_notify_group_id ~ '^[1-9][0-9]*$'
    AND EXISTS (
      SELECT 1 FROM groups g
-      WHERE g.telegram_group_id = -1 * s.completed_notify_group_id::BIGINT
+      WHERE g.telegram_group_id::TEXT = '-' || s.completed_notify_group_id
    );
 
 -- message_group_settings stores the same kind of value in four more columns,
@@ -61,22 +77,22 @@ UPDATE message_group_settings AS s
    SET mileage_bonus_group_id = '-' || s.mileage_bonus_group_id
  WHERE s.mileage_bonus_group_id ~ '^[1-9][0-9]*$'
    AND EXISTS (SELECT 1 FROM groups g
-                WHERE g.telegram_group_id = -1 * s.mileage_bonus_group_id::BIGINT);
+                WHERE g.telegram_group_id::TEXT = '-' || s.mileage_bonus_group_id);
 
 UPDATE message_group_settings AS s
    SET road_bonus_group_id = '-' || s.road_bonus_group_id
  WHERE s.road_bonus_group_id ~ '^[1-9][0-9]*$'
    AND EXISTS (SELECT 1 FROM groups g
-                WHERE g.telegram_group_id = -1 * s.road_bonus_group_id::BIGINT);
+                WHERE g.telegram_group_id::TEXT = '-' || s.road_bonus_group_id);
 
 UPDATE message_group_settings AS s
    SET dispatch_review_group_id = '-' || s.dispatch_review_group_id
  WHERE s.dispatch_review_group_id ~ '^[1-9][0-9]*$'
    AND EXISTS (SELECT 1 FROM groups g
-                WHERE g.telegram_group_id = -1 * s.dispatch_review_group_id::BIGINT);
+                WHERE g.telegram_group_id::TEXT = '-' || s.dispatch_review_group_id);
 
 UPDATE message_group_settings AS s
    SET raise_results_group_id = '-' || s.raise_results_group_id
  WHERE s.raise_results_group_id ~ '^[1-9][0-9]*$'
    AND EXISTS (SELECT 1 FROM groups g
-                WHERE g.telegram_group_id = -1 * s.raise_results_group_id::BIGINT);
+                WHERE g.telegram_group_id::TEXT = '-' || s.raise_results_group_id);

@@ -45,33 +45,43 @@ async function checkChatId(rawValue, { getGroupByTelegramId, telegram } = {}) {
     ? getGroupByTelegramId
     : async () => undefined;
 
-  // 1. A group we already know is the strongest answer available, and costs no
-  //    network call. Checked first so the common case never touches Telegram.
+  // 1. Is this a chat we have a row for? That decides the sign-flip question
+  //    below and, with no Telegram client, is the best answer available — but it
+  //    is NOT proof of reachability. A `groups` row outlives the bot's access:
+  //    `deactivateGroup` only flips `active`, so a chat the bot was removed from
+  //    still has a row, and `bot_member_status = 'left'` on an ACTIVE group is
+  //    common enough that Stage 2 has a check for it. Trusting a stale row here
+  //    would let an admin save an unreachable destination and recreate exactly
+  //    the silent-failure this check exists to prevent.
   const known = await lookup(chatId).catch(() => undefined);
-  if (known) {
-    return { ok: true, status: 'known_group', chatId, groupName: known.group_name || null };
-  }
 
   // 2. The dropped-minus case. Deliberately BEFORE the live probe: a positive id
   //    is a user id, and getChat will happily resolve one into a private chat —
-  //    so probing first would accept the typo instead of catching it.
-  const flipped = signFlipCandidate(chatId);
-  const flippedGroup = flipped ? await lookup(flipped).catch(() => undefined) : undefined;
-  if (flippedGroup) {
-    return {
-      ok: false,
-      status: 'sign_flipped',
-      chatId,
-      suggestion: flipped,
-      groupName: flippedGroup.group_name || null,
-      message: `does not match any known chat, but ${flipped} is ${groupLabel(flippedGroup, flipped)}. `
-        + `Did you mean ${flipped}?`,
-    };
+  //    so probing first would accept the typo instead of catching it. Only asked
+  //    when the id itself is unknown; a chat we hold a row for is not a typo.
+  if (!known) {
+    const flipped = signFlipCandidate(chatId);
+    const flippedGroup = flipped ? await lookup(flipped).catch(() => undefined) : undefined;
+    if (flippedGroup) {
+      return {
+        ok: false,
+        status: 'sign_flipped',
+        chatId,
+        suggestion: flipped,
+        groupName: flippedGroup.group_name || null,
+        message: `does not match any known chat, but ${flipped} is ${groupLabel(flippedGroup, flipped)}. `
+          + `Did you mean ${flipped}?`,
+      };
+    }
   }
 
-  // 3. Ask Telegram, when there is a client to ask with.
+  // 3. Ask Telegram, when there is a client to ask with — for a known group too.
+  //    One getChat on an admin form submit is not a cost worth trading accuracy
+  //    for; this is not a hot path.
   if (!telegram || typeof telegram.getChat !== 'function') {
-    return { ok: true, status: 'unverified', chatId, groupName: null };
+    return known
+      ? { ok: true, status: 'known_group', chatId, groupName: known.group_name || null }
+      : { ok: true, status: 'unverified', chatId, groupName: null };
   }
 
   let chat;
@@ -96,7 +106,13 @@ async function checkChatId(rawValue, { getGroupByTelegramId, telegram } = {}) {
     };
   }
 
-  return { ok: true, status: 'reachable', chatId, groupName: chat.title || null };
+  // Reachable AND on record is the strongest result; reachable alone still passes.
+  return {
+    ok: true,
+    status: known ? 'known_group' : 'reachable',
+    chatId,
+    groupName: chat.title || known?.group_name || null,
+  };
 }
 
 /**
