@@ -2,7 +2,15 @@
 require('dotenv').config();
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_GENERATE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+const { runCapability } = require('./ai/router');
+
+// A COMPATIBILITY FAÇADE over the router since Stage 5c. The direct fetch loop,
+// its per-model retry and its backoff sleep were deleted rather than left
+// beside the router — two live paths to one API is how the two stop agreeing,
+// and the unexercised one is the one that rots. Response parsing, the timeout
+// this client never had, and the gemini-3 temperature quirk now live in
+// `services/ai/adapters/gemini.js`, the layer that knows the wire format. What
+// stays here is the Gemini-shaped vocabulary its ~20 callers use.
 
 const DEFAULT_GEMINI_TEXT_MODELS = [
   'gemini-3.1-flash-lite',
@@ -29,8 +37,6 @@ const GEMINI_DISPATCH_MODELS = uniqueGeminiModels([
   ...DISPATCH_GEMINI_MODELS_EXTRA,
 ]);
 
-const GEMINI_MAX_ATTEMPTS_PER_MODEL = 2;
-const DEFAULT_MAX_RETRY_WAIT_MS = 35_000;
 
 function parseGeminiModelList(envValue, fallbackList) {
   const fromEnv = String(envValue || '')
@@ -57,12 +63,6 @@ function resolveGeminiModels(opts = {}) {
     return uniqueGeminiModels(opts.models);
   }
   return [...GEMINI_TEXT_MODELS];
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
 
 function stripJsonFences(text) {
@@ -98,24 +98,6 @@ function safeParseJsonObject(text) {
   }
 }
 
-function parseGeminiRetryAfterMs(response, errorMessage) {
-  const header = response?.headers?.get?.('retry-after');
-  if (header) {
-    const seconds = Number.parseFloat(header);
-    if (Number.isFinite(seconds) && seconds > 0) {
-      return Math.ceil(seconds * 1000);
-    }
-  }
-  const bodyMatch = String(errorMessage || '').match(/retry in\s+([\d.]+)\s*s/i);
-  if (bodyMatch) {
-    const seconds = Number.parseFloat(bodyMatch[1]);
-    if (Number.isFinite(seconds) && seconds > 0) {
-      return Math.ceil(seconds * 1000);
-    }
-  }
-  return 0;
-}
-
 function isGeminiQuotaExhaustedError(status, message) {
   const normalized = String(message || '').toLowerCase();
   return status === 429 && (
@@ -137,113 +119,71 @@ function isGeminiTransientError(status, message) {
     || normalized.includes('temporarily unavailable');
 }
 
-function extractGeminiText(payload) {
-  return (payload?.candidates || [])
-    .flatMap((candidate) => candidate?.content?.parts || [])
-    .map((part) => part?.text || '')
-    .join('')
-    .trim();
-}
-
 /**
- * Low-level Gemini call with model chain.
+ * Low-level Gemini call with a model chain — now over the AI router.
  * @returns {{ text, model, payload }}
+ *
+ * WHAT THIS KEEPS. The signature, the `{ text, model, payload }` return, the
+ * `attemptErrors[]` on failure, `validateResult`, and the two Gemini quirks that
+ * are genuinely about Gemini: an empty candidate list is an ERROR rather than an
+ * empty answer, and `gemini-3*` refuses an explicit temperature so one is only
+ * defaulted for the older models (that one now lives in the adapter, which is
+ * the layer that knows the wire format).
+ *
+ * WHAT IT GAINS. A timeout — this client has never had one, so a hung Gemini
+ * request held a Telegram handler open indefinitely. Its key from the database,
+ * inheriting `GEMINI_API_KEY` when unset. And a provider after it, which is why
+ * `requireAdapter` is passed: a caller of THIS function has built Gemini-shaped
+ * `contents`, so only a Gemini-adapter provider can serve it. The roster is
+ * filtered rather than the request quietly reshaped.
  */
 async function callGeminiGenerateContent(opts = {}) {
-  if (!GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY is not configured');
+  // Only what the caller actually named. `resolveGeminiModels` falls back to
+  // GEMINI_TEXT_MODELS, and passing those as a preference would put six
+  // hardcoded model names in front of the admin's chain on every call — the
+  // Settings → AI model list would never be reached.
+  const models = Array.isArray(opts.models) && opts.models.length
+    ? uniqueGeminiModels(opts.models)
+    : null;
+
+  try {
+    const result = await runCapability({
+      capability: opts.capability || null,
+      requireAdapter: 'gemini',
+      preferProvider: 'gemini',
+      preferModels: models,
+      contents: opts.contents,
+      systemInstruction: opts.systemInstruction || null,
+      generationConfig: opts.generationConfig || {},
+      systemText: null,
+      validate: typeof opts.validateResult === 'function' ? opts.validateResult : null,
+      timeoutMs: opts.timeoutMs ?? null,
+    });
+    return { text: result.text, model: result.model, payload: result.payload || {} };
+  } catch (err) {
+    throw asLegacyGeminiFailure(err, models || resolveGeminiModels(opts));
   }
+}
 
-  const models = resolveGeminiModels(opts);
-  const maxRetryWaitMs = opts.maxRetryWaitMs ?? DEFAULT_MAX_RETRY_WAIT_MS;
-  const maxAttemptsPerModel = opts.maxAttemptsPerModel ?? GEMINI_MAX_ATTEMPTS_PER_MODEL;
-  const attemptErrors = [];
+/** The `{ model, status, message }[]` shape every Gemini caller already reads. */
+function asLegacyGeminiFailure(err, models) {
+  const attemptErrors = Array.isArray(err.attemptErrors) && err.attemptErrors.length
+    ? err.attemptErrors.map((e) => ({
+      model: e.model || e.provider || null,
+      status: e.status ?? null,
+      message: e.message,
+      provider: e.provider || null,
+      kind: e.kind || null,
+    }))
+    : [{ model: models[0] || null, status: null, message: err.message }];
 
-  for (const model of models) {
-    for (let attempt = 0; attempt < maxAttemptsPerModel; attempt += 1) {
-      try {
-        const generationConfig = { ...(opts.generationConfig || {}) };
-        if (generationConfig.temperature == null && !/^gemini-3/i.test(model)) {
-          generationConfig.temperature = 0.1;
-        }
-
-        const body = {
-          contents: opts.contents,
-          generationConfig,
-        };
-        if (opts.systemInstruction) {
-          body.system_instruction = opts.systemInstruction;
-        }
-
-        const response = await fetch(
-          `${GEMINI_GENERATE_URL}/${encodeURIComponent(model)}:generateContent`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': GEMINI_API_KEY,
-            },
-            body: JSON.stringify(body),
-          }
-        );
-
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const apiMessage = payload?.error?.message || `Gemini request failed with status ${response.status}`;
-          const err = new Error(apiMessage);
-          err.status = response.status;
-          err.retryAfterMs = parseGeminiRetryAfterMs(response, apiMessage);
-
-          if (isGeminiQuotaExhaustedError(response.status, apiMessage)) {
-            attemptErrors.push({ model, status: response.status, message: apiMessage });
-            break;
-          }
-
-          if (attempt + 1 < maxAttemptsPerModel && isGeminiTransientError(response.status, apiMessage)) {
-            const waitMs = Math.min(err.retryAfterMs || 750, maxRetryWaitMs);
-            if (waitMs > 0) await sleep(waitMs);
-            continue;
-          }
-
-          attemptErrors.push({ model, status: response.status, message: apiMessage });
-          break;
-        }
-
-        const text = extractGeminiText(payload);
-        if (!text) {
-          const finishReason = payload?.candidates?.[0]?.finishReason || 'UNKNOWN';
-          attemptErrors.push({
-            model,
-            status: null,
-            message: `Gemini returned empty response (${finishReason})`,
-          });
-          break;
-        }
-
-        if (typeof opts.validateResult === 'function') {
-          const validation = opts.validateResult(text, payload);
-          if (validation !== true) {
-            attemptErrors.push({
-              model,
-              status: null,
-              message: validation?.message || 'Gemini response validation failed',
-            });
-            break;
-          }
-        }
-
-        return { text, model, payload };
-      } catch (err) {
-        attemptErrors.push({ model, status: err.status || null, message: err.message });
-        break;
-      }
-    }
-  }
-
-  const details = attemptErrors.map((e) => `${e.model}: ${e.message}`).join('; ');
-  const failure = new Error(details || 'All Gemini models failed');
+  const failure = new Error(
+    attemptErrors.map((e) => `${e.model}: ${e.message}`).join('; ') || err.message
+  );
   failure.attemptErrors = attemptErrors;
-  throw failure;
+  failure.allRateLimited = err.allRateLimited === true;
+  failure.aiUnavailable = err.aiUnavailable === true;
+  return failure;
 }
 
 async function callGeminiText(opts = {}) {
@@ -303,17 +243,15 @@ function getPinnedContextGeminiModels() {
 
 module.exports = {
   GEMINI_API_KEY,
+  asLegacyGeminiFailure,
   GEMINI_TEXT_MODELS,
   GEMINI_DISPATCH_MODELS,
-  GEMINI_MAX_ATTEMPTS_PER_MODEL,
   parseGeminiModelList,
   getPinnedContextGeminiModels,
   safeParseJsonObject,
   stripJsonFences,
   isGeminiQuotaExhaustedError,
   isGeminiTransientError,
-  parseGeminiRetryAfterMs,
-  extractGeminiText,
   callGeminiGenerateContent,
   callGeminiText,
   callGeminiJson,

@@ -3,10 +3,13 @@
  *
  * Two properties matter more than the CRUD:
  *
- *   NOTHING IS SEEDED, so a boot after this migration behaves exactly as it did
- *   before it — every value NULL, every NULL meaning "inherit the environment".
- *   A migration that seeded a provider row would have changed behaviour on
- *   deploy, which is the one thing an additive migration must never do.
+ *   WHAT IS SEEDED IS EXACTLY TODAY'S BEHAVIOUR, and no more. Migration 0019
+ *   seeded nothing at all, which was right while the router had no consumers.
+ *   Once the two clients became wrappers over it (Stage 5c), an empty roster
+ *   stopped meaning "unchanged" and started meaning "every AI call in the
+ *   application fails" — so 0021 writes down the two providers that are already
+ *   in use, with NULL keys, and NULL still means "inherit the environment".
+ *   Nothing is seeded that was not already true.
  *
  *   A KEY IS NEVER RETURNED. There is exactly one function that decrypts, it is
  *   named for the router, and the admin mapper cannot be talked into returning
@@ -29,13 +32,63 @@ async function harnessWith(t) {
 
 // ─── the deploy is a no-op ───────────────────────────────────────────────────
 
-test('the migration seeds no provider and no capability', { skip: skipWithoutPg() }, async (t) => {
+test('the roster is the two providers already in use, and no capability', { skip: skipWithoutPg() }, async (t) => {
   const harness = await harnessWith(t);
   const { aiProviders, aiSettings } = load(harness);
 
-  assert.deepEqual(await aiProviders.listProvidersForAdmin(), [],
-    'a seeded provider would change behaviour on deploy');
-  assert.deepEqual(await aiSettings.listCapabilities(), []);
+  const providers = await aiProviders.listProvidersForAdmin();
+  assert.deepEqual(providers.map((p) => p.providerKey).sort(), ['gemini', 'groq'],
+    'an EMPTY roster is what would change behaviour now: getProvidersForRouter '
+    + 'selects WHERE enabled = TRUE, so nothing enabled means every AI call fails');
+  assert.ok(providers.every((p) => p.enabled), 'both are in use today, in the only sense there is');
+  assert.deepEqual(await aiSettings.listCapabilities(), [],
+    'a capability row is a permission; those still default to absent');
+});
+
+test('the seed stores no key — the environment is still where it comes from', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const rows = await harness.query(
+    'SELECT provider_key, api_key_encrypted, api_key_last4 FROM ai_providers ORDER BY provider_key'
+  );
+  for (const row of rows.rows) {
+    assert.equal(row.api_key_encrypted, null,
+      `${row.provider_key}: a migration that wrote a key would be a secret in a SQL file`);
+    assert.equal(row.api_key_last4, null);
+  }
+});
+
+test('the seed carries a real model chain, or the router has nothing to ask', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { aiProviders } = load(harness);
+  const byKey = new Map((await aiProviders.listProvidersForAdmin()).map((p) => [p.providerKey, p]));
+
+  assert.ok(byKey.get('groq').modelChain.length >= 2);
+  assert.ok(byKey.get('gemini').modelChain.length >= 2);
+  assert.equal(byKey.get('groq').adapter, 'openai_chat');
+  assert.equal(byKey.get('gemini').adapter, 'gemini');
+  assert.ok(byKey.get('groq').priority < byKey.get('gemini').priority,
+    'Groq first, which is the order all nine hand-coded "try Groq, then Gemini" branches already use');
+});
+
+test('re-running the seed does NOT overwrite what an operator configured', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { aiProviders } = load(harness);
+
+  await aiProviders.upsertProvider('groq', {
+    label: 'Groq (ours)', enabled: false, priority: 99, apiKey: 'sk-operator-key',
+  });
+
+  // The migration is idempotent; running its INSERT again must change nothing.
+  await harness.query(`
+    INSERT INTO ai_providers (provider_key, label, adapter, enabled, priority, is_free, base_url, model_chain)
+    VALUES ('groq', 'Groq', 'openai_chat', TRUE, 10, TRUE, 'https://api.groq.com/openai/v1', '["x"]'::jsonb)
+    ON CONFLICT (provider_key) DO NOTHING`);
+
+  const after = (await aiProviders.listProvidersForAdmin()).find((p) => p.providerKey === 'groq');
+  assert.equal(after.label, 'Groq (ours)');
+  assert.equal(after.enabled, false, 'a deliberate disable must survive a redeploy');
+  assert.equal(after.priority, 99);
+  assert.ok(after.apiKeySet, 'and the stored key must not be silently replaced by the env var');
 });
 
 test('the settings row exists once and is conservative', { skip: skipWithoutPg() }, async (t) => {
