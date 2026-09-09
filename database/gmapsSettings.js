@@ -10,7 +10,8 @@
  */
 const { query } = require('./db');
 const config = require('../config/config');
-const { encryptText, decryptText } = require('../lib/security/facebookCrypto');
+const { encryptText } = require('../lib/security/facebookCrypto');
+const { maskKey, createSafeDecrypt } = require('../lib/security/secretMasking');
 
 const CACHE_TTL_MS = 30_000;
 let cache = null;
@@ -21,15 +22,7 @@ function invalidateCache() {
   cacheExpiresAt = 0;
 }
 
-function safeDecrypt(payload) {
-  if (!payload) return '';
-  try {
-    return decryptText(payload);
-  } catch (err) {
-    console.warn('[GMAPS SETTINGS] Failed to decrypt a stored key:', err.message);
-    return '';
-  }
-}
+const safeDecrypt = createSafeDecrypt('[GMAPS SETTINGS]', 'a stored key');
 
 async function getSettingsRow() {
   try {
@@ -98,12 +91,6 @@ async function getGmapsConfig() {
   return effective;
 }
 
-function maskKey(value) {
-  const str = String(value || '');
-  if (!str) return null;
-  if (str.length <= 4) return '••••';
-  return `••••${str.slice(-4)}`;
-}
 
 /** Masked admin view — never returns the raw key. */
 async function getGmapsSettingsForAdmin() {
