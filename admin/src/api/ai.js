@@ -73,3 +73,60 @@ export async function updateAiCapability(capabilityKey, patch) {
   const data = await res.json();
   return data.capability;
 }
+
+// ─── the terms watcher ───────────────────────────────────────────────────────
+
+/** Returns { settings, sources, findings, alerts }. */
+export async function getAiPolicyWatcher() {
+  const res = await fetch(`${API_BASE}/settings/ai/policy`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/**
+ * The Telegram destination is validated server-side before it is stored; a
+ * rejection comes back as a 400 carrying `suggestion` with the corrected id.
+ */
+export async function updateAiPolicyWatcher(patch) {
+  const res = await fetch(`${API_BASE}/settings/ai/policy`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify(patch || {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.settings;
+}
+
+export async function addAiPolicySource({ providerKey, url, kind }) {
+  const res = await fetch(`${API_BASE}/settings/ai/policy/sources`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ providerKey, url, kind }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.source;
+}
+
+export async function deleteAiPolicySource(id) {
+  const res = await fetch(`${API_BASE}/settings/ai/policy/sources/${id}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function acknowledgeAiPolicyFinding(id) {
+  const res = await fetch(`${API_BASE}/settings/ai/policy/findings/${id}/acknowledge`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.finding;
+}
+
+export async function runAiPolicyCheck() {
+  const res = await fetch(`${API_BASE}/settings/ai/policy/run`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.summary;
+}
