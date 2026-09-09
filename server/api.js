@@ -115,7 +115,14 @@ const { createAdminUserRoutes } = require('./routes/adminUserRoutes');
 app.use(createAdminUserRoutes({ db, authMiddleware, requirePermission }));
 
 // ─── Health checks, site root, presentation, Meta compliance pages ───
-app.use(createHealthRoutes({ db, config }));
+app.use(createHealthRoutes({
+  db,
+  config,
+  // Injected rather than required inside the route: healthRoutes is the one
+  // module that must stand up without a database behind it.
+  countExhaustedInternalAlerts:
+    require('../database/homeTimeInternalAlertOutbox').countExhaustedInternalAlerts,
+}));
 app.use(createSystemRoutes({ authMiddleware }));
 
 // ─── Presenter remote (/remote) ───
@@ -159,7 +166,7 @@ app.use('/api/raise', raisePublicRouter);
 
 // ─── Driver Home-Time Tracking ───
 const { createHomeTimeRouter } = require('./routes/homeTimeRoutes');
-app.use('/api/home-time', createHomeTimeRouter({ authMiddleware: legacyAuthMiddleware }));
+app.use('/api/home-time', createHomeTimeRouter({ authMiddleware: legacyAuthMiddleware, telegram: bot.telegram }));
 
 const { createFuelMonitorRouter } = require('./routes/fuelMonitorRoutes');
 app.use('/api/fuel-monitor', createFuelMonitorRouter({ authMiddleware: legacyAuthMiddleware, telegram: bot.telegram }));

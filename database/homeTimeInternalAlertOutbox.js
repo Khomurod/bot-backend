@@ -195,6 +195,28 @@ async function getInternalAlertRow(id) {
   return res.rows[0] || null;
 }
 
+/**
+ * How many alerts have spent their whole attempt budget and been given up on.
+ *
+ * A `failed` row is the queue working correctly — it retried, backed off and
+ * stopped — but it is ALSO the only trace of a destination that cannot be
+ * reached at all. Production accumulated 101 of these against a chat id whose
+ * minus sign had been dropped, and because nothing counted them, no home-time
+ * alert reached staff for months. Counting them is what turns a silent pile
+ * into a signal.
+ *
+ * Returns the count and the oldest request behind it, never the alert text.
+ */
+async function countExhaustedInternalAlerts() {
+  const res = await query(
+    `SELECT COUNT(*)::int AS n, MIN(requested_at) AS oldest
+       FROM home_time_requests
+      WHERE internal_alert_state = 'failed'`
+  );
+  const row = res.rows[0] || {};
+  return { count: row.n || 0, oldestAt: row.oldest || null };
+}
+
 /** How many alerts are waiting — for logging and tests. */
 async function countPendingInternalAlerts({ nowIso = null } = {}) {
   const res = await query(
@@ -283,6 +305,7 @@ module.exports = {
   releaseInternalAlertClaim,
   getInternalAlertRow,
   countPendingInternalAlerts,
+  countExhaustedInternalAlerts,
   standDownAllDriverReminders,
   switchOpenClarificationsToInternal,
 };

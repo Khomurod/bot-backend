@@ -32,7 +32,7 @@ const { createHomeTimeImportRoutes } = require('./homeTime/importRoutes');
 const { createHomeTimeSettingsRoutes } = require('./homeTime/settingsRoutes');
 const { createHomeTimeGroupAccessRoutes } = require('./homeTime/groupAccessRoutes');
 
-function createHomeTimeRouter({ authMiddleware }) {
+function createHomeTimeRouter({ authMiddleware, telegram }) {
   const router = express.Router();
 
   // Approve / decline a pending request from the admin panel.
@@ -47,7 +47,10 @@ function createHomeTimeRouter({ authMiddleware }) {
 
   router.use(createHomeTimeTrackerRoutes({ authMiddleware }));
   router.use(createHomeTimeImportRoutes({ authMiddleware }));
-  router.use(createHomeTimeSettingsRoutes({ authMiddleware }));
+  // `telegram` is optional: without it the settings route still rejects a chat id
+  // whose negation is a known group (the dropped-minus case), it just cannot ask
+  // Telegram to confirm an id it has never seen.
+  router.use(createHomeTimeSettingsRoutes({ authMiddleware, telegram }));
   router.use(createHomeTimeGroupAccessRoutes({ authMiddleware }));
 
   return router;

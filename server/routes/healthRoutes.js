@@ -51,7 +51,7 @@ function renderMetaCompliancePage(title, bodyHtml) {
 </html>`;
 }
 
-function createHealthRoutes({ db, config }) {
+function createHealthRoutes({ db, config, countExhaustedInternalAlerts = null }) {
   const router = express.Router();
 
   // ─── Health Check (public, for Render + external cron / uptime pings) ───
@@ -83,6 +83,50 @@ function createHealthRoutes({ db, config }) {
     return meta;
   }
 
+  // A durable queue that has given up is invisible by design: the row is marked
+  // `failed`, the worker moves on, and nothing says so. Production carried 101 of
+  // them for months. Reported here so it is at least countable until the
+  // consistency engine files it as a finding.
+  //
+  // Deliberately NOT part of `healthy`: this endpoint's status code is what
+  // Render and the uptime monitor read, and a stalled alert queue is a problem
+  // for an operator, not a reason to declare the service down and restart it.
+  //
+  // The counter is INJECTED, like `db`. Requiring the outbox module here would
+  // construct the pg Pool the moment this file is required, and this route is
+  // deliberately the one that can be stood up without a database.
+  let queueHealthCache = { checkedAt: 0, queues: null };
+  const QUEUE_HEALTH_TTL_MS = 5 * 60 * 1000;
+
+  async function getQueueHealth() {
+    const now = Date.now();
+    if (queueHealthCache.queues && now - queueHealthCache.checkedAt < QUEUE_HEALTH_TTL_MS) {
+      return queueHealthCache.queues;
+    }
+    let homeTimeInternalAlerts = { available: false };
+    if (typeof countExhaustedInternalAlerts !== 'function') {
+      queueHealthCache = { checkedAt: now, queues: { homeTimeInternalAlerts } };
+      return queueHealthCache.queues;
+    }
+    try {
+      const { count, oldestAt } = await countExhaustedInternalAlerts();
+      homeTimeInternalAlerts = { available: true, exhausted: count, oldestAt };
+      if (count > 0) {
+        console.warn(
+          `[HEALTH] ${count} home-time internal alert(s) exhausted their attempts and were never `
+          + 'delivered. Check that the internal clarification group id is a chat the bot can reach.'
+        );
+      }
+    } catch (err) {
+      // A missing table or an unreachable database must not turn the health
+      // endpoint itself into an error.
+      homeTimeInternalAlerts = { available: false, error: err.message };
+    }
+    const queues = { homeTimeInternalAlerts };
+    queueHealthCache = { checkedAt: now, queues };
+    return queues;
+  }
+
   async function runHealthCheck() {
     let dbOk = false;
     try {
@@ -91,12 +135,14 @@ function createHealthRoutes({ db, config }) {
       console.error('[API] Health DB ping failed:', err.message);
     }
     const meta = await getMetaCredentialHealth();
+    const queues = dbOk ? await getQueueHealth() : { homeTimeInternalAlerts: { available: false } };
     return {
       healthy: dbOk,
       status: dbOk ? 'ok' : 'degraded',
       uptime: process.uptime(),
       db: dbOk,
       meta,
+      queues,
       service: 'driver-feedback-bot',
     };
   }

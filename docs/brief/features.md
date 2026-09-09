@@ -105,6 +105,28 @@
   after the second unanswered reminder the flow is flagged for manual follow-up.
 - Reminders respect the driver-messaging switch
   (`home_time_settings.driver_clarification_enabled`).
+- **A chat id saved in Home-Time settings is checked for REACHABILITY, not just
+  shape.** A Telegram group id is negative, and
+  `home_time_settings.internal_clarification_group_id` held `5052301861` for a
+  chat that is really `-5052301861` ("HR Personnel"). It was well-formed, so it
+  saved; it pointed at nothing, so **101 internal alerts failed with "chat not
+  found", exhausted the outbox's six attempts, and no staff alert was delivered
+  at all — for months.** `PUT /api/home-time/settings` now rejects a value whose
+  negation is a group we know, naming it, and — when a Telegram client is
+  available — a chat the bot cannot reach or that is not a group. It stays
+  deliberately permissive where it cannot prove a value wrong: an id we have
+  never captured still saves, because blocking a legitimate destination is its
+  own outage. `services/telegramChatIdCheck.js` + `lib/telegram/chatId.js`;
+  guarded by `tests/telegramChatIdCheck.test.js` and
+  `tests/homeTimeSettingsChatIdRoute.test.js`. Migration 0014 repaired the stored
+  values, rewriting one **only** where the negated id is a group already in
+  `groups` — never inventing a sign it cannot justify
+  (`tests/chatIdSignRepairPg.test.js`).
+- **An exhausted durable queue is countable.** `/api/health` reports
+  `queues.homeTimeInternalAlerts.exhausted` (5-minute cache). It deliberately
+  does **not** affect `healthy` or the status code: Render and the uptime monitor
+  read those, and an undeliverable alert queue is an operator's problem, not a
+  reason to declare the service down. `tests/healthQueueSignal.test.js`.
 - Home-time **requests** from drivers get Approve / Do-Not-Approve buttons gated
   on the approver allow-list (see the authorization note in §5 — usernames by
   default, numeric IDs once configured).
