@@ -80,6 +80,10 @@ const {
   stopConsistencyService,
 } = require('./services/operations/consistencyService');
 const {
+  startPolicyWatcher,
+  stopPolicyWatcher,
+} = require('./services/ai/policy/policyService');
+const {
   startMemoryWatchdog,
   stopMemoryWatchdog,
 } = require('./services/memoryWatchdog');
@@ -338,6 +342,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
   try { stopConsistencyService(); } catch (err) { console.error('[SHUTDOWN] stopConsistencyService failed:', err.message); }
+  try { stopPolicyWatcher(); } catch (err) { console.error('[SHUTDOWN] stopPolicyWatcher failed:', err.message); }
   try { stopMemoryWatchdog(); } catch (err) { console.error('[SHUTDOWN] stopMemoryWatchdog failed:', err.message); }
   try { stopDatabaseUsageService(); } catch (err) { console.error('[SHUTDOWN] stopDatabaseUsageService failed:', err.message); }
 
@@ -395,6 +400,7 @@ async function start() {
   // Runs beside the duplicate-unit scan, whose three report types it generalises;
   // that service keeps running until its checks are folded in.
   startConsistencyService();
+  startPolicyWatcher({ telegram: bot?.telegram || null });
   await startFacebookWebhookWorker();
   startLeadsBot();
   startMemoryWatchdog();

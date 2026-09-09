@@ -2,6 +2,7 @@ import React from "react";
 
 import * as api from "../../api";
 import ProviderCard from "./ai/ProviderCard";
+import PolicyWatcherCard from "./ai/PolicyWatcherCard";
 
 /**
  * Admin → Settings → AI.
@@ -222,6 +223,8 @@ export default function AiTab() {
           </details>
         )}
       </div>
+
+      <PolicyWatcherCard providers={providers} flash={flash} />
 
       {capabilities.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>

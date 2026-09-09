@@ -29,6 +29,7 @@ const { createSafetyEventSettingsRouter } = require('./settings/safetyEventRoute
 const { createBolPodSettingsRouter } = require('./settings/bolPodRoutes');
 const { createBitrixSettingsRouter } = require('./settings/bitrixRoutes');
 const { createAiSettingsRouter } = require('./settings/aiRoutes');
+const { createAiPolicyRouter } = require('./settings/aiPolicyRoutes');
 const { createRetiredLeftoversRouter } = require('./settings/retiredLeftoversRoutes');
 
 function createSettingsRouter({ authMiddleware, telegram = null }) {
@@ -44,6 +45,7 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
   router.use(createBolPodSettingsRouter(deps));
   router.use(createBitrixSettingsRouter(deps));
   router.use(createAiSettingsRouter(deps));
+  router.use(createAiPolicyRouter(deps));
   router.use(createRetiredLeftoversRouter(deps));
 
   return router;
