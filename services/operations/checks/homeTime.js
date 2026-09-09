@@ -35,6 +35,14 @@ function toDate(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/**
+ * Whole days between two stored timestamps.
+ *
+ * Exported for the same reason `classifyOpenCycles` is: the correction that
+ * closes a cycle re-derives `home_days` from the rows as they are at APPLY time
+ * rather than trusting the number the sweep computed, and it must land on the
+ * same value this check would. One function, both callers.
+ */
 function daysBetween(from, to) {
   const a = toDate(from);
   const b = toDate(to);
@@ -294,6 +302,7 @@ module.exports = {
   GRACE_DAYS,
   CHECK_KEYS,
   classifyOpenCycles,
+  daysBetween,
   runHomeTimeChecks,
   checkClosableCycles,
   checkHomeStayPastAllowance,

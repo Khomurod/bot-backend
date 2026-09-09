@@ -1,0 +1,210 @@
+/**
+ * Auto-applying Tier 1 corrections, under three guardrails.
+ *
+ * The guardrails are the reason this is allowed to exist at all, so each is
+ * stated with the failure it prevents:
+ *
+ *   PER-CHECK PERMISSION, DEFAULT DENY. A check with no row in
+ *   `operational_check_settings` is disabled. "The system may close home-time
+ *   cycles from recorded evidence" and "the system may change a driver's status"
+ *   are different decisions, and one global switch would force an operator to
+ *   accept both to get either.
+ *
+ *   DRY RUN FIRST. `runAutoCorrections()` computes and returns without writing
+ *   unless `apply: true`. The plan it returns is exactly what applying would do,
+ *   so an operator can read it before granting anything.
+ *
+ *   A CAP PER RUN. A check that suddenly wants to change hundreds of rows has
+ *   almost certainly found a bug in itself rather than hundreds of real
+ *   problems. It stops, changes nothing, and files a `serious` finding about its
+ *   own behaviour — which is the outcome that would have caught this class of
+ *   mistake before it reached a fleet.
+ *
+ * THE CAP IS DECIDED BY A COUNT, NOT BY A PAGE OF ROWS. Asking for the findings
+ * and measuring what came back cannot tell "exactly the cap" from "the cap and
+ * an unknown number more", so at the top of the range — cap 500, 501 eligible —
+ * the guardrail would have read a truncated page as compliant and applied 500
+ * corrections instead of refusing. The batch counts first and lists second.
+ *
+ * A stale proposal is skipped, never forced: if a human fixed the row by hand in
+ * the minutes since the sweep, or edited the evidence it was built from, the
+ * action raises StaleCorrectionError and it is counted as skipped. Being second
+ * to a person is a success, not an error.
+ */
+const defaultDb = require('../../../database/pool');
+const defaultStore = require('../../../database/operationalFindings');
+const { actionForCheck, CHECK_TO_ACTION } = require('./actions');
+const { applyCorrection, StaleCorrectionError } = require('./apply');
+
+const DEFAULT_CAP = 50;
+
+/** Per-check settings, keyed by check_key. Absent = disabled. */
+async function loadCheckSettings(db = defaultDb) {
+  const res = await db.query(
+    'SELECT check_key, auto_apply_enabled, max_auto_per_run FROM operational_check_settings'
+  );
+  return new Map(res.rows.map((r) => [r.check_key, r]));
+}
+
+/**
+ * Turn a finding into the payload its action needs.
+ *
+ * Reads ONLY the finding's own `proposedChange`, which the pure check built from
+ * recorded evidence. Nothing is recomputed here — the action itself re-derives
+ * the answer from the live rows before it writes anything, which is where a
+ * proposal that has gone stale is caught.
+ */
+function payloadFor(finding) {
+  const change = finding.proposedChange || {};
+  if (finding.checkKey === 'home_time.closable_open_cycle') {
+    return {
+      cycleId: change.id,
+      returnToRoadAt: change.returnToRoadAt?.to ?? null,
+      homeDays: change.homeDays?.to ?? null,
+    };
+  }
+  if (finding.checkKey === 'identity.status_disagreement') {
+    return { groupId: change.groupId, toStatus: change.to };
+  }
+  return null;
+}
+
+/**
+ * Everything the batch would do for one check, or why it will do nothing.
+ *
+ * Driven by the ACTION REGISTRY rather than by the settings table, so a check
+ * nobody has an opinion about still gets counted as "waiting for permission"
+ * instead of vanishing from the report.
+ */
+async function planForCheck(checkKey, { settings, store }) {
+  const action = actionForCheck(checkKey);
+  const setting = settings.get(checkKey);
+  const cap = (setting && setting.max_auto_per_run) || DEFAULT_CAP;
+
+  if (!setting || setting.auto_apply_enabled !== true) {
+    return { disabled: await store.countFindings({ status: 'open', checkKey, tier: 'auto' }) };
+  }
+
+  // Count, then list — see the header. `wanted` is the real number, so the
+  // finding a capped check files about itself says something true.
+  const wanted = await store.countFindings({ status: 'open', checkKey, tier: 'auto' });
+  if (wanted > cap) return { capped: { checkKey, wanted, cap } };
+
+  const found = await store.listFindings({
+    status: 'open', checkKey, tier: 'auto', limit: cap + 1,
+  });
+  const items = [];
+  let noPayload = 0;
+  for (const finding of found) {
+    const payload = payloadFor(finding);
+    if (!payload) { noPayload += 1; continue; }
+    items.push({ finding, action, payload });
+  }
+  // Re-assert against the page itself: a finding can appear between the count
+  // and the list, and the cap is not a suggestion.
+  if (items.length > cap) return { capped: { checkKey, wanted: items.length, cap }, noPayload };
+  return { items, noPayload };
+}
+
+/**
+ * @param {object} [options]
+ * @param {boolean} [options.apply=false]  false = dry run, write nothing
+ * @param {object}  [options.db]     { pool, query }
+ * @param {object}  [options.store]  the findings data layer — injected alongside
+ *   `db` because it holds its own pool binding; passing one without the other
+ *   would silently split a single run across two databases.
+ */
+async function runAutoCorrections({ apply = false, db = defaultDb, store = defaultStore } = {}) {
+  const settings = await loadCheckSettings(db);
+
+  const plan = [];
+  const capped = [];
+  const skipped = { disabled: 0, noAction: 0, noPayload: 0 };
+
+  for (const checkKey of CHECK_TO_ACTION.keys()) {
+    const result = await planForCheck(checkKey, { settings, store });
+    skipped.disabled += result.disabled || 0;
+    skipped.noPayload += result.noPayload || 0;
+    if (result.capped) capped.push(result.capped);
+    if (result.items) plan.push(...result.items);
+  }
+
+  // A settings row granting auto-apply to a check no action answers grants
+  // nothing. Worth saying out loud rather than ignoring: it is usually a typo.
+  for (const [checkKey, setting] of settings) {
+    if (setting.auto_apply_enabled === true && !actionForCheck(checkKey)) skipped.noAction += 1;
+  }
+
+  const summary = {
+    open: await store.countFindings({ status: 'open' }),
+    eligible: plan.length,
+    skipped,
+    capped,
+    applied: 0,
+    stale: 0,
+    failed: 0,
+    dryRun: !apply,
+  };
+
+  if (!apply) {
+    return {
+      summary,
+      plan: plan.map((p) => ({
+        findingId: p.finding.id,
+        checkKey: p.finding.checkKey,
+        actionKey: p.action.key,
+        describe: p.action.describe(p.payload),
+        payload: p.payload,
+      })),
+      capped,
+    };
+  }
+
+  // A capped check files a finding ABOUT ITSELF, so the stall is visible rather
+  // than silently doing nothing every sweep from now on.
+  for (const c of capped) {
+    await store.upsertFinding({
+      checkKey: 'operations.auto_apply_capped',
+      subjectType: 'check',
+      subjectId: c.checkKey,
+      title: `${c.checkKey} wanted to auto-apply ${c.wanted} corrections (cap ${c.cap}) — nothing was applied`,
+      severity: 'serious',
+      tier: 'warning',
+      evidence: { checkKey: c.checkKey, wanted: c.wanted, cap: c.cap },
+    });
+  }
+
+  const results = [];
+  for (const item of plan) {
+    try {
+      const correction = await applyCorrection({
+        actionKey: item.action.key,
+        payload: item.payload,
+        finding: item.finding,
+        db,
+      });
+      summary.applied += 1;
+      results.push({ findingId: item.finding.id, correctionId: correction.id, ok: true });
+    } catch (err) {
+      if (err instanceof StaleCorrectionError || err.stale) {
+        // Somebody fixed it first, or the evidence moved. That is the system working.
+        summary.stale += 1;
+        results.push({ findingId: item.finding.id, ok: false, stale: true, error: err.message });
+        continue;
+      }
+      summary.failed += 1;
+      results.push({ findingId: item.finding.id, ok: false, error: err.message });
+      console.error(`[CORRECTIONS] ${item.action.key} on finding ${item.finding.id} failed:`, err.message);
+    }
+  }
+
+  if (summary.applied || summary.failed || capped.length) {
+    console.log(`[CORRECTIONS] applied ${summary.applied}, stale ${summary.stale}, `
+      + `failed ${summary.failed}, capped checks ${capped.length}.`);
+  }
+  return { summary, results, capped };
+}
+
+module.exports = {
+  DEFAULT_CAP, runAutoCorrections, loadCheckSettings, payloadFor, planForCheck,
+};

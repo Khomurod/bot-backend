@@ -117,7 +117,7 @@ async function resolveClearedFindings(checkKeys, keepIds = [], client = null) {
 }
 
 async function listFindings({
-  status = 'open', severity = null, checkKey = null,
+  status = 'open', severity = null, checkKey = null, tier = null,
   includeSnoozed = false, limit = 200,
 } = {}) {
   const res = await query(
@@ -125,13 +125,37 @@ async function listFindings({
       WHERE ($1::text IS NULL OR status = $1)
         AND ($2::text IS NULL OR severity = $2)
         AND ($3::text IS NULL OR check_key = $3)
-        AND ($4::boolean OR snoozed_until IS NULL OR snoozed_until <= NOW())
+        AND ($4::text IS NULL OR tier = $4)
+        AND ($5::boolean OR snoozed_until IS NULL OR snoozed_until <= NOW())
       ORDER BY CASE severity WHEN 'serious' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
                last_seen_at DESC
-      LIMIT $5`,
-    [status, severity, checkKey, includeSnoozed, limit]
+      LIMIT $6`,
+    [status, severity, checkKey, tier, includeSnoozed, limit]
   );
   return res.rows.map(mapFinding);
+}
+
+/**
+ * How many findings match, without fetching them.
+ *
+ * The auto-apply batch needs a true count for two things it cannot get from a
+ * page of rows: the per-check cap it must refuse to exceed (a LIMIT can only
+ * ever tell it "at least this many"), and the honest number to put in the
+ * finding it files about its own stall.
+ *
+ * Counts what `listFindings` would return, snooze included: a finding somebody
+ * put to one side must not consume a slot in the cap it is not going to use.
+ */
+async function countFindings({ status = 'open', checkKey = null, tier = null } = {}) {
+  const res = await query(
+    `SELECT COUNT(*)::int AS n FROM operational_findings
+      WHERE ($1::text IS NULL OR status = $1)
+        AND ($2::text IS NULL OR check_key = $2)
+        AND ($3::text IS NULL OR tier = $3)
+        AND (snoozed_until IS NULL OR snoozed_until <= NOW())`,
+    [status, checkKey, tier]
+  );
+  return res.rows[0].n;
 }
 
 async function getFindingById(id) {
@@ -189,6 +213,7 @@ module.exports = {
   upsertFinding,
   resolveClearedFindings,
   listFindings,
+  countFindings,
   getFindingById,
   summariseFindings,
   dismissFinding,
