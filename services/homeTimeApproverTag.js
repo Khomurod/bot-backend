@@ -22,7 +22,10 @@ const {
   isReasonableHomeWindow,
 } = require('./homeTimeRequestConstants');
 const { looksLikeTemporaryHomeStop, looksLikeOperationalContext } = require('./homeTimeSignals');
-const { normalizeHomeTimeWindow, isHomeTimeRequestOutdated } = require('./homeTimeDateResolver');
+const { windowFieldsToReask } = require('./homeTimeWindowResolution');
+const {
+  normalizeHomeTimeWindow, isHomeTimeRequestOutdated, reopenWindowForPolicy,
+} = require('./homeTimeDateResolver');
 const {
   todayIsoChicago, resolveDriverLabel, resolveRoadMetrics, postRequestCard,
   createClarification, askKindForWindow,
@@ -145,11 +148,21 @@ async function handleApproverMention(telegram, group, message) {
     if (!verdict.isRequest) return;
 
     const settings = await ht.getHomeTimeSettings();
-    const window = normalizeHomeTimeWindow({
+    const parsedWindow = normalizeHomeTimeWindow({
       homeStart: verdict.datesSpecified ? verdict.homeFrom : null,
       lastDayHome: verdict.datesSpecified ? verdict.homeTo : null,
     });
     const language = null;
+
+    // THE TAGGED PATH NEEDS THE SAME HORIZON CHECK AS THE CONVERSATIONAL ONE.
+    // It inserts a complete window directly, gated only on
+    // `isReasonableHomeWindow`'s one-year horizon — so a request 121–365 days
+    // out (the mis-parsed-year class this exists to catch) was still stored as
+    // `pending`, just by a different door. An approver mention makes a request
+    // more official, not more likely to be right about the year.
+    const reask = windowFieldsToReask(parsedWindow, settings);
+    const window = reask.length
+      ? reopenWindowForPolicy(parsedWindow, reask) : parsedWindow;
 
     if (window.complete) {
       const allowanceWeeks = settings?.road_allowance_weeks || 4;

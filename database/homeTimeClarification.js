@@ -78,7 +78,34 @@ async function claimHomeTimeReminder(id, {
  *
  * Idempotent: a row whose schedule is already clear simply matches nothing.
  */
-async function cancelHomeTimeReminderSchedule(id) {
+async function cancelHomeTimeReminderSchedule(id, { onlyIfGroupInactive = false } = {}) {
+  /**
+   * `onlyIfGroupInactive` re-checks the reason AT UPDATE TIME.
+   *
+   * The reminder service reads its due rows, then stands down the ones whose
+   * group is inactive — and an administrator can reactivate a group in between.
+   * Nothing reschedules a reminder on reactivation, so clearing it on a stale
+   * read means the newly-active group misses that reminder permanently. The
+   * guard costs a join and removes the window entirely.
+   *
+   * The driver-messaging-disabled stand-down passes nothing, because there the
+   * group's own state is not the reason and re-checking it would be wrong.
+   */
+  if (onlyIfGroupInactive) {
+    const res = await query(
+      `UPDATE home_time_requests r
+          SET next_reminder_at = NULL
+         FROM groups g
+        WHERE r.id = $1
+          AND r.next_reminder_at IS NOT NULL
+          AND g.id = r.group_id
+          AND g.active = FALSE
+      RETURNING r.*`,
+      [id]
+    );
+    return res.rows[0] || null;
+  }
+
   const res = await query(
     `UPDATE home_time_requests
        SET next_reminder_at = NULL
