@@ -98,3 +98,21 @@ CREATE INDEX IF NOT EXISTS idx_home_time_return_watch_person
 INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run, updated_by, updated_at)
 VALUES ('home_time.returned_to_road', TRUE, 25, 'migration 0030 (automatic return-to-road detection)', NOW())
 ON CONFLICT (check_key) DO NOTHING;
+
+-- ─── The kill switch an administrator can actually reach ─────────────────────
+-- The router refuses a capability whose `ai_enabled` is FALSE, and a capability
+-- with no row at all is treated as enabled — which is right for a fresh install
+-- but leaves the switch INVISIBLE: Settings → AI lists the rows in this table,
+-- so a capability that is never registered cannot be switched off by anyone.
+--
+-- Seeding the row is the whole fix. The defaults match the code:
+--   sends_raw_text          FALSE — the reasoner is handed a scored, structured
+--                           evidence summary (distances, speeds, load status),
+--                           never a driver's chat messages.
+--   has_deterministic_fallback TRUE — scoreReturnToRoad() decides on its own and
+--                           the AI may only lower the verdict, or raise a medium
+--                           to high when movement and a load are both proven. AI
+--                           being off costs accuracy, never correctness.
+INSERT INTO ai_capabilities (capability_key, label, sends_raw_text, has_deterministic_fallback)
+VALUES ('home_time_return_to_road', 'Home Time — is the driver back on the road?', FALSE, TRUE)
+ON CONFLICT (capability_key) DO NOTHING;

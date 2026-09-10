@@ -78,14 +78,30 @@ function observationsFor(watch, current) {
   return list;
 }
 
+/**
+ * The subject is the HOME STAY, not the driver.
+ *
+ * A finding is unique on (check_key, subject_type, subject_id), and
+ * `upsertFinding` reopens only a RESOLVED row. Keyed on the group, the first
+ * return would be applied, the row would sit at `applied` forever, and the same
+ * driver's NEXT return would quietly update that row instead of becoming a new
+ * event nobody acts on. The open cycle names the stay; a driver with no cycle
+ * to close is identified by when they went home.
+ */
+function subjectFor(driver) {
+  if (driver.roadHistoryId) {
+    return { subjectType: 'road_history', subjectId: String(driver.roadHistoryId) };
+  }
+  return { subjectType: 'group', subjectId: `${driver.groupId}@${driver.homeSince || 'unknown'}` };
+}
+
 function buildFinding(driver, verdict, { unit, eventAt }) {
   const high = verdict.confidence === 'high';
   const label = `${driver.driverName || driver.groupName || `Group ${driver.groupId}`}`
     + `${unit ? ` (Unit ${unit})` : ''}`;
   return {
     checkKey: high ? CHECK_RETURNED : CHECK_UNCLEAR,
-    subjectType: 'group',
-    subjectId: String(driver.groupId),
+    ...subjectFor(driver),
     title: high
       ? `${label} looks back on the road — ${verdict.summary}`
       : `${label}: unclear whether they are back on the road — ${verdict.summary}`,
@@ -136,13 +152,19 @@ async function runReturnToRoadCheck({ now = Date.now(), deps = defaultDeps(), op
     }
 
     const cfg = await deps.eldSettings.getEldConfig();
-    const [fleets, orders] = await Promise.all([
+    // Both of these return an ENVELOPE, not the payload: fetchProviderFleets
+    // gives { fleets, errors } and getActiveOrders gives { orders, error }.
+    // Passing an envelope on as if it were the thing inside it made the whole
+    // pass throw on the first index and file nothing at all.
+    const [fleetResult, orderResult] = await Promise.all([
       deps.providers.fetchProviderFleets(cfg),
-      deps.orders.getActiveOrders(now).catch(() => []),
+      deps.orders.getActiveOrders(now).catch(() => ({ orders: [], error: null })),
     ]);
-    summary.providerErrors = (fleets?.errors?.length) || 0;
-    const byUnit = deps.orders.indexOrdersByUnit(orders || [], now);
-    const byDriver = deps.orders.indexOrdersByDriver(orders || [], now);
+    const fleets = fleetResult?.fleets || {};
+    const orders = Array.isArray(orderResult?.orders) ? orderResult.orders : [];
+    summary.providerErrors = (fleetResult?.errors?.length || 0) + (orderResult?.error ? 1 : 0);
+    const byUnit = deps.orders.indexOrdersByUnit(orders, now);
+    const byDriver = deps.orders.indexOrdersByDriver(orders, now);
 
     const keepIds = [];
     for (const driver of drivers) {
@@ -306,6 +328,7 @@ function stopReturnToRoadWatch() {
 }
 
 module.exports = {
+  subjectFor,
   POLL_MS,
   FIRST_TICK_DELAY_MS,
   startReturnToRoadWatch,

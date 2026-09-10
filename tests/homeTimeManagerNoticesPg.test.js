@@ -221,3 +221,45 @@ test('completing a request records it — nothing is left waiting for a decision
     const near = await homeTime.findDecidedRequestNearDate(1, '2026-09-18');
     assert.equal(near.id, created.id);
   });
+
+/**
+ * The boot that would have undone migration 0029.
+ *
+ * `initializeDatabase()` applies database/schema.sql VERBATIM on every boot and
+ * only then runs pending forward migrations. 0029 widened the status CHECK to
+ * accept 'recorded', but it runs once. So the boot AFTER the deploy re-applies
+ * the baseline's unconditional DROP + ADD and puts the narrow constraint back —
+ * or, once a real 'recorded' row exists, fails the ADD and takes the whole
+ * application down at startup.
+ *
+ * This reproduces exactly that order: baseline, migrations once, baseline again.
+ */
+test('a second boot keeps `recorded` legal — the baseline agrees with 0029',
+  { skip: skipWithoutPg() }, async (t) => {
+    // No extraDdl: applySchemaSql() must re-apply the BASELINE ALONE, the way a
+    // restart does once the migration ledger is satisfied.
+    const harness = await createPgHarness(t);
+    await harness.query(
+      `INSERT INTO groups (id, telegram_group_id, group_name, group_type, active)
+       VALUES (1, -1001, 'WENZE UNIT # 7 A DRIVER', 'driver', TRUE)`
+    );
+    await harness.query(ALL_MIGRATIONS);
+    await harness.query(
+      `INSERT INTO home_time_requests (group_id, telegram_group_id, driver_name, status)
+       VALUES (1, -1001, 'A', 'recorded')`
+    );
+
+    // The restart. With a 'recorded' row present the narrow constraint cannot be
+    // re-added, so this throws and the application never finishes booting.
+    await harness.applySchemaSql();
+
+    // And a request completed after the restart is still storable.
+    await harness.query(
+      `INSERT INTO home_time_requests (group_id, telegram_group_id, driver_name, status)
+       VALUES (1, -1001, 'B', 'recorded')`
+    );
+    const rows = await harness.query(
+      `SELECT COUNT(*)::int AS n FROM home_time_requests WHERE status = 'recorded'`
+    );
+    assert.equal(rows.rows[0].n, 2);
+  });

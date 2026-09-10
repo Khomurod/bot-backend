@@ -1502,16 +1502,23 @@ ALTER TABLE home_time_requests
 --   awaiting_dates        — need BOTH home-start and return-to-road (generic).
 --   awaiting_home_start   — have return-to-road, need the home-start date.
 --   awaiting_return_to_road — have home-start (or Status: Home), need return date.
---   pending               — dates complete, approval card posted, awaiting a human.
---   approved / denied / cancelled — human decision (approval stays authoritative).
+--   pending               — dates complete, the managers have been told, no
+--                           decision is awaited (the approval buttons are retired).
+--   recorded              — the stay is complete and its dates are stored. This
+--                           is the terminal state of the CURRENT flow; the
+--                           approval states below are history, kept legal so
+--                           the efficiency report can still read them.
+--   approved / denied / cancelled — historical human decisions. No new request
+--                           is ever written in these states.
 --   clarification_unanswered — two reminders sent, no answer → manual follow-up.
 --   expired               — flow abandoned (driver returned to road, etc.).
 ALTER TABLE home_time_requests
   DROP CONSTRAINT IF EXISTS home_time_requests_status_check;
 ALTER TABLE home_time_requests
   ADD CONSTRAINT home_time_requests_status_check
-  CHECK (status IN ('pending', 'approved', 'denied', 'cancelled', 'awaiting_dates',
-    'awaiting_home_start', 'awaiting_return_to_road', 'clarification_unanswered', 'expired'));
+  CHECK (status IN ('pending', 'recorded', 'approved', 'denied', 'cancelled',
+    'awaiting_dates', 'awaiting_home_start', 'awaiting_return_to_road',
+    'clarification_unanswered', 'expired'));
 
 CREATE INDEX IF NOT EXISTS idx_home_time_requests_group
   ON home_time_requests(group_id, requested_at DESC);
