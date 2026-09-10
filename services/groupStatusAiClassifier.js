@@ -1,8 +1,7 @@
 /**
  * Classify driver Telegram group titles as operationally active or inactive.
  */
-const { callGroqWithFallback, isAuthOrConfigError } = require('./groqClient');
-const { callGeminiJson, GEMINI_API_KEY } = require('./geminiClient');
+const { callGroqWithFallback } = require('./groqClient');
 
 const SYSTEM_TEXT =
   'You classify trucking company Telegram driver group titles. '
@@ -98,50 +97,6 @@ function classifyGroupHeuristic(group) {
   return { id: group.id, active: marked ? false : null, reason: 'heuristic' };
 }
 
-async function classifyBatchViaGroq(batch) {
-  const prompt = buildClassificationPrompt(batch);
-  const { text, model } = await callGroqWithFallback(prompt, {
-    systemText: SYSTEM_TEXT,
-    temperature: 0.1,
-    maxTokens: Math.min(8000, 200 + batch.length * 80),
-    models: [
-      process.env.GROUP_STATUS_AI_GROQ_MODEL || 'llama-3.3-70b-versatile',
-      'llama-3.1-8b-instant',
-    ],
-  });
-  const results = parseClassificationResponse(text, batch);
-  return { results, model, provider: 'groq' };
-}
-
-async function classifyBatchViaGemini(batch) {
-  const prompt = buildClassificationPrompt(batch);
-  const { text, model } = await callGeminiJson({
-    systemText: SYSTEM_TEXT,
-    userText: prompt,
-    maxOutputTokens: Math.min(8000, 200 + batch.length * 80),
-    generationConfig: { temperature: 0.1 },
-  });
-  const results = parseClassificationResponse(text, batch);
-  return { results, model, provider: 'gemini' };
-}
-
-async function classifyBatch(batch) {
-  try {
-    const groq = await classifyBatchViaGroq(batch);
-    if (groq.results.length > 0) return groq;
-    if (GEMINI_API_KEY) {
-      return await classifyBatchViaGemini(batch);
-    }
-    return groq;
-  } catch (groqErr) {
-    if (!GEMINI_API_KEY || isAuthOrConfigError(groqErr.message)) {
-      throw groqErr;
-    }
-    console.warn('[GROUP-STATUS-AI] Groq failed, trying Gemini:', groqErr.message.slice(0, 200));
-    return classifyBatchViaGemini(batch);
-  }
-}
-
 function chunkArray(items, size) {
   const chunks = [];
   for (let i = 0; i < items.length; i += size) {
@@ -151,8 +106,41 @@ function chunkArray(items, size) {
 }
 
 /**
- * Classify all groups; returns Map of id -> { active, reason, provider }.
+ * One batch, one call.
+ *
+ * This used to be "try Groq; if it fails or parses to nothing, try Gemini" —
+ * hand-coded cross-provider fallback, gated on a Gemini key being set in the
+ * environment. The router does that now, and does it better: it knows which
+ * failures are worth moving on from, it cools a spent provider so the next call
+ * skips it, and its roster is what an administrator configured rather than what
+ * happens to be in the environment.
+ *
+ * `isAuthOrConfigError` is gone from this path for the same reason. It aborted
+ * the chain on 401/403, which with several providers turns one expired
+ * credential into a total AI outage; `lib/ai/classify.js` calls that CREDENTIAL
+ * and moves to the next provider.
+ *
+ * A batch that answers but parses to NOTHING is still a failure — it is the
+ * reason the second leg existed — so it is expressed as a validator, which the
+ * router treats exactly like a refusal and falls through on.
  */
+async function classifyBatch(batch) {
+  const prompt = buildClassificationPrompt(batch);
+  const { text, model } = await callGroqWithFallback(prompt, {
+    systemText: SYSTEM_TEXT,
+    maxTokens: Math.min(8000, 200 + batch.length * 80),
+    temperature: 0.1,
+    models: [
+      'llama-3.3-70b-versatile',
+      'llama-3.1-8b-instant',
+    ],
+    validateResult: (raw) => (parseClassificationResponse(raw, batch).length > 0
+      ? true
+      : { message: 'no classifications could be parsed from the response' }),
+  });
+  return { results: parseClassificationResponse(text, batch), model, provider: 'router' };
+}
+
 async function classifyDriverGroups(groups, batchSize = 25) {
   const byId = new Map();
   const chunks = chunkArray(groups, batchSize);

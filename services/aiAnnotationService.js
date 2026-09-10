@@ -20,15 +20,10 @@ const db = require('../database/db');
 const {
   callGroqWithFallback,
   parseModelList,
-  GROQ_API_KEY,
   GROQ_AI_FAST_MODEL,
   GROQ_AI_FALLBACK_MODELS,
-  isAuthOrConfigError,
 } = require('./groqClient');
-const {
-  GEMINI_API_KEY,
-  callGeminiJson,
-} = require('./geminiClient');
+const { isAiAvailable } = require('./ai/registry');
 
 const MODEL_VERSION = 'groq-v1-annotator';
 const ANNOTATOR_GROQ_MODELS = parseModelList(
@@ -264,28 +259,15 @@ async function annotateBatchViaGroq(batch) {
   return { annotations: parseAnnotationBatchResponse(text, batch), model, provider: 'groq' };
 }
 
-async function annotateBatchViaGemini(batch) {
-  const prompt = buildAnnotationPrompt(batch);
-  const systemText = 'You are a strict classifier. Return JSON only. Never include prose or code fences. If unsure, use "unknown" / "no_signal" and confidence 0.';
-  const { text, model } = await callGeminiJson({
-    systemText,
-    userText: prompt,
-    maxOutputTokens: Math.min(4000, 250 + batch.length * 180),
-    generationConfig: { temperature: 0.1 },
-  });
-  return { annotations: parseAnnotationBatchResponse(text, batch), model, provider: 'gemini' };
-}
-
+/**
+ * One call. The "try Groq, then Gemini" second leg was hand-coded
+ * cross-provider fallback gated on a Gemini key being in the ENVIRONMENT, which
+ * since Stage 5 is no longer where a key has to live — and it aborted on
+ * `isAuthOrConfigError`, so one expired credential ended the chain instead of
+ * moving to the next provider. Both are the router's job now.
+ */
 async function annotateBatch(batch) {
-  try {
-    return await annotateBatchViaGroq(batch);
-  } catch (groqErr) {
-    if (!GEMINI_API_KEY || isAuthOrConfigError(groqErr.message)) {
-      throw groqErr;
-    }
-    console.warn('[ANNOTATE] Groq chain failed, trying Gemini:', groqErr.message.slice(0, 200));
-    return annotateBatchViaGemini(batch);
-  }
+  return annotateBatchViaGroq(batch);
 }
 
 async function persistAnnotations(annotations) {
@@ -338,7 +320,10 @@ async function persistAnnotations(annotations) {
 
 async function annotateChatLogs(logs, opts = {}) {
   if (!Array.isArray(logs) || logs.length === 0) return 0;
-  if (!GROQ_API_KEY) return 0;
+  // Asked of the ROSTER, not of the environment: a key that lives only in
+  // Admin → Settings → AI is a configured key, and the master switch being off
+  // is a reason to do nothing that an env-var check could never see at all.
+  if (!(await isAiAvailable())) return 0;
   const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : () => {};
 
   let totalWritten = 0;
@@ -362,7 +347,12 @@ async function annotateChatLogs(logs, opts = {}) {
         : err.message;
       console.error('[ANNOTATE] All models failed, skipping:', detail);
       onProgress({ done: Math.min(i + BATCH_SIZE, logs.length), total: logs.length, error: detail });
-      if (isAuthOrConfigError(err.message)) break;
+      // `aiUnavailable` is the router saying every provider was unusable, which
+      // is the honest signal for "stop, do not grind through twenty more
+      // batches". It replaces sniffing `isAuthOrConfigError` out of a joined
+      // error string — under the router a 401 on one provider is no longer a
+      // reason to stop at all, it is a reason to ask the next one.
+      if (err.aiUnavailable) break;
       if (err.allRateLimited && ANNOTATOR_RATE_LIMIT_COOLDOWN_MS > 0) {
         await sleep(ANNOTATOR_RATE_LIMIT_COOLDOWN_MS);
       }
@@ -419,11 +409,15 @@ async function ensureAnnotationsForRange({ daysBack = 7, groupIds = null, onProg
 let isAnnotating = false;
 let backgroundAnnotatorTimer = null;
 
+/**
+ * The loop starts unconditionally and each tick asks whether AI is available.
+ *
+ * It used to check `GROQ_API_KEY` once, at boot, and return — so an operator who
+ * configured a key in the admin afterwards had to restart the application to get
+ * their annotator back, and one who turned AI off kept a loop that failed every
+ * two minutes. Neither is a decision that belongs at boot any more.
+ */
 function startBackgroundAnnotator() {
-  if (!GROQ_API_KEY) {
-    console.log('[ANNOTATOR] GROQ_API_KEY not set; background annotator disabled.');
-    return;
-  }
   console.log('[ANNOTATOR] Starting background annotator loop (120s interval).');
   backgroundAnnotatorTimer = setInterval(async () => {
     if (isAnnotating) return;

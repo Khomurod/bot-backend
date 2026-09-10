@@ -152,14 +152,18 @@ test('buildLoadContextFromText falls back to regex destination when both AI prov
   assert.equal(context.source, 'pinned-text+ai');
 });
 
-test('buildLoadContextFromText skips Gemini racer when GEMINI_API_KEY is missing', async () => {
+test('buildLoadContextFromText skips the Gemini racer when no provider is available', async () => {
+  // The gate moved from `GEMINI_API_KEY` to `isAiAvailable()`. Same intent, one
+  // real difference: a key stored only in Admin → Settings → AI now counts as
+  // configured, and the master switch being off now counts as not — neither of
+  // which an environment variable could ever express.
   let geminiCalls = 0;
   const service = loadPinnedContextWithMocks({
+    aiAvailable: false,
     groqMock: {
       callGroqWithFallback: async () => ({ text: JSON.stringify(VALID_PINNED_JSON), model: 'groq-only' }),
     },
     geminiMock: {
-      GEMINI_API_KEY: '',
       callGeminiGenerateContent: async () => {
         geminiCalls += 1;
         throw new Error('should not be called');

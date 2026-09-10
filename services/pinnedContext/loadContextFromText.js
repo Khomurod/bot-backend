@@ -8,7 +8,8 @@
  *
  * Split out of services/dispatchPinnedContextService.js, which re-exports it.
  */
-const { getPinnedContextGeminiModels, GEMINI_API_KEY } = require('../geminiClient');
+const { getPinnedContextGeminiModels } = require('../geminiClient');
+const { isAiAvailable } = require('../ai/registry');
 const { truncateDispatchEtaLogMessage } = require('./constants');
 const {
   normalizeLine, isLoadContextComplete, inferDestinationFromPinnedText,
@@ -64,7 +65,11 @@ async function buildLoadContextFromText({
     } catch (err) {
       console.warn('[DISPATCH-ETA] Pinned-context Gemini parse failed:', truncateDispatchEtaLogMessage(err.message));
     }
-  } else if (GEMINI_API_KEY) {
+  // Asked of the ROSTER, not of an environment variable read at require time:
+  // this branch races Groq and Gemini against each other, and a key that lives
+  // only in Admin → Settings → AI would have silently disqualified the Gemini
+  // half of that race while working perfectly well.
+  } else if (await isAiAvailable()) {
     const modelList = getPinnedContextGeminiModels().join(', ');
     console.log(`[DISPATCH-ETA] Pinned-context Gemini attempt (${modelList})`);
 

@@ -1,8 +1,7 @@
 /**
  * AI-generated playful roasts when @datatruck_driver_bot fails a command.
  */
-const { callGroqWithFallback, isAuthOrConfigError } = require('./groqClient');
-const { callGeminiJson, GEMINI_API_KEY } = require('./geminiClient');
+const { callGroqWithFallback } = require('./groqClient');
 
 const SYSTEM_TEXT =
   'You write short, playful Telegram replies roasting a clumsy trucking dispatch bot. '
@@ -75,42 +74,23 @@ async function generateViaGroq(prompt) {
     ],
   });
   const message = parseBanterResponse(text);
-  return { message, provider: 'groq', model };
-}
-
-async function generateViaGemini(prompt) {
-  const { text, model } = await callGeminiJson({
-    systemText: SYSTEM_TEXT,
-    userText: prompt,
-    maxOutputTokens: 120,
-    generationConfig: { temperature: 0.95 },
-  });
-  const message = parseBanterResponse(text);
-  return { message, provider: 'gemini', model };
+  return { message, provider: 'router', model };
 }
 
 async function generateDatatruckBanterMessage({ failureSnippet, excludeTexts = [] } = {}) {
   const prompt = buildBanterPrompt(failureSnippet);
 
+  // ONE call. This was "try Groq, then Gemini" — hand-coded cross-provider
+  // fallback gated on a Gemini key being present in the ENVIRONMENT, which since
+  // Stage 5 is no longer where a key has to live. The router owns the fallback
+  // now, over the roster an administrator configured, and its `isAuthOrConfigError`
+  // abort is gone with it: a dead key moves to the next provider instead of
+  // ending the chain.
   try {
-    const groq = await generateViaGroq(prompt);
-    if (groq.message) return groq;
-    if (GEMINI_API_KEY) {
-      const gemini = await generateViaGemini(prompt);
-      if (gemini.message) return gemini;
-    }
-  } catch (groqErr) {
-    if (GEMINI_API_KEY && !isAuthOrConfigError(groqErr.message)) {
-      console.warn('[DATATRUCK-BANTER] Groq failed, trying Gemini:', groqErr.message.slice(0, 200));
-      try {
-        const gemini = await generateViaGemini(prompt);
-        if (gemini.message) return gemini;
-      } catch (geminiErr) {
-        console.error('[DATATRUCK-BANTER] Gemini failed:', geminiErr.message.slice(0, 200));
-      }
-    } else {
-      console.error('[DATATRUCK-BANTER] Groq failed:', groqErr.message.slice(0, 200));
-    }
+    const generated = await generateViaGroq(prompt);
+    if (generated.message) return generated;
+  } catch (err) {
+    console.error('[DATATRUCK-BANTER] AI unavailable:', String(err.message || err).slice(0, 200));
   }
 
   return {

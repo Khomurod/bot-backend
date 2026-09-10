@@ -16,17 +16,20 @@ const path = require('node:path');
 
 const { purgeModulePackage } = require('./purgeDataLayer');
 
-function loadPinnedContextWithMocks({ parserMock, dbMock, groqMock, geminiMock } = {}) {
+function loadPinnedContextWithMocks({
+  parserMock, dbMock, groqMock, geminiMock, aiAvailable = true,
+} = {}) {
   const servicePath = path.resolve(__dirname, '../../services/dispatchPinnedContextService.js');
   const parserPath = path.resolve(__dirname, '../../server/services/dispatchParserService.js');
   const dbPath = path.resolve(__dirname, '../../database/db.js');
   const groqPath = path.resolve(__dirname, '../../services/groqClient.js');
   const geminiPath = path.resolve(__dirname, '../../services/geminiClient.js');
+  const registryPath = path.resolve(__dirname, '../../services/ai/registry.js');
 
   // The service is a façade over services/pinnedContext/*; purging only the
   // façade would leave those siblings bound to the PREVIOUS case's mocks.
   purgeModulePackage(servicePath, path.resolve(__dirname, '../../services/pinnedContext'),
-    [parserPath, dbPath, groqPath, geminiPath]);
+    [parserPath, dbPath, groqPath, geminiPath, registryPath]);
 
   const realGroq = require('../../services/groqClient');
   const realGemini = require('../../services/geminiClient');
@@ -49,6 +52,13 @@ function loadPinnedContextWithMocks({ parserMock, dbMock, groqMock, geminiMock }
       getPinnedContextGeminiModels: geminiMock?.getPinnedContextGeminiModels
         || realGemini.getPinnedContextGeminiModels,
     },
+  };
+  // `isAiAvailable` replaced the `GEMINI_API_KEY` truthiness gate in
+  // `loadContextFromText`: a key can live in the database now, so "is AI
+  // configured" is a question about the roster rather than the environment.
+  // Defaulted to true, which is what the old `test-gemini-key` default meant.
+  require.cache[registryPath] = {
+    exports: { async isAiAvailable() { return aiAvailable; } },
   };
   require.cache[parserPath] = {
     exports: parserMock || {

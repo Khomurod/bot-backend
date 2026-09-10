@@ -226,6 +226,26 @@ feature it belongs to.
   agreeing, and the one no longer exercised is the one that rots. What stays is
   the vocabulary their call sites use — the env model chains, the rate-limit and
   auth predicates, Gemini's JSON helpers.
+- **No consumer asks the ENVIRONMENT whether AI exists any more.** Nine gates
+  in seven files read `GROQ_API_KEY` / `GEMINI_API_KEY` as module-level
+  constants — correct while the environment was the only place a key could live,
+  and wrong in both directions once it was not: an operator who moved a key into
+  Admin → Settings → AI and cleared the env var lost those features **silently**,
+  and one who turned the master switch off still read "configured" and got a
+  provider error instead of a clean "AI is not configured". A destructured
+  constant cannot be made dynamic — a getter on `module.exports` is snapshotted
+  by the import — so each gate moved to `registry.isAiAvailable()`, answered from
+  the 30-second roster cache. `tests/consumerAiGates.test.js` strips comments and
+  greps those seven files, because a new gate would pass every other test: the
+  env var is set in production.
+- **The hand-coded "try Groq, then Gemini" second legs are gone**, in five files.
+  They were cross-provider fallback the router now owns, and each carried an
+  `isAuthOrConfigError` abort that ended the chain on a dead key rather than
+  moving to the next provider. `annotateChatLogs` stops on `err.aiUnavailable` —
+  the router saying every provider was unusable — instead of sniffing an auth
+  message out of a joined error string. The background annotator now starts
+  unconditionally and asks per tick, so enabling AI in the admin no longer needs
+  a restart.
 - **Migration 0021 seeds the roster, and it is the riskiest three lines in
   Stage 5.** 0019 seeded nothing, which was right while the router had no
   consumers; once the clients became wrappers, an empty `ai_providers` stopped
