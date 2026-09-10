@@ -35,6 +35,25 @@ feature it belongs to.
   is scoped to the checks that actually ran to completion**, so a failed check or
   a provider outage can never be mistaken for "the problem went away".
 - A **dismissal without a reason is refused by the database**, not the route.
+- **The watchdog covers the systems, not just Home Time and the chat/profile pair
+  (Phase 3-F).** Two more pure modules run in the same sweep over the same
+  snapshot: `checks/identityLayer.js` compares the person layer with the chats
+  and profiles beside it — `identity.group_without_person` (**auto**: the
+  resolver itself runs from the sweep, so a driver nobody has texted since the
+  layer arrived is still placed), `identity.stale_unit_assignment` (**auto**:
+  the profile's truck is the record; the person's open unit is brought to it,
+  only when nobody else holds it), `identity.person_on_two_active_groups` and
+  `identity.unit_contested` (a human decides). `checks/systems.js` reads across
+  features: `samsara.vehicle_on_two_active_groups`, `samsara.vehicle_link_disagrees`,
+  `fuel.watch_on_inactive_group`, `dispatch.team_driver_on_inactive_group`
+  (**approval**, proposing the driver's current chat from the person layer),
+  `raise.progress_without_person` (one aggregated finding) and
+  `route_control.assignment_on_inactive_group`. The two auto actions live in
+  `corrections/identityActions.js`, re-derive under lock, refuse when stale, and
+  revert without deleting (a created person row stays; a previous truck is
+  reopened as a new row). Both ship **disabled** like every other check. Guarded
+  by `tests/operationsChecksLayer.test.js` and `tests/identityActionsPg.test.js`,
+  which also proves the loop places a quiet driver by itself once enabled.
 - `home_time.closable_open_cycle` is the high-value one: `classifyOpenCycles`
   sorts every open cycle into evidence **class A** (the group is on the road
   since after this cycle's `home_arrived_at` — `driver_home_status.state_since`

@@ -57,6 +57,16 @@ const CHECK_LABELS = {
   'identity.bot_left_active_group': 'Bot removed from a group still marked active',
   'identity.silent_active_group': 'Active group with no messages for months',
   'identity.non_driver_typed_as_driver': 'Admin chat typed as a driver group',
+  'identity.group_without_person': 'Driver group with no permanent identity yet',
+  'identity.person_on_two_active_groups': 'One person on two active groups',
+  'identity.unit_contested': 'Profile claims a truck recorded to someone else',
+  'identity.stale_unit_assignment': "Driver's recorded truck is behind the profile",
+  'samsara.vehicle_on_two_active_groups': 'One Samsara vehicle on two active groups',
+  'samsara.vehicle_link_disagrees': "Group's Samsara vehicle differs from the driver's truck",
+  'fuel.watch_on_inactive_group': 'Fuel watch running for an inactive group',
+  'dispatch.team_driver_on_inactive_group': "Team seat points at a chat the driver left",
+  'raise.progress_without_person': 'Mileage drivers not matched to an identity',
+  'route_control.assignment_on_inactive_group': 'Active route on an inactive group',
   'operations.auto_apply_capped': 'A check wanted to change too much and stopped',
 };
 

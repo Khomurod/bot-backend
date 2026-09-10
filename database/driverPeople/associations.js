@@ -70,8 +70,9 @@ async function closeGroupAssociation(groupId, { endedAt = null } = {}, client = 
   return mapAssociation(res.rows[0]);
 }
 
-async function getOpenAssociationForGroup(groupId) {
-  const res = await query(
+async function getOpenAssociationForGroup(groupId, client = null) {
+  const run = client ? client.query.bind(client) : query;
+  const res = await run(
     'SELECT * FROM driver_person_groups WHERE group_id = $1 AND ended_at IS NULL',
     [groupId]
   );

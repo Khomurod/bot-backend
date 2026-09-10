@@ -50,7 +50,10 @@ function nameFields(profile, group) {
   };
 }
 
-async function withTransaction(work) {
+async function withTransaction(work, existing = null) {
+  // Inside a caller's transaction (a correction's apply), the caller owns
+  // BEGIN/COMMIT; this only lends it the client.
+  if (existing) return work(existing);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -72,9 +75,10 @@ async function withTransaction(work) {
  * @param {object} [options]
  * @param {object|null} [options.profile]  the group's driver_profiles row when the caller has it
  * @param {boolean} [options.force]  bypass the per-process TTL
+ * @param {object} [options.client]  run the writes on this client, inside the caller's transaction
  * @returns {Promise<{personId:number|null, action:string}>}
  */
-async function ensurePersonForGroup(group, { profile = null, force = false } = {}) {
+async function ensurePersonForGroup(group, { profile = null, force = false, client: outer = null } = {}) {
   if (!group?.id || group.group_type !== 'driver' || group.active === false) {
     return { personId: null, action: 'skipped' };
   }
@@ -84,15 +88,15 @@ async function ensurePersonForGroup(group, { profile = null, force = false } = {
   }
   recentlyEnsured.set(group.id, Date.now());
 
-  const open = await people.getOpenAssociationForGroup(group.id);
+  const open = await people.getOpenAssociationForGroup(group.id, outer);
   if (open) return { personId: open.personId, action: 'keep' };
 
   const prof = profile || await driverProfilesDb.getDriverProfileByGroupId(group.id);
   const fields = nameFields(prof, group);
   const normalizedKey = buildNormalizedDriverKey(fields);
   const [telegramAnchorPersonId, returningCandidates] = await Promise.all([
-    lookups.findPersonByTelegramUserId(prof?.telegram_user_id, { excludeGroupId: group.id }),
-    lookups.findReturningCandidates(normalizedKey, { excludeGroupId: group.id }),
+    lookups.findPersonByTelegramUserId(prof?.telegram_user_id, { excludeGroupId: group.id }, outer),
+    lookups.findReturningCandidates(normalizedKey, { excludeGroupId: group.id }, outer),
   ]);
   const decision = decidePersonForGroup({ open: null, telegramAnchorPersonId, returningCandidates });
 
@@ -118,7 +122,7 @@ async function ensurePersonForGroup(group, { profile = null, force = false } = {
     }, client);
     await lookups.stampPersonIdForGroup(group.id, id, client);
     return id;
-  });
+  }, outer);
 
   if (decision.action === 'link') {
     console.log(`[IDENTITY] Group ${group.id} linked to existing person ${personId} via ${decision.source}`);
