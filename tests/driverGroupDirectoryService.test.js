@@ -99,3 +99,30 @@ test('canonical projection builds consistent team-driver display names', () => {
   assert.equal(row.display_name, 'RUDOLPH FREDERIC / JOHN ELISEE');
   assert.equal(row.normalized_driver_key, 'john elisee|rudolph frederic');
 });
+
+test('the permanent identity behind a chat rides along on the directory row', () => {
+  // Raise search and the Driver Groups modal read these; a mapper that dropped
+  // them would leave the person layer populated and invisible again.
+  const [row] = buildCanonicalDriverGroups([{
+    group_id: 541877,
+    group_name: 'WENZE UNIT # 27 RUSLAN ABDULLAEV',
+    group_type: 'driver',
+    group_active: true,
+    first_name: 'RUSLAN',
+    last_name: 'ABDULLAEV',
+    unit_number: '27',
+    person_id: '7',
+    person_display_name: 'RUSLAN ABDULLAEV',
+    person_group_count: '2',
+    person_unit_number: '27',
+    person_unit_history: '320 27',
+  }]);
+  assert.equal(row.person_id, 7);
+  assert.equal(row.person_display_name, 'RUSLAN ABDULLAEV');
+  assert.equal(row.person_group_count, 2);
+  assert.equal(row.person_unit_number, '27');
+  assert.equal(row.person_unit_history, '320 27');
+
+  const [bare] = buildCanonicalDriverGroups([{ group_id: 1, group_name: 'X', group_type: 'driver', group_active: true }]);
+  assert.equal(bare.person_id, null, 'an unplaced group is NULL, not 0 or NaN');
+});

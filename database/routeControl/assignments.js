@@ -35,11 +35,12 @@ async function createRouteAssignment({
         tracking_status, tracking_start_mode, tracking_start_at,
         tracking_started_at,
         tracking_start_lat, tracking_start_lng, tracking_start_location_text,
-        tracking_start_radius_miles, tracking_hold_reason)
+        tracking_start_radius_miles, tracking_hold_reason, person_id)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
              $21,$22,$23,
              CASE WHEN $21 = 'active' THEN NOW() ELSE NULL END,
-             $24,$25,$26,$27,$28)
+             $24,$25,$26,$27,$28,
+             (SELECT person_id FROM driver_person_groups WHERE group_id = $1::int AND ended_at IS NULL LIMIT 1))
      RETURNING *`,
     [
       groupId || null, driverProfileId || null, driverLabel || null, unitNumber || null,

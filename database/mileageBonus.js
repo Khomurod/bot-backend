@@ -267,10 +267,15 @@ async function upsertDriverProgress(data) {
     `INSERT INTO mileage_bonus_progress (
        driver_external_id, driver_normalized_name, driver_name, driver_type,
        hire_date, period_start, period_end, total_miles, trips,
-       highest_tier_reached, next_tier, miles_to_next_tier, updated_at
+       highest_tier_reached, next_tier, miles_to_next_tier, updated_at, person_id
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(),
+             (SELECT MIN(p.id) FROM driver_people p
+               WHERE p.merged_into_person_id IS NULL
+                 AND regexp_replace(btrim(upper(regexp_replace(p.display_name, '[^A-Za-z0-9 ]+', ' ', 'g'))), '\\s+', ' ', 'g') = $2
+              HAVING COUNT(*) = 1))
      ON CONFLICT (driver_normalized_name) DO UPDATE SET
+       person_id = COALESCE(mileage_bonus_progress.person_id, EXCLUDED.person_id),
        driver_external_id = EXCLUDED.driver_external_id,
        driver_name = EXCLUDED.driver_name,
        driver_type = EXCLUDED.driver_type,

@@ -29,10 +29,12 @@ async function upsertDriverHomeStatus({
 }) {
   const res = await query(
     `INSERT INTO driver_home_status
-       (group_id, telegram_group_id, state, state_since, last_status_text, last_status_at, road_bonus_weeks_notified, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       (group_id, telegram_group_id, state, state_since, last_status_text, last_status_at, road_bonus_weeks_notified, updated_at, person_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(),
+             (SELECT person_id FROM driver_person_groups WHERE group_id = $1 AND ended_at IS NULL LIMIT 1))
      ON CONFLICT (group_id) DO UPDATE SET
        telegram_group_id = EXCLUDED.telegram_group_id,
+       person_id = COALESCE(EXCLUDED.person_id, driver_home_status.person_id),
        state = EXCLUDED.state,
        state_since = EXCLUDED.state_since,
        last_status_text = EXCLUDED.last_status_text,

@@ -24,10 +24,15 @@ async function insertRoadHistory({
   daysOnRoad, exceededWeeks, bonusUsd, bonusPostedAt = null,
 }) {
   const res = await query(
+    // person_id is the group's OPEN association at write time (migration 0026):
+    // the leg belongs to whoever is in the chat now, and NULL when the person
+    // layer has not met this group yet.
     `INSERT INTO driver_road_history
        (group_id, driver_name, unit_number, road_started_at, home_arrived_at,
-        days_on_road, exceeded_weeks, bonus_usd, bonus_posted_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        days_on_road, exceeded_weeks, bonus_usd, bonus_posted_at, person_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+             (SELECT person_id FROM driver_person_groups WHERE group_id = $1 AND ended_at IS NULL LIMIT 1))
+     RETURNING *`,
     [groupId, driverName || null, unitNumber || null, roadStartedAt, homeArrivedAt,
       daysOnRoad, exceededWeeks, bonusUsd, bonusPostedAt]
   );

@@ -85,6 +85,15 @@ async function insertHomeTimeRequest(payload = {}) {
     values.push(coerceRequestValue(key, withDefaults[key]));
     i += 1;
   }
+  // Stamp the person behind the group at write time (migration 0026). An
+  // expression, not a parameter, so the allowlist above stays the only way a
+  // caller can name a column.
+  if (Object.prototype.hasOwnProperty.call(withDefaults, 'groupId') && withDefaults.groupId != null) {
+    cols.push('person_id');
+    placeholders.push(
+      `(SELECT person_id FROM driver_person_groups WHERE group_id = $${cols.indexOf('group_id') + 1} AND ended_at IS NULL LIMIT 1)`
+    );
+  }
   const res = await query(
     `INSERT INTO home_time_requests (${cols.join(', ')})
      VALUES (${placeholders.join(', ')})

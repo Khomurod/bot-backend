@@ -18,6 +18,17 @@ const {
   buildDefaultProfileFromGroup,
 } = require('./driverProfileNormalizers');
 
+/**
+ * Fired (detached, best effort) after every profile upsert with the saved row.
+ * Registered by index.js with the identity resolver, so the person layer learns
+ * a unit or Telegram-id change the moment a profile records it — without this
+ * module depending upward on services/.
+ */
+let profileSavedHook = null;
+function setProfileSavedHook(fn) {
+  profileSavedHook = typeof fn === 'function' ? fn : null;
+}
+
 async function syncGroupFromDriverProfile(profileRow, opts = {}) {
   if (!profileRow?.group_id) return null;
   const syncStatus = opts.syncStatus === true;
@@ -230,6 +241,11 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
       groupStatusSource: opts.groupStatusSource || null,
     });
   }
+  if (profileSavedHook) {
+    Promise.resolve()
+      .then(() => profileSavedHook(row))
+      .catch((err) => console.warn('[PROFILE] identity hook failed:', err.message));
+  }
   return getDriverProfileByGroupId(row.group_id);
 }
 
@@ -332,6 +348,7 @@ async function backfillDriverProfileTelegramUserId({ groupId, telegramUserId, us
 }
 
 module.exports = {
+  setProfileSavedHook,
   syncGroupFromDriverProfile,
   getDriverProfileByGroupId,
   getDriverProfileById,

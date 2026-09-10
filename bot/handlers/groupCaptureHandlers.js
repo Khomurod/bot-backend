@@ -18,6 +18,7 @@ const recentMessageBuffer = require('../../services/recentMessageBuffer');
 const { processHomeTimeMessage } = require('../../services/homeTimeRequestService');
 const { messageMentionsApprovers } = require('../../services/homeTimeRequestConstants');
 const { applyAutoReaction } = require('../../services/autoReactionService');
+const { ensurePersonForGroup } = require('../../services/identity/personResolver');
 
 /**
  * Persist a single Telegram user object (from any update field) into `drivers`,
@@ -184,6 +185,15 @@ function registerGroupCaptureHandlers(bot) {
       let group = null;
       if (ctx.chat && (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup')) {
         group = await db.upsertGroup(ctx.chat.id, ctx.chat.title || 'Unknown');
+        // The person behind this chat. Resolved once per group per ten minutes
+        // (the resolver caches), detached, and never allowed to fail the update:
+        // a driver's message must be processed whether or not the identity
+        // layer could place them.
+        if (group?.group_type === 'driver' && group.active !== false) {
+          ensurePersonForGroup(group).catch((err) => {
+            console.error('[BOT] ensurePersonForGroup failed:', err.message);
+          });
+        }
       }
       // Register every user this update touched — the sender, plus any
       // new/removed members and the author of a replied-to message — and,

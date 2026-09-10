@@ -91,9 +91,45 @@ skipped), and it only links two groups automatically when they share a
 as a candidate and never merged. Guarded by `tests/personBackfillPlan.test.js`,
 `tests/personIdentityLayerPg.test.js` and `tests/personBackfillPg.test.js`.
 
-**Nothing in the application reads the person layer yet.** It is deliberately
-inert until a later stage wires it in, which is what makes adding it incapable
-of changing existing behaviour.
+**The person layer is now WRITTEN and READ by the application (Phase 3-E).**
+
+- **Kept current by `services/identity/personResolver.js`.** When the bot sees an
+  active driver group without a person (capture middleware, once per group per
+  ten minutes) it resolves one: the same `driver_profiles.telegram_user_id` on
+  another chat → that person; the same normalized name whose other chats have
+  ALL gone inactive → that person, back on a new truck (the old association is
+  closed so they hold one open group); otherwise a new person. Two ACTIVE drivers
+  who share a name stay two people — a namesake is not a returning driver. The
+  decision is pure (`lib/identity/personResolution.js`), the write is one
+  transaction, and a failure is logged — it never fails the message.
+- **A saved profile keeps the truck true.** `database/driverProfiles` fires a
+  `setProfileSavedHook` (registered in `index.js`, so `database/` never depends
+  upward) and the resolver makes the profile's unit the person's open unit —
+  closing the previous one, so 320 → 322 is a change of truck, not a second
+  driver. A unit **another person still holds is not taken**: the resolver
+  returns `contested` and leaves it to the watchdog, because a chat title must
+  not evict anybody. A Telegram id that proves a chat belongs to a person already
+  on record moves the chat to them and merges the lone person by pointer.
+- **Every operational fact names its person (migration 0026).** Nullable
+  `person_id` on `driver_road_history`, `driver_home_status`,
+  `home_time_requests`, `fuel_stop_alerts`, `route_assignments`,
+  `dispatch_team_drivers` and `mileage_bonus_progress`, stamped **at write time**
+  by a subquery on the group's open association (NULL when the layer has not met
+  the group — never an error), filled once for existing rows, and mileage only
+  where exactly one canonical person normalizes to the name. `group_id` is
+  untouched beside it.
+- **Read by** the Driver Groups directory (`listGroupDirectorySourceRows` joins
+  the open association: `person_id`, `person_display_name`, `person_group_count`,
+  `person_unit_number`, `person_unit_history`), the Driver Groups detail modal
+  (every chat and truck in time), and Raise's assignable-driver search, which now
+  finds a driver by their name and **every truck they have driven**.
+- **Populated from the admin**: Needs Attention → Identity previews and applies
+  the Stage 1 backfill (`POST /api/operations/identity/backfill`, on the
+  `operations.corrections.apply` gate) and then stamps every pre-existing row —
+  so production fills without shell access. Guarded by
+  `tests/personResolution.test.js`, `tests/personResolverPg.test.js` (truck
+  change, old truck → new driver, returning driver, Telegram reconcile,
+  stamping at every write, migration idempotency) and `tests/identityRoutes.test.js`.
 
 **Cross-repo coupling:** the `samsara-integration` service also reads `groups`
 (for driver-group routing) and reads the `safety_event_video_settings` /

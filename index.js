@@ -88,6 +88,8 @@ const {
   stopModelMaintenance,
 } = require('./services/ai/discovery/modelMaintenance');
 const { setModelRefusalListener } = require('./services/ai/router');
+const { onProfileSaved } = require('./services/identity/personResolver');
+const { setProfileSavedHook } = require('./database/driverProfiles');
 const {
   startMemoryWatchdog,
   stopMemoryWatchdog,
@@ -406,6 +408,9 @@ async function start() {
   // Runs beside the duplicate-unit scan, whose three report types it generalises;
   // that service keeps running until its checks are folded in.
   startConsistencyService();
+  // A saved driver profile keeps the person layer current (unit change,
+  // Telegram id). Registered here so database/ never depends upward.
+  setProfileSavedHook(onProfileSaved);
   startPolicyWatcher({ telegram: bot?.telegram || null });
   // Daily model refresh, plus a debounced look whenever the router is refused a
   // model. Its Telegram lines ride the policy watcher's outbox above.

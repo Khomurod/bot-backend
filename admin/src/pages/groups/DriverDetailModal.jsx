@@ -4,6 +4,7 @@ import {
   formatDateValue, profileToDraft, shouldShowTeamInputs,
   driverLabel, memberOptionLabel, normalizeManualUsername,
 } from "./driverProfileShaping";
+import PersonIdentityPanel from "./PersonIdentityPanel";
 
 /**
  * The driver detail editor: identity, team-driver pair, unit, type, status,
@@ -75,6 +76,7 @@ export function DriverDetailModal({
 
     <div className="home-time-modal-body">
       <div style={{ display: "grid", gap: 14 }}>
+        <PersonIdentityPanel personId={profile.person_id || null} />
         <div>
           <label style={fieldLabelStyle}>Driver Username (Telegram member seen in this group)</label>
           <select

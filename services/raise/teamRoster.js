@@ -55,6 +55,9 @@ function candidateFromDirectoryRow(row) {
   return {
     group_id: row.group_id,
     driver_profile_id: row.profile_id || null,
+    person_id: row.person_id || null,
+    person_display_name: row.person_display_name || null,
+    person_unit_history: row.person_unit_history || null,
     driver_name: driverName,
     driver_normalized_name: normalized,
     display_name: row.display_name || null,
@@ -98,7 +101,11 @@ async function listAssignableDrivers({ companyOnly = true, includeInactive = fal
     cand.assigned_team_id = current ? current.team_id : null;
     cand.assigned_team_name = current ? current.team_name : null;
     if (term) {
-      const hay = [cand.driver_name, cand.unit_number, cand.group_name, cand.driver_type]
+      // A driver is findable by who they ARE and every truck they have driven,
+      // not only by the current chat title: "320" still finds the driver who
+      // moved from 320 to 322 last month.
+      const hay = [cand.driver_name, cand.unit_number, cand.group_name, cand.driver_type,
+        cand.person_display_name, cand.person_unit_history]
         .filter(Boolean).join(' ').toLowerCase();
       if (!hay.includes(term)) continue;
     }

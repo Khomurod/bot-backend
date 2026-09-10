@@ -8,6 +8,9 @@
  *   correctionsRoutes.js   everything that changes a real fleet record
  *                          (apply, revert, grant auto-apply) —
  *                          `operations.corrections.apply`
+ *   identityRoutes.js      the person layer: coverage, one person's history,
+ *                          and the backfill (preview on the read gate, apply
+ *                          on the APPLY gate)
  *
  * The two gates are passed in rather than built here, matching the rest of
  * `server/api.js`, so a test can mount this router with whatever authorization
@@ -28,11 +31,16 @@
  * | /findings/:id/apply           | POST   | APPLY   |
  * | /corrections/:id/revert       | POST   | APPLY   |
  * | /checks/:checkKey             | PUT    | APPLY   |
+ * | /identity/coverage            | GET    | read    |
+ * | /identity/people/:id          | GET    | read    |
+ * | /identity/backfill/preview    | GET    | read    |
+ * | /identity/backfill            | POST   | APPLY   |
  */
 const express = require('express');
 
 const { createFindingsRouter } = require('./operations/findingsRoutes');
 const { createCorrectionsRouter } = require('./operations/correctionsRoutes');
+const { createIdentityRouter } = require('./operations/identityRoutes');
 
 /**
  * @param {object} deps
@@ -43,6 +51,7 @@ function createOperationsRouter({ authMiddleware, applyMiddleware }) {
   const router = express.Router();
   router.use(createFindingsRouter({ authMiddleware }));
   router.use(createCorrectionsRouter({ authMiddleware, applyMiddleware }));
+  router.use(createIdentityRouter({ authMiddleware, applyMiddleware }));
   return router;
 }
 

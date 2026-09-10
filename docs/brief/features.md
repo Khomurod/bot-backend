@@ -276,6 +276,14 @@ Moved to **[§4a. The system checking itself, and the AI that helps](self-checki
 routing layer and the provider terms watcher. Same document, split when this
 file passed the 500-line limit.
 
+- **Needs Attention → Identity** (Phase 3-E): coverage tiles (people, active
+  driver groups, groups without a person, trucks assigned, unstamped history) and
+  the identity backfill — **Preview first, always**; Apply is disabled until a
+  preview has been shown and sits on `operations.corrections.apply`. The Driver
+  Groups detail modal opens with the driver's permanent identity: every chat and
+  every truck they have held, in time, or a plain "not placed yet". See
+  `docs/brief/data-model.md` → the person layer.
+
 ### Fuel monitor
 
 The fuel team posts a gas-station location into a driver group → a watch row is
