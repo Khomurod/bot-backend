@@ -24,6 +24,8 @@
  * genuinely still at home is not a defect.
  */
 
+const { createHash } = require('node:crypto');
+
 const DEFAULT_HOME_ALLOWANCE_DAYS = 4;
 const DEFAULT_ROAD_ALLOWANCE_WEEKS = 4;
 /** A day of slack so a driver who is a few hours over does not raise a finding. */
@@ -289,8 +291,19 @@ function checkGhostHomeStatus({ homeStatus = [], groupsById = new Map() }) {
  * the page under a single dropped minus sign.
  *
  * The condition is the PILE, so the subject is the queue rather than any
- * request — which also means the unique constraint keeps it to exactly one row
- * however many times the sweep runs.
+ * request — and the subject id carries a digest of the pile's CONTENTS, which
+ * is doing two jobs at once:
+ *
+ *   the same pile keeps ONE row however often the sweep runs (the dedup a fixed
+ *   id would also have given), and
+ *
+ *   a LATER pile is a different incident with its own row. A fixed id would have
+ *   been permanently suppressed after the first apply:
+ *   `resolveClearedFindings` only touches `status = 'open'`, so an applied
+ *   finding stays `applied` forever, and `upsertFinding` preserves every status
+ *   except `resolved` — a new pile would have silently updated that row with new
+ *   request ids and never reappeared in open findings. The same trap follows a
+ *   dismissal.
  *
  * Tier `auto` because the correction invents nothing: it moves rows from
  * "failed" to "abandoned" and touches neither the alert text nor the attempt
@@ -299,6 +312,14 @@ function checkGhostHomeStatus({ homeStatus = [], groupsById = new Map() }) {
  * are emphatically NOT re-driven — firing months of stale home-time alerts into
  * a live staff chat would be its own incident.
  */
+function pileDigest(requestIds) {
+  // Sorted, so the same pile in any order is the same incident. Short because
+  // `subject_id` is read by people in the audit trail; the queue's name stays in
+  // front of it for the same reason.
+  const ids = [...(requestIds || [])].map(Number).filter(Number.isInteger).sort((a, b) => a - b);
+  return createHash('sha1').update(ids.join(',')).digest('hex').slice(0, 12);
+}
+
 function checkExhaustedInternalAlerts({ exhaustedInternalAlerts = null }) {
   const pile = exhaustedInternalAlerts;
   if (!pile || !pile.count) return [];
@@ -306,7 +327,7 @@ function checkExhaustedInternalAlerts({ exhaustedInternalAlerts = null }) {
   return [{
     checkKey: 'home_time.exhausted_internal_alerts',
     subjectType: 'outbox',
-    subjectId: 'home_time_internal_alerts',
+    subjectId: `home_time_internal_alerts:${pileDigest(pile.requestIds)}`,
     title: `${pile.count} internal home-time alert(s) exhausted every retry and were never delivered`,
     severity: 'warning',
     tier: 'auto',

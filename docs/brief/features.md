@@ -201,7 +201,12 @@ marks the stay closed.
   98 problems forever and trains everyone to ignore the number: the exact
   failure that let the original 101 sit unnoticed. Nothing is deleted — the row,
   the attempt count and `internal_alert_last_error` all stay, so what was lost is
-  still answerable. **One** finding for the pile, not 98.
+  still answerable. **One** finding for the pile, not 98 — identified by a digest
+  of the pile's CONTENTS, so the same pile stays one row across sweeps while a
+  LATER pile is a new incident. A fixed id would have been permanently
+  suppressed after the first apply: `resolveClearedFindings` only touches
+  `status = 'open'`, so an applied finding stays `applied` forever and
+  `upsertFinding` preserves every status except `resolved`.
 - Guarded by `tests/homeTimeCycleInvariant.test.js`, which asserts the
   **negative**: after a `home → road` change by any route, no open cycle may
   remain. Nothing asserted that before, which is why it broke.

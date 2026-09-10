@@ -33,8 +33,8 @@ test('ONE finding for the whole pile, not one per alert', () => {
   const found = checkExhaustedInternalAlerts({ exhaustedInternalAlerts: pile() });
   assert.equal(found.length, 1);
   assert.equal(found[0].subjectType, 'outbox');
-  assert.equal(found[0].subjectId, 'home_time_internal_alerts',
-    'a fixed subject, so the unique constraint keeps it to one row across sweeps');
+  assert.match(found[0].subjectId, /^home_time_internal_alerts:[0-9a-f]{12}$/,
+    'the queue, plus a digest of the pile — one row per incident across sweeps');
   assert.match(found[0].title, /98 internal home-time alert/);
 });
 
@@ -84,4 +84,67 @@ test('the check has an action, and the action is the abandon one', () => {
   assert.equal(action.key, 'home_time.abandon_exhausted_alerts');
   assert.equal(action.tier, 'auto');
   assert.match(action.describe({ requestIds: [1, 2, 3] }), /NOT re-sent/i);
+});
+
+// ─── two ways this could have shipped and done nothing ───────────────────────
+
+test('the finding carries a payload, or the action can never run', () => {
+  // `payloadFor` is how BOTH `POST /findings/:id/apply` and `runAutoCorrections`
+  // get their arguments. A check key it does not know returns null — the admin
+  // route then answers "this finding carries no proposed change" and the batch
+  // counts it under `skipped.noPayload`. Registering the action is not enough;
+  // without this the correction is unreachable from every path there is.
+  const { payloadFor } = require('../services/operations/corrections/autoApply');
+  const [found] = checkExhaustedInternalAlerts({ exhaustedInternalAlerts: pile() });
+
+  const payload = payloadFor({ checkKey: found.checkKey, proposedChange: found.proposedChange });
+  assert.ok(payload, 'an unreachable correction is a correction that does not exist');
+  assert.deepEqual(payload.requestIds, found.evidence.requestIds);
+});
+
+test('a payload with no ids is no payload', () => {
+  const { payloadFor } = require('../services/operations/corrections/autoApply');
+  assert.equal(payloadFor({
+    checkKey: 'home_time.exhausted_internal_alerts', proposedChange: { requestIds: [] },
+  }), null);
+  assert.equal(payloadFor({
+    checkKey: 'home_time.exhausted_internal_alerts', proposedChange: {},
+  }), null);
+});
+
+test('a NEW pile is a new finding, not a permanently applied one', () => {
+  // A fixed subject id looked like the right way to keep the pile to one row.
+  // It is not: `resolveClearedFindings` only touches `status = 'open'`, so once
+  // this finding is applied it stays `applied` forever — and `upsertFinding`
+  // preserves every status except `resolved`. A later pile would update that
+  // same row with new request ids and never reappear in open findings, so it
+  // could never be applied. The same permanent suppression follows a dismissal.
+  const first = checkExhaustedInternalAlerts({
+    exhaustedInternalAlerts: pile({ count: 2, requestIds: [1, 2] }),
+  })[0];
+  const second = checkExhaustedInternalAlerts({
+    exhaustedInternalAlerts: pile({ count: 3, requestIds: [1, 2, 7] }),
+  })[0];
+
+  assert.notEqual(first.subjectId, second.subjectId,
+    'a different pile is a different incident and needs its own row');
+});
+
+test('the SAME pile keeps one row however often the sweep runs', () => {
+  // The dedup that made a fixed subject attractive in the first place, kept:
+  // the identity is the pile's contents, so a re-run of the same pile — in any
+  // order — collides on the unique constraint rather than accumulating.
+  const a = checkExhaustedInternalAlerts({
+    exhaustedInternalAlerts: pile({ count: 3, requestIds: [7, 1, 2] }),
+  })[0];
+  const b = checkExhaustedInternalAlerts({
+    exhaustedInternalAlerts: pile({ count: 3, requestIds: [1, 2, 7] }),
+  })[0];
+  assert.equal(a.subjectId, b.subjectId);
+});
+
+test('the subject id still says which queue it is about', () => {
+  const [found] = checkExhaustedInternalAlerts({ exhaustedInternalAlerts: pile() });
+  assert.match(found.subjectId, /^home_time_internal_alerts:/,
+    'an opaque digest alone would be unreadable in the audit trail');
 });

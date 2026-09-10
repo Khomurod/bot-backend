@@ -54,6 +54,15 @@ async function loadCheckSettings(db = defaultDb) {
  * the answer from the live rows before it writes anything, which is where a
  * proposal that has gone stale is caught.
  */
+/**
+ * A finding's proposed change → the arguments its action takes.
+ *
+ * BOTH `POST /findings/:id/apply` and `runAutoCorrections` come through here, so
+ * a check key this function does not know has a registered action that can never
+ * run: the route answers "no proposed change" and the batch counts it under
+ * `skipped.noPayload`. Registering an action is half of wiring it up; this is
+ * the other half.
+ */
 function payloadFor(finding) {
   const change = finding.proposedChange || {};
   if (finding.checkKey === 'home_time.closable_open_cycle') {
@@ -65,6 +74,12 @@ function payloadFor(finding) {
   }
   if (finding.checkKey === 'identity.status_disagreement') {
     return { groupId: change.groupId, toStatus: change.to };
+  }
+  if (finding.checkKey === 'home_time.exhausted_internal_alerts') {
+    // Empty is NO payload, not an empty one: the batch then counts it under
+    // `skipped.noPayload` rather than calling an action with nothing to do.
+    const ids = Array.isArray(change.requestIds) ? change.requestIds : [];
+    return ids.length ? { requestIds: ids } : null;
   }
   return null;
 }
