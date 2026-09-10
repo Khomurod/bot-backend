@@ -168,3 +168,54 @@ test('the background loop places a group by itself once the check is enabled, an
   const { findings } = await sweep();
   assert.equal(findings.filter((f) => f.checkKey === 'identity.group_without_person').length, 0);
 });
+
+test('reverting ensure_person restores the associations it closed and lifts ONLY the stamps it wrote', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { applyCorrection, revertCorrection, resolver, store, sweep } = bind(harness);
+  // A returning driver: the old chat holds person P and went inactive; the new
+  // chat has no person yet.
+  const old = await seedGroup(harness, { telegramId: -49, name: 'WENZE UNIT # 27 RUSLAN ABDULLAEV', first: 'RUSLAN', last: 'ABDULLAEV', unit: '27' });
+  const personId = (await resolver.ensurePersonForGroup(old)).personId;
+  await harness.query('UPDATE groups SET active = FALSE WHERE id = $1', [old.id]);
+  const fresh = await seedGroup(harness, { telegramId: -541877, name: 'WENZE UNIT # 27 RUSLAN ABDULLAEV', first: 'RUSLAN', last: 'ABDULLAEV', unit: '27' });
+  // One row on the new chat already names the person (written with the id);
+  // one does not. Only the second may be touched by apply, and by revert.
+  await harness.query(`INSERT INTO home_time_requests (group_id, person_id, requested_at) VALUES ($1, $2, NOW())`, [fresh.id, personId]);
+  const blank = await harness.query(`INSERT INTO home_time_requests (group_id, requested_at) VALUES ($1, NOW()) RETURNING id`, [fresh.id]);
+
+  await sweep();
+  const filed = (await store.listFindings({ status: 'open', checkKey: 'identity.group_without_person' }))[0];
+  const correction = await applyCorrection({
+    finding: filed, actionKey: 'identity.ensure_person', payload: { groupId: fresh.id }, admin: ADMIN,
+  });
+  assert.equal(correction.new_values.personId, personId, 'the returning driver is the SAME person');
+  const oldOpen = async () => (await harness.query(
+    'SELECT COUNT(*)::int AS n FROM driver_person_groups WHERE group_id = $1 AND ended_at IS NULL', [old.id])).rows[0].n;
+  assert.equal(await oldOpen(), 0, 'apply closed the old chat\'s association');
+
+  await revertCorrection({ correctionId: correction.id, admin: ADMIN, reason: 'undo' });
+
+  assert.equal(await oldOpen(), 1, 'revert reopened the association apply had closed');
+  const newOpen = await harness.query('SELECT COUNT(*)::int AS n FROM driver_person_groups WHERE group_id = $1 AND ended_at IS NULL', [fresh.id]);
+  assert.equal(newOpen.rows[0].n, 0);
+  const rows = await harness.query('SELECT id, person_id FROM home_time_requests WHERE group_id = $1 ORDER BY id', [fresh.id]);
+  assert.equal(rows.rows[0].person_id, personId, 'a row that already named the person is NOT touched by revert');
+  assert.equal(rows.rows[1].id, blank.rows[0].id);
+  assert.equal(rows.rows[1].person_id, null, 'the row apply stamped is the one revert lifts');
+});
+
+test('sync_unit carries the group\'s Samsara vehicle onto the new truck row, so the cross-system check still has both sides', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { applyCorrection, resolver, store, sweep } = bind(harness);
+  const a = await seedGroup(harness, { telegramId: -1, name: 'WENZE UNIT # 322 SIROJIDDIN DAVUROV', first: 'SIROJIDDIN', last: 'DAVUROV', unit: '322' });
+  await harness.query(`UPDATE groups SET samsara_vehicle_id = 'v-9' WHERE id = $1`, [a.id]);
+  const pa = (await resolver.ensurePersonForGroup(a)).personId;
+  await resolver.syncUnitForPerson(pa, '320');
+  await sweep();
+  const filed = (await store.listFindings({ status: 'open', checkKey: 'identity.stale_unit_assignment' }))[0];
+  await applyCorrection({
+    finding: filed, actionKey: 'identity.sync_unit', payload: { personId: pa, unitNumber: '322', groupId: a.id }, admin: ADMIN,
+  });
+  const open = await harness.query('SELECT unit_number, samsara_vehicle_id FROM driver_units WHERE person_id = $1 AND ended_at IS NULL', [pa]);
+  assert.deepEqual(open.rows, [{ unit_number: '322', samsara_vehicle_id: 'v-9' }]);
+});
