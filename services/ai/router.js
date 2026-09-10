@@ -181,11 +181,18 @@ async function callOne(provider, model, request, { timeoutMs, expects, generatio
 function chainFor(provider, { preferProvider, preferModels }) {
   const configured = provider.modelChain.length ? provider.modelChain : [];
   if (provider.providerKey !== preferProvider || !preferModels?.length) return configured;
+  // A caller's preference the provider no longer LISTS is not asked for. The
+  // chain refresh cannot retire what is not in the chain, but the provider's
+  // own listing can say a model does not exist, and the router believes the
+  // listing. An empty listing is absence of evidence and changes nothing.
+  const listed = Array.isArray(provider.discoveredModelIds) && provider.discoveredModelIds.length
+    ? new Set(provider.discoveredModelIds) : null;
   const seen = new Set();
   const out = [];
   for (const model of [...preferModels, ...configured]) {
     const key = String(model || '').trim();
     if (!key || seen.has(key)) continue;
+    if (listed && !configured.includes(key) && !listed.has(key)) continue;
     seen.add(key);
     out.push(key);
   }

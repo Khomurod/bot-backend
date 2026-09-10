@@ -106,6 +106,10 @@ async function getProvidersForRouter() {
     baseUrl: row.base_url,
     modelChain: Array.isArray(row.model_chain) ? row.model_chain : [],
     catalogKey: row.catalog_key ?? null,
+    // What the provider itself last said exists. The router uses it to drop a
+    // caller's preferred model that is no longer listed; empty means unknown.
+    discoveredModelIds: Array.isArray(row.discovered_models)
+      ? row.discovered_models.map((m) => m?.id).filter(Boolean) : [],
     apiKey: safeDecrypt(row.api_key_encrypted) || envKeyFor(row.provider_key),
     cooledUntil: row.cooled_indefinitely ? INDEFINITE : row.cooled_until,
     cooldownReason: row.cooldown_reason,

@@ -83,7 +83,7 @@ async function refreshProviderModels(providerKey, { initiator = 'refresh', updat
   }
 
   return {
-    ok: true, providerKey, modelsFound: models.length,
+    ok: true, providerKey, modelsFound: models.length, listed: models.map((m) => m.id),
     kept: r.kept, retired: r.retired, added: r.added, chain: r.chain,
     changed, unverified: r.unverified,
   };

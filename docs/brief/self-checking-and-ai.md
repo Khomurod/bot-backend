@@ -208,7 +208,16 @@ feature it belongs to.
   (`discontinuation`, `info` when a replacement exists, `serious` when the chain
   is empty) and rides the same Telegram outbox, in words — *"Groq retired one of
   Wenze's models (X). Wenze automatically switched to Y. No Wenze features were
-  interrupted."* A failed or empty listing retires nothing.
+  interrupted."* A failed or empty listing retires nothing. **The notice is
+  driven by the event, not the refresh** (migration 0024,
+  `ai_model_events.notified_at`): a `retired` row nobody has been told about is
+  the job's work list, stamped only after the finding and the alert are written,
+  so a write that fails is retried next pass rather than lost. **A caller's
+  `preferModels` are covered too**: the router drops a preferred model the
+  provider's own listing no longer has (`discoveredModelIds`; an empty listing
+  changes nothing), and a refusal carries the model name so the verification can
+  retire it with a `capability_preference` event. Only a replacement actually in
+  the chain is ever claimed as one.
 - **The terms watcher finds its own pages, follows them when they move, and
   searches when they vanish.** Nobody types a terms URL for a provider Wenze
   knows: every run starts by seeding each enabled catalogued provider with the
