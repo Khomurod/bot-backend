@@ -85,7 +85,7 @@ function summaryDeps(overrides = {}) {
       getConsistencyStatus: () => ({
         running: true,
         lastRun: { at: '2026-09-10T12:00:00.000Z', summary: { found: 12, filed: 3, resolved: 4 } },
-        lastCorrections: { at: '2026-09-10T12:00:01.000Z', summary: { applied: 65, stale: 0, failed: 0, capped: ['identity.group_without_person'] } },
+        lastCorrections: { at: '2026-09-10T12:00:01.000Z', summary: { applied: 65, stale: 0, failed: 0, capped: [{ checkKey: 'identity.group_without_person', wanted: 151, cap: 150, findingId: 9 }] } },
       }),
     },
     findings: { async summariseFindings() { return { info: 1, warning: 2, serious: 0, total: 3 }; } },
@@ -103,11 +103,16 @@ function summaryDeps(overrides = {}) {
   };
 }
 
-test('the summary is counts and timestamps, with the capped list reduced to a number', async () => {
+test('the summary is counts and timestamps, and a capped check is named with its numbers', async () => {
   const s = await getOperationsHealth(summaryDeps());
   assert.equal(s.available, true);
   assert.deepEqual(s.sweep, { running: true, lastRunAt: '2026-09-10T12:00:00.000Z', found: 12, filed: 3, resolved: 4 });
-  assert.deepEqual(s.corrections, { at: '2026-09-10T12:00:01.000Z', applied: 65, stale: 0, failed: 0, capped: 1, error: null });
+  assert.deepEqual(s.corrections, {
+    at: '2026-09-10T12:00:01.000Z', applied: 65, stale: 0, failed: 0, error: null,
+    // WHICH check stopped itself, and by how much — check keys are code
+    // identifiers, and without this a capped pass reads "0 applied" with no why.
+    capped: [{ checkKey: 'identity.group_without_person', wanted: 151, cap: 150 }],
+  });
   assert.equal(s.identity.groupsWithoutPerson, 0);
   assert.deepEqual(s.homeTime, { groupsWithDuplicateOpenStays: 0, openStayIndex: 'present' });
   const gemini = s.aiModels.find((p) => p.provider === 'gemini');
@@ -154,6 +159,31 @@ test('the kind and status are derived, not copied', () => {
   for (const k of ['credential', 'not_configured', 'transient', 'fatal_request', 'quota', 'model', 'unknown']) {
     assert.ok(REFRESH_ERROR_KINDS.includes(k));
   }
+});
+
+test('a provider is named by its catalogue key only — a free-text provider_key never leaves', async () => {
+  // Production held a DISABLED row whose provider_key was a pasted OpenRouter
+  // secret. provider_key is operator-typed text; on a public endpoint the only
+  // safe name is the catalogue's, and anything else is "custom".
+  const pasted = 'sk-or-v1-' + 'f'.repeat(64);
+  const s = await getOperationsHealth(summaryDeps({
+    aiProviders: {
+      async listProvidersForAdmin() {
+        return [
+          { providerKey: pasted, catalogKey: null, enabled: false, modelChain: [], discoveredModels: [], modelsRefreshedAt: null, modelsRefreshError: null },
+          { providerKey: 'gemini', catalogKey: null, enabled: true, modelChain: ['a'], discoveredModels: [], modelsRefreshedAt: null, modelsRefreshError: null },
+          { providerKey: 'office-box', catalogKey: 'openrouter', enabled: true, modelChain: ['a'], discoveredModels: [], modelsRefreshedAt: null, modelsRefreshError: null },
+          { providerKey: 'my_llm', catalogKey: 'custom', enabled: true, modelChain: [], discoveredModels: [], modelsRefreshedAt: null, modelsRefreshError: null },
+        ];
+      },
+    },
+  }));
+  const text = JSON.stringify(s);
+  assert.equal(text.includes(pasted), false, 'the pasted secret must not appear anywhere');
+  assert.equal(text.includes('sk-or'), false);
+  assert.equal(text.includes('office-box'), false, 'free text, even harmless, does not leave');
+  assert.equal(text.includes('my_llm'), false);
+  assert.deepEqual(s.aiModels.map((p) => p.provider), ['custom', 'gemini', 'openrouter', 'custom']);
 });
 
 test('the summary never carries a name, a title or a chat id', async () => {
