@@ -174,3 +174,11 @@ export async function runAiPolicyCheck() {
   const data = await res.json();
   return data.summary;
 }
+
+/** Every AI decision, in words, with its switches. See lib/ai/capabilityCatalog.js. */
+export async function getAiResponsibilities() {
+  const res = await fetch(`${API_BASE}/settings/ai/responsibilities`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.groups || [];
+}

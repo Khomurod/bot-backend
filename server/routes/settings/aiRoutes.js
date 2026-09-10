@@ -16,9 +16,12 @@
 const express = require('express');
 
 const aiSettings = require('../../../database/aiSettings');
+const operationalCheckSettings = require('../../../database/operationalCheckSettings');
+const { groupedCapabilities } = require('../../../lib/ai/capabilityCatalog');
 const aiProviders = require('../../../database/aiProviders');
 const aiCallLog = require('../../../database/aiCallLog');
 const { invalidateRegistry } = require('../../../services/ai/registry');
+const { invalidateCapabilityCache } = require('../../../services/ai/capabilityGate');
 const { callOpenAiChat } = require('../../../services/ai/adapters/openaiChat');
 const { callGeminiGenerate } = require('../../../services/ai/adapters/gemini');
 const { classifyFailure } = require('../../../lib/ai/classify');
@@ -215,8 +218,63 @@ function createAiSettingsRouter({ authMiddleware }) {
     }
   });
 
+  /**
+   * AI Responsibilities: every decision Wenze uses a model for, in words, with
+   * whether it can change stored information and what governs the automatic
+   * change where one exists.
+   *
+   * Two switches, deliberately: `aiEnabled` is "may a model be asked about
+   * this", and `automation.enabled` is "may the answer be applied without a
+   * person". Analysis on with automatic changes off is a sensible way to run.
+   */
+  router.get('/ai/responsibilities', authMiddleware, async (req, res) => {
+    try {
+      const [rows, checks] = await Promise.all([
+        aiSettings.listCapabilities(),
+        operationalCheckSettings.listCheckSettings().catch(() => []),
+      ]);
+      const byKey = new Map((rows || []).map((r) => [r.capabilityKey, r]));
+      const byCheck = new Map((checks || []).map((c) => [c.checkKey, c]));
+      const groups = groupedCapabilities().map((group) => ({
+        group: group.group,
+        capabilities: group.capabilities.map((cap) => {
+          const stored = byKey.get(cap.key) || null;
+          const check = cap.automationCheck ? byCheck.get(cap.automationCheck) || null : null;
+          return {
+            key: cap.key,
+            label: cap.label,
+            what: cap.what,
+            changesState: cap.changesState === true,
+            stateNote: cap.stateNote || null,
+            mediumNote: cap.mediumNote || null,
+            sendsRawText: cap.sendsRawText === true,
+            fallback: cap.fallback || null,
+            // A capability with no row yet is ENABLED — see capabilityGate.
+            aiEnabled: stored ? stored.aiEnabled !== false : true,
+            registered: Boolean(stored),
+            automation: cap.automationCheck
+              ? {
+                checkKey: cap.automationCheck,
+                enabled: check ? check.autoApplyEnabled === true : false,
+                maxPerRun: check ? check.maxAutoPerRun : null,
+              }
+              : null,
+          };
+        }),
+      }));
+      return res.json({ groups });
+    } catch (err) {
+      return sendFailure(res, err, {
+        message: 'Failed to load the AI responsibilities', logPrefix: '[AI SETTINGS]',
+      });
+    }
+  });
+
   router.put('/ai/capabilities/:key', authMiddleware, async (req, res) => {
     try {
+      // The gate caches for 30 seconds; an operator who just switched something
+      // off should not watch it keep running while the cache expires.
+      invalidateCapabilityCache();
       const capability = await aiSettings.updateCapability(String(req.params.key), {
         ...(req.body || {}), updatedBy: req.admin?.username || null,
       });

@@ -59,6 +59,7 @@ async function parseHomeTimeDates({ text, todayIso }) {
   const prompt = buildHomeTimeDateReplyPrompt({ text, todayLabel: today });
   try {
     const { parsed } = await callGeminiJson({
+      capability: 'home_time_dates',
       userText: prompt,
       maxOutputTokens: 120,
       validateParsed: (p) => typeof p?.found === 'boolean',

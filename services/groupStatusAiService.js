@@ -4,6 +4,7 @@
 const { DateTime } = require('luxon');
 const db = require('../database/db');
 const { classifyDriverGroups } = require('./groupStatusAiClassifier');
+const { mayDeactivate, describeRefusal } = require('../lib/drivers/deactivationGuard');
 
 const TZ = process.env.GROUP_STATUS_AI_TZ || 'America/Chicago';
 const DEFAULT_HOURS = [6, 18];
@@ -34,6 +35,7 @@ async function runClassificationRun() {
 
   let updated = 0;
   let unresolved = 0;
+  let refused = 0;
   for (const group of groups) {
     const result = classifications.get(group.id);
     if (!result) continue;
@@ -51,16 +53,37 @@ async function runClassificationRun() {
     if (group.active === nextActive && group.status_source === 'ai') {
       continue;
     }
+
+    // A DEACTIVATION NEEDS MORE THAN A TITLE. Marking a working driver inactive
+    // takes them out of Live Locations, document routing, the dispatch roster
+    // and home-time tracking — and a renamed chat or an unfamiliar spelling is
+    // enough to cause it. Turning a driver back ON is never blocked.
+    if (nextActive === false) {
+      const guard = mayDeactivate({
+        lastMessageSeenAt: group.last_message_seen_at,
+        homeStatusAt: group.home_status_at,
+        openHomeCycle: group.open_home_cycle === true,
+        lastRoadHistoryAt: group.last_road_history_at,
+        openUnitAt: group.open_unit_at,
+      });
+      if (!guard.allowed) {
+        refused += 1;
+        console.log(`[GROUP-STATUS-AI] ${describeRefusal(group.group_name || `Group ${group.id}`, guard.reasons)}`);
+        continue;
+      }
+    }
+
     await db.updateGroupOperationalStatus(group.id, nextActive, 'ai');
     updated += 1;
   }
 
   console.log(
     `[GROUP-STATUS-AI] Run complete: ${updated}/${groups.length} groups updated, `
-    + `${unresolved} left unchanged (no confident classification)`
+    + `${unresolved} left unchanged (no confident classification), `
+    + `${refused} deactivation(s) refused (the driver is still working)`
   );
   return {
-    updated, unresolved, skipped: groups.length - updated, total: groups.length,
+    updated, unresolved, refused, skipped: groups.length - updated, total: groups.length,
   };
 }
 

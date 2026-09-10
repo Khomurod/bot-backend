@@ -207,6 +207,10 @@ async function callGeminiText(opts = {}) {
     generationConfig,
     maxRetryWaitMs: opts.maxRetryWaitMs,
     validateResult: opts.validateResult,
+    // Which business decision this call serves. It was dropped here, so every
+    // Gemini consumer logged as unnamed activity no matter what it passed —
+    // callGeminiGenerateContent forwards it, but nothing ever reached that far.
+    capability: opts.capability || null,
   };
 
   if (systemText) {

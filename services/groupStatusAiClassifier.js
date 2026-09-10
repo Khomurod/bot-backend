@@ -127,6 +127,7 @@ function chunkArray(items, size) {
 async function classifyBatch(batch) {
   const prompt = buildClassificationPrompt(batch);
   const { text, model } = await callGroqWithFallback(prompt, {
+      capability: 'driver_status_classification',
     systemText: SYSTEM_TEXT,
     maxTokens: Math.min(8000, 200 + batch.length * 80),
     temperature: 0.1,

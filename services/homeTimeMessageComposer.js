@@ -43,6 +43,7 @@ function conversationalPrompt(kind, language, facts = {}) {
 async function generateMessage({ kind, language, facts, fallback }) {
   try {
     const { text } = await callGeminiText({
+      capability: 'home_time_message',
       userText: conversationalPrompt(kind, language, facts),
       maxOutputTokens: 120,
     });

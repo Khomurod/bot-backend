@@ -34,6 +34,7 @@
 const { classifyFailure, invalidResponse, retryAfterMs, FAILURE } = require('../../lib/ai/classify');
 const { cooldownFor, eligibleProviders } = require('../../lib/ai/cooldown');
 const { getRoster, nextRotation } = require('./registry');
+const { isCapabilityEnabled } = require('./capabilityGate');
 const aiProviders = require('../../database/aiProviders');
 const { recordAiCall } = require('../../database/aiCallLog');
 const { callOpenAiChat } = require('./adapters/openaiChat');
@@ -250,6 +251,20 @@ async function runCapability({
   if (!roster.available) {
     await recordAiCall({ capabilityKey: capability, outcome: 'skipped' });
     throw new AiUnavailableError('AI is switched off or no provider is configured');
+  }
+
+  // THE PER-RESPONSIBILITY SWITCH, honoured in one place.
+  //
+  // `ai_capabilities.ai_enabled` was written by the admin and read by nobody:
+  // switching "Driver Active/Inactive classification" off changed nothing at
+  // all. Enforcing it here rather than at sixteen call sites means every
+  // consumer already handles it — a refused capability raises the same
+  // AiUnavailableError as a provider outage, which is exactly the path each of
+  // them already falls back through. An unregistered capability is enabled, so
+  // a new one is never silently off.
+  if (capability && !(await isCapabilityEnabled(capability))) {
+    await recordAiCall({ capabilityKey: capability, outcome: 'skipped' });
+    throw new AiUnavailableError(`AI is switched off for "${capability}"`);
   }
 
   const { settings } = roster;

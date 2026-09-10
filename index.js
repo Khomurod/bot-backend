@@ -71,6 +71,7 @@ const {
   startReturnToRoadWatch,
   stopReturnToRoadWatch,
 } = require('./services/homeTime/returnToRoadWatch');
+const { registerKnownCapabilities } = require('./services/ai/capabilityRegistry');
 const {
   startRouteControlService,
   stopRouteControlService,
@@ -415,6 +416,12 @@ async function start() {
   // Notices when a driver who is home goes back to work — a Datatruck load plus
   // the truck's own movement, never one of them alone.
   startReturnToRoadWatch();
+  // Put the AI responsibilities catalogue into the database, so Settings → AI
+  // has something to show and an administrator has something to switch off.
+  // Descriptive columns only — a capability switched off stays off.
+  registerKnownCapabilities().catch((err) => {
+    console.warn('[AI CAPABILITIES] registration pass failed:', err.message);
+  });
   startRouteControlService(bot.telegram);
   startDuplicateUnitCheckService();
   // Runs beside the duplicate-unit scan, whose three report types it generalises;

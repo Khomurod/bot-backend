@@ -55,6 +55,7 @@ async function classifyHomeTimeRequest(input) {
   });
   try {
     const { parsed } = await callGeminiJson({
+      capability: 'home_time_intent',
       userText: prompt,
       maxOutputTokens: 250,
       validateParsed: (p) => typeof p?.is_home_time_request === 'boolean',

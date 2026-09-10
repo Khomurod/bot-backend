@@ -60,6 +60,7 @@ async function extractFromImages(files) {
     + `{"drivers":[{"name":"","status":"road|home|null","since_date":"YYYY-MM-DD|null","history":[{"from":"","to":""}],"notes":""}]}`;
 
   const { parsed } = await callGeminiJson({
+      capability: 'home_time_import',
     userText: prompt,
     extraParts: images,
     maxOutputTokens: 4000,

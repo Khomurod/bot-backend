@@ -65,6 +65,7 @@ async function narrateBatch(cardsContext) {
   if (Object.keys(cardsContext).length === 0) return {};
   try {
     const { text: raw } = await callGroqWithFallback(buildBatchCardPrompt(cardsContext), {
+      capability: 'ai_insights_narration',
       systemText: BATCH_SYSTEM_PROMPT,
       temperature: 0.3,
       maxTokens: 3000,

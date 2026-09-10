@@ -59,7 +59,9 @@ async function callGroq(promptText) {
     'Use HTML-safe output only (no markdown).',
     'Do not invent facts, percentages, or events not present in transcript.',
   ].join(' ');
-  const { text } = await callGroqWithFallback(promptText, { systemText, temperature: 0.5, maxTokens: 2000 });
+  const { text } = await callGroqWithFallback(promptText, {
+    capability: 'ai_report_generation', systemText, temperature: 0.5, maxTokens: 2000,
+  });
   return text;
 }
 
@@ -195,7 +197,9 @@ async function generateCompanyReport(logsArray) {
 }
 
 async function callGroqWithSystem(promptText, systemText) {
-  const { text } = await callGroqWithFallback(promptText, { systemText, temperature: 0.5, maxTokens: 2000 });
+  const { text } = await callGroqWithFallback(promptText, {
+    capability: 'ai_report_generation', systemText, temperature: 0.5, maxTokens: 2000,
+  });
   return text;
 }
 
