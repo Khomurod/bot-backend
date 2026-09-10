@@ -51,7 +51,10 @@ function renderMetaCompliancePage(title, bodyHtml) {
 </html>`;
 }
 
-function createHealthRoutes({ db, config, countExhaustedInternalAlerts = null, getOperationsHealth = null }) {
+function createHealthRoutes({
+  db, config, countExhaustedInternalAlerts = null, countFailedManagerNotices = null,
+  getOperationsHealth = null,
+}) {
   const router = express.Router();
 
   // ─── Health Check (public, for Render + external cron / uptime pings) ───
@@ -122,7 +125,25 @@ function createHealthRoutes({ db, config, countExhaustedInternalAlerts = null, g
       // endpoint itself into an error.
       homeTimeInternalAlerts = { available: false, error: err.message };
     }
-    const queues = { homeTimeInternalAlerts };
+    // The manager-notice queue: home time now TELLS three managers three
+    // things, so a queue nobody drains is the same silent failure the internal
+    // alert had — 101 undelivered alerts that nothing ever reported.
+    let homeTimeManagerNotices = { available: false };
+    if (typeof countFailedManagerNotices === 'function') {
+      try {
+        const { count, oldestAt } = await countFailedManagerNotices();
+        homeTimeManagerNotices = { available: true, failed: count, oldestAt };
+        if (count > 0) {
+          console.warn(
+            `[HEALTH] ${count} home-time manager notice(s) were never delivered. Check that the `
+            + 'completed-notification group id is a chat the bot can reach.'
+          );
+        }
+      } catch (err) {
+        homeTimeManagerNotices = { available: false, error: err.message };
+      }
+    }
+    const queues = { homeTimeInternalAlerts, homeTimeManagerNotices };
     queueHealthCache = { checkedAt: now, queues };
     return queues;
   }

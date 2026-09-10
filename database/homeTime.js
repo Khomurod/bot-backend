@@ -10,6 +10,7 @@
  *   ./homeTime/roadHistory.js  completed road legs + the atomic bonus claim
  *   ./homeTime/requests.js     the request state machine (pending → decided)
  *   ./homeTime/integrity.js    the boot-time guard for "one open stay per group"
+ *   ./homeTime/notices.js      the manager-notice outbox (told once, durably)
  *   ./homeTimeClarification.js the restart-safe reminder sweep and claims
  *   ./homeTimeExpiry.js        stale-request expiry (imported directly)
  *
@@ -21,6 +22,7 @@ const driverState = require('./homeTime/driverState');
 const roadHistory = require('./homeTime/roadHistory');
 const requests = require('./homeTime/requests');
 const integrity = require('./homeTime/integrity');
+const notices = require('./homeTime/notices');
 const clarification = require('./homeTimeClarification');
 
 module.exports = {
@@ -28,6 +30,16 @@ module.exports = {
   AWAITING_STATUSES: requests.AWAITING_STATUSES,
   OPEN_CLARIFICATION_STATUSES: requests.OPEN_CLARIFICATION_STATUSES,
   OPEN_REQUEST_STATUSES: requests.OPEN_REQUEST_STATUSES,
+
+  // Manager notices — the three home-time events, each delivered exactly once
+  enqueueNotice: notices.enqueueNotice,
+  noticeExists: notices.noticeExists,
+  claimDueNotices: notices.claimDueNotices,
+  markNoticeDelivered: notices.markNoticeDelivered,
+  markNoticeFailed: notices.markNoticeFailed,
+  releaseNoticeClaim: notices.releaseNoticeClaim,
+  countFailedNotices: notices.countFailedNotices,
+  listNoticesForPerson: notices.listNoticesForPerson,
 
   // Settings rows
   getHomeTimeSettings: settings.getHomeTimeSettings,

@@ -147,7 +147,7 @@ test('SILENT: a date the driver volunteers later is captured on the SAME request
   assert.equal(h.fulfills[0].payload.returnToRoadDate, TO);
 });
 
-test('SILENT: completing the dates still posts the approval card to the staff group', async () => {
+test('SILENT: completing the dates still tells the three managers', async () => {
   const h = loadService({
     gemini: { json: FOLLOWUP_VERDICT },
     clarification: OPEN_CLARIFICATION,
@@ -155,9 +155,12 @@ test('SILENT: completing the dates still posts the approval card to the staff gr
   });
   await h.service.processHomeTimeMessage(h.telegram, GROUP, FOLLOWUP_MSG, {});
   const cards = h.notifySends();
-  assert.equal(cards.length, 1, 'the completed-request card is unaffected by silent mode');
+  assert.equal(cards.length, 1, 'the manager notice is unaffected by silent mode');
   assert.equal(cards[0].chatId, NOTIFY_GROUP_ID);
-  assert.ok(cards[0].extra.reply_markup, 'the Approve / Do Not Approve buttons are present');
+  assert.equal(cards[0].extra?.reply_markup, undefined, 'and it carries no decision buttons');
+  for (const who of ['@tomr_robins0n', '@SaffieBNett', '@amelia_wenze']) {
+    assert.ok(cards[0].text.includes(who), `${who} is tagged`);
+  }
 });
 
 test('SILENT: completing the dates still says nothing to the driver', async () => {

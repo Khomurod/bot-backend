@@ -2,7 +2,7 @@
  * Home-Time approver-tag path.
  *
  * The oldest of the three entry points: a company representative tags an
- * approver (@tomr_robins0n / @SaffieBNett) in a driver group. Managers are
+ * home-time manager in a driver group. Managers are
  * tagged for loads, rates, breakdowns, paperwork and a dozen other reasons, so
  * this path is deliberately conservative about calling something a home-time
  * request.
@@ -15,7 +15,7 @@ const ht = require('../database/homeTime');
 const recentBuffer = require('./recentMessageBuffer');
 const { callGeminiJson } = require('./geminiClient');
 const {
-  HOME_TIME_APPROVER_MENTIONS,
+  HOME_TIME_MANAGER_MENTIONS,
   hasHomeTimeSignal,
   buildHomeTimeClassificationPrompt,
   parseHomeTimeWindowText,
@@ -51,7 +51,7 @@ async function classifyHomeTimeRequest(input) {
   const today = todayIso || todayIsoChicago();
 
   const prompt = buildHomeTimeClassificationPrompt({
-    transcript, triggerText, approvers: HOME_TIME_APPROVER_MENTIONS, todayLabel: today,
+    transcript, triggerText, approvers: HOME_TIME_MANAGER_MENTIONS, todayLabel: today,
   });
   try {
     const { parsed } = await callGeminiJson({

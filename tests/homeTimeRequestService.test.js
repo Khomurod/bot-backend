@@ -32,21 +32,38 @@ test('approver tag, not a request → no card, no clarification', async () => {
   assert.equal(sends.length, 0);
 });
 
-test('approver tag WITH dates posts the approval card immediately', async () => {
-  const { service, telegram, inserts, sends, messageLinks } = loadService({
+test('manager tag WITH dates tells the three managers immediately, with no buttons', async () => {
+  const { service, telegram, inserts, sends, messageLinks, notices } = loadService({
     gemini: { json: { is_home_time_request: true, confidence: 'high', dates_specified: true, home_from: FROM, home_to: LAST_DAY } },
   });
   await service.handleApproverMention(telegram, GROUP, { message_id: 10, text: `home ${FROM} to ${LAST_DAY} @tomr_robins0n`, from: { id: 1, username: 'rep' } });
   assert.equal(inserts.length, 1);
-  assert.equal(inserts[0].status, 'pending');
   assert.equal(inserts[0].homeFrom, FROM);
   assert.equal(inserts[0].returnToRoadDate, TO); // last-day-home + 1
   assert.equal(sends.length, 1);
-  assert.ok(sends[0].extra?.reply_markup, 'card carries inline buttons');
-  assert.equal(sends[0].chatId, NOTIFY_GROUP_ID, 'card posts to the notification group, not the driver group');
+  assert.equal(sends[0].extra?.reply_markup, undefined, 'no Approve / Do Not Approve buttons');
+  assert.match(sends[0].text, /Home-Time Request/);
+  assert.match(sends[0].text, /Driver is requesting Home Time/);
+  for (const who of ['@tomr_robins0n', '@SaffieBNett', '@amelia_wenze']) {
+    assert.ok(sends[0].text.includes(who), `${who} is tagged`);
+  }
+  assert.equal(sends[0].chatId, NOTIFY_GROUP_ID, 'posts to the notification group, not the driver group');
   assert.notEqual(sends[0].chatId, GROUP.telegram_group_id);
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0].eventType, 'request');
   assert.equal(messageLinks.length, 1);
   assert.equal(messageLinks[0].chatId, NOTIFY_GROUP_ID, 'stored message chat id is the notification group');
+});
+
+test('the same request completed twice tells the managers once', async () => {
+  const { service, telegram, sends, notices } = loadService({
+    gemini: { json: { is_home_time_request: true, confidence: 'high', dates_specified: true, home_from: FROM, home_to: LAST_DAY } },
+  });
+  const msg = { message_id: 10, text: `home ${FROM} to ${LAST_DAY} @tomr_robins0n`, from: { id: 1, username: 'rep' } };
+  await service.handleApproverMention(telegram, GROUP, msg);
+  await service.handleApproverMention(telegram, GROUP, { ...msg, message_id: 11 });
+  assert.equal(notices.length, 1, 'one event, one notice — the second insert is a no-op');
+  assert.equal(sends.length, 1, 'and three managers are not tagged twice');
 });
 
 test('approver tag WITH dates but NO notification group → card is NOT posted to the driver group', async () => {
@@ -217,7 +234,7 @@ test('Status: Home still asks when the only approved return date is stale/unusab
 
 // ── handleHomeTimeClarificationReply (plain-text follow-up) ──
 
-test('driver answers the return date (no Telegram reply) → completes + posts card + 👍 ack', async () => {
+test('driver answers the return date (no Telegram reply) → completes + tells managers + 👍 ack', async () => {
   const { service, telegram, fulfills, sends, reactions } = loadService({
     clarification: { id: 42, status: 'awaiting_return_to_road', home_from: FROM, return_to_road_date: null, language: 'en' },
     gemini: {
@@ -234,13 +251,14 @@ test('driver answers the return date (no Telegram reply) → completes + posts c
   await service.handleHomeTimeClarificationReply(telegram, GROUP, { message_id: 88, text: `back on the road ${TO}`, from: { id: 900, username: 'driver' } });
   assert.equal(fulfills.length, 1);
   assert.equal(fulfills[0].payload.returnToRoadDate, TO);
-  // one card (notification group) + one ack (driver group)
-  assert.ok(sends.length >= 2, 'card and acknowledgment both sent');
-  const card = sends.find((s) => s.extra?.reply_markup);
-  const ack = sends.find((s) => !s.extra?.reply_markup);
-  assert.ok(card, 'approval card posted');
-  assert.equal(card.chatId, NOTIFY_GROUP_ID, 'card → notification group');
-  assert.equal(ack.chatId, GROUP.telegram_group_id, 'ack → driver group (existing behavior)');
+  // one manager notice (notification group) + one ack (driver group)
+  assert.ok(sends.length >= 2, 'notice and acknowledgment both sent');
+  const notice = sends.find((s) => s.chatId === NOTIFY_GROUP_ID);
+  const ack = sends.find((s) => String(s.chatId) === String(GROUP.telegram_group_id));
+  assert.ok(notice, 'managers told');
+  assert.equal(notice.extra?.reply_markup, undefined, 'and told without buttons');
+  assert.match(notice.text, /Home-Time Request/);
+  assert.ok(ack, 'driver acknowledged');
   assert.equal(ack.extra?.reply_to_message_id, 88, 'ack replies to the driver message');
   assert.equal(reactions.length, 1, 'compliant → 👍 reaction on the driver message');
   assert.equal(reactions[0].chatId, GROUP.telegram_group_id, 'reaction is in the driver group');

@@ -94,7 +94,7 @@ you assume either is ID-only:
 | Gate | Behavior |
 |---|---|
 | Mileage-bonus Paid/Rejected (`services/mileageBonusConstants.js` `isAccountingUser`) | checks `MILEAGE_BONUS_ACCOUNTING_USER_IDS` **only if that list is non-empty**; otherwise falls back to a username allow-list with hardcoded defaults |
-| Home-time Approve / Do Not Approve (`services/homeTimeRequestConstants.js` `isHomeTimeApprover`) | same shape: `HOME_TIME_APPROVER_USER_IDS` when set, otherwise `HOME_TIME_APPROVER_USERNAMES` with hardcoded defaults |
+| Home-time managers (`services/homeTimeRequestConstants.js` `isHomeTimeManager`) | **recognition, not authority** — home time is reported, never approved, so nothing is gated on being a manager. The list is the three built-in managers, plus anything in `HOME_TIME_MANAGER_USERNAMES` / `_USER_IDS` (or the retired `HOME_TIME_APPROVER_*` names); an override ADDS people and can never drop one |
 
 Both are deliberate: *"once immutable IDs are configured, usernames no longer
 grant authority."* Configuring the IDs in the environment is what hardens them.

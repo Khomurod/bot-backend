@@ -41,6 +41,15 @@ const HOME_TIME_EXPLICIT_TIMEOFF_PATTERNS = [
   // "home for a week / a few days / 4 days" — requires an explicit time-off
   // duration so incidental "home for the night/weekend" never counts.
   /\bhome\s+for\s+(?:\d+|an?|a\s+few|a\s+couple|some|several)\s+(?:days?|weeks?)\b/i,
+  // The same request with the duration in front: "I need 4 days home",
+  // "a few days at home", "2 weeks home". A bare number of days next to "home"
+  // is a length of time off — nobody asks for "4 days home" to grab a jacket.
+  // Without this the AI caught it and the deterministic fallback did not, so an
+  // AI outage silently lost a plainly worded request.
+  // The lookahead is load-bearing: "3 days home depot delivery" is a delivery,
+  // not a request. "home" followed by one of these is a place or a compound
+  // noun, never the driver's own house.
+  /\b(?:\d+|a\s+few|a\s+couple|several)\s+(?:days?|weeks?)\s+(?:at\s+|back\s+)?home\b(?!\s*(?:depot|office|base|plate|page|screen|address|improvement|land|town|owner))/i,
   /\bvacation\b/i,
   /\bpto\b/i,
 ];
@@ -103,6 +112,12 @@ const HOME_ERRAND_SIGNAL_PATTERNS = [
   /\bover\s*night\b/i,
   // Personal operational stops near home (an appointment, not time off).
   /\b(?:oil\s*change|appointment|dentist|doctor(?:'s)?|the\s+mechanic)\b/i,
+  // PROGRESS, not a request. "almost home", "close to home", "30 minutes from
+  // home", "20 miles out" — a driver narrating the end of a trip. It reads as a
+  // home mention to any classifier, and a confident model calling it a request
+  // is exactly the mistake this list exists to overrule.
+  /\b(?:almost|nearly|close\s+to|near|approaching)\s+(?:the\s+)?home\b/i,
+  /\b\d+\s*(?:mile|mi|minute|min|hour|hr)s?\s+(?:out|away|from\s+home)\b/i,
 ];
 
 // Ordinary OPERATIONAL conversation. A driver group is mostly load, repair and

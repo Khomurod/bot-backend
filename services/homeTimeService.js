@@ -29,6 +29,22 @@ const {
 } = require('./homeTimeConstants');
 const { inferDriverType } = require('../lib/drivers/driverProfileParse');
 const roadBonus = require('./roadBonusNotifierService');
+const { noticeDriverIsHome, noticeDriverBackOnRoad } = require('./homeTime/managerNotices');
+
+/**
+ * Telling managers must never break the thing it is reporting on. A notice runs
+ * behind this guard so a Telegram outage, a missing settings row or a broken
+ * lookup can delay the news without leaving the driver's cycle half-applied —
+ * which is precisely the failure mode that left 74 open cycles in production.
+ */
+async function tellManagers(what, run) {
+  try {
+    return await run();
+  } catch (err) {
+    console.warn(`[HOME-TIME] manager notice (${what}) failed:`, err.message);
+    return null;
+  }
+}
 
 function escapeHtml(text) {
   return String(text || '')
@@ -136,7 +152,10 @@ async function handleDriverGroupStatus(telegram, group, message) {
  *   previousState:(string|null), eventAt:string} | null}
  */
 async function applyStateTransition(
-  telegram, group, { newState, eventAt, statusText = '', announce = true, resyncSince = false }
+  telegram, group, {
+    newState, eventAt, statusText = '', announce = true, resyncSince = false,
+    detectedBy = 'driver_message', evidenceSummary = null,
+  }
 ) {
   try {
     const settings = await ht.getHomeTimeSettings();
@@ -252,6 +271,27 @@ async function applyStateTransition(
         await postHomecomingRecognition(telegram, { driverName, unitNumber, daysOnRoad });
       }
       console.log(`[HOME-TIME] ${driverName} (${driverType}) home after ${daysOnRoad}d (${exceededWeeks} extra wk, $${bonusUsd} recorded)`);
+      // The managers are told the driver IS HOME — a different event from the
+      // earlier "wants to go home", and keyed on the cycle this arrival opened
+      // so a re-derived arrival never tags them twice. `announce: false` is the
+      // silent screenshot-import path, which must not fire live notices for a
+      // stay that ended weeks ago.
+      if (announce) {
+        await tellManagers('arrived_home', async () => {
+          const known = await ht.getApprovedHomeTimeRequestForGroup(group.id).catch(() => null);
+          return noticeDriverIsHome(telegram, {
+            roadHistoryId: historyRow?.id || null,
+            groupId: group.id,
+            driverName,
+            unitNumber,
+            homeSince: eventAt,
+            plannedReturn: known?.return_to_road_date || null,
+            daysOnRoad,
+            settings,
+            detectedBy,
+          });
+        });
+      }
     }
     // home → road: the clock simply starts, AND the open home stay is closed
     // HERE rather than by the caller.
@@ -264,7 +304,28 @@ async function applyStateTransition(
     // every caller must remember is a rule that some caller will forget, so the
     // function that moves the state now owns both halves of the transition.
     if (previousState === 'home' && newState === 'road') {
-      await closeHomeStayOnReturn(group, { returnToRoadIso: eventAt });
+      const closed = await closeHomeStayOnReturn(group, { returnToRoadIso: eventAt });
+      if (announce) {
+        await tellManagers('back_on_road', async () => {
+          const { driverName, unitNumber } = await resolveDriverLabel(group);
+          return noticeDriverBackOnRoad(telegram, {
+          // Keyed on the cycle that just closed. When no cycle was open (the
+          // state was first observed as 'home', so there is nothing to close)
+          // the key falls back to this group and this moment, which is still
+          // one key per event rather than one per background check.
+            roadHistoryId: closed?.id || null,
+            eventKeySuffix: closed?.id ? null : `${group.id}:${eventAt}`,
+            groupId: group.id,
+            driverName,
+            unitNumber,
+            endedAt: eventAt,
+            homeDays: closed?.home_days ?? null,
+            evidenceSummary,
+            settings,
+            detectedBy,
+          });
+        });
+      }
     }
 
     // Every transition starts a fresh leg → reset the extra-week watermark so
@@ -338,8 +399,9 @@ async function closeHomeStayOnReturn(group, { returnToRoadIso } = {}) {
     // Newest open stay of this DRIVER — the person's, not only the chat's, so a
     // return observed on a new truck's chat closes the stay begun on the old one.
     const [open] = await ht.listOpenHomeStays(group.id);
+    let closed = null;
     if (open && open.home_arrived_at) {
-      await closeOneStay(group, open, returnToRoadIso);
+      closed = await closeOneStay(group, open, returnToRoadIso);
     }
     // The home window is over → retire any clarification still waiting on dates and
     // stop its reminders (spec §11: stop when the driver returns to the road) —
@@ -352,7 +414,9 @@ async function closeHomeStayOnReturn(group, { returnToRoadIso } = {}) {
         reason: 'Driver returned to the road; clarification no longer needed.',
       }).catch(() => {});
     }
-    return open || null;
+    // The CLOSED row, so the caller can report the measured days at home. Falls
+    // back to the pre-close row when the close itself found nothing to update.
+    return closed || open || null;
   } catch (err) {
     console.error('[HOME-TIME] closeHomeStayOnReturn error:', err.message);
     return null;

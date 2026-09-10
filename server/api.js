@@ -122,6 +122,9 @@ app.use(createHealthRoutes({
   // module that must stand up without a database behind it.
   countExhaustedInternalAlerts:
     require('../database/homeTimeInternalAlertOutbox').countExhaustedInternalAlerts,
+  // The other home-time queue: the three manager notices.
+  countFailedManagerNotices:
+    require('../database/homeTime/notices').countFailedNotices,
   // Counts only: open findings, the last background correction pass, identity
   // coverage, home-stay integrity, model-listing freshness.
   getOperationsHealth: require('../services/operations/healthSummary').getOperationsHealth,

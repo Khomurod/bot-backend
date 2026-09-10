@@ -25,7 +25,7 @@ const ht = require('../database/homeTime');
 const outbox = require('../database/homeTimeInternalAlertOutbox');
 const { safeSend } = require('./telegramHtml');
 const { buildTelegramMessageUrl } = require('./telegramUrl');
-const { HOME_TIME_APPROVER_MENTIONS } = require('./homeTimeRequestConstants');
+const { HOME_TIME_MANAGER_MENTIONS } = require('./homeTimeRequestConstants');
 
 const MAX_QUOTED_MESSAGE_CHARS = 500;
 
@@ -115,7 +115,7 @@ function buildInternalAlertText({
     + '<b>not</b> been asked. Please confirm the exact arrive-home and '
     + 'return-to-road dates with the driver and enter them in the admin panel.',
     '',
-    HOME_TIME_APPROVER_MENTIONS.join(' '),
+    HOME_TIME_MANAGER_MENTIONS.join(' '),
   );
   if (requestId) lines.push(`<i>Request #${requestId}</i>`);
 

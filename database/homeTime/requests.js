@@ -185,11 +185,16 @@ async function getAwaitingDatesHomeTimeRequestForGroup(groupId) {
   return res.rows[0] || null;
 }
 
-/** Most recent APPROVED request for a group (to link a completed cycle / dedup). */
+/**
+ * The most recent request that says where this driver's home time stands — a
+ * RECORDED one (the new normal), a legacy 'pending' one, or a historically
+ * approved one. Used to reuse a known return-to-road date and to avoid asking
+ * the driver twice.
+ */
 async function getApprovedHomeTimeRequestForGroup(groupId) {
   const res = await query(
     `SELECT * FROM home_time_requests
-     WHERE group_id = $1 AND status = 'approved'
+     WHERE group_id = $1 AND status IN ('recorded', 'pending', 'approved')
      ORDER BY decided_at DESC NULLS LAST, requested_at DESC LIMIT 1`,
     [groupId]
   );
@@ -197,15 +202,17 @@ async function getApprovedHomeTimeRequestForGroup(groupId) {
 }
 
 /**
- * Most recent decided (approved/denied) request for a group whose home-start date
- * is within `windowDays` of `dateIso` — used to link a completing cycle to the
- * request that authorized it so approved exceptions are classified correctly.
+ * The most recent SETTLED request for a group whose home-start date is within
+ * `windowDays` of `dateIso` — used to link a completing cycle to the request
+ * behind it. 'approved'/'denied' are historical decisions and stay meaningful
+ * (homeTimeEfficiencyService still classifies an approved exception from them);
+ * 'recorded' is what a completed request is called now that nobody decides one.
  */
 async function findDecidedRequestNearDate(groupId, dateIso, { windowDays = 3 } = {}) {
   const res = await query(
     `SELECT * FROM home_time_requests
      WHERE group_id = $1
-       AND status IN ('approved', 'denied')
+       AND status IN ('recorded', 'pending', 'approved', 'denied')
        AND home_from IS NOT NULL
        AND ABS(home_from - $2::date) <= $3
      ORDER BY ABS(home_from - $2::date) ASC, decided_at DESC NULLS LAST
@@ -239,7 +246,11 @@ async function fulfillAwaitingHomeTimeRequest(id, {
            ai_confidence = COALESCE($11, ai_confidence),
            missing_fields = NULL,
            next_reminder_at = NULL,
-           status = 'pending'
+           -- 'recorded', not 'pending': the dates are complete and home time is
+           -- being tracked. Nothing is waiting for a manager to press a button,
+           -- because there is no button. Legacy 'pending' rows keep their status
+           -- and are read the same way (see OPEN_REQUEST_STATUSES).
+           status = 'recorded'
      WHERE id = $1 AND status = ANY($12)
      RETURNING *`,
     [

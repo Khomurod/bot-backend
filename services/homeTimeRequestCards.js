@@ -1,5 +1,5 @@
 /**
- * Home-Time Request — Telegram card presentation (pure text + inline keyboard).
+ * Home-Time Request — Telegram card presentation (pure text).
  *
  * These builders were extracted verbatim from homeTimeRequestService.js as a
  * focused, side-effect-free module (see CLAUDE.md → "Maximum source-file size":
@@ -10,16 +10,16 @@
  *
  * No DB, network, or Telegram send happens here; the service still owns all I/O.
  */
-const { Markup } = require('telegraf');
 const {
-  HOME_TIME_APPROVER_MENTIONS,
+  HOME_TIME_MANAGER_MENTIONS,
   weeksFromDays,
   homeTimePolicyApplies,
 } = require('./homeTimeRequestConstants');
 
-// Inline-button callback namespace for the Approve / Do Not Approve card. Kept
-// here (with buildDecisionButtons) and re-exported by the request service so the
-// decision handler and the card stay in agreement on the prefix.
+// The callback namespace of the RETIRED Approve / Do Not Approve buttons. No
+// card carries them any more, but cards posted before that change still sit in
+// the group with live buttons, so the prefix stays here for the handler that
+// answers those presses politely (bot/homeTimeRequestHandlers.js).
 const CALLBACK_PREFIX = 'htreq';
 
 function escapeHtml(text) {
@@ -29,8 +29,8 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;');
 }
 
-function approverTagLine() {
-  return HOME_TIME_APPROVER_MENTIONS.join(' / ');
+function managerTagLine() {
+  return HOME_TIME_MANAGER_MENTIONS.join(' ');
 }
 
 function buildCardText({
@@ -56,17 +56,10 @@ function buildCardText({
   if (!policyApplies) {
     lines.push('Policy: <b>N/A</b> (owner operator)');
   }
-  lines.push('', `Only ${approverTagLine()} can decide.`);
+  // No question, no buttons: the card reports a request, it does not ask for a
+  // decision. The three managers are tagged so they see it.
+  lines.push('', managerTagLine());
   return lines.join('\n');
-}
-
-function buildDecisionButtons(requestId) {
-  return Markup.inlineKeyboard([
-    [
-      Markup.button.callback('✅ Approve', `${CALLBACK_PREFIX}:approve:${requestId}`),
-      Markup.button.callback('❌ Do Not Approve', `${CALLBACK_PREFIX}:deny:${requestId}`),
-    ],
-  ]);
 }
 
 function buildDecidedCardText(request, decision, decidedByUsername, { via } = {}) {
@@ -88,6 +81,22 @@ function buildDecidedCardText(request, decision, decidedByUsername, { via } = {}
     '',
     verdict,
     `Home time: <b>${escapeHtml(request.home_from || '—')} → ${escapeHtml(request.home_to || '—')}</b>${back}`,
+  ].join('\n');
+}
+
+/**
+ * Card text that RETIRES an old approval card still sitting in the group.
+ * Editing the message with this text and no reply_markup removes its buttons.
+ */
+function buildRetiredCardText(request) {
+  const who = `${escapeHtml(request.driver_name || 'Driver')}`
+    + `${request.unit_number ? ` (Unit ${escapeHtml(request.unit_number)})` : ''}`;
+  return [
+    `🏠 <b>Home-Time — ${who}</b>`,
+    '',
+    'Home time no longer needs approval. Wenze tracks it and tells the managers '
+    + 'when the driver asks, when they get home, and when they are back on the road.',
+    `Home time: <b>${escapeHtml(request.home_from || '—')} → ${escapeHtml(request.home_to || '—')}</b>`,
   ].join('\n');
 }
 
@@ -115,9 +124,9 @@ function buildExpiredCardText(request) {
 module.exports = {
   CALLBACK_PREFIX,
   escapeHtml,
-  approverTagLine,
+  managerTagLine,
   buildCardText,
-  buildDecisionButtons,
   buildDecidedCardText,
+  buildRetiredCardText,
   buildExpiredCardText,
 };

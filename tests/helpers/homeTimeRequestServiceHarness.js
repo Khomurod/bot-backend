@@ -73,18 +73,30 @@ function loadService({
   const internalAlertPath = path.resolve(__dirname, '../../services/homeTimeInternalAlert.js');
   const approverTagPath = path.resolve(__dirname, '../../services/homeTimeApproverTag.js');
   const outboxPath = path.resolve(__dirname, '../../database/homeTimeInternalAlertOutbox.js');
+  // The manager-notice service captures `ht` at load time as well, so it has to
+  // be re-required against each harness. Leaving it cached binds it to the
+  // FIRST harness of the file: its outbox then already knows every event key
+  // and every later test silently sends nothing.
+  const noticesPath = path.resolve(__dirname, '../../services/homeTime/managerNotices.js');
+  const peoplePath = path.resolve(__dirname, '../../database/driverPeople.js');
 
   for (const p of [servicePath, dbPath, htPath, htmlPath, bufferPath, geminiPath, intentPath,
     statusPath, configPath, htExpiryPath, approvalPath, flowPath, composerPath, channelPath,
-    internalAlertPath, approverTagPath, outboxPath]) {
+    internalAlertPath, approverTagPath, outboxPath, noticesPath, peoplePath]) {
     delete require.cache[p];
   }
+
+  // The permanent-identity lookup is not what these tests are about, and left
+  // real it reaches for a database that is not there.
+  require.cache[peoplePath] = { exports: { async getPersonIdForGroup() { return null; } } };
 
   require.cache[configPath] = { exports: { employeeGroupId: '' } };
 
   const inserts = [];
   const sends = [];
   const messageLinks = [];
+  const notices = [];
+  const noticeKeys = new Set();
   const fulfills = [];
   const updates = [];
   const clarMsgs = [];
@@ -136,8 +148,29 @@ function loadService({
       async updateHomeTimeRequestFields(id, patch) { updates.push({ id, patch }); return { id, ...patch }; },
       async fulfillAwaitingHomeTimeRequest(id, payload) {
         fulfills.push({ id, payload });
-        return { id, status: 'pending', ...payload };
+        // 'recorded' — a completed request waits for nobody. See migration 0029.
+        return { id, status: 'recorded', ...payload };
       },
+      // The manager-notice outbox. Modelled on the real UNIQUE(event_key):
+      // a repeat of the same event returns null and sends nothing.
+      async enqueueNotice(payload) {
+        if (noticeKeys.has(payload.eventKey)) return null;
+        noticeKeys.add(payload.eventKey);
+        const row = { id: notices.length + 1, ...payload, state: 'pending', attempts: 0 };
+        notices.push(row);
+        return row;
+      },
+      async markNoticeDelivered(id, { telegramMessageId = null } = {}) {
+        const row = notices.find((n) => n.id === id);
+        if (row) { row.state = 'delivered'; row.telegramMessageId = telegramMessageId; }
+        return row || null;
+      },
+      async markNoticeFailed(id, error) {
+        const row = notices.find((n) => n.id === id);
+        if (row) { row.state = 'pending'; row.lastError = error; }
+        return row || null;
+      },
+      async claimDueNotices() { return []; },
       async setHomeTimeRequestMessage(id, chatId, messageId) {
         messageLinks.push({ id, chatId, messageId });
         return { id };
@@ -234,7 +267,7 @@ function loadService({
 
   return {
     service: require(servicePath), telegram,
-    inserts, sends, messageLinks, fulfills, updates, clarMsgs, reactions, geminiCalls, stateTransitions, expiries, edits,
+    inserts, sends, messageLinks, notices, fulfills, updates, clarMsgs, reactions, geminiCalls, stateTransitions, expiries, edits,
     internalClaims,
     // Messages split by destination, so a test can assert "nothing reached the
     // driver" without re-deriving chat ids.
