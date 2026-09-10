@@ -19,6 +19,25 @@
  * by the maintenance job, not here.
  */
 const { reconcileChain, isChatCapable, freeStatusOf } = require('../../../lib/ai/modelSelection');
+const { getCatalogEntry } = require('../../../lib/ai/providerCatalog');
+
+/**
+ * Where to list a provider's models. A row connected through the catalogue
+ * carries it; a LEGACY row (Groq and Gemini, configured from environment keys
+ * before the catalogue existed) has no `catalog_key` and, for Gemini, no
+ * `base_url` — the call adapter carried its own default, so nothing needed one.
+ * The catalogue entry for the provider's own key fills the gap, so discovery
+ * works for the providers a fleet has had all along, not only new ones.
+ */
+function discoveryTargetFor(provider, providerKey) {
+  const entry = getCatalogEntry(provider.catalogKey || providerKey);
+  const fromCatalog = entry && entry.key !== 'custom' ? entry : null;
+  return {
+    adapter: provider.adapter || fromCatalog?.adapter || 'openai_chat',
+    baseUrl: provider.baseUrl || fromCatalog?.baseUrl || null,
+    catalogKey: provider.catalogKey || fromCatalog?.key || null,
+  };
+}
 
 function defaultDeps() {
   /* eslint-disable global-require */
@@ -43,10 +62,11 @@ async function refreshProviderModels(providerKey, { initiator = 'refresh', updat
   if (!provider) return { ok: false, providerKey, error: 'No such provider' };
   if (!provider.apiKey) return { ok: false, providerKey, error: 'No key configured — nothing to ask the provider with' };
 
+  const target = discoveryTargetFor(provider, providerKey);
   let models;
   try {
     models = await deps.listModels({
-      adapter: provider.adapter, baseUrl: provider.baseUrl, apiKey: provider.apiKey, providerKey,
+      adapter: target.adapter, baseUrl: target.baseUrl, apiKey: provider.apiKey, providerKey,
     });
   } catch (err) {
     await deps.aiProviders.saveDiscoveredModels(providerKey, { error: err.message });
@@ -89,4 +109,4 @@ async function refreshProviderModels(providerKey, { initiator = 'refresh', updat
   };
 }
 
-module.exports = { refreshProviderModels };
+module.exports = { refreshProviderModels, discoveryTargetFor };

@@ -193,3 +193,48 @@ test('an unchanged listing writes no event', async () => {
   assert.equal(d.saw.events.length, 0);
   assert.equal(d.saw.upserts.length, 0);
 });
+
+// ─── legacy rows ─────────────────────────────────────────────────────────────
+
+test('a legacy Gemini row with no Base URL is listed at the catalogue URL, not skipped', async () => {
+  // Production's Gemini row predates the catalogue: configured from an env key,
+  // `base_url` NULL because the call adapter carried its own default. Discovery
+  // must ask the catalogue where that provider lists models rather than pass
+  // `baseUrl: null` and fail the same way on every daily pass.
+  const saw = [];
+  const d = deps({
+    models: [{ ...normaliseModel({ name: 'models/gemini-2.5-flash' }, 'gemini'), providerKey: 'gemini' }],
+    existing: { providerKey: 'gemini', adapter: 'gemini', baseUrl: null, catalogKey: null, apiKey: 'AIza-x', modelChain: [] },
+  });
+  const inner = d.listModels;
+  d.listModels = async (args) => { saw.push(args); return inner(args); };
+  const r = await refreshProviderModels('gemini', {}, d);
+  assert.equal(r.ok, true, r.error);
+  assert.equal(saw.length, 1);
+  assert.equal(saw[0].baseUrl, 'https://generativelanguage.googleapis.com/v1beta');
+  assert.equal(saw[0].adapter, 'gemini');
+});
+
+test('a row that carries its own Base URL keeps it — the catalogue only fills a gap', async () => {
+  const saw = [];
+  const d = deps({
+    models: [openai('a')].map((m) => ({ ...m, providerKey: 'groq' })),
+    existing: { providerKey: 'groq', adapter: 'openai_chat', baseUrl: 'https://proxy.example/v1', catalogKey: 'groq', apiKey: 'k', modelChain: ['a'] },
+  });
+  const inner = d.listModels;
+  d.listModels = async (args) => { saw.push(args); return inner(args); };
+  await refreshProviderModels('groq', {}, d);
+  assert.equal(saw[0].baseUrl, 'https://proxy.example/v1');
+});
+
+test('a custom provider with no Base URL is not given one by the catalogue', async () => {
+  const saw = [];
+  const d = deps({
+    models: [],
+    existing: { providerKey: 'my_llm', adapter: 'openai_chat', baseUrl: null, catalogKey: 'custom', apiKey: 'k', modelChain: [] },
+  });
+  const inner = d.listModels;
+  d.listModels = async (args) => { saw.push(args); return inner(args); };
+  await refreshProviderModels('my_llm', {}, d);
+  assert.equal(saw[0].baseUrl, null, 'there is no catalogue URL for a custom endpoint');
+});

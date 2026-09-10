@@ -148,6 +148,12 @@
   from `RENDER_GIT_COMMIT`, `null` when unset. `main` auto-deploys, and before
   this the only evidence a merge was live was an uptime that lined up with the
   merge time. `tests/healthDeployCommit.test.js`.
+- **`/api/health` shows what the system is doing about its own records** — the
+  `operations` block (counts and timestamps only; see "Operational
+  consistency" in `self-checking-and-ai.md`), so a deploy's background repair can be verified
+  from the same endpoint that names the commit. Withheld when the database is
+  down; `available: false` rather than a 5xx when the summary itself fails.
+  `tests/healthOperationsBlock.test.js`.
 
 ### The home-time cycle invariant
 

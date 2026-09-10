@@ -36,6 +36,11 @@ async function harnessWith(t) {
   await harness.query(
     "INSERT INTO admins (id, username, password_hash) VALUES (1,'admin','x') ON CONFLICT DO NOTHING"
   );
+  // Migration 0027 also switches on the two identity checks. This file binds
+  // only the corrections engine to the harness, not the identity layer's data
+  // modules (tests/identityActionsPg.test.js does that), so those checks are
+  // switched off here the way an administrator would — through their row.
+  await harness.query("UPDATE operational_check_settings SET auto_apply_enabled = FALSE WHERE check_key LIKE 'identity.%'");
   return harness;
 }
 
@@ -113,6 +118,19 @@ async function seedProductionShape(harness) {
   }
 }
 
+/**
+ * Migration 0027 seeds this check ON with cap 65, so a test that wants another
+ * state must say so explicitly — an INSERT would collide with the seed.
+ */
+async function allowRepair(harness, cap) {
+  await harness.query(
+    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run)
+     VALUES ('home_time.closable_open_cycle', TRUE, $1)
+     ON CONFLICT (check_key) DO UPDATE SET auto_apply_enabled = TRUE, max_auto_per_run = EXCLUDED.max_auto_per_run`,
+    [cap]
+  );
+}
+
 function loadOps(harness) {
   const db = { pool: harness.pool, query: harness.query };
   const store = harness.loadDataLayer(['operationalFindings']).operationalFindings;
@@ -173,10 +191,7 @@ test('the repair closes 65 and only 65', { skip: skipWithoutPg() }, async (t) =>
   // The cap is the trap: 65 > the default 50, so the check reports itself
   // capped and applies NOTHING. Raising it is part of the repair, not an
   // afterthought.
-  await harness.query(
-    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run)
-     VALUES ('home_time.closable_open_cycle', TRUE, 100)`
-  );
+  await allowRepair(harness, 100);
 
   const { summary } = await ops.apply();
 
@@ -186,17 +201,57 @@ test('the repair closes 65 and only 65', { skip: skipWithoutPg() }, async (t) =>
     'the 9 drivers who really are at home stay open');
 });
 
+test('with migration 0027\'s seed alone, the background pass closes exactly 65', { skip: skipWithoutPg() }, async (t) => {
+  // This is the production path: no admin clicks anything, the settings row is
+  // the migration's, and the first background pass after deploy does the repair.
+  const harness = await harnessWith(t);
+  await seedProductionShape(harness);
+  const ops = loadOps(harness);
+  await ops.sweep();
+  const setting = await harness.query(
+    "SELECT auto_apply_enabled, max_auto_per_run FROM operational_check_settings WHERE check_key = 'home_time.closable_open_cycle'"
+  );
+  assert.deepEqual(setting.rows[0], { auto_apply_enabled: true, max_auto_per_run: CLOSABLE }, 'the seed, untouched');
+
+  const { summary, capped } = await ops.apply();
+  assert.equal(summary.applied, CLOSABLE);
+  assert.deepEqual(capped, []);
+  assert.equal(await openCount(harness), CLASS_C);
+});
+
+test('one cycle more than measured and the seeded cap stops the whole batch', { skip: skipWithoutPg() }, async (t) => {
+  // The cap is exactly the measured 65 so that a fleet that no longer matches
+  // the measurement is refused, not repaired a little wider.
+  const harness = await harnessWith(t);
+  await seedProductionShape(harness);
+  const extra = await seedGroup(harness, 999);
+  await harness.query(
+    `INSERT INTO driver_road_history (group_id, road_started_at, home_arrived_at, days_on_road, bonus_usd)
+     VALUES ($1, $2, $3, 30, 100)`,
+    [extra, iso(1), iso(10)]
+  );
+  await harness.query(
+    `INSERT INTO driver_home_status (group_id, state, state_since, last_status_at) VALUES ($1, 'road', $2, $2)`,
+    [extra, iso(20)]
+  );
+  const ops = loadOps(harness);
+  await ops.sweep();
+
+  const { summary, capped } = await ops.apply();
+  assert.equal(summary.applied, 0, 'nothing is applied — not 65 of 66');
+  assert.deepEqual(capped, [{ checkKey: 'home_time.closable_open_cycle', wanted: CLOSABLE + 1, cap: CLOSABLE }]);
+  assert.equal(await openCount(harness), CLOSABLE + 1 + CLASS_C, 'every row is exactly as it was');
+});
+
 test('the default cap of 50 silently blocks a 65-row repair', { skip: skipWithoutPg() }, async (t) => {
   const harness = await harnessWith(t);
   await seedProductionShape(harness);
   const ops = loadOps(harness);
   await ops.sweep();
 
-  // Enabled, but at the default cap.
-  await harness.query(
-    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled)
-     VALUES ('home_time.closable_open_cycle', TRUE)`
-  );
+  // Enabled, but at the schema's default cap of 50 — the state a fleet without
+  // migration 0027's seed would be in.
+  await allowRepair(harness, 50);
 
   const { summary, capped } = await ops.preview();
 
@@ -210,10 +265,7 @@ test('the repair is payout-neutral', { skip: skipWithoutPg() }, async (t) => {
   await seedProductionShape(harness);
   const ops = loadOps(harness);
   await ops.sweep();
-  await harness.query(
-    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run)
-     VALUES ('home_time.closable_open_cycle', TRUE, 100)`
-  );
+  await allowRepair(harness, 100);
 
   const before = (await harness.query('SELECT COALESCE(SUM(bonus_usd),0)::int AS t FROM driver_road_history')).rows[0].t;
   await ops.apply();
@@ -247,10 +299,7 @@ test('a repaired cycle can be undone, one row at a time', { skip: skipWithoutPg(
   await seedProductionShape(harness);
   const ops = loadOps(harness);
   await ops.sweep();
-  await harness.query(
-    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run)
-     VALUES ('home_time.closable_open_cycle', TRUE, 100)`
-  );
+  await allowRepair(harness, 100);
   await ops.apply();
   assert.equal(await openCount(harness), CLASS_C);
 
@@ -270,10 +319,7 @@ test('re-running the repair is a no-op, not a second pass', { skip: skipWithoutP
   await seedProductionShape(harness);
   const ops = loadOps(harness);
   await ops.sweep();
-  await harness.query(
-    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run)
-     VALUES ('home_time.closable_open_cycle', TRUE, 100)`
-  );
+  await allowRepair(harness, 100);
   await ops.apply();
 
   await ops.sweep();

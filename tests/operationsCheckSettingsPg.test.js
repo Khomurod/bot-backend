@@ -100,13 +100,19 @@ test('the migration re-applies as a no-op', { skip: skipWithoutPg() }, async (t)
 
 // ─── the settings themselves ─────────────────────────────────────────────────
 
-test('a check with no row is disabled, which is the default that matters',
+test('the schema seeds no rows — only migration 0027\'s three switches exist, each saying who set it',
   { skip: skipWithoutPg() }, async (t) => {
+    // Default deny is the schema's rule: a check with no row is disabled. The
+    // only rows that exist without a person's click are the three the owner
+    // asked for on 2026-09-10, and each row names the migration as its author,
+    // so nothing here can be mistaken for an administrator's decision.
     const harness = await harnessWith(t);
     const { operationalCheckSettings: store } = harness.loadDataLayer(['operationalCheckSettings']);
 
-    assert.deepEqual(await store.listCheckSettings(), [],
-      'the migration seeds no rows, so nothing auto-applies until a person says so');
+    const rows = await store.listCheckSettings();
+    assert.deepEqual(rows.map((r) => r.checkKey),
+      ['home_time.closable_open_cycle', 'identity.group_without_person', 'identity.stale_unit_assignment']);
+    for (const r of rows) assert.match(r.updatedBy, /^migration 0027/);
   });
 
 test('granting and revoking auto-apply records who did it', { skip: skipWithoutPg() }, async (t) => {
@@ -127,7 +133,9 @@ test('granting and revoking auto-apply records who did it', { skip: skipWithoutP
   assert.equal(off.maxAutoPerRun, 25, 'omitting the cap keeps the one already agreed');
   assert.equal(off.updatedBy, 'someone_else');
 
-  assert.equal((await store.listCheckSettings()).length, 1, 'upsert, not insert');
+  const rows = await store.listCheckSettings();
+  assert.equal(rows.filter((r) => r.checkKey === 'home_time.closable_open_cycle').length, 1, 'upsert, not insert');
+  assert.equal(rows.length, 3, 'the other seeded rows are untouched');
 });
 
 test('a cap outside the permitted range is corrected, not rejected by a constraint',
