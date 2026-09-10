@@ -34,7 +34,9 @@ module.exports = {
   // Manager notices — the three home-time events, each delivered exactly once
   enqueueNotice: notices.enqueueNotice,
   noticeExists: notices.noticeExists,
+  claimNoticeById: notices.claimNoticeById,
   claimDueNotices: notices.claimDueNotices,
+  reapExhaustedNotices: notices.reapExhaustedNotices,
   markNoticeDelivered: notices.markNoticeDelivered,
   markNoticeFailed: notices.markNoticeFailed,
   releaseNoticeClaim: notices.releaseNoticeClaim,

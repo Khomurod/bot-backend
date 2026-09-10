@@ -68,8 +68,15 @@ async function recordAndSend(telegram, {
     // outbox is still retrying). Either way, do not tell them again.
     if (!notice) return { recorded: false, delivered: false, notice: null, reason: 'already_recorded' };
 
-    const delivered = await deliverOne(telegram, notice);
-    return { recorded: true, delivered, notice };
+    // A new row is due immediately, so the sweep can pick it up while this call
+    // is still inside a Telegram retry. Take the lease first; losing the race is
+    // a success — the worker holding it will deliver.
+    const claimed = await ht.claimNoticeById(notice.id);
+    if (!claimed) {
+      return { recorded: true, delivered: false, notice, reason: 'claimed_elsewhere' };
+    }
+    const delivered = await deliverOne(telegram, claimed);
+    return { recorded: true, delivered, notice: claimed };
   } catch (err) {
     console.error(`[HOME-TIME-NOTICE] ${eventType} failed:`, err.message);
     return { recorded: false, delivered: false, notice: null, reason: 'error' };

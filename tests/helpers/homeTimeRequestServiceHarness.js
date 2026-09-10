@@ -160,6 +160,15 @@ function loadService({
         notices.push(row);
         return row;
       },
+      // The lease the immediate send takes before delivering, so a concurrent
+      // sweep cannot send the same notice.
+      async claimNoticeById(id) {
+        const row = notices.find((n) => n.id === id);
+        if (!row || row.claimed) return null;
+        row.claimed = true;
+        row.attempts += 1;
+        return row;
+      },
       async markNoticeDelivered(id, { telegramMessageId = null } = {}) {
         const row = notices.find((n) => n.id === id);
         if (row) { row.state = 'delivered'; row.telegramMessageId = telegramMessageId; }
