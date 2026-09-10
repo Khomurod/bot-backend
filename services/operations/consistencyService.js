@@ -19,6 +19,7 @@ const defaultDb = require('../../database/pool');
 const defaultFindingsStore = require('../../database/operationalFindings');
 const identity = require('./checks/identity');
 const homeTime = require('./checks/homeTime');
+const { runAutoCorrections } = require('./corrections/autoApply');
 
 const POLL_MS = 15 * 60 * 1000;
 const FIRST_TICK_DELAY_MS = 120 * 1000;
@@ -32,6 +33,7 @@ let serviceTimer = null;
 let serviceStopped = false;
 let tickRunning = false;
 let lastRun = null;
+let lastCorrections = null;
 
 /**
  * Everything the checks need, read once.
@@ -179,7 +181,10 @@ async function runConsistencySweep({ apply = true, db = defaultDb, store: findin
  * door as the timer. It returned early with no explanation before, which is why
  * an on-demand caller could walk straight past it.
  *
- * @returns {{skipped: true, reason: string} | {summary, findings}}
+ * @param {boolean} [options.correct=true]  run the permitted auto-corrections
+ *   after filing; ignored (never runs) when `apply` is false, because a preview
+ *   that corrected would not be a preview.
+ * @returns {{skipped: true, reason: string} | {summary, findings, corrections?}}
  */
 async function runGuardedSweep(options = {}) {
   if (tickRunning) {
@@ -187,11 +192,47 @@ async function runGuardedSweep(options = {}) {
   }
   tickRunning = true;
   try {
-    return await runConsistencySweep(options);
+    const result = await runConsistencySweep(options);
+    // Still under the guard: corrections change the rows the next sweep reads,
+    // and `resolveClearedFindings` decides "no longer true" from those rows, so
+    // a correction run racing a sweep is the overlap the guard exists to stop.
+    if (options.apply !== false && options.correct !== false) {
+      result.corrections = await runCorrectionsAfterSweep(options);
+    }
+    return result;
   } finally {
     // `finally`, not the success path: a sweep that throws must not wedge the
     // guard shut and stop every later one, including the timer's.
     tickRunning = false;
+  }
+}
+
+/**
+ * Apply what the admin has permitted, right after the findings are filed.
+ *
+ * This is what makes the per-check "Auto-apply" switch DO something. Until it
+ * was wired here, `runAutoCorrections` was reachable only from the admin's
+ * dry-run preview and a shell script, so a check an operator had explicitly
+ * enabled still corrected nothing until somebody ran a command by hand.
+ *
+ * Every guardrail stays where it was: a check with no settings row is off, the
+ * per-run cap is a COUNT, evidence is re-derived at apply time and a moved
+ * timestamp refuses. The only new thing is that the timer asks.
+ *
+ * A failure here is recorded and returned, never thrown — the findings were
+ * already filed, and losing that summary to a registry error would hide the
+ * one run an operator most wants to see.
+ */
+async function runCorrectionsAfterSweep({ db = defaultDb, store = defaultFindingsStore } = {}) {
+  const at = new Date();
+  try {
+    const { summary, results, capped } = await runAutoCorrections({ apply: true, db, store });
+    lastCorrections = { at, summary };
+    return { summary, results, capped };
+  } catch (err) {
+    console.error('[CONSISTENCY] auto-correction run failed:', err.message);
+    lastCorrections = { at, error: err.message };
+    return { error: err.message };
   }
 }
 
@@ -221,7 +262,7 @@ function stopConsistencyService() {
 
 /** For /api/health and the Operations page: did the sweep run, and what did it see. */
 function getConsistencyStatus() {
-  return { running: Boolean(serviceTimer), lastRun };
+  return { running: Boolean(serviceTimer), lastRun, lastCorrections };
 }
 
 module.exports = {

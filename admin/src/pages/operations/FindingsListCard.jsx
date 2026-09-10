@@ -114,6 +114,18 @@ export default function FindingsListCard({
               {summary?.sweep?.running === false
                 ? "The consistency sweep is not running."
                 : `Checks last ran ${formatAgo(summary?.sweep?.lastRun?.at)}.`}
+              {/* The corrections line answers "is Auto-apply actually doing
+                  anything" — the switch on the Checks tab is a permission, and
+                  this is the only place the page shows it being used. */}
+              {summary?.sweep?.lastCorrections && (
+                <span>
+                  {" · "}
+                  {summary.sweep.lastCorrections.error
+                    ? `Auto-correction failed: ${summary.sweep.lastCorrections.error}`
+                    : `Auto-applied ${summary.sweep.lastCorrections.summary?.applied ?? 0}`
+                      + ` of ${summary.sweep.lastCorrections.summary?.eligible ?? 0} eligible`}
+                </span>
+              )}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

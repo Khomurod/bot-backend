@@ -127,6 +127,11 @@ function createHealthRoutes({ db, config, countExhaustedInternalAlerts = null })
     return queues;
   }
 
+  function deployedCommit() {
+    const sha = String(process.env.RENDER_GIT_COMMIT || '').trim() || null;
+    return { sha, short: sha ? sha.slice(0, 7) : null };
+  }
+
   async function runHealthCheck() {
     let dbOk = false;
     try {
@@ -143,6 +148,11 @@ function createHealthRoutes({ db, config, countExhaustedInternalAlerts = null })
       db: dbOk,
       meta,
       queues,
+      // Which commit is actually running. Render sets RENDER_GIT_COMMIT on every
+      // deploy; without it the only evidence a merge was live was an uptime that
+      // happened to line up with the merge time. Null when unset — a local run
+      // must not look like a deploy of some commit called "unknown".
+      commit: deployedCommit(),
       service: 'driver-feedback-bot',
     };
   }

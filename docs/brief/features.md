@@ -144,6 +144,10 @@
   does **not** affect `healthy` or the status code: Render and the uptime monitor
   read those, and an undeliverable alert queue is an operator's problem, not a
   reason to declare the service down. `tests/healthQueueSignal.test.js`.
+- **`/api/health` names the commit it is running** — `commit.sha` / `commit.short`
+  from `RENDER_GIT_COMMIT`, `null` when unset. `main` auto-deploys, and before
+  this the only evidence a merge was live was an uptime that lined up with the
+  merge time. `tests/healthDeployCommit.test.js`.
 
 ### The home-time cycle invariant
 
