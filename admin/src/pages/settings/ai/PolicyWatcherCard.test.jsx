@@ -74,3 +74,18 @@ test("adding a URL by hand is tucked away, not the main form", async () => {
   details.open = true;
   expect(screen.getByLabelText(/URL \(https\)/)).toBeVisible();
 });
+
+test("testing a candidate destination does not save it first", async () => {
+  // The input saves on blur; clicking the button would blur it. A destination
+  // is meant to be proven BEFORE it becomes the configured one.
+  const userEvent = (await import("@testing-library/user-event")).default;
+  const user = userEvent.setup();
+  api.testAiPolicyNotification.mockResolvedValue({ ok: false, error: "chat not found" });
+  await open();
+  const input = screen.getByPlaceholderText("-1002997837889");
+  await user.clear(input);
+  await user.type(input, "-2002");
+  await user.click(screen.getByRole("button", { name: /Send a test message/ }));
+  await waitFor(() => expect(api.testAiPolicyNotification).toHaveBeenCalledWith({ chatId: "-2002" }));
+  expect(api.updateAiPolicyWatcher).not.toHaveBeenCalled();
+});

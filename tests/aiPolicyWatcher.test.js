@@ -32,7 +32,8 @@ const BASE_BODY = '<p>You may use the API for commercial purposes.</p>'
   + '<p>Free tier: 1,000 requests per day.</p>';
 
 function load({
-  sources, settings = {}, freeOnlyMode = true, aiEnabled = true, rediscover = null,
+  sources, sourcesAfter = null, settings = {}, freeOnlyMode = true, aiEnabled = true,
+  rediscover = null, handleRedirect = null,
 } = {}) {
   delete require.cache[require.resolve(WATCHER)];
 
@@ -48,7 +49,10 @@ function load({
           notifyMinSeverity: 'warning', autoSuspendEnabled: false, ...settings,
         };
       },
-      async listSourcesToCheck() { return sources; },
+      async listSourcesToCheck() {
+        saw.listCalls = (saw.listCalls || 0) + 1;
+        return saw.listCalls > 1 && sourcesAfter ? sourcesAfter : sources;
+      },
       async saveSnapshot(id, patch) { saw.snapshots.push({ id, ...patch }); },
       async recordRun(summary) { saw.runs.push(summary); },
     },
@@ -75,14 +79,17 @@ function load({
     exports: {
       LOST_AFTER_FAILURES: 3,
       async ensureCatalogSources() { saw.discovery.seeded += 1; return { seeded: 0 }; },
-      async handleRedirect(src, to) { saw.discovery.redirects.push({ id: src.id, to }); return { moved: true, url: to }; },
+      async handleRedirect(src, to) {
+        saw.discovery.redirects.push({ id: src.id, to });
+        return handleRedirect ? handleRedirect(src, to) : { moved: true, url: to };
+      },
       async rediscoverSource(src) {
         saw.discovery.rediscovered.push(src.id);
         return rediscover ? rediscover(src) : { found: false };
       },
       async reportLostSource(src, info) { saw.discovery.lost.push({ id: src.id, ...info }); return { reported: true }; },
       async clearLostSource(src) { saw.discovery.cleared.push(src.id); return true; },
-      async reconcileLostFindings() { saw.discovery.reconciled += 1; return 0; },
+      async reconcileLostFindings(list) { saw.discovery.reconciled += 1; saw.discovery.reconciledWith = list; return 0; },
     },
   };
   require.cache[AI_SETTINGS] = {
@@ -401,4 +408,45 @@ test('a page reported lost that answers again is cleared', async () => {
   const { runPolicyCheck, saw } = load({ sources: [source({ lostReportedAt: new Date(), contentHash: 'x', normalisedText: 'old' })] });
   await runPolicyCheck({ fetchImpl: scriptedFetch({ status: 304 }), readImpl: forbiddenReader });
   assert.deepEqual(saw.discovery.cleared, [1]);
+});
+
+test('a URL that differs only by its fragment is the same page, not a move', async () => {
+  // HTTP never sends the fragment, so `response.url` comes back without it. The
+  // catalogue's Mistral privacy source is `/terms#privacy-policy` beside the
+  // `/terms` source; calling that a redirect would move it onto the terms page,
+  // clash with it, and disable the privacy source on its first successful check.
+  const { runPolicyCheck, saw } = load({ sources: [source({ url: 'https://example.invalid/terms#privacy-policy' })] });
+  const fetchImpl = scriptedFetch({ status: 200, body: PAGE(BASE_BODY), url: 'https://example.invalid/terms' });
+  const summary = await runPolicyCheck({ fetchImpl, readImpl: forbiddenReader });
+  assert.equal(saw.discovery.redirects.length, 0, 'a dropped fragment is not a redirect');
+  assert.equal(summary.baseline, 1, 'and the page is checked as usual');
+});
+
+test('a page that redirected OFF-SITE is not read: nothing is stored, diffed or alerted from the foreign body', async () => {
+  const { runPolicyCheck, saw } = load({
+    sources: [source({ contentHash: 'x', normalisedText: 'the old terms', consecutiveFailures: 0 })],
+    handleRedirect: (src, to) => ({ moved: false, redirectedTo: to }),
+  });
+  const fetchImpl = scriptedFetch({ status: 200, body: PAGE('<p>Please sign in to continue.</p><p>You may not use the API for commercial purposes.</p>'), url: 'https://elsewhere.invalid/login' });
+  const summary = await runPolicyCheck({ fetchImpl, readImpl: forbiddenReader });
+
+  assert.equal(saw.discovery.redirects.length, 1, 'the redirect is recorded');
+  assert.equal(saw.findings.length, 0, 'a login page is not a terms change');
+  assert.equal(saw.snapshots.filter((s) => s.contentHash || s.normalisedText).length, 0,
+    'the trusted snapshot is not replaced by a foreign body');
+  assert.equal(summary.errors, 1, 'it counts as a failed fetch, so the threshold and rediscovery apply');
+  assert.match(saw.snapshots[0].error, /redirected/i);
+});
+
+test('lost-source findings are reconciled against what the run just wrote, not the list it started with', async () => {
+  // reportLostSource stamps lost_reported_at in the store; reconciling from the
+  // pre-run snapshot would see no lost source and resolve the finding it had
+  // just filed.
+  const before = [source({ consecutiveFailures: 2 })];
+  const after = [source({ consecutiveFailures: 3, lostReportedAt: new Date(), lastError: 'HTTP 404' })];
+  const { runPolicyCheck, saw } = load({ sources: before, sourcesAfter: after });
+  await runPolicyCheck({ fetchImpl: scriptedFetch({ status: 404 }), readImpl: forbiddenReader });
+  assert.equal(saw.discovery.lost.length, 1);
+  assert.equal(saw.discovery.reconciled, 1);
+  assert.equal(saw.discovery.reconciledWith, after, 'the fresh list, with lost_reported_at set');
 });

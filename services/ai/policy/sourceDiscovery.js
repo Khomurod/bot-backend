@@ -29,7 +29,7 @@
  * Every collaborator is injectable; production passes nothing.
  */
 const { getCatalogEntry } = require('../../../lib/ai/providerCatalog');
-const { extractLinks, rankCandidates, looksLikeKind, sameSite } = require('../../../lib/ai/policyLinks');
+const { extractLinks, rankCandidates, looksLikeKind, sameSite, sameFetchTarget } = require('../../../lib/ai/policyLinks');
 const { normalisePolicyText } = require('../../../lib/ai/policyText');
 const { buildAlertBody } = require('./alertMessage');
 
@@ -87,7 +87,7 @@ async function ensureCatalogSources(deps = defaultDeps()) {
 
 async function handleRedirect(source, finalUrl, deps = defaultDeps()) {
   const to = trim(finalUrl);
-  if (!to || to === trim(source.url)) return { moved: false };
+  if (!to || sameFetchTarget(to, source.url)) return { moved: false };
   if (sameSite(source.url, to)) {
     await deps.aiPolicy.moveSource(source.id, to, { reason: 'redirect' });
     return { moved: true, url: to };

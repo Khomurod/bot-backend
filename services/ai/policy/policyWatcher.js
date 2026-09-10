@@ -26,6 +26,7 @@ const aiProviders = require('../../../database/aiProviders');
 const aiSettings = require('../../../database/aiSettings');
 const { comparePolicyText } = require('../../../lib/ai/policyDiff');
 const { evaluateSuspension } = require('../../../lib/ai/policySuspension');
+const { sameFetchTarget } = require('../../../lib/ai/policyLinks');
 const { fetchPolicyPage } = require('./fetchPolicy');
 const { readChange } = require('./readChange');
 const { buildAlertBody } = require('./alertMessage');
@@ -48,12 +49,27 @@ function sha256(text) {
 async function checkSource(source, {
   settings, freeOnlyMode, fetchImpl, readImpl, now = new Date(),
 }) {
-  const fetched = await fetchPolicyPage({
+  let fetched = await fetchPolicyPage({
     url: source.url,
     etag: source.etag,
     lastModified: source.lastModified,
     fetchImpl,
   });
+
+  // Did it answer from somewhere else? The fragment is never sent, so
+  // `/terms#privacy` answering as `/terms` is the same page. A same-site move
+  // is followed (discovery re-points the source); an OFF-SITE one is refused —
+  // and its body is a login page or a hosting notice, not the terms, so it is
+  // treated as a failed fetch rather than read, stored or diffed.
+  if (!fetched.error && fetched.finalUrl && !sameFetchTarget(fetched.finalUrl, source.url)) {
+    const redirect = await discovery.handleRedirect(source, fetched.finalUrl);
+    if (!redirect?.moved) {
+      fetched = {
+        ...fetched, text: null, notModified: false,
+        error: `redirected off-site to ${redirect?.redirectedTo || fetched.finalUrl}`,
+      };
+    }
+  }
 
   if (fetched.error) {
     // Not a finding. A page that is briefly unreachable says nothing about the
@@ -79,10 +95,6 @@ async function checkSource(source, {
 
   // The page answered. If it had been given up on, that is news too.
   if (source.lostReportedAt) await discovery.clearLostSource(source);
-  // ...and if it answered from somewhere else, it moved.
-  if (fetched.finalUrl && fetched.finalUrl.replace(/\/+$/, '') !== String(source.url).replace(/\/+$/, '')) {
-    await discovery.handleRedirect(source, fetched.finalUrl);
-  }
 
   if (fetched.notModified) {
     await policyStore.saveSnapshot(source.id, {
@@ -226,8 +238,12 @@ async function runPolicyCheck({ fetchImpl, readImpl, db = defaultDb } = {}) {
 
   // Keep Needs Attention honest: a page still lost stays listed, one found
   // again is resolved — the consistency sweep's own "not re-filed = cleared".
+  // Against the list as the run LEFT it, not as it found it: reportLostSource
+  // has just stamped lost_reported_at, and reconciling from the stale snapshot
+  // would resolve the very finding it filed.
   try {
-    await discovery.reconcileLostFindings(sources);
+    const current = await policyStore.listSourcesToCheck().catch(() => sources);
+    await discovery.reconcileLostFindings(current);
   } catch (err) {
     console.warn('[POLICY] reconciling lost-source findings failed:', err.message);
   }

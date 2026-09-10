@@ -74,3 +74,14 @@ test('looksLikeKind wants prose that mentions the subject', () => {
   assert.equal(looksLikeKind('Terms', 'terms'), false, 'a stub page is not the page');
   assert.equal(looksLikeKind(`${'lorem ipsum dolor '.repeat(50)}`, 'privacy'), false, 'long, but about nothing');
 });
+
+test('two addresses that differ only by fragment or trailing slash are the same fetch target', () => {
+  const { sameFetchTarget, fetchTargetOf } = require('../lib/ai/policyLinks');
+  assert.equal(fetchTargetOf('https://mistral.ai/terms#privacy-policy'), 'https://mistral.ai/terms');
+  assert.equal(sameFetchTarget('https://mistral.ai/terms#privacy-policy', 'https://mistral.ai/terms'), true);
+  assert.equal(sameFetchTarget('https://mistral.ai/terms/', 'https://mistral.ai/terms'), true);
+  assert.equal(sameFetchTarget('https://mistral.ai/terms', 'https://mistral.ai/legal/terms'), false,
+    'a different path IS a move');
+  assert.equal(sameFetchTarget('https://mistral.ai/terms', 'https://elsewhere.invalid/terms'), false);
+  assert.equal(sameFetchTarget(null, 'https://mistral.ai/terms'), false);
+});

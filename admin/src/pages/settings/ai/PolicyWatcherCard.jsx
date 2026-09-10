@@ -208,9 +208,13 @@ export default function PolicyWatcherCard({ providers, flash }) {
           <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 4 }}>
             A group, or a person the bot can message.
           </div>
+          {/* onMouseDown preventDefault keeps focus on the input, so clicking
+              here does not blur it into an autosave: a destination is proven
+              BEFORE it becomes the configured one, which is the point. */}
           <button
             type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 6 }}
             disabled={testing || !chatId} onClick={sendTest}
+            onMouseDown={(e) => e.preventDefault()}
           >
             {testing ? "Sending…" : "Send a test message"}
           </button>
