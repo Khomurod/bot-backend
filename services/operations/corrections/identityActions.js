@@ -113,6 +113,16 @@ const syncUnit = {
     if (!association || association.personId !== Number(personId)) {
       throw new StaleCorrectionError(`Group ${groupId} no longer belongs to person ${personId}.`);
     }
+    // Two active chats for one person is ambiguous evidence about their truck;
+    // the sweep does not propose in that state and the apply must not act in it.
+    const activeChats = await client.query(
+      `SELECT COUNT(*)::int AS n FROM driver_person_groups pg JOIN groups g ON g.id = pg.group_id
+        WHERE pg.person_id = $1 AND pg.ended_at IS NULL AND g.active = TRUE AND g.group_type = 'driver'`,
+      [personId]
+    );
+    if (activeChats.rows[0].n > 1) {
+      throw new StaleCorrectionError(`Person ${personId} is on ${activeChats.rows[0].n} active chats — which truck is a decision.`);
+    }
     // The chat's Samsara link travels onto the truck row, as it does on the
     // normal profile-save path — without it the vehicle-link check has only one
     // side to compare and goes quiet for exactly the driver just repaired.

@@ -53,8 +53,12 @@ function checkClockResetOnGroupChange({ groupsById, homeStatus, personGroupHisto
     // a genuine home→road and is left alone.
     if (startedAt && nowSince.getTime() - startedAt.getTime() > SAME_LEG_SLACK_MS) continue;
 
-    for (const previous of associations) {
-      if (previous === current || !previous.ended_at) continue;
+    // Newest previous chat first: the snapshot lists associations oldest first,
+    // and a clock from several truck changes ago is not this leg's.
+    const previousChats = associations
+      .filter((a) => a !== current && a.ended_at)
+      .sort((a, b) => (toDate(b.ended_at)?.getTime() || 0) - (toDate(a.ended_at)?.getTime() || 0));
+    for (const previous of previousChats) {
       const before = statusByGroup.get(previous.group_id);
       if (!before || before.state !== 'road') continue;
       const beforeSince = toDate(before.state_since);
@@ -90,6 +94,7 @@ function checkClockResetOnGroupChange({ groupsById, homeStatus, personGroupHisto
         },
         proposedChange: {
           table: 'driver_home_status',
+          personId,
           groupId: current.group_id,
           field: 'state_since',
           from: now.state_since,

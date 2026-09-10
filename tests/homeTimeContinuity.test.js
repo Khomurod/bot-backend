@@ -75,3 +75,24 @@ test('a person with one chat, or with no status rows, is silence', () => {
   })), []);
   assert.deepEqual(CHECK_KEYS, ['home_time.clock_reset_on_group_change']);
 });
+
+test('with several previous chats, the MOST RECENT one is the clock proposed — not the oldest', () => {
+  // The snapshot lists associations oldest first; picking the first closed
+  // chat would carry a clock from several truck changes ago.
+  const [finding] = checkClockResetOnGroupChange(snapshot({
+    groups: [group(10, 'FIRST', false), group(49, 'SECOND', false), group(541877, 'NOW')],
+    homeStatus: [
+      { group_id: 10, state: 'road', state_since: '2026-03-01T00:00:00Z', last_status_at: '2026-05-30T00:00:00Z', road_bonus_weeks_notified: 0 },
+      { group_id: 49, state: 'road', state_since: '2026-08-03T00:00:00Z', last_status_at: '2026-08-31T18:00:00Z', road_bonus_weeks_notified: 0 },
+      { group_id: 541877, state: 'road', state_since: '2026-09-01T00:00:00Z', last_status_at: '2026-09-08T00:00:00Z', road_bonus_weeks_notified: 0 },
+    ],
+    personGroupHistory: [
+      { person_id: 7, group_id: 10, started_at: '2026-01-01T00:00:00Z', ended_at: '2026-06-01T00:00:00Z' },
+      { person_id: 7, group_id: 49, started_at: '2026-06-01T00:00:00Z', ended_at: '2026-09-01T00:00:00Z' },
+      { person_id: 7, group_id: 541877, started_at: '2026-09-01T00:00:00Z', ended_at: null },
+    ],
+  }));
+  assert.equal(finding.proposedChange.fromGroupId, 49);
+  assert.equal(finding.proposedChange.to, '2026-08-03T00:00:00Z');
+  assert.equal(finding.proposedChange.personId, 7, 'the person is part of the proposal, so apply can re-check them');
+});

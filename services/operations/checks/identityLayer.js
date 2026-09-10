@@ -146,11 +146,21 @@ function checkStaleUnitAssignment({ groups, profiles, personGroups, units }) {
   const byGroup = profilesByGroup(profiles);
   const holders = unitsByNumber(units);
   const current = unitsByPerson(units);
+  // A person on two active chats is ambiguous evidence: each chat's profile
+  // would sync them to a different truck, and two auto findings would switch
+  // them back and forth every sweep. That conflict is its own finding
+  // (person_on_two_active_groups); nothing is synced until a person settles it.
+  const activeIds = new Set(activeDriverGroups(groups).map((g) => g.id));
+  const activeChatsOf = new Map();
+  for (const a of personGroups || []) {
+    if (activeIds.has(a.group_id)) activeChatsOf.set(a.person_id, (activeChatsOf.get(a.person_id) || 0) + 1);
+  }
   const findings = [];
   for (const g of activeDriverGroups(groups)) {
     const association = open.get(g.id);
     const unit = String(byGroup.get(g.id)?.unit_number || '').trim();
     if (!association || !unit) continue;
+    if ((activeChatsOf.get(association.person_id) || 0) > 1) continue;
     const recorded = current.get(association.person_id);
     if (recorded && String(recorded.unit_number).trim() === unit) continue;
     const holder = holders.get(unit);
