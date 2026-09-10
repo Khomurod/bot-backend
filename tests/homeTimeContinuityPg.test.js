@@ -249,3 +249,53 @@ test('carrying a clock is refused once either chat belongs to a different person
   const status = await harness.query('SELECT state_since FROM driver_home_status WHERE group_id = $1', [fresh.id]);
   assert.notEqual(new Date(status.rows[0].state_since).toISOString(), iso(3));
 });
+
+test('carrying a clock is refused once the old chat has spoken again after the new clock began', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { resolver, sweep, applyCorrection, store } = bind(harness);
+  const old = await seedGroup(harness, { telegramId: -49, name: 'WENZE UNIT # 27 RUSLAN ABDULLAEV', first: 'RUSLAN', last: 'ABDULLAEV', unit: '27' });
+  const personId = (await resolver.ensurePersonForGroup(old)).personId;
+  await harness.query(`INSERT INTO driver_home_status (group_id, state, state_since, last_status_at) VALUES ($1, 'road', $2, $3)`, [old.id, iso(3), iso(31)]);
+  await harness.query('UPDATE groups SET active = FALSE WHERE id = $1', [old.id]);
+  const fresh = await seedGroup(harness, { telegramId: -541877, name: 'WENZE UNIT # 27 RUSLAN ABDULLAEV', first: 'RUSLAN', last: 'ABDULLAEV', unit: '27' });
+  await resolver.ensurePersonForGroup(fresh);
+  await harness.query(`INSERT INTO driver_home_status (group_id, state, state_since, last_status_at) VALUES ($1, 'road', NOW() - INTERVAL '2 days', NOW() - INTERVAL '2 days')`, [fresh.id]);
+  const { findings } = await sweep();
+  const finding = findings.find((f) => f.checkKey === 'home_time.clock_reset_on_group_change');
+  assert.ok(finding);
+  const filed = (await store.listFindings({ status: 'open', checkKey: 'home_time.clock_reset_on_group_change' }))[0];
+
+  // The old chat talks again — the two chats now overlap. The clocks did not
+  // move; only last_status_at did, and the check would no longer propose this.
+  await harness.query('UPDATE driver_home_status SET last_status_at = NOW() WHERE group_id = $1', [old.id]);
+
+  await assert.rejects(
+    applyCorrection({ finding: filed, actionKey: 'home_time.carry_road_clock', payload: {
+      groupId: fresh.id, fromStateSince: finding.proposedChange.from, toStateSince: finding.proposedChange.to,
+      fromGroupId: old.id, personId, roadBonusWeeksNotified: 0,
+    }, admin: ADMIN }),
+    (err) => err.stale === true || err.name === 'StaleCorrectionError'
+  );
+});
+
+test('a stay stamped with the chat\'s PREVIOUS occupant is not closed by the new occupant\'s return', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { resolver, homeTime } = bind(harness);
+  const group = await seedGroup(harness, { telegramId: -1, name: 'WENZE UNIT # 27 RUSLAN ABDULLAEV', first: 'RUSLAN', last: 'ABDULLAEV', unit: '27' });
+  const former = (await resolver.ensurePersonForGroup(group)).personId;
+  // The former occupant's stay, still open on this chat.
+  await harness.query(
+    `INSERT INTO driver_road_history (group_id, person_id, road_started_at, home_arrived_at, days_on_road, bonus_usd)
+     VALUES ($1, $2, $3, $4, 9, 0)`, [group.id, former, iso(1), iso(10)]
+  );
+  // The chat is handed to somebody else (an admin re-link).
+  const other = await harness.query(`INSERT INTO driver_people (display_name) VALUES ('NEW OCCUPANT') RETURNING id`);
+  await harness.query('UPDATE driver_person_groups SET ended_at = NOW() WHERE group_id = $1 AND ended_at IS NULL', [group.id]);
+  await harness.query(`INSERT INTO driver_person_groups (person_id, group_id, association_source) VALUES ($1, $2, 'manual')`, [other.rows[0].id, group.id]);
+
+  await homeTime.applyStateTransition(telegram, group, { newState: 'home', eventAt: iso(20), announce: false });
+  await homeTime.applyStateTransition(telegram, group, { newState: 'road', eventAt: iso(24), announce: false });
+
+  const formerStay = await harness.query('SELECT return_to_road_at FROM driver_road_history WHERE person_id = $1', [former]);
+  assert.equal(formerStay.rows[0].return_to_road_at, null, 'the former occupant\'s stay is theirs to close, not the new driver\'s');
+});

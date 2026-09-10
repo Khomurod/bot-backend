@@ -66,13 +66,23 @@ async function getOpenHomeStay(groupId) {
  * driver the layer has not met.
  */
 async function listOpenHomeStays(groupId) {
+  // A stay on this chat that names a DIFFERENT person is the previous
+  // occupant's — the chat was handed on — and the new driver's return must
+  // not close it. The chat-only branch therefore covers unstamped rows (and
+  // every row when the chat has no person at all), never another driver's.
   const res = await query(
-    `SELECT * FROM driver_road_history
-      WHERE return_to_road_at IS NULL
-        AND (group_id = $1
-             OR person_id = (SELECT person_id FROM driver_person_groups
-                              WHERE group_id = $1 AND ended_at IS NULL LIMIT 1))
-      ORDER BY home_arrived_at DESC, id DESC`,
+    `WITH current_person AS (
+       SELECT person_id FROM driver_person_groups WHERE group_id = $1 AND ended_at IS NULL LIMIT 1
+     )
+     SELECT h.* FROM driver_road_history h
+      WHERE h.return_to_road_at IS NULL
+        AND (
+          (h.group_id = $1 AND (h.person_id IS NULL
+                                OR h.person_id = (SELECT person_id FROM current_person)
+                                OR NOT EXISTS (SELECT 1 FROM current_person)))
+          OR h.person_id = (SELECT person_id FROM current_person)
+        )
+      ORDER BY h.home_arrived_at DESC, h.id DESC`,
     [groupId]
   );
   return res.rows;

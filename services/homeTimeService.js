@@ -342,10 +342,16 @@ async function closeHomeStayOnReturn(group, { returnToRoadIso } = {}) {
       await closeOneStay(group, open, returnToRoadIso);
     }
     // The home window is over → retire any clarification still waiting on dates and
-    // stop its reminders (spec §11: stop when the driver returns to the road).
-    await ht.expireOpenClarificationsForGroup(group.id, {
-      reason: 'Driver returned to the road; clarification no longer needed.',
-    }).catch(() => {});
+    // stop its reminders (spec §11: stop when the driver returns to the road) —
+    // on this chat, and on the chat the stay BEGAN on when that was another one:
+    // the question was asked there, and it is as finished as one asked here.
+    const chats = new Set([group.id]);
+    if (open?.group_id != null) chats.add(open.group_id);
+    for (const chatId of chats) {
+      await ht.expireOpenClarificationsForGroup(chatId, {
+        reason: 'Driver returned to the road; clarification no longer needed.',
+      }).catch(() => {});
+    }
     return open || null;
   } catch (err) {
     console.error('[HOME-TIME] closeHomeStayOnReturn error:', err.message);

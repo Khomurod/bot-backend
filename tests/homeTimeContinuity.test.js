@@ -96,3 +96,22 @@ test('with several previous chats, the MOST RECENT one is the clock proposed —
   assert.equal(finding.proposedChange.to, '2026-08-03T00:00:00Z');
   assert.equal(finding.proposedChange.personId, 7, 'the person is part of the proposal, so apply can re-check them');
 });
+
+test('only the chat IMMEDIATELY before the current one can lend its clock — a home period in between ends the leg', () => {
+  // A → B → C, where A ended on the road but B recorded a home stay: C's clock
+  // must not reach back past B's known home period to A.
+  const findings = checkClockResetOnGroupChange(snapshot({
+    groups: [group(10, 'A', false), group(49, 'B', false), group(541877, 'C')],
+    homeStatus: [
+      { group_id: 10, state: 'road', state_since: '2026-03-01T00:00:00Z', last_status_at: '2026-05-30T00:00:00Z', road_bonus_weeks_notified: 0 },
+      { group_id: 49, state: 'home', state_since: '2026-08-20T00:00:00Z', last_status_at: '2026-08-31T00:00:00Z', road_bonus_weeks_notified: 0 },
+      { group_id: 541877, state: 'road', state_since: '2026-09-01T00:00:00Z', last_status_at: '2026-09-08T00:00:00Z', road_bonus_weeks_notified: 0 },
+    ],
+    personGroupHistory: [
+      { person_id: 7, group_id: 10, started_at: '2026-01-01T00:00:00Z', ended_at: '2026-06-01T00:00:00Z' },
+      { person_id: 7, group_id: 49, started_at: '2026-06-01T00:00:00Z', ended_at: '2026-09-01T00:00:00Z' },
+      { person_id: 7, group_id: 541877, started_at: '2026-09-01T00:00:00Z', ended_at: null },
+    ],
+  }));
+  assert.deepEqual(findings, []);
+});
