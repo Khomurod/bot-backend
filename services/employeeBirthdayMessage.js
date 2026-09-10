@@ -54,6 +54,13 @@ async function generateViaGroq(prompt) {
       process.env.EMPLOYEE_BIRTHDAY_GROQ_MODEL || 'llama-3.3-70b-versatile',
       'llama-3.1-8b-instant',
     ],
+    // Same reason as the banter path: a 200 with an empty or under-length body
+    // is a success to the router and a failure to this feature, and only a
+    // validator tells it the difference. The parser IS the validator, so the
+    // floor the router enforces is the floor the message has to clear.
+    validateResult: (raw) => (parseBirthdayMessageResponse(raw)
+      ? true
+      : { message: 'the response was empty or too short to be a birthday message' }),
   });
   const message = parseBirthdayMessageResponse(text);
   return { message, provider: 'router', model };

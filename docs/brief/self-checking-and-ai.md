@@ -246,6 +246,16 @@ feature it belongs to.
   message out of a joined error string. The background annotator now starts
   unconditionally and asks per tick, so enabling AI in the admin no longer needs
   a restart.
+- **"Answered, but unusable" is a `validateResult`, not a second leg.** Those
+  legs also fired on a case transport failure does not cover: a provider
+  returning HTTP 200 with an empty or truncated body. The router records that as
+  a SUCCESS and stops looking, so the consumer's parser rejects the text and the
+  feature drops to its canned fallback with another provider left unasked.
+  `groupStatusAiClassifier`, `datatruckBanterMessage` and `employeeBirthdayMessage`
+  each hand the router a validator that IS their parser — one function, so the
+  floor the router enforces cannot drift from the floor the output must clear.
+  `groqClient` forwards it as `validate`, and the router treats a failed verdict
+  exactly like a provider failure and continues down the chain.
 - **Migration 0021 seeds the roster, and it is the riskiest three lines in
   Stage 5.** 0019 seeded nothing, which was right while the router had no
   consumers; once the clients became wrappers, an empty `ai_providers` stopped

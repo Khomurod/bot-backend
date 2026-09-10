@@ -131,7 +131,11 @@ async function classifyBatch(batch) {
     maxTokens: Math.min(8000, 200 + batch.length * 80),
     temperature: 0.1,
     models: [
-      'llama-3.3-70b-versatile',
+      // The feature's own model preference, read per call so a change does not
+      // need a restart. It was dropped in the rewrite while both sibling
+      // features kept theirs, which made a deployment that sets this one
+      // silently ignored — with no way to notice from the outside.
+      process.env.GROUP_STATUS_AI_GROQ_MODEL || 'llama-3.3-70b-versatile',
       'llama-3.1-8b-instant',
     ],
     validateResult: (raw) => (parseClassificationResponse(raw, batch).length > 0

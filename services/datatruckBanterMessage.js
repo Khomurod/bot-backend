@@ -72,6 +72,15 @@ async function generateViaGroq(prompt) {
       process.env.DATATRUCK_BANTER_GROQ_MODEL || 'llama-3.3-70b-versatile',
       'llama-3.1-8b-instant',
     ],
+    // An answer that arrives but says nothing usable is a FAILURE, and it is
+    // the case the deleted Gemini leg covered that transport errors do not: a
+    // 200 carrying an empty or truncated body is a success as far as the router
+    // can see, so without this it would stop looking and the canned line would
+    // go out while another provider sat unasked. The validator is the parser,
+    // so the two cannot drift apart.
+    validateResult: (raw) => (parseBanterResponse(raw)
+      ? true
+      : { message: 'the response was empty or too short to be a roast' }),
   });
   const message = parseBanterResponse(text);
   return { message, provider: 'router', model };
