@@ -110,9 +110,13 @@ test('the schema seeds no rows — only migration 0027\'s three switches exist, 
     const { operationalCheckSettings: store } = harness.loadDataLayer(['operationalCheckSettings']);
 
     const rows = await store.listCheckSettings();
-    assert.deepEqual(rows.map((r) => r.checkKey),
-      ['home_time.closable_open_cycle', 'identity.group_without_person', 'identity.stale_unit_assignment']);
-    for (const r of rows) assert.match(r.updatedBy, /^migration 0027/);
+    assert.deepEqual(rows.map((r) => r.checkKey), [
+      'home_time.closable_open_cycle',
+      'home_time.returned_to_road',
+      'identity.group_without_person',
+      'identity.stale_unit_assignment',
+    ]);
+    for (const r of rows) assert.match(r.updatedBy, /^migration 00(27|30)/);
   });
 
 test('granting and revoking auto-apply records who did it', { skip: skipWithoutPg() }, async (t) => {
@@ -135,7 +139,7 @@ test('granting and revoking auto-apply records who did it', { skip: skipWithoutP
 
   const rows = await store.listCheckSettings();
   assert.equal(rows.filter((r) => r.checkKey === 'home_time.closable_open_cycle').length, 1, 'upsert, not insert');
-  assert.equal(rows.length, 3, 'the other seeded rows are untouched');
+  assert.equal(rows.length, 4, 'the other seeded rows are untouched');
 });
 
 test('a cap outside the permitted range is corrected, not rejected by a constraint',

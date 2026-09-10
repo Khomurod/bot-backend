@@ -39,6 +39,7 @@ const {
 const { abandonExhaustedInternalAlerts } = require('./alertActions');
 const { ensurePerson, syncUnit } = require('./identityActions');
 const { carryRoadClock } = require('./homeTimeActions');
+const { markReturnedToRoad } = require('./returnToRoadActions');
 const { classifyOpenCycles, daysBetween } = require('../checks/homeTime');
 
 /** ±days around the home arrival, matching `findDecidedRequestNearDate`. */
@@ -72,7 +73,7 @@ async function resolveLinkedRequest(client, groupId, homeArrivedAt) {
   const res = await client.query(
     `SELECT id FROM home_time_requests
       WHERE group_id = $1
-        AND status IN ('approved', 'denied')
+        AND status IN ('recorded', 'pending', 'approved', 'denied')
         AND home_from IS NOT NULL
         AND ABS(home_from - $2::date) <= $3`,
     [groupId, day, REQUEST_LINK_WINDOW_DAYS]
@@ -309,6 +310,7 @@ const ACTIONS = new Map([
   [ensurePerson.key, ensurePerson],
   [syncUnit.key, syncUnit],
   [carryRoadClock.key, carryRoadClock],
+  [markReturnedToRoad.key, markReturnedToRoad],
 ]);
 
 /**
@@ -324,6 +326,7 @@ const CHECK_TO_ACTION = new Map([
   ['identity.group_without_person', ensurePerson.key],
   ['identity.stale_unit_assignment', syncUnit.key],
   ['home_time.clock_reset_on_group_change', carryRoadClock.key],
+  ['home_time.returned_to_road', markReturnedToRoad.key],
 ]);
 
 function getAction(actionKey) {

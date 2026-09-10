@@ -92,6 +92,15 @@ function payloadFor(finding) {
       ? { personId: change.personId, unitNumber: change.to, groupId: change.groupId }
       : null;
   }
+  if (finding.checkKey === 'home_time.returned_to_road') {
+    return change.groupId && change.returnToRoadAt
+      ? {
+        groupId: change.groupId,
+        returnToRoadAt: change.returnToRoadAt,
+        evidenceSummary: change.evidenceSummary || null,
+      }
+      : null;
+  }
   if (finding.checkKey === 'home_time.exhausted_internal_alerts') {
     // Empty is NO payload, not an empty one: the batch then counts it under
     // `skipped.noPayload` rather than calling an action with nothing to do.

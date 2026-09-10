@@ -68,6 +68,8 @@ const CHECK_LABELS = {
   'raise.progress_without_person': 'Mileage drivers not matched to an identity',
   'route_control.assignment_on_inactive_group': 'Active route on an inactive group',
   'home_time.clock_reset_on_group_change': 'Road clock restarted on a new chat',
+  'home_time.returned_to_road': 'Driver looks back on the road',
+  'home_time.return_to_road_unclear': 'Unclear whether the driver is back on the road',
   'operations.auto_apply_capped': 'A check wanted to change too much and stopped',
 };
 
