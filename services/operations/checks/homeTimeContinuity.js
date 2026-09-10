@@ -53,11 +53,14 @@ function checkClockResetOnGroupChange({ groupsById, homeStatus, personGroupHisto
     // a genuine home→road and is left alone.
     if (startedAt && nowSince.getTime() - startedAt.getTime() > SAME_LEG_SLACK_MS) continue;
 
-    // Newest previous chat first: the snapshot lists associations oldest first,
-    // and a clock from several truck changes ago is not this leg's.
+    // ONLY the chat immediately before this one. A → B → C, where A ended on
+    // the road but B recorded a home stay, must not lend A's clock to C across
+    // B's known home period; the snapshot lists associations oldest first, so
+    // the immediately preceding chat is the newest ended one.
     const previousChats = associations
       .filter((a) => a !== current && a.ended_at)
-      .sort((a, b) => (toDate(b.ended_at)?.getTime() || 0) - (toDate(a.ended_at)?.getTime() || 0));
+      .sort((a, b) => (toDate(b.ended_at)?.getTime() || 0) - (toDate(a.ended_at)?.getTime() || 0))
+      .slice(0, 1);
     for (const previous of previousChats) {
       const before = statusByGroup.get(previous.group_id);
       if (!before || before.state !== 'road') continue;

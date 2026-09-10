@@ -423,7 +423,7 @@ npm run build:schema:check                        # schema.sql is in sync with b
   `pip install -r leads-bot/requirements.txt` first — without it all four test
   modules fail to import on `fastapi`, which is an unprepared environment and
   not a real failure), and the admin
-  panel **146** in 16 files (`npm test --prefix admin`). **So any failure is a real
+  panel **147** in 16 files (`npm test --prefix admin`). **So any failure is a real
   failure** — there is no "expected failures" allowance. *(An older internal doc
   claimed ~19 expected failures in a bare environment; that is no longer true and
   must not be used to excuse one.)* If

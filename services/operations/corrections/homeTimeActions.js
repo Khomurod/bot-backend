@@ -36,7 +36,7 @@ const carryRoadClock = {
       throw new StaleCorrectionError(`Group ${fromGroupId} was never held by person ${personId} — not carrying a stranger's clock.`);
     }
     const rows = await client.query(
-      `SELECT group_id, state, state_since, road_bonus_weeks_notified
+      `SELECT group_id, state, state_since, last_status_at, road_bonus_weeks_notified
          FROM driver_home_status WHERE group_id = ANY($1::int[]) ORDER BY group_id FOR UPDATE`,
       [[groupId, fromGroupId].filter((v) => v != null)]
     );
@@ -49,6 +49,12 @@ const carryRoadClock = {
     }
     if (!source || !sameInstant(source.state_since, toStateSince)) {
       throw new StaleCorrectionError(`Group ${fromGroupId}'s clock is no longer ${toStateSince} — the evidence moved.`);
+    }
+    // The check's other premise: the old chat fell silent before the new clock
+    // began. A message on the old chat since then means two chats running in
+    // parallel, and the proposal would no longer be made — so it is not applied.
+    if (source.last_status_at && new Date(source.last_status_at) > new Date(target.state_since)) {
+      throw new StaleCorrectionError(`Group ${fromGroupId} has been active since the new clock began — the two chats overlap.`);
     }
     const watermark = roadBonusWeeksNotified != null
       ? Number(roadBonusWeeksNotified)

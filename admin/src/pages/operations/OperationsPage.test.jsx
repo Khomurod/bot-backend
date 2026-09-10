@@ -207,6 +207,28 @@ describe("looking is not changing", () => {
   });
 });
 
+describe("an approval-tier finding", () => {
+  test("offers Apply — a decision an administrator can take, not a report", async () => {
+    const user = userEvent.setup();
+    spies.forEach((s) => s.mockRestore());
+    spies = [];
+    const approval = {
+      ...FINDING, checkKey: "home_time.clock_reset_on_group_change", tier: "approval", actionable: true,
+      title: "RUSLAN ABDULLAEV: the road clock restarted on the new chat",
+    };
+    stub("getOperationsSummary", async () => summary());
+    stub("getOperationsFindings", async () => ({ findings: [approval] }));
+    stub("getOperationsFinding", async () => ({ finding: approval, corrections: [] }));
+
+    render(<OperationsPage />);
+    await user.click(await screen.findByRole("button", { name: /Road clock restarted/ }));
+    await user.click(await screen.findByRole("button", { name: /RUSLAN ABDULLAEV: the road clock restarted/ }));
+    await screen.findByRole("button", { name: /Close finding details/ });
+
+    expect(screen.getByRole("button", { name: /Apply the correction/ })).toBeInTheDocument();
+  });
+});
+
 describe("a failed refresh", () => {
   test("shows a banner rather than an empty page", async () => {
     spies.forEach((s) => s.mockRestore());
