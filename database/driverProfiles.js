@@ -28,6 +28,13 @@ let profileSavedHook = null;
 function setProfileSavedHook(fn) {
   profileSavedHook = typeof fn === 'function' ? fn : null;
 }
+/** Detached and swallowed: the hook can never fail or slow the write it follows. */
+function fireProfileSavedHook(row) {
+  if (!profileSavedHook || !row) return;
+  Promise.resolve()
+    .then(() => profileSavedHook(row))
+    .catch((err) => console.warn('[PROFILE] identity hook failed:', err.message));
+}
 
 async function syncGroupFromDriverProfile(profileRow, opts = {}) {
   if (!profileRow?.group_id) return null;
@@ -241,11 +248,7 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
       groupStatusSource: opts.groupStatusSource || null,
     });
   }
-  if (profileSavedHook) {
-    Promise.resolve()
-      .then(() => profileSavedHook(row))
-      .catch((err) => console.warn('[PROFILE] identity hook failed:', err.message));
-  }
+  fireProfileSavedHook(row);
   return getDriverProfileByGroupId(row.group_id);
 }
 
@@ -315,6 +318,10 @@ async function setDriverProfileTelegramIdentity(groupId, { telegramUserId, teleg
      RETURNING *`,
     [Number(groupId), normalizeTelegramUserId(telegramUserId), normalizeTelegramUsername(telegramUsername)]
   );
+  // The row AS SAVED: updateDriverProfile's upsert fired the hook with the
+  // COALESCE-preserved old id, and the resolver needs the new one — a Telegram
+  // id is the hard anchor that proves two chats are one person.
+  fireProfileSavedHook(res.rows[0]);
   return getDriverProfileByGroupId(Number(groupId)).catch(() => res.rows[0] || null);
 }
 
@@ -341,9 +348,12 @@ async function backfillDriverProfileTelegramUserId({ groupId, telegramUserId, us
       WHERE group_id = $1
         AND telegram_user_id IS NULL
         AND telegram_username IS NOT NULL
-        AND LOWER(telegram_username) = $3`,
+        AND LOWER(telegram_username) = $3
+      RETURNING *`,
     [gid, id, uname]
   );
+  // A filled id is a new hard anchor, and this path has no admin save behind it.
+  if ((res.rowCount || 0) > 0) fireProfileSavedHook(res.rows[0]);
   return (res.rowCount || 0) > 0;
 }
 

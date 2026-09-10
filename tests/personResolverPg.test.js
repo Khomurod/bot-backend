@@ -246,6 +246,10 @@ test('a Telegram id that proves two chats are one person reconciles them, revers
   await harness.query(
     `INSERT INTO home_time_requests (group_id, person_id, requested_at) VALUES ($1, $2, NOW())`, [other.group.id, lone]
   );
+  // Both people hold a truck before the reconcile — the anchor 27, the lone
+  // person 28. The lone person's truck must not stay held by a merged row.
+  await resolver.syncUnitForPerson(anchor, '27');
+  await resolver.syncUnitForPerson(lone, '28');
 
   // The admin links the same Telegram account on the second profile.
   await harness.query('UPDATE driver_profiles SET telegram_user_id = $2 WHERE group_id = $1', [other.group.id, '8606595680']);
@@ -259,9 +263,13 @@ test('a Telegram id that proves two chats are one person reconciles them, revers
   assert.equal(merged.rows[0].merged_into_person_id, anchor, 'a pointer — the row and its history stay');
   const request = await harness.query('SELECT person_id FROM home_time_requests WHERE group_id = $1', [other.group.id]);
   assert.equal(request.rows[0].person_id, anchor, 'rows stamped with the superseded person moved');
-  // And the unit on the saved profile became the anchor's truck.
-  const unit = await harness.query('SELECT unit_number FROM driver_units WHERE person_id = $1 AND ended_at IS NULL', [anchor]);
-  assert.equal(unit.rows[0].unit_number, '28');
+  // And the unit on the saved profile became the anchor's truck: 27 closed, 28 open.
+  const units = await harness.query(
+    'SELECT unit_number, ended_at IS NULL AS open FROM driver_units WHERE person_id = $1 ORDER BY started_at, id', [anchor]
+  );
+  assert.deepEqual(units.rows.map((r) => [r.unit_number, r.open]), [['27', false], ['28', true]]);
+  const loneOpen = await harness.query('SELECT COUNT(*)::int AS n FROM driver_units WHERE person_id = $1 AND ended_at IS NULL', [lone]);
+  assert.equal(loneOpen.rows[0].n, 0, 'a merged person holds no truck');
 });
 
 test('migration 0026 fills existing rows from open associations, re-applies as a no-op, and never guesses a colliding name', { skip: skipWithoutPg() }, async (t) => {

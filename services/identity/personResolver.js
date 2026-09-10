@@ -175,7 +175,14 @@ async function reconcileTelegramIdentity({ groupId, personId, telegramUserId }) 
       personId: anchor, groupId, associationSource: 'telegram_user_id', confidence: 100,
     }, client);
     await lookups.restampPersonIdForGroup(groupId, personId, anchor, client);
-    if (otherGroups.length === 0) await people.mergePerson(personId, anchor, client);
+    if (otherGroups.length === 0) {
+      // A merged row must hold no truck: left open, it would read as "another
+      // holder" and make the anchor's own truck contested forever. The truck
+      // itself is re-recorded for the anchor by the unit sync that follows,
+      // from the profile — the evidence, rather than an inference from here.
+      await people.closeUnitAssignment({ personId }, client);
+      await people.mergePerson(personId, anchor, client);
+    }
   });
   console.log(`[IDENTITY] Group ${groupId}: person ${personId} reconciled into ${anchor} by telegram_user_id`);
   return { merged: otherGroups.length === 0, movedTo: anchor, from: personId };
