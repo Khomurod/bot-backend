@@ -33,7 +33,12 @@ function escapeHtml(text) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function buildAlertBody(finding, { suspension = null } = {}) {
+/**
+ * @param {object} [options.deterministic]  the finding was produced by a rule
+ *   with no model involved and none wanted — a retired model, a lost source —
+ *   so the "no AI provider was available to summarise" line would be untrue.
+ */
+function buildAlertBody(finding, { suspension = null, deterministic = false } = {}) {
   const mark = SEVERITY_MARK[finding.severity] || 'ℹ️';
   const category = CATEGORY_LABEL[finding.category] || CATEGORY_LABEL.other;
   const lines = [
@@ -71,7 +76,7 @@ function buildAlertBody(finding, { suspension = null } = {}) {
     );
   }
 
-  if (!finding.aiAssisted) {
+  if (!finding.aiAssisted && !deterministic) {
     lines.push(
       '',
       '<i>No AI provider was available to summarise this, so the change is reported '

@@ -192,6 +192,27 @@ function chainFor(provider, { preferProvider, preferModels }) {
   return out;
 }
 
+/**
+ * Who to tell when a provider says a model no longer exists.
+ *
+ * The router does not change chains — that is a routing decision with an audit
+ * trail, and it belongs to the maintenance job, which confirms against the
+ * provider's listing before retiring anything. This hook is how the router
+ * says "you should look at this now" without depending on that job. A listener
+ * that throws cannot fail the call it was told about.
+ */
+let modelRefusalListener = null;
+function setModelRefusalListener(fn) {
+  modelRefusalListener = typeof fn === 'function' ? fn : null;
+}
+function reportModelRefusal(detail) {
+  if (!modelRefusalListener) return;
+  try {
+    const out = modelRefusalListener(detail);
+    if (out && typeof out.catch === 'function') out.catch(() => {});
+  } catch { /* the call must not fail because a listener did */ }
+}
+
 /** Strip a ```json fence, the way both existing clients already do. */
 function stripFences(text) {
   return String(text || '').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
@@ -334,6 +355,13 @@ async function runCapability({
           attempts, errorMessage: err.message,
         });
 
+        if (verdict.kind === FAILURE.MODEL) {
+          // Skip this model, keep the provider, and let the maintenance job
+          // confirm against the listing before anything is retired for good.
+          reportModelRefusal({ providerKey: provider.providerKey, model, error: err.message });
+          continue;
+        }
+
         if (verdict.coolProvider) {
           const cooldown = cooldownFor({
             kind: verdict.kind,
@@ -365,5 +393,5 @@ async function runCapability({
 
 module.exports = {
   AiUnavailableError, runCapability, buildRequest, stripFences,
-  chainFor, requiredAdapterFor, geminiTurnsFromMessages,
+  chainFor, requiredAdapterFor, geminiTurnsFromMessages, setModelRefusalListener,
 };
