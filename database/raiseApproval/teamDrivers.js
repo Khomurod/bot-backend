@@ -105,12 +105,14 @@ async function assignDriverToTeam({
     const ins = await client.query(
       `INSERT INTO dispatch_team_drivers
          (team_id, driver_external_id, driver_normalized_name, driver_name,
-          driver_profile_id, group_id, unit_number, active, needs_review)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, FALSE)
+          driver_profile_id, group_id, unit_number, active, needs_review, person_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, FALSE,
+               (SELECT person_id FROM driver_person_groups WHERE group_id = $6::int AND ended_at IS NULL LIMIT 1))
        ON CONFLICT (team_id, driver_normalized_name) DO UPDATE
          SET active = TRUE, needs_review = FALSE, driver_name = EXCLUDED.driver_name,
              driver_profile_id = EXCLUDED.driver_profile_id, group_id = EXCLUDED.group_id,
              unit_number = EXCLUDED.unit_number,
+             person_id = COALESCE(EXCLUDED.person_id, dispatch_team_drivers.person_id),
              driver_external_id = COALESCE(EXCLUDED.driver_external_id, dispatch_team_drivers.driver_external_id),
              updated_at = NOW()
        RETURNING *`,
@@ -151,7 +153,10 @@ async function linkTeamDriverToProfile(id, { driverProfileId, groupId, unitNumbe
   const res = await query(
     `UPDATE dispatch_team_drivers
         SET driver_profile_id = $2, group_id = $3,
-            unit_number = COALESCE($4, unit_number), needs_review = FALSE, updated_at = NOW()
+            unit_number = COALESCE($4, unit_number), needs_review = FALSE, updated_at = NOW(),
+            person_id = COALESCE(
+              (SELECT person_id FROM driver_person_groups WHERE group_id = $3::int AND ended_at IS NULL LIMIT 1),
+              person_id)
       WHERE id = $1 RETURNING *`,
     [id, driverProfileId || null, groupId || null, unitNumber || null]
   );

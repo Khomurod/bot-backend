@@ -59,6 +59,13 @@ function buildBaseDirectoryRow(row = {}) {
     bot_member_status: row.bot_member_status || null,
     bot_access_checked_at: row.bot_access_checked_at || null,
     last_message_seen_at: row.last_message_seen_at || null,
+    // The permanent identity behind the chat (migration 0015/0026). NULL until
+    // the resolver or the backfill has met this group.
+    person_id: row.person_id != null ? Number(row.person_id) : null,
+    person_display_name: row.person_display_name || null,
+    person_group_count: row.person_group_count != null ? Number(row.person_group_count) : null,
+    person_unit_number: row.person_unit_number || null,
+    person_unit_history: row.person_unit_history || null,
     home_state: row.home_state || null,
     state_since: row.state_since || null,
     last_status_text: row.last_status_text || null,

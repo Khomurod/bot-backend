@@ -208,10 +208,19 @@ async function listGroupDirectorySourceRows({ includeNonDrivers = true } = {}) {
         s.state AS home_state,
         s.state_since,
         s.last_status_text,
-        s.last_status_at
+        s.last_status_at,
+        pg.person_id,
+        p.display_name AS person_display_name,
+        (SELECT COUNT(*) FROM driver_person_groups x WHERE x.person_id = pg.person_id) AS person_group_count,
+        (SELECT u.unit_number FROM driver_units u
+          WHERE u.person_id = pg.person_id AND u.ended_at IS NULL LIMIT 1) AS person_unit_number,
+        (SELECT string_agg(u.unit_number, ' ' ORDER BY u.started_at)
+           FROM driver_units u WHERE u.person_id = pg.person_id) AS person_unit_history
      FROM groups g
      LEFT JOIN driver_profiles dp ON dp.group_id = g.id
      LEFT JOIN driver_home_status s ON s.group_id = g.id
+     LEFT JOIN driver_person_groups pg ON pg.group_id = g.id AND pg.ended_at IS NULL
+     LEFT JOIN driver_people p ON p.id = pg.person_id
      ${typeClause}
      ORDER BY g.group_name ASC, g.id ASC`
   );

@@ -12,11 +12,15 @@
  *   ./driverPeople/people.js        the person row and the merge pointer
  *   ./driverPeople/associations.js  person ↔ group and person ↔ truck, in time
  *
- * NOTHING in the application reads this yet. The layer is deliberately inert
- * until a later stage wires it in, so adding it cannot change any behaviour.
+ *   ./driverPeople/lookups.js       what the resolver asks, and the bulk stamps
+ *
+ * Written by `services/identity/personResolver.js` (the bot's capture path and
+ * the profile-save hook) and read through the `person_id` columns migration
+ * 0026 put on the operational tables.
  */
 const people = require('./driverPeople/people');
 const associations = require('./driverPeople/associations');
+const lookups = require('./driverPeople/lookups');
 
 module.exports = {
   // people
@@ -41,4 +45,12 @@ module.exports = {
   getOpenUnitForPerson: associations.getOpenUnitForPerson,
   getOpenPersonForUnit: associations.getOpenPersonForUnit,
   listUnitsForPerson: associations.listUnitsForPerson,
+
+  // lookups
+  findPersonByTelegramUserId: lookups.findPersonByTelegramUserId,
+  findReturningCandidates: lookups.findReturningCandidates,
+  stampPersonIdForGroup: lookups.stampPersonIdForGroup,
+  stampAllFromAssociations: lookups.stampAllFromAssociations,
+  getPersonIdentity: lookups.getPersonIdentity,
+  summariseIdentityCoverage: lookups.summariseIdentityCoverage,
 };

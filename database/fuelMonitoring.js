@@ -35,10 +35,11 @@ async function createFuelStopAlert({
     `INSERT INTO fuel_stop_alerts (
        group_id, telegram_group_id, source_message_id,
        station_name, station_address, station_lat, station_lng,
-       radius_miles, status, expires_at, next_check_at
+       radius_miles, status, expires_at, next_check_at, person_id
      )
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'watching',
-             NOW() + ($9 || ' hours')::INTERVAL, NOW())
+             NOW() + ($9 || ' hours')::INTERVAL, NOW(),
+             (SELECT person_id FROM driver_person_groups WHERE group_id = $1 AND ended_at IS NULL LIMIT 1))
      RETURNING *`,
     [
       Number(groupId),

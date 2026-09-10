@@ -137,3 +137,41 @@ test('backfill returns false when no matching NULL-id row exists', async () => {
   });
   assert.equal(filled, false);
 });
+
+// ─── the identity hook sees the FINAL row, on every path that writes one ─────
+
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+test('an explicit Telegram identity set fires the profile hook with the row as saved', async () => {
+  // updateDriverProfile upserts (hook fires with the OLD id — the upsert
+  // COALESCE-preserves it) and THEN writes the id directly. Without a hook on
+  // the direct write, the resolver never learns the hard anchor that proves two
+  // chats are one person until an unrelated save happens to come along.
+  const { db, setNext } = loadDbWithFakePg();
+  const seen = [];
+  db.setProfileSavedHook(async (row) => { seen.push(row); });
+  setNext({ rows: [{ group_id: 7, telegram_user_id: '8606595680', telegram_username: 'ruslan' }], rowCount: 1 });
+  await db.setDriverProfileTelegramIdentity(7, { telegramUserId: 8606595680, telegramUsername: 'ruslan' });
+  await settle();
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].telegram_user_id, '8606595680');
+  db.setProfileSavedHook(null);
+});
+
+test('the opportunistic username → id backfill fires the hook when it fills a row', async () => {
+  const { db, setNext } = loadDbWithFakePg();
+  const seen = [];
+  db.setProfileSavedHook(async (row) => { seen.push(row); });
+  setNext({ rows: [{ group_id: 7, telegram_user_id: '8606595680', telegram_username: 'ruslan' }], rowCount: 1 });
+  assert.equal(await db.backfillDriverProfileTelegramUserId({ groupId: 7, telegramUserId: 8606595680, username: 'ruslan' }), true);
+  await settle();
+  assert.equal(seen.length, 1, 'a filled id is a new hard anchor; the resolver must hear about it');
+  assert.equal(seen[0].telegram_user_id, '8606595680');
+
+  seen.length = 0;
+  setNext({ rows: [], rowCount: 0 });
+  assert.equal(await db.backfillDriverProfileTelegramUserId({ groupId: 7, telegramUserId: 1, username: 'other' }), false);
+  await settle();
+  assert.equal(seen.length, 0, 'nothing filled, nothing to say');
+  db.setProfileSavedHook(null);
+});

@@ -24,6 +24,11 @@ function mapDriverProfileForApi(profile) {
     full_name: profile.full_name || profile.display_name || null,
     display_name: profile.display_name || profile.full_name || null,
     normalized_driver_key: profile.normalized_driver_key || null,
+    // The permanent identity behind this chat, when the layer has met it.
+    person_id: profile.person_id ?? null,
+    person_display_name: profile.person_display_name || null,
+    person_group_count: profile.person_group_count ?? null,
+    person_unit_number: profile.person_unit_number || null,
     driver_type: profile.driver_type || 'owner',
     status: profile.status || 'active',
     telegram_username: profile.telegram_username || null,

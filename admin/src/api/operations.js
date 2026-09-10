@@ -112,7 +112,40 @@ export async function runOperationsSweep() {
   return res.json();
 }
 
+// ─── the person layer ────────────────────────────────────────────────────────
+
+/** How much of the fleet has a permanent identity yet. */
+export async function getIdentityCoverage() {
+  const res = await fetch(`${API_BASE}/operations/identity/coverage`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** One person: every chat they have held and every truck, in time. */
+export async function getPersonIdentity(personId) {
+  const res = await fetch(`${API_BASE}/operations/identity/people/${personId}`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.person;
+}
+
+/** What the identity backfill WOULD do. Writes nothing; readable by any admin. */
+export async function previewIdentityBackfill() {
+  const res = await fetch(`${API_BASE}/operations/identity/backfill/preview`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 // ─── below here changes real fleet records: operations.corrections.apply ─────
+
+/** Populate the person layer for real, then stamp existing rows. */
+export async function runIdentityBackfill() {
+  const res = await fetch(`${API_BASE}/operations/identity/backfill`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
 
 /** Apply what a finding proposes. 409 = the evidence moved; re-read, do not retry. */
 export async function applyFindingCorrection(id, reason = null) {
