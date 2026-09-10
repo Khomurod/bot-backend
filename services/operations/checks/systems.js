@@ -16,6 +16,13 @@
  *   Route Control — an active route on a chat nobody is in.
  */
 
+const { createHash } = require('node:crypto');
+
+/** A stable id for a SET of names: the same cohort updates one row, a different one is a new finding. */
+function cohortKey(names) {
+  return createHash('sha1').update([...names].sort().join('\n')).digest('hex').slice(0, 12);
+}
+
 function activeDriverGroups(groups) {
   return groups.filter((g) => g.group_type === 'driver' && g.active === true);
 }
@@ -135,10 +142,13 @@ function checkTeamDriverOnInactiveGroup({ groups, groupsById, personGroups, team
 function checkMileageWithoutPerson({ mileageProgress }) {
   const unplaced = (mileageProgress || []).filter((m) => m.person_id == null);
   if (!unplaced.length) return [];
+  // Keyed by the cohort, not a constant: a dismissal keeps its status on the
+  // same subject, so a constant key would let today's dismissal hide the
+  // drivers who become unmatched next month.
   return [{
     checkKey: 'raise.progress_without_person',
     subjectType: 'mileage_progress',
-    subjectId: 'unplaced',
+    subjectId: cohortKey(unplaced.map((m) => m.driver_normalized_name)),
     title: `${unplaced.length} mileage-bonus driver${unplaced.length === 1 ? '' : 's'} could not be matched to a permanent identity`,
     severity: 'info',
     tier: 'warning',

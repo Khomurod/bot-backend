@@ -82,7 +82,8 @@ function payloadFor(finding) {
     return change.groupId && change.to
       ? {
         groupId: change.groupId, fromStateSince: change.from, toStateSince: change.to,
-        fromGroupId: change.fromGroupId, roadBonusWeeksNotified: change.roadBonusWeeksNotified?.to ?? null,
+        fromGroupId: change.fromGroupId, personId: change.personId ?? null,
+        roadBonusWeeksNotified: change.roadBonusWeeksNotified?.to ?? null,
       }
       : null;
   }

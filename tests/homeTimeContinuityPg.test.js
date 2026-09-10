@@ -197,7 +197,7 @@ test('the sweep proposes carrying a clock restarted on a new chat; an administra
   await assert.rejects(
     applyCorrection({ finding: filed, actionKey: 'home_time.carry_road_clock', payload: {
       groupId: fresh.id, fromStateSince: finding.proposedChange.from, toStateSince: finding.proposedChange.to,
-      fromGroupId: old.id, roadBonusWeeksNotified: 1,
+      fromGroupId: old.id, personId: finding.proposedChange.personId, roadBonusWeeksNotified: 1,
     }, admin: null }),
     /cannot be applied by the system/, 'an approval is never applied by the system'
   );
@@ -205,7 +205,7 @@ test('the sweep proposes carrying a clock restarted on a new chat; an administra
   const correction = await applyCorrection({
     finding: filed, actionKey: 'home_time.carry_road_clock', payload: {
       groupId: fresh.id, fromStateSince: finding.proposedChange.from, toStateSince: finding.proposedChange.to,
-      fromGroupId: old.id, roadBonusWeeksNotified: 1,
+      fromGroupId: old.id, personId: finding.proposedChange.personId, roadBonusWeeksNotified: 1,
     }, admin: ADMIN, reason: 'same driver, truck changed',
   });
   let status = await harness.query('SELECT state_since, road_bonus_weeks_notified FROM driver_home_status WHERE group_id = $1', [fresh.id]);
@@ -216,4 +216,36 @@ test('the sweep proposes carrying a clock restarted on a new chat; an administra
   status = await harness.query('SELECT state_since, road_bonus_weeks_notified FROM driver_home_status WHERE group_id = $1', [fresh.id]);
   assert.equal(new Date(status.rows[0].state_since).toISOString(), new Date(finding.proposedChange.from).toISOString());
   assert.equal(status.rows[0].road_bonus_weeks_notified, 0);
+});
+
+test('carrying a clock is refused once either chat belongs to a different person than the finding saw', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { resolver, sweep, applyCorrection, store } = bind(harness);
+  const old = await seedGroup(harness, { telegramId: -49, name: 'WENZE UNIT # 27 RUSLAN ABDULLAEV', first: 'RUSLAN', last: 'ABDULLAEV', unit: '27' });
+  const personId = (await resolver.ensurePersonForGroup(old)).personId;
+  await harness.query(`INSERT INTO driver_home_status (group_id, state, state_since, last_status_at) VALUES ($1, 'road', $2, $3)`, [old.id, iso(3), iso(31)]);
+  await harness.query('UPDATE groups SET active = FALSE WHERE id = $1', [old.id]);
+  const fresh = await seedGroup(harness, { telegramId: -541877, name: 'WENZE UNIT # 27 RUSLAN ABDULLAEV', first: 'RUSLAN', last: 'ABDULLAEV', unit: '27' });
+  await resolver.ensurePersonForGroup(fresh);
+  await harness.query(`INSERT INTO driver_home_status (group_id, state, state_since, last_status_at) VALUES ($1, 'road', NOW(), NOW())`, [fresh.id]);
+  const { findings } = await sweep();
+  const finding = findings.find((f) => f.checkKey === 'home_time.clock_reset_on_group_change');
+  const filed = (await store.listFindings({ status: 'open', checkKey: 'home_time.clock_reset_on_group_change' }))[0];
+
+  // Between the sweep and the click, an administrator re-links the new chat to
+  // somebody else. The clocks have not moved — the identity evidence has.
+  const other = await harness.query(`INSERT INTO driver_people (display_name) VALUES ('SOMEBODY ELSE') RETURNING id`);
+  await harness.query('UPDATE driver_person_groups SET ended_at = NOW() WHERE group_id = $1 AND ended_at IS NULL', [fresh.id]);
+  await harness.query(`INSERT INTO driver_person_groups (person_id, group_id, association_source) VALUES ($1, $2, 'manual')`, [other.rows[0].id, fresh.id]);
+
+  await assert.rejects(
+    applyCorrection({ finding: filed, actionKey: 'home_time.carry_road_clock', payload: {
+      groupId: fresh.id, fromStateSince: finding.proposedChange.from, toStateSince: finding.proposedChange.to,
+      fromGroupId: old.id, personId, roadBonusWeeksNotified: 0,
+    }, admin: ADMIN }),
+    (err) => err.stale === true || err.name === 'StaleCorrectionError',
+    'another driver\'s road start must not land on this chat'
+  );
+  const status = await harness.query('SELECT state_since FROM driver_home_status WHERE group_id = $1', [fresh.id]);
+  assert.notEqual(new Date(status.rows[0].state_since).toISOString(), iso(3));
 });

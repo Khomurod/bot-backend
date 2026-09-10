@@ -165,3 +165,31 @@ test('every system check runs over one snapshot and declares its keys', () => {
   assert.deepEqual(systems.runSystemChecks(snapshotOf()), []);
   assert.equal(systems.CHECK_KEYS.length, 6);
 });
+
+test('a person on two ACTIVE chats with different profile units gets NO auto unit-sync — the conflict is reported instead', () => {
+  // Otherwise two auto findings would switch the same person's truck back and
+  // forth on every sweep, each valid on its own chat's evidence.
+  const findings = layer.checkStaleUnitAssignment(snapshotOf({
+    groups: [group(49, 'OLD CHAT'), group(541877, 'NEW CHAT'), group(9, 'B')],
+    profiles: [profile(49, '27'), profile(541877, '28'), profile(9, '5')],
+    personGroups: [{ person_id: 7, group_id: 49 }, { person_id: 7, group_id: 541877 }, { person_id: 8, group_id: 9 }],
+    units: [{ person_id: 7, unit_number: '27' }],
+  }));
+  assert.deepEqual(findings.map((f) => f.subjectId), [9], 'only the unambiguous person is synced');
+});
+
+test('mileage rows without a person are keyed by the cohort, so a dismissed cohort does not hide a new one', () => {
+  const before = systems.checkMileageWithoutPerson(snapshotOf({
+    mileageProgress: [{ id: 1, driver_normalized_name: 'OMAR ALAWAD', person_id: null }],
+  }))[0];
+  const same = systems.checkMileageWithoutPerson(snapshotOf({
+    mileageProgress: [{ id: 1, driver_normalized_name: 'OMAR ALAWAD', person_id: null }],
+  }))[0];
+  const changed = systems.checkMileageWithoutPerson(snapshotOf({
+    mileageProgress: [{ id: 1, driver_normalized_name: 'OMAR ALAWAD', person_id: null },
+      { id: 2, driver_normalized_name: 'NEW GUY', person_id: null }],
+  }))[0];
+  assert.equal(before.subjectId, same.subjectId, 'the same cohort updates one row');
+  assert.notEqual(before.subjectId, changed.subjectId, 'a different cohort is a different finding');
+  assert.notEqual(before.subjectId, 'unplaced');
+});

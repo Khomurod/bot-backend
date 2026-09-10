@@ -18,7 +18,23 @@ const carryRoadClock = {
   subjectType: 'group',
   describe: (p) => `Carry the road clock on group ${p.groupId} back to ${p.toStateSince} (from group ${p.fromGroupId})`,
 
-  async apply({ groupId, fromStateSince, toStateSince, fromGroupId, roadBonusWeeksNotified = null }, client) {
+  async apply({ groupId, fromStateSince, toStateSince, fromGroupId, personId = null, roadBonusWeeksNotified = null }, client) {
+    // The clocks are half the evidence; WHO held each chat is the other half. A
+    // chat re-linked to somebody else since the sweep has unchanged timestamps
+    // and a different driver — and their road start must not land here.
+    const links = await client.query(
+      `SELECT group_id, person_id, ended_at FROM driver_person_groups
+        WHERE group_id = ANY($1::int[]) ORDER BY id FOR UPDATE`,
+      [[groupId, fromGroupId].filter((v) => v != null)]
+    );
+    const targetOpen = links.rows.find((r) => r.group_id === Number(groupId) && !r.ended_at);
+    const sourceHeld = links.rows.find((r) => r.group_id === Number(fromGroupId) && r.person_id === Number(personId));
+    if (!personId || !targetOpen || targetOpen.person_id !== Number(personId)) {
+      throw new StaleCorrectionError(`Group ${groupId} no longer belongs to person ${personId} — the evidence moved.`);
+    }
+    if (!sourceHeld) {
+      throw new StaleCorrectionError(`Group ${fromGroupId} was never held by person ${personId} — not carrying a stranger's clock.`);
+    }
     const rows = await client.query(
       `SELECT group_id, state, state_since, road_bonus_weeks_notified
          FROM driver_home_status WHERE group_id = ANY($1::int[]) ORDER BY group_id FOR UPDATE`,
