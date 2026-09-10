@@ -325,6 +325,9 @@ export function DriverDetailModal(p) {
                           value={tripDrafts[trip.id]?.road ?? toDateInput(trip.road_started_at)}
                           onChange={(e) => updateTripDraft(trip.id, "road", e.target.value)}
                         />
+                        {trip.source_group_id != null && Number(trip.source_group_id) !== Number(trip.group_id) && (
+                          <small style={{ color: "var(--text-muted)" }}>recorded on an earlier chat</small>
+                        )}
                       </td>
                       <td>
                         <input

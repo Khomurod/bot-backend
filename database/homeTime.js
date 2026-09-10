@@ -9,6 +9,7 @@
  *   ./homeTime/driverState.js  one row per group: home or on the road, since when
  *   ./homeTime/roadHistory.js  completed road legs + the atomic bonus claim
  *   ./homeTime/requests.js     the request state machine (pending → decided)
+ *   ./homeTime/integrity.js    the boot-time guard for "one open stay per group"
  *   ./homeTimeClarification.js the restart-safe reminder sweep and claims
  *   ./homeTimeExpiry.js        stale-request expiry (imported directly)
  *
@@ -19,6 +20,7 @@ const settings = require('./homeTime/settings');
 const driverState = require('./homeTime/driverState');
 const roadHistory = require('./homeTime/roadHistory');
 const requests = require('./homeTime/requests');
+const integrity = require('./homeTime/integrity');
 const clarification = require('./homeTimeClarification');
 
 module.exports = {
@@ -46,6 +48,7 @@ module.exports = {
   // Completed road legs, home stays, efficiency and the road-bonus claim
   insertRoadHistory: roadHistory.insertRoadHistory,
   getOpenHomeStay: roadHistory.getOpenHomeStay,
+  listOpenHomeStays: roadHistory.listOpenHomeStays,
   closeHomeStay: roadHistory.closeHomeStay,
   listCyclesForEfficiency: roadHistory.listCyclesForEfficiency,
   listUnpostedRoadBonuses: roadHistory.listUnpostedRoadBonuses,
@@ -55,6 +58,9 @@ module.exports = {
   getRoadHistoryById: roadHistory.getRoadHistoryById,
   updateRoadHistory: roadHistory.updateRoadHistory,
   deleteRoadHistory: roadHistory.deleteRoadHistory,
+
+  // Integrity guard (boot)
+  ensureOpenStayIndex: integrity.ensureOpenStayIndex,
 
   // Request lifecycle
   insertHomeTimeRequest: requests.insertHomeTimeRequest,

@@ -81,6 +81,10 @@ function world({ state = 'home', stateSince = '2026-08-25T00:00:00.000Z', settin
       const open = cycles.filter((c) => c.return_to_road_at == null);
       return open.length ? open[open.length - 1] : null;
     },
+    async listOpenHomeStays() {
+      // Every open row of this driver, newest first — the person-aware read.
+      return cycles.filter((c) => c.return_to_road_at == null).slice().reverse();
+    },
     async closeHomeStay(id, { returnToRoadAt, homeDays, linkedRequestId }) {
       const row = cycles.find((c) => c.id === id && c.return_to_road_at == null);
       if (!row) return null;
@@ -212,12 +216,13 @@ test('the import no longer resets the extra-week watermark', async () => {
 
 // ─── the structural blind spot the repair exists for ─────────────────────────
 
-test('a second open cycle hides the first — the reason class B evidence exists', async () => {
+test('a lingering open cycle is closed by the NEXT leg, with the observed road start — nothing stays hidden', async () => {
   const w = world({ state: 'road', stateSince: '2026-07-08T00:00:00.000Z' });
   const { applyStateTransition } = require('../services/homeTimeService');
 
-  // Simulate the damage already in production: two cycles opened without a close
-  // between them, as the old import could do.
+  // The damage as production had it: two cycles opened without a close between
+  // them, as the old import could do. `getOpenHomeStay` is LIMIT 1, so the older
+  // one used to be structurally unreachable by normal operation.
   await w.ht.insertRoadHistory({
     groupId: 1, roadStartedAt: '2026-06-01T00:00:00.000Z', homeArrivedAt: '2026-07-01T00:00:00.000Z',
   });
@@ -227,12 +232,16 @@ test('a second open cycle hides the first — the reason class B evidence exists
   assert.equal(openCycles(w.cycles).length, 2);
 
   await applyStateTransition(null, GROUP, { newState: 'home', eventAt: '2026-08-26T00:00:00.000Z' });
-  await applyStateTransition(null, GROUP, { newState: 'road', eventAt: '2026-08-31T00:00:00.000Z' });
+  // The road→home insert closed EVERYTHING still open for this driver first,
+  // with the road start it was about to record (2026-07-08) as their return —
+  // a road→home can only follow a road state, so that moment IS the observed
+  // return (class-B evidence, seen from this side). Only the new stay is open.
+  assert.equal(openCycles(w.cycles).length, 1, 'one open stay per group — the index can hold');
+  assert.equal(w.cycles[0].return_to_road_at, '2026-07-08T00:00:00.000Z');
+  assert.equal(w.cycles[1].return_to_road_at, '2026-07-08T00:00:00.000Z');
 
-  // Only the newest closes: `getOpenHomeStay` is LIMIT 1. The older rows are
-  // structurally unreachable by normal operation and need the Stage 3 repair.
-  assert.ok(openCycles(w.cycles).length >= 2,
-    'normal operation cannot reach an older open cycle — that is what the repair is for');
+  await applyStateTransition(null, GROUP, { newState: 'road', eventAt: '2026-08-31T00:00:00.000Z' });
+  assert.equal(openCycles(w.cycles).length, 0, 'and the new stay closes on the return');
 });
 
 // ─── with the feature off, nothing pretends otherwise ────────────────────────

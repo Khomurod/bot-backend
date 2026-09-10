@@ -21,6 +21,7 @@ const identity = require('./checks/identity');
 const identityLayer = require('./checks/identityLayer');
 const systems = require('./checks/systems');
 const homeTime = require('./checks/homeTime');
+const homeTimeContinuity = require('./checks/homeTimeContinuity');
 const { runAutoCorrections } = require('./corrections/autoApply');
 
 const POLL_MS = 15 * 60 * 1000;
@@ -31,6 +32,7 @@ const CHECK_MODULES = [
   { name: 'identityLayer', keys: identityLayer.CHECK_KEYS, run: identityLayer.runIdentityLayerChecks },
   { name: 'systems', keys: systems.CHECK_KEYS, run: systems.runSystemChecks },
   { name: 'homeTime', keys: homeTime.CHECK_KEYS, run: homeTime.runHomeTimeChecks },
+  { name: 'homeTimeContinuity', keys: homeTimeContinuity.CHECK_KEYS, run: homeTimeContinuity.runHomeTimeContinuityChecks },
 ];
 
 let serviceTimer = null;
@@ -66,7 +68,7 @@ async function loadSnapshot(db = defaultDb) {
         WHERE group_id IN (SELECT group_id FROM driver_road_history WHERE return_to_road_at IS NULL)
         ORDER BY group_id, home_arrived_at`
     ),
-    db.query('SELECT group_id, state, state_since FROM driver_home_status'),
+    db.query('SELECT group_id, state, state_since, last_status_at, road_bonus_weeks_notified FROM driver_home_status'),
     db.query('SELECT home_allowance_days, road_allowance_weeks FROM home_time_settings WHERE id = 1'),
     // The exhausted internal-alert pile. Ids and the recorded error only — never
     // the alert BODY, which is driver correspondence and has no business in a
@@ -103,7 +105,7 @@ async function loadSnapshot(db = defaultDb) {
  * checks compare — ids, states and links; never message text or alert bodies.
  */
 async function loadLayerSnapshot(db) {
-  const [people, personGroups, units, fuelAlerts, teamDrivers, mileageProgress, routeAssignments] = await Promise.all([
+  const [people, personGroups, units, fuelAlerts, teamDrivers, mileageProgress, routeAssignments, personGroupHistory] = await Promise.all([
     db.query('SELECT id, display_name, merged_into_person_id FROM driver_people'),
     db.query('SELECT person_id, group_id, started_at FROM driver_person_groups WHERE ended_at IS NULL'),
     db.query('SELECT person_id, unit_number, samsara_vehicle_id FROM driver_units WHERE ended_at IS NULL'),
@@ -114,10 +116,14 @@ async function loadLayerSnapshot(db) {
     ),
     db.query('SELECT id, driver_normalized_name, person_id FROM mileage_bonus_progress WHERE is_active = TRUE'),
     db.query(`SELECT id, group_id, status, created_at FROM route_assignments WHERE status = 'active'`),
+    // Open AND closed: the continuity check needs to know which chat a person
+    // was on BEFORE the one they are on now.
+    db.query('SELECT person_id, group_id, started_at, ended_at FROM driver_person_groups ORDER BY started_at'),
   ]);
   return {
     people: people.rows,
     personGroups: personGroups.rows,
+    personGroupHistory: personGroupHistory.rows,
     units: units.rows,
     fuelAlerts: fuelAlerts.rows,
     teamDrivers: teamDrivers.rows,

@@ -171,10 +171,39 @@ marks the stay closed.
 - The import also silently **reset the extra-week watermark** on every run,
   because `upsertDriverHomeStatus` defaults `roadBonusWeeksNotified` to 0 and the
   direct call never passed one. Going through the transition fixes that too.
-- **`getOpenHomeStay` is `LIMIT 1`**, so once a second cycle opens for a group
-  the older one is unreachable by normal operation. That is why class-B evidence
-  exists in the consistency check, and why the ~65 already-open cycles need the
-  Stage 3 repair rather than just this fix.
+- **A second open stay per group can no longer come into being (Phase 3-G).**
+  A `road → home` insert first closes EVERY stay still open for that driver —
+  on this chat or any chat the same person held before — with the road start it
+  is about to record as their return (a `road → home` can only follow a road
+  state, so that moment *is* the observed return: class-B evidence, seen from
+  this side). `getOpenHomeStay` is still `LIMIT 1`; it no longer matters,
+  because the read the service uses is `listOpenHomeStays(groupId)`, which is
+  person-aware. The ~65 already-open cycles still need the Stage 3 repair.
+- **The home stay follows the person.** A driver who went home on the old
+  truck's chat and returned to the road on the new truck's chat closes the stay
+  that began on the old chat — one driver, one cycle — through the `person_id`
+  migration 0026 stamps on `driver_road_history`. The admin overview shows a
+  leg under the driver's CURRENT chat (`current_group_id`; the chat it was
+  recorded on stays as `source_group_id`, and the modal says "recorded on an
+  earlier chat").
+- **`ensureOpenStayIndex()` runs at boot, after the migrations** (`database/
+  homeTime/integrity.js`). It counts groups with more than one open stay and
+  creates the partial unique index `uniq_driver_road_history_open_stay`
+  (`group_id WHERE return_to_road_at IS NULL`) **only when there are none**;
+  otherwise it logs which groups block it and stands down. It is deliberately
+  NOT a migration — a migration that met the 25 production duplicates would
+  fail, and a failing migration fails boot. Nothing on its path can throw.
+- **A road clock restarted on a new chat is proposed for carrying, never
+  carried automatically.** `home_time.clock_reset_on_group_change`
+  (`checks/homeTimeContinuity.js`) fires when a person's current chat is on the
+  road since a moment their previous chat was already on the road, the new clock
+  began when the new chat did, and the old chat fell silent first — the RUSLAN
+  ABDULLAEV shape, four weeks of accrual lost to a recreated chat. The action
+  `home_time.carry_road_clock` is tier **approval**: it changes a future payout,
+  so a person confirms; it copies the old chat's `state_since` exactly and
+  carries the larger extra-week watermark so announced weeks are not announced
+  again. Guarded by `tests/homeTimeContinuity.test.js` and
+  `tests/homeTimeContinuityPg.test.js`.
 - **The ~65 already-open cycles are repaired through the Stage 3 registry**, not
   a script: audited, revertible per row, and payout-neutral (`bonus_usd` is
   computed at insert and never recomputed). `tests/homeTimeRepairPg.test.js`

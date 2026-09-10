@@ -78,6 +78,14 @@ function payloadFor(finding) {
   if (finding.checkKey === 'identity.group_without_person') {
     return change.groupId ? { groupId: change.groupId } : null;
   }
+  if (finding.checkKey === 'home_time.clock_reset_on_group_change') {
+    return change.groupId && change.to
+      ? {
+        groupId: change.groupId, fromStateSince: change.from, toStateSince: change.to,
+        fromGroupId: change.fromGroupId, roadBonusWeeksNotified: change.roadBonusWeeksNotified?.to ?? null,
+      }
+      : null;
+  }
   if (finding.checkKey === 'identity.stale_unit_assignment') {
     return change.personId && change.to
       ? { personId: change.personId, unitNumber: change.to, groupId: change.groupId }

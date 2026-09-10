@@ -378,6 +378,10 @@ async function start() {
 
   assertDistinctTelegramPollingTokens();
   await db.initializeDatabase();
+  // One open home stay per group — created only when the data already obeys
+  // it, never a migration (a failing migration fails boot). Logs and stands
+  // down otherwise; the repair through Needs Attention clears the way.
+  await require('./database/homeTime').ensureOpenStayIndex();
 
   // Started before any traffic so the month's transfer estimate is adopted from
   // the database and every later query is counted.
