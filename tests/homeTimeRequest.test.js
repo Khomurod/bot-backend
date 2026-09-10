@@ -1,10 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const {
-  isHomeTimeApprover,
-  isHomeTimeApproverUsername,
+  isHomeTimeManager,
+  isHomeTimeManagerUsername,
   extractMentionUsernames,
-  messageMentionsApprovers,
+  messageMentionsManagers,
+  HOME_TIME_MANAGER_MENTIONS,
+  REQUIRED_HOME_TIME_MANAGERS,
   hasHomeTimeSignal,
   buildHomeTimeClassificationPrompt,
   buildHomeTimeDateReplyPrompt,
@@ -17,18 +19,28 @@ const {
   computeHomeWindow,
 } = require('../services/homeTimeRequestConstants');
 
-test('isHomeTimeApproverUsername matches the two approvers (case-insensitive, @-tolerant)', () => {
-  assert.strictEqual(isHomeTimeApproverUsername('tomr_robins0n'), true);
-  assert.strictEqual(isHomeTimeApproverUsername('@TomR_Robins0n'), true);
-  assert.strictEqual(isHomeTimeApproverUsername('saffiebnett'), true);
-  assert.strictEqual(isHomeTimeApproverUsername('someone_else'), false);
-  assert.strictEqual(isHomeTimeApproverUsername(''), false);
-  assert.strictEqual(isHomeTimeApproverUsername(null), false);
+test('isHomeTimeManagerUsername matches all three managers (case-insensitive, @-tolerant)', () => {
+  assert.strictEqual(isHomeTimeManagerUsername('tomr_robins0n'), true);
+  assert.strictEqual(isHomeTimeManagerUsername('@TomR_Robins0n'), true);
+  assert.strictEqual(isHomeTimeManagerUsername('saffiebnett'), true);
+  assert.strictEqual(isHomeTimeManagerUsername('amelia_wenze'), true);
+  assert.strictEqual(isHomeTimeManagerUsername('@Amelia_Wenze'), true);
+  assert.strictEqual(isHomeTimeManagerUsername('someone_else'), false);
+  assert.strictEqual(isHomeTimeManagerUsername(''), false);
+  assert.strictEqual(isHomeTimeManagerUsername(null), false);
 });
 
-test('isHomeTimeApprover falls back to username when no ids configured', () => {
-  assert.strictEqual(isHomeTimeApprover({ username: 'SaffieBNett' }), true);
-  assert.strictEqual(isHomeTimeApprover({ username: 'random', id: 5 }), false);
+test('the three managers are exactly who home time is reported to, in order', () => {
+  assert.deepStrictEqual(REQUIRED_HOME_TIME_MANAGERS,
+    ['tomr_robins0n', 'SaffieBNett', 'amelia_wenze']);
+  assert.deepStrictEqual(HOME_TIME_MANAGER_MENTIONS,
+    ['@tomr_robins0n', '@SaffieBNett', '@amelia_wenze']);
+});
+
+test('isHomeTimeManager falls back to username when no ids configured', () => {
+  assert.strictEqual(isHomeTimeManager({ username: 'SaffieBNett' }), true);
+  assert.strictEqual(isHomeTimeManager({ username: 'amelia_wenze' }), true);
+  assert.strictEqual(isHomeTimeManager({ username: 'random', id: 5 }), false);
 });
 
 test('extractMentionUsernames reads mention entities and a regex fallback', () => {
@@ -42,20 +54,20 @@ test('extractMentionUsernames reads mention entities and a regex fallback', () =
   assert.deepStrictEqual(extractMentionUsernames(noEntities).sort(), ['driverbob', 'saffiebnett']);
 });
 
-test('messageMentionsApprovers detects @mention, text_mention, and ignores others', () => {
+test('messageMentionsManagers detects @mention, text_mention, and ignores others', () => {
   assert.strictEqual(
-    messageMentionsApprovers({ text: 'driver wants home @tomr_robins0n' }),
+    messageMentionsManagers({ text: 'driver wants home @tomr_robins0n' }),
     true
   );
   assert.strictEqual(
-    messageMentionsApprovers({
+    messageMentionsManagers({
       text: 'home time?',
       entities: [{ type: 'text_mention', offset: 0, length: 4, user: { username: 'SaffieBNett' } }],
     }),
     true
   );
-  assert.strictEqual(messageMentionsApprovers({ text: 'just a normal message' }), false);
-  assert.strictEqual(messageMentionsApprovers({ text: 'thanks @dispatch_joe' }), false);
+  assert.strictEqual(messageMentionsManagers({ text: 'just a normal message' }), false);
+  assert.strictEqual(messageMentionsManagers({ text: 'thanks @dispatch_joe' }), false);
 });
 
 test('hasHomeTimeSignal detects home-time / time-off wording', () => {

@@ -2,10 +2,11 @@
  * Home-Time Request — constants and pure helpers (no DB / network), so they can
  * be unit-tested in isolation.
  *
- * When a company representative tags @tomr_robins0n and/or @SaffieBNett in a
- * driver group, the bot looks at the recent conversation to decide whether it is
- * a home-time request. If it is, the bot posts an AI-written note with
- * "Approve" / "Do Not Approve" buttons that ONLY those two people may press.
+ * When a company representative tags one of the home-time MANAGERS in a driver
+ * group, the bot looks at the recent conversation to decide whether it is a
+ * home-time request. If it is, the managers are told — and that is all. There
+ * are no Approve / Do Not Approve buttons: home time is tracked and reported,
+ * not authorised, so a driver's time at home is never waiting on a button.
  *
  * The home-time policy: a driver should be on the road at least
  * `road_allowance_weeks` (default 4) weeks before taking `home_allowance_days`
@@ -19,37 +20,59 @@ function csvValues(value) {
   return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
 }
 
-// Usernames allowed to approve/deny a home-time request (case-insensitive,
-// stored without the leading @). Same people as the bonus rejection escalation.
-const HOME_TIME_APPROVER_USERNAMES = csvValues(process.env.HOME_TIME_APPROVER_USERNAMES);
-if (!HOME_TIME_APPROVER_USERNAMES.length) {
-  HOME_TIME_APPROVER_USERNAMES.push('tomr_robins0n', 'SaffieBNett');
-}
+// The people home time is reported TO (case-insensitive, stored without the
+// leading @). They are tagged on every home-time notice and their mention in a
+// driver group is one of the signals that a request is being made.
+//
+// These three are REQUIRED, not merely defaulted. An environment override adds
+// people, it does not remove them: `HOME_TIME_APPROVER_USERNAMES` was written
+// when there were two managers and approval existed, and a stale copy of it
+// left in a deployment must not silently drop the third manager from every
+// notice. That is exactly the failure this union prevents.
+const REQUIRED_HOME_TIME_MANAGERS = ['tomr_robins0n', 'SaffieBNett', 'amelia_wenze'];
+const HOME_TIME_MANAGER_USERNAMES = (() => {
+  const configured = csvValues(process.env.HOME_TIME_MANAGER_USERNAMES)
+    .concat(csvValues(process.env.HOME_TIME_APPROVER_USERNAMES));
+  const seen = new Map();
+  for (const name of [...REQUIRED_HOME_TIME_MANAGERS, ...configured]) {
+    const key = name.replace(/^@/, '').toLowerCase();
+    if (key && !seen.has(key)) seen.set(key, name.replace(/^@/, ''));
+  }
+  return [...seen.values()];
+})();
 
-// Optional immutable ids — once configured, usernames no longer grant authority.
-const HOME_TIME_APPROVER_USER_IDS = new Set(csvValues(process.env.HOME_TIME_APPROVER_USER_IDS));
+// Optional immutable ids — used to recognise a manager who has no username.
+const HOME_TIME_MANAGER_USER_IDS = new Set(
+  csvValues(process.env.HOME_TIME_MANAGER_USER_IDS)
+    .concat(csvValues(process.env.HOME_TIME_APPROVER_USER_IDS))
+);
 
-// Mentions to detect a request and to tag on the card.
-const HOME_TIME_APPROVER_MENTIONS = HOME_TIME_APPROVER_USERNAMES.map((u) => `@${u}`);
+// The exact strings tagged on every home-time notice.
+const HOME_TIME_MANAGER_MENTIONS = HOME_TIME_MANAGER_USERNAMES.map((u) => `@${u}`);
 
 const DAYS_PER_WEEK = 7;
 
-/** Lowercased approver usernames (no @). */
-function approverUsernamesLower() {
-  return HOME_TIME_APPROVER_USERNAMES.map((u) => u.toLowerCase());
+/** Lowercased manager usernames (no @). */
+function managerUsernamesLower() {
+  return HOME_TIME_MANAGER_USERNAMES.map((u) => u.toLowerCase());
 }
 
-function isHomeTimeApproverUsername(username) {
+function isHomeTimeManagerUsername(username) {
   const u = String(username || '').replace(/^@/, '').toLowerCase();
   if (!u) return false;
-  return approverUsernamesLower().includes(u);
+  return managerUsernamesLower().includes(u);
 }
 
-/** Authoritative check: a Telegram `from` user may approve/deny. */
-function isHomeTimeApprover(user) {
+/**
+ * Is this Telegram user one of the home-time managers? Used to recognise a
+ * mention, not to grant authority — nothing in home time is gated on a Telegram
+ * user any more. Configured ids are an ADDITIONAL way to be recognised (a
+ * manager with no username), never a replacement for the username list.
+ */
+function isHomeTimeManager(user) {
   const id = user?.id == null ? '' : String(user.id);
-  if (HOME_TIME_APPROVER_USER_IDS.size > 0) return HOME_TIME_APPROVER_USER_IDS.has(id);
-  return isHomeTimeApproverUsername(user?.username);
+  if (id && HOME_TIME_MANAGER_USER_IDS.has(id)) return true;
+  return isHomeTimeManagerUsername(user?.username);
 }
 
 /**
@@ -79,18 +102,18 @@ function extractMentionUsernames(message) {
 }
 
 /**
- * Does this message tag one of the home-time approvers? Checks @username
+ * Does this message tag one of the home-time managers? Checks @username
  * mentions and `text_mention` entities (users without a username) by id.
  */
-function messageMentionsApprovers(message) {
+function messageMentionsManagers(message) {
   const usernames = extractMentionUsernames(message);
-  const approvers = approverUsernamesLower();
-  if (usernames.some((u) => approvers.includes(u))) return true;
+  const managers = managerUsernamesLower();
+  if (usernames.some((u) => managers.includes(u))) return true;
 
   const entities = message?.entities || message?.caption_entities || [];
   for (const ent of Array.isArray(entities) ? entities : []) {
     if (ent?.type === 'text_mention' && ent.user) {
-      if (isHomeTimeApprover(ent.user)) return true;
+      if (isHomeTimeManager(ent.user)) return true;
     }
   }
   return false;
@@ -116,7 +139,7 @@ function buildHomeTimeClassificationPrompt({
 } = {}) {
   const approverList = (Array.isArray(approvers) && approvers.length
     ? approvers
-    : HOME_TIME_APPROVER_MENTIONS).join(', ');
+    : HOME_TIME_MANAGER_MENTIONS).join(', ');
   const today = todayLabel || DateTime.now().setZone('America/Chicago').toISODate();
   return [
     'You are a strict classifier for a US trucking company dispatch group on Telegram.',
@@ -428,14 +451,15 @@ function computeHomeWindow(fromIso, homeAllowanceDays = 4, timezone = 'America/C
 }
 
 module.exports = {
-  HOME_TIME_APPROVER_USERNAMES,
-  HOME_TIME_APPROVER_USER_IDS,
-  HOME_TIME_APPROVER_MENTIONS,
+  REQUIRED_HOME_TIME_MANAGERS,
+  HOME_TIME_MANAGER_USERNAMES,
+  HOME_TIME_MANAGER_USER_IDS,
+  HOME_TIME_MANAGER_MENTIONS,
   DAYS_PER_WEEK,
-  isHomeTimeApproverUsername,
-  isHomeTimeApprover,
+  isHomeTimeManagerUsername,
+  isHomeTimeManager,
   extractMentionUsernames,
-  messageMentionsApprovers,
+  messageMentionsManagers,
   hasHomeTimeSignal,
   buildHomeTimeClassificationPrompt,
   buildHomeTimeDateReplyPrompt,

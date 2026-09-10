@@ -2,7 +2,7 @@
  * Home-Time approver-tag path.
  *
  * The oldest of the three entry points: a company representative tags an
- * approver (@tomr_robins0n / @SaffieBNett) in a driver group. Managers are
+ * home-time manager in a driver group. Managers are
  * tagged for loads, rates, breakdowns, paperwork and a dozen other reasons, so
  * this path is deliberately conservative about calling something a home-time
  * request.
@@ -15,7 +15,7 @@ const ht = require('../database/homeTime');
 const recentBuffer = require('./recentMessageBuffer');
 const { callGeminiJson } = require('./geminiClient');
 const {
-  HOME_TIME_APPROVER_MENTIONS,
+  HOME_TIME_MANAGER_MENTIONS,
   hasHomeTimeSignal,
   buildHomeTimeClassificationPrompt,
   parseHomeTimeWindowText,
@@ -51,7 +51,7 @@ async function classifyHomeTimeRequest(input) {
   const today = todayIso || todayIsoChicago();
 
   const prompt = buildHomeTimeClassificationPrompt({
-    transcript, triggerText, approvers: HOME_TIME_APPROVER_MENTIONS, todayLabel: today,
+    transcript, triggerText, approvers: HOME_TIME_MANAGER_MENTIONS, todayLabel: today,
   });
   try {
     const { parsed } = await callGeminiJson({
@@ -177,7 +177,11 @@ async function handleApproverMention(telegram, group, message) {
         requestedByUsername: fromUser.username || null,
         roadStartedAt, daysOnRoad, policyMet,
         homeFrom: window.homeStartDate, homeTo: window.homeTo, returnToRoadDate: window.returnToRoadDate,
-        status: 'pending', source: 'telegram',
+        // 'recorded', not 'pending': nobody decides a home-time request any
+        // more. 'pending' would put this row back in OPEN_REQUEST_STATUSES,
+        // where it blocks the driver's next request and still renders as an
+        // undecided one in the admin.
+        status: 'recorded', source: 'telegram',
         detectedIntent: 'home_time_request',
         aiConfidence: verdict.confidence === 'high' ? 90 : (verdict.confidence === 'medium' ? 60 : null),
         rootChatId: group.telegram_group_id,

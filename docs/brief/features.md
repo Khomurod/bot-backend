@@ -140,7 +140,8 @@
   `groups` — never inventing a sign it cannot justify
   (`tests/chatIdSignRepairPg.test.js`).
 - **An exhausted durable queue is countable.** `/api/health` reports
-  `queues.homeTimeInternalAlerts.exhausted` (5-minute cache). It deliberately
+  `queues.homeTimeInternalAlerts.exhausted` and
+  `queues.homeTimeManagerNotices.failed` (5-minute cache). It deliberately
   does **not** affect `healthy` or the status code: Render and the uptime monitor
   read those, and an undeliverable alert queue is an operator's problem, not a
   reason to declare the service down. `tests/healthQueueSignal.test.js`.
@@ -271,7 +272,7 @@ marks the stay closed.
   accepted — so the mis-parsed year would survive the very clarification meant
   to catch it); a **partial** window is judged on the date it has (requiring
   `complete` let "home 2027-01-02" with no return date through); and the
-  **approver-tagged** path gets the same check, because a mention makes a
+  **manager-tagged** path gets the same check, because a mention makes a
   request more official, not more likely to be right about the year.
   **An over-allowance window is deliberately NOT refused**: the subsystem
   already answers that properly, by recording the request and replying with a
@@ -293,9 +294,36 @@ marks the stay closed.
   locked) and `tests/operationalAutoApplyCap.test.js` (the cap at its boundary,
   no database needed).
 
-- Home-time **requests** from drivers get Approve / Do-Not-Approve buttons gated
-  on the approver allow-list (see the authorization note in §5 — usernames by
-  default, numeric IDs once configured).
+- **Home time is reported, not approved.** The Approve / Do-Not-Approve buttons
+  are gone. They asked a question the company had already answered — a driver
+  who has been out five weeks is going home, and nobody pressing a button
+  changed whether the truck stopped — and they were the ONLY message: nobody was
+  told when the driver actually got home, or when they went back to work.
+  Wenze now reports **three separate events**, each buttonless and each tagging
+  all three managers (`@tomr_robins0n @SaffieBNett @amelia_wenze`):
+  **Home-Time Request** (the driver asked — an intention, not an arrival),
+  **Driver Is Home** (evidence they actually reached home; the cycle starts) and
+  **Driver Back on the Road** (evidence they returned to work; the cycle closes,
+  with the measured days at home). Words in `lib/homeTime/managerNotice.js`
+  (pure), delivery in `services/homeTime/managerNotices.js`.
+- **Each event is told exactly once, durably.** Every one of them is re-derived
+  by something that repeats — the message pipeline, the return-to-road watcher,
+  a restart — so the promise cannot live in memory. It lives in
+  `home_time_manager_notices.event_key`, which is UNIQUE and inserted with
+  `ON CONFLICT DO NOTHING`: the tenth re-derivation of the same arrival inserts
+  nothing and tags nobody. Delivery is the usual durable outbox (lease, attempts
+  counted at claim time, backoff ladder), retried on the reminder ticker, and an
+  undeliverable notice is countable on `/api/health` beside the internal-alert
+  queue. Migration 0029; `tests/homeTimeManagerNotice.test.js`,
+  `tests/homeTimeManagerNoticesPg.test.js`.
+- **A completed request is `recorded`, not `pending`.** Nothing waits for a
+  decision, so nothing sits in a status that means "waiting for one". Historical
+  `approved` / `denied` rows are untouched and still read: `homeTimeEfficiency`
+  classifies an approved exception from them, and an administrator can still
+  record one from the admin panel. Legacy `pending` rows are also left exactly
+  as they are and are simply read as settled. Old cards still in the group get
+  their buttons retired on the next press, with a note that approval is no
+  longer needed — `tests/homeTimeRetiredApproval.test.js`.
 - **Every home-time date is a `America/Chicago` calendar date.** The state
   machine, the date resolver, the clarification flow and every AI prompt all
   reason in Central; a UTC instant must be zoned before it becomes a date.

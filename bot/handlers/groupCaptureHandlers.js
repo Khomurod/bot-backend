@@ -16,7 +16,7 @@ const { handleFuelStopMessage } = require('../../services/fuelStopAlertService')
 const { handleDriverGroupStatus } = require('../../services/homeTimeService');
 const recentMessageBuffer = require('../../services/recentMessageBuffer');
 const { processHomeTimeMessage } = require('../../services/homeTimeRequestService');
-const { messageMentionsApprovers } = require('../../services/homeTimeRequestConstants');
+const { messageMentionsManagers } = require('../../services/homeTimeRequestConstants');
 const { applyAutoReaction } = require('../../services/autoReactionService');
 const { ensurePersonForGroup } = require('../../services/identity/personResolver');
 
@@ -301,7 +301,7 @@ function registerGroupCaptureHandlers(bot) {
           // candidate filter so ordinary chatter never reaches the model.
           processHomeTimeMessage(bot.telegram, group, ctx.message, {
             statusResult,
-            mentionsApprover: messageMentionsApprovers(ctx.message),
+            mentionsApprover: messageMentionsManagers(ctx.message),
           }).catch((err) => {
             console.error('[BOT] processHomeTimeMessage failed:', err.message);
           });

@@ -27,7 +27,7 @@ const {
 const { wholeDaysBetween } = require('./homeTimeConstants');
 const { statusForMissingFields } = require('./homeTimeDateResolver');
 const { inferDriverType } = require('../lib/drivers/driverProfileParse');
-const { buildCardText, buildDecisionButtons } = require('./homeTimeRequestCards');
+const { noticeHomeTimeRequested } = require('./homeTime/managerNotices');
 const { generateMessage, generateRequestText } = require('./homeTimeMessageComposer');
 const {
   isDriverMessagingEnabled, clarificationChannelFor,
@@ -95,33 +95,34 @@ async function resolveRoadMetrics(group, allowanceWeeks, driverType) {
 }
 
 /**
- * Build + post the approval card, then store its message id.
+ * Tell the three managers that a driver ASKED for home time.
  *
- * Deliberately NOT gated by the driver-messaging switch: the card goes to
+ * This replaced the approval card. It is one short, buttonless notice, recorded
+ * under a key derived from the request id, so the same request can be completed
+ * twice by two racing messages and the managers are still told once.
+ *
+ * Deliberately NOT gated by the driver-messaging switch: it goes to
  * completed_notify_group_id, a staff chat that is never the driver's own group.
  */
 async function postRequestCard(telegram, group, {
   requestId, driverName, unitNumber, driverType, daysOnRoad, policyMet,
   homeFrom, homeTo, returnToRoadDate, settings,
 }) {
-  const notifyChatId = settings?.completed_notify_group_id ? String(settings.completed_notify_group_id) : null;
-  if (!notifyChatId) {
-    console.warn(`[HOME-TIME-REQ] Request #${requestId}: completed-notification group not configured — card not posted (the driver group is never used for completed cards).`);
-    return null;
+  const result = await noticeHomeTimeRequested(telegram, {
+    requestId, groupId: group?.id || null,
+    driverName, unitNumber, daysOnRoad,
+    homeFrom, returnToRoadDate: returnToRoadDate || homeTo,
+    settings,
+  });
+  if (result.notice?.telegramMessageId) {
+    await ht.setHomeTimeRequestMessage(
+      requestId, result.notice.chatId, result.notice.telegramMessageId
+    ).catch(() => {});
   }
-  const allowanceWeeks = settings?.road_allowance_weeks || 4;
-  const homeAllowanceDays = settings?.home_allowance_days || 4;
-  const text = await generateRequestText({
-    policyMet, daysOnRoad, allowanceWeeks, homeAllowanceDays, driverName, driverType,
-  });
-  const cardText = buildCardText({
-    driverName, unitNumber, driverType, text, daysOnRoad, policyMet, homeFrom, homeTo, returnToRoadDate,
-  });
-  const sent = await safeSend(() => telegram.sendMessage(notifyChatId, cardText, {
-    parse_mode: 'HTML', disable_web_page_preview: true, ...buildDecisionButtons(requestId),
-  }));
-  await ht.setHomeTimeRequestMessage(requestId, notifyChatId, sent?.message_id || null);
-  return sent;
+  if (!result.recorded) {
+    console.log(`[HOME-TIME-REQ] Request #${requestId}: managers already told (${result.reason || 'duplicate'}).`);
+  }
+  return result.notice;
 }
 
 /**
@@ -184,7 +185,7 @@ async function sendPolicyResponse(telegram, group, request, {
  * plain-text follow-up path and the orchestrator.
  *
  * Runs unchanged while driver messaging is off — the dates are recorded and the
- * approval card still reaches the staff group; only the policy reply is skipped.
+ * managers are still told; only the policy reply to the driver is skipped.
  */
 async function completeAndRespond(telegram, group, request, window, message, {
   settings, language,

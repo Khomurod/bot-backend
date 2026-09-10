@@ -18,6 +18,10 @@
  * driver-messaging switch (home_time_settings.driver_clarification_enabled). When
  * it is off, due reminders are stood down rather than sent — see the guard in
  * runHomeTimeReminderCheck.
+ *
+ * Two STAFF-facing retries ride this ticker as separate responsibilities: the
+ * internal clarification alert, and the manager notices for the three home-time
+ * events. Both are attempted inline when they happen; this is only the retry.
  */
 const { DateTime } = require('luxon');
 const ht = require('../database/homeTime');
@@ -230,6 +234,16 @@ async function tick() {
       await runInternalAlertSweep(telegramClient);
     } catch (alertErr) {
       console.error('[HOME-TIME-INTERNAL] sweep error:', alertErr.message);
+    }
+    // The manager-notice retry. Every notice is attempted the moment its event
+    // happens, so this only ever picks up what a Telegram hiccup deferred —
+    // which is exactly why it can ride an existing five-minute ticker instead
+    // of becoming a twenty-fifth background service.
+    try {
+      const { runManagerNoticeSweep } = require('./homeTime/managerNotices');
+      await runManagerNoticeSweep(telegramClient);
+    } catch (noticeErr) {
+      console.error('[HOME-TIME-NOTICE] sweep error:', noticeErr.message);
     }
   } catch (err) {
     console.error('[HOME-TIME-REMINDER] tick error:', err.message);

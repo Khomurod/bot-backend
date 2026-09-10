@@ -10,7 +10,7 @@
  *   homeTimeMessageComposer    the AI prose the bot sends
  *   homeTimeDriverChannel      may we message the driver group at all?
  *   homeTimeInternalAlert      tell staff instead, when we may not
- *   homeTimeApproval           approve / decline, card settle, expiry
+ *   homeTimeApproval           the admin-panel exception decision + expiry
  *
  * This file keeps its full public surface: everything it used to export is still
  * exported here (re-exported where it moved), so no importer changes.
@@ -42,7 +42,7 @@ const { classifyHomeTimeMessage, isHomeTimeCandidate } = require('./homeTimeInte
 const { windowFieldsToReask, parseHomeTimeDates } = require('./homeTimeWindowResolution');
 const homeTimeStatus = require('./homeTimeService');
 const {
-  CALLBACK_PREFIX, buildCardText, buildDecisionButtons, buildDecidedCardText,
+  CALLBACK_PREFIX, buildCardText, buildDecidedCardText,
 } = require('./homeTimeRequestCards');
 const { generateRequestText } = require('./homeTimeMessageComposer');
 const { reactToDriverMessage } = require('./homeTimeDriverChannel');
@@ -451,7 +451,6 @@ module.exports = {
   generateRequestText,
   classifyHomeTimeRequest,
   buildCardText,
-  buildDecisionButtons,
   buildDecidedCardText,
   announceApproval,
   applyHomeTimeDecision,
