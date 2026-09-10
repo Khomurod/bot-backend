@@ -43,12 +43,16 @@ test('parseBanterResponse strips fences and enforces max length', () => {
   assert.equal(parseBanterResponse(long).length, 280);
 });
 
-test('generateDatatruckBanterMessage uses Groq when available', async () => {
+test('generateDatatruckBanterMessage asks the router once, not Groq-then-Gemini', async () => {
+  // `provider: 'groq'` was a claim this module could no longer make honestly:
+  // the call goes to the router, which decides from the admin's roster which
+  // provider actually answers. The MODEL is still reported, and that is the
+  // part that was ever true.
   groqCalls.length = 0;
   const result = await generateDatatruckBanterMessage({
     failureSnippet: 'Unknown command.',
   });
-  assert.equal(result.provider, 'groq');
+  assert.equal(result.provider, 'router');
   assert.match(result.message, /step it up/i);
   assert.equal(groqCalls.length, 1);
 });

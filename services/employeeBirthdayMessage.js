@@ -1,8 +1,7 @@
 /**
  * Generate unique employee birthday wish messages via Groq/Gemini with fallback template.
  */
-const { callGroqWithFallback, isAuthOrConfigError } = require('./groqClient');
-const { callGeminiJson, GEMINI_API_KEY } = require('./geminiClient');
+const { callGroqWithFallback } = require('./groqClient');
 
 const SYSTEM_TEXT =
   'You write Telegram birthday messages for a trucking company office team. '
@@ -55,20 +54,16 @@ async function generateViaGroq(prompt) {
       process.env.EMPLOYEE_BIRTHDAY_GROQ_MODEL || 'llama-3.3-70b-versatile',
       'llama-3.1-8b-instant',
     ],
+    // Same reason as the banter path: a 200 with an empty or under-length body
+    // is a success to the router and a failure to this feature, and only a
+    // validator tells it the difference. The parser IS the validator, so the
+    // floor the router enforces is the floor the message has to clear.
+    validateResult: (raw) => (parseBirthdayMessageResponse(raw)
+      ? true
+      : { message: 'the response was empty or too short to be a birthday message' }),
   });
   const message = parseBirthdayMessageResponse(text);
-  return { message, provider: 'groq', model };
-}
-
-async function generateViaGemini(prompt) {
-  const { text, model } = await callGeminiJson({
-    systemText: SYSTEM_TEXT,
-    userText: prompt,
-    maxOutputTokens: 800,
-    generationConfig: { temperature: 0.9 },
-  });
-  const message = parseBirthdayMessageResponse(text);
-  return { message, provider: 'gemini', model };
+  return { message, provider: 'router', model };
 }
 
 async function generateEmployeeBirthdayMessage(employees, aiInstructions, fallbackTemplate) {
@@ -78,25 +73,15 @@ async function generateEmployeeBirthdayMessage(employees, aiInstructions, fallba
 
   const prompt = buildBirthdayPrompt(employees, aiInstructions);
 
+  // ONE call. This was "try Groq, then Gemini" — hand-coded cross-provider
+  // fallback gated on a Gemini key being present in the ENVIRONMENT, which since
+  // Stage 5 is no longer where a key has to live. The router owns the fallback,
+  // over the roster an administrator configured.
   try {
-    const groq = await generateViaGroq(prompt);
-    if (groq.message) return groq;
-    if (GEMINI_API_KEY) {
-      const gemini = await generateViaGemini(prompt);
-      if (gemini.message) return gemini;
-    }
-  } catch (groqErr) {
-    if (GEMINI_API_KEY && !isAuthOrConfigError(groqErr.message)) {
-      console.warn('[EMP-BIRTHDAY] Groq failed, trying Gemini:', groqErr.message.slice(0, 200));
-      try {
-        const gemini = await generateViaGemini(prompt);
-        if (gemini.message) return gemini;
-      } catch (geminiErr) {
-        console.error('[EMP-BIRTHDAY] Gemini failed:', geminiErr.message.slice(0, 200));
-      }
-    } else {
-      console.error('[EMP-BIRTHDAY] Groq failed:', groqErr.message.slice(0, 200));
-    }
+    const generated = await generateViaGroq(prompt);
+    if (generated.message) return generated;
+  } catch (err) {
+    console.error('[EMP-BIRTHDAY] AI unavailable:', String(err.message || err).slice(0, 200));
   }
 
   return {

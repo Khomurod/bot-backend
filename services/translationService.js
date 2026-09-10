@@ -1,14 +1,13 @@
 /**
  * Translation service for the admin "Send Message" (broadcast) composer.
  *
- * Runs on the app's integrated AI stack — the shared Groq client with a
- * Gemini fallback, configured by the same GROQ_API_KEY / GEMINI_API_KEY every
- * other AI feature uses. There is no Send-Message-specific provider, key, or
- * model: this module only builds translation prompts and delegates the actual
- * calls to services/groqClient.js and services/geminiClient.js.
+ * Runs on the app's integrated AI stack, like every other AI feature: one call
+ * through the shared client, with cross-provider fallback handled by the router
+ * over the roster an administrator configured. There is no Send-Message-specific
+ * provider, key or model — this module only builds translation prompts.
  */
-const { callGroqWithFallback, GROQ_API_KEY } = require('./groqClient');
-const { callGeminiJson, GEMINI_API_KEY } = require('./geminiClient');
+const { callGroqWithFallback } = require('./groqClient');
+const { isAiAvailable } = require('./ai/registry');
 
 const AI_NOT_CONFIGURED_MESSAGE =
   'AI is not configured. Configure the app’s integrated AI settings first.';
@@ -29,9 +28,17 @@ Key requirements:
 - Return ONLY the translated text
 - For trucking terms like dispatch, deadhead, broker, lane, load — use the most commonly understood terms in the target language`;
 
-/** True when the app's integrated AI (Groq and/or Gemini) has a key set. */
-function isTranslationAiConfigured() {
-  return Boolean(GROQ_API_KEY || GEMINI_API_KEY);
+/**
+ * True when there is a provider Wenze may actually ask.
+ *
+ * Asked of the ROSTER rather than of the environment. A key that lives only in
+ * Admin → Settings → AI is a configured key — the old check would have called
+ * translation unavailable and shown the operator "AI is not configured" while
+ * their key sat in the database. And the master switch being OFF is a reason to
+ * say exactly this, which an env-var check could never see at all.
+ */
+async function isTranslationAiConfigured() {
+  return isAiAvailable();
 }
 
 function notConfiguredError() {
@@ -110,18 +117,6 @@ async function translateViaGroq(prompt, expectedCount) {
   return parseBatchResponse(text, expectedCount);
 }
 
-async function translateViaGemini(prompt, expectedCount) {
-  const { text } = await callGeminiJson({
-    systemText: SYSTEM_PROMPT,
-    userText: prompt,
-    maxOutputTokens: 4000,
-    generationConfig: { temperature: 0.3 },
-    validateParsed: (parsed) =>
-      Array.isArray(parsed?.translations) && parsed.translations.length === expectedCount,
-  });
-  return parseBatchResponse(text, expectedCount);
-}
-
 /**
  * Translate an array of text blocks to a target language in a single AI
  * call (Groq first, Gemini fallback). Uses JSON response mode so parsing is
@@ -144,7 +139,7 @@ async function translateBatch(textsArray, targetLanguage) {
     throw new Error(`Unsupported target language: ${targetLanguage}`);
   }
 
-  if (!isTranslationAiConfigured()) {
+  if (!(await isTranslationAiConfigured())) {
     throw notConfiguredError();
   }
 
@@ -155,20 +150,10 @@ async function translateBatch(textsArray, targetLanguage) {
   const prompt = buildBatchPrompt(textsArray, langName);
 
   try {
-    let results;
-    if (GROQ_API_KEY) {
-      try {
-        results = await translateViaGroq(prompt, textsArray.length);
-      } catch (groqErr) {
-        if (!GEMINI_API_KEY) throw groqErr;
-        console.warn(
-          `[Translation] Groq failed, trying Gemini: ${String(groqErr.message || groqErr).slice(0, 200)}`
-        );
-        results = await translateViaGemini(prompt, textsArray.length);
-      }
-    } else {
-      results = await translateViaGemini(prompt, textsArray.length);
-    }
+    // ONE call. Which provider answers is the router's decision, from the roster
+    // an administrator configured — not a branch on which environment variable
+    // happens to be set.
+    const results = await translateViaGroq(prompt, textsArray.length);
 
     console.log(
       `[Translation] translation_completed: lang=${targetLanguage}, batch_size=${results.length}`

@@ -60,9 +60,36 @@ async function getRoster({ force = false } = {}) {
   return cache;
 }
 
+/**
+ * Is there any provider Wenze may ask right now?
+ *
+ * The seam the nine consumer files needed. They gated on `GROQ_API_KEY` /
+ * `GEMINI_API_KEY` truthiness read at REQUIRE time, which was correct while the
+ * environment was the only place a key could live. Since Stage 5 a key can live
+ * in the database instead — and an operator who moves one there and clears the
+ * env var would have silently lost those features, with nothing failing and
+ * nothing said. The master switch has the same problem in reverse: turning AI
+ * off in the admin left those gates reading "configured".
+ *
+ * Answers from the 30-second roster cache, so a gate on a hot path costs a map
+ * lookup rather than a query, and an operator's change takes effect while they
+ * are still looking at the page.
+ *
+ * FALSE WHEN THE DATABASE IS UNREACHABLE, because `getRoster` treats that as
+ * "AI is off" — every consumer of this has a deterministic path or an explicit
+ * failure it already handles, and a gate that threw would turn a database blip
+ * into a different, worse failure inside twenty-odd features.
+ */
+async function isAiAvailable() {
+  const roster = await getRoster();
+  return roster.available === true;
+}
+
 function nextRotation() {
   rotation = (rotation + 1) % 1_000_000;
   return rotation;
 }
 
-module.exports = { CACHE_TTL_MS, getRoster, invalidateRegistry, nextRotation };
+module.exports = {
+  CACHE_TTL_MS, getRoster, invalidateRegistry, nextRotation, isAiAvailable,
+};

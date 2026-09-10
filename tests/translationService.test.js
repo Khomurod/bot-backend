@@ -1,8 +1,14 @@
 /**
  * The Send Message (broadcast) auto-translate feature must run on the app's
- * integrated AI stack — the shared Groq client with Gemini fallback — with no
- * Send-Message-specific provider, key, or model. Clients are faked via
- * require.cache so no network or env keys are needed.
+ * integrated AI stack, with no Send-Message-specific provider, key or model.
+ *
+ * Since Stage 5c that stack is ONE call through the shared client, with
+ * cross-provider fallback handled by the router — so the cases that used to
+ * assert "Groq failed, therefore Gemini was called" now belong to the router's
+ * own suite, and what this file pins is that translation asks the ROSTER whether
+ * AI exists rather than reading an environment variable. A key configured only
+ * in Admin → Settings → AI is a configured key, and the master switch being off
+ * is a reason to say "not configured" that no env check could ever see.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -13,14 +19,15 @@ const servicePath = path.resolve(__dirname, '../services/translationService.js')
 const groqPath = path.resolve(__dirname, '../services/groqClient.js');
 const geminiPath = path.resolve(__dirname, '../services/geminiClient.js');
 
-function loadService({ groqKey = '', geminiKey = '', groqImpl, geminiImpl } = {}) {
+const registryPath = path.resolve(__dirname, '../services/ai/registry.js');
+
+function loadService({ aiAvailable = false, groqImpl, geminiImpl } = {}) {
   delete require.cache[servicePath];
 
   const calls = { groq: [], gemini: [] };
 
   require.cache[groqPath] = {
     exports: {
-      GROQ_API_KEY: groqKey,
       async callGroqWithFallback(promptText, opts = {}) {
         calls.groq.push({ promptText, opts });
         if (!groqImpl) throw new Error('groq not stubbed');
@@ -30,13 +37,15 @@ function loadService({ groqKey = '', geminiKey = '', groqImpl, geminiImpl } = {}
   };
   require.cache[geminiPath] = {
     exports: {
-      GEMINI_API_KEY: geminiKey,
       async callGeminiJson(opts = {}) {
         calls.gemini.push(opts);
         if (!geminiImpl) throw new Error('gemini not stubbed');
         return geminiImpl(opts);
       },
     },
+  };
+  require.cache[registryPath] = {
+    exports: { async isAiAvailable() { return aiAvailable; } },
   };
 
   const service = require(servicePath);
@@ -45,47 +54,51 @@ function loadService({ groqKey = '', geminiKey = '', groqImpl, geminiImpl } = {}
 
 test('translateBatch uses the integrated Groq client', async () => {
   const { service, calls } = loadService({
-    groqKey: 'groq-test-key',
+    aiAvailable: true,
     groqImpl: () => ({ text: JSON.stringify({ translations: ['Привет', 'Пока'] }), model: 'llama' }),
   });
 
   const out = await service.translateBatch(['Hello', 'Bye'], 'ru');
   assert.deepEqual(out, ['Привет', 'Пока']);
-  assert.equal(calls.groq.length, 1, 'Groq client called once');
-  assert.equal(calls.gemini.length, 0, 'Gemini not needed when Groq succeeds');
+  assert.equal(calls.groq.length, 1, 'the shared client is called exactly once');
+  assert.equal(calls.gemini.length, 0,
+    'no second leg here — cross-provider fallback is the router\'s job now');
   assert.match(calls.groq[0].opts.systemText, /professional translator/);
 });
 
-test('falls back to the integrated Gemini client when Groq fails', async () => {
+test('a provider failure is NOT retried here', async () => {
+  // This used to assert "Groq failed, so Gemini was called". That second leg was
+  // hand-coded cross-provider fallback gated on an environment key; the router
+  // owns it now, so translation makes one call and lets it fail. Asserting the
+  // old behaviour here would have re-created the branch it replaced.
   const { service, calls } = loadService({
-    groqKey: 'groq-test-key',
-    geminiKey: 'gemini-test-key',
+    aiAvailable: true,
     groqImpl: () => { throw new Error('rate limited'); },
-    geminiImpl: () => ({ text: JSON.stringify({ translations: ['Salom'] }), model: 'gemini' }),
   });
 
-  const out = await service.translateBatch(['Hello'], 'uz');
-  assert.deepEqual(out, ['Salom']);
+  await assert.rejects(() => service.translateBatch(['Hello'], 'uz'), /rate limited/);
   assert.equal(calls.groq.length, 1);
-  assert.equal(calls.gemini.length, 1, 'fell back to Gemini');
+  assert.equal(calls.gemini.length, 0);
 });
 
-test('uses Gemini directly when only Gemini is configured', async () => {
+test('a key that lives only in the admin still counts as configured', async () => {
+  // The reason this moved off `GROQ_API_KEY`: an operator who stores their key
+  // in Admin → Settings → AI and clears the env var would have been told "AI is
+  // not configured" while their key sat in the database.
   const { service, calls } = loadService({
-    geminiKey: 'gemini-test-key',
-    geminiImpl: () => ({ text: JSON.stringify({ translations: ['Привет'] }), model: 'gemini' }),
+    aiAvailable: true,
+    groqImpl: () => ({ text: JSON.stringify({ translations: ['Salom'] }), model: 'llama' }),
   });
 
-  const out = await service.translateBatch(['Hello'], 'ru');
-  assert.deepEqual(out, ['Привет']);
-  assert.equal(calls.groq.length, 0);
-  assert.equal(calls.gemini.length, 1);
+  assert.equal(await service.isTranslationAiConfigured(), true);
+  assert.deepEqual(await service.translateBatch(['Hello'], 'uz'), ['Salom']);
+  assert.equal(calls.groq.length, 1);
 });
 
-test('throws the clear not-configured error when the integrated AI has no keys', async () => {
+test('the master switch OFF is a clear "not configured", not a provider error', async () => {
   const { service, calls } = loadService({});
 
-  assert.equal(service.isTranslationAiConfigured(), false);
+  assert.equal(await service.isTranslationAiConfigured(), false);
   await assert.rejects(
     () => service.translateBatch(['Hello'], 'ru'),
     (err) => {
@@ -102,7 +115,7 @@ test('throws the clear not-configured error when the integrated AI has no keys',
 
 test('translateText delegates to the same integrated pipeline', async () => {
   const { service, calls } = loadService({
-    groqKey: 'groq-test-key',
+    aiAvailable: true,
     groqImpl: () => ({ text: JSON.stringify({ translations: ['Привет'] }), model: 'llama' }),
   });
 

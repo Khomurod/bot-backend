@@ -11,8 +11,9 @@
 const { callGroqWithFallback } = require('../../../services/groqClient');
 const { prepareImagePartForAi } = require('../../../services/aiImagePrep');
 const {
-  callGeminiGenerateContent, GEMINI_API_KEY,
+  callGeminiGenerateContent,
 } = require('../../../services/geminiClient');
+const { isAiAvailable } = require('../../../services/ai/registry');
 const {
   DISPATCH_GROQ_MODEL, DISPATCH_GROQ_MODELS, DISPATCH_GEMINI_MODELS,
   DISPATCH_AI_SYSTEM_PROMPT, DISPATCH_SYSTEM_PROMPT_CLEAN, MAX_INLINE_GEMINI_FILE_BYTES,
@@ -104,10 +105,22 @@ async function requestDispatchTemplateFromGroq(rawText) {
   }
 }
 
+/**
+ * The Gemini-shaped request, for a dispatch template that may carry a PDF.
+ *
+ * The fail-fast used to read `GEMINI_API_KEY` at require time. A key that lives
+ * only in Admin → Settings → AI is a configured key, so that check would have
+ * refused a perfectly working provider; and it could not see the master switch
+ * at all. It asks the ROSTER now, and keeps the same `attemptErrors[]` failure
+ * shape its caller reads — this is the path that carries a rate-confirmation
+ * PDF, so "no provider" has to arrive as a normal parse failure rather than as
+ * something new.
+ */
 async function requestDispatchTemplateFromGemini(rawText, sourceFile) {
-  if (!GEMINI_API_KEY) {
-    const failure = new Error('GEMINI_API_KEY is not configured');
+  if (!(await isAiAvailable())) {
+    const failure = new Error('No AI provider is configured or enabled');
     failure.attemptErrors = [{ model: 'gemini', status: null, message: failure.message }];
+    failure.aiUnavailable = true;
     throw failure;
   }
 
