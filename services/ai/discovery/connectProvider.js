@@ -113,7 +113,12 @@ async function smokeTest(target, apiKey, chain, deps) {
       const verdict = classifyFailure({ status: err.status ?? null, message: err.message, code: err.code });
       if (verdict.kind === FAILURE.CREDENTIAL) return { credential: err.message, refused, quota };
       if (verdict.kind === FAILURE.QUOTA) { quota = err.message; return { tested: null, refused, quota }; }
-      if (verdict.kind === FAILURE.FATAL_REQUEST) { refused.push({ model, error: err.message }); continue; }
+      // MODEL ("decommissioned", model_not_found) is the refusal this exists to
+      // catch; a generic request fault on this one model is treated the same way.
+      if (verdict.kind === FAILURE.MODEL || verdict.kind === FAILURE.FATAL_REQUEST) {
+        refused.push({ model, error: err.message });
+        continue;
+      }
       // Transient or unknown: the model may be fine and the provider busy. Try the next one.
       refused.push({ model, error: err.message, transient: true });
     }

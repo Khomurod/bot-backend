@@ -196,6 +196,28 @@ feature it belongs to.
   as "last check failed: …". Every change is an `ai_model_events` row
   (`added` / `retired` / `replaced` / `restored` / `refused` / `selected`, with
   its initiator), rendered on the tab as "Model changes".
+- **A retired model is noticed by Wenze, not by the next failing call.**
+  `services/ai/discovery/modelMaintenance.js` re-reads every enabled provider's
+  listing **daily at 06:00 UTC**, and `lib/ai/classify.js` now has a `MODEL`
+  kind — "decommissioned", `model_not_found`, "is not found for API version" on a
+  400/404/422 — which the router treats as *skip this model, keep the provider*
+  (never a cooldown) and reports through `setModelRefusalListener`; the job
+  verifies that provider against its listing after a 5-minute debounce, so a
+  burst of 404s is one look. **The router changes no chain**: a 404 is a claim,
+  the listing is the evidence. A retirement is filed as a policy finding
+  (`discontinuation`, `info` when a replacement exists, `serious` when the chain
+  is empty) and rides the same Telegram outbox, in words — *"Groq retired one of
+  Wenze's models (X). Wenze automatically switched to Y. No Wenze features were
+  interrupted."* A failed or empty listing retires nothing. **The notice is
+  driven by the event, not the refresh** (migration 0024,
+  `ai_model_events.notified_at`): a `retired` row nobody has been told about is
+  the job's work list, stamped only after the finding and the alert are written,
+  so a write that fails is retried next pass rather than lost. **A caller's
+  `preferModels` are covered too**: the router drops a preferred model the
+  provider's own listing no longer has (`discoveredModelIds`; an empty listing
+  changes nothing), and a refusal carries the model name so the verification can
+  retire it with a `capability_preference` event. Only a replacement actually in
+  the chain is ever claimed as one.
 - **`enabled` and `cooled_until` are never written by the same code.** `enabled`
   is a person's decision; the cooldown is the system's temporary opinion. The
   router writes only the latter.

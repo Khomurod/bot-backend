@@ -37,6 +37,7 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 | `roadBonusNotifierService` | 10 min (first tick +20s) | retry safety net for road-bonus summaries |
 | `datatruckDocumentService` | `DATATRUCK_DOC_POLL_MINUTES` (15) | new BOL/POD → matching driver group, deduped |
 | `duplicateUnitCheckService` | 15 min (first tick +90s) | duplicate-unit / name-mismatch reports, **and the only writer of `groups.samsara_vehicle_id`** |
+| `modelMaintenance` (AI) | daily 06:00 UTC (first tick +3 min), plus a 5-min-debounced verification when the router is refused a model | re-reads each enabled provider's `/models`; retires what is gone, keeps the operator's order, fills from Wenze's picks; files a `discontinuation` finding and a plain-words Telegram line. A failed listing changes nothing |
 | `consistencyService` | 15 min (first tick +120s) | one snapshot → every pure check → findings filed and cleared ones resolved — **then the permitted Tier-1 corrections are applied, in the same guarded run**. Default deny per check; the Findings card shows "Auto-applied N of M" |
 | `routeControlService` (monitor) | settings-driven, floor 30s | destination completion + off-route warnings |
 | `recruiterCallSyncService` | self-rescheduling `setTimeout` | RingCentral call-log sync |

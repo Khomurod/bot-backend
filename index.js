@@ -84,6 +84,11 @@ const {
   stopPolicyWatcher,
 } = require('./services/ai/policy/policyService');
 const {
+  startModelMaintenance,
+  stopModelMaintenance,
+} = require('./services/ai/discovery/modelMaintenance');
+const { setModelRefusalListener } = require('./services/ai/router');
+const {
   startMemoryWatchdog,
   stopMemoryWatchdog,
 } = require('./services/memoryWatchdog');
@@ -343,6 +348,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
   try { stopConsistencyService(); } catch (err) { console.error('[SHUTDOWN] stopConsistencyService failed:', err.message); }
   try { stopPolicyWatcher(); } catch (err) { console.error('[SHUTDOWN] stopPolicyWatcher failed:', err.message); }
+  try { stopModelMaintenance(); } catch (err) { console.error('[SHUTDOWN] stopModelMaintenance failed:', err.message); }
   try { stopMemoryWatchdog(); } catch (err) { console.error('[SHUTDOWN] stopMemoryWatchdog failed:', err.message); }
   try { stopDatabaseUsageService(); } catch (err) { console.error('[SHUTDOWN] stopDatabaseUsageService failed:', err.message); }
 
@@ -401,6 +407,9 @@ async function start() {
   // that service keeps running until its checks are folded in.
   startConsistencyService();
   startPolicyWatcher({ telegram: bot?.telegram || null });
+  // Daily model refresh, plus a debounced look whenever the router is refused a
+  // model. Its Telegram lines ride the policy watcher's outbox above.
+  startModelMaintenance({ setModelRefusalListener });
   await startFacebookWebhookWorker();
   startLeadsBot();
   startMemoryWatchdog();

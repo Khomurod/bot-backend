@@ -75,10 +75,17 @@ test('a dead key stops THIS provider and never the run', () => {
 // ─── the class that must not cool a provider ─────────────────────────────────
 
 test('a bad request is our fault, so the provider is left healthy', () => {
+  // A malformed payload. A model that no longer exists is the MODEL kind now —
+  // same "provider left healthy" outcome, but worth remembering (see below).
   for (const status of [400, 404, 422]) {
-    const verdict = classifyFailure({ status, message: 'model `llama-x` does not exist' });
+    const verdict = classifyFailure({ status, message: 'messages[0].content: expected a string, got null' });
     assert.equal(verdict.kind, FAILURE.FATAL_REQUEST, `status ${status}`);
     assert.equal(verdict.nextProvider, true);
+    assert.equal(verdict.coolProvider, false,
+      'a request fault must not disable a working provider');
+  }
+  for (const status of [400, 404, 422]) {
+    const verdict = classifyFailure({ status, message: 'model `llama-x` does not exist' });
     assert.equal(verdict.coolProvider, false,
       'one stale model name in a chain must not disable a working provider');
   }
@@ -176,4 +183,39 @@ test('everything the existing Groq client calls a rate limit still is', () => {
       `${failure.status} ${failure.message} became ${verdict.kind}`
     );
   }
+});
+
+// ─── a model that no longer exists ───────────────────────────────────────────
+
+test('a decommissioned or unknown model is a MODEL failure: skip the model, keep the provider', () => {
+  // The distinction FATAL_REQUEST could not make: "your request is wrong" covers
+  // both a malformed payload and a model that was retired last week, and only
+  // the second one is worth REMEMBERING. Groq answers 404 with
+  // "has been decommissioned"; OpenAI-compatible endpoints say model_not_found;
+  // Gemini says "is not found for API version". All of them mean the same
+  // thing: stop asking for this model, and say nothing bad about the provider.
+  const cases = [
+    { status: 404, message: 'The model `mixtral-8x7b-32768` has been decommissioned and is no longer supported.' },
+    { status: 400, message: 'model_not_found: The model `gpt-oss-9000` does not exist or you do not have access to it.' },
+    { status: 404, message: 'models/gemini-1.0-pro is not found for API version v1beta, or is not supported for generateContent.' },
+    { status: 400, message: 'Unknown model: llama2-70b-4096' },
+    { status: 422, message: 'The model "x" is deprecated. Please use "y".' },
+  ];
+  for (const failure of cases) {
+    const verdict = classifyFailure(failure);
+    assert.equal(verdict.kind, FAILURE.MODEL, failure.message);
+    assert.equal(verdict.coolProvider, false, 'a retired model says nothing about the provider\'s health');
+    assert.equal(verdict.nextProvider, false, 'the next MODEL of the same provider is the right move');
+    assert.equal(verdict.skipModel, true);
+  }
+});
+
+test('a plain 400 with no model language is still a request fault, not a retired model', () => {
+  const verdict = classifyFailure({ status: 400, message: "messages[0].content: expected a string" });
+  assert.equal(verdict.kind, FAILURE.FATAL_REQUEST);
+});
+
+test('credential and quota language still win over model language', () => {
+  assert.equal(classifyFailure({ status: 403, message: 'model access forbidden: invalid api key' }).kind, FAILURE.CREDENTIAL);
+  assert.equal(classifyFailure({ status: 429, message: 'quota exceeded for model x' }).kind, FAILURE.QUOTA);
 });
