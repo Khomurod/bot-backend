@@ -145,7 +145,9 @@ feature it belongs to.
   (applied / stale / failed / capped), open findings by severity, identity
   coverage (`groupsWithoutPerson`, `openUnits`, unstamped rows), Home Time
   (`groupsWithDuplicateOpenStays`, `openStayIndex` present/absent) and each AI
-  provider's listing state (`discovered`, `refreshedAt`, and `refreshError` as
+  provider's listing state (named by catalogue key only — `provider_key` is
+  operator-typed text and once held a pasted secret; anything not in the
+  catalogue reads `custom` — with `discovered`, `refreshedAt`, and `refreshError` as
   `{ status, kind }` — the kind from `lib/ai/classify.js`'s closed vocabulary
   plus `not_configured`; the provider's own error TEXT never leaves, because a
   body can echo a key in any spelling and the endpoint is public). **Counts and timestamps only** — no driver, chat, key or finding

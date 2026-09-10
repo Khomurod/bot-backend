@@ -156,6 +156,31 @@ test('the kind and status are derived, not copied', () => {
   }
 });
 
+test('a provider is named by its catalogue key only — a free-text provider_key never leaves', async () => {
+  // Production held a DISABLED row whose provider_key was a pasted OpenRouter
+  // secret. provider_key is operator-typed text; on a public endpoint the only
+  // safe name is the catalogue's, and anything else is "custom".
+  const pasted = 'sk-or-v1-' + 'f'.repeat(64);
+  const s = await getOperationsHealth(summaryDeps({
+    aiProviders: {
+      async listProvidersForAdmin() {
+        return [
+          { providerKey: pasted, catalogKey: null, enabled: false, modelChain: [], discoveredModels: [], modelsRefreshedAt: null, modelsRefreshError: null },
+          { providerKey: 'gemini', catalogKey: null, enabled: true, modelChain: ['a'], discoveredModels: [], modelsRefreshedAt: null, modelsRefreshError: null },
+          { providerKey: 'office-box', catalogKey: 'openrouter', enabled: true, modelChain: ['a'], discoveredModels: [], modelsRefreshedAt: null, modelsRefreshError: null },
+          { providerKey: 'my_llm', catalogKey: 'custom', enabled: true, modelChain: [], discoveredModels: [], modelsRefreshedAt: null, modelsRefreshError: null },
+        ];
+      },
+    },
+  }));
+  const text = JSON.stringify(s);
+  assert.equal(text.includes(pasted), false, 'the pasted secret must not appear anywhere');
+  assert.equal(text.includes('sk-or'), false);
+  assert.equal(text.includes('office-box'), false, 'free text, even harmless, does not leave');
+  assert.equal(text.includes('my_llm'), false);
+  assert.deepEqual(s.aiModels.map((p) => p.provider), ['custom', 'gemini', 'openrouter', 'custom']);
+});
+
 test('the summary never carries a name, a title or a chat id', async () => {
   const s = await getOperationsHealth(summaryDeps());
   const text = JSON.stringify(s);

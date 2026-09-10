@@ -9,7 +9,8 @@
  * stay is doubled, whether the one-open-stay index is in, and whether each AI
  * provider's model listing is current.
  *
- * COUNTS AND TIMESTAMPS ONLY. No driver, no chat, no key, no finding title. A
+ * COUNTS AND TIMESTAMPS ONLY. No driver, no chat, no key, no finding title, no
+ * operator-typed name (a provider is its catalogue key or "custom"). A
  * provider's last listing error is reduced to its status and a kind from a
  * closed vocabulary (a `credential` says the key is dead); its text never
  * leaves, because the text is the provider's. Anything that fails reads as
@@ -27,6 +28,18 @@ const defaultDeps = () => ({
 });
 
 const { FAILURE, classifyFailure } = require('../../lib/ai/classify');
+const { getCatalogEntry } = require('../../lib/ai/providerCatalog');
+
+/**
+ * A provider's PUBLIC name is its catalogue key, or "custom". `provider_key`
+ * is operator-typed text: production once held a disabled row whose key was a
+ * pasted API secret, and the first version of this block published it. Only a
+ * name the catalogue itself defines can leave; every other row is "custom".
+ */
+function publicProviderName(p) {
+  const entry = getCatalogEntry(p.catalogKey || p.providerKey);
+  return entry && entry.key !== 'custom' ? entry.key : 'custom';
+}
 
 /**
  * A provider's error text is the PROVIDER's, and /api/health is public. A body
@@ -91,7 +104,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
         openStayIndex: indexPresent ? 'present' : 'absent',
       },
       aiModels: providers.map((p) => ({
-        provider: p.providerKey,
+        provider: publicProviderName(p),
         enabled: p.enabled === true,
         chain: Array.isArray(p.modelChain) ? p.modelChain.length : null,
         discovered: Array.isArray(p.discoveredModels) ? p.discoveredModels.length : 0,
