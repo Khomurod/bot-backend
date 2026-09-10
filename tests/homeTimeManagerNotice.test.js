@@ -96,10 +96,10 @@ test('the event key is derived from the data, so the same event is always the sa
 
 // ── recording and sending ────────────────────────────────────────────────────
 
-function loadNotifier({ enqueueReturns = 'row', sendThrows = null } = {}) {
+function loadNotifier({ enqueueReturns = 'row', sendThrows = null, claimReturns = 'row' } = {}) {
   for (const p of [NOTICES_PATH, HT_PATH, PEOPLE_PATH, CONSTANTS_PATH, HTML_PATH]) delete require.cache[p];
   const seen = new Set();
-  const state = { enqueued: [], delivered: [], failed: [], sends: [] };
+  const state = { enqueued: [], delivered: [], failed: [], sends: [], claimed: [] };
   require.cache[HT_PATH] = {
     exports: {
       async enqueueNotice(payload) {
@@ -108,6 +108,12 @@ function loadNotifier({ enqueueReturns = 'row', sendThrows = null } = {}) {
         seen.add(payload.eventKey);
         state.enqueued.push(payload);
         return { id: state.enqueued.length, ...payload };
+      },
+      async claimNoticeById(id) {
+        if (claimReturns === null) return null;
+        const row = { ...state.enqueued[id - 1], id, attempts: 1 };
+        state.claimed.push(row);
+        return row;
       },
       async markNoticeDelivered(id, opts) { state.delivered.push({ id, ...opts }); return { id }; },
       async markNoticeFailed(id, err) { state.failed.push({ id, err }); return { id }; },
@@ -187,6 +193,29 @@ test('no notification group configured → recorded nowhere, and no crash', asyn
   assert.equal(r.recorded, false);
   assert.equal(r.reason, 'no_chat');
   assert.equal(state.sends.length, 0);
+});
+
+test('a notice is CLAIMED before it is sent, so the sweep cannot send it too', async () => {
+  // The row is due the moment it exists. Without a lease, an immediate send and
+  // a sweep running at the same time both hold the same notice and three
+  // managers are tagged twice — the unique key stops a second ROW, not a
+  // second SEND.
+  const { notices, telegram, state } = loadNotifier();
+  await notices.noticeDriverIsHome(telegram, {
+    roadHistoryId: 77, groupId: 3, driverName: 'A', homeSince: '2026-09-18', settings: SETTINGS,
+  });
+  assert.equal(state.claimed.length, 1, 'the immediate path takes the lease');
+  assert.equal(state.claimed[0].id, state.enqueued.length);
+});
+
+test('a claim taken by someone else means this path sends nothing', async () => {
+  const { notices, telegram, state } = loadNotifier({ claimReturns: null });
+  const r = await notices.noticeDriverIsHome(telegram, {
+    roadHistoryId: 78, groupId: 3, driverName: 'A', homeSince: '2026-09-18', settings: SETTINGS,
+  });
+  assert.equal(r.recorded, true, 'the event is still recorded');
+  assert.equal(r.delivered, false);
+  assert.equal(state.sends.length, 0, 'but the worker holding the lease will send it');
 });
 
 test('a Telegram failure keeps the event recorded for the retry sweep', async () => {

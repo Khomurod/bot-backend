@@ -88,7 +88,59 @@ async function noticeExists(eventKey) {
  * failure: a worker that dies mid-send has still spent an attempt, which is what
  * keeps a crash loop from retrying the same unsendable message forever.
  */
+/**
+ * Settle rows that spent their last attempt and never reached a settlement.
+ *
+ * A worker that dies after claiming the sixth attempt leaves the row 'pending'
+ * with attempts = MAX. The claim below then excludes it forever, and
+ * `countFailedNotices` only counts 'failed' — so the notice would be neither
+ * retried nor reported: an alert nobody will ever receive, invisible. That is
+ * precisely the shape of the 101 internal alerts that sat undelivered for
+ * months, so it is swept at the top of every claim rather than left to luck.
+ */
+async function reapExhaustedNotices({ nowIso = null } = {}, client = null) {
+  const run = client ? client.query.bind(client) : query;
+  const res = await run(
+    `UPDATE home_time_manager_notices
+        SET state = 'failed', claimed_until = NULL,
+            last_error = COALESCE(last_error, 'attempts exhausted with no settlement')
+      WHERE state = 'pending'
+        AND attempts >= $1
+        AND (claimed_until IS NULL OR claimed_until <= COALESCE($2::timestamptz, NOW()))
+      RETURNING id`,
+    [MAX_ATTEMPTS, nowIso]
+  );
+  return res.rows.map((r) => r.id);
+}
+
+/**
+ * Take the lease on ONE known notice, for the caller that just created it.
+ *
+ * The immediate send needs this for the same reason the sweep does: a row is
+ * due the moment it exists, so without a lease an inline send and a concurrent
+ * sweep both hold it and three managers are tagged twice. The UNIQUE event key
+ * stops a second ROW, never a second SEND.
+ *
+ * Returns null when someone else already holds it — which is a success: the
+ * other worker will deliver it.
+ */
+async function claimNoticeById(id, { leaseSeconds = DEFAULT_LEASE_SECONDS, nowIso = null } = {}) {
+  const res = await query(
+    `UPDATE home_time_manager_notices
+        SET claimed_until = COALESCE($3::timestamptz, NOW()) + ($2 || ' seconds')::interval,
+            attempts = attempts + 1
+      WHERE id = $1
+        AND state = 'pending'
+        AND attempts < $4
+        AND (claimed_until IS NULL OR claimed_until <= COALESCE($3::timestamptz, NOW()))
+      RETURNING *`,
+    [id, String(leaseSeconds), nowIso, MAX_ATTEMPTS]
+  );
+  return mapNotice(res.rows[0]);
+}
+
 async function claimDueNotices({ limit = 10, leaseSeconds = DEFAULT_LEASE_SECONDS, nowIso = null } = {}) {
+  await reapExhaustedNotices({ nowIso }).catch(() => {});
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -150,10 +202,14 @@ async function markNoticeFailed(id, error, { nowIso = null } = {}) {
   const res = await query(
     `UPDATE home_time_manager_notices
         SET state = CASE WHEN attempts >= $3 THEN 'failed' ELSE 'pending' END,
+            -- GREATEST(attempts, 1): PostgreSQL arrays are 1-based, so an
+            -- attempts of 0 indexes nothing, the ladder yields NULL, and
+            -- NOW() + NULL violates next_attempt_at NOT NULL. A failure on the
+            -- very first attempt would then take the enqueue down with it.
             next_attempt_at = COALESCE($4::timestamptz, NOW())
               + (CASE
                    WHEN attempts >= $3 THEN 0
-                   ELSE (ARRAY[60, 300, 900, 3600, 10800])[LEAST(attempts, 5)]
+                   ELSE (ARRAY[60, 300, 900, 3600, 10800])[LEAST(GREATEST(attempts, 1), 5)]
                  END || ' seconds')::interval,
             claimed_until = NULL,
             last_error = LEFT($2, 500)
@@ -196,7 +252,9 @@ module.exports = {
   mapNotice,
   enqueueNotice,
   noticeExists,
+  claimNoticeById,
   claimDueNotices,
+  reapExhaustedNotices,
   markNoticeDelivered,
   markNoticeFailed,
   releaseNoticeClaim,

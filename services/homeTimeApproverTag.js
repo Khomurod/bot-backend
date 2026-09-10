@@ -177,7 +177,11 @@ async function handleApproverMention(telegram, group, message) {
         requestedByUsername: fromUser.username || null,
         roadStartedAt, daysOnRoad, policyMet,
         homeFrom: window.homeStartDate, homeTo: window.homeTo, returnToRoadDate: window.returnToRoadDate,
-        status: 'pending', source: 'telegram',
+        // 'recorded', not 'pending': nobody decides a home-time request any
+        // more. 'pending' would put this row back in OPEN_REQUEST_STATUSES,
+        // where it blocks the driver's next request and still renders as an
+        // undecided one in the admin.
+        status: 'recorded', source: 'telegram',
         detectedIntent: 'home_time_request',
         aiConfidence: verdict.confidence === 'high' ? 90 : (verdict.confidence === 'medium' ? 60 : null),
         rootChatId: group.telegram_group_id,

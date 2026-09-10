@@ -110,6 +110,47 @@ test('a failure backs off, and the sixth gives up instead of retrying forever',
     assert.equal(counts.count, 1, 'and it is countable on /api/health');
   });
 
+test('a notice claimed once and never settled is not lost — the next sweep fails it',
+  { skip: skipWithoutPg() }, async (t) => {
+    // A worker that dies after claiming the SIXTH attempt leaves the row
+    // 'pending' with attempts = 6. The claim predicate then excludes it forever
+    // and countFailedNotices does not see it either, so it is neither retried
+    // nor reported: an alert nobody will ever get, invisible. Exactly the shape
+    // of the 101 undelivered internal alerts.
+    const harness = await harnessWith(t);
+    const ht = load(harness);
+    const row = await ht.enqueueNotice({ ...BASE, eventKey: 'arrived_home:reap' });
+    await harness.query(
+      `UPDATE home_time_manager_notices
+          SET attempts = 6, state = 'pending', claimed_until = NOW() - INTERVAL '1 hour',
+              next_attempt_at = NOW() - INTERVAL '1 hour'
+        WHERE id = $1`,
+      [row.id]
+    );
+
+    await ht.claimDueNotices({ limit: 10 });
+
+    const after = await harness.query('SELECT state FROM home_time_manager_notices WHERE id = $1', [row.id]);
+    assert.equal(after.rows[0].state, 'failed', 'it is settled, not silently skipped');
+    const counts = await ht.countFailedNotices();
+    assert.equal(counts.count, 1, 'and health can see it');
+  });
+
+test('a failure on the very first attempt schedules the next one instead of crashing',
+  { skip: skipWithoutPg() }, async (t) => {
+    // The backoff ladder is a 1-based PostgreSQL array. With attempts = 0 the
+    // index is 0, the lookup is NULL, and `NOW() + NULL` violates the NOT NULL
+    // on next_attempt_at — the immediate send path failing would take the whole
+    // enqueue down with it.
+    const harness = await harnessWith(t);
+    const ht = load(harness);
+    const row = await ht.enqueueNotice({ ...BASE, eventKey: 'arrived_home:first' });
+    const failed = await ht.markNoticeFailed(row.id, 'chat not found');
+    assert.equal(failed.state, 'pending');
+    const stored = await harness.query('SELECT next_attempt_at FROM home_time_manager_notices WHERE id = $1', [row.id]);
+    assert.ok(stored.rows[0].next_attempt_at, 'a retry is scheduled');
+  });
+
 test('delivery clears the lease and records the message id', { skip: skipWithoutPg() }, async (t) => {
   const harness = await harnessWith(t);
   const ht = load(harness);
