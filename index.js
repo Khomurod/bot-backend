@@ -68,6 +68,10 @@ const {
   stopHomeTimeReminderService,
 } = require('./services/homeTimeReminderService');
 const {
+  startReturnToRoadWatch,
+  stopReturnToRoadWatch,
+} = require('./services/homeTime/returnToRoadWatch');
+const {
   startRouteControlService,
   stopRouteControlService,
 } = require('./services/routeControlService');
@@ -346,6 +350,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopRingCentralTokenRefreshService(); } catch (err) { console.error('[SHUTDOWN] stopRingCentralTokenRefreshService failed:', err.message); }
   try { stopRoadBonusNotifierService(); } catch (err) { console.error('[SHUTDOWN] stopRoadBonusNotifierService failed:', err.message); }
   try { stopHomeTimeReminderService(); } catch (err) { console.error('[SHUTDOWN] stopHomeTimeReminderService failed:', err.message); }
+  try { stopReturnToRoadWatch(); } catch (err) { console.error('[SHUTDOWN] stopReturnToRoadWatch failed:', err.message); }
   try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
   try { stopConsistencyService(); } catch (err) { console.error('[SHUTDOWN] stopConsistencyService failed:', err.message); }
@@ -407,6 +412,9 @@ async function start() {
   startRingCentralTokenRefreshService();
   startRoadBonusNotifierService(bot.telegram);
   startHomeTimeReminderService(bot.telegram);
+  // Notices when a driver who is home goes back to work — a Datatruck load plus
+  // the truck's own movement, never one of them alone.
+  startReturnToRoadWatch();
   startRouteControlService(bot.telegram);
   startDuplicateUnitCheckService();
   // Runs beside the duplicate-unit scan, whose three report types it generalises;

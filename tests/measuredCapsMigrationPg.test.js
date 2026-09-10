@@ -18,7 +18,11 @@ const path = require('node:path');
 
 const { createPgHarness, skipWithoutPg, allMigrationsSql } = require('./helpers/pgHarness');
 
-const BEFORE_0027 = allMigrationsSql((name) => !name.startsWith('0027_') && !name.startsWith('0028_'));
+// Every migration that SEEDS a check-settings row is excluded, so these tests
+// reason about the rows they create rather than about whatever the current
+// seed set happens to be. 0030 switches on the automatic return-to-road check.
+const SEEDS_CHECK_SETTINGS = ['0027_', '0028_', '0030_'];
+const BEFORE_0027 = allMigrationsSql((name) => !SEEDS_CHECK_SETTINGS.some((p) => name.startsWith(p)));
 const read = (name) => fs.readFileSync(path.join(__dirname, '..', 'database', 'migrations', name), 'utf8');
 const MIGRATION_0027 = read('0027_production_repair_permissions_and_legacy_providers.sql');
 const MIGRATION_0028 = read('0028_measured_caps_for_enabled_repairs.sql');
@@ -105,5 +109,6 @@ test('a fresh database keeps 0027\'s seed and 0028 is a no-op, twice', { skip: s
   const r = await rows(harness);
   assert.equal(r['home_time.closable_open_cycle'].max_auto_per_run, 65);
   assert.equal(r['identity.stale_unit_assignment'].max_auto_per_run, 150, 'a fresh fleet keeps the seeded headroom');
+  assert.equal(r['home_time.returned_to_road'].max_auto_per_run, 25, 'and 0030 keeps its own');
   assert.match(r['identity.stale_unit_assignment'].updated_by, /migration 0027/);
 });
