@@ -21,6 +21,7 @@ function mapEvent(row) {
     event: row.event,
     initiator: row.initiator,
     detail: row.detail || {},
+    notifiedAt: row.notified_at ?? null,
     createdAt: row.created_at,
   };
 }
@@ -46,4 +47,28 @@ async function listModelEvents({ providerKey = null, limit = 50 } = {}) {
   return res.rows.map(mapEvent);
 }
 
-module.exports = { EVENTS, INITIATORS, recordModelEvent, listModelEvents, mapEvent };
+/** Retirements nobody has been told about yet — the maintenance job's work list. */
+async function listUnnotifiedRetirements(providerKey) {
+  const res = await query(
+    `SELECT * FROM ai_model_events
+      WHERE provider_key = $1 AND event = 'retired' AND notified_at IS NULL
+      ORDER BY created_at ASC, id ASC`,
+    [providerKey]
+  );
+  return res.rows.map(mapEvent);
+}
+
+/** Stamped only after the finding and the alert are written, so a failure retries. */
+async function markEventsNotified(ids) {
+  const clean = (ids || []).map(Number).filter(Number.isInteger);
+  if (!clean.length) return 0;
+  const res = await query(
+    'UPDATE ai_model_events SET notified_at = NOW() WHERE id = ANY($1::bigint[]) AND notified_at IS NULL',
+    [clean]
+  );
+  return res.rowCount || 0;
+}
+
+module.exports = {
+  EVENTS, INITIATORS, recordModelEvent, listModelEvents, listUnnotifiedRetirements, markEventsNotified, mapEvent,
+};

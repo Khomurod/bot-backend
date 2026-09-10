@@ -358,3 +358,21 @@ test('a policy source remembers who chose its URL, and a re-add keeps the first 
     /check constraint/i,
   );
 });
+
+test('0024: a retirement is pending until it has been told, and the stamp is idempotent', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { aiModelEvents } = harness.loadDataLayer(['aiModelEvents']);
+  const a = await aiModelEvents.recordModelEvent({ providerKey: 'groq', model: 'old-a', event: 'retired', initiator: 'refresh' });
+  await aiModelEvents.recordModelEvent({ providerKey: 'groq', model: 'new', event: 'added', initiator: 'refresh' });
+  const b = await aiModelEvents.recordModelEvent({ providerKey: 'groq', model: 'old-b', event: 'retired', initiator: 'router' });
+
+  let pending = await aiModelEvents.listUnnotifiedRetirements('groq');
+  assert.deepEqual(pending.map((e) => e.model), ['old-a', 'old-b'], 'only retirements, oldest first');
+  assert.equal(pending[0].notifiedAt, null);
+
+  assert.equal(await aiModelEvents.markEventsNotified([a.id]), 1);
+  pending = await aiModelEvents.listUnnotifiedRetirements('groq');
+  assert.deepEqual(pending.map((e) => e.model), ['old-b']);
+  assert.equal(await aiModelEvents.markEventsNotified([a.id, b.id]), 1, 'already-stamped rows are not re-stamped');
+  assert.deepEqual(await aiModelEvents.listUnnotifiedRetirements('groq'), []);
+});

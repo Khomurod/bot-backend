@@ -424,3 +424,29 @@ test('a listener that throws cannot fail the call', async () => {
   const result = await router.runCapability({ userText: 'hi' });
   assert.equal(result.model, 'new-model');
 });
+
+// ─── a caller's preferred model that the provider no longer lists ─────────────
+
+test('a preferred model absent from the provider\'s own listing is not asked for', async () => {
+  // Callers such as the annotator pass their own `preferModels`, which go at
+  // the head of the chain. A chain refresh cannot retire what is not in the
+  // chain — but the provider's listing can say the model does not exist, and
+  // the router believes the listing. Every call would otherwise start with a
+  // known 404.
+  const { router, calls } = loadRouter({
+    providers: [provider({ providerKey: 'groq', modelChain: ['a'], discoveredModelIds: ['a', 'b'] })],
+    respond: ({ model }) => ({ text: 'ok', model, payload: {}, usage: null }),
+  });
+  const result = await router.runCapability({ userText: 'hi', preferProvider: 'groq', preferModels: ['gone', 'b'] });
+  assert.deepEqual(calls.map((c) => c.model), ['b'], 'gone is skipped, b (listed) still leads');
+  assert.equal(result.model, 'b');
+});
+
+test('with no listing on record, preferences are trusted as before', async () => {
+  const { router, calls } = loadRouter({
+    providers: [provider({ providerKey: 'groq', modelChain: ['a'], discoveredModelIds: [] })],
+    respond: ({ model }) => ({ text: 'ok', model, payload: {}, usage: null }),
+  });
+  await router.runCapability({ userText: 'hi', preferProvider: 'groq', preferModels: ['pref'] });
+  assert.equal(calls[0].model, 'pref', 'an empty listing is absence of evidence, not evidence');
+});

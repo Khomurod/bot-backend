@@ -12,26 +12,55 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  runModelMaintenance, describeModelChange, nextMaintenanceDueAt, createVerificationRequester,
+  runModelMaintenance, verifyProvider, describeModelChange, nextMaintenanceDueAt, createVerificationRequester,
 } = require('../services/ai/discovery/modelMaintenance');
 
-function deps({ providers, refreshResults = {}, settings = {} } = {}) {
-  const saw = { refreshed: [], findings: [], alerts: [] };
+/**
+ * The notification is driven by `ai_model_events` rows that have not been
+ * notified yet, so this stub keeps a little event store: a refresh that retires
+ * models records them, and the maintenance job later reads what is pending.
+ */
+function deps({
+  providers, refreshResults = {}, settings = {}, pendingEvents = null, insertFails = false,
+} = {}) {
+  const saw = { refreshed: [], findings: [], alerts: [], events: [], notified: [] };
+  const store = pendingEvents ? [...pendingEvents] : [];
   return {
-    saw,
+    saw, store,
     aiProviders: {
       async listProvidersForAdmin() {
         return providers || [
-          { providerKey: 'groq', label: 'Groq', enabled: true, apiKeySet: true, baseUrl: 'https://api.groq.com/openai/v1', catalogKey: 'groq' },
-          { providerKey: 'gemini', label: 'Google Gemini', enabled: true, apiKeySet: true, baseUrl: null, catalogKey: 'gemini' },
+          { providerKey: 'groq', label: 'Groq', enabled: true, apiKeySet: true, baseUrl: 'https://api.groq.com/openai/v1', catalogKey: 'groq', discoveredModels: [] },
+          { providerKey: 'gemini', label: 'Google Gemini', enabled: true, apiKeySet: true, baseUrl: null, catalogKey: 'gemini', discoveredModels: [] },
           { providerKey: 'off', label: 'Off', enabled: false, apiKeySet: true },
           { providerKey: 'nokey', label: 'No key', enabled: true, apiKeySet: false },
         ];
       },
     },
+    modelEvents: {
+      async recordModelEvent(e) {
+        const row = { id: saw.events.length + 1, notifiedAt: null, ...e };
+        saw.events.push(row);
+        if (e.event === 'retired') store.push(row);
+        return row;
+      },
+      async listUnnotifiedRetirements(providerKey) {
+        return store.filter((e) => e.providerKey === providerKey && e.event === 'retired' && !e.notifiedAt);
+      },
+      async markEventsNotified(ids) {
+        saw.notified.push(...ids);
+        for (const e of store) if (ids.includes(e.id)) e.notifiedAt = new Date();
+      },
+    },
     async refreshProviderModels(key, opts) {
       saw.refreshed.push({ key, ...opts });
-      return refreshResults[key] || { ok: true, providerKey: key, changed: false, retired: [], added: [], kept: ['x'], chain: ['x'], modelsFound: 3 };
+      const r = refreshResults[key] || { ok: true, providerKey: key, changed: false, retired: [], added: [], kept: ['x'], chain: ['x'], modelsFound: 3, listed: ['x'] };
+      // The real refresh writes a `retired` event per retired model.
+      for (const m of r.retired || []) {
+        store.push({ id: store.length + 1000, providerKey: key, model: m, event: 'retired', notifiedAt: null,
+          detail: { replacement: (r.added || [])[(r.retired || []).indexOf(m)] || null } });
+      }
+      return r;
     },
     aiPolicy: {
       async getWatcherSettings() {
@@ -39,7 +68,10 @@ function deps({ providers, refreshResults = {}, settings = {} } = {}) {
       },
     },
     findingsStore: {
-      async insertFinding(f) { saw.findings.push(f); return { id: saw.findings.length, ...f }; },
+      async insertFinding(f) {
+        if (insertFails) throw new Error('database went away');
+        saw.findings.push(f); return { id: saw.findings.length, ...f };
+      },
       async enqueueAlert(a) { saw.alerts.push(a); return a; },
       meetsSeverityThreshold: (severity, min) => (
         ({ info: 0, warning: 1, serious: 2 })[severity] >= ({ info: 0, warning: 1, serious: 2 })[min]
@@ -152,4 +184,77 @@ test('a router refusal asks for ONE verification per provider, debounced', async
   t.mock.timers.tick(1000);
   await new Promise((r) => setImmediate(r));
   assert.deepEqual(verified.sort(), ['gemini', 'groq']);
+});
+
+
+// ─── the three review findings ───────────────────────────────────────────────
+
+test('a caller\'s preferred model the provider no longer lists is retired and reported', async () => {
+  // preferModels live in the caller, not the chain; a chain refresh cannot see
+  // them. The router's refusal names the model; the listing proves it is gone.
+  const d = deps({
+    providers: [{ providerKey: 'groq', label: 'Groq', enabled: true, apiKeySet: true, catalogKey: 'groq',
+      discoveredModels: [{ id: 'llama-3.1-70b-versatile' }, { id: 'llama-3.3-70b-versatile' }] }],
+    refreshResults: { groq: { ok: true, providerKey: 'groq', changed: false, retired: [], added: [], kept: ['llama-3.3-70b-versatile'],
+      chain: ['llama-3.3-70b-versatile'], modelsFound: 1, listed: ['llama-3.3-70b-versatile'] } },
+  });
+  const [provider] = await d.aiProviders.listProvidersForAdmin();
+  await verifyProvider(provider, { initiator: 'router', models: ['llama-3.1-70b-versatile'] }, d);
+
+  const ev = d.saw.events.find((e) => e.event === 'retired' && e.model === 'llama-3.1-70b-versatile');
+  assert.ok(ev, 'the vanished preference is recorded as retired');
+  assert.equal(ev.initiator, 'router');
+  assert.equal(ev.detail.source, 'capability_preference');
+  assert.equal(d.saw.findings.length, 1);
+  assert.match(d.saw.findings[0].summary, /llama-3\.1-70b-versatile/);
+});
+
+test('a preference the listing never had is not reported twice', async () => {
+  const d = deps({
+    providers: [{ providerKey: 'groq', label: 'Groq', enabled: true, apiKeySet: true, catalogKey: 'groq',
+      discoveredModels: [{ id: 'a' }] }],
+    refreshResults: { groq: { ok: true, providerKey: 'groq', changed: false, retired: [], added: [], kept: ['a'], chain: ['a'], modelsFound: 1, listed: ['a'] } },
+  });
+  const [provider] = await d.aiProviders.listProvidersForAdmin();
+  await verifyProvider(provider, { initiator: 'router', models: ['never-listed'] }, d);
+  assert.equal(d.saw.events.filter((e) => e.event === 'retired').length, 0,
+    'the previous listing did not have it either — it was already known to be absent');
+});
+
+test('the notice is driven by unnotified events, so a failed write is retried next pass', async () => {
+  const failing = deps({
+    refreshResults: { groq: { ok: true, providerKey: 'groq', changed: true, retired: ['old'], added: ['new'], kept: [], chain: ['new'], modelsFound: 2, listed: ['new'] } },
+    insertFails: true,
+  });
+  await runModelMaintenance({}, failing);
+  assert.equal(failing.saw.notified.length, 0, 'nothing may be marked notified when the finding was never written');
+  assert.equal(failing.store.filter((e) => !e.notifiedAt).length, 1, 'the retirement is still pending');
+
+  // Next pass: the chain is already updated (nothing retired THIS time), yet the
+  // pending event is still there — and now the write succeeds.
+  const later = deps({ pendingEvents: failing.store });
+  await runModelMaintenance({}, later);
+  assert.equal(later.saw.findings.length, 1, 'told on the retry');
+  assert.match(later.saw.findings[0].summary, /retired one of Wenze's models \(old\)/);
+  assert.deepEqual(later.saw.notified, [failing.store[0].id]);
+});
+
+test('describeModelChange claims only replacements that are actually in the chain', () => {
+  const text = describeModelChange('Groq', {
+    retired: ['gone'], added: ['in-chain', 'truncated-out'], chain: ['k1', 'k2', 'k3', 'k4', 'in-chain'],
+  });
+  assert.match(text.summary, /switched to in-chain\./);
+  assert.doesNotMatch(text.summary, /truncated-out/);
+});
+
+test('a router refusal carries the model, and a burst collapses into one verification per provider', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const verified = [];
+  const request = createVerificationRequester({
+    verify: async (key, models) => { verified.push([key, [...models].sort()]); }, debounceMs: 1000,
+  });
+  request('groq', 'm1'); request('groq', 'm2'); request('groq', 'm1');
+  t.mock.timers.tick(1000);
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(verified, [['groq', ['m1', 'm2']]]);
 });

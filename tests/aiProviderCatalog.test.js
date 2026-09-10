@@ -140,3 +140,17 @@ test('an empty listing retires nothing — a failed discovery must not strip a w
   assert.deepEqual(r.chain, ['a', 'b']);
   assert.equal(r.unverified, true);
 });
+
+test('reconcileChain reports as added ONLY what made it into the chain', () => {
+  // Four survivors leave one slot. Three usable newcomers exist; one is added.
+  // Claiming all three were "added" would tell an operator Wenze switched to
+  // models it never configured.
+  const kept = ['k1', 'k2', 'k3', 'k4'];
+  const discovered = [...kept, 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant']
+    .map((id) => normaliseModel(openai(id), 'openai_chat', 'groq'));
+  const r = reconcileChain([...kept, 'gone'], discovered, { providerKey: 'groq' });
+  assert.deepEqual(r.retired, ['gone']);
+  assert.equal(r.chain.length, MAX_CHAIN);
+  assert.equal(r.added.length, 1, 'one slot, one addition');
+  assert.ok(r.chain.includes(r.added[0]));
+});
