@@ -53,6 +53,38 @@ export async function testAiProvider(providerKey, { apiKey, adapter, baseUrl, mo
   return res.json();
 }
 
+/** The providers Wenze can configure by itself: { catalog: [{ key, label, isFree, needsBaseUrl, configured, … }] }. */
+export async function getAiCatalog() {
+  const res = await fetch(`${API_BASE}/settings/ai/catalog`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.catalog;
+}
+
+/**
+ * Pick a provider, paste the key, Connect. Answers 200 with `ok: false` and a
+ * plain-language `message` when the provider or the key is the problem — the
+ * request succeeded; what failed is the thing being connected.
+ */
+export async function connectAiProvider({ catalogKey, apiKey, label, baseUrl, adapter }) {
+  const res = await fetch(`${API_BASE}/settings/ai/providers/connect`, {
+    method: 'POST', headers: getHeaders(),
+    body: JSON.stringify({ catalogKey, apiKey, label, baseUrl, adapter }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Re-read the provider's model listing now; returns { ok, retired, added, chain, changed, … }. */
+export async function refreshAiProviderModels(providerKey) {
+  const res = await fetch(
+    `${API_BASE}/settings/ai/providers/${encodeURIComponent(providerKey)}/refresh-models`,
+    { method: 'POST', headers: getHeaders() }
+  );
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 /** Put a cooled provider back in rotation by hand. */
 export async function clearAiProviderCooldown(providerKey) {
   const res = await fetch(

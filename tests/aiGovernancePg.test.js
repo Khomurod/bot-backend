@@ -292,3 +292,69 @@ test('retention prunes what is past its window', { skip: skipWithoutPg() }, asyn
   const left = await harness.query('SELECT COUNT(*)::int AS n FROM ai_call_log');
   assert.equal(left.rows[0].n, 1);
 });
+
+// ─── migration 0023: discovery ───────────────────────────────────────────────
+
+test('0023 labels the two seeded providers with their catalogue entry and nothing else', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const rows = await harness.query('SELECT provider_key, catalog_key, discovered_models, models_refreshed_at FROM ai_providers ORDER BY provider_key');
+  for (const row of rows.rows) {
+    assert.equal(row.catalog_key, row.provider_key, `${row.provider_key}: a refresh needs to know where its models endpoint is`);
+    assert.deepEqual(row.discovered_models, [], 'nothing was discovered yet — the migration does not call anyone');
+    assert.equal(row.models_refreshed_at, null);
+  }
+});
+
+test('discovery results and model events round-trip through the data layer', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { aiProviders, aiModelEvents } = harness.loadDataLayer(['aiProviders', 'aiModelEvents']);
+
+  await aiProviders.saveDiscoveredModels('groq', {
+    models: [{ id: 'llama-3.1-8b-instant', contextLength: 131072, chat: true, free: 'free' }],
+  });
+  let [admin] = (await aiProviders.listProvidersForAdmin()).filter((p) => p.providerKey === 'groq');
+  assert.equal(admin.discoveredModels[0].id, 'llama-3.1-8b-instant');
+  assert.ok(admin.modelsRefreshedAt, 'a successful listing is timestamped');
+  assert.equal(admin.modelsRefreshError, null);
+
+  await aiProviders.saveDiscoveredModels('groq', { error: '503 Service Unavailable' });
+  [admin] = (await aiProviders.listProvidersForAdmin()).filter((p) => p.providerKey === 'groq');
+  assert.equal(admin.discoveredModels[0].id, 'llama-3.1-8b-instant', 'a failed listing keeps the last good one');
+  assert.equal(admin.modelsRefreshError, '503 Service Unavailable');
+
+  const ev = await aiModelEvents.recordModelEvent({
+    providerKey: 'groq', model: 'mixtral-8x7b-32768', event: 'retired', initiator: 'refresh',
+    detail: { replacement: 'openai/gpt-oss-20b' },
+  });
+  assert.equal(ev.event, 'retired');
+  const listed = await aiModelEvents.listModelEvents({ providerKey: 'groq' });
+  assert.equal(listed[0].detail.replacement, 'openai/gpt-oss-20b');
+  await assert.rejects(() => aiModelEvents.recordModelEvent({ providerKey: 'groq', event: 'vanished' }), /Unknown model event/);
+  await assert.rejects(
+    () => harness.query(`INSERT INTO ai_model_events (provider_key, event) VALUES ('groq', 'vanished')`),
+    /check constraint/i, 'the schema refuses an event the vocabulary does not have',
+  );
+});
+
+test('a policy source remembers who chose its URL, and a re-add keeps the first answer', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { aiPolicy } = harness.loadDataLayer(['aiPolicy']);
+
+  const typed = await aiPolicy.addSource({ providerKey: 'groq', url: 'https://groq.com/terms-of-use/', kind: 'terms' });
+  assert.equal(typed.sourceOrigin, 'manual', 'the default is a person');
+
+  const reseeded = await aiPolicy.addSource({
+    providerKey: 'groq', url: 'https://groq.com/terms-of-use/', kind: 'terms', sourceOrigin: 'catalog',
+  });
+  assert.equal(reseeded.sourceOrigin, 'manual', 'a catalogue seed must not relabel a URL a person typed first');
+
+  const seeded = await aiPolicy.addSource({
+    providerKey: 'groq', url: 'https://groq.com/privacy-policy/', kind: 'privacy', sourceOrigin: 'catalog',
+  });
+  assert.equal(seeded.sourceOrigin, 'catalog');
+
+  await assert.rejects(
+    () => harness.query(`INSERT INTO ai_policy_sources (provider_key, url, kind, source_origin) VALUES ('groq', 'https://x', 'terms', 'guessed')`),
+    /check constraint/i,
+  );
+});

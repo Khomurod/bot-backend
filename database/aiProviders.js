@@ -28,17 +28,21 @@ const { query } = require('./pool');
 const { encryptText } = require('../lib/security/facebookCrypto');
 const { maskKey, createSafeDecrypt } = require('../lib/security/secretMasking');
 const { INDEFINITE } = require('../lib/ai/cooldown');
+const { CATALOG, envKeyNameFor } = require('../lib/ai/providerCatalog');
 
 const safeDecrypt = createSafeDecrypt('[AI SETTINGS]', 'a stored provider key');
 
-/** Env fallbacks, so an unconfigured row still works exactly as today. */
-const ENV_KEYS = {
-  groq: 'GROQ_API_KEY',
-  gemini: 'GEMINI_API_KEY',
-};
+/**
+ * Env fallbacks, so an unconfigured row still works exactly as today. Derived
+ * from the catalogue so a provider connected there (OpenRouter, Cerebras…) can
+ * inherit its variable the same way Groq and Gemini always have.
+ */
+const ENV_KEYS = Object.fromEntries(
+  Object.values(CATALOG).map((entry) => [entry.key, entry.envKey])
+);
 
 function envKeyFor(providerKey) {
-  const name = ENV_KEYS[providerKey];
+  const name = envKeyNameFor(providerKey);
   return name ? (process.env[name] || '') : '';
 }
 
@@ -66,6 +70,10 @@ function mapProviderForAdmin(row) {
     lastErrorAt: row.last_error_at,
     lastError: row.last_error,
     notes: row.notes,
+    catalogKey: row.catalog_key ?? null,
+    discoveredModels: Array.isArray(row.discovered_models) ? row.discovered_models : [],
+    modelsRefreshedAt: row.models_refreshed_at ?? null,
+    modelsRefreshError: row.models_refresh_error ?? null,
     updatedBy: row.updated_by,
     updatedAt: row.updated_at,
   };
@@ -97,11 +105,36 @@ async function getProvidersForRouter() {
     isFree: row.is_free,
     baseUrl: row.base_url,
     modelChain: Array.isArray(row.model_chain) ? row.model_chain : [],
+    catalogKey: row.catalog_key ?? null,
     apiKey: safeDecrypt(row.api_key_encrypted) || envKeyFor(row.provider_key),
     cooledUntil: row.cooled_indefinitely ? INDEFINITE : row.cooled_until,
     cooldownReason: row.cooldown_reason,
     consecutiveFailures: row.consecutive_failures,
   }));
+}
+
+/**
+ * One provider in the router's shape, enabled or not — for Connect and the
+ * models refresh, which need the key to ask the provider what exists and must
+ * work on a provider an operator has switched off too. Same single decrypt
+ * site, same rule: never returned to a client.
+ */
+async function getProviderSecretsByKey(providerKey) {
+  const res = await query('SELECT * FROM ai_providers WHERE provider_key = $1', [providerKey]);
+  const row = res.rows[0];
+  if (!row) return null;
+  return {
+    providerKey: row.provider_key,
+    label: row.label,
+    adapter: row.adapter,
+    enabled: row.enabled,
+    priority: row.priority,
+    isFree: row.is_free,
+    baseUrl: row.base_url,
+    modelChain: Array.isArray(row.model_chain) ? row.model_chain : [],
+    catalogKey: row.catalog_key ?? null,
+    apiKey: safeDecrypt(row.api_key_encrypted) || envKeyFor(row.provider_key),
+  };
 }
 
 /**
@@ -115,7 +148,7 @@ async function getProvidersForRouter() {
  */
 async function upsertProvider(providerKey, {
   label, adapter, enabled, priority, isFree, baseUrl, modelChain,
-  apiKey, clearApiKey = false, notes, updatedBy = null,
+  apiKey, clearApiKey = false, notes, catalogKey, updatedBy = null,
 } = {}) {
   const sets = ['label = COALESCE($2, ai_providers.label)'];
   const values = [providerKey, label ?? null];
@@ -132,6 +165,7 @@ async function upsertProvider(providerKey, {
   set('is_free', typeof isFree === 'boolean' ? isFree : undefined);
   set('base_url', baseUrl);
   set('notes', notes);
+  set('catalog_key', catalogKey);
   if (modelChain !== undefined && modelChain !== null) {
     sets.push(`model_chain = $${i}::jsonb`);
     values.push(JSON.stringify(Array.isArray(modelChain) ? modelChain : []));
@@ -179,6 +213,33 @@ async function upsertProvider(providerKey, {
     values
   );
   return mapProviderForAdmin(res.rows[0]);
+}
+
+/**
+ * What discovery last saw. Written by Connect and by the maintenance refresh;
+ * `error` records a listing that failed so the admin can see WHY the models
+ * shown are stale rather than wondering.
+ */
+async function saveDiscoveredModels(providerKey, { models = null, error = null } = {}) {
+  if (models) {
+    await query(
+      `UPDATE ai_providers
+          SET discovered_models = $2::jsonb, models_refreshed_at = NOW(), models_refresh_error = NULL
+        WHERE provider_key = $1`,
+      [providerKey, JSON.stringify(models)]
+    );
+  } else {
+    await query(
+      'UPDATE ai_providers SET models_refresh_error = $2 WHERE provider_key = $1',
+      [providerKey, String(error || 'unknown').slice(0, 500)]
+    );
+  }
+}
+
+/** The next priority after everything configured — a connected provider goes last, not first. */
+async function nextPriority() {
+  const res = await query('SELECT COALESCE(MAX(priority), 0) AS max FROM ai_providers');
+  return Math.min(999, Number(res.rows[0]?.max || 0) + 10);
 }
 
 /** A provider answered. Health is reset, not merely nudged. */
@@ -241,7 +302,10 @@ module.exports = {
   mapProviderForAdmin,
   listProvidersForAdmin,
   getProvidersForRouter,
+  getProviderSecretsByKey,
   upsertProvider,
+  saveDiscoveredModels,
+  nextPriority,
   recordSuccess,
   recordFailure,
   clearCooldown,

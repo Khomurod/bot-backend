@@ -161,6 +161,41 @@ feature it belongs to.
   row. Gemini keeps its own adapter and **gains the timeout it has never had**:
   the existing client passes no signal, so a hung connection hangs the caller
   forever, reachable from interactive paths.
+- **Adding a known provider is: pick it, paste the key, Connect.**
+  `lib/ai/providerCatalog.js` (pure) holds what is public about eight providers
+  — Groq, Gemini, OpenRouter, Cerebras, Mistral, Together, DeepSeek, NVIDIA —
+  adapter, endpoint, models path, env-var name, key prefix, free-tier note and
+  the official terms/privacy/pricing/deprecation pages. `POST
+  /api/settings/ai/providers/connect` (`services/ai/discovery/connectProvider.js`)
+  reads the provider's own `/models` listing (`modelDiscovery.js`; OpenAI shape
+  and Gemini's paged shape), keeps what can chat (`lib/ai/modelSelection.js`
+  refuses embeddings, speech, moderation and image models by name and, for
+  Gemini, by `supportedGenerationMethods`), chooses a chain — strongest family
+  first, always ending in a small fast model — honours free-only mode, proves the
+  key with ONE 8-token call, saves the provider **enabled** at the next priority,
+  records the listing in `ai_providers.discovered_models`, writes a `selected`
+  row to `ai_model_events`, and seeds the terms watcher with the catalogue's
+  official pages (`source_origin = 'catalog'`). Then it says what happened in
+  words: *"OpenRouter connected successfully. 14 compatible models found. 6 free
+  models currently available. Wenze selected 3 preferred models for fallback."*
+  A failure names the step — `invalid_key` (with a hint when the key clearly
+  belongs to another provider), `no_free_models`, `no_compatible_models`,
+  `no_models_endpoint`, `models_refused` — never "could not tell what went
+  wrong". **Base URL and the model list moved under Advanced settings** on the
+  provider card; only the **Custom OpenAI-compatible** entry asks for a Base URL,
+  and even it discovers its models. Free status is reported only where it is a
+  published fact (OpenRouter pricing, Groq/Cerebras/NVIDIA free tiers, Gemini
+  Flash); elsewhere it is `unknown`, said plainly. Migration 0023.
+- **The chain is kept current, not remembered.** "Refresh models" on the card
+  (and, from Phase 3-C, a scheduled job) re-reads the listing through
+  `services/ai/discovery/refreshModels.js` and `reconcileChain`: a configured
+  model the provider no longer lists is **retired** from the active chain and
+  recorded; the operator's order survives for what still exists; Wenze's picks
+  fill the chain back up. **An empty or failed listing changes nothing** — one bad
+  fetch must never strip a working chain — and the failure is shown on the card
+  as "last check failed: …". Every change is an `ai_model_events` row
+  (`added` / `retired` / `replaced` / `restored` / `refused` / `selected`, with
+  its initiator), rendered on the tab as "Model changes".
 - **`enabled` and `cooled_until` are never written by the same code.** `enabled`
   is a person's decision; the cooldown is the system's temporary opinion. The
   router writes only the latter.
