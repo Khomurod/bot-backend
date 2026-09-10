@@ -24,6 +24,8 @@
  * genuinely still at home is not a defect.
  */
 
+const { createHash } = require('node:crypto');
+
 const DEFAULT_HOME_ALLOWANCE_DAYS = 4;
 const DEFAULT_ROAD_ALLOWANCE_WEEKS = 4;
 /** A day of slack so a driver who is a few hours over does not raise a finding. */
@@ -278,11 +280,83 @@ function checkGhostHomeStatus({ homeStatus = [], groupsById = new Map() }) {
     });
 }
 
+/**
+ * The pile of internal alerts nobody will ever receive.
+ *
+ * ONE finding for the whole pile, deliberately. 98 rows in production, every
+ * one at attempts = 6 = MAX_ATTEMPTS, every one `400: Bad Request: chat not
+ * found` — because `internal_clarification_group_id` held `5052301861` where
+ * the chat is `-5052301861`. They are not 98 problems. They are one problem
+ * that happened 98 times, and filing 98 findings would bury every other row on
+ * the page under a single dropped minus sign.
+ *
+ * The condition is the PILE, so the subject is the queue rather than any
+ * request — and the subject id carries a digest of the pile's CONTENTS, which
+ * is doing two jobs at once:
+ *
+ *   the same pile keeps ONE row however often the sweep runs (the dedup a fixed
+ *   id would also have given), and
+ *
+ *   a LATER pile is a different incident with its own row. A fixed id would have
+ *   been permanently suppressed after the first apply:
+ *   `resolveClearedFindings` only touches `status = 'open'`, so an applied
+ *   finding stays `applied` forever, and `upsertFinding` preserves every status
+ *   except `resolved` — a new pile would have silently updated that row with new
+ *   request ids and never reappeared in open findings. The same trap follows a
+ *   dismissal.
+ *
+ * Tier `auto` because the correction invents nothing: it moves rows from
+ * "failed" to "abandoned" and touches neither the alert text nor the attempt
+ * count nor `internal_alert_last_error`. What was lost stays answerable; only
+ * the claim that somebody is still trying to deliver it goes away. The alerts
+ * are emphatically NOT re-driven — firing months of stale home-time alerts into
+ * a live staff chat would be its own incident.
+ */
+function pileDigest(requestIds) {
+  // Sorted, so the same pile in any order is the same incident. Short because
+  // `subject_id` is read by people in the audit trail; the queue's name stays in
+  // front of it for the same reason.
+  const ids = [...(requestIds || [])].map(Number).filter(Number.isInteger).sort((a, b) => a - b);
+  return createHash('sha1').update(ids.join(',')).digest('hex').slice(0, 12);
+}
+
+function checkExhaustedInternalAlerts({ exhaustedInternalAlerts = null }) {
+  const pile = exhaustedInternalAlerts;
+  if (!pile || !pile.count) return [];
+
+  return [{
+    checkKey: 'home_time.exhausted_internal_alerts',
+    subjectType: 'outbox',
+    subjectId: `home_time_internal_alerts:${pileDigest(pile.requestIds)}`,
+    title: `${pile.count} internal home-time alert(s) exhausted every retry and were never delivered`,
+    severity: 'warning',
+    tier: 'auto',
+    confidence: 100,
+    evidence: {
+      count: pile.count,
+      oldestAt: pile.oldestAt,
+      requestIds: pile.requestIds,
+      // The error the queue itself recorded, so the finding says WHY without a
+      // reader having to go and look.
+      lastError: pile.lastError,
+    },
+    proposedChange: {
+      table: 'home_time_requests',
+      column: 'internal_alert_state',
+      from: 'failed',
+      to: 'abandoned',
+      requestIds: pile.requestIds,
+      note: 'Marks them terminal. Does NOT re-send them.',
+    },
+  }];
+}
+
 const CHECKS = [
   checkClosableCycles,
   checkHomeStayPastAllowance,
   checkRoadClockPastAllowance,
   checkGhostHomeStatus,
+  checkExhaustedInternalAlerts,
 ];
 
 const CHECK_KEYS = [
@@ -290,6 +364,7 @@ const CHECK_KEYS = [
   'home_time.home_stay_past_allowance',
   'home_time.road_clock_past_allowance',
   'home_time.ghost_home_status',
+  'home_time.exhausted_internal_alerts',
 ];
 
 function runHomeTimeChecks(snapshot) {
@@ -308,4 +383,5 @@ module.exports = {
   checkHomeStayPastAllowance,
   checkRoadClockPastAllowance,
   checkGhostHomeStatus,
+  checkExhaustedInternalAlerts,
 };
