@@ -231,3 +231,34 @@ test('the watch remembers a parked anchor and never lets a moving sighting repla
     assert.equal(row.maxMilesFromAnchor, 66);
     assert.equal(row.movingSightings, 1);
   });
+
+/**
+ * The advertised kill switch has to exist to be switchable.
+ *
+ * `isCapabilityEnabled` treats a missing row as enabled, which is right for a
+ * fresh install — but Settings → AI lists ai_capabilities rows, so a capability
+ * that is never registered is invisible there and an administrator has no way
+ * to turn the reasoning off. Migration 0030 seeds the row.
+ */
+test('the return-to-road reasoning is a capability an administrator can switch off',
+  { skip: skipWithoutPg() }, async (t) => {
+    const harness = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
+    const rows = await harness.query(
+      `SELECT ai_enabled, sends_raw_text, has_deterministic_fallback, may_auto_apply
+         FROM ai_capabilities WHERE capability_key = 'home_time_return_to_road'`
+    );
+    assert.equal(rows.rows.length, 1, 'the capability is registered, so the switch is reachable');
+    assert.equal(rows.rows[0].ai_enabled, true, 'on by default');
+    assert.equal(rows.rows[0].sends_raw_text, false, 'a scored evidence summary, never chat text');
+    assert.equal(rows.rows[0].has_deterministic_fallback, true, 'the score decides without AI');
+    assert.equal(rows.rows[0].may_auto_apply, false, 'AI never applies a correction');
+
+    // Switched off, the router refuses the call rather than silently answering.
+    await harness.query(
+      `UPDATE ai_capabilities SET ai_enabled = FALSE WHERE capability_key = 'home_time_return_to_road'`
+    );
+    const after = await harness.query(
+      `SELECT ai_enabled FROM ai_capabilities WHERE capability_key = 'home_time_return_to_road'`
+    );
+    assert.equal(after.rows[0].ai_enabled, false);
+  });

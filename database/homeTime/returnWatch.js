@@ -131,7 +131,13 @@ async function recordObservation(groupId, {
             last_seen_at = COALESCE($5::timestamptz, last_seen_at),
             last_checked_at = COALESCE($6::timestamptz, NOW()),
             max_miles_from_anchor = GREATEST(max_miles_from_anchor, COALESCE($7, 0)),
-            moving_sightings = moving_sightings + CASE WHEN $8 THEN 1 ELSE 0 END,
+            -- A REPEATED PING IS NOT A SECOND SIGHTING. Providers hold their
+            -- latest sample until a new one arrives, so counting every pass
+            -- would turn one 60 mph reading into "movement confirmed twice"
+            -- after two ticks — and two sightings is exactly what lets an
+            -- automatic Home → Road change through.
+            moving_sightings = moving_sightings + CASE
+              WHEN $8 AND ($5::timestamptz IS DISTINCT FROM last_seen_at) THEN 1 ELSE 0 END,
             load_identifier = COALESCE($11, load_identifier),
             load_status = COALESCE($12, load_status),
             load_first_seen_at = CASE

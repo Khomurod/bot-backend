@@ -260,6 +260,22 @@ marks the stay closed.
   as they are and are simply read as settled. Old cards still in the group get
   their buttons retired on the next press, with a note that approval is no
   longer needed — `tests/homeTimeRetiredApproval.test.js`.
+  **The widened CHECK lives in the BASELINE, not only in migration 0029.**
+  `schema.sql` is re-applied verbatim on every boot and its `DROP CONSTRAINT` /
+  `ADD CONSTRAINT` pair is unconditional, so a value added by a run-once
+  migration alone survives exactly one restart: the next boot either restores
+  the narrow constraint or, once a real `recorded` row exists, fails the
+  `ADD CONSTRAINT` and never finishes starting.
+  `database/baseline/012_home_time.sql` carries `recorded` too, and
+  `tests/homeTimeManagerNoticesPg.test.js` applies baseline → migrations →
+  baseline again to prove a restart survives.
+- **The AI reading is a registered capability.** `home_time_return_to_road` is
+  seeded into `ai_capabilities` by migration 0030, because Settings → AI lists
+  that table: a capability the router honours but never registers is a switch
+  nobody can reach. It is on by default, sends no raw chat text (only a scored
+  evidence summary), and `may_auto_apply` is FALSE like every other capability —
+  the deterministic score decides, and the model may only lower a verdict or
+  raise a medium once movement and a load are both already proven.
 - **Every home-time date is a `America/Chicago` calendar date.** The state
   machine, the date resolver, the clarification flow and every AI prompt all
   reason in Central; a UTC instant must be zoned before it becomes a date.

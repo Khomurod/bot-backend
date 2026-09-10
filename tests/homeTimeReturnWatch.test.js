@@ -20,8 +20,12 @@ const FAR = { lat: 42.5, lng: -88.6 };
 
 function harness({
   drivers = [], location = null, order = null, watchRow = null, reviewer = null,
+  providerErrors = [],
 } = {}) {
-  const calls = { fleets: 0, orders: 0, findings: [], observations: [], resolved: [], ensured: [] };
+  const calls = {
+    fleets: 0, orders: 0, findings: [], observations: [], resolved: [], ensured: [],
+    resolvedWith: [],
+  };
   let stored = watchRow;
   const deps = {
     watch: {
@@ -48,13 +52,28 @@ function harness({
     },
     eldSettings: { async getEldConfig() { return { samsaraEnabled: true, samsaraApiKeys: ['k'] }; } },
     providers: {
-      async fetchProviderFleets() { calls.fleets += 1; return { samsara: [], errors: [] }; },
-      resolveLocationForUnit() { return { location }; },
+      // The REAL envelopes: fetchProviderFleets returns { fleets, errors } and
+      // getActiveOrders returns { orders, error }. Handing the envelope on as if
+      // it were the payload made the whole pass throw on the first index.
+      async fetchProviderFleets() {
+        calls.fleets += 1;
+        return { fleets: { samsara: [], factor: null, leader: null }, errors: providerErrors };
+      },
+      resolveLocationForUnit(fleets) {
+        calls.resolvedWith.push(fleets);
+        return { location };
+      },
     },
     orders: {
-      async getActiveOrders() { calls.orders += 1; return order ? [order] : []; },
-      indexOrdersByUnit(list) { return new Map(list.map((o) => ['7', o])); },
-      indexOrdersByDriver(list) { return new Map(list.map((o) => ['a driver', o])); },
+      async getActiveOrders() { calls.orders += 1; return { orders: order ? [order] : [], error: null }; },
+      indexOrdersByUnit(list) {
+        if (!Array.isArray(list)) throw new TypeError('indexOrdersByUnit needs the orders array');
+        return new Map(list.map((o) => ['7', o]));
+      },
+      indexOrdersByDriver(list) {
+        if (!Array.isArray(list)) throw new TypeError('indexOrdersByDriver needs the orders array');
+        return new Map(list.map((o) => ['a driver', o]));
+      },
     },
     loadService: { extractLoadFromOrder: (o) => o.load },
     datatruck: { normalizeUnitForMatch: (u) => String(u), normalizeNameForMatch: (n) => String(n || '').toLowerCase() },
@@ -124,7 +143,8 @@ test('a load plus movement files an auto-tier finding with the proposed change',
   const finding = calls.findings[0];
   assert.equal(finding.checkKey, 'home_time.returned_to_road');
   assert.equal(finding.tier, 'auto');
-  assert.equal(finding.subjectId, '3');
+  assert.equal(finding.subjectType, 'road_history');
+  assert.equal(finding.subjectId, '412', 'the STAY is the subject, so a later stay files its own finding');
   assert.equal(finding.proposedChange.groupId, 3);
   assert.equal(finding.proposedChange.personId, 11);
   assert.ok(finding.proposedChange.returnToRoadAt);
@@ -200,10 +220,55 @@ test('a broken model leaves the deterministic verdict exactly as it was', async 
 });
 
 test('a provider outage does not stop the pass or invent a departure', async () => {
-  const { deps, calls } = harness({ drivers: [DRIVER], location: null });
-  deps.providers.fetchProviderFleets = async () => ({ samsara: null, errors: [{ provider: 'samsara', message: 'down' }] });
+  const { deps, calls } = harness({
+    drivers: [DRIVER], location: null,
+    providerErrors: [{ provider: 'samsara', message: 'down' }],
+  });
   const summary = await watcher.runReturnToRoadCheck({ now: NOW, deps });
   assert.equal(summary.providerErrors, 1);
   assert.equal(summary.high, 0);
   assert.equal(calls.findings.filter((f) => f.checkKey === 'home_time.returned_to_road').length, 0);
+});
+
+test('the fleet MAP reaches the lookup, not the envelope around it', async () => {
+  const { deps, calls } = harness({
+    drivers: [DRIVER], location: { ...HOME, speedMph: 0, lastUpdated: at(5) },
+  });
+  await watcher.runReturnToRoadCheck({ now: NOW, deps });
+  assert.equal(calls.resolvedWith.length, 1);
+  const passed = calls.resolvedWith[0];
+  assert.equal('errors' in passed, false, 'the envelope must be unwrapped');
+  assert.ok('samsara' in passed, 'the fleet map itself is what resolves a unit');
+});
+
+test('every home stay is its own finding, so a second return is not swallowed', async () => {
+  // upsertFinding reopens only a RESOLVED row. Keyed on the group, the second
+  // stay would update the first stay's already-applied row and never be acted on.
+  const first = harness({
+    drivers: [{ ...DRIVER, roadHistoryId: 412 }],
+    location: { ...FAR, speedMph: 61, lastUpdated: at(5) },
+    order: { load: { status: 'dispatched' } },
+    watchRow: {
+      groupId: 3, anchor: { ...HOME, at: at(600) },
+      last: { ...FAR, speedMph: 58, at: at(40) }, maxMilesFromAnchor: 66, movingSightings: 1,
+    },
+  });
+  await watcher.runReturnToRoadCheck({ now: NOW, deps: first.deps });
+
+  const second = harness({
+    drivers: [{ ...DRIVER, roadHistoryId: 900, homeSince: at(60 * 24) }],
+    location: { ...FAR, speedMph: 61, lastUpdated: at(5) },
+    order: { load: { status: 'dispatched' } },
+    watchRow: {
+      groupId: 3, anchor: { ...HOME, at: at(600) },
+      last: { ...FAR, speedMph: 58, at: at(40) }, maxMilesFromAnchor: 66, movingSightings: 1,
+    },
+  });
+  await watcher.runReturnToRoadCheck({ now: NOW, deps: second.deps });
+
+  assert.notEqual(
+    first.calls.findings[0].subjectId,
+    second.calls.findings[0].subjectId,
+    'two different home stays are two different findings'
+  );
 });

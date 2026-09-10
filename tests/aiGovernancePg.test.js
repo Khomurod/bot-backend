@@ -32,7 +32,7 @@ async function harnessWith(t) {
 
 // ─── the deploy is a no-op ───────────────────────────────────────────────────
 
-test('the roster is the two providers already in use, and no capability', { skip: skipWithoutPg() }, async (t) => {
+test('the roster is the two providers already in use, and only registered capabilities', { skip: skipWithoutPg() }, async (t) => {
   const harness = await harnessWith(t);
   const { aiProviders, aiSettings } = load(harness);
 
@@ -41,8 +41,18 @@ test('the roster is the two providers already in use, and no capability', { skip
     'an EMPTY roster is what would change behaviour now: getProvidersForRouter '
     + 'selects WHERE enabled = TRUE, so nothing enabled means every AI call fails');
   assert.ok(providers.every((p) => p.enabled), 'both are in use today, in the only sense there is');
-  assert.deepEqual(await aiSettings.listCapabilities(), [],
-    'a capability row is a permission; those still default to absent');
+  // A capability row is a SWITCH, not a grant: `may_auto_apply` is CHECKed to
+  // FALSE in the schema, so registering one can never widen what AI may do. The
+  // rows that exist are the ones a migration registered deliberately, because a
+  // capability the router honours but never registers is a switch Settings → AI
+  // cannot show and an administrator cannot reach.
+  const capabilities = await aiSettings.listCapabilities();
+  assert.deepEqual(capabilities.map((c) => c.capabilityKey).sort(), ['home_time_return_to_road'],
+    'exactly the capabilities a migration registered — nothing appears by accident');
+  assert.ok(capabilities.every((c) => c.mayAutoApply === false),
+    'no registered capability may apply a correction, and the schema refuses TRUE outright');
+  assert.ok(capabilities.every((c) => c.mayPropose === false),
+    'proposing is off until a human turns it on');
 });
 
 test('the seed stores no key — the environment is still where it comes from', { skip: skipWithoutPg() }, async (t) => {
