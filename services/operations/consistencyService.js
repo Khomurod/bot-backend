@@ -18,6 +18,8 @@
 const defaultDb = require('../../database/pool');
 const defaultFindingsStore = require('../../database/operationalFindings');
 const identity = require('./checks/identity');
+const identityLayer = require('./checks/identityLayer');
+const systems = require('./checks/systems');
 const homeTime = require('./checks/homeTime');
 const { runAutoCorrections } = require('./corrections/autoApply');
 
@@ -26,6 +28,8 @@ const FIRST_TICK_DELAY_MS = 120 * 1000;
 
 const CHECK_MODULES = [
   { name: 'identity', keys: identity.CHECK_KEYS, run: identity.runIdentityChecks },
+  { name: 'identityLayer', keys: identityLayer.CHECK_KEYS, run: identityLayer.runIdentityLayerChecks },
+  { name: 'systems', keys: systems.CHECK_KEYS, run: systems.runSystemChecks },
   { name: 'homeTime', keys: homeTime.CHECK_KEYS, run: homeTime.runHomeTimeChecks },
 ];
 
@@ -43,10 +47,10 @@ let lastCorrections = null;
  * and a read-only sweep must not write.
  */
 async function loadSnapshot(db = defaultDb) {
-  const [groups, profiles, roadHistory, homeStatus, settings, exhausted] = await Promise.all([
+  const [groups, profiles, roadHistory, homeStatus, settings, exhausted, layer] = await Promise.all([
     db.query(
       `SELECT id, group_name, group_type, active, status_source, status_updated_at,
-              bot_member_status, bot_access_checked_at, last_message_seen_at
+              bot_member_status, bot_access_checked_at, last_message_seen_at, samsara_vehicle_id
          FROM groups`
     ),
     db.query(
@@ -73,6 +77,7 @@ async function loadSnapshot(db = defaultDb) {
         WHERE internal_alert_state = 'failed'
         ORDER BY requested_at ASC`
     ),
+    loadLayerSnapshot(db),
   ]);
 
   return {
@@ -89,6 +94,35 @@ async function loadSnapshot(db = defaultDb) {
       requestIds: exhausted.rows.map((r) => r.id),
       lastError: exhausted.rows[0]?.internal_alert_last_error || null,
     },
+    ...layer,
+  };
+}
+
+/**
+ * The person layer and the systems that hang off it (Phase 3-F). Only what the
+ * checks compare — ids, states and links; never message text or alert bodies.
+ */
+async function loadLayerSnapshot(db) {
+  const [people, personGroups, units, fuelAlerts, teamDrivers, mileageProgress, routeAssignments] = await Promise.all([
+    db.query('SELECT id, display_name, merged_into_person_id FROM driver_people'),
+    db.query('SELECT person_id, group_id, started_at FROM driver_person_groups WHERE ended_at IS NULL'),
+    db.query('SELECT person_id, unit_number, samsara_vehicle_id FROM driver_units WHERE ended_at IS NULL'),
+    db.query(`SELECT id, group_id, status, created_at FROM fuel_stop_alerts WHERE status = 'watching'`),
+    db.query(
+      `SELECT id, team_id, group_id, driver_profile_id, person_id, driver_name, active
+         FROM dispatch_team_drivers WHERE active = TRUE`
+    ),
+    db.query('SELECT id, driver_normalized_name, person_id FROM mileage_bonus_progress WHERE is_active = TRUE'),
+    db.query(`SELECT id, group_id, status, created_at FROM route_assignments WHERE status = 'active'`),
+  ]);
+  return {
+    people: people.rows,
+    personGroups: personGroups.rows,
+    units: units.rows,
+    fuelAlerts: fuelAlerts.rows,
+    teamDrivers: teamDrivers.rows,
+    mileageProgress: mileageProgress.rows,
+    routeAssignments: routeAssignments.rows,
   };
 }
 
