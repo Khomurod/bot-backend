@@ -10,8 +10,9 @@
  * provider's model listing is current.
  *
  * COUNTS AND TIMESTAMPS ONLY. No driver, no chat, no key, no finding title. A
- * provider's last listing error is kept to a short prefix (a "401 …" says the
- * key is dead; nothing in it is the key). Anything that fails reads as
+ * provider's last listing error is reduced to its status and a kind from a
+ * closed vocabulary (a `credential` says the key is dead); its text never
+ * leaves, because the text is the provider's. Anything that fails reads as
  * `available: false` with the reason — this must never make the health
  * endpoint itself unhealthy, which is what Render restarts on.
  */
@@ -25,28 +26,29 @@ const defaultDeps = () => ({
   /* eslint-enable global-require */
 });
 
-const ERROR_PREFIX_CHARS = 120;
+const { FAILURE, classifyFailure } = require('../../lib/ai/classify');
 
 /**
- * A provider's error text is the provider's, and /api/health is public. The
- * text is worth showing ("401 Unauthorized" says the key is dead; "404 No Base
- * URL" says discovery has nowhere to look), but nothing shaped like a
- * credential may ride along in it — a key echoed in a body, a `key=` query
- * string, a bearer token, any long opaque token. Scrubbed BEFORE it is cut to
- * length, so a truncated key cannot slip through as a shorter one.
+ * A provider's error text is the PROVIDER's, and /api/health is public. A body
+ * can echo the key it was sent, an `authorization:` line, an `"api_key":"…"`
+ * field — in any spelling a pattern list would have to guess at. So none of
+ * the text leaves. What does is derived from it: the HTTP status it began with
+ * and a word from the router's own closed vocabulary (`lib/ai/classify.js`),
+ * plus one of ours for discovery that never reached the network. That is
+ * enough to see WHY — `credential` says the key is dead; `not_configured` says
+ * discovery has nowhere to look — and nothing in it was written by a provider.
  */
-const CREDENTIAL_SHAPES = [
-  /\b(key|api[_-]?key|token|secret|authorization)=([^&\s'"]+)/gi,
-  /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi,
-  /\b(AIza|gsk_|sk-|nvapi-|csk-|or-)[A-Za-z0-9._-]{8,}/g,
-  /\b[A-Za-z0-9_-]{32,}\b/g,
-];
+const NOT_CONFIGURED = 'not_configured';
+const REFRESH_ERROR_KINDS = Object.freeze([...Object.values(FAILURE), NOT_CONFIGURED]);
+const NOT_CONFIGURED_TEXT = /^No (Base URL|API key) to list models/i;
 
-function scrubErrorText(text) {
-  let out = String(text);
-  out = out.replace(CREDENTIAL_SHAPES[0], (m, name) => `${name}=[redacted]`);
-  for (const re of CREDENTIAL_SHAPES.slice(1)) out = out.replace(re, '[redacted]');
-  return out.slice(0, ERROR_PREFIX_CHARS);
+function describeRefreshError(text) {
+  if (!text) return null;
+  const message = String(text);
+  if (NOT_CONFIGURED_TEXT.test(message)) return { status: null, kind: NOT_CONFIGURED };
+  const lead = message.match(/^(\d{3})\b/);
+  const status = lead ? Number(lead[1]) : null;
+  return { status, kind: classifyFailure({ status, message }).kind };
 }
 
 function summariseCorrections(lastCorrections) {
@@ -94,7 +96,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
         chain: Array.isArray(p.modelChain) ? p.modelChain.length : null,
         discovered: Array.isArray(p.discoveredModels) ? p.discoveredModels.length : 0,
         refreshedAt: p.modelsRefreshedAt || null,
-        refreshError: p.modelsRefreshError ? scrubErrorText(p.modelsRefreshError) : null,
+        refreshError: describeRefreshError(p.modelsRefreshError),
       })),
     };
   } catch (err) {
@@ -102,4 +104,4 @@ async function getOperationsHealth(deps = defaultDeps()) {
   }
 }
 
-module.exports = { getOperationsHealth, scrubErrorText, ERROR_PREFIX_CHARS };
+module.exports = { getOperationsHealth, describeRefreshError, REFRESH_ERROR_KINDS };

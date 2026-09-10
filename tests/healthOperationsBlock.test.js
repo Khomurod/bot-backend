@@ -15,7 +15,7 @@ const path = require('node:path');
 const express = require('express');
 
 const HEALTH_PATH = path.resolve(__dirname, '../server/routes/healthRoutes.js');
-const { getOperationsHealth, scrubErrorText, ERROR_PREFIX_CHARS } = require('../services/operations/healthSummary');
+const { getOperationsHealth, describeRefreshError, REFRESH_ERROR_KINDS } = require('../services/operations/healthSummary');
 
 function loadApp({ dbOk = true, getOperationsHealth: summary } = {}) {
   delete require.cache[HEALTH_PATH];
@@ -114,33 +114,46 @@ test('the summary is counts and timestamps, with the capped list reduced to a nu
   assert.deepEqual(gemini, { provider: 'gemini', enabled: true, chain: 1, discovered: 2, refreshedAt: '2026-09-10T06:00:00.000Z', refreshError: null });
 });
 
-test('a provider\'s listing error is a short prefix — enough to see WHY, never the whole body', async () => {
-  const s = await getOperationsHealth(summaryDeps());
-  const groq = s.aiModels.find((p) => p.provider === 'groq');
-  assert.equal(groq.refreshError.length, ERROR_PREFIX_CHARS);
-  assert.match(groq.refreshError, /^401 Unauthorized/);
+test('a provider\'s listing error is published as a status and a kind — never its text', async () => {
+  // /api/health needs no login, and the error text is the PROVIDER's: it can
+  // carry a key echoed in a body, an `authorization: …` line, a `"api_key":"…"`
+  // field. No pattern list is trusted to find every shape, so none of the
+  // text leaves. What does: the HTTP status the provider answered with, and a
+  // word from a closed vocabulary — enough to see WHY ("credential" says the
+  // key is dead; "not_configured" says discovery has nowhere to look).
+  const secrets = ['short-secret', 'abc123', `AIza${'Q'.repeat(35)}`];
+  const bodies = [
+    `400 {"api_key":"${secrets[0]}"}`,
+    `401 Unauthorized authorization: ${secrets[1]}`,
+    `400 API key not valid: ${secrets[2]} (https://x/models?key=${secrets[2]})`,
+  ];
+  for (const body of bodies) {
+    const s = await getOperationsHealth(summaryDeps({
+      aiProviders: {
+        async listProvidersForAdmin() {
+          return [{ providerKey: 'gemini', enabled: true, modelChain: [], discoveredModels: [], modelsRefreshedAt: null, modelsRefreshError: body }];
+        },
+      },
+    }));
+    const text = JSON.stringify(s.aiModels[0]);
+    for (const secret of secrets) assert.equal(text.includes(secret), false, `${secret} must not appear in ${text}`);
+    assert.equal(typeof s.aiModels[0].refreshError.kind, 'string');
+    assert.ok(REFRESH_ERROR_KINDS.includes(s.aiModels[0].refreshError.kind), `closed vocabulary: ${s.aiModels[0].refreshError.kind}`);
+  }
 });
 
-test('a credential echoed in a provider\'s error never reaches the public endpoint', async () => {
-  // /api/health needs no login. The provider's words are kept; anything shaped
-  // like a key is not, and the scrub runs before the cut so a truncated key
-  // cannot pass as a shorter one.
-  const key = `AIza${'Q'.repeat(35)}`;
-  const s = await getOperationsHealth(summaryDeps({
-    aiProviders: {
-      async listProvidersForAdmin() {
-        return [{ providerKey: 'gemini', enabled: true, modelChain: [], discoveredModels: [],
-          modelsRefreshedAt: null, modelsRefreshError: `400 API key not valid: ${key} (https://x/models?key=${key})` }];
-      },
-    },
-  }));
-  const text = s.aiModels[0].refreshError;
-  assert.equal(text.includes(key), false);
-  assert.equal(text.includes(key.slice(0, 20)), false, 'nor a prefix of it');
-  assert.match(text, /^400 API key not valid/);
-  assert.equal(scrubErrorText('401 Unauthorized: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig'), '401 Unauthorized: [redacted]');
-  assert.equal(scrubErrorText('gsk_' + 'a'.repeat(40) + ' was rejected'), '[redacted] was rejected');
-  assert.equal(scrubErrorText('No Base URL to list models from'), 'No Base URL to list models from', 'ordinary words pass');
+test('the kind and status are derived, not copied', () => {
+  assert.deepEqual(describeRefreshError('401 Unauthorized: invalid api key'), { status: 401, kind: 'credential' });
+  assert.deepEqual(describeRefreshError('No Base URL to list models from'), { status: null, kind: 'not_configured' });
+  assert.deepEqual(describeRefreshError('No API key to list models with'), { status: null, kind: 'not_configured' });
+  assert.deepEqual(describeRefreshError('429 rate limit exceeded'), { status: 429, kind: 'quota' }, 'the classifier\'s judgement, not ours');
+  assert.deepEqual(describeRefreshError('503 Service Unavailable'), { status: 503, kind: 'transient' });
+  assert.deepEqual(describeRefreshError('models listing timed out after 15000ms'), { status: null, kind: 'transient' });
+  assert.deepEqual(describeRefreshError('404 Not Found'), { status: 404, kind: 'fatal_request' });
+  assert.equal(describeRefreshError(null), null);
+  for (const k of ['credential', 'not_configured', 'transient', 'fatal_request', 'quota', 'model', 'unknown']) {
+    assert.ok(REFRESH_ERROR_KINDS.includes(k));
+  }
 });
 
 test('the summary never carries a name, a title or a chat id', async () => {

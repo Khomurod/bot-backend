@@ -145,9 +145,10 @@ feature it belongs to.
   (applied / stale / failed / capped), open findings by severity, identity
   coverage (`groupsWithoutPerson`, `openUnits`, unstamped rows), Home Time
   (`groupsWithDuplicateOpenStays`, `openStayIndex` present/absent) and each AI
-  provider's listing state (`discovered`, `refreshedAt`, a 120-character error
-  prefix with anything credential-shaped redacted first — the endpoint is
-  public). **Counts and timestamps only** — no driver, chat, key or finding
+  provider's listing state (`discovered`, `refreshedAt`, and `refreshError` as
+  `{ status, kind }` — the kind from `lib/ai/classify.js`'s closed vocabulary
+  plus `not_configured`; the provider's own error TEXT never leaves, because a
+  body can echo a key in any spelling and the endpoint is public). **Counts and timestamps only** — no driver, chat, key or finding
   title — and it can never make the endpoint unhealthy: a summary that throws
   reads `available: false` at status 200. `tests/healthOperationsBlock.test.js`.
 - The database is the backstop, not just the code:
