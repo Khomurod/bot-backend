@@ -72,7 +72,12 @@ function summariseCorrections(lastCorrections) {
     applied: s?.applied ?? null,
     stale: s?.stale ?? null,
     failed: s?.failed ?? null,
-    capped: Array.isArray(s?.capped) ? s.capped.length : (s?.capped ?? null),
+    // Which check stopped itself and by how much. Check keys are code
+    // identifiers; the numbers are counts. Without this a capped pass reads
+    // "0 applied" with no why.
+    capped: Array.isArray(s?.capped)
+      ? s.capped.map((c) => ({ checkKey: c.checkKey, wanted: c.wanted ?? null, cap: c.cap ?? null }))
+      : (s?.capped ?? null),
     error: lastCorrections.error || null,
   };
 }

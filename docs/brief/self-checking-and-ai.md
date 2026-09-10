@@ -142,7 +142,7 @@ feature it belongs to.
 - **The result is readable from `/api/health` with no database and no admin
   session** — the `operations` block (`services/operations/healthSummary.js`,
   60-second cache): the last sweep and the last background correction pass
-  (applied / stale / failed / capped), open findings by severity, identity
+  (applied / stale / failed, and each capped check with `wanted` and `cap`), open findings by severity, identity
   coverage (`groupsWithoutPerson`, `openUnits`, unstamped rows), Home Time
   (`groupsWithDuplicateOpenStays`, `openStayIndex` present/absent) and each AI
   provider's listing state (named by catalogue key only — `provider_key` is
