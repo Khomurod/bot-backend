@@ -67,6 +67,7 @@ const CHECK_LABELS = {
   'dispatch.team_driver_on_inactive_group': "Team seat points at a chat the driver left",
   'raise.progress_without_person': 'Mileage drivers not matched to an identity',
   'route_control.assignment_on_inactive_group': 'Active route on an inactive group',
+  'home_time.clock_reset_on_group_change': 'Road clock restarted on a new chat',
   'operations.auto_apply_capped': 'A check wanted to change too much and stopped',
 };
 

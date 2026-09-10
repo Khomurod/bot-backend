@@ -124,7 +124,10 @@ export default function FindingDetailModal({
   const severity = SEVERITY_META[finding.severity] || SEVERITY_META.info;
   const tier = TIER_META[finding.tier] || TIER_META.warning;
   const confidence = confidenceLabel(finding.confidence);
-  const canApply = finding.actionable && finding.tier === "auto" && finding.status === "open";
+  // An approval-tier finding IS the decision a person takes here; only a
+  // report-only finding has nothing to apply. The apply route still refuses a
+  // non-auto action from the SYSTEM, so the tier keeps its meaning.
+  const canApply = finding.actionable && finding.tier !== "warning" && finding.status === "open";
 
   return (
     <div className="home-time-modal-backdrop" onClick={closeFinding}>

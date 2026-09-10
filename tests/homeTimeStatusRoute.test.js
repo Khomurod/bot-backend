@@ -79,6 +79,9 @@ function loadApp({ existing, captured, cycles = [], settings = { enabled: true }
         const open = cycles.filter((c) => c.return_to_road_at == null);
         return open.length ? open[open.length - 1] : null;
       },
+      async listOpenHomeStays() {
+        return cycles.filter((c) => c.return_to_road_at == null).slice().reverse();
+      },
       async closeHomeStay(id, { returnToRoadAt, homeDays }) {
         const row = cycles.find((c) => c.id === id && c.return_to_road_at == null);
         if (!row) return null;

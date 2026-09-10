@@ -36,6 +36,7 @@ const DB = path.resolve(__dirname, '../database/db.js');
  */
 function world({ state = 'home', stateSince = '2026-08-25T00:00:00.000Z', settings = {} } = {}) {
   const cycles = [];
+  const expired = [];
   let status = state
     ? { group_id: 1, state, state_since: stateSince, road_bonus_weeks_notified: 3 }
     : null;
@@ -81,6 +82,10 @@ function world({ state = 'home', stateSince = '2026-08-25T00:00:00.000Z', settin
       const open = cycles.filter((c) => c.return_to_road_at == null);
       return open.length ? open[open.length - 1] : null;
     },
+    async listOpenHomeStays() {
+      // Every open row of this driver, newest first — the person-aware read.
+      return cycles.filter((c) => c.return_to_road_at == null).slice().reverse();
+    },
     async closeHomeStay(id, { returnToRoadAt, homeDays, linkedRequestId }) {
       const row = cycles.find((c) => c.id === id && c.return_to_road_at == null);
       if (!row) return null;
@@ -96,7 +101,7 @@ function world({ state = 'home', stateSince = '2026-08-25T00:00:00.000Z', settin
       return row;
     },
     async findDecidedRequestNearDate() { return null; },
-    async expireOpenClarificationsForGroup() {},
+    async expireOpenClarificationsForGroup(groupId) { expired.push(groupId); },
   };
 
   require.cache[HT] = { exports: ht };
@@ -129,7 +134,7 @@ function world({ state = 'home', stateSince = '2026-08-25T00:00:00.000Z', settin
     '../services/homeTimeImportService',
   ]) delete require.cache[require.resolve(p)];
 
-  return { cycles, posted, ht, status: () => status };
+  return { cycles, posted, expired, ht, status: () => status };
 }
 
 const openCycles = (cycles) => cycles.filter((c) => c.return_to_road_at == null);
@@ -212,12 +217,13 @@ test('the import no longer resets the extra-week watermark', async () => {
 
 // ─── the structural blind spot the repair exists for ─────────────────────────
 
-test('a second open cycle hides the first — the reason class B evidence exists', async () => {
+test('a lingering open cycle is closed by the NEXT leg, with the observed road start — nothing stays hidden', async () => {
   const w = world({ state: 'road', stateSince: '2026-07-08T00:00:00.000Z' });
   const { applyStateTransition } = require('../services/homeTimeService');
 
-  // Simulate the damage already in production: two cycles opened without a close
-  // between them, as the old import could do.
+  // The damage as production had it: two cycles opened without a close between
+  // them, as the old import could do. `getOpenHomeStay` is LIMIT 1, so the older
+  // one used to be structurally unreachable by normal operation.
   await w.ht.insertRoadHistory({
     groupId: 1, roadStartedAt: '2026-06-01T00:00:00.000Z', homeArrivedAt: '2026-07-01T00:00:00.000Z',
   });
@@ -227,12 +233,33 @@ test('a second open cycle hides the first — the reason class B evidence exists
   assert.equal(openCycles(w.cycles).length, 2);
 
   await applyStateTransition(null, GROUP, { newState: 'home', eventAt: '2026-08-26T00:00:00.000Z' });
+  // The road→home insert closed EVERYTHING still open for this driver first,
+  // with the road start it was about to record (2026-07-08) as their return —
+  // a road→home can only follow a road state, so that moment IS the observed
+  // return (class-B evidence, seen from this side). Only the new stay is open.
+  assert.equal(openCycles(w.cycles).length, 1, 'one open stay per group — the index can hold');
+  assert.equal(w.cycles[0].return_to_road_at, '2026-07-08T00:00:00.000Z');
+  assert.equal(w.cycles[1].return_to_road_at, '2026-07-08T00:00:00.000Z');
+
+  await applyStateTransition(null, GROUP, { newState: 'road', eventAt: '2026-08-31T00:00:00.000Z' });
+  assert.equal(openCycles(w.cycles).length, 0, 'and the new stay closes on the return');
+});
+
+test('a stay begun on an EARLIER chat has its clarifications retired on that chat too', async () => {
+  const w = world({ state: 'home', stateSince: '2026-08-25T00:00:00.000Z' });
+  const { applyStateTransition } = require('../services/homeTimeService');
+  // The open stay was recorded on the driver's previous chat (group 2); the
+  // return is observed on group 1. Any clarification still waiting on group 2
+  // is as finished as one on group 1 would be.
+  w.cycles.push({
+    id: 1, group_id: 2, road_started_at: '2026-07-08T00:00:00.000Z', home_arrived_at: '2026-08-25T00:00:00.000Z',
+    bonus_usd: 0, return_to_road_at: null, home_days: null, linked_request_id: null, bonus_posted_at: null,
+  });
+
   await applyStateTransition(null, GROUP, { newState: 'road', eventAt: '2026-08-31T00:00:00.000Z' });
 
-  // Only the newest closes: `getOpenHomeStay` is LIMIT 1. The older rows are
-  // structurally unreachable by normal operation and need the Stage 3 repair.
-  assert.ok(openCycles(w.cycles).length >= 2,
-    'normal operation cannot reach an older open cycle — that is what the repair is for');
+  assert.equal(w.cycles[0].return_to_road_at, '2026-08-31T00:00:00.000Z', 'the earlier chat\'s stay is closed');
+  assert.deepEqual([...w.expired].sort(), [1, 2], 'clarifications are retired on BOTH chats');
 });
 
 // ─── with the feature off, nothing pretends otherwise ────────────────────────

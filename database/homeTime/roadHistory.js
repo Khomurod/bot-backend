@@ -55,6 +55,40 @@ async function getOpenHomeStay(groupId) {
 }
 
 /**
+ * Every still-open home stay this group's DRIVER has — on this chat or on any
+ * chat the same person held before it — newest first.
+ *
+ * The group-only lookup above is what left 25 cycles structurally unreachable
+ * and, after a truck change, left the old chat's open stay orphaned while the
+ * new chat started from nothing. With the person layer (migration 0026) the
+ * return observed on the new chat can close the stay that began on the old one.
+ * Rows with no person fall back to the group alone, so nothing changes for a
+ * driver the layer has not met.
+ */
+async function listOpenHomeStays(groupId) {
+  // A stay on this chat that names a DIFFERENT person is the previous
+  // occupant's — the chat was handed on — and the new driver's return must
+  // not close it. The chat-only branch therefore covers unstamped rows (and
+  // every row when the chat has no person at all), never another driver's.
+  const res = await query(
+    `WITH current_person AS (
+       SELECT person_id FROM driver_person_groups WHERE group_id = $1 AND ended_at IS NULL LIMIT 1
+     )
+     SELECT h.* FROM driver_road_history h
+      WHERE h.return_to_road_at IS NULL
+        AND (
+          (h.group_id = $1 AND (h.person_id IS NULL
+                                OR h.person_id = (SELECT person_id FROM current_person)
+                                OR NOT EXISTS (SELECT 1 FROM current_person)))
+          OR h.person_id = (SELECT person_id FROM current_person)
+        )
+      ORDER BY h.home_arrived_at DESC, h.id DESC`,
+    [groupId]
+  );
+  return res.rows;
+}
+
+/**
  * Close a home stay: stamp the actual return-to-road time and home duration, and
  * optionally link the decided request that authorized it. Atomic guard on the
  * still-open state so a repeated home→road cannot overwrite a closed stay.
@@ -149,11 +183,19 @@ async function unclaimRoadBonusPost(id) {
   return res.rows[0] || null;
 }
 
-/** Recent completed road trips (most recent first). */
+/**
+ * Recent completed road trips (most recent first).
+ *
+ * `current_group_id` is the chat the leg's PERSON is on now, when the layer
+ * knows them — so a driver who changed truck sees their whole history under the
+ * new chat rather than split across two.
+ */
 async function listRoadHistory({ limit = 100, bonusOnly = false } = {}) {
   const where = bonusOnly ? 'WHERE bonus_usd > 0' : '';
   const res = await query(
-    `SELECT h.*, g.group_name, dp.driver_type
+    `SELECT h.*, g.group_name, dp.driver_type,
+            (SELECT pg.group_id FROM driver_person_groups pg
+              WHERE pg.person_id = h.person_id AND pg.ended_at IS NULL LIMIT 1) AS current_group_id
      FROM driver_road_history h
      JOIN groups g ON g.id = h.group_id
      LEFT JOIN driver_profiles dp ON dp.group_id = h.group_id
@@ -198,6 +240,7 @@ async function deleteRoadHistory(id) {
 module.exports = {
   insertRoadHistory,
   getOpenHomeStay,
+  listOpenHomeStays,
   closeHomeStay,
   listCyclesForEfficiency,
   listUnpostedRoadBonuses,

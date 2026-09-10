@@ -99,7 +99,10 @@ function createHomeTimeTrackerRoutes({ authMiddleware }) {
         });
         return {
           ...row,
-          group_id: identity?.canonical_group_id || row.group_id,
+          // The driver's CURRENT chat when the person layer knows them, so a
+          // truck change does not split their history across two rows of the
+          // page; the chat the leg was recorded on stays as `source_group_id`.
+          group_id: row.current_group_id || identity?.canonical_group_id || row.group_id,
           source_group_id: row.group_id,
           driver_name: identity?.display_name || row.driver_name || null,
           unit_number: identity?.unit_number || row.unit_number || null,

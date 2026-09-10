@@ -209,6 +209,12 @@ async function applyStateTransition(
           driverType,
         }
       );
+      // Anything still open for this driver — on this chat or a previous one —
+      // is closed FIRST, with the road start we are about to record as its
+      // return: a road→home insert can only follow a road state, so that
+      // moment IS the observed return (class-B evidence, seen from this side).
+      // It is also what lets the one-open-stay-per-group index hold.
+      await closeLingeringHomeStays(group, { returnToRoadIso: current.state_since });
       const historyRow = await ht.insertRoadHistory({
         groupId: group.id,
         driverName,
@@ -297,25 +303,55 @@ async function applyStateTransition(
  * @param {string} opts.returnToRoadIso  the home→road transition time (ISO)
  * @returns {object|null} the closed road-history row, or null
  */
+async function closeOneStay(group, open, returnToRoadIso) {
+  const homeDays = wholeDaysBetween(open.home_arrived_at, returnToRoadIso);
+  let linkedRequestId = open.linked_request_id || null;
+  if (!linkedRequestId) {
+    const homeArrivedDate = DateTime.fromJSDate(new Date(open.home_arrived_at)).toISODate();
+    // The request is looked up on the chat the stay BEGAN on — that is where it
+    // was asked and decided, even when the return is observed on a new chat.
+    const decided = await ht.findDecidedRequestNearDate(open.group_id || group.id, homeArrivedDate).catch(() => null);
+    if (decided) linkedRequestId = decided.id;
+  }
+  return ht.closeHomeStay(open.id, { returnToRoadAt: returnToRoadIso, homeDays, linkedRequestId });
+}
+
+/** Every open stay of this driver, on any of their chats, closed at one observed moment. Best effort. */
+async function closeLingeringHomeStays(group, { returnToRoadIso } = {}) {
+  try {
+    const open = await ht.listOpenHomeStays(group.id);
+    let closed = 0;
+    for (const stay of open) {
+      if (!stay.home_arrived_at) continue;
+      if (await closeOneStay(group, stay, returnToRoadIso)) closed += 1;
+    }
+    return closed;
+  } catch (err) {
+    console.error('[HOME-TIME] closeLingeringHomeStays error:', err.message);
+    return 0;
+  }
+}
+
 async function closeHomeStayOnReturn(group, { returnToRoadIso } = {}) {
   try {
     if (!group || !returnToRoadIso) return null;
-    const open = await ht.getOpenHomeStay(group.id);
+    // Newest open stay of this DRIVER — the person's, not only the chat's, so a
+    // return observed on a new truck's chat closes the stay begun on the old one.
+    const [open] = await ht.listOpenHomeStays(group.id);
     if (open && open.home_arrived_at) {
-      const homeDays = wholeDaysBetween(open.home_arrived_at, returnToRoadIso);
-      let linkedRequestId = open.linked_request_id || null;
-      if (!linkedRequestId) {
-        const homeArrivedDate = DateTime.fromJSDate(new Date(open.home_arrived_at)).toISODate();
-        const decided = await ht.findDecidedRequestNearDate(group.id, homeArrivedDate).catch(() => null);
-        if (decided) linkedRequestId = decided.id;
-      }
-      await ht.closeHomeStay(open.id, { returnToRoadAt: returnToRoadIso, homeDays, linkedRequestId });
+      await closeOneStay(group, open, returnToRoadIso);
     }
     // The home window is over → retire any clarification still waiting on dates and
-    // stop its reminders (spec §11: stop when the driver returns to the road).
-    await ht.expireOpenClarificationsForGroup(group.id, {
-      reason: 'Driver returned to the road; clarification no longer needed.',
-    }).catch(() => {});
+    // stop its reminders (spec §11: stop when the driver returns to the road) —
+    // on this chat, and on the chat the stay BEGAN on when that was another one:
+    // the question was asked there, and it is as finished as one asked here.
+    const chats = new Set([group.id]);
+    if (open?.group_id != null) chats.add(open.group_id);
+    for (const chatId of chats) {
+      await ht.expireOpenClarificationsForGroup(chatId, {
+        reason: 'Driver returned to the road; clarification no longer needed.',
+      }).catch(() => {});
+    }
     return open || null;
   } catch (err) {
     console.error('[HOME-TIME] closeHomeStayOnReturn error:', err.message);
@@ -327,5 +363,6 @@ module.exports = {
   handleDriverGroupStatus,
   applyStateTransition,
   closeHomeStayOnReturn,
+  closeLingeringHomeStays,
   messageTimestampIso,
 };

@@ -38,6 +38,7 @@ const {
 } = require('./evidence');
 const { abandonExhaustedInternalAlerts } = require('./alertActions');
 const { ensurePerson, syncUnit } = require('./identityActions');
+const { carryRoadClock } = require('./homeTimeActions');
 const { classifyOpenCycles, daysBetween } = require('../checks/homeTime');
 
 /** ±days around the home arrival, matching `findDecidedRequestNearDate`. */
@@ -307,6 +308,7 @@ const ACTIONS = new Map([
   [abandonExhaustedInternalAlerts.key, abandonExhaustedInternalAlerts],
   [ensurePerson.key, ensurePerson],
   [syncUnit.key, syncUnit],
+  [carryRoadClock.key, carryRoadClock],
 ]);
 
 /**
@@ -321,6 +323,7 @@ const CHECK_TO_ACTION = new Map([
   ['home_time.exhausted_internal_alerts', abandonExhaustedInternalAlerts.key],
   ['identity.group_without_person', ensurePerson.key],
   ['identity.stale_unit_assignment', syncUnit.key],
+  ['home_time.clock_reset_on_group_change', carryRoadClock.key],
 ]);
 
 function getAction(actionKey) {
