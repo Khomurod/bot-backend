@@ -235,6 +235,7 @@ function stripFences(text) {
  * @param {Array}  [args.messages]   OpenAI-shaped, if a caller has them already
  * @param {'text'|'json'} [args.expects='text']
  * @param {Function} [args.validate] (text, parsed) => true | {message}
+ * @param {string} [args.excludeProvider]  never ask this provider on this run
  * @returns {Promise<{text, parsed, provider, model, attempts}>}
  * @throws {AiUnavailableError}
  */
@@ -243,6 +244,7 @@ async function runCapability({
   contents = null, extraParts = null, generationConfig = null, systemInstruction = null,
   expects = 'text', validate = null, timeoutMs = null,
   preferProvider = null, preferModels = null, generation = null, requireAdapter = null,
+  excludeProvider = null,
 } = {}) {
   const roster = await getRoster();
   if (!roster.available) {
@@ -252,9 +254,12 @@ async function runCapability({
 
   const { settings } = roster;
   const needsAdapter = requiredAdapterFor({ contents, extraParts, requireAdapter });
-  const usable = needsAdapter
-    ? roster.providers.filter((p) => p.adapter === needsAdapter)
-    : roster.providers;
+  // `excludeProvider`: the terms watcher may ask a model to help read GROQ's
+  // documentation, and must not ask Groq — the provider under investigation
+  // cannot be a dependency for investigating itself.
+  const usable = roster.providers
+    .filter((p) => !needsAdapter || p.adapter === needsAdapter)
+    .filter((p) => !excludeProvider || p.providerKey !== excludeProvider);
 
   const ordered = eligibleProviders(usable, {
     now: Date.now(),

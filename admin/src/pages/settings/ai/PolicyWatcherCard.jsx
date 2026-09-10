@@ -18,6 +18,13 @@ import * as api from "../../../api";
  * ships off. An operator who wants to be told but never overruled is a
  * completely reasonable operator.
  */
+/** Where a page's address came from. A person can tell at a glance what Wenze did for them. */
+const ORIGIN_LABEL = {
+  catalog: "found automatically",
+  rediscovered: "found again",
+  manual: "added by hand",
+};
+
 const SEVERITY_STYLE = {
   info: { color: "#94a3b8", mark: "ℹ️" },
   warning: { color: "#f59e0b", mark: "⚠️" },
@@ -91,6 +98,8 @@ export default function PolicyWatcherCard({ providers, flash }) {
   const [suggestion, setSuggestion] = React.useState(null);
   const [newSource, setNewSource] = React.useState({ providerKey: "", url: "", kind: "terms" });
   const [running, setRunning] = React.useState(false);
+  const [testing, setTesting] = React.useState(false);
+  const [testResult, setTestResult] = React.useState(null);
 
   const load = React.useCallback(async () => {
     try {
@@ -115,6 +124,25 @@ export default function PolicyWatcherCard({ providers, flash }) {
       // rather than making somebody work out the minus sign themselves.
       if (err?.suggestion) setSuggestion(err.suggestion);
       flash("error", err?.detail || err?.message || "Could not save.");
+    }
+  };
+
+  /**
+   * One click turns "I think the destination works" into a message on a phone.
+   * Sends to what is typed, so a candidate can be proven before it is saved.
+   */
+  const sendTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await api.testAiPolicyNotification({ chatId: chatId || undefined });
+      setTestResult(r.ok
+        ? { ok: true, text: `Test message sent to ${r.chatId}.` }
+        : { ok: false, text: `Could not send: ${r.error}` });
+    } catch (err) {
+      setTestResult({ ok: false, text: err?.detail || err?.message || "Could not send." });
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -177,6 +205,24 @@ export default function PolicyWatcherCard({ providers, flash }) {
               Use {suggestion} instead
             </button>
           )}
+          <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 4 }}>
+            A group, or a person the bot can message.
+          </div>
+          {/* onMouseDown preventDefault keeps focus on the input, so clicking
+              here does not blur it into an autosave: a destination is proven
+              BEFORE it becomes the configured one, which is the point. */}
+          <button
+            type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 6 }}
+            disabled={testing || !chatId} onClick={sendTest}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            {testing ? "Sending…" : "Send a test message"}
+          </button>
+          {testResult && (
+            <div role="status" style={{ fontSize: 12, marginTop: 4, color: testResult.ok ? "#22c55e" : "#f59e0b" }}>
+              {testResult.text}
+            </div>
+          )}
         </div>
         <div className="form-group">
           <label>Only tell me about</label>
@@ -207,15 +253,25 @@ export default function PolicyWatcherCard({ providers, flash }) {
         </div>
         {sources.length === 0 ? (
           <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 6 }}>
-            No pages yet. Add each provider's terms and privacy pages below.
+            No pages yet. For a provider Wenze knows, its official pages are added
+            automatically the next time the watcher runs — or press Check now.
           </div>
         ) : (
           <ul style={{ fontSize: 12, paddingLeft: 18, marginTop: 6 }}>
             {sources.map((s) => (
-              <li key={s.id} style={{ marginBottom: 3 }}>
+              <li key={s.id} style={{ marginBottom: 3, opacity: s.enabled ? 1 : 0.6 }}>
                 <code>{s.providerKey}</code> · {s.kind} ·{" "}
-                <a href={s.url} target="_blank" rel="noreferrer">{s.url}</a>
-                {s.lastError && <span style={{ color: "#f59e0b" }}> — {s.lastError}</span>}
+                <a href={s.url} target="_blank" rel="noreferrer">{s.url}</a>{" "}
+                <span className="badge badge-muted" style={{ fontSize: 10 }}>
+                  {ORIGIN_LABEL[s.sourceOrigin] || s.sourceOrigin}
+                </span>
+                {s.movedFrom && (
+                  <span style={{ color: "#94a3b8" }}> — moved from {s.movedFrom}</span>
+                )}
+                {s.lostReportedAt && (
+                  <span style={{ color: "#f87171" }}> — could not be found; you have been told</span>
+                )}
+                {s.lastError && !s.lostReportedAt && <span style={{ color: "#f59e0b" }}> — {s.lastError}</span>}
                 <button
                   type="button" className="btn btn-ghost btn-sm"
                   onClick={async () => {
@@ -230,10 +286,18 @@ export default function PolicyWatcherCard({ providers, flash }) {
           </ul>
         )}
 
+        <details className="collapse-panel" style={{ marginTop: 8 }}>
+          <summary style={{ fontSize: 12 }}>Add a page by hand</summary>
+          <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 4 }}>
+            Only needed for a custom provider, or a page Wenze does not know about.
+            Pages found automatically are kept current — followed when they move,
+            searched for when they disappear.
+          </div>
         <div className="home-time-form-grid" style={{ marginTop: 8 }}>
           <div className="form-group">
-            <label>Provider</label>
+            <label htmlFor="policy-source-provider">Provider</label>
             <select
+              id="policy-source-provider"
               className="form-select" value={newSource.providerKey}
               onChange={(e) => setNewSource((p) => ({ ...p, providerKey: e.target.value }))}
             >
@@ -244,8 +308,9 @@ export default function PolicyWatcherCard({ providers, flash }) {
             </select>
           </div>
           <div className="form-group">
-            <label>Page kind</label>
+            <label htmlFor="policy-source-kind">Page kind</label>
             <select
+              id="policy-source-kind"
               className="form-select" value={newSource.kind}
               onChange={(e) => setNewSource((p) => ({ ...p, kind: e.target.value }))}
             >
@@ -257,8 +322,9 @@ export default function PolicyWatcherCard({ providers, flash }) {
             </select>
           </div>
           <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-            <label>URL (https)</label>
+            <label htmlFor="policy-source-url">URL (https)</label>
             <input
+              id="policy-source-url"
               className="form-input" value={newSource.url}
               placeholder="https://provider.example/terms"
               onChange={(e) => setNewSource((p) => ({ ...p, url: e.target.value }))}
@@ -280,6 +346,7 @@ export default function PolicyWatcherCard({ providers, flash }) {
         >
           Watch this page
         </button>
+        </details>
       </div>
 
       <div style={{ marginTop: 14 }}>

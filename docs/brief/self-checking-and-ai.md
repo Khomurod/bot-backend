@@ -218,6 +218,30 @@ feature it belongs to.
   changes nothing), and a refusal carries the model name so the verification can
   retire it with a `capability_preference` event. Only a replacement actually in
   the chain is ever claimed as one.
+- **The terms watcher finds its own pages, follows them when they move, and
+  searches when they vanish.** Nobody types a terms URL for a provider Wenze
+  knows: every run starts by seeding each enabled catalogued provider with the
+  catalogue's official pages (`source_origin = 'catalog'`; a kind a person added
+  by hand is left alone). A fetch that lands on another address is a redirect —
+  on the provider's own site the source is **moved** (`moved_from` kept, so it
+  is reviewable), off the site it is only recorded. A 404/410 goes looking at
+  once and any error does after three: `services/ai/policy/sourceDiscovery.js`
+  tries the catalogue's URL, then scans the docs root and site root for links on
+  the provider's **own domain** that look like the kind of page wanted
+  (`lib/ai/policyLinks.js`, pure), verifying each by fetching it; only when more
+  than one candidate verifies is the router asked to choose — with
+  **`excludeProvider`** set to the provider under investigation, which must never
+  be a dependency for investigating itself, and an answer naming a URL not among
+  the candidates is ignored. Only after all of that fails is a person told, and
+  told **once**: an operational finding (`ai.policy_source_lost`, Needs
+  Attention), a policy finding and a Telegram line; found again clears it.
+  Migration 0025. Watched topics now include **pricing, authentication and API
+  behaviour changes**, so those diffs are material.
+- **The destination can be a person, and can be tested.** `checkChatId` gains
+  `allowPrivate` (opt-in; the home-time destinations still address a room, and
+  the sign-flip check still runs first), and **Send a test message** on the card
+  proves a candidate id before it is saved — the one-click answer to the dropped
+  minus sign that started this project.
 - **`enabled` and `cooled_until` are never written by the same code.** `enabled`
   is a person's decision; the cooldown is the system's temporary opinion. The
   router writes only the latter.

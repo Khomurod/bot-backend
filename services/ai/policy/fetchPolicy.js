@@ -43,17 +43,20 @@ async function fetchPolicyPage({
 
     const nextEtag = response.headers?.get?.('etag') ?? null;
     const nextLastModified = response.headers?.get?.('last-modified') ?? null;
+    // Where the request actually landed. Differs from `url` after a redirect,
+    // which is how the watcher learns a page moved without a person telling it.
+    const finalUrl = typeof response.url === 'string' && response.url ? response.url : url;
 
     if (response.status === 304) {
       return {
         status: 304, notModified: true, etag: nextEtag || etag,
-        lastModified: nextLastModified || lastModified, text: null, error: null,
+        lastModified: nextLastModified || lastModified, text: null, error: null, finalUrl,
       };
     }
     if (!response.ok) {
       return {
         status: response.status, notModified: false, etag, lastModified, text: null,
-        error: `HTTP ${response.status}`,
+        error: `HTTP ${response.status}`, finalUrl,
       };
     }
 
@@ -61,7 +64,7 @@ async function fetchPolicyPage({
     if (raw.length > MAX_BYTES) {
       return {
         status: response.status, notModified: false, etag: nextEtag, lastModified: nextLastModified,
-        text: null, error: `Response too large (${raw.length} bytes)`,
+        text: null, error: `Response too large (${raw.length} bytes)`, finalUrl,
       };
     }
     return {
@@ -71,11 +74,12 @@ async function fetchPolicyPage({
       lastModified: nextLastModified,
       text: normalisePolicyText(raw),
       error: null,
+      finalUrl,
     };
   } catch (err) {
     clearTimeout(timer);
     const reason = err.name === 'AbortError' ? `timed out after ${timeoutMs}ms` : err.message;
-    return { status: null, notModified: false, etag, lastModified, text: null, error: reason };
+    return { status: null, notModified: false, etag, lastModified, text: null, error: reason, finalUrl: url };
   }
 }
 

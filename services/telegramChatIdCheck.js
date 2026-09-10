@@ -30,7 +30,7 @@ function groupLabel(group, chatId) {
  * @returns {Promise<{ok:boolean, status:string, chatId:string|null,
  *   message?:string, suggestion?:string, groupName?:string|null}>}
  */
-async function checkChatId(rawValue, { getGroupByTelegramId, telegram } = {}) {
+async function checkChatId(rawValue, { getGroupByTelegramId, telegram, allowPrivate = false } = {}) {
   const chatId = normalizeChatId(rawValue);
   if (chatId == null) {
     return {
@@ -96,6 +96,16 @@ async function checkChatId(rawValue, { getGroupByTelegramId, telegram } = {}) {
     };
   }
 
+  // A private chat is a PERSON. Opt-in per caller: AI monitoring may report to
+  // one administrator, while the home-time destinations still address a room.
+  // The sign-flip check above has already run, so a dropped minus sign cannot
+  // hide behind this branch.
+  if (allowPrivate && chat?.type === 'private') {
+    const name = [chat.first_name, chat.last_name].filter(Boolean).join(' ')
+      || (chat.username ? `@${chat.username}` : null);
+    return { ok: true, status: 'reachable_private', chatId, groupName: name };
+  }
+
   if (!GROUP_CHAT_TYPES.has(chat?.type)) {
     return {
       ok: false,
@@ -123,7 +133,7 @@ async function checkChatId(rawValue, { getGroupByTelegramId, telegram } = {}) {
  * checked, and a null (the "clear this setting" value) is skipped, so clearing a
  * destination never has to satisfy a reachability check.
  */
-async function checkChatIdColumns(patch, columns, deps) {
+async function checkChatIdColumns(patch, columns, deps = {}) {
   for (const column of columns) {
     const value = patch?.[column];
     if (value === undefined || value === null || value === '') continue;
