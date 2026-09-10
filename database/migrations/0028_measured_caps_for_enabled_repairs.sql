@@ -19,9 +19,14 @@
 -- (65 closable cycles; 100 drivers with no recorded truck). The cap did its
 -- job — it stopped a batch nobody had sized — and now the batch is sized.
 --
--- WHAT THIS TOUCHES, AND ONLY THIS. A row that is already enabled AND still
--- carries the default 50 — the one value nobody chose. A cap a person typed
--- (10, 25, 200) is theirs and is not changed; a disabled check is not
+-- WHAT THIS TOUCHES, AND ONLY THIS. A row that is already enabled, carries
+-- the default 50, AND was last saved BEFORE this instruction existed
+-- (2026-09-10 19:00 UTC, the deploy of 0027). The Automation tab submits the
+-- displayed cap on every toggle, so a stored 50 CAN be a person's decision —
+-- the value alone cannot tell them apart, but the time can: a cap saved
+-- before the measurement was published cannot have been sized to it, and a
+-- 50 saved after this instruction is kept exactly as saved. A cap a person
+-- typed (10, 25, 200) is theirs and is not changed; a disabled check is not
 -- changed; a row that does not exist is not created (0027 owns that). Run
 -- once: whatever an administrator sets afterwards sticks.
 UPDATE operational_check_settings
@@ -30,7 +35,8 @@ UPDATE operational_check_settings
        updated_at = NOW()
  WHERE check_key = 'home_time.closable_open_cycle'
    AND auto_apply_enabled = TRUE
-   AND max_auto_per_run = 50;
+   AND max_auto_per_run = 50
+   AND updated_at < TIMESTAMPTZ '2026-09-10 19:00:00+00';
 
 UPDATE operational_check_settings
    SET max_auto_per_run = 100,
@@ -38,4 +44,5 @@ UPDATE operational_check_settings
        updated_at = NOW()
  WHERE check_key = 'identity.stale_unit_assignment'
    AND auto_apply_enabled = TRUE
-   AND max_auto_per_run = 50;
+   AND max_auto_per_run = 50
+   AND updated_at < TIMESTAMPTZ '2026-09-10 19:00:00+00';

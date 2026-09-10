@@ -31,11 +31,12 @@ async function rows(harness) {
 }
 
 /** Production's shape before deploy: two checks switched on by a person at the default cap. */
-async function seedProductionRows(harness) {
+async function seedProductionRows(harness, updatedAt = '2026-09-01T00:00:00Z') {
   await harness.query(
-    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, updated_by)
-     VALUES ('home_time.closable_open_cycle', TRUE, 'admin:1'),
-            ('identity.stale_unit_assignment', TRUE, 'admin:1')`
+    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, updated_by, updated_at)
+     VALUES ('home_time.closable_open_cycle', TRUE, 'admin:1', $1),
+            ('identity.stale_unit_assignment', TRUE, 'admin:1', $1)`,
+    [updatedAt]
   );
 }
 
@@ -68,6 +69,21 @@ test('a cap a person typed is theirs', { skip: skipWithoutPg() }, async (t) => {
   assert.equal(r['home_time.closable_open_cycle'].max_auto_per_run, 10);
   assert.equal(r['identity.stale_unit_assignment'].max_auto_per_run, 200);
   assert.equal(r['home_time.closable_open_cycle'].updated_by, 'admin:2');
+});
+
+test('a 50 saved AFTER the measurement was published is a person\'s choice and stays', { skip: skipWithoutPg() }, async (t) => {
+  // The Automation tab submits the displayed cap on every toggle, so a stored
+  // 50 can be a decision. The value alone cannot tell; the time can: a row
+  // saved before the measurement existed cannot have been sized to it, and
+  // one saved after this instruction (2026-09-10) is kept exactly as saved.
+  const harness = await createPgHarness(t, { extraDdl: BEFORE_0027 });
+  await seedProductionRows(harness, '2026-09-10T20:00:00Z');
+  await harness.query(MIGRATION_0027);
+  await harness.query(MIGRATION_0028);
+  const r = await rows(harness);
+  assert.equal(r['home_time.closable_open_cycle'].max_auto_per_run, 50);
+  assert.equal(r['identity.stale_unit_assignment'].max_auto_per_run, 50);
+  assert.equal(r['home_time.closable_open_cycle'].updated_by, 'admin:1');
 });
 
 test('a disabled check is not touched, and a missing row is not created', { skip: skipWithoutPg() }, async (t) => {

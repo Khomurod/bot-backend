@@ -146,8 +146,12 @@ feature it belongs to.
   pass read `wanted 65, cap 50` and `wanted 100, cap 50`: both applied nothing.
   Both counts are exactly the measurements, so **migration 0028** lifts the cap
   on those two rows to exactly 65 and exactly 100 — only where the row is
-  already enabled AND still carries the never-chosen default 50. A cap a person
-  typed, a disabled check, or a missing row is not touched.
+  already enabled, carries the default 50, AND was last saved before the
+  instruction existed (2026-09-10 19:00 UTC): the Automation tab submits the
+  displayed cap on every toggle, so a 50 can be a decision, and only the time
+  tells a cap saved before the measurement from one chosen after it. A cap a
+  person typed, a 50 saved after the cutoff, a disabled check, or a missing row
+  is not touched.
   `tests/measuredCapsMigrationPg.test.js`.
 - **The result is readable from `/api/health` with no database and no admin
   session** — the `operations` block (`services/operations/healthSummary.js`,
