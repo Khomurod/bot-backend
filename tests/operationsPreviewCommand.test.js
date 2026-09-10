@@ -61,6 +61,12 @@ test('--sweep --apply does write', async () => {
   const sweepCalls = [];
   await main(['node', 'x', '--sweep', '--apply'], deps({ sweepCalls }));
   assert.equal(sweepCalls[0].apply, true);
+  // The script applies the batch ITSELF, right after, with its own reporting.
+  // A sweep that also corrected would apply twice: the second pass would report
+  // zero applied after real writes had happened, and first-pass failures would
+  // be discarded or retried.
+  assert.equal(sweepCalls[0].correct, false,
+    'the sweep must not run the correction pass the script is about to run');
 });
 
 test('the dry run never reaches the apply path', async () => {

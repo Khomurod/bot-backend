@@ -113,7 +113,12 @@ async function main(argv = process.argv, deps = {}) {
     // `apply` and not `true`: the sweep upserts findings and resolves cleared
     // ones, which is a write to the table the Needs Attention page reads. It
     // does not get to happen under a flag documented as a preview.
-    const result = await runGuardedSweep({ apply });
+    //
+    // `correct: false` because THIS script applies the batch itself, right
+    // below, with its own reporting. A sweep that also corrected would apply
+    // twice: the second pass would report zero applied after real writes had
+    // happened, and first-pass failures would be discarded or retried.
+    const result = await runGuardedSweep({ apply, correct: false });
     if (result?.skipped) {
       log.log(`  skipped — ${result.reason}`);
     } else {

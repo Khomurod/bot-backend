@@ -152,10 +152,16 @@ function createFindingsRouter({ authMiddleware }) {
    * findings the newer sweep just re-filed. A click landing mid-timer would have
    * done exactly that. 409 rather than an error — nothing went wrong, the work
    * is already happening.
+   *
+   * `correct: false`, explicitly. The timer's sweep applies the permitted
+   * corrections after filing; this one must not, because it sits on the READ
+   * gate — an administrator who deliberately lacks
+   * `operations.corrections.apply` would otherwise be able to trigger
+   * corrections by pressing "Run checks now", audited as `system`.
    */
   router.post('/sweep', authMiddleware, async (req, res) => {
     try {
-      const result = await runGuardedSweep();
+      const result = await runGuardedSweep({ correct: false });
       if (result?.skipped) {
         return res.status(409).json({ error: result.reason, running: true });
       }

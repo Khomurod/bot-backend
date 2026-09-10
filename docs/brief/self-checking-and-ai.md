@@ -89,6 +89,15 @@ feature it belongs to.
   redactor along — and mark the finding `applied`. **Revert is the same path in
   reverse**, is itself audited, stamps the original row rather than deleting it,
   and re-opens the finding.
+- **The timer applies what the admin permitted.** `runGuardedSweep` runs
+  `runAutoCorrections({ apply: true })` right after a real sweep files its
+  findings — inside the same guard, because corrections change the rows the next
+  sweep reads. Until this was wired, the function was reachable only from the
+  admin's dry-run preview and `scripts/operations-preview.js`, so a check an
+  operator had switched on still corrected nothing until someone ran a command by
+  hand. A dry-run sweep never corrects; a correction failure is recorded in
+  `getConsistencyStatus().lastCorrections` and returned, never thrown, so the
+  findings summary survives it. The Findings card shows "Auto-applied N of M".
 - Three guardrails on auto-apply (`corrections/autoApply.js`): **per-check
   permission, default deny** (`operational_check_settings`, seeded with no rows,
   because "may close home-time cycles" and "may change a driver's status" are
