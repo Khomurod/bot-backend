@@ -44,8 +44,18 @@ const ensurePerson = {
     if (!result.personId) throw new StaleCorrectionError(`Group ${groupId} could not be placed (${result.action}).`);
 
     return {
-      oldValues: { personId: null },
-      newValues: { personId: result.personId, how: result.action, ambiguous: result.ambiguous === true },
+      // The before-image is everything this write moved: the associations it
+      // CLOSED (a returning driver's old chat) and the exact rows it stamped.
+      oldValues: {
+        personId: null,
+        closedAssociations: (result.closedAssociations || []).map((a) => ({
+          groupId: a.groupId, personId: a.personId, associationSource: a.associationSource, confidence: a.confidence,
+        })),
+      },
+      newValues: {
+        personId: result.personId, how: result.action, ambiguous: result.ambiguous === true,
+        stamped: result.stamped || {},
+      },
       affectedRecords: [
         { table: 'driver_person_groups', groupId, personId: result.personId },
         ...(result.action === 'create' ? [{ table: 'driver_people', id: result.personId }] : []),
@@ -54,10 +64,11 @@ const ensurePerson = {
   },
 
   /**
-   * Close the association this opened and un-stamp the rows it stamped — only
-   * while the group still belongs to the person it was given. The person row
-   * itself stays (nothing here deletes); a created person with no groups is
-   * harmless and visible.
+   * Put the identity layer back as it was: close the association this opened,
+   * reopen the ones it closed, and lift ONLY the stamps it wrote — a row that
+   * already named the person, or was stamped by a later insert, is not this
+   * write's to undo. The person row itself stays (nothing here deletes); a
+   * created person with no groups is harmless and visible.
    */
   async revert(correction, client) {
     const groupId = Number(correction.subject_id);
@@ -67,7 +78,16 @@ const ensurePerson = {
       throw new StaleCorrectionError(`Group ${groupId} no longer belongs to person ${personId} — leaving it alone.`);
     }
     await people.closeGroupAssociation(groupId, {}, client);
-    await lookups.restampPersonIdForGroup(groupId, personId, null, client);
+    for (const closed of correction.old_values?.closedAssociations || []) {
+      // Reopened only if nothing else has claimed that chat since.
+      const held = await people.getOpenAssociationForGroup(closed.groupId, client);
+      if (held) continue;
+      await people.openGroupAssociation({
+        personId: closed.personId, groupId: closed.groupId,
+        associationSource: closed.associationSource || 'manual', confidence: closed.confidence ?? null,
+      }, client);
+    }
+    await lookups.unstampRows(correction.new_values?.stamped, personId, client);
   },
 };
 
@@ -93,8 +113,13 @@ const syncUnit = {
     if (!association || association.personId !== Number(personId)) {
       throw new StaleCorrectionError(`Group ${groupId} no longer belongs to person ${personId}.`);
     }
+    // The chat's Samsara link travels onto the truck row, as it does on the
+    // normal profile-save path — without it the vehicle-link check has only one
+    // side to compare and goes quiet for exactly the driver just repaired.
+    const groupRow = await client.query('SELECT samsara_vehicle_id FROM groups WHERE id = $1 FOR UPDATE', [groupId]);
+    const samsaraVehicleId = groupRow.rows[0]?.samsara_vehicle_id || null;
     const openRows = await client.query(
-      `SELECT id, person_id, unit_number FROM driver_units
+      `SELECT id, person_id, unit_number, samsara_vehicle_id FROM driver_units
         WHERE ended_at IS NULL AND (person_id = $1 OR unit_number = $2)
         ORDER BY id FOR UPDATE`,
       [personId, unit]
@@ -109,11 +134,17 @@ const syncUnit = {
     }
 
     if (current) await people.closeUnitAssignment({ personId }, client);
-    const opened = await people.openUnitAssignment({ personId, unitNumber: unit, source: 'profile' }, client);
+    const opened = await people.openUnitAssignment({
+      personId, unitNumber: unit, samsaraVehicleId, source: 'profile',
+    }, client);
 
     return {
-      oldValues: { unitNumber: current ? current.unit_number : null, unitRowId: current ? current.id : null },
-      newValues: { unitNumber: unit, unitRowId: opened.id },
+      oldValues: {
+        unitNumber: current ? current.unit_number : null,
+        unitRowId: current ? current.id : null,
+        samsaraVehicleId: current ? current.samsara_vehicle_id : null,
+      },
+      newValues: { unitNumber: unit, unitRowId: opened.id, samsaraVehicleId, personId },
       affectedRecords: [{ table: 'driver_units', id: opened.id, personId }],
     };
   },
@@ -132,7 +163,8 @@ const syncUnit = {
     const previous = correction.old_values?.unitNumber;
     if (previous) {
       await people.openUnitAssignment({
-        personId: personId || row.person_id, unitNumber: previous, source: 'manual',
+        personId: personId || row.person_id, unitNumber: previous,
+        samsaraVehicleId: correction.old_values?.samsaraVehicleId || null, source: 'manual',
       }, client);
     }
   },

@@ -100,6 +100,8 @@ async function ensurePersonForGroup(group, { profile = null, force = false, clie
   ]);
   const decision = decidePersonForGroup({ open: null, telegramAnchorPersonId, returningCandidates });
 
+  const closedAssociations = [];
+  let stamped = null;
   const personId = await withTransaction(async (client) => {
     let id = decision.personId;
     if (decision.action === 'create') {
@@ -112,7 +114,9 @@ async function ensurePersonForGroup(group, { profile = null, force = false, clie
       id = created.id;
     }
     for (const oldGroupId of decision.closeGroupIds || []) {
-      await people.closeGroupAssociation(oldGroupId, {}, client);
+      const closed = await people.closeGroupAssociation(oldGroupId, {}, client);
+      // Remembered so a correction that made this link can undo it exactly.
+      if (closed) closedAssociations.push(closed);
     }
     await people.openGroupAssociation({
       personId: id,
@@ -120,14 +124,16 @@ async function ensurePersonForGroup(group, { profile = null, force = false, clie
       associationSource: decision.action === 'create' ? 'bot' : decision.source,
       confidence: decision.action === 'create' ? 80 : decision.confidence,
     }, client);
-    await lookups.stampPersonIdForGroup(group.id, id, client);
+    stamped = await lookups.stampPersonIdForGroup(group.id, id, client);
     return id;
   }, outer);
 
   if (decision.action === 'link') {
     console.log(`[IDENTITY] Group ${group.id} linked to existing person ${personId} via ${decision.source}`);
   }
-  return { personId, action: decision.action, ambiguous: decision.ambiguous === true };
+  return {
+    personId, action: decision.action, ambiguous: decision.ambiguous === true, closedAssociations, stamped,
+  };
 }
 
 /**

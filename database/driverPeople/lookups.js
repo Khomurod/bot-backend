@@ -66,21 +66,52 @@ async function findReturningCandidates(normalizedKey, { excludeGroupId = null } 
   }));
 }
 
+/** The column that identifies a row for a later, exact revert. */
+function rowKeyOf(table) {
+  return table === 'driver_home_status' ? 'group_id' : 'id';
+}
+
 /**
  * Stamp every unstamped row this group has recorded onto `personId`.
- * @returns {Promise<object>} rows touched per table
+ *
+ * Returns the EXACT rows it changed, per table, because a correction that
+ * stamps must be able to lift precisely those and nothing else — a row that
+ * already named the person, or one stamped later by an insert, is not this
+ * write's to undo.
+ *
+ * @returns {Promise<Record<string, {count:number, ids:Array}>>}
  */
 async function stampPersonIdForGroup(groupId, personId, client = null) {
   const run = client ? client.query.bind(client) : query;
   const touched = {};
   for (const table of GROUP_KEYED_TABLES) {
+    const key = rowKeyOf(table);
     const res = await run(
-      `UPDATE ${table} SET person_id = $2 WHERE group_id = $1 AND person_id IS NULL`,
+      `UPDATE ${table} SET person_id = $2 WHERE group_id = $1 AND person_id IS NULL RETURNING ${key}`,
       [groupId, personId]
     );
-    touched[table] = res.rowCount || 0;
+    touched[table] = { count: res.rowCount || 0, ids: res.rows.map((r) => r[key]) };
   }
   return touched;
+}
+
+/**
+ * Lift the stamps a `stampPersonIdForGroup` call wrote — those rows only, and
+ * only while they still carry that person.
+ */
+async function unstampRows(stamped, personId, client = null) {
+  const run = client ? client.query.bind(client) : query;
+  const lifted = {};
+  for (const table of GROUP_KEYED_TABLES) {
+    const ids = (stamped?.[table]?.ids || []).map(Number).filter(Number.isInteger);
+    if (!ids.length) { lifted[table] = 0; continue; }
+    const res = await run(
+      `UPDATE ${table} SET person_id = NULL WHERE ${rowKeyOf(table)} = ANY($1::int[]) AND person_id = $2`,
+      [ids, personId]
+    );
+    lifted[table] = res.rowCount || 0;
+  }
+  return lifted;
 }
 
 /**
@@ -218,6 +249,7 @@ module.exports = {
   findPersonByTelegramUserId,
   findReturningCandidates,
   stampPersonIdForGroup,
+  unstampRows,
   restampPersonIdForGroup,
   stampAllFromAssociations,
   getPersonIdentity,
