@@ -78,7 +78,8 @@ function describeModelChange(label, { retired = [], added = [], chain = [] }) {
 }
 
 function sourceUrlFor(provider) {
-  const entry = getCatalogEntry(provider.catalogKey);
+  // A legacy row has no catalog_key; its own key is the catalogue's.
+  const entry = getCatalogEntry(provider.catalogKey || provider.providerKey);
   return entry?.policySources?.model_policy
     || (provider.baseUrl ? `${String(provider.baseUrl).replace(/\/+$/, '')}/models` : entry?.docsUrl)
     || 'https://wenze.invalid/ai/models';

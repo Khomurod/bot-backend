@@ -51,7 +51,7 @@ function renderMetaCompliancePage(title, bodyHtml) {
 </html>`;
 }
 
-function createHealthRoutes({ db, config, countExhaustedInternalAlerts = null }) {
+function createHealthRoutes({ db, config, countExhaustedInternalAlerts = null, getOperationsHealth = null }) {
   const router = express.Router();
 
   // ─── Health Check (public, for Render + external cron / uptime pings) ───
@@ -127,6 +127,28 @@ function createHealthRoutes({ db, config, countExhaustedInternalAlerts = null })
     return queues;
   }
 
+  // What the system is doing about its own records — counts only (see
+  // services/operations/healthSummary.js). Injected for the same reason the
+  // queue counter is, cached briefly, and never part of `healthy`.
+  let operationsHealthCache = { checkedAt: 0, operations: null };
+  const OPERATIONS_HEALTH_TTL_MS = 60 * 1000;
+
+  async function getOperationsBlock() {
+    if (typeof getOperationsHealth !== 'function') return undefined;
+    const now = Date.now();
+    if (operationsHealthCache.operations && now - operationsHealthCache.checkedAt < OPERATIONS_HEALTH_TTL_MS) {
+      return operationsHealthCache.operations;
+    }
+    let operations;
+    try {
+      operations = await getOperationsHealth();
+    } catch (err) {
+      operations = { available: false, error: err.message };
+    }
+    operationsHealthCache = { checkedAt: now, operations };
+    return operations;
+  }
+
   function deployedCommit() {
     const sha = String(process.env.RENDER_GIT_COMMIT || '').trim() || null;
     return { sha, short: sha ? sha.slice(0, 7) : null };
@@ -141,6 +163,7 @@ function createHealthRoutes({ db, config, countExhaustedInternalAlerts = null })
     }
     const meta = await getMetaCredentialHealth();
     const queues = dbOk ? await getQueueHealth() : { homeTimeInternalAlerts: { available: false } };
+    const operations = dbOk ? await getOperationsBlock() : undefined;
     return {
       healthy: dbOk,
       status: dbOk ? 'ok' : 'degraded',
@@ -148,6 +171,7 @@ function createHealthRoutes({ db, config, countExhaustedInternalAlerts = null })
       db: dbOk,
       meta,
       queues,
+      ...(operations !== undefined ? { operations } : {}),
       // Which commit is actually running. Render sets RENDER_GIT_COMMIT on every
       // deploy; without it the only evidence a merge was live was an uptime that
       // happened to line up with the merge time. Null when unset — a local run

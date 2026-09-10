@@ -145,14 +145,19 @@ test("sync_unit brings the person's truck to the profile's; refuses when somebod
   assert.deepEqual(units.rows.map((r) => r.unit_number), ['320'], 'the previous truck is reopened as a new row');
 });
 
-test('the background loop places a group by itself once the check is enabled, and does nothing before', { skip: skipWithoutPg() }, async (t) => {
+test('the background loop places a group by itself once the check is enabled, and does nothing while it is off', { skip: skipWithoutPg() }, async (t) => {
   const harness = await harnessWith(t);
   const { sweep, autoApply } = bind(harness);
   const group = await seedGroup(harness, { telegramId: -1, name: 'WENZE UNIT # 12 QUIET DRIVER', first: 'QUIET', last: 'DRIVER', unit: '12' });
   await sweep();
 
+  // Migration 0027 switches this check ON; an administrator switching it off
+  // in Automation must be honoured on the very next pass.
+  await harness.query(
+    "UPDATE operational_check_settings SET auto_apply_enabled = FALSE WHERE check_key = 'identity.group_without_person'"
+  );
   const off = await autoApply({ apply: true });
-  assert.equal((await harness.query('SELECT COUNT(*)::int AS n FROM driver_person_groups')).rows[0].n, 0, 'every check ships disabled');
+  assert.equal((await harness.query('SELECT COUNT(*)::int AS n FROM driver_person_groups')).rows[0].n, 0, 'switched off means off');
   assert.ok(off.summary);
 
   await harness.query(

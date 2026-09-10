@@ -118,15 +118,38 @@ feature it belongs to.
   `getConsistencyStatus().lastCorrections` and returned, never thrown, so the
   findings summary survives it. The Findings card shows "Auto-applied N of M".
 - Three guardrails on auto-apply (`corrections/autoApply.js`): **per-check
-  permission, default deny** (`operational_check_settings`, seeded with no rows,
-  because "may close home-time cycles" and "may change a driver's status" are
-  different decisions); **dry run** unless `apply: true`; and a **per-check cap**
+  permission, default deny** (`operational_check_settings`, seeded with no rows
+  by the schema, because "may close home-time cycles" and "may change a driver's
+  status" are different decisions); **dry run** unless `apply: true`; and a **per-check cap**
   — a check wanting more than its cap changes *nothing* and files a `serious`
   finding about itself, since wanting to change hundreds of rows usually means
   the check is broken, not the fleet. **The cap is decided by a `COUNT`, never by
   the size of a fetched page**: a `LIMIT` can only ever say "at least this many",
   so at the top of the range (cap 500, 501 eligible) measuring a truncated page
   read as compliant and would have applied 500 corrections instead of refusing.
+- **Three checks are switched on by migration 0027, at the owner's instruction**
+  (2026-09-10): `identity.group_without_person` and
+  `identity.stale_unit_assignment` (cap 150 each — the ~100 driver groups with
+  no permanent identity and no recorded truck), and
+  `home_time.closable_open_cycle` (cap **exactly 65**, the number measured
+  against production: 38 class A + 27 class B). This session had no path to
+  production but the application itself, so the seed row *is* the person's
+  switch, written once with the reason in `updated_by`. It is still theirs:
+  the seed is `ON CONFLICT DO NOTHING`, so switching a check off in Needs
+  Attention → Automation sticks across every boot, and a fleet that no longer
+  matches the measurement stops the batch (nothing applied, a serious finding)
+  rather than widening it. `tests/productionRepairSeedPg.test.js`.
+- **The result is readable from `/api/health` with no database and no admin
+  session** — the `operations` block (`services/operations/healthSummary.js`,
+  60-second cache): the last sweep and the last background correction pass
+  (applied / stale / failed / capped), open findings by severity, identity
+  coverage (`groupsWithoutPerson`, `openUnits`, unstamped rows), Home Time
+  (`groupsWithDuplicateOpenStays`, `openStayIndex` present/absent) and each AI
+  provider's listing state (`discovered`, `refreshedAt`, a 120-character error
+  prefix with anything credential-shaped redacted first — the endpoint is
+  public). **Counts and timestamps only** — no driver, chat, key or finding
+  title — and it can never make the endpoint unhealthy: a summary that throws
+  reads `available: false` at status 200. `tests/healthOperationsBlock.test.js`.
 - The database is the backstop, not just the code:
   `operational_corrections_system_is_auto_only` refuses a system-applied
   correction at any tier but `auto`, and a reversal without an attributed actor
@@ -212,7 +235,14 @@ feature it belongs to.
   recorded; the operator's order survives for what still exists; Wenze's picks
   fill the chain back up. **An empty or failed listing changes nothing** — one bad
   fetch must never strip a working chain — and the failure is shown on the card
-  as "last check failed: …". Every change is an `ai_model_events` row
+  as "last check failed: …". **A legacy row is listed at the catalogue's URL**:
+  Groq and Gemini were configured from environment keys before the catalogue
+  existed, and Gemini's `base_url` was NULL because the call adapter carried its
+  own default — so every daily pass asked `listModels` with no URL and failed
+  the same way. `discoveryTargetFor` falls back to the catalogue entry for the
+  row's own key (never for `custom`), and migration 0027 fills `catalog_key` and
+  `base_url` on such rows so the admin shows them as what they are.
+  Every change is an `ai_model_events` row
   (`added` / `retired` / `replaced` / `restored` / `refused` / `selected`, with
   its initiator), rendered on the tab as "Model changes".
 - **A retired model is noticed by Wenze, not by the next failing call.**

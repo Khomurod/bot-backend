@@ -237,11 +237,16 @@ test('the system cannot apply a non-auto action', { skip: skipWithoutPg() }, asy
 
 // ─── guardrails ──────────────────────────────────────────────────────────────
 
-test('nothing auto-applies until a human enables that specific check', { skip: skipWithoutPg() }, async (t) => {
+test('nothing auto-applies while that specific check is switched off', { skip: skipWithoutPg() }, async (t) => {
   const harness = await harnessWith(t);
   const { runAutoCorrections, store } = loadModules(harness);
   const groupId = await seedGroup(harness);
   const cycleId = await seedOpenCycle(harness, groupId);
+  // Migration 0027 seeds this check ON; a person switching it off in
+  // Automation is the state under test.
+  await harness.query(
+    "UPDATE operational_check_settings SET auto_apply_enabled = FALSE WHERE check_key = 'home_time.closable_open_cycle'"
+  );
   await store.upsertFinding({
     checkKey: 'home_time.closable_open_cycle', subjectType: 'road_history', subjectId: cycleId,
     title: 'closable', tier: 'auto',
@@ -262,7 +267,7 @@ test('a dry run returns the exact plan and writes nothing', { skip: skipWithoutP
   const groupId = await seedGroup(harness);
   const cycleId = await seedOpenCycle(harness, groupId);
   await harness.query(
-    "INSERT INTO operational_check_settings (check_key, auto_apply_enabled) VALUES ('home_time.closable_open_cycle', TRUE)"
+    "INSERT INTO operational_check_settings (check_key, auto_apply_enabled) VALUES ('home_time.closable_open_cycle', TRUE) ON CONFLICT (check_key) DO UPDATE SET auto_apply_enabled = TRUE"
   );
   await store.upsertFinding({
     checkKey: 'home_time.closable_open_cycle', subjectType: 'road_history', subjectId: cycleId,
@@ -286,7 +291,7 @@ test('an enabled check applies, and only its own findings', { skip: skipWithoutP
   const groupId = await seedGroup(harness);
   const cycleId = await seedOpenCycle(harness, groupId);
   await harness.query(
-    "INSERT INTO operational_check_settings (check_key, auto_apply_enabled) VALUES ('home_time.closable_open_cycle', TRUE)"
+    "INSERT INTO operational_check_settings (check_key, auto_apply_enabled) VALUES ('home_time.closable_open_cycle', TRUE) ON CONFLICT (check_key) DO UPDATE SET auto_apply_enabled = TRUE"
   );
   await store.upsertFinding({
     checkKey: 'home_time.closable_open_cycle', subjectType: 'road_history', subjectId: cycleId,
@@ -312,7 +317,7 @@ test('a check over its cap changes NOTHING and reports itself', { skip: skipWith
   const harness = await harnessWith(t);
   const { runAutoCorrections, store } = loadModules(harness);
   await harness.query(
-    "INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run) VALUES ('home_time.closable_open_cycle', TRUE, 2)"
+    "INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run) VALUES ('home_time.closable_open_cycle', TRUE, 2) ON CONFLICT (check_key) DO UPDATE SET auto_apply_enabled = TRUE, max_auto_per_run = 2"
   );
   const groupId = await seedGroup(harness);
   for (let i = 0; i < 3; i += 1) {
