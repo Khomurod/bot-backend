@@ -139,6 +139,20 @@ feature it belongs to.
   Attention → Automation sticks across every boot, and a fleet that no longer
   matches the measurement stops the batch (nothing applied, a serious finding)
   rather than widening it. `tests/productionRepairSeedPg.test.js`.
+  **What production then showed** (first pass after deploy, on `/api/health`):
+  two of the three rows already existed — a person had switched
+  `home_time.closable_open_cycle` and `identity.stale_unit_assignment` on
+  earlier at the schema default of 50, which 0027 rightly left alone — and the
+  pass read `wanted 65, cap 50` and `wanted 100, cap 50`: both applied nothing.
+  Both counts are exactly the measurements, so **migration 0028** lifts the cap
+  on those two rows to exactly 65 and exactly 100 — only where the row is
+  already enabled, carries the default 50, AND was last saved before the
+  instruction existed (2026-09-10 19:00 UTC): the Automation tab submits the
+  displayed cap on every toggle, so a 50 can be a decision, and only the time
+  tells a cap saved before the measurement from one chosen after it. A cap a
+  person typed, a 50 saved after the cutoff, a disabled check, or a missing row
+  is not touched.
+  `tests/measuredCapsMigrationPg.test.js`.
 - **The result is readable from `/api/health` with no database and no admin
   session** — the `operations` block (`services/operations/healthSummary.js`,
   60-second cache): the last sweep and the last background correction pass
