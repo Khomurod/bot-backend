@@ -425,6 +425,36 @@ test('a listener that throws cannot fail the call', async () => {
   assert.equal(result.model, 'new-model');
 });
 
+// ─── investigating a provider without depending on it ────────────────────────
+
+test('excludeProvider keeps the named provider out of the run entirely', async () => {
+  // The terms watcher may ask a model to help read GROQ's documentation. It
+  // must not ask Groq — the provider being investigated cannot be a dependency
+  // for investigating itself, and if Groq is the one that is broken the
+  // question would never be answered.
+  const { router, calls } = loadRouter({
+    providers: [
+      provider({ providerKey: 'groq', priority: 1, modelChain: ['g'] }),
+      provider({ providerKey: 'cerebras', priority: 2, modelChain: ['c'] }),
+    ],
+    respond: ({ model }) => ({ text: `from ${model}`, model, payload: {}, usage: null }),
+  });
+  const result = await router.runCapability({ userText: 'hi', excludeProvider: 'groq' });
+  assert.equal(result.provider, 'cerebras');
+  assert.deepEqual(calls.map((c) => c.model), ['c'], 'Groq was never asked');
+});
+
+test('excluding the only provider is a normal unavailability, not a crash', async () => {
+  const { router } = loadRouter({
+    providers: [provider({ providerKey: 'groq' })],
+    respond: () => ({ text: 'x', model: 'm', payload: {}, usage: null }),
+  });
+  await assert.rejects(
+    () => router.runCapability({ userText: 'hi', excludeProvider: 'groq' }),
+    (err) => err.name === 'AiUnavailableError' || /No AI provider/.test(err.message),
+  );
+});
+
 // ─── a caller's preferred model that the provider no longer lists ─────────────
 
 test('a preferred model absent from the provider\'s own listing is not asked for', async () => {

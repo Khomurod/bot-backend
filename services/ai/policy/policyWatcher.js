@@ -26,9 +26,14 @@ const aiProviders = require('../../../database/aiProviders');
 const aiSettings = require('../../../database/aiSettings');
 const { comparePolicyText } = require('../../../lib/ai/policyDiff');
 const { evaluateSuspension } = require('../../../lib/ai/policySuspension');
+const { sameFetchTarget } = require('../../../lib/ai/policyLinks');
 const { fetchPolicyPage } = require('./fetchPolicy');
 const { readChange } = require('./readChange');
 const { buildAlertBody } = require('./alertMessage');
+const discovery = require('./sourceDiscovery');
+
+/** A 404/410 goes looking at once; anything else is "busy" until it repeats. */
+const GONE_STATUS = new Set([404, 410]);
 
 function sha256(text) {
   // Required lazily so this module still loads in environments without crypto
@@ -39,17 +44,32 @@ function sha256(text) {
 /**
  * Check one source. Returns what happened, for the run summary.
  *
- * @returns {'not_modified'|'unchanged'|'baseline'|'immaterial'|'finding'|'error'}
+ * @returns {'not_modified'|'unchanged'|'baseline'|'immaterial'|'finding'|'error'|'moved'|'lost'}
  */
 async function checkSource(source, {
   settings, freeOnlyMode, fetchImpl, readImpl, now = new Date(),
 }) {
-  const fetched = await fetchPolicyPage({
+  let fetched = await fetchPolicyPage({
     url: source.url,
     etag: source.etag,
     lastModified: source.lastModified,
     fetchImpl,
   });
+
+  // Did it answer from somewhere else? The fragment is never sent, so
+  // `/terms#privacy` answering as `/terms` is the same page. A same-site move
+  // is followed (discovery re-points the source); an OFF-SITE one is refused —
+  // and its body is a login page or a hosting notice, not the terms, so it is
+  // treated as a failed fetch rather than read, stored or diffed.
+  if (!fetched.error && fetched.finalUrl && !sameFetchTarget(fetched.finalUrl, source.url)) {
+    const redirect = await discovery.handleRedirect(source, fetched.finalUrl);
+    if (!redirect?.moved) {
+      fetched = {
+        ...fetched, text: null, notModified: false,
+        error: `redirected off-site to ${redirect?.redirectedTo || fetched.finalUrl}`,
+      };
+    }
+  }
 
   if (fetched.error) {
     // Not a finding. A page that is briefly unreachable says nothing about the
@@ -59,8 +79,22 @@ async function checkSource(source, {
       httpStatus: fetched.status, error: fetched.error,
       etag: fetched.etag, lastModified: fetched.lastModified,
     });
+    const failures = (source.consecutiveFailures || 0) + 1;
+    // A page that is GONE is looked for at once; one that is merely failing is
+    // given the threshold to recover before Wenze goes searching.
+    if (GONE_STATUS.has(fetched.status) || failures >= discovery.LOST_AFTER_FAILURES) {
+      const found = await discovery.rediscoverSource(source);
+      if (found.found) return 'moved';
+      if (failures >= discovery.LOST_AFTER_FAILURES) {
+        await discovery.reportLostSource(source, { error: fetched.error });
+        return 'lost';
+      }
+    }
     return 'error';
   }
+
+  // The page answered. If it had been given up on, that is news too.
+  if (source.lostReportedAt) await discovery.clearLostSource(source);
 
   if (fetched.notModified) {
     await policyStore.saveSnapshot(source.id, {
@@ -164,18 +198,28 @@ async function runPolicyCheck({ fetchImpl, readImpl, db = defaultDb } = {}) {
     return { skipped: true, reason: 'The policy watcher is switched off.' };
   }
 
+  // A catalogued provider is watched from the moment it is enabled, with no
+  // URL typed by anyone. Best effort: a seeding failure must not stop the check.
+  let seeded = 0;
+  try {
+    seeded = (await discovery.ensureCatalogSources()).seeded || 0;
+  } catch (err) {
+    console.warn('[POLICY] seeding catalogue sources failed:', err.message);
+  }
+
   const [sources, ai] = await Promise.all([
     policyStore.listSourcesToCheck(),
     aiSettings.getAiSettings(),
   ]);
 
   const summary = {
-    sources: sources.length,
+    sources: sources.length, seeded,
     notModified: 0, unchanged: 0, baseline: 0, immaterial: 0, findings: 0, errors: 0,
+    moved: 0, lost: 0,
   };
   const bucket = {
     not_modified: 'notModified', unchanged: 'unchanged', baseline: 'baseline',
-    immaterial: 'immaterial', finding: 'findings', error: 'errors',
+    immaterial: 'immaterial', finding: 'findings', error: 'errors', moved: 'moved', lost: 'lost',
   };
 
   for (const source of sources) {
@@ -192,10 +236,22 @@ async function runPolicyCheck({ fetchImpl, readImpl, db = defaultDb } = {}) {
     }
   }
 
+  // Keep Needs Attention honest: a page still lost stays listed, one found
+  // again is resolved — the consistency sweep's own "not re-filed = cleared".
+  // Against the list as the run LEFT it, not as it found it: reportLostSource
+  // has just stamped lost_reported_at, and reconciling from the stale snapshot
+  // would resolve the very finding it filed.
+  try {
+    const current = await policyStore.listSourcesToCheck().catch(() => sources);
+    await discovery.reconcileLostFindings(current);
+  } catch (err) {
+    console.warn('[POLICY] reconciling lost-source findings failed:', err.message);
+  }
+
   await policyStore.recordRun(summary);
-  if (summary.findings || summary.errors) {
-    console.log(`[POLICY] ${summary.findings} finding(s), ${summary.errors} error(s) `
-      + `across ${summary.sources} source(s).`);
+  if (summary.findings || summary.errors || summary.moved || summary.lost) {
+    console.log(`[POLICY] ${summary.findings} finding(s), ${summary.errors} error(s), `
+      + `${summary.moved} moved, ${summary.lost} lost across ${summary.sources} source(s).`);
   }
   return summary;
 }

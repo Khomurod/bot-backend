@@ -154,6 +154,18 @@ export async function acknowledgeAiPolicyFinding(id) {
   return data.finding;
 }
 
+/**
+ * Send a test message to the configured destination, or to `chatId` so a
+ * candidate can be proven before it is saved. { ok, chatId } or { ok: false, error }.
+ */
+export async function testAiPolicyNotification({ chatId } = {}) {
+  const res = await fetch(`${API_BASE}/settings/ai/policy/test-notification`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(chatId ? { chatId } : {}),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function runAiPolicyCheck() {
   const res = await fetch(`${API_BASE}/settings/ai/policy/run`, {
     method: 'POST', headers: getHeaders(),

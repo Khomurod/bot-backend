@@ -117,6 +117,10 @@ function mapSource(row) {
     url: row.url,
     kind: row.kind,
     sourceOrigin: row.source_origin ?? 'manual',
+    redirectedTo: row.redirected_to ?? null,
+    movedFrom: row.moved_from ?? null,
+    rediscoveredAt: row.rediscovered_at ?? null,
+    lostReportedAt: row.lost_reported_at ?? null,
     enabled: row.enabled,
     etag: row.etag ?? null,
     lastModified: row.last_modified ?? null,
@@ -183,6 +187,60 @@ async function addSource({ providerKey, url, kind = 'terms', sourceOrigin = 'man
   return mapSource(res.rows[0]);
 }
 
+/** The last fetch landed somewhere else. Recorded on every check, visible in the admin. */
+async function recordRedirect(id, finalUrl) {
+  await query('UPDATE ai_policy_sources SET redirected_to = $2 WHERE id = $1', [id, finalUrl || null]);
+}
+
+/**
+ * The page has a new home. `url` is switched, the old one kept in `moved_from`
+ * so the change is reviewable and reversible by hand; a loss is cleared, since
+ * the page was just found. `origin` defaults to keeping whatever the row had.
+ *
+ * If the new URL is ALREADY watched for this provider (the catalogue and a
+ * redirect can agree), the older duplicate is disabled rather than violating
+ * the unique key, and the surviving row is returned.
+ */
+async function moveSource(id, newUrl, { origin = null } = {}) {
+  const url = String(newUrl || '').trim().replace(/\/+$/, '');
+  if (!url) return null;
+  const current = await query('SELECT * FROM ai_policy_sources WHERE id = $1', [id]);
+  const row = current.rows[0];
+  if (!row) return null;
+  const clash = await query(
+    'SELECT * FROM ai_policy_sources WHERE provider_key = $1 AND url = $2 AND id <> $3',
+    [row.provider_key, url, id]
+  );
+  if (clash.rows[0]) {
+    await query('UPDATE ai_policy_sources SET enabled = FALSE WHERE id = $1', [id]);
+    await query(
+      `UPDATE ai_policy_sources
+          SET enabled = TRUE, rediscovered_at = NOW(), lost_reported_at = NULL, moved_from = $2
+        WHERE id = $1`,
+      [clash.rows[0].id, row.url]
+    );
+    return mapSource((await query('SELECT * FROM ai_policy_sources WHERE id = $1', [clash.rows[0].id])).rows[0]);
+  }
+  const res = await query(
+    `UPDATE ai_policy_sources
+        SET moved_from = url, url = $2, redirected_to = NULL, rediscovered_at = NOW(),
+            lost_reported_at = NULL, enabled = TRUE,
+            source_origin = COALESCE($3, source_origin)
+      WHERE id = $1 RETURNING *`,
+    [id, url, origin]
+  );
+  return mapSource(res.rows[0]);
+}
+
+/** A person has been told this page cannot be found. Once, until it is found again. */
+async function markSourceLost(id) {
+  await query('UPDATE ai_policy_sources SET lost_reported_at = NOW() WHERE id = $1', [id]);
+}
+
+async function clearSourceLost(id) {
+  await query('UPDATE ai_policy_sources SET lost_reported_at = NULL, rediscovered_at = NOW() WHERE id = $1', [id]);
+}
+
 async function setSourceEnabled(id, enabled) {
   const res = await query(
     'UPDATE ai_policy_sources SET enabled = $2 WHERE id = $1 RETURNING *',
@@ -239,6 +297,10 @@ module.exports = {
   listSourcesToCheck,
   listSourcesForAdmin,
   addSource,
+  recordRedirect,
+  moveSource,
+  markSourceLost,
+  clearSourceLost,
   setSourceEnabled,
   deleteSource,
   saveSnapshot,

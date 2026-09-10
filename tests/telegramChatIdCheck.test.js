@@ -172,3 +172,30 @@ test('checkChatIdColumns names the offending column and skips absent or cleared 
     assert.equal(ok.error, null, `expected ${JSON.stringify(patch)} to pass`);
   }
 });
+
+// ─── a private user as a destination ─────────────────────────────────────────
+
+test('with allowPrivate, a reachable private chat is accepted and named as such', async () => {
+  // AI monitoring alerts may go to one person rather than a room, and a user
+  // the bot can message is a valid destination. Opt-in per caller: the
+  // home-time settings still address a group, and their check is unchanged.
+  const telegram = { async getChat() { return { type: 'private', first_name: 'Tom', username: 'tom' }; } };
+  const r = await checkChatId('987654321', { getGroupByTelegramId: noGroups, telegram, allowPrivate: true });
+  assert.equal(r.ok, true);
+  assert.equal(r.status, 'reachable_private');
+  assert.match(r.groupName, /Tom/);
+});
+
+test('allowPrivate does not weaken the sign-flip check', async () => {
+  // A positive id whose negation is a known GROUP is still a dropped minus sign,
+  // even when a private destination would otherwise be welcome.
+  const telegram = { async getChat() { return { type: 'private', first_name: 'Someone' }; } };
+  const r = await checkChatId('5052301861', { getGroupByTelegramId: knownGroups, telegram, allowPrivate: true });
+  assert.equal(r.status, 'sign_flipped');
+});
+
+test('without allowPrivate a private chat is still refused', async () => {
+  const telegram = { async getChat() { return { type: 'private', first_name: 'Someone' }; } };
+  const r = await checkChatId('987654321', { getGroupByTelegramId: noGroups, telegram });
+  assert.equal(r.status, 'wrong_type');
+});

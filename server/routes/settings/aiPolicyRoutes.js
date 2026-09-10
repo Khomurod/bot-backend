@@ -16,7 +16,13 @@ const findingsStore = require('../../../database/aiPolicyFindings');
 const { getGroupByTelegramId } = require('../../../database/groups');
 const { checkChatIdColumns } = require('../../../services/telegramChatIdCheck');
 const { runPolicyCheck } = require('../../../services/ai/policy/policyWatcher');
+const { ensureCatalogSources } = require('../../../services/ai/policy/sourceDiscovery');
+const { cleanTelegramError } = require('../../../lib/telegram/telegramErrors');
 const { sendFailure } = require('../../middleware/failureResponse');
+
+/** Plain words, and it says what will arrive here — so a person can tell the test from a real alert. */
+const TEST_MESSAGE = '🔔 This is a test from Wenze\'s AI monitoring.\n\n'
+  + 'Alerts about provider terms changes and model changes will arrive here. Nothing needs doing.';
 
 function positiveInt(value) {
   const n = Number(value);
@@ -47,10 +53,13 @@ function createAiPolicyRouter({ authMiddleware, telegram = null }) {
       // group is rejected with the corrected id as a `suggestion`, and one we
       // cannot disprove still saves, marked unverified — blocking a legitimate
       // chat would be its own outage.
+      // `allowPrivate`: AI monitoring may report to one administrator rather than
+      // a room. The sign-flip check still runs first, so a dropped minus sign
+      // cannot hide behind a resolvable user id.
       const check = await checkChatIdColumns(
         { notifyChatId: patch.notifyChatId },
         ['notifyChatId'],
-        { getGroupByTelegramId, telegram }
+        { getGroupByTelegramId, telegram, allowPrivate: true }
       );
       if (check.error) {
         return res.status(400).json({
@@ -59,9 +68,41 @@ function createAiPolicyRouter({ authMiddleware, telegram = null }) {
         });
       }
       const settings = await policyStore.updateWatcherSettings(patch, req.admin?.username || null);
+      if (patch.enabled === true) {
+        // Switching the watcher on should not leave it with nothing to watch.
+        // Best effort: a seeding failure must not fail the save.
+        await ensureCatalogSources().catch((err) => console.warn('[POLICY] seeding sources failed:', err.message));
+      }
       return res.json({ settings });
     } catch (err) {
       return sendFailure(res, err, { message: 'Failed to save the watcher', logPrefix: '[POLICY]' });
+    }
+  });
+
+  /**
+   * Send a test message to the destination — the configured one, or a candidate
+   * from the body so it can be proven before it is saved. 200 with ok:false on a
+   * refusal: the request succeeded, and what failed is the thing being tested.
+   */
+  router.post('/ai/policy/test-notification', authMiddleware, async (req, res) => {
+    try {
+      if (!telegram || typeof telegram.sendMessage !== 'function') {
+        return res.json({ ok: false, error: 'No Telegram client is available to send with.' });
+      }
+      const candidate = String(req.body?.chatId || '').trim();
+      const chatId = candidate || (await policyStore.getWatcherSettings()).notifyChatId;
+      if (!chatId) {
+        return res.json({ ok: false, error: 'No destination is configured. Enter a chat id first.' });
+      }
+      try {
+        await telegram.sendMessage(String(chatId), TEST_MESSAGE, { disable_web_page_preview: true });
+        return res.json({ ok: true, chatId: String(chatId) });
+      } catch (err) {
+        // cleanTelegramError strips the bot token, which a raw Telegram error can echo.
+        return res.json({ ok: false, chatId: String(chatId), error: cleanTelegramError(err) });
+      }
+    } catch (err) {
+      return sendFailure(res, err, { message: 'Failed to send the test', logPrefix: '[POLICY]' });
     }
   });
 

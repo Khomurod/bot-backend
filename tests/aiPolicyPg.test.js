@@ -255,3 +255,41 @@ test('a run summary is recorded for the admin to read', { skip: skipWithoutPg() 
   assert.equal(settings.lastRunSummary.findings, 1);
   assert.ok(settings.lastRunAt);
 });
+
+// ─── migration 0024: a page that moved, a page that was lost ─────────────────
+
+test('a source can be moved, keeps where it came from, and a loss is cleared by the move', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { aiPolicy } = load(harness);
+  const src = await aiPolicy.addSource({ providerKey: 'groq', url: 'https://groq.com/terms-of-use', kind: 'terms', sourceOrigin: 'catalog' });
+  await aiPolicy.markSourceLost(src.id);
+  let [row] = await aiPolicy.listSourcesForAdmin();
+  assert.ok(row.lostReportedAt, 'a person was told');
+
+  const moved = await aiPolicy.moveSource(src.id, 'https://groq.com/legal/terms-of-use/', { origin: 'rediscovered' });
+  assert.equal(moved.url, 'https://groq.com/legal/terms-of-use', 'trailing slash normalised');
+  assert.equal(moved.movedFrom, 'https://groq.com/terms-of-use');
+  assert.equal(moved.sourceOrigin, 'rediscovered');
+  assert.equal(moved.lostReportedAt, null, 'found again, so the next loss is reported afresh');
+  assert.ok(moved.rediscoveredAt);
+  assert.equal(moved.enabled, true);
+
+  await aiPolicy.recordRedirect(src.id, 'https://cdn.example/landing');
+  [row] = await aiPolicy.listSourcesForAdmin();
+  assert.equal(row.redirectedTo, 'https://cdn.example/landing');
+  await aiPolicy.clearSourceLost(src.id);
+});
+
+test('moving onto a URL already watched disables the duplicate instead of violating the key', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { aiPolicy } = load(harness);
+  const a = await aiPolicy.addSource({ providerKey: 'groq', url: 'https://groq.com/old-terms', kind: 'terms' });
+  const b = await aiPolicy.addSource({ providerKey: 'groq', url: 'https://groq.com/terms-of-use', kind: 'terms', sourceOrigin: 'catalog' });
+
+  const survivor = await aiPolicy.moveSource(a.id, 'https://groq.com/terms-of-use');
+  assert.equal(survivor.id, b.id, 'the row that already had the URL survives');
+  assert.equal(survivor.movedFrom, 'https://groq.com/old-terms');
+  const rows = await aiPolicy.listSourcesForAdmin();
+  assert.equal(rows.find((r) => r.id === a.id).enabled, false, 'the old row is disabled, not deleted — reviewable');
+  assert.equal(rows.filter((r) => r.enabled).length, 1);
+});
