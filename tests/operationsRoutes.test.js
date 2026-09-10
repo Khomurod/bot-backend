@@ -53,7 +53,7 @@ function loadApp({
 
   purgeModulePackage(routePath, routeDir, [applyPath, autoApplyPath, sweepPath]);
 
-  const calls = { applied: [], dismissed: [], snoozed: [], settings: [] };
+  const calls = { applied: [], dismissed: [], snoozed: [], settings: [], sweeps: [] };
 
   require.cache[path.resolve(__dirname, '../database/operationalFindings.js')] = {
     exports: {
@@ -90,7 +90,8 @@ function loadApp({
   };
   require.cache[sweepPath] = {
     exports: {
-      async runGuardedSweep() {
+      async runGuardedSweep(options) {
+        calls.sweeps.push(options || {});
         return sweepBusy ? { skipped: true, reason: 'A sweep is already running.' } : { filed: 3, resolved: 1 };
       },
       getConsistencyStatus() { return { running: true, lastRun: null }; },
@@ -319,6 +320,20 @@ test('a sweep can be run on demand without waiting a quarter of an hour', async 
 
   assert.equal(res.status, 200);
   assert.deepEqual(res.body.sweep, { filed: 3, resolved: 1 });
+});
+
+test('an on-demand sweep FINDS and never corrects — it sits on the read gate', async () => {
+  // /sweep is mounted with authMiddleware only, and its contract is "writes
+  // findings, never fleet records". The timer's sweep applies the permitted
+  // corrections after filing; this one must not, or an administrator who
+  // deliberately lacks operations.corrections.apply could trigger corrections
+  // by pressing "Run checks now", audited as `system`.
+  const { app, calls } = loadApp({ applyPermission: false });
+  const res = await call(app, 'POST', '/api/operations/sweep');
+  assert.equal(res.status, 200);
+  assert.equal(calls.sweeps.length, 1);
+  assert.equal(calls.sweeps[0].correct, false,
+    'the read-gated caller must opt out of the correction pass explicitly');
 });
 
 test('an on-demand sweep goes through the overlap guard, not around it', async () => {
