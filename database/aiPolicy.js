@@ -116,6 +116,7 @@ function mapSource(row) {
     providerKey: row.provider_key,
     url: row.url,
     kind: row.kind,
+    sourceOrigin: row.source_origin ?? 'manual',
     enabled: row.enabled,
     etag: row.etag ?? null,
     lastModified: row.last_modified ?? null,
@@ -164,13 +165,20 @@ async function listSourcesForAdmin() {
   });
 }
 
-async function addSource({ providerKey, url, kind = 'terms' }) {
+/**
+ * `sourceOrigin` says who chose the URL: 'manual' (a person), 'catalog' (seeded
+ * from lib/ai/providerCatalog when the provider was connected) or
+ * 'rediscovered' (found again after the original moved). A re-add of an
+ * existing URL keeps the ORIGINAL origin — a catalogue seed must not relabel a
+ * URL a person typed first, because the watcher treats the two differently.
+ */
+async function addSource({ providerKey, url, kind = 'terms', sourceOrigin = 'manual' }) {
   const res = await query(
-    `INSERT INTO ai_policy_sources (provider_key, url, kind)
-     VALUES ($1, $2, $3)
+    `INSERT INTO ai_policy_sources (provider_key, url, kind, source_origin)
+     VALUES ($1, $2, $3, $4)
      ON CONFLICT (provider_key, url) DO UPDATE SET kind = EXCLUDED.kind, enabled = TRUE
      RETURNING *`,
-    [providerKey, url, kind]
+    [providerKey, url, kind, sourceOrigin]
   );
   return mapSource(res.rows[0]);
 }

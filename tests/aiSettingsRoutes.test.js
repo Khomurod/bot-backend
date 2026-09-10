@@ -50,6 +50,9 @@ function loadApp({ adapterImpl, providers = [], storedKey = '' } = {}) {
       async listRecentFailures() { return []; },
     },
   };
+  require.cache[path.resolve(__dirname, '../database/aiModelEvents.js')] = {
+    exports: { async listModelEvents() { return []; }, async recordModelEvent() {} },
+  };
   require.cache[REGISTRY] = {
     exports: { invalidateRegistry() { saw.invalidated += 1; }, getRoster: async () => ({}) },
   };

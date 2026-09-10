@@ -22,6 +22,10 @@ const { invalidateRegistry } = require('../../../services/ai/registry');
 const { callOpenAiChat } = require('../../../services/ai/adapters/openaiChat');
 const { callGeminiGenerate } = require('../../../services/ai/adapters/gemini');
 const { classifyFailure } = require('../../../lib/ai/classify');
+const { listCatalog } = require('../../../lib/ai/providerCatalog');
+const { connectProvider } = require('../../../services/ai/discovery/connectProvider');
+const { refreshProviderModels } = require('../../../services/ai/discovery/refreshModels');
+const aiModelEvents = require('../../../database/aiModelEvents');
 const { sendFailure } = require('../../middleware/failureResponse');
 
 /** Short, cheap and content-free — this proves the credential, not the model. */
@@ -34,14 +38,15 @@ function createAiSettingsRouter({ authMiddleware }) {
   /** Everything the tab renders, in one round trip. */
   router.get('/ai', authMiddleware, async (req, res) => {
     try {
-      const [settings, providers, capabilities, health, recentFailures] = await Promise.all([
+      const [settings, providers, capabilities, health, recentFailures, modelEvents] = await Promise.all([
         aiSettings.getAiSettings(),
         aiProviders.listProvidersForAdmin(),
         aiSettings.listCapabilities(),
         aiCallLog.summariseProviderHealth({ sinceHours: 24 }),
         aiCallLog.listRecentFailures({ limit: 20 }),
+        aiModelEvents.listModelEvents({ limit: 30 }),
       ]);
-      res.json({ settings, providers, capabilities, health, recentFailures });
+      res.json({ settings, providers, capabilities, health, recentFailures, modelEvents });
     } catch (err) {
       sendFailure(res, err, { message: 'Failed to load AI settings', logPrefix: '[AI SETTINGS]' });
     }
@@ -54,6 +59,56 @@ function createAiSettingsRouter({ authMiddleware }) {
       res.json({ settings });
     } catch (err) {
       sendFailure(res, err, { message: 'Failed to save AI settings', logPrefix: '[AI SETTINGS]' });
+    }
+  });
+
+  /**
+   * The providers Wenze knows how to configure by itself. Public facts only —
+   * an entry carries no key and no per-deployment state beyond "already added".
+   */
+  router.get('/ai/catalog', authMiddleware, async (req, res) => {
+    try {
+      const configured = new Set((await aiProviders.listProvidersForAdmin()).map((p) => p.providerKey));
+      const catalog = listCatalog().map((entry) => ({
+        key: entry.key, label: entry.label, adapter: entry.adapter, isFree: entry.isFree,
+        freeTierNote: entry.freeTierNote, docsUrl: entry.docsUrl, keyPrefix: entry.keyPrefix,
+        needsBaseUrl: entry.key === 'custom',
+        configured: configured.has(entry.key),
+      }));
+      res.json({ catalog });
+    } catch (err) {
+      sendFailure(res, err, { message: 'Failed to load the provider catalogue', logPrefix: '[AI SETTINGS]' });
+    }
+  });
+
+  /**
+   * Pick a provider, paste the key, Connect. The service discovers models,
+   * proves the key with one call, saves the provider enabled and seeds the
+   * terms watcher. A failure is a 200 with `ok: false` and a plain-language
+   * reason — the REQUEST succeeded; what failed is the thing being connected.
+   */
+  router.post('/ai/providers/connect', authMiddleware, async (req, res) => {
+    const { catalogKey, apiKey, label, baseUrl, adapter, providerKey } = req.body || {};
+    if (!catalogKey) return res.status(400).json({ error: 'Choose a provider from the catalogue.' });
+    try {
+      const result = await connectProvider({
+        catalogKey, apiKey, label, baseUrl, adapter, providerKey, updatedBy: req.admin?.username || null,
+      });
+      return res.json(result);
+    } catch (err) {
+      return sendFailure(res, err, { message: 'Failed to connect the provider', logPrefix: '[AI SETTINGS]' });
+    }
+  });
+
+  /** Re-read the provider's listing now, rather than waiting for the maintenance job. */
+  router.post('/ai/providers/:key/refresh-models', authMiddleware, async (req, res) => {
+    try {
+      const result = await refreshProviderModels(String(req.params.key), {
+        initiator: 'manual', updatedBy: req.admin?.username || null,
+      });
+      return res.json(result);
+    } catch (err) {
+      return sendFailure(res, err, { message: 'Failed to refresh the models', logPrefix: '[AI SETTINGS]' });
     }
   });
 

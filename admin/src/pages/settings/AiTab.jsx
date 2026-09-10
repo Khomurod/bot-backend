@@ -2,6 +2,7 @@ import React from "react";
 
 import * as api from "../../api";
 import ProviderCard from "./ai/ProviderCard";
+import AddProviderPanel from "./ai/AddProviderPanel";
 import PolicyWatcherCard from "./ai/PolicyWatcherCard";
 
 /**
@@ -18,11 +19,6 @@ import PolicyWatcherCard from "./ai/PolicyWatcherCard";
  * different responses from a person and averaging them into a percentage hides
  * which is happening.
  */
-const ADAPTERS = [
-  { value: "openai_chat", label: "OpenAI-compatible (Groq, Cerebras, Mistral, OpenRouter, Together…)" },
-  { value: "gemini", label: "Google Gemini" },
-];
-
 function HealthRow({ row }) {
   return (
     <tr style={{ borderTop: "1px solid rgba(148,163,184,0.15)" }}>
@@ -42,7 +38,6 @@ export default function AiTab() {
   const [data, setData] = React.useState(null);
   const [status, setStatus] = React.useState(null);
   const [adding, setAdding] = React.useState(false);
-  const [newProvider, setNewProvider] = React.useState({ key: "", adapter: "openai_chat" });
 
   const flash = React.useCallback((type, text) => setStatus({ type, text }), []);
 
@@ -66,24 +61,12 @@ export default function AiTab() {
     }
   };
 
-  const addProvider = async () => {
-    const key = newProvider.key.trim();
-    if (!key) return;
-    try {
-      await api.updateAiProvider(key, { adapter: newProvider.adapter, label: key, enabled: false });
-      setNewProvider({ key: "", adapter: "openai_chat" });
-      setAdding(false);
-      flash("success", `${key} added — disabled until you turn it on.`);
-      load();
-    } catch (err) {
-      flash("error", err?.detail || err?.message || "Could not add it.");
-    }
-  };
-
   if (!data) {
     return <div className="loading"><div className="spinner" /> Loading AI settings…</div>;
   }
-  const { settings, providers, health, recentFailures, capabilities } = data;
+  const {
+    settings, providers, health, recentFailures, capabilities, modelEvents = [],
+  } = data;
 
   return (
     <div>
@@ -143,29 +126,10 @@ export default function AiTab() {
       </div>
 
       {adding && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div className="home-time-form-grid">
-            <div className="form-group">
-              <label>Key (e.g. cerebras)</label>
-              <input
-                className="form-input" value={newProvider.key}
-                onChange={(e) => setNewProvider((p) => ({ ...p, key: e.target.value }))}
-              />
-            </div>
-            <div className="form-group">
-              <label>Protocol</label>
-              <select
-                className="form-select" value={newProvider.adapter}
-                onChange={(e) => setNewProvider((p) => ({ ...p, adapter: e.target.value }))}
-              >
-                {ADAPTERS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-              </select>
-            </div>
-          </div>
-          <button type="button" className="btn btn-primary btn-sm" onClick={addProvider}>
-            Add, disabled
-          </button>
-        </div>
+        <AddProviderPanel
+          onCancel={() => setAdding(false)}
+          onConnected={(r) => { flash("success", `${r.label} connected.`); load(); }}
+        />
       )}
 
       {providers.length === 0 ? (
@@ -223,6 +187,28 @@ export default function AiTab() {
           </details>
         )}
       </div>
+
+      {modelEvents.length > 0 && (
+        <details className="collapse-panel card" style={{ marginTop: 16 }}>
+          <summary>
+            <strong>Model changes</strong>{" "}
+            <span style={{ color: "#94a3b8", fontSize: 12 }}>
+              — what Wenze added, retired or replaced, and why
+            </span>
+          </summary>
+          <ul style={{ fontSize: 12, paddingLeft: 18, marginTop: 8 }}>
+            {modelEvents.map((e) => (
+              <li key={e.id} style={{ marginBottom: 3 }}>
+                <code>{e.providerKey}</code> {e.event}
+                {e.model && <> <code>{e.model}</code></>}
+                {e.detail?.replacement && <> → <code>{e.detail.replacement}</code></>}
+                {e.detail?.chain && <> ({e.detail.chain.join(" → ")})</>}
+                <span style={{ color: "#94a3b8" }}> · {e.initiator}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       <PolicyWatcherCard providers={providers} flash={flash} />
 
