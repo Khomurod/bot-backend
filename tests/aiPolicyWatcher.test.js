@@ -32,7 +32,7 @@ const BASE_BODY = '<p>You may use the API for commercial purposes.</p>'
   + '<p>Free tier: 1,000 requests per day.</p>';
 
 function load({
-  sources, settings = {}, freeOnlyMode = true, aiEnabled = true,
+  sources, settings = {}, freeOnlyMode = true, aiEnabled = true, rediscover = null,
 } = {}) {
   delete require.cache[require.resolve(WATCHER)];
 
@@ -63,7 +63,27 @@ function load({
     },
   };
   require.cache[PROVIDERS] = {
-    exports: { async recordFailure(key, args) { saw.cooled.push({ key, ...args }); } },
+    exports: {
+      async recordFailure(key, args) { saw.cooled.push({ key, ...args }); },
+      async listProvidersForAdmin() { return [{ providerKey: 'groq', enabled: true, catalogKey: 'groq' }]; },
+    },
+  };
+  // Discovery is a collaborator with its own tests; here only WHAT the watcher
+  // asks of it is under test.
+  saw.discovery = { seeded: 0, redirects: [], rediscovered: [], lost: [], cleared: [], reconciled: 0 };
+  require.cache[path.resolve(__dirname, '../services/ai/policy/sourceDiscovery.js')] = {
+    exports: {
+      LOST_AFTER_FAILURES: 3,
+      async ensureCatalogSources() { saw.discovery.seeded += 1; return { seeded: 0 }; },
+      async handleRedirect(src, to) { saw.discovery.redirects.push({ id: src.id, to }); return { moved: true, url: to }; },
+      async rediscoverSource(src) {
+        saw.discovery.rediscovered.push(src.id);
+        return rediscover ? rediscover(src) : { found: false };
+      },
+      async reportLostSource(src, info) { saw.discovery.lost.push({ id: src.id, ...info }); return { reported: true }; },
+      async clearLostSource(src) { saw.discovery.cleared.push(src.id); return true; },
+      async reconcileLostFindings() { saw.discovery.reconciled += 1; return 0; },
+    },
   };
   require.cache[AI_SETTINGS] = {
     exports: { async getAiSettings() { return { enabled: aiEnabled, freeOnlyMode }; } },
@@ -82,6 +102,7 @@ function scriptedFetch(script) {
     return {
       status: entry.status ?? 200,
       ok: (entry.status ?? 200) < 400,
+      url: entry.url ?? String(url),
       headers: { get: (h) => entry.headers?.[h.toLowerCase()] ?? null },
       text: async () => entry.body ?? '',
     };
@@ -320,4 +341,64 @@ test('the first sight of a page is a baseline, not an alert', async () => {
   assert.equal(saw.findings.length, 0,
     'otherwise switching this on fires once per provider on day one');
   assert.ok(saw.snapshots[0].normalisedText, 'and the baseline is stored');
+});
+
+
+// ─── pages that move, and pages that vanish ──────────────────────────────────
+
+test('every run seeds the catalogue pages first, so a newly enabled provider is watched without a person', async () => {
+  const { runPolicyCheck, saw } = load({ sources: [] });
+  const summary = await runPolicyCheck({ fetchImpl: scriptedFetch({ status: 304 }), readImpl: forbiddenReader });
+  assert.equal(saw.discovery.seeded, 1);
+  assert.equal(summary.sources, 0);
+  assert.equal(saw.discovery.reconciled, 1, 'the Needs Attention list is kept honest every run');
+});
+
+test('a fetch that landed on another address is a move, handed to discovery', async () => {
+  const { runPolicyCheck, saw } = load({ sources: [source({ url: 'https://example.invalid/terms' })] });
+  const fetchImpl = scriptedFetch({ status: 200, body: PAGE(BASE_BODY), url: 'https://example.invalid/legal/terms' });
+  await runPolicyCheck({ fetchImpl, readImpl: forbiddenReader });
+  assert.deepEqual(saw.discovery.redirects, [{ id: 1, to: 'https://example.invalid/legal/terms' }]);
+});
+
+test('a page that answers where it always did is not a redirect', async () => {
+  const { runPolicyCheck, saw } = load({ sources: [source()] });
+  await runPolicyCheck({ fetchImpl: scriptedFetch({ status: 200, body: PAGE(BASE_BODY) }), readImpl: forbiddenReader });
+  assert.equal(saw.discovery.redirects.length, 0);
+});
+
+test('a 404 asks discovery to find the page again, and a found page counts as moved', async () => {
+  const { runPolicyCheck, saw } = load({
+    sources: [source({ consecutiveFailures: 0 })],
+    rediscover: () => ({ found: true, url: 'https://example.invalid/new-terms', how: 'site_scan' }),
+  });
+  const summary = await runPolicyCheck({ fetchImpl: scriptedFetch({ status: 404 }), readImpl: forbiddenReader });
+  assert.deepEqual(saw.discovery.rediscovered, [1]);
+  assert.equal(summary.moved, 1);
+  assert.equal(saw.discovery.lost.length, 0, 'found, so nobody needs telling');
+});
+
+test('a page that keeps failing and cannot be found is reported lost — after the threshold, not before', async () => {
+  const early = load({ sources: [source({ consecutiveFailures: 0 })] });
+  let summary = await early.runPolicyCheck({ fetchImpl: scriptedFetch({ status: 404 }), readImpl: forbiddenReader });
+  assert.equal(summary.errors, 1);
+  assert.equal(early.saw.discovery.lost.length, 0, 'one bad fetch is not a lost page');
+
+  const late = load({ sources: [source({ consecutiveFailures: 2 })] });
+  summary = await late.runPolicyCheck({ fetchImpl: scriptedFetch({ status: 404 }), readImpl: forbiddenReader });
+  assert.equal(summary.lost, 1);
+  assert.equal(late.saw.discovery.lost[0].id, 1);
+  assert.match(late.saw.discovery.lost[0].error, /404/);
+});
+
+test('a transient failure below the threshold does not go looking for a new page', async () => {
+  const { runPolicyCheck, saw } = load({ sources: [source({ consecutiveFailures: 0 })] });
+  await runPolicyCheck({ fetchImpl: scriptedFetch({ status: 503 }), readImpl: forbiddenReader });
+  assert.equal(saw.discovery.rediscovered.length, 0, 'a 503 says the page is busy, not gone');
+});
+
+test('a page reported lost that answers again is cleared', async () => {
+  const { runPolicyCheck, saw } = load({ sources: [source({ lostReportedAt: new Date(), contentHash: 'x', normalisedText: 'old' })] });
+  await runPolicyCheck({ fetchImpl: scriptedFetch({ status: 304 }), readImpl: forbiddenReader });
+  assert.deepEqual(saw.discovery.cleared, [1]);
 });
