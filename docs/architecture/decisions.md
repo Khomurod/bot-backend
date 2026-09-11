@@ -152,6 +152,61 @@ intended starting state rather than a degraded one.
 The weighing's reasons travel **with** the decision, so one read back months
 later says why its confidence was what it was rather than only what it was.
 
+## Going back to see whether it held
+
+`services/decisions/verifyPass.js` runs on the scheduler's existing hourly tick
+— riding that timer rather than arming its own, because a second timer is a
+second thing that can stop without anybody noticing.
+
+**This is what makes the track record real.** Nothing else ever sets an outcome,
+so without this pass every source stays unmeasured for ever and the reliability
+model above is decoration.
+
+It asks **one narrow question**: are the values this correction wrote still
+there? It does not re-run the check and does not form a new opinion about the
+subject — anything broader would be a second decision engine, disagreeing with
+the first at a different hour of the day.
+
+| | |
+|---|---|
+| `confirmed` | what we wrote is still there |
+| `contradicted` | it is no longer true |
+| `expired` | the subject is gone |
+| `not_checked` | nothing knows how to verify this action — an **honest** answer |
+
+`not_checked` matters more than it looks. Grading an unverifiable action
+`confirmed` because nothing objected would manufacture a track record out of
+nothing, and the reliability model reads exactly that record.
+
+Without a database the pass reports `blocked`, never a quiet success: grading
+anything from the decision's own memory is the one thing it exists to avoid.
+
+### Automatic rollback: built, guarded, and not reachable yet
+
+`shouldRollBack` requires four conditions together — the outcome is
+`contradicted`, **nobody else changed it**, the action declares itself safe, and
+it has not already been reverted.
+
+**No automatic rollback can fire today, and that is stated rather than left to
+be discovered.** `compareWritten` can only reach `contradicted` by finding a
+value different from the one we wrote, and it cannot tell *who* changed it — so
+it says `someone`, and the guard refuses. The one contradiction this pass can
+detect is the one it must never undo: reverting there would mean software and a
+person taking turns overwriting each other, and the software would win because
+it never gets bored.
+
+The guard stays because its case is real and simply not detectable yet — a
+correction whose values are intact but whose justifying evidence has evaporated.
+Detecting that means re-deriving the evidence, which is out of scope here.
+
+`SUBJECTS` also declares `autoRevert: false` for **every** action, deliberately:
+each changes operational state about a real driver, and an automatic undo is a
+second unattended write on top of the first. Turning one on is one word, and
+should be somebody's decision with the comment in front of them.
+
+A path that *looks* live and is not is the defect this repository keeps finding.
+One documented as not-yet-reachable is a foundation.
+
 ## Outcomes are graded by somebody else
 
 `outcome` is filled by the verification pass, never by the decider — a decision
