@@ -35,6 +35,8 @@ const defaultDb = require('../../../database/pool');
 const defaultStore = require('../../../database/operationalFindings');
 const { actionForCheck, CHECK_TO_ACTION } = require('./actions');
 const { applyCorrection, StaleCorrectionError } = require('./apply');
+const { takeDecision } = require('../../decisions/journal');
+const { MIN_CONFIDENCE, recordDecisionFor } = require('./decisionSeam');
 
 const DEFAULT_CAP = 50;
 
@@ -158,7 +160,20 @@ async function planForCheck(checkKey, { settings, store }) {
   // bucket for both would make the trial invisible, which is the trial's only
   // output.
   if (setting.shadow === true) {
-    return { shadowed: await store.countFindings({ status: 'open', checkKey, tier: 'auto' }) };
+    // AND IT LISTS THEM, because a count is not the trial's output. This
+    // returned a bare number and read nothing, so a shadowed check recorded
+    // NOTHING about what it would have done — the one thing shadow mode exists
+    // to produce. The items go to the journal as `would have` rows and no
+    // further.
+    const shadowFindings = await store.listFindings({
+      status: 'open', checkKey, tier: 'auto', limit: cap,
+    });
+    const shadowItems = [];
+    for (const finding of shadowFindings) {
+      const payload = payloadFor(finding);
+      if (payload) shadowItems.push({ finding, action, payload, mode: modeOf(setting) });
+    }
+    return { shadowed: shadowFindings.length, shadowItems };
   }
 
   // Count, then list — see the header. `wanted` is the real number, so the
@@ -174,7 +189,7 @@ async function planForCheck(checkKey, { settings, store }) {
   for (const finding of found) {
     const payload = payloadFor(finding);
     if (!payload) { noPayload += 1; continue; }
-    items.push({ finding, action, payload });
+    items.push({ finding, action, payload, mode: modeOf(setting) });
   }
   // Re-assert against the page itself: a finding can appear between the count
   // and the list, and the cap is not a suggestion.
@@ -190,10 +205,20 @@ async function planForCheck(checkKey, { settings, store }) {
  *   `db` because it holds its own pool binding; passing one without the other
  *   would silently split a single run across two databases.
  */
-async function runAutoCorrections({ apply = false, db = defaultDb, store = defaultStore } = {}) {
+async function runAutoCorrections({
+  apply = false, db = defaultDb, store = defaultStore, deps = {},
+} = {}) {
+  // Injected rather than destructured at module load, so a test can replace
+  // either without reaching into another module's exports — reassigning
+  // `apply.applyCorrection` does nothing once this file has destructured it,
+  // which is a trap worth closing rather than documenting.
+  const takeDecisionFn = deps.takeDecision || takeDecision;
+  const applyCorrectionFn = deps.applyCorrection || applyCorrection;
   const settings = await loadCheckSettings(db);
 
   const plan = [];
+  // What a shadowed check WOULD have done. Never applied; recorded.
+  const shadowPlan = [];
   const capped = [];
   // `shadowed` is its own count, never folded into `disabled`. A check being
   // TRIED and a check nobody trusts are different states, and the trial's only
@@ -207,6 +232,7 @@ async function runAutoCorrections({ apply = false, db = defaultDb, store = defau
     skipped.noPayload += result.noPayload || 0;
     if (result.capped) capped.push(result.capped);
     if (result.items) plan.push(...result.items);
+    if (result.shadowItems) shadowPlan.push(...result.shadowItems);
   }
 
   // A settings row granting auto-apply to a check no action answers grants
@@ -221,6 +247,11 @@ async function runAutoCorrections({ apply = false, db = defaultDb, store = defau
     skipped,
     capped,
     applied: 0,
+    // REFUSED BY THE EVIDENCE, not by permission. Its own count because
+    // "the owner has not enabled this" and "the owner enabled it and the
+    // evidence did not support it this time" are different sentences, and
+    // folding them together would hide the second entirely.
+    held: 0,
     stale: 0,
     failed: 0,
     dryRun: !apply,
@@ -254,16 +285,61 @@ async function runAutoCorrections({ apply = false, db = defaultDb, store = defau
     });
   }
 
+  // ── what a shadowed check would have done ────────────────────────────────
+  //
+  // Recorded and not applied. `mayAct` is false in shadow however good the
+  // evidence — the journal enforces that, not this loop, so a caller cannot
+  // forget it.
+  for (const item of shadowPlan) {
+    await recordDecisionFor(item, { shadow: true, takeDecision: takeDecisionFn })
+      .catch(() => null);
+  }
+
   const results = [];
   for (const item of plan) {
+    // THE DECISION, BEFORE THE ACTION. Recorded whatever it says, including
+    // when it says do nothing — the holds and the "I do not know yet"s are
+    // exactly the rows a caller has no other reason to write down, and exactly
+    // the ones outcome learning needs.
+    //
+    // A JOURNAL THAT CANNOT WRITE MUST NOT STOP A CORRECTION. `takeDecision`
+    // already swallows its own storage failures, and this catches anything
+    // else: the fallback permits the action, because the guardrails that
+    // actually protect this fleet — per-check permission, the cap, the live
+    // re-derivation under FOR UPDATE — all still hold, and a database blip
+    // silently turning off every automatic repair would be a worse failure
+    // than an unrecorded one.
+    const decision = await recordDecisionFor(item, { shadow: false, takeDecision: takeDecisionFn })
+      .catch((err) => {
+        console.warn(`[CORRECTIONS] decision not recorded for finding ${item.finding.id}:`,
+          err.message);
+        return { mayAct: true, verdict: 'act', reason: 'the journal could not be reached' };
+      });
+
+    if (!decision.mayAct) {
+      summary.held += 1;
+      results.push({
+        findingId: item.finding.id,
+        ok: false,
+        held: true,
+        verdict: decision.verdict,
+        error: decision.reason,
+      });
+      continue;
+    }
+
     try {
-      const correction = await applyCorrection({
+      const correction = await applyCorrectionFn({
         actionKey: item.action.key,
         payload: item.payload,
         finding: item.finding,
         db,
       });
       summary.applied += 1;
+      // What was done, against the decision that permitted it. Separate from
+      // the decision because the decision comes first and the action can still
+      // fail — and the verification pass grades this row later.
+      await decision.acted?.(item.action.key, correction.id);
       results.push({
         findingId: item.finding.id,
         correctionId: correction.id,
@@ -287,9 +363,13 @@ async function runAutoCorrections({ apply = false, db = defaultDb, store = defau
     }
   }
 
-  if (summary.applied || summary.failed || capped.length) {
-    console.log(`[CORRECTIONS] applied ${summary.applied}, stale ${summary.stale}, `
-      + `failed ${summary.failed}, capped checks ${capped.length}.`);
+  // `held` is in the condition as well as the message. A batch that held
+  // everything it was asked to do would otherwise log exactly as quietly as one
+  // with nothing to do, which is the ambiguity this whole phase exists to
+  // remove.
+  if (summary.applied || summary.failed || summary.held || capped.length) {
+    console.log(`[CORRECTIONS] applied ${summary.applied}, held ${summary.held}, `
+      + `stale ${summary.stale}, failed ${summary.failed}, capped checks ${capped.length}.`);
   }
   return { summary, results, capped };
 }

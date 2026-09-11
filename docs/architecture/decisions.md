@@ -84,6 +84,58 @@ needs.
 A journal failure never breaks the pass it observes. The decision still stands
 and the caller may still act; it simply was not written down.
 
+## Who calls it
+
+**Nobody did, for the whole life of this machinery.** `takeDecision` shipped
+with nineteen passing tests and no production caller, so
+`operational_decisions` was never written — and four stages of work hung off
+that one missing call:
+
+- the verification pass graded an empty table every hour and reported healthy;
+- `sourceAgreement` had nothing to measure, so every source stayed unmeasured
+  and the reliability model was decoration;
+- the learning pass's third input was permanently empty;
+- shadow mode counted what it would have done and recorded none of it.
+
+The caller is `services/operations/corrections/decisionSeam.js`, used by the
+auto-correction batch. Every planned correction now goes through it, *before*
+the action runs, and the applied ones are stamped with their action and
+correction id so the verification pass has something to grade.
+
+### Routing corrections through the journal must not stop them
+
+A safety feature that silently disables a working repair is a regression in
+better clothes. The floor is 70, and the margin is smaller than the raw
+confidences suggest, because each single-source decision loses 10 to
+`weighConfidence`:
+
+| check | files at | after weighing |
+|---|---|---|
+| `home_time.returned_to_road` | 85 | **75** ← tightest |
+| `identity.group_without_person` | 90 | 80 |
+| `identity.stale_unit_assignment` | 90 | 80 |
+| `home_time.ghost_home_status` | 90 | 80 |
+| `home_time.closable_open_cycle` | 90 / 95 | 80 / 85 |
+| `identity.status_disagreement` | 95 | 85 |
+| `home_time.exhausted_internal_alerts` | 100 | 90 |
+
+Nothing that works today stops working. **Raising the floor without re-reading
+that table is how the fleet stops being repaired.**
+
+One behaviour did change deliberately: a finding with **no** confidence is
+`unknown`, not low, and is held. `confidence` is nullable, so a check that
+stops scoring can no longer keep changing rows on evidence nobody graded. A
+held correction is not lost — the finding stays open on Needs Attention and a
+person can still apply it by hand, since that route does not come through here.
+`held` is counted apart from `disabled`: "the owner has not enabled this" and
+"the owner enabled it and the evidence did not support it" are different
+sentences.
+
+A journal that cannot be reached does not block a repair either. The guardrails
+that actually protect the fleet — per-check permission, the cap, and the
+action's own re-derivation under `FOR UPDATE` — all still hold, and a database
+blip switching off every automatic repair would be worse than an unrecorded one.
+
 ## Why the table is bounded
 
 A row per decision per pass was **costed before it was written**: the load watch

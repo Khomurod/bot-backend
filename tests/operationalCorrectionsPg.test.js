@@ -296,6 +296,11 @@ test('an enabled check applies, and only its own findings', { skip: skipWithoutP
   await store.upsertFinding({
     checkKey: 'home_time.closable_open_cycle', subjectType: 'road_history', subjectId: cycleId,
     title: 'closable', tier: 'auto',
+    // SCORED, as every real check scores its findings — the five that can act
+    // file at 85, 90, 95 or 100. The batch now routes each correction through
+    // the decision journal, and an unscored finding is `unknown` rather than
+    // low: see the test below, which pins that deliberately.
+    confidence: 95,
     proposedChange: { id: cycleId, returnToRoadAt: { to: '2026-08-31T00:00:00Z' }, homeDays: { to: 6 } },
   });
   // Enabled for cycles, NOT for status — this one must be left alone.
@@ -338,3 +343,46 @@ test('a check over its cap changes NOTHING and reports itself', { skip: skipWith
   assert.equal(selfReport.length, 1, 'the stall is visible, not silent');
   assert.equal(selfReport[0].severity, 'serious');
 });
+
+test('A FINDING NOBODY SCORED IS HELD, NOT APPLIED — and it is not lost',
+  { skip: skipWithoutPg() }, async (t) => {
+    // `confidence` is nullable, so a finding can reach the batch with nothing
+    // said about how sure anyone is. `assessEvidence` calls that `unknown` —
+    // "the rule reached no confidence, which is not the same as a low one" —
+    // and the spine may never act on `unknown`.
+    //
+    // This is a deliberate behaviour change and it costs nothing in practice:
+    // every check with a registered action scores at 85 or above. What it buys
+    // is that a check which later stops scoring cannot quietly keep changing
+    // rows on evidence nobody graded.
+    const harness = await harnessWith(t);
+    const { runAutoCorrections, store } = loadModules(harness);
+    const groupId = await seedGroup(harness);
+    const cycleId = await seedOpenCycle(harness, groupId);
+    await harness.query(
+      "INSERT INTO operational_check_settings (check_key, auto_apply_enabled, mode) "
+      + "VALUES ('home_time.closable_open_cycle', TRUE, 'autopilot') "
+      + "ON CONFLICT (check_key) DO UPDATE SET auto_apply_enabled = TRUE, mode = 'autopilot'"
+    );
+    await store.upsertFinding({
+      checkKey: 'home_time.closable_open_cycle', subjectType: 'road_history', subjectId: cycleId,
+      title: 'closable', tier: 'auto',
+      proposedChange: { id: cycleId, returnToRoadAt: { to: '2026-08-31T00:00:00Z' }, homeDays: { to: 6 } },
+    });
+
+    const { summary, results } = await runAutoCorrections({ apply: true });
+
+    assert.equal(summary.applied, 0);
+    assert.equal(summary.held, 1, 'counted separately from disabled — a different sentence');
+    assert.equal(results[0].verdict, 'unknown');
+    assert.match(results[0].error, /reached no confidence/);
+
+    const cycle = (await harness.query(
+      'SELECT return_to_road_at FROM driver_road_history WHERE id = $1', [cycleId]
+    )).rows[0];
+    assert.equal(cycle.return_to_road_at, null, 'and nothing was changed');
+
+    const open = await store.countFindings({ status: 'open', checkKey: 'home_time.closable_open_cycle' });
+    assert.equal(open, 1,
+      'the finding stays open on Needs Attention, where a person can still apply it by hand');
+  });
