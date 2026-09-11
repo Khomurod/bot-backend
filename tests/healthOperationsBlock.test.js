@@ -91,6 +91,11 @@ function summaryDeps(overrides = {}) {
     findings: { async summariseFindings() { return { info: 1, warning: 2, serious: 0, total: 3 }; } },
     people: { async summariseIdentityCoverage() { return { people: 200, activeDriverGroups: 205, groupsWithoutPerson: 0, openUnits: 190, unstamped: { roadHistory: 0, requests: 0, mileage: 0 } }; } },
     integrity: { async countDuplicateOpenStays() { return []; }, async indexExists() { return true; } },
+    fuelReadings: {
+      async summariseFuelReadings() {
+        return { trucks: 110, withFuel: 104, comparable: 61, newestReading: '2026-09-20T17:40:00.000Z' };
+      },
+    },
     // The safety block is composed in, so it is faked in.
     safety: {
       async summariseSafety() {
@@ -186,6 +191,9 @@ test('the summary is counts and timestamps, and a capped check is named with its
   assert.equal(s.loads.conflicted, 1, 'a load the board and the truck disagree about is visible live');
   assert.equal(s.safety.events, 9);
   assert.equal(s.safety.coachingToDrivers, 1, 'how much coaching actually reached a driver');
+  assert.equal(s.fuel.comparable, 61,
+    'how many trucks Smart Fuel can actually compare — zero here would mean the '
+    + 'abnormal-consumption engine is blind, which is what it silently was');
   const gemini = s.aiModels.find((p) => p.provider === 'gemini');
   assert.deepEqual(gemini, { provider: 'gemini', enabled: true, chain: 1, discovered: 2, refreshedAt: '2026-09-10T06:00:00.000Z', refreshError: null });
 });

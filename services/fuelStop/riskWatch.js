@@ -38,6 +38,7 @@ function defaultDeps() {
     groups: require('../../database/groups'),
     people: require('../../database/driverPeople'),
     fuel: require('../../database/fuelMonitoring'),
+    readings: require('../../database/truckFuelReadings'),
     eldSettings: require('../../database/eldSettings'),
     providers: require('../liveLocations/providers'),
     notifications: require('../../database/operationalNotifications'),
@@ -51,16 +52,26 @@ function defaultDeps() {
  * cannot make: did it get closer to the station, and how much fuel has it used
  * over how many miles.
  *
- * Read from the open fuel watch, which already stores the distance it measured
- * last pass. Nothing new is persisted for this — a second store of positions
- * would be a position history, which this application deliberately does not keep.
+ * TWO SOURCES, because they answer two different questions. The distance comes
+ * from the open fuel watch, which already stored what it measured last pass.
+ * The fuel and odometer come from `truck_fuel_readings` — and until that table
+ * existed THIS FUNCTION RETURNED `fuelPercent: null, odometerMiles: null`
+ * HARD-CODED, which made `assessFuelRisk`'s abnormal-burn branch unreachable
+ * for the whole life of the feature. It looked implemented and could not fire.
+ *
+ * `baseline` is null far more often than not, and that is correct: comparing
+ * two readings twenty minutes apart measures noise, and comparing across a
+ * fill-up measures nothing at all. See `database/truckFuelReadings.js`.
  */
-function previousFor(alert) {
-  if (!alert) return null;
+function previousFor(alert, baseline = null) {
+  const milesToStation = alert && alert.last_distance_miles != null
+    ? Number(alert.last_distance_miles)
+    : null;
+  if (milesToStation == null && !baseline) return null;
   return {
-    milesToStation: alert.last_distance_miles == null ? null : Number(alert.last_distance_miles),
-    fuelPercent: null,
-    odometerMiles: null,
+    milesToStation,
+    fuelPercent: baseline?.fuelPercent ?? null,
+    odometerMiles: baseline?.odometerMiles ?? null,
   };
 }
 
@@ -71,13 +82,29 @@ function describe(group, unit) {
 }
 
 /** One truck. Returns the risks that were actually reported. */
-async function checkOneTruck(group, { fleets, alertsByGroup, nowIso, deps, options }) {
+async function checkOneTruck(group, {
+  fleets, alertsByGroup, nowIso, deps, options, peopleByUnit = new Map(),
+}) {
   const unit = extractUnitFromGroupName(group.group_name);
   if (!unit) return [];
 
   const resolved = deps.providers.resolveLocationForUnit(fleets, unit, group.group_name);
   const loc = resolved?.location;
   if (!loc || loc.lat == null) return [];
+
+  const personId = peopleByUnit.get(String(unit)) ?? null;
+
+  // Written BEFORE the assessment, and the assessment reads what it returns.
+  // The write is what makes the next pass able to answer at all, so it must
+  // happen even on a pass that reports nothing.
+  const reading = await deps.readings.recordAndCompare({
+    unitNumber: String(unit),
+    personId,
+    groupId: group.id,
+    fuelPercent: loc.fuelPercent ?? null,
+    odometerMiles: loc.odometerMiles ?? null,
+    recordedAt: loc.lastUpdated || nowIso,
+  }).catch(() => ({ previous: null }));
 
   const alertRow = alertsByGroup.get(group.id) || null;
   const alert = alertRow ? {
@@ -94,12 +121,11 @@ async function checkOneTruck(group, { fleets, alertsByGroup, nowIso, deps, optio
       fuelPercent: loc.fuelPercent ?? null, odometerMiles: loc.odometerMiles ?? null,
     },
     alert,
-    previous: previousFor(alertRow),
+    previous: previousFor(alertRow, reading?.previous || null),
     options,
   });
   if (!risks.length) return [];
 
-  const person = await deps.people.getOpenPersonForUnit(String(unit)).catch(() => null);
   const who = describe(group, unit);
   const sent = [];
 
@@ -127,7 +153,7 @@ async function checkOneTruck(group, { fleets, alertsByGroup, nowIso, deps, optio
       // The window above decides whether to speak; this makes each utterance a
       // distinct row so the history reads as a sequence rather than one event.
       discriminator: `${risk.kind}:${nowIso.slice(0, 13)}`,
-      personId: person?.personId ?? null,
+      personId,
       groupId: group.id,
       evidence: { risk: risk.kind, severity: risk.severity, ...facts },
     });
@@ -155,10 +181,21 @@ async function runFuelRiskCheck({ now = Date.now(), deps = defaultDeps(), option
     const openAlerts = await deps.fuel.listActiveFuelStopAlerts().catch(() => []);
     const alertsByGroup = new Map(openAlerts.map((a) => [a.group_id, a]));
 
+    // ONE query for the whole fleet's identities. This used to be one lookup
+    // per truck inside the loop below — about 110 round trips every twenty
+    // minutes to answer a question a single `= ANY` settles.
+    const units = groups
+      .map((g) => extractUnitFromGroupName(g.group_name))
+      .filter(Boolean)
+      .map(String);
+    const peopleByUnit = await deps.people.getOpenPeopleForUnits(units).catch(() => new Map());
+
     for (const group of groups) {
       summary.checked += 1;
       // eslint-disable-next-line no-await-in-loop
-      const reported = await checkOneTruck(group, { fleets, alertsByGroup, nowIso, deps, options })
+      const reported = await checkOneTruck(group, {
+        fleets, alertsByGroup, nowIso, deps, options, peopleByUnit,
+      })
         .catch((err) => {
           console.warn(`[FUEL-RISK] group ${group.id}:`, err.message);
           return [];

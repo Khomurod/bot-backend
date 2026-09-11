@@ -26,6 +26,7 @@ const defaultDeps = () => ({
   homeTimeHealth: require('./homeTimeHealth'),
   loads: require('../../database/loadLifecycle'),
   safety: require('../../database/driverSafety'),
+  fuelReadings: require('../../database/truckFuelReadings'),
   aiProviders: require('../../database/aiProviders'),
   systemHealth: require('../../database/systemHealth'),
   notificationSettings: require('../../database/operationalNotificationSettings'),
@@ -118,7 +119,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
     const status = deps.consistency.getConsistencyStatus();
     const [
       findings, coverage, duplicates, indexPresent, providers, homeTimeLive,
-      loadPhases, safety, systems, learning, retention, notifyConfig,
+      loadPhases, safety, fuelReadings, systems, learning, retention, notifyConfig,
     ] = await Promise.all([
       deps.findings.summariseFindings(),
       deps.people.summariseIdentityCoverage(),
@@ -128,6 +129,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
       deps.homeTimeHealth.getHomeTimeHealth(),
       deps.loads.summariseLoadPhases().catch(() => null),
       deps.safety.summariseSafety().catch(() => null),
+      Promise.resolve(deps.fuelReadings?.summariseFuelReadings?.()).catch(() => null),
       deps.systemHealth.summariseHealthStates().catch(() => null),
       deps.learning.summariseSuggestions().catch(() => null),
       deps.retention.summariseRetention().catch(() => null),
@@ -157,6 +159,13 @@ async function getOperationsHealth(deps = defaultDeps()) {
       // Safety as a PATTERN: how many events, of what kind, and how much
       // coaching actually reached a driver.
       safety,
+      // WHETHER SMART FUEL CAN ANSWER AT ALL. `comparable` is the number that
+      // matters: abnormal-consumption needs two readings far enough apart, and
+      // for the whole life of the feature that was ZERO because the watch
+      // handed the assessor hard-coded nulls. No findings with `comparable: 0`
+      // is not a healthy fleet, it is a blind one — and those two silences are
+      // indistinguishable without this.
+      fuel: fuelReadings,
       // WHICH PARTS OF WENZE ARE WORKING, and which have never been looked at —
       // counted separately, because "not checked" and "fine" are different
       // answers and only one of them is reassuring.

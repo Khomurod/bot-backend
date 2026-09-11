@@ -23,12 +23,20 @@ const at = (mins) => new Date(NOW - mins * 60000).toISOString();
 function harness({
   groups = [{ id: 7, group_name: 'WENZE UNIT # 310 JOHN DOE' }],
   location = { lat: 41, lng: -87, speedMph: 60 },
-  alerts = [], recent = false,
+  alerts = [], recent = false, baseline = null,
 } = {}) {
-  const calls = { notified: [], windows: [], fleets: 0 };
+  const calls = { notified: [], windows: [], fleets: 0, readings: [] };
   const deps = {
     groups: { async getDriverGroupsByActiveFilter() { return groups; } },
-    people: { async getOpenPersonForUnit() { return { personId: 11 }; } },
+    people: {
+      async getOpenPeopleForUnits(units) { return new Map(units.map((u) => [u, 11])); },
+    },
+    readings: {
+      async recordAndCompare(reading) {
+        calls.readings.push(reading);
+        return { previous: baseline, reason: baseline ? 'comparable' : 'accumulating' };
+      },
+    },
     fuel: { async listActiveFuelStopAlerts() { return alerts; } },
     eldSettings: { async getEldConfig() { return { samsaraEnabled: true }; } },
     providers: {
@@ -196,4 +204,66 @@ test('a provider outage is counted and the pass still completes', async () => {
   deps.providers.fetchProviderFleets = async () => ({ fleets: {}, errors: [{ provider: 'samsara' }] });
   const summary = await watcher.runFuelRiskCheck({ now: NOW, deps });
   assert.equal(summary.providerErrors, 1);
+});
+
+// ── the abnormal-burn branch, which could not fire at all ────────────────────
+//
+// `previousFor` returned `fuelPercent: null, odometerMiles: null` HARD-CODED,
+// so `assessFuelRisk`'s abnormal-consumption branch was unreachable for the
+// whole life of the feature. These three fail against that code.
+
+test('a truck burning abnormally is reported once there is a real window to compare', async () => {
+  const { deps, calls } = harness({
+    location: { lat: 41, lng: -87, speedMph: 60, fuelPercent: 40, odometerMiles: 100200 },
+    baseline: { fuelPercent: 95, odometerMiles: 100000 },
+  });
+  await watcher.runFuelRiskCheck({ now: NOW, deps });
+  const burn = calls.notified.find((n) => n.evidence?.risk === 'abnormal_burn');
+  assert.ok(burn, '55 points over 200 miles is 27.5% per 100, past the 22% default');
+  assert.equal(burn.evidence.severity, 'info',
+    'a consumption observation is not an emergency; it is something to look at');
+});
+
+test('with no comparable window nothing is claimed about consumption', async () => {
+  const { deps, calls } = harness({
+    location: { lat: 41, lng: -87, speedMph: 60, fuelPercent: 40, odometerMiles: 100200 },
+    baseline: null,
+  });
+  await watcher.runFuelRiskCheck({ now: NOW, deps });
+  assert.equal(calls.notified.filter((n) => n.evidence?.risk === 'abnormal_burn').length, 0);
+});
+
+test('the reading is stored on every pass, including a silent one', async () => {
+  const { deps, calls } = harness({
+    location: { lat: 41, lng: -87, speedMph: 60, fuelPercent: 88, odometerMiles: 100300 },
+  });
+  await watcher.runFuelRiskCheck({ now: NOW, deps });
+  assert.equal(calls.notified.length, 0, 'an 88% tank is nobody’s problem');
+  assert.equal(calls.readings.length, 1,
+    'but the write is what makes the NEXT pass able to answer, so it cannot be skipped');
+  assert.equal(calls.readings[0].unitNumber, '310');
+  assert.equal(calls.readings[0].personId, 11, 'and the history follows the person');
+  assert.equal(calls.readings[0].fuelPercent, 88);
+});
+
+test('a truck whose provider reports no fuel stores UNKNOWN, not zero', async () => {
+  const { deps, calls } = harness({
+    location: { lat: 41, lng: -87, speedMph: 60 },
+  });
+  await watcher.runFuelRiskCheck({ now: NOW, deps });
+  assert.equal(calls.readings[0].fuelPercent, null);
+  assert.equal(calls.readings[0].odometerMiles, null);
+  assert.equal(calls.notified.length, 0, 'and a missing tank level is never a low tank');
+});
+
+test('the fleet’s identities are resolved in ONE query, not one per truck', async () => {
+  const groups = Array.from({ length: 40 }, (_, i) => ({
+    id: 100 + i, group_name: `WENZE UNIT # ${400 + i} DRIVER ${i}`,
+  }));
+  let lookups = 0;
+  const { deps } = harness({ groups });
+  const inner = deps.people.getOpenPeopleForUnits;
+  deps.people.getOpenPeopleForUnits = async (units) => { lookups += 1; return inner(units); };
+  await watcher.runFuelRiskCheck({ now: NOW, deps });
+  assert.equal(lookups, 1, '40 trucks, one lookup — this used to be 40 round trips');
 });

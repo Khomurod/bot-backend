@@ -206,6 +206,37 @@ Each risk kind has its own quiet window — a passed stop is settled history
 within a day, a low tank matters again after a shift — so one condition cannot
 fill the channel.
 
+**30% IS THE OPERATIONAL LOW-FUEL THRESHOLD.** It is the business rule and it
+had silently become 15% in `lib/fuel/risk.js`'s defaults, which made the feature
+stricter than the thing it was built to enforce: a truck at 28%, the case an
+operator wants to hear about while there is still time to route it, produced
+nothing at all. There are now three bands under ONE `low_fuel` risk kind —
+`low` at 30%, `short` at 15%, `critical` at 8% — rather than three risk kinds,
+because the quiet window is keyed on the kind and a truck sliding from 28% to
+12% would otherwise reset its own timer by crossing a band and say it twice.
+
+**Abnormal consumption needs a memory, and for the life of the feature it had
+none.** `assessFuelRisk` has always carried the branch; its only caller handed
+it `fuelPercent: null, odometerMiles: null` HARD-CODED, so the branch could not
+run. `database/truckFuelReadings.js` and `truck_fuel_readings` (migration 0038)
+close that: ONE ROW PER TRUCK, updated in place — about 110 rows forever, not a
+position history, which this application deliberately does not keep.
+
+The row carries a `baseline_*` triple that the comparison is made against, and
+it advances only once real distance has accumulated. Comparing consecutive
+20-minute samples measures noise; a 1% drop over 4 miles is a 25%-per-100-miles
+burn rate made of rounding error. Three things RESET the baseline instead of
+advancing it, and each is a case where burn measured across it would be a lie: a
+refuel (fuel used across a fill-up is two different tanks), an odometer that
+went backwards or jumped implausibly (a different vehicle now answers to this
+unit number), and a baseline gone stale (parked, or the feed was down). The
+comparison is therefore null far more often than not, and that is the design.
+
+`/api/health → operations.fuel` publishes `comparable`: how many trucks have a
+usable window. **Zero comparable trucks and zero findings are the same silence
+and mean opposite things** — the first is a blind engine, the second a healthy
+fleet — and before this block there was no way to tell them apart.
+
 **New telemetry.** Samsara is now asked for `fuelPercents` and
 `obdOdometerMeters` alongside `gps`, on the request that was already being made.
 Factor and Leader have returned `fuel_level` and `odometer` in their documented

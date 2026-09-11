@@ -143,6 +143,39 @@ async function getOpenPersonForUnit(unitNumber) {
   return mapUnit(res.rows[0]);
 }
 
+/**
+ * Many units at once — the same answer as `getOpenPersonForUnit`, batched.
+ *
+ * The fuel watch asked it once per truck inside a loop over the whole fleet:
+ * about 110 round trips every twenty minutes to answer one question that a
+ * single `= ANY` settles. Behaviour is deliberately identical, including the
+ * silence about a unit two open rows claim — that contradiction is
+ * `identity.unit_open_twice`'s to report, not this lookup's to resolve.
+ *
+ * @returns {Promise<Map<string, number>>} unit number → person id, present only
+ *   for units with exactly one open assignment.
+ */
+async function getOpenPeopleForUnits(unitNumbers = []) {
+  const units = [...new Set(
+    (unitNumbers || []).filter((u) => u != null && String(u).length).map(String)
+  )];
+  const map = new Map();
+  if (!units.length) return map;
+  const res = await query(
+    `SELECT unit_number, person_id FROM driver_units
+      WHERE unit_number = ANY($1::text[]) AND ended_at IS NULL`,
+    [units]
+  );
+  const seen = new Set();
+  for (const row of res.rows) {
+    const unit = String(row.unit_number);
+    if (seen.has(unit)) { map.delete(unit); continue; }
+    seen.add(unit);
+    if (row.person_id != null) map.set(unit, Number(row.person_id));
+  }
+  return map;
+}
+
 async function listUnitsForPerson(personId) {
   const res = await query(
     'SELECT * FROM driver_units WHERE person_id = $1 ORDER BY started_at DESC, id DESC',
@@ -163,5 +196,6 @@ module.exports = {
   closeUnitAssignment,
   getOpenUnitForPerson,
   getOpenPersonForUnit,
+  getOpenPeopleForUnits,
   listUnitsForPerson,
 };
