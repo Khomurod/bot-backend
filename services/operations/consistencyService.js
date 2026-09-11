@@ -105,7 +105,10 @@ async function loadSnapshot(db = defaultDb) {
  * checks compare — ids, states and links; never message text or alert bodies.
  */
 async function loadLayerSnapshot(db) {
-  const [people, personGroups, units, fuelAlerts, teamDrivers, mileageProgress, routeAssignments, personGroupHistory] = await Promise.all([
+  const [
+    people, personGroups, units, fuelAlerts, teamDrivers, mileageProgress,
+    routeAssignments, personGroupHistory, notificationSettings,
+  ] = await Promise.all([
     db.query('SELECT id, display_name, merged_into_person_id FROM driver_people'),
     db.query('SELECT person_id, group_id, started_at FROM driver_person_groups WHERE ended_at IS NULL'),
     db.query('SELECT person_id, unit_number, samsara_vehicle_id FROM driver_units WHERE ended_at IS NULL'),
@@ -119,6 +122,12 @@ async function loadLayerSnapshot(db) {
     // Open AND closed: the continuity check needs to know which chat a person
     // was on BEFORE the one they are on now.
     db.query('SELECT person_id, group_id, started_at, ended_at FROM driver_person_groups ORDER BY started_at'),
+    // Where Wenze's notices go. A plain SELECT rather than the settings helper
+    // for the reason stated above the other queries here: the data-layer
+    // helpers seed a row on read, and a SWEEP MUST NOT WRITE. A missing table
+    // (a deploy in progress) answers with no rows and the check stands down.
+    db.query('SELECT enabled, default_chat_id, category_chat_ids FROM operational_notification_settings WHERE id = 1')
+      .catch(() => ({ rows: [] })),
   ]);
   return {
     people: people.rows,
@@ -129,6 +138,13 @@ async function loadLayerSnapshot(db) {
     teamDrivers: teamDrivers.rows,
     mileageProgress: mileageProgress.rows,
     routeAssignments: routeAssignments.rows,
+    notificationSettings: notificationSettings.rows[0]
+      ? {
+        enabled: notificationSettings.rows[0].enabled !== false,
+        defaultChatId: notificationSettings.rows[0].default_chat_id,
+        categoryChatIds: notificationSettings.rows[0].category_chat_ids || {},
+      }
+      : null,
   };
 }
 

@@ -146,3 +146,34 @@ for someone browsing a list ("Home stay never closed"); a notice arrives after
 the fact and must name the fix in the past tense ("Closed a home stay that was
 left open"). `tests/operationsNotices.test.js` fails when a registered action has
 no description, so a new correction cannot ship announcing itself as a key.
+
+
+## With no destination configured, the absence is LOUD
+
+`resolveDestination` returns `via: 'none'` when no default chat id is set, and
+`notify()` then records nothing and queues nothing — deliberately, so a group
+configured months later cannot deliver a backlog of stale alerts into a live
+staff chat.
+
+The cost of that correct decision is that **every feature which speaks would
+run, work, and say nothing** until somebody opened a settings screen they had no
+particular reason to know existed. That is the exact shape of the failure this
+whole project started from: the outbox retried, backed off, gave up, recorded
+the error, and told nobody.
+
+So the gap is reported in the two places an operator already looks:
+
+- **Needs Attention** — `ops.no_notification_destination`, `serious` when
+  nothing at all is configured and `warning` when some categories are set and
+  the rest fall through to nowhere. The evidence names what is being lost and
+  where to fix it.
+- **`/api/health` → `operations.notifications`** — `reachable`,
+  `defaultConfigured`, `categoryOverrides`. **No chat id is ever published
+  here**: a group id is enough to attempt a join, and the question worth
+  answering on a health check is whether anybody is receiving, which is a
+  boolean.
+
+**A destination is never guessed.** Seeding the default from another feature's
+settings would put fuel risks and retention signals into a room chosen for a
+different audience, and that is a decision for a person. A missing settings row
+files nothing at all — a deploy in progress is not a misconfiguration.

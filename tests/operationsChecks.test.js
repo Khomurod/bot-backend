@@ -305,3 +305,66 @@ test('every check declares its key, so the sweep can never resolve a key it did 
     assert.ok(declared.has(key), `${key} is produced but not declared in CHECK_KEYS`);
   }
 });
+
+/**
+ * Wenze has things to say and nowhere to say them.
+ *
+ * The absence is made LOUD rather than repaired by guessing. A chat id invented
+ * from another feature's settings would put fuel risks and retention signals
+ * into a room chosen for a different audience, which is a decision for a
+ * person — but a feature that runs, works and says nothing, with only a console
+ * line to show for it, is the exact failure this project started from.
+ */
+const { checkNotificationDestination } = require('../services/operations/checks/systems');
+
+test('no destination at all is SERIOUS, and says what is being lost', () => {
+  const [finding] = checkNotificationDestination({
+    notificationSettings: { enabled: true, defaultChatId: null, categoryChatIds: {} },
+  });
+  assert.equal(finding.checkKey, 'ops.no_notification_destination');
+  assert.equal(finding.severity, 'serious');
+  assert.equal(finding.tier, 'warning', 'nothing here is auto-correctable — it is a decision');
+  assert.match(finding.evidence.whatIsLost, /retention/);
+  assert.match(finding.evidence.where, /Settings → Telegram Groups/);
+});
+
+test('some categories configured but no default is a WARNING — the rest are silent', () => {
+  const [finding] = checkNotificationDestination({
+    notificationSettings: {
+      enabled: true, defaultChatId: null, categoryChatIds: { fuel: '-100999', safety_escalation: '-100888' },
+    },
+  });
+  assert.equal(finding.severity, 'warning');
+  assert.match(finding.title, /2 categories are configured/);
+  assert.deepEqual(finding.evidence.configuredCategories.sort(), ['fuel', 'safety_escalation']);
+});
+
+test('a configured default files nothing', () => {
+  assert.deepEqual(
+    checkNotificationDestination({
+      notificationSettings: { enabled: true, defaultChatId: '-1005052301861', categoryChatIds: {} },
+    }),
+    [],
+  );
+});
+
+test('a cleared override is not a destination — it means "use the default"', () => {
+  const [finding] = checkNotificationDestination({
+    notificationSettings: { enabled: true, defaultChatId: null, categoryChatIds: { fuel: '  ' } },
+  });
+  assert.equal(finding.severity, 'serious', 'blank is not configured');
+});
+
+test('notifications switched off files nothing — that is a choice, not a fault', () => {
+  assert.deepEqual(
+    checkNotificationDestination({
+      notificationSettings: { enabled: false, defaultChatId: null, categoryChatIds: {} },
+    }),
+    [],
+  );
+});
+
+test('a missing settings row files nothing — a deploy in progress is not a misconfiguration', () => {
+  assert.deepEqual(checkNotificationDestination({ notificationSettings: null }), []);
+  assert.deepEqual(checkNotificationDestination({}), []);
+});

@@ -186,7 +186,62 @@ const CHECKS = [
   checkTeamDriverOnInactiveGroup,
   checkMileageWithoutPerson,
   checkRouteOnInactiveGroup,
+  // Declared below; function declarations hoist, so the reference is live.
+  checkNotificationDestination,
 ];
+
+
+/**
+ * Wenze has things to say and nowhere to say them.
+ *
+ * `resolveDestination` returns `via: 'none'` when no default chat id is set,
+ * and `notify()` then records nothing and queues nothing — deliberately, so a
+ * destination configured months later cannot deliver a backlog of stale alerts
+ * into a live staff chat.
+ *
+ * The consequence is that EVERY feature that speaks would run, work, and say
+ * nothing, until somebody opened a settings screen they had no particular
+ * reason to know existed. That is the exact shape of the failure this whole
+ * project started from: the outbox retried, backed off, gave up, recorded the
+ * error, and told nobody, and 101 staff alerts were lost over several months.
+ *
+ * So the absence is made LOUD rather than repaired by guessing. A chat id
+ * invented from another feature's settings would put fuel risks and retention
+ * signals into a room chosen for a different audience, which is a decision for
+ * a person. This check puts it on the one screen an operator already reads.
+ */
+function checkNotificationDestination({ notificationSettings }) {
+  // Absent settings means the table is not there yet — a deploy in progress,
+  // not a misconfiguration. Silence is correct until there is a row to read.
+  if (!notificationSettings) return [];
+  if (notificationSettings.enabled === false) return [];
+
+  const fallback = String(notificationSettings.defaultChatId || '').trim();
+  if (fallback) return [];
+
+  const overrides = Object.values(notificationSettings.categoryChatIds || {})
+    .filter((v) => String(v || '').trim());
+
+  return [{
+    checkKey: 'ops.no_notification_destination',
+    subjectType: 'settings',
+    subjectId: 'operational_notifications',
+    title: overrides.length
+      ? `No default notification group — ${overrides.length} categories are configured and the rest are silent`
+      : 'No notification group is configured — every automatic notice is being discarded',
+    severity: overrides.length ? 'warning' : 'serious',
+    tier: 'warning',
+    confidence: 100,
+    evidence: {
+      defaultChatId: null,
+      configuredCategories: Object.keys(notificationSettings.categoryChatIds || {})
+        .filter((k) => String(notificationSettings.categoryChatIds[k] || '').trim()),
+      whatIsLost: 'automatic corrections, fuel risks, safety escalations, retention '
+        + 'signals, self-healing notices and learning suggestions',
+      where: 'Settings → Telegram Groups → AI & Operations notifications',
+    },
+  }];
+}
 
 const CHECK_KEYS = [
   'samsara.vehicle_on_two_active_groups',
@@ -195,6 +250,7 @@ const CHECK_KEYS = [
   'dispatch.team_driver_on_inactive_group',
   'raise.progress_without_person',
   'route_control.assignment_on_inactive_group',
+  'ops.no_notification_destination',
 ];
 
 function runSystemChecks(snapshot) {
@@ -210,4 +266,5 @@ module.exports = {
   checkTeamDriverOnInactiveGroup,
   checkMileageWithoutPerson,
   checkRouteOnInactiveGroup,
+  checkNotificationDestination,
 };

@@ -28,6 +28,7 @@ const defaultDeps = () => ({
   safety: require('../../database/driverSafety'),
   aiProviders: require('../../database/aiProviders'),
   systemHealth: require('../../database/systemHealth'),
+  notificationSettings: require('../../database/operationalNotificationSettings'),
   learning: require('../../database/operationalLearning'),
   retention: require('../../database/retentionAssessments'),
   /* eslint-enable global-require */
@@ -88,12 +89,34 @@ function summariseCorrections(lastCorrections) {
   };
 }
 
+/**
+ * Whether Wenze can be heard, without publishing where.
+ *
+ * A chat id is not a secret, but this endpoint is read by an uptime monitor and
+ * whatever else, and a group id is enough to attempt a join. The question worth
+ * answering here is "is anybody receiving this", and that is a boolean.
+ */
+function describeDestination(config) {
+  if (!config) return { available: false };
+  const hasDefault = Boolean(String(config.defaultChatId || '').trim());
+  const overrides = Object.values(config.categoryChatIds || {})
+    .filter((v) => String(v || '').trim()).length;
+  return {
+    available: true,
+    enabled: config.enabled !== false,
+    defaultConfigured: hasDefault,
+    categoryOverrides: overrides,
+    // The one sentence somebody reading a health check needs.
+    reachable: config.enabled !== false && (hasDefault || overrides > 0),
+  };
+}
+
 async function getOperationsHealth(deps = defaultDeps()) {
   try {
     const status = deps.consistency.getConsistencyStatus();
     const [
       findings, coverage, duplicates, indexPresent, providers, homeTimeLive,
-      loadPhases, safety, systems, learning, retention,
+      loadPhases, safety, systems, learning, retention, notifyConfig,
     ] = await Promise.all([
       deps.findings.summariseFindings(),
       deps.people.summariseIdentityCoverage(),
@@ -106,6 +129,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
       deps.systemHealth.summariseHealthStates().catch(() => null),
       deps.learning.summariseSuggestions().catch(() => null),
       deps.retention.summariseRetention().catch(() => null),
+      deps.notificationSettings.getNotificationSettings().catch(() => null),
     ]);
     return {
       available: true,
@@ -141,6 +165,11 @@ async function getOperationsHealth(deps = defaultDeps()) {
       // Drivers the company may be about to lose. A number here that stays high
       // is the feature working and nobody acting on it.
       retention,
+      // WHETHER ANY OF THE ABOVE CAN BE HEARD. With no destination configured,
+      // every notice is discarded at the door — features running, working, and
+      // saying nothing, which is the exact failure this whole project started
+      // from. No chat id is ever published here, only whether one is set.
+      notifications: describeDestination(notifyConfig),
       aiModels: providers.map((p) => ({
         provider: publicProviderName(p),
         enabled: p.enabled === true,
