@@ -115,7 +115,7 @@ async function composeCoachingMessage({ driverName, pattern }, deps = defaultDep
       capability: CAPABILITY,
       userText: buildPrompt({ pattern, firstName }),
       maxOutputTokens: 160,
-      validateResult: validateCoachingText,
+      validate: validateCoachingText,
     });
     const clean = String(text || '').trim();
     if (validateCoachingText(clean) === true) return { text: clean, aiAssisted: true };

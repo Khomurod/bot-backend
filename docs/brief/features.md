@@ -122,7 +122,8 @@ passed the 500-line limit.
 
 ### Operational consistency, corrections and AI
 
-Moved to **[§4a. The system checking itself, and the AI that helps](self-checking-and-ai.md)** — the findings engine, tiered corrections, the AI
+Moved to **[§4a. The system checking itself, and the AI that helps](self-checking-and-ai.md)** and
+**[§4b. The AI routing layer](ai-gateway.md)** — the findings engine, tiered corrections, the AI
 routing layer and the provider terms watcher. Same document, split when this
 file passed the 500-line limit.
 
@@ -209,6 +210,35 @@ never reach an AI call).
   back. No secret changes hands, and the sending number cannot be typed wrong.
   The older path — an admin pasting that recruiter's JWT — still works and is
   used when there is no login.
+- **Wenze is taught what it may tell a candidate, and confirms it first.**
+  Facebook Leads → **Teach Wenze**: an administrator types a sentence in
+  ordinary language ("company driver pay is 77 cents per mile"), Wenze restates
+  what it believes should change, and **nothing is in use until they agree**.
+  Three kinds — a `fact` it may say, a `boundary` it must never say, a
+  `correction` that overrides both. Nothing is ever overwritten: a changed rate
+  produces a new row that supersedes the old one, which stays with the dates it
+  was true, because "what were we telling candidates in August" gets asked after
+  a dispute. `recruiting_knowledge`, `docs/architecture/recruiting-knowledge.md`.
+- **Outside working hours, Wenze continues the conversation as the assigned
+  recruiter.** A lead that arrives at 9pm on a Friday is answered by the
+  candidate within minutes and then hears nothing until Monday. Wenze now
+  replies on the same recruiter's number, through the same `sendSmsAsRecruiter`
+  — **but only from what has been approved above**, and only when an
+  administrator has switched it on. With nothing approved it answers nothing.
+  A draft naming a figure no approved statement contains, or promising,
+  guaranteeing, approving, waiving, hiring or setting a start date, is
+  **refused whole** rather than edited; the candidate then gets one fixed line
+  saying a recruiter will follow up, and a human is told which conversation
+  needs them. Capped (four replies by default), silent in quiet hours (21:00–08:00),
+  and stood down the moment a recruiter replies. Every reply is posted into the
+  recruiter's Telegram thread marked as Wenze's, so they read what went out in
+  their name before answering on top of it. **No employment decision, ever.**
+  Configured at Facebook Leads → Teach Wenze; `recruiting_hours_settings`,
+  `recruiting_ai_conversations`, `docs/architecture/recruiting-after-hours.md`.
+- **A recruiter's own typed reply is now recorded**, as `outbound_recruiter` on
+  the mirror ledger. It used to be sent and forgotten, so the database held the
+  opening line and the candidate's answers and nothing in between — anybody
+  reading that thread back was reading half a conversation and could not tell.
 - **Self-serve Page connect**: `/connect` in a leads group starts a
   session-token-gated OAuth flow; Page tokens are encrypted
   (`lib/security/facebookCrypto.js`).

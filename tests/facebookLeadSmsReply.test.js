@@ -25,6 +25,15 @@ const SMS_PATH = require.resolve('../services/ringCentralSmsService');
 const TG_PATH = require.resolve('../services/telegramHtml');
 const LEADS_TG_PATH = require.resolve('../services/leadsTelegramClient');
 const MIRROR_PATH = require.resolve('../services/facebookLeadSmsMirrorService');
+// The mirror service is a façade over two halves, and BOTH destructure the
+// collaborators stubbed below at require time. Reloading only the façade would
+// leave a relay cached from a previous test still holding that test's stubs —
+// which is exactly what happened, and reported as "the shared number was used
+// by a recruiter mirror".
+const LOOKUP_PATH = require.resolve('../services/facebookLeads/smsMirrorLookup');
+const RELAY_PATH = require.resolve('../services/facebookLeads/smsReplyRelay');
+const CONVOS_PATH = require.resolve('../database/recruitingConversations');
+const RELOADED = [MIRROR_PATH, LOOKUP_PATH, RELAY_PATH];
 
 const JANE = { id: 7, name: 'Jane Doe', phone_number: '+15557770000', refresh_token_encrypted: 'enc' };
 
@@ -84,10 +93,18 @@ function loadMirror({
   // fix for the production `chat not found`, so the tests must run it.
   delete require.cache[LEADS_TG_PATH];
 
-  delete require.cache[MIRROR_PATH];
+  // The after-hours hand-back reaches a real database otherwise.
+  require.cache[CONVOS_PATH] = {
+    exports: {
+      getConversation: async () => null,
+      closeConversation: async () => null,
+    },
+  };
+
+  for (const path of RELOADED) delete require.cache[path];
   const mirrorService = require(MIRROR_PATH);
   const restore = () => {
-    for (const path of [DB_PATH, RC_PATH, SMS_PATH, TG_PATH, LEADS_TG_PATH, MIRROR_PATH]) {
+    for (const path of [DB_PATH, RC_PATH, SMS_PATH, TG_PATH, LEADS_TG_PATH, CONVOS_PATH, ...RELOADED]) {
       delete require.cache[path];
     }
   };

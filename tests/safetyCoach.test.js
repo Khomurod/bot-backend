@@ -219,3 +219,22 @@ test('one driver that throws does not stop the pass', async () => {
   assert.equal(summary.drivers, 2);
   assert.equal(calls.sentToDriver.length, 1);
 });
+
+/**
+ * The router's parameter is `validate`. `services/groqClient.js` forwards its
+ * own `validateResult` into it, and this file passed that name straight to
+ * `runCapability`, where it was silently ignored: the consequence guard still
+ * ran afterwards, so nothing unsafe could be sent, but a provider answering
+ * with a forbidden word no longer cost that provider its turn — the chain
+ * stopped and the fixed sentence shipped instead of the next provider's answer.
+ */
+test('the coaching validator reaches the router under the name the router reads', async () => {
+  const { deps, calls } = harness({ aiText: 'Hi John, the truck logged 4 harsh braking events in the last 14 days. Nothing serious, just worth easing off a little earlier.' });
+  await coach.runSafetyCoachPass({ now: NOW, deps, options: {} });
+  const call = calls.prompts[0];
+  assert.ok(call, 'a model was asked');
+  assert.strictEqual(typeof call.validate, 'function', 'runCapability reads `validate`');
+  assert.strictEqual(call.validateResult, undefined, '`validateResult` is groqClient\'s name, not the router\'s');
+  // And it is the real guard, not a stub that says yes.
+  assert.notStrictEqual(call.validate('You have a written warning on file for this.'), true);
+});

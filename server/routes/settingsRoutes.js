@@ -32,6 +32,7 @@ const { createAiSettingsRouter } = require('./settings/aiRoutes');
 const { createAiPolicyRouter } = require('./settings/aiPolicyRoutes');
 const { createNotificationSettingsRouter } = require('./settings/notificationRoutes');
 const { createRetiredLeftoversRouter } = require('./settings/retiredLeftoversRoutes');
+const { createRecruitingHoursRouter } = require('./settings/recruitingHoursRoutes');
 
 function createSettingsRouter({ authMiddleware, telegram = null }) {
   const router = express.Router();
@@ -49,6 +50,7 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
   router.use(createNotificationSettingsRouter(deps));
   router.use(createAiPolicyRouter(deps));
   router.use(createRetiredLeftoversRouter(deps));
+  router.use(createRecruitingHoursRouter(deps));
 
   return router;
 }

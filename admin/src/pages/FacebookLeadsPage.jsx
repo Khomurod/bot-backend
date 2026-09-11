@@ -4,6 +4,7 @@ import { useAutoMessages } from "./facebookLeads/useAutoMessages";
 import { useLeadsInfrastructure } from "./facebookLeads/useLeadsInfrastructure";
 import { AutoMessagesTab } from "./facebookLeads/AutoMessagesTab";
 import TeachWenzeCard from "./recruiting/TeachWenzeCard";
+import WorkingHoursCard from "./settings/recruiting/WorkingHoursCard";
 import { ConnectedPagesTab } from "./facebookLeads/ConnectedPagesTab";
 import { WebhookLogTab } from "./facebookLeads/WebhookLogTab";
 import { ResetConfirmDialog } from "./facebookLeads/ResetConfirmDialog";
@@ -121,8 +122,17 @@ export default function FacebookLeadsPage() {
         Settings because it is operational content a recruiting manager keeps
         current, not a connection to configure once.
       */}
+      {/*
+        Both halves of what Wenze may do for recruiting sit on the same tab, in
+        the order they have to be done: teach it what it may say FIRST, then
+        decide when it may say it. Putting the hours in Settings would have
+        separated the switch from the only thing that makes it safe.
+      */}
       {tab === "teach" && (
-        <TeachWenzeCard flash={(type, text) => setStatus({ type, text })} />
+        <>
+          <TeachWenzeCard flash={(type, text) => setStatus({ type, text })} />
+          <WorkingHoursCard flash={(type, text) => setStatus({ type, text })} />
+        </>
       )}
 
       {isDev && tab === "log" && (
