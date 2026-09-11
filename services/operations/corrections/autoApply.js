@@ -41,7 +41,8 @@ const DEFAULT_CAP = 50;
 /** Per-check settings, keyed by check_key. Absent = disabled. */
 async function loadCheckSettings(db = defaultDb) {
   const res = await db.query(
-    'SELECT check_key, auto_apply_enabled, max_auto_per_run FROM operational_check_settings'
+    `SELECT check_key, auto_apply_enabled, max_auto_per_run, shadow
+       FROM operational_check_settings`
   );
   return new Map(res.rows.map((r) => [r.check_key, r]));
 }
@@ -126,6 +127,16 @@ async function planForCheck(checkKey, { settings, store }) {
     return { disabled: await store.countFindings({ status: 'open', checkKey, tier: 'auto' }) };
   }
 
+  // SHADOW DECIDES EVERYTHING AND APPLIES NOTHING. Reported separately from
+  // `disabled`, because they are different answers to different questions: a
+  // disabled check was never trusted, and a shadowed one is being TRIED — the
+  // whole point is to find out what it would have done before letting it. One
+  // bucket for both would make the trial invisible, which is the trial's only
+  // output.
+  if (setting.shadow === true) {
+    return { shadowed: await store.countFindings({ status: 'open', checkKey, tier: 'auto' }) };
+  }
+
   // Count, then list — see the header. `wanted` is the real number, so the
   // finding a capped check files about itself says something true.
   const wanted = await store.countFindings({ status: 'open', checkKey, tier: 'auto' });
@@ -160,11 +171,15 @@ async function runAutoCorrections({ apply = false, db = defaultDb, store = defau
 
   const plan = [];
   const capped = [];
-  const skipped = { disabled: 0, noAction: 0, noPayload: 0 };
+  // `shadowed` is its own count, never folded into `disabled`. A check being
+  // TRIED and a check nobody trusts are different states, and the trial's only
+  // output is the number it would have changed.
+  const skipped = { disabled: 0, shadowed: 0, noAction: 0, noPayload: 0 };
 
   for (const checkKey of CHECK_TO_ACTION.keys()) {
     const result = await planForCheck(checkKey, { settings, store });
     skipped.disabled += result.disabled || 0;
+    skipped.shadowed += result.shadowed || 0;
     skipped.noPayload += result.noPayload || 0;
     if (result.capped) capped.push(result.capped);
     if (result.items) plan.push(...result.items);
