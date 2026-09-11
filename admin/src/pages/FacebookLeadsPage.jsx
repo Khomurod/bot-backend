@@ -3,6 +3,8 @@ import { timeAgo, friendlyTimezone } from "../utils/formatTime";
 import { useAutoMessages } from "./facebookLeads/useAutoMessages";
 import { useLeadsInfrastructure } from "./facebookLeads/useLeadsInfrastructure";
 import { AutoMessagesTab } from "./facebookLeads/AutoMessagesTab";
+import TeachWenzeCard from "./recruiting/TeachWenzeCard";
+import WorkingHoursCard from "./settings/recruiting/WorkingHoursCard";
 import { ConnectedPagesTab } from "./facebookLeads/ConnectedPagesTab";
 import { WebhookLogTab } from "./facebookLeads/WebhookLogTab";
 import { ResetConfirmDialog } from "./facebookLeads/ResetConfirmDialog";
@@ -94,6 +96,7 @@ export default function FacebookLeadsPage() {
         {[
           { id: "auto", label: "Auto-Reply Setup" },
           { id: "pages", label: "Connected Pages" },
+          { id: "teach", label: "Teach Wenze" },
           ...(isDev ? [{ id: "log", label: "Activity Log" }] : []),
         ].map((t) => (
           <button
@@ -112,6 +115,25 @@ export default function FacebookLeadsPage() {
       )}
 
       {tab === "pages" && <ConnectedPagesTab pages={pages} />}
+
+      {/*
+        What Wenze may TELL a candidate, as opposed to the fixed first message
+        the auto-reply tab configures. It lives beside that rather than in
+        Settings because it is operational content a recruiting manager keeps
+        current, not a connection to configure once.
+      */}
+      {/*
+        Both halves of what Wenze may do for recruiting sit on the same tab, in
+        the order they have to be done: teach it what it may say FIRST, then
+        decide when it may say it. Putting the hours in Settings would have
+        separated the switch from the only thing that makes it safe.
+      */}
+      {tab === "teach" && (
+        <>
+          <TeachWenzeCard flash={(type, text) => setStatus({ type, text })} />
+          <WorkingHoursCard flash={(type, text) => setStatus({ type, text })} />
+        </>
+      )}
 
       {isDev && tab === "log" && (
         <WebhookLogTab

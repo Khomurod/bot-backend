@@ -122,7 +122,8 @@ passed the 500-line limit.
 
 ### Operational consistency, corrections and AI
 
-Moved to **[§4a. The system checking itself, and the AI that helps](self-checking-and-ai.md)** — the findings engine, tiered corrections, the AI
+Moved to **[§4a. The system checking itself, and the AI that helps](self-checking-and-ai.md)** and
+**[§4b. The AI routing layer](ai-gateway.md)** — the findings engine, tiered corrections, the AI
 routing layer and the provider terms watcher. Same document, split when this
 file passed the 500-line limit.
 
@@ -133,6 +134,57 @@ file passed the 500-line limit.
   Groups detail modal opens with the driver's permanent identity: every chat and
   every truck they have held, in time, or a plain "not placed yet". See
   `docs/brief/data-model.md` → the person layer.
+
+### Wenze looking after itself
+
+- **When a part of Wenze breaks and then recovers, it says so — and when it was
+  only a blip, it says nothing at all.** Every recovery it reports already ran
+  silently (RingCentral token refresh, AI provider cooldowns, model retirement,
+  outbox backoff); what was missing was the noticing. Three consecutive failures
+  before anything is announced, **recovery announced only where the failure
+  was**, flapping said once and then silent. Recovery goes to `self_healing`
+  saying nothing is needed; a real outage goes to `system_errors` saying what
+  does. Nothing probes an external service.
+- **When the same automatic correction is undone three times, Wenze proposes
+  something about it** — to `ai_learning`, and only ever as a proposal.
+  `operational_learning_suggestions` has statuses `proposed`, `accepted`,
+  `dismissed` and **no status meaning "applied automatically"**. Accepting
+  records that an administrator agrees; the change is then made by hand.
+  The same for repeated refusals of Wenze's recruiting drafts: a rising
+  `unapproved_figure` count means candidates keep asking about something nobody
+  has taught it, which is a gap to fill under Teach Wenze.
+- Operations → **What Wenze learned** shows each proposal with the evidence that
+  produced it, including the reasons people typed when they reverted. A
+  suggestion without its evidence is an opinion.
+  `docs/architecture/self-healing-and-learning.md`.
+
+### Driver retention
+
+- **Wenze says when the company is about to lose somebody, while there is still
+  time to do something.** Every four hours it scores each active driver from
+  facts other features already recorded — weeks past the road allowance, a home
+  request that expired unanswered, earned bonus never posted, days sitting
+  empty, and what the driver said in their own words
+  (`chat_message_annotations`: `quit_signal`, `complaint`, sentiment). Above a
+  threshold it posts to the `retention` notification category with **the
+  reasons and a suggested action**, and the action is always something the
+  company does: ring them, answer the request, pay the bonus, find them a load.
+- **A retention signal is something the COMPANY did, or something the driver
+  SAID — never an assessment of the driver.** No behaviour score, no
+  performance measure, no employment decision. `refuseEmploymentLanguage` in
+  `services/retention/watch.js` refuses a notice that strays, and the
+  Operations → Retention screen has exactly two endpoints: read the list and
+  say "we know". There is deliberately nowhere to record an opinion of a driver.
+- **The decision is arithmetic.** With every AI provider switched off, the same
+  drivers are flagged for the same reasons; a model only words one sentence, and
+  is given counts and reason phrases with no name and no message text.
+- Silence is measured against **that driver's own** earlier volume, not an
+  absolute — somebody who never texted much is not a risk. Message-derived
+  signals are capped at 30 days because `chat_logs` is pruned there, and a
+  driver whose messages were never annotated scores NULL rather than neutral.
+- Said once; said again only when the score rises by 3 or more, or a week has
+  passed. An acknowledgement buys silence until it gets materially worse.
+  `driver_retention_assessments`, `docs/architecture/driver-retention.md`.
 
 ### Fuel monitor
 
@@ -209,6 +261,35 @@ never reach an AI call).
   back. No secret changes hands, and the sending number cannot be typed wrong.
   The older path — an admin pasting that recruiter's JWT — still works and is
   used when there is no login.
+- **Wenze is taught what it may tell a candidate, and confirms it first.**
+  Facebook Leads → **Teach Wenze**: an administrator types a sentence in
+  ordinary language ("company driver pay is 77 cents per mile"), Wenze restates
+  what it believes should change, and **nothing is in use until they agree**.
+  Three kinds — a `fact` it may say, a `boundary` it must never say, a
+  `correction` that overrides both. Nothing is ever overwritten: a changed rate
+  produces a new row that supersedes the old one, which stays with the dates it
+  was true, because "what were we telling candidates in August" gets asked after
+  a dispute. `recruiting_knowledge`, `docs/architecture/recruiting-knowledge.md`.
+- **Outside working hours, Wenze continues the conversation as the assigned
+  recruiter.** A lead that arrives at 9pm on a Friday is answered by the
+  candidate within minutes and then hears nothing until Monday. Wenze now
+  replies on the same recruiter's number, through the same `sendSmsAsRecruiter`
+  — **but only from what has been approved above**, and only when an
+  administrator has switched it on. With nothing approved it answers nothing.
+  A draft naming a figure no approved statement contains, or promising,
+  guaranteeing, approving, waiving, hiring or setting a start date, is
+  **refused whole** rather than edited; the candidate then gets one fixed line
+  saying a recruiter will follow up, and a human is told which conversation
+  needs them. Capped (four replies by default), silent in quiet hours (21:00–08:00),
+  and stood down the moment a recruiter replies. Every reply is posted into the
+  recruiter's Telegram thread marked as Wenze's, so they read what went out in
+  their name before answering on top of it. **No employment decision, ever.**
+  Configured at Facebook Leads → Teach Wenze; `recruiting_hours_settings`,
+  `recruiting_ai_conversations`, `docs/architecture/recruiting-after-hours.md`.
+- **A recruiter's own typed reply is now recorded**, as `outbound_recruiter` on
+  the mirror ledger. It used to be sent and forgotten, so the database held the
+  opening line and the candidate's answers and nothing in between — anybody
+  reading that thread back was reading half a conversation and could not tell.
 - **Self-serve Page connect**: `/connect` in a leads group starts a
   session-token-gated OAuth flow; Page tokens are encrypted
   (`lib/security/facebookCrypto.js`).

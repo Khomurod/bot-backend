@@ -11,95 +11,24 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { bot, startBot, stopBot } = require('./bot/bot');
 const { startServer, stopServer } = require('./server/api');
-const { startScheduler, stopScheduler } = require('./services/schedulerService');
 const {
   startDatabaseUsageService,
   stopDatabaseUsageService,
 } = require('./services/databaseUsageService');
-const { startBirthdayService, stopBirthdayService } = require('./services/birthdayService');
-const {
-  startGroupStatusAiService,
-  stopGroupStatusAiService,
-} = require('./services/groupStatusAiService');
-const {
-  startEmployeeBirthdayWishService,
-  stopEmployeeBirthdayWishService,
-} = require('./services/employeeBirthdayWishService');
 const {
   configureFacebookLeadTelegram,
   startFacebookWebhookWorker,
   stopFacebookWebhookWorker,
 } = require('./services/facebookWebhookService');
 const {
-  configureDispatchEtaTelegram,
-  startDispatchEtaScheduler,
-  stopDispatchEtaScheduler,
-} = require('./services/dispatchEtaUpdateService');
-const {
-  startMileageBonusService,
-  stopMileageBonusService,
-} = require('./services/mileageBonusService');
-const {
-  startDatatruckDocumentService,
-  stopDatatruckDocumentService,
-} = require('./services/datatruckDocumentService');
-const {
-  startRaiseApprovalService,
-  stopRaiseApprovalService,
-} = require('./services/raiseApprovalService');
-const {
-  startFuelStopAlertService,
-  stopFuelStopAlertService,
-} = require('./services/fuelStopAlertService');
-const {
-  startRecruiterCallSyncService,
-  stopRecruiterCallSyncService,
-} = require('./services/recruiterCallSyncService');
-const {
-  startRingCentralTokenRefreshService,
-  stopRingCentralTokenRefreshService,
-} = require('./services/ringCentralTokenRefreshService');
-const {
-  startRoadBonusNotifierService,
-  stopRoadBonusNotifierService,
-} = require('./services/roadBonusNotifierService');
-const {
-  startHomeTimeReminderService,
-  stopHomeTimeReminderService,
-} = require('./services/homeTimeReminderService');
-const {
-  startReturnToRoadWatch,
-  stopReturnToRoadWatch,
-} = require('./services/homeTime/returnToRoadWatch');
-const { registerKnownCapabilities } = require('./services/ai/capabilityRegistry');
-const {
-  startRouteControlService,
-  stopRouteControlService,
-} = require('./services/routeControlService');
-const {
-  startDuplicateUnitCheckService,
-  stopDuplicateUnitCheckService,
-} = require('./services/duplicateUnitCheckService');
-const {
-  startConsistencyService,
-  stopConsistencyService,
-} = require('./services/operations/consistencyService');
-const {
-  startPolicyWatcher,
-  stopPolicyWatcher,
-} = require('./services/ai/policy/policyService');
-const {
-  startModelMaintenance,
-  stopModelMaintenance,
-} = require('./services/ai/discovery/modelMaintenance');
-const { setModelRefusalListener } = require('./services/ai/router');
-const { onProfileSaved } = require('./services/identity/personResolver');
-const { setProfileSavedHook } = require('./database/driverProfiles');
-const {
   startMemoryWatchdog,
   stopMemoryWatchdog,
 } = require('./services/memoryWatchdog');
 const db = require('./database/db');
+const {
+  startBackgroundServices,
+  stopBackgroundServices,
+} = require('./services/backgroundServices');
 
 const DB_DRAIN_TIMEOUT_MS = 5000;
 const CHILD_STOP_TIMEOUT_MS = 10_000;
@@ -338,25 +267,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
 
   console.log(`[SHUTDOWN] Graceful shutdown initiated (${signal})...`);
 
-  try { stopScheduler(); } catch (err) { console.error('[SHUTDOWN] stopScheduler failed:', err.message); }
-  try { stopDispatchEtaScheduler(); } catch (err) { console.error('[SHUTDOWN] stopDispatchEtaScheduler failed:', err.message); }
-  try { stopBirthdayService(); } catch (err) { console.error('[SHUTDOWN] stopBirthdayService failed:', err.message); }
-  try { stopEmployeeBirthdayWishService(); } catch (err) { console.error('[SHUTDOWN] stopEmployeeBirthdayWishService failed:', err.message); }
-  try { stopGroupStatusAiService(); } catch (err) { console.error('[SHUTDOWN] stopGroupStatusAiService failed:', err.message); }
-  try { stopMileageBonusService(); } catch (err) { console.error('[SHUTDOWN] stopMileageBonusService failed:', err.message); }
-  try { stopDatatruckDocumentService(); } catch (err) { console.error('[SHUTDOWN] stopDatatruckDocumentService failed:', err.message); }
-  try { stopRaiseApprovalService(); } catch (err) { console.error('[SHUTDOWN] stopRaiseApprovalService failed:', err.message); }
-  try { stopFuelStopAlertService(); } catch (err) { console.error('[SHUTDOWN] stopFuelStopAlertService failed:', err.message); }
-  try { stopRecruiterCallSyncService(); } catch (err) { console.error('[SHUTDOWN] stopRecruiterCallSyncService failed:', err.message); }
-  try { stopRingCentralTokenRefreshService(); } catch (err) { console.error('[SHUTDOWN] stopRingCentralTokenRefreshService failed:', err.message); }
-  try { stopRoadBonusNotifierService(); } catch (err) { console.error('[SHUTDOWN] stopRoadBonusNotifierService failed:', err.message); }
-  try { stopHomeTimeReminderService(); } catch (err) { console.error('[SHUTDOWN] stopHomeTimeReminderService failed:', err.message); }
-  try { stopReturnToRoadWatch(); } catch (err) { console.error('[SHUTDOWN] stopReturnToRoadWatch failed:', err.message); }
-  try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }
-  try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
-  try { stopConsistencyService(); } catch (err) { console.error('[SHUTDOWN] stopConsistencyService failed:', err.message); }
-  try { stopPolicyWatcher(); } catch (err) { console.error('[SHUTDOWN] stopPolicyWatcher failed:', err.message); }
-  try { stopModelMaintenance(); } catch (err) { console.error('[SHUTDOWN] stopModelMaintenance failed:', err.message); }
+  stopBackgroundServices();
   try { stopMemoryWatchdog(); } catch (err) { console.error('[SHUTDOWN] stopMemoryWatchdog failed:', err.message); }
   try { stopDatabaseUsageService(); } catch (err) { console.error('[SHUTDOWN] stopDatabaseUsageService failed:', err.message); }
 
@@ -393,47 +304,11 @@ async function start() {
   // the database and every later query is counted.
   startDatabaseUsageService();
 
-  configureDispatchEtaTelegram(bot.telegram);
-  const { getLeadsTelegram } = require('./services/leadsTelegramClient');
-  configureFacebookLeadTelegram(getLeadsTelegram());
-  console.log('[BOOT] Facebook lead Telegram delivery uses TELEGRAM_BOT_TOKEN (WenzeLeadBots).');
-
   startServer();
   await startBot();
-  startScheduler();
-  startDispatchEtaScheduler();
-  startBirthdayService();
-  startEmployeeBirthdayWishService();
-  startGroupStatusAiService();
-  startMileageBonusService();
-  startDatatruckDocumentService();
-  startRaiseApprovalService();
-  startFuelStopAlertService(bot.telegram);
-  startRecruiterCallSyncService();
-  startRingCentralTokenRefreshService();
-  startRoadBonusNotifierService(bot.telegram);
-  startHomeTimeReminderService(bot.telegram);
-  // Notices when a driver who is home goes back to work — a Datatruck load plus
-  // the truck's own movement, never one of them alone.
-  startReturnToRoadWatch();
-  // Put the AI responsibilities catalogue into the database, so Settings → AI
-  // has something to show and an administrator has something to switch off.
-  // Descriptive columns only — a capability switched off stays off.
-  registerKnownCapabilities().catch((err) => {
-    console.warn('[AI CAPABILITIES] registration pass failed:', err.message);
-  });
-  startRouteControlService(bot.telegram);
-  startDuplicateUnitCheckService();
-  // Runs beside the duplicate-unit scan, whose three report types it generalises;
-  // that service keeps running until its checks are folded in.
-  startConsistencyService();
-  // A saved driver profile keeps the person layer current (unit change,
-  // Telegram id). Registered here so database/ never depends upward.
-  setProfileSavedHook(onProfileSaved);
-  startPolicyWatcher({ telegram: bot?.telegram || null });
-  // Daily model refresh, plus a debounced look whenever the router is refused a
-  // model. Its Telegram lines ride the policy watcher's outbox above.
-  startModelMaintenance({ setModelRefusalListener });
+  // Every background timer and watcher, in one roster — see
+  // services/backgroundServices.js for what each one does and what it may send.
+  startBackgroundServices({ telegram: bot.telegram });
   await startFacebookWebhookWorker();
   startLeadsBot();
   startMemoryWatchdog();

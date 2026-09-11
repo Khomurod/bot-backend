@@ -21,6 +21,8 @@ export async function handleApiError(res) {
   let code = null;
   let detail = null;
   let htmlBody = false;
+  let field = null;
+  let suggestion = null;
   try {
     const contentType = res.headers.get("content-type");
     if (contentType && contentType.includes("application/json")) {
@@ -28,6 +30,11 @@ export async function handleApiError(res) {
       const base = errData.error || errorMessage;
       code = errData.code || null;
       detail = errData.detail || null;
+      // A server that names the offending field, or offers a corrected value,
+      // has done the hard part. Discarding it here was why the notification
+      // screen's advertised one-click fix could never render.
+      field = errData.field || null;
+      suggestion = errData.suggestion || null;
       errorMessage = errData.detail ? `${base} (${errData.detail})` : base;
     } else {
       htmlBody = Boolean(contentType && contentType.includes("text/html"));
@@ -39,7 +46,9 @@ export async function handleApiError(res) {
   } catch (e) {
     // Fallback if parsing fails entirely
   }
-  throw new ApiError(errorMessage, { status: res.status, code, detail, url: res.url, htmlBody });
+  throw new ApiError(errorMessage, {
+    status: res.status, code, detail, url: res.url, htmlBody, field, suggestion,
+  });
 }
 
 export const API_BASE = '/api';

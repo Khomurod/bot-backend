@@ -135,3 +135,208 @@ retry.**
 after-the-fact record of what was sent (§4).
 
 ---
+
+## Load lifecycle watch (every 10 minutes, first pass 5 minutes after boot)
+
+`services/loads/lifecycleWatch.js`. Works out what each active load is actually
+doing — assigned, heading to pickup, at pickup, loaded and moving, at delivery,
+delivered, empty — and writes it to `load_lifecycle`, one row per Datatruck
+order.
+
+**Dispatch status is a plan, not an observation.** A load reads `dispatched` the
+moment somebody assigns it, often days before the truck moves, and frequently
+still reads `in_transit` long after delivery because nobody went back to change
+it. So the phase comes from **where the truck is**, with the board as a
+corroborating signal.
+
+Two things follow, enforced in `lib/loads/lifecycle.js` rather than left to a
+caller:
+
+- **Arrival is observed, departure is remembered.** "At pickup" is a distance
+  measurable right now. "Delivered" is not: it is the truck having been at the
+  receiver and then left, and a truck 200 miles short of a receiver looks
+  identical to one 200 miles past it. `was_at_pickup` and `was_at_delivery` are
+  OR-ed and never cleared, because a departure is not evidence the arrival was
+  imagined.
+- **Only a board running AHEAD of the truck is a conflict.** A lagging board
+  describes almost every delivered load and flagging it would make the check
+  pure noise. A board claiming more than the coordinates support means somebody
+  recorded work that has not happened, and everything downstream will believe it.
+
+A conflict never moves the phase. It files `load.phase_unclear` at the `warning`
+tier, which has **no registered action**, so "Wenze never guesses a load's
+status" is true by construction rather than by care.
+
+**Cost:** one fleet fetch and one order window per pass, matched locally, so
+ninety loads cost the same as one. It deliberately does not build the Live
+Locations snapshot, which geocodes and computes ETAs nothing here reads.
+
+The driver on a load is resolved through `driver_units` to a **person**, not a
+chat, so a truck or group change does not detach a load from its history.
+
+Visible on `/api/health` → `operations.loads`: how many loads are tracked, in
+what phase, how many are unclear and how many have a board disagreement.
+
+## Fuel risk watch (every 20 minutes, first pass 7 minutes after boot)
+
+`services/fuelStop/riskWatch.js`, beside the existing fuel-stop reminder rather
+than replacing it. That one answers a single question — has the truck reached
+the station dispatch named? — and answers it well. This one asks the questions a
+person actually asks: can it *get* there, did it drive past, is the instruction
+from last trip, and is it burning fuel faster than usual.
+
+**A missing reading is not a low one.** Most of this fleet does not report fuel
+at all, so every threshold in `lib/fuel/risk.js` requires an actual number and
+absence produces silence. The danger is specific and was caught in review of
+this very module: `Number(null)` is `0`, so any threshold written with a
+coercion reads "does not report fuel" as "empty tank" and alerts on the whole
+fleet on its first pass. A genuine `0` IS a reading, and a serious one.
+
+**Distance alone never means "passed."** A truck 200 miles short of a station
+looks identical to one 200 miles beyond it, so the rule needs the previous
+reading — it has to have been closer before.
+
+**Two deliberate limits while this is new.** Nothing messages a driver group;
+every finding goes to the configured operations chat. A fuel alert to a driver
+is an instruction, and an instruction from a rule nobody has watched running yet
+is how a fleet learns to ignore the bot. And nothing changes a record: a fuel
+risk is an observation, not a correction.
+
+Each risk kind has its own quiet window — a passed stop is settled history
+within a day, a low tank matters again after a shift — so one condition cannot
+fill the channel.
+
+**New telemetry.** Samsara is now asked for `fuelPercents` and
+`obdOdometerMeters` alongside `gps`, on the request that was already being made.
+Factor and Leader have returned `fuel_level` and `odometer` in their documented
+payload all along and nothing ever read them; both are now mapped through
+`services/liveLocations/providers.js`. A vehicle that does not report them has
+`null`, never `0`.
+
+## Safety coach (every 6 hours, first pass 20 minutes after boot)
+
+`services/safety/coach.js`. Reads safety events as a **pattern** rather than one
+incident at a time, and says one useful thing to a driver who has a habit.
+
+The events themselves are new. The Samsara poller has been formatting them,
+sending them and throwing them away, so `driver_safety_events` (migration 0033,
+written by `samsara-integration`) is the missing half. Every query groups by
+`person_id`: a safety history that resets when a driver changes truck hides
+exactly the driver a pattern would find.
+
+**Two hard lines.**
+
+*AI never decides whether a driver is coached, only how the sentence reads.* The
+decision is arithmetic in `lib/safety/patterns.js`, which is pure and has no
+model in it. With every provider dead, every driver who should be coached still
+is, in a fixed sentence that names the habit, the count, the window and the one
+thing that helps.
+
+*Nothing here decides anything about a person's job.* No score, no ranking, no
+fine, no recommendation. A model answer containing any of a broad list —
+discipline, warning, points, score, probation, "your pay", "your job" — is
+rejected and the fixed sentence is sent. The word "warning" is on that list in
+every sense: "written warning" walked past an earlier list that only knew
+"warning letter".
+
+**One habit per pass**, the commonest. A message listing three faults is a
+reprimand however warmly it is worded, and nobody changes three habits at once.
+A habit coached in the last fortnight is not raised again; coaching one habit
+does not silence a different one.
+
+Samsara's four spellings of a behaviour (`HarshBraking`, `harsh_braking`,
+`Harsh Braking`, `HARSH-BRAKING`) collapse to one. Counted separately each has
+one event, nothing reaches a threshold, and the feature silently never fires.
+
+A crash is never a coaching moment. It is an incident, and a person owns it.
+
+Driver messages go through `homeTimeDriverChannel.sendToDriverGroup`, the one
+choke point for everything said to a driver group, so the silent-mode switch
+applies. When the driver cannot be reached the note goes to the operations chat
+instead of nowhere. A heavy pattern is escalated to safety management with the
+numbers that justified it, and says explicitly that no automatic action was
+taken.
+
+Visible on `/api/health` → `operations.safety`.
+
+## Retention watch (every 4 hours, first pass 15 minutes after boot)
+
+`services/retention/watch.js`. Scores every active driver from facts other
+features already recorded, and posts to the `retention` notification category
+when the score crosses a threshold. **Operations chat only — never the driver's
+own.**
+
+Deliberately slow. Nothing here is urgent in minutes: a driver five weeks past
+the allowance will still be five weeks past it at teatime, and a slow timer is
+the cheapest guard against the failure this feature is most likely to have,
+which is saying too much.
+
+**The decision is arithmetic** (`lib/retention/signals.js`, pure). With every
+provider switched off the same drivers are flagged with the same reasons; AI
+words one sentence and is given counts and reason phrases with no name and no
+message text.
+
+**A signal is something the COMPANY did or something the driver SAID** — weeks
+past the allowance, a home window promised and missed, bonus earned and unpaid,
+days sitting empty, a message that read as leaving. Never an assessment of the
+driver. `refuseEmploymentLanguage` refuses a notice that strays, on the model's
+output and again on the finished body.
+
+Said once. Said again only when the score rises by 3 or more, or a week has
+passed. An acknowledgement from Operations → Retention buys silence until it
+gets materially worse — never indefinitely.
+
+## The roster itself
+
+Every job on this page is started and stopped in one place:
+`services/backgroundServices.js`, split out of `index.js` when that passed the
+size limit. It is a list of calls, not a framework, and the comment beside each
+one says what that service may SEND — several can message a driver or spend
+money. `tests/backgroundServices.test.js` asserts that everything started is
+also stopped, which is the failure a split like that introduces quietly: a job
+whose `start` moved and whose `stop` did not keeps running in a process that was
+supposed to have gone away, and nothing fails.
+
+What stayed in `index.js` is the process itself — the bot, the HTTP server, the
+database, the leads child process and the memory watchdog — because the ordering
+around those is boot sequencing rather than a roster.
+
+## Self-healing watch (every 30 minutes, first pass 10 minutes after boot)
+
+`services/operations/selfHealing.js`. **Adds no recovery.** Every recovery it
+reports already ran silently — token refresh, provider cooldowns, model
+retirement, outbox backoff. What was missing is the noticing, because "Wenze
+fixed itself" and "Wenze has been broken for three days" look identical from
+outside.
+
+Nothing probes an external service; every observation reads what the application
+already recorded about its last real attempts. A source that cannot be read is
+**unknown, never failed**.
+
+Four rules in `lib/operations/healthTransitions.js`, pure: three consecutive
+failures before anything is said; **recovery announced only where the failure
+was**, so a blip that self-corrects produces zero messages rather than one;
+flapping said once and then silent; nothing said twice. `announced_status` is
+stored rather than held in memory because Render deploys several times a day and
+an in-memory version would re-announce every outage on each one.
+
+Recovery → `self_healing`, and says nothing is needed. Failure and flapping →
+`system_errors`, and say what does.
+
+## Learning pass (every 12 hours, first pass 25 minutes after boot)
+
+`services/operations/learningPass.js`. Notices that Wenze keeps being corrected
+the same way — three reverts of the same `action_key` in a fortnight, or
+repeated refusals of the same kind on recruiting drafts — and **proposes**
+something about it to the `ai_learning` category.
+
+**Nothing it produces takes effect.** `lib/operations/learning.js` returns plain
+data with no function in it; the service stores and sends; the schema allows
+`proposed`, `accepted`, `dismissed` and has no status meaning "applied
+automatically". Accepting records that an administrator agrees — the change is
+then made by hand. A decision holds: the next pass refreshes the evidence
+without reopening the row.
+
+Slow on purpose. A pattern needing three reverts in a fortnight does not become
+visible in an hour, and a proposal about how Wenze should behave is the last
+thing that should arrive often.

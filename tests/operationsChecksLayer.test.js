@@ -162,8 +162,21 @@ test('mileage rows without a person are ONE finding, not one per driver', () => 
 });
 
 test('every system check runs over one snapshot and declares its keys', () => {
+  // A clean snapshot with no notification settings on it: the destination check
+  // stands down when there is no row to read (a deploy in progress is not a
+  // misconfiguration), so a healthy fleet still files nothing.
   assert.deepEqual(systems.runSystemChecks(snapshotOf()), []);
-  assert.equal(systems.CHECK_KEYS.length, 6);
+  assert.equal(systems.CHECK_KEYS.length, 7);
+  // Every key a check can emit must be declared, or `resolveClearedFindings`
+  // will not clear it when the condition goes away.
+  const emitted = new Set(
+    systems.runSystemChecks(snapshotOf({
+      notificationSettings: { enabled: true, defaultChatId: null, categoryChatIds: {} },
+    })).map((f) => f.checkKey)
+  );
+  for (const key of emitted) {
+    assert.ok(systems.CHECK_KEYS.includes(key), `${key} is emitted but not declared`);
+  }
 });
 
 test('a person on two ACTIVE chats with different profile units gets NO auto unit-sync — the conflict is reported instead', () => {

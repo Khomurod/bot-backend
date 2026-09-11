@@ -245,11 +245,17 @@ that area**, and run the tests it names.
 | Samsara settings, the shared-secret envelope for its API key, missing-video recovery | [`docs/architecture/samsara-settings-and-video-recovery.md`](docs/architecture/samsara-settings-and-video-recovery.md) |
 | The Bitrix assignee lookup, recruiter↔Bitrix mapping, Bitrix connection settings | [`docs/architecture/recruiter-sms-bitrix.md`](docs/architecture/recruiter-sms-bitrix.md) |
 | Where AI may change stored operational state, and the verdict on each | [`docs/architecture/ai-decisions.md`](docs/architecture/ai-decisions.md) |
+| Where an operational notice goes, and what it may never say | [`docs/architecture/operational-notifications.md`](docs/architecture/operational-notifications.md) |
+| What Wenze may tell a candidate, and how a person teaches it | [`docs/architecture/recruiting-knowledge.md`](docs/architecture/recruiting-knowledge.md) |
+| Answering a candidate outside working hours, the reply guard, the SMS transcript | [`docs/architecture/recruiting-after-hours.md`](docs/architecture/recruiting-after-hours.md) |
+| Retention signals, what may never be scored about a driver, the notice rules | [`docs/architecture/driver-retention.md`](docs/architecture/driver-retention.md) |
+| When a recovery is worth announcing, and why a suggestion can never apply itself | [`docs/architecture/self-healing-and-learning.md`](docs/architecture/self-healing-and-learning.md) |
 | Database changes, migrations, deferred schema decisions | [`docs/database/`](docs/database/) |
 | What was deliberately removed and must not be resurrected | [`docs/ARCHIVED_FEATURES.md`](docs/ARCHIVED_FEATURES.md), [`docs/architecture/retired-*.md`](docs/architecture/) |
 | Clearing a removed feature's leftover tables, roles and accounts | [`docs/architecture/retired-trailers-qbq-sos.md`](docs/architecture/retired-trailers-qbq-sos.md) |
 | Module ownership map | [`docs/architecture/module-map.md`](docs/architecture/module-map.md) |
 | Deployment checks | [`docs/deployment/pre-deploy-checklist.md`](docs/deployment/pre-deploy-checklist.md) |
+| A feature designed but deliberately NOT built | [`docs/future/`](docs/future/) |
 
 The highest-consequence invariants are summarized in `APP_BRIEF.md` §9. The
 linked documents hold the full rules and the tests that guard them.

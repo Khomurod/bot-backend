@@ -11,6 +11,12 @@
  *   identityRoutes.js      the person layer: coverage, one person's history,
  *                          and the backfill (preview on the read gate, apply
  *                          on the APPLY gate)
+ *   retentionRoutes.js     who the company may be about to lose, and one
+ *                          acknowledgement. Read-only about the DRIVER: there
+ *                          is no endpoint here that records an opinion of one.
+ *   learningRoutes.js      what Wenze has suggested about its OWN rules, and a
+ *                          person's decision. Accepting records agreement; it
+ *                          does not apply anything.
  *
  * The two gates are passed in rather than built here, matching the rest of
  * `server/api.js`, so a test can mount this router with whatever authorization
@@ -41,6 +47,8 @@ const express = require('express');
 const { createFindingsRouter } = require('./operations/findingsRoutes');
 const { createCorrectionsRouter } = require('./operations/correctionsRoutes');
 const { createIdentityRouter } = require('./operations/identityRoutes');
+const { createRetentionRouter } = require('./operations/retentionRoutes');
+const { createLearningRouter } = require('./operations/learningRoutes');
 
 /**
  * @param {object} deps
@@ -52,6 +60,8 @@ function createOperationsRouter({ authMiddleware, applyMiddleware }) {
   router.use(createFindingsRouter({ authMiddleware }));
   router.use(createCorrectionsRouter({ authMiddleware, applyMiddleware }));
   router.use(createIdentityRouter({ authMiddleware, applyMiddleware }));
+  router.use(createRetentionRouter({ authMiddleware }));
+  router.use(createLearningRouter({ authMiddleware }));
   return router;
 }
 

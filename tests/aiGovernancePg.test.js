@@ -47,8 +47,14 @@ test('the roster is the two providers already in use, and only registered capabi
   // capability the router honours but never registers is a switch Settings → AI
   // cannot show and an administrator cannot reach.
   const capabilities = await aiSettings.listCapabilities();
-  assert.deepEqual(capabilities.map((c) => c.capabilityKey).sort(), ['home_time_return_to_road'],
-    'exactly the capabilities a migration registered — nothing appears by accident');
+  assert.deepEqual(
+    capabilities.map((c) => c.capabilityKey).sort(),
+    // Registered by migrations 0030, 0035 and 0036. Each is a switch an
+    // administrator has to be able to reach; none of them is a grant, and the
+    // schema CHECK below holds for all of them.
+    ['home_time_return_to_road', 'recruiting_after_hours_reply', 'retention_summary'],
+    'exactly the capabilities a migration registered — nothing appears by accident',
+  );
   assert.ok(capabilities.every((c) => c.mayAutoApply === false),
     'no registered capability may apply a correction, and the schema refuses TRUE outright');
   assert.ok(capabilities.every((c) => c.mayPropose === false),

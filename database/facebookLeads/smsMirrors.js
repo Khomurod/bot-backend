@@ -87,7 +87,35 @@ async function getFacebookLeadSmsMirror(telegramChatId, telegramMessageId) {
   return res.rows[0] || null;
 }
 
+/**
+ * One candidate's whole conversation, newest first.
+ *
+ * The mirror ledger has been queried by (chat, message) since it was written —
+ * the reply relay looking up the single message being answered. Nothing had
+ * ever asked for the THREAD, because nothing had ever needed to read a
+ * conversation as a conversation. The after-hours reply does.
+ *
+ * Rows are returned newest first so the LIMIT keeps the recent end; the caller
+ * (lib/recruiting/thread.js) restores chronological order. Taking the oldest N
+ * would hand a model the opening template and none of the answers.
+ */
+async function listSmsMirrorsByPhone(driverPhone, { limit = 30 } = {}) {
+  const phone = String(driverPhone || '').trim();
+  if (!phone) return [];
+  const capped = Math.min(Math.max(Number(limit) || 30, 1), 200);
+  const res = await query(
+    `SELECT *
+       FROM facebook_lead_sms_mirrors
+      WHERE driver_phone = $1
+      ORDER BY created_at DESC, id DESC
+      LIMIT $2`,
+    [phone, capped]
+  );
+  return res.rows;
+}
+
 module.exports = {
   insertFacebookLeadSmsMirror,
   getFacebookLeadSmsMirror,
+  listSmsMirrorsByPhone,
 };

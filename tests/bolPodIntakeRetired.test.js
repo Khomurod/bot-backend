@@ -70,10 +70,15 @@ test('the DataTruck client exposes no document-upload endpoint (forwarding only)
   assert.ok(!/uploadOrderDocument/.test(src), 'datatruckApiService must not upload documents');
 });
 
-test('index.js wires the forwarding service and never the retired intake', () => {
+test('boot wires the forwarding service and never the retired intake', () => {
+  // Both files, because the background-service roster was split out of index.js
+  // and a check that reads only one of them would go quietly green the day a
+  // service moved between them.
   const indexSrc = fs.readFileSync(path.join(ROOT, 'index.js'), 'utf8');
-  assert.match(indexSrc, /startDatatruckDocumentService/, 'forwarding service must stay wired');
+  const rosterSrc = fs.readFileSync(path.join(ROOT, 'services/backgroundServices.js'), 'utf8');
+  assert.match(indexSrc + rosterSrc, /startDatatruckDocumentService/, 'forwarding service must stay wired');
   assert.ok(!/documentIntake/i.test(indexSrc), 'index.js must not reference the retired intake');
+  assert.ok(!/documentIntake/i.test(rosterSrc), 'the roster must not reference the retired intake');
 });
 
 test('settings API: /bol-pod-monitor is gone (404); /bol-pod (new forwarding) resolves', async () => {

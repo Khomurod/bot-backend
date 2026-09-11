@@ -91,6 +91,40 @@ function summaryDeps(overrides = {}) {
     findings: { async summariseFindings() { return { info: 1, warning: 2, serious: 0, total: 3 }; } },
     people: { async summariseIdentityCoverage() { return { people: 200, activeDriverGroups: 205, groupsWithoutPerson: 0, openUnits: 190, unstamped: { roadHistory: 0, requests: 0, mileage: 0 } }; } },
     integrity: { async countDuplicateOpenStays() { return []; }, async indexExists() { return true; } },
+    // The safety block is composed in, so it is faked in.
+    safety: {
+      async summariseSafety() {
+        return {
+          windowDays: 14, events: 9, byBehavior: { harsh_braking: 6, speeding: 3 },
+          driversWithEvents: 2, coachingSent: 1, coachingToDrivers: 1,
+        };
+      },
+    },
+    // Each block below is composed into the same summary, so each is faked in.
+    // (This harness has now grown a dep four times for exactly that reason;
+    // a missing one shows up as "cannot read properties of undefined".)
+    systemHealth: {
+      async summariseHealthStates() {
+        return { ok: 2, failed: 1, unchecked: 0, flapping: 0, down: ['ai_providers'] };
+      },
+    },
+    learning: {
+      async summariseSuggestions() { return { proposed: 1, accepted: 0, dismissed: 2 }; },
+    },
+    retention: {
+      async summariseRetention() { return { urgent: 1, watch: 3, acknowledged: 1, lastPassAt: null }; },
+    },
+    notificationSettings: {
+      async getNotificationSettings() {
+        return { enabled: true, defaultChatId: '-1005052301861', categoryChatIds: { fuel: '-100999' } };
+      },
+    },
+    // The load lifecycle block is composed in, so it is faked in.
+    loads: {
+      async summariseLoadPhases() {
+        return { total: 12, byPhase: { in_transit: 7, at_pickup: 3, delivered: 2 }, unclear: 2, conflicted: 1 };
+      },
+    },
     // The live Home Time block is composed in, so it is faked in.
     homeTimeHealth: {
       async getHomeTimeHealth() {
@@ -136,6 +170,10 @@ test('the summary is counts and timestamps, and a capped check is named with its
   assert.equal(s.homeTime.returnWatch.watching, 2);
   assert.equal(s.homeTime.automaticReturns.applied, 1);
   assert.equal(s.homeTime.aiResponsibilities.registered, 17);
+  assert.equal(s.loads.total, 12);
+  assert.equal(s.loads.conflicted, 1, 'a load the board and the truck disagree about is visible live');
+  assert.equal(s.safety.events, 9);
+  assert.equal(s.safety.coachingToDrivers, 1, 'how much coaching actually reached a driver');
   const gemini = s.aiModels.find((p) => p.provider === 'gemini');
   assert.deepEqual(gemini, { provider: 'gemini', enabled: true, chain: 1, discovered: 2, refreshedAt: '2026-09-10T06:00:00.000Z', refreshError: null });
 });
@@ -229,4 +267,60 @@ test('a data-layer failure reads available:false with the reason', async () => {
     integrity: { async countDuplicateOpenStays() { throw new Error('connection refused'); }, async indexExists() { return false; } },
   }));
   assert.deepEqual(s, { available: false, error: 'connection refused' });
+});
+
+/**
+ * Whether Wenze can be heard at all.
+ *
+ * With no destination configured, `notify()` discards every notice at the door
+ * — deliberately, so a group set months later cannot deliver a backlog of stale
+ * alerts. The cost is that every feature that speaks would run, work, and say
+ * nothing. That is the exact failure this whole project started from, so it
+ * belongs on the health check and on the Needs Attention page, not in a console
+ * line nobody reads.
+ */
+test('the health block says whether anybody is receiving notices — without saying where', async () => {
+  const health = await getOperationsHealth(summaryDeps());
+
+  assert.equal(health.notifications.reachable, true);
+  assert.equal(health.notifications.defaultConfigured, true);
+  assert.equal(health.notifications.categoryOverrides, 1);
+
+  // A group id is enough to attempt a join, and this endpoint is read by an
+  // uptime monitor. The answer is a boolean, never a destination.
+  const serialised = JSON.stringify(health.notifications);
+  assert.ok(!serialised.includes('5052301861'), 'no chat id leaves the health endpoint');
+  assert.ok(!serialised.includes('100999'));
+});
+
+test('an unconfigured destination reads as NOT reachable', async () => {
+  const health = await getOperationsHealth(summaryDeps({
+    notificationSettings: {
+      async getNotificationSettings() {
+        return { enabled: true, defaultChatId: null, categoryChatIds: {} };
+      },
+    },
+  }));
+  assert.equal(health.notifications.reachable, false);
+  assert.equal(health.notifications.defaultConfigured, false);
+});
+
+test('notifications switched off reads as not reachable, however it is configured', async () => {
+  const health = await getOperationsHealth(summaryDeps({
+    notificationSettings: {
+      async getNotificationSettings() {
+        return { enabled: false, defaultChatId: '-100111', categoryChatIds: {} };
+      },
+    },
+  }));
+  assert.equal(health.notifications.reachable, false);
+});
+
+test('a missing settings table is "not available", not "not reachable"', async () => {
+  // A deploy in progress. Reporting it as unreachable would page somebody about
+  // a migration that is thirty seconds from finishing.
+  const health = await getOperationsHealth(summaryDeps({
+    notificationSettings: { async getNotificationSettings() { throw new Error('no such table'); } },
+  }));
+  assert.deepEqual(health.notifications, { available: false });
 });

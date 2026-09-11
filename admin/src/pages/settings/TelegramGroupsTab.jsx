@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "../../api";
 import { Banner } from "./fields";
+import NotificationRoutingCard from "./notifications/NotificationRoutingCard";
 
 // ───────────────────────────── Telegram Groups tab ───────────────────────────
 
@@ -163,6 +164,17 @@ export default function TelegramGroupsTab() {
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
         <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save settings"}</button>
         {settings?.updatedAt && <span style={{ fontSize: 12, color: "#94a3b8" }}>Last updated {new Date(settings.updatedAt).toLocaleString()}</span>}
+      </div>
+
+      {/*
+        The rows above are the ROUTINE message groups, each tied to one workflow
+        and configured years ago. Below is where everything Wenze NOTICES goes —
+        corrections it made, risks it found, problems it recovered from. Both are
+        destinations, so they belong on one screen rather than two; keeping them
+        in separate cards is what stops an operator changing the wrong one.
+      */}
+      <div style={{ marginTop: 24 }}>
+        <NotificationRoutingCard flash={(type, text) => setMessage({ type, text })} />
       </div>
     </div>
   );

@@ -8,38 +8,23 @@
  * rather than being handed to the shared company line mid-conversation. A
  * mirror with no sender — every row written before per-recruiter sending, and
  * every lead that fell back — still uses the shared number exactly as before.
+ *
+ * This file is now the OUTBOUND half plus a façade over two others, split when
+ * it passed the size limit. Every symbol it used to export it still exports:
+ *
+ *   ./facebookLeads/smsMirrorLookup   finding the row a message belongs to
+ *   ./facebookLeads/smsReplyRelay     carrying a recruiter's reply back out
  */
 const db = require('../database/db');
 const rc = require('../database/ringcentral');
-const { sendSms, sendSmsAsRecruiter } = require('./ringCentralSmsService');
-const { sendTelegramHtmlChunks, safeSend } = require('./telegramHtml');
+const { sendTelegramHtmlChunks } = require('./telegramHtml');
 const { sendToChatIdWithFallback } = require('./leadsTelegramClient');
+const { MIRROR_SOURCES } = require('../lib/recruiting/thread');
+const { considerAfterHoursReply } = require('./recruiting/afterHoursThread');
+const lookup = require('./facebookLeads/smsMirrorLookup');
+const replyRelay = require('./facebookLeads/smsReplyRelay');
 
-function escapeHtml(text) {
-  return String(text || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-function candidateTelegramChatIds(chatId) {
-  const raw = String(chatId).trim();
-  const candidates = new Set();
-  const asNum = Number(raw);
-  if (Number.isFinite(asNum)) candidates.add(asNum);
-
-  if (raw.startsWith('-100')) {
-    const abs = raw.slice(4);
-    const legacy = Number(`-${abs}`);
-    if (Number.isFinite(legacy)) candidates.add(legacy);
-  } else if (raw.startsWith('-')) {
-    const abs = raw.slice(1);
-    const supergroup = Number(`-100${abs}`);
-    if (Number.isFinite(supergroup)) candidates.add(supergroup);
-  }
-
-  return [...candidates];
-}
+const { escapeHtml, describeSender } = lookup;
 
 /**
  * @param {string} phone
@@ -53,22 +38,6 @@ function buildAutoMessageSentHtml(phone, smsBody, sender = null) {
   const from = describeSender(sender);
   const fromEsc = from ? ` from ${escapeHtml(from)}` : '';
   return `AutoMessage sent via SMS to ${phoneEsc}${fromEsc}:\n<pre>${bodyEsc}</pre>`;
-}
-
-/** "Jane Doe (+14704804679)", "+14704804679", or '' when nothing is known. */
-function describeSender(sender) {
-  const name = String(sender?.name || '').trim();
-  const number = String(sender?.fromNumber || '').trim();
-  if (name && number) return `${name} (${number})`;
-  return name || number || '';
-}
-
-async function findMirrorByTelegramMessage(telegramChatId, telegramMessageId) {
-  for (const chatId of candidateTelegramChatIds(telegramChatId)) {
-    const row = await db.getFacebookLeadSmsMirror(chatId, telegramMessageId);
-    if (row) return row;
-  }
-  return null;
 }
 
 async function sendAutoMessageSentNotice(telegram, chatId, {
@@ -175,7 +144,9 @@ async function registerSmsMirror({
     throw err;
   }
 
-  const allowedSources = new Set(['outbound_auto', 'inbound_rc']);
+  // The four kinds lib/recruiting/thread.js can read, taken FROM it rather than
+  // restated, so a kind cannot be insertable here and invisible there.
+  const allowedSources = new Set(MIRROR_SOURCES);
   const resolvedSource = allowedSources.has(sourceType) ? sourceType : 'outbound_auto';
 
   // An inbound SMS arrived AT one of our numbers. That number is the sender for
@@ -196,7 +167,28 @@ async function registerSmsMirror({
     fromNumber: sender.fromNumber,
   });
 
-  return { ok: true, mirror: row };
+  // A candidate has written. Outside working hours Wenze may carry the
+  // conversation; inside them it stands down and the recruiter answers as
+  // always.
+  //
+  // Awaited, but under a DEADLINE the caller cannot exceed. The AI chain's
+  // worst case is three providers times five models times a 60-second timeout,
+  // and this runs inside an HTTP request the Python leads engine is waiting on.
+  // Past twenty seconds it answers `still_working` and the work carries on
+  // without the caller — see services/recruiting/afterHoursThread.js. Every
+  // path inside returns a named reason and none of them throws, so the insert
+  // above is never put at risk.
+  let afterHours = null;
+  if (resolvedSource === 'inbound_rc') {
+    afterHours = await considerAfterHoursReply({
+      driverPhone: phone,
+      leadName,
+      recruiterId: sender.recruiterId,
+      telegramChatId: chatId,
+    });
+  }
+
+  return { ok: true, mirror: row, afterHours };
 }
 
 /**
@@ -226,109 +218,24 @@ async function resolveSenderForNumber({ recruiterId = null, fromNumber = null, t
   }
 }
 
-async function handleTelegramSmsReply(telegram, {
-  telegramChatId,
-  replyToMessageId,
-  replyText,
-  userReplyMessageId = null,
-}) {
-  const text = String(replyText || '').trim();
-  if (!text) {
-    const err = new Error('replyText is required');
-    err.statusCode = 400;
-    throw err;
-  }
-
-  const mirror = await findMirrorByTelegramMessage(telegramChatId, replyToMessageId);
-  if (!mirror) {
-    const err = new Error('No auto-SMS mirror found for that message');
-    err.statusCode = 404;
-    throw err;
-  }
-
-  const { smsResult, sender } = await sendReplyFromMirror(mirror, text);
-  if (!smsResult.ok) {
-    const err = new Error(smsResult.detail || smsResult.reason || 'SMS send failed');
-    err.statusCode = 502;
-    err.smsResult = smsResult;
-    throw err;
-  }
-
-  if (telegram && userReplyMessageId) {
-    const confirmChatId = mirror.telegram_chat_id;
-    const fromLabel = sender.fromNumber ? ` from ${escapeHtml(sender.fromNumber)}` : '';
-    const confirmText = `✅ Sent via SMS to ${escapeHtml(mirror.driver_phone)}${fromLabel}`;
-    try {
-      await safeSend(() => telegram.sendMessage(confirmChatId, confirmText, {
-        parse_mode: 'HTML',
-        reply_to_message_id: userReplyMessageId,
-      }));
-    } catch (confirmErr) {
-      console.warn('[FacebookLeadSmsMirror] Confirmation reply failed:', confirmErr.message);
-    }
-  }
-
-  return {
-    ok: true,
-    phone: mirror.driver_phone,
-    fromNumber: sender.fromNumber,
-    via: sender.via,
-    messageId: smsResult.messageId,
-    conversationId: smsResult.conversationId,
-  };
-}
-
 /**
- * Send one reply on the mirror's own number, falling back to the shared number
- * rather than losing the reply — a driver waiting on an answer is worse than an
- * answer from the wrong number, and the fallback is logged for the operator.
+ * The façade. Composition and re-export only, listed key by key rather than
+ * spread, so adding a helper to one of the parts does not silently widen this
+ * module's public surface — the rule `database/ringcentral.js` set.
  */
-async function sendReplyFromMirror(mirror, text) {
-  const recruiterId = Number(mirror?.recruiter_id);
-  if (Number.isFinite(recruiterId) && recruiterId > 0) {
-    let recruiter = null;
-    try {
-      recruiter = await rc.getRecruiterById(recruiterId);
-    } catch (err) {
-      console.warn('[FacebookLeadSmsMirror] Could not load the mirror recruiter:', err.message);
-    }
-    if (recruiter && rc.recruiterCanSendSms(recruiter)) {
-      const attempt = await sendSmsAsRecruiter(recruiter, mirror.driver_phone, text);
-      if (attempt.ok) {
-        return {
-          smsResult: attempt,
-          // What actually sent, not the human-typed column.
-          sender: { via: 'recruiter', recruiterId, fromNumber: attempt.fromNumber || null },
-        };
-      }
-      // The detail is RingCentral's own body — the MSG-245 text that names
-      // WHY. It used to be dropped here, so the reply path reported a bare
-      // `http_400` and the same failure was diagnosable on the lead path only.
-      console.warn(
-        `[FacebookLeadSmsMirror] Reply from ${recruiter.name || `recruiter ${recruiterId}`} failed `
-        + `(${attempt.reason}${attempt.detail ? `: ${String(attempt.detail).slice(0, 200)}` : ''})`
-        + `${attempt.attemptedFrom ? ` [tried ${attempt.attemptedFrom}]` : ''}`
-        + ' — using the shared number.'
-      );
-    }
-  }
-
-  const smsResult = await sendSms(mirror.driver_phone, text);
-  return {
-    smsResult,
-    sender: { via: 'shared', recruiterId: null, fromNumber: smsResult.ok ? (smsResult.fromNumber || null) : null },
-  };
-}
-
 module.exports = {
-  escapeHtml,
-  describeSender,
+  // this file — the outbound half
   buildAutoMessageSentHtml,
-  candidateTelegramChatIds,
   sendAutoMessageSentNotice,
   registerSmsMirror,
   resolveSenderForNumber,
-  handleTelegramSmsReply,
-  sendReplyFromMirror,
-  findMirrorByTelegramMessage,
+  // ./facebookLeads/smsMirrorLookup
+  escapeHtml: lookup.escapeHtml,
+  describeSender: lookup.describeSender,
+  candidateTelegramChatIds: lookup.candidateTelegramChatIds,
+  findMirrorByTelegramMessage: lookup.findMirrorByTelegramMessage,
+  // ./facebookLeads/smsReplyRelay — the inbound half
+  handleTelegramSmsReply: replyRelay.handleTelegramSmsReply,
+  sendReplyFromMirror: replyRelay.sendReplyFromMirror,
+  standDownAfterHours: replyRelay.standDownAfterHours,
 };

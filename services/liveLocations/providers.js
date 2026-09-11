@@ -80,7 +80,16 @@ function buildLocationFromSamsaraVehicle(vehicle) {
     speedMph: round(gps.speedMilesPerHour, 0),
     lastUpdated: pingIso,
     isStale: ageMin != null && ageMin > STALE_MINUTES,
+    // NULL means "this truck does not report it", never "it is empty". Every
+    // reader has to tell those apart, so no default is supplied here.
+    fuelPercent: toNumberOrNull(vehicle?.fuelPercents?.value),
+    odometerMiles: metersToMiles(toNumberOrNull(vehicle?.obdOdometerMeters?.value)),
   };
+}
+
+/** Samsara reports the odometer in metres; everything else here is miles. */
+function metersToMiles(meters) {
+  return meters == null ? null : Math.round(meters / 1609.344);
 }
 
 function buildLocationFromDriveHosVehicle(vehicle) {
@@ -96,6 +105,10 @@ function buildLocationFromDriveHosVehicle(vehicle) {
     speedMph: round(toNumberOrNull(vehicle && vehicle.speed), 0),
     lastUpdated: pingIso,
     isStale: ageMin != null && ageMin > STALE_MINUTES,
+    // Drive HoS has returned these all along — they were in the documented
+    // payload shape and nothing ever read them.
+    fuelPercent: toNumberOrNull(vehicle && vehicle.fuel_level),
+    odometerMiles: toNumberOrNull(vehicle && vehicle.odometer),
   };
 }
 
