@@ -165,3 +165,70 @@ test('shadow records what it WOULD have done, and no action key',
     assert.deepEqual(row.wouldHave, { action: 'close_cycle', cycleId: 12 });
     assert.equal(row.actionKey, null, 'shadow did nothing, so there is nothing to name');
   });
+
+// ── the feedback loop: how a source has actually performed ──────────────────
+
+test('SOURCE AGREEMENT IS MEASURED FROM GRADED DECISIONS ONLY',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { d } = await setup(t);
+    const src = (source) => [{ source, fresh: true, agrees: true }];
+
+    const a = await d.recordDecision(base({
+      subjectId: 'A', verdict: 'act', confidence: 90, actionKey: 'x', sources: src('gps'),
+    }));
+    await d.recordOutcome(a.id, 'confirmed');
+
+    const b = await d.recordDecision(base({
+      subjectId: 'B', verdict: 'act', confidence: 90, actionKey: 'x', sources: src('gps'),
+    }));
+    await d.recordOutcome(b.id, 'contradicted');
+
+    // Ungraded: says nothing about its sources and must not be counted.
+    await d.recordDecision(base({
+      subjectId: 'C', verdict: 'act', confidence: 90, actionKey: 'x', sources: src('gps'),
+    }));
+
+    const stats = await d.sourceAgreement({});
+    assert.deepEqual(stats.gps, { graded: 2, confirmed: 1 },
+      'the third decision has no outcome, so it is evidence about nothing yet');
+  });
+
+test('a decision citing several sources counts for each of them',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { d } = await setup(t);
+    const row = await d.recordDecision(base({
+      verdict: 'act', confidence: 90, actionKey: 'x',
+      sources: [
+        { source: 'gps', fresh: true, agrees: true },
+        { source: 'board', fresh: true, agrees: true },
+      ],
+    }));
+    await d.recordOutcome(row.id, 'confirmed');
+    const stats = await d.sourceAgreement({});
+    assert.equal(stats.gps.confirmed, 1);
+    assert.equal(stats.board.confirmed, 1);
+  });
+
+test('reverted counts as graded-but-not-confirmed, like contradicted',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { d } = await setup(t);
+    const row = await d.recordDecision(base({
+      verdict: 'act', confidence: 90, actionKey: 'x',
+      sources: [{ source: 'gps', fresh: true, agrees: true }],
+    }));
+    await d.recordOutcome(row.id, 'reverted');
+    const stats = await d.sourceAgreement({});
+    assert.deepEqual(stats.gps, { graded: 1, confirmed: 0 },
+      'both mean the outcome did not bear it out, and the caller cannot act on '
+      + 'a distinction between them');
+  });
+
+test('a decision with no sources contributes nothing and breaks nothing',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { d } = await setup(t);
+    const row = await d.recordDecision(base({
+      verdict: 'act', confidence: 90, actionKey: 'x', sources: [],
+    }));
+    await d.recordOutcome(row.id, 'confirmed');
+    assert.deepEqual(await d.sourceAgreement({}), {});
+  });

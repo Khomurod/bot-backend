@@ -190,6 +190,46 @@ async function summariseDecisions({ sinceHours = 168 } = {}) {
   }
 }
 
+/**
+ * How each source has actually performed, from decisions that were GRADED.
+ *
+ * This is the feedback loop the journal exists to close. A source is counted
+ * once per decision it was cited in, and only decisions with an outcome count —
+ * an ungraded decision says nothing about the sources behind it.
+ *
+ * `confirmed` against `graded`, and nothing else: `reverted` and `contradicted`
+ * are both "the outcome did not bear this out", and separating them here would
+ * imply a distinction the caller cannot act on.
+ *
+ * @returns {Promise<Record<string, {graded:number, confirmed:number}>>}
+ */
+async function sourceAgreement({ sinceDays = 90 } = {}) {
+  try {
+    const res = await query(
+      `SELECT s.value ->> 'source' AS source,
+              COUNT(*)::int AS graded,
+              COUNT(*) FILTER (WHERE d.outcome = 'confirmed')::int AS confirmed
+         FROM operational_decisions d
+         CROSS JOIN LATERAL jsonb_array_elements(d.sources) AS s(value)
+        WHERE d.outcome IS NOT NULL
+          AND d.last_decided_at > NOW() - ($1 || ' days')::interval
+          AND s.value ->> 'source' IS NOT NULL
+        GROUP BY 1`,
+      [String(Math.max(1, sinceDays))]
+    );
+    const out = {};
+    for (const row of res.rows) {
+      out[row.source] = { graded: row.graded, confirmed: row.confirmed };
+    }
+    return out;
+  } catch (_) {
+    // An unreadable track record is NO track record, which costs a source
+    // nothing. Failing closed here would quietly discount every source in the
+    // application the first time this query broke.
+    return {};
+  }
+}
+
 /** Old decisions nobody will read. Never touches one still awaiting its outcome. */
 async function pruneDecisions({ olderThanDays = 90 } = {}) {
   try {
@@ -213,5 +253,6 @@ module.exports = {
   listUnverifiedActions,
   listRecentDecisions,
   summariseDecisions,
+  sourceAgreement,
   pruneDecisions,
 };
