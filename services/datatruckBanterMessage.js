@@ -65,6 +65,7 @@ function pickFallbackLine(excludeTexts = []) {
 
 async function generateViaGroq(prompt) {
   const { text, model } = await callGroqWithFallback(prompt, {
+    capability: 'datatruck_banter',
     systemText: SYSTEM_TEXT,
     temperature: 0.95,
     maxTokens: 120,

@@ -196,6 +196,24 @@ feature it belongs to.
   it only works if turning one off leaves the other alone —
   `admin/src/pages/settings/ai/ResponsibilitiesCard.test.jsx` asserts exactly
   that in both directions.
+- **The switch covers every routed call, and a scanner keeps it that way.**
+  `services/ai/router.js` can only refuse a call that carries a capability, so
+  an untagged one skips the gate and keeps reaching the provider — the
+  responsibility reads "off" and the prompts continue. Four call sites were
+  exactly that, including the SECOND of two calls in a file whose first call was
+  tagged, which is the shape a per-file review misses.
+  `tests/aiCapabilityCoverage.test.js` scans `services/`, `server/` and `lib/`
+  for every `callGeminiText` / `callGeminiJson` / `callGroqWithFallback` and
+  fails if one names no capability, or names one the catalogue omits.
+- **An unreadable automation setting is reported as unknown, never as off.**
+  Settings → AI is presented as the authoritative control for whether Wenze may
+  change a record, so swallowing a failed read into "all switches off" would
+  show the reassuring answer while corrections kept being applied. The switch is
+  disabled, labelled unknown, and the reason is shown. A check merely ABSENT
+  from a list that WAS read is genuinely off — default-deny is the engine's rule.
+- **The capability cache is cleared after the write, not before.** Clearing
+  first leaves a window in which a concurrent call reloads the old value and
+  caches it for another 30 seconds; a failed save clears nothing at all.
 - **Every operational AI call now says which decision it served.** `capability`
   reached the router from two of about twenty-four call sites, and
   `callGeminiText` dropped the field entirely, so the activity history was a

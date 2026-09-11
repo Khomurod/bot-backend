@@ -269,6 +269,19 @@ marks the stay closed.
   `database/baseline/012_home_time.sql` carries `recorded` too, and
   `tests/homeTimeManagerNoticesPg.test.js` applies baseline → migrations →
   baseline again to prove a restart survives.
+- **Home Time is checkable from outside a running instance.** `/api/health` →
+  `operations.homeTime` reports what the feature is DOING, not only whether its
+  invariant holds: how many drivers are being watched and when the watcher last
+  ticked (a stale oldest with rows present means the worker stopped), manager
+  notices by event type with **rows and distinct events reported separately**
+  so a broken UNIQUE would show as a difference, requests by status so
+  `recorded` rising beside a frozen historical `pending` is visible, how many
+  automatic Home → Road changes were applied and reversed, and how many AI
+  responsibilities are registered and switched off. **Counts and timestamps
+  only** — the endpoint is public, and a test asserts every leaf is a number, a
+  null or an ISO timestamp. A failure reads `available: false`, never unhealthy.
+  `database/homeTime/observability.js`, `services/operations/homeTimeHealth.js`,
+  `tests/homeTimeHealthBlock.test.js`, `tests/homeTimeObservabilityPg.test.js`.
 - **The AI reading is a registered capability.** `home_time_return_to_road` is
   seeded into `ai_capabilities` by migration 0030, because Settings → AI lists
   that table: a capability the router honours but never registers is a switch

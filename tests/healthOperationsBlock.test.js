@@ -91,6 +91,19 @@ function summaryDeps(overrides = {}) {
     findings: { async summariseFindings() { return { info: 1, warning: 2, serious: 0, total: 3 }; } },
     people: { async summariseIdentityCoverage() { return { people: 200, activeDriverGroups: 205, groupsWithoutPerson: 0, openUnits: 190, unstamped: { roadHistory: 0, requests: 0, mileage: 0 } }; } },
     integrity: { async countDuplicateOpenStays() { return []; }, async indexExists() { return true; } },
+    // The live Home Time block is composed in, so it is faked in.
+    homeTimeHealth: {
+      async getHomeTimeHealth() {
+        return {
+          available: true,
+          returnWatch: { watching: 2, anchored: 2, high: 0, medium: 1, low: 1, lastCheckedAt: '2026-09-10T12:00:00.000Z', oldestCheckedAt: '2026-09-10T11:48:00.000Z' },
+          managerNotices: { arrived_home: { rows: 3, events: 3, delivered: 3, pending: 0, failed: 0, abandoned: 0 } },
+          requestsByStatus: { recorded: 4, pending: 79 },
+          automaticReturns: { applied: 1, reverted: 0, lastAppliedAt: '2026-09-10T11:00:00.000Z' },
+          aiResponsibilities: { registered: 17, switchedOff: 0, mayAutoApply: 0 },
+        };
+      },
+    },
     aiProviders: {
       async listProvidersForAdmin() {
         return [
@@ -114,7 +127,15 @@ test('the summary is counts and timestamps, and a capped check is named with its
     capped: [{ checkKey: 'identity.group_without_person', wanted: 151, cap: 150 }],
   });
   assert.equal(s.identity.groupsWithoutPerson, 0);
-  assert.deepEqual(s.homeTime, { groupsWithDuplicateOpenStays: 0, openStayIndex: 'present' });
+  // The invariant, plus what the feature is actually DOING. The live half is
+  // composed in from services/operations/homeTimeHealth.js and covered in
+  // tests/homeTimeHealthBlock.test.js; here it only has to arrive intact.
+  assert.equal(s.homeTime.groupsWithDuplicateOpenStays, 0);
+  assert.equal(s.homeTime.openStayIndex, 'present');
+  assert.equal(s.homeTime.available, true);
+  assert.equal(s.homeTime.returnWatch.watching, 2);
+  assert.equal(s.homeTime.automaticReturns.applied, 1);
+  assert.equal(s.homeTime.aiResponsibilities.registered, 17);
   const gemini = s.aiModels.find((p) => p.provider === 'gemini');
   assert.deepEqual(gemini, { provider: 'gemini', enabled: true, chain: 1, discovered: 2, refreshedAt: '2026-09-10T06:00:00.000Z', refreshError: null });
 });

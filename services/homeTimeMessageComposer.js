@@ -87,7 +87,9 @@ async function generateRequestText({
     + 'Make clear you are a bot and a human must approve.';
 
   try {
-    const { text } = await callGeminiText({ userText: prompt, maxOutputTokens: 250 });
+    const { text } = await callGeminiText({
+      capability: 'home_time_message', userText: prompt, maxOutputTokens: 250,
+    });
     const clean = String(text || '').trim();
     if (clean) return clean;
   } catch (err) {

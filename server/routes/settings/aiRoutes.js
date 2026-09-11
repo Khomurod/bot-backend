@@ -229,10 +229,20 @@ function createAiSettingsRouter({ authMiddleware }) {
    */
   router.get('/ai/responsibilities', authMiddleware, async (req, res) => {
     try {
+      // AN UNREADABLE SETTING IS NOT AN "OFF" SETTING. Swallowing this into an
+      // empty list would make every automation switch read as disabled on a
+      // screen presented as the authoritative control for whether Wenze may
+      // change a record — the reassuring answer, and possibly the wrong one.
+      // `known: false` says so instead, and the reason travels with it.
+      let automationError = null;
       const [rows, checks] = await Promise.all([
         aiSettings.listCapabilities(),
-        operationalCheckSettings.listCheckSettings().catch(() => []),
+        operationalCheckSettings.listCheckSettings().catch((err) => {
+          automationError = err.message;
+          return null;
+        }),
       ]);
+      const automationKnown = Array.isArray(checks);
       const byKey = new Map((rows || []).map((r) => [r.capabilityKey, r]));
       const byCheck = new Map((checks || []).map((c) => [c.checkKey, c]));
       const groups = groupedCapabilities().map((group) => ({
@@ -255,14 +265,18 @@ function createAiSettingsRouter({ authMiddleware }) {
             automation: cap.automationCheck
               ? {
                 checkKey: cap.automationCheck,
-                enabled: check ? check.autoApplyEnabled === true : false,
-                maxPerRun: check ? check.maxAutoPerRun : null,
+                known: automationKnown,
+                // A check absent from a list we DID read is genuinely off:
+                // the engine's rule is that a check with no settings row
+                // applies nothing. A list we could not read is null.
+                enabled: automationKnown ? (check ? check.autoApplyEnabled === true : false) : null,
+                maxPerRun: automationKnown && check ? check.maxAutoPerRun : null,
               }
               : null,
           };
         }),
       }));
-      return res.json({ groups });
+      return res.json({ groups, automationError });
     } catch (err) {
       return sendFailure(res, err, {
         message: 'Failed to load the AI responsibilities', logPrefix: '[AI SETTINGS]',
@@ -272,13 +286,16 @@ function createAiSettingsRouter({ authMiddleware }) {
 
   router.put('/ai/capabilities/:key', authMiddleware, async (req, res) => {
     try {
-      // The gate caches for 30 seconds; an operator who just switched something
-      // off should not watch it keep running while the cache expires.
-      invalidateCapabilityCache();
       const capability = await aiSettings.updateCapability(String(req.params.key), {
         ...(req.body || {}), updatedBy: req.admin?.username || null,
       });
       if (!capability) return res.status(404).json({ error: 'No such capability' });
+      // AFTER the write commits, never before. The gate caches for 30 seconds,
+      // so clearing it first leaves a window in which a concurrent call reloads
+      // the OLD value and caches it again — the screen then reads "off" while
+      // the prompts keep going, which is the exact failure this switch exists
+      // to prevent.
+      invalidateCapabilityCache();
       return res.json({ capability });
     } catch (err) {
       return sendFailure(res, err, { message: 'Failed to save the capability', logPrefix: '[AI SETTINGS]' });

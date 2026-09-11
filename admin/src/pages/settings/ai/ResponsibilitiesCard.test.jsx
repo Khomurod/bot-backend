@@ -54,9 +54,11 @@ const GROUPS = [
   },
 ];
 
-async function open() {
-  api.getAiResponsibilities.mockResolvedValue(GROUPS);
-  render(<ResponsibilitiesCard flash={vi.fn()} />);
+const flash = vi.fn();
+
+async function open(automationError = null) {
+  api.getAiResponsibilities.mockResolvedValue({ groups: GROUPS, automationError });
+  render(<ResponsibilitiesCard flash={flash} />);
   await waitFor(() => expect(screen.getByText(/Is the driver back on the road\?/)).toBeInTheDocument());
 }
 
@@ -85,10 +87,40 @@ test("turning AI analysis off touches the capability, never the automation", asy
     "home_time_return_to_road", { aiEnabled: false }
   ));
   expect(api.updateOperationsCheck).not.toHaveBeenCalled();
+  // AiTab defines flash(type, text). Passing the message first renders an empty
+  // alert with the message embedded in its CSS class — visible only to whoever
+  // opens the inspector.
+  expect(flash).toHaveBeenCalledWith("success", expect.stringContaining("AI analysis off"));
+});
+
+test("a save that fails reports as an error, with the message in the message slot", async () => {
+  await open();
+  api.updateAiCapability.mockRejectedValue(new Error("write failed"));
+  fireEvent.click(screen.getAllByLabelText(/AI analysis/)[0]);
+  await waitFor(() => expect(flash).toHaveBeenCalledWith("error", "write failed"));
+});
+
+test("an automation setting that could not be read shows as unknown, not as off", async () => {
+  const unreadable = [{
+    ...GROUPS[0],
+    capabilities: [
+      { ...GROUPS[0].capabilities[0],
+        automation: { checkKey: "home_time.returned_to_road", known: false, enabled: null, maxPerRun: null } },
+      GROUPS[0].capabilities[1],
+    ],
+  }];
+  api.getAiResponsibilities.mockResolvedValue({ groups: unreadable, automationError: "connection refused" });
+  render(<ResponsibilitiesCard flash={flash} />);
+  await waitFor(() => expect(screen.getByText(/setting unknown, could not be read/)).toBeInTheDocument());
+  // And the switch cannot be used to write a value nobody knows the current state of.
+  expect(screen.getByLabelText(/Make the change automatically/)).toBeDisabled();
+  expect(screen.getByText(/Wenze may still be applying corrections/)).toBeInTheDocument();
 });
 
 test("the automatic change is its own switch, and writes the check settings", async () => {
   await open();
+  vi.clearAllMocks();
+  api.getAiResponsibilities.mockResolvedValue({ groups: GROUPS, automationError: null });
   api.updateOperationsCheck.mockResolvedValue({});
   fireEvent.click(screen.getByLabelText(/Make the change automatically/));
   await waitFor(() => expect(api.updateOperationsCheck).toHaveBeenCalledWith(

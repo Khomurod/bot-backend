@@ -17,13 +17,16 @@ import * as api from "../../../api";
  */
 export default function ResponsibilitiesCard({ flash }) {
   const [groups, setGroups] = React.useState([]);
+  const [automationError, setAutomationError] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
   const [busy, setBusy] = React.useState(null);
 
   const load = React.useCallback(async () => {
     try {
-      setGroups(await api.getAiResponsibilities());
+      const data = await api.getAiResponsibilities();
+      setGroups(data.groups);
+      setAutomationError(data.automationError);
       setError(null);
     } catch (err) {
       setError(err.message || "Could not load the AI responsibilities.");
@@ -38,10 +41,10 @@ export default function ResponsibilitiesCard({ flash }) {
     setBusy(capability.key);
     try {
       await api.updateAiCapability(capability.key, { aiEnabled });
-      flash?.(`${capability.label}: AI analysis ${aiEnabled ? "on" : "off"}.`);
+      flash?.("success", `${capability.label}: AI analysis ${aiEnabled ? "on" : "off"}.`);
       await load();
     } catch (err) {
-      flash?.(err.message || "Could not save that.", true);
+      flash?.("error", err.message || "Could not save that.");
     } finally {
       setBusy(null);
     }
@@ -63,10 +66,10 @@ export default function ResponsibilitiesCard({ flash }) {
         autoApplyEnabled: enabled,
         maxAutoPerRun: capability.automation.maxPerRun ?? null,
       });
-      flash?.(`${capability.label}: automatic changes ${enabled ? "on" : "off"}.`);
+      flash?.("success", `${capability.label}: automatic changes ${enabled ? "on" : "off"}.`);
       await load();
     } catch (err) {
-      flash?.(err.message || "Could not save that.", true);
+      flash?.("error", err.message || "Could not save that.");
     } finally {
       setBusy(null);
     }
@@ -82,6 +85,12 @@ export default function ResponsibilitiesCard({ flash }) {
         each one says below what Wenze does instead.
       </p>
       {error && <p className="error">{error}</p>}
+      {automationError && (
+        <p className="error">
+          The automatic-change settings could not be read, so those switches are shown as unknown
+          rather than off. Wenze may still be applying corrections. ({automationError})
+        </p>
+      )}
 
       {groups.map((group) => (
         <div key={group.group} style={{ marginTop: 18 }}>
@@ -147,11 +156,14 @@ export default function ResponsibilitiesCard({ flash }) {
                   <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <input
                       type="checkbox"
-                      checked={cap.automation.enabled}
-                      disabled={busy === `${cap.key}:auto`}
+                      checked={cap.automation.enabled === true}
+                      disabled={busy === `${cap.key}:auto` || cap.automation.known === false}
                       onChange={(e) => toggleAutomation(cap, e.target.checked)}
                     />
                     <strong>Make the change automatically when Wenze is confident</strong>
+                    {cap.automation.known === false && (
+                      <span className="muted">— setting unknown, could not be read</span>
+                    )}
                     {cap.automation.maxPerRun != null && (
                       <span className="muted">(at most {cap.automation.maxPerRun} a run)</span>
                     )}
