@@ -28,10 +28,36 @@
  * however good the evidence, and what it would have done is recorded instead.
  */
 const { decide, VERDICTS } = require('../../lib/decisions/verdict');
+const { weighConfidence, reliabilityOf, soleSourceIsUnreliable } = require('../../lib/decisions/sources');
 const decisions = require('../../database/operationalDecisions');
 
 function defaultDeps() {
   return { decisions };
+}
+
+/**
+ * How each source has actually performed, cached for a pass.
+ *
+ * Measured from the journal's own graded outcomes, so it is empty until
+ * decisions have been graded — and an empty record costs every source nothing,
+ * which is the intended starting state rather than a degraded one.
+ */
+let reliabilityCache = { at: 0, bySource: {} };
+const RELIABILITY_TTL_MS = 5 * 60 * 1000;
+
+async function loadReliability(deps) {
+  const now = Date.now();
+  if (now - reliabilityCache.at < RELIABILITY_TTL_MS) return reliabilityCache.bySource;
+  const raw = await deps.decisions.sourceAgreement?.({ sinceDays: 90 }).catch(() => ({})) || {};
+  const bySource = {};
+  for (const [source, stats] of Object.entries(raw)) bySource[source] = reliabilityOf(stats);
+  reliabilityCache = { at: now, bySource };
+  return bySource;
+}
+
+/** For tests, and for a caller that has just graded a batch. */
+function clearReliabilityCache() {
+  reliabilityCache = { at: 0, bySource: {} };
 }
 
 /**
@@ -50,7 +76,27 @@ async function takeDecision({
   mode = 'suggest', shadow = false,
   evidence = {}, wouldHave = null,
 } = {}, deps = defaultDeps()) {
-  const verdict = decide({ sources, confidence, minConfidence, mode });
+  // WHAT THE EVIDENCE IS WORTH, before what it says. Quality may only lower
+  // the rule's own number — see lib/decisions/sources.js for why nothing here
+  // can raise one.
+  const reliability = await loadReliability(deps);
+  const weighed = weighConfidence({ base: confidence, sources, reliability });
+
+  let verdict = decide({
+    sources, confidence: weighed.confidence, minConfidence, mode,
+  });
+
+  // AND A FLOOR, which is not the same as a penalty. When the only thing
+  // speaking for an action is a source we have MEASURED as usually wrong, that
+  // is an absence of evidence rather than weak evidence, so it cannot be
+  // lowered into acceptability by a generous threshold.
+  if (verdict.verdict === VERDICTS.ACT && soleSourceIsUnreliable(sources, reliability)) {
+    verdict = {
+      ...verdict,
+      verdict: VERDICTS.HOLD,
+      reason: 'the only source speaking for this is one measured as usually wrong',
+    };
+  }
 
   // ACT plus AUTOPILOT plus not-shadow. Three conditions, one flag, computed
   // in one place — a caller that had to combine them itself is a caller that
@@ -64,7 +110,10 @@ async function takeDecision({
     mode: verdict.mode,
     shadow: shadow === true,
     reason: verdict.reason,
-    evidence,
+    // The weighing's own reasons travel WITH the evidence, so a decision read
+    // back months later says why its confidence was what it was rather than
+    // only what it was.
+    evidence: weighed.reasons.length ? { ...evidence, weighing: weighed.reasons } : evidence,
     sources,
     // In shadow, what it WOULD have done is the entire output.
     wouldHave: shadow === true && verdict.verdict === VERDICTS.ACT
@@ -98,4 +147,4 @@ async function takeDecision({
   };
 }
 
-module.exports = { takeDecision };
+module.exports = { takeDecision, clearReliabilityCache };

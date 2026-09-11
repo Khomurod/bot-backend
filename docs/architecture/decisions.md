@@ -102,6 +102,56 @@ shipped counting passes rather than problems and reached 162 counts for about
 60 distinct things within twenty minutes of deploying. Migration 0042 fixed it.
 0043 was written with that fresh.
 
+## What a reading is worth
+
+`lib/decisions/sources.js` weighs the evidence before the verdict reads it, and
+the rule that shapes it is an asymmetry: **evidence quality may only LOWER a
+confidence, never raise one.** There is no path by which stacking more sources,
+or sources that have been right before, pushes a rule past the number its own
+logic reached. A system that could talk itself up would eventually act on five
+weak agreements the way it acts on one strong one — and five sources reading the
+same stale feed are not five pieces of evidence, they are one counted five times.
+
+Three things are measured, and they answer different questions:
+
+| | |
+|---|---|
+| **freshness** | was this reading current enough for **this** question? The window is the caller's to name: a position goes stale in minutes, a home-time request in days, and one constant cannot serve both |
+| **thinness** | how much was actually read? One source agreeing with itself is not corroboration |
+| **reliability** | has this source been right **before**? Measured from the journal's own graded outcomes, never assumed |
+
+**A reading with no timestamp is not fresh.** It might well be current; we
+cannot say so, and "cannot say" has to travel as not-fresh or a caller silently
+treats an undated reading as a current one.
+
+**An unmeasured source is not an unreliable one.** A source with no track record
+is used at full weight; only a *measured* bad record discounts. "We have never
+checked" and "we checked and it was wrong" are different facts, and the first
+must not be punished like the second — the same distinction `unknown` and `hold`
+draw. A reliability lookup that throws returns an empty record, which costs every
+source nothing: failing closed there would quietly discount every source in the
+application the first time that query broke.
+
+### The floor, which is not a penalty
+
+When the **only** thing speaking for an action is a source measured as usually
+wrong, the verdict is `hold` regardless of the number. That is separate from the
+confidence penalty on purpose: lowering a number is a judgement that can still
+clear a threshold, and this is a floor. An absence of evidence must not be
+lowered into acceptability by a generous threshold.
+
+### The feedback loop
+
+`sourceAgreement()` reads how each source actually performed, counting only
+decisions that were **graded** — an ungraded decision says nothing about the
+sources behind it. `reverted` and `contradicted` both count as "the outcome did
+not bear this out"; separating them would imply a distinction the caller cannot
+act on. It is empty until decisions have been graded, and an empty record is the
+intended starting state rather than a degraded one.
+
+The weighing's reasons travel **with** the decision, so one read back months
+later says why its confidence was what it was rather than only what it was.
+
 ## Outcomes are graded by somebody else
 
 `outcome` is filled by the verification pass, never by the decider — a decision
