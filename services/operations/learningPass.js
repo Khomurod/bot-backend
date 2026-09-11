@@ -36,6 +36,7 @@ function defaultDeps() {
   return {
     corrections: require('../../database/operationalCorrections'),
     conversations: require('../../database/recruitingConversations'),
+    decisions: require('../../database/operationalDecisions'),
     store: require('../../database/operationalLearning'),
     notify: require('../notifications/send').notify,
   };
@@ -49,7 +50,7 @@ function defaultDeps() {
  * narrower.
  */
 async function gatherSources(deps, { limit = 500 } = {}) {
-  const [corrections, conversations] = await Promise.all([
+  const [corrections, conversations, decisions] = await Promise.all([
     deps.corrections.listCorrections({ live: false, limit }).catch((err) => {
       console.warn('[LEARNING] could not read reverted corrections:', err.message);
       return [];
@@ -58,8 +59,23 @@ async function gatherSources(deps, { limit = 500 } = {}) {
       console.warn('[LEARNING] could not read recruiting conversations:', err.message);
       return [];
     }),
+    // THE WORLD DISAGREEING, rather than a person. Reverts are somebody
+    // objecting and refusals are somebody rejecting a draft; this is a check
+    // that acted and whose action the verification pass later found did not
+    // hold. It is empty until decisions have been graded, and empty costs
+    // nothing.
+    // Optional-chained and wrapped in Promise.resolve: a caller supplying a
+    // partial dependency map — every existing test of this pass does — must
+    // lose the NEW source, not the whole pass. Without this, adding a third
+    // input silently turned every such caller's learning off.
+    Promise.resolve(deps.decisions?.listRecentDecisions?.({ verdict: 'act', limit: 300 }))
+      .then((rows) => rows || [])
+      .catch((err) => {
+        console.warn('[LEARNING] could not read graded decisions:', err.message);
+        return [];
+      }),
   ]);
-  return { corrections, conversations };
+  return { corrections, conversations, decisions };
 }
 
 /**

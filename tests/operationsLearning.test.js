@@ -229,3 +229,103 @@ test('no sources at all is an empty list, not a crash', () => {
   assert.deepEqual(findLessons({}, { now: NOW }), []);
   assert.deepEqual(findLessons({ corrections: null, conversations: null }, { now: NOW }), []);
 });
+
+// ── the world disagreeing, rather than a person ─────────────────────────────
+
+const graded = (over = {}) => ({
+  checkKey: 'load_lifecycle.conflict', verdict: 'act',
+  outcome: 'contradicted', outcomeAt: ago(2), outcomeDetail: 'phase no longer holds',
+  lastDecidedAt: ago(2), ...over,
+});
+
+test('A CHECK THAT KEEPS BEING WRONG IS THE THIRD SIGNAL, and not a human one', () => {
+  const decisions = [
+    ...Array.from({ length: 7 }, (_, i) => graded({ subjectId: i })),
+    ...Array.from({ length: 2 }, (_, i) => graded({ subjectId: `c${i}`, outcome: 'confirmed' })),
+  ];
+  const out = findLessons({ decisions }, { now: NOW });
+  assert.equal(out.length, 1);
+  assert.equal(out[0].kind, 'contradicted_decisions');
+  assert.match(out[0].title, /acted 9 times and only 22% held/);
+});
+
+test('a short record is a quiet week, not a bad check', () => {
+  const decisions = Array.from({ length: 4 }, (_, i) => graded({ subjectId: i }));
+  assert.deepEqual(findLessons({ decisions }, { now: NOW }), [],
+    'four wrong out of four would have this pass proposing a check be switched '
+    + 'off the first afternoon it was switched on');
+});
+
+test('a check that mostly holds is left alone', () => {
+  const decisions = [
+    ...Array.from({ length: 9 }, (_, i) => graded({ subjectId: i, outcome: 'confirmed' })),
+    graded({ subjectId: 'x' }),
+  ];
+  assert.deepEqual(findLessons({ decisions }, { now: NOW }), []);
+});
+
+test('NOT_CHECKED IS NOT A GRADE, either way', () => {
+  const decisions = Array.from({ length: 20 }, (_, i) => graded({ subjectId: i, outcome: 'not_checked' }));
+  assert.deepEqual(findLessons({ decisions }, { now: NOW }), [],
+    'counting it would let a check nothing can verify build a record out of nothing');
+});
+
+test('a HOLD that was never carried out says nothing about the check\'s judgement', () => {
+  const decisions = Array.from({ length: 20 }, (_, i) => graded({
+    subjectId: i, verdict: 'hold', outcome: 'contradicted',
+  }));
+  assert.deepEqual(findLessons({ decisions }, { now: NOW }), []);
+});
+
+test('old grades fall out of the window like every other pattern here', () => {
+  const decisions = Array.from({ length: 20 }, (_, i) => graded({ subjectId: i, outcomeAt: ago(40) }));
+  assert.deepEqual(findLessons({ decisions }, { now: NOW }), []);
+});
+
+test('IT NAMES THE REGISTRY\'S ONE ACTION — no new power is granted', () => {
+  const decisions = Array.from({ length: 10 }, (_, i) => graded({ subjectId: i }));
+  const [lesson] = findLessons({ decisions }, { now: NOW });
+  assert.deepEqual(lesson.applyAction, {
+    action: 'disable_auto_apply',
+    payload: { checkKeys: ['load_lifecycle.conflict'] },
+  });
+  // The most this can do, once a person agrees, is turn something OFF.
+  // eslint-disable-next-line global-require
+  const { listLearningActions } = require('../services/operations/learningActions');
+  assert.deepEqual(listLearningActions(), ['disable_auto_apply']);
+});
+
+test('THE THRESHOLD ADVICE IS WORDS, NOT AN ACTION', () => {
+  const decisions = Array.from({ length: 10 }, (_, i) => graded({ subjectId: i }));
+  const [lesson] = findLessons({ decisions }, { now: NOW });
+  assert.match(lesson.lines.join(' '), /Raising the confidence this check needs/);
+  assert.match(lesson.lines.join(' '), /not something Wenze will change by itself/,
+    'choosing a confidence floor is a judgement about how much caution a '
+    + 'business wants, and a pass that watched its own results and then moved '
+    + 'its own bar would be grading its own homework twice');
+  assert.equal(JSON.stringify(lesson).includes('minConfidence'), false);
+});
+
+test('the worst-performing check is proposed first', () => {
+  const decisions = [
+    ...Array.from({ length: 10 }, (_, i) => graded({ checkKey: 'bad', subjectId: i })),
+    ...Array.from({ length: 10 }, (_, i) => graded({
+      checkKey: 'mediocre', subjectId: i, outcome: i < 5 ? 'confirmed' : 'contradicted',
+    })),
+  ];
+  const out = findLessons({ decisions }, { now: NOW });
+  assert.equal(out.length, 2);
+  assert.match(out[0].title, /"bad"/);
+});
+
+test('all three signals coexist without crowding each other out', () => {
+  const out = findLessons({
+    corrections: [1, 2, 3].map((id) => revert({ subjectId: id })),
+    conversations: [convo({ driverPhone: '+1', refusals: 2 }), convo({ driverPhone: '+2', refusals: 2 })],
+    decisions: Array.from({ length: 10 }, (_, i) => graded({ subjectId: i })),
+  }, { now: NOW });
+  assert.deepEqual(
+    out.map((l) => l.kind).sort(),
+    ['contradicted_decisions', 'recruiting_refusal', 'reverted_correction']
+  );
+});
