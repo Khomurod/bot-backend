@@ -87,3 +87,55 @@ test('the more specific pattern wins over the more general one', () => {
   // must not be swallowed by the table pattern.
   assert.equal(classifyErrorKind('column "return_to_road_at" does not exist'), 'missing_column');
 });
+
+// ── a bare number is not a status code ──────────────────────────────────────
+
+/**
+ * THE WRONG-CATEGORY FAILURE THIS FILE WARNS ABOUT, COMMITTED BY THIS FILE.
+ *
+ * The first version matched `429`, `404`, `401` and `403` anywhere in the
+ * message. This application is full of numeric identifiers — group ids, road
+ * history ids, unit numbers — so "could not read group 429" classified as
+ * rate-limited and "road_history 404 is missing" as not-found.
+ *
+ * I believed one of those readings about a live production failure before
+ * noticing it could be an id. A category is only worth publishing if it is
+ * right, which is the whole argument for `other`.
+ */
+test('AN ID THAT LOOKS LIKE A STATUS CODE IS NOT ONE', () => {
+  const ids = [
+    'could not read group 429',
+    'road_history 404 is missing',
+    'driver_units row 403 is open twice',
+    'unit 401 has no person',
+    'load 500 has no group',
+    'person 502 merged into 503',
+  ];
+  for (const message of ids) {
+    assert.equal(classifyErrorKind(message), 'other',
+      `"${message}" is about a row, not an HTTP response`);
+  }
+});
+
+test('and a genuine status code is still recognised, in the shapes they arrive in', () => {
+  const real = [
+    ['HTTP 429 Too Many Requests', 'rate_limited'],
+    ['429 Too Many Requests', 'rate_limited'],
+    ['status 429', 'rate_limited'],
+    ['rate limit exceeded', 'rate_limited'],
+    ['quota exceeded for this project', 'rate_limited'],
+    ['request failed with status 404', 'not_found'],
+    ['404 Not Found', 'not_found'],
+    ['401 Unauthorized', 'permission'],
+    ['status: 403', 'permission'],
+    ['permission denied for table groups', 'permission'],
+  ];
+  for (const [message, expected] of real) {
+    assert.equal(classifyErrorKind(message), expected, `"${message}"`);
+  }
+});
+
+test('a word-form match needs no number at all', () => {
+  assert.equal(classifyErrorKind('Not Found'), 'not_found');
+  assert.equal(classifyErrorKind('forbidden'), 'permission');
+});
