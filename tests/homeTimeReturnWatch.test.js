@@ -272,3 +272,66 @@ test('every home stay is its own finding, so a second return is not swallowed', 
     'two different home stays are two different findings'
   );
 });
+
+/**
+ * "The software moved a driver" is the claim that has to be answerable months
+ * later, so the finding records WHO decided beside WHAT was decided: whether a
+ * model was consulted at all, which provider and model answered, how sure it
+ * said it was, its one-line reason, and that the change was automatic rather
+ * than typed by a person. The correction is audited against this finding, so
+ * this is where that trail begins.
+ */
+test('the finding records who decided, not only what was decided', async () => {
+  const { deps, calls } = harness({
+    drivers: [DRIVER],
+    location: { ...FAR, speedMph: 61, lastUpdated: at(5) },
+    order: { load: { status: 'dispatched', loadIdentifier: 'L1' } },
+    watchRow: {
+      groupId: 3, anchor: { ...HOME, at: at(600) },
+      last: { ...FAR, speedMph: 58, at: at(40) }, maxMilesFromAnchor: 66, movingSightings: 1,
+    },
+  });
+  await watcher.runReturnToRoadCheck({ now: NOW, deps });
+  const e = calls.findings[0].evidence;
+
+  assert.equal(e.decidedAutomatically, true, 'nobody typed this');
+  // No model was involved: the deterministic score reached high on its own.
+  assert.equal(e.aiAssisted, false,
+    'written explicitly — an ABSENT field reads as "nobody recorded it"');
+  assert.equal(e.aiProvider, null);
+  assert.equal(e.aiModel, null);
+  assert.equal(e.aiReason, null);
+  // And the facts that justified it are all there to be re-read.
+  assert.equal(e.loadIdentifier, 'L1');
+  assert.equal(e.movementProven, true);
+  assert.equal(e.parkedAtHome, false);
+});
+
+test('when a model IS consulted, the finding names it and quotes its reason', async () => {
+  const { deps, calls } = harness({
+    drivers: [DRIVER],
+    // Load in transit with no GPS at all → medium, which is the only case the
+    // reasoner is ever asked about.
+    location: null,
+    order: { load: { status: 'in_transit', loadIdentifier: 'L9' } },
+    watchRow: { groupId: 3, anchor: { ...HOME, at: at(600) }, maxMilesFromAnchor: 0, movingSightings: 0 },
+  });
+  deps.reasoner = {
+    async reviewReturnEvidence({ verdict }) {
+      return {
+        ...verdict,
+        confidence: 'low',
+        aiAssisted: true,
+        aiProvider: 'groq',
+        aiModel: 'llama-3.3-70b-versatile',
+        aiConfidence: 72,
+        aiReason: 'the load was assigned but nothing shows the truck moving',
+        blockers: [...verdict.blockers, 'ai_disagreed'],
+      };
+    },
+  };
+  await watcher.runReturnToRoadCheck({ now: NOW, deps });
+
+  // It stood the case DOWN, so nothing is filed at all — that is the point.
+  assert.equal(calls.findings.length, 0, 'a model saying "no" costs nothing and files nothing');
+});

@@ -78,7 +78,7 @@ async function reviewReturnEvidence({ verdict, load = null, homeHours = null } =
     if (!verdict || verdict.confidence !== CONFIDENCE.MEDIUM) return null;
     if (!(await deps.isCapabilityEnabled(CAPABILITY))) return null;
 
-    const { parsed } = await deps.runCapability({
+    const { parsed, provider, model } = await deps.runCapability({
       capability: CAPABILITY,
       userText: buildPrompt({ verdict, load, homeHours }),
       expects: 'json',
@@ -98,6 +98,9 @@ async function reviewReturnEvidence({ verdict, load = null, homeHours = null } =
         ...verdict,
         confidence: CONFIDENCE.HIGH,
         aiAssisted: true,
+        aiProvider: provider || null,
+        aiModel: model || null,
+        aiConfidence: confidence,
         aiReason: reason,
         signals: [...verdict.signals, 'ai_agreed'],
         summary: `${verdict.summary} + reviewed`,
@@ -111,6 +114,9 @@ async function reviewReturnEvidence({ verdict, load = null, homeHours = null } =
         ...verdict,
         confidence: CONFIDENCE.LOW,
         aiAssisted: true,
+        aiProvider: provider || null,
+        aiModel: model || null,
+        aiConfidence: confidence,
         aiReason: reason,
         blockers: [...verdict.blockers, 'ai_disagreed'],
       };

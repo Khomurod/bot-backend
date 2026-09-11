@@ -282,6 +282,16 @@ marks the stay closed.
   `database/baseline/012_home_time.sql` carries `recorded` too, and
   `tests/homeTimeManagerNoticesPg.test.js` applies baseline → migrations →
   baseline again to prove a restart survives.
+- **The audit says WHO decided, not only what.** A finding records whether a
+  model was consulted at all, which provider and model answered, how sure it
+  said it was, its one-line reason, and that the change was automatic rather
+  than typed — beside the facts that justified it (load identifier and status,
+  GPS freshness and age, distance from the parked anchor, whether movement was
+  proven). `aiAssisted: false` is written explicitly rather than left absent,
+  because an absent field reads as "nobody recorded it". The correction is
+  audited against the finding, so `operational_corrections` +
+  `admin_audit_log` + the finding together answer "why did the software move
+  this driver" months later.
 - **Home Time is checkable from outside a running instance.** `/api/health` →
   `operations.homeTime` reports what the feature is DOING, not only whether its
   invariant holds: how many drivers are being watched and when the watcher last
