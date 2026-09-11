@@ -264,6 +264,32 @@ async function retentionTick() {
   } catch (err) {
     console.error('[SCHEDULER] Data retention error:', err.message);
   }
+
+  // GOING BACK TO SEE WHETHER WHAT WE DID HELD. Rides this timer for the same
+  // reason as the line above — a second timer is a second thing that can stop
+  // without anybody noticing.
+  //
+  // This is what makes the source track record real: `lib/decisions/sources.js`
+  // decides what a source is worth from how often decisions citing it were
+  // later confirmed, and nothing else ever sets an outcome. Without this pass
+  // every source stays unmeasured for ever and the reliability model is
+  // decoration.
+  try {
+    // eslint-disable-next-line global-require
+    const { runVerificationPass } = require('./decisions/verifyPass');
+    // eslint-disable-next-line global-require
+    const { withRunRecord } = require('./operations/runLedger');
+    // eslint-disable-next-line global-require
+    const db = require('../database/pool');
+    const out = await withRunRecord('decision_verification',
+      () => runVerificationPass({ db }));
+    if (out.checked) {
+      console.log(`[SCHEDULER] verification: ${out.checked} graded — `
+        + `${out.confirmed} held, ${out.contradicted} did not, ${out.notChecked} unverifiable`);
+    }
+  } catch (err) {
+    console.error('[SCHEDULER] Verification pass error:', err.message);
+  }
 }
 
 /**
