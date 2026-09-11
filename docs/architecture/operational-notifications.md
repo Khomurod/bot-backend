@@ -151,10 +151,30 @@ discarded would be that failure with a nicer name.
 Two exceptions, both deliberate:
 
 - **a `now` is never held.** Whatever else somebody has been told, a thing that
-  gets worse by the hour is worth the interruption.
+  gets worse by the hour is worth the interruption. A **critical fuel
+  percentage** is one on its own, with no assigned stop to measure against —
+  that was missed at first, so a truck at 6% with no open fuel watch produced
+  no facts at all, landed at `whenever`, and could be held for an hour. The
+  threshold is imported from `lib/fuel/risk.js` rather than copied.
 - **the hold fails open.** A dependency map without the new read, or a read
   that errors, costs the hold and not the notice. Saying a thing twice is a
   nuisance; not saying it is the failure this application exists to remove.
+
+Three things the first version of the hold got wrong, each found in review:
+
+- **it moved the flood rather than removing it.** Every held row was dated
+  forward by the same window, so a hundred notices became three now and
+  ninety-seven together an hour later. Each notice already waiting for a
+  subject now pushes the next a further window out.
+- **it counted notices nobody in that chat had seen.** With per-category
+  overrides, three fuel notices in the fuel team's chat could hold the first
+  safety notice in a safety chat. Both the recent-notice read and the stagger
+  count are scoped to the resolved destination.
+- **it created the duplicate it exists to prevent.** `noticeSentWithin` looked
+  only at `delivered`, and the fuel watch's discriminator carries the hour — so
+  a notice held at 10:30 was invisible, the key changed at 11:00, and a second
+  copy went out. A `pending` row will still be said, so it now counts;
+  `abandoned` does not, because it never will.
 
 The read is `listRecentNoticesAbout`, over the index migration 0031 created for
 exactly this — `(person_id, created_at DESC) WHERE person_id IS NOT NULL` — and

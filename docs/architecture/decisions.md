@@ -195,11 +195,33 @@ lowered into acceptability by a generous threshold.
 ### The feedback loop
 
 `sourceAgreement()` reads how each source actually performed, counting only
-decisions that were **graded** — an ungraded decision says nothing about the
-sources behind it. `reverted` and `contradicted` both count as "the outcome did
-not bear this out"; separating them would imply a distinction the caller cannot
-act on. It is empty until decisions have been graded, and an empty record is the
+outcomes that are **a judgement about the source**: `confirmed`,
+`contradicted`, `reverted`. The last two both mean "the outcome did not bear
+this out"; separating them would imply a distinction the caller cannot act on.
+It is empty until decisions have been graded, and an empty record is the
 intended starting state rather than a degraded one.
+
+### `not_checked` is not evidence against a source
+
+This is the `hold` / `unknown` distinction from the top of this document, one
+layer down and applied to outcomes. **"We could not check" and "we checked and
+it was wrong" are opposites.** `not_checked` means nothing here knows how to
+verify that action; `expired` means the subject is gone or too much time has
+passed to judge. Neither is a verdict on the source, so neither is counted.
+
+**This was not hypothetical, and it was the most dangerous defect in this
+work.** The query counted every non-null outcome as graded and only `confirmed`
+as success. Five of the seven actions that can run have no verifier in
+`verifyPass.js`'s `SUBJECTS`, so each recorded `not_checked`. At five of them a
+check's source crosses `MIN_GRADED` at 0% agreement, `soleSourceIsUnreliable`
+fires — the correction seam cites exactly one source — and **every later
+correction from that check is held for ever.** Automatic repair would have
+stopped across most of the fleet, quietly, a few hours after the journal was
+first given a caller.
+
+The other half of the answer is to write the missing verifiers, which would turn
+those `not_checked` rows into real judgements. Until somebody does, the rule
+above is what keeps a missing verifier from being read as a failing check.
 
 The weighing's reasons travel **with** the decision, so one read back months
 later says why its confidence was what it was rather than only what it was.
