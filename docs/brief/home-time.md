@@ -260,6 +260,19 @@ marks the stay closed.
   as they are and are simply read as settled. Old cards still in the group get
   their buttons retired on the next press, with a note that approval is no
   longer needed — `tests/homeTimeRetiredApproval.test.js`.
+  **The admin panel's Approve / Do Not Approve buttons are gone too**, along
+  with the endpoint behind them: `POST /home-time/requests/:id/decision` answers
+  410 with a sentence saying what replaced it, so an admin tab opened before the
+  deploy shows a clear message rather than a broken button. The workflow itself
+  — `applyHomeTimeDecision`, `announceApproval`, `canApproveWindow`,
+  `settleDecisionCard` — is DELETED, not disabled: a retired path kept "just in
+  case" is a path that comes back. `services/homeTimeApproval.js` keeps only
+  `expireOutdatedRequest`, which closes a request whose window passed with
+  nothing having happened — housekeeping, never a decision. A legacy `pending`
+  row shows a sentence in the driver timeline saying nothing is waiting for it,
+  because a row reading "pending" with nothing beside it looks like a task.
+  `tests/homeTimeDecisionRoute.test.js`, `tests/homeTimeApproval.test.js`,
+  `admin/src/pages/homeTime/RetiredApprovalNote.test.jsx`.
   **The widened CHECK lives in the BASELINE, not only in migration 0029.**
   `schema.sql` is re-applied verbatim on every boot and its `DROP CONSTRAINT` /
   `ADD CONSTRAINT` pair is unconditional, so a value added by a run-once

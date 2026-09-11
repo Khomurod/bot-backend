@@ -1,6 +1,6 @@
 import React from "react";
 import HomeTimeRequestDatesEditor from "../HomeTimeRequestDatesEditor";
-import HomeTimeRequestDecision from "../HomeTimeRequestDecision";
+import RetiredApprovalNote from "./RetiredApprovalNote";
 import { driverTypeLabel, isCompanyDriver } from "../homeTimeViewModel";
 import {
   fmtDate, toDateInput, money, requestStatusMeta, policyLabel,
@@ -270,7 +270,7 @@ export function DriverDetailModal(p) {
                             flash={flash}
                             onSaved={load}
                           />
-                          <HomeTimeRequestDecision request={item} flash={flash} onSaved={load} />
+                          <RetiredApprovalNote request={item} />
                         </div>
                       ) : (
                         <div className="home-time-activity-meta">

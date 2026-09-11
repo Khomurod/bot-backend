@@ -55,7 +55,7 @@ const {
 const { classifyHomeTimeRequest, handleApproverMention } = require('./homeTimeApproverTag');
 // The decision workflow (approve/decline + card settle + approval announcement)
 // lives in a focused module; re-exported below so existing importers are unchanged.
-const { announceApproval, applyHomeTimeDecision, expireOutdatedRequest } = require('./homeTimeApproval');
+const { expireOutdatedRequest } = require('./homeTimeApproval');
 
 // Company time. Home time is scheduled, reported and reasoned about in Central
 // throughout this subsystem (see homeTimeDateResolver.js, which declares the same).
@@ -452,8 +452,6 @@ module.exports = {
   classifyHomeTimeRequest,
   buildCardText,
   buildDecidedCardText,
-  announceApproval,
-  applyHomeTimeDecision,
   sendPolicyResponse,
   createClarification,
   completeAndRespond,

@@ -1,64 +1,33 @@
 /**
- * Admin decision endpoint for Driver Home Time — POST /requests/:id/decision.
+ * POST /requests/:id/decision — RETIRED. Answers 410 Gone.
  *
- * A thin HTTP wrapper over the SHARED applyHomeTimeDecision workflow (defined in
- * services/homeTimeApproval, re-exported by homeTimeRequestService) so an admin
- * approve/decline produces the exact same complete business result as the
- * Telegram approval buttons: atomic pending→decided guard, decided-by/decided-at
- * recorded, reminders stopped, the Telegram card settled in place, and — for an
- * approval — the employee-group announcement.
+ * This was the admin panel's Approve / Do Not Approve endpoint, a thin wrapper
+ * over the same workflow the Telegram approval buttons ran. Home Time no longer
+ * asks permission: a driver's stay is REPORTED to three managers as it happens
+ * and a completed request settles as `recorded`. The buttons are gone from the
+ * admin panel and from Telegram.
  *
- * Kept in its own module so homeTimeRoutes.js stays within the size limit, and so
- * the service (and, transitively, the bot) is required LAZILY inside the handler
- * — the route file can be required in tests without pulling in config/bot.
+ * The route is kept, rather than deleted, for one reason: an admin tab opened
+ * before the deploy still holds the old buttons, and a bare 404 would leave
+ * whoever clicks one guessing. A 410 with a sentence is the difference between
+ * "this is finished" and "something is broken".
  *
- * `resolveTelegramFn` is injectable so tests can run without loading bot/bot.js.
+ * NOTHING IS ERASED. The historical `approved` / `denied` rows stay exactly as
+ * they are, `homeTimeEfficiency` still reads them to classify an approved
+ * exception, and the driver timeline still shows who decided and when. Retiring
+ * the decision is not the same as retracting the decisions already taken.
  */
-function resolveTelegram() {
-  try {
-    return require('../../bot/bot').bot?.telegram || null;
-  } catch (_) {
-    return null;
-  }
-}
-
-// Map a typed decision-result code to an HTTP status + default message.
-const HTTP_BY_CODE = {
-  not_found: [404, 'Request not found.'],
-  invalid_decision: [400, "decision must be 'approve' or 'decline'."],
-  invalid_dates: [422, 'Set a valid arrive-home and return-to-road date before approving.'],
-  outdated: [422, 'This home-time period has already passed — it can no longer be approved. You can decline or close it.'],
-  already_decided: [409, 'This request was already decided.'],
-  conflict: [409, 'This request was just decided by someone else.'],
+const RETIRED = {
+  code: 'approval_retired',
+  error: 'Home time is no longer approved or declined. A stay is recorded and reported '
+    + 'to the managers as it happens; a completed request settles as "recorded". '
+    + 'Existing approved and denied requests are unchanged and still shown.',
 };
 
-function registerHomeTimeDecisionRoutes(router, { authMiddleware, resolveTelegramFn = resolveTelegram } = {}) {
-  router.post('/requests/:id/decision', authMiddleware, async (req, res) => {
-    try {
-      const id = Number.parseInt(req.params.id, 10);
-      if (!(id > 0)) return res.status(400).json({ error: 'Invalid request id' });
-
-      // Lazy require: keeps this route file (and homeTimeRoutes) free of config/bot
-      // at load time; the shared workflow owns all the business rules.
-      const { applyHomeTimeDecision } = require('../../services/homeTimeRequestService');
-      const result = await applyHomeTimeDecision(resolveTelegramFn(), id, {
-        decision: req.body?.decision,
-        decidedByUsername: req.admin?.username || null,
-        via: 'admin',
-      });
-
-      if (result.ok) return res.json({ request: result.request });
-
-      const [status, defaultMsg] = HTTP_BY_CODE[result.code] || [400, 'Could not decide the request.'];
-      const error = result.code === 'already_decided' && result.request?.status
-        ? `This request was already ${result.request.status}.`
-        : defaultMsg;
-      return res.status(status).json({ error, code: result.code, request: result.request || null });
-    } catch (err) {
-      console.error('[HOME-TIME API] decision failed:', err.message);
-      return res.status(500).json({ error: 'Failed to decide the request.' });
-    }
-  });
+function registerHomeTimeDecisionRoutes(router, { authMiddleware } = {}) {
+  const guard = authMiddleware || ((req, _res, next) => next());
+  router.post('/requests/:id/decision', guard, (req, res) => res.status(410).json(RETIRED));
+  return router;
 }
 
-module.exports = { registerHomeTimeDecisionRoutes };
+module.exports = { registerHomeTimeDecisionRoutes, RETIRED };

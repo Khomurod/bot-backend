@@ -105,9 +105,11 @@ export default function HomeTimeSettingsCard({ settings, saving, onSave }) {
             onBlur={saveNotifyGroup}
           />
           <p className="home-time-muted" style={{ margin: "6px 0 0" }}>
-            Completed home-time request cards (with Approve / Do Not Approve) are posted to
-            this group only — never to the driver's own group. When it is empty, the completed
-            card is not posted anywhere (the request still appears here in the admin panel).
+            Home-time event notices — a driver asking for home time, arriving home, and
+            going back on the road — are posted to this group only, never to the driver's
+            own group, and each one tags the three managers. There are no Approve / Do Not
+            Approve buttons: home time is reported, not permitted. When this is empty,
+            nothing is posted anywhere (the request still appears here in the admin panel).
             Date-clarification questions and the under-{settings.road_allowance_weeks}-week reminder
             still go to the driver's group as before.
           </p>

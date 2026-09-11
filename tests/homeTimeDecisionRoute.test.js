@@ -1,25 +1,31 @@
 /**
- * Route tests for POST /api/home-time/requests/:id/decision — the admin-panel
- * approve/decline endpoint. The shared service is mocked so these assert the HTTP
- * contract: admin identity passthrough, decision passthrough, and the mapping of
- * every typed result code to the right status code.
+ * POST /api/home-time/requests/:id/decision — RETIRED.
+ *
+ * This endpoint ran the approve/decline workflow behind the admin panel's
+ * Approve / Do Not Approve buttons. Home Time no longer asks permission: a
+ * completed stay is `recorded` and three managers are told. The buttons are
+ * gone from the admin panel, and this file is what stops the workflow coming
+ * back through an admin tab that was open before the deploy, a bookmark, or a
+ * script someone wrote against it.
+ *
+ * It answers 410 Gone and calls NOTHING. The historical `approved` / `denied`
+ * rows are untouched and still read by the efficiency report — retiring the
+ * decision is not the same as erasing the decisions already taken.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 
-function loadApp({ result }) {
+function loadApp() {
   const routePath = require.resolve('../server/routes/homeTimeDecisionRoutes');
   const svcPath = require.resolve('../services/homeTimeRequestService');
   for (const p of [routePath, svcPath]) delete require.cache[p];
 
   const calls = [];
+  // If the route still reaches the workflow, this records it and the test fails.
   require.cache[svcPath] = {
     exports: {
-      async applyHomeTimeDecision(telegram, id, opts) {
-        calls.push({ telegram, id, opts });
-        return result;
-      },
+      async applyHomeTimeDecision(...args) { calls.push(args); return { ok: true, request: {} }; },
     },
   };
 
@@ -38,85 +44,41 @@ function loadApp({ result }) {
 async function post(app, pathname, body) {
   const server = app.listen(0);
   try {
-    const base = `http://127.0.0.1:${server.address().port}`;
-    const res = await fetch(`${base}${pathname}`, {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}${pathname}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(body ?? {}),
     });
-    const json = res.headers.get('content-type')?.includes('application/json') ? await res.json() : null;
-    return { status: res.status, json };
-  } finally {
-    await new Promise((resolve) => server.close(resolve));
-  }
+    return { status: res.status, body: await res.json().catch(() => null) };
+  } finally { server.close(); }
 }
 
-test('approve → 200 and passes admin username + via:admin to the shared workflow', async () => {
-  const decided = { id: 5, status: 'approved', decided_by_username: 'boss' };
-  const { app, calls } = loadApp({ result: { ok: true, request: decided } });
+test('an approve is refused with 410 and changes nothing', async () => {
+  const { app, calls } = loadApp();
   const res = await post(app, '/api/home-time/requests/5/decision', { decision: 'approve' });
-  assert.equal(res.status, 200);
-  assert.deepEqual(res.json.request, decided);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].id, 5);
-  assert.equal(calls[0].opts.decision, 'approve');
-  assert.equal(calls[0].opts.decidedByUsername, 'boss');
-  assert.equal(calls[0].opts.via, 'admin');
+  assert.equal(res.status, 410);
+  assert.equal(calls.length, 0, 'the retired workflow must not run');
+  assert.match(res.body.error, /no longer/i);
+  assert.equal(res.body.code, 'approval_retired');
 });
 
-test('decline → 200', async () => {
-  const { app } = loadApp({ result: { ok: true, request: { id: 5, status: 'denied' } } });
+test('a decline is refused the same way — neither direction survives', async () => {
+  const { app, calls } = loadApp();
   const res = await post(app, '/api/home-time/requests/5/decision', { decision: 'decline' });
-  assert.equal(res.status, 200);
-  assert.equal(res.json.request.status, 'denied');
-});
-
-test('not found → 404', async () => {
-  const { app } = loadApp({ result: { ok: false, code: 'not_found' } });
-  const res = await post(app, '/api/home-time/requests/5/decision', { decision: 'approve' });
-  assert.equal(res.status, 404);
-  assert.equal(res.json.code, 'not_found');
-});
-
-test('invalid dates → 422', async () => {
-  const { app } = loadApp({ result: { ok: false, code: 'invalid_dates', request: { id: 5, status: 'pending' } } });
-  const res = await post(app, '/api/home-time/requests/5/decision', { decision: 'approve' });
-  assert.equal(res.status, 422);
-  assert.match(res.json.error, /date/i);
-});
-
-test('outdated (window already passed) → 422', async () => {
-  const { app } = loadApp({ result: { ok: false, code: 'outdated', request: { id: 5, status: 'pending' } } });
-  const res = await post(app, '/api/home-time/requests/5/decision', { decision: 'approve' });
-  assert.equal(res.status, 422);
-  assert.equal(res.json.code, 'outdated');
-  assert.match(res.json.error, /passed|decline/i);
-});
-
-test('already decided → 409 with the final status', async () => {
-  const { app } = loadApp({ result: { ok: false, code: 'already_decided', request: { id: 5, status: 'approved' } } });
-  const res = await post(app, '/api/home-time/requests/5/decision', { decision: 'approve' });
-  assert.equal(res.status, 409);
-  assert.match(res.json.error, /already approved/i);
-});
-
-test('conflict (concurrent decision) → 409', async () => {
-  const { app } = loadApp({ result: { ok: false, code: 'conflict', request: { id: 5, status: 'denied' } } });
-  const res = await post(app, '/api/home-time/requests/5/decision', { decision: 'approve' });
-  assert.equal(res.status, 409);
-  assert.equal(res.json.code, 'conflict');
-});
-
-test('invalid request id → 400 and never calls the service', async () => {
-  const { app, calls } = loadApp({ result: { ok: true, request: {} } });
-  const res = await post(app, '/api/home-time/requests/0/decision', { decision: 'approve' });
-  assert.equal(res.status, 400);
+  assert.equal(res.status, 410);
   assert.equal(calls.length, 0);
 });
 
-test('invalid decision → 400 (surfaced from the shared workflow)', async () => {
-  const { app } = loadApp({ result: { ok: false, code: 'invalid_decision' } });
-  const res = await post(app, '/api/home-time/requests/5/decision', { decision: 'maybe' });
-  assert.equal(res.status, 400);
-  assert.equal(res.json.code, 'invalid_decision');
+test('the reply says what to do instead, so a stale tab is not a dead end', async () => {
+  const { app } = loadApp();
+  const res = await post(app, '/api/home-time/requests/5/decision', { decision: 'approve' });
+  assert.match(JSON.stringify(res.body), /recorded|managers/i,
+    'an operator reading this must learn what replaced the decision');
+});
+
+test('a nonsense id is still refused, not treated as a special case', async () => {
+  const { app, calls } = loadApp();
+  const res = await post(app, '/api/home-time/requests/abc/decision', { decision: 'approve' });
+  assert.equal(res.status, 410);
+  assert.equal(calls.length, 0);
 });
