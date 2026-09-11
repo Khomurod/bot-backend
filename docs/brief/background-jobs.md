@@ -193,6 +193,28 @@ chat, so a truck or group change does not detach a load from its history.
 Visible on `/api/health` → `operations.loads`: how many loads are tracked, in
 what phase, how many are unclear and how many have a board disagreement.
 
+## The fleet snapshot is fetched once a minute, not once per caller
+
+`fetchAllVehicleStats` caches for 60 seconds, keyed by a **hash** of the API key
+and base — never the key itself, which must not sit in a map key that could be
+logged or dumped.
+
+Route Control resolves each active assignment's GPS separately and each
+resolution fetched the **entire paginated fleet**: ten active assignments meant
+ten complete fetches every check interval, roughly fourteen thousand a day for a
+hundred trucks whose positions were identical in all ten. The duplicate-unit
+scan, the fuel watch and the load watch ask for the same snapshot on their own
+timers as well.
+
+Sixty seconds is shorter than every caller's interval, and the data is already
+treated as approximate — nothing decides anything from a position without
+checking its age, and `staleGpsMinutes` is measured in tens of minutes. Callers
+arriving together **share one in-flight request** rather than making eight.
+
+**A failed fetch is never cached.** Keeping the last good snapshot through a
+blip would be worse than useless: a caller would read positions from before an
+outage and believe them current.
+
 ## Data retention (hourly, on the scheduler's existing timer)
 
 `services/operations/dataRetention.js`, called from `schedulerService`'s hourly
