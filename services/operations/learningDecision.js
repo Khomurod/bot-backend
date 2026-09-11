@@ -31,6 +31,31 @@
  * place a human looks for "what changed, who did it, why".
  */
 
+/**
+ * Run `fn` inside one transaction when a pool is available.
+ *
+ * WITHOUT A POOL IT STILL RUNS, with `client` left null so every write goes to
+ * whatever the injected data layer uses. That keeps the unit tests — which
+ * inject plain stubs and have no database at all — exercising the same code
+ * path as production rather than a second one written for them.
+ */
+async function withTransaction(deps, fn) {
+  const pool = deps.pool || null;
+  if (!pool || typeof pool.connect !== 'function') return fn(null);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const out = await fn(client);
+    await client.query('COMMIT');
+    return out;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 function defaultDeps() {
   /* eslint-disable global-require */
   return {
@@ -38,6 +63,7 @@ function defaultDeps() {
     checkSettings: require('../../database/operationalCheckSettings'),
     audit: require('../../database/adminAudit'),
     actions: require('./learningActions'),
+    pool: require('../../database/pool').pool,
   };
   /* eslint-enable global-require */
 }
@@ -108,21 +134,34 @@ async function acceptSuggestion(id, { admin = null, note = null, deps = defaultD
     };
   }
 
-  const result = await action.apply(suggestion.applyPayload, { ...deps, actor });
-  const row = await deps.store.recordSuggestionApplied(id, {
-    action: action.key, before: result.before, appliedBy: actor,
+  // ONE TRANSACTION, and the reason is the undo. If the settings change
+  // committed but recording it did not, automation would be off while the
+  // suggestion still read `proposed` — and a retry would then overwrite
+  // `applied_before` with the ALREADY-DISABLED values, so the eventual Undo
+  // would restore "off" and call it the original state. The audit row joins the
+  // same transaction for the same reason the correction engine's does.
+  //
+  // It also makes a multi-check payload all-or-nothing: half of them switched
+  // off with the row still proposed is a state nobody can reason about.
+  const result = await withTransaction(deps, async (client) => {
+    const applied = await action.apply(suggestion.applyPayload, { ...deps, actor, client });
+    const row = await deps.store.recordSuggestionApplied(id, {
+      action: action.key, before: applied.before, appliedBy: actor,
+    }, client);
+    await deps.audit.insertAdminAudit({
+      adminId: admin?.id ?? null,
+      roleKeys: admin?.roleKeys || null,
+      action: `learning.apply.${action.key}`,
+      entityType: 'learning_suggestion',
+      entityId: String(id),
+      oldValues: applied.before,
+      newValues: applied.after,
+      reason: note || suggestion.title,
+      ipAddress: admin?.ip || null,
+    }, client);
+    return { ...applied, row };
   });
-  await deps.audit.insertAdminAudit({
-    adminId: admin?.id ?? null,
-    roleKeys: admin?.roleKeys || null,
-    action: `learning.apply.${action.key}`,
-    entityType: 'learning_suggestion',
-    entityId: String(id),
-    oldValues: result.before,
-    newValues: result.after,
-    reason: note || suggestion.title,
-    ipAddress: admin?.ip || null,
-  }).catch(() => {});
+  const row = result.row;
 
   return {
     suggestion: row,
@@ -158,21 +197,26 @@ async function revertSuggestion(id, { admin = null, note = null, deps = defaultD
     };
   }
 
-  const result = await action.revert(suggestion.appliedBefore, { ...deps, actor });
-  const row = await deps.store.recordSuggestionReverted(id, { revertedBy: actor, note });
-  await deps.audit.insertAdminAudit({
-    adminId: admin?.id ?? null,
-    roleKeys: admin?.roleKeys || null,
-    action: `learning.revert.${action.key}`,
-    entityType: 'learning_suggestion',
-    entityId: String(id),
-    oldValues: { applied: true },
-    newValues: suggestion.appliedBefore,
-    reason: note || 'reverted',
-    ipAddress: admin?.ip || null,
-  }).catch(() => {});
+  const result = await withTransaction(deps, async (client) => {
+    const reverted = await action.revert(suggestion.appliedBefore, { ...deps, actor, client });
+    const row = await deps.store.recordSuggestionReverted(id, { revertedBy: actor, note }, client);
+    await deps.audit.insertAdminAudit({
+      adminId: admin?.id ?? null,
+      roleKeys: admin?.roleKeys || null,
+      action: `learning.revert.${action.key}`,
+      entityType: 'learning_suggestion',
+      entityId: String(id),
+      oldValues: { applied: true },
+      newValues: suggestion.appliedBefore,
+      reason: note || 'reverted',
+      ipAddress: admin?.ip || null,
+    }, client);
+    return { ...reverted, row };
+  });
 
-  return { suggestion: row, reverted: true, detail: `${result.restored} setting(s) put back.` };
+  return {
+    suggestion: result.row, reverted: true, detail: `${result.restored} setting(s) put back.`,
+  };
 }
 
-module.exports = { defaultDeps, describeDecision, acceptSuggestion, revertSuggestion };
+module.exports = { defaultDeps, withTransaction, describeDecision, acceptSuggestion, revertSuggestion };

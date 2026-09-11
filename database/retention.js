@@ -14,6 +14,23 @@
  * would find none, and report a driver who has been complaining for two months
  * as one who has gone quiet. The queries below say 30 days because the data
  * says 30 days.
+ *
+ * AND TODAY THAT CEILING IS ZERO, WHICH IS WORSE AND WAS NOT WRITTEN DOWN.
+ * `database/chatLogs.js` holds the only INSERT into `chat_logs` and it has no
+ * caller: the bot deliberately stopped persisting every group message
+ * (`bot/handlers/groupCaptureHandlers.js` says so in as many words). So the
+ * four signals below that read it — complaints, quit signals, sentiment and
+ * gone-quiet — are not bounded by thirty days, they are bounded by an empty
+ * table, and the hourly prune deletes from it forever.
+ *
+ * The queries are LEFT IN PLACE deliberately. Deleting them would make
+ * re-enabling message capture a rewrite instead of a switch, and whether this
+ * company wants to persist every driver message is a privacy decision for its
+ * owner, not something to settle by removing the reader. What is fixed is the
+ * HONESTY: `chatSignalsAvailable` below says whether the table can answer at
+ * all, so "no complaints" is never reported when the truthful answer is "we are
+ * not listening". Missing data means unknown, never zero — the same rule the
+ * fuel and identity layers hold to.
  */
 const { query } = require('./pool');
 
@@ -185,8 +202,40 @@ function mapInputs(row) {
   };
 }
 
+/**
+ * Whether the four chat-derived signals can answer at all.
+ *
+ * They read `chat_logs`, whose only writer has no caller — the bot deliberately
+ * stopped persisting every group message. An empty table makes "no complaints",
+ * "no quit signals" and "sentiment is fine" come back as reassuring zeros, and
+ * a reassuring zero from a source that is not listening is the worst answer a
+ * retention check can give.
+ *
+ * ONE COUNT, CAPPED, so it costs nothing: the question is "is there anything at
+ * all", not "how many".
+ *
+ * @returns {Promise<{available: boolean, rows: number, reason: string}>}
+ */
+async function chatSignalsAvailable() {
+  try {
+    const res = await query('SELECT COUNT(*)::int AS n FROM (SELECT 1 FROM chat_logs LIMIT 1) t');
+    const rows = res.rows[0]?.n || 0;
+    return rows > 0
+      ? { available: true, rows, reason: 'driver messages are being recorded' }
+      : {
+        available: false,
+        rows: 0,
+        reason: 'no driver messages are recorded, so complaints, quit signals, '
+          + 'sentiment and gone-quiet cannot be detected at all',
+      };
+  } catch (err) {
+    return { available: false, rows: 0, reason: `could not read chat_logs: ${err.message}` };
+  }
+}
+
 module.exports = {
   WINDOW_DAYS,
   gatherRetentionInputs,
   mapInputs,
+  chatSignalsAvailable,
 };

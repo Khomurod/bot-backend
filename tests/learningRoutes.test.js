@@ -46,6 +46,7 @@ function loadApp({ rows = [ROW], decided = ROW, accept, revert } = {}) {
       async listSuggestions(args) { saw.listed.push(args); return rows; },
       async summariseSuggestions() { return { proposed: 1, accepted: 2, dismissed: 0 }; },
       async decideSuggestion(id, args) { saw.decided.push({ id, ...args }); return decided; },
+      async getSuggestionById(id) { return rows.find((r) => r.id === id) || null; },
     },
   };
   require.cache[DECISION] = {
@@ -140,7 +141,7 @@ test('a nonsense id never reaches SQL', async () => {
 });
 
 test('an id that does not exist is a 404, not a silent success', async () => {
-  const { app } = loadApp({ decided: null });
+  const { app } = loadApp({ decided: null, rows: [] });
   const res = await call(app, 'POST', '/api/operations/learning/99/decide', { status: 'dismissed' });
   assert.equal(res.status, 404);
 
@@ -217,3 +218,20 @@ test('THE ROUTE ITSELF STILL CHANGES NOTHING — it delegates to the one registr
     assert.ok(!src.includes(forbidden), `must never call ${forbidden}`);
   }
 });
+
+test('DISMISSING A SUGGESTION SOMEBODY ELSE ALREADY APPLIED IS A 409, not a silent overwrite',
+  async () => {
+    // Two administrators with the same proposal open. One accepts and the
+    // setting changes; the other's stale screen posts `dismissed`. An
+    // unconditional update would hide `accepted_active` while the setting
+    // stayed changed — and the Undo button lives on that state, so the change
+    // would become un-undoable from the UI while still being in force.
+    const { app } = loadApp({
+      decided: null,
+      rows: [{ ...ROW, status: 'accepted_active' }],
+    });
+    const res = await call(app, 'POST', '/api/operations/learning/4/decide', { status: 'dismissed' });
+    assert.equal(res.status, 409);
+    assert.equal(res.body.status, 'accepted_active');
+    assert.match(res.body.error, /Undo/, 'and it says what to do instead');
+  });

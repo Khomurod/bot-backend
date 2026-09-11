@@ -80,3 +80,61 @@ test('the workers on the critical list are the ones a person would be woken for'
       `${key} missing a tick is not an operational incident`);
   }
 });
+
+test('EVERY CATALOGUED ENTRY IS OBSERVABLE — by its ledger, or by a hand-written check', () => {
+  // The gap this closes, found in review: `datatruck_documents` wrote ledger
+  // records AND was skipped by `workerObservations` for being an integration,
+  // while `integrationObservations` had no branch for it. A critical component
+  // appeared in neither the Systems tab nor the public summary — a silent gap
+  // of exactly the kind this whole mechanism exists to close.
+  //
+  // And `mileage_bonus` / `raise_approval` were catalogued without recording
+  // anything, so they would have read `cannot_determine` forever: the screen
+  // could never tell either job running from its timer stopping.
+  const src = fs.readFileSync(
+    require.resolve('../services/operations/healthObservations'), 'utf8'
+  );
+  const custom = new Set(
+    [...src.matchAll(/'([a-z_]+)',?\s*$/gm)].map((m) => m[1])
+  );
+  const customBlock = src.slice(
+    src.indexOf('const CUSTOM_INTEGRATIONS'), src.indexOf('/** When this process started')
+  );
+  const handled = new Set([...customBlock.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
+
+  // index.js too: the leads bot is a CHILD PROCESS, not a timer, so its
+  // supervisor there is the only thing that can report on it.
+  const files = [
+    ...walk(path.join(ROOT, 'services')), ...walk(path.join(ROOT, 'server')),
+    path.join(ROOT, 'index.js'),
+  ];
+  const recorded = new Set();
+  for (const file of files) {
+    const body = fs.readFileSync(file, 'utf8');
+    for (const m of body.matchAll(/(?:withRunRecord|noteHeartbeat)\(\s*'([a-z0-9_]+)'/g)) {
+      recorded.add(m[1]);
+    }
+  }
+
+  const invisible = CATALOG.filter((e) => !handled.has(e.key) && !recorded.has(e.key));
+  assert.deepEqual(invisible.map((e) => e.key), [],
+    'these are in the roster and nothing observes them — they would read '
+    + '"never reported" forever, which is worse than not listing them at all');
+  assert.ok(custom.size >= 0);
+});
+
+test('a hand-written integration check exists for every key that claims one', () => {
+  const src = fs.readFileSync(
+    require.resolve('../services/operations/healthObservations'), 'utf8'
+  );
+  const customBlock = src.slice(
+    src.indexOf('const CUSTOM_INTEGRATIONS'), src.indexOf('/** When this process started')
+  );
+  for (const m of customBlock.matchAll(/'([a-z_]+)'/g)) {
+    const key = m[1];
+    assert.ok(getServiceEntry(key), `${key} claims a custom check but is not in the catalogue`);
+    assert.ok(src.includes(`integration('${key}'`),
+      `${key} is skipped by the ledger path but has no hand-written observation — `
+      + 'it would appear nowhere at all');
+  }
+});

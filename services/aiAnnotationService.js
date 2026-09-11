@@ -407,42 +407,33 @@ async function ensureAnnotationsForRange({ daysBack = 7, groupIds = null, onProg
   return { found: totalFound, annotated: totalAnnotated };
 }
 
-let isAnnotating = false;
-let backgroundAnnotatorTimer = null;
-
 /**
- * The loop starts unconditionally and each tick asks whether AI is available.
+ * THERE IS NO BACKGROUND ANNOTATOR, AND THERE MUST NOT LOOK LIKE ONE.
  *
- * It used to check `GROQ_API_KEY` once, at boot, and return — so an operator who
- * configured a key in the admin afterwards had to restart the application to get
- * their annotator back, and one who turned AI off kept a loop that failed every
- * two minutes. Neither is a decision that belongs at boot any more.
+ * `startBackgroundAnnotator` and `stopBackgroundAnnotator` stood here with a
+ * 120-second loop and a JSDoc explaining a subtlety about re-reading the AI
+ * key each tick rather than at boot. Nothing ever called either of them. The
+ * explanation described a fix to a loop that never ran, which is the most
+ * misleading shape a comment can take: it reads as evidence the feature works.
+ *
+ * Removed rather than wired up, for two reasons that compound.
+ *
+ * It would have had nothing to annotate. `annotateChatLogs` reads `chat_logs`,
+ * and that table's only writer has no caller — the bot deliberately stopped
+ * persisting every group message. A loop waking every two minutes to find zero
+ * rows is a cost with no product.
+ *
+ * And annotation already happens where it is needed: `ensureAnnotationsForRange`
+ * runs on demand when an administrator generates a report
+ * (`services/aiInsightsService.js`), which is the moment the answer is actually
+ * read. Pre-computing for a screen nobody has open is the kind of work this
+ * application has spent this whole phase removing.
+ *
+ * If message capture is ever re-enabled, a loop belongs in
+ * `services/backgroundServices.js` with the rest of the roster and a
+ * `withRunRecord` line, so that "it stopped" is answerable — which the deleted
+ * version could not have been either.
  */
-function startBackgroundAnnotator() {
-  console.log('[ANNOTATOR] Starting background annotator loop (120s interval).');
-  backgroundAnnotatorTimer = setInterval(async () => {
-    if (isAnnotating) return;
-    isAnnotating = true;
-    try {
-      // console.log('[ANNOTATOR] Background loop: checking for unannotated messages...');
-      const result = await ensureAnnotationsForRange({ daysBack: 14 });
-      if (result.annotated > 0) {
-        console.log(`[ANNOTATOR] Background loop: found ${result.found}, annotated ${result.annotated}.`);
-      }
-    } catch (err) {
-      console.error('[ANNOTATOR] Background loop error:', err.message);
-    } finally {
-      isAnnotating = false;
-    }
-  }, 120000);
-}
-
-function stopBackgroundAnnotator() {
-  if (!backgroundAnnotatorTimer) return;
-  clearInterval(backgroundAnnotatorTimer);
-  backgroundAnnotatorTimer = null;
-  console.log('[ANNOTATOR] Background annotator stopped.');
-}
 
 module.exports = {
   MODEL_VERSION,
@@ -452,8 +443,6 @@ module.exports = {
   VALID_LANGUAGES,
   annotateChatLogs,
   ensureAnnotationsForRange,
-  startBackgroundAnnotator,
-  stopBackgroundAnnotator,
   // pure helpers exported for tests
   buildAnnotationPrompt,
   parseAnnotationBatchResponse,

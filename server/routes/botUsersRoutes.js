@@ -36,7 +36,9 @@ function createBotUsersRouter({ authMiddleware }) {
           username: u.username || null,
           first_name: u.first_name || null,
           last_name: u.last_name || null,
-          interactions: Number(u.interactions) || 0,
+          // Always 0 today: `recordBotUserInteraction` has no caller, so nothing
+      // increments this column. See database/botUsers.js.
+      interactions: Number(u.interactions) || 0,
           message_count: Number(u.message_count) || 0,
           last_action: u.last_action || null,
           last_group_id: u.last_group_id != null ? Number(u.last_group_id) : null,

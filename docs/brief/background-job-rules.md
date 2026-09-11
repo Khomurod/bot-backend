@@ -123,3 +123,33 @@ all, and the consistency service's notification drain sat *outside* the guard
 its sweep used — safe only because a database lease further down happened to
 lock, which is not a property anybody can rely on while editing the thing
 further down.
+
+
+## Settings that move nothing are worse than settings that do not exist
+
+Three were found in review, all writable from the admin and read by no runtime
+code — a slider an operator sets, believing they have changed something:
+
+| Setting | Was | Now |
+|---|---|---|
+| `notification_settings.repeat_after_hours` | read by nothing; the fuel and load watches used their own module constants | a **ceiling** on every per-risk quiet window. Raising it quietens everything; it never lowers a floor, because a passed stop settling within a day is a property of the event, not a taste |
+| `ai_settings.call_log_retention_days` | read by nothing; the prune ran on a hardcoded 30 | the configured window drives the prune |
+| `ai_capabilities.may_propose` | documented in migration 0019 as "the enforcement point" | **still unenforced** — its sibling `may_auto_apply` is enforced by a schema CHECK, and this one is not read anywhere. Recorded here rather than quietly fixed, because deciding what "may propose" gates is a design question, not a wiring mistake |
+
+## Four retention signals that cannot fire
+
+`chat_logs` has exactly one INSERT — `database/chatLogs.js` — and it has **no
+caller**: the bot deliberately stopped persisting every group message. So
+complaints, quit signals, sentiment and gone-quiet read an empty table and come
+back as reassuring zeros.
+
+`database/retention.js` claimed the opposite in its header ("bounded by thirty
+days"); it is bounded by nothing at all. The queries are **kept** — whether to
+record driver messages is the owner's privacy decision, and deleting the readers
+would make re-enabling capture a rewrite instead of a switch — but
+`chatSignalsAvailable()` now says whether the table can answer, and
+`retention_chat_signals` reports it as needing a person. Missing data means
+unknown, never zero.
+
+The other retention signals — weeks on the road, unanswered home requests,
+unpaid bonuses — read their own tables and are unaffected.

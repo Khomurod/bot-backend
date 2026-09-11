@@ -47,6 +47,11 @@ function deps({
     },
     notificationSettings: { async getNotificationSettings() { return routing; } },
     fuelReadings: { async summariseFuelReadings() { return fuel; } },
+    retention: {
+      async chatSignalsAvailable() {
+        return { available: true, rows: 1, reason: 'driver messages are being recorded' };
+      },
+    },
   };
 }
 
@@ -285,4 +290,31 @@ test('no recruiter with a RingCentral login blocks it, however good the rest is'
   base.rc.listRecruiters = async () => [{ canSend: false }];
   const all = await obs.gatherAllObservations(base, { now: NOW });
   assert.match(find(all, 'recruiting_after_hours').reason, /from their own number/);
+});
+
+// ── the four retention signals that cannot fire ─────────────────────────────
+
+test('RETENTION SAYS WHEN IT CANNOT HEAR THE DRIVERS AT ALL', async () => {
+  const base = deps({});
+  base.retention = { async chatSignalsAvailable() {
+    return { available: false, rows: 0, reason: 'no driver messages are recorded' };
+  } };
+  const all = await obs.gatherAllObservations(base, { now: NOW });
+
+  const r = find(all, 'retention_chat_signals');
+  assert.equal(r.state, 'needs_human_attention');
+  assert.match(r.reason, /no driver messages are recorded/,
+    'four signals read chat_logs and its only writer has no caller — they come '
+    + 'back as reassuring zeros from a source that is not listening');
+  assert.match(r.reason, /unaffected/,
+    'and it says which signals still work, so this does not read as "retention is broken"');
+});
+
+test('with messages recorded it is simply healthy', async () => {
+  const base = deps({});
+  base.retention = { async chatSignalsAvailable() {
+    return { available: true, rows: 1, reason: 'driver messages are being recorded' };
+  } };
+  const all = await obs.gatherAllObservations(base, { now: NOW });
+  assert.equal(find(all, 'retention_chat_signals').state, 'healthy');
 });

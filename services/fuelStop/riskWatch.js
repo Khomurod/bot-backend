@@ -24,7 +24,16 @@ const { withRunRecord } = require('../operations/runLedger');
 const POLL_MS = 20 * 60 * 1000;
 const FIRST_TICK_DELAY_MS = 7 * 60 * 1000;
 
-/** How long a given risk stays quiet after being reported, in hours. */
+/**
+ * How long a given risk stays quiet after being reported, in hours.
+ *
+ * THESE ARE PER-RISK FLOORS, not the whole answer. `notification_settings`
+ * carries an operator-set `repeat_after_hours` that was read by nothing at all
+ * — a slider in the admin that moved no behaviour. It is now the value each of
+ * these is measured against: a fleet that wants everything quieter raises it
+ * once, and a passed stop still ages faster than a low tank because the shape
+ * below is about the RISK, not about taste.
+ */
 const REPEAT_AFTER_HOURS = {
   [RISKS.LOW_FUEL]: 8,
   [RISKS.CANNOT_REACH_STOP]: 6,
@@ -32,6 +41,21 @@ const REPEAT_AFTER_HOURS = {
   [RISKS.INSTRUCTION_STALE]: 48,
   [RISKS.ABNORMAL_BURN]: 72,
 };
+
+/**
+ * The quiet window for one risk kind.
+ *
+ * The operator's setting is a CEILING on how often anything repeats, so a
+ * fleet that raised it to a week does not still hear about a low tank every
+ * eight hours. Below the default it has no effect: a passed stop settling
+ * within a day is a property of the event, not a preference.
+ */
+function repeatHoursFor(kind, configuredHours = null) {
+  const base = REPEAT_AFTER_HOURS[kind] || 24;
+  const configured = Number(configuredHours);
+  if (!Number.isFinite(configured) || configured <= 0) return base;
+  return Math.max(base, configured);
+}
 
 function defaultDeps() {
   /* eslint-disable global-require */
@@ -43,6 +67,7 @@ function defaultDeps() {
     eldSettings: require('../../database/eldSettings'),
     providers: require('../liveLocations/providers'),
     notifications: require('../../database/operationalNotifications'),
+    notificationSettings: require('../../database/operationalNotificationSettings'),
     notify: require('../notifications/send').notify,
   };
   /* eslint-enable global-require */
@@ -138,7 +163,7 @@ async function checkOneTruck(group, {
     const prefix = `fuel:group:${group.id}:${risk.kind}`;
     // eslint-disable-next-line no-await-in-loop
     const recent = await deps.notifications
-      .noticeSentWithin(prefix, REPEAT_AFTER_HOURS[risk.kind] || 24)
+      .noticeSentWithin(prefix, repeatHoursFor(risk.kind, options.repeatAfterHours))
       .catch(() => false);
     if (recent) continue;
 
@@ -173,6 +198,16 @@ async function runFuelRiskCheck({ now = Date.now(), deps = defaultDeps(), option
   const summary = { checked: 0, withFuelData: 0, risks: 0, reported: 0, providerErrors: 0 };
   const nowIso = new Date(now).toISOString();
   try {
+    // The operator's ceiling on how often anything repeats. Read once per pass,
+    // not per truck, and a failure leaves the per-risk defaults standing.
+    const notifySettings = await Promise.resolve(
+      deps.notificationSettings?.getNotificationSettings?.()
+    ).catch(() => null);
+    const passOptions = {
+      ...options,
+      repeatAfterHours: options.repeatAfterHours ?? notifySettings?.repeatAfterHours ?? null,
+    };
+
     const cfg = await deps.eldSettings.getEldConfig();
     const fleetResult = await deps.providers.fetchProviderFleets(cfg);
     const fleets = fleetResult?.fleets || {};
@@ -195,7 +230,7 @@ async function runFuelRiskCheck({ now = Date.now(), deps = defaultDeps(), option
       summary.checked += 1;
       // eslint-disable-next-line no-await-in-loop
       const reported = await checkOneTruck(group, {
-        fleets, alertsByGroup, nowIso, deps, options, peopleByUnit,
+        fleets, alertsByGroup, nowIso, deps, options: passOptions, peopleByUnit,
       })
         .catch((err) => {
           console.warn(`[FUEL-RISK] group ${group.id}:`, err.message);
@@ -270,6 +305,7 @@ module.exports = {
   POLL_MS,
   FIRST_TICK_DELAY_MS,
   REPEAT_AFTER_HOURS,
+  repeatHoursFor,
   countTrucksReportingFuel,
   checkOneTruck,
   runFuelRiskCheck,

@@ -65,7 +65,11 @@ const REGISTRY = {
       const keys = [...new Set((payload?.checkKeys || []).map(String).filter(Boolean))];
       if (!keys.length) throw new Error('The suggestion names no check to change.');
 
-      const existing = await deps.checkSettings.listCheckSettings();
+      // `deps.client` joins the caller's transaction when there is one. A
+      // payload naming several checks must be all-or-nothing: half of them
+      // switched off with the suggestion still reading `proposed` is a state
+      // nobody can reason about afterwards.
+      const existing = await deps.checkSettings.listCheckSettings(deps.client || null);
       const byKey = new Map(existing.map((s) => [s.checkKey, s]));
 
       const before = {};
@@ -84,7 +88,7 @@ const REGISTRY = {
           autoApplyEnabled: false,
           maxAutoPerRun: prior?.maxAutoPerRun ?? null,
           updatedBy: deps.actor || 'an administrator',
-        });
+        }, deps.client || null);
         changed += 1;
       }
       return { before, after: { autoApplyEnabled: false, checkKeys: keys }, changed };
@@ -96,7 +100,7 @@ const REGISTRY = {
       for (const [key, prior] of Object.entries(before || {})) {
         if (!prior?.present) {
           // eslint-disable-next-line no-await-in-loop
-          await deps.checkSettings.deleteCheckSettings(key);
+          await deps.checkSettings.deleteCheckSettings(key, deps.client || null);
           restored += 1;
           continue;
         }
@@ -105,7 +109,7 @@ const REGISTRY = {
           autoApplyEnabled: prior.autoApplyEnabled === true,
           maxAutoPerRun: prior.maxAutoPerRun ?? null,
           updatedBy: deps.actor || 'an administrator',
-        });
+        }, deps.client || null);
         restored += 1;
       }
       return { restored };

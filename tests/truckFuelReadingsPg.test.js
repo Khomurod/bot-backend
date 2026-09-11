@@ -152,3 +152,57 @@ test('a truck reporting no tank level stores UNKNOWN and is not counted as compa
     assert.equal(s.withFuel, 0);
     assert.equal(s.comparable, 0);
   });
+
+test('A FIELD THE PROVIDER STOPS SENDING BECOMES MISSING, not the last value forever',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { readings } = await setup(t);
+    await readings.recordAndCompare({
+      unitNumber: '320', fuelPercent: 80, odometerMiles: 600000, recordedAt: T(0),
+    });
+    assert.equal((await readings.summariseFuelReadings()).withFuel, 1);
+
+    // The next pass resolves the truck's position but the provider sends no
+    // tank level. COALESCE here would keep 80% forever while `recorded_at`
+    // advanced, so the health block would report abnormal-burn detection as
+    // having data it does not have — the exact failure this file exists to
+    // remove, one level up.
+    await readings.recordAndCompare({
+      unitNumber: '320', fuelPercent: null, odometerMiles: null, recordedAt: T(1),
+    });
+
+    const row = await readings.getReading('320');
+    assert.equal(row.fuelPercent, null, 'missing must read as missing');
+    assert.equal(row.odometerMiles, null);
+    assert.ok(row.recordedAt, 'but we still saw the truck, and freshness says so');
+
+    const s = await readings.summariseFuelReadings();
+    assert.equal(s.withFuel, 0, 'and it stops being counted as fuel-capable');
+    assert.equal(s.comparable, 0);
+  });
+
+test('the identity on the row survives a pass that could not resolve it',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { h, readings } = await setup(t);
+    await h.query(
+      `INSERT INTO groups (id, telegram_group_id, group_name, group_type, active)
+       VALUES (9, -1009, 'WENZE UNIT # 321 A DRIVER', 'driver', TRUE)`
+    );
+    const p = await h.query(
+      "INSERT INTO driver_people (display_name, normalized_key) VALUES ('A DRIVER','a driver') RETURNING id"
+    );
+    const personId = Number(p.rows[0].id);
+
+    await readings.recordAndCompare({
+      unitNumber: '321', personId, groupId: 9,
+      fuelPercent: 70, odometerMiles: 700000, recordedAt: T(0),
+    });
+    await readings.recordAndCompare({
+      unitNumber: '321', personId: null, groupId: null,
+      fuelPercent: null, odometerMiles: null, recordedAt: T(1),
+    });
+
+    const row = await readings.getReading('321');
+    assert.equal(row.personId, personId,
+      'who drives a truck does not stop being true because one lookup failed');
+    assert.equal(row.fuelPercent, null, 'while the telemetry is honestly missing');
+  });

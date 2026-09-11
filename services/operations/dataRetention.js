@@ -59,6 +59,7 @@ function defaultDeps() {
     query: require('../../database/pool').query,
     safety: require('../../database/driverSafety'),
     aiCallLog: require('../../database/aiCallLog'),
+    aiSettings: require('../../database/aiSettings'),
   };
   /* eslint-enable global-require */
 }
@@ -71,6 +72,19 @@ function defaultDeps() {
  */
 async function runDataRetentionPass({ windows = {}, deps = defaultDeps() } = {}) {
   const w = { ...DEFAULT_WINDOWS, ...windows };
+
+  // THE OPERATOR'S CONFIGURED WINDOW WINS. `ai_settings.call_log_retention_days`
+  // is writable from the admin, clamped to 1-365 by the schema, and was read by
+  // nothing — the prune ran on a hardcoded 30 regardless of what anybody set.
+  // An explicit `windows` argument still overrides it, so a test or a caller
+  // with its own opinion is unaffected.
+  if (windows.aiCallLogDays == null) {
+    try {
+      const settings = await deps.aiSettings?.getAiSettings?.();
+      const configured = Number(settings?.callLogRetentionDays);
+      if (Number.isFinite(configured) && configured > 0) w.aiCallLogDays = configured;
+    } catch (_) { /* the default stands; a prune must not depend on a settings read */ }
+  }
   const deleted = {};
   const errors = [];
 

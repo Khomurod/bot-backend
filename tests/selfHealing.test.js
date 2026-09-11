@@ -166,7 +166,7 @@ test('all recruiter logins broken is an outage; one is a person\'s problem', asy
   const all = await healing.gatherObservations(make(2));
   const obs = all.find((o) => o.component === 'recruiter_logins');
   assert.equal(obs.ok, false);
-  assert.match(obs.detail, /2 of 2/);
+  assert.match(obs.detail, /all 2 recruiter logins/);
 });
 
 test('every enabled AI provider in cooldown at once is an outage; one is the router working', async () => {

@@ -72,7 +72,21 @@ function createLearningRouter({ authMiddleware, applyMiddleware = authMiddleware
         decidedBy: req.admin?.username || 'an administrator',
         note: typeof req.body?.note === 'string' ? req.body.note.slice(0, 500) : null,
       });
-      if (!row) return res.status(404).json({ error: 'No such suggestion.' });
+      if (!row) {
+        // NULL MEANS TWO DIFFERENT THINGS and the caller has to be told which.
+        // The update is guarded on the current status, so it also declines a
+        // row that has been APPLIED — which happens when two administrators
+        // have the same proposal open and one of them accepts first. Reporting
+        // that as "no such suggestion" would send somebody looking for a row
+        // that is sitting in front of them.
+        const current = await store.getSuggestionById(id).catch(() => null);
+        if (!current) return res.status(404).json({ error: 'No such suggestion.' });
+        return res.status(409).json({
+          error: 'Somebody has already accepted this one and the setting was changed. '
+            + 'Reload, and use Undo if it should not have been.',
+          status: current.status,
+        });
+      }
       return res.json({ suggestion: row });
     } catch (err) {
       return sendFailure(res, err, {

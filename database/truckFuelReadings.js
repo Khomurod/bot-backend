@@ -197,13 +197,24 @@ async function recordAndCompare({
           baseline_fuel_percent, baseline_odometer_miles, baseline_at, baseline_reason, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6::timestamptz,$7,$8,$9::timestamptz,$10,NOW())
        ON CONFLICT (unit_number) DO UPDATE SET
-         -- COALESCE so a pass that could not resolve the person does not erase
-         -- the one an earlier pass did resolve.
+         -- COALESCE ON IDENTITY ONLY. A pass that could not resolve the person
+         -- must not erase the one an earlier pass did resolve: who drives a
+         -- truck does not stop being true because one lookup failed.
          person_id = COALESCE(EXCLUDED.person_id, truck_fuel_readings.person_id),
          group_id = COALESCE(EXCLUDED.group_id, truck_fuel_readings.group_id),
-         fuel_percent = COALESCE(EXCLUDED.fuel_percent, truck_fuel_readings.fuel_percent),
-         odometer_miles = COALESCE(EXCLUDED.odometer_miles, truck_fuel_readings.odometer_miles),
-         recorded_at = COALESCE(EXCLUDED.recorded_at, truck_fuel_readings.recorded_at),
+         -- BUT NEVER ON THE TELEMETRY. A COALESCE here kept the last fuel
+         -- percentage a truck ever reported, forever, while recorded_at went on
+         -- advancing -- so a truck whose provider stopped sending the field was
+         -- still counted as fuel-capable and comparable, and the health block
+         -- added to prove the abnormal-burn engine can SEE would claim it could
+         -- see when it could not. Missing data must read as missing; a null
+         -- overwrites. (See the module header and the Pg tests.)
+         fuel_percent = EXCLUDED.fuel_percent,
+         odometer_miles = EXCLUDED.odometer_miles,
+         -- Always advances: this function is only reached for a truck whose
+         -- position resolved, so it means "when we last SAW this truck", which
+         -- is the question the ELD freshness check asks it.
+         recorded_at = EXCLUDED.recorded_at,
          baseline_fuel_percent = EXCLUDED.baseline_fuel_percent,
          baseline_odometer_miles = EXCLUDED.baseline_odometer_miles,
          baseline_at = EXCLUDED.baseline_at,

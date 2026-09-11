@@ -267,3 +267,47 @@ test('the fleet’s identities are resolved in ONE query, not one per truck', as
   await watcher.runFuelRiskCheck({ now: NOW, deps });
   assert.equal(lookups, 1, '40 trucks, one lookup — this used to be 40 round trips');
 });
+
+// ── the operator's repeat setting, which used to move nothing ───────────────
+
+test('the configured repeat window RAISES the quiet period; it never lowers a floor', () => {
+  // `notification_settings.repeat_after_hours` is writable from the admin,
+  // clamped by the schema, and was read by nothing at all — a slider that moved
+  // no behaviour. It is a CEILING on how often anything repeats: a fleet that
+  // wants everything quieter raises it once.
+  assert.equal(watcher.repeatHoursFor('low_fuel'), 8, 'the per-risk default');
+  assert.equal(watcher.repeatHoursFor('low_fuel', 168), 168, 'a quieter fleet is obeyed');
+  assert.equal(watcher.repeatHoursFor('passed_stop', 4), 24,
+    'but a passed stop settling within a day is a property of the event, not a taste');
+  assert.equal(watcher.repeatHoursFor('low_fuel', 0), 8, 'nonsense leaves the default standing');
+  assert.equal(watcher.repeatHoursFor('unknown_kind'), 24);
+});
+
+test('the setting reaches the quiet-window check', async () => {
+  const { deps, calls } = harness({ location: LOW });
+  deps.notificationSettings = {
+    async getNotificationSettings() { return { repeatAfterHours: 200 }; },
+  };
+  await watcher.runFuelRiskCheck({ now: NOW, deps });
+  assert.equal(calls.windows[0].hours, 200);
+});
+
+test('it is read ONCE per pass, not once per truck', async () => {
+  const groups = Array.from({ length: 12 }, (_, i) => ({
+    id: 200 + i, group_name: `WENZE UNIT # ${500 + i} DRIVER ${i}`,
+  }));
+  let reads = 0;
+  const { deps } = harness({ groups, location: LOW });
+  deps.notificationSettings = {
+    async getNotificationSettings() { reads += 1; return { repeatAfterHours: 48 }; },
+  };
+  await watcher.runFuelRiskCheck({ now: NOW, deps });
+  assert.equal(reads, 1);
+});
+
+test('no settings at all leaves the per-risk defaults standing', async () => {
+  const { deps, calls } = harness({ location: LOW });
+  delete deps.notificationSettings;
+  await watcher.runFuelRiskCheck({ now: NOW, deps });
+  assert.equal(calls.windows[0].hours, 8, 'a failed settings read must not silence the fleet');
+});

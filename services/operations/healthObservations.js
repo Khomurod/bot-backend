@@ -31,6 +31,22 @@ const { CATALOG, getServiceEntry } = require('../../lib/operations/backgroundSer
 const { classifyRun, RUN_STATES } = require('../../lib/operations/runHealth');
 const { afterHoursReadiness } = require('../../lib/recruiting/readiness');
 
+/**
+ * Integrations answered by `integrationObservations` from richer evidence than
+ * "did a timer fire". Everything else in the catalogue — including integrations
+ * — is answered from the run ledger.
+ *
+ * KEEPING THIS LIST HONEST IS THE POINT. It used to be the whole
+ * `group === 'integration'` predicate, which silently dropped every integration
+ * without a hand-written branch. `tests/backgroundServiceCatalog.test.js`
+ * asserts every entry is observable one way or the other.
+ */
+const CUSTOM_INTEGRATIONS = new Set([
+  'recruiter_logins', 'ai_providers', 'eld_location_freshness', 'telegram_delivery',
+  'notifications', 'notification_destination', 'samsara_safety_pipeline',
+  'recruiting_after_hours', 'retention_chat_signals',
+]);
+
 /** When this process started, so a first pass that is not due yet is not "stopped". */
 const BOOTED_AT = Date.now();
 
@@ -48,6 +64,7 @@ function defaultDeps() {
     notifications: require('../../database/operationalNotifications'),
     fuelReadings: require('../../database/truckFuelReadings'),
     notificationSettings: require('../../database/operationalNotificationSettings'),
+    retention: require('../../database/retention'),
     recruitingHours: require('../../database/recruitingHours'),
     recruitingKnowledge: require('../../database/recruitingKnowledge'),
     capabilityGate: require('../ai/capabilityGate'),
@@ -82,9 +99,15 @@ async function workerObservations(deps, nowMs) {
 
   const out = [];
   for (const entry of CATALOG) {
-    // Only the workers; the integrations below answer for themselves from
-    // richer evidence than "did a timer fire".
-    if (entry.group === 'integration') continue;
+    // Skip only the integrations that ACTUALLY HAVE a richer observation
+    // below. Blanket-skipping the whole group made `datatruck_documents`
+    // invisible everywhere despite its writing ledger records — a critical
+    // component that appeared in neither the Systems tab nor the public worker
+    // summary, which is precisely the kind of silent gap this mechanism exists
+    // to close. `leads_bot` went the same way. Anything the list below does not
+    // answer for falls through to its ledger row, where "never reported" is at
+    // least an honest answer.
+    if (entry.group === 'integration' && CUSTOM_INTEGRATIONS.has(entry.key)) continue;
     const row = byKey.get(entry.key) || null;
     const verdict = classifyRun(row, {
       now: nowMs,
@@ -152,12 +175,34 @@ async function integrationObservations(deps, nowMs) {
         ok: true, state: RUN_STATES.NEEDS_ATTENTION,
         reason: 'no recruiter has connected a RingCentral login yet',
       }));
-    } else {
+    } else if (broken.length >= withCreds.length) {
       out.push(integration('recruiter_logins', {
-        ok: broken.length < withCreds.length,
-        detail: broken.length
+        ok: false,
+        detail: `all ${withCreds.length} recruiter logins need reconnecting`,
+      }));
+    } else {
+      // Credentials look fine — but the DAILY REFRESH is what keeps them that
+      // way, and a refresh job that stopped shows no symptom here until a token
+      // expires seven days later. So the ledger's verdict on that job is folded
+      // in rather than reported separately: "the logins work" and "nothing is
+      // renewing them" must not be two green rows.
+      // Optional-chained: a caller with no ledger loses the REFRESH half of
+      // this answer, not the credential half. Letting it throw would drop the
+      // whole observation into "could not read" and hide a real outage behind a
+      // missing dependency.
+      const row = await Promise.resolve(deps.runs?.getRun?.('recruiter_logins')).catch(() => null);
+      const refresh = classifyRun(row, {
+        now: nowMs, expectedIntervalSeconds: getServiceEntry('recruiter_logins')?.expectedIntervalSeconds,
+      });
+      out.push(integration('recruiter_logins', {
+        ok: !refresh.actionable,
+        state: refresh.actionable ? refresh.state : RUN_STATES.HEALTHY,
+        detail: refresh.actionable
+          ? `the daily token refresh ${refresh.reason}`
+          : (broken.length ? `${broken.length} of ${withCreds.length} need reconnecting` : null),
+        reason: broken.length
           ? `${broken.length} of ${withCreds.length} recruiter logins need reconnecting`
-          : null,
+          : refresh.reason,
       }));
     }
   } catch (_) {
@@ -259,6 +304,27 @@ async function integrationObservations(deps, nowMs) {
     }
   } catch (_) {
     out.push(integration('notification_destination', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
+  }
+
+  // CAN RETENTION HEAR THE DRIVERS AT ALL? Four of its signals — complaints,
+  // quit signals, sentiment, gone-quiet — read `chat_logs`, and that table's
+  // only writer has no caller because the bot deliberately stopped persisting
+  // every group message. So they come back as reassuring ZEROS from a source
+  // that is not listening, which is the worst answer a retention check can
+  // give. Whether to record driver messages is the owner's privacy decision;
+  // saying out loud that nobody is listening is not.
+  try {
+    const chat = await deps.retention.chatSignalsAvailable();
+    out.push(integration('retention_chat_signals', {
+      ok: true,
+      state: chat.available ? RUN_STATES.HEALTHY : RUN_STATES.NEEDS_ATTENTION,
+      reason: chat.available
+        ? chat.reason
+        : `${chat.reason}. The other retention signals — weeks on the road, unanswered `
+          + 'home requests, unpaid bonuses — are unaffected.',
+    }));
+  } catch (_) {
+    out.push(integration('retention_chat_signals', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
   }
 
   // ANSWERING A CANDIDATE AFTER HOURS. Five independent preconditions, every
