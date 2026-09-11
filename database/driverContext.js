@@ -145,7 +145,21 @@ async function readRetention(personId) {
   if (!row) return { goneQuiet: false, urgency: null, assessedAt: null, signals: 0 };
   const signals = Array.isArray(row.signals) ? row.signals : [];
   return {
-    goneQuiet: signals.some((s) => String(s?.kind || s).includes('quiet')),
+    // `key`, WHICH IS THE FIELD THAT EXISTS. `lib/retention/signals.js`
+    // builds every signal as `{ key, weight, detail, evidence }`, and this read
+    // `s.kind` — always undefined, so `String(undefined || s)` produced
+    // "[object Object]" and `goneQuiet` was false for every driver who ever
+    // went quiet. The rule this whole module calls its most valuable, fixed
+    // once already in the same file, still could not fire.
+    //
+    // It survived because the test seeded `{ kind: 'gone_quiet' }` — the shape
+    // the broken reader wanted rather than the shape production writes. The
+    // test now builds its fixture through `assess()` itself, so the two cannot
+    // drift apart again.
+    //
+    // `kind` is still accepted: it costs nothing and an older row, if any
+    // exists, should not silently read as "not quiet".
+    goneQuiet: signals.some((s) => String(s?.key || s?.kind || s).includes('quiet')),
     // WHEN IT WENT QUIET, not when we last looked. `first_seen_at` is when this
     // assessment appeared; `last_seen_at` moves every sweep, so using it would
     // report every quiet driver as having gone quiet fifteen minutes ago.
@@ -209,6 +223,17 @@ async function listContradictionCandidates({ limit = 200, activeWithinHours = 12
           OR EXISTS (SELECT 1 FROM driver_safety_events e
                       WHERE e.person_id = r.person_id
                         AND e.occurred_at > NOW() - ($1 || ' hours')::interval)
+          -- A MOVING LOAD IS ACTIVITY TOO, and the evaluator has always counted
+          -- it. Screening on fuel and safety alone meant a quiet-marked driver
+          -- whose truck is plainly in transit — no recent fuel reading, no
+          -- safety event — was never read, so the contradiction the screen
+          -- exists to surface was the one it could not see.
+          OR EXISTS (SELECT 1 FROM load_lifecycle l
+                       JOIN driver_person_groups pg
+                         ON pg.group_id = l.group_id AND pg.ended_at IS NULL
+                      WHERE pg.person_id = r.person_id
+                        AND l.phase IN ('heading_to_pickup', 'at_pickup',
+                                        'in_transit', 'at_delivery'))
         )
      LIMIT $2`,
     [String(Math.max(1, Number(activeWithinHours) || 12)), Math.max(1, Math.min(1000, limit))]

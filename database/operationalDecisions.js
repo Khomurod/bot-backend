@@ -203,6 +203,27 @@ async function summariseDecisions({ sinceHours = 168 } = {}) {
  *
  * @returns {Promise<Record<string, {graded:number, confirmed:number}>>}
  */
+/**
+ * ONLY OUTCOMES THAT ARE A JUDGEMENT ABOUT THE SOURCE ARE COUNTED.
+ *
+ * `not_checked` means nothing here knows how to verify that action — an honest
+ * answer, and `lib/decisions/verification.js` says so in its own header.
+ * Counting it as graded-but-unconfirmed turned it into EVIDENCE AGAINST the
+ * source, which is the `hold` / `unknown` confusion this whole system exists to
+ * refuse, one layer down: "we could not check" and "we checked and it was
+ * wrong" are opposites.
+ *
+ * IT WAS NOT HYPOTHETICAL. Five of the seven actions that can run have no
+ * verifier in `verifyPass.js`'s SUBJECTS, so each recorded `not_checked`; at
+ * five of them a check's source crossed MIN_GRADED at 0% agreement,
+ * `soleSourceIsUnreliable` fired — the correction seam cites exactly one
+ * source — and every later correction from that check would have been held for
+ * ever. Automatic repair would have stopped across most of the fleet, quietly,
+ * a few hours after the journal was first wired to a caller.
+ *
+ * `expired` is excluded for the same reason: "the subject is gone, or too much
+ * time has passed to judge" is not a verdict on the source.
+ */
 async function sourceAgreement({ sinceDays = 90 } = {}) {
   try {
     const res = await query(
@@ -211,7 +232,11 @@ async function sourceAgreement({ sinceDays = 90 } = {}) {
               COUNT(*) FILTER (WHERE d.outcome = 'confirmed')::int AS confirmed
          FROM operational_decisions d
          CROSS JOIN LATERAL jsonb_array_elements(d.sources) AS s(value)
-        WHERE d.outcome IS NOT NULL
+        -- ONLY OUTCOMES THAT ARE A JUDGEMENT ABOUT THE SOURCE. See the note
+        -- above this function; the short version is that not_checked means
+        -- nothing here knows how to verify that action, and counting it as
+        -- graded-but-unconfirmed made it EVIDENCE AGAINST the source.
+        WHERE d.outcome IN ('confirmed', 'contradicted', 'reverted')
           AND d.last_decided_at > NOW() - ($1 || ' days')::interval
           AND s.value ->> 'source' IS NOT NULL
         GROUP BY 1`,

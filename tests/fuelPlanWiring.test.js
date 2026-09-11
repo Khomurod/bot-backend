@@ -155,3 +155,56 @@ test('NO FUEL READING MEANS NO NUMBERS AT ALL — a missing tank is not an empty
       'no invented range, and therefore nothing for the priority rules to escalate on');
   }
 });
+
+// ── a tank that is urgent on its own ────────────────────────────────────────
+
+test('A CRITICAL TANK IS "NOW" EVEN WITH NO ASSIGNED STOP TO MEASURE AGAINST', async () => {
+  // The bug this pins: the only fuel facts were `rangeMiles` and
+  // `milesToStation`, so a truck at 6% with no fuel watch open produced NO
+  // facts, landed at `whenever`, and could be held for an hour behind three
+  // other notices about the same driver. A tank that low is urgent whether or
+  // not anybody has named a stop.
+  // eslint-disable-next-line global-require
+  const { priorityFor, LEVELS } = require('../lib/notifications/priority');
+
+  const { deps, calls } = harness({
+    location: { lat: 41, lng: -87, speedMph: 60, fuelPercent: 6 },
+    alert: null,
+  });
+  await watcher.runFuelRiskCheck({ now: NOW, deps });
+
+  const notice = noticeFor(calls, /fuel at 6%/);
+  assert.ok(notice, 'the critical-fuel risk was reported');
+  assert.equal(notice.severity, 'serious');
+  assert.equal(notice.facts.fuelPercent, 6,
+    'the percentage travels even though there is no reachability plan');
+  assert.equal(priorityFor({ severity: notice.severity, facts: notice.facts }).level,
+    LEVELS.NOW, 'and a "now" is never held, however crowded the morning');
+});
+
+test('the threshold is the fuel module\'s, not a second copy of the number', () => {
+  // eslint-disable-next-line global-require
+  const { priorityFor, LEVELS } = require('../lib/notifications/priority');
+  // eslint-disable-next-line global-require
+  const { DEFAULTS } = require('../lib/fuel/risk');
+
+  const at = (pct) => priorityFor({ severity: 'serious', facts: { fuelPercent: pct } }).level;
+  assert.equal(at(DEFAULTS.criticalFuelPercent), LEVELS.NOW, 'exactly at the threshold is urgent');
+  assert.equal(at(DEFAULTS.criticalFuelPercent + 1), LEVELS.WHENEVER,
+    'and one point above it is not — the boundary is the fuel module\'s to move');
+});
+
+test('a low-but-not-critical tank with an unreachable stop is still urgent', async () => {
+  // The two rules must compose: a `now` reached by one must not be lowered by
+  // the other. Both branches now raise rather than assign.
+  // eslint-disable-next-line global-require
+  const { priorityFor, LEVELS } = require('../lib/notifications/priority');
+  assert.equal(
+    priorityFor({
+      severity: 'serious',
+      facts: { fuelPercent: 6, rangeMiles: 600, milesToStation: 560 },
+    }).level,
+    LEVELS.NOW,
+    'a 40-mile margin says "today"; the tank still says "now"'
+  );
+});

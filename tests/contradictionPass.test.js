@@ -178,12 +178,54 @@ test('a driver with no disagreement files nothing and says nothing', async () =>
 // ── failing honestly ─────────────────────────────────────────────────────────
 
 test('THE SCREEN FAILING IS A FAILED PASS, NOT A CLEAN ONE', async () => {
+  // eslint-disable-next-line global-require
+  const { statusFromSummary } = require('../services/operations/runLedger');
   const { deps } = harness({ screenThrows: true });
   const summary = await pass.runContradictionPass({ now: NOW, deps });
+
   assert.equal(summary.errors.length, 1);
   assert.match(summary.errors[0], /^screen: /);
   assert.equal(summary.candidates, 0);
   assert.equal(summary.read, 0, 'and it does not report having read anybody');
+
+  // AND THE LEDGER HAS TO AGREE. `statusFromSummary` reads `summary.error`,
+  // singular; `errors` is the per-driver list and it knows nothing about it.
+  // A totally failed pass was therefore recorded as `ok`, which defeats the
+  // Operations entry this pass was registered for in the first place.
+  assert.equal(statusFromSummary(summary).status, 'error');
+});
+
+test('A PASS THAT READ NOBODY IT WAS ASKED TO READ HAS NOT RUN', async () => {
+  // One unreadable driver is noise. Every candidate failing is a failed pass,
+  // whatever the counters say — the same "seeing nothing is not success" rule
+  // the return-to-road watch needed.
+  // eslint-disable-next-line global-require
+  const { statusFromSummary } = require('../services/operations/runLedger');
+  const { deps } = harness({ candidates: [11, 12], readThrows: true });
+  const summary = await pass.runContradictionPass({ now: NOW, deps });
+
+  assert.equal(summary.read, 0);
+  assert.equal(summary.errors.length, 2);
+  assert.equal(statusFromSummary(summary).status, 'error');
+  assert.match(summary.error, /none of the 2 candidate\(s\)/);
+});
+
+test('but one bad driver among several is not a failed pass', async () => {
+  let n = 0;
+  // eslint-disable-next-line global-require
+  const { statusFromSummary } = require('../services/operations/runLedger');
+  const { deps } = harness({
+    candidates: [11, 12],
+    ctx: () => {
+      n += 1;
+      if (n === 1) throw new Error('relation does not exist');
+      return AT_HOME_AND_DRIVING;
+    },
+  });
+  const summary = await pass.runContradictionPass({ now: NOW, deps });
+  assert.equal(summary.read, 1);
+  assert.equal(statusFromSummary(summary).status, 'ok',
+    'it did its job for the driver it could read');
 });
 
 test('one unreadable driver costs that driver, not the rest of the fleet', async () => {

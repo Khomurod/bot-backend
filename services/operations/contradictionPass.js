@@ -141,6 +141,11 @@ async function runContradictionPass({
   const summary = {
     candidates: 0, read: 0, filed: 0, capped: false, errors: [],
   };
+  // THE LEDGER READS `summary.error`, SINGULAR. `errors` is the per-driver
+  // list a reader wants; `statusFromSummary` knows nothing about it, so a pass
+  // that failed entirely was recorded as `ok` — which defeats the Operations
+  // entry this pass was registered for in the first place. Set below.
+
 
   let candidates;
   try {
@@ -150,6 +155,8 @@ async function runContradictionPass({
     // rather than as a clean run that found nothing — which is the ambiguity
     // this project exists to remove.
     summary.errors.push(`screen: ${err.message}`);
+    // The screen failing IS the pass failing — there is nothing else it does.
+    summary.error = `the candidate screen could not be read: ${err.message}`;
     return summary;
   }
 
@@ -170,7 +177,14 @@ async function runContradictionPass({
     }
   }
 
-  if (summary.filed || summary.capped) {
+  // EVERY DRIVER FAILING IS ALSO A FAILED PASS. One unreadable driver is
+  // noise; a pass that read nobody it was asked to read has not run, whatever
+  // its counters say.
+  if (!summary.read && summary.candidates > 0) {
+    summary.error = `none of the ${summary.candidates} candidate(s) could be read`;
+  }
+
+  if (summary.filed || summary.capped || summary.error) {
     console.log(`[CONTRADICTION] ${summary.candidates} candidate(s), `
       + `${summary.filed} disagreement(s) filed`
       + `${summary.capped ? ` — capped at ${limit}, more remain` : ''}`);
