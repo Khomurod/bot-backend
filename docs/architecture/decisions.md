@@ -219,9 +219,21 @@ correction from that check is held for ever.** Automatic repair would have
 stopped across most of the fleet, quietly, a few hours after the journal was
 first given a caller.
 
-The other half of the answer is to write the missing verifiers, which would turn
-those `not_checked` rows into real judgements. Until somebody does, the rule
-above is what keeps a missing verifier from being read as a failing check.
+The other half of the answer is the verifiers themselves, and they are now
+written: every action that can be applied automatically has an entry in
+`SUBJECTS`, so those rows become real judgements rather than silence. A test
+walks the action registry and fails if an `auto` action is ever added without
+one.
+
+**A verifier that reads the wrong columns is worse than none.**
+`compareWritten` skips a field the row does not carry, so a read with no
+overlap finds nothing to disagree with and reports `confirmed` — a false clean
+bill of health. Each verifier is asserted to select at least one key its action
+writes.
+
+`home_time.carry_road_clock` deliberately has no entry: its finding is filed at
+tier `approval`, so it never enters the auto plan and never reaches the journal.
+If it is ever promoted to `auto`, it needs one before that switch is flipped.
 
 The weighing's reasons travel **with** the decision, so one read back months
 later says why its confidence was what it was rather than only what it was.

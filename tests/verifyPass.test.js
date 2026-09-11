@@ -185,3 +185,97 @@ test('a listing failure reports itself rather than looking like a quiet pass', a
   assert.equal(out.error, 'database is gone');
   assert.equal(out.checked, 0);
 });
+
+// ── every action that can be journalled must be verifiable ─────────────────
+
+test('EVERY AUTO-APPLIED ACTION HAS A VERIFIER', () => {
+  // Five of seven had none. `verifyOne` answers `not_checked` for those, and
+  // `sourceAgreement` used to count that as graded-but-unconfirmed — enough to
+  // measure a check at 0% agreement and hold every later correction from it
+  // for ever. The query ignores `not_checked` now; this is the other half.
+  // eslint-disable-next-line global-require
+  const { CHECK_TO_ACTION, actionForCheck } = require('../services/operations/corrections/actions');
+
+  const missing = [];
+  for (const checkKey of CHECK_TO_ACTION.keys()) {
+    const action = actionForCheck(checkKey);
+    // Only actions that can be applied automatically ever reach the journal.
+    if (!action || action.tier !== 'auto') continue;
+    if (!SUBJECTS[action.key]) missing.push(`${checkKey} -> ${action.key}`);
+  }
+  assert.deepEqual(missing, [],
+    'an auto action with no verifier records not_checked for ever, and can never '
+    + 'earn its check a track record');
+});
+
+test('A VERIFIER THAT READS THE WRONG COLUMNS WOULD CONFIRM EVERYTHING', () => {
+  // `compareWritten` SKIPS a field the row does not carry, so a read with no
+  // overlap finds nothing to disagree with and returns CONFIRMED — a false
+  // clean bill of health, worse than the `not_checked` it replaced. This pins
+  // the shape rather than trusting it.
+  // eslint-disable-next-line global-require
+  const { compareWritten, OUTCOMES } = require('../lib/decisions/verification');
+
+  assert.equal(
+    compareWritten({ wrote: { state: 'road' }, current: { somethingElse: 1 } }).outcome,
+    OUTCOMES.CONFIRMED,
+    'this is the trap: no overlap reads as confirmed'
+  );
+
+  // So each verifier is asserted to select at least one key its action writes.
+  const WRITES = {
+    'identity.ensure_person': ['personId'],
+    'identity.sync_unit': ['unitNumber', 'personId'],
+    'home_time.mark_returned_to_road': ['state', 'state_since'],
+    'home_time.abandon_exhausted_alerts': ['state', 'requestIds'],
+    'home_time.close_cycle': ['return_to_road_at', 'home_days'],
+    'identity.sync_profile_status': ['status'],
+  };
+  for (const [actionKey, fields] of Object.entries(WRITES)) {
+    const subject = SUBJECTS[actionKey];
+    assert.ok(subject, `${actionKey} has a verifier`);
+    const sql = subject.read.toString();
+    assert.ok(fields.some((f) => sql.includes(f)),
+      `${actionKey}'s read must select at least one of ${fields.join(', ')} — `
+      + 'otherwise it confirms everything');
+  }
+});
+
+test('the abandoned-alert verifier reads the ids from the correction, not the subject', async () => {
+  // Its subject is the outbox as a whole; the rows it changed are named only
+  // in `new_values.requestIds`, which is why `read` is handed the correction.
+  const subject = SUBJECTS['home_time.abandon_exhausted_alerts'];
+  const asked = [];
+  const client = {
+    async query(sql, params) {
+      asked.push(params);
+      return { rows: [{ total: 3, abandoned: 3 }] };
+    },
+  };
+
+  const out = await subject.read(client, 'outbox', { new_values: { requestIds: [7, 8, 9] } });
+  assert.deepEqual(asked[0][0], [7, 8, 9]);
+  assert.equal(out.state, 'abandoned');
+
+  // ONE ROW RESTORED IS THE CONTRADICTION WORTH CATCHING. Reporting the
+  // majority would hide it.
+  const partial = {
+    async query() { return { rows: [{ total: 3, abandoned: 2 }] }; },
+  };
+  const mixed = await subject.read(partial, 'outbox', { new_values: { requestIds: [7, 8, 9] } });
+  assert.equal(mixed.state, 'partly_restored');
+
+  // eslint-disable-next-line global-require
+  const { compareWritten, OUTCOMES } = require('../lib/decisions/verification');
+  assert.equal(
+    compareWritten({ wrote: { state: 'abandoned', requestIds: [7, 8, 9] }, current: mixed }).outcome,
+    OUTCOMES.CONTRADICTED
+  );
+});
+
+test('a correction with no recorded ids is expired, not confirmed', async () => {
+  const subject = SUBJECTS['home_time.abandon_exhausted_alerts'];
+  const client = { async query() { throw new Error('must not be asked'); } };
+  assert.equal(await subject.read(client, 'outbox', { new_values: {} }), null,
+    'null means the subject is gone, which compareWritten reports as expired');
+});
