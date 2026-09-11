@@ -29,6 +29,7 @@ export * from './api/fuelMonitor';
 export * from './api/bot';
 export * from './api/settings';
 export * from './api/samsara';
+export * from './api/notifications';
 export * from './api/routeControl';
 export * from './api/recruiters';
 export * from './api/liveLocations';

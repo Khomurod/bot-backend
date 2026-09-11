@@ -268,6 +268,18 @@ async function runCorrectionsAfterSweep({ db = defaultDb, store = defaultFinding
   try {
     const { summary, results, capped } = await runAutoCorrections({ apply: true, db, store });
     lastCorrections = { at, summary };
+
+    // Say what was fixed. AFTER the corrections commit, and never in a way that
+    // can undo them: the engine has been changing records silently since Phase
+    // 3, and "the software corrected it" is only trustworthy if you find out.
+    try {
+      // eslint-disable-next-line global-require
+      const { announceCorrections } = require('../operations/correctionNotices');
+      await announceCorrections(results.filter((r) => r.ok));
+    } catch (err) {
+      console.warn('[CONSISTENCY] could not announce corrections:', err.message);
+    }
+
     return { summary, results, capped };
   } catch (err) {
     console.error('[CONSISTENCY] auto-correction run failed:', err.message);
@@ -281,6 +293,18 @@ async function tick() {
     await runGuardedSweep();
   } catch (err) {
     console.error('[CONSISTENCY] sweep error:', err.message);
+  }
+  // Drain whatever could not be delivered when it happened. It rides THIS timer
+  // rather than one of its own because a notice is always about something this
+  // sweep just did or found, and a second timer would be a second thing to
+  // notice had stopped. Its own failures are swallowed inside the sweep, so a
+  // dead Telegram cannot stop the consistency pass that produced the notices.
+  try {
+    // eslint-disable-next-line global-require
+    const { runNotificationSweep } = require('../notifications/send');
+    await runNotificationSweep({ limit: 20 });
+  } catch (err) {
+    console.error('[CONSISTENCY] notification sweep error:', err.message);
   }
 }
 

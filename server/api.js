@@ -125,6 +125,9 @@ app.use(createHealthRoutes({
   // The other home-time queue: the three manager notices.
   countFailedManagerNotices:
     require('../database/homeTime/notices').countFailedNotices,
+  // The general operational outbox: every notice a Phase 5 feature sends.
+  summariseOperationalNotifications:
+    require('../database/operationalNotifications').summariseNotifications,
   // Counts only: open findings, the last background correction pass, identity
   // coverage, home-stay integrity, model-listing freshness.
   getOperationsHealth: require('../services/operations/healthSummary').getOperationsHealth,

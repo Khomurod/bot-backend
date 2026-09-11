@@ -53,6 +53,7 @@ function renderMetaCompliancePage(title, bodyHtml) {
 
 function createHealthRoutes({
   db, config, countExhaustedInternalAlerts = null, countFailedManagerNotices = null,
+  summariseOperationalNotifications = null,
   getOperationsHealth = null,
 }) {
   const router = express.Router();
@@ -143,7 +144,25 @@ function createHealthRoutes({
         homeTimeManagerNotices = { available: false, error: err.message };
       }
     }
-    const queues = { homeTimeInternalAlerts, homeTimeManagerNotices };
+    // The general operational outbox — every notice a Phase 5 feature sends.
+    // Same reason as the two above: a queue nobody drains fails silently, and
+    // silently is how 101 alerts were lost.
+    let operationalNotifications = { available: false };
+    if (typeof summariseOperationalNotifications === 'function') {
+      try {
+        const s = await summariseOperationalNotifications();
+        operationalNotifications = { available: true, ...s };
+        if (s.abandoned > 0) {
+          console.warn(
+            `[HEALTH] ${s.abandoned} operational notice(s) gave up after retrying. Check that the `
+            + 'notification destinations in Settings are chats the bot can reach.'
+          );
+        }
+      } catch (err) {
+        operationalNotifications = { available: false, error: err.message };
+      }
+    }
+    const queues = { homeTimeInternalAlerts, homeTimeManagerNotices, operationalNotifications };
     queueHealthCache = { checkedAt: now, queues };
     return queues;
   }

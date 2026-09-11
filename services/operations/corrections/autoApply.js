@@ -225,7 +225,16 @@ async function runAutoCorrections({ apply = false, db = defaultDb, store = defau
         db,
       });
       summary.applied += 1;
-      results.push({ findingId: item.finding.id, correctionId: correction.id, ok: true });
+      results.push({
+        findingId: item.finding.id,
+        correctionId: correction.id,
+        // Carried so the caller can say what happened without re-reading the
+        // row: a notice about a correction should not cost a second query.
+        actionKey: item.action.key,
+        subjectType: correction.subject_type,
+        subjectId: correction.subject_id,
+        ok: true,
+      });
     } catch (err) {
       if (err instanceof StaleCorrectionError || err.stale) {
         // Somebody fixed it first, or the evidence moved. That is the system working.
