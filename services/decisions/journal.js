@@ -103,6 +103,19 @@ async function takeDecision({
   // eventually gets one wrong in one branch.
   const mayAct = verdict.verdict === VERDICTS.ACT && shadow !== true;
 
+  // The weighing's own reasons travel WITH the evidence, so a decision read
+  // back months later says why its confidence was what it was rather than only
+  // what it was.
+  //
+  // BOUND ONCE AND REUSED BY `acted` BELOW. It was built inline here and `acted`
+  // re-recorded the BARE `evidence`, so the moment a decision was carried out
+  // its weighing was overwritten — and an applied decision is exactly the one
+  // whose reasoning somebody later wants. The rows that kept their explanation
+  // were the ones where nothing happened.
+  const recordedEvidence = weighed.reasons.length
+    ? { ...evidence, weighing: weighed.reasons }
+    : evidence;
+
   const row = await deps.decisions.recordDecision({
     checkKey, subjectType, subjectId, personId,
     verdict: verdict.verdict,
@@ -110,10 +123,7 @@ async function takeDecision({
     mode: verdict.mode,
     shadow: shadow === true,
     reason: verdict.reason,
-    // The weighing's own reasons travel WITH the evidence, so a decision read
-    // back months later says why its confidence was what it was rather than
-    // only what it was.
-    evidence: weighed.reasons.length ? { ...evidence, weighing: weighed.reasons } : evidence,
+    evidence: recordedEvidence,
     sources,
     // In shadow, what it WOULD have done is the entire output.
     wouldHave: shadow === true && verdict.verdict === VERDICTS.ACT
@@ -139,7 +149,7 @@ async function takeDecision({
         checkKey, subjectType, subjectId, personId,
         verdict: verdict.verdict, confidence: verdict.confidence,
         mode: verdict.mode, shadow: shadow === true,
-        reason: verdict.reason, evidence, sources,
+        reason: verdict.reason, evidence: recordedEvidence, sources,
         actionKey, correctionId,
       }).catch(() => null);
       return Boolean(updated);
