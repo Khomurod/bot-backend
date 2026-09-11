@@ -63,6 +63,17 @@ function checkKeyFor(kind) {
 }
 
 /**
+ * Every check key this pass owns, which is the scope resolution may clear.
+ *
+ * Derived from SEVERITY so a new contradiction kind cannot be filed under a key
+ * this pass then refuses to resolve — the two would drift the moment somebody
+ * added a kind in one place only.
+ */
+const CHECK_KEYS = Object.freeze(
+  Object.fromEntries(Object.keys(SEVERITY).map((kind) => [kind, checkKeyFor(kind)]))
+);
+
+/**
  * One driver. Returns the kinds actually filed.
  *
  * A read that fails costs this driver and nothing else: the pass over the rest
@@ -80,7 +91,7 @@ async function checkOneDriver(personId, { deps, now }) {
     const title = `${context.identity?.displayName || `Driver ${personId}`}: `
       + 'two systems disagree';
     // eslint-disable-next-line no-await-in-loop
-    await deps.findings.upsertFinding({
+    const row = await deps.findings.upsertFinding({
       checkKey: checkKeyFor(contradiction.kind),
       subjectType: 'person',
       subjectId: personId,
@@ -124,7 +135,7 @@ async function checkOneDriver(personId, { deps, now }) {
       discriminator: contradiction.kind,
       evidence: { kind: contradiction.kind, sides: contradiction.sides },
     });
-    filed.push(contradiction.kind);
+    filed.push({ kind: contradiction.kind, id: row?.id || null });
   }
   return filed;
 }
@@ -139,7 +150,7 @@ async function runContradictionPass({
   now = new Date().toISOString(), deps = defaultDeps(), limit = MAX_PER_PASS,
 } = {}) {
   const summary = {
-    candidates: 0, read: 0, filed: 0, capped: false, errors: [],
+    candidates: 0, read: 0, filed: 0, resolved: 0, capped: false, errors: [],
   };
   // THE LEDGER READS `summary.error`, SINGULAR. `errors` is the per-driver
   // list a reader wants; `statusFromSummary` knows nothing about it, so a pass
@@ -166,14 +177,39 @@ async function runContradictionPass({
     candidates = candidates.slice(0, limit);
   }
 
+  const keepIds = [];
   for (const personId of candidates) {
     try {
       // eslint-disable-next-line no-await-in-loop
       const filed = await checkOneDriver(personId, { deps, now });
       summary.read += 1;
       summary.filed += filed.length;
+      keepIds.push(...filed.map((f) => f.id).filter(Boolean));
     } catch (err) {
       summary.errors.push(`person ${personId}: ${err.message}`);
+    }
+  }
+
+  // A CONTRADICTION THAT CLEARED MUST STOP SAYING TWO SYSTEMS DISAGREE.
+  //
+  // Nothing here resolved anything, so a finding stayed open for ever after the
+  // condition went away — telling operators about a disagreement that no longer
+  // exists, which is how a Needs Attention list stops being read.
+  //
+  // ONLY WHEN THE PASS ACTUALLY RAN, and never after a partial one. The sweep's
+  // own rule: a screen that failed, a capped pass, or any driver that could not
+  // be read means some contradictions were not re-derived this time, and
+  // resolving on that basis would close findings that are still true.
+  const complete = !summary.error && !summary.capped && summary.errors.length === 0;
+  if (complete) {
+    try {
+      // Optional-chained: a dependency map without the resolve costs the
+      // RESOLUTION, not the pass — the same rule the rest of this work follows.
+      summary.resolved = await Promise.resolve(
+        deps.findings.resolveClearedFindings?.(Object.values(CHECK_KEYS), keepIds)
+      ) || 0;
+    } catch (err) {
+      summary.errors.push(`resolve: ${err.message}`);
     }
   }
 
@@ -194,6 +230,7 @@ async function runContradictionPass({
 
 module.exports = {
   SEVERITY,
+  CHECK_KEYS,
   MAX_PER_PASS,
   checkKeyFor,
   checkOneDriver,

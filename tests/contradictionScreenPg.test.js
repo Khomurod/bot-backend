@@ -105,10 +105,18 @@ test('THE RETENTION SECTION IS READABLE — it asked for columns that do not exi
     assert.equal(out.retention.goneQuiet, true);
     assert.equal(out.retention.urgency, 'watch');
     assert.equal(out.retention.signals, 1);
-    assert.ok(out.retention.goneQuietSince, 'and when, so a notice can say since when');
+    // AND NO ONSET DATE, deliberately. `driver_retention_assessments` upserts
+    // one row per driver for their whole life, so neither of its timestamps is
+    // when the quiet started: `first_seen_at` is when they were first assessed
+    // at all, `last_seen_at` moves every sweep. Presenting either as "quiet
+    // since" would be a fabricated fact, so nothing claims to be one.
+    assert.equal(out.retention.goneQuietSince, null,
+      'there is no per-signal history to derive an onset from, so none is invented');
+    assert.ok(out.retention.assessmentSince,
+      'what IS known is when the assessment first appeared, named as that');
   });
 
-test('gone-quiet-since is when it STARTED, not when the sweep last looked',
+test('the assessment date is when it first appeared, not when the sweep last looked',
   { skip: skipWithoutPg() }, async (t) => {
     const { h, ctx, people } = await setup(t);
     const person = await aDriver(h, people, { name: 'QUIET TWO', unit: '402', groupId: 7402 });
@@ -120,7 +128,7 @@ test('gone-quiet-since is when it STARTED, not when the sweep last looked',
       [person.id, JSON.stringify(quietSignals())]
     );
     const out = await ctx.getDriverContext(person.id);
-    const days = (Date.now() - new Date(out.retention.goneQuietSince).getTime()) / 86400000;
+    const days = (Date.now() - new Date(out.retention.assessmentSince).getTime()) / 86400000;
     assert.ok(days > 8, `expected roughly nine days, got ${days.toFixed(1)}`);
   });
 

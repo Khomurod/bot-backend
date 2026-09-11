@@ -160,10 +160,21 @@ async function readRetention(personId) {
     // `kind` is still accepted: it costs nothing and an older row, if any
     // exists, should not silently read as "not quiet".
     goneQuiet: signals.some((s) => String(s?.key || s?.kind || s).includes('quiet')),
-    // WHEN IT WENT QUIET, not when we last looked. `first_seen_at` is when this
-    // assessment appeared; `last_seen_at` moves every sweep, so using it would
-    // report every quiet driver as having gone quiet fifteen minutes ago.
-    goneQuietSince: row.first_seen_at,
+    // WHEN THE ASSESSMENT FIRST APPEARED — WHICH IS NOT THE SAME AS WHEN THEY
+    // WENT QUIET, and it is named accordingly.
+    //
+    // `recordAssessment` upserts one row per driver for their whole life and
+    // never resets `first_seen_at` when signals come and go, so a driver
+    // assessed for months who went quiet yesterday carries a months-old date.
+    // `last_seen_at` is worse — it moves every sweep, so everyone would read as
+    // having gone quiet fifteen minutes ago.
+    //
+    // Neither is the onset, and there is no per-signal history to derive one
+    // from, so this no longer claims to be one. A notice that said "quiet since
+    // March" about somebody who went quiet on Tuesday would be a fabricated
+    // fact, which is worse than not saying when.
+    assessmentSince: row.first_seen_at,
+    goneQuietSince: null,
     urgency: row.level,
     assessedAt: row.last_seen_at,
     signals: signals.length,
@@ -235,6 +246,15 @@ async function listContradictionCandidates({ limit = 200, activeWithinHours = 12
                         AND l.phase IN ('heading_to_pickup', 'at_pickup',
                                         'in_transit', 'at_delivery'))
         )
+     -- ORDERED, SO THE OVER-CAP TAIL IS NOT THE SAME ROWS FOR EVER.
+     --
+     -- With no ORDER BY, PostgreSQL may return the same subset every tick, and
+     -- the caller slices the first N — so candidates past the cap could go
+     -- unread indefinitely while the log said more remained. Ordering by
+     -- person_id at least makes the set deterministic; the caller rotates
+     -- through it, because a cursor for a set this small would cost more than
+     -- it saves.
+     ORDER BY 1
      LIMIT $2`,
     [String(Math.max(1, Number(activeWithinHours) || 12)), Math.max(1, Math.min(1000, limit))]
   );

@@ -139,3 +139,23 @@ test('a word-form match needs no number at all', () => {
   assert.equal(classifyErrorKind('Not Found'), 'not_found');
   assert.equal(classifyErrorKind('forbidden'), 'permission');
 });
+
+test('THE FORMAT THIS APPLICATION\'S OWN CLIENTS EMIT IS RECOGNISED', () => {
+  // `services/datatruckApiService.js` throws `Datatruck API 429: ...`, and
+  // Drive HoS and Samsara use the same `API <status>:` shape. That message is
+  // what reaches a worker's `last_error` after its retries are exhausted — so
+  // leaving `API` out of the status-code markers meant the format MOST likely
+  // to be classified was the one format the classifier could not read.
+  assert.equal(classifyErrorKind('Datatruck API 429: too many'), 'rate_limited');
+  assert.equal(classifyErrorKind('Drive HoS API 401: bad key'), 'permission');
+  assert.equal(classifyErrorKind('Samsara API 403: forbidden'), 'permission');
+  assert.equal(classifyErrorKind('Datatruck API 404: no such load'), 'not_found');
+});
+
+test('and adding it did not reopen the id problem', () => {
+  // The marker has to be adjacent, so a sentence that merely mentions an API
+  // and happens to contain a number is still `other`.
+  assert.equal(classifyErrorKind('could not read group 429'), 'other');
+  assert.equal(classifyErrorKind('the API could not read road_history 404'), 'other');
+  assert.equal(classifyErrorKind('api 500 something'), 'other');
+});

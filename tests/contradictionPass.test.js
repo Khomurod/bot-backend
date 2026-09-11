@@ -41,7 +41,7 @@ const AT_HOME_AND_DRIVING = context({
 
 function harness({ candidates = [11], ctx = AT_HOME_AND_DRIVING, screenThrows = false,
   readThrows = false } = {}) {
-  const calls = { filed: [], notified: [], read: [] };
+  const calls = { filed: [], notified: [], read: [], resolved: [] };
   const deps = {
     context: {
       async listContradictionCandidates() {
@@ -54,7 +54,13 @@ function harness({ candidates = [11], ctx = AT_HOME_AND_DRIVING, screenThrows = 
         return typeof ctx === 'function' ? ctx(personId) : ctx;
       },
     },
-    findings: { async upsertFinding(f) { calls.filed.push(f); return { id: calls.filed.length }; } },
+    findings: {
+      async upsertFinding(f) { calls.filed.push(f); return { id: calls.filed.length }; },
+      async resolveClearedFindings(keys, keepIds) {
+        calls.resolved.push({ keys, keepIds });
+        return 2;
+      },
+    },
     async notify(n) { calls.notified.push(n); return { recorded: true, delivered: true }; },
   };
   return { deps, calls };
@@ -251,4 +257,48 @@ test('a generous screen is capped, and the cap is reported rather than hidden', 
   const summary = await pass.runContradictionPass({ now: NOW, deps, limit: 3 });
   assert.equal(summary.capped, true);
   assert.equal(calls.read.length, 3, 'the six-query read is bounded');
+});
+
+// ── a disagreement that cleared must stop being reported ────────────────────
+
+test('A CONTRADICTION THAT CLEARED IS RESOLVED, not left open for ever', async () => {
+  // Nothing here resolved anything, so a finding stayed open after the
+  // condition went away — telling operators two systems disagree when they no
+  // longer do, which is how a Needs Attention list stops being read.
+  const { deps, calls } = harness();
+  const summary = await pass.runContradictionPass({ now: NOW, deps });
+
+  assert.equal(calls.resolved.length, 1);
+  assert.deepEqual(calls.resolved[0].keys.sort(), [
+    'context.home_while_working', 'context.quiet_but_active', 'context.two_open_units',
+  ].sort(), 'scoped to the keys this pass owns, derived from SEVERITY so they cannot drift');
+  assert.deepEqual(calls.resolved[0].keepIds, [1],
+    'and the finding it just filed is kept');
+  assert.equal(summary.resolved, 2);
+});
+
+test('A PARTIAL PASS RESOLVES NOTHING, because it did not re-derive everything', async () => {
+  // The sweep's own rule. A driver that could not be read means some
+  // contradictions were not checked this time, and resolving on that basis
+  // would close findings that are still true.
+  const oneBad = harness({ candidates: [11, 12], ctx: () => { throw new Error('nope'); } });
+  await pass.runContradictionPass({ now: NOW, deps: oneBad.deps });
+  assert.equal(oneBad.calls.resolved.length, 0);
+
+  const capped = harness({ candidates: [1, 2, 3, 4, 5] });
+  await pass.runContradictionPass({ now: NOW, deps: capped.deps, limit: 3 });
+  assert.equal(capped.calls.resolved.length, 0, 'a capped pass has not seen the rest');
+
+  const screenDead = harness({ screenThrows: true });
+  await pass.runContradictionPass({ now: NOW, deps: screenDead.deps });
+  assert.equal(screenDead.calls.resolved.length, 0);
+});
+
+test('a dependency map without the resolve loses the resolution, not the pass', async () => {
+  const { deps, calls } = harness();
+  delete deps.findings.resolveClearedFindings;
+  const summary = await pass.runContradictionPass({ now: NOW, deps });
+  assert.equal(summary.filed, 1, 'the finding was still filed');
+  assert.equal(summary.resolved, 0);
+  assert.equal(calls.filed.length, 1);
 });
