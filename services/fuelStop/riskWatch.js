@@ -18,6 +18,7 @@
  * correction: there is no state to fix, only somebody to tell.
  */
 const { assessFuelRisk, RISKS } = require('../../lib/fuel/risk');
+const { planFuelStop, priorityFactsFor } = require('../../lib/fuel/planning');
 const { extractUnitFromGroupName } = require('../../lib/drivers/driverGroupTitle');
 const { withRunRecord } = require('../operations/runLedger');
 
@@ -41,6 +42,17 @@ const REPEAT_AFTER_HOURS = {
   [RISKS.INSTRUCTION_STALE]: 48,
   [RISKS.ABNORMAL_BURN]: 72,
 };
+
+/**
+ * The two risks the reachability plan is actually about.
+ *
+ * `planFuelStop` answers one question — can this truck get to the stop it was
+ * given — so it belongs on the low tank and the unreachable stop. Attaching it
+ * to a passed stop or a stale instruction would be a sentence about range
+ * printed under a notice about neither, which is how supporting lines stop
+ * being read.
+ */
+const PLAN_APPLIES_TO = new Set([RISKS.LOW_FUEL, RISKS.CANNOT_REACH_STOP]);
 
 /**
  * The quiet window for one risk kind.
@@ -152,6 +164,18 @@ async function checkOneTruck(group, {
   });
   if (!risks.length) return [];
 
+  // CAN IT GET THERE, phrased for a person and rounded to what a range estimate
+  // is actually worth. `assessFuelRisk` decides THAT the stop is out of reach;
+  // this says by how much and, deliberately, names no alternative station —
+  // Wenze has no database of truck-accessible stops, and a confident wrong
+  // suggestion about where to fuel a truck four hundred miles out is worse than
+  // a clear statement of the problem.
+  const plan = planFuelStop({
+    rangeMiles: facts.rangeMiles,
+    milesToStation: facts.milesToStation,
+    stationName: facts.stationName,
+  });
+
   const who = describe(group, unit);
   const sent = [];
 
@@ -171,9 +195,20 @@ async function checkOneTruck(group, {
     const out = await deps.notify({
       category: 'fuel',
       title: `${who}: ${risk.summary}`,
-      lines: [risk.detail, facts.stationName ? `Assigned stop: ${facts.stationName}` : null]
-        .filter(Boolean),
+      lines: [
+        risk.detail,
+        PLAN_APPLIES_TO.has(risk.kind) && plan.known ? plan.advice : null,
+        facts.stationName ? `Assigned stop: ${facts.stationName}` : null,
+      ].filter(Boolean),
       action: risk.severity === 'serious' ? 'Call the driver or reassign the stop' : null,
+      // THIS risk's severity, not the category's. `fuel` is catalogued as a
+      // warning, which is right for a truck at 28% twenty miles from a station
+      // and wrong for one that cannot reach its stop at all — and the second is
+      // the one that costs money.
+      severity: risk.severity,
+      // The same numbers the advice above was written from, so what a notice
+      // is prioritised by and what it says cannot drift apart.
+      facts: priorityFactsFor(plan),
       subjectType: 'group',
       subjectId: group.id,
       // The window above decides whether to speak; this makes each utterance a
@@ -305,6 +340,7 @@ module.exports = {
   POLL_MS,
   FIRST_TICK_DELAY_MS,
   REPEAT_AFTER_HOURS,
+  PLAN_APPLIES_TO,
   repeatHoursFor,
   countTrucksReportingFuel,
   checkOneTruck,

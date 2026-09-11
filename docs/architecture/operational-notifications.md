@@ -106,6 +106,60 @@ The drain rides the operations sweep rather than a timer of its own: a notice is
 always about something that sweep just did or found, and a second timer is a
 second thing to notice had stopped.
 
+## How urgent, and one driver's bad morning
+
+Two rules run inside the one door, between resolving the destination and
+enqueuing. Both lived in `lib/notifications/priority.js` with passing tests and
+**no caller at all** until they were wired here; the module was reachable only
+from its own test file, so every notice left at whatever urgency its category
+was catalogued with.
+
+### The level
+
+`priorityFor({ severity, facts })` returns `now` / `today` / `whenever` from
+**established numbers only** — a distance, a percentage, a count, an
+hours-until-due. It has no parameter a model could reach, and a test asserts
+that.
+
+A caller may state the severity of **this** event, and it is used in preference
+to the category's. That is the point: `fuel` is catalogued as a `warning`,
+which is right for a truck at 28% twenty miles from a station and wrong for one
+that cannot reach its assigned stop at all — and the second is the one that
+costs money. **An unrecognised severity falls back to the category's, never to
+the loudest reading**, so a typo cannot page anybody.
+
+Only a `now` explains itself, as one extra line. A `today` that argued its own
+urgency on every notice would be the noise this exists to reduce. The level is
+written into `evidence_json` either way, so a screen can show *why* something
+was urgent rather than only that it was.
+
+### The hold
+
+`shouldSuppress` answers the question the notice key cannot: a fuel risk, a
+load contradiction and a retention signal about **one driver** arriving within
+minutes, each correctly deduplicated against itself, together reading as three
+problems rather than one person having one bad morning. Grouping is by person
+first, then group, then subject pair — never by category, since those three
+*are* three categories.
+
+The fourth notice about one subject inside an hour is **held, never dropped**.
+The row is still written; `next_attempt_at` is pushed out by exactly the window
+that crowded it out, and the drain delivers it afterwards. This repository has
+already lost 101 alerts to a queue that gave up quietly, and a suppression that
+discarded would be that failure with a nicer name.
+
+Two exceptions, both deliberate:
+
+- **a `now` is never held.** Whatever else somebody has been told, a thing that
+  gets worse by the hour is worth the interruption.
+- **the hold fails open.** A dependency map without the new read, or a read
+  that errors, costs the hold and not the notice. Saying a thing twice is a
+  nuisance; not saying it is the failure this application exists to remove.
+
+The read is `listRecentNoticesAbout`, over the index migration 0031 created for
+exactly this — `(person_id, created_at DESC) WHERE person_id IS NOT NULL` — and
+which nothing had used until now.
+
 ## What was deliberately NOT changed
 
 The six existing destinations keep working exactly as they are. Home Time still

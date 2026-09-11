@@ -62,22 +62,79 @@ function mapNotice(row) {
 async function enqueueNotification({
   noticeKey, category, chatId, routedVia = 'default', body,
   subjectType = null, subjectId = null, personId = null, groupId = null, evidence = null,
+  delaySeconds = 0,
 }, client = null) {
   const run = client ? (t, v) => client.query(t, v) : query;
+  // HELD, NOT DROPPED. `delaySeconds` pushes `next_attempt_at` out so the
+  // sweep delivers this later instead of the caller sending it now. It is how
+  // a burst about one driver stops being four interruptions without any of the
+  // four being lost — see `shouldSuppress` in lib/notifications/priority.js.
+  // Zero is the ordinary path and leaves the column at its NOW() default.
+  const delay = Number.isFinite(Number(delaySeconds)) ? Math.max(0, Number(delaySeconds)) : 0;
   const res = await run(
     `INSERT INTO operational_notifications
        (notice_key, category, subject_type, subject_id, person_id, group_id,
-        chat_id, routed_via, body, evidence_json)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
+        chat_id, routed_via, body, evidence_json, next_attempt_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb, NOW() + ($11 || ' seconds')::interval)
      ON CONFLICT (notice_key) DO NOTHING
      RETURNING *`,
     [
       noticeKey, category, subjectType, subjectId == null ? null : String(subjectId),
       personId, groupId, String(chatId), routedVia, body,
-      evidence ? JSON.stringify(evidence) : null,
+      evidence ? JSON.stringify(evidence) : null, String(delay),
     ]
   );
   return mapNotice(res.rows[0]) || null;
+}
+
+/**
+ * When we last said anything at all about this driver — across every category.
+ *
+ * THE QUESTION THE NOTICE KEY CANNOT ANSWER. That column stops the same notice
+ * being sent twice and does its job perfectly; it has nothing to say about a
+ * fuel risk, a load contradiction and a retention signal about ONE driver
+ * arriving within minutes of each other, each correctly deduplicated against
+ * itself, together reading as three problems rather than one bad morning.
+ *
+ * Reads the index `0031` created for exactly this and nothing had used:
+ * `(person_id, created_at DESC) WHERE person_id IS NOT NULL`. The group and
+ * subject forms fall back to the `(category, subject_type, subject_id, ...)`
+ * index, which is why they are separate branches rather than one OR — an OR
+ * across two partial indexes plans as a sequential scan.
+ *
+ * STATE IS DELIBERATELY NOT FILTERED. A notice enqueued four minutes ago and
+ * not yet delivered is about to interrupt somebody just as surely as one that
+ * already has.
+ */
+async function listRecentNoticesAbout({
+  personId = null, groupId = null, subjectType = null, subjectId = null,
+  withinMinutes = 60, limit = 20,
+} = {}) {
+  const minutes = String(Math.max(1, Number(withinMinutes) || 60));
+  const cap = Math.max(1, Math.min(100, Number(limit) || 20));
+  let sql;
+  let params;
+  if (personId != null) {
+    sql = `SELECT created_at FROM operational_notifications
+            WHERE person_id = $1 AND created_at > NOW() - ($2 || ' minutes')::interval
+            ORDER BY created_at DESC LIMIT $3`;
+    params = [personId, minutes, cap];
+  } else if (groupId != null) {
+    sql = `SELECT created_at FROM operational_notifications
+            WHERE group_id = $1 AND created_at > NOW() - ($2 || ' minutes')::interval
+            ORDER BY created_at DESC LIMIT $3`;
+    params = [groupId, minutes, cap];
+  } else if (subjectType && subjectId != null) {
+    sql = `SELECT created_at FROM operational_notifications
+            WHERE subject_type = $1 AND subject_id = $2
+              AND created_at > NOW() - ($3 || ' minutes')::interval
+            ORDER BY created_at DESC LIMIT $4`;
+    params = [subjectType, String(subjectId), minutes, cap];
+  } else {
+    return [];
+  }
+  const res = await query(sql, params);
+  return res.rows.map((r) => ({ at: r.created_at }));
 }
 
 /**
@@ -351,6 +408,7 @@ module.exports = {
   BACKOFF_SECONDS,
   backoffSecondsFor,
   enqueueNotification,
+  listRecentNoticesAbout,
   noticeSentWithin,
   claimNotificationById,
   claimDueNotifications,

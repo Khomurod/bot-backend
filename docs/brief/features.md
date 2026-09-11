@@ -202,6 +202,31 @@ recorded → a poller waits until the truck is within `radius_miles` → it repl
 the original message tagging the driver. Detection is cheap-first (most messages
 never reach an AI call).
 
+**The risk watch** (`services/fuelStop/riskWatch.js`, every 20 minutes) answers
+what that poller cannot: a low tank, a truck that cannot reach the stop it was
+given, one that has driven past it, an instruction from last trip, and an
+abnormal burn rate. The operational low-fuel threshold is **30%**, which is the
+number the business asked for. Every finding goes to the configured operations
+chat and **never to a driver group** — an instruction from a rule nobody has
+watched running is how a fleet learns to ignore the bot.
+
+**The reachability plan** (`lib/fuel/planning.js`) turns "it cannot get there"
+into a sentence with the margin in it, rounded to what a range estimate from a
+tank percentage is actually worth — *about 180 miles*, never *182*. It
+**deliberately names no alternative station**: Wenze has no database of
+truck-accessible stops, prices or opening hours, so a confident suggestion about
+where to fuel a truck four hundred miles out would be an invented fact wearing
+the clothes of a plan. It says what is wrong, by how much, and leaves the choice
+to somebody who can see one. That restraint is the feature, and it is asserted
+structurally — the function has no parameter through which a station list could
+arrive, and the module imports nothing.
+
+A cannot-reach notice carries its **own** severity (`serious`) rather than the
+fuel category's catalogued `warning`, and the numbers the advice was written
+from travel with it as the facts its urgency is computed from — so what a notice
+says and what it is prioritised by cannot drift apart. See
+`docs/architecture/operational-notifications.md`.
+
 ### Recruiting and leads
 
 - **Facebook/Meta leads**: Meta → `POST /webhook` (raw-body proxy, Node) →
