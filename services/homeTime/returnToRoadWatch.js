@@ -213,47 +213,11 @@ async function runReturnToRoadCheck({ now = Date.now(), deps = defaultDeps(), op
     const orders = Array.isArray(orderResult?.orders) ? orderResult.orders : [];
     summary.providerErrors = (fleetResult?.errors?.length || 0) + (orderResult?.error ? 1 : 0);
 
-    // NOT SILENTLY FINE. Catching the failure must not turn a pass that can see
-    // nothing into a pass that reports success — that is the exact trade this
-    // whole body of work exists to refuse.
-    //
-    // COUNTING VEHICLES, NOT KEYS. This asked `Object.keys(fleets).length`, and
-    // `fetchProviderFleets` always returns `{samsara, factor, leader}` with the
-    // ones that failed set to null — three keys, whatever happened. So the
-    // guard could only ever fire when the WHOLE call threw, and was blind to
-    // the case it exists for: all three providers erroring individually, every
-    // fleet null, and the pass reporting a clean run having seen nothing.
-    const vehiclesSeen = Object.values(fleets)
-      .reduce((n, list) => n + (Array.isArray(list) ? list.length : 0), 0);
-    const sawNothing = vehiclesSeen === 0 && !orders.length;
-
-    // AND SEEING NOTHING IS `blocked`, NOT `error`.
-    //
-    // The pass is not broken. It ran, it asked, and no telemetry provider
-    // answered — which `lib/operations/runHealth.js` has a state for, and says
-    // so in its own header: a worker that cannot run because an operator has
-    // not supplied a key is NOT broken, and painting it red is how a real
-    // outage gets lost among things that were never switched on.
-    //
-    // This had reached THIRTY "consecutive failures" in production on a pass
-    // that was completing every run and checking every driver. `blocked` still
-    // resolves to needs_human_attention, so nothing is hidden; what changes is
-    // that the sentence names the cause instead of counting a failure that did
-    // not happen.
-    //
-    // PROVIDER NAMES AND ERROR CODES ONLY. `/api/health` is public and a
-    // provider's `err.message` can quote a URL or a rejected value; the names
-    // come from a fixed set and the codes are `err.code`. The full message
-    // stays on the authenticated Operations screen.
-    if (sawNothing && summary.providerErrors > 0) {
-      summary.blocked = `no telemetry could be read from ${describeProviderErrors(fleetResult)}`
-        + `${orderResult?.error ? ', and the order board could not be read either' : ''}`
-        + ' — Wenze cannot tell whether anybody went back on the road';
-    }
     const byUnit = deps.orders.indexOrdersByUnit(orders, now);
     const byDriver = deps.orders.indexOrdersByDriver(orders, now);
 
     const keepIds = [];
+    let driversSeen = 0;
     for (const driver of drivers) {
       // eslint-disable-next-line no-await-in-loop
       const outcome = await checkOneDriver(driver, {
@@ -261,7 +225,40 @@ async function runReturnToRoadCheck({ now = Date.now(), deps = defaultDeps(), op
       });
       summary.checked += 1;
       summary[outcome.confidence] += 1;
+      if (outcome.sawThisDriver) driversSeen += 1;
       if (outcome.findingId) keepIds.push(outcome.findingId);
+    }
+    summary.driversSeen = driversSeen;
+
+    // NOT SILENTLY FINE, and measured on THE DRIVERS THIS PASS IS ABOUT.
+    //
+    // Catching a provider failure must not turn a pass that can see nothing
+    // into a pass that reports success. But "can see nothing" is a question
+    // about the eight drivers being watched, not about the fleets: counting
+    // vehicles anywhere meant one provider returning a hundred trucks belonging
+    // to other people hid a second provider's outage completely, while not one
+    // watched driver could be assessed.
+    //
+    // (The count before that was worse still — `Object.keys(fleets).length`,
+    // and `fetchProviderFleets` always returns three keys with the failed ones
+    // null, so it could only fire when the whole call threw.)
+    //
+    // AND SEEING NOTHING IS `blocked`, NOT `error`. The pass is not broken; it
+    // ran, it asked, and nothing answered about anybody it cares about —
+    // `lib/operations/runHealth.js` has a state for that and says so in its own
+    // header: a worker that cannot run for want of configuration is NOT broken,
+    // and painting it red is how a real outage gets lost among things that were
+    // never switched on. This had reached THIRTY "consecutive failures" on a
+    // pass completing every run. `blocked` still resolves to
+    // needs_human_attention, so nothing is hidden; the sentence names the cause.
+    //
+    // PROVIDER NAMES AND ERROR CODES ONLY — `/api/health` is public and a
+    // provider's `err.message` can quote a URL with a key in it.
+    if (driversSeen === 0 && summary.providerErrors > 0) {
+      summary.blocked = `no telemetry could be read from ${describeProviderErrors(fleetResult)}`
+        + ` for any of the ${drivers.length} driver(s) at home`
+        + `${orderResult?.error ? ', and the order board could not be read either' : ''}`
+        + ' — Wenze cannot tell whether anybody went back on the road';
     }
 
     // Everything this pass did NOT re-file is no longer true.
@@ -358,11 +355,18 @@ async function checkOneDriver(driver, { fleets, byUnit, byDriver, nowIso, now, d
     signals: { signals: verdict.signals, blockers: verdict.blockers, facts: verdict.facts },
   });
 
-  if (verdict.confidence === 'low') return { confidence: 'low', findingId: null };
+  // WHETHER THIS DRIVER COULD BE ASSESSED AT ALL, which is not the same as
+  // whether some provider answered. A fleet full of other drivers' vehicles
+  // says nothing about this one.
+  const sawThisDriver = current != null || load != null;
+
+  if (verdict.confidence === 'low') {
+    return { confidence: 'low', findingId: null, sawThisDriver };
+  }
 
   const eventAt = current?.at || nowIso;
   const filed = await deps.findings.upsertFinding(buildFinding(driver, verdict, { unit, eventAt }));
-  return { confidence: verdict.confidence, findingId: filed?.id || null };
+  return { confidence: verdict.confidence, findingId: filed?.id || null, sawThisDriver };
 }
 
 // ── the background job ───────────────────────────────────────────────────────
