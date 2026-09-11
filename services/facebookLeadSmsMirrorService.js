@@ -169,11 +169,15 @@ async function registerSmsMirror({
 
   // A candidate has written. Outside working hours Wenze may carry the
   // conversation; inside them it stands down and the recruiter answers as
-  // always. AWAITED rather than fired and forgotten: the Python leads engine
-  // holds this request open either way, and an un-awaited promise here would
-  // race the response with nothing able to report a failure. Every path inside
-  // returns a named reason and none of them throws, so the insert above is
-  // never put at risk — see services/recruiting/afterHoursThread.js.
+  // always.
+  //
+  // Awaited, but under a DEADLINE the caller cannot exceed. The AI chain's
+  // worst case is three providers times five models times a 60-second timeout,
+  // and this runs inside an HTTP request the Python leads engine is waiting on.
+  // Past twenty seconds it answers `still_working` and the work carries on
+  // without the caller — see services/recruiting/afterHoursThread.js. Every
+  // path inside returns a named reason and none of them throws, so the insert
+  // above is never put at risk.
   let afterHours = null;
   if (resolvedSource === 'inbound_rc') {
     afterHours = await considerAfterHoursReply({

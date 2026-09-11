@@ -113,26 +113,59 @@ async function postAiReplyToThread({
 }
 
 /**
+ * How long the caller waits for an answer before being let go.
+ *
+ * THE CALLER IS AN HTTP REQUEST, and the AI chain's worst case is not small:
+ * three enabled providers, five models each, and a 60-second per-request
+ * timeout is fifteen minutes if every attempt hangs. The Python leads engine
+ * would time out long before that, retry, and find the work still running.
+ *
+ * So the request is let go after twenty seconds and THE WORK CONTINUES. It is
+ * not cancelled: by that point an SMS may already be in flight, and unsending
+ * one is not a thing. The reply, the mirror row and the counter all still land
+ * when they land — the caller simply stops waiting to hear about it.
+ */
+const REPLY_DEADLINE_MS = 20 * 1000;
+
+/**
  * Offer one inbound candidate SMS to the after-hours reply.
  *
  * Every path returns; none throws. The caller has already recorded the
- * candidate's message and must not be made to care what happened next.
+ * candidate's message and must not be made to care what happened next — not
+ * whether it worked, and not how long it took.
  */
 async function considerAfterHoursReply(args, deps = defaultDeps()) {
-  try {
-    // eslint-disable-next-line global-require
-    const orchestrator = require('./afterHoursReply');
-    return await deps.considerReply(args, {
-      ...orchestrator.defaultDeps(),
-      postToThread: (postArgs) => postAiReplyToThread(postArgs, deps),
-    });
-  } catch (err) {
-    console.warn('[RecruitingAfterHours] stood down after an error:', err.message);
-    return { sent: false, reason: 'error', detail: err.message };
-  }
+  const deadlineMs = Number.isFinite(deps.deadlineMs) ? deps.deadlineMs : REPLY_DEADLINE_MS;
+
+  const work = (async () => {
+    try {
+      // eslint-disable-next-line global-require
+      const orchestrator = require('./afterHoursReply');
+      return await deps.considerReply(args, {
+        ...orchestrator.defaultDeps(),
+        postToThread: (postArgs) => postAiReplyToThread(postArgs, deps),
+      });
+    } catch (err) {
+      console.warn('[RecruitingAfterHours] stood down after an error:', err.message);
+      return { sent: false, reason: 'error', detail: err.message };
+    }
+  })();
+
+  // The work can never reject — every path above returns — so a promise left
+  // running past the deadline cannot become an unhandled rejection.
+  let timer = null;
+  const deadline = new Promise((resolve) => {
+    timer = setTimeout(() => resolve({ sent: false, reason: 'still_working' }), deadlineMs);
+    timer.unref?.();
+  });
+
+  const out = await Promise.race([work, deadline]);
+  if (timer) clearTimeout(timer);
+  return out;
 }
 
 module.exports = {
+  REPLY_DEADLINE_MS,
   escapeHtml,
   buildAiReplyHtml,
   defaultDeps,

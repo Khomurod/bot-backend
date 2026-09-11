@@ -124,6 +124,24 @@ silence when a candidate was owed an answer, so `windowCovers` resolves the tail
 of a window against the **previous** day. Two tests assert it, and both fail
 against the naive version.
 
+## The caller is never held open
+
+`registerSmsMirror` runs inside the HTTP request the Python leads engine makes
+when a candidate's SMS arrives, and it awaits the reply. The AI chain's worst
+case is not small: three enabled providers, five models each, and a 60-second
+per-request timeout is **fifteen minutes** if every attempt hangs. The caller
+would time out long before that, retry, and find the work still running.
+
+So the caller is let go after twenty seconds with `still_working`, and **the
+work carries on**. It is not cancelled: by that point an SMS may already be in
+flight, and unsending one is not a thing. The reply, the mirror row and the
+counter all land when they land.
+
+The deadline timer is `unref`'d so it cannot hold the process open at shutdown,
+and every path inside returns rather than rejecting — a promise nobody is
+awaiting must not be able to become an unhandled rejection.
+`tests/afterHoursDeadline.test.js` holds all three.
+
 ## The thread, and the half of it that was missing
 
 The conversation is assembled from `facebook_lead_sms_mirrors`, the ledger every
