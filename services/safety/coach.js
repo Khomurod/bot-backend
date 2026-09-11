@@ -18,6 +18,7 @@
  * message that mattered is the one they skipped.
  */
 const { findPatterns, COACHING_POINT } = require('../../lib/safety/patterns');
+const { withRunRecord } = require('../operations/runLedger');
 
 const CAPABILITY = 'safety_coaching_message';
 const POLL_MS = 6 * 60 * 60 * 1000;
@@ -252,7 +253,13 @@ let tickRunning = false;
 async function tick() {
   if (tickRunning) return;
   tickRunning = true;
-  try { await runSafetyCoachPass({}); } finally { tickRunning = false; }
+  try {
+    await withRunRecord('safety_coach', () => runSafetyCoachPass({}));
+  } catch (err) {
+    console.error('[SAFETY] coach tick error:', err.message);
+  } finally {
+    tickRunning = false;
+  }
 }
 
 function startSafetyCoach() {

@@ -9,6 +9,7 @@ import ChecksTab from "./operations/ChecksTab";
 import IdentityTab from "./operations/IdentityTab";
 import RetentionTab from "./operations/RetentionTab";
 import LearningTab from "./operations/LearningTab";
+import SystemsTab from "./operations/SystemsTab";
 import * as api from "../api";
 
 /**
@@ -29,6 +30,7 @@ const TABS = [
   { key: "identity", label: "Identity" },
   { key: "retention", label: "Retention" },
   { key: "learning", label: "What Wenze learned" },
+  { key: "systems", label: "What is running" },
 ];
 
 export default function OperationsPage() {
@@ -95,6 +97,7 @@ export default function OperationsPage() {
       {ops.tab === "identity" && <IdentityTab flash={flash} />}
       {ops.tab === "retention" && <RetentionTab flash={flash} />}
       {ops.tab === "learning" && <LearningTab flash={flash} />}
+      {ops.tab === "systems" && <SystemsTab flash={flash} />}
 
       {ops.selectedId && <FindingDetailModal {...ops} />}
     </div>

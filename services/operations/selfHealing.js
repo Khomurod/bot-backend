@@ -25,6 +25,9 @@
  * attempts.
  */
 const { observe, describeDuration } = require('../../lib/operations/healthTransitions');
+const { CATALOG } = require('../../lib/operations/backgroundServiceCatalog');
+const observations_ = require('./healthObservations');
+const { withRunRecord } = require('./runLedger');
 
 const POLL_MS = 30 * 60 * 1000;
 const FIRST_TICK_DELAY_MS = 10 * 60 * 1000;
@@ -34,75 +37,45 @@ function defaultDeps() {
   return {
     store: require('../../database/systemHealth'),
     notify: require('../notifications/send').notify,
+    runs: require('../../database/backgroundRuns'),
     rc: require('../../database/ringcentral'),
     ai: require('../../database/aiProviders'),
     notifications: require('../../database/operationalNotifications'),
+    fuelReadings: require('../../database/truckFuelReadings'),
   };
   /* eslint-enable global-require */
 }
 
-/** What an operator should call each component, in a sentence. */
-const LABELS = {
-  recruiter_logins: 'recruiters\' RingCentral logins',
-  ai_providers: 'the AI providers',
-  notifications: 'the notification queue',
-};
+/**
+ * What an operator should call each component.
+ *
+ * The names live in `lib/operations/backgroundServiceCatalog.js` beside the
+ * expectation that each component exists at all, because a label kept in a
+ * second place is a label that goes stale the first time a worker is renamed.
+ */
+const LABELS = Object.fromEntries(CATALOG.map((e) => [e.key, e.label]));
 
 /**
- * What each component's health is, read from what the application already
- * recorded. Every one returns `{ ok, detail }` and none of them throws: a
- * component whose state cannot be read is reported as unknown and skipped,
- * never as failed, because "I could not check" is not "it is broken".
+ * What each component's health is.
+ *
+ * THIS USED TO BE THREE COMPONENTS, hand-written here: recruiter logins, AI
+ * providers and the notification queue. Twenty-five background workers and nine
+ * integrations ran beside them completely unobserved, and a worker whose timer
+ * was never armed produced the same evidence as one that ran and found nothing.
+ * `services/operations/healthObservations.js` now answers for all of them, from
+ * the run ledger and from records the application already keeps.
+ *
+ * Still true, and the reason nothing moved into a prober: NOTHING HERE CALLS AN
+ * EXTERNAL SERVICE. A health check that makes its own requests is a new way to
+ * be rate limited, and it measures the check's luck rather than the feature's.
  */
 async function gatherObservations(deps) {
-  const out = [];
-
-  // Recruiter logins. A refresh token expires in 7 days and the daily job
-  // rotates it; `rc_auth_error` is what the panel renders as "needs to connect
-  // again". ALL of them broken is an outage; one is a person's problem.
-  try {
-    const recruiters = await deps.rc.listRecruiters();
-    const withCreds = (recruiters || []).filter((r) => deps.rc.recruiterCanSendSms(r));
-    const broken = withCreds.filter((r) => r.rc_auth_error);
-    if (withCreds.length > 0) {
-      out.push({
-        component: 'recruiter_logins',
-        ok: broken.length < withCreds.length,
-        detail: broken.length
-          ? `${broken.length} of ${withCreds.length} recruiter logins need reconnecting`
-          : null,
-      });
-    }
-  } catch (_) { /* unknown, not failed */ }
-
-  // AI. Every enabled provider in cooldown at once is an outage; one is the
-  // router doing its job.
-  try {
-    const providers = await deps.ai.getProvidersForRouter();
-    const enabled = (providers || []).filter((p) => p.enabled);
-    if (enabled.length > 0) {
-      const cooled = enabled.filter((p) => p.cooledUntil && new Date(p.cooledUntil) > new Date());
-      out.push({
-        component: 'ai_providers',
-        ok: cooled.length < enabled.length,
-        detail: cooled.length ? `all ${enabled.length} providers are in cooldown` : null,
-      });
-    }
-  } catch (_) { /* unknown */ }
-
-  // The notification queue. Something that has given up is the one failure that
-  // silences every other feature's alarm, which is exactly how 101 staff alerts
-  // were lost once already.
-  try {
-    const summary = await deps.notifications.summariseNotifications();
-    out.push({
-      component: 'notifications',
-      ok: Number(summary?.abandoned || 0) === 0,
-      detail: summary?.abandoned ? `${summary.abandoned} notices gave up undelivered` : null,
-    });
-  } catch (_) { /* unknown */ }
-
-  return out;
+  const observations = await observations_.gatherAllObservations(deps);
+  // A component nobody could read is dropped before the announcer ever sees it.
+  // "I could not check" must never start a failure count — three unreadable
+  // passes would otherwise announce an outage that was only ever a permission
+  // error on the health query.
+  return observations.filter((o) => !o.unknown);
 }
 
 /** The sentence for each kind of transition. Plain, and never alarming twice. */
@@ -161,7 +134,7 @@ async function considerComponent(observation, { nowIso, deps, options }) {
 /** One pass. Never throws; a component that cannot be read costs that one only. */
 async function runSelfHealingPass({ now = Date.now(), deps = defaultDeps(), options = {} } = {}) {
   const nowIso = new Date(now).toISOString();
-  const summary = { checked: 0, announced: [], errors: [] };
+  const summary = { checked: 0, announced: [], errors: [], actionable: 0 };
 
   let observations;
   try {
@@ -172,6 +145,7 @@ async function runSelfHealingPass({ now = Date.now(), deps = defaultDeps(), opti
 
   for (const observation of observations) {
     summary.checked += 1;
+    if (observation.ok === false) summary.actionable += 1;
     try {
       // eslint-disable-next-line no-await-in-loop
       const out = await considerComponent(observation, { nowIso, deps, options });
@@ -186,15 +160,24 @@ async function runSelfHealingPass({ now = Date.now(), deps = defaultDeps(), opti
 
 let timer = null;
 let stopped = true;
+let tickRunning = false;
 
 async function tick() {
+  // The watch that reports on everything else had no overlap guard of its own,
+  // and two passes would both read and write `system_health_states` and could
+  // announce the same transition twice — the discriminator is only granular to
+  // the hour.
+  if (tickRunning) return;
+  tickRunning = true;
   try {
-    const summary = await runSelfHealingPass({});
+    const summary = await withRunRecord('self_healing', () => runSelfHealingPass({}));
     if (summary.announced.length) {
       console.log(`[SELF-HEAL] ${summary.announced.join(', ')}`);
     }
   } catch (err) {
     console.warn('[SELF-HEAL] pass failed:', err.message);
+  } finally {
+    tickRunning = false;
   }
 }
 

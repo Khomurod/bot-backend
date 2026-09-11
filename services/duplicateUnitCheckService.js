@@ -29,6 +29,7 @@ const { getEldConfig } = require('../database/eldSettings');
 const samsara = require('./samsaraLocationService');
 const groups = require('../database/groups');
 const { driverNamesMatch, extractDriverNameFromVehicleLabel } = require('../lib/drivers/driverGroupTitle');
+const { withRunRecord } = require('./operations/runLedger');
 
 const POLL_MS = 15 * 60 * 1000;
 const FIRST_TICK_DELAY_MS = 90 * 1000;
@@ -369,7 +370,7 @@ async function tick() {
   if (tickRunning) return;
   tickRunning = true;
   try {
-    await runDuplicateUnitCheck();
+    await withRunRecord('duplicate_unit_scan', () => runDuplicateUnitCheck());
   } catch (err) {
     console.error('[DUP-UNIT] Scan error:', err.message);
   } finally {

@@ -16,6 +16,7 @@ const { createDueTimeWakeTimer } = require('../../dueTimeWakeTimer');
 const policyStore = require('../../../database/aiPolicy');
 const { runPolicyCheck } = require('./policyWatcher');
 const { drainPolicyAlerts } = require('./alertSender');
+const { withRunRecord, noteHeartbeat } = require('../../operations/runLedger');
 
 const DAY_NAMES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 /** Run at 09:00 UTC on a check day — inside a working morning somewhere. */
@@ -45,7 +46,11 @@ async function checkTick() {
   const settings = await policyStore.getWatcherSettings();
   if (!settings.enabled) {
     // Still schedule the next wake: an operator switching it on should not have
-    // to restart the process for it to start working.
+    // to restart the process for it to start working. Recorded as `blocked` so
+    // "switched off" reads differently from "its timer died".
+    await noteHeartbeat('ai_policy_watcher', {
+      status: 'blocked', detail: 'the terms watcher is switched off in Settings',
+    }).catch(() => {});
     return { dueAtMs: nextCheckDueAt(settings.checkDays) };
   }
   // No overlap. A slow check must not pile up behind itself and diff the same
@@ -53,7 +58,9 @@ async function checkTick() {
   if (checkRunning) return { dueAtMs: nextCheckDueAt(settings.checkDays) };
   checkRunning = true;
   try {
-    await runPolicyCheck();
+    await withRunRecord('ai_policy_watcher', () => runPolicyCheck());
+  } catch (err) {
+    console.error('[POLICY] check failed:', err.message);
   } finally {
     checkRunning = false;
   }

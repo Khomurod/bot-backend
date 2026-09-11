@@ -35,6 +35,7 @@ const {
   homeTimePolicyApplies, DEFAULT_ROAD_ALLOWANCE_WEEKS, DAYS_PER_WEEK,
 } = require('./homeTimeConstants');
 const { inferDriverType } = require('../lib/drivers/driverProfileParse');
+const { withRunRecord, noteHeartbeat } = require('./operations/runLedger');
 
 // Safety-net sweep cadence. The primary post happens at the transition; this
 // only catches legs the transition could not deliver, so a relaxed interval is
@@ -172,7 +173,7 @@ async function tick() {
   if (tickRunning || !telegramClient) return;
   tickRunning = true;
   try {
-    await runRoadBonusCheck(telegramClient);
+    await withRunRecord('road_bonus_notifier', () => runRoadBonusCheck(telegramClient));
   } catch (err) {
     console.error('[ROAD-BONUS] Scheduler tick error:', err.message);
   } finally {

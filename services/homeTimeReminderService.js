@@ -29,6 +29,7 @@ const { callGeminiText } = require('./geminiClient');
 const { buildReminderMessage } = require('./homeTimeRequestConstants');
 const { buildDriverMention } = require('./driverMention');
 const { isDriverMessagingEnabled, sendToDriverGroup } = require('./homeTimeDriverChannel');
+const { withRunRecord, noteHeartbeat } = require('./operations/runLedger');
 
 const MAX_REMINDERS = 2;
 const POLL_MS = 5 * 60 * 1000; // 5 min — reminders are hours apart, so this is ample
@@ -226,8 +227,10 @@ async function tick() {
   if (tickRunning || !telegramClient) return;
   tickRunning = true;
   try {
-    await runHomeTimeReminderCheck(telegramClient);
-    await runHomeTimeExpirySweep(telegramClient);
+    await withRunRecord('home_time_reminders', async () => {
+      await runHomeTimeReminderCheck(telegramClient);
+      await runHomeTimeExpirySweep(telegramClient);
+    });
     // Rides this service's cadence but is a SEPARATE responsibility: the two
     // sweeps above chase DRIVERS, this one chases STAFF. Required lazily so the
     // reminder tests can load this module without the alert outbox. Isolated in

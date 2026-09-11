@@ -29,6 +29,7 @@
 const { createDueTimeWakeTimer } = require('../../dueTimeWakeTimer');
 const { getCatalogEntry } = require('../../../lib/ai/providerCatalog');
 const { buildAlertBody } = require('../policy/alertMessage');
+const { withRunRecord } = require('../../operations/runLedger');
 
 /** 06:00 UTC — after most providers' overnight changes, before a working day. */
 const MAINTENANCE_HOUR_UTC = 6;
@@ -223,7 +224,8 @@ function startModelMaintenance({ setModelRefusalListener = null } = {}) {
   timer = createDueTimeWakeTimer({
     label: 'AI MODELS',
     runTick: async () => {
-      await runModelMaintenance({});
+      await withRunRecord('ai_model_maintenance', () => runModelMaintenance({}))
+        .catch((err) => console.error('[AI MODELS] maintenance failed:', err.message));
       return { dueAtMs: nextMaintenanceDueAt() };
     },
   });

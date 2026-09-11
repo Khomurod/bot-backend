@@ -19,6 +19,7 @@
  */
 const { assessFuelRisk, RISKS } = require('../../lib/fuel/risk');
 const { extractUnitFromGroupName } = require('../../lib/drivers/driverGroupTitle');
+const { withRunRecord } = require('../operations/runLedger');
 
 const POLL_MS = 20 * 60 * 1000;
 const FIRST_TICK_DELAY_MS = 7 * 60 * 1000;
@@ -242,7 +243,13 @@ let tickRunning = false;
 async function tick() {
   if (tickRunning) return;
   tickRunning = true;
-  try { await runFuelRiskCheck({}); } finally { tickRunning = false; }
+  try {
+    await withRunRecord('fuel_risk', () => runFuelRiskCheck({}));
+  } catch (err) {
+    console.error('[FUEL-RISK] tick error:', err.message);
+  } finally {
+    tickRunning = false;
+  }
 }
 
 function startFuelRiskWatch() {

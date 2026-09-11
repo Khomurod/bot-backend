@@ -177,6 +177,34 @@ chat, so a truck or group change does not detach a load from its history.
 Visible on `/api/health` → `operations.loads`: how many loads are tracked, in
 what phase, how many are unclear and how many have a board disagreement.
 
+## Every worker records that it ran
+
+`services/operations/runLedger.js` wraps a pass in one line and
+`background_service_runs` (migration 0039) keeps **one row per worker**, updated
+in place. It exists because a pass that finds nothing writes nothing: a worker
+whose timer was never armed and a worker that ran and had nothing to do produce
+identical evidence everywhere else in this application. Three services kept a
+`lastRun` in process memory, which a Render restart reset to `null` —
+indistinguishable from "this has never worked".
+
+`lib/operations/backgroundServiceCatalog.js` is the roster, and
+`lib/operations/runHealth.js` turns a row into one of seven states. The one that
+only exists here is `stale_stopped`: not failing, not running, every table it
+owns merely quiet. `blocked` is configuration rather than failure, because an
+unconfigured feature painted red is how a real outage gets lost among things
+nobody switched on.
+
+Seen at `/api/health → operations.workers` and in Admin → Operations → **What is
+running**. Full rules in
+[`docs/architecture/self-healing-and-learning.md`](../architecture/self-healing-and-learning.md).
+
+**Three missing overlap guards were fixed at the same time.** `retention/watch`,
+`operations/selfHealing` and `operations/learningPass` had no `tickRunning` at
+all, and the consistency service's notification drain sat *outside* the guard
+its sweep used — safe only because a database lease further down happened to
+lock, which is not a property anybody can rely on while editing the thing
+further down.
+
 ## Fuel risk watch (every 20 minutes, first pass 7 minutes after boot)
 
 `services/fuelStop/riskWatch.js`, beside the existing fuel-stop reminder rather

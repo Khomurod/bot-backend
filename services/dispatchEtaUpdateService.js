@@ -4,6 +4,7 @@ const config = require('../config/config');
 const { resolveLiveLocationForGroupTitle } = require('./liveLocationResolver');
 const { readLoadContextWithFallbacks, NO_CURRENT_LOAD_INFO_MESSAGE } = require('./dispatchPinnedContextService');
 const { calculateEtaToDestination } = require('./etaRoutingService');
+const { noteHeartbeat } = require('./operations/runLedger');
 
 const ETA_POLL_INTERVAL_MS = 90 * 1000;
 const ETA_MAX_BATCH = 10;
@@ -411,6 +412,7 @@ async function triggerDispatchEtaNowByGroupId(groupId) {
 async function tickDispatchEta() {
   if (tickRunning) return;
   tickRunning = true;
+  let tickError = null;
   try {
     const due = await db.claimDueDispatchEtaUpdates(ETA_MAX_BATCH);
     if (!due.length) return;
@@ -421,9 +423,14 @@ async function tickDispatchEta() {
       await processDispatchEtaJob(job);
     }
   } catch (err) {
+    tickError = err.message;
     console.error('[DISPATCH-ETA] Tick error:', err.message);
   } finally {
     tickRunning = false;
+    // Not awaited — see the note in schedulerService.
+    noteHeartbeat('dispatch_eta', {
+      status: tickError ? 'error' : 'ok', detail: tickError,
+    }).catch(() => {});
   }
 }
 

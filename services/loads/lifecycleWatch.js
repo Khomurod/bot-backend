@@ -18,6 +18,7 @@
  */
 const { derivePhase, PHASES, PHASE_LABELS } = require('../../lib/loads/lifecycle');
 const { extractUnitFromGroupName } = require('../../lib/drivers/driverGroupTitle');
+const { withRunRecord } = require('../operations/runLedger');
 
 const POLL_MS = 10 * 60 * 1000;
 const FIRST_TICK_DELAY_MS = 5 * 60 * 1000;
@@ -274,7 +275,9 @@ async function tick() {
   if (tickRunning) return;
   tickRunning = true;
   try {
-    await runLoadLifecycleCheck({});
+    await withRunRecord('load_lifecycle', () => runLoadLifecycleCheck({}));
+  } catch (err) {
+    console.error('[LOADS] lifecycle tick error:', err.message);
   } finally {
     tickRunning = false;
   }

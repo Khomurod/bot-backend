@@ -5,6 +5,7 @@
 const db = require('../database/db');
 const { sendBroadcastToGroups } = require('../bot/bot');
 const { resolveBroadcastTargetGroups } = require('./broadcastTargetService');
+const { withRunRecord, noteHeartbeat } = require('./operations/runLedger');
 const {
   DEFAULT_SCHEDULE_TIMEZONE,
   computeNextWeeklyOccurrence,
@@ -187,6 +188,12 @@ async function tick() {
     return;
   }
   tickRunning = true;
+  // A HEARTBEAT RATHER THAN A WRAPPED PASS. The body below returns early from
+  // several places on the ordinary "nothing is due" path, so the ledger entry
+  // is written in the `finally` where every one of those paths passes through.
+  // What matters is that the timer fired at all — the scheduler's own work is
+  // already recorded per message in `scheduled_messages`.
+  let tickError = null;
   try {
     const pendingMessages = await db.getPendingScheduledMessages();
     if (pendingMessages.length === 0) return;
@@ -203,9 +210,16 @@ async function tick() {
       await processMessage(locked);
     }
   } catch (err) {
+    tickError = err.message;
     console.error('[SCHEDULER] Tick error:', err.message);
   } finally {
     tickRunning = false;
+    // Not awaited: `tickRunning` has just been cleared, and an await here would
+    // let the next tick start while this one is still inside its own `finally`.
+    // An observation must not change the thing it observes.
+    noteHeartbeat('scheduler', {
+      status: tickError ? 'error' : 'ok', detail: tickError,
+    }).catch(() => {});
   }
 }
 

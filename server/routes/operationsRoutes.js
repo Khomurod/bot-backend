@@ -17,6 +17,9 @@
  *   learningRoutes.js      what Wenze has suggested about its OWN rules, and a
  *                          person's decision. Accepting records agreement; it
  *                          does not apply anything.
+ *   systemsRoutes.js       whether each worker and integration is actually
+ *                          RUNNING — the question every other screen answers
+ *                          with the same silence whether it is or not.
  *
  * The two gates are passed in rather than built here, matching the rest of
  * `server/api.js`, so a test can mount this router with whatever authorization
@@ -41,6 +44,7 @@
  * | /identity/people/:id          | GET    | read    |
  * | /identity/backfill/preview    | GET    | read    |
  * | /identity/backfill            | POST   | APPLY   |
+ * | /systems                      | GET    | read    |
  */
 const express = require('express');
 
@@ -49,6 +53,7 @@ const { createCorrectionsRouter } = require('./operations/correctionsRoutes');
 const { createIdentityRouter } = require('./operations/identityRoutes');
 const { createRetentionRouter } = require('./operations/retentionRoutes');
 const { createLearningRouter } = require('./operations/learningRoutes');
+const { createSystemsRouter } = require('./operations/systemsRoutes');
 
 /**
  * @param {object} deps
@@ -62,6 +67,7 @@ function createOperationsRouter({ authMiddleware, applyMiddleware }) {
   router.use(createIdentityRouter({ authMiddleware, applyMiddleware }));
   router.use(createRetentionRouter({ authMiddleware }));
   router.use(createLearningRouter({ authMiddleware }));
+  router.use(createSystemsRouter({ authMiddleware }));
   return router;
 }
 

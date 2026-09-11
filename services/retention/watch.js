@@ -25,6 +25,7 @@
  * point at which anything can be stopped.
  */
 const { assess } = require('../../lib/retention/signals');
+const { withRunRecord } = require('../operations/runLedger');
 
 const CAPABILITY = 'retention_summary';
 const POLL_MS = 4 * 60 * 60 * 1000;
@@ -294,11 +295,19 @@ let stopped = true;
  * joke to ship another one.
  */
 let lastRun = null;
+let tickRunning = false;
 
 async function tick() {
+  // SKIPPED, NOT QUEUED, and it had no guard at all. The pass walks the whole
+  // fleet with two queries per driver and calls a model for each urgent one; a
+  // stalled provider can outrun the four-hour timer, and two passes would then
+  // double-write every assessment and race each other announcing the same
+  // cohort.
+  if (tickRunning) return;
+  tickRunning = true;
   const startedAt = new Date().toISOString();
   try {
-    const summary = await runRetentionPass({});
+    const summary = await withRunRecord('retention_watch', () => runRetentionPass({}));
     lastRun = { at: startedAt, ok: true, ...summary, errors: summary.errors.length };
     if (summary.flagged > 0 || summary.errors.length) {
       console.log(`[RETENTION] ${summary.checked} checked, ${summary.flagged} flagged `
@@ -307,9 +316,12 @@ async function tick() {
   } catch (err) {
     // runRetentionPass does not throw, so reaching here means something under
     // it did. Recorded rather than only logged: Render's logs roll, and this is
-    // the question somebody asks days later.
+    // the question somebody asks days later — and now in `background_service_runs`
+    // too, which survives the restart that empties `lastRun`.
     lastRun = { at: startedAt, ok: false, error: err.message };
     console.warn('[RETENTION] pass failed:', err.message);
+  } finally {
+    tickRunning = false;
   }
 }
 

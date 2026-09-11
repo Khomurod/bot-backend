@@ -26,6 +26,7 @@
  * than "those three rows were unusual".
  */
 const { findLessons } = require('../../lib/operations/learning');
+const { withRunRecord } = require('./runLedger');
 
 const POLL_MS = 12 * 60 * 60 * 1000;
 const FIRST_TICK_DELAY_MS = 25 * 60 * 1000;
@@ -138,11 +139,18 @@ let stopped = true;
  * failure looks like its success is the problem this phase exists to remove.
  */
 let lastRun = null;
+let tickRunning = false;
 
 async function tick() {
+  // The same missing guard as retention's, and structurally identical. Twelve
+  // hours is long enough that overlap is unlikely and not long enough that it
+  // is impossible, and an unguarded pass upserting suggestions twice is a
+  // silent duplicate nobody would trace back to here.
+  if (tickRunning) return;
+  tickRunning = true;
   const startedAt = new Date().toISOString();
   try {
-    const summary = await runLearningPass({});
+    const summary = await withRunRecord('learning_pass', () => runLearningPass({}));
     lastRun = { at: startedAt, ok: true, ...summary, errors: summary.errors.length };
     if (summary.announced > 0) {
       console.log(`[LEARNING] ${summary.announced} suggestion(s) raised for an administrator`);
@@ -150,6 +158,8 @@ async function tick() {
   } catch (err) {
     lastRun = { at: startedAt, ok: false, error: err.message };
     console.warn('[LEARNING] pass failed:', err.message);
+  } finally {
+    tickRunning = false;
   }
 }
 
