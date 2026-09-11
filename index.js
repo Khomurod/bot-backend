@@ -71,6 +71,10 @@ const {
   startReturnToRoadWatch,
   stopReturnToRoadWatch,
 } = require('./services/homeTime/returnToRoadWatch');
+const {
+  startLoadLifecycleWatch,
+  stopLoadLifecycleWatch,
+} = require('./services/loads/lifecycleWatch');
 const { registerKnownCapabilities } = require('./services/ai/capabilityRegistry');
 const {
   startRouteControlService,
@@ -352,6 +356,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopRoadBonusNotifierService(); } catch (err) { console.error('[SHUTDOWN] stopRoadBonusNotifierService failed:', err.message); }
   try { stopHomeTimeReminderService(); } catch (err) { console.error('[SHUTDOWN] stopHomeTimeReminderService failed:', err.message); }
   try { stopReturnToRoadWatch(); } catch (err) { console.error('[SHUTDOWN] stopReturnToRoadWatch failed:', err.message); }
+  try { stopLoadLifecycleWatch(); } catch (err) { console.error('[SHUTDOWN] stopLoadLifecycleWatch failed:', err.message); }
   try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
   try { stopConsistencyService(); } catch (err) { console.error('[SHUTDOWN] stopConsistencyService failed:', err.message); }
@@ -416,6 +421,9 @@ async function start() {
   // Notices when a driver who is home goes back to work — a Datatruck load plus
   // the truck's own movement, never one of them alone.
   startReturnToRoadWatch();
+  // Works out what each load is actually doing from where the truck is, because
+  // a board status is a plan and is routinely days out of date.
+  startLoadLifecycleWatch();
   // Put the AI responsibilities catalogue into the database, so Settings → AI
   // has something to show and an administrator has something to switch off.
   // Descriptive columns only — a capability switched off stays off.

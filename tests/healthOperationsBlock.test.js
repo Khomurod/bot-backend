@@ -91,6 +91,12 @@ function summaryDeps(overrides = {}) {
     findings: { async summariseFindings() { return { info: 1, warning: 2, serious: 0, total: 3 }; } },
     people: { async summariseIdentityCoverage() { return { people: 200, activeDriverGroups: 205, groupsWithoutPerson: 0, openUnits: 190, unstamped: { roadHistory: 0, requests: 0, mileage: 0 } }; } },
     integrity: { async countDuplicateOpenStays() { return []; }, async indexExists() { return true; } },
+    // The load lifecycle block is composed in, so it is faked in.
+    loads: {
+      async summariseLoadPhases() {
+        return { total: 12, byPhase: { in_transit: 7, at_pickup: 3, delivered: 2 }, unclear: 2, conflicted: 1 };
+      },
+    },
     // The live Home Time block is composed in, so it is faked in.
     homeTimeHealth: {
       async getHomeTimeHealth() {
@@ -136,6 +142,8 @@ test('the summary is counts and timestamps, and a capped check is named with its
   assert.equal(s.homeTime.returnWatch.watching, 2);
   assert.equal(s.homeTime.automaticReturns.applied, 1);
   assert.equal(s.homeTime.aiResponsibilities.registered, 17);
+  assert.equal(s.loads.total, 12);
+  assert.equal(s.loads.conflicted, 1, 'a load the board and the truck disagree about is visible live');
   const gemini = s.aiModels.find((p) => p.provider === 'gemini');
   assert.deepEqual(gemini, { provider: 'gemini', enabled: true, chain: 1, discovered: 2, refreshedAt: '2026-09-10T06:00:00.000Z', refreshError: null });
 });

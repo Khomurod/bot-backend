@@ -75,7 +75,11 @@ export default function NotificationRoutingCard({ flash }) {
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState(null);
-  const [suggestion, setSuggestion] = React.useState(null);
+  // The corrected value AND which field it belongs to. Without the field, the
+  // button can only guess — and it guessed `defaultChatId`, so accepting a fix
+  // for a category override would have rerouted every defaulted category while
+  // leaving the broken override exactly as it was.
+  const [fix, setFix] = React.useState(null);
 
   const apply = React.useCallback((payload) => {
     setData(payload);
@@ -100,20 +104,35 @@ export default function NotificationRoutingCard({ flash }) {
 
   async function save(patch) {
     setBusy(true);
-    setSuggestion(null);
+    setFix(null);
     try {
       const settings = await api.updateNotificationSettings(patch);
       setData((d) => ({ ...d, settings }));
       setError(null);
       flash?.("success", "Saved.");
     } catch (err) {
-      // The route hands back the corrected id when a minus sign was dropped.
-      setSuggestion(err?.suggestion || null);
+      // The route hands back the corrected id AND the field it belongs to when
+      // a minus sign was dropped.
+      setFix(err?.suggestion ? { suggestion: err.suggestion, field: err.field } : null);
       setError(err.message || "Could not save.");
       flash?.("error", err.message || "Could not save.");
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Apply a server suggestion to the field the server said it belongs to. */
+  function acceptFix() {
+    if (!fix?.suggestion) return;
+    const field = fix.field || "defaultChatId";
+    if (field.startsWith("categoryChatIds.")) {
+      const key = field.slice("categoryChatIds.".length);
+      setForm((f) => ({ ...f, categoryChatIds: { ...f.categoryChatIds, [key]: fix.suggestion } }));
+      save({ categoryChatIds: { [key]: fix.suggestion } });
+      return;
+    }
+    setForm((f) => ({ ...f, defaultChatId: fix.suggestion }));
+    save({ defaultChatId: fix.suggestion });
   }
 
   async function test() {
@@ -159,17 +178,14 @@ export default function NotificationRoutingCard({ flash }) {
       </p>
 
       {error && <p className="error">{error}</p>}
-      {suggestion && (
+      {fix && (
         <p className="error">
-          Did you mean <code>{suggestion}</code>?{" "}
+          Did you mean <code>{fix.suggestion}</code>?{" "}
           <button
             type="button"
             className="btn btn-sm"
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              setForm((f) => ({ ...f, defaultChatId: suggestion }));
-              save({ defaultChatId: suggestion });
-            }}
+            onClick={acceptFix}
           >
             Use it
           </button>

@@ -238,3 +238,88 @@ test('the repeat window lets a condition that is STILL true be said again later'
     assert.equal(await n.noticeSentWithin('fuel:group:7', 168), false,
       'a week later the same risk is worth mentioning again');
   });
+
+// ── the immediate claim must respect the lease ───────────────────────────────
+
+test('an immediate claim is REFUSED while the sweep holds the lease',
+  { skip: skipWithoutPg() }, async (t) => {
+    // The sweep runs on its own timer and can reach a freshly inserted row in
+    // the moment between the enqueue and the immediate claim. A claim checking
+    // only `state = 'pending'` would succeed anyway and both callers would send
+    // the same notice — defeating the one guarantee this table makes.
+    const harness = await seed(t);
+    const { operationalNotifications: n } = load(harness);
+    const row = await n.enqueueNotification({ ...BASE, noticeKey: 'race-1' });
+
+    const bySweep = await n.claimDueNotifications({ limit: 10 });
+    assert.equal(bySweep.length, 1, 'the sweep got there first');
+
+    const immediate = await n.claimNotificationById(row.id);
+    assert.equal(immediate, null, 'the second claimant must be turned away, not served');
+
+    const after = await harness.query(
+      'SELECT attempts FROM operational_notifications WHERE id = $1', [row.id]
+    );
+    assert.equal(after.rows[0].attempts, 1, 'and the refused claim must not burn an attempt');
+  });
+
+test('an expired lease is claimable again — a crashed worker must not park a notice forever',
+  { skip: skipWithoutPg() }, async (t) => {
+    const harness = await seed(t);
+    const { operationalNotifications: n } = load(harness);
+    const row = await n.enqueueNotification({ ...BASE, noticeKey: 'race-2' });
+    await n.claimNotificationById(row.id);
+    await harness.query(
+      "UPDATE operational_notifications SET claimed_until = NOW() - INTERVAL '5 minutes' WHERE id = $1",
+      [row.id]
+    );
+    const again = await n.claimNotificationById(row.id);
+    assert.ok(again, 'the lease expired, so the work is available');
+    assert.equal(again.attempts, 2);
+  });
+
+test('an immediate claim respects the attempt limit too', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await seed(t);
+  const { operationalNotifications: n } = load(harness);
+  const row = await n.enqueueNotification({ ...BASE, noticeKey: 'race-3' });
+  await harness.query(
+    'UPDATE operational_notifications SET attempts = $2 WHERE id = $1', [row.id, n.MAX_ATTEMPTS]
+  );
+  assert.equal(await n.claimNotificationById(row.id), null, 'out of attempts is out of attempts');
+});
+
+// ── overlapping saves must not lose each other's changes ─────────────────────
+
+test('two overlapping override saves BOTH survive', { skip: skipWithoutPg() }, async (t) => {
+  // Two administrators, or one operator blurring a second field while the first
+  // save is still in flight. A read-modify-write in JavaScript lets the later
+  // write discard the earlier one, which routes alerts to the wrong chat.
+  const harness = await seed(t);
+  const { operationalNotificationSettings: s } = load(harness);
+  await s.updateNotificationSettings({ defaultChatId: '-100111' });
+
+  await Promise.all([
+    s.updateNotificationSettings({ categoryChatIds: { fuel: '-100222' } }),
+    s.updateNotificationSettings({ categoryChatIds: { retention: '-100333' } }),
+  ]);
+
+  const cfg = await s.getNotificationSettings({ fresh: true });
+  assert.equal(cfg.categoryChatIds.fuel, '-100222', 'the first change survived');
+  assert.equal(cfg.categoryChatIds.retention, '-100333', 'and so did the second');
+});
+
+test('a clear and a set in flight together both land', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await seed(t);
+  const { operationalNotificationSettings: s } = load(harness);
+  await s.updateNotificationSettings({
+    categoryChatIds: { fuel: '-100222', retention: '-100333' },
+  });
+  await Promise.all([
+    s.updateNotificationSettings({ categoryChatIds: { fuel: '' } }),
+    s.updateNotificationSettings({ categoryChatIds: { safety_escalation: '-100444' } }),
+  ]);
+  const cfg = await s.getNotificationSettings({ fresh: true });
+  assert.equal('fuel' in cfg.categoryChatIds, false, 'the clear landed');
+  assert.equal(cfg.categoryChatIds.safety_escalation, '-100444', 'the set landed');
+  assert.equal(cfg.categoryChatIds.retention, '-100333', 'and the untouched one is intact');
+});

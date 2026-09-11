@@ -99,16 +99,30 @@ async function noticeSentWithin(noticeKeyPrefix, hours) {
   return res.rowCount > 0;
 }
 
-/** One notice by id, claimed under a lease. Used for an immediate send. */
+/**
+ * One notice by id, claimed under a lease. Used for an immediate send.
+ *
+ * The lease and the attempt limit are checked HERE, not only in the batch
+ * claim. The sweep runs on its own timer and can reach a freshly inserted row
+ * in the moment between the enqueue and this call; a claim that looked only at
+ * `state = 'pending'` would succeed anyway, and both callers would send the
+ * same notice — defeating the one guarantee this table exists to make.
+ *
+ * Returning null when somebody else holds the lease is the correct outcome, and
+ * the caller treats it as a success: the sweep owns that notice now.
+ */
 async function claimNotificationById(id, { leaseSeconds = DEFAULT_LEASE_SECONDS } = {}) {
   const res = await query(
     `UPDATE operational_notifications
         SET claimed_until = NOW() + ($2 || ' seconds')::interval,
             attempts = attempts + 1,
             updated_at = NOW()
-      WHERE id = $1 AND state = 'pending'
+      WHERE id = $1
+        AND state = 'pending'
+        AND (claimed_until IS NULL OR claimed_until <= NOW())
+        AND attempts < $3
       RETURNING *`,
-    [id, String(leaseSeconds)]
+    [id, String(leaseSeconds), MAX_ATTEMPTS]
   );
   return mapNotice(res.rows[0]) || null;
 }

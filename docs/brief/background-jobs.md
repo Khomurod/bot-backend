@@ -135,3 +135,44 @@ retry.**
 after-the-fact record of what was sent (§4).
 
 ---
+
+## Load lifecycle watch (every 10 minutes, first pass 5 minutes after boot)
+
+`services/loads/lifecycleWatch.js`. Works out what each active load is actually
+doing — assigned, heading to pickup, at pickup, loaded and moving, at delivery,
+delivered, empty — and writes it to `load_lifecycle`, one row per Datatruck
+order.
+
+**Dispatch status is a plan, not an observation.** A load reads `dispatched` the
+moment somebody assigns it, often days before the truck moves, and frequently
+still reads `in_transit` long after delivery because nobody went back to change
+it. So the phase comes from **where the truck is**, with the board as a
+corroborating signal.
+
+Two things follow, enforced in `lib/loads/lifecycle.js` rather than left to a
+caller:
+
+- **Arrival is observed, departure is remembered.** "At pickup" is a distance
+  measurable right now. "Delivered" is not: it is the truck having been at the
+  receiver and then left, and a truck 200 miles short of a receiver looks
+  identical to one 200 miles past it. `was_at_pickup` and `was_at_delivery` are
+  OR-ed and never cleared, because a departure is not evidence the arrival was
+  imagined.
+- **Only a board running AHEAD of the truck is a conflict.** A lagging board
+  describes almost every delivered load and flagging it would make the check
+  pure noise. A board claiming more than the coordinates support means somebody
+  recorded work that has not happened, and everything downstream will believe it.
+
+A conflict never moves the phase. It files `load.phase_unclear` at the `warning`
+tier, which has **no registered action**, so "Wenze never guesses a load's
+status" is true by construction rather than by care.
+
+**Cost:** one fleet fetch and one order window per pass, matched locally, so
+ninety loads cost the same as one. It deliberately does not build the Live
+Locations snapshot, which geocodes and computes ETAs nothing here reads.
+
+The driver on a load is resolved through `driver_units` to a **person**, not a
+chat, so a truck or group change does not detach a load from its history.
+
+Visible on `/api/health` → `operations.loads`: how many loads are tracked, in
+what phase, how many are unclear and how many have a board disagreement.

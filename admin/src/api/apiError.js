@@ -13,7 +13,10 @@
  * ALONGSIDE it, for admin/src/utils/pageFailure.js to classify.
  */
 export class ApiError extends Error {
-  constructor(message, { status = 0, code = null, detail = null, url = null, htmlBody = false } = {}) {
+  constructor(message, {
+    status = 0, code = null, detail = null, url = null, htmlBody = false,
+    field = null, suggestion = null,
+  } = {}) {
     super(message);
     this.name = 'ApiError';
     /** HTTP status; 0 when the request never produced a response. */
@@ -28,6 +31,17 @@ export class ApiError extends Error {
      * is asking for an endpoint the deployed server does not have.
      */
     this.htmlBody = htmlBody;
+    /**
+     * Which input the server refused, when it named one. A screen that can
+     * only say "something was wrong" makes the operator hunt for it.
+     */
+    this.field = field;
+    /**
+     * A corrected value the server is confident about — a chat id with its
+     * dropped minus sign restored, say. Dropping this on the floor is how a
+     * one-click fix becomes a button that never appears.
+     */
+    this.suggestion = suggestion;
   }
 }
 

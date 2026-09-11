@@ -78,17 +78,28 @@ async function updateNotificationSettings(patch = {}) {
   }
 
   if (patch.categoryChatIds !== undefined) {
-    const current = (await getNotificationSettings({ fresh: true })).categoryChatIds || {};
-    const next = { ...current };
+    // MERGED IN SQL, NOT IN JAVASCRIPT. Reading the stored JSON, merging, and
+    // writing the whole column back is a read-modify-write: two overlapping
+    // saves — two administrators, or one blurring a second field while the
+    // first save is still in flight — each read the same old value, and the
+    // later write silently discards the other's change. Routing alerts to the
+    // wrong chat is exactly the failure this table exists to prevent, so the
+    // merge happens inside the UPDATE, where no read can interleave.
+    const toSet = {};
+    const toRemove = [];
     for (const [key, raw] of Object.entries(patch.categoryChatIds || {})) {
       if (!CATEGORY_KEYS.includes(key)) {
         throw new Error(`Unknown notification category "${key}".`);
       }
       const v = String(raw ?? '').trim();
-      if (v === '') delete next[key];
-      else next[key] = v;
+      if (v === '') toRemove.push(key);
+      else toSet[key] = v;
     }
-    set('category_chat_ids', JSON.stringify(next));
+    // `||` merges the additions over whatever is stored at write time;
+    // `- text[]` removes the cleared keys.
+    sets.push(`category_chat_ids = (COALESCE(category_chat_ids, '{}'::jsonb) || $${i}::jsonb) - $${i + 1}::text[]`);
+    values.push(JSON.stringify(toSet), toRemove);
+    i += 2;
   }
 
   set('updated_by', patch.updatedBy ?? null);

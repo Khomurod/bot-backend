@@ -178,3 +178,44 @@ test('a different event on the same subject is a different key', () => {
 test('clip leaves short text exactly alone', () => {
   assert.equal(clip('already short', 100), 'already short');
 });
+
+// ── truncation must never break the markup ───────────────────────────────────
+
+test('a body of ampersands is cut on the TEXT, never through an entity', () => {
+  // Escaping turns one `&` into five characters, so a notice whose plain text
+  // fits can arrive at several times the limit — and slicing the escaped form
+  // leaves a dangling `&amp` that Telegram rejects as malformed HTML on every
+  // retry until the notice is abandoned.
+  const amp = 'a & b & c '.repeat(40);
+  const body = composeNotice({ title: 't', lines: Array(8).fill(amp), action: 'call the driver' });
+
+  assert.ok(body.length <= MAX_BODY, `${body.length} > ${MAX_BODY} — the ESCAPED body is what Telegram gets`);
+  assert.equal(/&[a-z]*$|&#?[0-9a-z]*$/i.test(body), false, 'a half-written entity reached the message');
+  assert.equal(/<[^>]*$/.test(body), false, 'a half-written tag reached the message');
+});
+
+test('the tags always balance, whatever was dropped', () => {
+  const body = composeNotice({
+    title: 'x'.repeat(300), lines: Array(20).fill('y'.repeat(200)),
+    reason: 'z'.repeat(400), action: 'do it',
+  });
+  assert.equal((body.match(/<b>/g) || []).length, (body.match(/<\/b>/g) || []).length);
+  assert.equal((body.match(/<i>/g) || []).length, (body.match(/<\/i>/g) || []).length);
+});
+
+test('the heading and the thing to do survive; the middle is what goes', () => {
+  const body = composeNotice({
+    title: 'Unit 310 may not reach its fuel stop',
+    lines: Array(30).fill('a supporting detail '.repeat(8)),
+    action: 'Reassign or call the driver',
+  });
+  assert.match(body, /Unit 310 may not reach its fuel stop/, 'a reader needs to know what happened');
+  assert.match(body, /Reassign or call the driver/, 'and what to do');
+});
+
+test('one enormous title alone is still a valid message', () => {
+  const body = composeNotice({ title: '&'.repeat(3000) });
+  assert.ok(body.length <= MAX_BODY);
+  assert.equal(/&[a-z]*$/i.test(body), false);
+  assert.match(body, /<\/b>$/, 'the closing tag is added after the cut, so it cannot be cut');
+});
