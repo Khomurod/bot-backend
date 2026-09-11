@@ -49,9 +49,10 @@ test('the roster is the two providers already in use, and only registered capabi
   const capabilities = await aiSettings.listCapabilities();
   assert.deepEqual(
     capabilities.map((c) => c.capabilityKey).sort(),
-    // 0030 registered the first, 0035 the second. Both are switches an
-    // administrator has to be able to reach; neither is a grant.
-    ['home_time_return_to_road', 'recruiting_after_hours_reply'],
+    // Registered by migrations 0030, 0035 and 0036. Each is a switch an
+    // administrator has to be able to reach; none of them is a grant, and the
+    // schema CHECK below holds for all of them.
+    ['home_time_return_to_road', 'recruiting_after_hours_reply', 'retention_summary'],
     'exactly the capabilities a migration registered — nothing appears by accident',
   );
   assert.ok(capabilities.every((c) => c.mayAutoApply === false),

@@ -7,6 +7,7 @@ import FindingDetailModal from "./operations/FindingDetailModal";
 import HistoryTab from "./operations/HistoryTab";
 import ChecksTab from "./operations/ChecksTab";
 import IdentityTab from "./operations/IdentityTab";
+import RetentionTab from "./operations/RetentionTab";
 import * as api from "../api";
 
 /**
@@ -25,6 +26,7 @@ const TABS = [
   { key: "history", label: "History" },
   { key: "checks", label: "Automation" },
   { key: "identity", label: "Identity" },
+  { key: "retention", label: "Retention" },
 ];
 
 export default function OperationsPage() {
@@ -89,6 +91,7 @@ export default function OperationsPage() {
         <ChecksTab {...ops} preview={preview} loadPreview={loadPreview} />
       )}
       {ops.tab === "identity" && <IdentityTab flash={flash} />}
+      {ops.tab === "retention" && <RetentionTab flash={flash} />}
 
       {ops.selectedId && <FindingDetailModal {...ops} />}
     </div>

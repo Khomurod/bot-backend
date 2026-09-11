@@ -258,3 +258,45 @@ numbers that justified it, and says explicitly that no automatic action was
 taken.
 
 Visible on `/api/health` → `operations.safety`.
+
+## Retention watch (every 4 hours, first pass 15 minutes after boot)
+
+`services/retention/watch.js`. Scores every active driver from facts other
+features already recorded, and posts to the `retention` notification category
+when the score crosses a threshold. **Operations chat only — never the driver's
+own.**
+
+Deliberately slow. Nothing here is urgent in minutes: a driver five weeks past
+the allowance will still be five weeks past it at teatime, and a slow timer is
+the cheapest guard against the failure this feature is most likely to have,
+which is saying too much.
+
+**The decision is arithmetic** (`lib/retention/signals.js`, pure). With every
+provider switched off the same drivers are flagged with the same reasons; AI
+words one sentence and is given counts and reason phrases with no name and no
+message text.
+
+**A signal is something the COMPANY did or something the driver SAID** — weeks
+past the allowance, a home window promised and missed, bonus earned and unpaid,
+days sitting empty, a message that read as leaving. Never an assessment of the
+driver. `refuseEmploymentLanguage` refuses a notice that strays, on the model's
+output and again on the finished body.
+
+Said once. Said again only when the score rises by 3 or more, or a week has
+passed. An acknowledgement from Operations → Retention buys silence until it
+gets materially worse — never indefinitely.
+
+## The roster itself
+
+Every job on this page is started and stopped in one place:
+`services/backgroundServices.js`, split out of `index.js` when that passed the
+size limit. It is a list of calls, not a framework, and the comment beside each
+one says what that service may SEND — several can message a driver or spend
+money. `tests/backgroundServices.test.js` asserts that everything started is
+also stopped, which is the failure a split like that introduces quietly: a job
+whose `start` moved and whose `stop` did not keeps running in a process that was
+supposed to have gone away, and nothing fails.
+
+What stayed in `index.js` is the process itself — the bot, the HTTP server, the
+database, the leads child process and the memory watchdog — because the ordering
+around those is boot sequencing rather than a roster.

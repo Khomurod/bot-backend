@@ -74,20 +74,25 @@ test('nothing in the tree requires a removed module', () => {
 });
 
 test('no background job of a removed feature is started or stopped', () => {
-  const index = read('index.js');
+  // The roster was split out of index.js; boot is now both files, and reading
+  // only one would let a resurrected job hide in the other.
+  const boot = read('index.js') + read('services/backgroundServices.js');
   for (const gone of [
     'startTrailerNotificationService', 'stopTrailerNotificationService',
     'trailerDepartmentEnabled', 'mountFleet',
   ]) {
-    assert.ok(!index.includes(gone), `index.js must not reference ${gone}`);
+    assert.ok(!boot.includes(gone), `boot must not reference ${gone}`);
   }
   // …and the surviving jobs are all still both started and stopped.
-  const started = [...index.matchAll(/^\s*(start[A-Z]\w+)\(/gm)].map((m) => m[1]);
+  const started = [...boot.matchAll(/^\s*(start[A-Z]\w+)\(/gm)].map((m) => m[1]);
   assert.ok(started.length >= 15, `expected the surviving jobs to still start, saw ${started.length}`);
   for (const start of started) {
-    if (start === 'startServer' || start === 'startLeadsBot') continue;
+    // The HTTP server and the leads child process are stopped through the
+    // shutdown promise block, not by a bare stopX() call; the roster's own
+    // start/stop parity is asserted in tests/backgroundServices.test.js.
+    if (['startServer', 'startLeadsBot', 'startBackgroundServices'].includes(start)) continue;
     const stop = start.replace(/^start/, 'stop');
-    assert.ok(index.includes(stop), `${start} is started but ${stop} is never called on shutdown`);
+    assert.ok(boot.includes(stop), `${start} is started but ${stop} is never called on shutdown`);
   }
 });
 

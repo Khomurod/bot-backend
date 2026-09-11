@@ -135,6 +135,34 @@ file passed the 500-line limit.
   every truck they have held, in time, or a plain "not placed yet". See
   `docs/brief/data-model.md` → the person layer.
 
+### Driver retention
+
+- **Wenze says when the company is about to lose somebody, while there is still
+  time to do something.** Every four hours it scores each active driver from
+  facts other features already recorded — weeks past the road allowance, a home
+  request that expired unanswered, earned bonus never posted, days sitting
+  empty, and what the driver said in their own words
+  (`chat_message_annotations`: `quit_signal`, `complaint`, sentiment). Above a
+  threshold it posts to the `retention` notification category with **the
+  reasons and a suggested action**, and the action is always something the
+  company does: ring them, answer the request, pay the bonus, find them a load.
+- **A retention signal is something the COMPANY did, or something the driver
+  SAID — never an assessment of the driver.** No behaviour score, no
+  performance measure, no employment decision. `refuseEmploymentLanguage` in
+  `services/retention/watch.js` refuses a notice that strays, and the
+  Operations → Retention screen has exactly two endpoints: read the list and
+  say "we know". There is deliberately nowhere to record an opinion of a driver.
+- **The decision is arithmetic.** With every AI provider switched off, the same
+  drivers are flagged for the same reasons; a model only words one sentence, and
+  is given counts and reason phrases with no name and no message text.
+- Silence is measured against **that driver's own** earlier volume, not an
+  absolute — somebody who never texted much is not a risk. Message-derived
+  signals are capped at 30 days because `chat_logs` is pruned there, and a
+  driver whose messages were never annotated scores NULL rather than neutral.
+- Said once; said again only when the score rises by 3 or more, or a week has
+  passed. An acknowledgement buys silence until it gets materially worse.
+  `driver_retention_assessments`, `docs/architecture/driver-retention.md`.
+
 ### Fuel monitor
 
 The fuel team posts a gas-station location into a driver group → a watch row is
