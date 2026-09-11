@@ -11,7 +11,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  harness, NOW, at, HOME, DRIVER, watcher,
+  harness, NOW, at, HOME, FAR, DRIVER, watcher,
 } = require('./helpers/returnWatchHarness');
 
 /**
@@ -181,4 +181,73 @@ test('one watched driver resolving IS evidence the pass could run', async () => 
   assert.equal(summary.driversSeen, 1);
   assert.equal(summary.blocked, undefined,
     'a degraded pass that still answered about its drivers is not blocked');
+});
+
+// ── one driver's failure is one driver's failure ─────────────────────────────
+//
+// Production ran this watch at sixty consecutive failures on a critical worker
+// while the pass itself completed every twelve minutes. The loop over the
+// drivers at home sat bare inside the pass's single try, so whatever was thrown
+// for one of them abandoned the rest, skipped the resolve, and painted the
+// whole pass red — and the published reason could only say `other`.
+
+test('a driver that throws does not abandon the drivers after it', async () => {
+  const second = { ...DRIVER, groupId: 4, roadHistoryId: 413 };
+  const third = { ...DRIVER, groupId: 5, roadHistoryId: 414 };
+  const { deps, calls } = harness({
+    drivers: [DRIVER, second, third],
+    failObservationFor: DRIVER.groupId,
+    location: { lat: FAR.lat, lng: FAR.lng, speedMph: 61, lastUpdated: at(5) },
+    order: { load: { loadIdentifier: 'L1', status: 'dispatched', pickupTime: at(120) } },
+  });
+
+  const summary = await watcher.runReturnToRoadCheck({ now: NOW, deps });
+
+  assert.equal(summary.driverErrors, 1);
+  assert.equal(summary.checked, 2, 'the two healthy drivers were still checked');
+  assert.equal(summary.error, undefined, 'a partial pass is not a failed pass');
+  assert.equal(calls.resolved.length, 1, 'cleared findings are still resolved');
+});
+
+test('the failing driver’s kind is recorded, and never its message', async () => {
+  const { deps } = harness({
+    drivers: [DRIVER],
+    failObservationFor: DRIVER.groupId,
+  });
+
+  const summary = await watcher.runReturnToRoadCheck({ now: NOW, deps });
+
+  assert.equal(summary.errorKind, 'bad_value');
+  // Every driver failed, so there is nothing partial left to report.
+  assert.match(summary.error, /every one of the 1 driver\(s\)/);
+  assert.match(summary.error, /refused as invalid/);
+  // The message quotes the value the database rejected; the summary must not.
+  assert.ok(!summary.error.includes('NaN'), summary.error);
+});
+
+test('a pass where only some drivers failed stays healthy in the ledger', async () => {
+  const second = { ...DRIVER, groupId: 4, roadHistoryId: 413 };
+  const { deps } = harness({ drivers: [DRIVER, second], failObservationFor: 4 });
+
+  const summary = await watcher.runReturnToRoadCheck({ now: NOW, deps });
+
+  const { statusFromSummary } = require('../services/operations/runLedger');
+  assert.equal(statusFromSummary(summary).status, 'ok');
+  assert.equal(summary.driverErrors, 1);
+});
+
+test('a code fault does not hide behind a provider outage', async () => {
+  // Every driver throwing makes `driversSeen` zero, which is also the shape of
+  // "no telemetry answered". `blocked` is read before `error`, so without the
+  // guard a real exception would be reported as a configuration problem.
+  const { deps } = harness({
+    drivers: [DRIVER],
+    failObservationFor: DRIVER.groupId,
+    providerErrors: [{ provider: 'samsara', code: 429 }],
+  });
+
+  const summary = await watcher.runReturnToRoadCheck({ now: NOW, deps });
+
+  assert.equal(summary.blocked, undefined, 'the exception is the story, not the 429');
+  assert.match(summary.error, /every one of the 1 driver\(s\)/);
 });

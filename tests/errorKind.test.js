@@ -159,3 +159,45 @@ test('and adding it did not reopen the id problem', () => {
   assert.equal(classifyErrorKind('the API could not read road_history 404'), 'other');
   assert.equal(classifyErrorKind('api 500 something'), 'other');
 });
+
+// ── the two commonest `other`s, given names ──────────────────────────────────
+//
+// A critical worker sat at sixty consecutive failures and the only thing any
+// public surface could say was "the message is on the What is running screen".
+// `other` is the category that answers nothing, and in this application the two
+// things most likely to land in it are a value the database refused and a
+// stored secret that will not open. Both are now named — and both categories
+// are still words from the fixed list, so nothing from the message travels.
+
+test('a value the database refused is named, and the value does not travel', () => {
+  for (const message of [
+    'invalid input syntax for type integer: "NaN"',
+    'value too long for type character varying(64)',
+    'date/time field value out of range: "2027-13-45"',
+    'numeric field overflow',
+    'invalid byte sequence for encoding "UTF8": 0x00',
+  ]) {
+    const kind = classifyErrorKind(message);
+    assert.equal(kind, 'bad_value', message);
+    assert.ok(!describeErrorKind(kind).includes('NaN'));
+    assert.ok(!describeErrorKind(kind).includes('64'));
+    assert.ok(!describeErrorKind(kind).includes('varying'));
+  }
+});
+
+test('a secret that will not decrypt is named rather than left as other', () => {
+  for (const message of [
+    'Unsupported state or unable to authenticate data',
+    'error:1C800064:Provider routines::bad decrypt',
+    'wrong final block length',
+  ]) {
+    assert.equal(classifyErrorKind(message), 'decrypt', message);
+  }
+});
+
+test('a refused value is not mistaken for a schema problem', () => {
+  // `column ... does not exist` is a code bug; `invalid input syntax` is a data
+  // bug. Different afternoons, and the more specific pattern must still win.
+  assert.equal(classifyErrorKind('column "unit" does not exist'), 'missing_column');
+  assert.equal(classifyErrorKind('relation "x" does not exist'), 'missing_table');
+});

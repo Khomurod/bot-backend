@@ -39,7 +39,7 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 | `raiseApprovalService` | sleeps to `next_run_at`, capped 1h; re-armed on a settings save (was 60s) | weekly raise round auto-send, `service_runs` dedupe |
 | `fuelStopAlertService` | 150s | fuel-stop proximity replies |
 | `homeTimeReminderService` | 5 min (first tick +30s) | the two clarification reminders |
-| `services/homeTime/returnToRoadWatch.js` (`startReturnToRoadWatch`) | 12 min, first tick 4 min | Watches drivers who are at home and decides whether they went back to work — Datatruck load + truck movement. No driver at home means no provider call at all. Files a finding; the corrections pass applies the high-confidence ones |
+| `services/homeTime/returnToRoadWatch.js` (`startReturnToRoadWatch`) | 12 min, first tick 4 min | Watches drivers who are at home and decides whether they went back to work — Datatruck load + truck movement. No driver at home means no provider call at all. Files a finding; the corrections pass applies the high-confidence ones. **Each driver is checked inside its own try**: one that throws is counted and its error KIND recorded, and the pass is a failure only when every watched driver failed |
 | `roadBonusNotifierService` | 10 min (first tick +20s) | retry safety net for road-bonus summaries |
 | `datatruckDocumentService` | `DATATRUCK_DOC_POLL_MINUTES` (15) | new BOL/POD → matching driver group, deduped |
 | `duplicateUnitCheckService` | 15 min (first tick +90s) | duplicate-unit / name-mismatch reports, **and the only writer of `groups.samsara_vehicle_id`** |
@@ -51,7 +51,7 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 | `facebookWebhookService` worker | drains on arrival; retry wakes on `next_retry_at`; 15 min idle sweep (was a 5s poll) | verified Meta webhook events with retry |
 | `databaseUsageService` | 60s flush | persists the estimated monthly database transfer and logs once at 80/90/95% of the budget |
 | `memoryWatchdog` | **off by default**; 15 min when on | heap/RSS pressure logging. Requires `MEMORY_WATCHDOG_ENABLED='true'`; `MEMORY_WATCHDOG_INTERVAL_MS` is clamped to ≥60s |
-| Python leads child | supervised process | Meta + RingCentral webhook intake |
+| Python leads child | supervised process; **liveness probed every 10 min** (first probe +60s) | Meta + RingCentral webhook intake. The probe GETs the child's own `/health` on loopback and records the answer in the run ledger — a spawn is a lifecycle event, not a heartbeat, and before the probe existed a healthy child read `stale_stopped` after an hour |
 | leads-bot RC subscription reconciler | 15 min (first pass +3s) | re-registers the inbound-SMS subscription **only when the recruiter extension set changes**, so a recruiter who onboards after boot has their replies mirrored without a restart |
 
 Event-driven (no timer) but equally live: the driver-group message pipeline
