@@ -107,17 +107,62 @@ test('a board running AHEAD of the truck IS reported — somebody recorded work 
     nowIso: NOW, load: { ...LOAD, status: 'in_transit' }, position: pos(SHIPPER),
   });
   assert.equal(v.phase, PHASES.AT_PICKUP, 'the coordinates decide');
-  assert.deepEqual(v.conflicts, ['board_says_loaded_but_the_truck_has_not_left_the_shipper']);
+  assert.deepEqual(v.conflicts, ['board_says_loaded_but_the_truck_is_still_at_the_shipper']);
   assert.equal(v.confidence, 'medium', 'medium means a person looks — it does not move the state');
 });
 
-test('"delivered" while the truck is still at the receiver is reported', () => {
+// ── a board ahead is not, by itself, a conflict ──────────────────────────────
+//
+// This was the first rule and production answered it: 75 of 235 loads came back
+// "conflicted" — a third of the fleet — which is not a list anybody reads. A
+// conflict now needs POSITIVE evidence that contradicts the board, and each of
+// the three cases below is the absence of it.
+
+test('a truck at the receiver with the board marked delivered is a delivery, not a disagreement', () => {
   const v = derivePhase({
     nowIso: NOW, load: { ...LOAD, status: 'delivered' },
     position: pos(RECEIVER), remembered: { wasAtPickup: true },
   });
   assert.equal(v.phase, PHASES.AT_DELIVERY);
-  assert.match(v.conflicts[0], /still_at_the_receiver/);
+  assert.deepEqual(v.conflicts, [],
+    'the truck is physically at the receiver and the board says delivered — that '
+    + 'is what a load that just delivered looks like');
+});
+
+test('a loaded truck parked mid-trip is not "still at the shipper"', () => {
+  // Nowhere near either end, stopped, and nothing remembered because this
+  // watcher did not exist when the load started.
+  const v = derivePhase({
+    nowIso: NOW, load: { ...LOAD, status: 'in_transit' },
+    position: pos({ lat: 38, lng: -88.5 }, 0),
+  });
+  assert.deepEqual(v.conflicts, [],
+    'trucks park; the old rule said "has not left the shipper" about a truck '
+    + 'three hundred miles from it');
+  assert.ok(v.signals.includes('board_ahead_of_what_has_been_observed'),
+    'recorded as a signal, so the confidence stays honest without making it a question');
+  assert.equal(v.confidence, 'medium');
+});
+
+test('a delivered load we started watching late is not evidence of anything', () => {
+  const v = derivePhase({
+    nowIso: NOW, load: { ...LOAD, status: 'delivered' },
+    position: pos({ lat: 34, lng: -91 }, 62),
+  });
+  assert.deepEqual(v.conflicts, [],
+    'nothing saw the arrival because nothing was watching — absence of memory '
+    + 'is not evidence that the delivery did not happen');
+});
+
+test('with memory, a load that was never seen at the receiver IS a conflict', () => {
+  const v = derivePhase({
+    nowIso: NOW, load: { ...LOAD, status: 'delivered' },
+    position: pos({ lat: 34, lng: -91 }, 62),
+    remembered: { phase: PHASES.IN_TRANSIT, wasAtPickup: true, wasAtDelivery: false },
+  });
+  assert.deepEqual(v.conflicts, ['board_says_delivered_but_this_load_was_never_seen_at_the_receiver'],
+    'we have been watching this one, it never reached the receiver, and the '
+    + 'board says it is done');
 });
 
 test('a conflict never moves the phase — picking a side propagates the wrong status', () => {
@@ -125,7 +170,9 @@ test('a conflict never moves the phase — picking a side propagates the wrong s
     nowIso: NOW, load: { ...LOAD, status: 'delivered' }, position: pos(SHIPPER),
   });
   assert.equal(v.phase, PHASES.AT_PICKUP, 'where the truck IS, not where the board wishes it were');
-  assert.ok(v.conflicts.length);
+  assert.deepEqual(v.conflicts, ['board_says_delivered_but_the_truck_is_at_the_shipper'],
+    'the strongest case in the set: a completed delivery recorded for a truck '
+    + 'standing at the shipper');
 });
 
 // ── when the coordinates cannot answer ───────────────────────────────────────

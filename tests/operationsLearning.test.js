@@ -17,7 +17,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  findLessons, groupReverts, groupRefusals, describeRevertGroup,
+  findLessons, groupReverts, groupRefusals, describeRevertGroup, describeRefusalGroup,
 } = require('../lib/operations/learning');
 
 const NOW = '2026-09-11T00:00:00Z';
@@ -161,21 +161,47 @@ test('a conversation with no refusal recorded contributes nothing', () => {
 
 // ── the shape of the output ─────────────────────────────────────────────────
 
-test('NOTHING IN A SUGGESTION IS AN ACTION — it is data for a person to agree with', () => {
+test('A SUGGESTION NAMES AN ACTION; IT CANNOT BE ONE', () => {
   const lesson = describeRevertGroup({
     actionKey: 'home_time.close_cycle', count: 5, checkKeys: ['home_time.closable_open_cycle'],
     reasons: ['wrong date'], revertedBy: ['boss'], subjects: ['road_history:1'],
     firstAt: ago(9), lastAt: ago(1),
   });
-  // Plain data: a title, some lines, a suggestion, evidence. No function, no
-  // setting key to write, no id to apply.
+  // Plain data: a title, some lines, a suggestion, evidence, and the NAME of a
+  // registered action. Naming is not doing — only an administrator's POST to
+  // /accept, behind the apply gate, ever runs one.
   assert.deepEqual(
     Object.keys(lesson).sort(),
-    ['evidence', 'kind', 'lines', 'subjectId', 'suggestion', 'title'],
+    ['applyAction', 'evidence', 'kind', 'lines', 'subjectId', 'suggestion', 'title'],
   );
+  assert.deepEqual(lesson.applyAction, {
+    action: 'disable_auto_apply',
+    payload: { checkKeys: ['home_time.closable_open_cycle'] },
+  });
   for (const value of Object.values(lesson)) {
     assert.notEqual(typeof value, 'function', 'a lesson cannot do anything');
   }
+  assert.equal(JSON.stringify(lesson).includes('function'), false);
+});
+
+test('a suggestion that is not a setting names NO action, rather than pretending', () => {
+  const lesson = describeRefusalGroup({
+    kind: 'unapproved_figure', count: 4, conversations: 3,
+    examples: ['the draft quoted a rate nobody approved'],
+  });
+  assert.equal(lesson.applyAction, null,
+    'what a company offers a driver is a fact a PERSON supplies under Teach Wenze. '
+    + 'A machine that could add it from a pattern in refused drafts would be '
+    + 'learning company offers from the questions candidates asked');
+});
+
+test('the only action a lesson may ever name turns automation OFF', () => {
+  // eslint-disable-next-line global-require
+  const { listLearningActions } = require('../services/operations/learningActions');
+  assert.deepEqual(listLearningActions(), ['disable_auto_apply'],
+    'there is deliberately no enable_auto_apply — a machine proposing that it be '
+    + 'trusted with more is the one shape nobody should build, however many '
+    + 'confirmations sit in front of it');
 });
 
 test('the list is capped — a list nobody reads is no list', () => {

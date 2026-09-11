@@ -5,6 +5,7 @@ const { DateTime } = require('luxon');
 const db = require('../database/db');
 const { classifyDriverGroups } = require('./groupStatusAiClassifier');
 const { mayDeactivate, describeRefusal } = require('../lib/drivers/deactivationGuard');
+const { withRunRecord, noteHeartbeat } = require('./operations/runLedger');
 
 const TZ = process.env.GROUP_STATUS_AI_TZ || 'America/Chicago';
 const DEFAULT_HOURS = [6, 18];
@@ -117,7 +118,7 @@ async function tick() {
   if (tickRunning) return;
   tickRunning = true;
   try {
-    await checkAndRunScheduled(false);
+    await withRunRecord('group_status_ai', () => checkAndRunScheduled(false));
   } catch (err) {
     console.error('[GROUP-STATUS-AI] Tick error:', err.message);
   } finally {

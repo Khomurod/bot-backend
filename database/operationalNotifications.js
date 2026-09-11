@@ -237,6 +237,68 @@ async function releaseNotificationClaim(id) {
 }
 
 /** For /api/health: what is stuck, and how long it has been stuck. */
+/**
+ * Count a notice that was thrown away before it was ever recorded.
+ *
+ * NOT AN ERROR PATH. With no destination configured, discarding is the right
+ * behaviour and was chosen deliberately: enqueuing would mean that on the day a
+ * destination is finally set, months of stale alerts flood a live staff chat.
+ * What was missing is that the COST of that decision was invisible — every
+ * feature running, finding real things, and saying nothing, which is the exact
+ * silence this whole project started from.
+ *
+ * Nine rows, forever. No body, no subject: keeping those would be the backlog
+ * this design refuses to build, one table over.
+ *
+ * Never throws — a counter that can break the thing it counts is worse than no
+ * counter.
+ */
+async function recordDiscard(category, reason = 'no_destination') {
+  try {
+    await query(
+      `INSERT INTO notification_discards
+         (category, reason, discarded_count, first_discarded_at, last_discarded_at)
+       VALUES ($1, $2, 1, NOW(), NOW())
+       ON CONFLICT (category) DO UPDATE SET
+         reason = EXCLUDED.reason,
+         discarded_count = notification_discards.discarded_count + 1,
+         last_discarded_at = NOW()`,
+      [String(category), String(reason)]
+    );
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * What has been thrown away, and since when.
+ *
+ * "Not configured" is a sentence nobody acts on. "1,247 notices were discarded
+ * this week, 900 of them Needs attention" is one somebody does.
+ */
+async function summariseDiscards() {
+  try {
+    const res = await query(
+      `SELECT category, reason, discarded_count, first_discarded_at, last_discarded_at
+         FROM notification_discards ORDER BY discarded_count DESC`
+    );
+    const byCategory = {};
+    let total = 0;
+    let since = null;
+    for (const row of res.rows) {
+      const n = Number(row.discarded_count) || 0;
+      byCategory[row.category] = n;
+      total += n;
+      const at = row.first_discarded_at;
+      if (at && (!since || new Date(at) < new Date(since))) since = at;
+    }
+    return { available: true, total, byCategory, since };
+  } catch (_) {
+    return { available: false, total: 0, byCategory: {}, since: null };
+  }
+}
+
 async function summariseNotifications() {
   const res = await query(
     `SELECT COUNT(*) FILTER (WHERE state = 'pending')::int   AS pending,
@@ -258,6 +320,8 @@ async function summariseNotifications() {
 }
 
 module.exports = {
+  recordDiscard,
+  summariseDiscards,
   MAX_ATTEMPTS,
   BACKOFF_SECONDS,
   backoffSecondsFor,

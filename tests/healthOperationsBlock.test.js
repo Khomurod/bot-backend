@@ -91,6 +91,20 @@ function summaryDeps(overrides = {}) {
     findings: { async summariseFindings() { return { info: 1, warning: 2, serious: 0, total: 3 }; } },
     people: { async summariseIdentityCoverage() { return { people: 200, activeDriverGroups: 205, groupsWithoutPerson: 0, openUnits: 190, unstamped: { roadHistory: 0, requests: 0, mileage: 0 } }; } },
     integrity: { async countDuplicateOpenStays() { return []; }, async indexExists() { return true; } },
+    observations: {
+      async gatherAllObservations() {
+        return [
+          { component: 'fuel_risk', state: 'healthy', ok: true, critical: true, reason: 'ran', lastRunAt: '2026-09-20T17:50:00.000Z' },
+          { component: 'retention_watch', state: 'stale_stopped', ok: false, critical: true, reason: 'no pass has finished in 900 minutes', lastRunAt: '2026-09-20T03:00:00.000Z' },
+          { component: 'ai_providers', state: 'needs_human_attention', ok: true, critical: true, reason: 'no AI provider is enabled' },
+        ];
+      },
+    },
+    fuelReadings: {
+      async summariseFuelReadings() {
+        return { trucks: 110, withFuel: 104, comparable: 61, newestReading: '2026-09-20T17:40:00.000Z' };
+      },
+    },
     // The safety block is composed in, so it is faked in.
     safety: {
       async summariseSafety() {
@@ -186,6 +200,16 @@ test('the summary is counts and timestamps, and a capped check is named with its
   assert.equal(s.loads.conflicted, 1, 'a load the board and the truck disagree about is visible live');
   assert.equal(s.safety.events, 9);
   assert.equal(s.safety.coachingToDrivers, 1, 'how much coaching actually reached a driver');
+  assert.equal(s.workers.total, 3);
+  assert.equal(s.workers.byState.stale_stopped, 1);
+  assert.equal(s.workers.needingAttention, 2,
+    'a worker that stopped AND a feature nobody configured both need a person');
+  assert.deepEqual(s.workers.attention.map((a) => a.component).sort(),
+    ['ai_providers', 'retention_watch'],
+    'and each is NAMED — "2 needing attention" is a number nobody can act on');
+  assert.equal(s.fuel.comparable, 61,
+    'how many trucks Smart Fuel can actually compare — zero here would mean the '
+    + 'abnormal-consumption engine is blind, which is what it silently was');
   const gemini = s.aiModels.find((p) => p.provider === 'gemini');
   assert.deepEqual(gemini, { provider: 'gemini', enabled: true, chain: 1, discovered: 2, refreshedAt: '2026-09-10T06:00:00.000Z', refreshError: null });
 });
@@ -334,7 +358,32 @@ test('a missing settings table is "not available", not "not reachable"', async (
   const health = await getOperationsHealth(summaryDeps({
     notificationSettings: { async getNotificationSettings() { throw new Error('no such table'); } },
   }));
-  assert.deepEqual(health.notifications, { available: false });
+  assert.deepEqual(health.notifications, { available: false, discarded: null });
+});
+
+test('the discard count turns "not configured" into a number somebody acts on', async () => {
+  const health = await getOperationsHealth(summaryDeps({
+    notificationSettings: {
+      async getNotificationSettings() {
+        return { enabled: true, defaultChatId: '', categoryChatIds: {} };
+      },
+    },
+    notificationStore: {
+      async summariseDiscards() {
+        return {
+          available: true,
+          total: 1247,
+          byCategory: { needs_attention: 900, fuel: 200, retention: 147 },
+          since: '2026-08-20T00:00:00.000Z',
+        };
+      },
+    },
+  }));
+  assert.equal(health.notifications.reachable, false);
+  assert.equal(health.notifications.discarded.total, 1247,
+    '"reachable: false" is a sentence nobody acts on; 1,247 thrown-away notices '
+    + 'is one somebody does');
+  assert.equal(health.notifications.discarded.byCategory.needs_attention, 900);
 });
 
 /**

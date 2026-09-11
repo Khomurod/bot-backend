@@ -16,6 +16,19 @@
  */
 const { query } = require('./pool');
 
+/**
+ * The house seam for joining a caller's transaction.
+ *
+ * `insertAdminAudit(entry, client)` has worked this way since the correction
+ * engine was written: pass a client and the write joins that transaction,
+ * pass nothing and it runs on the pool. Learning acceptance needs it because
+ * changing a setting and recording that it changed must commit together or not
+ * at all — see `services/operations/learningDecision.js`.
+ */
+function runner(client) {
+  return client ? client.query.bind(client) : query;
+}
+
 function mapSetting(row) {
   if (!row) return null;
   return {
@@ -27,8 +40,8 @@ function mapSetting(row) {
   };
 }
 
-async function listCheckSettings() {
-  const res = await query(
+async function listCheckSettings(client = null) {
+  const res = await runner(client)(
     `SELECT check_key, auto_apply_enabled, max_auto_per_run, updated_by, updated_at
        FROM operational_check_settings ORDER BY check_key`
   );
@@ -43,11 +56,13 @@ async function listCheckSettings() {
  * constraint violation the admin cannot read — the house rule from
  * `samsaraSettings`. Omitting it keeps whatever the row already had.
  */
-async function upsertCheckSettings(checkKey, { autoApplyEnabled, maxAutoPerRun, updatedBy = null } = {}) {
+async function upsertCheckSettings(
+  checkKey, { autoApplyEnabled, maxAutoPerRun, updatedBy = null } = {}, client = null
+) {
   const clamped = maxAutoPerRun == null
     ? null
     : Math.min(500, Math.max(1, Math.round(Number(maxAutoPerRun) || 0) || 1));
-  const res = await query(
+  const res = await runner(client)(
     `INSERT INTO operational_check_settings
        (check_key, auto_apply_enabled, max_auto_per_run, updated_by, updated_at)
      VALUES ($1, $2, COALESCE($3, 50), $4, NOW())
@@ -62,4 +77,19 @@ async function upsertCheckSettings(checkKey, { autoApplyEnabled, maxAutoPerRun, 
   return mapSetting(res.rows[0]);
 }
 
-module.exports = { mapSetting, listCheckSettings, upsertCheckSettings };
+/**
+ * Remove a check's row entirely, restoring "no row = disabled".
+ *
+ * There is a real difference between a row saying FALSE and no row at all, and
+ * only one revert path is honest about it: a learning suggestion that switched
+ * automation off for a check which had never been configured must put back the
+ * absence, not a FALSE somebody could later read as a decision.
+ */
+async function deleteCheckSettings(checkKey, client = null) {
+  const res = await runner(client)('DELETE FROM operational_check_settings WHERE check_key = $1', [checkKey]);
+  return res.rowCount > 0;
+}
+
+module.exports = {
+  mapSetting, listCheckSettings, upsertCheckSettings, deleteCheckSettings,
+};

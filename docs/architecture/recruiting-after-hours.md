@@ -12,6 +12,27 @@ is taught), [`operational-notifications.md`](operational-notifications.md)
 
 ---
 
+## Whether it can answer at all, before anybody texts
+
+Five independent preconditions, and every one of them is somebody's DECISION
+rather than a fault: working hours nobody has set, nothing approved for Wenze to
+say, the AI capability switched off, no AI provider enabled, no recruiter with a
+RingCentral login. Miss any one and the feature is silently inert — a candidate
+texts at 9pm on a Friday and hears nothing until Monday, which is the exact
+situation it exists to prevent.
+
+`afterHoursReply` names every exit it takes, which is right for a log and wrong
+for a screen: by the time it has a reason there is already a candidate waiting.
+`lib/recruiting/readiness.js` answers the question **before** anybody texts, so
+the gap is visible on a quiet Tuesday afternoon. Each blocker names what is
+missing and which settings screen fixes it — a warning without an address is a
+mood — and it shows as `recruiting_after_hours` in Operations → What is running
+and in `/api/health`.
+
+A missing field counts as **missing, never as satisfied**: a readiness check
+that defaults to ready is worse than none, because it reports a feature as
+working on the strength of an absent field.
+
 ## The problem
 
 A Facebook lead is texted within seconds of arriving, from the assigned

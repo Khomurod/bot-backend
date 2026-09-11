@@ -26,9 +26,12 @@ const defaultDeps = () => ({
   homeTimeHealth: require('./homeTimeHealth'),
   loads: require('../../database/loadLifecycle'),
   safety: require('../../database/driverSafety'),
+  fuelReadings: require('../../database/truckFuelReadings'),
   aiProviders: require('../../database/aiProviders'),
   systemHealth: require('../../database/systemHealth'),
+  observations: require('./healthObservations'),
   notificationSettings: require('../../database/operationalNotificationSettings'),
+  notificationStore: require('../../database/operationalNotifications'),
   learning: require('../../database/operationalLearning'),
   learningPass: require('./learningPass'),
   retention: require('../../database/retentionAssessments'),
@@ -113,12 +116,47 @@ function describeDestination(config) {
   };
 }
 
+/**
+ * The observation list, reduced to what a public endpoint may carry.
+ *
+ * Counts per state, then the components that are ACTIONABLE named individually
+ * with their reason — because "3 needing attention" without saying which three
+ * is a number nobody can act on, and the component keys are code identifiers
+ * rather than anybody's data.
+ */
+function summariseWorkers(observations) {
+  if (!Array.isArray(observations)) return { available: false };
+  const byState = {};
+  const attention = [];
+  for (const o of observations) {
+    byState[o.state] = (byState[o.state] || 0) + 1;
+    if (o.ok === false || o.state === 'needs_human_attention') {
+      attention.push({
+        component: o.component,
+        state: o.state,
+        reason: o.reason || null,
+        critical: o.critical === true,
+        lastRunAt: o.lastRunAt || null,
+      });
+    }
+  }
+  return {
+    available: true,
+    total: observations.length,
+    byState,
+    // The one number a deploy check reads.
+    needingAttention: attention.length,
+    attention,
+  };
+}
+
 async function getOperationsHealth(deps = defaultDeps()) {
   try {
     const status = deps.consistency.getConsistencyStatus();
     const [
       findings, coverage, duplicates, indexPresent, providers, homeTimeLive,
-      loadPhases, safety, systems, learning, retention, notifyConfig,
+      loadPhases, safety, fuelReadings, systems, observed, learning, retention, notifyConfig,
+      discards,
     ] = await Promise.all([
       deps.findings.summariseFindings(),
       deps.people.summariseIdentityCoverage(),
@@ -128,10 +166,13 @@ async function getOperationsHealth(deps = defaultDeps()) {
       deps.homeTimeHealth.getHomeTimeHealth(),
       deps.loads.summariseLoadPhases().catch(() => null),
       deps.safety.summariseSafety().catch(() => null),
+      Promise.resolve(deps.fuelReadings?.summariseFuelReadings?.()).catch(() => null),
       deps.systemHealth.summariseHealthStates().catch(() => null),
+      Promise.resolve(deps.observations?.gatherAllObservations?.()).catch(() => null),
       deps.learning.summariseSuggestions().catch(() => null),
       deps.retention.summariseRetention().catch(() => null),
       deps.notificationSettings.getNotificationSettings().catch(() => null),
+      Promise.resolve(deps.notificationStore?.summariseDiscards?.()).catch(() => null),
     ]);
     return {
       available: true,
@@ -157,10 +198,25 @@ async function getOperationsHealth(deps = defaultDeps()) {
       // Safety as a PATTERN: how many events, of what kind, and how much
       // coaching actually reached a driver.
       safety,
+      // WHETHER SMART FUEL CAN ANSWER AT ALL. `comparable` is the number that
+      // matters: abnormal-consumption needs two readings far enough apart, and
+      // for the whole life of the feature that was ZERO because the watch
+      // handed the assessor hard-coded nulls. No findings with `comparable: 0`
+      // is not a healthy fleet, it is a blind one — and those two silences are
+      // indistinguishable without this.
+      fuel: fuelReadings,
       // WHICH PARTS OF WENZE ARE WORKING, and which have never been looked at —
       // counted separately, because "not checked" and "fine" are different
       // answers and only one of them is reassuring.
       systems,
+      // EVERY WORKER AND INTEGRATION, and whether it has actually run. This is
+      // the block that answers the question none of the others could: a pass
+      // that finds nothing writes nothing, so a worker whose timer was never
+      // armed and one that ran and had nothing to do produce identical
+      // evidence everywhere else. `stale_stopped` is the state that only exists
+      // here. No chat id, no driver, no key — a component key, a state from a
+      // closed vocabulary, and a timestamp.
+      workers: summariseWorkers(observed),
       // Proposals about Wenze's own rules that are waiting for a person. None
       // of them has changed anything; that is what `proposed` means — and
       // `pass` says whether it has looked, since finding nothing is the
@@ -175,7 +231,13 @@ async function getOperationsHealth(deps = defaultDeps()) {
       // every notice is discarded at the door — features running, working, and
       // saying nothing, which is the exact failure this whole project started
       // from. No chat id is ever published here, only whether one is set.
-      notifications: describeDestination(notifyConfig),
+      notifications: {
+        ...describeDestination(notifyConfig),
+        // HOW MUCH HAS BEEN THROWN AWAY. `reachable: false` is a sentence
+        // nobody acts on; a number is. No bodies and no subjects — a count per
+        // category and when it started.
+        discarded: discards || null,
+      },
       aiModels: providers.map((p) => ({
         provider: publicProviderName(p),
         enabled: p.enabled === true,

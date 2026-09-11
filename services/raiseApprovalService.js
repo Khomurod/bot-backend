@@ -42,6 +42,7 @@ const teamRoster = require('./raise/teamRoster');
 const dispatcherFlow = require('./raise/dispatcherFlow');
 const { computeNextWeeklyOccurrence, describeWeeklySchedule } = require('./scheduledMessageUtils');
 const { createDueTimeWakeTimer } = require('./dueTimeWakeTimer');
+const { noteHeartbeat } = require('./operations/runLedger');
 
 // The weekly round stores next_run_at, so the scheduler sleeps until it is due
 // rather than asking PostgreSQL every minute whether a once-a-week event has
@@ -168,7 +169,15 @@ async function tick() {
     const settings = await ra.getRaiseSettings();
     // Disabled: nothing to compute. The capped wake still re-reads settings, so
     // re-enabling from the admin panel is picked up without a restart.
-    if (!settings || !settings.enabled || !settings.schedule_enabled) return { retry: false };
+    if (!settings || !settings.enabled || !settings.schedule_enabled) {
+      noteHeartbeat('raise_approval', {
+        status: 'blocked', detail: 'raise scheduling is switched off in Settings',
+      }).catch(() => {});
+      return { retry: false };
+    }
+    // The timer fired and the job is on. Recorded before the work, because the
+    // question the ledger answers is whether the worker is alive.
+    noteHeartbeat('raise_approval', { status: 'ok' }).catch(() => {});
 
     if (!settings.next_run_at) {
       const next = await recomputeNextRun(settings);

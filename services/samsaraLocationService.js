@@ -133,11 +133,44 @@ async function fetchVehicleStatsPage({ apiKey, apiBase, cursor }) {
   }
 }
 
-async function fetchAllVehicleStats({ apiKey, apiBase = DEFAULT_SAMSARA_API_BASE }) {
+/**
+ * THE WHOLE FLEET IS FETCHED ONCE PER MINUTE, NOT ONCE PER CALLER.
+ *
+ * Route Control resolves each active assignment's GPS separately, and each
+ * resolution called this — so ten active assignments meant ten complete
+ * paginated fleet fetches every check interval, around fourteen thousand a day
+ * for a fleet of about a hundred trucks whose positions are identical in all
+ * ten. The duplicate-unit scan, the fuel watch and the load watch each ask for
+ * the same snapshot on their own timers too.
+ *
+ * Sixty seconds, because that is shorter than every caller's interval and the
+ * data it holds is already treated as approximate: nothing here decides
+ * anything from a position without checking its age first, and
+ * `staleGpsMinutes` is measured in tens of minutes throughout.
+ *
+ * KEYED BY A HASH OF THE CREDENTIAL, never the credential. Two Samsara keys
+ * address different fleets and must not share an entry, and an API key must not
+ * sit in a map key that could be logged, enumerated or included in a dump.
+ *
+ * An in-flight fetch is shared rather than duplicated, so ten callers arriving
+ * together make one request rather than ten and then all hit the cache.
+ */
+const FLEET_CACHE_MS = 60 * 1000;
+const fleetCache = new Map();
+
+function fleetCacheKey(apiKey, apiBase) {
+  // eslint-disable-next-line global-require
+  const hash = require('node:crypto').createHash('sha256')
+    .update(`${apiKey}\u0000${apiBase}`).digest('hex').slice(0, 16);
+  return hash;
+}
+
+async function fetchAllVehicleStatsUncached({ apiKey, apiBase }) {
   const allVehicles = [];
   let cursor = null;
 
   for (let page = 0; page < MAX_PAGES; page += 1) {
+    // eslint-disable-next-line no-await-in-loop
     const payload = await fetchVehicleStatsPage({ apiKey, apiBase, cursor });
     allVehicles.push(...payload.data);
 
@@ -149,6 +182,41 @@ async function fetchAllVehicleStats({ apiKey, apiBase = DEFAULT_SAMSARA_API_BASE
   }
 
   return allVehicles;
+}
+
+async function fetchAllVehicleStats({
+  apiKey, apiBase = DEFAULT_SAMSARA_API_BASE, fresh = false,
+}) {
+  const key = fleetCacheKey(apiKey, apiBase);
+  const now = Date.now();
+  const hit = fleetCache.get(key);
+
+  if (!fresh && hit) {
+    if (hit.pending) return hit.pending;
+    if (now - hit.at < FLEET_CACHE_MS) return hit.vehicles;
+  }
+
+  const pending = fetchAllVehicleStatsUncached({ apiKey, apiBase })
+    .then((vehicles) => {
+      fleetCache.set(key, { at: Date.now(), vehicles });
+      return vehicles;
+    })
+    .catch((err) => {
+      // A FAILURE IS NOT CACHED. Keeping the last good snapshot through a blip
+      // would be worse than useless here: a caller would read positions from
+      // before an outage and believe they were current. The entry is dropped so
+      // the next caller tries again, and the error reaches every waiter.
+      fleetCache.delete(key);
+      throw err;
+    });
+
+  fleetCache.set(key, { at: now, pending, vehicles: hit?.vehicles });
+  return pending;
+}
+
+/** For tests and for an operator forcing a refresh. */
+function clearFleetCache() {
+  fleetCache.clear();
 }
 
 function sortVehiclesByGpsFreshness(vehicles) {
@@ -362,4 +430,6 @@ module.exports = {
   selectVehicleByUnit,
   fetchAllVehicleStats,
   getLiveLocationForGroupTitle,
+  FLEET_CACHE_MS,
+  clearFleetCache,
 };

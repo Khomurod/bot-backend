@@ -216,3 +216,55 @@ test('only an actual NUMBER counts as a reading — Number(null) is 0, and that 
   assert.equal(empty.facts.fuelReported, true);
   assert.equal(empty.risks[0].severity, 'serious');
 });
+
+// ── the operational low-fuel threshold ───────────────────────────────────────
+//
+// 30% is the business rule and has been all along. The defaults said 15, which
+// silently made the feature stricter than the thing it was built to enforce: a
+// truck at 28% — the case an operator wants to hear about while there is still
+// time to route it — produced nothing at all.
+
+test('a Samsara-connected truck below 30% is reported', () => {
+  for (const pct of [29.9, 25, 20, 16]) {
+    const { risks } = assessFuelRisk({
+      nowIso: '2026-09-20T18:00:00Z',
+      position: { lat: 41, lng: -87, fuelPercent: pct, at: '2026-09-20T17:55:00Z' },
+    });
+    const low = risks.find((r) => r.kind === 'low_fuel');
+    assert.ok(low, `${pct}% must be reported`);
+    assert.equal(low.band, 'low');
+    assert.equal(low.severity, 'warning');
+  }
+});
+
+test('above the threshold nothing is said', () => {
+  const { risks } = assessFuelRisk({
+    nowIso: '2026-09-20T18:00:00Z',
+    position: { lat: 41, lng: -87, fuelPercent: 31, at: '2026-09-20T17:55:00Z' },
+  });
+  assert.equal(risks.filter((r) => r.kind === 'low_fuel').length, 0);
+});
+
+test('the lower bands are stronger severity, not a different risk', () => {
+  const bandAt = (pct) => assessFuelRisk({
+    nowIso: '2026-09-20T18:00:00Z',
+    position: { lat: 41, lng: -87, fuelPercent: pct, at: '2026-09-20T17:55:00Z' },
+  }).risks.find((r) => r.kind === 'low_fuel');
+
+  assert.equal(bandAt(14).band, 'short');
+  assert.equal(bandAt(14).severity, 'warning');
+  assert.equal(bandAt(5).band, 'critical');
+  assert.equal(bandAt(5).severity, 'serious');
+  // ONE kind across all three bands, deliberately: the repeat window in
+  // riskWatch is keyed on the kind, so a truck sliding from 28% to 12% would
+  // otherwise reset its own quiet period by crossing a band and say it twice.
+  assert.equal(bandAt(29).kind, bandAt(5).kind);
+});
+
+test('no fuel reading is never a low tank', () => {
+  const { risks } = assessFuelRisk({
+    nowIso: '2026-09-20T18:00:00Z',
+    position: { lat: 41, lng: -87, fuelPercent: null, at: '2026-09-20T17:55:00Z' },
+  });
+  assert.equal(risks.filter((r) => r.kind === 'low_fuel').length, 0);
+});

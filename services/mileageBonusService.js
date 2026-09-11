@@ -26,6 +26,7 @@ const {
 } = require('./mileageBonusConstants');
 const { isRunning, isRunActive } = require('./mileageBonus/runState');
 const { computeDriverMileage } = require('./mileageBonus/mileageComputation');
+const { noteHeartbeat } = require('./operations/runLedger');
 const {
   removeTelegramCard, resendBonusNotification, disregardBonusNotification,
 } = require('./mileageBonus/notificationCards');
@@ -50,9 +51,18 @@ async function tick() {
   const now = DateTime.now().setZone(SCHEDULE_TIMEZONE);
   const dueAtMs = nextScheduledRun(now).toMillis();
   try {
-    if (!datatruck.isConfigured()) return { retry: false, dueAtMs };
+    if (!datatruck.isConfigured()) {
+      // `blocked`, not silence. The run ledger's whole job is to tell "this
+      // never ran" from "this ran and had nothing to do", and a weekly job that
+      // cannot reach Datatruck is a third thing again: waiting on somebody.
+      noteHeartbeat('mileage_bonus', {
+        status: 'blocked', detail: 'no Datatruck credentials are configured',
+      }).catch(() => {});
+      return { retry: false, dueAtMs };
+    }
     const scheduledRun = mostRecentScheduledRun(now);
     const runKey = `weekly:${scheduledRun.toISODate()}`;
+    noteHeartbeat('mileage_bonus', { status: 'ok' }).catch(() => {});
     const result = await runMileageBonusCheck({
       trigger: 'scheduled', referenceDate: scheduledRun, runKey,
     });

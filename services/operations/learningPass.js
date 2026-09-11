@@ -26,6 +26,7 @@
  * than "those three rows were unusual".
  */
 const { findLessons } = require('../../lib/operations/learning');
+const { withRunRecord } = require('./runLedger');
 
 const POLL_MS = 12 * 60 * 60 * 1000;
 const FIRST_TICK_DELAY_MS = 25 * 60 * 1000;
@@ -92,6 +93,10 @@ async function runLearningPass({ now = Date.now(), deps = defaultDeps(), options
         title: lesson.title,
         suggestion: lesson.suggestion,
         evidence: lesson.evidence,
+        // What accepting would DO, or null. Carried through from the pure
+        // module so the decision layer never has to re-derive it — and so a
+        // suggestion with nothing safe to apply says so rather than implying.
+        applyAction: lesson.applyAction || null,
       });
       summary.proposed += 1;
 
@@ -106,7 +111,10 @@ async function runLearningPass({ now = Date.now(), deps = defaultDeps(), options
         title: lesson.title,
         lines: lesson.lines,
         reason: lesson.suggestion,
-        action: 'Nothing has changed — this is a proposal for you to accept or dismiss',
+        action: lesson.applyAction
+          ? 'Nothing has changed yet. Accepting it in Operations → What Wenze learned '
+            + 'will switch the setting, and one click puts it back'
+          : 'Nothing has changed. Accepting records agreement; somebody still has to do it',
         subjectType: 'learning',
         subjectId: `${lesson.kind}:${lesson.subjectId}`,
         discriminator: nowIso.slice(0, 10),
@@ -138,11 +146,18 @@ let stopped = true;
  * failure looks like its success is the problem this phase exists to remove.
  */
 let lastRun = null;
+let tickRunning = false;
 
 async function tick() {
+  // The same missing guard as retention's, and structurally identical. Twelve
+  // hours is long enough that overlap is unlikely and not long enough that it
+  // is impossible, and an unguarded pass upserting suggestions twice is a
+  // silent duplicate nobody would trace back to here.
+  if (tickRunning) return;
+  tickRunning = true;
   const startedAt = new Date().toISOString();
   try {
-    const summary = await runLearningPass({});
+    const summary = await withRunRecord('learning_pass', () => runLearningPass({}));
     lastRun = { at: startedAt, ok: true, ...summary, errors: summary.errors.length };
     if (summary.announced > 0) {
       console.log(`[LEARNING] ${summary.announced} suggestion(s) raised for an administrator`);
@@ -150,6 +165,8 @@ async function tick() {
   } catch (err) {
     lastRun = { at: startedAt, ok: false, error: err.message };
     console.warn('[LEARNING] pass failed:', err.message);
+  } finally {
+    tickRunning = false;
   }
 }
 

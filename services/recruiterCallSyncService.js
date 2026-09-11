@@ -34,6 +34,7 @@ const {
   fetchExtensionCallLogWithToken,
 } = require('./ringCentralCallService');
 const { getRecruiterAccessToken } = require('./ringCentralOAuthService');
+const { withRunRecord, noteHeartbeat } = require('./operations/runLedger');
 
 let schedulerTimer = null;
 let schedulerStopped = true;
@@ -218,7 +219,7 @@ async function tick() {
   if (tickRunning) return;
   tickRunning = true;
   try {
-    const result = await syncNow();
+    const result = await withRunRecord('recruiter_call_sync', () => syncNow());
     if (result?.synced != null) {
       const errNote = result.errors?.length ? ` (${result.errors.length} error(s))` : '';
       console.log(`[RC-SYNC] Synced ${result.synced} call(s), ${result.attributed} attributed${errNote}.`);

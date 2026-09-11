@@ -122,8 +122,22 @@ function createQuestionSenders({ bot, db, config, sendMedia }) {
           console.error(`[BOT] Failed to send to group ${group.group_name}:`, err.message);
           // Auto-deactivate groups where the bot was kicked/group deleted
           if (isPermanentSendError(err)) {
-            try { await db.deactivateGroup(group.telegram_group_id); } catch (_) {}
-            console.warn(`[BOT] Auto-deactivated stale group: ${group.group_name} (${group.telegram_group_id})`);
+            // SWALLOWING THIS ONE MEANT LYING ABOUT IT. The log line below announced the
+        // deactivation unconditionally, so a failed UPDATE left a kicked-from group
+        // ACTIVE while the only evidence said otherwise — and the next broadcast
+        // tried it again, forever, with the same reassuring line.
+        let deactivated = true;
+        try {
+          await db.deactivateGroup(group.telegram_group_id);
+        } catch (err) {
+          deactivated = false;
+          console.error(
+            `[BOT] Could not deactivate stale group ${group.telegram_group_id}:`, err.message
+          );
+        }
+            if (deactivated) {
+          console.warn(`[BOT] Auto-deactivated stale group: ${group.group_name} (${group.telegram_group_id})`);
+        }
           }
         }
       }

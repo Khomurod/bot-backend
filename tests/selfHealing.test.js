@@ -166,7 +166,7 @@ test('all recruiter logins broken is an outage; one is a person\'s problem', asy
   const all = await healing.gatherObservations(make(2));
   const obs = all.find((o) => o.component === 'recruiter_logins');
   assert.equal(obs.ok, false);
-  assert.match(obs.detail, /2 of 2/);
+  assert.match(obs.detail, /all 2 recruiter logins/);
 });
 
 test('every enabled AI provider in cooldown at once is an outage; one is the router working', async () => {
@@ -209,6 +209,43 @@ test('a pass with nothing observable reports cleanly rather than throwing', asyn
     notifications: { async summariseNotifications() { return { abandoned: 0 }; } },
   };
   const summary = await healing.runSelfHealingPass({ now: NOW, deps });
-  assert.equal(summary.checked, 1, 'only the notification queue had anything to say');
+  assert.ok(summary.checked > 0);
   assert.deepEqual(summary.errors, []);
+});
+
+test('a feature nobody has configured says so, instead of vanishing', async () => {
+  const deps = {
+    ...harness().deps,
+    rc: { async listRecruiters() { return []; }, recruiterCanSendSms: () => false },
+    ai: { async getProvidersForRouter() { return []; } },
+    notifications: { async summariseNotifications() { return { abandoned: 0 }; } },
+  };
+  const obs = await healing.gatherObservations(deps);
+
+  const rc = obs.find((o) => o.component === 'recruiter_logins');
+  assert.equal(rc.state, 'needs_human_attention');
+  assert.equal(rc.ok, true,
+    'not a FAILURE — painting an unconfigured feature red is how a real outage '
+    + 'gets lost among things nobody ever switched on');
+  assert.match(rc.reason, /RingCentral login/);
+
+  const ai = obs.find((o) => o.component === 'ai_providers');
+  assert.equal(ai.state, 'needs_human_attention');
+  assert.match(ai.reason, /deterministic fallback/,
+    'and it says what the consequence is, not only that something is missing');
+});
+
+test('a component nobody could read is dropped before it can start a failure count', async () => {
+  const deps = {
+    ...harness().deps,
+    runs: { async getRunMap() { throw new Error('no such table'); }, async getRun() { throw new Error('no'); } },
+    rc: { async listRecruiters() { throw new Error('no such table'); }, recruiterCanSendSms: () => false },
+    ai: { async getProvidersForRouter() { throw new Error('no such table'); } },
+    notifications: { async summariseNotifications() { throw new Error('no such table'); } },
+    fuelReadings: { async summariseFuelReadings() { throw new Error('no such table'); } },
+  };
+  const obs = await healing.gatherObservations(deps);
+  assert.deepEqual(obs, [],
+    '"I could not check" is not "it is broken" — three unreadable passes would '
+    + 'otherwise announce an outage that was only ever a failing health query');
 });

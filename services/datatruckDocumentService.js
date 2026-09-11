@@ -24,6 +24,7 @@ const docsDb = require('../database/datatruckDocuments');
 const bolPodSettings = require('../database/bolPodForwardingSettings');
 const { classifyDocument } = require('./bolPodClassifier');
 const { listCanonicalDriverGroups } = require('./driverGroupDirectoryService');
+const { withRunRecord, noteHeartbeat } = require('./operations/runLedger');
 const {
   isTrackedDocumentType,
   extractTrackedDocuments,
@@ -413,11 +414,29 @@ async function tick() {
   if (tickRunning) return;
   tickRunning = true;
   try {
-    if (!config.datatruckDocDeliveryEnabled) return; // env kill-switch
-    if (!datatruck.isConfigured()) return;
+    // RECORDED AS `blocked`, NOT AS SILENCE. Each of these is a switch a
+    // person has to throw, and a feature that is merely off must say so —
+    // otherwise it is indistinguishable from one whose timer died.
+    if (!config.datatruckDocDeliveryEnabled) {
+      await noteHeartbeat('datatruck_documents', {
+        status: 'blocked', detail: 'turned off by the deployment kill-switch',
+      });
+      return;
+    }
+    if (!datatruck.isConfigured()) {
+      await noteHeartbeat('datatruck_documents', {
+        status: 'blocked', detail: 'no Datatruck credentials are configured',
+      });
+      return;
+    }
     const settings = await bolPodSettings.getBolPodConfig();
-    if (!settings.enabled) return; // DB master toggle — OFF by default
-    await runOnce();
+    if (!settings.enabled) {
+      await noteHeartbeat('datatruck_documents', {
+        status: 'blocked', detail: 'switched off in Settings',
+      });
+      return;
+    }
+    await withRunRecord('datatruck_documents', () => runOnce());
   } catch (err) {
     console.error('[DATATRUCK-DOCS] Scan error:', err.message);
   } finally {

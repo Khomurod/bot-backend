@@ -26,6 +26,7 @@ const { resolveAssignmentLocation } = require('./assignmentLocation');
 const { checkAssignmentCompletion, tallyBlockedReason } = require('./completionService');
 const { evaluateTrackingStart } = require('./trackingStartService');
 const { POLL_MS_MIN } = require('./constants');
+const { withRunRecord, noteHeartbeat } = require('../operations/runLedger');
 
 let serviceTimer = null;
 let serviceStopped = false;
@@ -177,7 +178,7 @@ async function tick() {
   if (tickRunning || !telegramClient) return;
   tickRunning = true;
   try {
-    await runRouteMonitorCheck(telegramClient);
+    await withRunRecord('route_control', () => runRouteMonitorCheck(telegramClient));
   } catch (err) {
     console.error('[ROUTE-CONTROL] Monitor tick error:', err.message);
   } finally {

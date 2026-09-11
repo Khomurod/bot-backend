@@ -62,18 +62,89 @@ requests is a new way to be rate limited, and a test asserts the file contains
 no `fetch(`. Every observation reads what the application already recorded about
 its last real attempts:
 
+### It used to watch three things
+
+Recruiter logins, AI providers and the notification queue — while **twenty-five
+background workers and nine integrations ran beside them unobserved.** The
+reason that gap was invisible is the same one this whole document keeps
+returning to: a pass that finds nothing writes nothing, so a worker whose timer
+was never armed and a worker that ran and had nothing to do produce identical
+evidence. Three services kept a `lastRun` in **process memory**, which a Render
+restart reset to `null` — indistinguishable from "this has never worked in its
+life". The other twenty-two exposed nothing at all, and four of them built a
+detailed per-pass summary that their `tick()` threw away.
+
+### The run ledger
+
+`background_service_runs` (migration 0039) holds **one row per worker**, updated
+in place — about thirty rows forever, deliberately not a run history. A worker
+joins it with one line:
+
+```js
+await withRunRecord('fuel_risk', () => runFuelRiskCheck({}));
+```
+
+`lib/operations/backgroundServiceCatalog.js` is the roster those keys are
+checked against, and a test scans the source for every key any service actually
+records under and fails if one is missing from it — an uncatalogued key gets a
+null expected interval, which means staleness can never be decided for it, so it
+would report healthy forever including after it stopped.
+
+`last_status` is a closed vocabulary of four, and `blocked` is the interesting
+one: a worker that cannot run until an operator configures something is **not
+failing**, and painting it red is how a real outage gets lost among things
+nobody ever switched on.
+
+### Seven states
+
+`lib/operations/runHealth.js` is pure and decides all of them.
+
+| State | Means |
+|---|---|
+| `healthy` | ran, recently, without error |
+| `degraded` | failed once or twice. Integrations blip; announcing this is how a channel becomes unread |
+| `repeatedly_failing` | three or more in a row |
+| `stale_stopped` | **has not finished a pass in several of its own intervals.** The one nothing else can see: not failing, not running, and every table it owns merely quiet |
+| `recovered_automatically` | ran clean after failing — worth saying once, to people who were told it broke |
+| `needs_human_attention` | blocked on configuration, or failing past the point where the automatic recovery has had its chance |
+| `cannot_determine` | no record, or not due yet. **Never healthy** |
+
+Staleness is checked **before** the status, deliberately: a worker that failed
+once and then stopped ticking reads `error` forever, and the useful fact is that
+nothing has run since.
+
+### What each component's health is read from
+
 | Component | Failing means |
 |---|---|
-| `recruiter_logins` | **every** credentialed recruiter has `rc_auth_error`. One is a person's problem; all of them is an outage |
-| `ai_providers` | **every** enabled provider is in cooldown. One is the router doing its job |
+| every catalogued worker | its ledger row, through `classifyRun` |
+| `recruiter_logins` | **every** credentialed recruiter has `rc_auth_error`. One is a person's problem; all of them is an outage. None connected at all is `needs_human_attention` |
+| `ai_providers` | **every** enabled provider is in cooldown. One is the router doing its job. None enabled is `needs_human_attention`, and says the consequence: every AI feature is on its deterministic fallback |
+| `eld_location_freshness` | the newest row in `truck_fuel_readings` is over three hours old. One answer instead of four features going quiet separately |
+| `telegram_delivery` | a notice has been pending over 90 minutes — not a slow queue, a queue nothing is taking from |
 | `notifications` | any notice reached `abandoned` — the one failure that silences every other feature's alarm, which is how 101 staff alerts were lost once already |
+| `samsara_safety_pipeline` | the poller's own heartbeat has gone stale. It is a **separate Render service** sharing only this database, so it writes one row into the same ledger; without it, a dead poller and a quiet week are the same empty safety table |
 
-A source that cannot be read is **unknown, never failed**. "I could not check"
-is not "it is broken", and the summary counts `unchecked` separately from `ok`
-for the same reason: only one of them is reassuring.
+A source that cannot be read is **unknown, never failed**, and is dropped before
+the announcer sees it so three unreadable passes cannot announce an outage that
+was only ever a failing health query. "I could not check" is not "it is broken".
 
 Recovery goes to `self_healing` and says **nothing is needed**. A failure and a
 flap go to `system_errors` and say what does.
+
+### Where an operator sees it
+
+`/api/health → operations.workers` carries counts per state plus the components
+that are actionable, each **named** with its reason — "3 needing attention"
+without saying which three is a number nobody can act on. Admin → Operations →
+**What is running** shows the same thing grouped by integration / queue / engine
+/ routine, sorted so the rows with something to DO are first, with the reason as
+the loudest text on the row: "no Google Maps key configured" is an instruction,
+"failing" is not.
+
+There is **no restart and no retry control**, deliberately. A button like that
+is one somebody presses instead of finding out why, and every recovery this
+system performs is already automatic and already announced.
 
 ---
 
@@ -97,32 +168,67 @@ The humans' own reasons are carried **verbatim**. Three reverts that all say
 sentence somebody wrote when they were annoyed is the most useful thing in the
 row.
 
-## Nothing it produces takes effect
+## What accepting a suggestion actually does
 
-**This is the owner's line, and it is held in three places at once:**
+**The old answer was "nothing", and the screen did not say so clearly enough.**
+An administrator marked a suggestion `accepted`; the route wrote a word in a
+table; nothing changed. The route's own comment called that the safety
+property. It is half of one: the guarantee worth keeping is that AI cannot
+change a business rule **by itself**, and that is kept by requiring an
+administrator's confirmation — not by making the confirmation inert. Somebody
+who accepted *"switch automatic correction off for this check"* reasonably
+believed they had switched it off, stopped looking, and the check kept
+correcting. That is worse than not offering the button, because it produces
+false confidence rather than an obvious gap.
 
-1. `lib/operations/learning.js` returns **plain data** — a title, lines, a
-   sentence and evidence. A test asserts none of its output is a function: a
-   lesson cannot do anything.
-2. `services/operations/learningPass.js` stores and sends. A test reads the file
-   and asserts it calls nothing that could change a rule.
-3. `operational_learning_suggestions.status` allows exactly `proposed`,
-   `accepted`, `dismissed`. **There is no status meaning "applied
-   automatically"**, and the API refuses one before SQL has to.
+### The split
 
-`accepted` records that an administrator agrees. Whatever the suggestion
-proposed is then done **by hand, on purpose**. An endpoint that both proposed
-and applied would make the confirmation a formality one careless click wide.
+| Status | Means |
+|---|---|
+| `proposed` | waiting for a person |
+| `accepted_active` | the suggestion named a configurable setting, the acceptance changed it, the old value is recorded, and one click puts it back |
+| `accepted_manual` | agreement recorded and **nothing else** — a person still has to carry it out |
+| `dismissed` | declined |
+| `reverted` | applied, then undone |
+| `accepted` | legacy: agreed before anything could be applied. Left labelled as such rather than relabelled, because relabelling would invent a history those rows do not have |
 
-The suggestion itself is deliberately the conservative one: *switch automatic
-correction off for this check and let it propose instead*. That costs nothing if
-it is wrong and stops a wrong repair if it is right. *Change the rule* is the
-expensive guess and is not the machine's to make.
+The screen says **which it will be before the button is pressed** — "Agreeing
+will switch this setting now" against "Nothing changes automatically" — and the
+message afterwards is the server's answer rather than what the screen assumed.
 
-A decision **holds**. The next pass finds the same pattern — because it is still
-there — and refreshes the evidence without reopening the row. An administrator
-meeting a dismissed proposal every fortnight is an administrator who stops
-reading them.
+### What may be applied is deliberately tiny
+
+`services/operations/learningActions.js` is a registry holding **one** action:
+`disable_auto_apply`, which sets `auto_apply_enabled = false` on
+`operational_check_settings` for the named checks. The check keeps running and
+keeps filing findings; it proposes instead of repairing.
+
+- **There is no `enable_auto_apply`.** The registry can only ever turn
+  automation OFF. A machine proposing that it be trusted with *more* is the one
+  shape nobody should build, however many confirmations sit in front of it.
+- **Nothing in it touches** pay, employment status, hiring or rejection, start
+  dates, promised equipment, safety discipline, a driver's record, or
+  application code. `tests/learningActions.test.js` asserts the registry's exact
+  contents and scans its source (comments stripped) for the tables such a change
+  would have to reach.
+- **A recruiting suggestion names no action at all.** What a company offers a
+  driver is a fact a *person* supplies under Teach Wenze, through the existing
+  human-confirmation path. A machine that could add it from a pattern in refused
+  drafts would be learning company offers from the questions candidates asked,
+  which is how a rate nobody agreed to ends up in a text message.
+- **An action this build does not recognise is refused**, not quietly
+  downgraded to a success — silently downgrading is how somebody ends up
+  believing something happened.
+
+`applied_before` holds what was actually there, so a revert restores a fact
+rather than a default somebody assumed; a check that had **no row** gets its
+absence back, not a `FALSE` a later reader could mistake for a decision. Every
+acceptance and every revert writes `admin_audit_log` through the same helper and
+redactor the correction engine uses.
+
+Accept and revert sit behind the **apply gate** (`operations.corrections.apply`),
+not the read gate — the same distinction the corrections routes make between
+seeing a proposal and changing a record.
 
 ## The second signal: refused recruiting drafts
 

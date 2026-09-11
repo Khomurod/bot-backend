@@ -27,6 +27,7 @@
 const { scoreReturnToRoad, milesBetweenPoints, DEFAULTS } = require('../../lib/homeTime/returnEvidence');
 const { normalizeUnitNumber } = require('../samsaraLocationService');
 const { extractUnitFromGroupName } = require('../../lib/drivers/driverGroupTitle');
+const { withRunRecord } = require('../operations/runLedger');
 
 const CHECK_RETURNED = 'home_time.returned_to_road';
 const CHECK_UNCLEAR = 'home_time.return_to_road_unclear';
@@ -309,7 +310,7 @@ async function tick() {
   if (tickRunning) return;
   tickRunning = true;
   try {
-    const summary = await runReturnToRoadCheck({});
+    const summary = await withRunRecord('return_to_road', () => runReturnToRoadCheck({}));
     if (summary.high || summary.medium || summary.error) {
       console.log(`[HOME-TIME-RETURN] ${summary.checked} at home checked — `
         + `${summary.high} look back on the road, ${summary.medium} unclear`

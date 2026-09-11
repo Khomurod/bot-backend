@@ -5,6 +5,7 @@
 const db = require('../database/db');
 const { sendBroadcastToGroups } = require('../bot/bot');
 const { resolveBroadcastTargetGroups } = require('./broadcastTargetService');
+const { withRunRecord, noteHeartbeat } = require('./operations/runLedger');
 const {
   DEFAULT_SCHEDULE_TIMEZONE,
   computeNextWeeklyOccurrence,
@@ -187,6 +188,12 @@ async function tick() {
     return;
   }
   tickRunning = true;
+  // A HEARTBEAT RATHER THAN A WRAPPED PASS. The body below returns early from
+  // several places on the ordinary "nothing is due" path, so the ledger entry
+  // is written in the `finally` where every one of those paths passes through.
+  // What matters is that the timer fired at all — the scheduler's own work is
+  // already recorded per message in `scheduled_messages`.
+  let tickError = null;
   try {
     const pendingMessages = await db.getPendingScheduledMessages();
     if (pendingMessages.length === 0) return;
@@ -203,9 +210,16 @@ async function tick() {
       await processMessage(locked);
     }
   } catch (err) {
+    tickError = err.message;
     console.error('[SCHEDULER] Tick error:', err.message);
   } finally {
     tickRunning = false;
+    // Not awaited: `tickRunning` has just been cleared, and an await here would
+    // let the next tick start while this one is still inside its own `finally`.
+    // An observation must not change the thing it observes.
+    noteHeartbeat('scheduler', {
+      status: tickError ? 'error' : 'ok', detail: tickError,
+    }).catch(() => {});
   }
 }
 
@@ -231,6 +245,24 @@ async function retentionTick() {
     }
   } catch (err) {
     console.error('[SCHEDULER] Retention tick error:', err.message);
+  }
+
+  // EVERY OTHER TABLE THAT GROWS. It rides this timer rather than arming one of
+  // its own: a second timer is a second thing that can stop without anybody
+  // noticing, which is the failure the rest of this work exists to remove.
+  // `pruneOldSafetyEvents` and `pruneAiCallLog` were both WRITTEN AND NEVER
+  // CALLED until this line; several newer tables had no prune at all.
+  try {
+    // eslint-disable-next-line global-require
+    const { runDataRetentionPass } = require('./operations/dataRetention');
+    const { deleted, errors } = await runDataRetentionPass({});
+    const total = Object.values(deleted).reduce((n, v) => n + (Number(v) || 0), 0);
+    if (total > 0 || errors.length) {
+      console.log(`[SCHEDULER] data retention: ${total} row(s) removed`
+        + `${errors.length ? `, ${errors.length} table(s) could not be pruned` : ''}`);
+    }
+  } catch (err) {
+    console.error('[SCHEDULER] Data retention error:', err.message);
   }
 }
 

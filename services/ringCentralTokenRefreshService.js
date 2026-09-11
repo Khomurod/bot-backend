@@ -32,6 +32,7 @@
 const rc = require('../database/ringcentral');
 const { refreshRecruiterTokens } = require('./ringCentralOAuthService');
 const { needsExtensionIdentity, backfillExtensionIdentity } = require('./recruiterExtensionIdentity');
+const { withRunRecord, noteHeartbeat } = require('./operations/runLedger');
 
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 /** Small stagger between recruiters so a dozen refreshes are not one burst. */
@@ -118,7 +119,7 @@ async function tick() {
   if (running) return;
   running = true;
   try {
-    const summary = await refreshAllRecruiterTokens();
+    const summary = await withRunRecord('recruiter_logins', () => refreshAllRecruiterTokens());
     if (summary.checked) {
       const needs = summary.needsLogin.length
         ? ` — must re-connect RingCentral: ${summary.needsLogin.join(', ')}`

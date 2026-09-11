@@ -19,11 +19,21 @@
  */
 const { assessFuelRisk, RISKS } = require('../../lib/fuel/risk');
 const { extractUnitFromGroupName } = require('../../lib/drivers/driverGroupTitle');
+const { withRunRecord } = require('../operations/runLedger');
 
 const POLL_MS = 20 * 60 * 1000;
 const FIRST_TICK_DELAY_MS = 7 * 60 * 1000;
 
-/** How long a given risk stays quiet after being reported, in hours. */
+/**
+ * How long a given risk stays quiet after being reported, in hours.
+ *
+ * THESE ARE PER-RISK FLOORS, not the whole answer. `notification_settings`
+ * carries an operator-set `repeat_after_hours` that was read by nothing at all
+ * — a slider in the admin that moved no behaviour. It is now the value each of
+ * these is measured against: a fleet that wants everything quieter raises it
+ * once, and a passed stop still ages faster than a low tank because the shape
+ * below is about the RISK, not about taste.
+ */
 const REPEAT_AFTER_HOURS = {
   [RISKS.LOW_FUEL]: 8,
   [RISKS.CANNOT_REACH_STOP]: 6,
@@ -32,15 +42,32 @@ const REPEAT_AFTER_HOURS = {
   [RISKS.ABNORMAL_BURN]: 72,
 };
 
+/**
+ * The quiet window for one risk kind.
+ *
+ * The operator's setting is a CEILING on how often anything repeats, so a
+ * fleet that raised it to a week does not still hear about a low tank every
+ * eight hours. Below the default it has no effect: a passed stop settling
+ * within a day is a property of the event, not a preference.
+ */
+function repeatHoursFor(kind, configuredHours = null) {
+  const base = REPEAT_AFTER_HOURS[kind] || 24;
+  const configured = Number(configuredHours);
+  if (!Number.isFinite(configured) || configured <= 0) return base;
+  return Math.max(base, configured);
+}
+
 function defaultDeps() {
   /* eslint-disable global-require */
   return {
     groups: require('../../database/groups'),
     people: require('../../database/driverPeople'),
     fuel: require('../../database/fuelMonitoring'),
+    readings: require('../../database/truckFuelReadings'),
     eldSettings: require('../../database/eldSettings'),
     providers: require('../liveLocations/providers'),
     notifications: require('../../database/operationalNotifications'),
+    notificationSettings: require('../../database/operationalNotificationSettings'),
     notify: require('../notifications/send').notify,
   };
   /* eslint-enable global-require */
@@ -51,16 +78,26 @@ function defaultDeps() {
  * cannot make: did it get closer to the station, and how much fuel has it used
  * over how many miles.
  *
- * Read from the open fuel watch, which already stores the distance it measured
- * last pass. Nothing new is persisted for this — a second store of positions
- * would be a position history, which this application deliberately does not keep.
+ * TWO SOURCES, because they answer two different questions. The distance comes
+ * from the open fuel watch, which already stored what it measured last pass.
+ * The fuel and odometer come from `truck_fuel_readings` — and until that table
+ * existed THIS FUNCTION RETURNED `fuelPercent: null, odometerMiles: null`
+ * HARD-CODED, which made `assessFuelRisk`'s abnormal-burn branch unreachable
+ * for the whole life of the feature. It looked implemented and could not fire.
+ *
+ * `baseline` is null far more often than not, and that is correct: comparing
+ * two readings twenty minutes apart measures noise, and comparing across a
+ * fill-up measures nothing at all. See `database/truckFuelReadings.js`.
  */
-function previousFor(alert) {
-  if (!alert) return null;
+function previousFor(alert, baseline = null) {
+  const milesToStation = alert && alert.last_distance_miles != null
+    ? Number(alert.last_distance_miles)
+    : null;
+  if (milesToStation == null && !baseline) return null;
   return {
-    milesToStation: alert.last_distance_miles == null ? null : Number(alert.last_distance_miles),
-    fuelPercent: null,
-    odometerMiles: null,
+    milesToStation,
+    fuelPercent: baseline?.fuelPercent ?? null,
+    odometerMiles: baseline?.odometerMiles ?? null,
   };
 }
 
@@ -71,13 +108,29 @@ function describe(group, unit) {
 }
 
 /** One truck. Returns the risks that were actually reported. */
-async function checkOneTruck(group, { fleets, alertsByGroup, nowIso, deps, options }) {
+async function checkOneTruck(group, {
+  fleets, alertsByGroup, nowIso, deps, options, peopleByUnit = new Map(),
+}) {
   const unit = extractUnitFromGroupName(group.group_name);
   if (!unit) return [];
 
   const resolved = deps.providers.resolveLocationForUnit(fleets, unit, group.group_name);
   const loc = resolved?.location;
   if (!loc || loc.lat == null) return [];
+
+  const personId = peopleByUnit.get(String(unit)) ?? null;
+
+  // Written BEFORE the assessment, and the assessment reads what it returns.
+  // The write is what makes the next pass able to answer at all, so it must
+  // happen even on a pass that reports nothing.
+  const reading = await deps.readings.recordAndCompare({
+    unitNumber: String(unit),
+    personId,
+    groupId: group.id,
+    fuelPercent: loc.fuelPercent ?? null,
+    odometerMiles: loc.odometerMiles ?? null,
+    recordedAt: loc.lastUpdated || nowIso,
+  }).catch(() => ({ previous: null }));
 
   const alertRow = alertsByGroup.get(group.id) || null;
   const alert = alertRow ? {
@@ -94,12 +147,11 @@ async function checkOneTruck(group, { fleets, alertsByGroup, nowIso, deps, optio
       fuelPercent: loc.fuelPercent ?? null, odometerMiles: loc.odometerMiles ?? null,
     },
     alert,
-    previous: previousFor(alertRow),
+    previous: previousFor(alertRow, reading?.previous || null),
     options,
   });
   if (!risks.length) return [];
 
-  const person = await deps.people.getOpenPersonForUnit(String(unit)).catch(() => null);
   const who = describe(group, unit);
   const sent = [];
 
@@ -111,7 +163,7 @@ async function checkOneTruck(group, { fleets, alertsByGroup, nowIso, deps, optio
     const prefix = `fuel:group:${group.id}:${risk.kind}`;
     // eslint-disable-next-line no-await-in-loop
     const recent = await deps.notifications
-      .noticeSentWithin(prefix, REPEAT_AFTER_HOURS[risk.kind] || 24)
+      .noticeSentWithin(prefix, repeatHoursFor(risk.kind, options.repeatAfterHours))
       .catch(() => false);
     if (recent) continue;
 
@@ -127,7 +179,7 @@ async function checkOneTruck(group, { fleets, alertsByGroup, nowIso, deps, optio
       // The window above decides whether to speak; this makes each utterance a
       // distinct row so the history reads as a sequence rather than one event.
       discriminator: `${risk.kind}:${nowIso.slice(0, 13)}`,
-      personId: person?.personId ?? null,
+      personId,
       groupId: group.id,
       evidence: { risk: risk.kind, severity: risk.severity, ...facts },
     });
@@ -146,6 +198,16 @@ async function runFuelRiskCheck({ now = Date.now(), deps = defaultDeps(), option
   const summary = { checked: 0, withFuelData: 0, risks: 0, reported: 0, providerErrors: 0 };
   const nowIso = new Date(now).toISOString();
   try {
+    // The operator's ceiling on how often anything repeats. Read once per pass,
+    // not per truck, and a failure leaves the per-risk defaults standing.
+    const notifySettings = await Promise.resolve(
+      deps.notificationSettings?.getNotificationSettings?.()
+    ).catch(() => null);
+    const passOptions = {
+      ...options,
+      repeatAfterHours: options.repeatAfterHours ?? notifySettings?.repeatAfterHours ?? null,
+    };
+
     const cfg = await deps.eldSettings.getEldConfig();
     const fleetResult = await deps.providers.fetchProviderFleets(cfg);
     const fleets = fleetResult?.fleets || {};
@@ -155,10 +217,21 @@ async function runFuelRiskCheck({ now = Date.now(), deps = defaultDeps(), option
     const openAlerts = await deps.fuel.listActiveFuelStopAlerts().catch(() => []);
     const alertsByGroup = new Map(openAlerts.map((a) => [a.group_id, a]));
 
+    // ONE query for the whole fleet's identities. This used to be one lookup
+    // per truck inside the loop below — about 110 round trips every twenty
+    // minutes to answer a question a single `= ANY` settles.
+    const units = groups
+      .map((g) => extractUnitFromGroupName(g.group_name))
+      .filter(Boolean)
+      .map(String);
+    const peopleByUnit = await deps.people.getOpenPeopleForUnits(units).catch(() => new Map());
+
     for (const group of groups) {
       summary.checked += 1;
       // eslint-disable-next-line no-await-in-loop
-      const reported = await checkOneTruck(group, { fleets, alertsByGroup, nowIso, deps, options })
+      const reported = await checkOneTruck(group, {
+        fleets, alertsByGroup, nowIso, deps, options: passOptions, peopleByUnit,
+      })
         .catch((err) => {
           console.warn(`[FUEL-RISK] group ${group.id}:`, err.message);
           return [];
@@ -205,7 +278,13 @@ let tickRunning = false;
 async function tick() {
   if (tickRunning) return;
   tickRunning = true;
-  try { await runFuelRiskCheck({}); } finally { tickRunning = false; }
+  try {
+    await withRunRecord('fuel_risk', () => runFuelRiskCheck({}));
+  } catch (err) {
+    console.error('[FUEL-RISK] tick error:', err.message);
+  } finally {
+    tickRunning = false;
+  }
 }
 
 function startFuelRiskWatch() {
@@ -226,6 +305,7 @@ module.exports = {
   POLL_MS,
   FIRST_TICK_DELAY_MS,
   REPEAT_AFTER_HOURS,
+  repeatHoursFor,
   countTrucksReportingFuel,
   checkOneTruck,
   runFuelRiskCheck,

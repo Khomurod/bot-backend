@@ -44,6 +44,7 @@ module.exports = {
   closeUnitAssignment: associations.closeUnitAssignment,
   getOpenUnitForPerson: associations.getOpenUnitForPerson,
   getOpenPersonForUnit: associations.getOpenPersonForUnit,
+  getOpenPeopleForUnits: associations.getOpenPeopleForUnits,
   listUnitsForPerson: associations.listUnitsForPerson,
 
   // lookups

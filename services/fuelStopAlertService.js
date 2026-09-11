@@ -31,6 +31,7 @@ const {
   computeNextCheck,
 } = require('./fuelStop/textRules');
 const { detectStationFromMessage } = require('./fuelStop/detection');
+const { noteHeartbeat } = require('./operations/runLedger');
 const {
   reactToFuelMessage, handleFuelStopMessage, refreshFuelStopsFromInbox,
 } = require('./fuelStop/capture');
@@ -47,11 +48,19 @@ let tickRunning = false;
 async function tickFuelStopAlerts() {
   if (tickRunning) return;
   tickRunning = true;
+  // A heartbeat in the `finally`, because the ordinary "nothing is due" path
+  // returns early from three places. The question the ledger answers is whether
+  // the timer fired at all; the work itself is recorded per alert.
+  let tickError = null;
+  let blocked = null;
   try {
     await db.expireOldFuelStopAlerts().catch(() => {});
     await db.deleteOldFuelInbox(3).catch(() => {});
     const telegramClient = getFuelStopTelegram();
-    if (!telegramClient) return;
+    if (!telegramClient) {
+      blocked = 'the Telegram bot is not connected to this service';
+      return;
+    }
 
     const due = await db.claimDueFuelStopAlerts(ALERT_MAX_BATCH);
     if (!due.length) return;
@@ -62,9 +71,16 @@ async function tickFuelStopAlerts() {
       await processFuelAlert(telegramClient, row);
     }
   } catch (err) {
+    tickError = err.message;
     console.error('[FUEL-ALERT] Tick error:', err.message);
   } finally {
     tickRunning = false;
+    // Not awaited — see the note in schedulerService: an await after the guard
+    // is cleared lets the next tick overlap this one's `finally`.
+    noteHeartbeat('fuel_stop_alerts', {
+      status: tickError ? 'error' : (blocked ? 'blocked' : 'ok'),
+      detail: tickError || blocked,
+    }).catch(() => {});
   }
 }
 

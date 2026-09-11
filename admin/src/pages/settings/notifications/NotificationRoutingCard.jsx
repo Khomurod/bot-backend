@@ -167,7 +167,12 @@ export default function NotificationRoutingCard({ flash }) {
 
   const categories = data?.categories || [];
   const queue = data?.queue || null;
+  const candidates = data?.candidates || [];
+  const discarded = data?.discarded || null;
   const defaultConfigured = Boolean(String(form.defaultChatId ?? "").trim());
+  const overridesConfigured = Object.values(form.categoryChatIds || {})
+    .filter((v) => String(v ?? "").trim()).length;
+  const reachable = defaultConfigured || overridesConfigured > 0;
 
   return (
     <div className="card">
@@ -176,6 +181,33 @@ export default function NotificationRoutingCard({ flash }) {
         Where Wenze sends what it notices. Set one group for everything, and give a
         category its own group only when you want that traffic separated.
       </p>
+
+      {/* WHAT THE SILENCE HAS COST. With nothing configured every notice is
+          discarded at the door — correctly, because enqueuing them would flood
+          this chat with months of stale alerts the day one is finally set. But
+          "not configured" is a sentence people scroll past, and 101 staff
+          alerts were once lost behind exactly that kind of quiet note. A
+          number is not scrolled past. */}
+      {!reachable && (
+        <div
+          role="status"
+          style={{
+            border: "1px solid #dc2626", background: "rgba(220,38,38,0.08)",
+            borderRadius: 8, padding: "10px 12px", marginTop: 12,
+          }}
+        >
+          <strong>Nothing is being delivered.</strong>{" "}
+          {discarded?.total
+            ? `${discarded.total.toLocaleString()} notices have been discarded so far.`
+            : "Every operational notice is discarded until a group is set below."}
+          {discarded?.total > 0 && (
+            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+              They are counted, not queued — setting a group now starts fresh rather than
+              delivering a backlog.
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <p className="error">{error}</p>}
       {fix && (
@@ -208,6 +240,36 @@ export default function NotificationRoutingCard({ flash }) {
           style={{ width: "100%", maxWidth: 320, display: "block", marginTop: 4 }}
         />
       </label>
+
+      {/* Chats this deployment ALREADY messages, so setting a destination does
+          not mean going to find a Telegram chat id. Offered, never applied:
+          which audience receives safety escalations and fuel risks is a
+          decision, and picking one here goes through the same validation as a
+          typed id. */}
+      {!defaultConfigured && candidates.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div className="muted" style={{ fontSize: 12 }}>
+            Groups Wenze already messages — pick one, or type any other id above:
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+            {candidates.map((c) => (
+              <button
+                key={c.chatId}
+                type="button"
+                className="btn btn-sm"
+                disabled={busy}
+                title={c.what}
+                onClick={() => {
+                  setForm((f) => ({ ...f, defaultChatId: c.chatId }));
+                  save({ defaultChatId: c.chatId });
+                }}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div style={{ marginTop: 6 }}>
         <button
           type="button"

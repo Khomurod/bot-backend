@@ -15,6 +15,7 @@ const { decryptText } = require('../lib/security/facebookCrypto');
 const { safeSend } = require('./telegramHtml');
 const { fetchSenderProfile } = require('./facebookGraphService');
 const { formatMessengerMessage } = require('./facebookLeadFormatter');
+const { noteHeartbeat } = require('./operations/runLedger');
 const {
   processLeadEvent,
   buildAutoMessageNotification,
@@ -192,6 +193,19 @@ async function drainFacebookWebhookQueue() {
     drainedCleanly = true;
   } finally {
     drainInProgress = false;
+    // A drain that completed its claim loop is the only proof this worker is
+    // alive: an idle queue writes no rows, so "nothing came in" and "the drain
+    // has been broken since Tuesday" are the same empty table without this.
+    //
+    // DELIBERATELY NOT AWAITED. `drainInProgress` has just been cleared, so an
+    // await here would open a window in which a queued drain starts while this
+    // one is still inside its own `finally` — an observation changing the
+    // behaviour it observes. It also cost this file's "an idle worker does not
+    // poll" test three next-due lookups instead of one.
+    noteHeartbeat('facebook_webhooks', {
+      status: drainedCleanly ? 'ok' : 'error',
+      detail: drainedCleanly ? null : 'the drain did not run its claim loop to exhaustion',
+    }).catch(() => {});
     if (drainQueued) {
       drainQueued = false;
       setImmediate(triggerDrain);

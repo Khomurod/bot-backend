@@ -207,7 +207,11 @@ async function startBot() {
     // Mileage bonus Paid / Rejected buttons (accounting-only).
     registerMileageBonusHandlers(bot);
 
-    // Home-time request Approve / Do Not Approve buttons (approvers-only).
+    // The RETIRED Approve / Do Not Approve buttons. Home time is no longer
+    // approved — Wenze reports three events and none waits for a manager — but
+    // cards posted before that change still sit in the staff group with live
+    // buttons, and Telegram keeps delivering a press. The handler stays to
+    // answer honestly and clear the buttons, and grants nothing.
     registerHomeTimeRequestHandlers(bot);
 
     // Driver location check-in Yes / No buttons (driver answers).

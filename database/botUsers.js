@@ -2,10 +2,20 @@
  * Database helpers for bot_users — Telegram users the bot has seen, keyed by a
  * stable telegram_user_id.
  *
- * Two capture paths feed the same row (never duplicated):
- *   - recordBotUserInteraction — an inline-button tap (bumps `interactions`).
+ * ONE capture path feeds the row today, and the header used to claim two:
  *   - recordBotUserSeen        — any message from a human in a group the bot is
- *     in (bumps `message_count`, refreshes last-seen group / chat).
+ *     in (bumps `message_count`, refreshes last-seen group / chat). LIVE, from
+ *     `bot/handlers/groupCaptureHandlers.js`.
+ *   - recordBotUserInteraction — an inline-button tap, meant to bump
+ *     `interactions`. IT HAS NO CALLER. Nothing anywhere increments that
+ *     column, so the "Interactions" number the admin renders through
+ *     `server/routes/botUsersRoutes.js` is permanently zero for every user —
+ *     and, labelled as button taps, reads as "nobody has ever pressed
+ *     anything" rather than as "this is not being counted".
+ *
+ * The function is kept rather than deleted: wiring it is one line in whichever
+ * callback handler should own it, and the column already exists. What is not
+ * kept is the sentence claiming it already happens.
  *
  * COALESCE(EXCLUDED…, existing) means a username / name / language change
  * updates the SAME telegram_user_id row rather than creating a new one. NO

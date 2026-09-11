@@ -22,6 +22,8 @@ const notifications = require('../../../database/operationalNotifications');
 const { getGroupByTelegramId } = require('../../../database/groups');
 const { checkChatIdColumns } = require('../../../services/telegramChatIdCheck');
 const { CATEGORIES } = require('../../../lib/notifications/categories');
+const { notificationCandidates } = require('../../../lib/notifications/candidates');
+const config = require('../../../config/config');
 const { notify } = require('../../../services/notifications/send');
 const { sendFailure } = require('../../middleware/failureResponse');
 
@@ -40,7 +42,23 @@ function createNotificationSettingsRouter({ authMiddleware, telegram = null }) {
       ]);
       // The catalogue travels with the settings so the screen can describe each
       // category in words rather than showing a row of bare keys.
-      res.json({ settings, categories: CATEGORIES, queue });
+      //
+      // `candidates` are chats this deployment ALREADY sends operational
+      // traffic to, offered so that setting a destination does not require
+      // anybody to go and find a Telegram chat id. NOTHING IS APPLIED FROM
+      // THIS — an administrator picks one and it goes through the same
+      // validation as a typed id. Routing safety escalations into the chat
+      // that receives survey results is an audience decision, and it is
+      // theirs.
+      res.json({
+        settings,
+        categories: CATEGORIES,
+        queue,
+        candidates: notificationCandidates(config),
+        // What the silence has cost so far. "Not configured" is a sentence
+        // people scroll past; a number is not.
+        discarded: await notifications.summariseDiscards().catch(() => null),
+      });
     } catch (err) {
       sendFailure(res, err, {
         message: 'Failed to load the notification settings', logPrefix: '[NOTIFY]',

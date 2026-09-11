@@ -137,12 +137,33 @@ function scheduleLeadsRestart(reason) {
   leadsRestartTimer.unref?.();
 }
 
+/**
+ * Tell the run ledger how the leads bot is doing.
+ *
+ * It is a CHILD PROCESS, not a timer, so it has no tick to wrap — but it is in
+ * the service catalogue and an entry nothing observes reads "never reported"
+ * forever, which is worse than not listing it. The supervisor already knows
+ * when it starts, crashes and gives up; this passes that on. Best-effort and
+ * never awaited: a ledger write must not sit in the restart path.
+ */
+function noteLeadsState(status, detail = null) {
+  try {
+    // eslint-disable-next-line global-require
+    require('./services/operations/runLedger')
+      .noteHeartbeat('leads_bot', { status, detail })
+      .catch(() => {});
+  } catch (_) { /* the ledger is an observation, never a dependency */ }
+}
+
 function startLeadsBot() {
   if (
     isShuttingDown
     || !isEnabled('ENABLE_LEADS_BOT', true)
     || (leadsProcess && leadsProcess.exitCode === null)
   ) {
+    if (!isShuttingDown && !isEnabled('ENABLE_LEADS_BOT', true)) {
+      noteLeadsState('blocked', 'the leads bot is switched off by ENABLE_LEADS_BOT');
+    }
     return;
   }
 
@@ -174,6 +195,7 @@ function startLeadsBot() {
 
     leadsProcess = child;
     console.log(`[LEADS] Started PID ${child.pid}`);
+    noteLeadsState('ok');
     writeChildOutput('LEADS', child.stdout, console.log);
     writeChildOutput('LEADS', child.stderr, console.error);
 
@@ -188,6 +210,9 @@ function startLeadsBot() {
       clearTimeout(stableTimer);
       if (leadsProcess === child) leadsProcess = null;
       console.error('[LEADS] Process error:', error);
+      // The message is the runtime's, not a provider's, but it is still kept
+      // short: the hub publishes a summary of this row.
+      noteLeadsState('error', 'the leads bot process failed to start');
       scheduleLeadsRestart(error.message);
     });
 
@@ -197,6 +222,10 @@ function startLeadsBot() {
       if (isShuttingDown) return;
       if (code === 78) {
         console.error('[LEADS] Exited with EX_CONFIG (78) — permanent config error, will NOT restart.');
+        // NOT an error: it exited because its configuration is wrong, and it
+        // will not come back until somebody fixes it. That is the one state
+        // that names a person.
+        noteLeadsState('blocked', 'the leads bot stopped on a configuration error and will not restart');
         leadsCircuitOpen = true;
         return;
       }

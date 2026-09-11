@@ -23,6 +23,7 @@ const systems = require('./checks/systems');
 const homeTime = require('./checks/homeTime');
 const homeTimeContinuity = require('./checks/homeTimeContinuity');
 const { runAutoCorrections } = require('./corrections/autoApply');
+const { withRunRecord } = require('./runLedger');
 
 const POLL_MS = 15 * 60 * 1000;
 const FIRST_TICK_DELAY_MS = 120 * 1000;
@@ -38,6 +39,7 @@ const CHECK_MODULES = [
 let serviceTimer = null;
 let serviceStopped = false;
 let tickRunning = false;
+let drainRunning = false;
 let lastRun = null;
 let lastCorrections = null;
 
@@ -306,7 +308,10 @@ async function runCorrectionsAfterSweep({ db = defaultDb, store = defaultFinding
 
 async function tick() {
   try {
-    await runGuardedSweep();
+    // NOT guarded here: `runGuardedSweep` owns `tickRunning` and shares it with
+    // the admin's "Run checks now" button. Setting it from out here would make
+    // every timer tick collide with itself and skip the sweep entirely.
+    await withRunRecord('consistency_sweep', () => runGuardedSweep());
   } catch (err) {
     console.error('[CONSISTENCY] sweep error:', err.message);
   }
@@ -315,12 +320,22 @@ async function tick() {
   // sweep just did or found, and a second timer would be a second thing to
   // notice had stopped. Its own failures are swallowed inside the sweep, so a
   // dead Telegram cannot stop the consistency pass that produced the notices.
+  //
+  // ITS OWN GUARD. The drain sat outside the sweep's guard on the same timer,
+  // so two drains could overlap — safe only because `claimDueNotifications`
+  // takes a database lease further down. "Safe because something further down
+  // happens to lock" is not a property anybody can rely on while editing the
+  // thing further down, so the guarantee is stated here as well.
+  if (drainRunning) return;
+  drainRunning = true;
   try {
     // eslint-disable-next-line global-require
     const { runNotificationSweep } = require('../notifications/send');
-    await runNotificationSweep({ limit: 20 });
+    await withRunRecord('notification_drain', () => runNotificationSweep({ limit: 20 }));
   } catch (err) {
     console.error('[CONSISTENCY] notification sweep error:', err.message);
+  } finally {
+    drainRunning = false;
   }
 }
 
