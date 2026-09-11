@@ -155,6 +155,16 @@ It travels on the **authenticated** route only, never on `/api/health`. An
 public — read by Render and an uptime monitor. Counts and short reasons are
 public; the cause is for somebody who has logged in.
 
+**What the public reason may say is a KIND**, from the fixed list in
+`lib/operations/errorKind.js` — a word that cannot contain a value. The list
+grew two entries after the same worker sat at sixty consecutive failures saying
+only `other`, which is the one category that answers nothing: `bad_value` for a
+value the database refused (a `NaN` where an integer belongs, a string past its
+column width, a timestamp out of range — always a bug in the code that produced
+the value, never something a restart fixes) and `decrypt` for a stored secret
+that will not open. The message that quotes the offending value stays exactly
+where it was.
+
 There is **no restart and no retry control**, deliberately. A button like that
 is one somebody presses instead of finding out why, and every recovery this
 system performs is already automatic and already announced.

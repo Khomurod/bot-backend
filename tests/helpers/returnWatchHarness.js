@@ -14,7 +14,7 @@ const FAR = { lat: 42.5, lng: -88.6 };
 
 function harness({
   drivers = [], location = null, order = null, watchRow = null, reviewer = null,
-  providerErrors = [],
+  providerErrors = [], failObservationFor = null,
 } = {}) {
   const calls = {
     fleets: 0, orders: 0, findings: [], observations: [], resolved: [], ensured: [],
@@ -28,6 +28,11 @@ function harness({
       async ensureWatch(args) { calls.ensured.push(args); stored = stored || { groupId: args.groupId }; return stored; },
       async getWatch() { return stored; },
       async recordObservation(groupId, patch) {
+        // One driver's write refused by the database: the case that used to
+        // abandon every driver after it in the loop.
+        if (failObservationFor != null && groupId === failObservationFor) {
+          throw new Error('invalid input syntax for type integer: "NaN"');
+        }
         calls.observations.push({ groupId, ...patch });
         stored = {
           ...(stored || { groupId }),

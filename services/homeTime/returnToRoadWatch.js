@@ -28,6 +28,7 @@ const { scoreReturnToRoad, milesBetweenPoints, DEFAULTS } = require('../../lib/h
 const { normalizeUnitNumber } = require('../samsaraLocationService');
 const { extractUnitFromGroupName } = require('../../lib/drivers/driverGroupTitle');
 const { withRunRecord } = require('../operations/runLedger');
+const { classifyErrorKind, describeErrorKind } = require('../../lib/operations/errorKind');
 
 const CHECK_RETURNED = 'home_time.returned_to_road';
 const CHECK_UNCLEAR = 'home_time.return_to_road_unclear';
@@ -163,11 +164,13 @@ function describeProviderErrors(fleetResult) {
  * One pass. Returns a summary; never throws.
  *
  * @returns {Promise<{checked:number, high:number, medium:number, low:number,
- *   watched:number, cleared:number, providerErrors:number, skipped?:string}>}
+ *   watched:number, cleared:number, providerErrors:number, driverErrors:number,
+ *   errorKind:string|null, skipped?:string}>}
  */
 async function runReturnToRoadCheck({ now = Date.now(), deps = defaultDeps(), options = {} } = {}) {
   const summary = {
     checked: 0, high: 0, medium: 0, low: 0, watched: 0, cleared: 0, providerErrors: 0,
+    driverErrors: 0, errorKind: null,
   };
   const nowIso = new Date(now).toISOString();
   try {
@@ -218,17 +221,46 @@ async function runReturnToRoadCheck({ now = Date.now(), deps = defaultDeps(), op
 
     const keepIds = [];
     let driversSeen = 0;
+    // ONE DRIVER'S FAILURE IS ONE DRIVER'S FAILURE.
+    //
+    // This loop used to run bare inside the pass's single try, so anything
+    // thrown for driver three — a value the database refused, a stored secret
+    // that would not open — abandoned drivers four through eight, skipped
+    // `resolveClearedFindings`, and recorded the whole pass as an error. Eight
+    // drivers were being watched and one bad row could blind the watch for all
+    // of them, every twelve minutes, for as long as the row existed.
+    //
+    // Now the pass finishes. A driver that threw is counted, its KIND is
+    // recorded — a word from a fixed list, never the message — and the pass is
+    // only an error when EVERY driver failed, because at that point there is no
+    // partial answer left to report.
     for (const driver of drivers) {
-      // eslint-disable-next-line no-await-in-loop
-      const outcome = await checkOneDriver(driver, {
-        fleets, byUnit, byDriver, nowIso, now, deps, options,
-      });
-      summary.checked += 1;
-      summary[outcome.confidence] += 1;
-      if (outcome.sawThisDriver) driversSeen += 1;
-      if (outcome.findingId) keepIds.push(outcome.findingId);
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const outcome = await checkOneDriver(driver, {
+          fleets, byUnit, byDriver, nowIso, now, deps, options,
+        });
+        summary.checked += 1;
+        summary[outcome.confidence] += 1;
+        if (outcome.sawThisDriver) driversSeen += 1;
+        if (outcome.findingId) keepIds.push(outcome.findingId);
+      } catch (err) {
+        summary.driverErrors += 1;
+        // The group id is ours and safe; the message goes to the log, which is
+        // where somebody debugging already looks.
+        console.error(`[HOME-TIME-RETURN] group ${driver.groupId} failed:`, err.message);
+        if (!summary.errorKind) summary.errorKind = classifyErrorKind(err.message);
+      }
     }
     summary.driversSeen = driversSeen;
+
+    // Every one of them. There is nothing partial left to report, so this is a
+    // failure rather than a degraded pass — and it names the category, which is
+    // what `other` could never do.
+    if (summary.driverErrors > 0 && summary.driverErrors === drivers.length) {
+      summary.error = `every one of the ${drivers.length} driver(s) at home failed to be checked`
+        + ` — ${describeErrorKind(summary.errorKind) || 'the reason is in the logs'}`;
+    }
 
     // NOT SILENTLY FINE, and measured on THE DRIVERS THIS PASS IS ABOUT.
     //
@@ -254,7 +286,13 @@ async function runReturnToRoadCheck({ now = Date.now(), deps = defaultDeps(), op
     //
     // PROVIDER NAMES AND ERROR CODES ONLY — `/api/health` is public and a
     // provider's `err.message` can quote a URL with a key in it.
-    if (driversSeen === 0 && summary.providerErrors > 0) {
+    //
+    // AND NOT WHEN THE DRIVERS THEMSELVES THREW. Every driver failing makes
+    // `driversSeen` zero by construction, so a provider having a bad afternoon
+    // at the same time would have relabelled a code fault as a configuration
+    // one — and `blocked` is read BEFORE `error`, so the exception would have
+    // disappeared behind it.
+    if (driversSeen === 0 && summary.providerErrors > 0 && summary.driverErrors === 0) {
       summary.blocked = `no telemetry could be read from ${describeProviderErrors(fleetResult)}`
         + ` for any of the ${drivers.length} driver(s) at home`
         + `${orderResult?.error ? ', and the order board could not be read either' : ''}`
@@ -266,6 +304,7 @@ async function runReturnToRoadCheck({ now = Date.now(), deps = defaultDeps(), op
   } catch (err) {
     console.error('[HOME-TIME-RETURN] check failed:', err.message);
     summary.error = err.message;
+    summary.errorKind = classifyErrorKind(err.message);
   }
   return summary;
 }

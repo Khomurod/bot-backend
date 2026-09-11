@@ -29,6 +29,10 @@ const {
   startBackgroundServices,
   stopBackgroundServices,
 } = require('./services/backgroundServices');
+const {
+  startLeadsBotLiveness,
+  stopLeadsBotLiveness,
+} = require('./services/leadsBotLiveness');
 
 const DB_DRAIN_TIMEOUT_MS = 5000;
 const CHILD_STOP_TIMEOUT_MS = 10_000;
@@ -196,6 +200,9 @@ function startLeadsBot() {
     leadsProcess = child;
     console.log(`[LEADS] Started PID ${child.pid}`);
     noteLeadsState('ok');
+    // A spawn is a lifecycle event, not a heartbeat. From here the ledger
+    // hears from the child itself, every ten minutes, or stops hearing.
+    startLeadsBotLiveness({ port: leadsPort });
     writeChildOutput('LEADS', child.stdout, console.log);
     writeChildOutput('LEADS', child.stderr, console.error);
 
@@ -208,6 +215,7 @@ function startLeadsBot() {
 
     child.once('error', (error) => {
       clearTimeout(stableTimer);
+      stopLeadsBotLiveness();
       if (leadsProcess === child) leadsProcess = null;
       console.error('[LEADS] Process error:', error);
       // The message is the runtime's, not a provider's, but it is still kept
@@ -218,6 +226,9 @@ function startLeadsBot() {
 
     child.once('exit', (code, signal) => {
       clearTimeout(stableTimer);
+      // The probe asks a port nobody is listening on once the child is gone,
+      // and every answer would be an error about a process we already know died.
+      stopLeadsBotLiveness();
       if (leadsProcess === child) leadsProcess = null;
       if (isShuttingDown) return;
       if (code === 78) {
@@ -297,6 +308,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   console.log(`[SHUTDOWN] Graceful shutdown initiated (${signal})...`);
 
   stopBackgroundServices();
+  try { stopLeadsBotLiveness(); } catch (err) { console.error('[SHUTDOWN] stopLeadsBotLiveness failed:', err.message); }
   try { stopMemoryWatchdog(); } catch (err) { console.error('[SHUTDOWN] stopMemoryWatchdog failed:', err.message); }
   try { stopDatabaseUsageService(); } catch (err) { console.error('[SHUTDOWN] stopDatabaseUsageService failed:', err.message); }
 
