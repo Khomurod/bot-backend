@@ -91,3 +91,38 @@ describe("SystemsTab", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });
+
+describe("a failing row says WHY", () => {
+  /**
+   * Found in production. `return_to_road` reached `repeatedly_failing` and the
+   * only thing any screen said about it was "3 consecutive failures" — true,
+   * and impossible to act on. The message was in the ledger the whole time and
+   * reached nothing. A row that tells an operator a critical worker is broken
+   * and then sends them to the server logs has done half a job.
+   */
+  it("shows the recorded error beside the count", async () => {
+    api.getSystems.mockResolvedValue({
+      components: [component({
+        component: "return_to_road", label: "return to road", state: "repeatedly_failing",
+        reason: "3 consecutive failures", consecutiveFailures: 3,
+        lastError: "relation \"driver_road_history_v2\" does not exist",
+      })],
+      byState: { repeatedly_failing: 1 },
+      needingAttention: 1,
+    });
+    render(<SystemsTab flash={() => {}} />);
+    await waitFor(() => expect(screen.getByText("return to road")).toBeInTheDocument());
+    expect(screen.getByText(/3 consecutive failures/)).toBeInTheDocument();
+    expect(screen.getByText(/driver_road_history_v2/)).toBeInTheDocument();
+  });
+
+  it("a healthy row stays one line — there is nothing to explain", async () => {
+    api.getSystems.mockResolvedValue({
+      components: [component({ lastError: null })],
+      byState: { healthy: 1 }, needingAttention: 0,
+    });
+    render(<SystemsTab flash={() => {}} />);
+    await waitFor(() => expect(screen.getByText("the fuel risk watch")).toBeInTheDocument());
+    expect(screen.queryByText(/does not exist/)).toBeNull();
+  });
+});

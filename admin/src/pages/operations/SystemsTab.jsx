@@ -88,6 +88,21 @@ function Row({ row }) {
           <div className={acts ? undefined : "muted"} style={{ fontSize: 13, marginTop: 2 }}>
             {row.reason || "—"}
           </div>
+          {/* WHAT IT ACTUALLY SAID. "3 consecutive failures" names the symptom;
+              this names the cause, and without it a failing row sends its
+              reader to the server logs. Shown only when there is one, so a
+              healthy row stays a single line. */}
+          {row.lastError && (
+            <div
+              style={{
+                fontSize: 12, marginTop: 4, color: "#b91c1c",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                wordBreak: "break-word",
+              }}
+            >
+              {row.lastError}
+            </div>
+          )}
         </div>
         <div className="muted" style={{ fontSize: 12, textAlign: "right", flex: "0 0 auto" }}>
           <div>last pass {ago(row.lastRunAt)}</div>
