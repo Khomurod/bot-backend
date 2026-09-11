@@ -153,3 +153,29 @@ unknown, never zero.
 
 The other retention signals — weeks on the road, unanswered home requests,
 unpaid bonuses — read their own tables and are unaffected.
+
+## What all of this costs, in writes
+
+This fleet runs on free and near-free tiers, so "one row per X, updated in
+place" is a design constraint rather than a preference. The four tables added
+here are all fixed-size, and the arithmetic is small enough to state exactly:
+
+| Table | Rows, for ever | Writes per day |
+|---|---|---|
+| `background_service_runs` | one per catalogued worker — **34** | ~2,340 UPSERTs (every worker, at every one of its own intervals) |
+| `truck_fuel_readings` | one per truck that reports telemetry — **~110** | ~7,900 UPSERTs (72 fuel passes × the trucks reporting) |
+| `notification_discards` | one per category — **9** | at most one per discarded notice, and zero once a destination is set |
+| `operational_learning_suggestions` (widened, not added) | unchanged | unchanged — the pass runs twice a day |
+
+That is about **10,000 UPSERTs a day, ~7 a minute, against roughly 150 rows in
+total**. Nothing here accumulates: there is no run history, no reading history,
+no discarded-notice bodies. Each of those three was considered and refused, and
+the refusals are written down in the migrations themselves (0038, 0039, 0041) so
+the next person to want a history sees why there isn't one.
+
+**The one job that got cheaper.** The Samsara fleet snapshot used to be fetched
+once per caller; `services/samsaraLocationService.js` now serves a 60-second
+cache keyed by a hash of the credentials, and shares the in-flight request
+rather than starting a second one. Failures are never cached. Several watches
+running on the same minute now cost one API call between them instead of one
+each.
