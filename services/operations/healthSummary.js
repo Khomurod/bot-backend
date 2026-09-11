@@ -82,6 +82,11 @@ function summariseCorrections(lastCorrections) {
   return {
     at: lastCorrections.at || null,
     applied: s?.applied ?? null,
+    // REFUSED BY THE EVIDENCE, and published for the same reason `capped` is.
+    // A held pass reads "0 applied" with no why otherwise — and held is the
+    // quieter of the two, because a capped check at least files a finding
+    // about itself. A count, so it is safe on a public endpoint.
+    held: s?.held ?? null,
     stale: s?.stale ?? null,
     failed: s?.failed ?? null,
     // Which check stopped itself and by how much. Check keys are code
