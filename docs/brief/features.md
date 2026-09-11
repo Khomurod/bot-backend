@@ -227,6 +227,42 @@ from travel with it as the facts its urgency is computed from — so what a noti
 says and what it is prioritised by cannot drift apart. See
 `docs/architecture/operational-notifications.md`.
 
+### When two features disagree about one driver
+
+`services/operations/contradictionPass.js`, on the consistency timer. Each
+feature reads its own table and reaches its own verdict about the same human;
+nothing put those side by side, so each was confidently right in its own terms
+and the disagreement lived only in the head of whoever read two screens.
+
+**It reports and never resolves.** There is no correct automatic answer to Home
+Time saying a driver is at home while the load board has their truck in transit
+— not the more recent row, not the more confident feature. Every finding is
+filed at tier `warning`, the tier with no apply action at all, and nothing in
+the pass writes to any feature's own table.
+
+The two contradictions it can find today:
+
+- **home while working** — Home Time has them at home, the load board has the
+  truck moving.
+- **quiet but active** — retention has them gone quiet while the fleet shows a
+  fuel reading or a safety event this morning. **This is not a retention
+  signal; it is a feed that stopped reporting**, and telling those apart is the
+  whole reason for holding one picture of a driver in one place.
+
+A third, *two trucks open at once*, stays in the pure module as a guard but is
+**not screened for**: `uniq_driver_units_open_person` makes it unrepresentable,
+so a fleet-wide scan for it would find nothing for ever.
+
+**Cost.** One set-based query over the fleet per tick; the six-query per-driver
+read runs only for what that screen returns, which is normally nothing. Reading
+every driver every fifteen minutes would be roughly 63,000 queries a day to
+answer a question that is almost always "no". The screen may over-select and
+must never under-select — a false candidate costs six queries, a missed one is a
+contradiction nobody hears about.
+
+**Coverage travels with every finding**, because three unreadable sources and no
+contradictions found is not a clean bill of health, it is a mostly blank page.
+
 ### Recruiting and leads
 
 - **Facebook/Meta leads**: Meta → `POST /webhook` (raw-body proxy, Node) →

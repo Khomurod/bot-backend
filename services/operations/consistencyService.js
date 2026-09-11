@@ -40,6 +40,7 @@ let serviceTimer = null;
 let serviceStopped = false;
 let tickRunning = false;
 let drainRunning = false;
+let contradictionRunning = false;
 let lastRun = null;
 let lastCorrections = null;
 
@@ -315,6 +316,28 @@ async function tick() {
   } catch (err) {
     console.error('[CONSISTENCY] sweep error:', err.message);
   }
+  // TWO FEATURES DISAGREEING ABOUT ONE DRIVER. It rides this timer for the same
+  // reason the drain does — a second timer is a second thing that can stop
+  // without anybody noticing — and it runs BEFORE the drain so a disagreement
+  // found now is delivered on this tick rather than waiting fifteen minutes.
+  //
+  // It costs one set-based query over the fleet per tick. The six-query
+  // per-driver read happens only for what that screen returns, which is
+  // normally nothing: calling it for every driver would be about 63,000
+  // queries a day to answer a question that is almost always "no".
+  if (!contradictionRunning) {
+    contradictionRunning = true;
+    try {
+      // eslint-disable-next-line global-require
+      const { runContradictionPass } = require('./contradictionPass');
+      await withRunRecord('contradiction_pass', () => runContradictionPass({}));
+    } catch (err) {
+      console.error('[CONSISTENCY] contradiction pass error:', err.message);
+    } finally {
+      contradictionRunning = false;
+    }
+  }
+
   // Drain whatever could not be delivered when it happened. It rides THIS timer
   // rather than one of its own because a notice is always about something this
   // sweep just did or found, and a second timer would be a second thing to

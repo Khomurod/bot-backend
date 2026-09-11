@@ -111,24 +111,109 @@ async function readSafety(personId, { windowDays = 30 } = {}) {
   return { events: row.events || 0, newestEventAt: row.newest || null, windowDays };
 }
 
+/**
+ * THE COLUMNS THIS ASKED FOR DID NOT EXIST.
+ *
+ * It selected `urgency` and `assessed_at`, and `driver_retention_assessments`
+ * has neither — it has `level` and `first_seen_at` / `last_seen_at`. The query
+ * raised `column "urgency" does not exist` on every call, `safely()` turned
+ * that into `null`, and the retention section came back `known: false` for
+ * every driver in the fleet, for ever.
+ *
+ * So `quiet_but_active` — the contradiction this module's own header calls the
+ * most valuable one, because it tells a driver who stopped working apart from
+ * a feed that stopped reporting — COULD NEVER FIRE. The module looked finished
+ * and its best rule was unreachable, which is the same defect as a watch that
+ * returned a hard-coded null and made its abnormal-burn branch dead.
+ *
+ * It survived review because nothing called this module at all, and it would
+ * have survived the first caller too: a swallowed failure and an honest absence
+ * are the same `{known: false}` from outside. That is the cost of `safely`, and
+ * it is still the right trade — but it means the queries under it have to be
+ * checked against the schema rather than assumed, and a test has to assert the
+ * section comes back READABLE rather than merely not throwing.
+ */
 async function readRetention(personId) {
   const res = await query(
-    `SELECT signals, urgency, assessed_at
+    `SELECT signals, level, last_seen_at, first_seen_at
        FROM driver_retention_assessments
       WHERE person_id = $1
-      ORDER BY assessed_at DESC LIMIT 1`,
+      ORDER BY last_seen_at DESC NULLS LAST LIMIT 1`,
     [personId]
   );
   const row = res.rows[0];
-  if (!row) return { goneQuiet: false, urgency: null, assessedAt: null };
+  if (!row) return { goneQuiet: false, urgency: null, assessedAt: null, signals: 0 };
   const signals = Array.isArray(row.signals) ? row.signals : [];
   return {
     goneQuiet: signals.some((s) => String(s?.kind || s).includes('quiet')),
-    goneQuietSince: row.assessed_at,
-    urgency: row.urgency,
-    assessedAt: row.assessed_at,
+    // WHEN IT WENT QUIET, not when we last looked. `first_seen_at` is when this
+    // assessment appeared; `last_seen_at` moves every sweep, so using it would
+    // report every quiet driver as having gone quiet fifteen minutes ago.
+    goneQuietSince: row.first_seen_at,
+    urgency: row.level,
+    assessedAt: row.last_seen_at,
     signals: signals.length,
   };
+}
+
+/**
+ * Who might have a contradiction, in ONE query over the whole fleet.
+ *
+ * THE COST THIS EXISTS TO AVOID. `getDriverContext` is six queries. Calling it
+ * for every driver on a fifteen-minute timer would be roughly 110 × 6 × 96 =
+ * 63,000 queries a day against a free-tier database, to answer a question that
+ * is almost always "no" — and it is exactly the per-driver-lookup-in-a-loop
+ * this module's own header warns about, committed by its first caller.
+ *
+ * So: a cheap set-based screen first, and the expensive read only for the
+ * handful it returns.
+ *
+ * THE SCREEN MAY OVER-SELECT AND MUST NEVER UNDER-SELECT. It is deliberately
+ * looser than `findContradictions`, which is the thing that actually decides —
+ * `signals::text ILIKE '%quiet%'` catches every shape the JS predicate would,
+ * and some it would not. A false candidate costs six queries and produces no
+ * finding. A missed one is a contradiction nobody ever hears about.
+ *
+ * TWO BRANCHES, FOR THREE CONTRADICTIONS, AND THE MISSING ONE IS DELIBERATE.
+ * `two_open_units` is not representable: migration 0015 created
+ * `uniq_driver_units_open_person ON driver_units (person_id) WHERE ended_at IS
+ * NULL`, so a person cannot have two trucks open and a screen for it would run
+ * every fifteen minutes and find nothing for ever. The JS check stays — it
+ * costs nothing, reading a list already in hand, and it is the one thing that
+ * would notice if that index were ever dropped — but it does not get a query.
+ *
+ * A fourth kind added to `findContradictions` needs a branch here, and the test
+ * that seeds one driver per kind is what makes forgetting that visible.
+ */
+async function listContradictionCandidates({ limit = 200, activeWithinHours = 12 } = {}) {
+  const res = await query(
+    `-- at home, and simultaneously working
+     SELECT DISTINCT g.person_id
+       FROM driver_person_groups g
+       JOIN driver_home_status s ON s.group_id = g.group_id
+       JOIN load_lifecycle l ON l.group_id = g.group_id
+      WHERE g.ended_at IS NULL
+        AND g.person_id IS NOT NULL
+        AND s.state = 'home'
+        AND l.phase IN ('heading_to_pickup', 'at_pickup', 'in_transit', 'at_delivery')
+     UNION
+     -- called quiet by one feature while another shows them plainly working
+     SELECT DISTINCT r.person_id
+       FROM driver_retention_assessments r
+      WHERE r.person_id IS NOT NULL
+        AND r.signals::text ILIKE '%quiet%'
+        AND (
+          EXISTS (SELECT 1 FROM truck_fuel_readings f
+                   WHERE f.person_id = r.person_id
+                     AND f.recorded_at > NOW() - ($1 || ' hours')::interval)
+          OR EXISTS (SELECT 1 FROM driver_safety_events e
+                      WHERE e.person_id = r.person_id
+                        AND e.occurred_at > NOW() - ($1 || ' hours')::interval)
+        )
+     LIMIT $2`,
+    [String(Math.max(1, Number(activeWithinHours) || 12)), Math.max(1, Math.min(1000, limit))]
+  );
+  return res.rows.map((r) => Number(r.person_id));
 }
 
 /**
@@ -150,4 +235,4 @@ async function getDriverContext(personId) {
   return describeContext({ personId, identity, homeTime, loads, fuel, safety, retention });
 }
 
-module.exports = { getDriverContext };
+module.exports = { getDriverContext, listContradictionCandidates };
