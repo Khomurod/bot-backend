@@ -91,6 +91,15 @@ function summaryDeps(overrides = {}) {
     findings: { async summariseFindings() { return { info: 1, warning: 2, serious: 0, total: 3 }; } },
     people: { async summariseIdentityCoverage() { return { people: 200, activeDriverGroups: 205, groupsWithoutPerson: 0, openUnits: 190, unstamped: { roadHistory: 0, requests: 0, mileage: 0 } }; } },
     integrity: { async countDuplicateOpenStays() { return []; }, async indexExists() { return true; } },
+    // The safety block is composed in, so it is faked in.
+    safety: {
+      async summariseSafety() {
+        return {
+          windowDays: 14, events: 9, byBehavior: { harsh_braking: 6, speeding: 3 },
+          driversWithEvents: 2, coachingSent: 1, coachingToDrivers: 1,
+        };
+      },
+    },
     // The load lifecycle block is composed in, so it is faked in.
     loads: {
       async summariseLoadPhases() {
@@ -144,6 +153,8 @@ test('the summary is counts and timestamps, and a capped check is named with its
   assert.equal(s.homeTime.aiResponsibilities.registered, 17);
   assert.equal(s.loads.total, 12);
   assert.equal(s.loads.conflicted, 1, 'a load the board and the truck disagree about is visible live');
+  assert.equal(s.safety.events, 9);
+  assert.equal(s.safety.coachingToDrivers, 1, 'how much coaching actually reached a driver');
   const gemini = s.aiModels.find((p) => p.provider === 'gemini');
   assert.deepEqual(gemini, { provider: 'gemini', enabled: true, chain: 1, discovered: 2, refreshedAt: '2026-09-10T06:00:00.000Z', refreshError: null });
 });

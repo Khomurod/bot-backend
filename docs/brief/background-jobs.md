@@ -212,3 +212,49 @@ Factor and Leader have returned `fuel_level` and `odometer` in their documented
 payload all along and nothing ever read them; both are now mapped through
 `services/liveLocations/providers.js`. A vehicle that does not report them has
 `null`, never `0`.
+
+## Safety coach (every 6 hours, first pass 20 minutes after boot)
+
+`services/safety/coach.js`. Reads safety events as a **pattern** rather than one
+incident at a time, and says one useful thing to a driver who has a habit.
+
+The events themselves are new. The Samsara poller has been formatting them,
+sending them and throwing them away, so `driver_safety_events` (migration 0033,
+written by `samsara-integration`) is the missing half. Every query groups by
+`person_id`: a safety history that resets when a driver changes truck hides
+exactly the driver a pattern would find.
+
+**Two hard lines.**
+
+*AI never decides whether a driver is coached, only how the sentence reads.* The
+decision is arithmetic in `lib/safety/patterns.js`, which is pure and has no
+model in it. With every provider dead, every driver who should be coached still
+is, in a fixed sentence that names the habit, the count, the window and the one
+thing that helps.
+
+*Nothing here decides anything about a person's job.* No score, no ranking, no
+fine, no recommendation. A model answer containing any of a broad list —
+discipline, warning, points, score, probation, "your pay", "your job" — is
+rejected and the fixed sentence is sent. The word "warning" is on that list in
+every sense: "written warning" walked past an earlier list that only knew
+"warning letter".
+
+**One habit per pass**, the commonest. A message listing three faults is a
+reprimand however warmly it is worded, and nobody changes three habits at once.
+A habit coached in the last fortnight is not raised again; coaching one habit
+does not silence a different one.
+
+Samsara's four spellings of a behaviour (`HarshBraking`, `harsh_braking`,
+`Harsh Braking`, `HARSH-BRAKING`) collapse to one. Counted separately each has
+one event, nothing reaches a threshold, and the feature silently never fires.
+
+A crash is never a coaching moment. It is an incident, and a person owns it.
+
+Driver messages go through `homeTimeDriverChannel.sendToDriverGroup`, the one
+choke point for everything said to a driver group, so the silent-mode switch
+applies. When the driver cannot be reached the note goes to the operations chat
+instead of nowhere. A heavy pattern is escalated to safety management with the
+numbers that justified it, and says explicitly that no automatic action was
+taken.
+
+Visible on `/api/health` → `operations.safety`.

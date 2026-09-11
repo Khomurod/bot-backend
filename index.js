@@ -79,6 +79,10 @@ const {
   startFuelRiskWatch,
   stopFuelRiskWatch,
 } = require('./services/fuelStop/riskWatch');
+const {
+  startSafetyCoach,
+  stopSafetyCoach,
+} = require('./services/safety/coach');
 const { registerKnownCapabilities } = require('./services/ai/capabilityRegistry');
 const {
   startRouteControlService,
@@ -362,6 +366,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopReturnToRoadWatch(); } catch (err) { console.error('[SHUTDOWN] stopReturnToRoadWatch failed:', err.message); }
   try { stopLoadLifecycleWatch(); } catch (err) { console.error('[SHUTDOWN] stopLoadLifecycleWatch failed:', err.message); }
   try { stopFuelRiskWatch(); } catch (err) { console.error('[SHUTDOWN] stopFuelRiskWatch failed:', err.message); }
+  try { stopSafetyCoach(); } catch (err) { console.error('[SHUTDOWN] stopSafetyCoach failed:', err.message); }
   try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
   try { stopConsistencyService(); } catch (err) { console.error('[SHUTDOWN] stopConsistencyService failed:', err.message); }
@@ -433,6 +438,10 @@ async function start() {
   // stop, did it go past, is the instruction from last trip. Reports to the
   // operations chat only while it is new — never to a driver.
   startFuelRiskWatch();
+  // Reads safety events as a PATTERN rather than one incident at a time, and
+  // says one useful thing to a driver who has a habit. Whether to speak is
+  // arithmetic; a model only words the sentence.
+  startSafetyCoach();
   // Put the AI responsibilities catalogue into the database, so Settings → AI
   // has something to show and an administrator has something to switch off.
   // Descriptive columns only — a capability switched off stays off.

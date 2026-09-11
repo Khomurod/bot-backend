@@ -25,6 +25,7 @@ const defaultDeps = () => ({
   integrity: require('../../database/homeTime/integrity'),
   homeTimeHealth: require('./homeTimeHealth'),
   loads: require('../../database/loadLifecycle'),
+  safety: require('../../database/driverSafety'),
   aiProviders: require('../../database/aiProviders'),
   /* eslint-enable global-require */
 });
@@ -87,7 +88,7 @@ function summariseCorrections(lastCorrections) {
 async function getOperationsHealth(deps = defaultDeps()) {
   try {
     const status = deps.consistency.getConsistencyStatus();
-    const [findings, coverage, duplicates, indexPresent, providers, homeTimeLive, loadPhases] = await Promise.all([
+    const [findings, coverage, duplicates, indexPresent, providers, homeTimeLive, loadPhases, safety] = await Promise.all([
       deps.findings.summariseFindings(),
       deps.people.summariseIdentityCoverage(),
       deps.integrity.countDuplicateOpenStays(),
@@ -95,6 +96,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
       deps.aiProviders.listProvidersForAdmin(),
       deps.homeTimeHealth.getHomeTimeHealth(),
       deps.loads.summariseLoadPhases().catch(() => null),
+      deps.safety.summariseSafety().catch(() => null),
     ]);
     return {
       available: true,
@@ -117,6 +119,9 @@ async function getOperationsHealth(deps = defaultDeps()) {
       // What every active load is doing, so the lifecycle engine is checkable
       // on a running instance rather than only in its tests.
       loads: loadPhases,
+      // Safety as a PATTERN: how many events, of what kind, and how much
+      // coaching actually reached a driver.
+      safety,
       aiModels: providers.map((p) => ({
         provider: publicProviderName(p),
         enabled: p.enabled === true,
