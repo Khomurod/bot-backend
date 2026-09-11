@@ -104,8 +104,14 @@ async function notify(notice, deps = defaultDeps()) {
     return { recorded: false, delivered: false, reason: 'settings_unavailable' };
   }
 
+  // BUILT BEFORE THE DESTINATION IS RESOLVED, and that ordering is the fix for
+  // a counter that shipped wrong. Both discards below record this key, so the
+  // same load reconsidered every ten minutes is one thing unheard rather than
+  // a hundred and forty-four.
+  const noticeKey = noticeKeyFor(category, subjectType, subjectId, discriminator);
+
   if (config.enabled === false) {
-    await deps.store.recordDiscard(category, 'disabled').catch(() => {});
+    await deps.store.recordDiscard(category, 'disabled', noticeKey).catch(() => {});
     return { recorded: false, delivered: false, reason: 'disabled' };
   }
 
@@ -123,7 +129,7 @@ async function notify(notice, deps = defaultDeps()) {
     // running, finding real things, and saying nothing — the same silence this
     // whole project started from, reached by a different route. A count is a
     // sentence somebody acts on; "not configured" is not.
-    await deps.store.recordDiscard(category, 'no_destination').catch(() => {});
+    await deps.store.recordDiscard(category, 'no_destination', noticeKey).catch(() => {});
     console.log(`[NOTIFY] no destination for "${category}" — not recorded.`);
     return { recorded: false, delivered: false, reason: 'no_destination' };
   }
@@ -131,8 +137,6 @@ async function notify(notice, deps = defaultDeps()) {
   const body = composeNotice({
     icon: ICONS[category] || 'ℹ️', title, lines, reason, action,
   });
-  const noticeKey = noticeKeyFor(category, subjectType, subjectId, discriminator);
-
   let row;
   try {
     row = await deps.store.enqueueNotification({

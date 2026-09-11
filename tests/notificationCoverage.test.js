@@ -137,8 +137,18 @@ test('the ICONS table covers every category, so none arrives unlabelled', () => 
 
 test('a discarded notice is COUNTED, so "nothing is configured" becomes a number', () => {
   const send = fs.readFileSync(path.join(ROOT, 'services/notifications/send.js'), 'utf8');
-  assert.ok(send.includes("recordDiscard(category, 'no_destination')"));
-  assert.ok(send.includes("recordDiscard(category, 'disabled')"));
+  // WITH ITS KEY. Without the key the counter counts passes rather than
+  // problems: the load watch reconsiders the same conflicted loads every ten
+  // minutes, and production counted 162 discards for about 60 distinct things
+  // inside twenty. A number somebody acts on has to be the number of things
+  // that went unheard.
+  assert.ok(send.includes("recordDiscard(category, 'no_destination', noticeKey)"));
+  assert.ok(send.includes("recordDiscard(category, 'disabled', noticeKey)"));
+  // And the key must be built BEFORE the destination is resolved — that
+  // ordering IS the fix, and a later refactor that moves it back down would
+  // restore the bug silently.
+  assert.ok(send.indexOf('const noticeKey =') < send.indexOf('resolveDestination('),
+    'the notice key must exist before the discard that records it');
   // And still not enqueued: a backlog delivered months later into a live staff
   // chat is what this repository decided against with 98 expired alerts.
   const noDestBlock = send.slice(send.indexOf('if (!chatId)'), send.indexOf('const body ='));

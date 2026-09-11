@@ -17,6 +17,7 @@ function harness({
   settingsThrows = false, enqueueReturns = undefined, sendThrows = null, telegram = undefined,
 } = {}) {
   const calls = { enqueued: [], sent: [], delivered: [], failed: [], claimed: [] , discards: [] };
+  const discardKeys = new Set();
   let nextId = 1;
   const seen = new Set();
 
@@ -28,7 +29,18 @@ function harness({
       },
     },
     store: {
-      async recordDiscard(category, reason) { calls.discards.push({ category, reason }); return true; },
+      // Mirrors the real store: a key nobody has seen before moves the counter,
+      // and a repeat of one already counted does not. Without this the stub
+      // would prove the fix present in `send.js` while saying nothing about
+      // whether the count it produces is the right one.
+      async recordDiscard(category, reason, noticeKey = null) {
+        if (noticeKey) {
+          if (discardKeys.has(noticeKey)) return false;
+          discardKeys.add(noticeKey);
+        }
+        calls.discards.push({ category, reason, noticeKey });
+        return true;
+      },
       async enqueueNotification(row) {
         calls.enqueued.push(row);
         if (enqueueReturns !== undefined) return enqueueReturns;
@@ -205,4 +217,65 @@ test('a sweep that cannot reach the database reports zero rather than throwing',
   const { deps } = harness();
   deps.store.claimDueNotifications = async () => { throw new Error('connection refused'); };
   assert.deepEqual(await runNotificationSweep({}, deps), { claimed: 0, delivered: 0 });
+});
+
+/**
+ * THE COUNTER MUST COUNT PROBLEMS, NOT PASSES.
+ *
+ * Found in production, an hour after the counter shipped. With no destination
+ * `notify()` discards at the door — correctly — but it discarded BEFORE
+ * building the notice key, so the dedup that exists a few lines further down
+ * never ran. The load-lifecycle watch re-checks the same conflicted loads every
+ * ten minutes, so `load_lifecycle` reached 95 discards in nine minutes for
+ * about 48 distinct loads. Left alone that reads ~48,000 in a week.
+ *
+ * A number an operator cannot trust is worse than the sentence it replaced:
+ * "1,247 notices were thrown away" is only worth acting on if 1,247 is the
+ * number of things that went unheard, rather than the number of times the same
+ * forty-eight were reconsidered.
+ *
+ * Delivery is NOT changed by any of this — `noticeSentWithin` still answers
+ * only about notices that were queued or sent, so configuring a destination
+ * announces everything still true rather than waiting out a window a discard
+ * started.
+ */
+test('the same notice discarded twice is counted ONCE', async () => {
+  const { deps, calls } = harness({ defaultChatId: '' });
+  const notice = {
+    category: 'load_lifecycle', title: 'Unit 123: the board and the truck disagree',
+    subjectType: 'load', subjectId: '9001', discriminator: '2026-09-11',
+  };
+  await notify(notice, deps);
+  await notify(notice, deps);
+  await notify(notice, deps);
+  assert.equal(calls.discards.length, 1,
+    'the watch reconsiders the same load every ten minutes; each reconsideration '
+    + 'is not a separate thing the operator did not hear about');
+});
+
+test('a DIFFERENT load discarded is its own count', async () => {
+  const { deps, calls } = harness({ defaultChatId: '' });
+  const base = { category: 'load_lifecycle', title: 't', subjectType: 'load', discriminator: '2026-09-11' };
+  await notify({ ...base, subjectId: '9001' }, deps);
+  await notify({ ...base, subjectId: '9002' }, deps);
+  assert.equal(calls.discards.length, 2);
+});
+
+test('the same load on a NEW day is a new thing unheard', async () => {
+  const { deps, calls } = harness({ defaultChatId: '' });
+  const base = { category: 'load_lifecycle', title: 't', subjectType: 'load', subjectId: '9001' };
+  await notify({ ...base, discriminator: '2026-09-11' }, deps);
+  await notify({ ...base, discriminator: '2026-09-12' }, deps);
+  assert.equal(calls.discards.length, 2,
+    'the discriminator is what makes THIS event different from the last one, and '
+    + 'it is as true of a discard as of a send');
+});
+
+test('the notice key travels to the counter, so the dedup is the store\'s to make', async () => {
+  const { deps, calls } = harness({ defaultChatId: '' });
+  await notify({
+    category: 'fuel', title: 't', subjectType: 'truck', subjectId: '305', discriminator: 'low',
+  }, deps);
+  assert.equal(calls.discards[0].noticeKey, 'fuel:truck:305:low',
+    'a counter given only a category cannot tell two trucks apart');
 });

@@ -82,6 +82,56 @@ operations.notifications.discarded`, in Settings → Notifications, and as a
 `needs_human_attention` row in Operations → What is running, plus a banner on
 the Operations page itself.
 
+### It counts things unheard, not passes — and did not at first
+
+Migration 0041 shipped counting the wrong thing, and production said so within
+the hour. `notify()` resolved the destination **before** it built the notice
+key, so the discard was recorded several lines above the dedup that makes a
+notice idempotent. The load-lifecycle watch reconsiders the same conflicted
+loads every ten minutes and `worthAsking` has no time gate, so every
+reconsideration counted again.
+
+Observed, and stated no further than observed: the total went **47 → 162 in
+the twenty minutes after the deploy**, for roughly 48 conflicted loads and 12
+fuel notices — about 60 distinct things counted 162 times. It then held at 162
+across two readings, so no weekly figure is extrapolated: the rate depends on
+how often each watch re-notifies and that was not measured long enough to say.
+
+The inflation is real whatever its rate. **A wrong number is worse than the
+sentence it replaced**, because the entire argument for counting was that the
+cost of silence should be legible, and a count that rises while nothing new
+goes unheard is not legible.
+
+Migration 0042 adds `notification_discard_keys` — one row per DISTINCT notice
+key thrown away, holding the key, its category and when it was first seen. The
+key is `category:subjectType:subjectId:discriminator`, so a load conflicted for
+a month is thirty rows rather than four thousand, and callers already change the
+discriminator when the event changes.
+
+Two properties worth stating, because both were deliberate:
+
+- **It is not the backlog, one table over.** A row here holds nothing that
+  could be sent. On the day a destination is configured, nothing in it delivers.
+- **Delivery is untouched.** `noticeSentWithin` still answers only about notices
+  that were queued or sent, so configuring a destination announces everything
+  still true rather than waiting out a repeat window a discard had quietly
+  started. That is why this is a separate table and not a terminal status on
+  the outbox.
+
+A caller that supplies no notice key still counts every call, which is the
+pre-0042 behaviour kept on purpose: a notice with no subject is a one-off.
+
+**The counts written before 0042 are left alone.** They are inflated — roughly
+200 for about 60 distinct things — and the keys were never stored, so they
+cannot be retroactively deduplicated. The migration is additive and deletes
+nothing, because this repository does not make destructive database changes
+without being asked. Clearing the pre-fix base is one statement whenever the
+owner wants it, and the counter is honest from the deploy forward either way:
+
+```sql
+DELETE FROM notification_discards;   -- optional; rows regenerate correctly
+```
+
 Settings → Notifications also **offers the chats this deployment already
 messages** (`lib/notifications/candidates.js`) so that setting a destination
 does not mean going to find a Telegram chat id. Offered, never applied: routing
@@ -164,7 +214,8 @@ here are all fixed-size, and the arithmetic is small enough to state exactly:
 |---|---|---|
 | `background_service_runs` | one per catalogued worker — **34** | ~2,340 UPSERTs (every worker, at every one of its own intervals) |
 | `truck_fuel_readings` | one per truck that reports telemetry — **~110** | ~7,900 UPSERTs (72 fuel passes × the trucks reporting) |
-| `notification_discards` | one per category — **9** | at most one per discarded notice, and zero once a destination is set |
+| `notification_discards` | one per category — **9** | one per DISTINCT notice thrown away, and zero once a destination is set |
+| `notification_discard_keys` | one per distinct notice key thrown away, bounded by the caller's discriminator | the same |
 | `operational_learning_suggestions` (widened, not added) | unchanged | unchanged — the pass runs twice a day |
 
 That is about **10,000 UPSERTs a day, ~7 a minute, against roughly 150 rows in
