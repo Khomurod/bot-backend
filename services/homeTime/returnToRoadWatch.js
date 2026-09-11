@@ -140,6 +140,26 @@ function buildFinding(driver, verdict, { unit, eventAt }) {
 }
 
 /**
+ * Which providers failed, in words safe to publish.
+ *
+ * Names come from a fixed set and codes are `err.code`; the message never
+ * travels, because this reason is rendered on the public `/api/health`.
+ */
+function describeProviderErrors(fleetResult) {
+  const errors = Array.isArray(fleetResult?.errors) ? fleetResult.errors : [];
+  if (!errors.length) return 'any provider';
+  // Paired BEFORE filtering. Mapping to names and then indexing back into
+  // `errors` by position is wrong the moment one entry has no provider — the
+  // codes shift onto the wrong names, and a misattributed cause is worse than
+  // none.
+  const named = errors
+    .filter((e) => e && typeof e === 'object' && e.provider)
+    .map((e) => (e.code ? `${e.provider} (${e.code})` : String(e.provider)));
+  if (!named.length) return `any provider (${errors.length} error(s))`;
+  return named.join(', ');
+}
+
+/**
  * One pass. Returns a summary; never throws.
  *
  * @returns {Promise<{checked:number, high:number, medium:number, low:number,
@@ -195,13 +215,40 @@ async function runReturnToRoadCheck({ now = Date.now(), deps = defaultDeps(), op
 
     // NOT SILENTLY FINE. Catching the failure must not turn a pass that can see
     // nothing into a pass that reports success — that is the exact trade this
-    // whole body of work exists to refuse. When no provider answered AND no
-    // orders came back, the pass ran and learned nothing, and the ledger is
-    // told so.
-    const sawNothing = !Object.keys(fleets).length && !orders.length;
+    // whole body of work exists to refuse.
+    //
+    // COUNTING VEHICLES, NOT KEYS. This asked `Object.keys(fleets).length`, and
+    // `fetchProviderFleets` always returns `{samsara, factor, leader}` with the
+    // ones that failed set to null — three keys, whatever happened. So the
+    // guard could only ever fire when the WHOLE call threw, and was blind to
+    // the case it exists for: all three providers erroring individually, every
+    // fleet null, and the pass reporting a clean run having seen nothing.
+    const vehiclesSeen = Object.values(fleets)
+      .reduce((n, list) => n + (Array.isArray(list) ? list.length : 0), 0);
+    const sawNothing = vehiclesSeen === 0 && !orders.length;
+
+    // AND SEEING NOTHING IS `blocked`, NOT `error`.
+    //
+    // The pass is not broken. It ran, it asked, and no telemetry provider
+    // answered — which `lib/operations/runHealth.js` has a state for, and says
+    // so in its own header: a worker that cannot run because an operator has
+    // not supplied a key is NOT broken, and painting it red is how a real
+    // outage gets lost among things that were never switched on.
+    //
+    // This had reached THIRTY "consecutive failures" in production on a pass
+    // that was completing every run and checking every driver. `blocked` still
+    // resolves to needs_human_attention, so nothing is hidden; what changes is
+    // that the sentence names the cause instead of counting a failure that did
+    // not happen.
+    //
+    // PROVIDER NAMES AND ERROR CODES ONLY. `/api/health` is public and a
+    // provider's `err.message` can quote a URL or a rejected value; the names
+    // come from a fixed set and the codes are `err.code`. The full message
+    // stays on the authenticated Operations screen.
     if (sawNothing && summary.providerErrors > 0) {
-      summary.error = `no telemetry and no orders could be read `
-        + `(${summary.providerErrors} provider error(s))`;
+      summary.blocked = `no telemetry could be read from ${describeProviderErrors(fleetResult)}`
+        + `${orderResult?.error ? ', and the order board could not be read either' : ''}`
+        + ' — Wenze cannot tell whether anybody went back on the road';
     }
     const byUnit = deps.orders.indexOrdersByUnit(orders, now);
     const byDriver = deps.orders.indexOrdersByDriver(orders, now);

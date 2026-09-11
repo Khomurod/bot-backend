@@ -10,6 +10,35 @@ git so they can be recovered.
 
 ---
 
+## Two modules left behind by other removals
+
+Not features — leftovers, removed 2026-09 after a sweep for modules with no
+production caller. Both are recoverable from git; neither had a reader.
+
+**`database/sqlValues.js`** (`boundedText`). Added by
+[#140](https://github.com/Khomurod/bot-backend/pull/140) for the Trailer
+Tracking data layer, specifically so the same coercion was not written twice.
+Trailer Tracking was retired below and took both callers with it, leaving the
+helper with none.
+
+**`services/loadExtractionValidate.js`** and its test
+(`hasMinimalStructuredLoad`, `groqFieldsLookComplete`, `normalizeLine`). Added
+in `48be20f` alongside `dispatchPinnedContextService.js`, and orphaned when that
+service was split into `services/pinnedContext/*`: `rules.js` grew its own
+`normalizeLine` — byte-for-byte identical — and `isLoadContextComplete`, and
+nothing imported the old module again. The one rule that did NOT survive the
+split is `hasMinimalStructuredLoad`'s looser test (a destination query of 5+
+characters, *or* a pickup and delivery of 4+ each), where
+`isLoadContextComplete` requires all three. Recover it from `48be20f` if that
+looser rule is ever wanted; nothing has called it since the split.
+
+This is the same class of defect `CLAUDE.md` warns about under "a green build is
+not a scope check" — a module split leaving identifiers behind — caught here by
+grepping every exported symbol for a caller outside `tests/`. A test file is a
+caller, which is why CI was green throughout.
+
+---
+
 ## Trailer Department, Trailer Tracking, and QBQ/SOS
 
 **Archived:** 2026-09
