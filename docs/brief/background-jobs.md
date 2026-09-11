@@ -158,10 +158,26 @@ caller:
   identical to one 200 miles past it. `was_at_pickup` and `was_at_delivery` are
   OR-ed and never cleared, because a departure is not evidence the arrival was
   imagined.
-- **Only a board running AHEAD of the truck is a conflict.** A lagging board
-  describes almost every delivered load and flagging it would make the check
-  pure noise. A board claiming more than the coordinates support means somebody
-  recorded work that has not happened, and everything downstream will believe it.
+- **A conflict needs positive evidence, not merely a board that is ahead.** A
+  lagging board describes almost every delivered load, so only a board claiming
+  MORE than the coordinates support was ever considered — and production showed
+  that is still not enough: **75 of 235 loads came back conflicted, a third of
+  the fleet**, which is not a list anybody reads. Two innocent situations were
+  being caught. A truck parked mid-trip with the board marked loaded lands on
+  `assigned` for want of a remembered arrival, and produced "the truck has not
+  left the shipper" about a truck three hundred miles from it. And a delivered
+  load this watcher started following late produced "the truck is still at the
+  receiver" about a truck driving away from it — absence of memory is not
+  evidence that the delivery did not happen.
+
+  A conflict now requires the truck to be seen somewhere the board's claim
+  cannot be true from: **delivered while the truck is at the shipper** (the
+  strongest — a completed delivery recorded for a truck at the pickup),
+  **delivered while a load we have actually been watching was never seen at the
+  receiver**, or **loaded while the truck is still at the shipper**. Everything
+  else where the board runs ahead is recorded as the signal
+  `board_ahead_of_what_has_been_observed`, which keeps the confidence honest
+  without making it somebody's question.
 
 A conflict never moves the phase. It files `load.phase_unclear` at the `warning`
 tier, which has **no registered action**, so "Wenze never guesses a load's
