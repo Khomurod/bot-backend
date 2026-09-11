@@ -65,9 +65,25 @@ BEGIN
       CHECK (mode IN ('observe', 'suggest', 'autopilot'));
   END IF;
 
-  -- THE ANTI-DRIFT CONSTRAINT. Autopilot and only autopilot means auto-apply.
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'operational_check_settings_mode_agrees') THEN
-    ALTER TABLE operational_check_settings ADD CONSTRAINT operational_check_settings_mode_agrees
-      CHECK (auto_apply_enabled = (mode = 'autopilot'));
-  END IF;
 END$$;
+
+-- WHY THERE IS NO CHECK FORCING THE TWO COLUMNS TO AGREE, having tried one.
+--
+-- The obvious guard is `CHECK (auto_apply_enabled = (mode = 'autopilot'))`, and
+-- it was written first. It broke something worth more than it was: migration
+-- 0027 seeds three checks with `auto_apply_enabled` alone and `ON CONFLICT DO
+-- NOTHING`, so on a database where those rows are absent it inserts them with
+-- the boolean set and `mode` at its default — and the constraint refuses. That
+-- makes an older migration no longer re-appliable, and "the migration re-applies
+-- as a no-op" is a property this repository tests for on purpose.
+--
+-- The better answer is to make drift HARMLESS rather than forbidden. `mode` is
+-- the authority: `services/operations/corrections/autoApply.js` reads it, and
+-- nothing that ACTS reads the boolean any more. A stale `auto_apply_enabled`
+-- can therefore be wrong without anything behaving wrongly, which is a weaker
+-- guarantee about the data and a stronger one about the system.
+--
+-- The data layer still writes both in one statement, and
+-- `tests/checkModesPg.test.js` carries a sentinel asserting no row disagrees —
+-- so drift is still caught, in CI, rather than by refusing a write somebody had
+-- every right to make.

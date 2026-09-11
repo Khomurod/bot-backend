@@ -44,17 +44,65 @@ test('AN ARMED CHECK STAYS ARMED, and a quiet one stays quiet',
     assert.equal(byKey.quiet.autoApplyEnabled, false);
   });
 
-test('THE DATABASE REFUSES A MODE THAT DISAGREES WITH THE BOOLEAN',
+test('NO ROW ANYWHERE DISAGREES WITH ITSELF — the sentinel',
   { skip: skipWithoutPg() }, async (t) => {
+    // A CHECK forcing this was written first and then removed, because it made
+    // migration 0027 — which seeds three checks with the boolean alone — no
+    // longer re-appliable, and "the migration re-applies as a no-op" is a
+    // property this repository tests for on purpose. The rationale is in 0044.
+    //
+    // So the agreement is asserted rather than enforced, and the reason that is
+    // safe is the next test: nothing that ACTS reads the boolean any more.
+    const { h, s } = await setup(t);
+    await s.upsertCheckSettings('a', { mode: 'autopilot' });
+    await s.upsertCheckSettings('b', { mode: 'observe' });
+    await s.upsertCheckSettings('c', { autoApplyEnabled: true });
+    const bad = await h.query(
+      `SELECT check_key FROM operational_check_settings
+        WHERE auto_apply_enabled <> (mode = 'autopilot')`
+    );
+    assert.deepEqual(bad.rows, [],
+      'every row the data layer wrote states the same fact twice and agrees with itself');
+  });
+
+test('AND DRIFT IS HARMLESS, because the mode is what acts',
+  { skip: skipWithoutPg() }, async (t) => {
+    // Forced into disagreement behind the data layer's back, the way a stray
+    // raw write would. What matters is that the deciding code follows `mode`.
     const { h } = await setup(t);
-    await assert.rejects(() => h.query(
-      `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, mode)
-       VALUES ('lying', TRUE, 'observe')`
-    ), 'a check that says "watch only" and "apply automatically" at once is not a state');
-    await assert.rejects(() => h.query(
-      `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, mode)
-       VALUES ('lying2', FALSE, 'autopilot')`
-    ));
+    await h.query(
+      `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, mode, max_auto_per_run)
+       VALUES ('home_time.closable_open_cycle', TRUE, 'suggest', 50)
+       ON CONFLICT (check_key) DO UPDATE SET auto_apply_enabled = TRUE, mode = 'suggest'`
+    );
+    // eslint-disable-next-line global-require
+    const { runAutoCorrections } = require('../services/operations/corrections/autoApply');
+    const store = h.loadDataLayer(['operationalFindings']).operationalFindings;
+    // AN OPEN FINDING THIS CHECK COULD ACT ON. Without one, `eligible` is zero
+    // whichever column is read and the test passes for the wrong reason —
+    // which is what the first version of it did.
+    await store.upsertFinding({
+      checkKey: 'home_time.closable_open_cycle',
+      subjectType: 'road_history', subjectId: '1',
+      title: 'an open cycle that could be closed',
+      severity: 'info', tier: 'auto',
+      proposedChange: { cycleId: 1, returnToRoadAt: '2026-09-01T00:00:00Z', homeDays: 2 },
+    });
+
+    const db = { pool: h.pool, query: h.query };
+    const held = await runAutoCorrections({ apply: false, db, store });
+    assert.equal(held.summary.eligible, 0,
+      'the boolean says "apply automatically" and the mode says "propose"; a '
+      + 'stale boolean must not be able to arm a check nobody armed');
+
+    // And the same finding IS eligible once the mode actually says so — which
+    // is what makes the assertion above mean something.
+    await h.query(
+      "UPDATE operational_check_settings SET mode = 'autopilot' "
+      + "WHERE check_key = 'home_time.closable_open_cycle'"
+    );
+    const armed = await runAutoCorrections({ apply: false, db, store });
+    assert.equal(armed.summary.eligible, 1, 'the mode is what arms it');
   });
 
 test('setting a mode writes the boolean in the SAME statement',

@@ -38,10 +38,34 @@ const { applyCorrection, StaleCorrectionError } = require('./apply');
 
 const DEFAULT_CAP = 50;
 
+/**
+ * A settings row's mode, tolerant of a row that predates migration 0044.
+ *
+ * The SQL already COALESCEs, but `loadCheckSettings` is injectable — several
+ * suites hand this module a fake db whose rows carry only the old boolean —
+ * and a row written before 0044 has the same shape. Resolving it here rather
+ * than only in the query means there is ONE answer to "what mode is this
+ * check in", wherever the row came from.
+ */
+function modeOf(setting) {
+  if (!setting) return null;
+  if (setting.mode) return setting.mode;
+  return setting.auto_apply_enabled === true ? 'autopilot' : 'suggest';
+}
+
 /** Per-check settings, keyed by check_key. Absent = disabled. */
 async function loadCheckSettings(db = defaultDb) {
+  // `mode` IS THE AUTHORITY, not `auto_apply_enabled`. The boolean is kept for
+  // older readers and cannot be trusted to have been updated alongside; nothing
+  // that ACTS reads it. COALESCE covers a row written before migration 0044 by
+  // something that never learned about modes.
+  // BOTH are returned: `mode` because it is what this module acts on, and
+  // `auto_apply_enabled` because the row is read elsewhere and a field silently
+  // dropped is its own kind of defect. `modeOf` decides which one wins.
   const res = await db.query(
-    `SELECT check_key, auto_apply_enabled, max_auto_per_run, shadow
+    `SELECT check_key, max_auto_per_run, shadow, auto_apply_enabled,
+            COALESCE(mode, CASE WHEN auto_apply_enabled THEN 'autopilot' ELSE 'suggest' END)
+              AS mode
        FROM operational_check_settings`
   );
   return new Map(res.rows.map((r) => [r.check_key, r]));
@@ -123,7 +147,7 @@ async function planForCheck(checkKey, { settings, store }) {
   const setting = settings.get(checkKey);
   const cap = (setting && setting.max_auto_per_run) || DEFAULT_CAP;
 
-  if (!setting || setting.auto_apply_enabled !== true) {
+  if (!setting || modeOf(setting) !== 'autopilot') {
     return { disabled: await store.countFindings({ status: 'open', checkKey, tier: 'auto' }) };
   }
 
@@ -188,7 +212,7 @@ async function runAutoCorrections({ apply = false, db = defaultDb, store = defau
   // A settings row granting auto-apply to a check no action answers grants
   // nothing. Worth saying out loud rather than ignoring: it is usually a typo.
   for (const [checkKey, setting] of settings) {
-    if (setting.auto_apply_enabled === true && !actionForCheck(checkKey)) skipped.noAction += 1;
+    if (modeOf(setting) === 'autopilot' && !actionForCheck(checkKey)) skipped.noAction += 1;
   }
 
   const summary = {

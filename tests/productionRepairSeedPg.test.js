@@ -52,8 +52,8 @@ test('the three repairs are switched on with their measured caps', { skip: skipW
 test('a setting an administrator already saved is left exactly as saved', { skip: skipWithoutPg() }, async (t) => {
   const harness = await createPgHarness(t, { extraDdl: BEFORE_0027 });
   await harness.query(
-    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run, updated_by)
-     VALUES ('home_time.closable_open_cycle', FALSE, 10, 'admin:7')`
+    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run, updated_by, mode)
+     VALUES ('home_time.closable_open_cycle', FALSE, 10, 'admin:7', 'suggest')`
   );
   await harness.query(MIGRATION_0027);
   const rows = await settings(harness);
@@ -95,7 +95,7 @@ test('the seeded Gemini row — production\'s shape — ends up with the catalog
 test('the migration re-applies as a no-op', { skip: skipWithoutPg() }, async (t) => {
   const harness = await createPgHarness(t, { extraDdl: allMigrationsSql() });
   await harness.query(
-    `UPDATE operational_check_settings SET auto_apply_enabled = FALSE, updated_by = 'admin:1'
+    `UPDATE operational_check_settings SET auto_apply_enabled = FALSE, mode = 'suggest', updated_by = 'admin:1'
       WHERE check_key = 'identity.stale_unit_assignment'`
   );
   await harness.query(MIGRATION_0027);
