@@ -28,6 +28,8 @@ const { assess } = require('../../lib/retention/signals');
 
 const CAPABILITY = 'retention_summary';
 const POLL_MS = 4 * 60 * 60 * 1000;
+/** How many of the cohort are named in the one message. */
+const COHORT_NAMED = 5;
 const FIRST_TICK_DELAY_MS = 15 * 60 * 1000;
 
 /**
@@ -148,7 +150,24 @@ async function considerDriver(driver, { nowIso, deps, options }) {
   });
 
   const verdict = deps.store.shouldNotify(previous, assessment, { now: nowIso });
-  if (!verdict.notify) return { driver: driver.driverName, level: assessment.level, sent: false, reason: verdict.reason };
+  if (!verdict.notify) {
+    return { driver: driver.driverName, level: assessment.level, sent: false, reason: verdict.reason };
+  }
+
+  // ONLY `urgent` gets its own message. Production answered this within half an
+  // hour of going live: fifty drivers came back at `watch` on a fleet of about
+  // a hundred and ten — truthfully, because this fleet really does have that
+  // many people past the road allowance with home requests that expired. Fifty
+  // separate notices is not fifty times the information; it is a channel
+  // nobody opens again. The cohort is summarised by the caller instead, and
+  // the full list is on the screen where it can be sorted and worked through.
+  if (assessment.level !== 'urgent') {
+    return {
+      driver: driver.driverName, level: assessment.level, sent: false,
+      reason: 'summarised', rowId: row?.id ?? null, score: assessment.score,
+      topReason: assessment.topReason,
+    };
+  }
 
   const { text, aiAssisted } = await summarise(
     { driverName: driver.driverName, assessment }, deps
@@ -186,10 +205,52 @@ async function considerDriver(driver, { nowIso, deps, options }) {
   };
 }
 
+/**
+ * One message for everybody worth watching, rather than one each.
+ *
+ * Named worst-first and capped at five, because a notice listing fifty people
+ * is a notice nobody reads to the end — and the point of naming any of them is
+ * that somebody picks up a phone. The rest are a number and a pointer to the
+ * screen, which can sort and filter in ways a chat message cannot.
+ *
+ * Each named driver is stamped as notified so the next pass does not repeat
+ * them; the ones that only made the count are not, so they are still named on a
+ * later pass if they rise or the cohort shrinks.
+ */
+async function announceCohort(cohort, { nowIso, deps }) {
+  const worst = [...cohort].sort((a, b) => (b.score || 0) - (a.score || 0));
+  const named = worst.slice(0, COHORT_NAMED);
+  const rest = worst.length - named.length;
+
+  const out = await deps.notify({
+    category: 'retention',
+    title: `${cohort.length} driver${cohort.length === 1 ? '' : 's'} worth a call`,
+    lines: [
+      ...named.map((d) => `${d.driver}: ${d.topReason}`),
+      rest > 0 ? `…and ${rest} more.` : null,
+    ].filter(Boolean),
+    action: 'Operations → Retention has the full list, with the reasons and what to do',
+    subjectType: 'system',
+    subjectId: 'retention_cohort',
+    // Once a day at most: the cohort barely changes between passes.
+    discriminator: nowIso.slice(0, 10),
+    evidence: { count: cohort.length, named: named.map((d) => d.driver) },
+  }).catch(() => ({ recorded: false }));
+
+  if (out.recorded) {
+    for (const d of named) {
+      if (!d.rowId) continue;
+      // eslint-disable-next-line no-await-in-loop
+      await deps.store.markNotified(d.rowId, d.score).catch(() => {});
+    }
+  }
+  return { sent: out.recorded === true, count: cohort.length, named: named.length };
+}
+
 /** One pass over the fleet. Never throws; a bad driver row costs that row only. */
 async function runRetentionPass({ now = Date.now(), deps = defaultDeps(), options = {} } = {}) {
   const nowIso = new Date(now).toISOString();
-  const summary = { checked: 0, flagged: 0, notified: 0, urgent: 0, errors: [] };
+  const summary = { checked: 0, flagged: 0, notified: 0, urgent: 0, summarised: null, errors: [] };
 
   let drivers;
   try {
@@ -199,6 +260,7 @@ async function runRetentionPass({ now = Date.now(), deps = defaultDeps(), option
     return { ...summary, errors: [err.message] };
   }
 
+  const cohort = [];
   for (const driver of drivers) {
     summary.checked += 1;
     try {
@@ -207,10 +269,13 @@ async function runRetentionPass({ now = Date.now(), deps = defaultDeps(), option
       if (out.level !== 'none') summary.flagged += 1;
       if (out.level === 'urgent') summary.urgent += 1;
       if (out.sent) summary.notified += 1;
+      if (out.reason === 'summarised') cohort.push(out);
     } catch (err) {
       summary.errors.push(`${driver.driverName}: ${err.message}`);
     }
   }
+
+  if (cohort.length) summary.summarised = await announceCohort(cohort, { nowIso, deps });
 
   return summary;
 }
@@ -277,6 +342,8 @@ function stopRetentionWatch() {
 
 module.exports = {
   CAPABILITY,
+  COHORT_NAMED,
+  announceCohort,
   getRetentionStatus,
   startRetentionWatch,
   stopRetentionWatch,

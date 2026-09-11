@@ -128,15 +128,34 @@ async function runLearningPass({ now = Date.now(), deps = defaultDeps(), options
 let timer = null;
 let stopped = true;
 
+/**
+ * What the last pass did, for `/api/health`.
+ *
+ * This pass writes rows ONLY when it finds something, and finding nothing is
+ * the ordinary case — so three zeros cannot tell you whether it ran and had
+ * nothing to say or never ran at all. Only one of those is good news. The same
+ * reasoning as the retention watch, and the same reason: a background job whose
+ * failure looks like its success is the problem this phase exists to remove.
+ */
+let lastRun = null;
+
 async function tick() {
+  const startedAt = new Date().toISOString();
   try {
     const summary = await runLearningPass({});
+    lastRun = { at: startedAt, ok: true, ...summary, errors: summary.errors.length };
     if (summary.announced > 0) {
       console.log(`[LEARNING] ${summary.announced} suggestion(s) raised for an administrator`);
     }
   } catch (err) {
+    lastRun = { at: startedAt, ok: false, error: err.message };
     console.warn('[LEARNING] pass failed:', err.message);
   }
+}
+
+/** Running, and what the last pass actually did. */
+function getLearningStatus() {
+  return { running: Boolean(timer), lastRun };
 }
 
 /**
@@ -162,6 +181,7 @@ function stopLearningPass() {
 
 module.exports = {
   POLL_MS,
+  getLearningStatus,
   FIRST_TICK_DELAY_MS,
   defaultDeps,
   gatherSources,

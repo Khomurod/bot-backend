@@ -114,6 +114,12 @@ function summaryDeps(overrides = {}) {
     retention: {
       async summariseRetention() { return { urgent: 1, watch: 3, acknowledged: 1, lastPassAt: null }; },
     },
+    learningPass: {
+      getLearningStatus: () => ({
+        running: true,
+        lastRun: { at: '2026-09-11T04:40:00.000Z', ok: true, found: 0, proposed: 0, announced: 0, errors: 0 },
+      }),
+    },
     retentionWatch: {
       getRetentionStatus: () => ({
         running: true,
@@ -349,12 +355,24 @@ test('the retention block says whether the pass has actually RUN, not only what 
 
 test('a pass that has never run is distinguishable from one that found nobody', async () => {
   const neverRan = await getOperationsHealth(summaryDeps({
+    learningPass: {
+      getLearningStatus: () => ({
+        running: true,
+        lastRun: { at: '2026-09-11T04:40:00.000Z', ok: true, found: 0, proposed: 0, announced: 0, errors: 0 },
+      }),
+    },
     retentionWatch: { getRetentionStatus: () => ({ running: true, lastRun: null }) },
   }));
   assert.equal(neverRan.retention.watch.lastRun, null);
 
   const ranAndFoundNobody = await getOperationsHealth(summaryDeps({
     retention: { async summariseRetention() { return { urgent: 0, watch: 0, acknowledged: 0, lastPassAt: null }; } },
+    learningPass: {
+      getLearningStatus: () => ({
+        running: true,
+        lastRun: { at: '2026-09-11T04:40:00.000Z', ok: true, found: 0, proposed: 0, announced: 0, errors: 0 },
+      }),
+    },
     retentionWatch: {
       getRetentionStatus: () => ({ running: true, lastRun: { at: 'now', ok: true, checked: 108, flagged: 0 } }),
     },
@@ -365,6 +383,12 @@ test('a pass that has never run is distinguishable from one that found nobody', 
 
 test('a pass that CRASHED says so, with the reason', async () => {
   const crashed = await getOperationsHealth(summaryDeps({
+    learningPass: {
+      getLearningStatus: () => ({
+        running: true,
+        lastRun: { at: '2026-09-11T04:40:00.000Z', ok: true, found: 0, proposed: 0, announced: 0, errors: 0 },
+      }),
+    },
     retentionWatch: {
       getRetentionStatus: () => ({
         running: true,
@@ -374,4 +398,16 @@ test('a pass that CRASHED says so, with the reason', async () => {
   }));
   assert.equal(crashed.retention.watch.lastRun.ok, false);
   assert.match(crashed.retention.watch.lastRun.error, /relation does not exist/);
+});
+
+test('the learning block says whether it has LOOKED — finding nothing writes no row', async () => {
+  const health = await getOperationsHealth(summaryDeps());
+  assert.equal(health.learning.pass.lastRun.ok, true);
+  assert.equal(health.learning.pass.lastRun.found, 0, 'looked, and there was nothing to propose');
+  assert.equal(health.learning.proposed, 1, 'and the counts are still there');
+
+  const neverLooked = await getOperationsHealth(summaryDeps({
+    learningPass: { getLearningStatus: () => ({ running: true, lastRun: null }) },
+  }));
+  assert.equal(neverLooked.learning.pass.lastRun, null, 'which is a different answer');
 });
