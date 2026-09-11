@@ -20,9 +20,6 @@ const {
   startFacebookWebhookWorker,
   stopFacebookWebhookWorker,
 } = require('./services/facebookWebhookService');
-const { setModelRefusalListener } = require('./services/ai/router');
-const { onProfileSaved } = require('./services/identity/personResolver');
-const { setProfileSavedHook } = require('./database/driverProfiles');
 const {
   startMemoryWatchdog,
   stopMemoryWatchdog,
@@ -311,12 +308,7 @@ async function start() {
   await startBot();
   // Every background timer and watcher, in one roster — see
   // services/backgroundServices.js for what each one does and what it may send.
-  startBackgroundServices({
-    telegram: bot.telegram,
-    setModelRefusalListener,
-    onProfileSaved,
-    setProfileSavedHook,
-  });
+  startBackgroundServices({ telegram: bot.telegram });
   await startFacebookWebhookWorker();
   startLeadsBot();
   startMemoryWatchdog();

@@ -130,11 +130,16 @@ const { onProfileSaved } = require('./identity/personResolver');
 const { setProfileSavedHook } = require('../database/driverProfiles');
 
 /**
- * Start everything. `telegram` is the main bot's client — the services that
- * post to driver groups take it explicitly rather than reaching for a
- * singleton, so a test can hand them a fake.
+ * Start everything.
+ *
+ * `telegram` is the only argument, and it is the main bot's client: the
+ * services that post to driver groups take it explicitly rather than reaching
+ * for a singleton, so a test can hand them a fake. Everything else this needs
+ * is required above — the three wiring functions were briefly parameters as
+ * well, which shadowed the imports of the same name and left two ways to say
+ * the same thing with nothing to choose between them.
  */
-function startBackgroundServices({ telegram, setModelRefusalListener, onProfileSaved, setProfileSavedHook }) {
+function startBackgroundServices({ telegram }) {
   // Which Telegram client each service posts through, decided here rather than
   // reached for. Dispatch ETA uses the main bot; Facebook leads use the leads
   // bot, which is a DIFFERENT token posting into a different group, and mixing
