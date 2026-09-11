@@ -31,7 +31,10 @@ function loadApp({ knownGroups = {}, getChat = null, notifyResult = null } = {})
     },
   };
   require.cache[STORE] = {
-    exports: { async summariseNotifications() { return { pending: 0, abandoned: 0, delivered24h: 3 }; } },
+    exports: {
+      async summariseNotifications() { return { pending: 0, abandoned: 0, delivered24h: 3 }; },
+      async summariseDiscards() { return { available: true, total: 0, byCategory: {}, since: null }; },
+    },
   };
   require.cache[GROUPS] = {
     exports: { async getGroupByTelegramId(id) { return knownGroups[String(id)]; } },
@@ -158,4 +161,31 @@ test('a preview sends a REAL notice, with a fresh key each time', async () => {
   assert.equal(saw.notified.length, 2);
   assert.notEqual(saw.notified[0].discriminator, saw.notified[1].discriminator,
     'a fixed key would let a category be previewed exactly once, ever');
+});
+
+test('the screen is offered chats this deployment ALREADY messages, rather than a blank box',
+  async () => {
+    const { app, saw } = loadApp();
+    const res = await call(app, 'GET', '/api/settings/notifications');
+    assert.equal(res.status, 200);
+    assert.ok(Array.isArray(res.body.candidates));
+    assert.ok(res.body.candidates.length > 0,
+      'the obstacle to configuring a destination is finding a chat id, not wanting one');
+    for (const c of res.body.candidates) {
+      assert.ok(String(c.chatId).trim(), 'an unset variable is never offered as a choice');
+      assert.ok(c.label && c.what, 'each one says what it already receives, so the '
+        + 'audience decision is an informed one');
+    }
+    // OFFERING IS NOT CHOOSING. Reading the screen writes nothing: routing
+    // safety escalations into the chat that receives survey results is an
+    // audience decision, and it is a person's to make.
+    assert.deepEqual(saw.saved, []);
+    assert.equal(res.body.settings.defaultChatId, '-100111',
+      'the stored value comes back untouched — no candidate is substituted for it');
+  });
+
+test('what the silence has cost travels with the settings', async () => {
+  const { app } = loadApp();
+  const res = await call(app, 'GET', '/api/settings/notifications');
+  assert.equal(res.body.discarded.total, 0);
 });

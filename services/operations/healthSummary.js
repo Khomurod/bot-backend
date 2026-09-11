@@ -31,6 +31,7 @@ const defaultDeps = () => ({
   systemHealth: require('../../database/systemHealth'),
   observations: require('./healthObservations'),
   notificationSettings: require('../../database/operationalNotificationSettings'),
+  notificationStore: require('../../database/operationalNotifications'),
   learning: require('../../database/operationalLearning'),
   learningPass: require('./learningPass'),
   retention: require('../../database/retentionAssessments'),
@@ -155,6 +156,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
     const [
       findings, coverage, duplicates, indexPresent, providers, homeTimeLive,
       loadPhases, safety, fuelReadings, systems, observed, learning, retention, notifyConfig,
+      discards,
     ] = await Promise.all([
       deps.findings.summariseFindings(),
       deps.people.summariseIdentityCoverage(),
@@ -170,6 +172,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
       deps.learning.summariseSuggestions().catch(() => null),
       deps.retention.summariseRetention().catch(() => null),
       deps.notificationSettings.getNotificationSettings().catch(() => null),
+      Promise.resolve(deps.notificationStore?.summariseDiscards?.()).catch(() => null),
     ]);
     return {
       available: true,
@@ -228,7 +231,13 @@ async function getOperationsHealth(deps = defaultDeps()) {
       // every notice is discarded at the door — features running, working, and
       // saying nothing, which is the exact failure this whole project started
       // from. No chat id is ever published here, only whether one is set.
-      notifications: describeDestination(notifyConfig),
+      notifications: {
+        ...describeDestination(notifyConfig),
+        // HOW MUCH HAS BEEN THROWN AWAY. `reachable: false` is a sentence
+        // nobody acts on; a number is. No bodies and no subjects — a count per
+        // category and when it started.
+        discarded: discards || null,
+      },
       aiModels: providers.map((p) => ({
         provider: publicProviderName(p),
         enabled: p.enabled === true,

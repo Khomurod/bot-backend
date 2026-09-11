@@ -105,6 +105,7 @@ async function notify(notice, deps = defaultDeps()) {
   }
 
   if (config.enabled === false) {
+    await deps.store.recordDiscard(category, 'disabled').catch(() => {});
     return { recorded: false, delivered: false, reason: 'disabled' };
   }
 
@@ -117,6 +118,12 @@ async function notify(notice, deps = defaultDeps()) {
     // would sit pending forever and, on the day a destination is finally set,
     // deliver a backlog of stale alerts into a live staff chat — which is
     // exactly what this repository decided NOT to do with 98 expired ones.
+    //
+    // BUT IT IS COUNTED. The cost of that decision was invisible: every feature
+    // running, finding real things, and saying nothing — the same silence this
+    // whole project started from, reached by a different route. A count is a
+    // sentence somebody acts on; "not configured" is not.
+    await deps.store.recordDiscard(category, 'no_destination').catch(() => {});
     console.log(`[NOTIFY] no destination for "${category}" — not recorded.`);
     return { recorded: false, delivered: false, reason: 'no_destination' };
   }

@@ -10,6 +10,7 @@ import IdentityTab from "./operations/IdentityTab";
 import RetentionTab from "./operations/RetentionTab";
 import LearningTab from "./operations/LearningTab";
 import SystemsTab from "./operations/SystemsTab";
+import ConfigurationBanner from "./operations/ConfigurationBanner";
 import * as api from "../api";
 
 /**
@@ -58,6 +59,11 @@ export default function OperationsPage() {
           applied when the corrected value is already recorded somewhere else.
         </p>
       </div>
+
+      {/* Above everything, because a feature that finds things and cannot say
+          so is worse than one that is switched off: it looks like it is
+          working. Renders nothing once a destination is set. */}
+      <ConfigurationBanner />
 
       {/* Kept beside the last good data rather than replacing it — a failed
           refresh must never render as a reassuring empty page. */}

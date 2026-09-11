@@ -21,6 +21,13 @@ const { extractUnitFromGroupName } = require('../../lib/drivers/driverGroupTitle
 const { withRunRecord } = require('../operations/runLedger');
 
 const POLL_MS = 10 * 60 * 1000;
+/**
+ * How long one load stays quiet after being reported.
+ *
+ * A day: a contradiction that is still there tomorrow is worth saying again,
+ * and the same one every ten minutes is how a channel becomes unread.
+ */
+const REPEAT_AFTER_HOURS = 24;
 const FIRST_TICK_DELAY_MS = 5 * 60 * 1000;
 
 /** The unclear cases a person should see. High confidence files nothing. */
@@ -38,6 +45,7 @@ function defaultDeps() {
     orders: require('../liveLocations/orders'),
     loads: require('../datatruckLoadService'),
     notify: require('../notifications/send').notify,
+    notifications: require('../../database/operationalNotifications'),
   };
   /* eslint-enable global-require */
 }
@@ -192,7 +200,7 @@ async function checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }) {
 async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } = {}) {
   const summary = {
     checked: 0, changed: 0, unclear: 0,
-    asked: 0, conflicts: 0, pruned: 0, providerErrors: 0,
+    asked: 0, conflicts: 0, announced: 0, pruned: 0, providerErrors: 0,
   };
   const nowIso = new Date(now).toISOString();
   try {
@@ -248,6 +256,50 @@ async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } 
         const filed = await deps.findings.upsertFinding(buildFinding(out.state, out.verdict))
           .catch(() => null);
         if (filed?.id) keep.push(filed.id);
+
+        // AND TELL SOMEBODY. The `load_lifecycle` category has been
+        // configurable in the admin since it was written and NOTHING EVER SENT
+        // IT: this module required `notify` and never called it, so the row an
+        // administrator could point at a Telegram group could not carry
+        // anything. A finding on a page nobody has open is not a notice.
+        //
+        // Only where the sources genuinely CONTRADICT each other. A load that
+        // is merely unreadable is a finding to look at when convenient; a board
+        // claiming work the truck's position says did not happen is somebody's
+        // afternoon.
+        if (out.verdict.conflicts.length) {
+          // eslint-disable-next-line no-await-in-loop
+          // Optional-chained: telling somebody is observational, and a caller
+          // that supplies a partial dependency map must lose the notice rather
+          // than the pass. Without this a missing `notifications` throws a
+          // TypeError before `.catch` can attach and abandons the remaining
+          // orders mid-loop.
+          const recentlySaid = await Promise.resolve(
+            deps.notifications?.noticeSentWithin?.(`load:${out.state.orderId}`, REPEAT_AFTER_HOURS)
+          ).catch(() => false);
+          if (!recentlySaid) {
+            // eslint-disable-next-line no-await-in-loop
+            const sent = await Promise.resolve(deps.notify?.({
+              category: 'load_lifecycle',
+              title: `${out.state.unitNumber ? `Unit ${out.state.unitNumber}` : `Load ${out.state.loadIdentifier || out.state.orderId}`}`
+                + ': the load board and the truck disagree',
+              lines: [out.verdict.summary].filter(Boolean),
+              reason: out.verdict.conflicts.join('; '),
+              action: 'Check which is right — Wenze will not pick a side',
+              subjectType: 'load',
+              subjectId: String(out.state.orderId),
+              discriminator: nowIso.slice(0, 10),
+              personId: out.state.personId ?? null,
+              groupId: out.state.groupId ?? null,
+              evidence: {
+                phase: out.verdict.phase,
+                boardStatus: out.verdict.facts.boardStatus,
+                conflicts: out.verdict.conflicts,
+              },
+            })).catch(() => ({ recorded: false }));
+            if (sent?.recorded) summary.announced += 1;
+          }
+        }
       }
     }
 
@@ -299,6 +351,7 @@ function stopLoadLifecycleWatch() {
 
 module.exports = {
   POLL_MS,
+  REPEAT_AFTER_HOURS,
   FIRST_TICK_DELAY_MS,
   CHECK_UNCLEAR,
   PHASES,

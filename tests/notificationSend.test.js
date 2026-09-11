@@ -16,7 +16,7 @@ function harness({
   defaultChatId = '-100111', overrides = {}, enabled = true,
   settingsThrows = false, enqueueReturns = undefined, sendThrows = null, telegram = undefined,
 } = {}) {
-  const calls = { enqueued: [], sent: [], delivered: [], failed: [], claimed: [] };
+  const calls = { enqueued: [], sent: [], delivered: [], failed: [], claimed: [] , discards: [] };
   let nextId = 1;
   const seen = new Set();
 
@@ -28,6 +28,7 @@ function harness({
       },
     },
     store: {
+      async recordDiscard(category, reason) { calls.discards.push({ category, reason }); return true; },
       async enqueueNotification(row) {
         calls.enqueued.push(row);
         if (enqueueReturns !== undefined) return enqueueReturns;

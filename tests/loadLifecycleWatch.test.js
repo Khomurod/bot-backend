@@ -20,7 +20,7 @@ function harness({
   orders = [], position = null, stored = null, groups = [{ id: 7, group_name: 'WENZE UNIT # 310 A DRIVER' }],
   person = { personId: 11, unitNumber: '310' },
 } = {}) {
-  const calls = { fleets: 0, orders: 0, findings: [], written: [], resolved: [], pruned: 0 };
+  const calls = { fleets: 0, orders: 0, findings: [], written: [], resolved: [], pruned: 0 , windows: [], notified: []};
   const deps = {
     store: {
       async getLoadState() { return stored; },
@@ -35,6 +35,9 @@ function harness({
     findings: {
       async upsertFinding(f) { calls.findings.push(f); return { id: calls.findings.length, ...f }; },
       async resolveClearedFindings(keys, keep) { calls.resolved.push({ keys, keep }); return 0; },
+    },
+    notifications: {
+      async noticeSentWithin(prefix, hours) { calls.windows.push({ prefix, hours }); return false; },
     },
     eldSettings: { async getEldConfig() { return { samsaraEnabled: true }; } },
     providers: {
@@ -52,7 +55,7 @@ function harness({
     loads: {
       extractLoadFromOrder(o) { return o; },
     },
-    notify: async () => ({ delivered: true }),
+    notify: async (n) => { calls.notified.push(n); return { recorded: true, delivered: true }; },
   };
   return { deps, calls };
 }
@@ -328,4 +331,65 @@ test('a load that stops being a question has its finding resolved', async () => 
   });
   await watcher.runLoadLifecycleCheck({ now: NOW, deps });
   assert.deepEqual(calls.resolved[0], { keys: ['load.phase_unclear'], keep: [] });
+});
+
+// ── the category that had no sender ─────────────────────────────────────────
+//
+// `load_lifecycle` was configurable in the admin from the day it was written
+// and NOTHING SENT IT: this module required `notify` in its dependencies and
+// never called it. An administrator could point "Load status" at a Telegram
+// group that would never receive anything.
+
+test('a load whose sources CONTRADICT each other is announced', async () => {
+  const { deps, calls } = harness({
+    // At the shipper, with the board claiming a completed delivery.
+    orders: [{ ...ORDER, status: 'delivered' }],
+    position: { ...SHIPPER, speedMph: 0, at: at(5) },
+  });
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+
+  assert.equal(calls.notified.length, 1);
+  assert.equal(calls.notified[0].category, 'load_lifecycle');
+  assert.match(calls.notified[0].title, /the load board and the truck disagree/);
+  assert.match(calls.notified[0].action, /will not pick a side/);
+  assert.equal(calls.notified[0].subjectType, 'load');
+});
+
+test('a load that is merely UNREADABLE is filed and not announced', async () => {
+  const { deps, calls } = harness({
+    orders: [{ ...ORDER, status: 'assigned' }],
+    position: { lat: 38, lng: -88.5, speedMph: 55, at: at(5) },
+    stored: { phase: 'heading_to_pickup', phaseSince: at(60 * 30) },
+  });
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+
+  assert.equal(calls.notified.length, 0,
+    'a stuck load is a finding to look at when convenient; a contradiction is '
+    + 'somebody’s afternoon');
+});
+
+test('the same contradiction is not announced every ten minutes', async () => {
+  const { deps, calls } = harness({
+    orders: [{ ...ORDER, status: 'delivered' }],
+    position: { ...SHIPPER, speedMph: 0, at: at(5) },
+  });
+  deps.notifications.noticeSentWithin = async () => true;
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+  assert.equal(calls.notified.length, 0);
+});
+
+test('a missing notification dependency costs the notice, never the pass', async () => {
+  const { deps, calls } = harness({
+    orders: [
+      { ...ORDER, orderId: 'ORD-1', status: 'delivered' },
+      { ...ORDER, orderId: 'ORD-2', status: 'delivered' },
+    ],
+    position: { ...SHIPPER, speedMph: 0, at: at(5) },
+  });
+  delete deps.notifications;
+  delete deps.notify;
+  const summary = await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+
+  assert.equal(summary.checked, 2, 'both orders were still examined');
+  assert.equal(calls.findings.length, 2, 'and both findings were still filed');
 });

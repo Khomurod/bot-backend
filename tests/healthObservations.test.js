@@ -26,7 +26,11 @@ const run = (over = {}) => ({
   consecutiveFailures: 0, runsTotal: 10, failuresTotal: 0, ...over,
 });
 
-function deps({ runMap = new Map(), recruiters = [], providers = [], notifications = {}, fuel = null } = {}) {
+function deps({
+  runMap = new Map(), recruiters = [], providers = [], notifications = {}, fuel = null,
+  routing = { enabled: true, defaultChatId: '-1001', categoryChatIds: {} },
+  discards = { total: 0, byCategory: {} },
+} = {}) {
   return {
     runs: {
       async getRunMap() { return runMap; },
@@ -37,7 +41,11 @@ function deps({ runMap = new Map(), recruiters = [], providers = [], notificatio
       recruiterCanSendSms: (r) => Boolean(r.canSend),
     },
     ai: { async getProvidersForRouter() { return providers; } },
-    notifications: { async summariseNotifications() { return notifications; } },
+    notifications: {
+      async summariseNotifications() { return notifications; },
+      async summariseDiscards() { return discards; },
+    },
+    notificationSettings: { async getNotificationSettings() { return routing; } },
     fuelReadings: { async summariseFuelReadings() { return fuel; } },
   };
 }
@@ -182,4 +190,99 @@ test('a data layer that throws costs that one answer, never the whole pass', asy
   assert.equal(find(all, 'recruiter_logins').state, 'cannot_determine');
   assert.equal(find(all, 'eld_location_freshness').state, 'cannot_determine');
   assert.ok(find(all, 'notifications'), 'and the rest still answered');
+});
+
+// ── the one piece of configuration without which nothing is heard ───────────
+
+test('a configured destination is simply healthy', async () => {
+  const all = await obs.gatherAllObservations(deps({}), { now: NOW });
+  assert.equal(find(all, 'notification_destination').state, 'healthy');
+});
+
+test('NO DESTINATION NEEDS A PERSON, and says how many notices that has cost', async () => {
+  const all = await obs.gatherAllObservations(deps({
+    routing: { enabled: true, defaultChatId: '', categoryChatIds: {} },
+    discards: { total: 1247, byCategory: { needs_attention: 900 } },
+  }), { now: NOW });
+
+  const d = find(all, 'notification_destination');
+  assert.equal(d.state, 'needs_human_attention');
+  assert.match(d.reason, /1247/,
+    '"not configured" is a sentence nobody acts on; a count is one somebody does');
+  assert.match(d.reason, /Settings → Notifications/,
+    'and it says where to go, because a warning without an address is a mood');
+});
+
+test('an override with no default still counts as reachable', async () => {
+  const all = await obs.gatherAllObservations(deps({
+    routing: { enabled: true, defaultChatId: '', categoryChatIds: { fuel: '-1002' } },
+  }), { now: NOW });
+  assert.equal(find(all, 'notification_destination').state, 'healthy');
+});
+
+test('switched off reads differently from never configured', async () => {
+  const all = await obs.gatherAllObservations(deps({
+    routing: { enabled: false, defaultChatId: '-1001', categoryChatIds: {} },
+  }), { now: NOW });
+  const d = find(all, 'notification_destination');
+  assert.equal(d.state, 'needs_human_attention');
+  assert.match(d.reason, /switched off/);
+});
+
+// ── answering a candidate after hours ───────────────────────────────────────
+//
+// Five independent preconditions, every one of them somebody's decision. Miss
+// any and the feature is silently inert: a candidate texts at 9pm on a Friday
+// and hears nothing until Monday, which is what it was built to prevent.
+
+function recruitingDeps(over = {}) {
+  const base = deps({
+    recruiters: [{ canSend: true }],
+    providers: [{ providerKey: 'groq', enabled: true }],
+  });
+  return {
+    ...base,
+    recruitingHours: {
+      async getRecruitingHours() {
+        return { aiAfterHoursEnabled: true, windows: [{ day: 1 }], ...(over.hours || {}) };
+      },
+    },
+    recruitingKnowledge: {
+      async summariseKnowledge() { return { active: over.approved ?? 4 }; },
+    },
+    capabilityGate: { async isCapabilityEnabled() { return over.capability !== false; } },
+    ...(over.deps || {}),
+  };
+}
+
+test('with everything set, after-hours replies are simply healthy', async () => {
+  const all = await obs.gatherAllObservations(recruitingDeps(), { now: NOW });
+  assert.equal(find(all, 'recruiting_after_hours').state, 'healthy');
+});
+
+test('EACH MISSING PIECE IS NAMED, with where to fix it', async () => {
+  const all = await obs.gatherAllObservations(
+    recruitingDeps({ approved: 0, capability: false }), { now: NOW }
+  );
+  const r = find(all, 'recruiting_after_hours');
+  assert.equal(r.state, 'needs_human_attention');
+  assert.match(r.reason, /Nothing has been approved/);
+  assert.match(r.reason, /Teach Wenze/);
+  assert.match(r.reason, /capability is switched off/);
+  assert.match(r.reason, /Responsibilities/,
+    'a count on its own sends somebody hunting through six settings screens');
+});
+
+test('switched off is a blocker too, not a silent skip', async () => {
+  const all = await obs.gatherAllObservations(
+    recruitingDeps({ hours: { aiAfterHoursEnabled: false } }), { now: NOW }
+  );
+  assert.match(find(all, 'recruiting_after_hours').reason, /switched off/);
+});
+
+test('no recruiter with a RingCentral login blocks it, however good the rest is', async () => {
+  const base = recruitingDeps();
+  base.rc.listRecruiters = async () => [{ canSend: false }];
+  const all = await obs.gatherAllObservations(base, { now: NOW });
+  assert.match(find(all, 'recruiting_after_hours').reason, /from their own number/);
 });

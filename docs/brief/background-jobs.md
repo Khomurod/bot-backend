@@ -223,6 +223,40 @@ than a large table, and removing it would hide the problem rather than solve it.
 every change Wenze made to a real record and the only thing a revert can be
 built from — and nothing that is a record about a PERSON is touched.
 
+## Nothing is heard unless a destination is set — and the cost is counted
+
+`notify()` discards a notice when no Telegram destination is configured. That is
+deliberate: enqueuing them would mean that on the day somebody finally sets a
+group, months of stale alerts flood a live staff chat, which this repository
+explicitly refused to do with 98 expired home-time alerts.
+
+**The cost of that decision was invisible**, and that is the same silence the
+whole project started from, reached by a different route: production runs every
+background feature, finds real things, and says nothing, behind a grey "not
+configured" note on a settings page nobody has a reason to open.
+
+So discards are **counted** — `notification_discards` (migration 0041), one row
+per category, nine rows forever, no bodies and no subjects. "Not configured"
+becomes "1,247 notices thrown away, 900 of them Needs attention", which is a
+sentence somebody acts on. It shows on `/api/health →
+operations.notifications.discarded`, in Settings → Notifications, and as a
+`needs_human_attention` row in Operations → What is running, plus a banner on
+the Operations page itself.
+
+Settings → Notifications also **offers the chats this deployment already
+messages** (`lib/notifications/candidates.js`) so that setting a destination
+does not mean going to find a Telegram chat id. Offered, never applied: routing
+safety escalations into the chat that receives survey results is an audience
+decision, and picking one goes through the same validation as a typed id.
+
+**`load_lifecycle` had no sender at all.** The category was configurable in the
+admin from the day it was written and `lifecycleWatch` required `notify` in its
+dependencies and never called it — a feature that looked wired up and was not.
+It now announces a load whose sources genuinely CONTRADICT each other, once a
+day per load. A merely unreadable load stays a finding.
+`tests/notificationCoverage.test.js` reads the source and fails if any category
+has no caller, which is how that was found.
+
 ## Every worker records that it ran
 
 `services/operations/runLedger.js` wraps a pass in one line and

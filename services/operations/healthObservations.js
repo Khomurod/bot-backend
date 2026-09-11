@@ -29,6 +29,7 @@
  */
 const { CATALOG, getServiceEntry } = require('../../lib/operations/backgroundServiceCatalog');
 const { classifyRun, RUN_STATES } = require('../../lib/operations/runHealth');
+const { afterHoursReadiness } = require('../../lib/recruiting/readiness');
 
 /** When this process started, so a first pass that is not due yet is not "stopped". */
 const BOOTED_AT = Date.now();
@@ -46,6 +47,10 @@ function defaultDeps() {
     ai: require('../../database/aiProviders'),
     notifications: require('../../database/operationalNotifications'),
     fuelReadings: require('../../database/truckFuelReadings'),
+    notificationSettings: require('../../database/operationalNotificationSettings'),
+    recruitingHours: require('../../database/recruitingHours'),
+    recruitingKnowledge: require('../../database/recruitingKnowledge'),
+    capabilityGate: require('../ai/capabilityGate'),
   };
   /* eslint-enable global-require */
 }
@@ -224,6 +229,74 @@ async function integrationObservations(deps, nowMs) {
   } catch (_) {
     out.push(integration('telegram_delivery', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
     out.push(integration('notifications', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
+  }
+
+  // WHERE ANYTHING GOES AT ALL. With no destination configured every notice is
+  // discarded at the door — correctly, because enqueuing them would flood a
+  // staff chat with months of stale alerts the day somebody finally sets one.
+  // The cost of that decision is what was invisible: features running, working,
+  // and silent. The DISCARD COUNT makes it a number rather than a grey note.
+  try {
+    const config = await deps.notificationSettings.getNotificationSettings();
+    const overrides = Object.values(config?.categoryChatIds || {})
+      .filter((v) => String(v || '').trim()).length;
+    const hasDefault = Boolean(String(config?.defaultChatId || '').trim());
+    const reachable = config?.enabled !== false && (hasDefault || overrides > 0);
+
+    if (reachable) {
+      out.push(integration('notification_destination', { ok: true, reason: 'a destination is set' }));
+    } else {
+      const discards = await deps.notifications.summariseDiscards().catch(() => null);
+      const n = discards?.total || 0;
+      out.push(integration('notification_destination', {
+        ok: true,
+        state: RUN_STATES.NEEDS_ATTENTION,
+        reason: config?.enabled === false
+          ? `notifications are switched off${n ? ` — ${n} notices discarded so far` : ''}`
+          : 'no Telegram group is configured, so every alert is discarded'
+            + `${n ? ` — ${n} so far` : ''}. Set one in Settings → Notifications.`,
+      }));
+    }
+  } catch (_) {
+    out.push(integration('notification_destination', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
+  }
+
+  // ANSWERING A CANDIDATE AFTER HOURS. Five independent preconditions, every
+  // one of them somebody's decision rather than a fault — and missing any of
+  // them makes the feature silently inert: a candidate texts at 9pm on a Friday
+  // and hears nothing until Monday, which is what it was built to prevent.
+  // `afterHoursReply` names its exits, which is right for a log and wrong for a
+  // screen: by the time it has a reason there is already a candidate waiting.
+  try {
+    const [hours, knowledge, recruiters, providers] = await Promise.all([
+      deps.recruitingHours.getRecruitingHours().catch(() => null),
+      deps.recruitingKnowledge.summariseKnowledge().catch(() => null),
+      deps.rc.listRecruiters().catch(() => []),
+      deps.ai.getProvidersForRouter().catch(() => []),
+    ]);
+    const capabilityEnabled = await deps.capabilityGate
+      .isCapabilityEnabled('recruiting_after_hours_reply').catch(() => false);
+
+    const verdict = afterHoursReadiness({
+      afterHoursEnabled: hours?.aiAfterHoursEnabled === true,
+      hoursConfigured: Array.isArray(hours?.windows) && hours.windows.length > 0,
+      approvedStatements: knowledge?.active || 0,
+      capabilityEnabled,
+      aiProviderEnabled: (providers || []).some((p) => p.enabled),
+      recruitersWithSms: (recruiters || []).filter((r) => deps.rc.recruiterCanSendSms(r)).length,
+    });
+
+    out.push(integration('recruiting_after_hours', {
+      ok: true,
+      state: verdict.ready ? RUN_STATES.HEALTHY : RUN_STATES.NEEDS_ATTENTION,
+      // The blockers NAMED, and where to fix each. A count on its own sends
+      // somebody hunting through six settings screens.
+      reason: verdict.ready
+        ? verdict.summary
+        : `${verdict.summary} ${verdict.blockers.map((b) => `${b.what} (${b.where})`).join(' ')}`,
+    }));
+  } catch (_) {
+    out.push(integration('recruiting_after_hours', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
   }
 
   // THE SAMSARA POLLER, which is a SEPARATE RENDER SERVICE and shares only this

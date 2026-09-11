@@ -358,7 +358,32 @@ test('a missing settings table is "not available", not "not reachable"', async (
   const health = await getOperationsHealth(summaryDeps({
     notificationSettings: { async getNotificationSettings() { throw new Error('no such table'); } },
   }));
-  assert.deepEqual(health.notifications, { available: false });
+  assert.deepEqual(health.notifications, { available: false, discarded: null });
+});
+
+test('the discard count turns "not configured" into a number somebody acts on', async () => {
+  const health = await getOperationsHealth(summaryDeps({
+    notificationSettings: {
+      async getNotificationSettings() {
+        return { enabled: true, defaultChatId: '', categoryChatIds: {} };
+      },
+    },
+    notificationStore: {
+      async summariseDiscards() {
+        return {
+          available: true,
+          total: 1247,
+          byCategory: { needs_attention: 900, fuel: 200, retention: 147 },
+          since: '2026-08-20T00:00:00.000Z',
+        };
+      },
+    },
+  }));
+  assert.equal(health.notifications.reachable, false);
+  assert.equal(health.notifications.discarded.total, 1247,
+    '"reachable: false" is a sentence nobody acts on; 1,247 thrown-away notices '
+    + 'is one somebody does');
+  assert.equal(health.notifications.discarded.byCategory.needs_attention, 900);
 });
 
 /**
