@@ -323,3 +323,84 @@ test('a clear and a set in flight together both land', { skip: skipWithoutPg() }
   assert.equal(cfg.categoryChatIds.safety_escalation, '-100444', 'the set landed');
   assert.equal(cfg.categoryChatIds.retention, '-100333', 'and the untouched one is intact');
 });
+
+// ── what the counter counts ─────────────────────────────────────────────────
+//
+// The dedup is a PRIMARY KEY and an ON CONFLICT, so a fake proves nothing about
+// it. This is the half that only a real database can answer.
+
+test('the same notice discarded twice moves the counter once',
+  { skip: skipWithoutPg() }, async (t) => {
+    const harness = await seed(t);
+    const { operationalNotifications: n } = load(harness);
+    const key = 'load_lifecycle:load:9001:2026-09-11';
+    assert.equal(await n.recordDiscard('load_lifecycle', 'no_destination', key), true);
+    assert.equal(await n.recordDiscard('load_lifecycle', 'no_destination', key), false,
+      'the watch reconsiders the same load every ten minutes, and a '
+      + 'reconsideration is not a second thing nobody heard about');
+
+    const out = await n.summariseDiscards();
+    assert.equal(out.byCategory.load_lifecycle, 1);
+    assert.equal(out.total, 1);
+  });
+
+test('two different loads are two things unheard', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await seed(t);
+  const { operationalNotifications: n } = load(harness);
+  await n.recordDiscard('load_lifecycle', 'no_destination', 'load_lifecycle:load:9001:2026-09-11');
+  await n.recordDiscard('load_lifecycle', 'no_destination', 'load_lifecycle:load:9002:2026-09-11');
+  const out = await n.summariseDiscards();
+  assert.equal(out.byCategory.load_lifecycle, 2);
+});
+
+test('the same load tomorrow counts again — the discriminator is the event',
+  { skip: skipWithoutPg() }, async (t) => {
+    const harness = await seed(t);
+    const { operationalNotifications: n } = load(harness);
+    await n.recordDiscard('load_lifecycle', 'no_destination', 'load_lifecycle:load:9001:2026-09-11');
+    await n.recordDiscard('load_lifecycle', 'no_destination', 'load_lifecycle:load:9001:2026-09-12');
+    const out = await n.summariseDiscards();
+    assert.equal(out.byCategory.load_lifecycle, 2,
+      'a load still conflicted a day later IS something nobody heard about today');
+  });
+
+test('a repeat does not move `last_discarded_at` — it answers "when did '
+  + 'something go unheard"', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await seed(t);
+  const { operationalNotifications: n } = load(harness);
+  const key = 'fuel:truck:305:low';
+  await n.recordDiscard('fuel', 'no_destination', key);
+  const first = (await n.summariseDiscards()).since;
+  await harness.query("UPDATE notification_discards SET last_discarded_at = NOW() - INTERVAL '1 hour'");
+  const moved = (await harness.query('SELECT last_discarded_at FROM notification_discards')).rows[0];
+  await n.recordDiscard('fuel', 'no_destination', key);
+  const after = (await harness.query('SELECT last_discarded_at FROM notification_discards')).rows[0];
+  assert.deepEqual(after.last_discarded_at, moved.last_discarded_at,
+    're-checking Tuesday\'s truck is not something going unheard today');
+  assert.ok(first, 'and the first one was recorded');
+});
+
+test('a caller with NO key still counts every call', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await seed(t);
+  const { operationalNotifications: n } = load(harness);
+  // A notice with no subject is a one-off; counting each occurrence is right,
+  // and this is the pre-0042 behaviour kept deliberately rather than dropped.
+  await n.recordDiscard('operations', 'disabled');
+  await n.recordDiscard('operations', 'disabled');
+  const out = await n.summariseDiscards();
+  assert.equal(out.byCategory.operations, 2);
+});
+
+test('the key table holds no body, no driver and no chat id',
+  { skip: skipWithoutPg() }, async (t) => {
+    const harness = await seed(t);
+    const { operationalNotifications: n } = load(harness);
+    await n.recordDiscard('fuel', 'no_destination', 'fuel:truck:305:low');
+    const cols = (await harness.query(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'notification_discard_keys' ORDER BY column_name`
+    )).rows.map((r) => r.column_name);
+    assert.deepEqual(cols, ['category', 'first_discarded_at', 'notice_key', 'reason'],
+      'anything more would be the backlog this design refuses to build, one '
+      + 'table over — there must be nothing here that could be sent');
+  });

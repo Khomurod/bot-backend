@@ -253,8 +253,33 @@ async function releaseNotificationClaim(id) {
  * Never throws — a counter that can break the thing it counts is worse than no
  * counter.
  */
-async function recordDiscard(category, reason = 'no_destination') {
+async function recordDiscard(category, reason = 'no_destination', noticeKey = null) {
   try {
+    // ONE COUNT PER THING UNHEARD, NOT ONE PER PASS.
+    //
+    // The background watches re-derive the same condition every few minutes.
+    // Counting each re-derivation made `load_lifecycle` reach 95 in nine
+    // minutes for about 48 loads — a number that reads as a catastrophe and
+    // describes one unset setting. So the key claims its row first, and only a
+    // key nobody has seen before moves the counter.
+    //
+    // A caller with no key still counts every call: that is the old behaviour,
+    // kept deliberately rather than silently dropped, because a notice with no
+    // subject at all is a one-off and counting it once per occurrence is right.
+    if (noticeKey) {
+      const claimed = await query(
+        `INSERT INTO notification_discard_keys (notice_key, category, reason)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (notice_key) DO NOTHING
+         RETURNING notice_key`,
+        [String(noticeKey), String(category), String(reason)]
+      );
+      // Already counted. `last_discarded_at` is deliberately NOT touched: it
+      // answers "when did something go unheard", and a re-check of a load from
+      // Tuesday is not something going unheard today.
+      if (claimed.rowCount === 0) return false;
+    }
+
     await query(
       `INSERT INTO notification_discards
          (category, reason, discarded_count, first_discarded_at, last_discarded_at)
