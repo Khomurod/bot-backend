@@ -208,7 +208,7 @@ async function checkOneTruck(group, {
       severity: risk.severity,
       // The same numbers the advice above was written from, so what a notice
       // is prioritised by and what it says cannot drift apart.
-      facts: priorityFactsFor(plan),
+      facts: priorityFactsFor(plan, { fuelPercent: facts.fuelPercent }),
       subjectType: 'group',
       subjectId: group.id,
       // The window above decides whether to speak; this makes each utterance a

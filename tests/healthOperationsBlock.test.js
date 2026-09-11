@@ -85,7 +85,7 @@ function summaryDeps(overrides = {}) {
       getConsistencyStatus: () => ({
         running: true,
         lastRun: { at: '2026-09-10T12:00:00.000Z', summary: { found: 12, filed: 3, resolved: 4 } },
-        lastCorrections: { at: '2026-09-10T12:00:01.000Z', summary: { applied: 65, stale: 0, failed: 0, capped: [{ checkKey: 'identity.group_without_person', wanted: 151, cap: 150, findingId: 9 }] } },
+        lastCorrections: { at: '2026-09-10T12:00:01.000Z', summary: { applied: 65, held: 3, stale: 0, failed: 0, capped: [{ checkKey: 'identity.group_without_person', wanted: 151, cap: 150, findingId: 9 }] } },
       }),
     },
     findings: { async summariseFindings() { return { info: 1, warning: 2, serious: 0, total: 3 }; } },
@@ -182,6 +182,11 @@ test('the summary is counts and timestamps, and a capped check is named with its
   assert.deepEqual(s.sweep, { running: true, lastRunAt: '2026-09-10T12:00:00.000Z', found: 12, filed: 3, resolved: 4 });
   assert.deepEqual(s.corrections, {
     at: '2026-09-10T12:00:01.000Z', applied: 65, stale: 0, failed: 0, error: null,
+    // REFUSED BY THE EVIDENCE, published for the same reason `capped` is: a
+    // held pass reads "0 applied" with no why otherwise, and held is the
+    // quieter of the two because a capped check at least files a finding about
+    // itself.
+    held: 3,
     // WHICH check stopped itself, and by how much — check keys are code
     // identifiers, and without this a capped pass reads "0 applied" with no why.
     capped: [{ checkKey: 'identity.group_without_person', wanted: 151, cap: 150 }],

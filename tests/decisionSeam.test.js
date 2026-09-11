@@ -259,3 +259,37 @@ test('a dry run decides nothing and records nothing', async () => {
   assert.equal(calls.decisions.length, 0,
     'a plan somebody is reading is not a decision Wenze took');
 });
+
+test('A SHADOWED CHECK OVER ITS CAP IS CAPPED, exactly as the real run would be',
+  async () => {
+    // Listing with a LIMIT made `shadowed` under-report the total and recorded
+    // over-cap rows as actions it would have taken — but with shadow switched
+    // off the same check would be CAPPED and apply nothing. A trial that does
+    // not describe the run it simulates is worse than no trial, because its
+    // only output is what would happen.
+    const findings = Array.from({ length: 4 }, (_, i) => finding({ id: i + 1 }));
+    const { db, store, deps, calls } = harness({ shadow: true, findings });
+    // Cap of 2 against 4 open findings.
+    const narrowDb = {
+      async query() {
+        return {
+          rows: [{
+            check_key: 'home_time.closable_open_cycle',
+            max_auto_per_run: 2, shadow: true, auto_apply_enabled: false, mode: 'autopilot',
+          }],
+        };
+      },
+    };
+    stubApply(deps);
+
+    const { summary } = await runAutoCorrections({
+      apply: true, db: narrowDb, store, deps,
+    });
+
+    assert.equal(summary.skipped.shadowed, 4, 'the TRUE number, not the page size');
+    assert.equal(summary.capped.length, 1);
+    assert.equal(summary.capped[0].wanted, 4);
+    assert.equal(calls.decisions.length, 0,
+      'and nothing is journalled as "would have done" when the real run would refuse');
+    assert.ok(db);
+  });

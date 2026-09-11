@@ -63,6 +63,17 @@ function checkKeyFor(kind) {
 }
 
 /**
+ * Every check key this pass owns, which is the scope resolution may clear.
+ *
+ * Derived from SEVERITY so a new contradiction kind cannot be filed under a key
+ * this pass then refuses to resolve — the two would drift the moment somebody
+ * added a kind in one place only.
+ */
+const CHECK_KEYS = Object.freeze(
+  Object.fromEntries(Object.keys(SEVERITY).map((kind) => [kind, checkKeyFor(kind)]))
+);
+
+/**
  * One driver. Returns the kinds actually filed.
  *
  * A read that fails costs this driver and nothing else: the pass over the rest
@@ -80,7 +91,7 @@ async function checkOneDriver(personId, { deps, now }) {
     const title = `${context.identity?.displayName || `Driver ${personId}`}: `
       + 'two systems disagree';
     // eslint-disable-next-line no-await-in-loop
-    await deps.findings.upsertFinding({
+    const row = await deps.findings.upsertFinding({
       checkKey: checkKeyFor(contradiction.kind),
       subjectType: 'person',
       subjectId: personId,
@@ -124,7 +135,7 @@ async function checkOneDriver(personId, { deps, now }) {
       discriminator: contradiction.kind,
       evidence: { kind: contradiction.kind, sides: contradiction.sides },
     });
-    filed.push(contradiction.kind);
+    filed.push({ kind: contradiction.kind, id: row?.id || null });
   }
   return filed;
 }
@@ -139,8 +150,13 @@ async function runContradictionPass({
   now = new Date().toISOString(), deps = defaultDeps(), limit = MAX_PER_PASS,
 } = {}) {
   const summary = {
-    candidates: 0, read: 0, filed: 0, capped: false, errors: [],
+    candidates: 0, read: 0, filed: 0, resolved: 0, capped: false, errors: [],
   };
+  // THE LEDGER READS `summary.error`, SINGULAR. `errors` is the per-driver
+  // list a reader wants; `statusFromSummary` knows nothing about it, so a pass
+  // that failed entirely was recorded as `ok` — which defeats the Operations
+  // entry this pass was registered for in the first place. Set below.
+
 
   let candidates;
   try {
@@ -150,6 +166,8 @@ async function runContradictionPass({
     // rather than as a clean run that found nothing — which is the ambiguity
     // this project exists to remove.
     summary.errors.push(`screen: ${err.message}`);
+    // The screen failing IS the pass failing — there is nothing else it does.
+    summary.error = `the candidate screen could not be read: ${err.message}`;
     return summary;
   }
 
@@ -159,18 +177,50 @@ async function runContradictionPass({
     candidates = candidates.slice(0, limit);
   }
 
+  const keepIds = [];
   for (const personId of candidates) {
     try {
       // eslint-disable-next-line no-await-in-loop
       const filed = await checkOneDriver(personId, { deps, now });
       summary.read += 1;
       summary.filed += filed.length;
+      keepIds.push(...filed.map((f) => f.id).filter(Boolean));
     } catch (err) {
       summary.errors.push(`person ${personId}: ${err.message}`);
     }
   }
 
-  if (summary.filed || summary.capped) {
+  // A CONTRADICTION THAT CLEARED MUST STOP SAYING TWO SYSTEMS DISAGREE.
+  //
+  // Nothing here resolved anything, so a finding stayed open for ever after the
+  // condition went away — telling operators about a disagreement that no longer
+  // exists, which is how a Needs Attention list stops being read.
+  //
+  // ONLY WHEN THE PASS ACTUALLY RAN, and never after a partial one. The sweep's
+  // own rule: a screen that failed, a capped pass, or any driver that could not
+  // be read means some contradictions were not re-derived this time, and
+  // resolving on that basis would close findings that are still true.
+  const complete = !summary.error && !summary.capped && summary.errors.length === 0;
+  if (complete) {
+    try {
+      // Optional-chained: a dependency map without the resolve costs the
+      // RESOLUTION, not the pass — the same rule the rest of this work follows.
+      summary.resolved = await Promise.resolve(
+        deps.findings.resolveClearedFindings?.(Object.values(CHECK_KEYS), keepIds)
+      ) || 0;
+    } catch (err) {
+      summary.errors.push(`resolve: ${err.message}`);
+    }
+  }
+
+  // EVERY DRIVER FAILING IS ALSO A FAILED PASS. One unreadable driver is
+  // noise; a pass that read nobody it was asked to read has not run, whatever
+  // its counters say.
+  if (!summary.read && summary.candidates > 0) {
+    summary.error = `none of the ${summary.candidates} candidate(s) could be read`;
+  }
+
+  if (summary.filed || summary.capped || summary.error) {
     console.log(`[CONTRADICTION] ${summary.candidates} candidate(s), `
       + `${summary.filed} disagreement(s) filed`
       + `${summary.capped ? ` — capped at ${limit}, more remain` : ''}`);
@@ -180,6 +230,7 @@ async function runContradictionPass({
 
 module.exports = {
   SEVERITY,
+  CHECK_KEYS,
   MAX_PER_PASS,
   checkKeyFor,
   checkOneDriver,

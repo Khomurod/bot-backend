@@ -58,6 +58,106 @@ const SUBJECTS = Object.freeze({
       return res.rows[0] || null;
     },
   },
+
+  // ── the five that had no verifier ─────────────────────────────────────────
+  //
+  // WHY THAT MATTERED MORE THAN IT LOOKS. `verifyOne` answers `not_checked`
+  // for an action with no entry here, and `sourceAgreement` used to count that
+  // as a graded-but-unconfirmed outcome — so five unverifiable actions were
+  // enough to measure a check's source at 0% agreement and hold every later
+  // correction from it for ever. That query now ignores `not_checked`
+  // entirely, which stops a missing verifier being read as a failing check;
+  // these are the other half of the answer, turning those rows into real
+  // judgements instead of silence.
+  //
+  // EVERY `read` MUST RETURN AT LEAST ONE KEY THAT `new_values` ALSO HAS.
+  // `compareWritten` skips a field the row does not carry, so a verifier that
+  // selected the wrong columns would find nothing to disagree with and report
+  // CONFIRMED for everything — a false clean bill of health, which is worse
+  // than the `not_checked` it replaced. The tests assert the overlap.
+
+  'identity.ensure_person': {
+    autoRevert: false,
+    table: 'driver_person_groups',
+    async read(client, subjectId) {
+      const res = await client.query(
+        `SELECT person_id AS "personId" FROM driver_person_groups
+          WHERE group_id = $1 AND ended_at IS NULL`,
+        [Number(subjectId)]
+      );
+      return res.rows[0] || null;
+    },
+  },
+
+  'identity.sync_unit': {
+    autoRevert: false,
+    table: 'driver_units',
+    async read(client, subjectId) {
+      const res = await client.query(
+        `SELECT u.unit_number AS "unitNumber", u.person_id AS "personId"
+           FROM driver_units u
+           JOIN driver_person_groups g
+             ON g.person_id = u.person_id AND g.ended_at IS NULL
+          WHERE g.group_id = $1 AND u.ended_at IS NULL`,
+        [Number(subjectId)]
+      );
+      return res.rows[0] || null;
+    },
+  },
+
+  'home_time.mark_returned_to_road': {
+    autoRevert: false,
+    table: 'driver_home_status',
+    async read(client, subjectId) {
+      const res = await client.query(
+        'SELECT state, state_since FROM driver_home_status WHERE group_id = $1',
+        [Number(subjectId)]
+      );
+      return res.rows[0] || null;
+    },
+  },
+
+  'home_time.abandon_exhausted_alerts': {
+    autoRevert: false,
+    table: 'home_time_requests',
+    /**
+     * THE ONE THAT NEEDS THE CORRECTION. Its subject is the outbox as a whole;
+     * the rows it changed are named only in `new_values.requestIds`.
+     *
+     * "Still abandoned" is a property of ALL of them, so the read reports the
+     * state only when every row agrees — one row quietly restored is the
+     * contradiction worth catching, and reporting the majority would hide it.
+     */
+    async read(client, subjectId, correction) {
+      const ids = (correction?.new_values?.requestIds || []).map(Number).filter(Number.isInteger);
+      if (!ids.length) return null;
+      // `internal_alert_state`, WHICH IS THE COLUMN THAT EXISTS. The action
+      // writes that column and records it in `new_values` under the logical
+      // key `state`, so the read has to translate — exactly as its own revert
+      // does. Querying `state` here would have thrown on every run, been
+      // swallowed per-decision, and left the verifier silently useless: the
+      // same shape as `readRetention` asking for columns that were not there.
+      // A stubbed client cannot catch that, so the test for this is a Pg one.
+      const res = await client.query(
+        `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE internal_alert_state = 'abandoned')::int AS abandoned
+           FROM home_time_requests WHERE id = ANY($1::int[])`,
+        [ids]
+      );
+      const row = res.rows[0];
+      if (!row || !row.total) return null;
+      return {
+        state: row.abandoned === row.total ? 'abandoned' : 'partly_restored',
+        requestIds: ids,
+      };
+    },
+  },
+
+  // `home_time.carry_road_clock` DELIBERATELY HAS NO ENTRY. Its finding
+  // (`home_time.clock_reset_on_group_change`) is filed at tier `approval`, so
+  // it never enters the auto-correction plan and never reaches the decision
+  // journal — there is no outcome for a verifier to set. If it is ever
+  // promoted to `auto`, it needs one here before that switch is flipped.
 });
 
 function defaultDeps() {
@@ -153,7 +253,13 @@ async function verifyOne(decision, { client, deps }) {
     return { bucket: 'notChecked', rolledBack: false };
   }
 
-  const current = await subject.read(client, correction.subject_id ?? decision.subjectId);
+  // The correction is passed as well as the subject id. Some actions write
+  // rows the subject id cannot reach — the abandoned-alert batch names its
+  // request ids in `new_values` and nowhere else — and a verifier that cannot
+  // find what it wrote can only answer `not_checked`.
+  const current = await subject.read(
+    client, correction.subject_id ?? decision.subjectId, correction
+  );
   const verdict = compareWritten({ wrote: correction.new_values, current });
 
   const decisionToRoll = shouldRollBack({

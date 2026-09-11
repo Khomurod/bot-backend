@@ -106,35 +106,78 @@ async function enqueueNotification({
  * not yet delivered is about to interrupt somebody just as surely as one that
  * already has.
  */
+/**
+ * SCOPED TO THE DESTINATION, because the flood is something a person SEES.
+ *
+ * Without the chat, three fuel notices delivered to the fuel team could hold
+ * the first safety notice in a dedicated safety chat — nobody reading that chat
+ * had seen the burst it was held for. The chat is already resolved by the time
+ * this is asked, so scoping costs nothing. A null chat means "wherever it
+ * went", which is right when an override has changed since.
+ */
 async function listRecentNoticesAbout({
   personId = null, groupId = null, subjectType = null, subjectId = null,
-  withinMinutes = 60, limit = 20,
+  chatId = null, withinMinutes = 60, limit = 20,
 } = {}) {
   const minutes = String(Math.max(1, Number(withinMinutes) || 60));
   const cap = Math.max(1, Math.min(100, Number(limit) || 20));
+  const chatClause = chatId ? 'AND chat_id = $CHAT' : '';
+  const bind = (sql, n) => sql.replace('$CHAT', `$${n}`);
   let sql;
   let params;
   if (personId != null) {
-    sql = `SELECT created_at FROM operational_notifications
+    sql = bind(`SELECT created_at FROM operational_notifications
             WHERE person_id = $1 AND created_at > NOW() - ($2 || ' minutes')::interval
-            ORDER BY created_at DESC LIMIT $3`;
+              ${chatClause}
+            ORDER BY created_at DESC LIMIT $3`, 4);
     params = [personId, minutes, cap];
   } else if (groupId != null) {
-    sql = `SELECT created_at FROM operational_notifications
+    sql = bind(`SELECT created_at FROM operational_notifications
             WHERE group_id = $1 AND created_at > NOW() - ($2 || ' minutes')::interval
-            ORDER BY created_at DESC LIMIT $3`;
+              ${chatClause}
+            ORDER BY created_at DESC LIMIT $3`, 4);
     params = [groupId, minutes, cap];
   } else if (subjectType && subjectId != null) {
-    sql = `SELECT created_at FROM operational_notifications
+    sql = bind(`SELECT created_at FROM operational_notifications
             WHERE subject_type = $1 AND subject_id = $2
               AND created_at > NOW() - ($3 || ' minutes')::interval
-            ORDER BY created_at DESC LIMIT $4`;
+              ${chatClause}
+            ORDER BY created_at DESC LIMIT $4`, 5);
     params = [subjectType, String(subjectId), minutes, cap];
   } else {
     return [];
   }
+  if (chatId) params.push(String(chatId));
   const res = await query(sql, params);
   return res.rows.map((r) => ({ at: r.created_at }));
+}
+
+/**
+ * How many notices about this subject are already HELD for later.
+ *
+ * THE BURST THE HOLD MOVED RATHER THAN REMOVED. Every held row was dated
+ * forward by the same fixed window, so a hundred notices became three now and
+ * ninety-seven together an hour later. Each additional hold for the same
+ * subject now waits one window longer than the last, which spreads them instead
+ * of stacking them on one minute.
+ */
+async function countHeldNoticesAbout({
+  personId = null, groupId = null, subjectType = null, subjectId = null, chatId = null,
+} = {}) {
+  const where = ['state = \'pending\'', 'next_attempt_at > NOW()'];
+  const params = [];
+  if (personId != null) { params.push(personId); where.push(`person_id = $${params.length}`); }
+  else if (groupId != null) { params.push(groupId); where.push(`group_id = $${params.length}`); }
+  else if (subjectType && subjectId != null) {
+    params.push(subjectType); where.push(`subject_type = $${params.length}`);
+    params.push(String(subjectId)); where.push(`subject_id = $${params.length}`);
+  } else return 0;
+  if (chatId) { params.push(String(chatId)); where.push(`chat_id = $${params.length}`); }
+  const res = await query(
+    `SELECT COUNT(*)::int AS n FROM operational_notifications WHERE ${where.join(' AND ')}`,
+    params
+  );
+  return res.rows[0]?.n || 0;
 }
 
 /**
@@ -144,12 +187,27 @@ async function listRecentNoticesAbout({
  * this is a window rather than the UNIQUE constraint alone. Callers that want
  * "once, ever" put an immutable discriminator in the key instead.
  */
+/**
+ * A PENDING ROW COUNTS, because it will still be said.
+ *
+ * This looked only at `delivered`, and the fuel watch's discriminator carries
+ * the hour. So a notice HELD at 10:30 was invisible here, the key changed at
+ * 11:00, a second copy of the same risk was enqueued, and both eventually
+ * arrived inside a repeat window set to 6-48 hours — the hold created the
+ * duplicate it exists to prevent.
+ *
+ * `abandoned` is excluded deliberately: it will never arrive, so it must not
+ * suppress the notice that replaces it. A failed row is still `pending` and
+ * still counts, because it is still being retried.
+ */
 async function noticeSentWithin(noticeKeyPrefix, hours) {
   const res = await query(
     `SELECT 1 FROM operational_notifications
       WHERE notice_key LIKE $1 || '%'
-        AND state = 'delivered'
-        AND delivered_at > NOW() - ($2 || ' hours')::interval
+        -- A PENDING ROW WILL STILL BE SAID, so saying it again is repetition.
+        -- See the note above this function. Abandoned is excluded on purpose.
+        AND state IN ('delivered', 'pending')
+        AND COALESCE(delivered_at, created_at) > NOW() - ($2 || ' hours')::interval
       LIMIT 1`,
     [noticeKeyPrefix, String(hours)]
   );
@@ -409,6 +467,7 @@ module.exports = {
   backoffSecondsFor,
   enqueueNotification,
   listRecentNoticesAbout,
+  countHeldNoticesAbout,
   noticeSentWithin,
   claimNotificationById,
   claimDueNotifications,

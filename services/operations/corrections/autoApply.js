@@ -165,15 +165,24 @@ async function planForCheck(checkKey, { settings, store }) {
     // NOTHING about what it would have done — the one thing shadow mode exists
     // to produce. The items go to the journal as `would have` rows and no
     // further.
+    // COUNT FIRST, LIKE THE REAL RUN. Listing with a LIMIT made `shadowed`
+    // under-report the total and recorded over-cap rows as actions it would
+    // have taken — but once shadow is switched off the same check would be
+    // CAPPED and apply nothing. A trial that does not describe the run it
+    // simulates is worse than no trial: its only output is what would happen.
+    const wantedShadow = await store.countFindings({ status: 'open', checkKey, tier: 'auto' });
+    if (wantedShadow > cap) {
+      return { shadowed: wantedShadow, capped: { checkKey, wanted: wantedShadow, cap } };
+    }
     const shadowFindings = await store.listFindings({
-      status: 'open', checkKey, tier: 'auto', limit: cap,
+      status: 'open', checkKey, tier: 'auto', limit: cap + 1,
     });
     const shadowItems = [];
     for (const finding of shadowFindings) {
       const payload = payloadFor(finding);
       if (payload) shadowItems.push({ finding, action, payload, mode: modeOf(setting) });
     }
-    return { shadowed: shadowFindings.length, shadowItems };
+    return { shadowed: wantedShadow, shadowItems };
   }
 
   // Count, then list — see the header. `wanted` is the real number, so the

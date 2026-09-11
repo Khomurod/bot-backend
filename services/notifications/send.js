@@ -189,6 +189,10 @@ async function notify(notice, deps = defaultDeps()) {
   const recent = await Promise.resolve(
     deps.store.listRecentNoticesAbout?.({
       personId, groupId, subjectType, subjectId,
+      // SCOPED TO WHERE THIS ONE IS GOING. Three fuel notices in the fuel
+      // team's chat must not hold the first safety notice in a safety chat:
+      // nobody reading that chat saw the burst it would be held for.
+      chatId,
       withinMinutes: SUPPRESSION_WINDOW_MINUTES,
     })
   ).catch(() => null);
@@ -201,6 +205,22 @@ async function notify(notice, deps = defaultDeps()) {
       maxPerSubject: MAX_PER_SUBJECT_PER_WINDOW,
     })
     : { suppress: false, why: 'recent notices could not be read' };
+
+  // STAGGERED, NOT STACKED. Every held row used to be dated forward by the
+  // same fixed window, so a hundred notices became three now and ninety-seven
+  // together an hour later — the hold moved the flood rather than removing it.
+  // Each notice already waiting for this subject pushes this one a further
+  // window out, which spreads them instead of piling them onto one minute.
+  //
+  // Optional-chained and fail-safe like the read above: a store without the
+  // count, or a count that failed, costs the STAGGER and not the hold.
+  let holdSeconds = 0;
+  if (held.suppress) {
+    const alreadyHeld = await Promise.resolve(
+      deps.store.countHeldNoticesAbout?.({ personId, groupId, subjectType, subjectId, chatId })
+    ).catch(() => 0);
+    holdSeconds = SUPPRESSION_WINDOW_MINUTES * 60 * (1 + (Number(alreadyHeld) || 0));
+  }
 
   const body = composeNotice({
     icon: ICONS[category] || 'ℹ️',
@@ -221,7 +241,7 @@ async function notify(notice, deps = defaultDeps()) {
       // The level is recorded with the facts it came from, so the Operations
       // screen can show WHY a notice was urgent rather than only that it was.
       evidence: { ...(evidence || {}), priority: priority.level },
-      delaySeconds: held.suppress ? SUPPRESSION_WINDOW_MINUTES * 60 : 0,
+      delaySeconds: holdSeconds,
     });
   } catch (err) {
     console.warn(`[NOTIFY] could not record "${noticeKey}":`, err.message);
@@ -236,7 +256,7 @@ async function notify(notice, deps = defaultDeps()) {
   // Claiming it now would deliver exactly the interruption the hold exists to
   // prevent.
   if (held.suppress) {
-    console.log(`[NOTIFY] holding "${noticeKey}" for ${SUPPRESSION_WINDOW_MINUTES}min — ${held.why}`);
+    console.log(`[NOTIFY] holding "${noticeKey}" for ${Math.round(holdSeconds / 60)}min — ${held.why}`);
     return {
       recorded: true, delivered: false, reason: 'held', notice: row, priority: priority.level,
     };

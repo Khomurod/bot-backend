@@ -83,7 +83,7 @@ organization should converge toward.
 | Samsara GPS lookup | `services/samsaraLocationService.js` |
 | Factor / Leader ELD (Drive HoS platform) | `services/driveHosEldService.js` |
 | ETA / routing | `services/etaRoutingService.js`, `services/dispatchEtaUpdateService.js`, `services/dispatchPinnedContextService.js` |
-| Datatruck active-load lookups | `services/datatruckLoadService.js`, `services/datatruckApiService.js`, `services/recentLoadSelection.js`, `services/loadTextPatterns.js`, `services/loadWindowParse.js`, `services/loadExtractionValidate.js` |
+| Datatruck active-load lookups | `services/datatruckLoadService.js`, `services/datatruckApiService.js`, `services/recentLoadSelection.js`, `services/loadTextPatterns.js`, `services/loadWindowParse.js` |
 | Geocoding | `services/geocoder.js` |
 | Dispatch Telegram commands (`/location`, `/status`, `/load`, `/update`) | `bot/dispatchStatusLookupHandlers.js`, `bot/dispatchStatusLookupSession.js` |
 | Datatruck peer-bot reactions/banter | `bot/datatruckPeerHandlers.js`, `services/datatruckPeerBotService.js`, `services/datatruckPeerPatterns.js`, `services/datatruckBanterMessage.js` |

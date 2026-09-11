@@ -195,11 +195,45 @@ lowered into acceptability by a generous threshold.
 ### The feedback loop
 
 `sourceAgreement()` reads how each source actually performed, counting only
-decisions that were **graded** — an ungraded decision says nothing about the
-sources behind it. `reverted` and `contradicted` both count as "the outcome did
-not bear this out"; separating them would imply a distinction the caller cannot
-act on. It is empty until decisions have been graded, and an empty record is the
+outcomes that are **a judgement about the source**: `confirmed`,
+`contradicted`, `reverted`. The last two both mean "the outcome did not bear
+this out"; separating them would imply a distinction the caller cannot act on.
+It is empty until decisions have been graded, and an empty record is the
 intended starting state rather than a degraded one.
+
+### `not_checked` is not evidence against a source
+
+This is the `hold` / `unknown` distinction from the top of this document, one
+layer down and applied to outcomes. **"We could not check" and "we checked and
+it was wrong" are opposites.** `not_checked` means nothing here knows how to
+verify that action; `expired` means the subject is gone or too much time has
+passed to judge. Neither is a verdict on the source, so neither is counted.
+
+**This was not hypothetical, and it was the most dangerous defect in this
+work.** The query counted every non-null outcome as graded and only `confirmed`
+as success. Five of the seven actions that can run have no verifier in
+`verifyPass.js`'s `SUBJECTS`, so each recorded `not_checked`. At five of them a
+check's source crosses `MIN_GRADED` at 0% agreement, `soleSourceIsUnreliable`
+fires — the correction seam cites exactly one source — and **every later
+correction from that check is held for ever.** Automatic repair would have
+stopped across most of the fleet, quietly, a few hours after the journal was
+first given a caller.
+
+The other half of the answer is the verifiers themselves, and they are now
+written: every action that can be applied automatically has an entry in
+`SUBJECTS`, so those rows become real judgements rather than silence. A test
+walks the action registry and fails if an `auto` action is ever added without
+one.
+
+**A verifier that reads the wrong columns is worse than none.**
+`compareWritten` skips a field the row does not carry, so a read with no
+overlap finds nothing to disagree with and reports `confirmed` — a false clean
+bill of health. Each verifier is asserted to select at least one key its action
+writes.
+
+`home_time.carry_road_clock` deliberately has no entry: its finding is filed at
+tier `approval`, so it never enters the auto plan and never reaches the journal.
+If it is ever promoted to `auto`, it needs one before that switch is flipped.
 
 The weighing's reasons travel **with** the decision, so one read back months
 later says why its confidence was what it was rather than only what it was.

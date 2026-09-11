@@ -32,6 +32,29 @@ const assert = require('node:assert/strict');
 
 const { createPgHarness, skipWithoutPg, allMigrationsSql } = require('./helpers/pgHarness');
 const { findContradictions } = require('../lib/drivers/context');
+const { assess } = require('../lib/retention/signals');
+
+/**
+ * The signals a real assessment produces for a driver who has gone quiet.
+ *
+ * BUILT BY THE PRODUCTION ASSESSOR, NOT BY HAND. The reader looked for
+ * `s.kind`; `lib/retention/signals.js` writes `s.key`. The first version of
+ * this test seeded `{ kind: 'gone_quiet' }` — the shape the broken reader
+ * wanted — so it passed while `quiet_but_active` remained unable to fire
+ * against a single real row. Going through `assess()` means the fixture is
+ * whatever production actually stores, and the two cannot drift apart again.
+ */
+function quietSignals() {
+  const { signals } = assess({
+    baselineMessages: 40, recentMessages: 0, avgSentiment: 0,
+    roadWeeksOverAllowance: 0, daysOnRoad: 10,
+  });
+  const quiet = signals.filter((sig) => String(sig.key).includes('quiet'));
+  assert.ok(quiet.length, 'the assessor really does emit a quiet signal');
+  assert.ok(quiet[0].key, 'and it carries `key` — the field the reader must use');
+  assert.equal(quiet[0].kind, undefined, 'there is no `kind`, which was the bug');
+  return signals;
+}
 
 const ALL_MIGRATIONS = allMigrationsSql();
 
@@ -71,9 +94,9 @@ test('THE RETENTION SECTION IS READABLE — it asked for columns that do not exi
       `INSERT INTO driver_retention_assessments
          (person_id, group_id, driver_name, score, level, signals, first_seen_at, last_seen_at)
        VALUES ($1, 7401, 'QUIET ONE', 40, 'watch',
-               '[{"kind":"gone_quiet"}]'::jsonb,
+               $2::jsonb,
                NOW() - INTERVAL '4 days', NOW() - INTERVAL '1 hour')`,
-      [person.id]
+      [person.id, JSON.stringify(quietSignals())]
     );
 
     const out = await ctx.getDriverContext(person.id);
@@ -82,22 +105,30 @@ test('THE RETENTION SECTION IS READABLE — it asked for columns that do not exi
     assert.equal(out.retention.goneQuiet, true);
     assert.equal(out.retention.urgency, 'watch');
     assert.equal(out.retention.signals, 1);
-    assert.ok(out.retention.goneQuietSince, 'and when, so a notice can say since when');
+    // AND NO ONSET DATE, deliberately. `driver_retention_assessments` upserts
+    // one row per driver for their whole life, so neither of its timestamps is
+    // when the quiet started: `first_seen_at` is when they were first assessed
+    // at all, `last_seen_at` moves every sweep. Presenting either as "quiet
+    // since" would be a fabricated fact, so nothing claims to be one.
+    assert.equal(out.retention.goneQuietSince, null,
+      'there is no per-signal history to derive an onset from, so none is invented');
+    assert.ok(out.retention.assessmentSince,
+      'what IS known is when the assessment first appeared, named as that');
   });
 
-test('gone-quiet-since is when it STARTED, not when the sweep last looked',
+test('the assessment date is when it first appeared, not when the sweep last looked',
   { skip: skipWithoutPg() }, async (t) => {
     const { h, ctx, people } = await setup(t);
     const person = await aDriver(h, people, { name: 'QUIET TWO', unit: '402', groupId: 7402 });
     await h.query(
       `INSERT INTO driver_retention_assessments
          (person_id, group_id, score, level, signals, first_seen_at, last_seen_at)
-       VALUES ($1, 7402, 40, 'watch', '[{"kind":"gone_quiet"}]'::jsonb,
+       VALUES ($1, 7402, 40, 'watch', $2::jsonb,
                NOW() - INTERVAL '9 days', NOW())`,
-      [person.id]
+      [person.id, JSON.stringify(quietSignals())]
     );
     const out = await ctx.getDriverContext(person.id);
-    const days = (Date.now() - new Date(out.retention.goneQuietSince).getTime()) / 86400000;
+    const days = (Date.now() - new Date(out.retention.assessmentSince).getTime()) / 86400000;
     assert.ok(days > 8, `expected roughly nine days, got ${days.toFixed(1)}`);
   });
 
@@ -132,9 +163,9 @@ test('THE SCREEN FINDS EVERY REPRESENTABLE KIND, and leaves the ordinary driver 
     await h.query(
       `INSERT INTO driver_retention_assessments
          (person_id, group_id, score, level, signals, first_seen_at, last_seen_at)
-       VALUES ($1, 7503, 55, 'urgent', '[{"kind":"gone_quiet"}]'::jsonb,
+       VALUES ($1, 7503, 55, 'urgent', $2::jsonb,
                NOW() - INTERVAL '5 days', NOW())`,
-      [quiet.id]
+      [quiet.id, JSON.stringify(quietSignals())]
     );
     await h.query(
       `INSERT INTO truck_fuel_readings (unit_number, person_id, fuel_percent, odometer_miles, recorded_at)
@@ -171,9 +202,9 @@ test('a quiet driver with NO recent activity is not screened in — that is just
     await h.query(
       `INSERT INTO driver_retention_assessments
          (person_id, group_id, score, level, signals, first_seen_at, last_seen_at)
-       VALUES ($1, 7505, 55, 'urgent', '[{"kind":"gone_quiet"}]'::jsonb,
+       VALUES ($1, 7505, 55, 'urgent', $2::jsonb,
                NOW() - INTERVAL '5 days', NOW())`,
-      [person.id]
+      [person.id, JSON.stringify(quietSignals())]
     );
     await h.query(
       `INSERT INTO truck_fuel_readings (unit_number, person_id, fuel_percent, odometer_miles, recorded_at)
@@ -202,4 +233,57 @@ test('TWO OPEN UNITS IS NOT SCREENED FOR BECAUSE IT CANNOT HAPPEN',
       'the schema refuses it, so a fleet-wide scan for it every 15 minutes '
         + 'would find nothing for ever'
     );
+  });
+
+test('A QUIET DRIVER WHOSE TRUCK IS IN TRANSIT IS SCREENED IN, on the load alone',
+  { skip: skipWithoutPg() }, async (t) => {
+    // `findContradictions` has always counted a moving load as activity. The
+    // screen checked only fuel and safety, so a driver marked quiet whose truck
+    // is plainly in transit — no recent fuel reading, no safety event — was
+    // never read, and the contradiction the screen exists to surface was the
+    // one kind it could not see.
+    const { h, ctx, people } = await setup(t);
+    const person = await aDriver(h, people, { name: 'QUIET HAULER', unit: '601', groupId: 7601 });
+    await h.query(
+      `INSERT INTO driver_retention_assessments
+         (person_id, group_id, score, level, signals, first_seen_at, last_seen_at)
+       VALUES ($1, 7601, 55, 'urgent', $2::jsonb,
+               NOW() - INTERVAL '5 days', NOW())`,
+      [person.id, JSON.stringify(quietSignals())]
+    );
+    await h.query(
+      `INSERT INTO load_lifecycle (order_id, group_id, phase, confidence, updated_at)
+       VALUES ('L9', 7601, 'in_transit', 'high', NOW())`
+    );
+    // Deliberately NO fuel reading and NO safety event.
+
+    const candidates = await ctx.listContradictionCandidates({});
+    assert.ok(candidates.includes(person.id),
+      'the load is the activity here, and the screen must not miss it');
+
+    const found = findContradictions(await ctx.getDriverContext(person.id));
+    assert.ok(found.some((c) => c.kind === 'quiet_but_active'),
+      'and the evaluator confirms what the screen selected it for');
+  });
+
+test('a quiet driver whose load is merely ASSIGNED is not screened in',
+  { skip: skipWithoutPg() }, async (t) => {
+    // The screen must match the evaluator, which counts only phases that mean
+    // the truck is working. A load sitting assigned contradicts nothing.
+    const { h, ctx, people } = await setup(t);
+    const person = await aDriver(h, people, { name: 'QUIET WAITER', unit: '602', groupId: 7602 });
+    await h.query(
+      `INSERT INTO driver_retention_assessments
+         (person_id, group_id, score, level, signals, first_seen_at, last_seen_at)
+       VALUES ($1, 7602, 55, 'urgent', $2::jsonb,
+               NOW() - INTERVAL '5 days', NOW())`,
+      [person.id, JSON.stringify(quietSignals())]
+    );
+    await h.query(
+      `INSERT INTO load_lifecycle (order_id, group_id, phase, confidence, updated_at)
+       VALUES ('L10', 7602, 'assigned', 'high', NOW())`
+    );
+
+    const candidates = await ctx.listContradictionCandidates({});
+    assert.ok(!candidates.includes(person.id));
   });

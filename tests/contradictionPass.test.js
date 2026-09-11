@@ -41,7 +41,7 @@ const AT_HOME_AND_DRIVING = context({
 
 function harness({ candidates = [11], ctx = AT_HOME_AND_DRIVING, screenThrows = false,
   readThrows = false } = {}) {
-  const calls = { filed: [], notified: [], read: [] };
+  const calls = { filed: [], notified: [], read: [], resolved: [] };
   const deps = {
     context: {
       async listContradictionCandidates() {
@@ -54,7 +54,13 @@ function harness({ candidates = [11], ctx = AT_HOME_AND_DRIVING, screenThrows = 
         return typeof ctx === 'function' ? ctx(personId) : ctx;
       },
     },
-    findings: { async upsertFinding(f) { calls.filed.push(f); return { id: calls.filed.length }; } },
+    findings: {
+      async upsertFinding(f) { calls.filed.push(f); return { id: calls.filed.length }; },
+      async resolveClearedFindings(keys, keepIds) {
+        calls.resolved.push({ keys, keepIds });
+        return 2;
+      },
+    },
     async notify(n) { calls.notified.push(n); return { recorded: true, delivered: true }; },
   };
   return { deps, calls };
@@ -178,12 +184,54 @@ test('a driver with no disagreement files nothing and says nothing', async () =>
 // ── failing honestly ─────────────────────────────────────────────────────────
 
 test('THE SCREEN FAILING IS A FAILED PASS, NOT A CLEAN ONE', async () => {
+  // eslint-disable-next-line global-require
+  const { statusFromSummary } = require('../services/operations/runLedger');
   const { deps } = harness({ screenThrows: true });
   const summary = await pass.runContradictionPass({ now: NOW, deps });
+
   assert.equal(summary.errors.length, 1);
   assert.match(summary.errors[0], /^screen: /);
   assert.equal(summary.candidates, 0);
   assert.equal(summary.read, 0, 'and it does not report having read anybody');
+
+  // AND THE LEDGER HAS TO AGREE. `statusFromSummary` reads `summary.error`,
+  // singular; `errors` is the per-driver list and it knows nothing about it.
+  // A totally failed pass was therefore recorded as `ok`, which defeats the
+  // Operations entry this pass was registered for in the first place.
+  assert.equal(statusFromSummary(summary).status, 'error');
+});
+
+test('A PASS THAT READ NOBODY IT WAS ASKED TO READ HAS NOT RUN', async () => {
+  // One unreadable driver is noise. Every candidate failing is a failed pass,
+  // whatever the counters say — the same "seeing nothing is not success" rule
+  // the return-to-road watch needed.
+  // eslint-disable-next-line global-require
+  const { statusFromSummary } = require('../services/operations/runLedger');
+  const { deps } = harness({ candidates: [11, 12], readThrows: true });
+  const summary = await pass.runContradictionPass({ now: NOW, deps });
+
+  assert.equal(summary.read, 0);
+  assert.equal(summary.errors.length, 2);
+  assert.equal(statusFromSummary(summary).status, 'error');
+  assert.match(summary.error, /none of the 2 candidate\(s\)/);
+});
+
+test('but one bad driver among several is not a failed pass', async () => {
+  let n = 0;
+  // eslint-disable-next-line global-require
+  const { statusFromSummary } = require('../services/operations/runLedger');
+  const { deps } = harness({
+    candidates: [11, 12],
+    ctx: () => {
+      n += 1;
+      if (n === 1) throw new Error('relation does not exist');
+      return AT_HOME_AND_DRIVING;
+    },
+  });
+  const summary = await pass.runContradictionPass({ now: NOW, deps });
+  assert.equal(summary.read, 1);
+  assert.equal(statusFromSummary(summary).status, 'ok',
+    'it did its job for the driver it could read');
 });
 
 test('one unreadable driver costs that driver, not the rest of the fleet', async () => {
@@ -209,4 +257,48 @@ test('a generous screen is capped, and the cap is reported rather than hidden', 
   const summary = await pass.runContradictionPass({ now: NOW, deps, limit: 3 });
   assert.equal(summary.capped, true);
   assert.equal(calls.read.length, 3, 'the six-query read is bounded');
+});
+
+// ── a disagreement that cleared must stop being reported ────────────────────
+
+test('A CONTRADICTION THAT CLEARED IS RESOLVED, not left open for ever', async () => {
+  // Nothing here resolved anything, so a finding stayed open after the
+  // condition went away — telling operators two systems disagree when they no
+  // longer do, which is how a Needs Attention list stops being read.
+  const { deps, calls } = harness();
+  const summary = await pass.runContradictionPass({ now: NOW, deps });
+
+  assert.equal(calls.resolved.length, 1);
+  assert.deepEqual(calls.resolved[0].keys.sort(), [
+    'context.home_while_working', 'context.quiet_but_active', 'context.two_open_units',
+  ].sort(), 'scoped to the keys this pass owns, derived from SEVERITY so they cannot drift');
+  assert.deepEqual(calls.resolved[0].keepIds, [1],
+    'and the finding it just filed is kept');
+  assert.equal(summary.resolved, 2);
+});
+
+test('A PARTIAL PASS RESOLVES NOTHING, because it did not re-derive everything', async () => {
+  // The sweep's own rule. A driver that could not be read means some
+  // contradictions were not checked this time, and resolving on that basis
+  // would close findings that are still true.
+  const oneBad = harness({ candidates: [11, 12], ctx: () => { throw new Error('nope'); } });
+  await pass.runContradictionPass({ now: NOW, deps: oneBad.deps });
+  assert.equal(oneBad.calls.resolved.length, 0);
+
+  const capped = harness({ candidates: [1, 2, 3, 4, 5] });
+  await pass.runContradictionPass({ now: NOW, deps: capped.deps, limit: 3 });
+  assert.equal(capped.calls.resolved.length, 0, 'a capped pass has not seen the rest');
+
+  const screenDead = harness({ screenThrows: true });
+  await pass.runContradictionPass({ now: NOW, deps: screenDead.deps });
+  assert.equal(screenDead.calls.resolved.length, 0);
+});
+
+test('a dependency map without the resolve loses the resolution, not the pass', async () => {
+  const { deps, calls } = harness();
+  delete deps.findings.resolveClearedFindings;
+  const summary = await pass.runContradictionPass({ now: NOW, deps });
+  assert.equal(summary.filed, 1, 'the finding was still filed');
+  assert.equal(summary.resolved, 0);
+  assert.equal(calls.filed.length, 1);
 });

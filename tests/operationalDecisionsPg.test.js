@@ -232,3 +232,73 @@ test('a decision with no sources contributes nothing and breaks nothing',
     await d.recordOutcome(row.id, 'confirmed');
     assert.deepEqual(await d.sourceAgreement({}), {});
   });
+
+test('"NOTHING KNOWS HOW TO VERIFY THIS" IS NOT EVIDENCE AGAINST A SOURCE',
+  { skip: skipWithoutPg() }, async (t) => {
+    // The `hold` / `unknown` distinction, one layer down and applied to
+    // outcomes. `not_checked` means no verifier exists for that action — an
+    // honest answer, per the outcomes module's own header — and counting it as
+    // graded-but-unconfirmed turned it into evidence AGAINST the source.
+    //
+    // It was not hypothetical. Five of the seven actions that can run have no
+    // verifier, so each recorded `not_checked`; at five of them a check's
+    // source crossed MIN_GRADED at 0% agreement, `soleSourceIsUnreliable`
+    // fired — the correction seam cites exactly one source — and every later
+    // correction from that check would have been held for ever. Automatic
+    // repair would have stopped across most of the fleet, quietly, hours after
+    // it was wired up.
+    const { d } = await setup(t);
+    for (const subjectId of ['A', 'B', 'C', 'D', 'E']) {
+      // eslint-disable-next-line no-await-in-loop
+      const row = await d.recordDecision(base({
+        subjectId, verdict: 'act', confidence: 90, actionKey: 'unverifiable',
+        sources: [{ source: 'check:home_time.returned_to_road', fresh: true, agrees: true }],
+      }));
+      // eslint-disable-next-line no-await-in-loop
+      await d.recordOutcome(row.id, 'not_checked', 'nothing knows how to verify it');
+    }
+
+    const stats = await d.sourceAgreement({});
+    assert.deepEqual(stats, {},
+      'five unverifiable actions say nothing at all about the check that took them');
+
+    // And the consequence that matters: the source stays unmeasured, so it
+    // costs the next correction nothing.
+    // eslint-disable-next-line global-require
+    const { reliabilityOf } = require('../lib/decisions/sources');
+    assert.deepEqual(
+      reliabilityOf(stats['check:home_time.returned_to_road']),
+      { known: false, graded: 0, agreementRate: null, poor: false }
+    );
+  });
+
+test('an expired outcome is not a verdict on the source either',
+  { skip: skipWithoutPg() }, async (t) => {
+    // "The subject is gone, or too much time has passed to judge" is an absence
+    // of information, not information against.
+    const { d } = await setup(t);
+    const row = await d.recordDecision(base({
+      verdict: 'act', confidence: 90, actionKey: 'x',
+      sources: [{ source: 'gps', fresh: true, agrees: true }],
+    }));
+    await d.recordOutcome(row.id, 'expired');
+    assert.deepEqual(await d.sourceAgreement({}), {});
+  });
+
+test('and a real judgement still counts, so the model is not merely switched off',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { d } = await setup(t);
+    const graded = await d.recordDecision(base({
+      subjectId: 'real', verdict: 'act', confidence: 90, actionKey: 'x',
+      sources: [{ source: 'gps', fresh: true, agrees: true }],
+    }));
+    await d.recordOutcome(graded.id, 'contradicted');
+    const skipped = await d.recordDecision(base({
+      subjectId: 'skipped', verdict: 'act', confidence: 90, actionKey: 'y',
+      sources: [{ source: 'gps', fresh: true, agrees: true }],
+    }));
+    await d.recordOutcome(skipped.id, 'not_checked');
+
+    assert.deepEqual((await d.sourceAgreement({})).gps, { graded: 1, confirmed: 0 },
+      'the one that was actually judged is the one that counts');
+  });
