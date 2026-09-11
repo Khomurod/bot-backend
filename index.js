@@ -75,6 +75,10 @@ const {
   startLoadLifecycleWatch,
   stopLoadLifecycleWatch,
 } = require('./services/loads/lifecycleWatch');
+const {
+  startFuelRiskWatch,
+  stopFuelRiskWatch,
+} = require('./services/fuelStop/riskWatch');
 const { registerKnownCapabilities } = require('./services/ai/capabilityRegistry');
 const {
   startRouteControlService,
@@ -357,6 +361,7 @@ async function shutdownAll(signal = 'SIGTERM', exitCode = 0) {
   try { stopHomeTimeReminderService(); } catch (err) { console.error('[SHUTDOWN] stopHomeTimeReminderService failed:', err.message); }
   try { stopReturnToRoadWatch(); } catch (err) { console.error('[SHUTDOWN] stopReturnToRoadWatch failed:', err.message); }
   try { stopLoadLifecycleWatch(); } catch (err) { console.error('[SHUTDOWN] stopLoadLifecycleWatch failed:', err.message); }
+  try { stopFuelRiskWatch(); } catch (err) { console.error('[SHUTDOWN] stopFuelRiskWatch failed:', err.message); }
   try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
   try { stopConsistencyService(); } catch (err) { console.error('[SHUTDOWN] stopConsistencyService failed:', err.message); }
@@ -424,6 +429,10 @@ async function start() {
   // Works out what each load is actually doing from where the truck is, because
   // a board status is a plan and is routinely days out of date.
   startLoadLifecycleWatch();
+  // Fuel RISK, beside the existing fuel-stop reminder: can the truck reach the
+  // stop, did it go past, is the instruction from last trip. Reports to the
+  // operations chat only while it is new — never to a driver.
+  startFuelRiskWatch();
   // Put the AI responsibilities catalogue into the database, so Settings → AI
   // has something to show and an administrator has something to switch off.
   // Descriptive columns only — a capability switched off stays off.

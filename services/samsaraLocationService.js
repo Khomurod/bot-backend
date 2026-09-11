@@ -71,7 +71,15 @@ function computePingAgeMinutes(pingTimeIso, now = new Date()) {
 function buildStatsUrl(apiBase, cursor) {
   const cleanBase = String(apiBase || DEFAULT_SAMSARA_API_BASE).replace(/\/+$/, '');
   const params = new URLSearchParams({
-    types: 'gps',
+    // GPS is what the map needs. `fuelPercents` and `obdOdometerMeters` are
+    // what the fuel work needs, and they ride along on a request that was
+    // already being made — asking for them separately would double the calls
+    // against a rate-limited API for data arriving in the same payload.
+    //
+    // A vehicle that does not report them simply has no key for them, which the
+    // reader treats as unknown rather than as zero. "No fuel reading" and "an
+    // empty tank" must never be the same value.
+    types: 'gps,fuelPercents,obdOdometerMeters',
     limit: String(PAGE_LIMIT),
   });
   if (cursor) params.set('after', cursor);

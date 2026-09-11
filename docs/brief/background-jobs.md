@@ -176,3 +176,39 @@ chat, so a truck or group change does not detach a load from its history.
 
 Visible on `/api/health` → `operations.loads`: how many loads are tracked, in
 what phase, how many are unclear and how many have a board disagreement.
+
+## Fuel risk watch (every 20 minutes, first pass 7 minutes after boot)
+
+`services/fuelStop/riskWatch.js`, beside the existing fuel-stop reminder rather
+than replacing it. That one answers a single question — has the truck reached
+the station dispatch named? — and answers it well. This one asks the questions a
+person actually asks: can it *get* there, did it drive past, is the instruction
+from last trip, and is it burning fuel faster than usual.
+
+**A missing reading is not a low one.** Most of this fleet does not report fuel
+at all, so every threshold in `lib/fuel/risk.js` requires an actual number and
+absence produces silence. The danger is specific and was caught in review of
+this very module: `Number(null)` is `0`, so any threshold written with a
+coercion reads "does not report fuel" as "empty tank" and alerts on the whole
+fleet on its first pass. A genuine `0` IS a reading, and a serious one.
+
+**Distance alone never means "passed."** A truck 200 miles short of a station
+looks identical to one 200 miles beyond it, so the rule needs the previous
+reading — it has to have been closer before.
+
+**Two deliberate limits while this is new.** Nothing messages a driver group;
+every finding goes to the configured operations chat. A fuel alert to a driver
+is an instruction, and an instruction from a rule nobody has watched running yet
+is how a fleet learns to ignore the bot. And nothing changes a record: a fuel
+risk is an observation, not a correction.
+
+Each risk kind has its own quiet window — a passed stop is settled history
+within a day, a low tank matters again after a shift — so one condition cannot
+fill the channel.
+
+**New telemetry.** Samsara is now asked for `fuelPercents` and
+`obdOdometerMeters` alongside `gps`, on the request that was already being made.
+Factor and Leader have returned `fuel_level` and `odometer` in their documented
+payload all along and nothing ever read them; both are now mapped through
+`services/liveLocations/providers.js`. A vehicle that does not report them has
+`null`, never `0`.
