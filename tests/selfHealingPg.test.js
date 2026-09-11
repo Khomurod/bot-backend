@@ -168,9 +168,56 @@ test('the summary counts what is waiting for somebody', async (t) => {
   await store.decideSuggestion(c.id, { status: 'dismissed', decidedBy: 'boss' });
 
   const s = await store.summariseSuggestions();
-  assert.deepEqual(s, { proposed: 1, accepted: 1, dismissed: 1 });
+  assert.deepEqual(s, {
+    proposed: 1, accepted: 1, active: 0, awaitingAPerson: 0, reverted: 0, dismissed: 1,
+  });
   assert.deepEqual((await store.listSuggestions({ status: 'proposed' })).map((r) => r.subjectId), ['b']);
 });
+
+test('EVERY ACCEPTED STATUS COUNTS AS AGREED, and the two kinds are also separable',
+  async (t) => {
+    if (await skipWithoutPg(t)) return;
+    const h = await seed(t);
+    const { operationalLearning: store } = loadLearning(h);
+
+    // Counting only the legacy `accepted` left the Learning tab's "agreed"
+    // total at zero immediately after an administrator accepted something,
+    // which reads as the click having done nothing — the exact impression the
+    // whole change was written to remove.
+    const active = await store.upsertSuggestion(suggestion({ subjectId: 'active' }));
+    const manual = await store.upsertSuggestion(suggestion({ subjectId: 'manual' }));
+    await store.recordSuggestionApplied(active.id, {
+      action: 'disable_auto_apply', before: { 'a.check': { present: false } }, appliedBy: 'boss',
+    });
+    await store.decideSuggestion(manual.id, { status: 'accepted_manual', decidedBy: 'boss' });
+
+    const s = await store.summariseSuggestions();
+    assert.equal(s.accepted, 2, 'both count as agreed');
+    assert.equal(s.active, 1, 'and "the setting changed" is separable from');
+    assert.equal(s.awaitingAPerson, 1, '"somebody still has to do it"');
+  });
+
+test('AN APPLIED SUGGESTION CANNOT BE DISMISSED OUT FROM UNDER ITS OWN UNDO',
+  async (t) => {
+    if (await skipWithoutPg(t)) return;
+    const h = await seed(t);
+    const { operationalLearning: store } = loadLearning(h);
+    const row = await store.upsertSuggestion(suggestion({ subjectId: 'applied' }));
+    await store.recordSuggestionApplied(row.id, {
+      action: 'disable_auto_apply', before: { 'a.check': { present: false } }, appliedBy: 'boss',
+    });
+
+    // Two administrators with the same proposal open: one accepts and the
+    // setting changes, the other's stale screen posts `dismissed`. The Undo
+    // button lives on `accepted_active`, so an unconditional update would make
+    // the change un-undoable from the UI while it was still in force.
+    const out = await store.decideSuggestion(row.id, { status: 'dismissed', decidedBy: 'other' });
+    assert.equal(out, null, 'the update matched no row');
+
+    const still = await store.getSuggestionById(row.id);
+    assert.equal(still.status, 'accepted_active', 'and the applied state survived');
+    assert.ok(still.appliedBefore, 'with the values Undo needs');
+  });
 
 test('marking one announced does not disturb its decision or its evidence', async (t) => {
   if (await skipWithoutPg(t)) return;
