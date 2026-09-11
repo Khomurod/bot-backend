@@ -131,10 +131,17 @@ const SUBJECTS = Object.freeze({
     async read(client, subjectId, correction) {
       const ids = (correction?.new_values?.requestIds || []).map(Number).filter(Number.isInteger);
       if (!ids.length) return null;
+      // `internal_alert_state`, WHICH IS THE COLUMN THAT EXISTS. The action
+      // writes that column and records it in `new_values` under the logical
+      // key `state`, so the read has to translate — exactly as its own revert
+      // does. Querying `state` here would have thrown on every run, been
+      // swallowed per-decision, and left the verifier silently useless: the
+      // same shape as `readRetention` asking for columns that were not there.
+      // A stubbed client cannot catch that, so the test for this is a Pg one.
       const res = await client.query(
         `SELECT COUNT(*)::int AS total,
-                COUNT(*) FILTER (WHERE state = 'abandoned')::int AS abandoned
-           FROM home_time_requests WHERE id = ANY($1::bigint[])`,
+                COUNT(*) FILTER (WHERE internal_alert_state = 'abandoned')::int AS abandoned
+           FROM home_time_requests WHERE id = ANY($1::int[])`,
         [ids]
       );
       const row = res.rows[0];
