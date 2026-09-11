@@ -245,6 +245,7 @@ that area**, and run the tests it names.
 | Samsara settings, the shared-secret envelope for its API key, missing-video recovery | [`docs/architecture/samsara-settings-and-video-recovery.md`](docs/architecture/samsara-settings-and-video-recovery.md) |
 | The Bitrix assignee lookup, recruiter↔Bitrix mapping, Bitrix connection settings | [`docs/architecture/recruiter-sms-bitrix.md`](docs/architecture/recruiter-sms-bitrix.md) |
 | Where AI may change stored operational state, and the verdict on each | [`docs/architecture/ai-decisions.md`](docs/architecture/ai-decisions.md) |
+| How a decision is reached, why `hold` and `unknown` are opposites, and what a mode may never do | [`docs/architecture/decisions.md`](docs/architecture/decisions.md) |
 | Where an operational notice goes, and what it may never say | [`docs/architecture/operational-notifications.md`](docs/architecture/operational-notifications.md) |
 | What Wenze may tell a candidate, and how a person teaches it | [`docs/architecture/recruiting-knowledge.md`](docs/architecture/recruiting-knowledge.md) |
 | Answering a candidate outside working hours, the reply guard, the SMS transcript | [`docs/architecture/recruiting-after-hours.md`](docs/architecture/recruiting-after-hours.md) |
