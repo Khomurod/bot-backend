@@ -50,6 +50,17 @@ function createSystemsRouter({ authMiddleware }) {
           reason: o.reason || null,
           lastRunAt: row?.lastFinishedAt || o.lastRunAt || null,
           lastOkAt: row?.lastOkAt || null,
+          // WHY IT IS FAILING, which is the one thing a failing row needs and
+          // did not carry. `return_to_road` sat at `repeatedly_failing` in
+          // production with the reason "3 consecutive failures" — true, and
+          // impossible to act on. The message was in the ledger the whole time
+          // and reached no screen.
+          //
+          // THIS ROUTE ONLY, never `/api/health`: an `err.message` can quote a
+          // value a database rejected, and the health endpoint is public. Here
+          // the reader is already an administrator.
+          lastError: row?.lastError || null,
+          lastErrorAt: row?.lastErrorAt || null,
           consecutiveFailures: row?.consecutiveFailures ?? 0,
           runsTotal: row?.runsTotal ?? 0,
           // The pass's own counts, already reduced to numbers and short strings

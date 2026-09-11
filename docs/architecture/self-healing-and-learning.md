@@ -142,6 +142,19 @@ without saying which three is a number nobody can act on. Admin → Operations �
 the loudest text on the row: "no Google Maps key configured" is an instruction,
 "failing" is not.
 
+**And what it actually said.** A row that is failing carries `lastError` — the
+message the ledger recorded — because production proved the reason alone is not
+enough: `return_to_road` reached `repeatedly_failing` and every surface said "3
+consecutive failures", which is true and impossible to act on. The message sat
+in `background_service_runs.last_error` from the first failure and reached no
+screen, so a critical worker could be known to be broken and not diagnosable
+without shell access to the server logs.
+
+It travels on the **authenticated** route only, never on `/api/health`. An
+`err.message` can quote a value a database rejected, and the health endpoint is
+public — read by Render and an uptime monitor. Counts and short reasons are
+public; the cause is for somebody who has logged in.
+
 There is **no restart and no retry control**, deliberately. A button like that
 is one somebody presses instead of finding out why, and every recovery this
 system performs is already automatic and already announced.
