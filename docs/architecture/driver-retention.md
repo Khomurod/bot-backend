@@ -95,6 +95,21 @@ here and it cannot reach a driver group. A driver who received "we think you
 might be about to quit" would be reading a message about a file they did not
 know existed.
 
+### One message for the cohort, a message of its own only for the urgent
+
+Production answered this within half an hour of going live: **fifty drivers came
+back at `watch` on a fleet of about a hundred and ten.** Truthfully — this fleet
+really does have that many people past the road allowance with home requests
+that expired — but fifty separate notices is not fifty times the information. It
+is a channel nobody opens again, and it would have arrived the moment somebody
+configured a destination.
+
+So `urgent` gets its own message. Everybody at `watch` is summarised into one:
+the worst five named with their top reason, the rest as a count, and a pointer
+to the screen, which can sort and filter in ways a chat message cannot. Only the
+named ones are stamped as told, so a driver who merely made the count can still
+be named on a later pass.
+
 ### Said once, said again when it gets worse
 
 A driver five weeks past the allowance is five weeks past the allowance on every
@@ -115,6 +130,18 @@ control that touches anybody's employment. A screen that let a dispatcher file
 an opinion would, within a month, be the performance record this whole design
 avoids. `tests/retentionRoutes.test.js` reads the route file as text and asserts
 the endpoint list is exactly those two.
+
+## "Ran and found nobody" is not "never ran"
+
+Both produce an empty `driver_retention_assessments` table, and only one of them
+is good news. So the watch keeps its own last-run record — when it ran, how many
+drivers it looked at, how many it flagged, and whether it crashed — and
+`/api/health` → `operations.retention.watch` carries it beside the counts.
+
+A background job whose failure looks identical to its success is the shape of
+problem this whole phase exists to remove: the home-time outbox retried, backed
+off, gave up, recorded the error and told nobody for months. Shipping another
+one would be a poor joke.
 
 ## Known limits, stated rather than hidden
 

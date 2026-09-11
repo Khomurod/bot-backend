@@ -127,6 +127,15 @@ Moved to **[§4a. The system checking itself, and the AI that helps](self-checki
 routing layer and the provider terms watcher. Same document, split when this
 file passed the 500-line limit.
 
+- **A load is only raised as a question when it IS one.** The lifecycle engine
+  files a finding when the board and the truck disagree, or when a load has been
+  unreadable in one phase for twelve hours — not for every load that is merely
+  not high-confidence. The first production pass filed 191 findings out of 235
+  loads and buried the fifteen that needed somebody: `heading_to_pickup` is
+  medium-confidence **by design** (it is an inference from a truck moving the
+  right way, never an observation), so every load in that phase was filing a
+  permanent "not enough evidence" for its whole trip.
+
 - **Needs Attention → Identity** (Phase 3-E): coverage tiles (people, active
   driver groups, groups without a person, trucks assigned, unstamped history) and
   the identity backfill — **Preview first, always**; Apply is disabled until a

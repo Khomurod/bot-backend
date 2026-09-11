@@ -30,7 +30,9 @@ const defaultDeps = () => ({
   systemHealth: require('../../database/systemHealth'),
   notificationSettings: require('../../database/operationalNotificationSettings'),
   learning: require('../../database/operationalLearning'),
+  learningPass: require('./learningPass'),
   retention: require('../../database/retentionAssessments'),
+  retentionWatch: require('../retention/watch'),
   /* eslint-enable global-require */
 });
 
@@ -160,11 +162,15 @@ async function getOperationsHealth(deps = defaultDeps()) {
       // answers and only one of them is reassuring.
       systems,
       // Proposals about Wenze's own rules that are waiting for a person. None
-      // of them has changed anything; that is what `proposed` means.
-      learning,
+      // of them has changed anything; that is what `proposed` means — and
+      // `pass` says whether it has looked, since finding nothing is the
+      // ordinary case and writes no row to prove it.
+      learning: { ...(learning || {}), pass: deps.learningPass.getLearningStatus() },
       // Drivers the company may be about to lose. A number here that stays high
-      // is the feature working and nobody acting on it.
-      retention,
+      // is the feature working and nobody acting on it — and `watch` says
+      // whether the pass has actually run, which the counts alone cannot:
+      // "ran and found nobody" and "never ran" are the same empty table.
+      retention: { ...(retention || {}), watch: deps.retentionWatch.getRetentionStatus() },
       // WHETHER ANY OF THE ABOVE CAN BE HEARD. With no destination configured,
       // every notice is discarded at the door — features running, working, and
       // saying nothing, which is the exact failure this whole project started

@@ -88,6 +88,50 @@ function buildFinding(state, verdict) {
   };
 }
 
+/** How long a load may sit unreadable before it is a question rather than a Tuesday. */
+const STUCK_HOURS = 12;
+
+/**
+ * Is this load a QUESTION, or just an ordinary load?
+ *
+ * The first version filed a finding for every load that was not high
+ * confidence, and production showed immediately why that is wrong: 191 of 235
+ * loads, which buried the fifteen findings that actually needed somebody.
+ *
+ * The reason is in this module's own design. `heading_to_pickup` is ALWAYS
+ * medium confidence — deliberately, because it is an inference from a truck
+ * moving the right way and never an observation — so every load in that phase
+ * filed a permanent "there is not enough evidence to say", for the whole trip.
+ * That is not a question anybody can answer. It is what the phase means.
+ *
+ * A load is worth asking about when:
+ *
+ *   THE SOURCES DISAGREE. The board says delivered and the truck is at the
+ *   pickup. Somebody has to reconcile that, and it is exactly the case the
+ *   owner asked to be surfaced instead of guessed.
+ *
+ *   OR IT HAS BEEN UNREADABLE FOR HALF A DAY. A load assigned twenty minutes
+ *   ago whose truck has not set off is not a problem; the same load twelve
+ *   hours later is either not moving or not being reported, and both are worth
+ *   a look.
+ *
+ * Everything else is ordinary uncertainty about a load that is fine.
+ */
+function worthAsking(out, nowIso) {
+  if (out.verdict.confidence === 'high') return false;
+  if (out.verdict.conflicts.length > 0) return true;
+
+  // Unchanged phase plus a stale start is what "stuck" means. A phase that just
+  // moved is not stuck however little is known about it.
+  if (out.phaseChanged) return false;
+  // The REMEMBERED phase start, not the row just written. "How long has this
+  // been stuck" is a question about what was already there; reading it off the
+  // write couples the answer to whatever the store happens to return.
+  const since = Date.parse(out.remembered?.phaseSince || '');
+  if (!Number.isFinite(since)) return false;
+  return (Date.parse(nowIso) - since) >= STUCK_HOURS * 3600 * 1000;
+}
+
 /** One load, one verdict, one row written. */
 async function checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }) {
   const load = deps.loads.extractLoadFromOrder(order);
@@ -135,7 +179,7 @@ async function checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }) {
     checkedAt: nowIso,
   });
 
-  return { state, verdict, phaseChanged: remembered ? remembered.phase !== verdict.phase : true };
+  return { state, verdict, remembered, phaseChanged: remembered ? remembered.phase !== verdict.phase : true };
 }
 
 /**
@@ -146,7 +190,8 @@ async function checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }) {
  */
 async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } = {}) {
   const summary = {
-    checked: 0, changed: 0, unclear: 0, conflicts: 0, pruned: 0, providerErrors: 0,
+    checked: 0, changed: 0, unclear: 0,
+    asked: 0, conflicts: 0, pruned: 0, providerErrors: 0,
   };
   const nowIso = new Date(now).toISOString();
   try {
@@ -192,10 +237,12 @@ async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } 
       if (out.phaseChanged) summary.changed += 1;
       if (out.verdict.conflicts.length) summary.conflicts += 1;
 
-      if (out.verdict.confidence === 'high') {
+      if (out.verdict.confidence !== 'high') summary.unclear += 1;
+
+      if (!worthAsking(out, nowIso)) {
         keep.push(null); // nothing filed; the resolve below clears any old one
       } else {
-        summary.unclear += 1;
+        summary.asked += 1;
         // eslint-disable-next-line no-await-in-loop
         const filed = await deps.findings.upsertFinding(buildFinding(out.state, out.verdict))
           .catch(() => null);

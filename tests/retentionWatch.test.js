@@ -31,9 +31,12 @@ const CALM = {
   unpaidBonusUsd: 0, unpaidBonusCount: 0,
   emptySince: null, brokenHomeCommitments: 0, raiseNotQualifiedRounds: 0,
 };
+// score 10 → urgent: a broken promise, weeks over the allowance and unpaid money.
 const AT_RISK = {
   ...CALM, roadWeeksOverAllowance: 3, unansweredHomeRequests: 1, unpaidBonusUsd: 300,
 };
+// score 4 → watch: enough to be worth a call, not enough to interrupt somebody.
+const WORTH_WATCHING = { ...CALM, deniedHomeRequests: 2, complaints: 2 };
 
 function harness({
   drivers = [AT_RISK], previous = null, aiText = null, aiThrows = false,
@@ -230,4 +233,87 @@ test('the fallback sentence names the heaviest reason and how many others', () =
     },
   });
   assert.match(text, /^Sam Rivera: 3 weeks past the road allowance, and 2 other things\.$/);
+});
+
+// ── fifty notices is not fifty times the information ─────────────────────────
+
+/**
+ * Production answered this within half an hour of going live: fifty drivers
+ * came back at `watch` on a fleet of about a hundred and ten — truthfully,
+ * because this fleet really does have that many people past the road allowance
+ * with home requests that expired.
+ *
+ * Fifty separate messages is a channel nobody opens again, and it would have
+ * landed the moment somebody configured a destination.
+ */
+test('a WATCH driver gets no message of their own', async () => {
+  const { deps, calls } = harness({ drivers: [WORTH_WATCHING] });
+  const summary = await watch.runRetentionPass({ now: NOW, deps });
+  assert.equal(summary.flagged, 1);
+  assert.equal(summary.notified, 0, 'no individual notice');
+  assert.equal(calls.notified.length, 1, 'one cohort notice instead');
+  assert.match(calls.notified[0].title, /1 driver worth a call/);
+});
+
+test('an URGENT driver still gets their own message', async () => {
+  const { deps, calls } = harness({ drivers: [AT_RISK] });
+  const summary = await watch.runRetentionPass({ now: NOW, deps });
+  assert.equal(summary.urgent, 1);
+  assert.equal(summary.notified, 1);
+  assert.equal(calls.notified.length, 1);
+  assert.match(calls.notified[0].title, /Sam Rivera/);
+});
+
+test('fifty watch drivers produce ONE message naming the worst five', async () => {
+  const many = Array.from({ length: 50 }, (_, i) => ({
+    ...WORTH_WATCHING,
+    personId: 100 + i,
+    driverName: `Driver ${i}`,
+    // Make a few clearly worse so the ordering is observable.
+    roadWeeksOverAllowance: i < 5 ? 3 : 0,
+  }));
+  const { deps, calls } = harness({ drivers: many });
+  const summary = await watch.runRetentionPass({ now: NOW, deps });
+
+  assert.equal(summary.checked, 50);
+  assert.equal(calls.notified.length, 1, 'ONE message, not fifty');
+  const notice = calls.notified[0];
+  assert.match(notice.title, /50 drivers worth a call/);
+  assert.equal(notice.lines.length, watch.COHORT_NAMED + 1, 'five named plus the remainder line');
+  assert.match(notice.lines[notice.lines.length - 1], /and 45 more/);
+  assert.match(notice.action, /Operations → Retention/);
+});
+
+test('the named ones are the worst ones', async () => {
+  const drivers = [
+    { ...WORTH_WATCHING, personId: 1, driverName: 'Mild' },
+    { ...WORTH_WATCHING, personId: 2, driverName: 'Worse', roadWeeksOverAllowance: 3 },
+  ];
+  const { deps, calls } = harness({ drivers });
+  await watch.runRetentionPass({ now: NOW, deps });
+  assert.match(calls.notified[0].lines[0], /^Worse:/);
+});
+
+test('only the NAMED drivers are stamped as told — the rest can be named later', async () => {
+  const many = Array.from({ length: 8 }, (_, i) => ({
+    ...WORTH_WATCHING, personId: 200 + i, driverName: `D${i}`,
+  }));
+  const { deps, calls } = harness({ drivers: many });
+  await watch.runRetentionPass({ now: NOW, deps });
+  assert.equal(calls.marked.length, watch.COHORT_NAMED,
+    'a driver who only made the count is still name-able on a later pass');
+});
+
+test('a cohort notice that failed to send stamps nobody', async () => {
+  const { deps, calls } = harness({ drivers: [WORTH_WATCHING] });
+  deps.notify = async () => ({ recorded: false, delivered: false, reason: 'no_destination' });
+  await watch.runRetentionPass({ now: NOW, deps });
+  assert.deepEqual(calls.marked, [], 'nobody is recorded as told when nothing was sent');
+});
+
+test('a quiet fleet sends nothing at all', async () => {
+  const { deps, calls } = harness({ drivers: [CALM, { ...CALM, personId: 12 }] });
+  const summary = await watch.runRetentionPass({ now: NOW, deps });
+  assert.equal(summary.flagged, 0);
+  assert.deepEqual(calls.notified, []);
 });
