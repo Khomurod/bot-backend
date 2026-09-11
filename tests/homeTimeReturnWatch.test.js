@@ -335,3 +335,54 @@ test('when a model IS consulted, the finding names it and quotes its reason', as
   // It stood the case DOWN, so nothing is filed at all — that is the point.
   assert.equal(calls.findings.length, 0, 'a model saying "no" costs nothing and files nothing');
 });
+
+// ── a provider having a bad afternoon ───────────────────────────────────────
+
+/**
+ * PRODUCTION FOUND THIS ONE. `fetchProviderFleets` was the only call in the
+ * pass without a `.catch` — `getActiveOrders` beside it always had one, and the
+ * asymmetry was an oversight. A 429 from a telemetry provider killed the whole
+ * pass, every pass: nineteen consecutive failures, invisible until the run
+ * ledger recorded them and the error classifier named the cause.
+ *
+ * It reproduced clean locally only because there is no API key locally, and so
+ * no quota to exceed.
+ */
+test('A RATE-LIMITED PROVIDER DEGRADES THE PASS INSTEAD OF KILLING IT', async () => {
+  const { deps, calls } = harness({ drivers: [DRIVER], location: { ...HOME, speedMph: 0, lastUpdated: at(5) } });
+  deps.providers.fetchProviderFleets = async () => {
+    throw new Error('429 Too Many Requests');
+  };
+  const summary = await watcher.runReturnToRoadCheck({ deps, now: NOW });
+  assert.equal(summary.watched, 1);
+  assert.equal(summary.checked, 1,
+    'the driver is still assessed — a return can be evidenced by ORDERS, which '
+    + 'arrive on a different call');
+  assert.equal(summary.providerErrors, 1, 'and the provider failure is counted');
+  assert.ok(calls.orders >= 1, 'the orders call still happened');
+});
+
+test('BUT SEEING NOTHING AT ALL IS NOT REPORTED AS SUCCESS', async () => {
+  const { deps } = harness({ drivers: [DRIVER], order: null });
+  deps.providers.fetchProviderFleets = async () => { throw new Error('429 Too Many Requests'); };
+  deps.orders.getActiveOrders = async () => ({ orders: [], error: null });
+  const summary = await watcher.runReturnToRoadCheck({ deps, now: NOW });
+  assert.match(summary.error || '', /no telemetry and no orders could be read/,
+    'catching the failure must not turn a pass that can see nothing into a pass '
+    + 'that reports success — that is the exact trade this work refuses');
+});
+
+test('a provider failure with orders still available is NOT an error', async () => {
+  const { deps } = harness({
+    drivers: [DRIVER],
+    location: { ...HOME, speedMph: 0, lastUpdated: at(5) },
+    // The half that still arrived. A return can be evidenced by a dispatched
+    // load as well as by GPS, which is what makes degrading worth doing rather
+    // than merely surviving.
+    order: { load: { status: 'dispatched', loadIdentifier: 'L1' } },
+  });
+  deps.providers.fetchProviderFleets = async () => { throw new Error('429 Too Many Requests'); };
+  const summary = await watcher.runReturnToRoadCheck({ deps, now: NOW });
+  assert.equal(summary.error, undefined,
+    'it saw something and did its job on what it had');
+});

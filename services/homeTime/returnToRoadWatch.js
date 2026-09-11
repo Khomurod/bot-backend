@@ -169,13 +169,40 @@ async function runReturnToRoadCheck({ now = Date.now(), deps = defaultDeps(), op
     // gives { fleets, errors } and getActiveOrders gives { orders, error }.
     // Passing an envelope on as if it were the thing inside it made the whole
     // pass throw on the first index and file nothing at all.
+    //
+    // AND THE FLEET CALL IS CAUGHT, which it was not. `getActiveOrders` beside
+    // it always was; the asymmetry was an oversight, and production found it:
+    // this pass reached NINETEEN consecutive failures, and the error category
+    // published on /api/health named the cause as rate-limited or out of quota.
+    // A 429 from a telemetry provider was killing the whole pass, every pass,
+    // and it reproduced clean locally only because there is no API key locally
+    // and so no quota to exceed.
+    //
+    // The envelope contract above says errors are RETURNED. Honouring it here
+    // means a provider having a bad afternoon degrades this pass instead of
+    // stopping it — and degrading is genuinely useful rather than cosmetic,
+    // because a driver's return can also be evidenced by their ORDERS, which
+    // arrive on a different call. `scoreReturnToRoad` already treats missing
+    // GPS as a blocker rather than as proof of anything.
     const [fleetResult, orderResult] = await Promise.all([
-      deps.providers.fetchProviderFleets(cfg),
+      Promise.resolve(deps.providers.fetchProviderFleets(cfg))
+        .catch((err) => ({ fleets: {}, errors: [err.message] })),
       deps.orders.getActiveOrders(now).catch(() => ({ orders: [], error: null })),
     ]);
     const fleets = fleetResult?.fleets || {};
     const orders = Array.isArray(orderResult?.orders) ? orderResult.orders : [];
     summary.providerErrors = (fleetResult?.errors?.length || 0) + (orderResult?.error ? 1 : 0);
+
+    // NOT SILENTLY FINE. Catching the failure must not turn a pass that can see
+    // nothing into a pass that reports success — that is the exact trade this
+    // whole body of work exists to refuse. When no provider answered AND no
+    // orders came back, the pass ran and learned nothing, and the ledger is
+    // told so.
+    const sawNothing = !Object.keys(fleets).length && !orders.length;
+    if (sawNothing && summary.providerErrors > 0) {
+      summary.error = `no telemetry and no orders could be read `
+        + `(${summary.providerErrors} provider error(s))`;
+    }
     const byUnit = deps.orders.indexOrdersByUnit(orders, now);
     const byDriver = deps.orders.indexOrdersByDriver(orders, now);
 
