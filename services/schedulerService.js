@@ -246,6 +246,24 @@ async function retentionTick() {
   } catch (err) {
     console.error('[SCHEDULER] Retention tick error:', err.message);
   }
+
+  // EVERY OTHER TABLE THAT GROWS. It rides this timer rather than arming one of
+  // its own: a second timer is a second thing that can stop without anybody
+  // noticing, which is the failure the rest of this work exists to remove.
+  // `pruneOldSafetyEvents` and `pruneAiCallLog` were both WRITTEN AND NEVER
+  // CALLED until this line; several newer tables had no prune at all.
+  try {
+    // eslint-disable-next-line global-require
+    const { runDataRetentionPass } = require('./operations/dataRetention');
+    const { deleted, errors } = await runDataRetentionPass({});
+    const total = Object.values(deleted).reduce((n, v) => n + (Number(v) || 0), 0);
+    if (total > 0 || errors.length) {
+      console.log(`[SCHEDULER] data retention: ${total} row(s) removed`
+        + `${errors.length ? `, ${errors.length} table(s) could not be pruned` : ''}`);
+    }
+  } catch (err) {
+    console.error('[SCHEDULER] Data retention error:', err.message);
+  }
 }
 
 /**

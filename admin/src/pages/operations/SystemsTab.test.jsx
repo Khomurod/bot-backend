@@ -4,9 +4,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 
 import SystemsTab from "./SystemsTab";
 
-vi.mock("../../api", () => ({ getSystems: vi.fn() }));
-// eslint-disable-next-line import/first
 import * as api from "../../api";
+
+// Hoisted by vitest above the imports, which is why the mock reads after them.
+vi.mock("../../api", () => ({ getSystems: vi.fn() }));
 
 const component = (over = {}) => ({
   component: "fuel_risk", label: "the fuel risk watch", group: "engine",

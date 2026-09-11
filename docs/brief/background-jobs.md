@@ -193,6 +193,36 @@ chat, so a truck or group change does not detach a load from its history.
 Visible on `/api/health` → `operations.loads`: how many loads are tracked, in
 what phase, how many are unclear and how many have a board disagreement.
 
+## Data retention (hourly, on the scheduler's existing timer)
+
+`services/operations/dataRetention.js`, called from `schedulerService`'s hourly
+`retentionTick` rather than from a timer of its own — a second timer is a second
+thing that can stop without anybody noticing.
+
+It exists because an audit found prune functions **written and never called**:
+`pruneOldSafetyEvents` has a 180-day window, a test and no caller outside tests;
+`pruneAiCallLog`'s only caller was a test file. Several newer tables had no
+prune at all — an operational notice per distinct notice key, a coaching row per
+coached driver, and one `operational_findings` row per load order ever seen,
+because resolving a finding updates its status and never deletes it.
+
+| Table | Window | Only when |
+|---|---|---|
+| `driver_safety_events` | 180 d | — |
+| `driver_safety_coaching` | 365 d | — |
+| `ai_call_log` | 30 d | — |
+| `operational_findings` | 60 d | `resolved`/`dismissed` **and** `resolved_at` set |
+| `operational_notifications` | 90 d | `delivered`/`abandoned` |
+| `duplicate_unit_reports` | 90 d | `resolved` |
+| `service_runs` | 30 d | — |
+
+**Age is not resolution.** An OPEN finding and a PENDING notice are never
+deleted at any age: a finding nobody has dealt with in a year is a worse problem
+than a large table, and removing it would hide the problem rather than solve it.
+`operational_corrections` is never pruned either — it is the audit trail of
+every change Wenze made to a real record and the only thing a revert can be
+built from — and nothing that is a record about a PERSON is touched.
+
 ## Every worker records that it ran
 
 `services/operations/runLedger.js` wraps a pass in one line and
