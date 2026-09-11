@@ -253,6 +253,7 @@ that area**, and run the tests it names.
 | Clearing a removed feature's leftover tables, roles and accounts | [`docs/architecture/retired-trailers-qbq-sos.md`](docs/architecture/retired-trailers-qbq-sos.md) |
 | Module ownership map | [`docs/architecture/module-map.md`](docs/architecture/module-map.md) |
 | Deployment checks | [`docs/deployment/pre-deploy-checklist.md`](docs/deployment/pre-deploy-checklist.md) |
+| A feature designed but deliberately NOT built | [`docs/future/`](docs/future/) |
 
 The highest-consequence invariants are summarized in `APP_BRIEF.md` §9. The
 linked documents hold the full rules and the tests that guard them.
