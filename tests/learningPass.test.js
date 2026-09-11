@@ -70,21 +70,30 @@ test('three of the same action is when it becomes worth saying', async () => {
   assert.match(calls.notified[0].title, /undone 3 times/);
 });
 
-test('THE NOTICE SAYS PLAINLY THAT NOTHING HAS CHANGED', async () => {
+test('THE NOTICE SAYS PLAINLY THAT NOTHING HAS CHANGED YET', async () => {
   const { deps, calls } = harness({ corrections: THREE });
   await pass.runLearningPass({ now: NOW, deps });
-  assert.match(calls.notified[0].action, /Nothing has changed/);
-  assert.match(calls.notified[0].action, /accept or dismiss/);
+  assert.match(calls.notified[0].action, /Nothing has changed yet/);
+  assert.match(calls.notified[0].action, /one click puts it back/,
+    'and it says what accepting would do, because the answer is now different '
+    + 'for a suggestion that names a setting and one that does not');
 });
 
-test('the suggestion is stored as PROPOSED, and there is no code path that applies it', async () => {
+test('the pass NAMES what accepting would do, and still cannot do it', async () => {
   const { deps, calls } = harness({ corrections: THREE });
   await pass.runLearningPass({ now: NOW, deps });
-  // Nothing was passed that could execute: a title, a sentence and evidence.
+  // `applyAction` is a NAME, not a call. The pass records which registered
+  // action an administrator's acceptance would run; only
+  // `services/operations/learningDecision.js`, reached from an endpoint behind
+  // the apply gate, ever runs one.
   assert.deepEqual(
     Object.keys(calls.upserts[0]).sort(),
-    ['evidence', 'kind', 'subjectId', 'suggestion', 'title'],
+    ['applyAction', 'evidence', 'kind', 'subjectId', 'suggestion', 'title'],
   );
+  assert.deepEqual(calls.upserts[0].applyAction, {
+    action: 'disable_auto_apply',
+    payload: { checkKeys: ['home_time.closable_open_cycle'] },
+  });
   const src = require('node:fs').readFileSync(
     require.resolve('../services/operations/learningPass'), 'utf8'
   );

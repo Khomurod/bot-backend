@@ -168,32 +168,67 @@ The humans' own reasons are carried **verbatim**. Three reverts that all say
 sentence somebody wrote when they were annoyed is the most useful thing in the
 row.
 
-## Nothing it produces takes effect
+## What accepting a suggestion actually does
 
-**This is the owner's line, and it is held in three places at once:**
+**The old answer was "nothing", and the screen did not say so clearly enough.**
+An administrator marked a suggestion `accepted`; the route wrote a word in a
+table; nothing changed. The route's own comment called that the safety
+property. It is half of one: the guarantee worth keeping is that AI cannot
+change a business rule **by itself**, and that is kept by requiring an
+administrator's confirmation — not by making the confirmation inert. Somebody
+who accepted *"switch automatic correction off for this check"* reasonably
+believed they had switched it off, stopped looking, and the check kept
+correcting. That is worse than not offering the button, because it produces
+false confidence rather than an obvious gap.
 
-1. `lib/operations/learning.js` returns **plain data** — a title, lines, a
-   sentence and evidence. A test asserts none of its output is a function: a
-   lesson cannot do anything.
-2. `services/operations/learningPass.js` stores and sends. A test reads the file
-   and asserts it calls nothing that could change a rule.
-3. `operational_learning_suggestions.status` allows exactly `proposed`,
-   `accepted`, `dismissed`. **There is no status meaning "applied
-   automatically"**, and the API refuses one before SQL has to.
+### The split
 
-`accepted` records that an administrator agrees. Whatever the suggestion
-proposed is then done **by hand, on purpose**. An endpoint that both proposed
-and applied would make the confirmation a formality one careless click wide.
+| Status | Means |
+|---|---|
+| `proposed` | waiting for a person |
+| `accepted_active` | the suggestion named a configurable setting, the acceptance changed it, the old value is recorded, and one click puts it back |
+| `accepted_manual` | agreement recorded and **nothing else** — a person still has to carry it out |
+| `dismissed` | declined |
+| `reverted` | applied, then undone |
+| `accepted` | legacy: agreed before anything could be applied. Left labelled as such rather than relabelled, because relabelling would invent a history those rows do not have |
 
-The suggestion itself is deliberately the conservative one: *switch automatic
-correction off for this check and let it propose instead*. That costs nothing if
-it is wrong and stops a wrong repair if it is right. *Change the rule* is the
-expensive guess and is not the machine's to make.
+The screen says **which it will be before the button is pressed** — "Agreeing
+will switch this setting now" against "Nothing changes automatically" — and the
+message afterwards is the server's answer rather than what the screen assumed.
 
-A decision **holds**. The next pass finds the same pattern — because it is still
-there — and refreshes the evidence without reopening the row. An administrator
-meeting a dismissed proposal every fortnight is an administrator who stops
-reading them.
+### What may be applied is deliberately tiny
+
+`services/operations/learningActions.js` is a registry holding **one** action:
+`disable_auto_apply`, which sets `auto_apply_enabled = false` on
+`operational_check_settings` for the named checks. The check keeps running and
+keeps filing findings; it proposes instead of repairing.
+
+- **There is no `enable_auto_apply`.** The registry can only ever turn
+  automation OFF. A machine proposing that it be trusted with *more* is the one
+  shape nobody should build, however many confirmations sit in front of it.
+- **Nothing in it touches** pay, employment status, hiring or rejection, start
+  dates, promised equipment, safety discipline, a driver's record, or
+  application code. `tests/learningActions.test.js` asserts the registry's exact
+  contents and scans its source (comments stripped) for the tables such a change
+  would have to reach.
+- **A recruiting suggestion names no action at all.** What a company offers a
+  driver is a fact a *person* supplies under Teach Wenze, through the existing
+  human-confirmation path. A machine that could add it from a pattern in refused
+  drafts would be learning company offers from the questions candidates asked,
+  which is how a rate nobody agreed to ends up in a text message.
+- **An action this build does not recognise is refused**, not quietly
+  downgraded to a success — silently downgrading is how somebody ends up
+  believing something happened.
+
+`applied_before` holds what was actually there, so a revert restores a fact
+rather than a default somebody assumed; a check that had **no row** gets its
+absence back, not a `FALSE` a later reader could mistake for a decision. Every
+acceptance and every revert writes `admin_audit_log` through the same helper and
+redactor the correction engine uses.
+
+Accept and revert sit behind the **apply gate** (`operations.corrections.apply`),
+not the read gate — the same distinction the corrections routes make between
+seeing a proposal and changing a record.
 
 ## The second signal: refused recruiting drafts
 

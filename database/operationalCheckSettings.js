@@ -62,4 +62,19 @@ async function upsertCheckSettings(checkKey, { autoApplyEnabled, maxAutoPerRun, 
   return mapSetting(res.rows[0]);
 }
 
-module.exports = { mapSetting, listCheckSettings, upsertCheckSettings };
+/**
+ * Remove a check's row entirely, restoring "no row = disabled".
+ *
+ * There is a real difference between a row saying FALSE and no row at all, and
+ * only one revert path is honest about it: a learning suggestion that switched
+ * automation off for a check which had never been configured must put back the
+ * absence, not a FALSE somebody could later read as a decision.
+ */
+async function deleteCheckSettings(checkKey) {
+  const res = await query('DELETE FROM operational_check_settings WHERE check_key = $1', [checkKey]);
+  return res.rowCount > 0;
+}
+
+module.exports = {
+  mapSetting, listCheckSettings, upsertCheckSettings, deleteCheckSettings,
+};

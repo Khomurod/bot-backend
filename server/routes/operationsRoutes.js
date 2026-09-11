@@ -45,6 +45,8 @@
  * | /identity/backfill/preview    | GET    | read    |
  * | /identity/backfill            | POST   | APPLY   |
  * | /systems                      | GET    | read    |
+ * | /learning/:id/accept          | POST   | APPLY   |
+ * | /learning/:id/revert          | POST   | APPLY   |
  */
 const express = require('express');
 
@@ -66,7 +68,7 @@ function createOperationsRouter({ authMiddleware, applyMiddleware }) {
   router.use(createCorrectionsRouter({ authMiddleware, applyMiddleware }));
   router.use(createIdentityRouter({ authMiddleware, applyMiddleware }));
   router.use(createRetentionRouter({ authMiddleware }));
-  router.use(createLearningRouter({ authMiddleware }));
+  router.use(createLearningRouter({ authMiddleware, applyMiddleware }));
   router.use(createSystemsRouter({ authMiddleware }));
   return router;
 }

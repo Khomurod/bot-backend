@@ -80,6 +80,16 @@ simply become unavailable.
   conversation itself is deliberately not an approved source: a candidate who
   writes "I heard you pay 80 cpm" must not be able to have Wenze agree.
 - **Changing one of its own rules.** The learning pass notices that Wenze has
-  been corrected the same way three times and PROPOSES something; the schema has
-  no status meaning "applied automatically", and accepting records agreement
-  rather than causing a change.
+  been corrected the same way three times and PROPOSES something. There is no
+  status meaning "applied automatically" and no code path that reaches one: a
+  suggestion may NAME a registered action, and naming is not doing. Only an
+  administrator's POST to `/accept`, behind the apply gate, runs it.
+
+  The registry that acceptance draws from holds exactly one action — turn a
+  check's automatic correction OFF — and there is deliberately no action that
+  turns anything ON. Nothing in it can touch pay, employment status, hiring,
+  start dates, safety discipline, a driver's record, or application code.
+  A suggestion that cannot be represented as a configurable rule records
+  agreement and says, in the UI, that a person still has to carry it out — it
+  never pretends to have been learned. See
+  [`self-healing-and-learning.md`](self-healing-and-learning.md).

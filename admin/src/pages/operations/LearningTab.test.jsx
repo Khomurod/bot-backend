@@ -1,10 +1,15 @@
 /**
  * What Wenze has noticed about its own mistakes.
  *
- * The one thing this screen must say, and must keep saying: AGREEING RECORDS
- * AGREEMENT AND CHANGES NOTHING. An administrator who clicked "good idea"
- * believing the change was made would stop looking for it, and the rule would
- * stay exactly as wrong as it was.
+ * THE ONE THING THIS SCREEN MUST NEVER DO is let an administrator believe a
+ * change was made when it was not. That used to be guaranteed the easy way —
+ * nothing was ever made — and the guarantee was inverted: somebody who clicked
+ * "good idea" on "switch automatic correction off for this check" believed they
+ * had switched it off, stopped looking, and the check kept correcting.
+ *
+ * Now some suggestions genuinely change a setting and most still do not, so the
+ * screen has to say WHICH — before the click and after it. These tests are that
+ * distinction, from both sides.
  */
 import React from "react";
 import { beforeEach, expect, test, vi } from "vitest";
@@ -15,6 +20,8 @@ import * as api from "../../api";
 vi.mock("../../api", () => ({
   getLearningSuggestions: vi.fn(),
   decideLearningSuggestion: vi.fn(),
+  acceptLearningSuggestion: vi.fn(),
+  revertLearningSuggestion: vi.fn(),
 }));
 
 const WAITING = {
@@ -23,6 +30,17 @@ const WAITING = {
   suggestion: "Consider switching automatic correction OFF for this check.",
   evidence: { count: 3, reasons: ["wrong return date", "driver was still at home"] },
   status: "proposed",
+  // This one names a setting, so agreeing will change something.
+  applyAction: "disable_auto_apply",
+  applyPayload: { checkKeys: ["home_time.closable_open_cycle"] },
+};
+
+/** One with nothing to apply — agreement and nothing else. */
+const MANUAL = {
+  ...WAITING, id: 5, kind: "recruiting_refusal",
+  title: "Wenze's answer to candidates was refused 4 times",
+  suggestion: "Adding the fact under Teach Wenze would let it answer instead of deferring.",
+  applyAction: null, applyPayload: null,
 };
 
 const flash = vi.fn();
@@ -39,12 +57,26 @@ async function open(over = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   api.decideLearningSuggestion.mockResolvedValue({});
+  api.acceptLearningSuggestion.mockResolvedValue({ applied: true, detail: "switched off" });
+  api.revertLearningSuggestion.mockResolvedValue({ reverted: true, detail: "1 setting(s) put back." });
 });
 
-test("THE SCREEN SAYS AGREEING CHANGES NOTHING", async () => {
+test("THE SCREEN SAYS WHICH KIND EACH SUGGESTION IS, BEFORE ANYTHING IS PRESSED", async () => {
   await open();
-  expect(screen.getByText(/does not change anything on its own/i)).toBeInTheDocument();
-  expect(screen.getByText(/still done by hand/i)).toBeInTheDocument();
+  expect(screen.getByText(/Agreeing will switch this setting now/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Agree and apply" })).toBeInTheDocument();
+});
+
+test("a suggestion with nothing to apply says so, and its button is different", async () => {
+  await open({ suggestions: [MANUAL] });
+  expect(screen.getByText(/Nothing changes automatically/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Agree" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Agree and apply" })).toBeNull();
+});
+
+test("and nothing is ever changed without the administrator", async () => {
+  await open();
+  expect(screen.getByText(/Nothing is ever changed without you/i)).toBeInTheDocument();
 });
 
 test("the evidence is shown beside the proposal", async () => {
@@ -53,14 +85,43 @@ test("the evidence is shown beside the proposal", async () => {
   expect(screen.getByText(/wrong return date; driver was still at home/)).toBeInTheDocument();
 });
 
-test("agreeing sends the decision and any note", async () => {
+test("agreeing goes to /accept with the note, not to /decide", async () => {
   await open();
   fireEvent.change(screen.getByPlaceholderText(/a note, if you want one/), {
     target: { value: "it keeps picking the wrong cycle" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Good idea" }));
-  await waitFor(() => expect(api.decideLearningSuggestion)
-    .toHaveBeenCalledWith(4, "accepted", "it keeps picking the wrong cycle"));
+  fireEvent.click(screen.getByRole("button", { name: "Agree and apply" }));
+  await waitFor(() => expect(api.acceptLearningSuggestion)
+    .toHaveBeenCalledWith(4, "it keeps picking the wrong cycle"));
+  expect(api.decideLearningSuggestion).not.toHaveBeenCalled();
+});
+
+test("the message shown is the SERVER's answer, not what the screen assumed", async () => {
+  api.acceptLearningSuggestion.mockResolvedValue({
+    applied: false, detail: "Agreement recorded. Nothing was changed automatically.",
+  });
+  await open();
+  fireEvent.click(screen.getByRole("button", { name: "Agree and apply" }));
+  await waitFor(() => expect(flash)
+    .toHaveBeenCalledWith("info", "Agreement recorded. Nothing was changed automatically."));
+});
+
+test("a row whose setting IS changed offers an undo", async () => {
+  await open({ suggestions: [{ ...WAITING, status: "accepted_active", decidedBy: "boss" }] });
+  expect(screen.getByText(/Agreed — and the setting is changed/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Undo the change" }));
+  await waitFor(() => expect(api.revertLearningSuggestion).toHaveBeenCalledWith(4, null));
+});
+
+test("a row that needs a person says so, and offers no undo-the-change", async () => {
+  await open({ suggestions: [{ ...MANUAL, status: "accepted_manual", decidedBy: "boss" }] });
+  expect(screen.getByText(/Agreed — needs you to do it/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Undo the change" })).toBeNull();
+});
+
+test("an old 'accepted' row is labelled honestly rather than relabelled", async () => {
+  await open({ suggestions: [{ ...WAITING, status: "accepted", decidedBy: "boss" }] });
+  expect(screen.getByText(/before Wenze could apply anything/)).toBeInTheDocument();
 });
 
 test("declining is one click and needs no note", async () => {
@@ -73,15 +134,16 @@ test("a decision already taken shows who took it, and can be undone", async () =
   await open({
     suggestions: [{ ...WAITING, status: "dismissed", decidedBy: "boss", decisionNote: "those three were genuine" }],
   });
-  expect(screen.getByText(/You said no · boss/)).toBeInTheDocument();
+  expect(screen.getByText(/You said no/)).toBeInTheDocument();
+  expect(screen.getByText(/boss/)).toBeInTheDocument();
   expect(screen.getByText(/those three were genuine/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Undo that decision" }));
   await waitFor(() => expect(api.decideLearningSuggestion).toHaveBeenCalledWith(4, "proposed", null));
 });
 
-test("a decided proposal offers no Good idea / No buttons", async () => {
-  await open({ suggestions: [{ ...WAITING, status: "accepted", decidedBy: "boss" }] });
-  expect(screen.queryByRole("button", { name: "Good idea" })).toBeNull();
+test("a decided proposal offers no agree / no buttons", async () => {
+  await open({ suggestions: [{ ...WAITING, status: "accepted_active", decidedBy: "boss" }] });
+  expect(screen.queryByRole("button", { name: "Agree and apply" })).toBeNull();
   expect(screen.queryByRole("button", { name: "No" })).toBeNull();
 });
 

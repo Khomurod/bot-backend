@@ -93,6 +93,10 @@ async function runLearningPass({ now = Date.now(), deps = defaultDeps(), options
         title: lesson.title,
         suggestion: lesson.suggestion,
         evidence: lesson.evidence,
+        // What accepting would DO, or null. Carried through from the pure
+        // module so the decision layer never has to re-derive it — and so a
+        // suggestion with nothing safe to apply says so rather than implying.
+        applyAction: lesson.applyAction || null,
       });
       summary.proposed += 1;
 
@@ -107,7 +111,10 @@ async function runLearningPass({ now = Date.now(), deps = defaultDeps(), options
         title: lesson.title,
         lines: lesson.lines,
         reason: lesson.suggestion,
-        action: 'Nothing has changed — this is a proposal for you to accept or dismiss',
+        action: lesson.applyAction
+          ? 'Nothing has changed yet. Accepting it in Operations → What Wenze learned '
+            + 'will switch the setting, and one click puts it back'
+          : 'Nothing has changed. Accepting records agreement; somebody still has to do it',
         subjectType: 'learning',
         subjectId: `${lesson.kind}:${lesson.subjectId}`,
         discriminator: nowIso.slice(0, 10),

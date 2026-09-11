@@ -30,6 +30,15 @@ function mapRow(row) {
     decidedAt: row.decided_at,
     decisionNote: row.decision_note,
     notifiedAt: row.notified_at,
+    // WHAT ACCEPTING WOULD DO — null means "a person still has to do it", which
+    // is most of them and must be said rather than implied.
+    applyAction: row.apply_action || null,
+    applyPayload: row.apply_payload || null,
+    appliedAt: row.applied_at,
+    appliedBy: row.applied_by,
+    appliedBefore: row.applied_before || null,
+    revertedAt: row.reverted_at,
+    revertedBy: row.reverted_by,
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
   };
@@ -43,18 +52,29 @@ function mapRow(row) {
  * alone. Reopening it would mean an administrator who dismissed a suggestion
  * saw it again every fortnight, which is how somebody stops reading them.
  */
-async function upsertSuggestion({ kind, subjectId, title, suggestion, evidence = {} }) {
+async function upsertSuggestion({
+  kind, subjectId, title, suggestion, evidence = {}, applyAction = null,
+}) {
   const res = await query(
     `INSERT INTO operational_learning_suggestions
-       (kind, subject_id, title, suggestion, evidence)
-     VALUES ($1, $2, $3, $4, $5::jsonb)
+       (kind, subject_id, title, suggestion, evidence, apply_action, apply_payload)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb)
      ON CONFLICT (kind, subject_id) DO UPDATE
        SET title = EXCLUDED.title,
            suggestion = EXCLUDED.suggestion,
            evidence = EXCLUDED.evidence,
+           -- Refreshed with the rest: if the pattern now spans a different set
+           -- of checks, what accepting would DO has changed too, and a stale
+           -- payload would apply the change to the wrong ones.
+           apply_action = EXCLUDED.apply_action,
+           apply_payload = EXCLUDED.apply_payload,
            last_seen_at = NOW()
      RETURNING *`,
-    [kind, String(subjectId), title, suggestion, JSON.stringify(evidence)]
+    [
+      kind, String(subjectId), title, suggestion, JSON.stringify(evidence),
+      applyAction?.action || null,
+      applyAction?.payload ? JSON.stringify(applyAction.payload) : null,
+    ]
   );
   return mapRow(res.rows[0]);
 }
@@ -70,14 +90,22 @@ async function markSuggestionNotified(id) {
   return mapRow(res.rows[0]);
 }
 
+/** Every status a row may hold. `accepted` is legacy — see migration 0040. */
+const STATUSES = Object.freeze([
+  'proposed', 'accepted', 'accepted_active', 'accepted_manual', 'dismissed', 'reverted',
+]);
+
 /**
- * A person's decision. `accepted` records agreement; it does not CAUSE
- * anything — whatever the suggestion proposed is still done by hand, on
- * purpose, because the alternative is a machine changing a business rule
- * because it convinced itself.
+ * A person's decision.
+ *
+ * THIS RECORDS THE DECISION AND NOTHING MORE. Whether anything actually changed
+ * is decided one layer up, in `services/operations/learningDecision.js`, which
+ * runs the registered action when there is one and sets `accepted_active`, or
+ * sets `accepted_manual` when there is not. Keeping the write dumb means the
+ * status can never claim more than was done.
  */
 async function decideSuggestion(id, { status, decidedBy = null, note = null }) {
-  if (!['accepted', 'dismissed', 'proposed'].includes(status)) return null;
+  if (!STATUSES.includes(status)) return null;
   const res = await query(
     `UPDATE operational_learning_suggestions
         SET status = $2,
@@ -88,6 +116,49 @@ async function decideSuggestion(id, { status, decidedBy = null, note = null }) {
       WHERE id = $1 RETURNING *`,
     [id, status, decidedBy, note]
   );
+  return mapRow(res.rows[0]);
+}
+
+/**
+ * Stamp that an action actually ran, with the values it replaced.
+ *
+ * `before` is the whole point: a revert must restore what was THERE, not a
+ * default somebody assumed was there.
+ */
+async function recordSuggestionApplied(id, { action, before, appliedBy }) {
+  const res = await query(
+    `UPDATE operational_learning_suggestions
+        SET status = 'accepted_active',
+            apply_action = COALESCE($2, apply_action),
+            applied_at = NOW(),
+            applied_by = $3,
+            applied_before = $4::jsonb,
+            reverted_at = NULL,
+            reverted_by = NULL,
+            last_seen_at = NOW()
+      WHERE id = $1 RETURNING *`,
+    [id, action || null, appliedBy, JSON.stringify(before ?? {})]
+  );
+  return mapRow(res.rows[0]);
+}
+
+/** Undone. `applied_before` is deliberately KEPT — it is the record of what was. */
+async function recordSuggestionReverted(id, { revertedBy, note = null }) {
+  const res = await query(
+    `UPDATE operational_learning_suggestions
+        SET status = 'reverted',
+            reverted_at = NOW(),
+            reverted_by = $2,
+            decision_note = COALESCE($3, decision_note),
+            last_seen_at = NOW()
+      WHERE id = $1 RETURNING *`,
+    [id, revertedBy, note]
+  );
+  return mapRow(res.rows[0]);
+}
+
+async function getSuggestionById(id) {
+  const res = await query('SELECT * FROM operational_learning_suggestions WHERE id = $1', [id]);
   return mapRow(res.rows[0]);
 }
 
@@ -117,6 +188,10 @@ async function summariseSuggestions() {
 }
 
 module.exports = {
+  STATUSES,
+  recordSuggestionApplied,
+  recordSuggestionReverted,
+  getSuggestionById,
   mapRow,
   upsertSuggestion,
   markSuggestionNotified,
