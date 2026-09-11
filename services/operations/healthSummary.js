@@ -27,6 +27,9 @@ const defaultDeps = () => ({
   loads: require('../../database/loadLifecycle'),
   safety: require('../../database/driverSafety'),
   aiProviders: require('../../database/aiProviders'),
+  systemHealth: require('../../database/systemHealth'),
+  learning: require('../../database/operationalLearning'),
+  retention: require('../../database/retentionAssessments'),
   /* eslint-enable global-require */
 });
 
@@ -88,7 +91,10 @@ function summariseCorrections(lastCorrections) {
 async function getOperationsHealth(deps = defaultDeps()) {
   try {
     const status = deps.consistency.getConsistencyStatus();
-    const [findings, coverage, duplicates, indexPresent, providers, homeTimeLive, loadPhases, safety] = await Promise.all([
+    const [
+      findings, coverage, duplicates, indexPresent, providers, homeTimeLive,
+      loadPhases, safety, systems, learning, retention,
+    ] = await Promise.all([
       deps.findings.summariseFindings(),
       deps.people.summariseIdentityCoverage(),
       deps.integrity.countDuplicateOpenStays(),
@@ -97,6 +103,9 @@ async function getOperationsHealth(deps = defaultDeps()) {
       deps.homeTimeHealth.getHomeTimeHealth(),
       deps.loads.summariseLoadPhases().catch(() => null),
       deps.safety.summariseSafety().catch(() => null),
+      deps.systemHealth.summariseHealthStates().catch(() => null),
+      deps.learning.summariseSuggestions().catch(() => null),
+      deps.retention.summariseRetention().catch(() => null),
     ]);
     return {
       available: true,
@@ -122,6 +131,16 @@ async function getOperationsHealth(deps = defaultDeps()) {
       // Safety as a PATTERN: how many events, of what kind, and how much
       // coaching actually reached a driver.
       safety,
+      // WHICH PARTS OF WENZE ARE WORKING, and which have never been looked at —
+      // counted separately, because "not checked" and "fine" are different
+      // answers and only one of them is reassuring.
+      systems,
+      // Proposals about Wenze's own rules that are waiting for a person. None
+      // of them has changed anything; that is what `proposed` means.
+      learning,
+      // Drivers the company may be about to lose. A number here that stays high
+      // is the feature working and nobody acting on it.
+      retention,
       aiModels: providers.map((p) => ({
         provider: publicProviderName(p),
         enabled: p.enabled === true,

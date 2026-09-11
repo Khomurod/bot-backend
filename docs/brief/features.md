@@ -135,6 +135,29 @@ file passed the 500-line limit.
   every truck they have held, in time, or a plain "not placed yet". See
   `docs/brief/data-model.md` → the person layer.
 
+### Wenze looking after itself
+
+- **When a part of Wenze breaks and then recovers, it says so — and when it was
+  only a blip, it says nothing at all.** Every recovery it reports already ran
+  silently (RingCentral token refresh, AI provider cooldowns, model retirement,
+  outbox backoff); what was missing was the noticing. Three consecutive failures
+  before anything is announced, **recovery announced only where the failure
+  was**, flapping said once and then silent. Recovery goes to `self_healing`
+  saying nothing is needed; a real outage goes to `system_errors` saying what
+  does. Nothing probes an external service.
+- **When the same automatic correction is undone three times, Wenze proposes
+  something about it** — to `ai_learning`, and only ever as a proposal.
+  `operational_learning_suggestions` has statuses `proposed`, `accepted`,
+  `dismissed` and **no status meaning "applied automatically"**. Accepting
+  records that an administrator agrees; the change is then made by hand.
+  The same for repeated refusals of Wenze's recruiting drafts: a rising
+  `unapproved_figure` count means candidates keep asking about something nobody
+  has taught it, which is a gap to fill under Teach Wenze.
+- Operations → **What Wenze learned** shows each proposal with the evidence that
+  produced it, including the reasons people typed when they reverted. A
+  suggestion without its evidence is an opinion.
+  `docs/architecture/self-healing-and-learning.md`.
+
 ### Driver retention
 
 - **Wenze says when the company is about to lose somebody, while there is still

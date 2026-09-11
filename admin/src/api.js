@@ -33,6 +33,7 @@ export * from './api/notifications';
 export * from './api/recruitingKnowledge';
 export * from './api/recruitingHours';
 export * from './api/retention';
+export * from './api/learning';
 export * from './api/routeControl';
 export * from './api/recruiters';
 export * from './api/liveLocations';

@@ -300,3 +300,43 @@ supposed to have gone away, and nothing fails.
 What stayed in `index.js` is the process itself — the bot, the HTTP server, the
 database, the leads child process and the memory watchdog — because the ordering
 around those is boot sequencing rather than a roster.
+
+## Self-healing watch (every 30 minutes, first pass 10 minutes after boot)
+
+`services/operations/selfHealing.js`. **Adds no recovery.** Every recovery it
+reports already ran silently — token refresh, provider cooldowns, model
+retirement, outbox backoff. What was missing is the noticing, because "Wenze
+fixed itself" and "Wenze has been broken for three days" look identical from
+outside.
+
+Nothing probes an external service; every observation reads what the application
+already recorded about its last real attempts. A source that cannot be read is
+**unknown, never failed**.
+
+Four rules in `lib/operations/healthTransitions.js`, pure: three consecutive
+failures before anything is said; **recovery announced only where the failure
+was**, so a blip that self-corrects produces zero messages rather than one;
+flapping said once and then silent; nothing said twice. `announced_status` is
+stored rather than held in memory because Render deploys several times a day and
+an in-memory version would re-announce every outage on each one.
+
+Recovery → `self_healing`, and says nothing is needed. Failure and flapping →
+`system_errors`, and say what does.
+
+## Learning pass (every 12 hours, first pass 25 minutes after boot)
+
+`services/operations/learningPass.js`. Notices that Wenze keeps being corrected
+the same way — three reverts of the same `action_key` in a fortnight, or
+repeated refusals of the same kind on recruiting drafts — and **proposes**
+something about it to the `ai_learning` category.
+
+**Nothing it produces takes effect.** `lib/operations/learning.js` returns plain
+data with no function in it; the service stores and sends; the schema allows
+`proposed`, `accepted`, `dismissed` and has no status meaning "applied
+automatically". Accepting records that an administrator agrees — the change is
+then made by hand. A decision holds: the next pass refreshes the evidence
+without reopening the row.
+
+Slow on purpose. A pattern needing three reverts in a fortnight does not become
+visible in an hour, and a proposal about how Wenze should behave is the last
+thing that should arrive often.

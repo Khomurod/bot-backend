@@ -100,6 +100,20 @@ function summaryDeps(overrides = {}) {
         };
       },
     },
+    // Each block below is composed into the same summary, so each is faked in.
+    // (This harness has now grown a dep four times for exactly that reason;
+    // a missing one shows up as "cannot read properties of undefined".)
+    systemHealth: {
+      async summariseHealthStates() {
+        return { ok: 2, failed: 1, unchecked: 0, flapping: 0, down: ['ai_providers'] };
+      },
+    },
+    learning: {
+      async summariseSuggestions() { return { proposed: 1, accepted: 0, dismissed: 2 }; },
+    },
+    retention: {
+      async summariseRetention() { return { urgent: 1, watch: 3, acknowledged: 1, lastPassAt: null }; },
+    },
     // The load lifecycle block is composed in, so it is faked in.
     loads: {
       async summariseLoadPhases() {

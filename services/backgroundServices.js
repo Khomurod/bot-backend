@@ -96,6 +96,14 @@ const {
   startRetentionWatch,
   stopRetentionWatch,
 } = require('./retention/watch');
+const {
+  startSelfHealingWatch,
+  stopSelfHealingWatch,
+} = require('./operations/selfHealing');
+const {
+  startLearningPass,
+  stopLearningPass,
+} = require('./operations/learningPass');
 const { registerKnownCapabilities } = require('./ai/capabilityRegistry');
 const {
   startRouteControlService,
@@ -169,6 +177,14 @@ function startBackgroundServices({ telegram, setModelRefusalListener, onProfileS
   // driver said in their own words, and says so while somebody can still act.
   // Operations chat only, never the driver's; no employment decision, ever.
   startRetentionWatch();
+  // Notices when a part of Wenze breaks, and when it puts itself right. It adds
+  // no recovery — every recovery it reports already ran silently. A blip that
+  // self-corrects produces NO message; only a real outage and its recovery do.
+  startSelfHealingWatch();
+  // Notices that Wenze has been corrected the same way three times and proposes
+  // something about it. Proposes only: nothing here changes a rule, and a
+  // suggestion sits at 'proposed' until an administrator agrees.
+  startLearningPass();
   // Put the AI responsibilities catalogue into the database, so Settings → AI
   // has something to show and an administrator has something to switch off.
   // Descriptive columns only — a capability switched off stays off.
@@ -209,6 +225,8 @@ function stopBackgroundServices() {
   try { stopFuelRiskWatch(); } catch (err) { console.error('[SHUTDOWN] stopFuelRiskWatch failed:', err.message); }
   try { stopSafetyCoach(); } catch (err) { console.error('[SHUTDOWN] stopSafetyCoach failed:', err.message); }
   try { stopRetentionWatch(); } catch (err) { console.error('[SHUTDOWN] stopRetentionWatch failed:', err.message); }
+  try { stopSelfHealingWatch(); } catch (err) { console.error('[SHUTDOWN] stopSelfHealingWatch failed:', err.message); }
+  try { stopLearningPass(); } catch (err) { console.error('[SHUTDOWN] stopLearningPass failed:', err.message); }
   try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
   try { stopConsistencyService(); } catch (err) { console.error('[SHUTDOWN] stopConsistencyService failed:', err.message); }
