@@ -148,11 +148,11 @@ test('a driver is seen, works, comes home, changes truck, goes back out — one 
   await harness.query(`INSERT INTO driver_profiles (group_id, first_name, last_name, unit_number) VALUES ($1, 'QUIET', 'DRIVER', '12')`, [quiet.rows[0].id]);
   await bound.sweep();
   // Migration 0027 switches placement on; the administrator's off-switch still wins.
-  await harness.query("UPDATE operational_check_settings SET auto_apply_enabled = FALSE WHERE check_key = 'identity.group_without_person'");
+  await harness.query("UPDATE operational_check_settings SET auto_apply_enabled = FALSE, mode = 'suggest' WHERE check_key = 'identity.group_without_person'");
   let auto = await bound.autoApply({ apply: true });
   assert.equal(auto.summary.applied, 0, 'switched off means off');
-  await harness.query(`INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run) VALUES ('identity.group_without_person', TRUE, 50)
-    ON CONFLICT (check_key) DO UPDATE SET auto_apply_enabled = TRUE`);
+  await harness.query(`INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run, mode) VALUES ('identity.group_without_person', TRUE, 50, 'autopilot')
+    ON CONFLICT (check_key) DO UPDATE SET auto_apply_enabled = TRUE, mode = 'autopilot'`);
   auto = await bound.autoApply({ apply: true });
   assert.equal(auto.summary.applied, 1);
   const quietPerson = await harness.query('SELECT person_id FROM driver_person_groups WHERE group_id = $1 AND ended_at IS NULL', [quiet.rows[0].id]);

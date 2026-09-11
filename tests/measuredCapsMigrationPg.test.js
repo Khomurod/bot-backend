@@ -37,9 +37,9 @@ async function rows(harness) {
 /** Production's shape before deploy: two checks switched on by a person at the default cap. */
 async function seedProductionRows(harness, updatedAt = '2026-09-01T00:00:00Z') {
   await harness.query(
-    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, updated_by, updated_at)
-     VALUES ('home_time.closable_open_cycle', TRUE, 'admin:1', $1),
-            ('identity.stale_unit_assignment', TRUE, 'admin:1', $1)`,
+    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, updated_by, updated_at, mode)
+     VALUES ('home_time.closable_open_cycle', TRUE, 'admin:1', $1, 'autopilot'),
+            ('identity.stale_unit_assignment', TRUE, 'admin:1', $1, 'autopilot')`,
     [updatedAt]
   );
 }
@@ -63,9 +63,9 @@ test('production\'s shape: enabled at the default 50 → exactly 65 and exactly 
 test('a cap a person typed is theirs', { skip: skipWithoutPg() }, async (t) => {
   const harness = await createPgHarness(t, { extraDdl: BEFORE_0027 });
   await harness.query(
-    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run, updated_by)
-     VALUES ('home_time.closable_open_cycle', TRUE, 10, 'admin:2'),
-            ('identity.stale_unit_assignment', TRUE, 200, 'admin:2')`
+    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run, updated_by, mode)
+     VALUES ('home_time.closable_open_cycle', TRUE, 10, 'admin:2', 'autopilot'),
+            ('identity.stale_unit_assignment', TRUE, 200, 'admin:2', 'autopilot')`
   );
   await harness.query(MIGRATION_0027);
   await harness.query(MIGRATION_0028);
@@ -93,8 +93,8 @@ test('a 50 saved AFTER the measurement was published is a person\'s choice and s
 test('a disabled check is not touched, and a missing row is not created', { skip: skipWithoutPg() }, async (t) => {
   const harness = await createPgHarness(t, { extraDdl: BEFORE_0027 });
   await harness.query(
-    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, updated_by)
-     VALUES ('home_time.closable_open_cycle', FALSE, 'admin:3')`
+    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, updated_by, mode)
+     VALUES ('home_time.closable_open_cycle', FALSE, 'admin:3', 'suggest')`
   );
   await harness.query(MIGRATION_0028); // without 0027: the other two rows do not exist
   const r = await rows(harness);

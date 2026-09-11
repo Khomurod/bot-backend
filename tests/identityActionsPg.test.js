@@ -154,16 +154,16 @@ test('the background loop places a group by itself once the check is enabled, an
   // Migration 0027 switches this check ON; an administrator switching it off
   // in Automation must be honoured on the very next pass.
   await harness.query(
-    "UPDATE operational_check_settings SET auto_apply_enabled = FALSE WHERE check_key = 'identity.group_without_person'"
+    "UPDATE operational_check_settings SET auto_apply_enabled = FALSE, mode = 'suggest' WHERE check_key = 'identity.group_without_person'"
   );
   const off = await autoApply({ apply: true });
   assert.equal((await harness.query('SELECT COUNT(*)::int AS n FROM driver_person_groups')).rows[0].n, 0, 'switched off means off');
   assert.ok(off.summary);
 
   await harness.query(
-    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run)
-     VALUES ('identity.group_without_person', TRUE, 50)
-     ON CONFLICT (check_key) DO UPDATE SET auto_apply_enabled = TRUE`
+    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run, mode)
+     VALUES ('identity.group_without_person', TRUE, 50, 'autopilot')
+     ON CONFLICT (check_key) DO UPDATE SET auto_apply_enabled = TRUE, mode = 'autopilot'`
   );
   const on = await autoApply({ apply: true });
   assert.equal(on.summary.applied, 1);

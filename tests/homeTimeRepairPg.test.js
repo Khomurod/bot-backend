@@ -40,7 +40,7 @@ async function harnessWith(t) {
   // only the corrections engine to the harness, not the identity layer's data
   // modules (tests/identityActionsPg.test.js does that), so those checks are
   // switched off here the way an administrator would — through their row.
-  await harness.query("UPDATE operational_check_settings SET auto_apply_enabled = FALSE WHERE check_key LIKE 'identity.%'");
+  await harness.query("UPDATE operational_check_settings SET auto_apply_enabled = FALSE, mode = 'suggest' WHERE check_key LIKE 'identity.%'");
   return harness;
 }
 
@@ -124,9 +124,9 @@ async function seedProductionShape(harness) {
  */
 async function allowRepair(harness, cap) {
   await harness.query(
-    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run)
-     VALUES ('home_time.closable_open_cycle', TRUE, $1)
-     ON CONFLICT (check_key) DO UPDATE SET auto_apply_enabled = TRUE, max_auto_per_run = EXCLUDED.max_auto_per_run`,
+    `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run, mode)
+     VALUES ('home_time.closable_open_cycle', TRUE, $1, 'autopilot')
+     ON CONFLICT (check_key) DO UPDATE SET auto_apply_enabled = TRUE, mode = 'autopilot', max_auto_per_run = EXCLUDED.max_auto_per_run`,
     [cap]
   );
 }

@@ -171,5 +171,8 @@ test('a granted check is what the auto-apply batch then reads', { skip: skipWith
 
   const row = settings.get('home_time.closable_open_cycle');
   assert.equal(row.auto_apply_enabled, true, 'the admin and the batch read the same row');
+  assert.equal(row.mode, 'autopilot',
+    'and since migration 0044 the batch acts on the MODE, so that has to be the '
+    + 'same row too — granting through the older boolean still arms it');
   assert.equal(row.max_auto_per_run, 7);
 });
