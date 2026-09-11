@@ -31,6 +31,7 @@ const defaultDeps = () => ({
   notificationSettings: require('../../database/operationalNotificationSettings'),
   learning: require('../../database/operationalLearning'),
   retention: require('../../database/retentionAssessments'),
+  retentionWatch: require('../retention/watch'),
   /* eslint-enable global-require */
 });
 
@@ -163,8 +164,10 @@ async function getOperationsHealth(deps = defaultDeps()) {
       // of them has changed anything; that is what `proposed` means.
       learning,
       // Drivers the company may be about to lose. A number here that stays high
-      // is the feature working and nobody acting on it.
-      retention,
+      // is the feature working and nobody acting on it — and `watch` says
+      // whether the pass has actually run, which the counts alone cannot:
+      // "ran and found nobody" and "never ran" are the same empty table.
+      retention: { ...(retention || {}), watch: deps.retentionWatch.getRetentionStatus() },
       // WHETHER ANY OF THE ABOVE CAN BE HEARD. With no destination configured,
       // every notice is discarded at the door — features running, working, and
       // saying nothing, which is the exact failure this whole project started

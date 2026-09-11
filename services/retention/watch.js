@@ -218,16 +218,39 @@ async function runRetentionPass({ now = Date.now(), deps = defaultDeps(), option
 let timer = null;
 let stopped = true;
 
+/**
+ * What the last pass did, for `/api/health`.
+ *
+ * NOT derivable from the rows the pass writes, which is why it is kept here.
+ * "The watch ran and found nobody" and "the watch has never run, or crashed on
+ * every driver" produce exactly the same empty table, and only one of those is
+ * good news. A background job whose failure looks identical to its success is
+ * the shape of problem this whole phase exists to remove, so it would be a poor
+ * joke to ship another one.
+ */
+let lastRun = null;
+
 async function tick() {
+  const startedAt = new Date().toISOString();
   try {
     const summary = await runRetentionPass({});
+    lastRun = { at: startedAt, ok: true, ...summary, errors: summary.errors.length };
     if (summary.flagged > 0 || summary.errors.length) {
       console.log(`[RETENTION] ${summary.checked} checked, ${summary.flagged} flagged `
         + `(${summary.urgent} urgent), ${summary.notified} announced`);
     }
   } catch (err) {
+    // runRetentionPass does not throw, so reaching here means something under
+    // it did. Recorded rather than only logged: Render's logs roll, and this is
+    // the question somebody asks days later.
+    lastRun = { at: startedAt, ok: false, error: err.message };
     console.warn('[RETENTION] pass failed:', err.message);
   }
+}
+
+/** Running, and what the last pass actually did. */
+function getRetentionStatus() {
+  return { running: Boolean(timer), lastRun };
 }
 
 /**
@@ -254,6 +277,7 @@ function stopRetentionWatch() {
 
 module.exports = {
   CAPABILITY,
+  getRetentionStatus,
   startRetentionWatch,
   stopRetentionWatch,
   POLL_MS,

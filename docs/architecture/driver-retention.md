@@ -116,6 +116,18 @@ an opinion would, within a month, be the performance record this whole design
 avoids. `tests/retentionRoutes.test.js` reads the route file as text and asserts
 the endpoint list is exactly those two.
 
+## "Ran and found nobody" is not "never ran"
+
+Both produce an empty `driver_retention_assessments` table, and only one of them
+is good news. So the watch keeps its own last-run record — when it ran, how many
+drivers it looked at, how many it flagged, and whether it crashed — and
+`/api/health` → `operations.retention.watch` carries it beside the counts.
+
+A background job whose failure looks identical to its success is the shape of
+problem this whole phase exists to remove: the home-time outbox retried, backed
+off, gave up, recorded the error and told nobody for months. Shipping another
+one would be a poor joke.
+
 ## Known limits, stated rather than hidden
 
 - **The mileage bonus has no identity link.** `mileage_bonus_notifications` is
