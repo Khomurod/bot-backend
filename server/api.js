@@ -217,6 +217,12 @@ app.use('/api/route-control', createRouteControlRouter({
 const { createRecruiterRouter } = require('./routes/recruiterRoutes');
 app.use('/api/recruiters', createRecruiterRouter({ authMiddleware: legacyAuthMiddleware }));
 
+// Teaching Wenze what it may tell a candidate. Mounted beside the recruiters
+// rather than under settings: it is operational content a recruiting manager
+// maintains, not a connection setting.
+const { createRecruitingKnowledgeRouter } = require('./routes/recruitingKnowledgeRoutes');
+app.use('/api', createRecruitingKnowledgeRouter({ authMiddleware: legacyAuthMiddleware }));
+
 const { createBotMessagesRouter } = require('./routes/botMessagesRoutes');
 app.use('/api/bot-messages', createBotMessagesRouter({ authMiddleware: legacyAuthMiddleware, telegram: bot.telegram }));
 

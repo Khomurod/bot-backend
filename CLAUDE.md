@@ -246,6 +246,7 @@ that area**, and run the tests it names.
 | The Bitrix assignee lookup, recruiter↔Bitrix mapping, Bitrix connection settings | [`docs/architecture/recruiter-sms-bitrix.md`](docs/architecture/recruiter-sms-bitrix.md) |
 | Where AI may change stored operational state, and the verdict on each | [`docs/architecture/ai-decisions.md`](docs/architecture/ai-decisions.md) |
 | Where an operational notice goes, and what it may never say | [`docs/architecture/operational-notifications.md`](docs/architecture/operational-notifications.md) |
+| What Wenze may tell a candidate, and how a person teaches it | [`docs/architecture/recruiting-knowledge.md`](docs/architecture/recruiting-knowledge.md) |
 | Database changes, migrations, deferred schema decisions | [`docs/database/`](docs/database/) |
 | What was deliberately removed and must not be resurrected | [`docs/ARCHIVED_FEATURES.md`](docs/ARCHIVED_FEATURES.md), [`docs/architecture/retired-*.md`](docs/architecture/) |
 | Clearing a removed feature's leftover tables, roles and accounts | [`docs/architecture/retired-trailers-qbq-sos.md`](docs/architecture/retired-trailers-qbq-sos.md) |
