@@ -310,6 +310,7 @@ async function classifyHomeTimeMessage(input = {}) {
 
   try {
     const { parsed } = await callGeminiJson({
+      capability: 'home_time_intent',
       userText: prompt,
       maxOutputTokens: 320,
       validateParsed: (p) => typeof p?.intent === 'string',

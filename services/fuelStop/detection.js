@@ -29,6 +29,7 @@ async function detectStationFromMessage(message) {
   let address = null;
   try {
     const { parsed } = await callGeminiJson({
+      capability: 'fuel_stop_detection',
       systemText:
         'You read fuel-stop instructions posted by a Fuel Monitoring Department in a truck '
         + 'driver\'s group. Extract the fuel station name and its full street address.',

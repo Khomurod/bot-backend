@@ -83,6 +83,7 @@ function buildDispatchAiMessages(rawText) {
 async function requestDispatchTemplateFromGroq(rawText) {
   try {
     const { text, model } = await callGroqWithFallback('', {
+      capability: 'dispatch_rate_confirmation',
       messages: buildDispatchAiMessages(rawText),
       models: DISPATCH_GROQ_MODELS,
       temperature: 0,
@@ -128,6 +129,7 @@ async function requestDispatchTemplateFromGemini(rawText, sourceFile) {
 
   try {
     const { text, model } = await callGeminiGenerateContent({
+      capability: 'dispatch_rate_confirmation',
       models: DISPATCH_GEMINI_MODELS,
       contents,
       systemInstruction: {

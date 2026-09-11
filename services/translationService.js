@@ -101,6 +101,7 @@ function buildBatchPrompt(textsArray, langName) {
 
 async function translateViaGroq(prompt, expectedCount) {
   const { text } = await callGroqWithFallback(prompt, {
+      capability: 'translation',
     systemText: SYSTEM_PROMPT,
     temperature: 0.3,
     maxTokens: 4000,

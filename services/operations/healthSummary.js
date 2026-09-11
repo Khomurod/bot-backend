@@ -23,6 +23,7 @@ const defaultDeps = () => ({
   findings: require('../../database/operationalFindings'),
   people: require('../../database/driverPeople'),
   integrity: require('../../database/homeTime/integrity'),
+  homeTimeHealth: require('./homeTimeHealth'),
   aiProviders: require('../../database/aiProviders'),
   /* eslint-enable global-require */
 });
@@ -85,12 +86,13 @@ function summariseCorrections(lastCorrections) {
 async function getOperationsHealth(deps = defaultDeps()) {
   try {
     const status = deps.consistency.getConsistencyStatus();
-    const [findings, coverage, duplicates, indexPresent, providers] = await Promise.all([
+    const [findings, coverage, duplicates, indexPresent, providers, homeTimeLive] = await Promise.all([
       deps.findings.summariseFindings(),
       deps.people.summariseIdentityCoverage(),
       deps.integrity.countDuplicateOpenStays(),
       deps.integrity.indexExists(),
       deps.aiProviders.listProvidersForAdmin(),
+      deps.homeTimeHealth.getHomeTimeHealth(),
     ]);
     return {
       available: true,
@@ -107,6 +109,8 @@ async function getOperationsHealth(deps = defaultDeps()) {
       homeTime: {
         groupsWithDuplicateOpenStays: duplicates.length,
         openStayIndex: indexPresent ? 'present' : 'absent',
+        // What the feature is DOING, not only whether its invariant holds.
+        ...homeTimeLive,
       },
       aiModels: providers.map((p) => ({
         provider: publicProviderName(p),

@@ -63,7 +63,11 @@ function reminderPrompt(missingField, language) {
 /** AI reminder text with a deterministic fallback (never throws). */
 async function buildReminderText(missingField, language) {
   try {
-    const { text } = await callGeminiText({ userText: reminderPrompt(missingField, language), maxOutputTokens: 100 });
+    const { text } = await callGeminiText({
+      capability: 'home_time_message',
+      userText: reminderPrompt(missingField, language),
+      maxOutputTokens: 100,
+    });
     const clean = String(text || '').trim();
     if (clean) return clean;
   } catch (err) {

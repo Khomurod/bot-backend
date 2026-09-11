@@ -47,6 +47,7 @@ function renderFallbackMessage(employees, fallbackTemplate) {
 
 async function generateViaGroq(prompt) {
   const { text, model } = await callGroqWithFallback(prompt, {
+    capability: 'employee_birthday_message',
     systemText: SYSTEM_TEXT,
     temperature: 0.9,
     maxTokens: 800,

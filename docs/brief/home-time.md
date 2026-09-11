@@ -260,6 +260,19 @@ marks the stay closed.
   as they are and are simply read as settled. Old cards still in the group get
   their buttons retired on the next press, with a note that approval is no
   longer needed — `tests/homeTimeRetiredApproval.test.js`.
+  **The admin panel's Approve / Do Not Approve buttons are gone too**, along
+  with the endpoint behind them: `POST /home-time/requests/:id/decision` answers
+  410 with a sentence saying what replaced it, so an admin tab opened before the
+  deploy shows a clear message rather than a broken button. The workflow itself
+  — `applyHomeTimeDecision`, `announceApproval`, `canApproveWindow`,
+  `settleDecisionCard` — is DELETED, not disabled: a retired path kept "just in
+  case" is a path that comes back. `services/homeTimeApproval.js` keeps only
+  `expireOutdatedRequest`, which closes a request whose window passed with
+  nothing having happened — housekeeping, never a decision. A legacy `pending`
+  row shows a sentence in the driver timeline saying nothing is waiting for it,
+  because a row reading "pending" with nothing beside it looks like a task.
+  `tests/homeTimeDecisionRoute.test.js`, `tests/homeTimeApproval.test.js`,
+  `admin/src/pages/homeTime/RetiredApprovalNote.test.jsx`.
   **The widened CHECK lives in the BASELINE, not only in migration 0029.**
   `schema.sql` is re-applied verbatim on every boot and its `DROP CONSTRAINT` /
   `ADD CONSTRAINT` pair is unconditional, so a value added by a run-once
@@ -269,6 +282,29 @@ marks the stay closed.
   `database/baseline/012_home_time.sql` carries `recorded` too, and
   `tests/homeTimeManagerNoticesPg.test.js` applies baseline → migrations →
   baseline again to prove a restart survives.
+- **The audit says WHO decided, not only what.** A finding records whether a
+  model was consulted at all, which provider and model answered, how sure it
+  said it was, its one-line reason, and that the change was automatic rather
+  than typed — beside the facts that justified it (load identifier and status,
+  GPS freshness and age, distance from the parked anchor, whether movement was
+  proven). `aiAssisted: false` is written explicitly rather than left absent,
+  because an absent field reads as "nobody recorded it". The correction is
+  audited against the finding, so `operational_corrections` +
+  `admin_audit_log` + the finding together answer "why did the software move
+  this driver" months later.
+- **Home Time is checkable from outside a running instance.** `/api/health` →
+  `operations.homeTime` reports what the feature is DOING, not only whether its
+  invariant holds: how many drivers are being watched and when the watcher last
+  ticked (a stale oldest with rows present means the worker stopped), manager
+  notices by event type with **rows and distinct events reported separately**
+  so a broken UNIQUE would show as a difference, requests by status so
+  `recorded` rising beside a frozen historical `pending` is visible, how many
+  automatic Home → Road changes were applied and reversed, and how many AI
+  responsibilities are registered and switched off. **Counts and timestamps
+  only** — the endpoint is public, and a test asserts every leaf is a number, a
+  null or an ISO timestamp. A failure reads `available: false`, never unhealthy.
+  `database/homeTime/observability.js`, `services/operations/homeTimeHealth.js`,
+  `tests/homeTimeHealthBlock.test.js`, `tests/homeTimeObservabilityPg.test.js`.
 - **The AI reading is a registered capability.** `home_time_return_to_road` is
   seeded into `ai_capabilities` by migration 0030, because Settings → AI lists
   that table: a capability the router honours but never registers is a switch

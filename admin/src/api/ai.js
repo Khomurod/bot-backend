@@ -174,3 +174,13 @@ export async function runAiPolicyCheck() {
   const data = await res.json();
   return data.summary;
 }
+
+/** Every AI decision, in words, with its switches. See lib/ai/capabilityCatalog.js. */
+export async function getAiResponsibilities() {
+  const res = await fetch(`${API_BASE}/settings/ai/responsibilities`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  // `automationError` travels with the groups: when the automation settings
+  // could not be read, the card must say so rather than draw every switch off.
+  return { groups: data.groups || [], automationError: data.automationError || null };
+}

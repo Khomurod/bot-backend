@@ -54,11 +54,24 @@ async function setGroupStatusByAdmin(groupId, active) {
 /** Driver groups eligible for AI status classification (excludes manual locks). */
 async function getDriverGroupsForStatusAi() {
   const res = await query(
-    `SELECT id, group_name, active, status_source
-     FROM groups
-     WHERE group_type = 'driver'
-       AND (status_source IS NULL OR status_source IS DISTINCT FROM 'manual')
-     ORDER BY id`
+    `SELECT g.id, g.group_name, g.active, g.status_source,
+            -- The activity signals a deactivation is checked against. A model
+            -- reading a chat TITLE cannot see any of these, and every one of
+            -- them is already recorded, so asking costs one join apiece.
+            g.last_message_seen_at,
+            s.last_status_at              AS home_status_at,
+            EXISTS (SELECT 1 FROM driver_road_history h
+                     WHERE h.group_id = g.id AND h.return_to_road_at IS NULL) AS open_home_cycle,
+            (SELECT MAX(h.home_arrived_at) FROM driver_road_history h
+              WHERE h.group_id = g.id)    AS last_road_history_at,
+            (SELECT MAX(u.started_at) FROM driver_units u
+               JOIN driver_person_groups pg ON pg.person_id = u.person_id AND pg.ended_at IS NULL
+              WHERE pg.group_id = g.id AND u.ended_at IS NULL) AS open_unit_at
+       FROM groups g
+       LEFT JOIN driver_home_status s ON s.group_id = g.id
+      WHERE g.group_type = 'driver'
+        AND (g.status_source IS NULL OR g.status_source IS DISTINCT FROM 'manual')
+      ORDER BY g.id`
   );
   return res.rows;
 }

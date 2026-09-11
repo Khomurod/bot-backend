@@ -29,6 +29,7 @@ async function buildReminderBody({ stationName, distanceMiles }) {
 
   try {
     const { text } = await callGeminiText({
+      capability: 'fuel_stop_message',
       systemText:
         'You write very short, friendly dispatch reminders for truck drivers in English.',
       userText:

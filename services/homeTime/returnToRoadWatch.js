@@ -113,6 +113,18 @@ function buildFinding(driver, verdict, { unit, eventAt }) {
       signals: verdict.signals,
       blockers: verdict.blockers,
       ...verdict.facts,
+      // WHO DECIDED, recorded beside WHAT was decided. The correction is
+      // audited against this finding, so without these the trail could not say
+      // whether a model was involved at all, which one, or what it said — and
+      // "the software moved a driver" is exactly the claim that needs answering
+      // months later. `aiAssisted: false` is written explicitly rather than
+      // left absent, because an absent field reads as "nobody recorded it".
+      aiAssisted: verdict.aiAssisted === true,
+      aiProvider: verdict.aiProvider || null,
+      aiModel: verdict.aiModel || null,
+      aiConfidence: verdict.aiConfidence ?? null,
+      aiReason: verdict.aiReason || null,
+      decidedAutomatically: true,
     },
     proposedChange: high
       ? {

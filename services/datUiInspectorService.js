@@ -194,6 +194,7 @@ function buildInspectorPrompt(snapshot) {
 async function inspectDatPageLayout(snapshot) {
   const compact = compactSnapshot(snapshot);
   const { text: raw, model: usedModel } = await callGroqWithFallback(buildInspectorPrompt(compact), {
+    capability: 'dat_ui_inspection',
     systemText: INSPECTOR_SYSTEM_PROMPT,
     temperature: 0.15,
     maxTokens: 900,

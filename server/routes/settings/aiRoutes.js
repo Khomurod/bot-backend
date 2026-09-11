@@ -16,9 +16,12 @@
 const express = require('express');
 
 const aiSettings = require('../../../database/aiSettings');
+const operationalCheckSettings = require('../../../database/operationalCheckSettings');
+const { groupedCapabilities } = require('../../../lib/ai/capabilityCatalog');
 const aiProviders = require('../../../database/aiProviders');
 const aiCallLog = require('../../../database/aiCallLog');
 const { invalidateRegistry } = require('../../../services/ai/registry');
+const { invalidateCapabilityCache } = require('../../../services/ai/capabilityGate');
 const { callOpenAiChat } = require('../../../services/ai/adapters/openaiChat');
 const { callGeminiGenerate } = require('../../../services/ai/adapters/gemini');
 const { classifyFailure } = require('../../../lib/ai/classify');
@@ -215,12 +218,84 @@ function createAiSettingsRouter({ authMiddleware }) {
     }
   });
 
+  /**
+   * AI Responsibilities: every decision Wenze uses a model for, in words, with
+   * whether it can change stored information and what governs the automatic
+   * change where one exists.
+   *
+   * Two switches, deliberately: `aiEnabled` is "may a model be asked about
+   * this", and `automation.enabled` is "may the answer be applied without a
+   * person". Analysis on with automatic changes off is a sensible way to run.
+   */
+  router.get('/ai/responsibilities', authMiddleware, async (req, res) => {
+    try {
+      // AN UNREADABLE SETTING IS NOT AN "OFF" SETTING. Swallowing this into an
+      // empty list would make every automation switch read as disabled on a
+      // screen presented as the authoritative control for whether Wenze may
+      // change a record — the reassuring answer, and possibly the wrong one.
+      // `known: false` says so instead, and the reason travels with it.
+      let automationError = null;
+      const [rows, checks] = await Promise.all([
+        aiSettings.listCapabilities(),
+        operationalCheckSettings.listCheckSettings().catch((err) => {
+          automationError = err.message;
+          return null;
+        }),
+      ]);
+      const automationKnown = Array.isArray(checks);
+      const byKey = new Map((rows || []).map((r) => [r.capabilityKey, r]));
+      const byCheck = new Map((checks || []).map((c) => [c.checkKey, c]));
+      const groups = groupedCapabilities().map((group) => ({
+        group: group.group,
+        capabilities: group.capabilities.map((cap) => {
+          const stored = byKey.get(cap.key) || null;
+          const check = cap.automationCheck ? byCheck.get(cap.automationCheck) || null : null;
+          return {
+            key: cap.key,
+            label: cap.label,
+            what: cap.what,
+            changesState: cap.changesState === true,
+            stateNote: cap.stateNote || null,
+            mediumNote: cap.mediumNote || null,
+            sendsRawText: cap.sendsRawText === true,
+            fallback: cap.fallback || null,
+            // A capability with no row yet is ENABLED — see capabilityGate.
+            aiEnabled: stored ? stored.aiEnabled !== false : true,
+            registered: Boolean(stored),
+            automation: cap.automationCheck
+              ? {
+                checkKey: cap.automationCheck,
+                known: automationKnown,
+                // A check absent from a list we DID read is genuinely off:
+                // the engine's rule is that a check with no settings row
+                // applies nothing. A list we could not read is null.
+                enabled: automationKnown ? (check ? check.autoApplyEnabled === true : false) : null,
+                maxPerRun: automationKnown && check ? check.maxAutoPerRun : null,
+              }
+              : null,
+          };
+        }),
+      }));
+      return res.json({ groups, automationError });
+    } catch (err) {
+      return sendFailure(res, err, {
+        message: 'Failed to load the AI responsibilities', logPrefix: '[AI SETTINGS]',
+      });
+    }
+  });
+
   router.put('/ai/capabilities/:key', authMiddleware, async (req, res) => {
     try {
       const capability = await aiSettings.updateCapability(String(req.params.key), {
         ...(req.body || {}), updatedBy: req.admin?.username || null,
       });
       if (!capability) return res.status(404).json({ error: 'No such capability' });
+      // AFTER the write commits, never before. The gate caches for 30 seconds,
+      // so clearing it first leaves a window in which a concurrent call reloads
+      // the OLD value and caches it again — the screen then reads "off" while
+      // the prompts keep going, which is the exact failure this switch exists
+      // to prevent.
+      invalidateCapabilityCache();
       return res.json({ capability });
     } catch (err) {
       return sendFailure(res, err, { message: 'Failed to save the capability', logPrefix: '[AI SETTINGS]' });

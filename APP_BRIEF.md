@@ -171,6 +171,7 @@ unchanged, so a reference to "§7" still means the same section.
 | [§4. Features and workflows](docs/brief/features.md) | You are touching any feature: driver comms, dispatch, payroll-adjacent flows, fuel, recruiting, the presenter remote |
 | [§4b. Home time](docs/brief/home-time.md) | You are touching home time: the home/road state machine, the three manager notices, request detection, automatic return-to-road detection, the cycle invariant |
 | [§4a. The system checking itself, and the AI that helps](docs/brief/self-checking-and-ai.md) | Operational findings, tiered corrections, the AI routing layer, or the provider terms watcher |
+| [§4c. The AI provider terms watcher](docs/brief/ai-terms-watcher.md) | You are touching the provider terms watcher: its schedule, its diffing, or what may pause a provider |
 | [§5. Permissions and access rules](docs/brief/permissions.md) | Auth, roles, permissions, or any route that is *not* behind the admin JWT |
 | [§6. Integrations and configuration](docs/brief/integrations.md) | Telegram, Datatruck, Samsara/ELD, Google Maps, Meta, RingCentral, Bitrix, the AI providers, or where a setting lives |
 | [§7. Automatic and background behavior](docs/brief/background-jobs.md) | Anything on a timer, the database transfer budget, browser polling, or an idempotency ledger |
@@ -404,10 +405,10 @@ npm run build:schema:check                        # schema.sql is in sync with b
 
 - **The Node suite passes clean with no secrets and no database.** Verified
   baseline (2026-09-10, deps installed, **with** `TEST_DATABASE_URL` against a
-  local PostgreSQL 16): **2718 tests, 2718 pass, 0 fail, 0 skipped**, exit 0.
+  local PostgreSQL 16): **2756 tests, 2756 pass, 0 fail, 0 skipped**, exit 0.
   Split the way CI splits it: the non-`*Pg` files with no application env at
-  all are **2441 pass / 0 skipped**, and the 35 `*Pg` files against a real
-  Postgres are **277 pass / 0 skipped**.
+  all are **2474 pass / 0 skipped**, and the 36 `*Pg` files against a real
+  Postgres are **282 pass / 0 skipped**.
   Without a database the `*Pg` suites skip instead — a skip is not a pass, so
   CI provides a real Postgres and fails on any skip.
   Two suites are END-TO-END SCENARIOS rather than unit tests, and are the
@@ -424,7 +425,7 @@ npm run build:schema:check                        # schema.sql is in sync with b
   `pip install -r leads-bot/requirements.txt` first — without it all four test
   modules fail to import on `fastapi`, which is an unprepared environment and
   not a real failure), and the admin
-  panel **147** in 16 files (`npm test --prefix admin`). **So any failure is a real
+  panel **159** in 18 files (`npm test --prefix admin`). **So any failure is a real
   failure** — there is no "expected failures" allowance. *(An older internal doc
   claimed ~19 expected failures in a bare environment; that is no longer true and
   must not be used to excuse one.)* If

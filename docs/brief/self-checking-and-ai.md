@@ -167,6 +167,70 @@ feature it belongs to.
   body can echo a key in any spelling and the endpoint is public). **Counts and timestamps only** — no driver, chat, key or finding
   title — and it can never make the endpoint unhealthy: a summary that throws
   reads `available: false` at status 200. `tests/healthOperationsBlock.test.js`.
+- **An administrator can see and control what AI is allowed to decide.**
+  Settings → AI → **AI Responsibilities** lists every decision Wenze uses a
+  model for, in plain words: what it decides, whether it can change stored
+  information (and what it writes), whether the prompt carries driver message
+  text, and — the part that makes a switch judgeable — what Wenze does instead
+  with AI off. The list is `lib/ai/capabilityCatalog.js` (pure); the review
+  behind it is `docs/architecture/ai-decisions.md`.
+- **The switch is real now.** `ai_capabilities` had existed since the AI
+  governance work with NOTHING writing a row or reading one back: the admin
+  table rendered nothing, and had it rendered, its checkbox would have changed
+  nothing. `services/ai/capabilityRegistry.js` registers the catalogue on boot
+  (descriptive columns only — it never touches the operator's `ai_enabled`), and
+  `services/ai/router.js` refuses a switched-off capability before any provider
+  is asked. Gating in the router rather than at sixteen call sites means a
+  refused capability raises the same error as a provider outage, which is the
+  path every consumer already falls back through. A capability with no row is
+  ENABLED, so a newly added one is never silently off.
+- **Two switches, deliberately.** "May a model be asked about this" and "may the
+  answer be applied without a person" are different questions. Detect Driver
+  Returned to Road runs its AI analysis under the first and its automatic state
+  change under the second (`operational_check_settings`), and the
+  Responsibilities card carries both switches side by side. The automatic one
+  writes the SAME `operational_check_settings` row that Operations → Needs
+  attention → Automation writes — one owner for the setting, two places that can
+  reach it, so the two screens cannot disagree about what the software may do.
+  Analysis on with automatic changes off is a sensible way to run a fleet, and
+  it only works if turning one off leaves the other alone —
+  `admin/src/pages/settings/ai/ResponsibilitiesCard.test.jsx` asserts exactly
+  that in both directions.
+- **The switch covers every routed call, and a scanner keeps it that way.**
+  `services/ai/router.js` can only refuse a call that carries a capability, so
+  an untagged one skips the gate and keeps reaching the provider — the
+  responsibility reads "off" and the prompts continue. Four call sites were
+  exactly that, including the SECOND of two calls in a file whose first call was
+  tagged, which is the shape a per-file review misses.
+  `tests/aiCapabilityCoverage.test.js` scans `services/`, `server/` and `lib/`
+  for every `callGeminiText` / `callGeminiJson` / `callGroqWithFallback` and
+  fails if one names no capability, or names one the catalogue omits.
+- **An unreadable automation setting is reported as unknown, never as off.**
+  Settings → AI is presented as the authoritative control for whether Wenze may
+  change a record, so swallowing a failed read into "all switches off" would
+  show the reassuring answer while corrections kept being applied. The switch is
+  disabled, labelled unknown, and the reason is shown. A check merely ABSENT
+  from a list that WAS read is genuinely off — default-deny is the engine's rule.
+- **The capability cache is cleared after the write, not before.** Clearing
+  first leaves a window in which a concurrent call reloads the old value and
+  caches it for another 30 seconds; a failed save clears nothing at all.
+- **Every operational AI call now says which decision it served.** `capability`
+  reached the router from two of about twenty-four call sites, and
+  `callGeminiText` dropped the field entirely, so the activity history was a
+  list of unnamed calls. Every operational call site is tagged, the drop is
+  fixed, and the admin's failure list leads with the responsibility rather than
+  the provider — a failure is only actionable once you know which feature
+  stopped.
+- **A model reading a chat title can no longer deactivate a working driver.**
+  `groups.active` is written from that title twice a day for most of the fleet,
+  and an inactive group drops out of Live Locations, document routing, the
+  dispatch roster and home-time tracking. A deactivation is now refused when the
+  records show the driver working — a recent message, home-time tracking having
+  seen them, an open cycle, a recent road leg, a truck assigned
+  (`lib/drivers/deactivationGuard.js`). Turning a driver back ON is never
+  blocked: that is the safe direction. Silence is deliberately NOT protected —
+  a departed driver goes quiet, and `identity.silent_active_group` already
+  raises the merely quiet ones for a person.
 - The database is the backstop, not just the code:
   `operational_corrections_system_is_auto_only` refuses a system-applied
   correction at any tier but `auto`, and a reversal without an attributed actor
@@ -428,41 +492,6 @@ feature it belongs to.
 
 ### AI provider terms watcher (Admin → Settings → AI)
 
-- **Why**: Wenze sends operational data to free AI tiers, and the terms of those
-  tiers are a deal that can change without anyone noticing. Nobody reads six
-  providers' terms twice a week, so the first sign would be a feature failing or
-  a policy already broken for months.
-- **It must not become an AI workload**, and the pipeline order is the cost
-  model: conditional GET → **304 ends it, free** → normalise → hash → unchanged
-  ends it → line diff → immaterial ends it → **only then** one model call, on
-  the changed passages **alone**, never the document.
-- **Normalisation** (`lib/ai/policyText.js`) strips only what cannot carry
-  meaning — a copyright year, a "Last updated" line, a build hash, a CSRF token,
-  nav and cookie chrome. Any of that surviving into the hash means the watcher
-  alerts on every check, and an alert that fires every time is one nobody reads.
-- **Materiality** (`lib/ai/policyDiff.js`) asks *where* as well as *how much*.
-  One sentence under "we may use your submissions to train our models" outranks
-  four paragraphs of reworded support boilerplate; a size-only rule gets that
-  backwards, and a test pins that the important case is *under* the size
-  threshold.
-- **The first sight of a page is a baseline, never an alert** — otherwise
-  switching the watcher on fires once per provider on day one.
-- **Only an enumerated deterministic rule may suspend a provider**
-  (`lib/ai/policySuspension.js`). Four triggers, each requiring BOTH a topic
-  match AND the provider's own trigger phrasing. `evaluateSuspension` has no
-  parameter through which a model verdict could arrive, a test asserts its exact
-  parameter list, and the schema refuses to record a suspension without naming
-  its rule. A suspension is a **cooldown with a reason**, announced with the
-  quoted passage and the source URL, reversible in one click — never
-  `enabled = false`.
-- **AI failure never costs the finding**: with every provider down or cooled the
-  finding is still written from the deterministic evidence, marked
-  `ai_assisted = false`. A watcher that goes silent when the AI layer is
-  unhealthy is worst exactly when it is needed.
-- **Alerts go through a durable outbox** with the shape
-  `home_time_internal_alert_outbox` earned the hard way: attempts incremented at
-  CLAIM time, bounded budget, and exhaustion **counted** and surfaced. The
-  Telegram destination is validated on save by `services/telegramChatIdCheck.js`,
-  so this cannot repeat the `5052301861` failure that started the project.
-- Ships **disabled**, with automatic suspension a separate switch also off.
-- Guarded by `tests/aiPolicy{Diff,Suspension,Watcher,Pg}.test.js`.
+Moved to **[§4c. The AI provider terms watcher](ai-terms-watcher.md)** — the
+conditional-GET pipeline, the deterministic suspension rules and the alert
+outbox. Same document, split when this one passed the 500-line limit.

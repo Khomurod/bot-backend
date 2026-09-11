@@ -251,6 +251,7 @@ async function annotateBatchViaGroq(batch) {
   const prompt = buildAnnotationPrompt(batch);
   const systemText = 'You are a strict classifier. Return JSON only. Never include prose or code fences. If unsure, use "unknown" / "no_signal" and confidence 0.';
   const { text, model } = await callGroqWithFallback(prompt, {
+      capability: 'chat_annotation',
     systemText,
     temperature: 0.1,
     maxTokens: Math.min(4000, 250 + batch.length * 180),

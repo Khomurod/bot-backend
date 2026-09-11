@@ -4,6 +4,20 @@ import * as api from "../../api";
 import ProviderCard from "./ai/ProviderCard";
 import AddProviderPanel from "./ai/AddProviderPanel";
 import PolicyWatcherCard from "./ai/PolicyWatcherCard";
+import ResponsibilitiesCard from "./ai/ResponsibilitiesCard";
+
+/**
+ * A capability key as a person would say it. The keys are code identifiers, and
+ * "home_time_intent" in a failure list tells an operator nothing about which
+ * feature stopped working.
+ */
+function capabilityLabel(key) {
+  if (!key) return "Unnamed";
+  return String(key)
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 
 /**
  * Admin → Settings → AI.
@@ -65,7 +79,7 @@ export default function AiTab() {
     return <div className="loading"><div className="spinner" /> Loading AI settings…</div>;
   }
   const {
-    settings, providers, health, recentFailures, capabilities, modelEvents = [],
+    settings, providers, health, recentFailures, modelEvents = [],
   } = data;
 
   return (
@@ -180,6 +194,9 @@ export default function AiTab() {
             <ul style={{ fontSize: 11, paddingLeft: 18, marginTop: 6 }}>
               {recentFailures.map((f, i) => (
                 <li key={`${f.createdAt}-${i}`} style={{ marginBottom: 3 }}>
+                  {/* What Wenze was trying to DECIDE comes first: a failure is
+                      only actionable once you know which feature it belongs to. */}
+                  <strong>{capabilityLabel(f.capabilityKey)}</strong> —{" "}
                   <code>{f.providerKey}</code>/{f.model} — {f.failureKind}: {f.errorMessage}
                 </li>
               ))}
@@ -210,56 +227,10 @@ export default function AiTab() {
         </details>
       )}
 
+      <ResponsibilitiesCard flash={flash} />
+
       <PolicyWatcherCard providers={providers} flash={flash} />
 
-      {capabilities.length > 0 && (
-        <div className="card" style={{ marginTop: 16 }}>
-          <strong>What AI is used for</strong>
-          <div style={{ color: "#94a3b8", fontSize: 12 }}>
-            Turning one off sends exactly that feature to its deterministic path
-            and leaves the rest alone.
-          </div>
-          <div className="table-container" style={{ marginTop: 8 }}>
-            <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
-              <tbody>
-                {capabilities.map((c) => (
-                  <tr key={c.capabilityKey} style={{ borderTop: "1px solid rgba(148,163,184,0.15)" }}>
-                    <td style={{ padding: "6px 8px" }}>
-                      {c.label}
-                      {/* Shown because it is a trade-off an operator should see
-                          rather than discover: these send driver message text. */}
-                      {c.sendsRawText && (
-                        <span className="badge badge-muted" style={{ marginLeft: 6 }}>
-                          sends message text
-                        </span>
-                      )}
-                      {!c.hasDeterministicFallback && (
-                        <span className="badge" style={{ marginLeft: 6, color: "#f59e0b" }}>
-                          no fallback — this feature stops without AI
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ padding: "6px 8px", width: 90 }}>
-                      <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                        <input
-                          type="checkbox" checked={c.aiEnabled}
-                          onChange={async (e) => {
-                            await api.updateAiCapability(c.capabilityKey, {
-                              aiEnabled: e.target.checked,
-                            });
-                            load();
-                          }}
-                        />
-                        Use AI
-                      </label>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

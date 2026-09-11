@@ -22,6 +22,9 @@ const {
 } = require('./constants');
 const { stripJsonFences, safeParseJsonObject, mapPinnedContextFields } = require('./rules');
 
+// Which business decision these calls serve, for the AI activity history.
+const CAPABILITY = 'dispatch_load_extraction';
+
 function buildPinnedContextPrompt({ pinnedText, extractedRawText, multipleMedia = false }) {
   const lines = [
     'You are a trucking dispatch assistant.',
@@ -124,7 +127,7 @@ async function requestPinnedContextFromGroq({ pinnedText, extractedRawText, inte
     groqOpts.maxRetryWaitMs = INTERACTIVE_MAX_RETRY_WAIT_MS;
     groqOpts.timeoutMs = INTERACTIVE_GROQ_TIMEOUT_MS;
   }
-  const { text, model } = await callGroqWithFallback('', groqOpts);
+  const { text, model } = await callGroqWithFallback('', { capability: CAPABILITY, ...groqOpts });
   const parsed = safeParseJsonObject(text);
   return { model, fields: mapPinnedContextFields(parsed) };
 }
@@ -161,7 +164,7 @@ async function requestPinnedContextFromGemini({
     geminiOpts.maxRetryWaitMs = INTERACTIVE_GEMINI_MAX_RETRY_WAIT_MS;
   }
 
-  const { text, model } = await callGeminiGenerateContent(geminiOpts);
+  const { text, model } = await callGeminiGenerateContent({ capability: CAPABILITY, ...geminiOpts });
 
   const parsed = safeParseJsonObject(text);
   return { model, fields: mapPinnedContextFields(parsed) };

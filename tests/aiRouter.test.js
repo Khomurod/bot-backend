@@ -24,6 +24,7 @@ const OPENAI = path.resolve(__dirname, '../services/ai/adapters/openaiChat.js');
 const GEMINI = path.resolve(__dirname, '../services/ai/adapters/gemini.js');
 const PROVIDERS = path.resolve(__dirname, '../database/aiProviders.js');
 const CALL_LOG = path.resolve(__dirname, '../database/aiCallLog.js');
+const GATE = path.resolve(__dirname, '../services/ai/capabilityGate.js');
 
 const provider = (over = {}) => ({
   providerKey: 'groq', adapter: 'openai_chat', enabled: true, isFree: true, priority: 1,
@@ -31,8 +32,8 @@ const provider = (over = {}) => ({
   cooledUntil: null, consecutiveFailures: 0, ...over,
 });
 
-function loadRouter({ providers = [provider()], settings = {}, respond }) {
-  for (const p of [ROUTER, REGISTRY]) delete require.cache[require.resolve(p)];
+function loadRouter({ providers = [provider()], settings = {}, respond, capabilities = [] }) {
+  for (const p of [ROUTER, REGISTRY, GATE]) delete require.cache[require.resolve(p)];
 
   const recorded = { cooled: [], success: [], log: [] };
   require.cache[PROVIDERS] = {
@@ -49,6 +50,8 @@ function loadRouter({ providers = [provider()], settings = {}, respond }) {
     exports: {
       DEFAULTS: {},
       invalidateCache() {},
+      // The per-responsibility switches the gate reads.
+      async listCapabilities() { return capabilities; },
       async getAiSettings() {
         return {
           enabled: true, freeOnlyMode: false, routingMode: 'priority',

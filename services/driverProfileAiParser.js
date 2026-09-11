@@ -97,6 +97,7 @@ async function parseWithAi(list) {
       + `Respond with JSON only: {"drivers":[{"group_id":<id>,"unit_number":"","first_name":"","last_name":"","secondary_first_name":"","secondary_last_name":"","driver_type":"owner|company_driver"}]}`;
 
     const { parsed } = await callGeminiJson({
+      capability: 'driver_profile_extraction',
       userText: prompt,
       maxOutputTokens: 2000,
       validateParsed: (p) => Array.isArray(p?.drivers),
