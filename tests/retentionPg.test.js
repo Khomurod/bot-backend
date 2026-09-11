@@ -262,3 +262,24 @@ test('the retention capability is registered and cannot self-apply', async (t) =
   assert.equal(rows[0].has_deterministic_fallback, true);
   assert.equal(rows[0].may_auto_apply, false);
 });
+
+test('the summary has ONE shape, whether or not there is any data', async (t) => {
+  // The row comes back snake_case and the empty-table fallback was written
+  // camelCase, so the answer's shape depended on whether anybody was flagged.
+  // A key that changes name between the success and failure paths is read
+  // correctly once and then comes back undefined on the day it matters.
+  if (await skipWithoutPg(t)) return;
+  const h = await seed(t);
+  const { retentionAssessments: store } = loadStore(h);
+
+  const empty = await store.summariseRetention();
+  assert.deepEqual(Object.keys(empty).sort(), ['acknowledged', 'lastPassAt', 'urgent', 'watch']);
+  assert.equal(empty.lastPassAt, null, 'never run is not "ran and found nobody"');
+  assert.equal(empty.urgent, 0);
+
+  await store.recordAssessment({ personId: 11, driverName: 'Sam', score: 9, level: 'urgent' });
+  const filled = await store.summariseRetention();
+  assert.deepEqual(Object.keys(filled).sort(), ['acknowledged', 'lastPassAt', 'urgent', 'watch']);
+  assert.equal(filled.urgent, 1);
+  assert.ok(filled.lastPassAt, 'a pass that ran has a timestamp');
+});

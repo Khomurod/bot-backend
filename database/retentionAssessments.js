@@ -163,7 +163,15 @@ async function getAssessment({ personId = null, groupId = null }) {
   return mapRow(res.rows[0]);
 }
 
-/** Tiles for the screen and for /api/health. */
+/**
+ * Tiles for the screen and for /api/health.
+ *
+ * MAPPED, not returned raw. The row comes back snake_case and the empty-table
+ * fallback was written camelCase, so the shape of this answer depended on
+ * whether there was any data — a key that changes name between the success and
+ * failure paths is exactly the kind of thing a caller gets right once and then
+ * reads as undefined on the day it matters.
+ */
 async function summariseRetention() {
   const res = await query(
     `SELECT COUNT(*) FILTER (WHERE level = 'urgent')::int AS urgent,
@@ -172,7 +180,15 @@ async function summariseRetention() {
             MAX(last_seen_at) AS last_pass_at
        FROM driver_retention_assessments`
   );
-  return res.rows[0] || { urgent: 0, watch: 0, acknowledged: 0, lastPassAt: null };
+  const row = res.rows[0] || {};
+  return {
+    urgent: Number(row.urgent || 0),
+    watch: Number(row.watch || 0),
+    acknowledged: Number(row.acknowledged || 0),
+    // null until the watch has run at all, which is a different thing from a
+    // pass that found nobody.
+    lastPassAt: row.last_pass_at || null,
+  };
 }
 
 module.exports = {
