@@ -28,6 +28,7 @@ export * from './api/groupAccess';
 export * from './api/fuelMonitor';
 export * from './api/bot';
 export * from './api/settings';
+export * from './api/dispatchBoard';
 export * from './api/samsara';
 export * from './api/notifications';
 export * from './api/recruitingKnowledge';
