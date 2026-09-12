@@ -181,6 +181,7 @@ unchanged, so a reference to "§7" still means the same section.
 | [§8. Data model and cross-feature relationships](docs/brief/data-model.md) | Schema, migrations, `groups`, or what else a table change touches |
 | [§9a. Code-structure rules](docs/brief/code-structure.md) | The 500-line cap, `lint:undef` / `lint:imports`, the façade rule, one-way dependencies |
 | [§10. Known limitations, retired features and intentional exceptions](docs/brief/limitations.md) | Something looks wrong, missing or stale — check here before "fixing" it |
+| [§11. Testing and operational expectations](docs/brief/testing.md) | Which commands to run, the verified test baseline, the test endpoints, the operational safety rules |
 
 ---
 
@@ -369,6 +370,14 @@ repository-wide working rules. The highest-consequence items:
   a correction — Wenze does not pick a side on "which truck is this driver in".
   Its token travels in a query string, so every message about it leaves through
   `lib/security/redactUrls.stripUrls` and `last_error` may never hold a URL.
+- **A failed board read never empties the snapshot.** "We could not read the
+  board" and "nobody is on the board" are opposite facts, and only the second
+  may set `present = false`. Every failure path in
+  `services/dispatchBoard/poller.js` returns before `markAbsent`, and
+  `tests/dispatchBoardPoller.test.js` asserts it on each one. A board row is
+  never deleted either — a vanished row keeps its history, because the Board
+  itself keeps none. A well-formed answer carrying ZERO rows is reported and
+  changes nothing, for the same reason.
 - **A value from outside never reaches a typed column unchecked.** Postgres
   treats a string it cannot read as an error, not a null, so an external
   system's `TBD` aborts the statement and whatever pass was running behind it.
@@ -392,69 +401,11 @@ rules as working instructions.
 ---
 ## 11. Testing and operational expectations
 
-```bash
-node --test --test-concurrency=1 tests/*.test.js   # Node suite (bash glob)
-npm test                                          # gates + Node suite + Python leads tests
-npm run build --prefix admin                      # admin production build
-npm test --prefix admin                           # admin component tests
-npm run lint:undef                                # undefined identifiers (the check a build is NOT)
-npm run lint:imports                              # an import naming a missing export
-npm run lint:filesize                             # 500-line limit
-npm run build:schema:check                        # schema.sql is in sync with baseline/
-```
-
-- **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-09-12, deps installed, **with** `TEST_DATABASE_URL` against a
-  local PostgreSQL 16): **3820 tests, 3820 pass, 0 fail, 0 skipped**, exit 0.
-  Split the way CI splits it: the non-`*Pg` files with no application env at
-  all are **3324 pass / 0 skipped**, and the 57 `*Pg` files against a real
-  Postgres are **496 pass / 0 skipped**. The admin suite is **221 pass in 25
-  files**.
-  Without a database the `*Pg` suites skip instead — a skip is not a pass, so
-  CI provides a real Postgres and fails on any skip.
-  Two suites are END-TO-END SCENARIOS rather than unit tests, and are the
-  ones to read first when a Phase 3 behaviour is in doubt:
-  `tests/driverLifecycleScenarioPg.test.js` walks one driver through every
-  system on a real database (seen → road → home → truck change → back out →
-  old truck to a new driver → Raise finds them by the old truck → the watchdog
-  places a quiet driver once allowed → restart), and
-  `tests/aiLifecycleScenario.test.js` walks a provider through onboarding, a
-  retired model, a dead key and a full outage through the real modules with the
-  network replaced. The Python leads
-  worker adds **60 tests**
-  (`python -m unittest discover -s leads-bot -p "test_*.py"`; they need
-  `pip install -r leads-bot/requirements.txt` first — without it all four test
-  modules fail to import on `fastapi`, which is an unprepared environment and
-  not a real failure), and the admin
-  panel **174** in 20 files (`npm test --prefix admin`). **So any failure is a real
-  failure** — there is no "expected failures" allowance. *(An older internal doc
-  claimed ~19 expected failures in a bare environment; that is no longer true and
-  must not be used to excuse one.)* If
-  you see mass failures, check `npm install` has run — a bare clone dies at
-  `require('dotenv')`.
-- **`*Pg.test.js` need `TEST_DATABASE_URL` and skip without it. A skipped test is
-  not a passing test.** The harness creates a throwaway **database** per test
-  (not a schema — `schema.sql` guards look up constraints by name with no schema
-  filter) and applies the real, complete `schema.sql`. The database must be
-  **UTF8** (`TEMPLATE template0`) because `schema.sql` contains box-drawing
-  characters in comments.
-- **CI** (`.github/workflows/ci.yml`) runs three jobs: static checks + admin
-  build, the Node unit suite with **no application env at all**, and the
-  PostgreSQL integration suite against a real Postgres 16 service container.
-  **Both test jobs fail on ANY skip.** CI also asserts FleetView stays archived.
-  The static job additionally runs `lint:undef` and `lint:imports` — the two
-  checks a green build does not perform.
-- **Run the suite before claiming success, and report the exact command and
-  pass/fail counts.** Never claim a test passed that you did not run.
-- **Prefer test endpoints over real sends** when validating manually:
-  `POST /api/broadcast/test` (management group only),
-  `POST /api/questions/send-test`, the dispatch test hub
-  and the dispatch test hub (`DISPATCH_ETA_TEST_GROUP_ID`).
-- **Never point a local process at production tokens or the production
-  database.** `node index.js` with production env polls the production bot and
-  sends real messages to real drivers.
-- **Never print, log or commit a secret value.** Read-only secret scanning:
-  `gitleaks dir . --redact` — report file and line only, never the value.
+**Moved to [`docs/brief/testing.md`](docs/brief/testing.md)** — the commands,
+the verified test baseline, the test endpoints and the operational safety rules.
+It is part of this brief, split out for the same reason §9a was: this file had
+reached the 500-line cap, and a section that grows by a number on every stage is
+the wrong one to keep in the file everything else has to fit around.
 
 ---
 ## 12. Where to look next

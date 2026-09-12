@@ -63,6 +63,24 @@ cross-system join resolved a driver by parsing a string out of a chat title.
 over the parse when routing a safety alert. The parse stays underneath as the
 fallback, and files a finding whenever it is the one that answered.
 
+**The Dispatcher Board snapshot (`dispatch_board_settings` 0045,
+`dispatch_board_rows` 0046) sits BESIDE both, and outranks neither.** It records
+what an external spreadsheet says about today — truck, trailer, status, ETA,
+dispatcher — and is keyed by `row_key` (normalised truck + normalised person)
+because the board has no stable row id: a spreadsheet row number changes the
+moment somebody sorts the sheet. Three rules:
+
+- **One writer.** `services/dispatchBoard/poller.js` is the only thing that
+  writes the table. Nothing else may, and nothing in it is authoritative about
+  who a person permanently is.
+- **A row is never deleted, and never marked absent on a failed read.**
+  `present = false` plus `first_seen_at` / `last_seen_at` is the only history of
+  an assignment the board itself does not keep, and "we could not read the
+  board" is the opposite fact from "nobody is on the board".
+- **`person_id`, `link_source` and `link_confidence` exist and are never
+  written yet.** They were created with the table so the linking stage adds no
+  migration; until that stage ships, a board row is matched to nobody.
+
 **The person layer (`driver_people`, `driver_person_groups`, `driver_units`,
 migration 0015) sits ABOVE `groups` and fixes that additively.** No foreign key
 was repointed and no history moved — a person is resolved *through* the existing

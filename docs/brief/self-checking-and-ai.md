@@ -35,6 +35,18 @@ feature it belongs to.
   is scoped to the checks that actually ran to completion**, so a failed check or
   a provider outage can never be mistaken for "the problem went away".
 - A **dismissal without a reason is refused by the database**, not the route.
+- **The Dispatcher Board checks report; they never propose.**
+  `checks/board.js` runs in the same sweep over the same snapshot and files six
+  findings — an unreadable fleet label, a label read through a typo, a status
+  outside the board's vocabulary, a team flag that disagrees with the written
+  name, one truck on two rows within one fleet, and a row that left the board in
+  the last seven days. **Every one is `tier: 'warning'` with
+  `proposedChange: null`**, because nothing in a spreadsheet read is evidence
+  about which of two disagreeing records is right. Comparing the Board with
+  Wenze is a later stage with its own rules; this module only reports on the
+  board itself. `board.truck_on_multiple_rows` buckets on `fleetType|truck`,
+  never on the bare number — Company 001, Owner-Operator 001 and Lease 001 are
+  three trucks. Guarded by `tests/boardChecks.test.js`.
 - **The watchdog covers the systems, not just Home Time and the chat/profile pair
   (Phase 3-F).** Two more pure modules run in the same sweep over the same
   snapshot: `checks/identityLayer.js` compares the person layer with the chats

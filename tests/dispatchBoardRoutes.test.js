@@ -24,6 +24,7 @@ process.env.JWT_SECRET ||= 'test-jwt-secret';
 
 const DB_PATH = require.resolve('../database/dispatchBoardSettings');
 const CLIENT_PATH = require.resolve('../services/dispatchBoard/client');
+const ROWS_PATH = require.resolve('../database/dispatchBoard');
 const ROUTE_PATH = require.resolve('../server/routes/settings/dispatchBoardRoutes');
 
 const BASE = 'https://script.example.com/macros/s/AKfycbX/exec';
@@ -38,7 +39,7 @@ const BOARD_ANSWER = {
   ],
 };
 
-function loadApp({ fetchResult = { status: 200, json: BOARD_ANSWER }, fetchError = null, stored = {} } = {}) {
+function loadApp({ fetchResult = { status: 200, json: BOARD_ANSWER }, fetchError = null, stored = {}, summary = null } = {}) {
   const seen = { updates: [], fetches: [] };
   const adminView = () => ({
     enabled: false, baseUrl: BASE, tokenSet: true, tokenMasked: '••••pear',
@@ -55,6 +56,16 @@ function loadApp({ fetchResult = { status: 200, json: BOARD_ANSWER }, fetchError
         const text = typeof raw === 'string' ? raw.trim() : '';
         if (!text) return null;
         try { return new URL(text).protocol.startsWith('http') ? text : null; } catch (_) { return null; }
+      },
+    },
+  };
+  require.cache[ROWS_PATH] = {
+    exports: {
+      summariseBoard: async () => summary || {
+        total: 4, present: 3,
+        fleet: { company: 1, lease: 1, owner_operator: 1, unknown: 0 },
+        teams: 1, linked: 0, lastSeenAt: '2026-09-12T10:00:00.000Z',
+        statuses: [{ status: 'HOME', count: 1 }, { status: 'DISPATCHED', count: 1 }],
       },
     },
   };
@@ -77,7 +88,7 @@ function loadApp({ fetchResult = { status: 200, json: BOARD_ANSWER }, fetchError
     authMiddleware: (req, _res, next) => { req.admin = { username: 'admin' }; next(); },
   }));
   const restore = () => {
-    for (const p of [DB_PATH, CLIENT_PATH, ROUTE_PATH]) delete require.cache[p];
+    for (const p of [DB_PATH, CLIENT_PATH, ROWS_PATH, ROUTE_PATH]) delete require.cache[p];
   };
   return { app, seen, restore };
 }
@@ -218,4 +229,25 @@ test('a new URL with its own token is tested normally', async (t) => {
   });
   assert.equal(res.json.connected, true);
   assert.equal(seen.fetches[0].token, 'a-new-token');
+});
+
+test('the feed answers with counts, and with nothing from the board', async (t) => {
+  const { app, restore } = loadApp();
+  t.after(restore);
+  const res = await call(app, 'GET', '/api/settings/dispatch-board/feed');
+  assert.equal(res.status, 200);
+  assert.equal(res.json.summary.present, 3);
+  assert.equal(res.json.summary.statuses.length, 2);
+  // The feed reads Wenze's snapshot, so it must not reach the board at all.
+  assert.ok(!res.text.includes(TOKEN), res.text);
+  for (const secret of ['JOHN SMITH', '+15555550001', 'T-118', 'Ann', 'script.example.com']) {
+    assert.ok(!res.text.includes(secret), secret);
+  }
+});
+
+test('the feed never contacts the board', async (t) => {
+  const { app, seen, restore } = loadApp();
+  t.after(restore);
+  await call(app, 'GET', '/api/settings/dispatch-board/feed');
+  assert.equal(seen.fetches.length, 0, 'the snapshot is the answer; the board is not asked');
 });

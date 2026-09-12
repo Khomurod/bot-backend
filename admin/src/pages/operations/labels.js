@@ -72,6 +72,12 @@ const CHECK_LABELS = {
   'home_time.return_to_road_unclear': 'Unclear whether the driver is back on the road',
   'load.phase_unclear': "Unclear what a load is actually doing",
   'operations.auto_apply_capped': 'A check wanted to change too much and stopped',
+  'board.unknown_fleet_label': 'Dispatcher board fleet label Wenze cannot read',
+  'board.fleet_label_typo': 'Dispatcher board fleet label is misspelled',
+  'board.unknown_status': 'Dispatcher board status outside the known list',
+  'board.team_flag_mismatch': 'Dispatcher board unclear whether a row is a team',
+  'board.truck_on_multiple_rows': 'One truck on two dispatcher board rows',
+  'board.row_vanished': 'A driver left the dispatcher board',
 };
 
 export function checkLabel(checkKey) {

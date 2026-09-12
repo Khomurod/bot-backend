@@ -22,6 +22,7 @@
 
 const express = require('express');
 const board = require('../../../database/dispatchBoardSettings');
+const boardRows = require('../../../database/dispatchBoard');
 const { fetchBoard } = require('../../../services/dispatchBoard/client');
 const { parseBoardPayload, summariseBoardPayload } = require('../../../lib/board/parse');
 const { stripUrls, splitCredentialsFromUrl } = require('../../../lib/security/redactUrls');
@@ -57,6 +58,35 @@ function createDispatchBoardSettingsRouter({ authMiddleware }) {
     } catch (err) {
       console.error('[SETTINGS API] dispatch board update failed:', stripUrls(err.message));
       res.status(500).json({ error: 'Failed to save Dispatcher Board settings' });
+    }
+  });
+
+  /**
+   * What the poller last stored — the Feed card.
+   *
+   * COUNTS ONLY, for the same reason `/test` returns counts only: this answers
+   * "is the feed alive and does it look right", and no part of that question
+   * needs a driver's name, phone number or truck. The status histogram is
+   * whatever the board actually says, not a fixed list, so a word dispatch
+   * invents shows up here instead of vanishing into "other".
+   */
+  router.get('/dispatch-board/feed', authMiddleware, async (req, res) => {
+    try {
+      const [summary, settings] = await Promise.all([
+        boardRows.summariseBoard(),
+        board.getBoardSettingsForAdmin(),
+      ]);
+      res.json({
+        summary,
+        lastPollAt: settings.lastPollAt,
+        lastPollOk: settings.lastPollOk,
+        lastPollCount: settings.lastPollCount,
+        lastPollBoardDate: settings.lastPollBoardDate,
+        lastError: settings.lastError,
+      });
+    } catch (err) {
+      console.error('[SETTINGS API] dispatch board feed failed:', stripUrls(err.message));
+      res.status(500).json({ error: 'Failed to read the Dispatcher Board feed' });
     }
   });
 

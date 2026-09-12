@@ -117,7 +117,7 @@ npm run build:schema:check                         # schema.sql in sync with bas
   failure is a real failure.** There is no "expected failures in a bare
   environment" allowance — do not dismiss one that way. (If you see mass
   failures, check that `npm install` has run; a bare clone dies at
-  `require('dotenv')`.) The verified baseline is recorded in `APP_BRIEF.md` §11.
+  `require('dotenv')`.) The verified baseline is recorded in `docs/brief/testing.md` (§11 of the brief).
 - **`*Pg.test.js` need `TEST_DATABASE_URL` and SKIP without it — a skipped test
   is not a passing test.** Say so plainly rather than folding skips into a green
   summary. The harness (`tests/helpers/pgHarness.js`) creates a throwaway
@@ -129,7 +129,7 @@ npm run build:schema:check                         # schema.sql in sync with bas
   Node unit suite with no application env at all, and the PostgreSQL integration
   suite against a real Postgres 16 container. **Both test jobs fail on ANY skip.**
 - Prefer the test endpoints over real sends when validating manually (see
-  `APP_BRIEF.md` §11).
+  `docs/brief/testing.md`).
 
 # Maintainability
 

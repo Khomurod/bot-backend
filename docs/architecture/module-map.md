@@ -78,6 +78,7 @@ organization should converge toward.
 | Concern | Current files |
 |---|---|
 | Unit-number & driver-name parsing from group titles | `lib/drivers/driverGroupTitle.js` (central parser, reused widely) |
+| **The Dispatcher Board** — the authority on today's assignment | pure: `lib/board/{parse,truck,rowKey}.js`, `lib/drivers/fleetType.js`; settings: `database/dispatchBoardSettings.js`, `server/routes/settings/dispatchBoardRoutes.js`, `admin/src/pages/settings/DispatcherBoardTab.jsx` + `settings/dispatcherBoard/FeedCard.jsx`; transport: `services/dispatchBoard/client.js`; the snapshot and its ONE writer: `database/dispatchBoard.js`, `services/dispatchBoard/poller.js`; checks: `services/operations/checks/board.js` |
 | Driver/unit fuzzy lookup vs group titles | `services/driverStatusLookupService.js` |
 | Truck GPS fallback chain (Samsara → Factor ELD → Leader ELD) | `services/liveLocationResolver.js` (orchestrator, `withTransientRetries`) |
 | Samsara GPS lookup | `services/samsaraLocationService.js` |

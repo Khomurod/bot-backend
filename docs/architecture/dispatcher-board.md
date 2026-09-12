@@ -126,9 +126,82 @@ learns today's assignment, and a renamed column must degrade that, not stop it.
 `board_trailer`, the fleet column is `fleet_type` (a column is fine), and the
 pure modules live in `lib/board/` — never `lib/fleet/`.
 
+## The snapshot is written by exactly one thing
+
+`services/dispatchBoard/poller.js` is the only writer of
+`dispatch_board_rows`. Every five minutes (60–3600 s, configurable) it fetches,
+parses, upserts and marks the rows it did not see as absent — and does nothing
+else. It decides nothing, it sends nothing, and it never marks a row absent on a
+pass that failed:
+
+> "We could not read the board" and "nobody is on the board" are opposite
+> facts, and only the second one may retire a row.
+
+Four failure paths return `{ error }` rather than throwing — the settings read,
+the fetch, the parse, the store — and each one leaves the snapshot exactly as
+it was. `tests/dispatchBoardPoller.test.js` asserts `markAbsent` was not called
+on every one of them.
+
+A **well-formed answer carrying zero rows** is treated the same way. `markAbsent([])`
+retires every row by design — that is what an empty board means — but an Apps
+Script that hits its own error or loses its sheet answers `{"rows": []}` with a
+200, and acting on that would retire the fleet's whole assignment history on one
+bad afternoon. A zero-row pass is reported and changes nothing; if the board
+really has emptied, its rows stay present with a `last_seen_at` that stops
+moving, which is visible and reversible. The opposite mistake is not.
+
+`enabled = FALSE` and "no address and token saved" return `{ blocked }`, which
+the run ledger renders as *waiting on somebody* rather than as a failure. The
+catalogue entry is `dispatch_board_poll` (integration, critical, configurable),
+so `/api/health` carries it from the first boot after the feature ships.
+
+## A row never disappears; it stops being present
+
+`row_key` is `normalizedTruck|normalizedPerson` because the Board has no stable
+row id — a spreadsheet row number changes when somebody sorts the sheet. A row
+that vanishes is set `present = false` and kept: `first_seen_at` /
+`last_seen_at` / `last_changed_at` are the only history of an assignment the
+Board itself does not keep.
+
+`last_changed_at` moves only when a MEANINGFUL column differs — not on every
+pass — so "this driver's assignment changed at 11:04" stays true.
+
+## What the board checks report, and what they never do
+
+`services/operations/checks/board.js` files six findings, and **every one of
+them is `tier: 'warning'` with `proposedChange: null`**. Nothing in a
+spreadsheet read is evidence about which of two disagreeing records is right, so
+a board finding is always a question for a person:
+
+| Key | Severity | What it says |
+|---|---|---|
+| `board.unknown_fleet_label` | warning | a label Wenze cannot place — the row is silently inert downstream, which is why this is not `info` |
+| `board.fleet_label_typo` | info | a label read *through* a misspelling, so nobody later wonders what else is interpreted |
+| `board.unknown_status` | info | a status outside the board's own vocabulary |
+| `board.team_flag_mismatch` | warning | the team column and the written name disagree, so Wenze cannot tell how many humans the row is about |
+| `board.truck_on_multiple_rows` | warning | one truck, two rows, **within one fleet** |
+| `board.row_vanished` | info | a driver left the board, for seven days only |
+
+`board.truck_on_multiple_rows` buckets on `fleetType|truck`, never on the bare
+number. Company 001, Owner-Operator 001 and Lease 001 are three trucks, and a
+check that reported all three would train an operator to ignore the page inside
+a week. A row whose fleet is `unknown` is compared against *every* bucket
+sharing its number — "we cannot tell them apart" is exactly when a person
+should look.
+
+## The Feed card reads Wenze, not the board
+
+`GET /api/settings/dispatch-board/feed` answers from `dispatch_board_rows`, and
+never contacts the board. "The board has 102 rows" and "Wenze knows about 102
+rows" are different claims, and only the second is what every other feature will
+answer from. Counts only — no name, no phone, no truck — and the status
+histogram is grouped rather than enumerated, so a word dispatch invents appears
+instead of vanishing into "other".
+
 ## What is not built yet
 
-Polling, the snapshot table, linking a Board row to a person, and the
-contradiction checks. This stage ships the connection, the parser and the test
-button; `enabled` defaults to FALSE and nothing is read until an administrator
-saves a URL and a token.
+Linking a Board row to a person (`person_id`, `link_source`, `link_confidence`
+are created and unused), and the contradiction checks between the Board and
+Wenze. Both are later stages with their own evidence rules: a poller that also
+decided would put "the spreadsheet has a typo" and "the two systems disagree
+about a driver" behind one switch.
