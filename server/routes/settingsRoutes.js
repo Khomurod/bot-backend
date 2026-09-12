@@ -13,6 +13,7 @@
  *   ./settings/safetyEventRoutes.js   /safety-events*  dashcam music overlay
  *   ./settings/bolPodRoutes.js        /bol-pod*        document forwarding
  *   ./settings/retiredLeftoversRoutes.js /retired-leftovers*  removed-feature cleanup
+ *   ./settings/financeRoutes.js       /finance*        the Finance Monitor's group
  *
  * Two conventions hold across all of them: `authMiddleware` guards every route
  * (these read and write credentials), and a stored secret is NEVER returned in
@@ -35,6 +36,7 @@ const { createNotificationSettingsRouter } = require('./settings/notificationRou
 const { createControlSettingsRouter } = require('./settings/controlRoutes');
 const { createRetiredLeftoversRouter } = require('./settings/retiredLeftoversRoutes');
 const { createRecruitingHoursRouter } = require('./settings/recruitingHoursRoutes');
+const { createFinanceSettingsRouter } = require('./settings/financeRoutes');
 
 function createSettingsRouter({ authMiddleware, telegram = null }) {
   const router = express.Router();
@@ -55,6 +57,7 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
   router.use(createAiPolicyRouter(deps));
   router.use(createRetiredLeftoversRouter(deps));
   router.use(createRecruitingHoursRouter(deps));
+  router.use(createFinanceSettingsRouter(deps));
 
   return router;
 }

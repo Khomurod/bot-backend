@@ -21,6 +21,7 @@ const { registerCreatorControlPanel } = require('./creatorBroadcastHandlers');
 const { registerAnonymousFeedbackHandlers } = require('./anonymousFeedbackHandlers');
 const { registerDispatchStatusLookupHandlers } = require('./dispatchStatusLookupHandlers');
 const { registerGroupCaptureHandlers } = require('./handlers/groupCaptureHandlers');
+const { registerFinanceCaptureHandlers } = require('./handlers/financeCaptureHandlers');
 const { registerControlReplyHandlers } = require('./controlReplyHandlers');
 const {
   registerDispatchCommands,
@@ -175,6 +176,12 @@ async function startBot() {
     // Group join/leave + user/group capture middleware + group message
     // pipeline (migration, pinned snapshots, home-time, fuel, chat buffer).
     registerGroupCaptureHandlers(bot);
+
+    // Right after it, and an OBSERVER: it never consumes a message, so
+    // everything below still sees the traffic it always saw. Answers false for
+    // every chat until a person switches the Finance Monitor on and validates
+    // a group. See services/finance/captureService.js.
+    registerFinanceCaptureHandlers(bot);
 
     // AFTER the capture pipeline, so an operator's reply is still recorded as
     // group activity, and BEFORE everything else, so an answer to one of

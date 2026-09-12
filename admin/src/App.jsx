@@ -127,6 +127,7 @@ const PAGE_COMPONENTS = {
   settings_integrations: <SettingsPage />,
   settings_board: <SettingsPage initialTab="board" />,
   settings_ai: <SettingsPage initialTab="ai" />,
+  settings_finance: <SettingsPage initialTab="finance" />,
   settings_notifications: <SettingsPage initialTab="notifications" />,
   settings_reactions: <SettingsPage initialTab="reactions" />,
   settings_access: <SettingsPage initialTab="access" />,

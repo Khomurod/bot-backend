@@ -40,6 +40,7 @@ export const PAGE_KEYS = Object.freeze([
   'settings_integrations',
   'settings_board',
   'settings_ai',
+  'settings_finance',
   'settings_notifications',
   'settings_reactions',
   'settings_access',
