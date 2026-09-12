@@ -18,6 +18,18 @@ import { DriverDetailModal } from "./groups/DriverDetailModal";
  * here — which is why the shaping rules live in their own pure module rather
  * than inline in the table.
  */
+/**
+ * The five views, in the order somebody reads them. `key` is what `groupView`
+ * returns, so the tab bar and the classifier cannot drift apart.
+ */
+const TABS = [
+  { key: "all", label: "All" },
+  { key: "active", label: "Active Drivers" },
+  { key: "inactive", label: "Inactive Drivers" },
+  { key: "company", label: "Company Chats" },
+  { key: "review", label: "Needs Review" },
+];
+
 export default function GroupsPage() {
   const profiles = useDriverProfiles();
   const {
@@ -51,29 +63,36 @@ export default function GroupsPage() {
       )}
 
 
+      {/*
+        FIVE TABS, ONE CLASSIFIER. Every one of them filters by `groupView`, so
+        a chat appears on exactly one — which a per-tab predicate stops
+        guaranteeing the moment somebody edits one of them.
+      */}
       <div className="broadcast-tabs" style={{ marginBottom: 16 }}>
-        <button
-          type="button"
-          className={`broadcast-tab-btn ${activeTab === "all" ? "active" : ""}`}
-          onClick={() => setActiveTab("all")}
-        >
-          All ({tabCounts.all})
-        </button>
-        <button
-          type="button"
-          className={`broadcast-tab-btn ${activeTab === "active" ? "active" : ""}`}
-          onClick={() => setActiveTab("active")}
-        >
-          Active Drivers ({tabCounts.active})
-        </button>
-        <button
-          type="button"
-          className={`broadcast-tab-btn ${activeTab === "inactive" ? "active" : ""}`}
-          onClick={() => setActiveTab("inactive")}
-        >
-          Inactive Drivers ({tabCounts.inactive})
-        </button>
+        {TABS.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            className={`broadcast-tab-btn ${activeTab === key ? "active" : ""}`}
+            onClick={() => setActiveTab(key)}
+          >
+            {label} ({tabCounts[key] ?? 0})
+          </button>
+        ))}
       </div>
+
+      {activeTab === "review" && tabCounts.review > 0 && (
+        <div className="muted" style={{ marginBottom: 12 }}>
+          These chats have something unresolved — Wenze flagged them, a duplicate needs
+          a decision, or a question about who they are is still open on Needs Attention.
+        </div>
+      )}
+      {activeTab === "company" && (
+        <div className="muted" style={{ marginBottom: 12 }}>
+          Chats that are not a driver&apos;s. They receive no broadcasts and no
+          BOL/POD documents.
+        </div>
+      )}
 
       <DriverProfilesTable {...profiles} />
 

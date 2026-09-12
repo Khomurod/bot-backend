@@ -33,13 +33,65 @@ export function formatStatusSource(source) {
   return "—";
 }
 
+/**
+ * Which tab a group belongs on. PURE, and the ONE place the question is asked.
+ *
+ * The order is the whole rule, and each step is ahead of the next for a reason:
+ *
+ *   company  `group_type !== 'driver'`. A chat that is not a driver's is not an
+ *            inactive driver — it is a different KIND of thing, and showing it
+ *            among the drivers is how five admin and feedback chats ended up
+ *            typed as drivers with driver profiles attached.
+ *   review   something about this row is unresolved: Wenze flagged it, a
+ *            duplicate needs a decision, or a finding about its identity is
+ *            open. Ahead of active/inactive because "we are not sure what this
+ *            row IS" outranks "it is switched on".
+ *   active   what `isDriverActive` has always meant.
+ *
+ * NO CLIENT-SIDE GUESS FROM A TITLE. An earlier Groups page decided "company"
+ * by looking for the word in the chat name, which disagreed with the server the
+ * moment a title was edited. `group_type` is a stored fact and the only input
+ * here.
+ */
+export function groupView(row) {
+  if (!row) return "inactive";
+  if (row.group_type && row.group_type !== "driver") return "company";
+  if (needsReview(row)) return "review";
+  return isDriverActive(row) ? "active" : "inactive";
+}
+
+/** Everything that means "a person has not finished deciding about this row". */
+export function needsReview(row) {
+  if (!row) return false;
+  if (row.needs_review === true) return true;
+  if (row.duplicate_review_required === true) return true;
+  if (row.duplicate_conflict === true) return true;
+  return Array.isArray(row.open_finding_keys) && row.open_finding_keys.length > 0;
+}
+
+/**
+ * What the dispatcher board says about this driver, in a few words.
+ *
+ * Returns null when the board has nothing to say — no row, or a row that is no
+ * longer on it — so the caller renders nothing rather than an empty badge. A
+ * board that is switched off must not put a grey box beside every driver.
+ */
+export function boardHint(row) {
+  const board = row?.board;
+  if (!board) return null;
+  if (board.present === false) return "No longer on the dispatcher board";
+  if (!board.status) return null;
+  return `Board: ${board.status}${board.truck ? ` · truck ${board.truck}` : ""}`;
+}
+
 export function prepareDisplayProfiles(allProfiles, activeTab, statusSort) {
   let list = sortBySoonestBirthday(allProfiles, (p) => p.date_of_birth);
 
-  if (activeTab === "active") {
-    list = list.filter((p) => isDriverActive(p));
-  } else if (activeTab === "inactive") {
-    list = list.filter((p) => !isDriverActive(p));
+  // EVERY TAB EXCEPT `all` FILTERS BY THE SAME FUNCTION, so a row can never
+  // appear on two tabs or on none — which is what a per-tab predicate drifts
+  // into the moment one of them is edited.
+  if (activeTab && activeTab !== "all") {
+    list = list.filter((p) => groupView(p) === activeTab);
   } else if (statusSort) {
     list = [...list].sort((a, b) => {
       const aRank = isDriverActive(a) ? 0 : 1;

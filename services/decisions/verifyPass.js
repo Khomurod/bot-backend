@@ -105,6 +105,18 @@ const SUBJECTS = Object.freeze({
     },
   },
 
+  'identity.set_group_type': {
+    autoRevert: false,
+    table: 'groups',
+    async read(client, subjectId) {
+      const res = await client.query(
+        'SELECT group_type AS "groupType" FROM groups WHERE id = $1',
+        [Number(subjectId)]
+      );
+      return res.rows[0] || null;
+    },
+  },
+
   // The subject is the board row's KEY, not an integer id — `board_row` is the
   // one subject type in this table that is not numeric, and `Number(subjectId)`
   // on it would read NaN and find nothing.

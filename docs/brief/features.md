@@ -263,6 +263,44 @@ contradiction nobody hears about.
 **Coverage travels with every finding**, because three unreadable sources and no
 contradictions found is not a clean bill of health, it is a mostly blank page.
 
+### The Groups page
+
+Five views over the same list, and **one function decides which**
+(`driverProfileShaping.groupView`), so a chat lands on exactly one tab and the
+counts above the tabs cannot disagree with what opening one shows:
+
+| tab | what lands there |
+|---|---|
+| **All** | every chat |
+| **Active Drivers** | a driver chat that is switched on |
+| **Inactive Drivers** | a driver chat that is switched off |
+| **Company Chats** | `group_type !== 'driver'` — an office or admin room |
+| **Needs Review** | Wenze flagged it, a duplicate needs a decision, or an open `identity.*` / `board.*` / `home_time.*` finding names it |
+
+The precedence is the rule. **Company is first**: a chat that is not a driver's
+is not an inactive driver, it is a different kind of thing, and showing it among
+the drivers is how five admin and feedback rooms ended up typed as drivers with
+driver profiles attached. **Review is ahead of active**: "we are not sure what
+this row IS" outranks "it is switched on".
+
+**No client-side guess from a title.** An earlier page decided "company" by
+looking for the word in the chat name, which disagreed with the server the
+moment a title was edited. `group_type` is a stored fact and the only input.
+
+Each row also carries what the Dispatcher Board says about that driver — the
+status and truck, or "no longer on the dispatcher board". A board that is
+switched off renders nothing rather than a grey box beside every driver, and no
+phone number or ETA text reaches this screen: it is a list of chats, and the
+board's per-driver detail belongs on the person panel somebody opened
+deliberately.
+
+**Retyping a chat is `identity.set_group_type`, approval tier, applied only by
+a person.** The check that proposes it reads a TITLE at 65% confidence, and the
+consequences are real — BOL/POD routing and broadcasts stop for that chat — so
+the finding spells them out and a human clicks. It refuses outright when the
+person layer has a driver placed in the chat: that is stronger evidence about
+what the room is for than any reading of its name.
+
 ### Recruiting and leads
 
 - **Facebook/Meta leads**: Meta → `POST /webhook` (raw-body proxy, Node) →

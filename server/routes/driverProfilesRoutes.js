@@ -7,6 +7,7 @@
  */
 const express = require('express');
 const { listCanonicalDriverGroups } = require('../../services/driverGroupDirectoryService');
+const { withBoardAndFindings } = require('../../database/driverGroupDirectory');
 const { runUnifiedDriverGroupAiSync } = require('../../services/driverGroupAiSyncService');
 const driverProfileAiParser = require('../../services/driverProfileAiParser');
 
@@ -55,6 +56,12 @@ function mapDriverProfileForApi(profile) {
     duplicate_review_required: profile.duplicate_review_required === true,
     suppressed_duplicate: profile.suppressed_duplicate === true,
     canonical_group_id: profile.canonical_group_id || profile.group_id,
+    // WHICH TAB THIS ROW BELONGS ON is decided by `groupView` in the admin from
+    // these three: the stored type, the review flags above, and any open
+    // question about this chat. None of them is guessed from the title.
+    group_type: profile.group_type || null,
+    open_finding_keys: profile.open_finding_keys || [],
+    board: profile.board || null,
     created_at: profile.profile_created_at || profile.created_at,
     updated_at: profile.profile_updated_at || profile.updated_at,
   };
@@ -70,14 +77,17 @@ function createDriverProfilesRoutes({ db, authMiddleware }) {
       const includeInactive = req.query.include_inactive !== 'false';
       const needsReviewOnly = req.query.needs_review_only === 'true';
       await db.listDriverProfiles({ includeInactive: true });
-      let rows = await listCanonicalDriverGroups({ operational: false, includeNonDrivers: false });
+      // NON-DRIVER CHATS ARE INCLUDED so the Company tab has something to show.
+      // They were excluded when the page had only Active and Inactive, where a
+      // feedback chat among the drivers would have read as a driver.
+      let rows = await listCanonicalDriverGroups({ operational: false, includeNonDrivers: true });
       if (!includeInactive) {
         rows = rows.filter((row) => row.inactive !== true);
       }
       if (needsReviewOnly) {
         rows = rows.filter((row) => row.needs_review === true || row.duplicate_review_required === true);
       }
-      res.json(rows.map(mapDriverProfileForApi));
+      res.json((await withBoardAndFindings(rows)).map(mapDriverProfileForApi));
     } catch (err) {
       console.error('[API] Error fetching driver profiles:', err.message);
       res.status(500).json({ error: 'Server error' });

@@ -39,6 +39,7 @@ const {
 const { abandonExhaustedInternalAlerts } = require('./alertActions');
 const { ensurePerson, syncUnit } = require('./identityActions');
 const { linkBoardRowToPerson } = require('./boardActions');
+const { setGroupType } = require('./groupActions');
 const { carryRoadClock } = require('./homeTimeActions');
 const { markReturnedToRoad } = require('./returnToRoadActions');
 const { classifyOpenCycles, daysBetween } = require('../checks/homeTime');
@@ -309,6 +310,7 @@ const ACTIONS = new Map([
   [syncProfileStatus.key, syncProfileStatus],
   [abandonExhaustedInternalAlerts.key, abandonExhaustedInternalAlerts],
   [linkBoardRowToPerson.key, linkBoardRowToPerson],
+  [setGroupType.key, setGroupType],
   [ensurePerson.key, ensurePerson],
   [syncUnit.key, syncUnit],
   [carryRoadClock.key, carryRoadClock],
@@ -329,6 +331,7 @@ const CHECK_TO_ACTION = new Map([
   ['identity.stale_unit_assignment', syncUnit.key],
   ['home_time.clock_reset_on_group_change', carryRoadClock.key],
   ['home_time.returned_to_road', markReturnedToRoad.key],
+  ['identity.non_driver_typed_as_driver', setGroupType.key],
   ['board.person_link', linkBoardRowToPerson.key],
   ['board.person_link_suggested', linkBoardRowToPerson.key],
 ]);
