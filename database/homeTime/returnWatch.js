@@ -9,7 +9,7 @@
  * rules be tested without a database or a provider.
  */
 const { query } = require('../pool');
-const { toTimestampValue } = require('../../lib/database/timestampValue');
+const { toTimestampValue, toNumericValue } = require('../../lib/database/timestampValue');
 
 function mapWatch(row) {
   if (!row) return null;
@@ -131,7 +131,18 @@ async function recordObservation(groupId, {
             last_speed_mph = COALESCE($4, last_speed_mph),
             last_seen_at = COALESCE($5::timestamptz, last_seen_at),
             last_checked_at = COALESCE($6::timestamptz, NOW()),
-            max_miles_from_anchor = GREATEST(max_miles_from_anchor, COALESCE($7, 0)),
+            -- THE CAST IS LOAD-BEARING. Without it Postgres infers the type
+            -- of this parameter from the integer literal beside it, so a real
+            -- distance -- 12.25 miles -- is refused with
+            -- "invalid input syntax for type integer". The column is DOUBLE
+            -- PRECISION; only the COALESCE made it look like an integer.
+            --
+            -- This is why exactly ONE driver failed on every pass for a day:
+            -- the distance is only computed when the watch has an anchor AND
+            -- the truck was seen, which for most drivers is null most of the
+            -- time. The one driver who was both anchored and visible hit it
+            -- every twelve minutes.
+            max_miles_from_anchor = GREATEST(max_miles_from_anchor, COALESCE($7::double precision, 0)),
             -- A REPEATED PING IS NOT A SECOND SIGHTING. Providers hold their
             -- latest sample until a new one arrives, so counting every pass
             -- would turn one 60 mph reading into "movement confirmed twice"
@@ -171,11 +182,17 @@ async function recordObservation(groupId, {
       // in the loop. `seenAt` comes from a telemetry provider and can do the
       // same. Losing one unreadable appointment time is a far smaller loss than
       // losing the pass; `toTimestampValue` makes that the outcome.
-      groupId, lat, lng, speedMph,
+      //
+      // AND EVERY NUMERIC PARAMETER TOO, for a trap that hides better: Postgres
+      // accepts NaN in `double precision` and refuses it in `integer`. A NaN
+      // speed is therefore stored without complaint, read back next pass, and
+      // turns the score it feeds into a NaN that `last_score INTEGER` rejects —
+      // so the driver fails for ever on a value an earlier pass wrote.
+      groupId, toNumericValue(lat), toNumericValue(lng), toNumericValue(speedMph),
       toTimestampValue(seenAt), toTimestampValue(checkedAt),
-      milesFromAnchor, Boolean(moving), Boolean(anchorEligible), anchorSource,
+      toNumericValue(milesFromAnchor), Boolean(moving), Boolean(anchorEligible), anchorSource,
       load?.loadIdentifier || null, load?.status || null, toTimestampValue(load?.pickupTime),
-      confidence, score, signals ? JSON.stringify(signals) : null,
+      confidence, toNumericValue(score), signals ? JSON.stringify(signals) : null,
     ]
   );
   return mapWatch(res.rows[0]);
