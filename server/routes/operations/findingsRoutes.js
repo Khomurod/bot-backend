@@ -18,9 +18,12 @@ const express = require('express');
 
 const findingsStore = require('../../../database/operationalFindings');
 const correctionsStore = require('../../../database/operationalCorrections');
+const controlReplyStore = require('../../../database/controlReplies');
+const knowledgeStore = require('../../../database/controlKnowledge');
 const { runGuardedSweep, getConsistencyStatus } = require('../../../services/operations/consistencyService');
 const { CHECK_TO_ACTION } = require('../../../services/operations/corrections/actions');
 const { sendFailure } = require('../../middleware/failureResponse');
+const { memoryApplies } = require('../../../lib/control/fingerprint');
 
 const MAX_SNOOZE_HOURS = 24 * 30;
 
@@ -87,7 +90,28 @@ function createFindingsRouter({ authMiddleware }) {
       const finding = await findingsStore.getFindingById(id);
       if (!finding) return res.status(404).json({ error: 'Finding not found' });
       const corrections = await correctionsStore.listCorrections({ findingId: id, limit: 20 });
-      return res.json({ finding: withActionability(finding), corrections });
+      // WHAT WAS SAID ABOUT THIS IN TELEGRAM, and what Wenze took from it.
+      // Without these two, a finding answered from a phone reads on this screen
+      // as one that closed itself — and "Already answered in the notification
+      // group" in a dismissal reason points at a conversation nobody can see.
+      // Both fail soft: this screen is how somebody investigates, and it must
+      // still open when a side query cannot run.
+      const [controlReplies, stored] = await Promise.all([
+        controlReplyStore.listRepliesForFinding(id).catch(() => []),
+        knowledgeStore.findMemory({
+          checkKey: finding.checkKey,
+          subjectType: finding.subjectType,
+          subjectId: String(finding.subjectId),
+        }).catch(() => null),
+      ]);
+      // THE SAME TEST THE SWEEP APPLIES, and it has to be the same one. A row
+      // keyed on this subject is not necessarily an answer to THIS condition:
+      // once the situation changes the ask pass correctly ignores it and asks
+      // again, and a screen that still showed it would tell an administrator
+      // Wenze is remembering something it is not — and offer them a Forget
+      // button for an answer about a different situation.
+      const memory = memoryApplies(finding, stored) ? stored : null;
+      return res.json({ finding: withActionability(finding), corrections, controlReplies, memory });
     } catch (err) {
       return sendFailure(res, err, { message: 'Failed to load the finding', logPrefix: '[OPERATIONS]' });
     }

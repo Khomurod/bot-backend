@@ -39,6 +39,7 @@ const defaultDeps = () => ({
   controlReplies: require('../../database/controlReplies'),
   controlSettings: require('../../database/controlSettings'),
   controlOperators: require('../../database/controlOperators'),
+  controlKnowledge: require('../../database/controlKnowledge'),
   /* eslint-enable global-require */
 });
 
@@ -165,6 +166,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
       findings, coverage, telegramIdentities, duplicates, indexPresent, providers, homeTimeLive,
       loadPhases, safety, fuelReadings, systems, observed, learning, retention, notifyConfig,
       discards, controlReplies, controlSettings, controlOperators, controlQuestions,
+      controlKnowledge,
     ] = await Promise.all([
       deps.findings.summariseFindings(),
       deps.people.summariseIdentityCoverage(),
@@ -186,6 +188,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
       Promise.resolve(deps.controlSettings?.getControlSettings?.()).catch(() => null),
       Promise.resolve(deps.controlOperators?.listControlOperators?.()).catch(() => null),
       Promise.resolve(deps.notificationStore?.summariseControlQuestions?.()).catch(() => null),
+      Promise.resolve(deps.controlKnowledge?.summariseKnowledge?.()).catch(() => null),
     ]);
     return {
       available: true,
@@ -273,6 +276,13 @@ async function getOperationsHealth(deps = defaultDeps()) {
         // same whether five questions went unanswered or none were ever sent,
         // and those need opposite responses from whoever is reading this.
         questions: controlQuestions || null,
+        // WHAT WENZE IS NO LONGER ASKING, and why that is not silence. `live`
+        // is how many answers are standing; `applied` is how many questions
+        // they have saved somebody from re-answering. A `live` that grows while
+        // `applied` stays at zero means the fingerprints never match and the
+        // memory is doing nothing — which from every other angle looks exactly
+        // like a quiet week.
+        remembered: controlKnowledge || null,
         ...(controlReplies || {}),
       },
       aiModels: providers.map((p) => ({

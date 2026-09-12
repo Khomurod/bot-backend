@@ -113,6 +113,15 @@ admin of it — grants nothing. See
 A correction applied this way is attributed `telegram:<id>`, a third initiator
 form beside `admin:<id>` and `system`. It counts as a person, which is what
 gets an approval-tier correction past the schema's system-is-auto-only CHECK.
+
+**An answer an operator gives can outlive the reply, and it is still not a
+permission.** A "no" is stored in `control_knowledge` and re-applied to the same
+condition by the sweep, attributed to the operator who gave it. A remembered
+"yes" is never re-applied: permission for Wenze to act by itself lives in
+`operational_check_settings.mode`, changed by an administrator on the Automation
+screen under `operations.corrections.apply`. Revoking a memory is an
+`admin.full_access` action on Settings → Answering Wenze in Telegram, audited as
+`control_knowledge.revoke`.
 Do not copy the username fallback into new code, and do not describe either gate
 as ID-only.
 

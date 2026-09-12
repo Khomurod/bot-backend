@@ -28,6 +28,7 @@ const express = require('express');
 const settingsStore = require('../../../database/controlSettings');
 const operatorStore = require('../../../database/controlOperators');
 const replyStore = require('../../../database/controlReplies');
+const knowledgeStore = require('../../../database/controlKnowledge');
 const { insertAdminAudit } = require('../../../database/adminAudit');
 const { sendFailure } = require('../../middleware/failureResponse');
 
@@ -36,12 +37,13 @@ function createControlSettingsRouter({ authMiddleware }) {
 
   router.get('/control', authMiddleware, async (req, res) => {
     try {
-      const [settings, operators, replies] = await Promise.all([
+      const [settings, operators, replies, knowledge] = await Promise.all([
         settingsStore.getControlSettings({ force: true }),
         operatorStore.listControlOperators(),
         replyStore.summariseControlReplies(),
+        knowledgeStore.listMemories({ limit: 100 }),
       ]);
-      res.json({ settings, operators, replies });
+      res.json({ settings, operators, replies, knowledge });
     } catch (err) {
       sendFailure(res, err, { message: 'Failed to load control channel settings', logPrefix: '[SETTINGS API]' });
     }
@@ -127,6 +129,43 @@ function createControlSettingsRouter({ authMiddleware }) {
         return;
       }
       sendFailure(res, err, { message: 'Failed to remove the operator', logPrefix: '[SETTINGS API]' });
+    }
+  });
+
+  /**
+   * TAKE A MEMORY BACK.
+   *
+   * The one place a remembered answer can be undone from a screen. It is a
+   * revocation and not a delete: the row stays, so "Wenze stopped asking about
+   * this because you said X, and you withdrew that on the 3rd" survives — the
+   * behaviour change is explained rather than just gone.
+   */
+  router.delete('/control/knowledge/:id', authMiddleware, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id < 1) {
+        res.status(400).json({ error: 'Invalid id' });
+        return;
+      }
+      const revoked = await knowledgeStore.revokeMemory(id, {
+        revokedBy: req.admin?.username || `admin:${req.admin?.id ?? ''}`,
+      });
+      if (!revoked) {
+        res.status(404).json({ error: 'That answer is not being remembered.' });
+        return;
+      }
+      await insertAdminAudit({
+        adminId: req.admin?.id ?? null,
+        roleKeys: req.admin?.roleKeys || [],
+        action: 'control_knowledge.revoke',
+        entityType: 'control_knowledge',
+        entityId: String(id),
+        oldValues: revoked,
+        ipAddress: req.ip || null,
+      }).catch(() => {});
+      res.json({ revoked });
+    } catch (err) {
+      sendFailure(res, err, { message: 'Failed to forget that answer', logPrefix: '[SETTINGS API]' });
     }
   });
 

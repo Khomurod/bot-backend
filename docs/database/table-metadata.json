@@ -212,6 +212,13 @@
       "sourceOfTruth": "The record of what was said in Telegram and what Wenze did about it. The correction itself lives in operational_corrections and the reasoning in operational_decisions.",
       "danger": "Contains text a person typed into a group chat, capped at 1000 characters. Only counts leave through /api/health, never text. Without the UNIQUE constraint a redelivered 'yes' applies the same correction twice."
     },
+    "control_knowledge": {
+      "purpose": "What the owner has already told Wenze about a condition, so the same question is not asked every week. Keyed on (check_key, subject_type, subject_id) because a finding is re-created with a NEW id every time the condition re-appears, and bound to the condition itself by evidence_fingerprint.",
+      "status": "active",
+      "service": "bot (the ask pass reads it; the reply handler writes it), admin (Settings \u2192 Answering Wenze in Telegram, finding detail)",
+      "sourceOfTruth": "What a person decided, in their own words. It is NOT a permission: a standing permission to act lives in operational_check_settings.mode, where it is visible on a screen.",
+      "danger": "A memory that matched too broadly would silence a real new problem about the same driver for ever \u2014 evidence_fingerprint is what stops that, and a changed condition is asked about again. A remembered `approve` is recorded and NEVER re-applied; only `dismiss` acts from memory. Contains the owner's own words, capped at 1000 characters; only counts leave through /api/health. A row is revoked, never deleted, so a behaviour change stays explained."
+    },
     "driver_person_telegram_identities": {
       "purpose": "Which Telegram account belongs to which PERSON, over time. `driver_profiles.telegram_user_id` answers the same question about a CHAT and is lost when the chat is recreated; this survives it. Backfilled from that column at confidence 100, because a value typed in by an administrator is the strongest evidence in the system.",
       "status": "active",

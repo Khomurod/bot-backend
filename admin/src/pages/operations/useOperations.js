@@ -191,6 +191,14 @@ export default function useOperations({ flash }) {
     { success: 'Snoozed — set aside, not resolved.' }
   ), [run]);
 
+  // FORGETTING IS A DECISION TOO, so it refreshes the finding beneath it: the
+  // question comes back on the next sweep, and this screen should not keep
+  // claiming the answer is still standing.
+  const forgetAnswer = useCallback((id) => run(
+    () => api.forgetControlAnswer(id),
+    { success: 'Forgotten. Wenze will ask about this again.' }
+  ), [run]);
+
   const revertCorrection = useCallback(async (id, reason) => {
     const ok = await run(
       () => api.revertOperationsCorrection(id, reason),
@@ -230,7 +238,7 @@ export default function useOperations({ flash }) {
     selectedId, detail, openFinding, closeFinding,
     load, loadHistory, loadChecks,
     loadMoreHistory, historyComplete, loadingMoreHistory,
-    applyFinding, dismissFinding, snoozeFinding, revertCorrection,
+    applyFinding, dismissFinding, snoozeFinding, revertCorrection, forgetAnswer,
     setCheckEnabled, runSweep,
   };
 }

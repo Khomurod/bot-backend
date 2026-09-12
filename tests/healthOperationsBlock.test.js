@@ -43,6 +43,36 @@ async function getHealth(app) {
 
 const SAMPLE = { available: true, identity: { groupsWithoutPerson: 0, openUnits: 120 } };
 
+
+test('WHAT WENZE IS NO LONGER ASKING is visible, and is not the same as silence', async () => {
+  const block = await getOperationsHealth(summaryDeps());
+  assert.strictEqual(block.control.remembered.live, 3);
+  assert.strictEqual(block.control.remembered.applied, 7);
+});
+
+test('a memory store that cannot be read does not take the block down', async () => {
+  const block = await getOperationsHealth(summaryDeps({
+    controlKnowledge: { async summariseKnowledge() { throw new Error('table missing'); } },
+  }));
+  assert.strictEqual(block.available, true);
+  assert.strictEqual(block.control.remembered, null);
+  assert.strictEqual(block.control.questions.asked, 6, 'the rest of the block still reports');
+});
+
+test('THE MEMORY SUMMARY IS COUNTS — no answer text reaches a public endpoint', async () => {
+  const block = await getOperationsHealth(summaryDeps({
+    controlKnowledge: {
+      async summariseKnowledge() {
+        // A store that returned words would be a leak; the block must carry
+        // only what the real summary produces.
+        return { available: true, live: 1, revoked: 0, applied: 0, lastAppliedAt: null };
+      },
+    },
+  }));
+  assert.deepStrictEqual(Object.keys(block.control.remembered).sort(),
+    ['applied', 'available', 'lastAppliedAt', 'live', 'revoked']);
+});
+
 test('the operations block is reported when a summary is injected and the database answers', async () => {
   const { status, json } = await getHealth(loadApp({ getOperationsHealth: async () => SAMPLE }));
   assert.equal(status, 200);

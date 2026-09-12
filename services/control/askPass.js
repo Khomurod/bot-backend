@@ -17,22 +17,27 @@
  * A `warning`-tier finding is NOT askable: there is nothing to approve, and a
  * question with no action behind it is a notification wearing a question mark.
  *
- * FOUR THINGS KEEP IT FROM BECOMING NOISE, which is the failure mode that would
+ * FIVE THINGS KEEP IT FROM BECOMING NOISE, which is the failure mode that would
  * end with the group muted and every question unanswered:
  *   - a hard cap per pass (`max_questions_per_pass`), oldest first;
  *   - the same question is not re-asked inside `repeat_after_hours`;
  *   - a finding that already carries an unanswered question is skipped;
- *   - the wording table is an allow-list — a check with no entry never asks.
+ *   - the wording table is an allow-list — a check with no entry never asks;
+ *   - a question the owner has ALREADY answered is closed from memory instead
+ *     of asked again, and only while the condition is the one they answered
+ *     about (`lib/control/fingerprint.js`).
  */
 const defaultFindings = require('../../database/operationalFindings');
 const defaultNotices = require('../../database/operationalNotifications');
 const defaultSettings = require('../../database/controlSettings');
+const defaultKnowledge = require('../../database/controlKnowledge');
 const defaultSend = require('../notifications/send');
 const { actionForCheck } = require('../operations/corrections/actions');
 const { payloadFor, loadCheckSettings } = require('../operations/corrections/autoApply');
 const { questionFor, offeredActionsFor, replyHintFor } = require('../../lib/control/askable');
 const { sourcesFor, MIN_CONFIDENCE } = require('../operations/corrections/decisionSeam');
 const { takeDecision } = require('../decisions/journal');
+const { memoryApplies, actsFromMemory } = require('../../lib/control/fingerprint');
 
 /** How many open findings to consider per pass before the cap is applied. */
 const SCAN_LIMIT = 100;
@@ -42,6 +47,7 @@ function defaultDeps() {
     findings: defaultFindings,
     notices: defaultNotices,
     settings: defaultSettings,
+    knowledge: defaultKnowledge,
     notify: defaultSend.notify,
     actionForCheck,
     payloadFor,
@@ -102,12 +108,52 @@ function isAskableFinding(finding, { mode, hasAction }) {
 }
 
 /**
+ * Close a finding the owner has already answered, and say so on the memory.
+ *
+ * ONLY A REMEMBERED "NO" ACTS. `actsFromMemory` is the rule and it lives in the
+ * pure module so it can be read without this file's plumbing around it: a
+ * remembered approval is recorded and is never re-applied.
+ *
+ * THE REASON NAMES THE MEMORY. A finding closed here with a bare reason would
+ * look, in the admin, exactly like somebody sitting at the screen dismissing
+ * it — and the difference (a person decided this once, in a chat, on the 3rd)
+ * is the thing anybody reviewing it needs.
+ *
+ * @returns {Promise<boolean>} true when the finding was closed from memory.
+ */
+async function applyMemory(finding, deps) {
+  // OPTIONAL-CHAINED AND FAIL-OPEN. A dependency map without this read, or a
+  // query that failed, must cost the MEMORY, not the question. Asking something
+  // twice is a nuisance; closing a finding because a read half-worked is not.
+  const memory = await Promise.resolve(deps.knowledge?.findMemory?.({
+    checkKey: finding.checkKey,
+    subjectType: finding.subjectType,
+    subjectId: String(finding.subjectId),
+  })).catch(() => null);
+  if (!memory) return false;
+  if (!actsFromMemory(memory.answerAction)) return false;
+  if (!memoryApplies(finding, memory)) return false;
+
+  const said = memory.answerText ? ` "${String(memory.answerText).slice(0, 200)}"` : '';
+  const dismissed = await deps.findings.dismissFinding(finding.id, {
+    dismissedBy: memory.confirmedBy || 'telegram',
+    reason: `Already answered in the notification group${said}.`,
+  }).catch(() => null);
+  if (!dismissed) return false;
+
+  await Promise.resolve(deps.knowledge?.noteApplied?.(memory.id)).catch(() => {});
+  return true;
+}
+
+/**
  * Ask what can be asked. Never throws.
  *
  * @returns {Promise<{asked:number, considered:number, skipped:object}>}
  */
 async function runAskPass(_options = {}, deps = defaultDeps()) {
-  const skipped = { notAskable: 0, noWording: 0, recentlyAsked: 0, noPayload: 0, notSent: 0 };
+  const skipped = {
+    notAskable: 0, noWording: 0, recentlyAsked: 0, noPayload: 0, notSent: 0, remembered: 0,
+  };
   let asked = 0;
 
   const settings = await deps.settings.getControlSettings();
@@ -123,9 +169,6 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
   // queue drains at the speed somebody actually answers it.
   const outstanding = await deps.notices.countUnansweredQuestions(settings.repeatAfterHours)
     .catch(() => Number.MAX_SAFE_INTEGER);
-  if (outstanding >= settings.maxQuestionsPerPass) {
-    return { asked: 0, considered: 0, skipped, reason: 'waiting_for_answers', outstanding };
-  }
 
   const checkSettings = await deps.loadCheckSettings().catch(() => new Map());
   const open = await deps.findings.listFindings({ status: 'open', limit: SCAN_LIMIT });
@@ -136,7 +179,40 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
     (a, b) => new Date(a.firstSeenAt || 0) - new Date(b.firstSeenAt || 0)
   );
 
+  // ── WHAT HAVE YOU ALREADY ANSWERED? ───────────────────────────────────────
+  //
+  // A SEPARATE PASS, AND IT RUNS BEFORE THE CAP IS CONSIDERED. Closing a
+  // finding the owner has already answered costs them nothing — there is no
+  // message, no interruption, no budget to spend — so gating it on the question
+  // allowance would be gating the wrong thing. Folded into the ask loop it was
+  // exactly that: with five questions outstanding the pass returned early and
+  // every settled finding sat open in the admin until somebody replied to
+  // something unrelated.
+  //
+  // A memory only matches when the CONDITION is the one the owner looked at
+  // (`lib/control/fingerprint.js`), so "he is a team driver" settles the shared
+  // truck it was about and nothing else.
+  const unanswered = [];
   for (const finding of candidates) {
+    // eslint-disable-next-line no-await-in-loop
+    if (await applyMemory(finding, deps)) skipped.remembered += 1;
+    else unanswered.push(finding);
+  }
+
+  // THE STANDING CAP, and it is not the same as the per-pass cap. The per-pass
+  // cap limits ONE pass; this sweep runs every fifteen minutes, so without this
+  // the first day after a deploy would deliver hundreds of questions into a
+  // group that has answered none of them. While the owner is already carrying
+  // `max_questions_per_pass` unanswered questions, the pass asks nothing — the
+  // queue drains at the speed somebody actually answers it.
+  if (outstanding >= settings.maxQuestionsPerPass) {
+    return {
+      asked: 0, considered: candidates.length, skipped,
+      reason: 'waiting_for_answers', outstanding,
+    };
+  }
+
+  for (const finding of unanswered) {
     if (asked + outstanding >= settings.maxQuestionsPerPass) break;
 
     const action = deps.actionForCheck(finding.checkKey);
@@ -212,5 +288,6 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
 }
 
 module.exports = {
-  SCAN_LIMIT, questionKeyFor, askRoundFor, isAskableFinding, runAskPass, defaultDeps,
+  SCAN_LIMIT, questionKeyFor, askRoundFor, isAskableFinding, applyMemory,
+  runAskPass, defaultDeps,
 };

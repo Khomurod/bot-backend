@@ -39,3 +39,18 @@ export async function removeControlOperator(telegramUserId) {
   const data = await res.json();
   return data.removed;
 }
+
+/**
+ * Take back a remembered answer.
+ *
+ * It is a revocation, not a delete: the row stays so the behaviour change is
+ * explained rather than just gone. The next sweep asks the question again.
+ */
+export async function forgetControlAnswer(id) {
+  const res = await fetch(`${API_BASE}/settings/control/knowledge/${encodeURIComponent(id)}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.revoked;
+}

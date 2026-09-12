@@ -1,6 +1,7 @@
 import React from "react";
 
 import * as api from "../../../api";
+import RememberedAnswers from "./RememberedAnswers";
 
 /**
  * Answering Wenze in Telegram — the switch, the limits, and the allow-list.
@@ -121,7 +122,7 @@ export default function ControlChannelCard({ flash }) {
   if (error) return <div className="card"><div className="muted">{error}</div></div>;
   if (!state) return <div className="card"><div className="muted">Loading…</div></div>;
 
-  const { settings, operators = [], replies = {} } = state;
+  const { settings, operators = [], replies = {}, knowledge = [] } = state;
 
   return (
     <div className="card" style={{ marginTop: 16 }}>
@@ -161,6 +162,19 @@ export default function ControlChannelCard({ flash }) {
             style={{ width: "100%" }}
           />
         </label>
+        <label style={{ flex: "1 1 180px" }}>
+          <div>Times it may ask &ldquo;why?&rdquo;</div>
+          <input
+            type="number" min={0} max={3} disabled={busy}
+            defaultValue={settings.clarifyLimit}
+            onBlur={(e) => save({ clarifyLimit: Number(e.target.value) })}
+            style={{ width: "100%" }}
+          />
+          <div className="muted" style={{ fontSize: 11 }}>
+            When an answer is not clear, or a &ldquo;no&rdquo; has no reason. Zero means it
+            never comes back with a follow-up.
+          </div>
+        </label>
       </div>
 
       <Operators
@@ -186,6 +200,23 @@ export default function ControlChannelCard({ flash }) {
             flash?.("success", "Removed.");
           } catch (err) {
             flash?.("error", err.message || "Could not remove that person.");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+
+      <RememberedAnswers
+        memories={knowledge}
+        busy={busy}
+        onForget={async (id) => {
+          setBusy(true);
+          try {
+            await api.forgetControlAnswer(id);
+            await load();
+            flash?.("success", "Forgotten. Wenze will ask about this again.");
+          } catch (err) {
+            flash?.("error", err.message || "Could not forget that answer.");
           } finally {
             setBusy(false);
           }

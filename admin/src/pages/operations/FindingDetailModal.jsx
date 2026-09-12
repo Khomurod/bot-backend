@@ -105,8 +105,81 @@ function PriorCorrections({ corrections }) {
   );
 }
 
+/**
+ * WHAT WAS SAID ABOUT THIS IN TELEGRAM.
+ *
+ * A finding answered from somebody's phone used to read on this screen as one
+ * that had closed itself — and a dismissal reason saying "already answered in
+ * the notification group" pointed at a conversation nobody here could see.
+ * These two blocks are that conversation.
+ *
+ * The reply text is the operator's own words, shown as typed. Ids are not:
+ * `outcome` says what Wenze did with it and that is what a reviewer needs.
+ */
+function AnsweredFromTelegram({ replies }) {
+  if (!replies?.length) return null;
+  return (
+    <div className="home-time-section">
+      <div className="home-time-section-head">
+        <h4>Answered from Telegram</h4>
+        <p>What was replied in the notification group, and what it did.</p>
+      </div>
+      <ul style={{ fontSize: 12, paddingLeft: 18, margin: 0 }}>
+        {replies.map((r) => (
+          <li key={r.id} style={{ marginBottom: 4 }}>
+            {formatWhen(r.createdAt)} — &ldquo;{r.rawText}&rdquo;
+            {" → "}
+            <strong>{r.outcome?.replace(/_/g, " ")}</strong>
+            {r.authorised ? "" : " (not an operator — recorded, not obeyed)"}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * A standing answer, and the one button that takes it back.
+ *
+ * IT SAYS WHAT IT IS BOUND TO. "While nothing changes" is the whole safety
+ * rule in four words: the answer is attached to this situation, and a different
+ * situation is asked about again. Somebody reading this screen has to know that
+ * the check is not switched off.
+ */
+function RememberedAnswer({ memory, onRevoke, busy }) {
+  if (!memory) return null;
+  return (
+    <div className="home-time-section">
+      <div className="home-time-section-head">
+        <h4>Wenze is remembering your answer</h4>
+        <p>
+          Answered {formatWhen(memory.createdAt)}. It applies only while this
+          situation stays as it is — a different one is asked about again. Used{" "}
+          {memory.timesApplied} time{memory.timesApplied === 1 ? "" : "s"} so far.
+        </p>
+      </div>
+      <p style={{ fontSize: 13, margin: "0 0 8px" }}>
+        <strong>{memory.answerAction === "dismiss" ? "No" : "Yes"}</strong>
+        {memory.answerText ? ` — “${memory.answerText}”` : ""}
+      </p>
+      {memory.answerAction !== "dismiss" && (
+        <p style={{ fontSize: 12, margin: "0 0 8px", opacity: 0.8 }}>
+          A remembered yes is never applied on its own. It is kept as a record of
+          what you decided.
+        </p>
+      )}
+      {onRevoke && (
+        <button type="button" className="btn btn-secondary" disabled={busy}
+          onClick={() => onRevoke(memory.id)}>
+          Forget this answer
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function FindingDetailModal({
-  detail, busy, closeFinding, applyFinding, dismissFinding, snoozeFinding,
+  detail, busy, closeFinding, applyFinding, dismissFinding, snoozeFinding, forgetAnswer,
 }) {
   const [reason, setReason] = React.useState("");
   const finding = detail?.finding;
@@ -186,6 +259,9 @@ export default function FindingDetailModal({
           </div>
 
           <PriorCorrections corrections={detail.corrections} />
+
+          <AnsweredFromTelegram replies={detail.controlReplies} />
+          <RememberedAnswer memory={detail.memory} busy={busy} onRevoke={forgetAnswer} />
 
           {finding.status === "open" && (
             <div className="home-time-section">

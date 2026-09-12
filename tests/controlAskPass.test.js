@@ -12,6 +12,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const { runAskPass, isAskableFinding, askRoundFor, questionKeyFor } = require('../services/control/askPass');
+const { fingerprintFor } = require('../lib/control/fingerprint');
 const { noticeKeyFor } = require('../lib/notifications/compose');
 
 function finding(over = {}) {
@@ -204,4 +205,81 @@ test('A FAILED OUTSTANDING COUNT MEANS SILENCE, not permission to ask more', asy
     },
   });
   assert.strictEqual((await runAskPass({}, deps)).asked, 0);
+});
+
+/**
+ * A memory that the pass cannot reach is a memory that does nothing, and the
+ * two ways it could be unreachable are both here.
+ */
+function memoryDeps(over = {}) {
+  const closed = [];
+  const target = finding({
+    checkKey: 'board.truck_disagrees_with_profile', tier: 'approval',
+    evidence: { personId: 5, profileUnit: '310', boardTruck: '311' },
+  });
+  const memory = {
+    id: 3,
+    checkKey: target.checkKey, subjectType: target.subjectType, subjectId: target.subjectId,
+    answerAction: 'dismiss', answerText: 'He swapped trucks.',
+    evidenceFingerprint: fingerprintFor(target),
+    revokedAt: null, expiresAt: null,
+  };
+  const deps = makeDeps({
+    findings: {
+      listFindings: async () => [target],
+      dismissFinding: async (id, patch) => { closed.push({ id, ...patch }); return { id }; },
+    },
+    knowledge: { findMemory: async () => memory, noteApplied: async () => memory },
+    ...over,
+  });
+  deps.calls.closed = closed;
+  return deps;
+}
+
+test('A QUESTION THE OWNER ALREADY ANSWERED IS CLOSED INSTEAD OF ASKED', async () => {
+  const deps = memoryDeps();
+  const got = await runAskPass({}, deps);
+  assert.strictEqual(got.asked, 0);
+  assert.strictEqual(got.skipped.remembered, 1);
+  assert.strictEqual(deps.calls.notified.length, 0, 'nothing was sent to the group');
+  assert.strictEqual(deps.calls.closed.length, 1);
+  assert.match(deps.calls.closed[0].reason, /Already answered/);
+});
+
+test('THE STANDING CAP DOES NOT BLOCK A MEMORY — closing costs nobody anything', async () => {
+  // Folded into the ask loop this was a real defect: with five questions
+  // outstanding the pass returned early and every settled finding sat open in
+  // the admin until somebody replied to something unrelated.
+  const deps = memoryDeps({
+    notices: { noticeSentWithin: async () => false, countUnansweredQuestions: async () => 5 },
+  });
+  const got = await runAskPass({}, deps);
+  assert.strictEqual(got.reason, 'waiting_for_answers');
+  assert.strictEqual(got.skipped.remembered, 1);
+  assert.strictEqual(deps.calls.closed.length, 1, 'the settled finding was still closed');
+  assert.strictEqual(deps.calls.notified.length, 0);
+});
+
+test('a memory for a DIFFERENT situation does not stop the question', async () => {
+  const deps = memoryDeps({
+    knowledge: {
+      findMemory: async () => ({
+        id: 3, checkKey: 'board.truck_disagrees_with_profile',
+        subjectType: 'group', subjectId: '49',
+        answerAction: 'dismiss', answerText: 'old answer',
+        evidenceFingerprint: 'a'.repeat(32), revokedAt: null, expiresAt: null,
+      }),
+      noteApplied: async () => null,
+    },
+  });
+  const got = await runAskPass({}, deps);
+  assert.strictEqual(got.skipped.remembered, 0);
+  assert.strictEqual(deps.calls.closed.length, 0);
+  assert.strictEqual(got.asked, 1, 'it was asked, as a new situation should be');
+});
+
+test('a pass with no memory store still asks — the read fails open', async () => {
+  const deps = makeDeps({ knowledge: undefined });
+  const got = await runAskPass({}, deps);
+  assert.strictEqual(got.asked, 1);
 });

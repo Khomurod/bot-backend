@@ -158,7 +158,7 @@ Hard constraints of this deployment:
 | **Admins / office staff** | The admin SPA at `/admin`: broadcasts, surveys, groups, leads, live map, home time, fuel, mileage bonuses, raises, recruiter KPIs, settings. |
 | **Accounting** | Mileage-bonus Paid/Rejected buttons in Telegram (allow-listed accounting users — see §5); the driver-raise results group. |
 | **Recruiters** | Measured, not users: RingCentral call logs feed KPIs and the public `/recruiters` leaderboard. |
-| **The owner ("creator")** | A Telegram-only messaging panel in the bot's private chat, gated on one numeric user ID (`CREATOR_USER_ID` in `bot/creatorMessageManager.js`). Also **steers Wenze from the notifications group**: it asks one plain question per open finding it could fix but has not been permitted to, and a reply — *yes*, *no* and why, or *later* — applies, closes or postpones it. Only accounts on the `control_operators` allow-list are obeyed. |
+| **The owner ("creator")** | A Telegram-only messaging panel in the bot's private chat, gated on one numeric user ID (`CREATOR_USER_ID` in `bot/creatorMessageManager.js`). Also **steers Wenze from the notifications group**: it asks one plain question per open finding it could fix but has not been permitted to, and a reply — *yes*, *no* and why, or *later* — applies, closes or postpones it, and a "no" is remembered so the same situation is not asked about again. Only accounts on the `control_operators` allow-list are obeyed. |
 
 ---
 ## The rest of the brief
@@ -416,20 +416,22 @@ repository-wide working rules. The highest-consequence items:
   column and stuck one driver for a day.
 
 - **Being in a Telegram group is not authorisation, and Wenze never edits its
-  own source.** A finding can be answered by replying to it in the
-  notifications group, and two lines make that safe. First, `control_operators`
-  decides whose reply is obeyed — numeric ids only, seeded with the creator id
-  and nobody else, the last one un-removable, every change audited; a reply from
-  anybody else is recorded and never answered, because answering tells a
-  stranger their reply was read. Second, a reply may only choose an action the
-  question already OFFERED, checked both in the parser and again in the writer,
-  and the visible text never names an action — so a sentence in a chat can never
-  name an operation. The control modules reach the filesystem, a process, the
-  network and git nowhere at all, asserted structurally by
-  `tests/controlNoCodeAccess.test.js`; a code-level request becomes a note for a
-  person. Telegram redelivers, so `control_replies` claims
-  `(chat_id, reply_message_id)` BEFORE acting — without it a redelivered "yes"
-  applies the same correction twice. See
+  own source.** A finding can be answered by replying to it in the notifications
+  group. `control_operators` decides whose reply is obeyed — numeric ids only,
+  seeded with the creator id and nobody else, the last one un-removable, every
+  change audited; anybody else's reply is recorded and never answered, because
+  answering tells a stranger it was read. A reply may only choose an action the
+  question already OFFERED, checked in the parser and again in the writer, and
+  the visible text never names an action — so a sentence in a chat cannot name an
+  operation. The control modules reach the filesystem, a process, the network and
+  git nowhere at all (`tests/controlNoCodeAccess.test.js`); a code-level request
+  becomes a note for a person. Telegram redelivers, so `control_replies` claims
+  `(chat_id, reply_message_id)` BEFORE acting. A model reads only a reply the
+  fixed rules could not, picks from the same offered keys, supplies no value that
+  lands in a record, and fails to "unclear" rather than a guess. An answer is
+  remembered against the CONDITION, not the driver, so a changed situation is
+  asked again — and a remembered "yes" is never re-applied, because a standing
+  permission belongs on the Automation screen. See
   `docs/architecture/control-channel.md`.
 
 - **One human is behind one Telegram account at a time, and a username is never
@@ -437,15 +439,14 @@ repository-wide working rules. The highest-consequence items:
   the PERSON rather than the chat, so it survives a chat being recreated — and
   `uniq_person_telegram_open_account` makes "two people own this account"
   unrepresentable. A row is closed, never deleted: an account that moves owners
-  leaves a trail. Linking is deliberately mean — a single-driver chat, exactly
-  one candidate after bots, already-linked accounts and STAFF are removed (a
-  dispatcher is in every driver's chat; three or more driver chats means not a
-  driver), and that candidate's name must agree. A username is reassignable and
-  is recorded as a snapshot only. A team chat is never resolved automatically,
-  no account id reaches a finding title or a notice, and the apply re-reads the
-  room under lock — somebody joining turns "the only candidate" into a
-  question. It fills `driver_profiles.telegram_user_id` only when that column is
-  NULL, because a person who typed one there decided something. See
+  leaves a trail. Linking is deliberately mean — a single-driver chat, exactly one
+  candidate after bots, already-linked accounts and STAFF are removed (a
+  dispatcher is in every driver's chat; three or more means not a driver), and
+  that name must agree. A username is reassignable and is a snapshot only. A team
+  chat is never resolved automatically, no account id reaches a finding title or
+  a notice, and the apply re-reads the room under lock. It fills
+  `driver_profiles.telegram_user_id` only when NULL, because a person who typed
+  one there decided something. See
   `docs/architecture/telegram-identity.md`.
 
 ### Code-structure rules (enforced by CI)
@@ -461,9 +462,8 @@ rules as working instructions.
 
 **Moved to [`docs/brief/testing.md`](docs/brief/testing.md)** — the commands,
 the verified test baseline, the test endpoints and the operational safety rules.
-It is part of this brief, split out for the same reason §9a was: this file had
-reached the 500-line cap, and a section that grows by a number on every stage is
-the wrong one to keep in the file everything else has to fit around.
+Part of this brief, split out for the same reason §9a was: a section that grows
+by a number on every stage does not belong in the file everything else fits in.
 
 ---
 ## 12. Where to look next

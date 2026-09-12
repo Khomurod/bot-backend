@@ -44,6 +44,7 @@ const REPORTED_ONLY = {
 
 function loadApp({
   findings = [OPEN_FINDING], applyPermission = true, applyImpl, dismissImpl, sweepBusy = false,
+  memory = null, controlReplies = [],
 } = {}) {
   const routePath = path.resolve(__dirname, '../server/routes/operationsRoutes.js');
   const routeDir = path.resolve(__dirname, '../server/routes/operations');
@@ -78,6 +79,12 @@ function loadApp({
       },
       async listAuditForSubject() { return []; },
     },
+  };
+  require.cache[path.resolve(__dirname, '../database/controlReplies.js')] = {
+    exports: { async listRepliesForFinding() { return controlReplies; } },
+  };
+  require.cache[path.resolve(__dirname, '../database/controlKnowledge.js')] = {
+    exports: { async findMemory() { return memory; } },
   };
   require.cache[path.resolve(__dirname, '../database/operationalCheckSettings.js')] = {
     exports: {
@@ -373,4 +380,48 @@ test('every check the registry can act on is listed, enabled or not', async () =
     assert.equal(check.configured, false, 'a check with no row has never been decided on');
     assert.ok(check.actionKey, 'only actionable checks appear here');
   }
+});
+
+/**
+ * A remembered answer belongs to a CONDITION, and this screen has to apply the
+ * same test the sweep does. A row keyed on the subject alone is not proof that
+ * it answers what is on the screen now.
+ */
+const REMEMBERED = {
+  id: 3,
+  checkKey: OPEN_FINDING.checkKey,
+  subjectType: OPEN_FINDING.subjectType,
+  subjectId: String(OPEN_FINDING.subjectId),
+  answerAction: 'dismiss',
+  answerText: 'It closes itself on Monday.',
+  evidenceFingerprint: require('../lib/control/fingerprint').fingerprintFor(OPEN_FINDING),
+  revokedAt: null,
+  expiresAt: null,
+};
+
+test('the finding detail carries what was said in Telegram', async () => {
+  const { app } = loadApp({
+    controlReplies: [{ id: 1, rawText: 'no, it closes itself', outcome: 'dismissed' }],
+    memory: REMEMBERED,
+  });
+  const res = await call(app, 'GET', '/api/operations/findings/11');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.controlReplies.length, 1);
+  assert.equal(res.body.memory.id, 3);
+});
+
+test('A MEMORY ABOUT A DIFFERENT SITUATION IS NOT SHOWN AS STANDING', async () => {
+  // The ask pass already refuses this one. A screen that showed it anyway would
+  // tell an administrator Wenze is remembering something it is not, and offer a
+  // Forget button for an answer about a different condition.
+  const { app } = loadApp({ memory: { ...REMEMBERED, evidenceFingerprint: 'a'.repeat(32) } });
+  const res = await call(app, 'GET', '/api/operations/findings/11');
+  assert.equal(res.status, 200);
+  assert.equal(res.body.memory, null);
+});
+
+test('a revoked memory is not shown either', async () => {
+  const { app } = loadApp({ memory: { ...REMEMBERED, revokedAt: '2026-09-11T00:00:00Z' } });
+  const res = await call(app, 'GET', '/api/operations/findings/11');
+  assert.equal(res.body.memory, null);
 });

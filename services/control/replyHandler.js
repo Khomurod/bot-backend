@@ -26,8 +26,13 @@
  *                     this exact reply is already recorded; stop.
  *   6. still open     the finding is re-read LIVE. Minutes have passed since
  *                     the question; somebody may have fixed it in the admin.
- *   7. what it means  the deterministic parser. No model in this path at all.
- *   8. do it          `executeOffered`, the only writer.
+ *   7. what it means  the deterministic parser first, ALWAYS. A model is
+ *                     reached only when that returns `unclear`, and even then
+ *                     it may only pick from what the question offered — see
+ *                     `services/control/aiIntent.js`.
+ *   8. do it          `executeOffered`, the only writer. A "no" is then
+ *                     remembered against the CONDITION, so the next sweep does
+ *                     not ask it again.
  *
  * The acknowledgement goes back as a REPLY to the operator's own message, so a
  * busy group shows the answer under the question rather than at the bottom.
@@ -37,8 +42,12 @@ const defaultOperators = require('../../database/controlOperators');
 const defaultReplies = require('../../database/controlReplies');
 const defaultNotices = require('../../database/operationalNotifications');
 const defaultFindings = require('../../database/operationalFindings');
+const defaultSend = require('../notifications/send');
 const { parseIntent } = require('../../lib/control/intent');
 const { executeOffered } = require('./actions');
+const { readReplyWithAi } = require('./aiIntent');
+const { shouldRemember, rememberAnswerFor } = require('./memory');
+const { replyHintFor } = require('../../lib/control/askable');
 
 function defaultDeps() {
   return {
@@ -48,7 +57,10 @@ function defaultDeps() {
     notices: defaultNotices,
     findings: defaultFindings,
     parseIntent,
+    readReplyWithAi,
     executeOffered,
+    rememberAnswerFor,
+    notify: defaultSend.notify,
     // Injected rather than imported so a test never reaches the outbox, and so
     // this module has no opinion about how a message is sent.
     ack: null,
@@ -132,7 +144,18 @@ async function handleControlReply(reply, deps = defaultDeps()) {
     }
 
     // ── 7. what it means ────────────────────────────────────────────────────
-    const intent = deps.parseIntent(text, { offered: notice.question.offeredActions || [] });
+    const offered = notice.question.offeredActions || [];
+    let intent = deps.parseIntent(text, { offered });
+
+    // THE MODEL IS THE SECOND READER, NEVER THE FIRST. Every reply the fixed
+    // rules understand — which is nearly all of them — is decided with no model
+    // involved. `remember` is carried across because "don't ask me again" is
+    // read by the deterministic rules even when the rest of the sentence is not.
+    if (intent.intent === 'unclear') {
+      const fromAi = await deps.readReplyWithAi(text, { offered });
+      intent = { ...fromAi, remember: intent.remember || fromAi.remember };
+    }
+
     if (intent.intent === 'engineering_request') {
       // B1 records it and says so plainly. The engineering_requests table and
       // the finding that tracks it arrive in B3; promising more than that here
@@ -141,10 +164,39 @@ async function handleControlReply(reply, deps = defaultDeps()) {
       await say(deps, reply, 'Noted as something for a person to look at. Nothing in the system changed.');
       return { handled: true, outcome: 'engineering_request' };
     }
+    // THIS REPLY IS THE REASON WE ASKED FOR. When the question they are
+    // answering was Wenze's own "why?", their sentence IS the answer — it is not
+    // a yes, a no or a later, and running it through a parser that only knows
+    // those three throws away the one thing that was asked for. "He is a team
+    // driver" is a reason, not an unclear reply.
+    const pending = notice.question?.pending || null;
+    if (pending?.action === 'dismiss' && intent.intent === 'unclear') {
+      intent = {
+        ...intent, intent: 'dismiss', action: 'dismiss',
+        reason: String(text).trim().slice(0, 500),
+        remember: true,
+      };
+    }
+
     if (intent.intent === 'unclear' || !intent.action) {
       await deps.replies.finaliseReply(claim.id, { outcome: 'clarified', intent });
-      await say(deps, reply, 'I did not follow that. Reply yes, no (and why), or later.');
-      return { handled: true, outcome: 'clarified' };
+      return askAgain(deps, { reply, notice, settings, offered }, {
+        message: 'I did not follow that. Reply yes, no (and why), or later.',
+        exhausted: 'I still did not follow that, so I am leaving it open for you.',
+      });
+    }
+
+    // A BARE "NO" IS NOT A REASON, and a finding closed with no reason recorded
+    // is a decision nobody can review later. One "why?" — and only one, bounded
+    // by `clarify_limit` — then the default reason is used rather than nagging.
+    if (intent.action === 'dismiss' && !intent.reason
+        && (notice.clarifyRound || 0) < settings.clarifyLimit) {
+      await deps.replies.finaliseReply(claim.id, { outcome: 'clarified', intent });
+      return askAgain(deps, { reply, notice, settings, offered }, {
+        message: 'Understood — why? I will write it down so I do not ask again.',
+        exhausted: null,
+        pending: { action: 'dismiss' },
+      });
     }
 
     // ── 8. do it ────────────────────────────────────────────────────────────
@@ -163,12 +215,101 @@ async function handleControlReply(reply, deps = defaultDeps()) {
     // operator answering seconds later is told the truth rather than silently
     // applying the same change again.
     await deps.notices.markNoticeAnswered(notice.id, claim.id).catch(() => {});
-    await say(deps, reply, result.message);
-    return { handled: true, outcome: result.outcome };
+    // AND THE QUESTION THAT STARTED THE CHAIN. Every unanswered notice carrying
+    // a question counts against the standing cap, so a clarification answered
+    // while its parent stayed open would burn a slot for the whole repeat window
+    // — five such conversations and the ask pass stops sending anything, with
+    // every visible question answered. Marking is idempotent: only the first
+    // reply closes a notice.
+    const root = rootOf(notice);
+    if (root !== notice.id) {
+      await deps.notices.markNoticeAnswered(root, claim.id).catch(() => {});
+    }
+
+    // ── remember it ─────────────────────────────────────────────────────────
+    //
+    // AFTER the change, never before: a memory for an answer that failed to
+    // apply would silence the finding without fixing anything. Silent on
+    // failure — see `services/control/memory.js`.
+    let remembered = false;
+    if (shouldRemember({ outcome: result.outcome, intent })) {
+      remembered = Boolean(await deps.rememberAnswerFor({
+        finding, intent, telegramUserId, replyId: claim.id,
+      }).catch(() => null));
+    }
+
+    await say(deps, reply, remembered && result.outcome === 'dismissed'
+      ? 'Closed, and noted — I will not ask again while nothing changes.'
+      : result.message);
+    return { handled: true, outcome: result.outcome, remembered };
   } catch (err) {
     console.warn('[CONTROL] reply handling failed:', err.message);
     return { handled: false, reason: 'error' };
   }
+}
+
+/**
+ * Come back with one more question, or stand down.
+ *
+ * WHY THIS IS A NOTICE AND NOT JUST A MESSAGE. A clarification the owner cannot
+ * REPLY TO is a dead end: the reply path only recognises an answer to a message
+ * that carries a `question_json`, so a plain "why?" would be read as ordinary
+ * chatter and their explanation would be lost. This sends a real question,
+ * pinned under theirs, carrying the same closed set of choices and a
+ * `clarify_round` one higher — which is what stops it going round for ever.
+ *
+ * `exhausted: null` means "no third message" — used for the "why?" follow-up,
+ * where the ordinary path takes the default reason on the next reply.
+ */
+async function askAgain(deps, { reply, notice, settings, offered }, { message, exhausted, pending = null }) {
+  const round = Number(notice.clarifyRound || 0);
+  if (round >= Math.max(0, Number(settings.clarifyLimit) || 0)) {
+    if (exhausted) await say(deps, reply, exhausted);
+    return { handled: true, outcome: 'clarified', clarified: false };
+  }
+  const sent = await Promise.resolve(deps.notify({
+    category: 'needs_attention',
+    title: message,
+    lines: [replyHintFor(offered)],
+    // THE SUBJECT IS THE REPLY, NOT THE DRIVER — the same choice the
+    // acknowledgement makes, for the same reason. The burst suppressor groups by
+    // subject, and a follow-up question held for an hour behind the question it
+    // is following up on is a conversation that stops mid-sentence.
+    subjectType: 'control_reply',
+    subjectId: `${reply.chatId}:${reply.messageId}`,
+    findingId: notice.findingId,
+    severity: 'info',
+    // UNDER THEIR OWN MESSAGE, in the chat they typed it in. `inReplyTo` is the
+    // one documented exception to category routing, for exactly this.
+    inReplyTo: { chatId: reply.chatId, messageId: reply.messageId },
+    question: {
+      findingId: notice.findingId,
+      decisionId: notice.question?.decisionId ?? null,
+      offeredActions: offered,
+      // ALWAYS THE ROOT, never the immediate parent. Every notice in a chain
+      // points at the question that started it, so closing the chain is two
+      // marks rather than a walk — and stays two at any depth.
+      parentNoticeId: rootOf(notice),
+      // WHAT THIS FOLLOW-UP IS FOR. Without it the answer to "why?" goes back
+      // through the yes/no/later parser, which does not recognise "he is a team
+      // driver" as anything, and the reason the owner just typed is thrown away.
+      pending,
+    },
+    parentNoticeId: rootOf(notice),
+    clarifyRound: round + 1,
+  })).catch(() => null);
+
+  // A FOLLOW-UP NOBODY RECEIVES IS SILENCE. If the notice could not be recorded
+  // — no destination, the channel's category switched off — say it in the thread
+  // instead, so the owner is told rather than left waiting for a reply that is
+  // not coming. It cannot be answered, but neither can nothing.
+  if (!sent?.recorded) await say(deps, reply, message);
+  return { handled: true, outcome: 'clarified', clarified: Boolean(sent?.recorded) };
+}
+
+/** The question that started this chain — itself, when it is the start. */
+function rootOf(notice) {
+  return notice.parentNoticeId || notice.id;
 }
 
 /** Answer in the thread. Never throws; an ack nobody sees is not a failure. */
