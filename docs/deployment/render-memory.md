@@ -83,10 +83,14 @@ RAM buffer only for the duration of one request, then released):
 | Route | File | Per-file cap | Count | Mime filter | Feature | Memory risk |
 |---|---|---|---|---|---|---|
 | `POST /api/upload-media` | `server/routes/mediaUploadRoutes.js` | 20 MB (photos rejected early at 10 MB) | 1 | jpg/png/webp/mp4/mov | Broadcast media staged to Telegram for a `file_id` | Low — single buffer, admin-only (JWT) |
-| `POST /api/dispatch/parse-rate-con` | `server/routes/dispatchRoutes.js` | 20 MB | 1 | pdf/jpg/png/webp | Rate-con AI parse (PDF/OCR runs on the buffer) | Low/Medium — parse allocs on top of the buffer; admin-only |
-| `POST /api/dispatch/send-to-telegram` | `server/routes/dispatchRoutes.js` | 20 MB | 1 | **any** (intentional — dispatchers forward arbitrary documents to driver groups) | Dispatch document forward | Low — buffer streamed straight to Telegram; admin-only |
 | `POST /api/home-time/import-screenshots` | `server/routes/homeTimeRoutes.js` | 8 MB | 12 (40 MB batch cap) | jpg/png/webp | AI-vision home-time import | Low — batch-bounded since PR #91; admin-only |
 | `POST /api/settings/safety-events/music` | `server/routes/settingsRoutes.js` | 20 MB (`MAX_MUSIC_BYTES`) | 1 | audio | Safety-event music overlay asset | Low — rare one-off admin upload |
+
+**Two dispatch uploads left this table** when the Dispatch Center was retired:
+`parse-rate-con` (20 MB, the heaviest entry here — PDF/OCR allocations on top of
+the buffer) and `send-to-telegram` (20 MB, and the only route that accepted
+**any** mime type). Both took multer with them; see
+`docs/architecture/retired-dispatch-center.md`.
 
 Every route is JWT-protected, rejects oversize files with a clear message
 before processing, and holds at most one bounded buffer per request. Worst

@@ -16,7 +16,6 @@ const ScheduledMessagesPage = lazy(() => import("./pages/ScheduledMessagesPage")
 const MessageManagerPage = lazy(() => import("./pages/MessageManagerPage"));
 const BotMessagesPage = lazy(() => import("./pages/BotMessagesPage"));
 const CompanyBirthdaysPage = lazy(() => import("./pages/CompanyBirthdaysPage"));
-const DispatchPage = lazy(() => import("./pages/DispatchPage"));
 const FacebookLeadsPage = lazy(() => import("./pages/FacebookLeadsPage"));
 const LeadsPage = lazy(() => import("./pages/LeadsPage"));
 const MileageBonusPage = lazy(() => import("./pages/MileageBonusPage"));
@@ -60,9 +59,10 @@ function LazyPage({ pageKey, children }) {
 }
 
 function getPageFromPath(pathname) {
-  if (pathname === "/dispatch" || pathname.startsWith("/dispatch/")) {
-    return "dispatch";
-  }
+  // `/dispatch` is NOT here any more. The Dispatch Center is retired and the
+  // server answers 410 on that path before the SPA is ever served, so a held
+  // bookmark gets a plain "this feature has been removed" rather than the shell
+  // quietly rendering Driver Groups. See server/routes/retiredRoutes.js.
   if (pathname === "/raise" || pathname.startsWith("/raise/")) {
     return "raise_public";
   }
@@ -72,8 +72,7 @@ function getPageFromPath(pathname) {
   return "groups";
 }
 
-function getPathForPage(page) {
-  if (page === "dispatch") return "/dispatch";
+function getPathForPage() {
   return "/admin";
 }
 
@@ -84,7 +83,6 @@ export default function App() {
   const [page, setPage] = useState(() => getPageFromPath(window.location.pathname));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [adminExpanded, setAdminExpanded] = useState(false);
-  const isDispatchPage = page === "dispatch";
   const isRaisePublicPage = page === "raise_public";
   const isRecruitersPublicPage = page === "recruiters_public";
 
@@ -162,8 +160,8 @@ export default function App() {
   }
 
   if (!authed) {
-    // Covers /dispatch too: after login, getPageFromPath restores the
-    // originally requested page, so the user lands back where they asked for.
+    // After login, getPageFromPath restores the originally requested page, so
+    // the user lands back where they asked for.
     return (
       <LoginPage
         onLogin={(loginSession) => {
@@ -175,18 +173,7 @@ export default function App() {
     );
   }
 
-  // Dispatch Center keeps its dedicated full-width layout (no sidebar), but
-  // only renders once the admin token has been verified above.
-  if (isDispatchPage) {
-    return (
-      <main className="main-content" style={{ marginLeft: 0 }}>
-        <LazyPage pageKey="dispatch"><DispatchPage /></LazyPage>
-      </main>
-    );
-  }
-
   const pages = {
-    dispatch: <DispatchPage />,
     facebook_leads: <FacebookLeadsPage />,
     leads: <LeadsPage />,
     broadcast: <BroadcastPage />,

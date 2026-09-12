@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
-import * as api from "../../api";
+import * as api from "../../../api";
 import { normalizeEtaEnabled } from "./helpers";
 
 /**
- * The ETA Tracking tab: which driver groups receive recurring ETA updates, how
- * often, and where they go.
+ * Automatic ETA updates: which driver groups receive them, how often, and where
+ * they go.
  *
  * DRIVER MODE AND TEST MODE ARE MUTUALLY EXCLUSIVE per group, and the payloads
  * below enforce it — enabling one always sends the other as false. A group in
@@ -19,10 +19,15 @@ import { normalizeEtaEnabled } from "./helpers";
  * the schedule is on but the first attempt did not land.
  *
  * Saving the global intervals re-applies them to every row BY TARGET and
- * deliberately leaves each row's enabled/disabled state alone; details are
- * cached per group and only re-fetched on an explicit refresh.
+ * deliberately leaves each row's enabled/disabled state alone.
  *
- * Split out of admin/src/pages/DispatchPage.jsx.
+ * The per-group diagnostics fetch went with the Dispatch Center: it called an
+ * endpoint that reached Telegram, Samsara and the ETA router on every expand,
+ * to render a debugging console on a settings page. Operations → System & AI
+ * Health answers the same question from recorded runs. See
+ * `docs/architecture/retired-dispatch-center.md`.
+ *
+ * Originally split out of admin/src/pages/DispatchPage.jsx.
  */
 export function useEtaTracking(setMessage) {
   const [testingGroups, setTestingGroups] = useState([]);
@@ -30,9 +35,6 @@ export function useEtaTracking(setMessage) {
   const [testingLoading, setTestingLoading] = useState(false);
   const [testingSavingGroupId, setTestingSavingGroupId] = useState(null);
   const [testingBulkSavingMode, setTestingBulkSavingMode] = useState(null);
-  const [expandedTestingGroupId, setExpandedTestingGroupId] = useState(null);
-  const [testingDetailsByGroupId, setTestingDetailsByGroupId] = useState({});
-  const [testingDetailsLoadingGroupId, setTestingDetailsLoadingGroupId] = useState(null);
   const [globalDriverIntervalMin, setGlobalDriverIntervalMin] = useState(60);
   const [globalTestIntervalMin, setGlobalTestIntervalMin] = useState(60);
   const [savingGlobalIntervals, setSavingGlobalIntervals] = useState(false);
@@ -58,31 +60,6 @@ export function useEtaTracking(setMessage) {
   useEffect(() => {
     loadTestingGroups();
   }, [loadTestingGroups]);
-
-  const loadTestingGroupDetails = useCallback(async (groupId, options = {}) => {
-    const forceRefresh = Boolean(options.forceRefresh);
-    if (!groupId) return;
-
-    if (!forceRefresh && testingDetailsByGroupId[groupId]) {
-      return;
-    }
-
-    setTestingDetailsLoadingGroupId(groupId);
-    try {
-      const data = await api.getDispatchTestingGroupDetails(groupId);
-      setTestingDetailsByGroupId((current) => ({
-        ...current,
-        [groupId]: data?.details || { error: "No details available." },
-      }));
-    } catch (err) {
-      setTestingDetailsByGroupId((current) => ({
-        ...current,
-        [groupId]: { error: err.message || "Failed to load group details." },
-      }));
-    } finally {
-      setTestingDetailsLoadingGroupId((current) => (current === groupId ? null : current));
-    }
-  }, [testingDetailsByGroupId]);
 
   const handleTestingToggle = async (row, mode, nextEnabled) => {
     if (!row?.group_id) return;
@@ -111,28 +88,6 @@ export function useEtaTracking(setMessage) {
       setTestingGroups((current) => current.map((group) => (
         group.group_id === row.group_id ? { ...group, ...saved } : group
       )));
-      setTestingDetailsByGroupId((current) => {
-        const existing = current[row.group_id];
-        if (!existing || existing.error) return current;
-        return {
-          ...current,
-          [row.group_id]: {
-            ...existing,
-            settings: {
-              ...existing.settings,
-              enabled: normalizeEtaEnabled(saved.eta_enabled),
-              intervalMinutes: Number(saved.eta_interval_minutes) || existing.settings?.intervalMinutes || 60,
-              intervalHours: Number(saved.eta_interval_hours) || 0,
-              intervalRemainingMinutes: Number(saved.eta_interval_remaining_minutes) || 0,
-              nextRunAt: saved.eta_next_run_at || existing.settings?.nextRunAt || null,
-              lastRunAt: saved.eta_last_run_at || existing.settings?.lastRunAt || null,
-              lastStatus: saved.eta_last_status || existing.settings?.lastStatus || null,
-              lastError: saved.eta_last_error || existing.settings?.lastError || null,
-            },
-          },
-        };
-      });
-
       if (nextEnabled) {
         if (response?.immediate?.success) {
           const destination = mode === "test"
@@ -151,19 +106,6 @@ export function useEtaTracking(setMessage) {
     } finally {
       setTestingSavingGroupId(null);
     }
-  };
-
-  const handleTestingExpand = async (row) => {
-    if (!row?.group_id) return;
-    const nextExpanded = expandedTestingGroupId === row.group_id ? null : row.group_id;
-    setExpandedTestingGroupId(nextExpanded);
-    if (nextExpanded) {
-      await loadTestingGroupDetails(row.group_id);
-    }
-  };
-
-  const handleRefreshTestingDetails = async (groupId) => {
-    await loadTestingGroupDetails(groupId, { forceRefresh: true });
   };
 
   const handleTestingToggleAll = async (mode, nextEnabled) => {
@@ -242,10 +184,9 @@ export function useEtaTracking(setMessage) {
   return {
     testingGroups, dispatchEtaTestGroupId, testingLoading,
     testingSavingGroupId, testingBulkSavingMode,
-    expandedTestingGroupId, testingDetailsByGroupId, testingDetailsLoadingGroupId,
     globalDriverIntervalMin, setGlobalDriverIntervalMin,
     globalTestIntervalMin, setGlobalTestIntervalMin, savingGlobalIntervals,
-    loadTestingGroups, handleTestingToggle, handleTestingExpand,
-    handleRefreshTestingDetails, handleTestingToggleAll, handleSaveGlobalIntervals,
+    loadTestingGroups, handleTestingToggle,
+    handleTestingToggleAll, handleSaveGlobalIntervals,
   };
 }

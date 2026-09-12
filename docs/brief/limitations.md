@@ -50,11 +50,12 @@
   clean and shipped the token as visible page text. `npm run lint:undef` is
   what catches it, which is one more reason it runs in CI.
 - **Admin navigation is state-based**, not URL-router-based, except for the
-  special-cased public paths (`/dispatch`, `/raise`, `/recruiters`) which
+  special-cased public paths (`/raise`, `/recruiters`) which
   `App.jsx` reads from `window.location`. Pages are lazy-loaded behind a
   chunk-error boundary.
 - **Committed artifacts, not runtime logic**: `eng.traineddata` (Tesseract OCR
-  data, used by the dispatch rate-confirmation PDF OCR) and `birthdays.csv`
+  data, used by the PDF OCR that the pinned-context reader falls back to) and
+  `birthdays.csv`
   (read by `scripts/import-birthdays.js`). The old committed log snapshots and
   the `scratch/`, `brain/`, `reports/` and `.cursor/` working directories have
   been removed and gitignored — nothing in the application read them.

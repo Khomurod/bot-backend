@@ -6,7 +6,6 @@ const NAV_SECTIONS = [
     color: '#22c55e',
     items: [
       { key: 'operations', icon: '🔎', label: 'Needs Attention' },
-      { key: 'dispatch', icon: '🚚', label: 'Dispatch Center' },
       { key: 'live_locations', icon: '📍', label: 'Live Locations' },
       { key: 'route_control', icon: '🧭', label: 'Route Control' },
       { key: 'leads', icon: '📥', label: 'Leads' },

@@ -42,7 +42,10 @@
 - **Group commands** `/load`, `/location`, `/status`, `/update` resolve live GPS
   and the current load (Datatruck → pinned message → chat history fallbacks).
 - **ETA updates** — `dispatchEtaUpdateService.js` claims per-group rows with
-  `FOR UPDATE SKIP LOCKED` and pushes periodic ETA messages.
+  `FOR UPDATE SKIP LOCKED` and pushes periodic ETA messages. Configured in
+  **Settings → Dispatcher Board**, where the card moved when the Dispatch Center
+  was retired ([`retired-dispatch-center.md`](../architecture/retired-dispatch-center.md));
+  it is the only UI for those schedules, which is why it outlived the page.
 - **Live Locations** — authenticated admin map (`liveLocationsService.js`); map
   tile URL is served only to logged-in admins, never baked into the bundle.
 - **Route Control** (`services/routeControl/`) — a dispatcher pastes a Google

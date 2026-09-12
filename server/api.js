@@ -43,7 +43,7 @@ const {
   requirePermission,
 } = require('./middleware/auth');
 
-const dispatchRoutes = require('./routes/dispatchRoutes');
+const dispatchEtaRoutes = require('./routes/dispatchEtaRoutes');
 const { createFacebookLeadsRouter } = require('./routes/facebookLeadsRoutes');
 const { createAuthRoutes } = require('./routes/authRoutes');
 const { createHealthRoutes } = require('./routes/healthRoutes');
@@ -163,7 +163,7 @@ app.use(mediaUploadRouter);
 
 // Dispatch routes expose live GPS, Telegram group IDs, and send-to-Telegram
 // actions — they must never be reachable without an admin token.
-app.use('/api/dispatch', legacyAuthMiddleware, dispatchRoutes);
+app.use('/api/dispatch', legacyAuthMiddleware, dispatchEtaRoutes);
 app.use('/api/facebook-leads', createFacebookLeadsRouter({ authMiddleware: legacyAuthMiddleware }));
 
 // ─── Driver Raise Approval (75¢/mile) ───
@@ -287,10 +287,15 @@ app.use(createEmployeeBirthdayRoutes({ db, config, authMiddleware: legacyAuthMid
 const { createRetiredRoutes } = require('./routes/retiredRoutes');
 app.use(createRetiredRoutes());
 
-// ─── Catch-all for admin SPA (/admin and public /dispatch share one build) ───
+// ─── Catch-all for the admin SPA ────────────────────────────────────────────
+//
+// `/dispatch` was here too, as a sidebar-less full-width page. It is retired and
+// now answers 410 from `retiredRoutes` — which has to be mounted BEFORE this,
+// or the catch-all would serve the shell and the SPA, finding no dispatch
+// section, would silently render Driver Groups instead.
 // Asset URLs are absolute (/admin/assets/… via Vite's `base`), so the same
 // index.html works under either prefix.
-app.get(['/admin', '/admin/*', '/dispatch', '/dispatch/*', '/raise', '/raise/*', '/recruiters', '/recruiters/*'], (req, res) => {
+app.get(['/admin', '/admin/*', '/raise', '/raise/*', '/recruiters', '/recruiters/*'], (req, res) => {
   if (!fs.existsSync(adminSpaIndexPath)) {
     return res.status(503).type('text/plain').send(
       'Admin UI build is missing (admin/build/index.html). '
