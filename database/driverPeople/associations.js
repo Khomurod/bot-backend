@@ -6,13 +6,17 @@
  * association is CLOSED (ended_at) and a new one opened; the person row, and
  * every association before it, is untouched.
  *
- * Two partial unique indexes do the real work, and both are load-bearing:
- * one open association per group, and one open unit per person AND one open
- * person per unit. A write that would break them is not an error to route
- * around — it is the database refusing to record a contradiction (unit '001'
- * cannot be driven by four people at once), and the caller's job is to report
- * it, not to force it.
+ * Partial unique indexes do the real work, and all of them are load-bearing:
+ * one open association per group, one open unit per person, and — since
+ * migration 0047 — one open person per (fleet_type, unit_number, seat). That
+ * last one replaced a bare `unit_number`, which could not tell Company 001 from
+ * Owner-Operator 001 and could not represent a team's two seats at all.
+ *
+ * A write that would break them is not an error to route around — it is the
+ * database refusing to record a contradiction (one truck cannot be driven by
+ * four people at once), and the caller's job is to report it, not to force it.
  */
+const { isFleetType } = require('../../lib/drivers/fleetType');
 const { query } = require('../pool');
 
 function mapAssociation(row) {
@@ -35,6 +39,8 @@ function mapUnit(row) {
     personId: row.person_id,
     unitNumber: row.unit_number,
     samsaraVehicleId: row.samsara_vehicle_id,
+    fleetType: row.fleet_type || 'unknown',
+    seat: row.seat == null ? 1 : Number(row.seat),
     startedAt: row.started_at,
     endedAt: row.ended_at,
     source: row.source,
@@ -98,16 +104,25 @@ async function getPersonIdForGroup(groupId) {
 
 // ─── Person ↔ truck ──────────────────────────────────────────────────────────
 
+/**
+ * `fleetType` and `seat` default to the honest answers, not the convenient ones:
+ * `unknown` (which never wins a match) and seat 1. A caller that knows the fleet
+ * says so; one that does not must not have a fleet invented for it, because this
+ * column decides who is allowed to share a truck number.
+ */
 async function openUnitAssignment({
   personId, unitNumber, samsaraVehicleId = null, source = 'backfill', startedAt = null,
+  fleetType = null, seat = null,
 }, client = null) {
   const run = client ? client.query.bind(client) : query;
   const res = await run(
     `INSERT INTO driver_units
-       (person_id, unit_number, samsara_vehicle_id, source, started_at)
-     VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, NOW()))
+       (person_id, unit_number, samsara_vehicle_id, source, started_at, fleet_type, seat)
+     VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, NOW()),
+             COALESCE($6::text, 'unknown'), COALESCE($7::smallint, 1))
      RETURNING *`,
-    [personId, unitNumber, samsaraVehicleId, source, startedAt]
+    [personId, unitNumber, samsaraVehicleId, source, startedAt,
+      isFleetType(fleetType) ? fleetType : null, seat === 2 ? 2 : null]
   );
   return mapUnit(res.rows[0]);
 }
@@ -135,12 +150,44 @@ async function getOpenUnitForPerson(personId) {
   return mapUnit(res.rows[0]);
 }
 
+/**
+ * @deprecated A unit NUMBER is not a truck — Company 001, Owner-Operator 001 and
+ * Lease 001 are three of them, and this returns whichever row Postgres happened
+ * to hand back first. Kept because callers that are not yet fleet-aware still
+ * use it; every one of them should move to `getOpenHoldersForUnit`.
+ */
 async function getOpenPersonForUnit(unitNumber) {
   const res = await query(
     'SELECT * FROM driver_units WHERE unit_number = $1 AND ended_at IS NULL',
     [unitNumber]
   );
   return mapUnit(res.rows[0]);
+}
+
+/**
+ * Everybody currently recorded in a unit NUMBER — a list, because a number is
+ * not a truck.
+ *
+ * With no `fleetType` it answers about the number: every holder, in every fleet,
+ * in both seats. That is what a caller who cannot say which fleet it means
+ * should see, and `decideUnitSync` then treats all of them as in the way.
+ *
+ * THERE IS DELIBERATELY NO FLEET FILTER. Whether a holder in a different fleet
+ * is "in the way" is a decision — `decideUnitSync` makes it, and makes it the
+ * same way every time — and a SELECT that quietly dropped those rows would hide
+ * the evidence the decision is made from. Each row carries its own fleet and
+ * seat so the rule can apply them.
+ */
+async function getOpenHoldersForUnit(unitNumber) {
+  const unit = unitNumber == null ? '' : String(unitNumber).trim();
+  if (!unit) return [];
+  const res = await query(
+    `SELECT * FROM driver_units
+      WHERE unit_number = $1 AND ended_at IS NULL
+      ORDER BY seat, started_at`,
+    [unit]
+  );
+  return res.rows.map(mapUnit);
 }
 
 /**
@@ -196,6 +243,7 @@ module.exports = {
   closeUnitAssignment,
   getOpenUnitForPerson,
   getOpenPersonForUnit,
+  getOpenHoldersForUnit,
   getOpenPeopleForUnits,
   listUnitsForPerson,
 };

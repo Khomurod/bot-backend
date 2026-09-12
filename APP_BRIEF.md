@@ -370,6 +370,15 @@ repository-wide working rules. The highest-consequence items:
   a correction — Wenze does not pick a side on "which truck is this driver in".
   Its token travels in a query string, so every message about it leaves through
   `lib/security/redactUrls.stripUrls` and `last_error` may never hold a URL.
+- **A truck is `(fleet_type, unit_number, seat)`, never a number.** Wenze runs
+  three fleets that number independently, so Company 001, Owner-Operator 001 and
+  Lease 001 are three trucks; ten numbers sit on more than one active group
+  today. A team is two people on one truck in seats 1 and 2, not a duplicate.
+  `unknown` is a real fleet type and never wins a match — it cannot be used to
+  wave another driver's assignment aside, and it is never written as a guess.
+  `lib/drivers/fleetType.js` is the one place the profile's vocabulary
+  (`owner`/`company_driver`/`lease`) meets the Board's. See
+  `docs/architecture/fleet-type-and-unit-identity.md`.
 - **A failed board read never empties the snapshot.** "We could not read the
   board" and "nobody is on the board" are opposite facts, and only the second
   may set `present = false`. What may retire a row is an answer with something
