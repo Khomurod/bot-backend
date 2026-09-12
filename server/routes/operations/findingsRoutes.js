@@ -23,6 +23,7 @@ const knowledgeStore = require('../../../database/controlKnowledge');
 const { runGuardedSweep, getConsistencyStatus } = require('../../../services/operations/consistencyService');
 const { CHECK_TO_ACTION } = require('../../../services/operations/corrections/actions');
 const { sendFailure } = require('../../middleware/failureResponse');
+const { memoryApplies } = require('../../../lib/control/fingerprint');
 
 const MAX_SNOOZE_HOURS = 24 * 30;
 
@@ -95,7 +96,7 @@ function createFindingsRouter({ authMiddleware }) {
       // group" in a dismissal reason points at a conversation nobody can see.
       // Both fail soft: this screen is how somebody investigates, and it must
       // still open when a side query cannot run.
-      const [controlReplies, memory] = await Promise.all([
+      const [controlReplies, stored] = await Promise.all([
         controlReplyStore.listRepliesForFinding(id).catch(() => []),
         knowledgeStore.findMemory({
           checkKey: finding.checkKey,
@@ -103,6 +104,13 @@ function createFindingsRouter({ authMiddleware }) {
           subjectId: String(finding.subjectId),
         }).catch(() => null),
       ]);
+      // THE SAME TEST THE SWEEP APPLIES, and it has to be the same one. A row
+      // keyed on this subject is not necessarily an answer to THIS condition:
+      // once the situation changes the ask pass correctly ignores it and asks
+      // again, and a screen that still showed it would tell an administrator
+      // Wenze is remembering something it is not — and offer them a Forget
+      // button for an answer about a different situation.
+      const memory = memoryApplies(finding, stored) ? stored : null;
       return res.json({ finding: withActionability(finding), corrections, controlReplies, memory });
     } catch (err) {
       return sendFailure(res, err, { message: 'Failed to load the finding', logPrefix: '[OPERATIONS]' });

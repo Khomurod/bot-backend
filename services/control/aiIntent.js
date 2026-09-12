@@ -83,6 +83,17 @@ function allowedKeys(offered) {
 /**
  * The shape check, used BOTH as the router's validator and again on the result.
  *
+ * THE ROUTER HANDS A VALIDATOR `(text, parsed)` AND RETURNS `{text, parsed}`.
+ * Getting either half wrong is silent and total: a validator handed the raw
+ * string refuses every well-formed answer as "not an object", so every provider
+ * in the chain is marked failed, the call ends in `AiUnavailableError`, and the
+ * feature degrades to `unclear` for ever while looking exactly like an outage.
+ * That is what shipped in the first draft of this file, and what
+ * `tests/controlAiIntent.test.js` now pins by driving a faithful stand-in for
+ * the router rather than one shaped like the mistake.
+ *
+ * @param {object} parsed   the PARSED object, never the raw text
+ * @param {Array}  offered  what the question offered
  * @returns {true|{message:string}} the router's contract: `true` passes, an
  *   object with a message is treated exactly like a provider failure and the
  *   chain moves on.
@@ -134,14 +145,16 @@ async function readReplyWithAi(text, { offered = [], run = runCapability } = {})
 
   let parsed;
   try {
-    parsed = await run({
+    const result = await run({
       capability: CAPABILITY,
       systemText: SYSTEM,
       userText: buildUserText({ text: raw, offered }),
       expects: 'json',
-      validate: (candidate) => validateShape(candidate, offered),
+      // `(text, parsed)` in, `{text, parsed}` out. See `validateShape`.
+      validate: (_text, candidate) => validateShape(candidate, offered),
       timeoutMs: 20000,
     });
+    parsed = result?.parsed;
   } catch (err) {
     // An outage, a switched-off capability, or every provider refusing the
     // shape. All of them mean the same thing to the owner: Wenze did not

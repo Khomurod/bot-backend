@@ -25,16 +25,33 @@ const OFFERED = [
   { key: 'snooze', label: 'later' },
 ];
 
+/**
+ * A FAITHFUL STAND-IN FOR `runCapability`, and the fidelity is the test.
+ *
+ * The first draft of this file stubbed the contract the way the code under test
+ * assumed it worked — validator called with the parsed object, the parsed object
+ * returned directly — and so it passed against a module that was wrong on both
+ * counts. In production every provider would have been marked failed and the
+ * whole AI path would have degraded to `unclear` for ever, looking exactly like
+ * an outage.
+ *
+ * So this mirrors `services/ai/router.js` exactly: the answer is serialised the
+ * way a provider would return it, JSON.parse'd back, the validator is called as
+ * `(text, parsed)`, and the result is the `{text, parsed, provider, model}`
+ * wrapper. A consumer that reads the wrong half now fails here.
+ */
 function router(answer) {
   const calls = [];
   const run = async (args) => {
     calls.push(args);
     if (answer instanceof Error) throw answer;
-    // THE ROUTER'S OWN VALIDATOR IS EXERCISED, not skipped — a validator that
-    // is never run is a validator that can be wrong for months.
-    const verdict = args.validate ? args.validate(answer) : true;
-    if (verdict !== true) throw new Error(`validate refused: ${verdict.message}`);
-    return answer;
+    const text = JSON.stringify(answer);
+    const parsed = JSON.parse(text);
+    const verdict = args.validate ? args.validate(text, parsed) : true;
+    // A failed verdict is treated exactly like a provider failure: the chain
+    // moves on, and with one provider it ends in AiUnavailableError.
+    if (verdict !== true) throw new AiUnavailableError(`validate refused: ${verdict.message}`);
+    return { text, parsed, provider: 'stub', model: 'stub-1', attempts: 1 };
   };
   return { run, calls };
 }
@@ -99,10 +116,27 @@ test('any other failure also means unclear — nothing is ever assumed', async (
   assert.strictEqual(got.action, null);
 });
 
+test('THE VALIDATOR READS THE PARSED OBJECT, NOT THE RAW TEXT', async () => {
+  // The bug this pins: a validator handed `result.text` refuses every
+  // well-formed answer as "not an object", every provider is marked failed, and
+  // the feature degrades to `unclear` for ever while looking like an outage.
+  const { run, calls } = router({ action: 'dismiss', reason_text: 'team driver' });
+  const got = await readReplyWithAi('u team driver', { offered: OFFERED, run });
+  assert.strictEqual(got.intent, 'dismiss', 'a valid answer was accepted');
+
+  const [text, parsed] = [null, null];
+  assert.ok(calls[0].validate, 'a validator was supplied');
+  assert.strictEqual(calls[0].validate('not json at all', { action: 'dismiss' }), true,
+    'it judges the SECOND argument');
+  assert.notStrictEqual(calls[0].validate('{"action":"dismiss"}', 'a string'), true,
+    'and refuses when the second argument is not an object');
+  assert.deepStrictEqual([text, parsed], [null, null]);
+});
+
 test('THE SECOND CHECK HOLDS even if the router hands back something unoffered', async () => {
   // A router that skipped its validator — a future refactor, a provider path
   // nobody thought about. The answer still cannot widen what a reply may choose.
-  const run = async () => ({ action: 'approve' });
+  const run = async () => ({ text: '{}', parsed: { action: 'approve' } });
   const got = await readReplyWithAi('yes please', {
     offered: [{ key: 'dismiss', label: 'no' }, { key: 'snooze', label: 'later' }],
     run,

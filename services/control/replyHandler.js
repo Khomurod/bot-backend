@@ -164,6 +164,20 @@ async function handleControlReply(reply, deps = defaultDeps()) {
       await say(deps, reply, 'Noted as something for a person to look at. Nothing in the system changed.');
       return { handled: true, outcome: 'engineering_request' };
     }
+    // THIS REPLY IS THE REASON WE ASKED FOR. When the question they are
+    // answering was Wenze's own "why?", their sentence IS the answer — it is not
+    // a yes, a no or a later, and running it through a parser that only knows
+    // those three throws away the one thing that was asked for. "He is a team
+    // driver" is a reason, not an unclear reply.
+    const pending = notice.question?.pending || null;
+    if (pending?.action === 'dismiss' && intent.intent === 'unclear') {
+      intent = {
+        ...intent, intent: 'dismiss', action: 'dismiss',
+        reason: String(text).trim().slice(0, 500),
+        remember: true,
+      };
+    }
+
     if (intent.intent === 'unclear' || !intent.action) {
       await deps.replies.finaliseReply(claim.id, { outcome: 'clarified', intent });
       return askAgain(deps, { reply, notice, settings, offered }, {
@@ -181,6 +195,7 @@ async function handleControlReply(reply, deps = defaultDeps()) {
       return askAgain(deps, { reply, notice, settings, offered }, {
         message: 'Understood — why? I will write it down so I do not ask again.',
         exhausted: null,
+        pending: { action: 'dismiss' },
       });
     }
 
@@ -200,6 +215,16 @@ async function handleControlReply(reply, deps = defaultDeps()) {
     // operator answering seconds later is told the truth rather than silently
     // applying the same change again.
     await deps.notices.markNoticeAnswered(notice.id, claim.id).catch(() => {});
+    // AND THE QUESTION THAT STARTED THE CHAIN. Every unanswered notice carrying
+    // a question counts against the standing cap, so a clarification answered
+    // while its parent stayed open would burn a slot for the whole repeat window
+    // — five such conversations and the ask pass stops sending anything, with
+    // every visible question answered. Marking is idempotent: only the first
+    // reply closes a notice.
+    const root = rootOf(notice);
+    if (root !== notice.id) {
+      await deps.notices.markNoticeAnswered(root, claim.id).catch(() => {});
+    }
 
     // ── remember it ─────────────────────────────────────────────────────────
     //
@@ -236,7 +261,7 @@ async function handleControlReply(reply, deps = defaultDeps()) {
  * `exhausted: null` means "no third message" — used for the "why?" follow-up,
  * where the ordinary path takes the default reason on the next reply.
  */
-async function askAgain(deps, { reply, notice, settings, offered }, { message, exhausted }) {
+async function askAgain(deps, { reply, notice, settings, offered }, { message, exhausted, pending = null }) {
   const round = Number(notice.clarifyRound || 0);
   if (round >= Math.max(0, Number(settings.clarifyLimit) || 0)) {
     if (exhausted) await say(deps, reply, exhausted);
@@ -261,9 +286,16 @@ async function askAgain(deps, { reply, notice, settings, offered }, { message, e
       findingId: notice.findingId,
       decisionId: notice.question?.decisionId ?? null,
       offeredActions: offered,
-      parentNoticeId: notice.id,
+      // ALWAYS THE ROOT, never the immediate parent. Every notice in a chain
+      // points at the question that started it, so closing the chain is two
+      // marks rather than a walk — and stays two at any depth.
+      parentNoticeId: rootOf(notice),
+      // WHAT THIS FOLLOW-UP IS FOR. Without it the answer to "why?" goes back
+      // through the yes/no/later parser, which does not recognise "he is a team
+      // driver" as anything, and the reason the owner just typed is thrown away.
+      pending,
     },
-    parentNoticeId: notice.id,
+    parentNoticeId: rootOf(notice),
     clarifyRound: round + 1,
   })).catch(() => null);
 
@@ -273,6 +305,11 @@ async function askAgain(deps, { reply, notice, settings, offered }, { message, e
   // not coming. It cannot be answered, but neither can nothing.
   if (!sent?.recorded) await say(deps, reply, message);
   return { handled: true, outcome: 'clarified', clarified: Boolean(sent?.recorded) };
+}
+
+/** The question that started this chain — itself, when it is the start. */
+function rootOf(notice) {
+  return notice.parentNoticeId || notice.id;
 }
 
 /** Answer in the thread. Never throws; an ack nobody sees is not a failure. */

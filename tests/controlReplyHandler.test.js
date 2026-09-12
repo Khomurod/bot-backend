@@ -278,3 +278,79 @@ test('a clarification that could not be sent is said in the thread instead', asy
   assert.strictEqual(got.outcome, 'clarified');
   assert.match(deps.calls.acks[0].text, /did not follow/i);
 });
+
+/**
+ * The clarification conversation, end to end — the half that only shows up when
+ * the second message is treated as an answer to the first.
+ */
+function afterWhy(over = {}) {
+  const deps = makeDeps({
+    executeOffered: async () => ({ outcome: 'dismissed', message: 'Closed.' }),
+    ...over,
+  });
+  // The notice the owner is replying to now IS Wenze's "why?", and it says what
+  // it was asking for. Patched after `makeDeps` so the recorder is the deps'
+  // own, not an empty object.
+  deps.notices = {
+    findNoticeByTelegramMessage: async () => ({
+      id: 9, findingId: 11, clarifyRound: 1, parentNoticeId: 3,
+      question: {
+        findingId: 11,
+        offeredActions: [
+          { key: 'approve', label: 'yes' },
+          { key: 'dismiss', label: 'no (say why)' },
+          { key: 'snooze', label: 'later' },
+        ],
+        pending: { action: 'dismiss' },
+      },
+    }),
+    markNoticeAnswered: async (id, replyId) => {
+      deps.calls.answered.push([id, replyId]);
+      return true;
+    },
+  };
+  return deps;
+}
+
+test('THE ANSWER TO "WHY?" IS THE REASON — not an unclear reply', async () => {
+  // With no model at all, "he is a team driver" matches none of the yes/no/later
+  // rules. Treated as unclear it would stand down at the clarify limit and the
+  // finding would stay open, having asked the owner for a reason and then
+  // thrown it away.
+  const deps = afterWhy();
+  const got = await handleControlReply(
+    { ...REPLY, text: 'he is a team driver, the truck is shared' }, deps
+  );
+  assert.strictEqual(got.outcome, 'dismissed');
+  assert.strictEqual(deps.calls.clarifications.length, 0, 'it did not ask a third time');
+  assert.strictEqual(deps.calls.remembered.length, 1);
+  assert.match(deps.calls.remembered[0].intent.reason, /team driver/);
+});
+
+test('THE QUESTION THAT STARTED THE CHAIN IS CLOSED TOO', async () => {
+  // Every unanswered notice carrying a question counts against the standing
+  // cap. A clarification answered while its parent stayed open burns a slot for
+  // the whole repeat window; five of those and the ask pass sends nothing.
+  const deps = afterWhy();
+  await handleControlReply({ ...REPLY, text: 'he is a team driver' }, deps);
+  const marked = deps.calls.answered.map(([id]) => id).sort();
+  assert.deepStrictEqual(marked, [3, 9], 'the clarification AND the original question');
+});
+
+test('a clarification points at the ROOT, so a chain of any depth closes in two marks', async () => {
+  const deps = makeDeps({
+    notices: {
+      findNoticeByTelegramMessage: async () => ({
+        id: 9, findingId: 11, clarifyRound: 0, parentNoticeId: 3,
+        question: {
+          findingId: 11,
+          offeredActions: [{ key: 'dismiss', label: 'no (say why)' }, { key: 'snooze', label: 'later' }],
+        },
+      }),
+      markNoticeAnswered: async () => true,
+    },
+  });
+  await handleControlReply({ ...REPLY, text: 'hmm' }, deps);
+  assert.strictEqual(deps.calls.clarifications[0].parentNoticeId, 3,
+    'not 9 — the chain stays two deep however long the conversation runs');
+});

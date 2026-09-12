@@ -124,8 +124,24 @@ unanswered cannot start a third round:
 **A clarification is sent as a real question, not as a plain message.** The reply
 path only recognises an answer to a message carrying a `question_json`, so a bare
 "why?" would be a dead end and the owner's explanation would be read as ordinary
-chatter and lost. It is pinned under their own message (`inReplyTo`) and carries
-`parent_notice_id`.
+chatter and lost. It is pinned under their own message (`inReplyTo`).
+
+Three things make the conversation actually work, and each was a defect before it
+was a rule:
+
+- **The follow-up says what it is asking FOR** (`question_json.pending`). The
+  answer to "why?" is a reason, not a yes/no/later — "he is a team driver" matches
+  none of the parser's rules, and with no model available it would read as
+  unclear, stand down at the clarify limit, and throw away the very thing that
+  was asked for. When `pending.action` is `dismiss`, the reply IS the reason.
+- **`parent_notice_id` always names the ROOT**, never the immediate parent, so a
+  chain of any depth closes in two marks rather than a walk.
+- **Answering a clarification closes the question that started it.**
+  `countUnansweredQuestions` counts every unanswered notice carrying a question,
+  so a parent left open burns a standing-cap slot for the whole repeat window —
+  five such conversations and the ask pass sends nothing at all, with every
+  visible question answered. `markNoticeAnswered` is idempotent (`answered_at IS
+  NULL` is in its WHERE clause), so marking both is safe.
 
 ## Remembering
 
@@ -168,6 +184,12 @@ A memory is taken back, never deleted: `revoked_at` is set and the row stays, so
 still readable. Settings → Answering Wenze in Telegram lists what is remembered
 with a **Forget** button; the finding's own detail panel shows the Telegram
 conversation and the standing answer beside it.
+
+**Every reader applies `memoryApplies`, not just the sweep.** A row keyed on the
+subject is not proof that it answers the condition on the screen now — the
+finding detail endpoint checks the fingerprint too, or it would tell an
+administrator Wenze is remembering something it is not and offer them a Forget
+button for an answer about a different situation.
 
 ## Asking
 
