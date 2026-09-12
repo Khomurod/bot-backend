@@ -28,12 +28,36 @@ let profileSavedHook = null;
 function setProfileSavedHook(fn) {
   profileSavedHook = typeof fn === 'function' ? fn : null;
 }
+/**
+ * The most recent hook run, so a TEST can wait for it. Nothing in production
+ * awaits this: the hook stays detached and the write it follows is never slowed.
+ *
+ * It exists because the alternative is a sleep. `driverLifecycleScenarioPg`
+ * waited 50ms and assumed the hook had finished, which held on a quiet machine
+ * and failed on a CI runner busy enough to take three times as long as its
+ * twin — a real failure wearing a flake's clothes, and one that would have gone
+ * on being re-run rather than fixed. A handle turns "probably long enough" into
+ * "actually finished".
+ */
+let lastProfileHookRun = Promise.resolve();
+
 /** Detached and swallowed: the hook can never fail or slow the write it follows. */
 function fireProfileSavedHook(row) {
   if (!profileSavedHook || !row) return;
-  Promise.resolve()
+  lastProfileHookRun = Promise.resolve()
     .then(() => profileSavedHook(row))
     .catch((err) => console.warn('[PROFILE] identity hook failed:', err.message));
+}
+
+/**
+ * Resolves once the hook fired by the LAST profile save has finished.
+ *
+ * For tests only, and deliberately not part of the legacy db.js surface. A
+ * caller in the application that awaited this would be reintroducing exactly
+ * the coupling `fireProfileSavedHook` exists to avoid.
+ */
+function whenProfileHookSettled() {
+  return lastProfileHookRun;
 }
 
 async function syncGroupFromDriverProfile(profileRow, opts = {}) {
@@ -359,6 +383,7 @@ async function backfillDriverProfileTelegramUserId({ groupId, telegramUserId, us
 
 module.exports = {
   setProfileSavedHook,
+  whenProfileHookSettled,
   syncGroupFromDriverProfile,
   getDriverProfileByGroupId,
   getDriverProfileById,
