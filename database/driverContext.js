@@ -16,7 +16,20 @@
  * empty objects, and only one of them is a reason to relax.
  */
 const { query } = require('./pool');
+const { describeBoardStatus } = require('../lib/board/statusSemantics');
 const { describeContext } = require('../lib/drivers/context');
+
+/**
+ * How long a board snapshot counts as current.
+ *
+ * ONE NUMBER, TWO READERS. `readBoard` refuses a staler row and the fleet-wide
+ * screen refuses to offer one — and they have to agree, or the screen spends
+ * six queries per driver per tick offering rows the reader then declines. It is
+ * interpolated into the screen's SQL rather than passed as a parameter because
+ * that query already numbers its placeholders and a third would renumber them;
+ * it is a module constant and never reaches this file from outside.
+ */
+const BOARD_FRESH_HOURS = 2;
 
 /** Each section catches its own failure, so one bad table cannot blank the page. */
 async function safely(fn) {
@@ -246,6 +259,24 @@ async function listContradictionCandidates({ limit = 200, activeWithinHours = 12
                         AND l.phase IN ('heading_to_pickup', 'at_pickup',
                                         'in_transit', 'at_delivery'))
         )
+     UNION
+     -- the board says home, Wenze says road (and the reverse)
+     --
+     -- SCREENED ON THE SAME TWO FRESHNESS AND PRESENCE RULES readBoard uses.
+     -- A screen that offered rows the reader then refuses would cost six
+     -- queries per driver to produce nothing, every tick, for ever.
+     SELECT DISTINCT b.person_id
+       FROM dispatch_board_rows b
+       JOIN driver_person_groups g
+         ON g.person_id = b.person_id AND g.ended_at IS NULL
+       JOIN driver_home_status s ON s.group_id = g.group_id
+      WHERE b.person_id IS NOT NULL
+        AND b.present = TRUE
+        AND b.last_seen_at > NOW() - INTERVAL '${BOARD_FRESH_HOURS} hours'
+        AND (
+          (b.status IN ('HOME', 'VACATION') AND s.state = 'road')
+          OR (b.status IN ('DISPATCHED', 'ENROUTE') AND s.state = 'home')
+        )
      -- ORDERED, SO THE OVER-CAP TAIL IS NOT THE SAME ROWS FOR EVER.
      --
      -- With no ORDER BY, PostgreSQL may return the same subset every tick, and
@@ -262,6 +293,54 @@ async function listContradictionCandidates({ limit = 200, activeWithinHours = 12
 }
 
 /**
+ * What the Dispatcher Board says about this driver right now.
+ *
+ * TWO RULES, BOTH ABOUT REFUSING TO ANSWER.
+ *
+ * ONLY A ROW STILL ON THE BOARD. An absent row is history — it is kept so a
+ * vanished assignment leaves a trace, and reading it here would have the board
+ * "saying" something it stopped saying days ago.
+ *
+ * STALE READS AS `unknown`, NEVER AS A SIDE. The poller runs every few minutes;
+ * a snapshot older than two hours means it stopped, and a stopped poller must
+ * not be quoted as evidence against Home Time. `unknown` and `hold` are
+ * opposites here exactly as they are in the decision journal: "nobody has
+ * looked" is not "the board disagrees".
+ *
+ * Returns null — a section marked `known: false` upstream — rather than
+ * throwing, so a deploy that has not applied 0046 costs the board's opinion and
+ * not the whole context.
+ */
+async function readBoard(personId) {
+  try {
+    const res = await query(
+      `SELECT status, status_raw, truck_norm, board_trailer, eta_text, dispatcher,
+              last_seen_at
+         FROM dispatch_board_rows
+        WHERE person_id = $1 AND present = TRUE
+          AND last_seen_at > NOW() - ($2 || ' hours')::interval
+        ORDER BY last_seen_at DESC
+        LIMIT 1`,
+      [personId, String(BOARD_FRESH_HOURS)]
+    );
+    const row = res.rows[0];
+    if (!row) return null;
+    return {
+      status: row.status,
+      statusRaw: row.status_raw,
+      says: describeBoardStatus(row.status),
+      truck: row.truck_norm,
+      trailer: row.board_trailer,
+      etaText: row.eta_text,
+      dispatcher: row.dispatcher,
+      lastSeenAt: row.last_seen_at,
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
  * Everything known about one driver, with the gaps marked as gaps.
  *
  * @param {number} personId
@@ -269,15 +348,16 @@ async function listContradictionCandidates({ limit = 200, activeWithinHours = 12
  */
 async function getDriverContext(personId) {
   if (!personId) return describeContext({});
-  const [identity, homeTime, loads, fuel, safety, retention] = await Promise.all([
+  const [identity, homeTime, loads, fuel, safety, retention, board] = await Promise.all([
     safely(() => readIdentity(personId)),
     safely(() => readHomeTime(personId)),
     safely(() => readLoads(personId)),
     safely(() => readFuel(personId)),
     safely(() => readSafety(personId)),
     safely(() => readRetention(personId)),
+    safely(() => readBoard(personId)),
   ]);
-  return describeContext({ personId, identity, homeTime, loads, fuel, safety, retention });
+  return describeContext({ personId, identity, homeTime, loads, fuel, safety, retention, board });
 }
 
-module.exports = { getDriverContext, listContradictionCandidates };
+module.exports = { getDriverContext, listContradictionCandidates, BOARD_FRESH_HOURS };

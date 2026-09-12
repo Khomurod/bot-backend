@@ -271,6 +271,7 @@ test('A CONTRADICTION THAT CLEARED IS RESOLVED, not left open for ever', async (
   assert.equal(calls.resolved.length, 1);
   assert.deepEqual(calls.resolved[0].keys.sort(), [
     'context.home_while_working', 'context.quiet_but_active', 'context.two_open_units',
+    'context.board_home_while_road', 'context.wenze_home_while_board_working',
   ].sort(), 'scoped to the keys this pass owns, derived from SEVERITY so they cannot drift');
   assert.deepEqual(calls.resolved[0].keepIds, [1],
     'and the finding it just filed is kept');

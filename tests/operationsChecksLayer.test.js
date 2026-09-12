@@ -18,7 +18,7 @@ const snapshotOf = (over = {}) => {
   const groups = over.groups || [];
   return {
     groups, groupsById: new Map(groups.map((g) => [g.id, g])),
-    profiles: [], people: [], personGroups: [], units: [],
+    profiles: [], people: [], personGroups: [], units: [], boardRows: [],
     fuelAlerts: [], teamDrivers: [], mileageProgress: [], routeAssignments: [],
     ...over,
   };
@@ -96,7 +96,11 @@ test("'001' and '01' are different trucks here too", () => {
 test('every person-layer check runs over one snapshot and declares its keys', () => {
   const findings = layer.runIdentityLayerChecks(snapshotOf({ groups: [group(1, 'A')] }));
   assert.deepEqual(keysOf(findings), ['identity.group_without_person']);
-  assert.equal(layer.CHECK_KEYS.length, 4);
+  // A TRIPWIRE, not bookkeeping: `resolveClearedFindings` only clears keys this
+  // list declares, so a check that files under an undeclared key leaves rows
+  // open for ever. Adding a check means adding it here on purpose.
+  assert.equal(layer.CHECK_KEYS.length, 5);
+  assert.ok(layer.CHECK_KEYS.includes('board.truck_disagrees_with_profile'));
 });
 
 // ─── the systems around it ───────────────────────────────────────────────────
@@ -275,4 +279,73 @@ test('a stale assignment is not blocked by a holder in another fleet', () => {
   const found = layer.checkStaleUnitAssignment({ groups, profiles, personGroups, units });
   assert.equal(found.length, 1, 'Owner-Operator 002 does not hold Company 002');
   assert.equal(found[0].proposedChange.to, '002');
+});
+
+// ─── the dispatcher board as a second opinion on the truck ───────────────────
+
+const STALE = {
+  groups: [{ id: 1, group_name: 'WENZE UNIT # 322 RUSLAN (COMPANY DRIVER)', group_type: 'driver', active: true }],
+  profiles: [{ group_id: 1, unit_number: '322', driver_type: 'company_driver' }],
+  personGroups: [{ person_id: 10, group_id: 1 }],
+  units: [{ person_id: 10, unit_number: '320', fleet_type: 'company', seat: 1 }],
+};
+
+function boardRow(over = {}) {
+  return {
+    rowKey: '322|RUSLAN', present: true, personId: 10, truckNorm: '322',
+    lastSeenAt: '2026-09-12T10:00:00Z', ...over,
+  };
+}
+
+test('with no board at all, the stale-unit sync is unchanged', () => {
+  const [found] = layer.checkStaleUnitAssignment(snapshotOf(STALE));
+  assert.equal(found.checkKey, 'identity.stale_unit_assignment');
+  assert.equal(found.confidence, 90);
+  assert.equal(found.evidence.boardAgrees, false);
+});
+
+test('the board agreeing is corroboration — a small lift, not a different answer', () => {
+  const [found] = layer.checkStaleUnitAssignment(snapshotOf({ ...STALE, boardRows: [boardRow()] }));
+  assert.equal(found.checkKey, 'identity.stale_unit_assignment');
+  assert.equal(found.tier, 'auto');
+  assert.equal(found.confidence, 95);
+  assert.equal(found.evidence.boardAgrees, true);
+  assert.equal(found.evidence.boardTruck, '322');
+});
+
+test('THE BOARD DISAGREEING SUPPRESSES THE AUTOMATIC SYNC AND ASKS INSTEAD', () => {
+  // Letting the auto finding stand would have Wenze quietly sync to the profile
+  // while the board said something else.
+  const found = layer.checkStaleUnitAssignment(snapshotOf({
+    ...STALE, boardRows: [boardRow({ truckNorm: '415' })],
+  }));
+  assert.deepEqual(keysOf(found), ['board.truck_disagrees_with_profile']);
+  assert.equal(found[0].tier, 'approval');
+  assert.equal(found[0].proposedChange, null, 'neither source is evidence about the other');
+  assert.equal(found[0].evidence.profileUnit, '322');
+  assert.equal(found[0].evidence.boardTruck, '415');
+});
+
+test('a board row that is no longer present is not an opinion', () => {
+  const [found] = layer.checkStaleUnitAssignment(snapshotOf({
+    ...STALE, boardRows: [boardRow({ truckNorm: '415', present: false })],
+  }));
+  assert.equal(found.checkKey, 'identity.stale_unit_assignment');
+  assert.equal(found.evidence.boardAgrees, false);
+});
+
+test('a board row belonging to somebody else says nothing about this driver', () => {
+  const [found] = layer.checkStaleUnitAssignment(snapshotOf({
+    ...STALE, boardRows: [boardRow({ truckNorm: '415', personId: 99 })],
+  }));
+  assert.equal(found.checkKey, 'identity.stale_unit_assignment');
+  assert.equal(found.confidence, 90);
+});
+
+test('an unlinked board row says nothing either', () => {
+  const [found] = layer.checkStaleUnitAssignment(snapshotOf({
+    ...STALE, boardRows: [boardRow({ truckNorm: '415', personId: null })],
+  }));
+  assert.equal(found.checkKey, 'identity.stale_unit_assignment');
+  assert.equal(found.confidence, 90);
 });

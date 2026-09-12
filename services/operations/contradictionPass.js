@@ -35,6 +35,13 @@ const SEVERITY = Object.freeze({
   home_while_working: 'warning',
   quiet_but_active: 'warning',
   two_open_units: 'serious',
+  // THE BOARD AND WENZE DISAGREEING IS A WARNING, NOT A SERIOUS. Both of these
+  // are ordinary on a fleet where dispatch updates a spreadsheet and a driver
+  // texts a group — the two are minutes or hours apart by nature, and the
+  // reader only needs to know at the end of the day. Filing them as `serious`
+  // would put a routine lag beside "one person is in two trucks".
+  board_home_while_road: 'warning',
+  wenze_home_while_board_working: 'warning',
 });
 
 /**

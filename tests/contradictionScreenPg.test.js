@@ -287,3 +287,120 @@ test('a quiet driver whose load is merely ASSIGNED is not screened in',
     const candidates = await ctx.listContradictionCandidates({});
     assert.ok(!candidates.includes(person.id));
   });
+
+// ─── the board's two kinds ───────────────────────────────────────────────────
+
+async function boardRow(h, { personId, truck, status, group, seenAgo = '10 minutes', present = true }) {
+  await h.query(
+    `INSERT INTO dispatch_board_rows
+       (row_key, driver_name_raw, driver_name_clean, fleet_type, truck_norm,
+        person_id, status, status_raw, present, last_seen_at)
+     VALUES ($1, $2, $2, 'company', $3, $4, $5, $5, $6, NOW() - ($7 || '')::interval)`,
+    [`${truck}|${group}`, `DRIVER ${group}`, truck, personId, status, present, seenAgo]
+  );
+}
+
+test('THE SCREEN FINDS BOTH BOARD KINDS, and confirms them through the module that decides',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { h, ctx, people } = await setup(t);
+
+    // Board says home; Home Time says road.
+    const onRoad = await aDriver(h, people, { name: 'BOARD HOME', unit: '601', groupId: 7601 });
+    await h.query(
+      `INSERT INTO driver_home_status (group_id, state, state_since, last_status_at)
+       VALUES (7601, 'road', NOW() - INTERVAL '9 days', NOW())`
+    );
+    await boardRow(h, { personId: onRoad.id, truck: '601', status: 'HOME', group: 7601 });
+
+    // Home Time says home; board says working.
+    const atHome = await aDriver(h, people, { name: 'BOARD WORKING', unit: '602', groupId: 7602 });
+    await h.query(
+      `INSERT INTO driver_home_status (group_id, state, state_since, last_status_at)
+       VALUES (7602, 'home', NOW() - INTERVAL '2 days', NOW())`
+    );
+    await boardRow(h, { personId: atHome.id, truck: '602', status: 'ENROUTE', group: 7602 });
+
+    // Agreeing — must not be screened in.
+    const agreeing = await aDriver(h, people, { name: 'BOARD AGREES', unit: '603', groupId: 7603 });
+    await h.query(
+      `INSERT INTO driver_home_status (group_id, state, state_since, last_status_at)
+       VALUES (7603, 'road', NOW() - INTERVAL '4 days', NOW())`
+    );
+    await boardRow(h, { personId: agreeing.id, truck: '603', status: 'ENROUTE', group: 7603 });
+
+    const candidates = await ctx.listContradictionCandidates({});
+    assert.ok(candidates.includes(onRoad.id), 'board home while road');
+    assert.ok(candidates.includes(atHome.id), 'wenze home while board working');
+    assert.ok(!candidates.includes(agreeing.id), 'agreement costs nothing');
+
+    for (const person of [onRoad, atHome]) {
+      // eslint-disable-next-line no-await-in-loop
+      const found = findContradictions(await ctx.getDriverContext(person.id));
+      assert.ok(found.some((c) => c.kind.startsWith('board') || c.kind.startsWith('wenze')),
+        `person ${person.id} was screened in and confirmed`);
+    }
+  });
+
+test('ONE FRESHNESS NUMBER, and both readers use it', { skip: skipWithoutPg() }, async (t) => {
+  // The screen and the reader must agree, or the screen offers rows the reader
+  // declines — six queries per driver per tick to produce nothing. The screen
+  // interpolates the same constant rather than repeating the literal.
+  const source = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'database', 'driverContext.js'), 'utf8'
+  );
+  assert.match(source, /INTERVAL '\$\{BOARD_FRESH_HOURS\} hours'/,
+    'the screen must interpolate the constant, not repeat the number');
+  const { ctx } = await setup(t);
+  assert.equal(require('../database/driverContext').BOARD_FRESH_HOURS, 2);
+  assert.ok(ctx);
+});
+
+test('A STALE BOARD IS NOT A SIDE — the screen and the reader agree about that',
+  { skip: skipWithoutPg() }, async (t) => {
+    // A poller that stopped must not be quoted as evidence against Home Time.
+    // The screen and `readBoard` both cut at two hours, and a screen that
+    // offered rows the reader then refuses would cost six queries per driver
+    // per tick to produce nothing.
+    const { h, ctx, people } = await setup(t);
+    const person = await aDriver(h, people, { name: 'STALE BOARD', unit: '604', groupId: 7604 });
+    await h.query(
+      `INSERT INTO driver_home_status (group_id, state, state_since, last_status_at)
+       VALUES (7604, 'road', NOW() - INTERVAL '9 days', NOW())`
+    );
+    await boardRow(h, { personId: person.id, truck: '604', status: 'HOME', group: 7604, seenAgo: '5 hours' });
+
+    assert.ok(!(await ctx.listContradictionCandidates({})).includes(person.id));
+    const context = await ctx.getDriverContext(person.id);
+    assert.equal(context.board.known, false, 'a stale board reads as unknown, not as home');
+  });
+
+test('a board row that left the board is history, not an opinion',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { h, ctx, people } = await setup(t);
+    const person = await aDriver(h, people, { name: 'GONE BOARD', unit: '605', groupId: 7605 });
+    await h.query(
+      `INSERT INTO driver_home_status (group_id, state, state_since, last_status_at)
+       VALUES (7605, 'road', NOW() - INTERVAL '9 days', NOW())`
+    );
+    await boardRow(h, { personId: person.id, truck: '605', status: 'HOME', group: 7605, present: false });
+
+    assert.ok(!(await ctx.listContradictionCandidates({})).includes(person.id));
+    assert.equal((await ctx.getDriverContext(person.id)).board.known, false);
+  });
+
+test('A NEUTRAL BOARD STATUS IS NOT SCREENED IN — a resting driver contradicts nothing',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { h, ctx, people } = await setup(t);
+    const person = await aDriver(h, people, { name: 'RESTING', unit: '606', groupId: 7606 });
+    await h.query(
+      `INSERT INTO driver_home_status (group_id, state, state_since, last_status_at)
+       VALUES (7606, 'road', NOW() - INTERVAL '9 days', NOW())`
+    );
+    await boardRow(h, { personId: person.id, truck: '606', status: 'REST', group: 7606 });
+
+    assert.ok(!(await ctx.listContradictionCandidates({})).includes(person.id));
+    const context = await ctx.getDriverContext(person.id);
+    assert.equal(context.board.known, true, 'the row IS read');
+    assert.equal(context.board.says, 'neutral', 'it just has no opinion');
+    assert.deepEqual(findContradictions(context).filter((c) => c.kind.includes('board')), []);
+  });
