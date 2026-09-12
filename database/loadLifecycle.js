@@ -7,6 +7,7 @@
  * pass, because this is deliberately not a position history.
  */
 const { query } = require('./pool');
+const { toTimestampValue } = require('../lib/database/timestampValue');
 
 function mapRow(row) {
   if (!row) return null;
@@ -109,7 +110,10 @@ async function recordLoadObservation(orderId, {
     [
       String(orderId), loadIdentifier, groupId, personId, unitNumber,
       phase, confidence, atPickup === true, atDelivery === true,
-      lat, lng, speedMph, seenAt, milesToPickup, milesToDelivery, boardStatus,
+      // `seenAt` is the provider's own sighting time, passed through from
+      // telemetry. It reaches a `::timestamptz` cast, where a string
+      // Postgres cannot read is an ERROR rather than a null.
+      lat, lng, speedMph, toTimestampValue(seenAt), milesToPickup, milesToDelivery, boardStatus,
       JSON.stringify(signals || []), JSON.stringify(conflicts || []), checkedAt,
     ]
   );

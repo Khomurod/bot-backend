@@ -11,6 +11,7 @@
  * change is worse than none: it hides exactly the driver a pattern would find.
  */
 const { query } = require('./pool');
+const { toTimestampValue } = require('../lib/database/timestampValue');
 
 function mapEvent(row) {
   if (!row) return null;
@@ -54,7 +55,9 @@ async function recordSafetyEvent({
      RETURNING *`,
     [
       String(samsaraEventId), personId, groupId, vehicleId, unitNumber, driverName,
-      String(behavior), severity, gForce, speedMph, postedSpeedMph, occurredAt, lat, lng,
+      // `occurredAt` is Samsara's timestamp for the event, not ours.
+      String(behavior), severity, gForce, speedMph, postedSpeedMph,
+      toTimestampValue(occurredAt), lat, lng,
     ]
   );
   return mapEvent(res.rows[0]) || null;
