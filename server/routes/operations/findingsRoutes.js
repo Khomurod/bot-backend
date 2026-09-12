@@ -18,6 +18,8 @@ const express = require('express');
 
 const findingsStore = require('../../../database/operationalFindings');
 const correctionsStore = require('../../../database/operationalCorrections');
+const controlReplyStore = require('../../../database/controlReplies');
+const knowledgeStore = require('../../../database/controlKnowledge');
 const { runGuardedSweep, getConsistencyStatus } = require('../../../services/operations/consistencyService');
 const { CHECK_TO_ACTION } = require('../../../services/operations/corrections/actions');
 const { sendFailure } = require('../../middleware/failureResponse');
@@ -87,7 +89,21 @@ function createFindingsRouter({ authMiddleware }) {
       const finding = await findingsStore.getFindingById(id);
       if (!finding) return res.status(404).json({ error: 'Finding not found' });
       const corrections = await correctionsStore.listCorrections({ findingId: id, limit: 20 });
-      return res.json({ finding: withActionability(finding), corrections });
+      // WHAT WAS SAID ABOUT THIS IN TELEGRAM, and what Wenze took from it.
+      // Without these two, a finding answered from a phone reads on this screen
+      // as one that closed itself — and "Already answered in the notification
+      // group" in a dismissal reason points at a conversation nobody can see.
+      // Both fail soft: this screen is how somebody investigates, and it must
+      // still open when a side query cannot run.
+      const [controlReplies, memory] = await Promise.all([
+        controlReplyStore.listRepliesForFinding(id).catch(() => []),
+        knowledgeStore.findMemory({
+          checkKey: finding.checkKey,
+          subjectType: finding.subjectType,
+          subjectId: String(finding.subjectId),
+        }).catch(() => null),
+      ]);
+      return res.json({ finding: withActionability(finding), corrections, controlReplies, memory });
     } catch (err) {
       return sendFailure(res, err, { message: 'Failed to load the finding', logPrefix: '[OPERATIONS]' });
     }

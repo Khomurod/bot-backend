@@ -23,9 +23,12 @@ const ROOT = path.join(__dirname, '..');
 const CONTROL_FILES = [
   'lib/control/intent.js',
   'lib/control/askable.js',
+  'lib/control/fingerprint.js',
   'services/control/actions.js',
   'services/control/replyHandler.js',
   'services/control/askPass.js',
+  'services/control/aiIntent.js',
+  'services/control/memory.js',
   'bot/controlReplyHandlers.js',
 ];
 
@@ -99,12 +102,45 @@ test('the executor reaches only a closed set of dependencies', () => {
   }
 });
 
-test('the reply path contains no AI seam', () => {
-  // B2 adds an AI reading, and only as a fallback for a reply the
-  // deterministic parser could not read. Until then there is none, and a model
-  // appearing anywhere in this path would be one nobody decided to add.
-  for (const rel of ['lib/control/intent.js', 'services/control/replyHandler.js', 'services/control/actions.js']) {
+test('THE DECIDER AND THE WRITER STAY MODEL-FREE', () => {
+  // B2 added an AI reading, and it lives in exactly one file. These three are
+  // the ones it may never enter: the deterministic parser (whose whole value is
+  // that no model can reach its decision), the writer (the only thing that
+  // changes the fleet), and the memory (what gets remembered must be what a
+  // person said).
+  for (const rel of [
+    'lib/control/intent.js',
+    'lib/control/fingerprint.js',
+    'services/control/actions.js',
+    'services/control/memory.js',
+  ]) {
     const source = codeOnly(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
     assert.ok(!/runCapability|groqClient|geminiClient|services\/ai\//.test(source), rel);
+  }
+});
+
+test('the reply handler reaches a model ONLY through the one governed module', () => {
+  // It may call `./aiIntent`, which goes through the router — where the
+  // capability switch, the cooldowns and the call log live. It may not reach a
+  // provider client directly, which would route around all three.
+  const source = codeOnly(
+    fs.readFileSync(path.join(ROOT, 'services/control/replyHandler.js'), 'utf8')
+  );
+  assert.ok(!/groqClient|geminiClient|services\/ai\/|runCapability/.test(source),
+    'replyHandler.js must reach AI only via ./aiIntent');
+  assert.ok(/require\('\.\/aiIntent'\)/.test(source), 'and it does use that one');
+});
+
+test('the AI reading may only CHOOSE — it never names a value that lands in a record', () => {
+  const source = codeOnly(
+    fs.readFileSync(path.join(ROOT, 'services/control/aiIntent.js'), 'utf8')
+  );
+  // It must not import the writer, the correction registry, or the findings
+  // store. Its whole output is one key from a list somebody else wrote.
+  for (const mod of requiresIn(source)) {
+    assert.ok(
+      !/corrections|operationalFindings|\.\/actions/.test(mod),
+      `services/control/aiIntent.js imports "${mod}" — the model may choose, never write`
+    );
   }
 });

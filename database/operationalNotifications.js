@@ -52,6 +52,11 @@ function mapNotice(row) {
     question: row.question_json || null,
     findingId: row.finding_id == null ? null : Number(row.finding_id),
     replyToMessageId: row.reply_to_message_id == null ? null : String(row.reply_to_message_id),
+    // The clarification chain. `parentNoticeId` says which question this one is
+    // a follow-up TO; `clarifyRound` says how deep, so a clarification that is
+    // itself unanswered cannot start a third round on the next reply.
+    parentNoticeId: row.parent_notice_id == null ? null : Number(row.parent_notice_id),
+    clarifyRound: Number(row.clarify_round || 0),
     answeredAt: row.answered_at || null,
     createdAt: row.created_at,
     deliveredAt: row.delivered_at,
@@ -69,6 +74,7 @@ async function enqueueNotification({
   noticeKey, category, chatId, routedVia = 'default', body,
   subjectType = null, subjectId = null, personId = null, groupId = null, evidence = null,
   delaySeconds = 0, question = null, findingId = null, replyToMessageId = null,
+  parentNoticeId = null, clarifyRound = 0,
 }, client = null) {
   const run = client ? (t, v) => client.query(t, v) : query;
   // HELD, NOT DROPPED. `delaySeconds` pushes `next_attempt_at` out so the
@@ -81,9 +87,10 @@ async function enqueueNotification({
     `INSERT INTO operational_notifications
        (notice_key, category, subject_type, subject_id, person_id, group_id,
         chat_id, routed_via, body, evidence_json, next_attempt_at,
-        question_json, finding_id, reply_to_message_id)
+        question_json, finding_id, reply_to_message_id,
+        parent_notice_id, clarify_round)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb, NOW() + ($11 || ' seconds')::interval,
-             $12::jsonb, $13, $14)
+             $12::jsonb, $13, $14, $15, $16)
      ON CONFLICT (notice_key) DO NOTHING
      RETURNING *`,
     [
@@ -93,6 +100,8 @@ async function enqueueNotification({
       question ? JSON.stringify(question) : null,
       findingId == null ? null : Number(findingId),
       replyToMessageId == null ? null : String(replyToMessageId),
+      parentNoticeId == null ? null : Number(parentNoticeId),
+      Math.max(0, Math.min(9, Number(clarifyRound) || 0)),
     ]
   );
   return mapNotice(res.rows[0]) || null;

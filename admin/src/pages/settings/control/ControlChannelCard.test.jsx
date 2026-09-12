@@ -16,6 +16,7 @@ vi.mock("../../../api", () => ({
   updateControlSettings: vi.fn(),
   addControlOperator: vi.fn(),
   removeControlOperator: vi.fn(),
+  forgetControlAnswer: vi.fn(),
 }));
 
 const STATE = {
@@ -25,6 +26,13 @@ const STATE = {
     { telegramUserId: "555001", label: "Dispatcher", enabled: true },
   ],
   replies: { available: true, total: 4, refused: 1, last7d: 3 },
+  knowledge: [
+    {
+      id: 12, checkKey: "board.truck_disagrees_with_profile",
+      answerAction: "dismiss", answerText: "He swapped trucks this morning.",
+      timesApplied: 3,
+    },
+  ],
 };
 
 beforeEach(() => {
@@ -33,6 +41,7 @@ beforeEach(() => {
   api.updateControlSettings.mockResolvedValue(STATE.settings);
   api.addControlOperator.mockResolvedValue({ telegramUserId: "555002" });
   api.removeControlOperator.mockResolvedValue({ telegramUserId: "555001" });
+  api.forgetControlAnswer.mockResolvedValue({ id: 12 });
 });
 
 test("shows who Wenze obeys", async () => {
@@ -92,4 +101,32 @@ test("a failure to load says so rather than showing an empty list", async () => 
 test("refused replies are counted where somebody will see them", async () => {
   render(<ControlChannelCard />);
   expect(await screen.findByText(/not on the list were ignored/)).toBeTruthy();
+});
+
+test("a remembered answer is shown in the owner's own words", async () => {
+  render(<ControlChannelCard />);
+  expect(await screen.findByText(/He swapped trucks this morning/)).toBeTruthy();
+  // The count is what tells somebody the memory is doing anything at all.
+  expect(screen.getByText("3")).toBeTruthy();
+});
+
+test("IT SAYS A MEMORY IS NOT THE CHECK BEING SWITCHED OFF", async () => {
+  render(<ControlChannelCard />);
+  // The whole safety rule, in the sentence a person actually reads: the answer
+  // is attached to one situation, and a new problem is still raised.
+  expect(await screen.findByText(/while that situation stays as it is/i)).toBeTruthy();
+  expect(screen.getByText(/still asked about/i)).toBeTruthy();
+});
+
+test("forgetting an answer calls the server and reloads", async () => {
+  render(<ControlChannelCard />);
+  fireEvent.click(await screen.findByText("Forget"));
+  await waitFor(() => expect(api.forgetControlAnswer).toHaveBeenCalledWith(12));
+  await waitFor(() => expect(api.getControlSettings).toHaveBeenCalledTimes(2));
+});
+
+test("with nothing remembered it explains what would put something there", async () => {
+  api.getControlSettings.mockResolvedValue({ ...STATE, knowledge: [] });
+  render(<ControlChannelCard />);
+  expect(await screen.findByText(/Nothing is being remembered yet/i)).toBeTruthy();
 });

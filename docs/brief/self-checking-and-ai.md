@@ -288,6 +288,21 @@ feature it belongs to.
   cannot name an operation.
 - **Nothing about this touches source code**, and a test asserts the absence
   structurally rather than trusting the promise.
+- **A reply the fixed rules cannot read is passed to a model — and only then.**
+  It picks from the same offered answers and nothing else, its choice is checked
+  twice, it supplies no value that could land in a driver's record, and a
+  provider outage means "I did not follow that" rather than a guess. Nearly every
+  reply is still decided with no model involved at all.
+- **Wenze remembers what it was told, and stops asking.** An answer is stored
+  against the SITUATION it answered, not against the driver: "he is a team
+  driver, that is why the truck looks shared" settles that shared truck, and a
+  different truck next month is asked about again. Wenze may come back once for
+  a reason when a "no" arrives bare, because a finding closed with no reason
+  recorded is a decision nobody can review later.
+- **A remembered "yes" is never re-applied.** It is kept as a record; permission
+  for Wenze to act by itself lives on the Automation screen, where it is visible
+  and can be switched off. Settings → Answering Wenze in Telegram lists every
+  standing answer with a Forget button.
 - Full rules in
   [`docs/architecture/control-channel.md`](../architecture/control-channel.md).
 

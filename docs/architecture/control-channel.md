@@ -65,13 +65,34 @@ imports the filesystem, a process, the network or `vm`, and
 `tests/controlNoCodeAccess.test.js` asserts that structurally — including a
 closed allow-list of what `services/control/actions.js` may import at all.
 
-### 5. No model is in the reply path
+### 5. A model may read a sentence; it may never decide or write
 
-B1 is deterministic end to end. `parseIntent` is pure, has no parameter through
-which a model could arrive, and a test asserts its signature. B2 adds an AI
-fallback and **only** for a reply the deterministic parser returned `unclear`
-for; until then there is none, and `tests/controlNoCodeAccess.test.js` fails if
-one appears.
+The deterministic reader runs first, always. `parseIntent` is pure, has no
+parameter through which a model could arrive, and a test asserts its signature —
+so nearly every reply is decided with no model involved at all.
+
+`services/control/aiIntent.js` (B2) is reached **only** when that returns
+`unclear`, and four things bound it:
+
+1. it may pick only from the keys the question already offered, plus
+   `engineering_request` and `unclear`;
+2. that is checked twice — as the router's `validate`, so a straying provider
+   loses its turn to the next one, and again on the finished object here;
+3. it supplies **no values**: no truck, no person, no date. Nothing it returns
+   can land in a driver's record;
+4. no provider, a switched-off capability, malformed JSON or an unoffered action
+   all mean `unclear`. The question stands; nothing is guessed.
+
+`tests/controlNoCodeAccess.test.js` asserts structurally that the deterministic
+parser, the fingerprint, the writer and the memory contain no AI seam at all,
+and that the reply handler reaches a model only through that one module — never a
+provider client directly, which would route around the capability switch, the
+cooldowns and the call log.
+
+### 6. A remembered answer is bound to the CONDITION, and a remembered yes never acts
+
+See **Remembering** below. Both halves are load-bearing and both are proved by
+removal in `tests/controlFingerprint.test.js` and `tests/controlKnowledgePg.test.js`.
 
 ## The gates, in order
 
@@ -86,8 +107,67 @@ chatter costs almost nothing:
 | 4 | who | not on the allow-list → recorded `ignored_unauthorised`, never answered |
 | 5 | redelivery | `recordReply` returned null |
 | 6 | still open | the finding is re-read **live**; somebody may have fixed it in the admin |
-| 7 | meaning | `parseIntent` — unclear asks again rather than guessing |
-| 8 | do it | `executeOffered`, the only writer |
+| 7 | meaning | `parseIntent` first; only an `unclear` reaches `aiIntent`, which may still only choose what was offered |
+| 8 | do it | `executeOffered`, the only writer — then a "no" is remembered |
+
+### When Wenze comes back with a question
+
+Two cases, both bounded by `control_settings.clarify_limit` (default 1) and both
+counted on the notice itself (`clarify_round`), so a clarification that is itself
+unanswered cannot start a third round:
+
+- the reply was not understood, by the rules or by the model;
+- the reply was a bare "no". A finding closed with no reason recorded is a
+  decision nobody can review later, so Wenze asks why once and then takes the
+  default reason rather than nagging.
+
+**A clarification is sent as a real question, not as a plain message.** The reply
+path only recognises an answer to a message carrying a `question_json`, so a bare
+"why?" would be a dead end and the owner's explanation would be read as ordinary
+chatter and lost. It is pinned under their own message (`inReplyTo`) and carries
+`parent_notice_id`.
+
+## Remembering
+
+`control_knowledge` (migration 0050) is what stops the owner answering the same
+question every week. The sweep re-derives a condition on every pass and files it
+with a NEW finding id, so a finding's own `status` cannot carry an answer
+forward.
+
+**The memory is keyed on `(check_key, subject_type, subject_id)` and bound to the
+condition by `evidence_fingerprint`.** `lib/control/fingerprint.js` hashes only
+the fields that DEFINE each situation — `CONDITION_FIELDS`, one closed list per
+check. Change the truck, the other holder, the direction of the disagreement, and
+the fingerprint changes, the memory does not match, and Wenze asks again. Change
+nothing but the finding's id, its timestamps or the wording of its title, and the
+memory holds.
+
+Hashing the whole evidence object would have been easier and wrong twice over: it
+carries fields that move on every sweep (so no memory would ever match, and the
+feature would silently do nothing) and display names that can be edited (so
+renaming a chat would re-ask a settled question). **A check absent from
+`CONDITION_FIELDS` is not rememberable** — it is asked every time, which is noisy
+and honest.
+
+| Answer | Written? | Acted on by itself? |
+|---|---|---|
+| `dismiss` | always | **yes** — the ask pass closes a re-opened matching finding, quoting the owner's words, and counts `times_applied` |
+| `approve` | only with "always"/"don't ask again" | **never** |
+| `snooze` | no | no — "later" is a delay, and the finding's own snooze window holds it |
+
+**A remembered `approve` is never re-applied.** The owner approved ONE case, not
+a standing permission; standing permissions live in
+`operational_check_settings.mode`, where they are visible on a screen and can be
+switched off. Applying one from a chat reply would be autopilot through a side
+door. It is still recorded, because "you have said yes to this three times" is
+what B3's learning pass reads when it suggests autopilot — a suggestion a person
+accepts on a screen.
+
+A memory is taken back, never deleted: `revoked_at` is set and the row stays, so
+"Wenze stopped asking because you said X, and you withdrew that on the 3rd" is
+still readable. Settings → Answering Wenze in Telegram lists what is remembered
+with a **Forget** button; the finding's own detail panel shows the Telegram
+conversation and the standing answer beside it.
 
 ## Asking
 
@@ -165,14 +245,13 @@ would fall through to `system` and be refused — the owner would have answered 
 question Wenze then could not act on. `tests/controlChannelPg.test.js` drives
 both halves against the real constraint.
 
-## What B1 deliberately does NOT do
+## What B1 and B2 deliberately do NOT do
 
-- **remember** an answer, so the same condition re-asks after the window (B2);
-- read an unclear reply with a model (B2);
-- record an `engineering_requests` row — B1 acknowledges the intent and says
-  plainly that nothing changed (B3);
+- record an `engineering_requests` row — the intent is acknowledged and it is
+  said plainly that nothing changed (B3);
+- turn repeated identical answers into a proposed rule (B3);
 - auto-apply a remembered `approve`. That would be autopilot through a side
-  door, and it stays refused in B2 as well.
+  door, and it stays refused.
 
 ## Reading it from outside
 
@@ -185,8 +264,13 @@ operators   HOW MANY may be obeyed. Switched on with an empty allow-list is a
             channel that obeys nobody, and it looks identical to a working one
             from everywhere else on this endpoint.
 questions   asked · delivered · answered · outstanding · lastAskedAt
+remembered  live · revoked · applied · lastAppliedAt
 total/refused/last7d/lastAt   the replies
 ```
+
+`remembered.applied` is the number that says the memory is doing anything: a
+`live` count that grows while `applied` stays at zero means the fingerprints
+never match, which from every other angle looks exactly like a quiet week.
 
 **`questions` and the replies answer different questions, and the first was
 missing.** Zero replies reads exactly the same whether five questions went out
@@ -198,5 +282,7 @@ actually works: a question enqueued and never sent reached nobody.
 
 `controlIntent`, `controlQuestion`, `controlActions`, `controlReplyHandler`,
 `controlAskPass`, `controlHandlerRegistration`, `controlNoCodeAccess`,
-`controlChannelPg` (requires `TEST_DATABASE_URL`), plus the question and
-threaded-reply cases in `notificationSend`.
+`controlFingerprint`, `controlAiIntent`, `controlChannelPg` and
+`controlKnowledgePg` (both require `TEST_DATABASE_URL`), plus the question and
+threaded-reply cases in `notificationSend` and the `control.remembered` cases in
+`healthOperationsBlock`.

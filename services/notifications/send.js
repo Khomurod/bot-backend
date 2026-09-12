@@ -113,6 +113,7 @@ async function notify(notice, deps = defaultDeps()) {
     personId = null, groupId = null, evidence = null,
     severity = null, facts = null,
     question = null, findingId = null, inReplyTo = null,
+    parentNoticeId = null, clarifyRound = 0,
   } = notice || {};
 
   if (!isKnownCategory(category)) {
@@ -254,6 +255,8 @@ async function notify(notice, deps = defaultDeps()) {
       question,
       findingId,
       replyToMessageId: inReplyTo?.messageId ?? null,
+      parentNoticeId,
+      clarifyRound,
     });
   } catch (err) {
     console.warn(`[NOTIFY] could not record "${noticeKey}":`, err.message);
