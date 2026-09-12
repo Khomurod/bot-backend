@@ -85,6 +85,7 @@ Business problems it solves:
 | `driver-feedback-bot` | this repo | `index.js` — the whole Node app: Telegram bot + Express API + admin SPA + all background jobs |
 | `facebook-leads-engine` | this repo (`leads-bot/`) | Python FastAPI lead worker. In the main deployment `index.js` **spawns it as a child process**; it can also run standalone |
 | Samsara safety poller | **separate repo** `Khomurod/samsara-integration` | Polls Samsara safety events → dashcam alerts to Telegram |
+| Dispatcher Board | **not a service of ours** — an external Google Apps Script web app over the dispatchers' spreadsheet | Read-only, polled. **The authority on a driver's current assignment**; Wenze stays the authority on who a person permanently is. Off until a URL and token are saved in Settings |
 
 The three cooperate in **two different ways** — do not confuse them:
 
@@ -178,6 +179,7 @@ unchanged, so a reference to "§7" still means the same section.
 | [§7. Automatic and background behavior](docs/brief/background-jobs.md) | Anything on a timer, the database transfer budget, browser polling, or an idempotency ledger |
 | [§7a. The rules every background job obeys](docs/brief/background-job-rules.md) | Whether a worker actually ran, the shared fleet snapshot, data retention, and why nothing is heard until a notification destination is set |
 | [§8. Data model and cross-feature relationships](docs/brief/data-model.md) | Schema, migrations, `groups`, or what else a table change touches |
+| [§9a. Code-structure rules](docs/brief/code-structure.md) | The 500-line cap, `lint:undef` / `lint:imports`, the façade rule, one-way dependencies |
 | [§10. Known limitations, retired features and intentional exceptions](docs/brief/limitations.md) | Something looks wrong, missing or stale — check here before "fixing" it |
 
 ---
@@ -352,44 +354,34 @@ repository-wide working rules. The highest-consequence items:
     `express.static`: splitting one exposed file must not expose a directory.
     `tests/remoteRoute.test.js`, `tests/presentationPage.test.js`.
 
+- **A truck number alone is not globally unique, and nobody is merged on one.**
+  Three fleets number their trucks independently: Company 001, Owner-Operator
+  001 and Lease 001 are three trucks driven by three people, and production
+  already carries ten unit numbers on more than one active driver group. Truck
+  identity is `(fleet_type, unit_number)` (`lib/drivers/fleetType.js`), the
+  exact spelling — leading zeros and letter suffixes kept — is the only key
+  strong enough to justify a write, and the digits-only form may suggest and
+  never act (`lib/board/truck.js`). `unknown` is a real fleet type and never
+  wins a match. A team pair is two people on one truck, not a duplicate. See
+  `docs/architecture/dispatcher-board.md`.
+- **The Dispatcher Board is the authority on today's assignment; Wenze is the
+  authority on who a person is.** A disagreement between them is a finding, not
+  a correction — Wenze does not pick a side on "which truck is this driver in".
+  Its token travels in a query string, so every message about it leaves through
+  `lib/security/redactUrls.stripUrls` and `last_error` may never hold a URL.
+- **A value from outside never reaches a `timestamptz` cast unchecked.**
+  Postgres treats a string it cannot read as an error, not a null, so an
+  external system's `TBD` aborts the statement and whatever pass was running
+  behind it. `lib/database/timestampValue.js` is the only door; its contract is
+  deliberately the opposite of the display helper beside it.
+
 ### Code-structure rules (enforced by CI)
 
-- **500-line hard maximum** for every hand-written
-  `.js/.jsx/.mjs/.cjs/.ts/.tsx/.py` file in the repository. `npm run
-  lint:filesize` enforces it, walking from the repository ROOT and skipping only
-  what is provably machine-produced (installed dependencies, build output,
-  caches, minified files). **There is no baseline and no exemption list** —
-  `scripts/fileSizeBaseline.json` is gone and `tests/checkFileSize.test.js`
-  asserts it stays gone, so a new violation cannot be waved through by editing a
-  JSON file. The scanner is a deny-list on purpose: an earlier version walked a
-  hard-coded list of INCLUDED directories and silently missed whole areas as the
-  tree grew (first `leads-bot/`, then `admin/vite.config.js` and its siblings).
-- **`npm run lint:undef`** — `eslint .` with only bug-finding rules enabled
-  (`no-undef`, `no-const-assign` and a handful of the same shape; no style
-  rules, so a report is always real). This is the check a build is not: a
-  module split left 26 identifiers behind in files that no longer imported them,
-  and `vite build` passed every time because a bundler treats an unresolved
-  module-scope name as a global and defers the failure to runtime. Coverage is a
-  deny-list, and `tests/checkUndefined.test.js` asserts the rule is in force for
-  every hand-written JS file in the tree.
-- **`npm run lint:imports`** — the mirror image, which no scope check can see: a
-  name that IS declared, by an import pointing at a module that does not export
-  it (Rollup only warns and emits `undefined`). Conservative by design: a module
-  whose export surface is not statically knowable is skipped rather than guessed
-  at. Covered by `tests/checkImports.test.js`, including the false-positive
-  classes that nearly made it useless.
-- Prefer a **re-export-only façade plus focused modules** when an import path must
-  be preserved. `services/routeControlService.js` → `services/routeControl/*` is
-  the reference example: 18 lines, pure re-export, nothing of its own.
-  (`database/db.js` is a *partial* version of the same idea — it re-exports, but
-  it also still owns live code: `initializeDatabase()`, the `admins` queries, the
-  `service_runs` claim helpers and the group-directory queries. Do not treat it as
-  re-export-only.)
-- Dependencies flow one way: routes → service façade → focused services →
-  database/integrations → pure helpers. **No circular dependencies.** No business
-  logic in route files.
-- Keep pure decision logic separate from I/O so it can be unit-tested without a
-  database or network — this is why so many services export pure evaluators.
+The 500-line cap, the two lint gates a build is not, the façade rule and the
+one-way dependency flow now live in
+[§9a `docs/brief/code-structure.md`](docs/brief/code-structure.md) — moved out
+when this file passed the very cap it describes. `CLAUDE.md` states the same
+rules as working instructions.
 
 ---
 ## 11. Testing and operational expectations
@@ -407,10 +399,10 @@ npm run build:schema:check                        # schema.sql is in sync with b
 
 - **The Node suite passes clean with no secrets and no database.** Verified
   baseline (2026-09-12, deps installed, **with** `TEST_DATABASE_URL` against a
-  local PostgreSQL 16): **3728 tests, 3728 pass, 0 fail, 0 skipped**, exit 0.
+  local PostgreSQL 16): **3790 tests, 3790 pass, 0 fail, 0 skipped**, exit 0.
   Split the way CI splits it: the non-`*Pg` files with no application env at
-  all are **3254 pass / 0 skipped**, and the 56 `*Pg` files against a real
-  Postgres are **474 pass / 0 skipped**. The admin suite is **212 pass in 24
+  all are **3306 pass / 0 skipped**, and the 57 `*Pg` files against a real
+  Postgres are **484 pass / 0 skipped**. The admin suite is **221 pass in 25
   files**.
   Without a database the `*Pg` suites skip instead — a skip is not a pass, so
   CI provides a real Postgres and fails on any skip.
