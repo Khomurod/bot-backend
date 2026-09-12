@@ -111,6 +111,18 @@ function summaryDeps(overrides = {}) {
         return [{ telegramUserId: '2117922421', label: 'Owner' }];
       },
     },
+    // Only the control-question summary: the discard counter is deliberately
+    // left out, because two tests below assert what the block looks like
+    // WITHOUT it, and a harness that supplied everything would quietly make
+    // those two assertions untestable.
+    notificationStore: {
+      async summariseControlQuestions() {
+        return {
+          available: true, asked: 6, delivered: 6, answered: 4, outstanding: 2,
+          lastAskedAt: '2026-09-12T11:00:00.000Z',
+        };
+      },
+    },
     controlReplies: {
       async summariseControlReplies() {
         return { available: true, total: 9, refused: 2, last7d: 4, lastAt: '2026-09-12T10:00:00.000Z' };

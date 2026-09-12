@@ -164,7 +164,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
     const [
       findings, coverage, duplicates, indexPresent, providers, homeTimeLive,
       loadPhases, safety, fuelReadings, systems, observed, learning, retention, notifyConfig,
-      discards, controlReplies, controlSettings, controlOperators,
+      discards, controlReplies, controlSettings, controlOperators, controlQuestions,
     ] = await Promise.all([
       deps.findings.summariseFindings(),
       deps.people.summariseIdentityCoverage(),
@@ -184,6 +184,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
       Promise.resolve(deps.controlReplies?.summariseControlReplies?.()).catch(() => null),
       Promise.resolve(deps.controlSettings?.getControlSettings?.()).catch(() => null),
       Promise.resolve(deps.controlOperators?.listControlOperators?.()).catch(() => null),
+      Promise.resolve(deps.notificationStore?.summariseControlQuestions?.()).catch(() => null),
     ]);
     return {
       available: true,
@@ -259,6 +260,10 @@ async function getOperationsHealth(deps = defaultDeps()) {
         // channel that obeys nobody, and it looks identical to a working one
         // from everywhere else.
         operators: Array.isArray(controlOperators) ? controlOperators.length : null,
+        // WHAT WAS ASKED, not only what was answered. Zero replies reads the
+        // same whether five questions went unanswered or none were ever sent,
+        // and those need opposite responses from whoever is reading this.
+        questions: controlQuestions || null,
         ...(controlReplies || {}),
       },
       aiModels: providers.map((p) => ({

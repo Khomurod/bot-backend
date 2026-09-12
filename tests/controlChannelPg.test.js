@@ -243,6 +243,51 @@ test('unanswered questions are counted, answered ones are not', {
   assert.equal(await store.countUnansweredQuestions(72), 1);
 });
 
+test('the questions summary distinguishes asked, delivered and answered', {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  // ZERO REPLIES READS THE SAME WHETHER FIVE QUESTIONS WENT UNANSWERED OR NONE
+  // WERE EVER SENT. This is the reading that tells those two apart from
+  // outside, which is how the control channel is verified in production.
+  const { operationalNotifications: store } = await setup(t);
+  assert.deepEqual(
+    { asked: 0, delivered: 0, answered: 0, outstanding: 0 },
+    (({ asked, delivered, answered, outstanding }) => ({ asked, delivered, answered, outstanding }))(
+      await store.summariseControlQuestions()
+    )
+  );
+
+  const one = await store.enqueueNotification({
+    noticeKey: 'needs_attention:control_question:30:r0',
+    category: 'needs_attention', chatId: '-100777', body: 'Close it?',
+    question: { findingId: 30, offeredActions: [] },
+  });
+  const two = await store.enqueueNotification({
+    noticeKey: 'needs_attention:control_question:31:r0',
+    category: 'needs_attention', chatId: '-100777', body: 'Close it?',
+    question: { findingId: 31, offeredActions: [] },
+  });
+  // An ordinary notice is not a question and must never be counted as one.
+  await store.enqueueNotification({
+    noticeKey: 'fuel:group:9', category: 'fuel', chatId: '-100777', body: 'Low',
+  });
+
+  // Asked but not yet sent: a question nobody received is not a question asked.
+  let summary = await store.summariseControlQuestions();
+  assert.equal(summary.asked, 2);
+  assert.equal(summary.delivered, 0);
+
+  await store.markNotificationDelivered(one.id, { telegramMessageId: 7001 });
+  await store.markNotificationDelivered(two.id, { telegramMessageId: 7002 });
+  await store.markNoticeAnswered(one.id, null);
+
+  summary = await store.summariseControlQuestions();
+  assert.equal(summary.delivered, 2);
+  assert.equal(summary.answered, 1);
+  assert.equal(summary.outstanding, 1);
+  assert.ok(summary.lastAskedAt);
+});
+
 test('the migration is idempotent — it runs on every boot', { skip: skipWithoutPg() }, async (t) => {
   const h = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
   const sql = fs.readFileSync(

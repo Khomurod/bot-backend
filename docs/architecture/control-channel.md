@@ -174,6 +174,26 @@ both halves against the real constraint.
 - auto-apply a remembered `approve`. That would be autopilot through a side
   door, and it stays refused in B2 as well.
 
+## Reading it from outside
+
+`/api/health` → `operations.control`, counts only — no chat id, no operator id,
+no text:
+
+```
+enabled     is the channel switched on
+operators   HOW MANY may be obeyed. Switched on with an empty allow-list is a
+            channel that obeys nobody, and it looks identical to a working one
+            from everywhere else on this endpoint.
+questions   asked · delivered · answered · outstanding · lastAskedAt
+total/refused/last7d/lastAt   the replies
+```
+
+**`questions` and the replies answer different questions, and the first was
+missing.** Zero replies reads exactly the same whether five questions went out
+and nobody answered, or none were ever sent — and those need opposite responses
+from whoever is reading this. `delivered` is the one that says the channel
+actually works: a question enqueued and never sent reached nobody.
+
 ## Tests
 
 `controlIntent`, `controlQuestion`, `controlActions`, `controlReplyHandler`,
