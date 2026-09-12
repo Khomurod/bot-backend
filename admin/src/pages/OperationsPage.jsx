@@ -34,11 +34,20 @@ const TABS = [
   { key: "systems", label: "What is running" },
 ];
 
-export default function OperationsPage() {
+/**
+ * `initialTab` lets a sidebar entry open this page on a tab other than the
+ * first — "System & AI Health" is its own nav item onto `systems`, because
+ * "is everything running?" is a question about the whole system rather than a
+ * sub-question of Needs attention. Validated here, where the key list lives.
+ */
+export default function OperationsPage({ initialTab }) {
   const [status, setStatus] = React.useState(null);
   const [preview, setPreview] = React.useState(null);
   const flash = React.useCallback((type, text) => setStatus({ type, text }), []);
-  const ops = useOperations({ flash });
+  const ops = useOperations({
+    flash,
+    initialTab: TABS.some((t) => t.key === initialTab) ? initialTab : undefined,
+  });
 
   const loadPreview = React.useCallback(async () => {
     try {

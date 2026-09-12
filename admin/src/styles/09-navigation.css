@@ -21,27 +21,8 @@
   margin-top: 0;
 }
 
-.nav-section-toggle {
-  cursor: pointer;
-  background: none;
-  border: none;
-  border-left: 3px solid transparent;
-  width: 100%;
-  text-align: left;
-  font-family: inherit;
-  transition: var(--transition);
-  border-radius: 0;
-}
-
-.nav-section-toggle:hover {
-  color: var(--text-secondary);
-  background: var(--bg-card);
-}
-
-.nav-section-arrow {
-  font-size: 10px;
-  opacity: 0.6;
-}
+/* .nav-section-toggle and .nav-section-arrow went with the collapsible ⚙️ Admin
+   drawer. Every nav section is a plain header now — see AdminSidebar.jsx. */
 
 /* ─── Quick Query Cards ─── */
 .quick-query-grid {

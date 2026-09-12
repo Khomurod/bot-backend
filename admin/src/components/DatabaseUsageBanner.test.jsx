@@ -112,3 +112,57 @@ describe("when diagnostics are unavailable", () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe("when the answer is not the shape this renders", () => {
+  /**
+   * A failed fetch was always handled; a malformed ANSWER was not. This is the
+   * ONE component App renders outside PageErrorBoundary, so a throw here is
+   * caught by nothing and React unmounts the entire admin panel — a blank page,
+   * from the warning banner. Found by an App-level test whose api stub answered
+   * `[]`: the panel rendered, then vanished.
+   */
+  /**
+   * THE ASSERTION IS THE SIBLING, NOT AN EMPTY CONTAINER.
+   *
+   * "Renders nothing" is satisfied two ways: the banner declining to render, and
+   * the banner throwing so React tears the tree down and leaves nothing behind.
+   * A test asserting an empty container passes in BOTH cases — it did, against
+   * the unguarded component, which is how nearly went in as proof of a fix it
+   * could not see. So the page around it is rendered too, and the page is what
+   * is asserted: it survives only if the banner did not throw. That is also the
+   * actual production consequence, since nothing catches this one.
+   */
+  for (const [what, answer] of [
+    ["an array where an object was expected", []],
+    ["a 200 carrying someone else's error body", { error: "Bad Gateway" }],
+    ["a level with none of the numbers", { level: "critical" }],
+    ["a body missing only `queries`", {
+      level: "warning", percent: 82, gigabytes: 4.1,
+      budgetGigabytes: 5, monthKey: "2026-09",
+    }],
+    ["null", null],
+    ["a string", "critical"],
+  ]) {
+    test(`${what}: the banner stays quiet and the panel stays up`, async () => {
+      spy.mockResolvedValue(answer);
+      render(
+        <div>
+          <DatabaseUsageBanner />
+          <p>the admin panel</p>
+        </div>,
+      );
+      await waitFor(() => expect(spy).toHaveBeenCalled());
+      // Still there — so nothing threw past a boundary that does not exist.
+      expect(screen.getByText("the admin panel")).toBeTruthy();
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+  }
+
+  test("a field it does not use cannot make it vanish", async () => {
+    // The guard is a whitelist of what is RENDERED, not a schema of what is
+    // sent, so the server can add a field without the banner going quiet.
+    spy.mockResolvedValue(usage({ percent: 91, level: "high", somethingNew: { deep: 1 } }));
+    render(<DatabaseUsageBanner />);
+    expect(await screen.findByRole("status")).toBeTruthy();
+  });
+});

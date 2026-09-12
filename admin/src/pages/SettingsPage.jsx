@@ -24,8 +24,19 @@ const BolPodTab = lazy(() => import("./settings/BolPodTab"));
 const AiTab = lazy(() => import("./settings/AiTab"));
 const RetiredLeftoversTab = lazy(() => import("./settings/RetiredLeftoversTab"));
 
-export default function SettingsPage() {
-  const [tab, setTab] = useState("location");
+const TAB_KEYS = [
+  "location", "ringcentral", "groups", "gmaps",
+  "samsara", "board", "bolpod", "ai", "leftovers",
+];
+
+/**
+ * `initialTab` is which tab to OPEN ON, not which tab is shown — the buttons
+ * below still own that afterwards. Three sidebar entries point here (Integrations,
+ * Dispatcher Board, AI & Autonomy) because "Settings" alone does not say which
+ * settings; an unrecognised value opens the first tab rather than a blank page.
+ */
+export default function SettingsPage({ initialTab }) {
+  const [tab, setTab] = useState(() => (TAB_KEYS.includes(initialTab) ? initialTab : "location"));
   return (
     <div>
       <div className="page-header">
