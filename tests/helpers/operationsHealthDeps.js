@@ -20,7 +20,11 @@ function summaryDeps(overrides = {}) {
       }),
     },
     findings: { async summariseFindings() { return { info: 1, warning: 2, serious: 0, total: 3 }; } },
-    people: { async summariseIdentityCoverage() { return { people: 200, activeDriverGroups: 205, groupsWithoutPerson: 0, openUnits: 190, unstamped: { roadHistory: 0, requests: 0, mileage: 0 } }; } },
+    people: {
+      async summariseTelegramIdentities() {
+        return { available: true, linked: 71, people: 70, closed: 2 };
+      },
+      async summariseIdentityCoverage() { return { people: 200, activeDriverGroups: 205, groupsWithoutPerson: 0, openUnits: 190, unstamped: { roadHistory: 0, requests: 0, mileage: 0 } }; } },
     integrity: { async countDuplicateOpenStays() { return []; }, async indexExists() { return true; } },
     observations: {
       async gatherAllObservations() {

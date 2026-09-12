@@ -199,6 +199,29 @@ test('the summary never carries a name, a title or a chat id', async () => {
   }
 });
 
+test('how many drivers are recognisable from a messaging account — counts, no ids', async () => {
+  const s = await getOperationsHealth(summaryDeps());
+  assert.equal(s.identity.accounts.linked, 71);
+  assert.equal(s.identity.accounts.people, 70);
+  // The key is NOT named for the platform: the test above bans that string from
+  // this payload outright, and a blunt rule with no exceptions is what stops an
+  // account id slipping through later.
+  assert.ok(!JSON.stringify(s.identity).toLowerCase().includes('telegram'));
+});
+
+test('an identity-account read that fails does not take the block down', async () => {
+  const s = await getOperationsHealth(summaryDeps({
+    people: {
+      async summariseIdentityCoverage() {
+        return { people: 1, activeDriverGroups: 1, groupsWithoutPerson: 0, openUnits: 1, unstamped: { roadHistory: 0, requests: 0, mileage: 0 } };
+      },
+      async summariseTelegramIdentities() { throw new Error('no such table'); },
+    },
+  }));
+  assert.equal(s.available, true);
+  assert.equal(s.identity.accounts, null);
+});
+
 test('before the first sweep the block is zeros and nulls, not an error', async () => {
   const s = await getOperationsHealth(summaryDeps({
     consistency: { getConsistencyStatus: () => ({ running: true, lastRun: null, lastCorrections: null }) },

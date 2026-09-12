@@ -91,7 +91,8 @@ async function loadSnapshot(db = defaultDb) {
  */
 async function loadLayerSnapshot(db) {
   const [
-    people, personGroups, units, fuelAlerts, teamDrivers, mileageProgress,
+    people, personGroups, units, fuelAlerts, groupMembers, botUsers, telegramIdentities,
+    teamDrivers, mileageProgress,
     routeAssignments, personGroupHistory, notificationSettings,
   ] = await Promise.all([
     db.query('SELECT id, display_name, merged_into_person_id FROM driver_people'),
@@ -105,6 +106,15 @@ async function loadLayerSnapshot(db) {
          FROM driver_units WHERE ended_at IS NULL`
     ),
     db.query(`SELECT id, group_id, status, created_at FROM fuel_stop_alerts WHERE status = 'watching'`),
+    // Who the bot has seen in each chat, what role it guessed for them, and
+    // which accounts are already spoken for. The last two are wrapped: a deploy
+    // that has not applied 0049 costs the Telegram-identity checks and not the
+    // whole sweep.
+    db.query('SELECT group_id, telegram_user_id, username, first_name, last_name FROM group_members'),
+    db.query('SELECT telegram_user_id, source FROM bot_users').catch(() => ({ rows: [] })),
+    db.query(
+      'SELECT person_id, telegram_user_id, ended_at FROM driver_person_telegram_identities'
+    ).catch(() => ({ rows: [] })),
     db.query(
       `SELECT id, team_id, group_id, driver_profile_id, person_id, driver_name, active
          FROM dispatch_team_drivers WHERE active = TRUE`
@@ -127,6 +137,12 @@ async function loadLayerSnapshot(db) {
     personGroupHistory: personGroupHistory.rows,
     units: units.rows,
     fuelAlerts: fuelAlerts.rows,
+    groupMembers: groupMembers.rows,
+    botUsers: botUsers.rows,
+    telegramIdentities: telegramIdentities.rows,
+    linkedTelegramUserIds: new Set(
+      telegramIdentities.rows.filter((r) => r.ended_at == null).map((r) => String(r.telegram_user_id))
+    ),
     teamDrivers: teamDrivers.rows,
     mileageProgress: mileageProgress.rows,
     routeAssignments: routeAssignments.rows,

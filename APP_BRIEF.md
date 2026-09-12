@@ -432,6 +432,22 @@ repository-wide working rules. The highest-consequence items:
   applies the same correction twice. See
   `docs/architecture/control-channel.md`.
 
+- **One human is behind one Telegram account at a time, and a username is never
+  evidence.** `driver_person_telegram_identities` records the account against
+  the PERSON rather than the chat, so it survives a chat being recreated — and
+  `uniq_person_telegram_open_account` makes "two people own this account"
+  unrepresentable. A row is closed, never deleted: an account that moves owners
+  leaves a trail. Linking is deliberately mean — a single-driver chat, exactly
+  one candidate after bots, already-linked accounts and STAFF are removed (a
+  dispatcher is in every driver's chat; three or more driver chats means not a
+  driver), and that candidate's name must agree. A username is reassignable and
+  is recorded as a snapshot only. A team chat is never resolved automatically,
+  no account id reaches a finding title or a notice, and the apply re-reads the
+  room under lock — somebody joining turns "the only candidate" into a
+  question. It fills `driver_profiles.telegram_user_id` only when that column is
+  NULL, because a person who typed one there decided something. See
+  `docs/architecture/telegram-identity.md`.
+
 ### Code-structure rules (enforced by CI)
 
 The 500-line cap, the two lint gates a build is not, the façade rule and the

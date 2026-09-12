@@ -25,6 +25,43 @@ const GROUP_KEYED_TABLES = [
 async function findPersonByTelegramUserId(telegramUserId, { excludeGroupId = null } = {}, client = null) {
   const run = client ? client.query.bind(client) : query;
   if (telegramUserId == null || telegramUserId === '') return null;
+
+  // THE IDENTITY TABLE FIRST. It records the account against the PERSON, so it
+  // keeps answering after a chat is recreated — which is exactly when the
+  // profile column below loses the answer. `excludeGroupId` does not apply: it
+  // exists to stop a chat vouching for itself, and a person-level link is not
+  // about any one chat.
+  //
+  // A missing table (a deploy that has not applied 0049) falls through to the
+  // profile column, which is where this answer used to live.
+  //
+  // UNDER A SAVEPOINT WHEN THERE IS A TRANSACTION, and that is not caution for
+  // its own sake: in PostgreSQL a failed statement aborts the whole
+  // transaction, so a bare try/catch here would swallow the error and then
+  // every later query on the same client would fail with "current transaction
+  // is aborted" — turning a missing table into a broken correction. Rolling
+  // back to the savepoint undoes only the failed read.
+  //
+  // ONLY `42P01` (undefined table) is swallowed. A permission problem or a
+  // dead connection is real, and hiding it would answer "no such person" about
+  // a database we simply could not read.
+  if (client) await client.query('SAVEPOINT person_by_telegram');
+  try {
+    const linked = await run(
+      `SELECT COALESCE(p.merged_into_person_id, p.id) AS person_id
+         FROM driver_person_telegram_identities t
+         JOIN driver_people p ON p.id = t.person_id
+        WHERE t.telegram_user_id = $1 AND t.ended_at IS NULL
+        LIMIT 1`,
+      [String(telegramUserId)]
+    );
+    if (client) await client.query('RELEASE SAVEPOINT person_by_telegram');
+    if (linked.rows[0]) return Number(linked.rows[0].person_id);
+  } catch (err) {
+    if (client) await client.query('ROLLBACK TO SAVEPOINT person_by_telegram');
+    if (!err || err.code !== '42P01') throw err;
+  }
+
   const res = await run(
     `SELECT COALESCE(p.merged_into_person_id, p.id) AS person_id
        FROM driver_profiles dp
@@ -166,7 +203,7 @@ async function stampAllFromAssociations(client = null) {
 async function getPersonIdentity(personId) {
   const person = await query('SELECT * FROM driver_people WHERE id = $1', [personId]);
   if (!person.rows[0]) return null;
-  const [groups, units, mergedFrom, boardRows] = await Promise.all([
+  const [groups, units, mergedFrom, boardRows, telegramRows] = await Promise.all([
     query(
       `SELECT pg.id, pg.group_id, pg.started_at, pg.ended_at, pg.association_source, pg.confidence,
               g.group_name, g.active AS group_active, g.telegram_group_id
@@ -193,6 +230,17 @@ async function getPersonIdentity(personId) {
               link_source, link_confidence, present, last_seen_at
          FROM dispatch_board_rows WHERE person_id = $1
         ORDER BY present DESC, last_seen_at DESC`,
+      [personId]
+    ).catch(() => ({ rows: [] })),
+    // Which Telegram accounts this person has held. Wrapped for the same
+    // reason the board read above is: a deploy that has not applied 0049 must
+    // not take the person panel down.
+    query(
+      `SELECT telegram_user_id, username_at_link, link_source, confidence,
+              started_at, ended_at, ended_reason
+         FROM driver_person_telegram_identities
+        WHERE person_id = $1
+        ORDER BY ended_at IS NULL DESC, started_at DESC, id DESC`,
       [personId]
     ).catch(() => ({ rows: [] })),
   ]);
@@ -230,6 +278,19 @@ async function getPersonIdentity(personId) {
     // NO PHONE NUMBER. The board row carries one and this panel has no use for
     // it; publishing it here would put a driver's number on a screen that
     // exists to answer "is this the right person".
+    // THE ACCOUNT ID IS SHOWN. This panel exists to answer "is this the right
+    // person", an administrator is already authenticated to see it, and the id
+    // is what they check against Telegram. It never leaves through /api/health
+    // or a notice.
+    telegramAccounts: telegramRows.rows.map((r) => ({
+      telegramUserId: String(r.telegram_user_id),
+      username: r.username_at_link || null,
+      linkSource: r.link_source,
+      confidence: r.confidence == null ? null : Number(r.confidence),
+      startedAt: r.started_at,
+      endedAt: r.ended_at,
+      endedReason: r.ended_reason || null,
+    })),
     board: boardRows.rows.map((r) => ({
       rowKey: r.row_key,
       truck: r.truck_norm,
