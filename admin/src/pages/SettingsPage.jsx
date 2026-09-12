@@ -8,11 +8,17 @@ import React, { Suspense, lazy, useState } from "react";
  * hint and never the raw value. Leaving a key field blank on Save keeps the
  * stored value.
  *
- * Notifications and Bot Settings are NOT integrations — nothing to
- * authenticate — but they are configuration, and they were each a top-level
- * sidebar entry or buried inside another tab before. Notifications holds where
- * Wenze's own notices go and the channel it can be answered on; Bot Settings
- * holds how the bot behaves in chats it is already in.
+ * Notifications, Auto Reactions and Bot Group Access are NOT integrations —
+ * nothing to authenticate — but they are configuration, and they were each a
+ * top-level sidebar entry or buried inside another tab before.
+ *
+ * AUTO REACTIONS AND GROUP ACCESS ARE TWO TABS, NOT ONE "BOT SETTINGS" TAB WITH
+ * TWO PANELS. The grouped version was written first and reverted: a single page
+ * key for two screens meant a held `#group_access` link resolved to the group
+ * and then opened the OTHER one, silently and indistinguishably from the
+ * `#auto_reactions` link. One key per screen is what makes a link mean
+ * something, and a tab is already lazy and already shown one at a time, so the
+ * grouping bought nothing the tab bar was not already doing.
  *
  * The Samsara tab is ONE integration rather than one screen per moving part:
  * the connection, the safety-event switches, missing-video recovery and the
@@ -29,12 +35,13 @@ const DispatcherBoardTab = lazy(() => import("./settings/DispatcherBoardTab"));
 const BolPodTab = lazy(() => import("./settings/BolPodTab"));
 const AiTab = lazy(() => import("./settings/AiTab"));
 const NotificationsTab = lazy(() => import("./settings/NotificationsTab"));
-const BotSettingsTab = lazy(() => import("./settings/BotSettingsTab"));
+const AutoReactionsPanel = lazy(() => import("./settings/bot/AutoReactionsPanel"));
+const GroupAccessPanel = lazy(() => import("./settings/bot/GroupAccessPanel"));
 const RetiredLeftoversTab = lazy(() => import("./settings/RetiredLeftoversTab"));
 
 const TAB_KEYS = [
   "location", "ringcentral", "groups", "gmaps", "samsara",
-  "board", "bolpod", "ai", "notifications", "bot", "leftovers",
+  "board", "bolpod", "ai", "notifications", "reactions", "access", "leftovers",
 ];
 
 /**
@@ -61,7 +68,8 @@ export default function SettingsPage({ initialTab }) {
         <button className={`btn ${tab === "bolpod" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("bolpod")}>📄 BOL / POD</button>
         <button className={`btn ${tab === "ai" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("ai")}>🤖 AI</button>
         <button className={`btn ${tab === "notifications" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("notifications")}>🔔 Notifications</button>
-        <button className={`btn ${tab === "bot" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("bot")}>🛠️ Bot Settings</button>
+        <button className={`btn ${tab === "reactions" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("reactions")}>😀 Auto Reactions</button>
+        <button className={`btn ${tab === "access" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("access")}>🔍 Bot Group Access</button>
         <button className={`btn ${tab === "leftovers" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("leftovers")}>🧹 Retired Leftovers</button>
       </div>
       <Suspense fallback={<div style={{ padding: 20, color: "#94a3b8" }}>Loading…</div>}>
@@ -74,7 +82,8 @@ export default function SettingsPage({ initialTab }) {
         {tab === "bolpod" && <BolPodTab />}
           {tab === "ai" && <AiTab />}
         {tab === "notifications" && <NotificationsTab />}
-        {tab === "bot" && <BotSettingsTab />}
+        {tab === "reactions" && <AutoReactionsPanel />}
+        {tab === "access" && <GroupAccessPanel />}
         {tab === "leftovers" && <RetiredLeftoversTab />}
       </Suspense>
     </div>
