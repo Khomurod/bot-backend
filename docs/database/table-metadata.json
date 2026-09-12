@@ -240,6 +240,13 @@
       "sourceOfTruth": "The Telegram group, as of `captured_at`. An edit updates `text` and the parse; `captured_at` records when Wenze first saw it and is never moved.",
       "danger": "PAYMENT DATA. This is the one place the group\u0027s text is meant to live \u2014 it is never copied into the application log, and the settings API answers with counts only. Capture is idempotent by UNIQUE (chat_id, message_id), so a Telegram redelivery is a no-op rather than a duplicate."
     },
+    "finance_documents": {
+      "purpose": "The attachments posted in the finance group, and a QUEUE for reading them. `status` / `attempt_count` / `next_attempt_at` / `processing_started_at` are the repository\u0027s durable-job shape: one row is claimed with FOR UPDATE SKIP LOCKED, attempts count AT CLAIM TIME so a crash loop stays bounded, and a failure carries an exact next-due timestamp. `extracted` holds what was read out of that one document and feeds nothing else.",
+      "status": "active",
+      "service": "bot (capture enqueues, services/finance/documentReader.js reads)",
+      "sourceOfTruth": "Telegram, by `file_unique_id` \u2014 `file_id` is per-bot and reissuable, which is why the uniqueness key uses the other one.",
+      "danger": "PAYMENT DATA. `failed` (could not FETCH it, retries on a ladder) and `needs_review` (could not READ it well enough, never retries \u2014 a person is what it needs) are different answers and must never be merged; AI being unavailable is `needs_review`. NO COLUMN HOLDS THE FILE OR ITS URL: Telegram\u0027s download link embeds the bot token, so there is deliberately nowhere here it could go."
+    },
     "finance_moneycodes": {
       "purpose": "What the parser read out of a message with certainty \u2014 one row per code, only ever from a `parsed` message. `duplicate_of_id` + `duplicate_reason` record a repeat; `same_code` is a fact (a code is what gets spent) while `same_amount_recipient_window` is a suspicion (two $500 advances to one driver in a day is sometimes exactly right), and paired CHECKs keep the claim from being written half-formed.",
       "status": "active",

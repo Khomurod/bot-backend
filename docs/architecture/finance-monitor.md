@@ -128,6 +128,94 @@ creates nothing.
 
 ---
 
+## 4a. Attachments are read one at a time, in the background
+
+A good part of what the group says is an attachment — a receipt, an invoice, a
+screenshot of a transfer — and the text beside one is often just "here". So a
+ledger that only reads text has a hole exactly where the evidence is.
+
+**Capture queues; it never reads.** `queueDocumentIfAny` writes one
+`finance_documents` row and pokes the reader. It runs inside Telegram's message
+pipeline, so downloading a file there would hold that pipeline open for as long
+as the download took, on every finance message, with every driver's message
+waiting behind it. `tests/financeDocumentIntake.test.js` asserts structurally
+that capture never reaches for `getFileLink`, a PDF parser or a model.
+
+**The reader is strictly sequential, and that is a memory budget.** A document
+is held whole in memory while it is read, on a 512MB instance shared with the
+bot, the HTTP server and thirty other workers. So the claim takes exactly one
+row (`FOR UPDATE SKIP LOCKED … LIMIT 1`), the buffer is dropped before the next
+claim, and a drain stops after `MAX_PER_DRAIN` (5).
+`tests/financeDocumentReader.test.js` counts concurrency and asserts it never
+exceeds one — because "we only call it once" survives exactly until somebody
+adds a `Promise.all`, and then the symptom is an out-of-memory kill with no
+failing test.
+
+**Attempts are counted when a row is TAKEN, not when it fails.** A worker that
+crashes mid-read never reaches its failure handler, so counting on the way out
+lets a poisoned row be retried forever. A claim abandoned by a crash is released
+by a sweep after 15 minutes with its attempt already spent.
+
+### `failed` and `needs_review` are different answers
+
+| Status | What happened | Retried? |
+|---|---|---|
+| `failed` | Wenze could not **get** the bytes — a download error, a timeout, a 502 | Yes: 5 → 15 → 30 → 60 → 60 minutes, then it stops asking |
+| `needs_review` | Wenze got it and could not read it well enough to be relied on | No. Retrying the same bytes through the same reader is pointless; a **person** is what it needs |
+
+**AI being unavailable is `needs_review`, never `failed`.** A provider outage is
+not the document's fault, it must not consume the retry budget, and the document
+is intact — somebody can open it right now.
+
+`read` requires an amount **and** a date to have actually been printed. A record
+with neither makes the table look fuller than it is, which is worse than an
+honest "a person should look at this".
+
+### Two refusals that happen before anything is fetched
+
+- **Too large** — decided from the size Telegram *already declared*. A cap
+  enforced after the download has paid the cost it exists to avoid.
+- **Unsupported** — a mime type with no path here. Feeding a `.zip` to a PDF
+  parser and then to a vision model is two failures and a bill. A *photo* is
+  always allowed whatever its declared type says, because Telegram sends photos
+  with no mime type at all.
+
+The size is then refused a second time **while the bytes arrive**, because a
+declared length can be wrong or absent.
+
+### What the model is asked, and what is taken back
+
+A PDF with a real text layer (≥ 200 characters) is read as **text** — cheaper,
+exact, and it never hallucinates a digit. A scan or a photo goes to **vision**,
+which reads it far better than OCR does. `extractTextFromPdf` is called with
+`allowOcr: false`, so **tesseract.js is never even required** on this path;
+`tests/pdfTextExtraction.test.js` asserts that against the require cache, since
+a test on the returned text would pass either way.
+
+The document's text and its caption are **fenced as untrusted data** between
+`<document_text>` markers, with the markers stripped out of the content first so
+the text cannot close its own fence. A PDF can contain a sentence addressed to
+the model; a caption certainly can.
+
+The answer must pass a schema validator — the router treats a failure exactly
+like a provider timeout and moves to the next provider — and only the declared
+keys cross into the application. A key a model invents is dropped rather than
+stored in a JSONB column in a payments table.
+
+**It is asked for what is printed, not for a conclusion.** No total, no report
+figure and no duplicate decision ever comes from a document reading; those are
+counted in SQL from the captured text. `docs/architecture/ai-decisions.md`
+records the verdict.
+
+### The notice
+
+Every drain that ends with unread documents sends **one** `finance` notice —
+not one per document. It carries counts and nothing else: no file name, no
+caption, nothing extracted. A notification lands in a group chat's permanent
+history.
+
+---
+
 ## 5. Idempotency belongs to the database
 
 Telegram redelivers, and a restart replays. `captureMessage` inserts with
@@ -208,10 +296,9 @@ npm test --prefix admin                              # FinanceTab: the checkbox 
 
 - **The parser is provisional.** It is tightened from real captures, in its own
   PR, with `PARSER_VERSION` bumped — never by editing rows.
-- **Documents** (`capture_documents`, `max_document_mb`, `ai_reading_enabled`)
-  have columns and no reader yet. Stage D2 adds the sequential background
-  reader; until then the columns are inert and the settings screen does not
-  offer them.
+- **What a document says is never counted.** The money code that counts is the
+  one read deterministically out of the message text. A document reading is
+  evidence beside it, in that document's own row, and nothing sums it.
 - **The weekly report** (`weekly_report_enabled`, `weekly_report_chat_id`,
   `enabled_at`) is Stage D3. `enabled_at` is stamped on the first enable and
   never moved, because the report has to tell *"no money codes that week"* from
