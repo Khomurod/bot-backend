@@ -47,6 +47,7 @@ const { parseIntent } = require('../../lib/control/intent');
 const { executeOffered } = require('./actions');
 const { readReplyWithAi } = require('./aiIntent');
 const { shouldRemember, rememberAnswerFor } = require('./memory');
+const defaultEngineering = require('../../database/engineeringRequests');
 const { replyHintFor } = require('../../lib/control/askable');
 
 function defaultDeps() {
@@ -60,6 +61,7 @@ function defaultDeps() {
     readReplyWithAi,
     executeOffered,
     rememberAnswerFor,
+    fileRequest: defaultEngineering.fileRequest,
     notify: defaultSend.notify,
     // Injected rather than imported so a test never reaches the outbox, and so
     // this module has no opinion about how a message is sent.
@@ -157,12 +159,27 @@ async function handleControlReply(reply, deps = defaultDeps()) {
     }
 
     if (intent.intent === 'engineering_request') {
-      // B1 records it and says so plainly. The engineering_requests table and
-      // the finding that tracks it arrive in B3; promising more than that here
-      // would be a promise the code does not keep.
+      // A COMPLAINT ABOUT THE SOFTWARE BECOMES A ROW, AND ONLY A ROW. The ack
+      // names its number so the owner can see it went somewhere, and says
+      // plainly that nothing in the code changed — because nothing did, and
+      // nothing in this application can. See
+      // `database/engineeringRequests.js`: there is no column a patch could
+      // live in.
       await deps.replies.finaliseReply(claim.id, { outcome: 'engineering_request', intent });
-      await say(deps, reply, 'Noted as something for a person to look at. Nothing in the system changed.');
-      return { handled: true, outcome: 'engineering_request' };
+      const filed = await deps.fileRequest({
+        source: 'control_reply',
+        replyId: claim.id,
+        findingId: notice.findingId,
+        requestedBy: `telegram:${telegramUserId}`,
+        requestText: text,
+      }).catch(() => null);
+      await say(deps, reply, filed?.request
+        ? `Noted as request #${filed.request.id} for a person to build. Nothing in the system changed.`
+        : 'Noted for a person to look at. Nothing in the system changed.');
+      return {
+        handled: true, outcome: 'engineering_request',
+        requestId: filed?.request?.id ?? null,
+      };
     }
     // THIS REPLY IS THE REASON WE ASKED FOR. When the question they are
     // answering was Wenze's own "why?", their sentence IS the answer — it is not

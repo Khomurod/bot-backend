@@ -1,6 +1,7 @@
 import React from "react";
 
 import * as api from "../../api";
+import EngineeringRequestsCard from "./EngineeringRequestsCard";
 
 /**
  * What Wenze has noticed about its own mistakes.
@@ -27,6 +28,8 @@ import * as api from "../../api";
 const KIND_LABEL = {
   reverted_correction: "A correction that keeps being undone",
   recruiting_refusal: "Answers to candidates that keep being refused",
+  contradicted_decisions: "A check whose decisions keep not holding up",
+  repeated_owner_answer: "Something you keep answering the same way",
 };
 
 const STATUS = {
@@ -206,6 +209,12 @@ export default function LearningTab({ flash }) {
           busy={busy}
         />
       ))}
+
+      {/* THE OTHER HALF OF LEARNING, and the one nothing in this application can
+          act on. A suggestion about a setting has a button; a request to change
+          the software has a person. They belong on the same screen because they
+          arrive from the same place — somebody saying Wenze got it wrong. */}
+      <EngineeringRequestsCard flash={flash} />
     </div>
   );
 }

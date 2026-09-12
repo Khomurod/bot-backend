@@ -55,6 +55,7 @@ const { createCorrectionsRouter } = require('./operations/correctionsRoutes');
 const { createIdentityRouter } = require('./operations/identityRoutes');
 const { createRetentionRouter } = require('./operations/retentionRoutes');
 const { createLearningRouter } = require('./operations/learningRoutes');
+const { createEngineeringRouter } = require('./operations/engineeringRoutes');
 const { createSystemsRouter } = require('./operations/systemsRoutes');
 
 /**
@@ -69,6 +70,7 @@ function createOperationsRouter({ authMiddleware, applyMiddleware }) {
   router.use(createIdentityRouter({ authMiddleware, applyMiddleware }));
   router.use(createRetentionRouter({ authMiddleware }));
   router.use(createLearningRouter({ authMiddleware, applyMiddleware }));
+  router.use(createEngineeringRouter({ authMiddleware, applyMiddleware }));
   router.use(createSystemsRouter({ authMiddleware }));
   return router;
 }

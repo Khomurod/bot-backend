@@ -18,7 +18,7 @@ const { handleControlReply } = require('../services/control/replyHandler');
 function makeDeps(overrides = {}) {
   const calls = {
     noticeLookups: 0, recorded: [], finalised: [], acks: [], executed: [], answered: [],
-    aiReads: [], clarifications: [], remembered: [],
+    aiReads: [], clarifications: [], remembered: [], requests: [],
   };
   const deps = {
     calls,
@@ -58,6 +58,10 @@ function makeDeps(overrides = {}) {
     },
     notify: async (notice) => { calls.clarifications.push(notice); return { recorded: true }; },
     rememberAnswerFor: async (args) => { calls.remembered.push(args); return { id: 9 }; },
+    fileRequest: async (args) => {
+      calls.requests.push(args);
+      return { request: { id: 12, ...args }, created: true };
+    },
     executeOffered: async (args) => {
       calls.executed.push(args);
       return { outcome: 'applied', message: 'Done.', correctionId: 55, decisionId: 66 };
@@ -251,12 +255,27 @@ test('"yes, always" IS recorded — but the record is never acted on by itself',
   assert.strictEqual(actsFromMemory('approve'), false);
 });
 
-test('a complaint about the question changes nothing and says so', async () => {
+test('A COMPLAINT ABOUT THE SOFTWARE BECOMES A ROW FOR A PERSON, AND ONLY A ROW', async () => {
   const deps = makeDeps();
   const got = await handleControlReply({ ...REPLY, text: 'this is a bug' }, deps);
   assert.strictEqual(got.outcome, 'engineering_request');
-  assert.strictEqual(deps.calls.executed.length, 0);
+  assert.strictEqual(deps.calls.executed.length, 0, 'nothing was applied to the fleet');
+  assert.strictEqual(deps.calls.requests.length, 1);
+  assert.strictEqual(deps.calls.requests[0].source, 'control_reply');
+  assert.strictEqual(deps.calls.requests[0].requestedBy, 'telegram:2117922421');
+  assert.strictEqual(deps.calls.requests[0].requestText, 'this is a bug');
+  // The number is the point: without it the owner has no way to see it went
+  // anywhere, and "noted" reads like being humoured.
+  assert.match(deps.calls.acks[0].text, /#12/);
   assert.match(deps.calls.acks[0].text, /nothing in the system changed/i);
+});
+
+test('a request that could not be filed still gets an honest answer', async () => {
+  const deps = makeDeps({ fileRequest: async () => { throw new Error('table missing'); } });
+  const got = await handleControlReply({ ...REPLY, text: 'this is a bug' }, deps);
+  assert.strictEqual(got.outcome, 'engineering_request');
+  assert.match(deps.calls.acks[0].text, /nothing in the system changed/i);
+  assert.ok(!/#/.test(deps.calls.acks[0].text), 'and does not invent a number');
 });
 
 test('a failure anywhere below leaves the message to the rest of the pipeline', async () => {

@@ -329,3 +329,81 @@ test('all three signals coexist without crowding each other out', () => {
     ['contradicted_decisions', 'recruiting_refusal', 'reverted_correction']
   );
 });
+
+/**
+ * The owner saying the same thing three times is the closest this application
+ * ever gets to being told a business rule. What it may CONCLUDE from that is
+ * the part worth pinning.
+ */
+const { groupOwnerAnswers, describeOwnerAnswerGroup } = require('../lib/operations/learning');
+
+function memory(over = {}) {
+  return {
+    checkKey: 'board.truck_disagrees_with_profile',
+    subjectType: 'group',
+    subjectId: '49',
+    answerAction: 'dismiss',
+    answerText: 'the board is always a day behind',
+    timesApplied: 2,
+    revokedAt: null,
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+    ...over,
+  };
+}
+
+const ANSWER_OPTS = { nowMs: Date.now(), answerWindowDays: 30, minOwnerAnswers: 3 };
+
+test('THREE DIFFERENT CASES IS A PATTERN; one case answered three times is not', () => {
+  // The same subject over and over is one situation that keeps changing, and
+  // saying "you keep answering this" about it would be wrong.
+  const same = [memory(), memory(), memory(), memory()];
+  assert.deepStrictEqual(groupOwnerAnswers(same, ANSWER_OPTS), []);
+
+  const spread = [memory({ subjectId: '1' }), memory({ subjectId: '2' }), memory({ subjectId: '3' })];
+  const groups = groupOwnerAnswers(spread, ANSWER_OPTS);
+  assert.strictEqual(groups.length, 1);
+  assert.strictEqual(groups[0].count, 3);
+});
+
+test('a revoked or old answer is not evidence of anything', () => {
+  const rows = [
+    memory({ subjectId: '1', revokedAt: new Date().toISOString() }),
+    memory({ subjectId: '2', createdAt: new Date(Date.now() - 90 * 86400000).toISOString() }),
+    memory({ subjectId: '3' }),
+  ];
+  assert.deepStrictEqual(groupOwnerAnswers(rows, ANSWER_OPTS), []);
+});
+
+test('yes and no are counted separately — they mean opposite things', () => {
+  const rows = [
+    memory({ subjectId: '1' }), memory({ subjectId: '2' }), memory({ subjectId: '3' }),
+    memory({ subjectId: '4', answerAction: 'approve' }),
+    memory({ subjectId: '5', answerAction: 'approve' }),
+    memory({ subjectId: '6', answerAction: 'approve' }),
+  ];
+  const kinds = groupOwnerAnswers(rows, ANSWER_OPTS).map((g) => g.answerAction).sort();
+  assert.deepStrictEqual(kinds, ['approve', 'dismiss']);
+});
+
+test('a repeated NO may propose switching automation OFF', () => {
+  const s = describeOwnerAnswerGroup({
+    checkKey: 'board.truck_disagrees_with_profile', answerAction: 'dismiss',
+    count: 3, answers: ['the board is a day behind'], applied: 4, subjects: ['group:1'],
+  });
+  assert.strictEqual(s.kind, 'repeated_owner_answer');
+  assert.strictEqual(s.applyAction.action, 'disable_auto_apply');
+  assert.match(s.lines.join(' '), /closed 4 further cases/);
+});
+
+test('A REPEATED YES PROPOSES NOTHING — there is no enable_auto_apply, ever', () => {
+  // A machine proposing that it be trusted with more is the exact shape nobody
+  // should build, however many confirmations sit in front of it. The owner
+  // turns autopilot on from the Automation screen, where the permission shows.
+  const s = describeOwnerAnswerGroup({
+    checkKey: 'identity.stale_unit_assignment', answerAction: 'approve',
+    count: 5, answers: [], applied: 0, subjects: ['group:1'],
+  });
+  assert.strictEqual(s.applyAction, null);
+  assert.match(s.suggestion, /Automation is where you can/i);
+  assert.match(s.lines.join(' '), /not a standing permission/i);
+});

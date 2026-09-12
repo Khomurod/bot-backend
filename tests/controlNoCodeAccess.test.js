@@ -144,3 +144,61 @@ test('the AI reading may only CHOOSE — it never names a value that lands in a 
     );
   }
 });
+
+/**
+ * THE ENGINEERING-REQUEST TABLE IS THE END OF THE ROAD, not a staging area.
+ *
+ * An owner typing "just fix the code" produces a row and nothing else. The
+ * guarantee is kept by the schema having nowhere to put a patch, so this reads
+ * the migration itself: a column named for a diff, a file, a branch or a
+ * command is the shape somebody would add on the way to executing one, and it
+ * should fail a test the day it appears rather than be noticed later.
+ */
+test('NO COLUMN IN engineering_requests COULD HOLD CODE OR A PATH', () => {
+  const sql = fs.readFileSync(
+    path.join(ROOT, 'database', 'migrations', '0051_engineering_requests.sql'), 'utf8'
+  );
+  const body = sql.slice(sql.indexOf('CREATE TABLE'), sql.indexOf('CREATE UNIQUE INDEX'));
+  for (const banned of [
+    /\bpatch\b/i, /\bdiff\b/i, /\bfile_path\b/i, /\bfilename\b/i,
+    /\bbranch\b/i, /\bcommand\b/i, /\bscript\b/i, /\bsource_code\b/i,
+  ]) {
+    assert.ok(!banned.test(body),
+      `0051 defines something matching ${banned} — the bot does not edit source, and a `
+      + 'column that could hold one is how that stops being true');
+  }
+});
+
+test('the engineering path reaches no filesystem, process or network either', () => {
+  for (const rel of [
+    'database/engineeringRequests.js',
+    'services/operations/checks/engineering.js',
+    'server/routes/operations/engineeringRoutes.js',
+  ]) {
+    const source = codeOnly(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
+    for (const mod of requiresIn(source)) {
+      assert.ok(!BANNED_MODULES.includes(mod), `${rel} imports "${mod}"`);
+    }
+    for (const pattern of [/\bexecSync?\b/, /\bspawnSync?\b/, /\beval\b/, /new\s+Function\b/]) {
+      assert.ok(!pattern.test(source), `${rel} matches ${pattern}`);
+    }
+  }
+});
+
+test('the check for an open request proposes nothing — there is no automatic answer', () => {
+  // The resolution is a person writing code. An action here would mean
+  // inventing one, and an invented action would be the bot acting on a request
+  // to change itself.
+  const { runEngineeringChecks } = require('../services/operations/checks/engineering');
+  const findings = runEngineeringChecks({
+    now: new Date(),
+    engineeringRequests: [{ id: 1, requestText: 'this is wrong', createdAt: new Date().toISOString(), source: 'control_reply' }],
+  });
+  assert.strictEqual(findings.length, 1);
+  assert.strictEqual(findings[0].proposedChange, null);
+  assert.strictEqual(findings[0].tier, 'warning');
+
+  const { CHECK_TO_ACTION } = require('../services/operations/corrections/actions');
+  assert.strictEqual(CHECK_TO_ACTION['engineering.request_open'], undefined,
+    'no correction may be registered for it');
+});

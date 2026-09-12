@@ -452,3 +452,17 @@ test('a control channel that cannot be read does not take the endpoint down', as
   assert.equal(s.control.enabled, null);
   assert.equal(s.control.operators, null);
 });
+
+test('WHAT NOBODY HAS BUILT YET is a number on the same page as everything else', async () => {
+  const block = await getOperationsHealth(summaryDeps());
+  assert.strictEqual(block.control.engineeringRequests.open, 2);
+  assert.strictEqual(block.control.engineeringRequests.done, 4);
+});
+
+test('a request store that cannot be read does not take the block down', async () => {
+  const block = await getOperationsHealth(summaryDeps({
+    engineering: { async summariseRequests() { throw new Error('table missing'); } },
+  }));
+  assert.strictEqual(block.available, true);
+  assert.strictEqual(block.control.engineeringRequests, null);
+});

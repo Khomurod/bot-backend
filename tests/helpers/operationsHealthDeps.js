@@ -132,6 +132,14 @@ function summaryDeps(overrides = {}) {
         return { available: true, total: 9, refused: 2, last7d: 4, lastAt: '2026-09-12T10:00:00.000Z' };
       },
     },
+    engineering: {
+      async summariseRequests() {
+        return {
+          available: true, open: 2, taken: 1, done: 4, declined: 0,
+          lastAt: '2026-09-12T08:00:00.000Z',
+        };
+      },
+    },
     controlKnowledge: {
       async summariseKnowledge() {
         return {

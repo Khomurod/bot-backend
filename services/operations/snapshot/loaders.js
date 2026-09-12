@@ -18,6 +18,7 @@
  * profile), and a read-only sweep must not write.
  */
 const defaultDb = require('../../../database/pool');
+const engineeringStore = require('../../../database/engineeringRequests');
 const { getBoardRowsForSnapshot } = require('../../../database/dispatchBoard');
 
 /** Everything the checks need, read once. */
@@ -65,6 +66,12 @@ async function loadSnapshot(db = defaultDb) {
     loadLayerSnapshot(db),
     loadBoardSnapshot(db),
   ]);
+  // WHAT A PERSON STILL HAS TO BUILD. Read separately and fail-soft: the table
+  // arrives in migration 0051, and a sweep that could not read it must still
+  // file every other finding. `listOpenRequests` already returns [] rather than
+  // throwing, so this is belt and braces on a boundary that matters.
+  const engineeringRequests = await engineeringStore.listOpenRequests({ limit: 50 })
+    .catch(() => []);
 
   return {
     now: new Date(),
@@ -81,6 +88,7 @@ async function loadSnapshot(db = defaultDb) {
       lastError: exhausted.rows[0]?.internal_alert_last_error || null,
     },
     boardRows,
+    engineeringRequests,
     ...layer,
   };
 }

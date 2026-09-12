@@ -267,13 +267,40 @@ would fall through to `system` and be refused — the owner would have answered 
 question Wenze then could not act on. `tests/controlChannelPg.test.js` drives
 both halves against the real constraint.
 
-## What B1 and B2 deliberately do NOT do
+## "The question itself is wrong"
 
-- record an `engineering_requests` row — the intent is acknowledged and it is
-  said plainly that nothing changed (B3);
-- turn repeated identical answers into a proposed rule (B3);
+An `engineering_request` intent — "this is a bug", "why are you even asking me
+this", "the truck numbers come from the wrong place" — is the most valuable
+thing anybody says to this application, and B1 dropped it: acknowledged
+politely, and forgotten.
+
+It now becomes a row in `engineering_requests` (migration 0051), a warning-tier
+`engineering.request_open` finding on Needs Attention, and an ack naming its
+number so the owner can see it went somewhere. It resolves when a person marks
+the request accepted, done or declined.
+
+**No column in that table can hold code or a file path**, and no correction is
+registered for the check. There is no automatic answer to "the software is
+wrong" — the resolution is a person writing code. See
+`docs/architecture/self-healing-and-learning.md` → Part 4.
+
+## Asking about what it decided NOT to do
+
+A check on autopilot can still decide `hold` or `unknown`. Before B3 nothing
+told anybody: the finding stayed open, the mode was not `suggest`, and the ask
+pass skipped it — the owner granted autonomy and got silence.
+`operationalDecisions.currentHolds()` now makes those askable whatever the mode,
+and the question says **why** in plain words. The journal's own reason names a
+check key and may never travel into a chat; `heldLineFor` maps its shape to one
+sentence instead.
+
+## What the control channel deliberately does NOT do
+
 - auto-apply a remembered `approve`. That would be autopilot through a side
-  door, and it stays refused.
+  door, and it stays refused;
+- propose that a check be put on autopilot. A run of approvals produces words
+  with no button — see `ai-decisions.md` rule 5;
+- act on an engineering request in any way. It is a row and an ack.
 
 ## Reading it from outside
 
@@ -307,4 +334,5 @@ actually works: a question enqueued and never sent reached nobody.
 `controlFingerprint`, `controlAiIntent`, `controlChannelPg` and
 `controlKnowledgePg` (both require `TEST_DATABASE_URL`), plus the question and
 threaded-reply cases in `notificationSend` and the `control.remembered` cases in
-`healthOperationsBlock`.
+`healthOperationsBlock`, plus `engineeringRequestsPg` and `decisionHoldsPg`
+(both require `TEST_DATABASE_URL`).
