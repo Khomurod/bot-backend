@@ -1,30 +1,14 @@
 /**
- * Dispatch Center: rate-confirmation parsing, sending, and testing groups.
+ * Automatic ETA updates: which driver groups get them, and how often.
+ *
+ * The paths still start `/dispatch` and that is deliberate — they are the live
+ * ETA-schedule endpoints and renaming them would have made a UI removal into an
+ * API break. The Dispatch Center's own three calls (parse a rate confirmation,
+ * list groups to send to, send to Telegram) went with the page; see
+ * `docs/architecture/retired-dispatch-center.md`.
  */
 
 import { API_BASE, getHeaders, getAuthHeader, handleApiError } from './http';
-
-export async function parseDispatchRateCon(file) {
-  const formData = new FormData();
-  formData.append('file', file);
-  const res = await fetch(`${API_BASE}/dispatch/parse-rate-con`, {
-    method: 'POST',
-    headers: getAuthHeader(),
-    body: formData,
-  });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
-export async function sendDispatchToTelegram(formData) {
-  const res = await fetch(`${API_BASE}/dispatch/send-to-telegram`, {
-    method: 'POST',
-    headers: getAuthHeader(),
-    body: formData,
-  });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
 
 export async function getDispatchTestingGroups() {
   const res = await fetch(`${API_BASE}/dispatch/testing-feature/groups`, {
@@ -39,14 +23,6 @@ export async function saveDispatchEtaGlobalIntervals(payload) {
     method: 'PUT',
     headers: getHeaders(),
     body: JSON.stringify(payload || {}),
-  });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
-export async function getDispatchTestingGroupDetails(groupId) {
-  const res = await fetch(`${API_BASE}/dispatch/testing-feature/groups/${groupId}/details`, {
-    headers: getAuthHeader(),
   });
   if (!res.ok) { await handleApiError(res); }
   return res.json();

@@ -1,5 +1,6 @@
 /**
- * HTTP smoke tests for public routes: health (cron/Render), dispatch API, admin SPA fallback.
+ * HTTP smoke tests for public routes: health (cron/Render), the surviving
+ * dispatch ETA API, the retired Dispatch Center page, admin SPA fallback.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -84,7 +85,7 @@ async function httpJson(server, method, pathname, headers = {}) {
   return { status: res.status, json };
 }
 
-test('GET /api/health, /health, HEAD; dispatch /groups; admin SPA', async () => {
+test('GET /api/health, /health, HEAD; the ETA API; the retired /dispatch page; admin SPA', async () => {
   const shared = { dbOk: true };
   const dbMock = {
     async ping() {
@@ -98,6 +99,21 @@ test('GET /api/health, /health, HEAD; dispatch /groups; admin SPA', async () => 
         driver_first_name: 'D',
         driver_last_name: 'E',
       }];
+    },
+    // What the surviving ETA route reads. `getAllDriverGroups` above belonged
+    // to the removed Send Load group list and is kept only so the 404 below is
+    // proving the route is gone rather than that its data source is.
+    async getDriverGroupsWithDispatchEtaSettings() {
+      return [{
+        group_id: 1,
+        group_name: 'Test Group',
+        telegram_group_id: -1002,
+        eta_enabled: false,
+        eta_interval_minutes: 60,
+      }];
+    },
+    async getDispatchEtaGlobalSettings() {
+      return { driver_interval_minutes: 60, test_interval_minutes: 60 };
     },
   };
 
@@ -131,19 +147,27 @@ test('GET /api/health, /health, HEAD; dispatch /groups; admin SPA', async () => 
     assert.equal(degraded.json.db, false);
 
     shared.dbOk = true;
-    // Dispatch API exposes GPS/group data — must reject anonymous requests…
-    const dispatchAnon = await httpJson(server, 'GET', '/api/dispatch/groups');
+    // The surviving ETA API exposes group data — must reject anonymous requests…
+    const dispatchAnon = await httpJson(server, 'GET', '/api/dispatch/testing-feature/groups');
     assert.equal(dispatchAnon.status, 401);
 
     // …and still work with a valid admin JWT.
     const adminToken = jwt.sign({ id: 1, username: 'admin' }, 'test-secret', { algorithm: 'HS256' });
-    const dispatch = await httpJson(server, 'GET', '/api/dispatch/groups', {
+    const dispatch = await httpJson(server, 'GET', '/api/dispatch/testing-feature/groups', {
       Authorization: `Bearer ${adminToken}`,
     });
     assert.equal(dispatch.status, 200);
-    assert.equal(dispatch.json.managementGroupId, '-1001');
-    assert.equal(dispatch.json.groups.length, 1);
-    assert.equal(dispatch.json.groups[0].group_name, 'Test Group');
+    assert.ok(Array.isArray(dispatch.json.groups));
+
+    // `/api/dispatch/groups` was the Send Load tab's "whose chat do I send this
+    // to" list and went with the Dispatch Center. ASSERTED WITH A VALID TOKEN,
+    // because the mount is still guarded and an anonymous request is refused at
+    // the gate — 401 would prove the auth middleware works, not that the route
+    // is gone.
+    const retiredSendTarget = await httpJson(server, 'GET', '/api/dispatch/groups', {
+      Authorization: `Bearer ${adminToken}`,
+    });
+    assert.equal(retiredSendTarget.status, 404, 'the Send Load group list is gone');
 
     await fs.promises.mkdir(adminDir, { recursive: true });
     if (!fs.existsSync(adminIndex)) {
@@ -159,9 +183,13 @@ test('GET /api/health, /health, HEAD; dispatch /groups; admin SPA', async () => 
     assert.equal(admin.status, 200);
     assert.match(admin.text, /fixture|html/i);
 
+    // THE RETIRED PAGE ANSWERS 410, NOT THE SHELL. `/dispatch` used to be
+    // served by the SPA catch-all as a sidebar-less full-width page; a held
+    // bookmark now gets "this feature has been removed" instead of the shell
+    // finding no dispatch section and silently rendering Driver Groups.
     const dispatchPage = await httpText(server, 'GET', '/dispatch');
-    assert.equal(dispatchPage.status, 200);
-    assert.match(dispatchPage.text, /fixture|html/i);
+    assert.equal(dispatchPage.status, 410);
+    assert.match(dispatchPage.text, /removed/i);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     if (wroteAdminFixture) {

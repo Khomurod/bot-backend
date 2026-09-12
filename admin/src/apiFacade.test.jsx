@@ -53,12 +53,14 @@ test("no two forwarded modules export the same name", () => {
 });
 
 test("the public surface stays at its known size", () => {
-  // 192 after the Trailer Department, Trailer Tracking and QBQ/SOS were removed
-  // (it was 205 when api.js was split into domain modules; the trailer domain
-  // modules accounted for the difference). Growing this is fine — update the
-  // number. A DROP that is not a deliberate feature removal means a call site
-  // somewhere just broke.
-  expect(Object.keys(api).length).toBeGreaterThanOrEqual(192);
+  // 189 after the Dispatch Center: `parseDispatchRateCon`,
+  // `sendDispatchToTelegram` and `getDispatchTestingGroupDetails` went with the
+  // Send Load tab and its diagnostics expander — exactly three, and the floor
+  // moved by exactly three. It was 192 after the Trailer Department, Trailer
+  // Tracking and QBQ/SOS, and 205 when api.js was first split into domain
+  // modules. Growing this is fine — update the number. A DROP that is not a
+  // deliberate feature removal means a call site somewhere just broke.
+  expect(Object.keys(api).length).toBeGreaterThanOrEqual(189);
 });
 
 describe("a sample of calls from every domain still resolves", () => {
@@ -66,7 +68,9 @@ describe("a sample of calls from every domain still resolves", () => {
   // some names exist.
   const samples = [
     "login", "getGroups", "getQuestions", "sendBroadcast", "uploadMedia",
-    "parseDispatchRateCon", "getScheduledMessages", "getLeads", "getAiReports",
+    // The dispatch sample is now an ETA-schedule call: the three Send Load
+    // functions are gone, and these four are what that module still forwards.
+    "getDispatchTestingGroups", "getScheduledMessages", "getLeads", "getAiReports",
     "getEmployeeBirthdays", "getFacebookLeadPages", "getMileageBonusOverview",
     "getRaiseSettings", "getHomeTimeOverview", "getGroupAccess", "getFuelMonitor",
     "getBotUsers", "getGmapsSettings", "getRouteAssignments", "getRecruiters",

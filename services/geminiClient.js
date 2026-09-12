@@ -21,21 +21,10 @@ const DEFAULT_GEMINI_TEXT_MODELS = [
   'gemini-2.0-flash',
 ];
 
-const DISPATCH_GEMINI_MODELS_EXTRA = [
-  'gemma-3-12b-it',
-  'gemma-3-4b-it',
-  'gemma-3-1b-it',
-];
-
 const GEMINI_TEXT_MODELS = parseGeminiModelList(
   process.env.GEMINI_TEXT_MODELS,
   DEFAULT_GEMINI_TEXT_MODELS
 );
-
-const GEMINI_DISPATCH_MODELS = uniqueGeminiModels([
-  ...GEMINI_TEXT_MODELS,
-  ...DISPATCH_GEMINI_MODELS_EXTRA,
-]);
 
 
 function parseGeminiModelList(envValue, fallbackList) {
@@ -249,7 +238,6 @@ module.exports = {
   GEMINI_API_KEY,
   asLegacyGeminiFailure,
   GEMINI_TEXT_MODELS,
-  GEMINI_DISPATCH_MODELS,
   parseGeminiModelList,
   getPinnedContextGeminiModels,
   safeParseJsonObject,

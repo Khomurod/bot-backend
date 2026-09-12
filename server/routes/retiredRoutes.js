@@ -33,8 +33,17 @@ const express = require('express');
 // legacy prefix falls through to the `/admin/*` SPA catch-all and the shell,
 // finding no trailer section, silently renders Driver Groups instead: a removed
 // bookmark quietly opening an unrelated page, which is worse than an error.
+//
+// `/dispatch` is here because the Dispatch Center was a PUBLIC-looking page at
+// its own root path rather than a tab inside `/admin`, so dispatchers hold
+// bookmarks to it. Without this entry it falls through to the SPA catch-all and
+// the shell, finding no dispatch section, silently renders Driver Groups —
+// exactly the failure the trailers entry above was added for. `/api/dispatch`
+// is NOT retired: the four ETA-schedule endpoints under it are live and moved
+// to Settings, and the prefixes here are page paths only.
 const RETIRED_PAGE_PATHS = [
   '/trailers', '/trailers/*',
+  '/dispatch', '/dispatch/*',
   '/admin/trailers', '/admin/trailers/*',
   '/questions', '/questions/*',
   '/answers', '/answers/*',

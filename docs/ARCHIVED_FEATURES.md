@@ -39,6 +39,30 @@ caller, which is why CI was green throughout.
 
 ---
 
+## Dispatch Center — Send Load
+
+**Archived:** 2026-09
+**Pre-removal commit:** `051870e2338d2986011f826eb8c88fc03ebfd3fe` (tip of `main`)
+**Full record:** [`architecture/retired-dispatch-center.md`](architecture/retired-dispatch-center.md)
+
+The `/dispatch` page: upload a rate confirmation, have a model turn it into a
+dispatch card, pick a driver's chat, send it. Removed with its parser, its AI
+capability, its three API calls and its per-group diagnostics expander.
+
+**The ETA schedules that shared the page were NOT removed.** That tab was the
+only UI for per-group ETA delivery and the global intervals, so deleting it
+would have turned a screen removal into a data change — settings editable only
+by hand in the database. It moved to **Settings → Dispatcher Board** as
+`EtaTrackingCard`, and its four `/api/dispatch/testing-feature/*` endpoints are
+unchanged down to the string.
+
+Nothing was dropped from the database and no table belonged to this feature.
+`/dispatch` answers **410** rather than falling through to the SPA, because the
+shell finding no dispatch section would silently render Driver Groups instead —
+a held bookmark quietly opening an unrelated page is worse than an error.
+
+---
+
 ## Trailer Department, Trailer Tracking, and QBQ/SOS
 
 **Archived:** 2026-09

@@ -257,6 +257,7 @@ that area**, and run the tests it names.
 | When a recovery is worth announcing, and why a suggestion can never apply itself | [`docs/architecture/self-healing-and-learning.md`](docs/architecture/self-healing-and-learning.md) |
 | Database changes, migrations, deferred schema decisions | [`docs/database/`](docs/database/) |
 | What was deliberately removed and must not be resurrected | [`docs/ARCHIVED_FEATURES.md`](docs/ARCHIVED_FEATURES.md), [`docs/architecture/retired-*.md`](docs/architecture/) |
+| The Dispatch Center's removal, and the ETA schedules that outlived it | [`docs/architecture/retired-dispatch-center.md`](docs/architecture/retired-dispatch-center.md) |
 | Clearing a removed feature's leftover tables, roles and accounts | [`docs/architecture/retired-trailers-qbq-sos.md`](docs/architecture/retired-trailers-qbq-sos.md) |
 | Module ownership map | [`docs/architecture/module-map.md`](docs/architecture/module-map.md) |
 | Deployment checks | [`docs/deployment/pre-deploy-checklist.md`](docs/deployment/pre-deploy-checklist.md) |

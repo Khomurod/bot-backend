@@ -241,12 +241,12 @@ async function updateEldSettings(payload = {}) {
  *
  * WHY IT IS A FUNCTION AND NOT A LIST AT EACH CALL SITE. This literal was
  * written out identically in services/liveLocationResolver.js (the per-driver
- * lookup behind /location and ETA) and in
- * services/dispatchTestingDiagnosticsService.js (the settings page's provider
- * check). Two copies of "which providers exist and in what order" is how a
- * newly added provider ends up visible on the diagnostics page and invisible to
- * the dispatcher typing /location. Pure derivation from the config object —
- * no I/O, no caching of its own.
+ * lookup behind /location and ETA) and in the Dispatch Center's provider
+ * diagnostics, which has since been removed. Two copies of "which providers
+ * exist and in what order" is how a newly added provider ends up visible in one
+ * place and invisible to the dispatcher typing /location — the second copy is
+ * gone, and this stays a function so a third cannot start. Pure derivation from
+ * the config object — no I/O, no caching of its own.
  *
  * @param {object} cfg the object returned by getEldConfig()
  * @returns {Array<{label: string, enabled: boolean, companyKey: string}>}
