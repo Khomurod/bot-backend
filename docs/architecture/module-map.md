@@ -151,6 +151,19 @@ organization should converge toward.
 | Approval audit trail / dispatch teams | tables `dispatch_teams`, `dispatch_team_drivers`, `raise_rounds`, `raise_round_submissions`, `raise_round_picks`, `raise_settings` |
 | Raise Telegram routing (two audiences) | `database/messageRoutingSettings.js` categories `dispatchReview` (the review REQUEST → dispatch) and `raiseResults` (the submitted RESULT → accounting), admin `settings/TelegramGroupsTab.jsx` |
 
+### 5a. Finance Monitor Module
+
+| Concern | Current files |
+|---|---|
+| Reading a money code out of a message, and deciding whether it repeats one | `lib/finance/moneycode.js` (`PARSER_VERSION`, `STATUS`), `lib/finance/duplicates.js` (`REASON`, `decideDuplicate`) — both pure |
+| Which group is read, and the rule that it cannot be read until validated | `database/financeSettings.js`, `server/routes/settings/financeRoutes.js`, admin `settings/FinanceTab.jsx` |
+| Storing what was said, and what was read out of it | `database/financeMessages.js`, tables `finance_settings`, `finance_messages`, `finance_moneycodes` (migration 0052) |
+| The capture decision, and the bot seam above it | `services/finance/captureService.js`, `bot/handlers/financeCaptureHandlers.js` (thin: no chat id, no parser, no query) |
+
+Deliberately isolated: no foreign key out of the finance tables, no reader
+anywhere else, and nothing it stores feeds a decision. See
+[`finance-monitor.md`](finance-monitor.md).
+
 ### 6. AI / Insights Module
 
 | Concern | Current files |
@@ -252,6 +265,7 @@ over `admin/src/pages/<area>/` holding data hooks and presentational sections:
 | `responses` (`ON CONFLICT (driver_id, question_id) DO NOTHING`) | Duplicate survey answers |
 | `dispatch_eta_updates` / `fuel_stop_alerts` (`processing` claim + `FOR UPDATE SKIP LOCKED`) | Double-processing across instances |
 | `mileage_bonus_runs` | Double milestone runs |
+| `finance_messages` (`ON CONFLICT (chat_id, message_id) DO NOTHING`) and `finance_moneycodes` (`ON CONFLICT (message_ref_id, code_normalized)`) | A redelivered or replayed finance message becoming a second row, or a re-read double-counting a code |
 
 ---
 

@@ -226,6 +226,27 @@
       "sourceOfTruth": "What somebody asked for, and what a person decided about it. The work itself lives in a repository, not here.",
       "danger": "NO COLUMN MAY HOLD CODE OR A FILE PATH \u2014 no patch, diff, file, branch or command. The runtime bot never edits source, and a schema with nowhere to put a patch cannot be talked into applying one; tests/controlNoCodeAccess.test.js reads the migration and fails if such a column appears. linked_reference is free text a person types and the application never parses, fetches or executes. Contains the owner\u0027s own words, capped at 2000 characters; only counts leave through /api/health. uniq_engineering_request_reply stops a redelivered complaint becoming a second request."
     },
+    "finance_settings": {
+      "purpose": "Single row (id=1) for the Finance Monitor: whether Wenze records the money codes issued in a Telegram group, WHICH group (`chat_id`, NULL inherits FINANCE_GROUP_CHAT_ID), and when a person validated it. `enabled_at` is stamped the first time it is switched on and never moved, because the weekly report needs to tell \"no money codes that week\" from \"we were not watching that week\".",
+      "status": "active",
+      "service": "bot (capture handler), admin (Settings \u2192 Finance Monitor)",
+      "sourceOfTruth": "This row. `enabled` never inherits the environment \u2014 an env var must not be able to start reading a payment chat.",
+      "danger": "`enabled = TRUE` starts storing every message in that group verbatim. It cannot be set without `chat_validated_at`, and that rule is enforced in database/financeSettings.js as well as in the route and on the admin screen \u2014 capturing payment messages from a chat nobody confirmed is the mistake this feature must not make."
+    },
+    "finance_messages": {
+      "purpose": "Every message the finance group posted, captured verbatim. `text` IS the record; `parse_status` / `parse_json` / `parser_version` sit BESIDE it, never instead of it, so a tightened parser can re-read exactly the rows the provisional one produced. `parse_status` has four values and `ambiguous` is one of them on purpose \u2014 a parser refusing to pick is an answer, not a failure.",
+      "status": "active",
+      "service": "bot (capture handler)",
+      "sourceOfTruth": "The Telegram group, as of `captured_at`. An edit updates `text` and the parse; `captured_at` records when Wenze first saw it and is never moved.",
+      "danger": "PAYMENT DATA. This is the one place the group\u0027s text is meant to live \u2014 it is never copied into the application log, and the settings API answers with counts only. Capture is idempotent by UNIQUE (chat_id, message_id), so a Telegram redelivery is a no-op rather than a duplicate."
+    },
+    "finance_moneycodes": {
+      "purpose": "What the parser read out of a message with certainty \u2014 one row per code, only ever from a `parsed` message. `duplicate_of_id` + `duplicate_reason` record a repeat; `same_code` is a fact (a code is what gets spent) while `same_amount_recipient_window` is a suspicion (two $500 advances to one driver in a day is sometimes exactly right), and paired CHECKs keep the claim from being written half-formed.",
+      "status": "active",
+      "service": "bot (capture service)",
+      "sourceOfTruth": "finance_messages.text, re-readable at any later parser version.",
+      "danger": "PAYMENT DATA: money codes and amounts. A duplicate is RECORDED, never acted on \u2014 Wenze does not issue money codes and cannot recall one."
+    },
     "driver_person_telegram_identities": {
       "purpose": "Which Telegram account belongs to which PERSON, over time. `driver_profiles.telegram_user_id` answers the same question about a CHAT and is lost when the chat is recreated; this survives it. Backfilled from that column at confidence 100, because a value typed in by an administrator is the strongest evidence in the system.",
       "status": "active",

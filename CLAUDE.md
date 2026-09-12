@@ -253,6 +253,7 @@ that area**, and run the tests it names.
 | Answering Wenze in Telegram: who may be obeyed, what a reply may choose, and why the bot never touches source code | [`docs/architecture/control-channel.md`](docs/architecture/control-channel.md) |
 | What Wenze may tell a candidate, and how a person teaches it | [`docs/architecture/recruiting-knowledge.md`](docs/architecture/recruiting-knowledge.md) |
 | Answering a candidate outside working hours, the reply guard, the SMS transcript | [`docs/architecture/recruiting-after-hours.md`](docs/architecture/recruiting-after-hours.md) |
+| The Finance Monitor: which group is read, why the captured text is never overwritten, and why a duplicate is recorded and never acted on | [`docs/architecture/finance-monitor.md`](docs/architecture/finance-monitor.md) |
 | Retention signals, what may never be scored about a driver, the notice rules | [`docs/architecture/driver-retention.md`](docs/architecture/driver-retention.md) |
 | When a recovery is worth announcing, and why a suggestion can never apply itself | [`docs/architecture/self-healing-and-learning.md`](docs/architecture/self-healing-and-learning.md) |
 | Database changes, migrations, deferred schema decisions | [`docs/database/`](docs/database/) |
