@@ -92,9 +92,14 @@ join. Three rules are worth knowing before touching it:
   where colliding drivers merge and one silently stops being paid.
 - A merge is `merged_into_person_id` — a **pointer, not a deletion**. Both people
   and all their history stay; undoing it is one column back to NULL.
-- Two partial unique indexes hold the invariants the database never had:
-  one open association per group, and one open unit per person **and** one open
-  person per unit. Unit `001` currently sits on four active groups; that is now
+- Three partial unique indexes hold the invariants the database never had: one
+  open association per group, one open unit per person, and — since migration
+  0047 — one open person per **`(fleet_type, unit_number, seat)`**. That last one
+  replaced a bare `unit_number`, which could not tell Company 001 from
+  Owner-Operator 001 and could not represent a team's two seats at all. Dropping
+  it is the one destructive schema step in this programme, and 0047 proves there
+  are zero collisions before taking it — otherwise the old index stays and a
+  `serious` finding is filed. Unit `001` currently sits on four active groups; that is now
   unrepresentable, so the backfill leaves contested units unclaimed and reports
   them rather than picking a winner.
 

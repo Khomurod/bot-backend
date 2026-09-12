@@ -170,8 +170,13 @@ test('a truck change is recorded as a change of truck; a truck somebody else hol
   const pa = (await resolver.ensurePersonForGroup(a.group)).personId;
   const pb = (await resolver.ensurePersonForGroup(b.group)).personId;
 
-  assert.deepEqual(await resolver.syncUnitForPerson(pa, '320'), { action: 'open', from: null, to: '320' });
-  assert.deepEqual(await resolver.syncUnitForPerson(pa, '322'), { action: 'switch', from: '320', to: '322' });
+  // The decision names the whole truck now, not just its number: a seat, and a
+  // fleet the resolver could not determine (`unknown`, which never wins a
+  // match). The resolver becomes fleet-aware in A3b.
+  assert.deepEqual(await resolver.syncUnitForPerson(pa, '320'),
+    { action: 'open', from: null, to: '320', seat: 1, fleetType: 'unknown' });
+  assert.deepEqual(await resolver.syncUnitForPerson(pa, '322'),
+    { action: 'switch', from: '320', to: '322', seat: 1, fleetType: 'unknown' });
   const units = await harness.query(
     'SELECT unit_number, ended_at IS NULL AS open FROM driver_units WHERE person_id = $1 ORDER BY started_at, id', [pa]
   );

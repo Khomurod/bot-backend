@@ -47,8 +47,12 @@ CREATE TABLE IF NOT EXISTS driver_profiles (
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
   CONSTRAINT driver_profiles_group_id_unique UNIQUE (group_id),
+  -- Three fleets, three tokens. `lease` was added by migration 0047; it is here
+  -- too so a FRESH database gets the wide form rather than being narrowed at
+  -- create time and widened again a moment later. See lib/drivers/fleetType.js
+  -- for the one place this vocabulary meets the Dispatcher Board's.
   CONSTRAINT driver_profiles_driver_type_check CHECK (
-    driver_type IS NULL OR driver_type IN ('owner', 'company_driver')
+    driver_type IS NULL OR driver_type IN ('owner', 'company_driver', 'lease')
   ),
   CONSTRAINT driver_profiles_status_check CHECK (
     status IN ('active', 'inactive')
@@ -207,7 +211,7 @@ BEGIN
   ) THEN
     ALTER TABLE driver_profiles
       ADD CONSTRAINT driver_profiles_driver_type_check
-      CHECK (driver_type IS NULL OR driver_type IN ('owner', 'company_driver'));
+      CHECK (driver_type IS NULL OR driver_type IN ('owner', 'company_driver', 'lease'));
   END IF;
 END
 $$;

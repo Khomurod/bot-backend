@@ -61,7 +61,7 @@ BEGIN
   ) THEN
     ALTER TABLE driver_profiles
       ADD CONSTRAINT driver_profiles_driver_type_check
-      CHECK (driver_type IS NULL OR driver_type IN ('owner', 'company_driver'));
+      CHECK (driver_type IS NULL OR driver_type IN ('owner', 'company_driver', 'lease'));
   END IF;
 END
 $$;
