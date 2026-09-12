@@ -5,6 +5,13 @@
 
 ### Driver communication
 
+All five admin screens below live on ONE page — **Communications**
+(`admin/src/pages/CommunicationsPage.jsx`), with tabs Send Message · Surveys ·
+Scheduled · History · Edit by Link. They used to be five sidebar entries split
+across two parts of the nav (two under Communications, three inside the
+collapsible admin block). **Nothing on the server moved with them**: every route
+and every API client function is exactly what it was.
+
 - **Surveys / feedback** — admin creates a question, `translationService` produces
   EN/RU/UZ, it is sent to groups by language, answers are relayed to the
   management group in English. **Answers are multiple-choice only**: `responses`
@@ -26,7 +33,7 @@
   `schedulerService.js` claims due rows and reuses the broadcast path.
 - **Creator panel** — private chat, one allow-listed user ID: pick an audience or
   a single group; any content is delivered **verbatim** via `copyMessage`.
-- **Message Manager / Bot Messages** — every outbound send is recorded in
+- **History / Edit by Link** (was Bot Messages / Message Manager) — every outbound send is recorded in
   `bot_sent_messages` by `services/botSentMessageRegistry.js`, which patches
   `telegram.callApi` and logs the result **after** the send. It is an
   after-the-fact ledger, not a guard: it powers the admin edit/delete surface and

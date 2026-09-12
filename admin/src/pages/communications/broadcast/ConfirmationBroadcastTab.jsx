@@ -1,7 +1,7 @@
 import React from "react";
-import { TelegramPreview, MediaUploader, MediaPositionSelector } from "../../components/Shared";
+import { TelegramPreview, MediaUploader, MediaPositionSelector } from "../../../components/Shared";
 import { PlaceholderChips } from "./PlaceholderChips";
-import { formatDate, truncate } from "./composerHelpers";
+import { relativeTime, truncate } from "../format";
 
 /**
  * The confirmation composer: message, the inline keyboard, its preview, and the
@@ -11,13 +11,13 @@ import { formatDate, truncate } from "./composerHelpers";
  * order to be answered, so the history shows which button each driver tapped
  * rather than only whether delivery succeeded.
  *
- * Split out of admin/src/pages/BroadcastPage.jsx.
+ * Split out of admin/src/pages/SendMessageTab.jsx.
  */
 export function ConfirmationBroadcastTab({
   confirmation, targeting, history, setShowSendConfirm, insertTokenIntoEditor,
 }) {
   // Aliased to the names the markup below already uses, so the JSX moved out of
-  // BroadcastPage.jsx is unchanged.
+  // SendMessageTab.jsx is unchanged.
   const {
     message: confMessage, setMessage: setConfMessage,
     messageRu: confMessageRu, setMessageRu: setConfMessageRu,
@@ -172,7 +172,7 @@ export function ConfirmationBroadcastTab({
           <div key={b.id} className="broadcast-history-item">
             <div className="broadcast-history-header" style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }} onClick={() => toggleConfDeliveries(b.id)}>
               <div>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{formatDate(b.created_at)}</span>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{relativeTime(b.created_at)}</span>
                 <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-muted)' }}>{truncate(b.message_text_en, 60)}</span>
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -223,7 +223,7 @@ export function ConfirmationBroadcastTab({
                                     <td style={{ padding: '6px 8px' }}>{c.driver_username ? `@${c.driver_username}` : `${c.driver_first_name || ''} ${c.driver_last_name || ''}`.trim() || c.driver_telegram_id}</td>
                                     <td style={{ padding: '6px 8px', color: 'var(--text-muted)' }}>{c.group_name || '-'}</td>
                                     <td style={{ padding: '6px 8px' }}><span className="badge" style={{ background: 'var(--accent-soft)', color: 'var(--accent-hover)' }}>Button {c.button_index + 1}</span></td>
-                                    <td style={{ padding: '6px 8px', color: 'var(--text-muted)' }}>{formatDate(c.clicked_at)}</td>
+                                    <td style={{ padding: '6px 8px', color: 'var(--text-muted)' }}>{relativeTime(c.clicked_at)}</td>
                                   </tr>
                                 ))}
                               </tbody>

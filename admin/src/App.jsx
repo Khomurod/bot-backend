@@ -10,11 +10,7 @@ import DatabaseUsageBanner from "./components/DatabaseUsageBanner";
 // Every other page is lazy-loaded so its code is fetched only when the page
 // is opened — the initial admin bundle stays small.
 const GroupsPage = lazy(() => import("./pages/GroupsPage"));
-const QuestionsPage = lazy(() => import("./pages/QuestionsPage"));
-const BroadcastPage = lazy(() => import("./pages/BroadcastPage"));
-const ScheduledMessagesPage = lazy(() => import("./pages/ScheduledMessagesPage"));
-const MessageManagerPage = lazy(() => import("./pages/MessageManagerPage"));
-const BotMessagesPage = lazy(() => import("./pages/BotMessagesPage"));
+const CommunicationsPage = lazy(() => import("./pages/CommunicationsPage"));
 const CompanyBirthdaysPage = lazy(() => import("./pages/CompanyBirthdaysPage"));
 const FacebookLeadsPage = lazy(() => import("./pages/FacebookLeadsPage"));
 const LeadsPage = lazy(() => import("./pages/LeadsPage"));
@@ -176,8 +172,13 @@ export default function App() {
   const pages = {
     facebook_leads: <FacebookLeadsPage />,
     leads: <LeadsPage />,
-    broadcast: <BroadcastPage />,
-    questions: <QuestionsPage />,
+    // Send Message, Surveys, Scheduled, History and Edit by Link are five tabs
+    // of ONE page now; `broadcast`, `questions`, `scheduled`, `bot_messages`
+    // and `manager` are gone as page keys rather than left here pointing at a
+    // tab, because page state is in-memory and comes only from the sidebar —
+    // a key no nav item produces would be a map entry nothing can reach.
+    // See pages/CommunicationsPage.jsx.
+    communications: <CommunicationsPage />,
     groups: <GroupsPage />,
     company_birthdays: <CompanyBirthdaysPage />,
     mileage_bonus: <MileageBonusPage />,
@@ -187,9 +188,6 @@ export default function App() {
     users: <UsersPage />,
     auto_reactions: <AutoReactionsPage />,
     group_access: <GroupAccessPage />,
-    manager: <MessageManagerPage />,
-    bot_messages: <BotMessagesPage />,
-    scheduled: <ScheduledMessagesPage />,
     settings: <SettingsPage />,
     recruiter_kpis: <RecruiterKpiPage />,
     live_locations: <LiveLocationsPage />,

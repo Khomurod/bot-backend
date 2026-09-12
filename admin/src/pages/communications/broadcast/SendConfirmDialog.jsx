@@ -7,7 +7,7 @@ import React from "react";
  * versus a count) because that is the number an admin needs to re-read; a
  * generic "are you sure" gets clicked through.
  *
- * Split out of admin/src/pages/BroadcastPage.jsx.
+ * Split out of admin/src/pages/communications/SendMessageTab.jsx.
  */
 export function SendConfirmDialog({
   showSendConfirm, setShowSendConfirm, targetType, selectedDriverIds,

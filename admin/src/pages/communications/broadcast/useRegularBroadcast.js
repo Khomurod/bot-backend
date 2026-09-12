@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo } from "react";
-import * as api from "../../api";
-import { useFormattingToolbar } from "../../components/Shared";
+import * as api from "../../../api";
+import { useFormattingToolbar } from "../../../components/Shared";
 import { translateErrorText, normalizeMediaItems } from "./composerHelpers";
 
 /**
@@ -19,7 +19,7 @@ import { translateErrorText, normalizeMediaItems } from "./composerHelpers";
  * A successful send or schedule clears the composer so the same message cannot
  * be sent twice by a second click.
  *
- * Split out of admin/src/pages/BroadcastPage.jsx.
+ * Split out of admin/src/pages/communications/SendMessageTab.jsx.
  */
 export function useRegularBroadcast({ targeting, onSent }) {
   const [message, setMessage] = useState('');

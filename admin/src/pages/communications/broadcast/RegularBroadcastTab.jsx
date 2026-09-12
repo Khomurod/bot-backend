@@ -1,7 +1,8 @@
 import React from "react";
-import { TelegramPreview, MediaUploader, MediaPositionSelector } from "../../components/Shared";
+import { TelegramPreview, MediaUploader, MediaPositionSelector } from "../../../components/Shared";
 import { PlaceholderChips } from "./PlaceholderChips";
-import { WEEKLY_DAY_OPTIONS, formatDate, truncate } from "./composerHelpers";
+import { WEEKLY_DAY_OPTIONS } from "./composerHelpers";
+import { relativeTime, truncate } from "../format";
 
 /**
  * The announcement composer, its live Telegram preview, the schedule controls,
@@ -14,13 +15,13 @@ import { WEEKLY_DAY_OPTIONS, formatDate, truncate } from "./composerHelpers";
  * The unknown-token warning renders next to the editor so it is visible before
  * an admin reaches the send button, not only after pressing it.
  *
- * Split out of admin/src/pages/BroadcastPage.jsx.
+ * Split out of admin/src/pages/SendMessageTab.jsx.
  */
 export function RegularBroadcastTab({
   regular, targeting, history, setShowSendConfirm, insertTokenIntoEditor,
 }) {
   // Aliased to the names the markup below already uses, so the JSX moved out of
-  // BroadcastPage.jsx is unchanged.
+  // SendMessageTab.jsx is unchanged.
   const {
     message, setMessage, messageRu, setMessageRu, messageUz, setMessageUz,
     mediaItems: broadcastMediaItems, setMediaItems: setBroadcastMediaItems,
@@ -199,7 +200,7 @@ export function RegularBroadcastTab({
           <div key={b.id} className="broadcast-history-item">
             <div className="broadcast-history-header" onClick={() => toggleRegularDeliveries(b.id)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
               <div>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{formatDate(b.created_at)}</span>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{relativeTime(b.created_at)}</span>
                 <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-muted)' }}>{truncate(b.message_text_en, 60)}</span>
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

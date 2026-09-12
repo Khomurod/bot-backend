@@ -1,8 +1,8 @@
 import React, { useState, useRef } from "react";
-import * as api from "../api";
-import { useFormattingToolbar } from "../components/Shared";
+import * as api from "../../api";
+import { useFormattingToolbar } from "../../components/Shared";
 
-export default function MessageManagerPage() {
+export default function EditByLinkTab() {
   const [url, setUrl] = useState('');
   const [newText, setNewText] = useState('');
   const [status, setStatus] = useState(null);
@@ -45,10 +45,7 @@ export default function MessageManagerPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <h2>🛠️ Edit Message</h2>
-        <p>Edit or delete a message the bot previously sent in Telegram.</p>
-      </div>
+      <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 20 }}>Edit or delete a message the bot previously sent in Telegram.</p>
 
       {status && (
         <div className={`alert alert-${status.type}`}>

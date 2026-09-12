@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import * as api from "../../api";
+import * as api from "../../../api";
 
 /**
  * Past broadcasts for one kind ('regular' or 'confirmation'), with per-broadcast
@@ -12,7 +12,7 @@ import * as api from "../../api";
  * One instance per tab. Each keeps its own expansion state, so opening a
  * delivery list on one tab does not disturb the other.
  *
- * Split out of admin/src/pages/BroadcastPage.jsx.
+ * Split out of admin/src/pages/communications/SendMessageTab.jsx.
  */
 export function useBroadcastHistory(kind) {
   const [history, setHistory] = useState([]);

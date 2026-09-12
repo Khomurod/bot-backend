@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import * as api from "../../api";
+import * as api from "../../../api";
 import { DEFAULT_BROADCAST_PLACEHOLDER_KEYS, extractUnknownTokens } from "./templateTokens";
 
 /**
@@ -13,7 +13,7 @@ import { DEFAULT_BROADCAST_PLACEHOLDER_KEYS, extractUnknownTokens } from "./temp
  * "everyone" — a mis-click that broadcasts to the whole fleet is not
  * recoverable.
  *
- * Split out of admin/src/pages/BroadcastPage.jsx.
+ * Split out of admin/src/pages/communications/SendMessageTab.jsx.
  */
 export function useBroadcastTargeting() {
   const [targetType, setTargetType] = useState('all'); // 'all' | 'specific_drivers' | 'language_groups'
@@ -86,7 +86,7 @@ export function useBroadcastTargeting() {
   // setSelectedDriverIds is part of the returned bag for the targeting
   // section's Select All / Deselect All button, which replaces the whole
   // selection at once rather than toggling ids one at a time. It was left
-  // behind when this hook was split out of BroadcastPage, so that button threw
+  // behind when this hook was split out of SendMessageTab, so that button threw
   // "setSelectedDriverIds is not a function" on every click.
   return {
     targetType, setTargetType, targetActiveFilter, setTargetActiveFilter,

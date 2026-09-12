@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
-import * as api from "../api";
-import { timeAgo } from "../utils/formatTime";
+import * as api from "../../api";
+import { relativeTime } from "./format";
 
-export default function QuestionsPage() {
+export default function SurveysTab() {
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -64,10 +64,7 @@ export default function QuestionsPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <h2>📝 Surveys</h2>
-        <p>Create and manage driver feedback surveys.</p>
-      </div>
+      <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 20 }}>Create and manage driver feedback surveys.</p>
 
       {!loading && !error && questions.length > 0 && (
         <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', marginBottom: 24 }}>
@@ -98,7 +95,7 @@ export default function QuestionsPage() {
             <div key={q.id} className="card question-card" style={{ marginBottom: 12 }}>
               <div className="question-header" onClick={() => toggleQuestion(q.id)} style={{ cursor: 'pointer' }}>
                 <div className="question-info">
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{timeAgo(q.created_at)}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{relativeTime(q.created_at)}</span>
                   <h3 style={{ margin: '4px 0 0' }}>{getQuestionText(q)}</h3>
                 </div>
                 <div className="question-stats" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -139,7 +136,7 @@ export default function QuestionsPage() {
                               </td>
                               <td>{r.group_name}</td>
                               <td>{r.response_text}</td>
-                              <td style={{ whiteSpace: 'nowrap' }}>{timeAgo(r.created_at)}</td>
+                              <td style={{ whiteSpace: 'nowrap' }}>{relativeTime(r.created_at)}</td>
                             </tr>
                           ))}
                         </tbody>

@@ -122,8 +122,8 @@ organization should converge toward.
 
 | Concern | Current files |
 |---|---|
-| Feedback surveys (multilingual) | `bot/anonymousFeedbackHandlers.js`, questions/options/responses in `database/db.js`, `services/translationService.js`, admin `QuestionsPage.jsx` |
-| Broadcasts & scheduled messages | `services/schedulerService.js`, `scheduledMessageUtils.js`, `broadcastTargetService.js`, `broadcastTemplateService.js`, `bot/creatorMessageManager.js`, admin `BroadcastPage.jsx`, `ScheduledMessagesPage.jsx`, `MessageManagerPage.jsx` |
+| Feedback surveys (multilingual) | `bot/anonymousFeedbackHandlers.js`, questions/options/responses in `database/db.js`, `services/translationService.js`, admin `pages/communications/SurveysTab.jsx` |
+| Broadcasts & scheduled messages | `services/schedulerService.js`, `scheduledMessageUtils.js`, `broadcastTargetService.js`, `broadcastTemplateService.js`, `bot/creatorMessageManager.js`, admin `pages/communications/{SendMessageTab,ScheduledTab,EditByLinkTab}.jsx` (+ `communications/broadcast/*`) |
 | BOL/POD document delivery (idempotent) | `services/datatruckDocumentService.js`, `datatruckDocumentHelpers.js`, `database/datatruckDocuments.js` (`datatruck_document_deliveries`) |
 | Fuel-stop reminders | `services/fuelStopAlertService.js`, `server/routes/fuelMonitorRoutes.js`, `fuel_stop_alerts` + `fuel_monitor_inbox`, admin `FuelMonitorPage.jsx` |
 | Home-time tracking | `services/homeTimeService.js`, `homeTimeRequestService.js`, `homeTimeImportService.js`, `homeTimeConstants.js`, `bot/homeTimeRequestHandlers.js`, `server/routes/homeTimeRoutes.js`, `database/homeTime.js`, admin `HomeTimePage.jsx` |
@@ -177,7 +177,7 @@ organization should converge toward.
 | React admin panel (Vite) | `admin/` → `admin/src/App.jsx`, `api.js`, `pages/*.jsx`, `components/Shared.jsx`; built to `admin/build/`, served at `/admin` |
 | Settings (ELD creds, RingCentral, integrations) | `server/routes/settingsRoutes.js` (`/api/settings`), `database/eldSettings.js` |
 | Permissions / feature toggles | `services/groupAccessService.js`, `groupAccessConstants.js`, `bot_access_settings` table, admin `GroupAccessPage.jsx`; env flags via `isEnabled()` in `index.js` |
-| Logs / sent-message browser | `server/routes/botMessagesRoutes.js` (`/api/bot-messages`), `services/botMessageAdminService.js`, `admin/src/pages/BotMessagesPage.jsx` — database-backed; it does not read any log file |
+| Logs / sent-message browser | `server/routes/botMessagesRoutes.js` (`/api/bot-messages`), `services/botMessageAdminService.js`, `admin/src/pages/communications/HistoryTab.jsx` — database-backed; it does not read any log file |
 | Health / config | `server/api.js` `/health` + `/api/health` (`runHealthCheck` pings DB + Meta creds), `config/config.js`, `config/telegramBotTokens.js`, `.env.example`, `render.yaml` |
 | Auth | JWT (HS256-pinned `authMiddleware`), bcrypt login w/ per-IP rate limiting, `internalSharedSecretGuard` |
 | Presenter remote | `server/routes/remoteRoutes.js` (`/remote` plus an explicit allow-list for `remote.css`, `remote-mqtt.js`, `remote-app.js`). It pairs through a **public MQTT broker** and keeps no server state at all, because the deck it controls is a standalone file that can run from a laptop's file system. `docs/brief/features.md` §4 holds the wire protocol; `tests/remoteMqttLite.test.js` asserts its bytes. (A second hosted deck at `/qbq`, which paired through this server over SSE, went with QBQ/SOS.) |

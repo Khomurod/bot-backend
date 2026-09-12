@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
-import * as api from "../api";
-import { timeAgo } from "../utils/formatTime";
-import useVisibleInterval from "../utils/useVisibleInterval";
+import * as api from "../../api";
+import { preview, relativeTime } from "./format";
+import useVisibleInterval from "../../utils/useVisibleInterval";
 
-export default function ScheduledMessagesPage() {
+export default function ScheduledTab() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
@@ -134,10 +134,7 @@ export default function ScheduledMessagesPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <h2>📅 Scheduled Messages</h2>
-        <p>Messages queued for future delivery.</p>
-      </div>
+      <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 20 }}>Messages queued for future delivery.</p>
 
       {status && (
         <div className={`alert alert-${status.type}`}>
@@ -151,7 +148,7 @@ export default function ScheduledMessagesPage() {
         <div className="empty-state">
           <div className="icon">📅</div>
           <h3>No scheduled messages</h3>
-          <p>Schedule a message from the Broadcast page to see it here. Messages you schedule will appear in this list so you can track, send early, or cancel them.</p>
+          <p>Schedule a message from the Send Message tab to see it here. Messages you schedule will appear in this list so you can track, send early, or cancel them.</p>
         </div>
       ) : (
         <div className="table-container">
@@ -171,8 +168,7 @@ export default function ScheduledMessagesPage() {
                 <tr key={msg.id}>
                   <td style={{ maxWidth: 300 }}>
                     <div style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {msg.message_text_en?.substring(0, 80) || '(no text)'}
-                      {msg.message_text_en?.length > 80 ? '...' : ''}
+                      {preview(msg.message_text_en, 80, '(no text)')}
                     </div>
                     {mediaCount(msg) > 0 && (
                       <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
@@ -189,7 +185,7 @@ export default function ScheduledMessagesPage() {
                     </div>
                     {msg.last_sent_at_chicago && (
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                        Last sent: {timeAgo(msg.last_sent_at) || msg.last_sent_at_chicago}
+                        Last sent: {relativeTime(msg.last_sent_at) || msg.last_sent_at_chicago}
                       </div>
                     )}
                   </td>
@@ -263,5 +259,3 @@ export default function ScheduledMessagesPage() {
     </div>
   );
 }
-
-/** Combined company report HTML for Telegram-style preview (matches server sanitization). */

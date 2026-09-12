@@ -9,12 +9,12 @@ import { ConfirmationBroadcastTab } from "./broadcast/ConfirmationBroadcastTab";
 import { SendConfirmDialog } from "./broadcast/SendConfirmDialog";
 
 /**
- * Broadcast Center — page container.
- *
- * LAYOUT AND WIRING ONLY:
+ * Send Message — the composer tab of Communications (was the Broadcast Center
+ * page). Layout and wiring only:
  *
  *   broadcast/templateTokens.js           placeholder-token validation (pure)
- *   broadcast/composerHelpers.js          media/schedule/format helpers (pure)
+ *   broadcast/composerHelpers.js          media + weekday helpers (pure)
+ *   ../format.js                          the area's shared text/time formatting
  *   broadcast/useBroadcastTargeting.js    the SHARED audience + force-language
  *   broadcast/useBroadcastHistory.js      one instance per tab, lazy + cached
  *   broadcast/useRegularBroadcast.js      announcement: send / test / schedule
@@ -22,10 +22,14 @@ import { SendConfirmDialog } from "./broadcast/SendConfirmDialog";
  *   broadcast/{TargetingSection,RegularBroadcastTab,
  *              ConfirmationBroadcastTab,SendConfirmDialog,PlaceholderChips}.jsx
  *
+ * "TAB" MEANS TWO THINGS HERE NOW. This file is itself one tab of
+ * Communications, and it has its own pair inside it — Announcement and
+ * Confirmation. Everything below is about that inner pair.
+ *
  * Targeting is ONE hook shared by both composers, because the audience and the
- * force-language setting have one control each at the top of the page and apply
- * to whichever tab sends. Per-tab copies would let an admin pick drivers on one
- * tab and send from the other.
+ * force-language setting have one control each at the top and apply to
+ * whichever composer sends. Per-composer copies would let an admin pick drivers
+ * on one and send from the other.
  *
  * The two composers are separate hooks because their rules genuinely differ: a
  * regular broadcast may be media-only, while a confirmation requires message
@@ -38,7 +42,7 @@ import { SendConfirmDialog } from "./broadcast/SendConfirmDialog";
  * insertTokenIntoEditor stays here because it dispatches to whichever of the SIX
  * language editors last had focus, across both tabs.
  */
-export default function BroadcastPage() {
+export default function SendMessageTab() {
   const [broadcastTab, setBroadcastTab] = useState('regular'); // 'regular' | 'confirmation'
   const [showSendConfirm, setShowSendConfirm] = useState(null);
 
@@ -81,10 +85,7 @@ export default function BroadcastPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <h2>📢 Broadcast Center</h2>
-        <p>Send messages and media to multiple driver groups</p>
-      </div>
+      <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 20 }}>Send messages and media to multiple driver groups.</p>
 
       <div className="broadcast-tabs">
         <button className={`broadcast-tab-btn ${broadcastTab === 'regular' ? 'active' : ''}`} onClick={() => setBroadcastTab('regular')}>📢 Announcement</button>

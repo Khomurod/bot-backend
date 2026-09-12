@@ -11,7 +11,7 @@ import React from "react";
  * An empty selection in the driver or language modes is refused by
  * useBroadcastTargeting rather than silently widening to everyone.
  *
- * Split out of admin/src/pages/BroadcastPage.jsx.
+ * Split out of admin/src/pages/communications/SendMessageTab.jsx.
  */
 export function TargetingSection({
   targetType, setTargetType, targetActiveFilter, setTargetActiveFilter,
