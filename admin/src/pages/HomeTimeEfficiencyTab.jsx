@@ -33,6 +33,7 @@ const RANGES = [
 const DRIVER_TYPE_FILTERS = [
   { value: "all", label: "All driver types" },
   { value: "company_driver", label: "Company drivers" },
+  { value: "lease", label: "Lease drivers" },
   { value: "owner", label: "Owner operators" },
 ];
 

@@ -1,3 +1,4 @@
+const { resolveDriverType } = require('../lib/drivers/fleetType');
 const {
   extractDriverNameFromGroupTitle,
   extractUnitFromGroupName,
@@ -32,9 +33,22 @@ function buildDriverCandidate(group) {
     telegramGroupId: group.telegram_group_id,
     driverName,
     unitNumber,
+    // Which fleet's truck this is. Two candidates can share a unit number and be
+    // different trucks entirely — Company 001 is not Owner-Operator 001 — so a
+    // list of matches that does not say which fleet each one is leaves the
+    // dispatcher to guess at exactly the moment the app has stopped guessing.
+    fleetType: resolveDriverType({ column: group.driver_type, title: groupName }).fleetType,
     driverTokens: tokenizePersonName(driverName),
     normalizedDriverName: normalizePersonName(driverName),
   };
+}
+
+/** A fleet label for a disambiguation list; null when there is nothing to say. */
+function fleetLabelFor(candidate) {
+  const labels = {
+    company: 'Company', lease: 'Lease', owner_operator: 'Owner Operator',
+  };
+  return labels[candidate?.fleetType] || null;
 }
 
 function scoreDriverNameMatch(query, candidate) {
@@ -102,6 +116,7 @@ function formatDriverPickLabel(candidate) {
 }
 
 module.exports = {
+  fleetLabelFor,
   MIN_MATCH_SCORE,
   isTestHubGroup,
   buildDriverCandidate,

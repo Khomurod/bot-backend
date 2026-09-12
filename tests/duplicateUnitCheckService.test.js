@@ -70,3 +70,34 @@ test('same-driver duplicate provider entries (stale+fresh) are NOT a mismatch', 
   ];
   assert.deepEqual(analyzeDuplicateUnits(rows, vehicles), []);
 });
+
+test('the same number in two KNOWN fleets is not a duplicate report', () => {
+  const rows = [
+    { group_id: 1, group_name: 'WENZE UNIT # 001 A (COMPANY DRIVERS)', unit_number: '001', driver_type: null },
+    { group_id: 2, group_name: 'WENZE UNIT # 001 B', unit_number: '001', driver_type: null },
+  ];
+  const reports = analyzeDuplicateUnits(rows, null);
+  assert.deepEqual(reports.filter((r) => r.reportType === 'duplicate_unit'), [],
+    'Company 001 and Owner-Operator 001 are two trucks');
+});
+
+test('the same number within ONE fleet is still a duplicate report', () => {
+  const rows = [
+    { group_id: 1, group_name: 'WENZE UNIT # 001 A (COMPANY DRIVERS)', unit_number: '001', driver_type: null },
+    { group_id: 2, group_name: 'WENZE UNIT # 001 B (COMPANY DRIVERS)', unit_number: '001', driver_type: null },
+  ];
+  const reports = analyzeDuplicateUnits(rows, null).filter((r) => r.reportType === 'duplicate_unit');
+  assert.equal(reports.length, 1);
+  assert.deepEqual(reports[0].groupIds, [1, 2]);
+  assert.match(reports[0].detail, /active company driver groups/);
+});
+
+test('one unplaceable claimant sends the number back to a single report', () => {
+  const rows = [
+    { group_id: 1, group_name: 'WENZE UNIT # 001 A (COMPANY DRIVERS)', unit_number: '001', driver_type: null },
+    { group_id: 2, group_name: 'WENZE UNIT # 001 B (CONTRACTOR)', unit_number: '001', driver_type: null },
+  ];
+  const reports = analyzeDuplicateUnits(rows, null).filter((r) => r.reportType === 'duplicate_unit');
+  assert.equal(reports.length, 1, 'unknown cannot prove they are different trucks either');
+  assert.deepEqual(reports[0].groupIds, [1, 2]);
+});

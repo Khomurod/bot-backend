@@ -2,9 +2,9 @@ const db = require('../database/db');
 const {
   buildDriverDisplayName,
   buildNormalizedDriverKey,
-  inferDriverType,
   isInactiveGroup,
 } = require('../lib/drivers/driverProfileParse');
+const { resolveDriverType } = require('../lib/drivers/fleetType');
 
 function buildBaseDirectoryRow(row = {}) {
   const displayName = buildDriverDisplayName({
@@ -16,7 +16,13 @@ function buildBaseDirectoryRow(row = {}) {
   });
   const primaryDisplayName = [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || null;
   const secondaryDisplayName = [row.secondary_first_name, row.secondary_last_name].filter(Boolean).join(' ').trim() || null;
-  const driverType = row.driver_type || inferDriverType(row.group_name || '');
+  // `resolveDriverType`, not the old substring test: the column is somebody's
+  // decision and wins; the title is the fallback, read by the same rules the
+  // Dispatcher Board uses — so a `(LEASE DRIVERS)` chat is finally visible as
+  // one. A title nobody can place answers null rather than `owner`.
+  const driverType = resolveDriverType({
+    column: row.driver_type, title: row.group_name,
+  }).value;
   const status = row.profile_status || (row.group_active === false ? 'inactive' : 'active');
   const inactive = row.group_type === 'driver'
     ? isInactiveGroup({ active: row.group_active, group_name: row.group_name, status })

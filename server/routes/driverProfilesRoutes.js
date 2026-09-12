@@ -92,12 +92,14 @@ function createDriverProfilesRoutes({ db, authMiddleware }) {
       }
 
       const body = req.body || {};
-      const allowedTypes = ['owner', 'company_driver'];
+      // `lease` since migration 0047: the fleet has three, and a value the
+      // database now accepts must be reachable from the screen that sets it.
+      const allowedTypes = ['owner', 'company_driver', 'lease'];
       const allowedStatuses = ['active', 'inactive'];
       const allowedLanguages = ['en', 'ru', 'uz'];
 
       if (body.driver_type != null && !allowedTypes.includes(body.driver_type)) {
-        return res.status(400).json({ error: 'driver_type must be owner or company_driver' });
+        return res.status(400).json({ error: 'driver_type must be owner, company_driver or lease' });
       }
       if (body.status != null && !allowedStatuses.includes(body.status)) {
         return res.status(400).json({ error: 'status must be active or inactive' });

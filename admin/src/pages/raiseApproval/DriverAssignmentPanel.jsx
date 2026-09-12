@@ -1,4 +1,5 @@
 import React from "react";
+import { driverTypeLabel } from "../routeControlGroupSearch.mjs";
 
 /**
  * Assign company drivers to one dispatch team.
@@ -84,7 +85,7 @@ export function DriverAssignmentPanel({
             <span style={{ flex: 1 }}>
               <strong>{c.driver_name || "(no name)"}</strong>
               {c.unit_number ? ` — Unit ${c.unit_number}` : ""}
-              {c.driver_type ? ` — ${c.driver_type === "company_driver" ? "Company Driver" : c.driver_type}` : ""}
+              {c.driver_type ? ` — ${driverTypeLabel(c.driver_type) || c.driver_type}` : ""}
               <span style={{ color: "#888" }}>{c.group_name ? ` — ${c.group_name}` : ""}</span>
               {c.warnings?.includes("missing_unit") && <span className="badge badge-muted" style={{ marginLeft: 6 }}>no unit</span>}
               {c.warnings?.includes("missing_name") && <span className="badge badge-muted" style={{ marginLeft: 6 }}>no name</span>}

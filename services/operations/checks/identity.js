@@ -11,6 +11,7 @@
  * these the honest tier is `warning`, because only a human knows which truck the
  * driver is actually sitting in.
  */
+const { resolveDriverType, FLEET_TYPES } = require('../../../lib/drivers/fleetType');
 const { extractUnitFromGroupName } = require('../../../lib/drivers/driverGroupTitle');
 
 const SILENT_DAYS = 60;
@@ -106,31 +107,65 @@ function checkDuplicateUnits({ groups, profiles }) {
     // of the app uses. Stored exactly as written: '001' and '01' are different.
     const unit = (profile?.unit_number || extractUnitFromGroupName(group.group_name) || '').trim();
     if (!unit) continue;
+    const fleet = resolveDriverType({
+      column: profile?.driver_type, title: group.group_name,
+    }).fleetType;
     if (!byUnit.has(unit)) byUnit.set(unit, []);
-    byUnit.get(unit).push({ group, profile });
+    byUnit.get(unit).push({ group, profile, fleet });
   }
 
   const findings = [];
-  for (const [unit, holders] of byUnit) {
-    if (holders.length < 2) continue;
-    findings.push({
-      checkKey: 'identity.duplicate_unit',
-      subjectType: 'unit',
-      subjectId: unit,
-      title: `Unit ${unit} is on ${holders.length} active driver groups`,
-      // Four claimants is a different problem from two: it usually means the
-      // unit is a placeholder nobody maintained.
-      severity: holders.length > 2 ? 'serious' : 'warning',
-      tier: 'warning',
-      evidence: {
-        unitNumber: unit,
-        groups: holders.map((h) => ({
-          groupId: h.group.id,
-          groupName: h.group.group_name,
-          driver: [h.profile?.first_name, h.profile?.last_name].filter(Boolean).join(' ') || null,
-        })),
-      },
-    });
+  for (const [unit, claimants] of byUnit) {
+    if (claimants.length < 2) continue;
+
+    // THE SAME NUMBER IN DIFFERENT FLEETS IS NOT A DUPLICATE. Company 001,
+    // Owner-Operator 001 and Lease 001 are three trucks, and reporting all
+    // three teaches an operator to ignore this check. So the claimants are
+    // grouped by fleet — but ONLY when every one of them is placeable. A single
+    // `unknown` among them means we cannot tell which truck it is, and then the
+    // bare number is the honest bucket: `unknown` never wins a match, and it
+    // must not be used to explain a collision away either.
+    const anyUnknown = claimants.some((c) => c.fleet === FLEET_TYPES.UNKNOWN);
+    const buckets = new Map();
+    for (const claimant of claimants) {
+      const key = anyUnknown ? unit : `${claimant.fleet}:${unit}`;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(claimant);
+    }
+
+    for (const [key, holders] of buckets) {
+      if (holders.length < 2) continue;
+      const fleet = anyUnknown ? null : holders[0].fleet;
+      findings.push({
+        checkKey: 'identity.duplicate_unit',
+        subjectType: 'unit',
+        subjectId: key,
+        title: fleet
+          ? `Unit ${unit} is on ${holders.length} active ${fleet.replace('_', ' ')} driver groups`
+          : `Unit ${unit} is on ${holders.length} active driver groups`,
+        // Four claimants is a different problem from two: it usually means the
+        // unit is a placeholder nobody maintained.
+        severity: holders.length > 2 ? 'serious' : 'warning',
+        tier: 'warning',
+        evidence: {
+          unitNumber: unit,
+          fleetType: fleet,
+          // Said plainly, because "why is this still reported" is the first
+          // question an operator asks about a number they have already explained.
+          fleetKnown: !anyUnknown,
+          ...(anyUnknown ? {
+            note: 'at least one of these groups has no readable fleet label, so '
+              + 'Wenze cannot tell whether these are the same truck',
+          } : {}),
+          groups: holders.map((h) => ({
+            groupId: h.group.id,
+            groupName: h.group.group_name,
+            fleetType: h.fleet,
+            driver: [h.profile?.first_name, h.profile?.last_name].filter(Boolean).join(' ') || null,
+          })),
+        },
+      });
+    }
   }
   return findings;
 }

@@ -1,51 +1,77 @@
+'use strict';
+
 /**
- * Who a "company drivers" broadcast actually reaches.
+ * Who a company-driver broadcast reaches.
  *
- * The target filter matched the literal string '(COMPANY DRIVER)' — with the
- * closing bracket and no plural — while the fleet's real team titles are
- * '(COMPANY DRIVERS)'. Every one of those groups was silently dropped from
- * every company-driver broadcast, and nothing anywhere reported a group it had
- * decided not to message. These tests pin the plural, because the singular form
- * still exists too and a fix that swapped one literal for the other would be
- * the same bug facing the other way.
+ * This is the one user-visible behaviour change in Stage A3, and the costly
+ * mistake is asymmetric: a driver who quietly STOPS receiving company
+ * broadcasts produces no error and no complaint until something important is
+ * missed. So the rule is shaped so that no parsing change can exclude a group
+ * the previous rule included — only an explicit human decision can — and these
+ * tests are mostly about that floor.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const SINGULAR = { id: 1, group_name: 'WENZE UNIT # 100 JOHN DOE (COMPANY DRIVER)', active: true };
-const PLURAL = { id: 2, group_name: 'WENZE UNIT # 200 TEAM (COMPANY DRIVERS)', active: true };
-const LOWER = { id: 3, group_name: 'Wenze unit # 300 company drivers', active: true };
-const OWNER = { id: 4, group_name: 'WENZE UNIT # 400 JANE ROE (OWNER OPERATOR)', active: true };
-const INACTIVE_PLURAL = { id: 5, group_name: 'WENZE UNIT # 500 TEAM (COMPANY DRIVERS)', active: false };
+const { isCompanyDriverGroup } = require('../services/broadcastTargetService');
 
-const ALL = [SINGULAR, PLURAL, LOWER, OWNER, INACTIVE_PLURAL];
+const g = (group_name, driver_type = null) => ({ group_name, driver_type });
 
-require.cache[require.resolve('../database/db')] = {
-  exports: {
-    getAllDriverGroups: async () => ALL.filter((g) => g.active),
-    getDriverGroupsByActiveFilter: async (filter) => (
-      filter === 'inactive' ? ALL.filter((g) => !g.active) : ALL
-    ),
-  },
-};
-
-const { resolveBroadcastTargetGroups } = require('../services/broadcastTargetService');
-
-test('a company-driver broadcast reaches the PLURAL team titles', async () => {
-  const groups = await resolveBroadcastTargetGroups({ target_type: 'company_drivers' });
-  const ids = groups.map((g) => g.id).sort();
-  assert.deepEqual(ids, [1, 2, 3],
-    'the plural and lower-case titles are company-driver groups too');
+test('the production title forms all still reach the broadcast', () => {
+  // Both real shapes quoted in the Phase 2 findings.
+  assert.equal(isCompanyDriverGroup(g('WENZE UNIT # 008 ABDINASIR / IBRAHIM (COMPANY DRIVERS)')), true);
+  assert.equal(isCompanyDriverGroup(g('WENZE UNIT # 2614 TERRELL DALTON (COMPANY DRIVER)')), true);
 });
 
-test('owner-operators are still excluded', async () => {
-  const groups = await resolveBroadcastTargetGroups({ target_type: 'company_drivers' });
-  assert.equal(groups.some((g) => g.id === OWNER.id), false);
+test('a title WITHOUT brackets is not dropped', () => {
+  // The strict Board parser wants a parenthesised label; a Telegram title does
+  // not have to have one. Requiring the strict form would silently drop this
+  // group from every company broadcast — the exact failure this rule prevents.
+  assert.equal(isCompanyDriverGroup(g('WENZE COMPANY DRIVERS 310 X')), true);
+  assert.equal(isCompanyDriverGroup(g('WENZE COMPANY DRIVER 310 X')), true);
 });
 
-test('the active filter still decides the pool, not the title test', async () => {
-  const groups = await resolveBroadcastTargetGroups({
-    target_type: 'company_drivers', target_active_filter: 'inactive',
-  });
-  assert.deepEqual(groups.map((g) => g.id), [INACTIVE_PLURAL.id]);
+test('an unlabelled title is an owner operator and is not reached', () => {
+  assert.equal(isCompanyDriverGroup(g('WENZE UNIT # 310 JAKHONGIR ABDUNABIEV')), false);
+});
+
+test('a lease group is not a company group', () => {
+  assert.equal(isCompanyDriverGroup(g('WENZE UNIT # 771 A DRIVER (LEASE DRIVERS)')), false);
+});
+
+test('a recorded decision beats the chat name, in both directions', () => {
+  // The ONE case that can newly exclude somebody — and the point of recording
+  // a driver type at all.
+  assert.equal(isCompanyDriverGroup(g('WENZE UNIT # 8 A (COMPANY DRIVERS)', 'owner')), false);
+  assert.equal(isCompanyDriverGroup(g('WENZE UNIT # 8 A (COMPANY DRIVERS)', 'lease')), false);
+  // And the one that can newly include somebody.
+  assert.equal(isCompanyDriverGroup(g('WENZE UNIT # 310 X', 'company_driver')), true);
+});
+
+test('an unreadable column is not a decision, so the title still decides', () => {
+  assert.equal(isCompanyDriverGroup(g('WENZE UNIT # 8 A (COMPANY DRIVERS)', 'contractor')), true);
+  assert.equal(isCompanyDriverGroup(g('WENZE UNIT # 310 X', 'contractor')), false);
+});
+
+test('every group the OLD rule reached is still reached unless a person said otherwise', () => {
+  // The floor, stated as a property rather than a list. `inferDriverType` is
+  // the rule that shipped before this change.
+  const { inferDriverType } = require('../lib/drivers/driverProfileParse');
+  const titles = [
+    'WENZE UNIT # 008 A / B (COMPANY DRIVERS)',
+    'WENZE UNIT # 2614 T DALTON (COMPANY DRIVER)',
+    'WENZE COMPANY DRIVERS 310 X',
+    'WENZE UNIT # 310 JAKHONGIR',
+    'WENZE UNIT # 771 A (LEASE DRIVERS)',
+    'WENZE UNIT # 27 GOCHYYEV INACTIVE',
+    'Employee Feedback (Admin)',
+    'WENZE UNIT # 001A RALPH MICHEL',
+  ];
+  for (const title of titles) {
+    const wasReached = inferDriverType(title) === 'company_driver';
+    if (wasReached) {
+      assert.equal(isCompanyDriverGroup(g(title)), true,
+        `the old rule reached "${title}" and nobody decided otherwise`);
+    }
+  }
 });

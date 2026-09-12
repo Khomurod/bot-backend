@@ -206,3 +206,73 @@ test('mileage rows without a person are keyed by the cohort, so a dismissed coho
   assert.notEqual(before.subjectId, changed.subjectId, 'a different cohort is a different finding');
   assert.notEqual(before.subjectId, 'unplaced');
 });
+
+// ─── a unit number is not a truck ────────────────────────────────────────────
+
+test('a holder in a DIFFERENT fleet does not contest the truck', () => {
+  const groups = [group(71, 'WENZE UNIT # 001 A ONE (COMPANY DRIVERS)')];
+  const profiles = [profile(71, '001')];
+  const personGroups = [{ person_id: 1, group_id: 71, started_at: '2026-01-01' }];
+  // Person 2 holds Owner-Operator 001 — a different truck entirely.
+  const units = [{ person_id: 2, unit_number: '001', fleet_type: 'owner_operator' }];
+  const people = [{ id: 1, display_name: 'A ONE' }, { id: 2, display_name: 'B TWO' }];
+
+  assert.deepEqual(
+    layer.checkUnitContested({ groups, profiles, personGroups, units, people }),
+    []
+  );
+});
+
+test('a holder in the SAME fleet still contests it', () => {
+  const groups = [group(72, 'WENZE UNIT # 001 A ONE (COMPANY DRIVERS)')];
+  const profiles = [profile(72, '001')];
+  const personGroups = [{ person_id: 1, group_id: 72, started_at: '2026-01-01' }];
+  const units = [{ person_id: 2, unit_number: '001', fleet_type: 'company' }];
+  const people = [{ id: 1, display_name: 'A ONE' }, { id: 2, display_name: 'B TWO' }];
+
+  const found = layer.checkUnitContested({ groups, profiles, personGroups, units, people });
+  assert.equal(found.length, 1);
+  assert.equal(found[0].evidence.holderPersonId, 2);
+  assert.equal(found[0].evidence.fleetType, 'company');
+});
+
+test('an unplaceable holder contests, because unknown proves nothing either way', () => {
+  const groups = [group(73, 'WENZE UNIT # 001 A ONE (COMPANY DRIVERS)')];
+  const profiles = [profile(73, '001')];
+  const personGroups = [{ person_id: 1, group_id: 73, started_at: '2026-01-01' }];
+  const units = [{ person_id: 2, unit_number: '001', fleet_type: 'unknown' }];
+  const people = [{ id: 1, display_name: 'A ONE' }, { id: 2, display_name: 'B TWO' }];
+
+  const found = layer.checkUnitContested({ groups, profiles, personGroups, units, people });
+  assert.equal(found.length, 1, 'unknown never wins a match, in either direction');
+});
+
+test('several holders on one number: only the one in the same truck is named', () => {
+  const groups = [group(74, 'WENZE UNIT # 001 A ONE (COMPANY DRIVERS)')];
+  const profiles = [profile(74, '001')];
+  const personGroups = [{ person_id: 1, group_id: 74, started_at: '2026-01-01' }];
+  // The old `new Map()` keyed by number kept whichever row came LAST and
+  // silently dropped the rest — here it would have reported the lease driver.
+  const units = [
+    { person_id: 2, unit_number: '001', fleet_type: 'company' },
+    { person_id: 3, unit_number: '001', fleet_type: 'lease' },
+  ];
+  const people = [
+    { id: 1, display_name: 'A ONE' }, { id: 2, display_name: 'B TWO' }, { id: 3, display_name: 'C THREE' },
+  ];
+
+  const found = layer.checkUnitContested({ groups, profiles, personGroups, units, people });
+  assert.equal(found.length, 1);
+  assert.equal(found[0].evidence.holderPersonId, 2, 'the company driver, not the lease driver');
+});
+
+test('a stale assignment is not blocked by a holder in another fleet', () => {
+  const groups = [group(75, 'WENZE UNIT # 002 A ONE (COMPANY DRIVERS)')];
+  const profiles = [profile(75, '002')];
+  const personGroups = [{ person_id: 1, group_id: 75, started_at: '2026-01-01' }];
+  const units = [{ person_id: 2, unit_number: '002', fleet_type: 'owner_operator' }];
+
+  const found = layer.checkStaleUnitAssignment({ groups, profiles, personGroups, units });
+  assert.equal(found.length, 1, 'Owner-Operator 002 does not hold Company 002');
+  assert.equal(found[0].proposedChange.to, '002');
+});

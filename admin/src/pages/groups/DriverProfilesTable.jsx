@@ -133,8 +133,9 @@ export function DriverProfilesTable({
                     saveProfilePatch(profile, { driver_type: next }, "Driver type updated.");
                   }}
                 >
-                  <option value="owner">Owner</option>
+                  <option value="owner">Owner Operator</option>
                   <option value="company_driver">Company Driver</option>
+                  <option value="lease">Lease Driver</option>
                 </select>
               </td>
               <td>

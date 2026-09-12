@@ -16,6 +16,8 @@
  * associations are the evidence, and both actions re-derive from the LIVE rows
  * under lock rather than trusting the sweep's payload.
  */
+const { resolveDriverType } = require('../../../lib/drivers/fleetType');
+const { holderContests } = require('../../../lib/identity/personResolution');
 const { StaleCorrectionError } = require('./evidence');
 const people = require('../../../database/driverPeople');
 const lookups = require('../../../database/driverPeople/lookups');
@@ -104,7 +106,7 @@ const syncUnit = {
     // The evidence, locked: the profile that names the truck, and every open
     // unit row that could contradict the move.
     const profile = await client.query(
-      'SELECT unit_number FROM driver_profiles WHERE group_id = $1 FOR UPDATE', [groupId]
+      'SELECT unit_number, driver_type FROM driver_profiles WHERE group_id = $1 FOR UPDATE', [groupId]
     );
     if (String(profile.rows[0]?.unit_number || '').trim() !== unit) {
       throw new StaleCorrectionError(`Group ${groupId}'s profile no longer says unit ${unit}.`);
@@ -126,16 +128,31 @@ const syncUnit = {
     // The chat's Samsara link travels onto the truck row, as it does on the
     // normal profile-save path — without it the vehicle-link check has only one
     // side to compare and goes quiet for exactly the driver just repaired.
-    const groupRow = await client.query('SELECT samsara_vehicle_id FROM groups WHERE id = $1 FOR UPDATE', [groupId]);
+    const groupRow = await client.query(
+      'SELECT samsara_vehicle_id, group_name FROM groups WHERE id = $1 FOR UPDATE', [groupId]
+    );
     const samsaraVehicleId = groupRow.rows[0]?.samsara_vehicle_id || null;
+    // Which fleet's truck this is — the profile's decision first, the chat title
+    // second. Recorded on the row, because a `(fleet_type, unit_number, seat)`
+    // is what identifies a truck and a correction that wrote `unknown` would
+    // create a row that contests every same-numbered truck in the fleet.
+    const fleetType = resolveDriverType({
+      column: profile.rows[0]?.driver_type, title: groupRow.rows[0]?.group_name,
+    }).fleetType;
     const openRows = await client.query(
-      `SELECT id, person_id, unit_number, samsara_vehicle_id FROM driver_units
+      `SELECT id, person_id, unit_number, samsara_vehicle_id, fleet_type, seat
+         FROM driver_units
         WHERE ended_at IS NULL AND (person_id = $1 OR unit_number = $2)
         ORDER BY id FOR UPDATE`,
       [personId, unit]
     );
-    const holder = openRows.rows.find((r) => String(r.unit_number).trim() === unit);
-    if (holder && Number(holder.person_id) !== Number(personId)) {
+    // Only a holder of the SAME truck blocks this. Company 001 and
+    // Owner-Operator 001 are two trucks, and `unknown` on either side blocks,
+    // because it cannot prove they are different either.
+    const holder = openRows.rows.find((r) => String(r.unit_number).trim() === unit
+      && Number(r.person_id) !== Number(personId)
+      && holderContests(fleetType, r.fleet_type));
+    if (holder) {
       throw new StaleCorrectionError(`Unit ${unit} is now held by person ${holder.person_id} — not reassigning.`);
     }
     const current = openRows.rows.find((r) => Number(r.person_id) === Number(personId));
@@ -145,7 +162,7 @@ const syncUnit = {
 
     if (current) await people.closeUnitAssignment({ personId }, client);
     const opened = await people.openUnitAssignment({
-      personId, unitNumber: unit, samsaraVehicleId, source: 'profile',
+      personId, unitNumber: unit, samsaraVehicleId, source: 'profile', fleetType,
     }, client);
 
     return {

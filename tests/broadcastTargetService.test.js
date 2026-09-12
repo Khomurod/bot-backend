@@ -36,6 +36,20 @@ const db = {
     if (filter === 'all') return [ACTIVE, INACTIVE, INACTIVE_RU];
     return [ACTIVE];
   },
+  getDriverGroupsWithDriverType: async (filter) => {
+    calls.push(['getDriverGroupsWithDriverType', filter]);
+    return [
+      { id: 101, group_name: 'WENZE UNIT # 8 A / B (COMPANY DRIVERS)', driver_type: null },
+      { id: 102, group_name: 'WENZE UNIT # 310 JAKHONGIR', driver_type: null },
+      { id: 103, group_name: 'WENZE UNIT # 771 A (LEASE DRIVERS)', driver_type: null },
+      // Somebody decided this one is an owner operator, whatever the chat says.
+      { id: 104, group_name: 'WENZE UNIT # 9 C (COMPANY DRIVERS)', driver_type: 'owner' },
+      // ...and this one is a company driver, whatever the chat says.
+      { id: 105, group_name: 'WENZE UNIT # 11 D', driver_type: 'company_driver' },
+      // No brackets: the old rule reached it, so the new one must too.
+      { id: 106, group_name: 'WENZE COMPANY DRIVERS 12 E', driver_type: null },
+    ];
+  },
   getGroupsByType: async (type, opts) => {
     calls.push(['getGroupsByType', type, opts]);
     return [{ id: 9, group_name: 'Employees', group_type: 'employee', active: true }];
@@ -132,4 +146,18 @@ test('other_company target resolves non-driver, non-employee groups', async () =
   const groups = await resolveBroadcastTargetGroups({ target_type: 'other_company' });
   assert.equal(groups[0].group_name, 'Dispatch Office');
   assert.deepEqual(calls, [['getOtherCompanyGroups', { activeOnly: true }]]);
+});
+
+test('a company-driver broadcast reads the recorded type, not only the chat name', async () => {
+  calls.length = 0;
+  const groups = await resolveBroadcastTargetGroups({ target_type: 'company_drivers' });
+  assert.deepEqual(calls, [['getDriverGroupsWithDriverType', 'active']],
+    'one query, carrying the decision somebody recorded');
+  assert.deepEqual(groups.map((g) => g.id), [101, 105, 106]);
+});
+
+test('the active filter reaches the query rather than being dropped', async () => {
+  calls.length = 0;
+  await resolveBroadcastTargetGroups({ target_type: 'company_drivers', target_active_filter: 'all' });
+  assert.deepEqual(calls, [['getDriverGroupsWithDriverType', 'all']]);
 });

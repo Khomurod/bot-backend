@@ -4,11 +4,42 @@
  */
 const db = require('../database/db');
 const { inferDriverType } = require('../lib/drivers/driverProfileParse');
+const {
+  resolveDriverType, fleetTypeFromGroupName, FLEET_TYPES,
+} = require('../lib/drivers/fleetType');
 
 function normalizeActiveFilter(body) {
   const f = body?.target_active_filter;
   if (f === 'all' || f === 'inactive') return f;
   return 'active';
+}
+
+/**
+ * Does a company-driver broadcast reach this group?
+ *
+ * THE COSTLY MISTAKE HERE IS DROPPING SOMEBODY. A driver who quietly stops
+ * receiving company broadcasts produces no error and no complaint until
+ * something important is missed, so this rule is built so that no parsing change
+ * can exclude a group the previous rule included. Only an explicit human
+ * decision can.
+ *
+ *   A RECORDED `driver_type` DECIDES. Somebody set it on the profile; a chat
+ *   name is a string a dispatcher typed and may have edited since. This is the
+ *   one thing that can newly EXCLUDE a group — a title saying COMPANY whose
+ *   profile says owner or lease — and that is the point of recording it.
+ *
+ *   OTHERWISE THE TITLE DECIDES, BY EITHER READING. `lib/drivers/fleetType.js`
+ *   is strict because the Dispatcher Board always parenthesises its labels; a
+ *   Telegram title does not have to. `COMPANY DRIVERS` written without brackets
+ *   is a company driver's chat, and the permissive test is what the application
+ *   has always used. Requiring the strict form here would silently drop any such
+ *   group, which is exactly the failure this function is shaped around.
+ */
+function isCompanyDriverGroup(group) {
+  const decided = resolveDriverType({ column: group.driver_type, title: null });
+  if (decided.source === 'column') return decided.value === 'company_driver';
+  return fleetTypeFromGroupName(group.group_name) === FLEET_TYPES.COMPANY
+    || inferDriverType(group.group_name) === 'company_driver';
 }
 
 async function resolveBroadcastTargetGroups(body) {
@@ -35,15 +66,8 @@ async function resolveBroadcastTargetGroups(body) {
   }
 
   if (tt === 'company_drivers') {
-    const source = filter === 'active'
-      ? await db.getAllDriverGroups()
-      : await db.getDriverGroupsByActiveFilter(filter);
-    // `inferDriverType`, not a literal substring. The literal was
-    // '(COMPANY DRIVER)' — with the closing bracket — so every group titled
-    // '(COMPANY DRIVERS)' was silently excluded from every company-driver
-    // broadcast. `/company\s+drivers?/i` is the test the rest of the
-    // application already uses, and it handles both.
-    return source.filter((g) => inferDriverType(g.group_name) === 'company_driver');
+    const source = await db.getDriverGroupsWithDriverType(filter);
+    return source.filter(isCompanyDriverGroup);
   }
 
   if (tt === 'employee') {
@@ -61,6 +85,7 @@ async function resolveBroadcastTargetGroups(body) {
 }
 
 module.exports = {
+  isCompanyDriverGroup,
   normalizeActiveFilter,
   resolveBroadcastTargetGroups,
 };

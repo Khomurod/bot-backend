@@ -224,3 +224,37 @@ test('sync_unit carries the group\'s Samsara vehicle onto the new truck row, so 
   const open = await harness.query('SELECT unit_number, samsara_vehicle_id FROM driver_units WHERE person_id = $1 AND ended_at IS NULL', [pa]);
   assert.deepEqual(open.rows, [{ unit_number: '322', samsara_vehicle_id: 'v-9' }]);
 });
+
+test('the unit sync records the fleet, and a different fleet does not block it', {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  const harness = await harnessWith(t);
+  const { applyCorrection, resolver } = bind(harness);
+  // A company driver's chat claiming unit 001...
+  const a = await seedGroup(harness, {
+    telegramId: -31, name: 'WENZE UNIT # 001 A ONE (COMPANY DRIVERS)',
+    first: 'A', last: 'ONE', unit: '001',
+  });
+  const pa = (await resolver.ensurePersonForGroup(a)).personId;
+  // ...while somebody else already holds OWNER-OPERATOR 001, a different truck.
+  const pb = await harness.query(
+    `INSERT INTO driver_people (display_name, normalized_key) VALUES ('B TWO','btwo') RETURNING id`
+  );
+  await harness.query(
+    `INSERT INTO driver_units (person_id, unit_number, source, fleet_type)
+     VALUES ($1, '001', 'backfill', 'owner_operator')`, [pb.rows[0].id]
+  );
+
+  await applyCorrection({
+    finding: null, actionKey: 'identity.sync_unit',
+    payload: { personId: pa, unitNumber: '001', groupId: a.id },
+    initiator: 'admin', admin: ADMIN,
+  });
+
+  const rows = await harness.query(
+    `SELECT fleet_type FROM driver_units WHERE unit_number = '001' AND ended_at IS NULL
+      ORDER BY fleet_type`
+  );
+  assert.deepEqual(rows.rows.map((r) => r.fleet_type), ['company', 'owner_operator'],
+    'two fleets, two trucks, two assignments — the old rule refused this outright');
+});

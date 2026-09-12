@@ -25,7 +25,10 @@ export const HOME_TIME_SORT_COLUMNS = [
 
 export function driverTypeLabel(type) {
   if (type === "company_driver") return "Company driver";
+  if (type === "lease") return "Lease driver";
   if (type === "owner") return "Owner operator";
+  // Not "Owner operator". A driver nobody has classified is a question, and
+  // labelling them as the unlabelled default makes the question invisible.
   return "Unknown";
 }
 

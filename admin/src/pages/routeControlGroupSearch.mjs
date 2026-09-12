@@ -10,6 +10,7 @@
 /** Human driver-type label. */
 export function driverTypeLabel(t) {
   if (t === 'company_driver') return 'Company Driver';
+  if (t === 'lease') return 'Lease Driver';
   if (t === 'owner') return 'Owner Operator';
   return null;
 }
