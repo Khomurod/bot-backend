@@ -33,7 +33,7 @@
       "danger": "`token_encrypted` is an AES-256-GCM credential and the board authenticates by putting it in a QUERY STRING. Never log a board URL; `last_error` is written through lib/security/redactUrls.stripUrls and may never contain one."
     },
     "dispatch_board_rows": {
-      "purpose": "Wenze's snapshot of the Dispatcher Board — one row per board row, keyed by `row_key` (normalised truck + normalised person, because the board has no stable row id). Written ONLY by services/dispatchBoard/poller.js. `person_id`/`link_source`/`link_confidence` are created for the linking stage and are not written yet.",
+      "purpose": "Wenze's snapshot of the Dispatcher Board — one row per board row, keyed by `row_key` (normalised truck + normalised person, because the board has no stable row id). Written ONLY by services/dispatchBoard/poller.js. `person_id`/`link_source`/`link_confidence` are written ONLY by the `board.link_person` correction, never by the poller — and only when the truck and the name independently agree.",
       "status": "active",
       "service": "bot (poller, consistency sweep, admin feed card)",
       "sourceOfTruth": "The external Dispatcher Board, as of `last_seen_at`. Wenze remains the source of truth for who a person permanently is.",

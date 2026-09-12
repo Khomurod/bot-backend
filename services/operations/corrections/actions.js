@@ -38,6 +38,7 @@ const {
 } = require('./evidence');
 const { abandonExhaustedInternalAlerts } = require('./alertActions');
 const { ensurePerson, syncUnit } = require('./identityActions');
+const { linkBoardRowToPerson } = require('./boardActions');
 const { carryRoadClock } = require('./homeTimeActions');
 const { markReturnedToRoad } = require('./returnToRoadActions');
 const { classifyOpenCycles, daysBetween } = require('../checks/homeTime');
@@ -307,6 +308,7 @@ const ACTIONS = new Map([
   [closeHomeTimeCycle.key, closeHomeTimeCycle],
   [syncProfileStatus.key, syncProfileStatus],
   [abandonExhaustedInternalAlerts.key, abandonExhaustedInternalAlerts],
+  [linkBoardRowToPerson.key, linkBoardRowToPerson],
   [ensurePerson.key, ensurePerson],
   [syncUnit.key, syncUnit],
   [carryRoadClock.key, carryRoadClock],
@@ -327,6 +329,8 @@ const CHECK_TO_ACTION = new Map([
   ['identity.stale_unit_assignment', syncUnit.key],
   ['home_time.clock_reset_on_group_change', carryRoadClock.key],
   ['home_time.returned_to_road', markReturnedToRoad.key],
+  ['board.person_link', linkBoardRowToPerson.key],
+  ['board.person_link_suggested', linkBoardRowToPerson.key],
 ]);
 
 function getAction(actionKey) {

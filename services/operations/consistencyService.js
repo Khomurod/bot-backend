@@ -23,6 +23,7 @@ const systems = require('./checks/systems');
 const homeTime = require('./checks/homeTime');
 const homeTimeContinuity = require('./checks/homeTimeContinuity');
 const board = require('./checks/board');
+const boardLink = require('./checks/boardLink');
 const { runAutoCorrections } = require('./corrections/autoApply');
 const { withRunRecord } = require('./runLedger');
 const { loadSnapshot } = require('./snapshot/loaders');
@@ -37,6 +38,7 @@ const CHECK_MODULES = [
   { name: 'homeTime', keys: homeTime.CHECK_KEYS, run: homeTime.runHomeTimeChecks },
   { name: 'homeTimeContinuity', keys: homeTimeContinuity.CHECK_KEYS, run: homeTimeContinuity.runHomeTimeContinuityChecks },
   { name: 'board', keys: board.CHECK_KEYS, run: board.runBoardChecks },
+  { name: 'boardLink', keys: boardLink.CHECK_KEYS, run: boardLink.runBoardLinkChecks },
 ];
 
 let serviceTimer = null;

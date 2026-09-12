@@ -224,10 +224,71 @@ answer from. Counts only — no name, no phone, no truck — and the status
 histogram is grouped rather than enumerated, so a word dispatch invents appears
 instead of vanishing into "other".
 
+## Linking a Board row to a person
+
+`person_id`, `link_source` and `link_confidence` are now written — by the
+correction registry, never by the poller. The poller still only reads the
+spreadsheet, because a poller that also decided would put "the spreadsheet has
+a typo" and "the two systems disagree about a driver" behind one switch.
+
+**The rule lives in `lib/identity/boardResolution.js` and is pure.** Linking a
+row to the wrong person moves that person's truck, their home-time clock and
+their bonus, so it is the most careful decision in the application, and it can
+be read and tested as plain values.
+
+**Two independent facts must agree before anything is written:** the truck (as
+`(fleet_type, unit_number)`, by its EXACT spelling) and the name (strictly). One
+fact alone is a suggestion for a person to approve. Two facts that disagree is a
+question, never a tie-break.
+
+There are deliberately **two name tests**, and this is not duplication:
+
+| | may | accepts |
+|---|---|---|
+| `namesAgreeStrictly` (this module) | **act** | exact after normalisation, or every word of the shorter name inside the longer, with at least two words |
+| `driverNamesMatch` (`lib/drivers/`) | only **suggest** | a shared surname, two shared 3-letter tokens — two brothers match |
+
+Acting on a shared surname is how two brothers become one person, so the strict
+test is the only one the auto tier may use.
+
+### The findings, and their tiers
+
+| Check | Tier | When |
+|---|---|---|
+| `board.person_link` | `auto` | truck AND name agree |
+| `board.person_link_suggested` | `approval` | the name alone |
+| `board.person_link_conflict` | `warning` | the board says this truck, Wenze has somebody else in it |
+| `board.person_link_ambiguous` | `warning` | two holders, two name matches, or a digits-only truck match |
+| `board.person_unmatched` | `warning` / `info` | nobody matches — ordinary on a board ahead of its records |
+| `board.team_person_needs_split` | `approval` | two team names resolve to one person row |
+
+**Every one of them except the link itself proposes nothing.** A disagreement
+between two systems is not evidence about which one is right.
+
+**It ships in `suggest` mode.** Nothing links until the owner switches
+`board.person_link` to autopilot, and shadow mode is available first.
+
+### What the apply re-derives
+
+`board.link_person` does NOT trust the sweep's payload. Minutes pass between a
+sweep and an apply, so it re-runs the whole decision from the live rows under
+`FOR UPDATE` — the holders included, since they are the evidence — and refuses
+unless the answer is still `link` AND still the **same person**. "Still
+linkable" is not good enough: linkable to somebody else is the exact case worth
+refusing.
+
+The revert clears the link only while it still holds what the correction set. A
+row somebody has since repointed by hand is their decision, not ours.
+
+### A team is two people, never a duplicate
+
+Each member is decided separately and they must land on **different** people. A
+team whose two names resolve to one person is a composite `A / B` row stored
+years ago; splitting it is a judgement about two humans, so the decision is to
+link **neither** and say so. Linking one of them would silently pick a winner.
+
 ## What is not built yet
 
-Linking a Board row to a person (`person_id`, `link_source`, `link_confidence`
-are created and unused), and the contradiction checks between the Board and
-Wenze. Both are later stages with their own evidence rules: a poller that also
-decided would put "the spreadsheet has a typo" and "the two systems disagree
-about a driver" behind one switch.
+The contradiction checks between the Board and Wenze — "the board says home and
+we think they are on the road" — which is a later stage with its own evidence
+rules.

@@ -68,8 +68,14 @@ async function applyCorrection({
 
     const result = await action.apply(payload, client);
 
+    // WHAT THIS CORRECTION IS ABOUT, from the payload first and the finding
+    // second. `rowKey` is here because a board row's subject is a KEY and not
+    // an integer id — the one non-numeric subject in the registry — and
+    // without it a board correction applied without a finding derived a blank
+    // subject and was refused by `operational_corrections_subject_not_blank`
+    // at the very end of its own transaction.
     const subjectId = String(
-      payload.cycleId ?? payload.groupId ?? finding?.subjectId ?? ''
+      payload.cycleId ?? payload.groupId ?? payload.rowKey ?? finding?.subjectId ?? ''
     );
     const inserted = await client.query(
       `INSERT INTO operational_corrections

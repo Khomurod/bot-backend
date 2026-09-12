@@ -79,6 +79,12 @@ const CHECK_LABELS = {
   'board.team_flag_mismatch': 'Dispatcher board unclear whether a row is a team',
   'board.truck_on_multiple_rows': 'One truck on two dispatcher board rows',
   'board.row_vanished': 'A driver left the dispatcher board',
+  'board.person_link': 'Dispatcher board row matches a driver',
+  'board.person_link_suggested': 'Dispatcher board row looks like a driver, by name',
+  'board.person_link_conflict': 'Dispatcher board and Wenze disagree on the driver',
+  'board.person_link_ambiguous': 'Dispatcher board row could be more than one driver',
+  'board.person_unmatched': 'Dispatcher board row matches nobody in Wenze',
+  'board.team_person_needs_split': 'Two team drivers stored as one person',
 };
 
 export function checkLabel(checkKey) {

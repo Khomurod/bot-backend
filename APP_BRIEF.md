@@ -368,6 +368,15 @@ repository-wide working rules. The highest-consequence items:
 - **The Dispatcher Board is the authority on today's assignment; Wenze is the
   authority on who a person is.** A disagreement between them is a finding, not
   a correction — Wenze does not pick a side on "which truck is this driver in".
+  Joining the two is the most careful decision in the application, because a
+  wrong join moves somebody's truck, their home-time clock and their bonus onto
+  another human: **two independent facts must agree** — the truck by its exact
+  spelling as `(fleet_type, unit_number)`, and the name STRICTLY, not by the
+  fuzzy matcher that treats a shared surname as a match. One fact alone is a
+  suggestion a person approves; two facts that disagree is a question, never a
+  tie-break. The apply re-derives the whole decision under lock and refuses
+  unless it still names the same person. A team pair that resolves to one
+  person links neither.
   Its token travels in a query string, so every message about it leaves through
   `lib/security/redactUrls.stripUrls` and `last_error` may never hold a URL.
 - **A truck is `(fleet_type, unit_number, seat)`, never a number.** Wenze runs

@@ -32,6 +32,13 @@ function span(row) {
   return to ? `${from} → ${to}` : `since ${from}`;
 }
 
+/** A truck is (fleet, number, seat) — the number alone is not unique. */
+const FLEET_LABEL = {
+  company: "Company",
+  lease: "Lease",
+  owner_operator: "Owner Operator",
+};
+
 export default function PersonIdentityPanel({ personId }) {
   const [person, setPerson] = React.useState(null);
   const [error, setError] = React.useState(null);
@@ -86,6 +93,29 @@ export default function PersonIdentityPanel({ personId }) {
               ))}
             </ul>
           </div>
+          {person.board?.length > 0 && (
+            <div>
+              <span style={{ color: "var(--text-muted)" }}>Dispatcher board:</span>
+              <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+                {person.board.map((b) => (
+                  <li key={b.rowKey}>
+                    Truck <code>{b.truck || "—"}</code>
+                    {b.trailer ? <> · trailer <code>{b.trailer}</code></> : null}
+                    {b.status ? ` · ${b.status}` : ""}
+                    {!b.present && " · no longer on the board"}
+                    {b.etaText ? (
+                      <div style={{ color: "var(--text-muted)" }}>{b.etaText}</div>
+                    ) : null}
+                    <div style={{ color: "var(--text-muted)" }}>
+                      {b.dispatcher ? `Dispatcher ${b.dispatcher} · ` : ""}
+                      linked {b.linkSource === "board" ? "automatically" : "by hand"}
+                      {b.linkConfidence != null ? ` (${b.linkConfidence}%)` : ""}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div>
             <span style={{ color: "var(--text-muted)" }}>Trucks:</span>
             {person.units.length === 0 ? (
@@ -94,7 +124,10 @@ export default function PersonIdentityPanel({ personId }) {
               <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
                 {person.units.map((u) => (
                   <li key={u.id}>
-                    Unit <code>{u.unitNumber}</code>{u.endedAt ? "" : " (current)"}
+                    Unit <code>{u.unitNumber}</code>
+                    {u.fleetType && u.fleetType !== "unknown" ? ` · ${FLEET_LABEL[u.fleetType] || u.fleetType}` : ""}
+                    {u.seat > 1 ? ` · seat ${u.seat}` : ""}
+                    {u.endedAt ? "" : " (current)"}
                     {" "}<span style={{ color: "var(--text-muted)" }}>{span(u)}</span>
                   </li>
                 ))}
