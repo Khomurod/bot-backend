@@ -119,6 +119,13 @@ function payloadFor(finding) {
       ? { personId: change.personId, unitNumber: change.to, groupId: change.groupId }
       : null;
   }
+  if (finding.checkKey === 'board.person_link' || finding.checkKey === 'board.person_link_suggested') {
+    // The row key, not an integer id: `board_row` is the one subject type in
+    // the registry that is not numeric.
+    return change.rowKey && change.personId
+      ? { rowKey: change.rowKey, personId: change.personId, linkSource: change.linkSource || 'board' }
+      : null;
+  }
   if (finding.checkKey === 'home_time.returned_to_road') {
     return change.groupId && change.returnToRoadAt
       ? {

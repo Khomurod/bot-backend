@@ -29,8 +29,18 @@ async function loadSnapshot(db = defaultDb) {
          FROM groups`
     ),
     db.query(
+      // `driver_type` IS NOT OPTIONAL HERE. Every fleet-aware check calls
+      // `resolveDriverType({column: profile.driver_type, title: group_name})`,
+      // whose whole rule is that the STORED COLUMN WINS and the title is only
+      // the fallback when it is NULL. Leaving the column out of this SELECT
+      // made `column` undefined for every row, so the fallback ran every time
+      // and the rule A3b shipped was inert — a chat titled without
+      // "(COMPANY DRIVER)" read as owner_operator no matter what an
+      // administrator had recorded, and the contest check then compared it
+      // against a unit row that held the real value and found two different
+      // fleets where there was one.
       `SELECT group_id, first_name, last_name, secondary_first_name, secondary_last_name,
-              unit_number, status, telegram_user_id
+              unit_number, status, telegram_user_id, driver_type
          FROM driver_profiles`
     ),
     // Open cycles, plus every cycle of any group that has one — the class-B rule
@@ -86,7 +96,14 @@ async function loadLayerSnapshot(db) {
   ] = await Promise.all([
     db.query('SELECT id, display_name, merged_into_person_id FROM driver_people'),
     db.query('SELECT person_id, group_id, started_at FROM driver_person_groups WHERE ended_at IS NULL'),
-    db.query('SELECT person_id, unit_number, samsara_vehicle_id FROM driver_units WHERE ended_at IS NULL'),
+    // FLEET AND SEAT TRAVEL WITH THE UNIT. Migration 0047 made a truck
+    // `(fleet_type, unit_number, seat)` and this query kept selecting the bare
+    // number, so every check reading it saw Company 001 and Lease 001 as one
+    // truck — the exact confusion 0047 exists to remove.
+    db.query(
+      `SELECT person_id, unit_number, samsara_vehicle_id, fleet_type, seat
+         FROM driver_units WHERE ended_at IS NULL`
+    ),
     db.query(`SELECT id, group_id, status, created_at FROM fuel_stop_alerts WHERE status = 'watching'`),
     db.query(
       `SELECT id, team_id, group_id, driver_profile_id, person_id, driver_name, active

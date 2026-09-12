@@ -105,6 +105,22 @@ const SUBJECTS = Object.freeze({
     },
   },
 
+  // The subject is the board row's KEY, not an integer id — `board_row` is the
+  // one subject type in this table that is not numeric, and `Number(subjectId)`
+  // on it would read NaN and find nothing.
+  'board.link_person': {
+    autoRevert: false,
+    table: 'dispatch_board_rows',
+    async read(client, subjectId) {
+      const res = await client.query(
+        `SELECT person_id AS "personId", link_source AS "linkSource"
+           FROM dispatch_board_rows WHERE row_key = $1`,
+        [String(subjectId)]
+      );
+      return res.rows[0] || null;
+    },
+  },
+
   'home_time.mark_returned_to_road': {
     autoRevert: false,
     table: 'driver_home_status',

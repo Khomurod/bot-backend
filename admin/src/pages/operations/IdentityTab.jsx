@@ -81,6 +81,13 @@ export default function IdentityTab({ flash }) {
           hint={coverage?.groupsWithoutPerson === 0 ? "every chat is placed" : "the backfill fills these"}
         />
         <Tile label="Trucks assigned" value={coverage?.openUnits} hint="one driver per truck" />
+        {coverage?.board && (
+          <Tile
+            label="Board rows matched"
+            value={`${coverage.board.linked} / ${coverage.board.present}`}
+            hint="dispatcher board lines Wenze can put a name to"
+          />
+        )}
         <Tile
           label="Unstamped history"
           value={coverage ? coverage.unstamped.roadHistory + coverage.unstamped.requests : null}

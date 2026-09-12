@@ -166,7 +166,7 @@ async function stampAllFromAssociations(client = null) {
 async function getPersonIdentity(personId) {
   const person = await query('SELECT * FROM driver_people WHERE id = $1', [personId]);
   if (!person.rows[0]) return null;
-  const [groups, units, mergedFrom] = await Promise.all([
+  const [groups, units, mergedFrom, boardRows] = await Promise.all([
     query(
       `SELECT pg.id, pg.group_id, pg.started_at, pg.ended_at, pg.association_source, pg.confidence,
               g.group_name, g.active AS group_active, g.telegram_group_id
@@ -177,12 +177,24 @@ async function getPersonIdentity(personId) {
       [personId]
     ),
     query(
-      `SELECT id, unit_number, samsara_vehicle_id, started_at, ended_at, source
+      `SELECT id, unit_number, samsara_vehicle_id, fleet_type, seat, started_at, ended_at, source
          FROM driver_units WHERE person_id = $1
         ORDER BY ended_at IS NULL DESC, started_at DESC, id DESC`,
       [personId]
     ),
     query('SELECT id, display_name FROM driver_people WHERE merged_into_person_id = $1 ORDER BY id', [personId]),
+    // WHAT THE BOARD SAYS ABOUT THIS PERSON TODAY. Not authoritative about who
+    // they are — that is this table's job — but it is the one place an
+    // administrator can see the two systems side by side and notice they
+    // disagree. Wrapped: a deploy that has not applied 0046 yet must not take
+    // the person panel down with it.
+    query(
+      `SELECT row_key, truck_norm, board_trailer, status, eta_text, dispatcher,
+              link_source, link_confidence, present, last_seen_at
+         FROM dispatch_board_rows WHERE person_id = $1
+        ORDER BY present DESC, last_seen_at DESC`,
+      [personId]
+    ).catch(() => ({ rows: [] })),
   ]);
   const row = person.rows[0];
   return {
@@ -209,9 +221,26 @@ async function getPersonIdentity(personId) {
       id: r.id,
       unitNumber: r.unit_number,
       samsaraVehicleId: r.samsara_vehicle_id,
+      fleetType: r.fleet_type,
+      seat: r.seat,
       startedAt: r.started_at,
       endedAt: r.ended_at,
       source: r.source,
+    })),
+    // NO PHONE NUMBER. The board row carries one and this panel has no use for
+    // it; publishing it here would put a driver's number on a screen that
+    // exists to answer "is this the right person".
+    board: boardRows.rows.map((r) => ({
+      rowKey: r.row_key,
+      truck: r.truck_norm,
+      trailer: r.board_trailer,
+      status: r.status,
+      etaText: r.eta_text,
+      dispatcher: r.dispatcher,
+      linkSource: r.link_source,
+      linkConfidence: r.link_confidence,
+      present: r.present === true,
+      lastSeenAt: r.last_seen_at,
     })),
   };
 }
@@ -229,6 +258,14 @@ async function summariseIdentityCoverage() {
        (SELECT COUNT(*) FROM home_time_requests WHERE person_id IS NULL) AS unstamped_requests,
        (SELECT COUNT(*) FROM mileage_bonus_progress WHERE person_id IS NULL) AS unstamped_mileage`
   );
+  // THE BOARD'S OWN COVERAGE, asked separately and allowed to fail. Folding it
+  // into the query above would mean a deploy that has not applied 0046 takes
+  // the whole Identity tab down over a table it does not need.
+  const board = await query(
+    `SELECT COUNT(*)::int AS present,
+            COUNT(*) FILTER (WHERE person_id IS NOT NULL)::int AS linked
+       FROM dispatch_board_rows WHERE present = TRUE`
+  ).catch(() => ({ rows: [] }));
   const row = res.rows[0] || {};
   const n = (v) => Number(v) || 0;
   return {
@@ -241,6 +278,13 @@ async function summariseIdentityCoverage() {
       requests: n(row.unstamped_requests),
       mileage: n(row.unstamped_mileage),
     },
+    // How much of today's board Wenze can put a name to. `present` minus
+    // `linked` is what is still waiting on a decision — and on a board with
+    // team pairs it is never expected to reach zero, since the second member of
+    // a team row is decided separately.
+    board: board.rows[0]
+      ? { present: n(board.rows[0].present), linked: n(board.rows[0].linked) }
+      : null,
   };
 }
 
