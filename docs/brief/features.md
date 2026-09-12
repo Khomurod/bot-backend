@@ -3,6 +3,20 @@
 
 # §4. Features and workflows
 
+### Finding a screen
+
+The admin panel has five nav sections — **Operations · Groups · Communications ·
+Recruiting · Settings** — and no collapsed "Admin" drawer: every section needs
+the same permission, so a section named after the permission said nothing about
+what was in it.
+
+**Every admin screen has a URL now.** The page is the hash
+(`/admin#fuel_monitor`), so a screen can be bookmarked, pasted into a chat, or
+reached with Back — until Stage C3 `/admin` was the only URL the panel ever
+produced. A hash naming a page that has since become a tab opens where its
+content went (`#broadcast` → Communications); anything unrecognised opens Driver
+Groups. `admin/src/navigation/pageKeys.js`.
+
 ### Driver communication
 
 All five admin screens below live on ONE page — **Communications**

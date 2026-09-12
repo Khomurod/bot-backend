@@ -35,8 +35,14 @@ export const REFRESH_MS = 60000;
 /** One page of correction history. Revert lives only on that tab. */
 export const HISTORY_PAGE_SIZE = 50;
 
-export default function useOperations({ flash }) {
-  const [tab, setTab] = useState('findings');
+/**
+ * `initialTab` is which tab to OPEN ON, and the page validates it against its
+ * own TABS before handing it over — the key list lives there with the labels,
+ * so this hook does not keep a second copy that could drift from it. Anything
+ * falsy opens Needs attention, which is where the page has always opened.
+ */
+export default function useOperations({ flash, initialTab } = {}) {
+  const [tab, setTab] = useState(() => initialTab || 'findings');
   const [summary, setSummary] = useState(null);
   const [findings, setFindings] = useState([]);
   const [corrections, setCorrections] = useState([]);
