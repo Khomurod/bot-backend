@@ -8,6 +8,10 @@
  * Split out of services/dispatchPinnedContextService.js, which re-exports these.
  */
 const crypto = require('node:crypto');
+// The photo/document shapes are lib's now: the Finance Monitor asks the same
+// question of a different message, and two readings of `message.photo` would
+// have drifted. Re-exported under the old name so no caller here changed.
+const { getTelegramFileDescriptor } = require('../../lib/telegram/fileDescriptor');
 
 async function getPinnedSnapshotFromDb(groupId) {
   if (!groupId) return null;
@@ -18,31 +22,6 @@ async function getPinnedSnapshotFromDb(groupId) {
     console.warn('[DISPATCH-ETA] Could not read pinned snapshot from DB:', err.message);
     return null;
   }
-}
-
-function getPinnedFileDescriptor(message) {
-  if (!message || typeof message !== 'object') return null;
-
-  if (Array.isArray(message.photo) && message.photo.length > 0) {
-    const largest = message.photo[message.photo.length - 1];
-    return {
-      fileId: largest?.file_id || '',
-      fileUniqueId: largest?.file_unique_id || '',
-      mimeType: 'image/jpeg',
-      filename: 'pinned-photo.jpg',
-    };
-  }
-
-  if (message.document?.file_id) {
-    return {
-      fileId: message.document.file_id,
-      fileUniqueId: message.document.file_unique_id || '',
-      mimeType: message.document.mime_type || 'application/octet-stream',
-      filename: message.document.file_name || 'pinned-document',
-    };
-  }
-
-  return null;
 }
 
 function buildPinnedSignature({ pinnedMessage, text, fileDescriptor }) {
@@ -75,7 +54,7 @@ async function downloadTelegramFileBuffer(telegram, fileId) {
 
 module.exports = {
   getPinnedSnapshotFromDb,
-  getPinnedFileDescriptor,
+  getPinnedFileDescriptor: getTelegramFileDescriptor,
   buildPinnedSignature,
   downloadTelegramFileBuffer,
 };
