@@ -26,10 +26,34 @@ const STATUS = {
   declined: { label: "Not doing it", colour: "#64748b" },
 };
 
+/** Still somebody's job. A terminal one is history and needs no buttons. */
+const LIVE = ["open", "accepted", "in_progress"];
+
+/** What can be done next, from where it is now. */
+function nextStates(status) {
+  if (status === "open") return ["accepted", "done", "declined"];
+  if (status === "accepted") return ["in_progress", "done", "declined"];
+  if (status === "in_progress") return ["done", "declined"];
+  return [];
+}
+
+const ACTION_LABEL = {
+  accepted: "Accept",
+  in_progress: "Started",
+  done: "Mark done",
+  declined: "Not doing it",
+};
+
 function Request({ row, onDecide, busy }) {
   const [reference, setReference] = React.useState(row.linkedReference || "");
   const [note, setNote] = React.useState("");
   const state = STATUS[row.status] || STATUS.open;
+  // ACCEPTING IS NOT FINISHING. An earlier version dropped everything but
+  // `open` from this list, so the moment somebody clicked Accept the request
+  // vanished and could never be moved to done, have its reference filled in, or
+  // be declined after all — accepted work survived only as a number in a
+  // summary line.
+  const next = nextStates(row.status);
 
   return (
     <div className="home-time-section" style={{ marginBottom: 12 }}>
@@ -49,7 +73,7 @@ function Request({ row, onDecide, busy }) {
         {row.requestText}
       </blockquote>
 
-      {row.status === "open" && (
+      {next.length > 0 && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
           <label style={{ flex: "1 1 220px" }}>
             <div style={{ fontSize: 12 }}>Where the work is (optional)</div>
@@ -72,22 +96,25 @@ function Request({ row, onDecide, busy }) {
               style={{ width: "100%" }}
             />
           </label>
-          <button type="button" className="btn btn-primary" disabled={busy}
-            onClick={() => onDecide(row.id, { status: "accepted", linkedReference: reference, decisionNote: note })}>
-            Accept
-          </button>
-          <button type="button" className="btn btn-secondary" disabled={busy}
-            onClick={() => onDecide(row.id, { status: "done", linkedReference: reference, decisionNote: note })}>
-            Mark done
-          </button>
-          <button type="button" className="btn btn-secondary" disabled={busy}
-            onClick={() => onDecide(row.id, { status: "declined", decisionNote: note })}>
-            Not doing it
-          </button>
+          {next.map((status) => (
+            <button
+              key={status}
+              type="button"
+              className={status === next[0] ? "btn btn-primary" : "btn btn-secondary"}
+              disabled={busy}
+              onClick={() => onDecide(row.id, {
+                status,
+                linkedReference: reference,
+                decisionNote: note,
+              })}
+            >
+              {ACTION_LABEL[status]}
+            </button>
+          ))}
         </div>
       )}
 
-      {row.status !== "open" && row.linkedReference && (
+      {next.length === 0 && row.linkedReference && (
         <div className="muted" style={{ fontSize: 12 }}>Where the work is: {row.linkedReference}</div>
       )}
       {row.decisionNote && (
@@ -130,7 +157,7 @@ export default function EngineeringRequestsCard({ flash }) {
   if (!state) return <div className="card"><div className="muted">Loading…</div></div>;
 
   const { requests = [], summary = {} } = state;
-  const open = requests.filter((r) => r.status === "open");
+  const live = requests.filter((r) => LIVE.includes(r.status));
 
   return (
     <div className="card" style={{ marginTop: 16 }}>
@@ -146,13 +173,13 @@ export default function EngineeringRequestsCard({ flash }) {
         </div>
       )}
 
-      {open.map((row) => (
+      {live.map((row) => (
         <Request key={row.id} row={row} onDecide={decide} busy={busy} />
       ))}
 
-      {summary.available && (summary.done || summary.declined || summary.taken) ? (
+      {summary.available && (summary.done || summary.declined) ? (
         <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>
-          {summary.taken} being worked on · {summary.done} done · {summary.declined} declined
+          {summary.done} done · {summary.declined} declined
         </div>
       ) : null}
     </div>

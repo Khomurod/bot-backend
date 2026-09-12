@@ -165,19 +165,34 @@ async function handleControlReply(reply, deps = defaultDeps()) {
       // nothing in this application can. See
       // `database/engineeringRequests.js`: there is no column a patch could
       // live in.
-      await deps.replies.finaliseReply(claim.id, { outcome: 'engineering_request', intent });
       const filed = await deps.fileRequest({
         source: 'control_reply',
         replyId: claim.id,
         findingId: notice.findingId,
         requestedBy: `telegram:${telegramUserId}`,
         requestText: text,
-      }).catch(() => null);
+      }).catch((err) => {
+        console.warn('[CONTROL] could not file an engineering request:', err.message);
+        return null;
+      });
+
+      // IF IT WAS NOT WRITTEN DOWN, SAY SO. The reply claim is already taken —
+      // it has to be, it is the redelivery guard and it is taken before
+      // anything is acted on — so Telegram will never deliver this sentence
+      // again. Answering "noted" when nothing was recorded would lose the
+      // complaint AND convince the owner it was safe, which is worse than
+      // losing it. The outcome is recorded as `failed` so the trail says the
+      // same thing the owner was told.
+      await deps.replies.finaliseReply(claim.id, {
+        outcome: filed?.request ? 'engineering_request' : 'failed',
+        intent,
+      });
       await say(deps, reply, filed?.request
         ? `Noted as request #${filed.request.id} for a person to build. Nothing in the system changed.`
-        : 'Noted for a person to look at. Nothing in the system changed.');
+        : 'I could not write that down — please tell somebody directly. Nothing in the system changed.');
       return {
-        handled: true, outcome: 'engineering_request',
+        handled: true,
+        outcome: filed?.request ? 'engineering_request' : 'failed',
         requestId: filed?.request?.id ?? null,
       };
     }

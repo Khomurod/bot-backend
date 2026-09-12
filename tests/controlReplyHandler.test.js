@@ -270,12 +270,19 @@ test('A COMPLAINT ABOUT THE SOFTWARE BECOMES A ROW FOR A PERSON, AND ONLY A ROW'
   assert.match(deps.calls.acks[0].text, /nothing in the system changed/i);
 });
 
-test('a request that could not be filed still gets an honest answer', async () => {
+test('A REQUEST THAT COULD NOT BE FILED IS NOT CALLED "NOTED"', async () => {
+  // The reply claim is already taken — it is the redelivery guard and it has to
+  // be taken before anything is acted on — so Telegram will never deliver this
+  // sentence again. Saying "noted" when nothing was written would lose the
+  // complaint AND convince the owner it was safe.
   const deps = makeDeps({ fileRequest: async () => { throw new Error('table missing'); } });
   const got = await handleControlReply({ ...REPLY, text: 'this is a bug' }, deps);
-  assert.strictEqual(got.outcome, 'engineering_request');
-  assert.match(deps.calls.acks[0].text, /nothing in the system changed/i);
+  assert.strictEqual(got.outcome, 'failed');
+  assert.match(deps.calls.acks[0].text, /could not write that down/i);
+  assert.match(deps.calls.acks[0].text, /tell somebody directly/i);
   assert.ok(!/#/.test(deps.calls.acks[0].text), 'and does not invent a number');
+  // THE TRAIL SAYS THE SAME THING THE OWNER WAS TOLD.
+  assert.strictEqual(deps.calls.finalised[0].outcome, 'failed');
 });
 
 test('a failure anywhere below leaves the message to the rest of the pipeline', async () => {

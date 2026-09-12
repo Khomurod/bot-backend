@@ -195,3 +195,33 @@ test("deciding a request records the reference somebody typed", async () => {
     status: "accepted", linkedReference: "PR #231", decisionNote: "",
   }));
 });
+
+test("ACCEPTING IS NOT FINISHING — an accepted request can still be moved on", async () => {
+  // Dropping everything but `open` from this list meant that the moment somebody
+  // clicked Accept the request vanished and could never be marked done, have its
+  // reference filled in, or be declined after all.
+  api.getEngineeringRequests.mockResolvedValue({
+    requests: [{
+      id: 8, status: "accepted", requestText: "the board is read too slowly",
+      requestedBy: "admin:1", linkedReference: "PR #231",
+    }],
+    summary: { available: true, open: 0, taken: 1, done: 0, declined: 0 },
+  });
+  await open();
+  expect(await screen.findByText(/read too slowly/)).toBeTruthy();
+  expect(screen.getByText("Started")).toBeTruthy();
+  expect(screen.getByText("Mark done")).toBeTruthy();
+  // And the reference it already has is there to edit, not just to read.
+  expect(screen.getByDisplayValue("PR #231")).toBeTruthy();
+});
+
+test("a finished request keeps its record and loses its buttons", async () => {
+  api.getEngineeringRequests.mockResolvedValue({
+    requests: [{ id: 9, status: "done", requestText: "done thing", linkedReference: "PR #4" }],
+    summary: { available: true, done: 1, declined: 0 },
+  });
+  await open();
+  expect(screen.queryByText("Mark done")).toBeNull();
+  expect(screen.queryByText(/done thing/)).toBeNull();
+  expect(screen.getByText(/1 done/)).toBeTruthy();
+});

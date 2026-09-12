@@ -202,3 +202,30 @@ test('the check for an open request proposes nothing — there is no automatic a
   assert.strictEqual(CHECK_TO_ACTION['engineering.request_open'], undefined,
     'no correction may be registered for it');
 });
+
+test('A FAILED READ IS NOT AN EMPTY LIST — the sweep must not clear the board', () => {
+  // The consistency sweep resolves the findings of every check that RAN. A read
+  // that failed, or one truncated by a cap, reported as [] would say every
+  // request had been dealt with and would clear them off Needs Attention — an
+  // unavailable table mistaken for proof somebody did the work.
+  const { runEngineeringChecks, MAX_REQUESTS } = require('../services/operations/checks/engineering');
+
+  assert.throws(
+    () => runEngineeringChecks({ now: new Date(), engineeringRequests: null }),
+    /could not be read/,
+  );
+  assert.throws(
+    () => runEngineeringChecks({ now: new Date() }),
+    /could not be read/, 'a snapshot with no field at all is also not an empty list'
+  );
+
+  const atCeiling = Array.from({ length: MAX_REQUESTS }, (_, i) => ({
+    id: i + 1, requestText: 'x', createdAt: new Date().toISOString(), source: 'admin',
+  }));
+  assert.throws(() => runEngineeringChecks({ now: new Date(), engineeringRequests: atCeiling }),
+    /partial/);
+
+  // And a genuinely empty list still runs, so the keys resolve when the last
+  // request is decided.
+  assert.deepStrictEqual(runEngineeringChecks({ now: new Date(), engineeringRequests: [] }), []);
+});

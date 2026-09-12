@@ -116,20 +116,29 @@ async function decideRequest(id, {
   return mapRow(res.rows[0]);
 }
 
-/** Everything still waiting for somebody. The sweep's read. */
-async function listOpenRequests({ limit = 50 } = {}) {
-  try {
-    const res = await query(
-      `SELECT * FROM engineering_requests
-        WHERE status = $1 ORDER BY created_at ASC LIMIT $2`,
-      [OPEN, Math.max(1, Math.min(200, Number(limit) || 50))]
-    );
-    return res.rows.map(mapRow);
-  } catch (_) {
-    // Before migration 0051 has run, nothing is waiting. Degrading to an empty
-    // list keeps the sweep filing every other finding.
-    return [];
-  }
+/**
+ * Everything still waiting for somebody. The sweep's read.
+ *
+ * THIS ONE THROWS, and that is the difference between it and every other
+ * degraded read in this file. The sweep resolves the findings of any check that
+ * RAN, so a failed read reported as an empty list would be read as "every
+ * request disappeared" and would clear the board — an unavailable data source
+ * mistaken for proof that nothing is waiting. `consistencyService` already
+ * handles a check that throws by excluding its keys from resolution, which is
+ * exactly the behaviour needed here, so the honest thing is to let the error
+ * out and let that machinery do its job.
+ *
+ * The admin's reads (`listRequests`, `summariseRequests`) still degrade
+ * quietly: a screen that cannot load a list is a nuisance, and a sweep that
+ * wrongly resolves findings is a loss.
+ */
+async function listOpenRequests({ limit = 1000 } = {}) {
+  const res = await query(
+    `SELECT * FROM engineering_requests
+      WHERE status = $1 ORDER BY created_at ASC LIMIT $2`,
+    [OPEN, Math.max(1, Math.min(1000, Number(limit) || 1000))]
+  );
+  return res.rows.map(mapRow);
 }
 
 /** The admin's list. */

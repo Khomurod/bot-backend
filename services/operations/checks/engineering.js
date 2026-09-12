@@ -32,9 +32,34 @@ function daysSince(at, now) {
   return Math.floor((now.getTime() - t) / 86400000);
 }
 
+/**
+ * How many open requests can be described before the picture is partial.
+ * Matches the loader's ceiling; see below for why a truncated read is refused.
+ */
+const MAX_REQUESTS = 1000;
+
 function runEngineeringChecks(snapshot) {
-  const requests = snapshot?.engineeringRequests || [];
+  const requests = snapshot?.engineeringRequests;
   const now = snapshot?.now instanceof Date ? snapshot.now : new Date();
+
+  // A READ THAT FAILED IS NOT AN EMPTY LIST, AND THROWING IS HOW THAT IS SAID.
+  //
+  // The sweep resolves the findings of every check that RAN. Returning `[]`
+  // here after a failed or truncated read would tell it every request had been
+  // dealt with, and it would clear them off Needs Attention — an unavailable
+  // table, or a cap, mistaken for proof that somebody did the work.
+  // `consistencyService` excludes a throwing module's keys from resolution,
+  // which is precisely the behaviour wanted, so this uses it rather than
+  // inventing a second mechanism.
+  if (!Array.isArray(requests)) {
+    throw new Error('open engineering requests could not be read');
+  }
+  if (requests.length >= MAX_REQUESTS) {
+    throw new Error(
+      `${requests.length} open engineering requests is at or past the ceiling — `
+      + 'the read is partial, and filing a partial picture would resolve the rest'
+    );
+  }
 
   return requests.map((r) => {
     const waiting = daysSince(r.createdAt, now);
@@ -65,4 +90,4 @@ function runEngineeringChecks(snapshot) {
   });
 }
 
-module.exports = { CHECK_KEYS, STALE_DAYS, runEngineeringChecks };
+module.exports = { CHECK_KEYS, STALE_DAYS, MAX_REQUESTS, runEngineeringChecks };
