@@ -47,8 +47,11 @@ export default function SendMessageTab() {
   const [showSendConfirm, setShowSendConfirm] = useState(null);
 
   const targeting = useBroadcastTargeting();
-  const regularHistory = useBroadcastHistory('regular');
-  const confHistory = useBroadcastHistory('confirmation');
+  // Only the composer on screen loads its history. Both are mounted so the
+  // draft in the other survives a switch; fetching both was two requests on
+  // every visit to Communications, one of them never rendered.
+  const regularHistory = useBroadcastHistory('regular', broadcastTab === 'regular');
+  const confHistory = useBroadcastHistory('confirmation', broadcastTab === 'confirmation');
 
   const regular = useRegularBroadcast({
     targeting, onSent: regularHistory.loadHistory,

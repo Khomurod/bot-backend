@@ -22,6 +22,14 @@ import { expect, test, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import CommunicationsPage from "./CommunicationsPage";
 
+// A tab that throws on render, swapped in for Surveys below.
+vi.mock("./communications/SurveysTab", () => ({
+  default: function ExplodingSurveys() {
+    if (globalThis.__EXPLODE_SURVEYS__) throw new Error("Surveys blew up");
+    return <p>Create and manage driver feedback surveys.</p>;
+  },
+}));
+
 // Every request any tab makes, stubbed to an empty answer. The point is to
 // mount the real tab components, not to exercise them.
 vi.mock("../api", () => new Proxy({}, {
@@ -34,6 +42,7 @@ vi.mock("../api", () => new Proxy({}, {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  globalThis.__EXPLODE_SURVEYS__ = false;
 });
 
 const TABS = [
@@ -75,4 +84,30 @@ test("only the open tab is mounted — the others are not rendered behind it", a
 
   // The composer's own intro is gone, so its hooks unmounted with it.
   expect(screen.queryByText(TABS[0][1])).toBeNull();
+});
+
+describe("one tab failing does not take the section down", () => {
+  test("the tab bar survives, and another tab still opens", async () => {
+    // As five separate pages each had its own error-boundary key, so a failure
+    // stayed on the page that failed. Sharing one key would blank the tab bar
+    // too, and switching tabs would not clear it — the person would have to
+    // leave Communications entirely to read the queue because Surveys threw.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    globalThis.__EXPLODE_SURVEYS__ = true;
+    render(<CommunicationsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Surveys/i }));
+    await waitFor(() => {
+      expect(screen.queryByText(TABS[1][1])).toBeNull();
+    });
+    // The bar is still there...
+    expect(screen.getByRole("button", { name: /Scheduled/i })).toBeTruthy();
+
+    // ...and it still works, without leaving the section.
+    fireEvent.click(screen.getByRole("button", { name: /Scheduled/i }));
+    await waitFor(() => {
+      expect(screen.getByText(TABS[2][1])).toBeTruthy();
+    });
+    spy.mockRestore();
+  });
 });

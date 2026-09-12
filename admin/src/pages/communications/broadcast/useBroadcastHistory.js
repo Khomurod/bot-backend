@@ -9,13 +9,22 @@ import * as api from "../../../api";
  * group, so it is fetched only when that row is expanded and then kept, which
  * makes collapsing and re-expanding free.
  *
- * One instance per tab. Each keeps its own expansion state, so opening a
- * delivery list on one tab does not disturb the other.
+ * One instance per composer. Each keeps its own expansion state, so opening a
+ * delivery list on one does not disturb the other.
+ *
+ * `enabled` IS WHY THE LIST ITSELF IS ALSO LAZY. Send Message mounts both
+ * composers but shows one, so an unconditional load on mount fetched two
+ * history lists on every visit to Communications and rendered one of them —
+ * and since Send Message is the tab the section opens on, every visit paid for
+ * it whichever tab the person actually came for. The first load now happens
+ * when a composer is first SHOWN, and `loaded` keeps it to once: switching back
+ * and forth costs nothing, and a send still refreshes through `loadHistory`.
  *
  * Split out of admin/src/pages/communications/SendMessageTab.jsx.
  */
-export function useBroadcastHistory(kind) {
+export function useBroadcastHistory(kind, enabled = true) {
   const [history, setHistory] = useState([]);
+  const [loaded, setLoaded] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [deliveries, setDeliveries] = useState({});
@@ -24,6 +33,7 @@ export function useBroadcastHistory(kind) {
 
   const loadHistory = async () => {
     setHistoryLoading(true);
+    setLoaded(true);
     try {
       const data = await api.getBroadcastHistory(kind);
       setHistory(data);
@@ -31,7 +41,9 @@ export function useBroadcastHistory(kind) {
     setHistoryLoading(false);
   };
 
-  useEffect(() => { loadHistory(); }, []);
+  useEffect(() => {
+    if (enabled && !loaded) loadHistory();
+  }, [enabled, loaded]);
 
   const toggleDeliveries = async (id) => {
     if (expandedId === id) {

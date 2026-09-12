@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useState } from "react";
+import PageErrorBoundary from "../components/PageErrorBoundary";
 
 /**
  * Communications — everything Wenze says to a driver group, on one page.
@@ -15,6 +16,14 @@ import React, { Suspense, lazy, useState } from "react";
  * Each tab is lazy-loaded: the Send Message composer alone pulls four hooks,
  * two composers and the media uploader, and opening the page to read the queue
  * should not fetch any of it.
+ *
+ * EACH TAB GETS ITS OWN ERROR BOUNDARY, keyed on the tab. Without it these five
+ * share App's single boundary, whose reset key is `communications` for all of
+ * them — so one tab throwing would blank the whole section INCLUDING this tab
+ * bar, and switching tabs would not clear it because the key never changed. A
+ * person would have to leave Communications entirely to get back to Scheduled
+ * because Surveys failed. As five separate pages each had its own key and each
+ * failure stayed put; this keeps that true.
  *
  * NO `initialTab` PROP AND NO EXPORTED TAB LIST YET. Both were drafted for the
  * deep links that C3's page-key map introduces; adding them here would be a
@@ -60,9 +69,11 @@ export default function CommunicationsPage() {
           </button>
         ))}
       </div>
-      <Suspense fallback={<div style={{ padding: 20, color: "#94a3b8" }}>Loading…</div>}>
-        <Active />
-      </Suspense>
+      <PageErrorBoundary resetKey={active.key}>
+        <Suspense fallback={<div style={{ padding: 20, color: "#94a3b8" }}>Loading…</div>}>
+          <Active />
+        </Suspense>
+      </PageErrorBoundary>
     </div>
   );
 }

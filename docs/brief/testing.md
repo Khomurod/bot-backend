@@ -19,7 +19,7 @@ npm run build:schema:check                        # schema.sql is in sync with b
   local PostgreSQL 16): **4243 tests, 4243 pass, 0 fail, 0 skipped**, exit 0.
   Split the way CI splits it: the 338 non-`*Pg` files with no application env at
   all are **3641 pass / 0 skipped**, and the 66 `*Pg` files against a real
-  Postgres are **602 pass / 0 skipped**. The admin suite is **276 pass in 29
+  Postgres are **602 pass / 0 skipped**. The admin suite is **281 pass in 30
   files**.
   Without a database the `*Pg` suites skip instead — a skip is not a pass, so
   CI provides a real Postgres and fails on any skip.
