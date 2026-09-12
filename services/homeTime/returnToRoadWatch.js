@@ -29,6 +29,7 @@ const { normalizeUnitNumber } = require('../samsaraLocationService');
 const { extractUnitFromGroupName } = require('../../lib/drivers/driverGroupTitle');
 const { withRunRecord } = require('../operations/runLedger');
 const { classifyErrorKind, describeErrorKind } = require('../../lib/operations/errorKind');
+const { toTimestampValue } = require('../../lib/database/timestampValue');
 
 const CHECK_RETURNED = 'home_time.returned_to_road';
 const CHECK_UNCLEAR = 'home_time.return_to_road_unclear';
@@ -77,7 +78,13 @@ function observationsFor(watch, current) {
   const list = [];
   if (watch?.last?.at && (!current || watch.last.at !== current.at)) list.push(watch.last);
   if (current) list.push(current);
-  return list;
+  // A SIGHTING WITH NO TIME IS NOT A SIGHTING, and this is the half that lives
+  // in memory. `summariseMovement` counts a moving observation by its SPEED
+  // alone, so an untimed reading of the same truck at the same speed was
+  // counted beside the real one — two moving observations, `sustained` reached,
+  // and an automatic Home → Road on a single real sighting. Guarding the SQL
+  // counter fixed the number in the table and not the number the score saw.
+  return list.filter((o) => o && o.at);
 }
 
 /**
@@ -299,8 +306,21 @@ async function runReturnToRoadCheck({ now = Date.now(), deps = defaultDeps(), op
         + ' — Wenze cannot tell whether anybody went back on the road';
     }
 
-    // Everything this pass did NOT re-file is no longer true.
-    await deps.findings.resolveClearedFindings([CHECK_RETURNED, CHECK_UNCLEAR], keepIds);
+    // Everything this pass did NOT re-file is no longer true — but ONLY if the
+    // pass actually looked at everybody.
+    //
+    // `resolveClearedFindings` resolves every open finding for these check keys
+    // that is absent from `keepIds`, and a driver whose check threw contributed
+    // no id. Resolving on an incomplete list means the pass that failed to look
+    // at a driver is the pass that declares their finding stale — a driver who
+    // really is back on the road quietly stops being flagged.
+    //
+    // This arrived WITH the per-driver isolation above: before it, a throw
+    // abandoned the pass and this line was never reached. The fix and the bug
+    // were the same change.
+    if (summary.driverErrors === 0) {
+      await deps.findings.resolveClearedFindings([CHECK_RETURNED, CHECK_UNCLEAR], keepIds);
+    }
   } catch (err) {
     console.error('[HOME-TIME-RETURN] check failed:', err.message);
     summary.error = err.message;
@@ -330,7 +350,11 @@ async function checkOneDriver(driver, { fleets, byUnit, byDriver, nowIso, now, d
       lat: Number(loc.lat),
       lng: Number(loc.lng),
       speedMph: loc.speedMph == null ? null : Number(loc.speedMph),
-      at: loc.lastUpdated || nowIso,
+      // A provider that sends NO timestamp is taken to have been read now — we
+      // did just ask it. A provider that sends one we cannot READ is a
+      // different thing: it claims to know when, and we cannot trust the claim,
+      // so the sighting carries no time and is scored as none.
+      at: loc.lastUpdated ? toTimestampValue(loc.lastUpdated) : nowIso,
     }
     : null;
 

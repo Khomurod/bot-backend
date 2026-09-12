@@ -184,3 +184,38 @@ test('who saved it is recorded', async (t) => {
   await call(app, 'PUT', '/api/settings/dispatch-board', { enabled: true });
   assert.equal(seen.updates[0].opts.updatedBy, 'admin');
 });
+
+// ── the stored token belongs to the stored URL ──────────────────────────────
+
+test('the stored token is never sent to a URL it was not saved against', async (t) => {
+  const { app, seen, restore } = loadApp();
+  t.after(restore);
+
+  // An administrator edits only the address and clicks Test. A typo — or a
+  // hostile address — would otherwise be handed the write-only credential.
+  const res = await call(app, 'POST', '/api/settings/dispatch-board/test', {
+    baseUrl: 'https://not-the-board.example/exec',
+  });
+
+  assert.equal(seen.fetches.length, 0, 'nothing was sent anywhere');
+  assert.equal(res.json.connected, false);
+  assert.match(res.json.message, /token/i);
+});
+
+test('testing the stored URL still uses the stored token', async (t) => {
+  const { app, seen, restore } = loadApp();
+  t.after(restore);
+  const res = await call(app, 'POST', '/api/settings/dispatch-board/test', { baseUrl: BASE });
+  assert.equal(res.json.connected, true);
+  assert.equal(seen.fetches[0].token, TOKEN);
+});
+
+test('a new URL with its own token is tested normally', async (t) => {
+  const { app, seen, restore } = loadApp();
+  t.after(restore);
+  const res = await call(app, 'POST', '/api/settings/dispatch-board/test', {
+    baseUrl: 'https://a-new-board.example/exec', token: 'a-new-token',
+  });
+  assert.equal(res.json.connected, true);
+  assert.equal(seen.fetches[0].token, 'a-new-token');
+});

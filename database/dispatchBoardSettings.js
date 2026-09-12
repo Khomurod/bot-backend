@@ -24,7 +24,7 @@
 const { query } = require('./db');
 const { encryptText } = require('../lib/security/facebookCrypto');
 const { maskKey, createSafeDecrypt } = require('../lib/security/secretMasking');
-const { stripUrls } = require('../lib/security/redactUrls');
+const { stripUrls, splitCredentialsFromUrl } = require('../lib/security/redactUrls');
 
 const CACHE_TTL_MS = 30_000;
 const DEFAULT_POLL_INTERVAL_SECONDS = 300;
@@ -43,14 +43,20 @@ function invalidateCache() {
 
 const safeDecrypt = createSafeDecrypt('[BOARD SETTINGS]', 'the board token');
 
+/**
+ * The settings row, or a THROW.
+ *
+ * Deliberately not caught. A database that cannot be reached and a
+ * configuration nobody has entered are opposite facts, and swallowing the first
+ * turns it into the second: the admin read answers 200 with "off and
+ * unconfigured", and the 30-second cache goes on saying so after the database
+ * has come back. `APP_BRIEF.md` §9 states the rule — a failure is never
+ * rendered as empty data — and the route turns this into a 500 rather than a
+ * lie.
+ */
 async function getSettingsRow() {
-  try {
-    const res = await query('SELECT * FROM dispatch_board_settings WHERE id = 1');
-    return res.rows[0] || null;
-  } catch (err) {
-    console.warn('[BOARD SETTINGS] dispatch_board_settings unavailable:', err.message);
-    return null;
-  }
+  const res = await query('SELECT * FROM dispatch_board_settings WHERE id = 1');
+  return res.rows[0] || null;
 }
 
 function clampInterval(value) {
@@ -143,15 +149,25 @@ async function updateBoardSettings(payload = {}, { updatedBy = null } = {}) {
     sets.push(`enabled = $${i++}`);
     values.push(payload.enabled);
   }
+  // A credential pasted inside the URL never reaches the plaintext column. A
+  // `token` found there is adopted as though it had been typed into the token
+  // field — the administrator plainly meant it as the credential.
+  const fromUrl = payload.baseUrl !== undefined
+    ? splitCredentialsFromUrl(payload.baseUrl)
+    : { url: undefined, token: null };
   if (payload.baseUrl !== undefined) {
-    const text = typeof payload.baseUrl === 'string' ? payload.baseUrl.trim() : '';
     sets.push(`base_url = $${i++}`);
-    values.push(text || null);
+    values.push(fromUrl.url || null);
   }
+  const typedToken = typeof payload.token === 'string' && payload.token.trim()
+    ? payload.token.trim()
+    : null;
+  // What the administrator just typed wins over what an old link carried.
+  const incomingToken = typedToken || fromUrl.token;
   if (payload.clearToken) {
     sets.push('token_encrypted = NULL', 'token_last4 = NULL');
-  } else if (typeof payload.token === 'string' && payload.token.trim()) {
-    const token = payload.token.trim();
+  } else if (incomingToken) {
+    const token = incomingToken;
     sets.push(`token_encrypted = $${i++}`);
     values.push(encryptText(token));
     sets.push(`token_last4 = $${i++}`);
