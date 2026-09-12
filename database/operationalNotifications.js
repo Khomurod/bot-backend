@@ -18,6 +18,7 @@
  *     that count visible.
  */
 const { query, pool } = require('./pool');
+const { recordDiscard, summariseDiscards } = require('./operationalNotificationDiscards');
 
 const DEFAULT_LEASE_SECONDS = 120;
 const MAX_ATTEMPTS = 6;
@@ -47,6 +48,10 @@ function mapNotice(row) {
     attempts: row.attempts,
     lastError: row.last_error,
     telegramMessageId: row.telegram_message_id,
+    question: row.question_json || null,
+    findingId: row.finding_id == null ? null : Number(row.finding_id),
+    replyToMessageId: row.reply_to_message_id == null ? null : String(row.reply_to_message_id),
+    answeredAt: row.answered_at || null,
     createdAt: row.created_at,
     deliveredAt: row.delivered_at,
   };
@@ -62,7 +67,7 @@ function mapNotice(row) {
 async function enqueueNotification({
   noticeKey, category, chatId, routedVia = 'default', body,
   subjectType = null, subjectId = null, personId = null, groupId = null, evidence = null,
-  delaySeconds = 0,
+  delaySeconds = 0, question = null, findingId = null, replyToMessageId = null,
 }, client = null) {
   const run = client ? (t, v) => client.query(t, v) : query;
   // HELD, NOT DROPPED. `delaySeconds` pushes `next_attempt_at` out so the
@@ -74,14 +79,19 @@ async function enqueueNotification({
   const res = await run(
     `INSERT INTO operational_notifications
        (notice_key, category, subject_type, subject_id, person_id, group_id,
-        chat_id, routed_via, body, evidence_json, next_attempt_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb, NOW() + ($11 || ' seconds')::interval)
+        chat_id, routed_via, body, evidence_json, next_attempt_at,
+        question_json, finding_id, reply_to_message_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb, NOW() + ($11 || ' seconds')::interval,
+             $12::jsonb, $13, $14)
      ON CONFLICT (notice_key) DO NOTHING
      RETURNING *`,
     [
       noticeKey, category, subjectType, subjectId == null ? null : String(subjectId),
       personId, groupId, String(chatId), routedVia, body,
       evidence ? JSON.stringify(evidence) : null, String(delay),
+      question ? JSON.stringify(question) : null,
+      findingId == null ? null : Number(findingId),
+      replyToMessageId == null ? null : String(replyToMessageId),
     ]
   );
   return mapNotice(res.rows[0]) || null;
@@ -351,94 +361,83 @@ async function releaseNotificationClaim(id) {
   );
 }
 
-/** For /api/health: what is stuck, and how long it has been stuck. */
 /**
- * Count a notice that was thrown away before it was ever recorded.
+ * The notice a Telegram reply is answering.
  *
- * NOT AN ERROR PATH. With no destination configured, discarding is the right
- * behaviour and was chosen deliberately: enqueuing would mean that on the day a
- * destination is finally set, months of stale alerts flood a live staff chat.
- * What was missing is that the COST of that decision was invisible — every
- * feature running, finding real things, and saying nothing, which is the exact
- * silence this whole project started from.
+ * `(chat_id, telegram_message_id)` is NOT unique and deliberately so: the same
+ * message id recurs across chats, and a resend can legitimately produce a
+ * second row carrying one. Newest wins, because that is the message the person
+ * was looking at when they replied.
  *
- * Nine rows, forever. No body, no subject: keeping those would be the backlog
- * this design refuses to build, one table over.
- *
- * Never throws — a counter that can break the thing it counts is worse than no
- * counter.
+ * Returns null for a message we never sent, which is the ordinary case — most
+ * replies in a busy group are people talking to each other.
  */
-async function recordDiscard(category, reason = 'no_destination', noticeKey = null) {
-  try {
-    // ONE COUNT PER THING UNHEARD, NOT ONE PER PASS.
-    //
-    // The background watches re-derive the same condition every few minutes.
-    // Counting each re-derivation made `load_lifecycle` reach 95 in nine
-    // minutes for about 48 loads — a number that reads as a catastrophe and
-    // describes one unset setting. So the key claims its row first, and only a
-    // key nobody has seen before moves the counter.
-    //
-    // A caller with no key still counts every call: that is the old behaviour,
-    // kept deliberately rather than silently dropped, because a notice with no
-    // subject at all is a one-off and counting it once per occurrence is right.
-    if (noticeKey) {
-      const claimed = await query(
-        `INSERT INTO notification_discard_keys (notice_key, category, reason)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (notice_key) DO NOTHING
-         RETURNING notice_key`,
-        [String(noticeKey), String(category), String(reason)]
-      );
-      // Already counted. `last_discarded_at` is deliberately NOT touched: it
-      // answers "when did something go unheard", and a re-check of a load from
-      // Tuesday is not something going unheard today.
-      if (claimed.rowCount === 0) return false;
-    }
-
-    await query(
-      `INSERT INTO notification_discards
-         (category, reason, discarded_count, first_discarded_at, last_discarded_at)
-       VALUES ($1, $2, 1, NOW(), NOW())
-       ON CONFLICT (category) DO UPDATE SET
-         reason = EXCLUDED.reason,
-         discarded_count = notification_discards.discarded_count + 1,
-         last_discarded_at = NOW()`,
-      [String(category), String(reason)]
-    );
-    return true;
-  } catch (_) {
-    return false;
-  }
+async function findNoticeByTelegramMessage(chatId, telegramMessageId) {
+  if (chatId == null || telegramMessageId == null) return null;
+  const res = await query(
+    `SELECT * FROM operational_notifications
+      WHERE chat_id = $1 AND telegram_message_id = $2
+      ORDER BY id DESC LIMIT 1`,
+    [String(chatId), String(telegramMessageId)]
+  );
+  return mapNotice(res.rows[0]);
 }
 
 /**
- * What has been thrown away, and since when.
+ * Close a question.
  *
- * "Not configured" is a sentence nobody acts on. "1,247 notices were discarded
- * this week, 900 of them Needs attention" is one somebody does.
+ * ONLY THE FIRST ANSWER COUNTS — `answered_at IS NULL` is in the WHERE clause,
+ * not checked by the caller beforehand. Two operators replying to the same
+ * question within a second of each other is exactly the race that would
+ * otherwise apply one correction twice, and the caller cannot close it from
+ * outside the statement.
+ *
+ * @returns {Promise<boolean>} true when THIS reply is the one that closed it.
  */
-async function summariseDiscards() {
+async function markNoticeAnswered(id, replyId, client = null) {
+  const run = client ? (t, v) => client.query(t, v) : query;
+  const res = await run(
+    `UPDATE operational_notifications
+        SET answered_at = NOW(), answered_by_reply_id = $2, updated_at = NOW()
+      WHERE id = $1 AND answered_at IS NULL
+      RETURNING id`,
+    [id, replyId == null ? null : Number(replyId)]
+  );
+  return res.rowCount > 0;
+}
+
+/**
+ * How many questions are out there that nobody has answered.
+ *
+ * THE GUARD AGAINST A FLOOD ON THE FIRST DAY. A per-pass cap only limits one
+ * pass; the sweep runs every fifteen minutes, so five questions a pass is four
+ * hundred and eighty a day if nothing else stops it — and a hundred unanswered
+ * questions is not a control channel, it is the old silence with a notification
+ * sound. The ask pass stands down while this number is at its limit, so the
+ * queue drains at the speed the owner actually answers.
+ *
+ * Scoped to a window, because a question from three weeks ago that nobody will
+ * ever answer must not silence the channel for ever.
+ */
+async function countUnansweredQuestions(withinHours = 72) {
   try {
     const res = await query(
-      `SELECT category, reason, discarded_count, first_discarded_at, last_discarded_at
-         FROM notification_discards ORDER BY discarded_count DESC`
+      `SELECT COUNT(*)::int AS n
+         FROM operational_notifications
+        WHERE question_json IS NOT NULL
+          AND answered_at IS NULL
+          AND state IN ('pending', 'delivered')
+          AND created_at > NOW() - ($1 || ' hours')::interval`,
+      [String(Math.max(1, Number(withinHours) || 72))]
     );
-    const byCategory = {};
-    let total = 0;
-    let since = null;
-    for (const row of res.rows) {
-      const n = Number(row.discarded_count) || 0;
-      byCategory[row.category] = n;
-      total += n;
-      const at = row.first_discarded_at;
-      if (at && (!since || new Date(at) < new Date(since))) since = at;
-    }
-    return { available: true, total, byCategory, since };
+    return res.rows[0]?.n || 0;
   } catch (_) {
-    return { available: false, total: 0, byCategory: {}, since: null };
+    // A read that failed must not become permission to ask more.
+    return Number.MAX_SAFE_INTEGER;
   }
 }
 
+/** For /api/health: what is stuck, and how long it has been stuck. */
 async function summariseNotifications() {
   const res = await query(
     `SELECT COUNT(*) FILTER (WHERE state = 'pending')::int   AS pending,
@@ -475,5 +474,8 @@ module.exports = {
   markNotificationDelivered,
   markNotificationFailed,
   releaseNotificationClaim,
+  findNoticeByTelegramMessage,
+  markNoticeAnswered,
+  countUnansweredQuestions,
   summariseNotifications,
 };

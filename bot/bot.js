@@ -21,6 +21,7 @@ const { registerCreatorControlPanel } = require('./creatorBroadcastHandlers');
 const { registerAnonymousFeedbackHandlers } = require('./anonymousFeedbackHandlers');
 const { registerDispatchStatusLookupHandlers } = require('./dispatchStatusLookupHandlers');
 const { registerGroupCaptureHandlers } = require('./handlers/groupCaptureHandlers');
+const { registerControlReplyHandlers } = require('./controlReplyHandlers');
 const {
   registerDispatchCommands,
   registerStatusCommand,
@@ -174,6 +175,13 @@ async function startBot() {
     // Group join/leave + user/group capture middleware + group message
     // pipeline (migration, pinned snapshots, home-time, fuel, chat buffer).
     registerGroupCaptureHandlers(bot);
+
+    // AFTER the capture pipeline, so an operator's reply is still recorded as
+    // group activity, and BEFORE everything else, so an answer to one of
+    // Wenze's questions is consumed rather than parsed as a driver message.
+    // A reply that is not an answer falls straight through to the handlers
+    // below, untouched.
+    registerControlReplyHandlers(bot);
 
     registerDatatruckPeerHandlers(bot);
     // Detect Google Maps route links from authorized dispatchers in driver

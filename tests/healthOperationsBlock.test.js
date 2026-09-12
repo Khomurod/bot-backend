@@ -16,6 +16,7 @@ const express = require('express');
 
 const HEALTH_PATH = path.resolve(__dirname, '../server/routes/healthRoutes.js');
 const { getOperationsHealth, describeRefreshError, REFRESH_ERROR_KINDS } = require('../services/operations/healthSummary');
+const { summaryDeps } = require('./helpers/operationsHealthDeps');
 
 function loadApp({ dbOk = true, getOperationsHealth: summary } = {}) {
   delete require.cache[HEALTH_PATH];
@@ -79,102 +80,6 @@ test('the block is cached briefly, so a health poller is not a query storm', asy
 
 // ─── the summary itself, with injected data-layer deps ───────────────────────
 
-function summaryDeps(overrides = {}) {
-  return {
-    consistency: {
-      getConsistencyStatus: () => ({
-        running: true,
-        lastRun: { at: '2026-09-10T12:00:00.000Z', summary: { found: 12, filed: 3, resolved: 4 } },
-        lastCorrections: { at: '2026-09-10T12:00:01.000Z', summary: { applied: 65, held: 3, stale: 0, failed: 0, capped: [{ checkKey: 'identity.group_without_person', wanted: 151, cap: 150, findingId: 9 }] } },
-      }),
-    },
-    findings: { async summariseFindings() { return { info: 1, warning: 2, serious: 0, total: 3 }; } },
-    people: { async summariseIdentityCoverage() { return { people: 200, activeDriverGroups: 205, groupsWithoutPerson: 0, openUnits: 190, unstamped: { roadHistory: 0, requests: 0, mileage: 0 } }; } },
-    integrity: { async countDuplicateOpenStays() { return []; }, async indexExists() { return true; } },
-    observations: {
-      async gatherAllObservations() {
-        return [
-          { component: 'fuel_risk', state: 'healthy', ok: true, critical: true, reason: 'ran', lastRunAt: '2026-09-20T17:50:00.000Z' },
-          { component: 'retention_watch', state: 'stale_stopped', ok: false, critical: true, reason: 'no pass has finished in 900 minutes', lastRunAt: '2026-09-20T03:00:00.000Z' },
-          { component: 'ai_providers', state: 'needs_human_attention', ok: true, critical: true, reason: 'no AI provider is enabled' },
-        ];
-      },
-    },
-    fuelReadings: {
-      async summariseFuelReadings() {
-        return { trucks: 110, withFuel: 104, comparable: 61, newestReading: '2026-09-20T17:40:00.000Z' };
-      },
-    },
-    // The safety block is composed in, so it is faked in.
-    safety: {
-      async summariseSafety() {
-        return {
-          windowDays: 14, events: 9, byBehavior: { harsh_braking: 6, speeding: 3 },
-          driversWithEvents: 2, coachingSent: 1, coachingToDrivers: 1,
-        };
-      },
-    },
-    // Each block below is composed into the same summary, so each is faked in.
-    // (This harness has now grown a dep four times for exactly that reason;
-    // a missing one shows up as "cannot read properties of undefined".)
-    systemHealth: {
-      async summariseHealthStates() {
-        return { ok: 2, failed: 1, unchecked: 0, flapping: 0, down: ['ai_providers'] };
-      },
-    },
-    learning: {
-      async summariseSuggestions() { return { proposed: 1, accepted: 0, dismissed: 2 }; },
-    },
-    retention: {
-      async summariseRetention() { return { urgent: 1, watch: 3, acknowledged: 1, lastPassAt: null }; },
-    },
-    learningPass: {
-      getLearningStatus: () => ({
-        running: true,
-        lastRun: { at: '2026-09-11T04:40:00.000Z', ok: true, found: 0, proposed: 0, announced: 0, errors: 0 },
-      }),
-    },
-    retentionWatch: {
-      getRetentionStatus: () => ({
-        running: true,
-        lastRun: { at: '2026-09-11T04:40:00.000Z', ok: true, checked: 108, flagged: 2, notified: 1, urgent: 1, errors: 0 },
-      }),
-    },
-    notificationSettings: {
-      async getNotificationSettings() {
-        return { enabled: true, defaultChatId: '-1005052301861', categoryChatIds: { fuel: '-100999' } };
-      },
-    },
-    // The load lifecycle block is composed in, so it is faked in.
-    loads: {
-      async summariseLoadPhases() {
-        return { total: 12, byPhase: { in_transit: 7, at_pickup: 3, delivered: 2 }, unclear: 2, conflicted: 1 };
-      },
-    },
-    // The live Home Time block is composed in, so it is faked in.
-    homeTimeHealth: {
-      async getHomeTimeHealth() {
-        return {
-          available: true,
-          returnWatch: { watching: 2, anchored: 2, high: 0, medium: 1, low: 1, lastCheckedAt: '2026-09-10T12:00:00.000Z', oldestCheckedAt: '2026-09-10T11:48:00.000Z' },
-          managerNotices: { arrived_home: { rows: 3, events: 3, delivered: 3, pending: 0, failed: 0, abandoned: 0 } },
-          requestsByStatus: { recorded: 4, pending: 79 },
-          automaticReturns: { applied: 1, reverted: 0, lastAppliedAt: '2026-09-10T11:00:00.000Z' },
-          aiResponsibilities: { registered: 17, switchedOff: 0, mayAutoApply: 0 },
-        };
-      },
-    },
-    aiProviders: {
-      async listProvidersForAdmin() {
-        return [
-          { providerKey: 'gemini', enabled: true, modelChain: ['gemini-2.5-flash'], discoveredModels: [{ id: 'a' }, { id: 'b' }], modelsRefreshedAt: '2026-09-10T06:00:00.000Z', modelsRefreshError: null },
-          { providerKey: 'groq', enabled: true, modelChain: ['x'], discoveredModels: [], modelsRefreshedAt: null, modelsRefreshError: `401 Unauthorized: ${'the provider said many words '.repeat(20)}` },
-        ];
-      },
-    },
-    ...overrides,
-  };
-}
 
 test('the summary is counts and timestamps, and a capped check is named with its numbers', async () => {
   const s = await getOperationsHealth(summaryDeps());
@@ -464,4 +369,28 @@ test('the learning block says whether it has LOOKED — finding nothing writes n
     learningPass: { getLearningStatus: () => ({ running: true, lastRun: null }) },
   }));
   assert.equal(neverLooked.learning.pass.lastRun, null, 'which is a different answer');
+});
+
+test('the control block says whether the channel is open and who can answer — as counts', async () => {
+  const s = await getOperationsHealth(summaryDeps());
+  assert.equal(s.control.enabled, true);
+  // The count, not the ids: "switched on with an empty allow-list" is a
+  // channel that obeys nobody, and it looks identical to a working one from
+  // everywhere else on this endpoint.
+  assert.equal(s.control.operators, 1);
+  assert.equal(s.control.refused, 2);
+  const published = JSON.stringify(s.control);
+  assert.ok(!published.includes('2117922421'), published);
+  assert.ok(!published.includes('Owner'), published);
+});
+
+test('a control channel that cannot be read does not take the endpoint down', async () => {
+  const s = await getOperationsHealth(summaryDeps({
+    controlSettings: { async getControlSettings() { throw new Error('down'); } },
+    controlOperators: { async listControlOperators() { throw new Error('down'); } },
+    controlReplies: { async summariseControlReplies() { throw new Error('down'); } },
+  }));
+  assert.equal(s.available, true);
+  assert.equal(s.control.enabled, null);
+  assert.equal(s.control.operators, null);
 });

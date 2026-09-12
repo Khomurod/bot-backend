@@ -271,6 +271,26 @@ feature it belongs to.
     reverted correction is shown struck through, not removed.
   - Guarded by `admin/src/pages/operations/{labels,OperationsPage}.test.jsx`.
 
+### Answering Wenze in Telegram
+
+- **A finding can now be answered from the notifications group.** Wenze asks one
+  plain question per finding it could fix but has not been permitted to
+  ("A home stay is still open although the driver is back on the road. Close
+  it?"), the owner **replies to that message** — *yes*, *no* and why, or *later* —
+  and Wenze applies, dismisses or postpones it, records who said so, and closes
+  the finding. Before this, every finding waited in the admin for somebody to go
+  and look, which mostly nobody does.
+- **Only people on an explicit list are obeyed.** Being in the group is not
+  authorisation, and Telegram's own admin flags are not the gate. A reply from
+  anybody else is recorded and never answered.
+- **A reply may only choose an answer the question offered** — yes, no, later.
+  The visible text never names an internal action, so a sentence in a chat
+  cannot name an operation.
+- **Nothing about this touches source code**, and a test asserts the absence
+  structurally rather than trusting the promise.
+- Full rules in
+  [`docs/architecture/control-channel.md`](../architecture/control-channel.md).
+
 ### AI routing, governance and the terms watcher
 
 Moved to **[§4b. The AI routing layer](ai-gateway.md)** — the provider roster,

@@ -44,6 +44,7 @@ let serviceStopped = false;
 let tickRunning = false;
 let drainRunning = false;
 let contradictionRunning = false;
+let askRunning = false;
 let lastRun = null;
 let lastCorrections = null;
 
@@ -231,6 +232,26 @@ async function tick() {
       console.error('[CONSISTENCY] contradiction pass error:', err.message);
     } finally {
       contradictionRunning = false;
+    }
+  }
+
+  // ── ask the owner about what is left ──────────────────────────────────────
+  //
+  // AFTER the sweep and the contradiction pass, BEFORE the drain: it produces
+  // notices, so running it last of the three means its questions go out on this
+  // tick rather than waiting fifteen minutes to be drained. Its own failures
+  // are swallowed — a control channel that cannot ask must not stop the sweep
+  // that found the things worth asking about.
+  if (!askRunning) {
+    askRunning = true;
+    try {
+      // eslint-disable-next-line global-require
+      const { runAskPass } = require('../control/askPass');
+      await withRunRecord('control_ask_pass', () => runAskPass({}));
+    } catch (err) {
+      console.error('[CONSISTENCY] control ask pass error:', err.message);
+    } finally {
+      askRunning = false;
     }
   }
 

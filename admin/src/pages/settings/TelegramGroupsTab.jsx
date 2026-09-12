@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "../../api";
 import { Banner } from "./fields";
 import NotificationRoutingCard from "./notifications/NotificationRoutingCard";
+import ControlChannelCard from "./control/ControlChannelCard";
 
 // ───────────────────────────── Telegram Groups tab ───────────────────────────
 
@@ -175,6 +176,7 @@ export default function TelegramGroupsTab() {
       */}
       <div style={{ marginTop: 24 }}>
         <NotificationRoutingCard flash={(type, text) => setMessage({ type, text })} />
+        <ControlChannelCard flash={(type, text) => setMessage({ type, text })} />
       </div>
     </div>
   );

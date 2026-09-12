@@ -308,3 +308,27 @@ it is the one record whose absence would hide a question.
 No message bodies, no driver names, no phone numbers, no chat ids, no API keys.
 A decision points at a subject and, when it is about somebody, at a `person_id`
 — the person layer holds the identity and this table holds the reasoning.
+
+## `suggest` rows finally exist
+
+For the whole life of the journal, `operational_decisions` recorded what Wenze
+**did** and was silent about what it **wanted** to do. The reason was
+structural, not an oversight: `runAutoCorrections` journals only autopilot and
+shadow checks, so a check in `suggest` mode never reached `takeDecision` at all.
+
+The control channel's ask pass (`services/control/askPass.js`) is the caller
+that closes that. Before it sends a question it records the suggestion —
+`mode: 'suggest'`, `shadow: false`, the same `sourcesFor(finding)` the batch
+uses — so a question asked and never answered still leaves a record of what
+Wenze proposed and on what evidence.
+
+When the owner then answers **yes** in Telegram,
+`services/control/actions.js` records a second decision and calls `acted()` on
+it with the correction id. Its mode is `suggest` too, and honestly so: the check
+is not in autopilot, a person approved one instance of it. The verification pass
+grades it like any other acted decision, and the outcome feeds that check's
+source agreement — so answers given in a group chat improve the same reliability
+model the background passes are measured by.
+
+(The admin panel's own Apply button still journals nothing. That is a real gap,
+recorded here rather than fixed in passing.)

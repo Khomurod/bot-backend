@@ -112,6 +112,7 @@ async function notify(notice, deps = defaultDeps()) {
     subjectType = 'system', subjectId = '', discriminator = null,
     personId = null, groupId = null, evidence = null,
     severity = null, facts = null,
+    question = null, findingId = null, inReplyTo = null,
   } = notice || {};
 
   if (!isKnownCategory(category)) {
@@ -141,10 +142,18 @@ async function notify(notice, deps = defaultDeps()) {
     return { recorded: false, delivered: false, reason: 'disabled' };
   }
 
-  const { chatId, via } = resolveDestination(category, {
+  const routed = resolveDestination(category, {
     defaultChatId: config.defaultChatId,
     overrides: config.categoryChatIds,
   });
+  // THE ONE DOCUMENTED EXCEPTION TO CATEGORY ROUTING. A reply to a question
+  // belongs under the question — in the chat and thread where somebody is
+  // reading it. Routing an acknowledgement by its category would answer an
+  // owner's "yes" in a different room from the one they typed it in, and
+  // Telegram would refuse the reply anyway: `reply_to_message_id` only
+  // resolves within its own chat.
+  const chatId = inReplyTo?.chatId ? String(inReplyTo.chatId) : routed.chatId;
+  const via = inReplyTo?.chatId ? 'override' : routed.via;
   if (!chatId) {
     // NOT an error, and deliberately not enqueued. A notice with nowhere to go
     // would sit pending forever and, on the day a destination is finally set,
@@ -242,6 +251,9 @@ async function notify(notice, deps = defaultDeps()) {
       // screen can show WHY a notice was urgent rather than only that it was.
       evidence: { ...(evidence || {}), priority: priority.level },
       delaySeconds: holdSeconds,
+      question,
+      findingId,
+      replyToMessageId: inReplyTo?.messageId ?? null,
     });
   } catch (err) {
     console.warn(`[NOTIFY] could not record "${noticeKey}":`, err.message);
@@ -282,10 +294,21 @@ async function deliverOne(notice, deps = defaultDeps()) {
     await deps.store.markNotificationFailed(notice.id, 'no telegram client available').catch(() => {});
     return false;
   }
+  const options = { parse_mode: 'HTML', disable_web_page_preview: true };
+  if (notice.replyToMessageId) options.reply_to_message_id = Number(notice.replyToMessageId);
   try {
-    const sent = await deps.safeSend(() => telegram.sendMessage(notice.chatId, notice.body, {
-      parse_mode: 'HTML', disable_web_page_preview: true,
-    }));
+    let sent;
+    try {
+      sent = await deps.safeSend(() => telegram.sendMessage(notice.chatId, notice.body, options));
+    } catch (err) {
+      // THE TARGET MESSAGE IS GONE — deleted, or old enough that Telegram no
+      // longer resolves it. Sending it unthreaded is strictly better than not
+      // sending it: the words still reach the person, they just do not hang
+      // under the question. Any other failure is a real failure and rethrows.
+      if (!options.reply_to_message_id || !/reply.*not found|message to (be )?repl/i.test(err.message || '')) throw err;
+      delete options.reply_to_message_id;
+      sent = await deps.safeSend(() => telegram.sendMessage(notice.chatId, notice.body, options));
+    }
     await deps.store.markNotificationDelivered(notice.id, {
       telegramMessageId: sent?.message_id || null,
     });

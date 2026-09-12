@@ -158,7 +158,7 @@ Hard constraints of this deployment:
 | **Admins / office staff** | The admin SPA at `/admin`: broadcasts, surveys, groups, leads, live map, home time, fuel, mileage bonuses, raises, recruiter KPIs, settings. |
 | **Accounting** | Mileage-bonus Paid/Rejected buttons in Telegram (allow-listed accounting users — see §5); the driver-raise results group. |
 | **Recruiters** | Measured, not users: RingCentral call logs feed KPIs and the public `/recruiters` leaderboard. |
-| **The owner ("creator")** | A Telegram-only messaging panel in the bot's private chat, gated on one numeric user ID (`CREATOR_USER_ID` in `bot/creatorMessageManager.js`). |
+| **The owner ("creator")** | A Telegram-only messaging panel in the bot's private chat, gated on one numeric user ID (`CREATOR_USER_ID` in `bot/creatorMessageManager.js`). Also **steers Wenze from the notifications group**: it asks one plain question per open finding it could fix but has not been permitted to, and a reply — *yes*, *no* and why, or *later* — applies, closes or postpones it. Only accounts on the `control_operators` allow-list are obeyed. |
 
 ---
 ## The rest of the brief
@@ -400,6 +400,23 @@ repository-wide working rules. The highest-consequence items:
   beside an integer literal needs its own cast: `COALESCE($7, 0)` makes Postgres
   infer `integer`, which refused 12.25 miles against a `double precision`
   column and stuck one driver for a day.
+
+- **Being in a Telegram group is not authorisation, and Wenze never edits its
+  own source.** A finding can be answered by replying to it in the
+  notifications group, and two lines make that safe. First, `control_operators`
+  decides whose reply is obeyed — numeric ids only, seeded with the creator id
+  and nobody else, the last one un-removable, every change audited; a reply from
+  anybody else is recorded and never answered, because answering tells a
+  stranger their reply was read. Second, a reply may only choose an action the
+  question already OFFERED, checked both in the parser and again in the writer,
+  and the visible text never names an action — so a sentence in a chat can never
+  name an operation. The control modules reach the filesystem, a process, the
+  network and git nowhere at all, asserted structurally by
+  `tests/controlNoCodeAccess.test.js`; a code-level request becomes a note for a
+  person. Telegram redelivers, so `control_replies` claims
+  `(chat_id, reply_message_id)` BEFORE acting — without it a redelivered "yes"
+  applies the same correction twice. See
+  `docs/architecture/control-channel.md`.
 
 ### Code-structure rules (enforced by CI)
 

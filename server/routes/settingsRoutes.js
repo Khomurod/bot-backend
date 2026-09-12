@@ -32,6 +32,7 @@ const { createBitrixSettingsRouter } = require('./settings/bitrixRoutes');
 const { createAiSettingsRouter } = require('./settings/aiRoutes');
 const { createAiPolicyRouter } = require('./settings/aiPolicyRoutes');
 const { createNotificationSettingsRouter } = require('./settings/notificationRoutes');
+const { createControlSettingsRouter } = require('./settings/controlRoutes');
 const { createRetiredLeftoversRouter } = require('./settings/retiredLeftoversRoutes');
 const { createRecruitingHoursRouter } = require('./settings/recruitingHoursRoutes');
 
@@ -50,6 +51,7 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
   router.use(createBitrixSettingsRouter(deps));
   router.use(createAiSettingsRouter(deps));
   router.use(createNotificationSettingsRouter(deps));
+  router.use(createControlSettingsRouter(deps));
   router.use(createAiPolicyRouter(deps));
   router.use(createRetiredLeftoversRouter(deps));
   router.use(createRecruitingHoursRouter(deps));
