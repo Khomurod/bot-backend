@@ -22,9 +22,28 @@
 
 const express = require('express');
 const board = require('../../../database/dispatchBoardSettings');
+const boardRows = require('../../../database/dispatchBoard');
 const { fetchBoard } = require('../../../services/dispatchBoard/client');
 const { parseBoardPayload, summariseBoardPayload } = require('../../../lib/board/parse');
 const { stripUrls, splitCredentialsFromUrl } = require('../../../lib/security/redactUrls');
+const { sendFailure } = require('../../middleware/failureResponse');
+
+/**
+ * The repo's classified failure responder, with this file's one extra rule.
+ *
+ * `sendFailure` gives a database outage its own 503 and a machine-readable
+ * `DB_*` code, so the admin can tell "Postgres is unreachable" from "the server
+ * broke" — a plain 500 collapses both into the same unhelpful screen. It also
+ * echoes the error's message as `detail`, and the errors in this file can carry
+ * a Board URL with its token in the query string, so the message is stripped
+ * first while the classification the responder needs is kept.
+ */
+function boardFailure(res, err, message) {
+  const safe = new Error(stripUrls(err?.message || ''));
+  safe.code = err?.code;
+  safe.dbFailure = err?.dbFailure;
+  return sendFailure(res, safe, { message, logPrefix: '[SETTINGS API]' });
+}
 
 function createDispatchBoardSettingsRouter({ authMiddleware }) {
   const router = express.Router();
@@ -34,8 +53,7 @@ function createDispatchBoardSettingsRouter({ authMiddleware }) {
       const settings = await board.getBoardSettingsForAdmin();
       res.json({ settings });
     } catch (err) {
-      console.error('[SETTINGS API] dispatch board load failed:', stripUrls(err.message));
-      res.status(500).json({ error: 'Failed to load Dispatcher Board settings' });
+      boardFailure(res, err, 'Failed to load Dispatcher Board settings');
     }
   });
 
@@ -55,8 +73,35 @@ function createDispatchBoardSettingsRouter({ authMiddleware }) {
       });
       res.json({ settings });
     } catch (err) {
-      console.error('[SETTINGS API] dispatch board update failed:', stripUrls(err.message));
-      res.status(500).json({ error: 'Failed to save Dispatcher Board settings' });
+      boardFailure(res, err, 'Failed to save Dispatcher Board settings');
+    }
+  });
+
+  /**
+   * What the poller last stored — the Feed card.
+   *
+   * COUNTS ONLY, for the same reason `/test` returns counts only: this answers
+   * "is the feed alive and does it look right", and no part of that question
+   * needs a driver's name, phone number or truck. The status histogram is
+   * whatever the board actually says, not a fixed list, so a word dispatch
+   * invents shows up here instead of vanishing into "other".
+   */
+  router.get('/dispatch-board/feed', authMiddleware, async (req, res) => {
+    try {
+      const [summary, settings] = await Promise.all([
+        boardRows.summariseBoard(),
+        board.getBoardSettingsForAdmin(),
+      ]);
+      res.json({
+        summary,
+        lastPollAt: settings.lastPollAt,
+        lastPollOk: settings.lastPollOk,
+        lastPollCount: settings.lastPollCount,
+        lastPollBoardDate: settings.lastPollBoardDate,
+        lastError: settings.lastError,
+      });
+    } catch (err) {
+      boardFailure(res, err, 'Failed to read the Dispatcher Board feed');
     }
   });
 

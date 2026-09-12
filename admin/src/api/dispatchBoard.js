@@ -40,3 +40,13 @@ export async function testDispatchBoardConnection({ baseUrl, token } = {}) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+/**
+ * What the poller last stored — counts only, read from Wenze's own snapshot
+ * rather than from the board.
+ */
+export async function getDispatchBoardFeed() {
+  const res = await fetch(`${API_BASE}/settings/dispatch-board/feed`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

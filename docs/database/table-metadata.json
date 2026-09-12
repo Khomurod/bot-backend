@@ -25,6 +25,20 @@
       "status": "active",
       "service": "bot, admin"
     },
+    "dispatch_board_settings": {
+      "purpose": "Single-row (id=1) connection to the external Dispatcher Board (a Google Apps Script web app over the dispatchers' own spreadsheet). `enabled` defaults FALSE and there is no env fallback — nothing is read until an administrator saves an address and a token.",
+      "status": "active",
+      "service": "bot (poller + admin)",
+      "sourceOfTruth": "This table (mastered here).",
+      "danger": "`token_encrypted` is an AES-256-GCM credential and the board authenticates by putting it in a QUERY STRING. Never log a board URL; `last_error` is written through lib/security/redactUrls.stripUrls and may never contain one."
+    },
+    "dispatch_board_rows": {
+      "purpose": "Wenze's snapshot of the Dispatcher Board — one row per board row, keyed by `row_key` (normalised truck + normalised person, because the board has no stable row id). Written ONLY by services/dispatchBoard/poller.js. `person_id`/`link_source`/`link_confidence` are created for the linking stage and are not written yet.",
+      "status": "active",
+      "service": "bot (poller, consistency sweep, admin feed card)",
+      "sourceOfTruth": "The external Dispatcher Board, as of `last_seen_at`. Wenze remains the source of truth for who a person permanently is.",
+      "danger": "Contains driver names and phone numbers. A row is NEVER deleted and never marked absent on a failed read — `present=false` plus first/last_seen_at is the only history of an assignment the board itself does not keep."
+    },
     "eld_settings": {
       "purpose": "Single-row (id=1) ELD/telematics provider credentials (Samsara, Drive HoS, Factor, Leader). Secrets stored AES-256-GCM encrypted.",
       "status": "active",

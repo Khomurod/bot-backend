@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../api";
 import { KeyField, NumField, Banner } from "./fields";
+import FeedCard from "./dispatcherBoard/FeedCard";
 
 /**
  * Settings → Dispatcher Board.
@@ -174,17 +175,8 @@ export default function DispatcherBoardTab() {
 
       <TestResult result={test} />
 
-      {settings?.lastPollAt && (
-        <div className="ios-glass" style={{ padding: 14, marginTop: 16 }}>
-          <div style={{ fontWeight: 600, marginBottom: 8 }}>Last read</div>
-          <Row label="When" value={new Date(settings.lastPollAt).toLocaleString()} />
-          <Row label="Result" value={settings.lastPollOk ? "ok" : "failed"} />
-          {settings.lastPollCount != null && <Row label="Rows" value={settings.lastPollCount} />}
-          {settings.lastError && (
-            <div style={{ marginTop: 8, fontSize: 12, color: "#f87171" }}>{settings.lastError}</div>
-          )}
-        </div>
-      )}
+      <FeedCard />
+
     </div>
   );
 }

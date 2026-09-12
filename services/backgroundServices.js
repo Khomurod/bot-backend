@@ -118,6 +118,10 @@ const {
   stopConsistencyService,
 } = require('./operations/consistencyService');
 const {
+  startDispatchBoardPoller,
+  stopDispatchBoardPoller,
+} = require('./dispatchBoard/poller');
+const {
   startPolicyWatcher,
   stopPolicyWatcher,
 } = require('./ai/policy/policyService');
@@ -201,6 +205,12 @@ function startBackgroundServices({ telegram }) {
   // Runs beside the duplicate-unit scan, whose three report types it generalises;
   // that service keeps running until its checks are folded in.
   startConsistencyService();
+  // Reads the Dispatcher Board into a snapshot and stops there. It decides
+  // nothing and sends nothing: linking a board row to a person, and noticing
+  // that the board and Wenze disagree, are later stages with their own
+  // evidence rules. Does nothing at all until an administrator saves an
+  // address and a token in Settings.
+  startDispatchBoardPoller();
   // A saved driver profile keeps the person layer current (unit change,
   // Telegram id). Registered here so database/ never depends upward.
   setProfileSavedHook(onProfileSaved);
@@ -235,6 +245,7 @@ function stopBackgroundServices() {
   try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
   try { stopConsistencyService(); } catch (err) { console.error('[SHUTDOWN] stopConsistencyService failed:', err.message); }
+  try { stopDispatchBoardPoller(); } catch (err) { console.error('[SHUTDOWN] stopDispatchBoardPoller failed:', err.message); }
   try { stopPolicyWatcher(); } catch (err) { console.error('[SHUTDOWN] stopPolicyWatcher failed:', err.message); }
   try { stopModelMaintenance(); } catch (err) { console.error('[SHUTDOWN] stopModelMaintenance failed:', err.message); }
 }
