@@ -31,6 +31,7 @@ const defaultFindings = require('../../database/operationalFindings');
 const defaultNotices = require('../../database/operationalNotifications');
 const defaultSettings = require('../../database/controlSettings');
 const defaultKnowledge = require('../../database/controlKnowledge');
+const defaultDecisions = require('../../database/operationalDecisions');
 const defaultSend = require('../notifications/send');
 const { actionForCheck } = require('../operations/corrections/actions');
 const { payloadFor, loadCheckSettings } = require('../operations/corrections/autoApply');
@@ -48,6 +49,7 @@ function defaultDeps() {
     notices: defaultNotices,
     settings: defaultSettings,
     knowledge: defaultKnowledge,
+    decisions: defaultDecisions,
     notify: defaultSend.notify,
     actionForCheck,
     payloadFor,
@@ -100,10 +102,19 @@ function askRoundFor(finding, repeatAfterHours, now = Date.now()) {
  * PURE given its inputs, so the rule can be read in one place and tested
  * without a database.
  */
-function isAskableFinding(finding, { mode, hasAction }) {
+function isAskableFinding(finding, { mode, hasAction, held = false }) {
   if (!finding || finding.status !== 'open') return false;
   if (finding.tier === 'approval') return hasAction;
-  if (finding.tier === 'auto') return hasAction && mode === 'suggest';
+  if (finding.tier === 'auto') {
+    // ON AUTOPILOT AND IT DID NOT ACT — the case that used to fall through
+    // every gap. A check the owner has permitted decides `hold` or `unknown`,
+    // records that honestly in the journal, and stops. The finding stays open,
+    // the mode is not `suggest`, so nothing ever asked; it simply sat there.
+    // That is the worst of both settings: the owner granted autonomy and got
+    // silence. A held decision is precisely the moment to ask a person.
+    if (held) return hasAction;
+    return hasAction && mode === 'suggest';
+  }
   return false;
 }
 
@@ -171,6 +182,11 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
     .catch(() => Number.MAX_SAFE_INTEGER);
 
   const checkSettings = await deps.loadCheckSettings().catch(() => new Map());
+  // WHAT WENZE DECIDED NOT TO DO, and why. Keyed `check|subjectType|subjectId`.
+  // Read once per pass rather than per finding: this is a hundred candidates
+  // against one query.
+  const holds = await Promise.resolve(deps.decisions?.currentHolds?.())
+    .catch(() => new Map()) || new Map();
   const open = await deps.findings.listFindings({ status: 'open', limit: SCAN_LIMIT });
   // OLDEST FIRST. A question that has waited three days matters more than one
   // filed four minutes ago, and taking the newest would leave the oldest
@@ -217,12 +233,17 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
 
     const action = deps.actionForCheck(finding.checkKey);
     const mode = modeOf(checkSettings.get?.(finding.checkKey));
-    if (!isAskableFinding(finding, { mode, hasAction: Boolean(action) })) {
+    const heldDecision = holds.get?.(
+      `${finding.checkKey}|${finding.subjectType}|${finding.subjectId}`
+    ) || null;
+    if (!isAskableFinding(finding, {
+      mode, hasAction: Boolean(action), held: Boolean(heldDecision),
+    })) {
       skipped.notAskable += 1;
       continue;
     }
 
-    const wording = questionFor(finding);
+    const wording = questionFor(finding, { heldDecision });
     if (!wording) { skipped.noWording += 1; continue; }
 
     const payload = deps.payloadFor(finding);
@@ -254,6 +275,10 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
       evidence: {
         findingId: finding.id, actionKey: action.key,
         title: finding.title, severity: finding.severity, askedVia: 'telegram',
+        // WHY IT IS BEING ASKED rather than done. Without this the journal
+        // shows a suggestion beside a hold about the same subject and nothing
+        // says they are the same event.
+        ...(heldDecision ? { afterHold: heldDecision.verdict } : {}),
       },
     }).catch(() => null);
 

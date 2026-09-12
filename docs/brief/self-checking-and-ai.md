@@ -303,8 +303,26 @@ feature it belongs to.
   for Wenze to act by itself lives on the Automation screen, where it is visible
   and can be switched off. Settings → Answering Wenze in Telegram lists every
   standing answer with a Forget button.
+- **Saying the question itself is wrong now goes somewhere.** "This is a bug",
+  "stop asking me this", "the truck numbers come from the wrong place" — that is
+  the most useful thing anybody tells Wenze, and it used to be acknowledged and
+  forgotten. It becomes a numbered request on the Learning screen and an item on
+  Needs Attention until a person marks it accepted, done or declined. **Wenze
+  never changes its own code**: there is nowhere in that table to put one, which
+  is checked by a test rather than promised in a sentence.
+- **A check allowed to act by itself, that decided not to, now says so.** It
+  used to record the decision honestly and tell nobody, so granting Wenze
+  autonomy could produce silence. The question now explains why it held off, in
+  plain words.
+- **Answering the same way three times is noticed.** Three "no"s about different
+  drivers suggests the check is looking for the wrong thing, and offers to switch
+  its automatic side off. Three "yes"es suggests nothing at all — it says where
+  the Automation switch is and leaves it to you. **Wenze will not propose that it
+  be trusted with more.**
 - Full rules in
-  [`docs/architecture/control-channel.md`](../architecture/control-channel.md).
+  [`docs/architecture/control-channel.md`](../architecture/control-channel.md)
+  and
+  [`docs/architecture/self-healing-and-learning.md`](../architecture/self-healing-and-learning.md).
 
 ### AI routing, governance and the terms watcher
 

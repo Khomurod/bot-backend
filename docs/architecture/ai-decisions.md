@@ -22,11 +22,22 @@ listed separately at the end because it needs far less care.
 4. **A model may never change Wenze's own source code.** The control channel
    lets an owner steer Wenze from Telegram; it cannot reach the filesystem, a
    process or git, and `tests/controlNoCodeAccess.test.js` asserts that
-   structurally rather than by promise. A code-level request becomes a recorded
-   note for a person. There is also **no model anywhere in the reply path** as
-   of B1 — reading a reply is a pure, ordered rule set in `lib/control/intent.js`
-   whose signature has no parameter through which one could arrive.
-5. **Every responsibility can be switched off**, per capability, in
+   structurally rather than by promise. A code-level request becomes a row in
+   `engineering_requests` for a person, and **no column in that table can hold
+   code or a file path** — not `patch`, not `diff`, not `file`, not `branch`:
+   the same test reads the migration and fails if one appears. A schema with
+   nowhere to put a patch cannot be talked into applying one.
+   The deterministic reader also runs FIRST, always: `lib/control/intent.js` is
+   pure and has no parameter through which a model could arrive, and
+   `control_reply_reading` is reached only on `unclear`.
+5. **Nothing may propose that Wenze be trusted with more.** The learning
+   registry holds exactly one action and it only ever switches automation OFF;
+   there is no `enable_auto_apply` and there will not be. A run of approvals —
+   the case that most looks like an argument for autopilot — produces words with
+   no button, because a machine proposing its own promotion is the shape nobody
+   should build, however many confirmations sit in front of it.
+   `tests/learningActions.test.js` asserts the registry's shape.
+6. **Every responsibility can be switched off**, per capability, in
    Settings → AI → AI Responsibilities. The switch is honoured in
    `services/ai/router.js`: a refused capability raises the same error as a
    provider outage, which is the path every consumer already falls back through.

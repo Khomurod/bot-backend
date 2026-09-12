@@ -18,7 +18,17 @@
  * profile), and a read-only sweep must not write.
  */
 const defaultDb = require('../../../database/pool');
+const engineeringStore = require('../../../database/engineeringRequests');
 const { getBoardRowsForSnapshot } = require('../../../database/dispatchBoard');
+
+/**
+ * How many open engineering requests the sweep will look at.
+ *
+ * Not a page size — `checks/engineering.js` refuses a truncated read outright.
+ * A thousand open requests means something is wrong that filing a thousand
+ * findings would not help with.
+ */
+const REQUEST_CAP = 1000;
 
 /** Everything the checks need, read once. */
 async function loadSnapshot(db = defaultDb) {
@@ -65,6 +75,23 @@ async function loadSnapshot(db = defaultDb) {
     loadLayerSnapshot(db),
     loadBoardSnapshot(db),
   ]);
+  // WHAT A PERSON STILL HAS TO BUILD.
+  //
+  // NULL MEANS "COULD NOT READ", AND [] MEANS "NOTHING WAITING". They must not
+  // collapse into one value: the sweep resolves the findings of every check
+  // that ran, so a failed read reported as an empty list would clear every open
+  // request from Needs Attention — an unavailable table mistaken for proof that
+  // the work was done. `checks/engineering.js` throws on null, which excludes
+  // its keys from resolution and leaves the findings where they are.
+  //
+  // The limit is a ceiling rather than a page. A truncated read has the same
+  // problem as a failed one — the requests past the cap would be resolved — so
+  // the check refuses that too rather than filing a partial picture.
+  const engineeringRequests = await engineeringStore.listOpenRequests({ limit: REQUEST_CAP })
+    .catch((err) => {
+      console.warn('[SNAPSHOT] could not read engineering requests:', err.message);
+      return null;
+    });
 
   return {
     now: new Date(),
@@ -81,6 +108,7 @@ async function loadSnapshot(db = defaultDb) {
       lastError: exhausted.rows[0]?.internal_alert_last_error || null,
     },
     boardRows,
+    engineeringRequests,
     ...layer,
   };
 }

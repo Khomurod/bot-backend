@@ -38,6 +38,7 @@ function defaultDeps() {
     conversations: require('../../database/recruitingConversations'),
     decisions: require('../../database/operationalDecisions'),
     store: require('../../database/operationalLearning'),
+    knowledge: require('../../database/controlKnowledge'),
     notify: require('../notifications/send').notify,
   };
   /* eslint-enable global-require */
@@ -50,7 +51,7 @@ function defaultDeps() {
  * narrower.
  */
 async function gatherSources(deps, { limit = 500 } = {}) {
-  const [corrections, conversations, decisions] = await Promise.all([
+  const [corrections, conversations, decisions, memories] = await Promise.all([
     deps.corrections.listCorrections({ live: false, limit }).catch((err) => {
       console.warn('[LEARNING] could not read reverted corrections:', err.message);
       return [];
@@ -74,8 +75,18 @@ async function gatherSources(deps, { limit = 500 } = {}) {
         console.warn('[LEARNING] could not read graded decisions:', err.message);
         return [];
       }),
+    // THE OWNER SAYING WHAT THEY WANT, IN WORDS. The other three sources are
+    // somebody objecting after the fact; this one is the closest thing to a
+    // stated business rule the application ever receives. Same optional chain
+    // and same reason: a partial dependency map loses this source only.
+    Promise.resolve(deps.knowledge?.listMemories?.({ limit: 200 }))
+      .then((rows) => rows || [])
+      .catch((err) => {
+        console.warn('[LEARNING] could not read remembered answers:', err.message);
+        return [];
+      }),
   ]);
-  return { corrections, conversations, decisions };
+  return { corrections, conversations, decisions, memories };
 }
 
 /**

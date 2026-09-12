@@ -219,6 +219,13 @@
       "sourceOfTruth": "What a person decided, in their own words. It is NOT a permission: a standing permission to act lives in operational_check_settings.mode, where it is visible on a screen.",
       "danger": "A memory that matched too broadly would silence a real new problem about the same driver for ever \u2014 evidence_fingerprint is what stops that, and a changed condition is asked about again. A remembered `approve` is recorded and NEVER re-applied; only `dismiss` acts from memory. Contains the owner's own words, capped at 1000 characters; only counts leave through /api/health. A row is revoked, never deleted, so a behaviour change stays explained."
     },
+    "engineering_requests": {
+      "purpose": "A code-level ask \u2014 \"this is a bug\", \"stop asking me this\" \u2014 recorded for a person to turn into a pull request by hand. Filed from a reply in the notification group or by an administrator.",
+      "status": "active",
+      "service": "bot (the control reply handler), admin (Operations \u2192 Learning)",
+      "sourceOfTruth": "What somebody asked for, and what a person decided about it. The work itself lives in a repository, not here.",
+      "danger": "NO COLUMN MAY HOLD CODE OR A FILE PATH \u2014 no patch, diff, file, branch or command. The runtime bot never edits source, and a schema with nowhere to put a patch cannot be talked into applying one; tests/controlNoCodeAccess.test.js reads the migration and fails if such a column appears. linked_reference is free text a person types and the application never parses, fetches or executes. Contains the owner\u0027s own words, capped at 2000 characters; only counts leave through /api/health. uniq_engineering_request_reply stops a redelivered complaint becoming a second request."
+    },
     "driver_person_telegram_identities": {
       "purpose": "Which Telegram account belongs to which PERSON, over time. `driver_profiles.telegram_user_id` answers the same question about a CHAT and is lost when the chat is recreated; this survives it. Backfilled from that column at confidence 100, because a value typed in by an administrator is the strongest evidence in the system.",
       "status": "active",

@@ -159,6 +159,52 @@ async function listRecentDecisions({ checkKey = null, verdict = null, limit = 10
 }
 
 /**
+ * Subjects whose MOST RECENT decision was "no" or "I cannot tell".
+ *
+ * WHY THE MOST RECENT ONE, and why that needs a query rather than a filter. The
+ * journal keeps one row per (check, subject, VERDICT), so a subject Wenze held
+ * on Monday and acted on Tuesday has two rows, and reading the hold row alone
+ * would report a decision that has since been superseded — and would go on
+ * asking the owner about something already done. `DISTINCT ON` takes the newest
+ * row per subject first; the verdict filter is applied to THAT.
+ *
+ * THE WINDOW IS NOT DECORATION. A hold that is still true is re-derived by
+ * every sweep, so `last_decided_at` moves every fifteen minutes. One that has
+ * stopped moving is a decision nobody is making any more, and asking about it
+ * would be quoting a stale reason at somebody.
+ *
+ * @returns {Promise<Map<string,object>>} keyed `check|subjectType|subjectId`
+ */
+async function currentHolds({ withinHours = 24, limit = 200 } = {}) {
+  const out = new Map();
+  try {
+    const res = await query(
+      `SELECT * FROM (
+         SELECT DISTINCT ON (check_key, subject_type, subject_id) *
+           FROM operational_decisions
+          WHERE shadow = FALSE
+            AND last_decided_at > NOW() - ($1 || ' hours')::interval
+          ORDER BY check_key, subject_type, subject_id, last_decided_at DESC
+       ) latest
+        WHERE verdict IN ('hold', 'unknown')
+        ORDER BY last_decided_at DESC
+        LIMIT $2`,
+      [String(Math.max(1, Number(withinHours) || 24)), Math.max(1, Math.min(500, limit))]
+    );
+    for (const row of res.rows) {
+      const d = mapRow(row);
+      out.set(`${d.checkKey}|${d.subjectType}|${d.subjectId}`, d);
+    }
+    return out;
+  } catch (_) {
+    // A reader that cannot answer must not make the ask pass think nothing is
+    // held — it makes it think nothing EXTRA is askable, which is the quiet
+    // direction.
+    return out;
+  }
+}
+
+/**
  * What it has been deciding, and how those decisions turned out.
  *
  * `unknown` is counted SEPARATELY from `hold` at every level here. Folding them
@@ -271,6 +317,7 @@ async function pruneDecisions({ olderThanDays = 90 } = {}) {
 }
 
 module.exports = {
+  currentHolds,
   VALID_VERDICTS,
   VALID_OUTCOMES,
   recordDecision,

@@ -22,6 +22,8 @@ vi.mock("../../api", () => ({
   decideLearningSuggestion: vi.fn(),
   acceptLearningSuggestion: vi.fn(),
   revertLearningSuggestion: vi.fn(),
+  getEngineeringRequests: vi.fn(),
+  decideEngineeringRequest: vi.fn(),
 }));
 
 const WAITING = {
@@ -58,6 +60,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   api.decideLearningSuggestion.mockResolvedValue({});
   api.acceptLearningSuggestion.mockResolvedValue({ applied: true, detail: "switched off" });
+  api.getEngineeringRequests.mockResolvedValue({ requests: [], summary: { available: true } });
+  api.decideEngineeringRequest.mockResolvedValue({ id: 1, status: "accepted" });
   api.revertLearningSuggestion.mockResolvedValue({ reverted: true, detail: "1 setting(s) put back." });
 });
 
@@ -158,4 +162,66 @@ test("a failed load flashes rather than rendering an empty all-clear", async () 
   render(<LearningTab flash={flash} />);
   await waitFor(() => expect(flash).toHaveBeenCalledWith("error", "service unavailable"));
   expect(screen.queryByText(/Nothing suggested/)).toBeNull();
+});
+
+test("a code-level ask appears beside the suggestions, in the owner's own words", async () => {
+  api.getEngineeringRequests.mockResolvedValue({
+    requests: [{
+      id: 7, status: "open", requestText: "the truck numbers come from the wrong place",
+      requestedBy: "telegram:2117922421", linkedReference: null,
+    }],
+    summary: { available: true, open: 1, taken: 0, done: 0, declined: 0 },
+  });
+  await open();
+  expect(await screen.findByText(/truck numbers come from the wrong place/)).toBeTruthy();
+  expect(screen.getByText(/Request #7/)).toBeTruthy();
+});
+
+test("THE SCREEN SAYS WENZE NEVER CHANGES ITS OWN CODE", async () => {
+  await open();
+  expect(await screen.findByText(/never changes its own code/i)).toBeTruthy();
+});
+
+test("deciding a request records the reference somebody typed", async () => {
+  api.getEngineeringRequests.mockResolvedValue({
+    requests: [{ id: 7, status: "open", requestText: "it asks the wrong question", requestedBy: "admin:1" }],
+    summary: { available: true },
+  });
+  await open();
+  const field = await screen.findByPlaceholderText("e.g. PR #231");
+  fireEvent.change(field, { target: { value: "PR #231" } });
+  fireEvent.click(screen.getByText("Accept"));
+  await waitFor(() => expect(api.decideEngineeringRequest).toHaveBeenCalledWith(7, {
+    status: "accepted", linkedReference: "PR #231", decisionNote: "",
+  }));
+});
+
+test("ACCEPTING IS NOT FINISHING — an accepted request can still be moved on", async () => {
+  // Dropping everything but `open` from this list meant that the moment somebody
+  // clicked Accept the request vanished and could never be marked done, have its
+  // reference filled in, or be declined after all.
+  api.getEngineeringRequests.mockResolvedValue({
+    requests: [{
+      id: 8, status: "accepted", requestText: "the board is read too slowly",
+      requestedBy: "admin:1", linkedReference: "PR #231",
+    }],
+    summary: { available: true, open: 0, taken: 1, done: 0, declined: 0 },
+  });
+  await open();
+  expect(await screen.findByText(/read too slowly/)).toBeTruthy();
+  expect(screen.getByText("Started")).toBeTruthy();
+  expect(screen.getByText("Mark done")).toBeTruthy();
+  // And the reference it already has is there to edit, not just to read.
+  expect(screen.getByDisplayValue("PR #231")).toBeTruthy();
+});
+
+test("a finished request keeps its record and loses its buttons", async () => {
+  api.getEngineeringRequests.mockResolvedValue({
+    requests: [{ id: 9, status: "done", requestText: "done thing", linkedReference: "PR #4" }],
+    summary: { available: true, done: 1, declined: 0 },
+  });
+  await open();
+  expect(screen.queryByText("Mark done")).toBeNull();
+  expect(screen.queryByText(/done thing/)).toBeNull();
+  expect(screen.getByText(/1 done/)).toBeTruthy();
 });

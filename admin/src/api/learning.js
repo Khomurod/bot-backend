@@ -51,3 +51,30 @@ export async function revertLearningSuggestion(id, note = null) {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+/**
+ * Things a person has to build, asked for from Telegram or the admin.
+ *
+ * NOTHING HERE RUNS ANYTHING. `linkedReference` is a sentence somebody types —
+ * "PR #231" — stored and displayed and never resolved. The runtime bot does not
+ * touch source code, and this client has no endpoint that could.
+ */
+export async function getEngineeringRequests({ status = null } = {}) {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  const res = await fetch(`${API_BASE}/operations/engineering-requests?${params}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Record what a person decided about a request. */
+export async function decideEngineeringRequest(id, payload) {
+  const res = await fetch(`${API_BASE}/operations/engineering-requests/${id}/decide`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(payload),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.request;
+}

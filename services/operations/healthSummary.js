@@ -40,6 +40,7 @@ const defaultDeps = () => ({
   controlSettings: require('../../database/controlSettings'),
   controlOperators: require('../../database/controlOperators'),
   controlKnowledge: require('../../database/controlKnowledge'),
+  engineering: require('../../database/engineeringRequests'),
   /* eslint-enable global-require */
 });
 
@@ -166,7 +167,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
       findings, coverage, telegramIdentities, duplicates, indexPresent, providers, homeTimeLive,
       loadPhases, safety, fuelReadings, systems, observed, learning, retention, notifyConfig,
       discards, controlReplies, controlSettings, controlOperators, controlQuestions,
-      controlKnowledge,
+      controlKnowledge, engineeringRequests,
     ] = await Promise.all([
       deps.findings.summariseFindings(),
       deps.people.summariseIdentityCoverage(),
@@ -189,6 +190,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
       Promise.resolve(deps.controlOperators?.listControlOperators?.()).catch(() => null),
       Promise.resolve(deps.notificationStore?.summariseControlQuestions?.()).catch(() => null),
       Promise.resolve(deps.controlKnowledge?.summariseKnowledge?.()).catch(() => null),
+      Promise.resolve(deps.engineering?.summariseRequests?.()).catch(() => null),
     ]);
     return {
       available: true,
@@ -283,6 +285,11 @@ async function getOperationsHealth(deps = defaultDeps()) {
         // memory is doing nothing — which from every other angle looks exactly
         // like a quiet week.
         remembered: controlKnowledge || null,
+        // WHAT WAS ASKED FOR THAT NOBODY HAS BUILT. `open` climbing is the one
+        // number here that no amount of automation will bring down: these are
+        // the cases where the owner said the software itself is wrong, and only
+        // a person closes them.
+        engineeringRequests: engineeringRequests || null,
         ...(controlReplies || {}),
       },
       aiModels: providers.map((p) => ({

@@ -283,3 +283,78 @@ test('a pass with no memory store still asks — the read fails open', async () 
   const got = await runAskPass({}, deps);
   assert.strictEqual(got.asked, 1);
 });
+
+/**
+ * The case that fell through every gap: a check the owner PERMITTED to act,
+ * which decided not to, and then said nothing to anybody.
+ */
+function heldDeps(over = {}) {
+  const target = finding({ tier: 'auto' });
+  const deps = makeDeps({
+    loadCheckSettings: async () => new Map([
+      ['identity.stale_unit_assignment', { mode: 'autopilot' }],
+    ]),
+    decisions: {
+      async currentHolds() {
+        return new Map([[
+          `${target.checkKey}|${target.subjectType}|${target.subjectId}`,
+          { verdict: 'hold', reason: 'confidence 62 below the floor of 75', checkKey: target.checkKey },
+        ]]);
+      },
+    },
+    ...over,
+  });
+  return deps;
+}
+
+test('AN AUTOPILOT CHECK THAT HELD IS ASKED ABOUT — silence is the worst of both settings', async () => {
+  const deps = heldDeps();
+  const got = await runAskPass({}, deps);
+  assert.strictEqual(got.asked, 1);
+  const n = deps.calls.notified[0];
+  // WHY IT IS BEING ASKED has to be in the message. Without it the owner reads
+  // a question about something they already told Wenze it could handle.
+  assert.match(n.lines.join(' '), /not sure enough/i);
+});
+
+test('an autopilot check with nothing held is still not asked about', async () => {
+  const deps = heldDeps({ decisions: { async currentHolds() { return new Map(); } } });
+  const got = await runAskPass({}, deps);
+  assert.strictEqual(got.asked, 0);
+  assert.strictEqual(got.skipped.notAskable, 1);
+});
+
+test('an "I cannot tell" says so in its own words, not the journal\'s', async () => {
+  const deps = heldDeps({
+    decisions: {
+      async currentHolds() {
+        return new Map([[
+          'identity.stale_unit_assignment|group|49',
+          { verdict: 'unknown', reason: 'no usable source for identity.sync_unit' },
+        ]]);
+      },
+    },
+  });
+  await runAskPass({}, deps);
+  const lines = deps.calls.notified[0].lines.join(' ');
+  assert.match(lines, /could not tell/i);
+  // THE CHECK KEY MUST NOT TRAVEL. The journal's reason names it; the question
+  // may never, because a key in a group chat is both meaningless to the reader
+  // and a hint to somebody who should not be able to name an action.
+  assert.ok(!/identity\.sync_unit/.test(lines));
+});
+
+test('the journal records that the suggestion followed a hold', async () => {
+  const deps = heldDeps();
+  await runAskPass({}, deps);
+  assert.strictEqual(deps.calls.decisions[0].evidence.afterHold, 'hold');
+});
+
+test('a decisions reader that fails costs the extra questions, not the pass', async () => {
+  const deps = heldDeps({
+    decisions: { async currentHolds() { throw new Error('journal is down'); } },
+  });
+  const got = await runAskPass({}, deps);
+  assert.strictEqual(got.asked, 0, 'it went quiet rather than guessing');
+  assert.strictEqual(got.skipped.notAskable, 1);
+});

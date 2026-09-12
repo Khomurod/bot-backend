@@ -267,6 +267,83 @@ That is not a defect in the guard, it is a gap in the knowledge base, and it is
 the one suggestion here that a person can act on in a minute. A `commitment`
 refusal reads the other way, and the suggestion says so.
 
+## The third signal: the owner saying the same thing
+
+`repeated_owner_answer` reads `control_knowledge` — the answers the owner gave
+in Telegram and Wenze remembered. It is the **best** signal in this file and the
+only one that is not somebody objecting after the fact: a revert is a person
+undoing something, a refusal is a guard rejecting a draft, and this one is a
+person saying, in words, what they want.
+
+**It is counted across SUBJECTS, not within one.** One driver answered three
+times is one situation that keeps changing; three different drivers answered the
+same way is a pattern about the check. Only the second is worth remarking on, so
+a group needs answers about at least three distinct subjects inside thirty days.
+
+**A repeated "no" and a repeated "yes" produce opposite suggestions, and only
+one of them has a button.**
+
+| What the owner kept saying | What is suggested | `applyAction` |
+|---|---|---|
+| **no** — "leave this alone" | this check may be looking for something that is not a problem here; consider switching its automatic correction off | `disable_auto_apply` |
+| **yes** — "do it" | Automation is where you can let Wenze do this without asking | **`null`** |
+
+The second row is the important one. A run of approvals is exactly the case that
+looks like an argument for autopilot, and it is deliberately left as words with
+no action attached. **A machine proposing that it be trusted with more is the
+shape nobody should build**, however many confirmations sit in front of it — and
+the registry has no `enable_auto_apply` to reach for anyway. The owner turns
+autopilot on from the Automation screen, where the permission is visible and
+revocable.
+
+## Part 3 — asking about what it decided NOT to do
+
+A check the owner has permitted to act can still decide `hold` or `unknown`. It
+records that honestly in the journal and stops — and before this, nothing ever
+told anybody. The finding stayed open, the mode was not `suggest`, so the ask
+pass skipped it. **That is the worst of both settings: the owner granted
+autonomy and got silence.**
+
+`operationalDecisions.currentHolds()` answers "whose most recent decision was no
+or I-cannot-tell", and the ask pass treats those as askable whatever the mode.
+Two details carry the weight:
+
+- **`DISTINCT ON` before the verdict filter.** The journal keeps one row per
+  (check, subject, *verdict*), so a subject held on Monday and acted on Tuesday
+  has two live rows. Reading the hold alone would go on asking the owner about
+  something already done.
+- **A window.** A hold that is still true is re-derived every fifteen minutes,
+  so `last_decided_at` keeps moving. One that has stopped moving is a decision
+  nobody is making, and quoting its reason would be quoting the past.
+
+The question says **why** in the owner's language, not the journal's:
+`heldLineFor` maps the decision's shape to one sentence ("I was not sure enough
+to do it by myself", "I could not tell on my own"). The journal's own reason
+names a check key, and a check key may never travel into a group chat.
+
+## Part 4 — when the answer is "the software is wrong"
+
+The most valuable thing anybody says to this application was the one reply it
+dropped. B1 recognised "this is a bug" and answered politely that nothing had
+changed — true, and useless.
+
+`engineering_requests` (migration 0051) records it, the ack names its number so
+the owner can see it went somewhere, and `engineering.request_open` puts it on
+Needs Attention next to everything else waiting for a person. It resolves when
+somebody marks the request accepted, done or declined.
+
+**No column in that table can hold code or a file path.** Not `patch`, not
+`diff`, not `file`, not `branch`, not `command` — and
+`tests/controlNoCodeAccess.test.js` reads the migration and fails if one
+appears. `linked_reference` is free text somebody types ("PR #231"), stored,
+displayed, and never parsed, fetched or executed. The rule is that the runtime
+bot never edits source; a schema with nowhere to put a patch cannot be talked
+into applying one, which is a stronger guarantee than any paragraph.
+
+The check deliberately registers **no correction**. There is no automatic answer
+to "the software is wrong" — the resolution is a person writing code, and
+inventing an action here would be the bot acting on a request to change itself.
+
 ## Schedules
 
 | | |
@@ -285,9 +362,14 @@ Both are on `/api/health` → `operations.systems` and `operations.learning`.
 ```
 node --test tests/healthTransitions.test.js   # 13 — the four rules, pure
 node --test tests/selfHealing.test.js         # 14 — what is observed, and the silence
-node --test tests/operationsLearning.test.js  # 17 — one revert is not a lesson
+node --test tests/operationsLearning.test.js  # 34 — one revert is not a lesson, and
+                                              #      a repeated yes proposes nothing
 node --test tests/learningPass.test.js        # 13 — and it cannot apply anything
 node --test tests/learningRoutes.test.js      # 8
-TEST_DATABASE_URL=... node --test tests/selfHealingPg.test.js   # 11
+node --test tests/controlAskPass.test.js      # 26 — including the held-decision path
+node --test tests/controlNoCodeAccess.test.js # 10 — no column could hold a patch
+TEST_DATABASE_URL=... node --test tests/selfHealingPg.test.js          # 11
+TEST_DATABASE_URL=... node --test tests/engineeringRequestsPg.test.js  # 9
+TEST_DATABASE_URL=... node --test tests/decisionHoldsPg.test.js        # 5
 npm test --prefix admin -- --run LearningTab                    # 8
 ```

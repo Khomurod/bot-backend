@@ -83,6 +83,10 @@ const CHECK_LABELS = {
   'identity.telegram_member_unnamed': 'One person in the chat, but the name does not match',
   'identity.telegram_members_ambiguous': 'Several people in the chat could be the driver',
   'board.person_link': 'Dispatcher board row matches a driver',
+  // Not an inconsistency in the records — something a person has to build.
+  // It sits on this screen because that is where things waiting for somebody
+  // live, and a table nobody opens is where they go to be forgotten.
+  'engineering.request_open': 'Something was asked for that a person has to build',
   'board.person_link_suggested': 'Dispatcher board row looks like a driver, by name',
   'board.person_link_conflict': 'Dispatcher board and Wenze disagree on the driver',
   'board.person_link_ambiguous': 'Dispatcher board row could be more than one driver',

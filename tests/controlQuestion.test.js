@@ -61,14 +61,57 @@ test('facts tolerate missing evidence rather than throwing', () => {
 });
 
 test('the stale-unit question says both trucks and no ids', () => {
+  // THE EVIDENCE KEYS ARE THE ONES THE CHECK ACTUALLY WRITES. This test used to
+  // pass `currentUnit`/`targetUnit`, which `checks/identityLayer.js` has never
+  // emitted — so the wording's `fact` silently fell through to the title on
+  // every real question, and the test proved the fiction agreed with itself.
+  // The keys below are asserted against the check's own output in the next test.
   const got = questionFor({
     checkKey: 'identity.stale_unit_assignment',
     title: 'x',
-    evidence: { currentUnit: '310', targetUnit: '322', personId: 91 },
+    evidence: { profileUnit: '322', recordedUnit: '310', personId: 91 },
   });
   assert.match(got.lines[0], /310/);
   assert.match(got.lines[0], /322/);
   assert.ok(!got.lines[0].includes('91'));
+});
+
+test('a driver with no truck on record reads as that, not as a blank', () => {
+  const got = questionFor({
+    checkKey: 'identity.stale_unit_assignment',
+    title: 'x',
+    evidence: { profileUnit: '322', recordedUnit: null },
+  });
+  assert.match(got.lines[0], /No truck on record/i);
+  assert.match(got.lines[0], /322/);
+});
+
+test('THE WORDING READS THE SHAPE THE CHECK ACTUALLY PRODUCES', () => {
+  // The guard against the whole class: run the real check, hand its finding to
+  // the real wording, and assert the fact line is built from the evidence
+  // rather than falling back to the title. A key renamed on either side fails
+  // here instead of degrading silently in a group chat.
+  const { runIdentityLayerChecks } = require('../services/operations/checks/identityLayer');
+  const findings = runIdentityLayerChecks({
+    now: new Date(),
+    groups: [{ id: 49, group_name: 'WENZE UNIT # 322 (COMPANY DRIVER)', group_type: 'driver', active: true }],
+    profiles: [{ group_id: 49, unit_number: '322', first_name: 'A', last_name: 'B', driver_type: 'company_driver' }],
+    people: [{ id: 5, display_name: 'A B' }],
+    personGroups: [{ person_id: 5, group_id: 49 }],
+    units: [{ person_id: 5, unit_number: '310', fleet_type: 'company', seat: 1 }],
+    boardRows: [],
+    groupMembers: [], botUsers: [], telegramIdentities: [],
+    fuelAlerts: [], teamDrivers: [], mileageProgress: [],
+    routeAssignments: [], personGroupHistory: [], notificationSettings: [],
+  });
+  const stale = findings.find((f) => f.checkKey === 'identity.stale_unit_assignment');
+  assert.ok(stale, 'the check produced the finding this wording is for');
+
+  const asked = questionFor(stale);
+  assert.notStrictEqual(asked.lines[0], stale.title,
+    'it built a fact from the evidence rather than reprinting the title');
+  assert.match(asked.lines[0], /310/);
+  assert.match(asked.lines[0], /322/);
 });
 
 test('no is always available; yes only when there is something to apply', () => {
