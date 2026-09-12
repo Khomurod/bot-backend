@@ -46,6 +46,15 @@ const pageLoadingFallback = (
  * production symptom where Driver Groups, Mileage Bonuses "and other sections"
  * all reported "Could not load this page" because only the first one had
  * actually failed.
+ *
+ * THE CALLER ALSO PASSES `key={page}`, and that is load-bearing rather than
+ * tidiness. Several page keys render the SAME component on a different tab —
+ * `settings_integrations` / `settings_board` / `settings_ai` are one
+ * SettingsPage, `operations` / `system_health` one OperationsPage. React
+ * reconciles same-type elements in the same position, so without a key the
+ * instance survives the navigation and a tab read once in a `useState`
+ * initialiser keeps whatever it opened on: the URL moves, the sidebar
+ * highlight moves, the screen does not.
  */
 function LazyPage({ pageKey, children }) {
   return (
@@ -273,7 +282,7 @@ export default function App() {
             running out is not discovered by reads starting to fail. */}
         <DatabaseUsageBanner />
         {isFullAdmin ? (
-          <LazyPage pageKey={page}>
+          <LazyPage key={page} pageKey={page}>
             {PAGE_COMPONENTS[page] || PAGE_COMPONENTS[DEFAULT_PAGE_KEY]}
           </LazyPage>
         ) : (

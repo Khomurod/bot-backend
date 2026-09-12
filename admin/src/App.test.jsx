@@ -115,3 +115,53 @@ describe("the URL follows the navigation", () => {
     await waitFor(() => expect(window.location.hash).toBe(""));
   });
 });
+
+describe("two nav entries that are the same component", () => {
+  /**
+   * Integrations, Dispatcher Board and AI & Autonomy are ONE SettingsPage on
+   * three tabs; Needs Attention and System & AI Health are one OperationsPage.
+   * React reconciles same-type elements in the same position, so the tab —
+   * read once in a useState initializer — would keep whatever it opened on
+   * while the URL and the highlighted sidebar item both moved. The page would
+   * say "Dispatcher Board" in the nav and show the AI tab.
+   */
+  test("moving between two Settings entries actually changes the tab", async () => {
+    goTo("#settings_board");
+    await renderShell();
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /Dispatcher Board/i })).toBeTruthy();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /AI & Autonomy/i }));
+    await waitFor(() => expect(window.location.hash).toBe("#settings_ai"));
+    await waitFor(() => {
+      // The Dispatcher Board card is gone, so the tab really moved.
+      expect(screen.queryByRole("heading", { name: /Dispatcher Board/i })).toBeNull();
+    });
+  });
+
+  test("moving between the two Operations entries actually changes the tab", async () => {
+    goTo("#operations");
+    await renderShell();
+
+    // WAIT FOR THE PAGE TO BE ON SCREEN BEFORE CLICKING. The sidebar renders
+    // before the lazy page resolves, so clicking as soon as "Sign Out" appears
+    // can change `page` while OperationsPage is still suspended — it then
+    // mounts fresh with initialTab="systems" and the assertion below passes
+    // whether or not the key is there. This test did exactly that and proved
+    // nothing until the wait was added.
+    const needsAttention = await screen.findByRole("button", { name: /^Needs attention$/i });
+    expect(needsAttention.className).toContain("btn-primary");
+
+    await userEvent.click(screen.getByRole("button", { name: /System & AI Health/i }));
+    await waitFor(() => expect(window.location.hash).toBe("#system_health"));
+    await waitFor(() => {
+      // btn-primary is the Operations tab bar's own "this one is open" class,
+      // and Needs attention must have given it up.
+      expect(screen.getByRole("button", { name: /What is running/i }).className)
+        .toContain("btn-primary");
+      expect(screen.getByRole("button", { name: /^Needs attention$/i }).className)
+        .toContain("btn-ghost");
+    });
+  });
+});
