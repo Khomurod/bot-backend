@@ -190,6 +190,27 @@
       "service": "samsara-integration (writes and works them), admin (read-only diagnostics)",
       "sourceOfTruth": "samsara-integration; bot-backend owns the DDL (migration 0013) and only reads.",
       "danger": "samsara_event_id is UNIQUE and enqueue is ON CONFLICT DO NOTHING — that is what stops a re-delivered event creating a second recovery and a duplicate Samsara retrieval request. Never store a signed media URL in targets or last_error."
+    },
+    "control_settings": {
+      "purpose": "Single row (id=1) for the control channel: whether Wenze may ask questions in Telegram at all, how many one sweep may ask (`max_questions_per_pass`), how long before an unanswered question may be repeated (`repeat_after_hours`), and how many times it may come back with 'why?' (`clarify_limit`).",
+      "status": "active",
+      "service": "bot (ask pass, reply handler, admin settings card)",
+      "sourceOfTruth": "This row. A missing table reads as the defaults rather than as an error, so a deploy where the migration has not yet run behaves identically.",
+      "danger": "`enabled = FALSE` makes every reply in the group silent — recorded, never acted on and never answered. That is the intended off switch, but it looks exactly like a broken channel from inside Telegram."
+    },
+    "control_operators": {
+      "purpose": "WHO WENZE OBEYS in a notification group. Numeric Telegram user ids only. Seeded by migration 0048 with `CREATOR_USER_ID` from bot/creatorMessageManager.js and nobody else.",
+      "status": "active",
+      "service": "bot (reply handler), admin (Settings → Telegram groups)",
+      "sourceOfTruth": "This table, absolutely. Telegram group membership and Telegram's own admin flags grant nothing.",
+      "danger": "This is the only thing between a reply in a group chat and a correction to the fleet. A row added here can approve identity and home-time corrections. A degraded read answers NO — the one place in the repository where a failed read must refuse rather than fall back to a default. The last enabled row cannot be removed: an empty table means nobody can steer Wenze from Telegram."
+    },
+    "control_replies": {
+      "purpose": "Every reply to an operational question — obeyed, refused or ignored — with what it was read as and what it did. `UNIQUE (chat_id, reply_message_id)` is the redelivery guard, claimed BEFORE anything is acted on.",
+      "status": "active",
+      "service": "bot (reply handler), admin (finding detail, health counts)",
+      "sourceOfTruth": "The record of what was said in Telegram and what Wenze did about it. The correction itself lives in operational_corrections and the reasoning in operational_decisions.",
+      "danger": "Contains text a person typed into a group chat, capped at 1000 characters. Only counts leave through /api/health, never text. Without the UNIQUE constraint a redelivered 'yes' applies the same correction twice."
     }
   }
 }

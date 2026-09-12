@@ -194,6 +194,9 @@ export function initiatorLabel(initiator) {
   if (!initiator) return 'Unknown';
   if (initiator === 'system') return 'Automatically, from recorded evidence';
   if (initiator.startsWith('admin:')) return `Administrator #${initiator.slice(6)}`;
+  // An operator who answered a question in the notification group. Shown as a
+  // person rather than as a machine, because that is what it is.
+  if (initiator.startsWith('telegram:')) return 'Answered in Telegram';
   return initiator;
 }
 

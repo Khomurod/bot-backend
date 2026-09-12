@@ -251,3 +251,25 @@ So the gap is reported in the two places an operator already looks:
 settings would put fuel risks and retention signals into a room chosen for a
 different audience, and that is a decision for a person. A missing settings row
 files nothing at all — a deploy in progress is not a misconfiguration.
+
+## A notice that asks something back
+
+Since B1 a notice can carry a **question** (`question_json`), and a reply to it
+in Telegram can apply a correction. The rules for who may be obeyed, what a
+reply may choose, and why no model is in that path live in
+[`control-channel.md`](control-channel.md).
+
+Two things about this file's own rules change:
+
+- **`inReplyTo` overrides category routing.** This is the one documented
+  exception. An answer belongs under the question, in the chat somebody is
+  reading it in — routing it by category would answer an owner's "yes" in a
+  different room, and Telegram would refuse the reply anyway, because
+  `reply_to_message_id` only resolves within its own chat.
+- **`deliverOne` may send a threaded reply**, and falls back to an unthreaded
+  send exactly once, when Telegram says the target message is gone. Any other
+  failure is still a failure and still retries through the outbox.
+
+Nothing else moves: a question is an ordinary `needs_attention` notice, it is
+composed by `composeNotice` and sanitised like every other, and it carries no
+chat id, no person id and no action key in its visible text.

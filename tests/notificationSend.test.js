@@ -279,3 +279,68 @@ test('the notice key travels to the counter, so the dedup is the store\'s to mak
   assert.equal(calls.discards[0].noticeKey, 'fuel:truck:305:low',
     'a counter given only a category cannot tell two trucks apart');
 });
+
+// ── a question, and the answer that hangs under it ───────────────────────────
+
+test('a question travels with the notice so a reply can be matched to it', async () => {
+  const { deps, calls } = harness();
+  await notify({
+    ...FUEL,
+    category: 'needs_attention',
+    findingId: 11,
+    question: { findingId: 11, offeredActions: [{ key: 'dismiss' }] },
+  }, deps);
+  assert.equal(calls.enqueued[0].findingId, 11);
+  assert.deepEqual(calls.enqueued[0].question.offeredActions, [{ key: 'dismiss' }]);
+});
+
+test('AN ANSWER GOES BACK WHERE IT WAS ASKED, overriding category routing', async () => {
+  // The one documented exception. Telegram resolves `reply_to_message_id` only
+  // within its own chat, so answering a question in the category's chat would
+  // both lose the thread and be refused by Telegram.
+  const { deps, calls } = harness({ overrides: { needs_attention: '-100999' } });
+  await notify({
+    category: 'needs_attention', title: 'Done.',
+    subjectType: 'control_reply', subjectId: '-100111:500',
+    inReplyTo: { chatId: '-100111', messageId: 500 },
+  }, deps);
+  assert.equal(calls.sent[0].chatId, '-100111', 'not the category override');
+  assert.equal(calls.sent[0].opts.reply_to_message_id, 500);
+});
+
+test('a reply target that no longer exists still gets the message through', async () => {
+  let attempts = 0;
+  const { deps, calls } = harness({
+    telegram: {
+      async sendMessage(chatId, body, opts) {
+        attempts += 1;
+        if (opts.reply_to_message_id) throw new Error('Bad Request: message to be replied not found');
+        calls.sent.push({ chatId, body, opts });
+        return { message_id: 950 };
+      },
+    },
+  });
+  const out = await notify({
+    category: 'needs_attention', title: 'Done.',
+    subjectType: 'control_reply', subjectId: 'x',
+    inReplyTo: { chatId: '-100111', messageId: 500 },
+  }, deps);
+  assert.equal(out.delivered, true);
+  assert.equal(attempts, 2, 'tried threaded, then plain');
+  assert.equal(calls.sent[0].opts.reply_to_message_id, undefined);
+});
+
+test('any other send failure is still a failure — the fallback is not a retry-everything', async () => {
+  const { deps, calls } = harness({
+    telegram: {
+      async sendMessage() { throw new Error('Forbidden: bot was kicked from the group chat'); },
+    },
+  });
+  const out = await notify({
+    category: 'needs_attention', title: 'Done.',
+    subjectType: 'control_reply', subjectId: 'x',
+    inReplyTo: { chatId: '-100111', messageId: 500 },
+  }, deps);
+  assert.equal(out.delivered, false);
+  assert.equal(calls.failed.length, 1);
+});

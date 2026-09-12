@@ -21,9 +21,21 @@ const defaultDb = require('../../../database/pool');
 const { insertAdminAudit } = require('../../../database/adminAudit');
 const { getAction, StaleCorrectionError } = require('./actions');
 
-/** 'system' for an auto-apply; 'admin:<id>' for a person. Never a model. */
+/**
+ * Who is doing this: 'system' for an auto-apply, 'admin:<id>' for somebody at
+ * the admin panel, 'telegram:<id>' for an operator answering a question in the
+ * notification group. Never a model.
+ *
+ * `telegram:<id>` IS A PERSON, and that is the whole point of the branch. The
+ * schema refuses an approval-tier correction whose initiator is 'system'
+ * (`operational_corrections_system_is_auto_only`), and without this a reply
+ * from the owner would fall through to 'system' and be refused — the owner
+ * would have answered a question Wenze then could not act on.
+ */
 function initiatorFor(admin) {
-  return admin && admin.id != null ? `admin:${admin.id}` : 'system';
+  if (admin && admin.id != null) return `admin:${admin.id}`;
+  if (admin && admin.telegramUserId != null) return `telegram:${admin.telegramUserId}`;
+  return 'system';
 }
 
 /**
@@ -89,7 +101,14 @@ async function applyCorrection({
       entityId: subjectId,
       oldValues: result.oldValues,
       newValues: result.newValues,
-      reason: reason || (finding ? `Finding #${finding.id}: ${finding.title}` : null),
+      // THE AUDIT LOG MUST STILL SAY WHO. `admin_id` is null for a Telegram
+      // operator — they have no admin account — so without naming the
+      // initiator here, the one table a person opens to ask "who changed this"
+      // would answer "nobody". The correction row carries it; so does this.
+      reason: [
+        reason || (finding ? `Finding #${finding.id}: ${finding.title}` : null),
+        initiator.startsWith('telegram:') ? `(by ${initiator})` : null,
+      ].filter(Boolean).join(' ') || null,
       ipAddress: admin?.ip ?? null,
     }, client);
 

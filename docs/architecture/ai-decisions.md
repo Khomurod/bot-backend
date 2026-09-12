@@ -13,12 +13,20 @@ listed separately at the end because it needs far less care.
 
 1. **A model may never author or apply an operational correction.**
    `ai_capabilities.may_auto_apply` is `CHECK`ed to FALSE in the schema, and
-   `operational_corrections.initiator` is `system` or `admin:<id>`, never a
+   `operational_corrections.initiator` is `system`, `admin:<id>` or
+   `telegram:<id>` — a person answering in the notifications group — never a
    model. AI ranks and explains; deterministic evidence and people decide.
 2. **Ambiguity means no change.** Every classifier has a third answer besides
    yes and no, and it is not a synonym for either.
 3. **A manual decision by an administrator is never overwritten.**
-4. **Every responsibility can be switched off**, per capability, in
+4. **A model may never change Wenze's own source code.** The control channel
+   lets an owner steer Wenze from Telegram; it cannot reach the filesystem, a
+   process or git, and `tests/controlNoCodeAccess.test.js` asserts that
+   structurally rather than by promise. A code-level request becomes a recorded
+   note for a person. There is also **no model anywhere in the reply path** as
+   of B1 — reading a reply is a pure, ordered rule set in `lib/control/intent.js`
+   whose signature has no parameter through which one could arrive.
+5. **Every responsibility can be switched off**, per capability, in
    Settings → AI → AI Responsibilities. The switch is honoured in
    `services/ai/router.js`: a refused capability raises the same error as a
    provider outage, which is the path every consumer already falls back through.

@@ -31,6 +31,7 @@ export * from './api/settings';
 export * from './api/dispatchBoard';
 export * from './api/samsara';
 export * from './api/notifications';
+export * from './api/control';
 export * from './api/recruitingKnowledge';
 export * from './api/recruitingHours';
 export * from './api/retention';

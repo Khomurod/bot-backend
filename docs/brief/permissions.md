@@ -98,6 +98,21 @@ you assume either is ID-only:
 
 Both are deliberate: *"once immutable IDs are configured, usernames no longer
 grant authority."* Configuring the IDs in the environment is what hardens them.
+
+**The control channel is ID-only and always was.** `control_operators`
+(migration 0048) is the allow-list that decides whose reply in the notifications
+group Wenze obeys — the one Telegram gate that can change operational state.
+Numeric ids only; the route refuses anything that is not a number, and a
+username-keyed allow-list would hand the channel to whoever claims that name
+next. It is seeded with `CREATOR_USER_ID` and nobody else, membership is
+managed from Settings → Telegram groups with every change audited, and the last
+enabled operator cannot be removed. Being in the group — or being a Telegram
+admin of it — grants nothing. See
+[`docs/architecture/control-channel.md`](../architecture/control-channel.md).
+
+A correction applied this way is attributed `telegram:<id>`, a third initiator
+form beside `admin:<id>` and `system`. It counts as a person, which is what
+gets an approval-tier correction past the schema's system-is-auto-only CHECK.
 Do not copy the username fallback into new code, and do not describe either gate
 as ID-only.
 

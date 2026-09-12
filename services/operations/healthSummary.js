@@ -36,6 +36,9 @@ const defaultDeps = () => ({
   learningPass: require('./learningPass'),
   retention: require('../../database/retentionAssessments'),
   retentionWatch: require('../retention/watch'),
+  controlReplies: require('../../database/controlReplies'),
+  controlSettings: require('../../database/controlSettings'),
+  controlOperators: require('../../database/controlOperators'),
   /* eslint-enable global-require */
 });
 
@@ -161,7 +164,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
     const [
       findings, coverage, duplicates, indexPresent, providers, homeTimeLive,
       loadPhases, safety, fuelReadings, systems, observed, learning, retention, notifyConfig,
-      discards,
+      discards, controlReplies, controlSettings, controlOperators,
     ] = await Promise.all([
       deps.findings.summariseFindings(),
       deps.people.summariseIdentityCoverage(),
@@ -178,6 +181,9 @@ async function getOperationsHealth(deps = defaultDeps()) {
       deps.retention.summariseRetention().catch(() => null),
       deps.notificationSettings.getNotificationSettings().catch(() => null),
       Promise.resolve(deps.notificationStore?.summariseDiscards?.()).catch(() => null),
+      Promise.resolve(deps.controlReplies?.summariseControlReplies?.()).catch(() => null),
+      Promise.resolve(deps.controlSettings?.getControlSettings?.()).catch(() => null),
+      Promise.resolve(deps.controlOperators?.listControlOperators?.()).catch(() => null),
     ]);
     return {
       available: true,
@@ -242,6 +248,18 @@ async function getOperationsHealth(deps = defaultDeps()) {
         // nobody acts on; a number is. No bodies and no subjects — a count per
         // category and when it started.
         discarded: discards || null,
+      },
+      // WHETHER THE CHANNEL IS OPEN AND WHETHER ANYBODY USES IT. Counts only:
+      // no chat id, no text, no operator id. "Switched on with nobody on the
+      // allow-list" and "switched on and answering" look identical without it,
+      // and the first is a channel that silently obeys nobody.
+      control: {
+        enabled: controlSettings ? controlSettings.enabled !== false : null,
+        // THE COUNT, NOT THE IDS. Switched on with an empty allow-list is a
+        // channel that obeys nobody, and it looks identical to a working one
+        // from everywhere else.
+        operators: Array.isArray(controlOperators) ? controlOperators.length : null,
+        ...(controlReplies || {}),
       },
       aiModels: providers.map((p) => ({
         provider: publicProviderName(p),
