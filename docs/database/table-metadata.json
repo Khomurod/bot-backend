@@ -211,6 +211,13 @@
       "service": "bot (reply handler), admin (finding detail, health counts)",
       "sourceOfTruth": "The record of what was said in Telegram and what Wenze did about it. The correction itself lives in operational_corrections and the reasoning in operational_decisions.",
       "danger": "Contains text a person typed into a group chat, capped at 1000 characters. Only counts leave through /api/health, never text. Without the UNIQUE constraint a redelivered 'yes' applies the same correction twice."
+    },
+    "driver_person_telegram_identities": {
+      "purpose": "Which Telegram account belongs to which PERSON, over time. `driver_profiles.telegram_user_id` answers the same question about a CHAT and is lost when the chat is recreated; this survives it. Backfilled from that column at confidence 100, because a value typed in by an administrator is the strongest evidence in the system.",
+      "status": "active",
+      "service": "bot (the consistency sweep's telegram-identity check and its correction), admin (person panel)",
+      "sourceOfTruth": "This table, for who is behind an account. `uniq_person_telegram_open_account` is the anchor: ONE OPEN ROW PER ACCOUNT — one human per account at a time. The constraint is on the account and not the person, because somebody may carry a second phone.",
+      "danger": "Contains Telegram account ids. Counts only leave through /api/health, and no id ever appears in a finding title or a notice — those reach a group chat's permanent history. A row is CLOSED, never deleted: an account that moved owners leaves a trail, and that trail is the point. `username_at_link` is a snapshot and is never matched on, because a username is reassignable."
     }
   }
 }

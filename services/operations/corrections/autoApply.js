@@ -119,6 +119,15 @@ function payloadFor(finding) {
       ? { personId: change.personId, unitNumber: change.to, groupId: change.groupId }
       : null;
   }
+  if (finding.checkKey === 'identity.telegram_link'
+      || finding.checkKey === 'identity.telegram_member_unnamed') {
+    // The unnamed case has no proposal of its own — a person approving it is
+    // approving THE candidate the check saw, so the payload is rebuilt from the
+    // evidence and the apply re-derives it anyway.
+    return change.personId && change.telegramUserId
+      ? { groupId: change.groupId, personId: change.personId, telegramUserId: change.telegramUserId }
+      : null;
+  }
   if (finding.checkKey === 'identity.non_driver_typed_as_driver') {
     return change.groupId || finding.evidence?.groupId
       ? { groupId: change.groupId || finding.evidence.groupId, toType: 'company' }

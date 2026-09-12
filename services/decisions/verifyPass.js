@@ -105,6 +105,23 @@ const SUBJECTS = Object.freeze({
     },
   },
 
+  'identity.link_telegram': {
+    autoRevert: false,
+    table: 'driver_person_telegram_identities',
+    async read(client, subjectId) {
+      const res = await client.query(
+        `SELECT t.telegram_user_id::text AS "telegramUserId", t.person_id AS "personId"
+           FROM driver_person_telegram_identities t
+           JOIN driver_person_groups g
+             ON g.person_id = t.person_id AND g.ended_at IS NULL
+          WHERE g.group_id = $1 AND t.ended_at IS NULL
+          LIMIT 1`,
+        [Number(subjectId)]
+      );
+      return res.rows[0] || null;
+    },
+  },
+
   'identity.set_group_type': {
     autoRevert: false,
     table: 'groups',

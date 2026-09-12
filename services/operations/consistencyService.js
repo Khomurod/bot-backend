@@ -24,6 +24,7 @@ const homeTime = require('./checks/homeTime');
 const homeTimeContinuity = require('./checks/homeTimeContinuity');
 const board = require('./checks/board');
 const boardLink = require('./checks/boardLink');
+const telegramIdentity = require('./checks/telegramIdentity');
 const { runAutoCorrections } = require('./corrections/autoApply');
 const { withRunRecord } = require('./runLedger');
 const { loadSnapshot } = require('./snapshot/loaders');
@@ -39,6 +40,7 @@ const CHECK_MODULES = [
   { name: 'homeTimeContinuity', keys: homeTimeContinuity.CHECK_KEYS, run: homeTimeContinuity.runHomeTimeContinuityChecks },
   { name: 'board', keys: board.CHECK_KEYS, run: board.runBoardChecks },
   { name: 'boardLink', keys: boardLink.CHECK_KEYS, run: boardLink.runBoardLinkChecks },
+  { name: 'telegramIdentity', keys: telegramIdentity.CHECK_KEYS, run: telegramIdentity.runTelegramIdentityChecks },
 ];
 
 let serviceTimer = null;

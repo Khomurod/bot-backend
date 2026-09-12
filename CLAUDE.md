@@ -244,6 +244,7 @@ that area**, and run the tests it names.
 | Which recruiter's number texts a lead, which MESSAGE they send, the E.164 `from` rule, per-recruiter RingCentral credentials, inbound-SMS subscriptions | [`docs/architecture/recruiter-sms-sender.md`](docs/architecture/recruiter-sms-sender.md) |
 | The Dispatcher Board feed, which system is the authority on a driver's current assignment, fleet types, and why a truck number alone is not unique | [`docs/architecture/dispatcher-board.md`](docs/architecture/dispatcher-board.md) |
 | Fleet type, `(fleet_type, unit_number, seat)`, team seats, and the two driver-type vocabularies | [`docs/architecture/fleet-type-and-unit-identity.md`](docs/architecture/fleet-type-and-unit-identity.md) |
+| Which Telegram account belongs to which driver, one human per account, and why a username is never evidence | [`docs/architecture/telegram-identity.md`](docs/architecture/telegram-identity.md) |
 | Samsara settings, the shared-secret envelope for its API key, missing-video recovery | [`docs/architecture/samsara-settings-and-video-recovery.md`](docs/architecture/samsara-settings-and-video-recovery.md) |
 | The Bitrix assignee lookup, recruiter↔Bitrix mapping, Bitrix connection settings | [`docs/architecture/recruiter-sms-bitrix.md`](docs/architecture/recruiter-sms-bitrix.md) |
 | Where AI may change stored operational state, and the verdict on each | [`docs/architecture/ai-decisions.md`](docs/architecture/ai-decisions.md) |

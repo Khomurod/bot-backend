@@ -32,6 +32,15 @@ function span(row) {
   return to ? `${from} → ${to}` : `since ${from}`;
 }
 
+/** How an account came to be recorded against this person. */
+const LINK_SOURCE_LABEL = {
+  profile_backfill: "carried from the driver profile",
+  manual: "set by an administrator",
+  member_resolution: "the only person in the chat, name matched",
+  board: "from the dispatcher board",
+  import: "imported",
+};
+
 /** A truck is (fleet, number, seat) — the number alone is not unique. */
 const FLEET_LABEL = {
   company: "Company",
@@ -93,6 +102,25 @@ export default function PersonIdentityPanel({ personId }) {
               ))}
             </ul>
           </div>
+          {person.telegramAccounts?.length > 0 && (
+            <div>
+              <span style={{ color: "var(--text-muted)" }}>Telegram accounts:</span>
+              <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+                {person.telegramAccounts.map((a) => (
+                  <li key={`${a.telegramUserId}-${a.startedAt}`}>
+                    <code>{a.telegramUserId}</code>
+                    {a.username ? ` (@${a.username})` : ""}
+                    {a.endedAt ? "" : " (current)"}
+                    {" "}<span style={{ color: "var(--text-muted)" }}>
+                      {LINK_SOURCE_LABEL[a.linkSource] || a.linkSource}
+                      {a.confidence != null ? ` · ${a.confidence}%` : ""}
+                      {a.endedReason ? ` · ${a.endedReason}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {person.board?.length > 0 && (
             <div>
               <span style={{ color: "var(--text-muted)" }}>Dispatcher board:</span>

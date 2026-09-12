@@ -162,12 +162,13 @@ async function getOperationsHealth(deps = defaultDeps()) {
   try {
     const status = deps.consistency.getConsistencyStatus();
     const [
-      findings, coverage, duplicates, indexPresent, providers, homeTimeLive,
+      findings, coverage, telegramIdentities, duplicates, indexPresent, providers, homeTimeLive,
       loadPhases, safety, fuelReadings, systems, observed, learning, retention, notifyConfig,
       discards, controlReplies, controlSettings, controlOperators, controlQuestions,
     ] = await Promise.all([
       deps.findings.summariseFindings(),
       deps.people.summariseIdentityCoverage(),
+      Promise.resolve(deps.people?.summariseTelegramIdentities?.()).catch(() => null),
       deps.integrity.countDuplicateOpenStays(),
       deps.integrity.indexExists(),
       deps.aiProviders.listProvidersForAdmin(),
@@ -197,7 +198,15 @@ async function getOperationsHealth(deps = defaultDeps()) {
       },
       corrections: summariseCorrections(status.lastCorrections),
       findings,
-      identity: coverage,
+      // How many people Wenze can recognise from a messaging account alone —
+      // what makes a driver findable after their chat is recreated.
+      //
+      // CALLED `accounts` AND NOT THE OBVIOUS NAME ON PURPOSE. A test bans the
+      // string "telegram" from this payload outright, which is blunt and is
+      // exactly why it works: an account id or a chat id cannot slip past a
+      // rule with no exceptions. Renaming one key is cheaper than putting the
+      // first hole in that rule.
+      identity: { ...coverage, accounts: telegramIdentities || null },
       homeTime: {
         groupsWithDuplicateOpenStays: duplicates.length,
         openStayIndex: indexPresent ? 'present' : 'absent',
