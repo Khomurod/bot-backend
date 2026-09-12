@@ -9,6 +9,7 @@
  * rules be tested without a database or a provider.
  */
 const { query } = require('../pool');
+const { toTimestampValue } = require('../../lib/database/timestampValue');
 
 function mapWatch(row) {
   if (!row) return null;
@@ -99,7 +100,7 @@ async function ensureWatch({ groupId, personId = null, roadHistoryId = null, hom
             home_since = COALESCE(EXCLUDED.home_since, home_time_return_watch.home_since),
             updated_at = NOW()
      RETURNING *`,
-    [groupId, personId, roadHistoryId, homeSince]
+    [groupId, personId, roadHistoryId, toTimestampValue(homeSince)]
   );
   return mapWatch(res.rows[0]);
 }
@@ -151,9 +152,20 @@ async function recordObservation(groupId, {
       WHERE group_id = $1
       RETURNING *`,
     [
-      groupId, lat, lng, speedMph, seenAt, checkedAt,
+      // EVERY `::timestamptz` PARAMETER IS NORMALISED FIRST.
+      //
+      // `load.pickupTime` is `order.pickup_time` from Datatruck, verbatim —
+      // a field an external system fills with whatever somebody typed. Bound
+      // straight into the cast, one unreadable value did not become a null: it
+      // raised `invalid input syntax`, which aborted the statement, the driver,
+      // and (until the caller learned to isolate them) every driver behind them
+      // in the loop. `seenAt` comes from a telemetry provider and can do the
+      // same. Losing one unreadable appointment time is a far smaller loss than
+      // losing the pass; `toTimestampValue` makes that the outcome.
+      groupId, lat, lng, speedMph,
+      toTimestampValue(seenAt), toTimestampValue(checkedAt),
       milesFromAnchor, Boolean(moving), Boolean(anchorEligible), anchorSource,
-      load?.loadIdentifier || null, load?.status || null, load?.pickupTime || null,
+      load?.loadIdentifier || null, load?.status || null, toTimestampValue(load?.pickupTime),
       confidence, score, signals ? JSON.stringify(signals) : null,
     ]
   );

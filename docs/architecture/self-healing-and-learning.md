@@ -165,6 +165,12 @@ the value, never something a restart fixes) and `decrypt` for a stored secret
 that will not open. The message that quotes the offending value stays exactly
 where it was.
 
+The first `bad_value` it named was real and was found within minutes of the
+deploy: `home_time_return_watch.load_pickup_at` was bound straight from
+Datatruck's `pickup_time`, a field an external system fills with whatever
+somebody typed, into a `::timestamptz` cast. `lib/database/timestampValue.js`
+now stands between every externally-sourced timestamp and its parameter.
+
 There is **no restart and no retry control**, deliberately. A button like that
 is one somebody presses instead of finding out why, and every recovery this
 system performs is already automatic and already announced.

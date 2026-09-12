@@ -31,6 +31,7 @@
  * no burn finding at all, rather than a spectacular one.
  */
 const { query } = require('./pool');
+const { toTimestampValue } = require('../lib/database/timestampValue');
 
 /** A tank that rose by more than this is a fill-up, not sensor drift. */
 const REFUEL_RISE_PERCENT = 4;
@@ -222,9 +223,11 @@ async function recordAndCompare({
          updated_at = NOW()`,
       [
         String(unitNumber), personId, groupId,
-        current.fuelPercent, current.odometerMiles, current.recordedAt,
+        // Both timestamps come from a telemetry provider and land in a
+        // `::timestamptz` cast, where an unreadable string aborts the write.
+        current.fuelPercent, current.odometerMiles, toTimestampValue(current.recordedAt),
         b ? b.fuelPercent : null, b ? b.odometerMiles : null,
-        b ? b.at : null, b ? b.reason : null,
+        b ? toTimestampValue(b.at) : null, b ? b.reason : null,
       ]
     );
     return { previous: decision.previous, reason: decision.reason };
