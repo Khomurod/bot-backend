@@ -379,6 +379,11 @@ test('the control block says whether the channel is open and who can answer — 
   // everywhere else on this endpoint.
   assert.equal(s.control.operators, 1);
   assert.equal(s.control.refused, 2);
+  // WHAT WAS ASKED, not only what was answered. Zero replies reads the same
+  // whether questions went out and nobody answered or none were ever sent.
+  assert.equal(s.control.questions.asked, 6);
+  assert.equal(s.control.questions.delivered, 6);
+  assert.equal(s.control.questions.outstanding, 2);
   const published = JSON.stringify(s.control);
   assert.ok(!published.includes('2117922421'), published);
   assert.ok(!published.includes('Owner'), published);

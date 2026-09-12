@@ -19,6 +19,7 @@
  */
 const { query, pool } = require('./pool');
 const { recordDiscard, summariseDiscards } = require('./operationalNotificationDiscards');
+const { summariseControlQuestions, summariseNotifications } = require('./operationalNotificationHealth');
 
 const DEFAULT_LEASE_SECONDS = 120;
 const MAX_ATTEMPTS = 6;
@@ -437,27 +438,6 @@ async function countUnansweredQuestions(withinHours = 72) {
   }
 }
 
-/** For /api/health: what is stuck, and how long it has been stuck. */
-async function summariseNotifications() {
-  const res = await query(
-    `SELECT COUNT(*) FILTER (WHERE state = 'pending')::int   AS pending,
-            COUNT(*) FILTER (WHERE state = 'failed')::int    AS failed,
-            COUNT(*) FILTER (WHERE state = 'abandoned')::int AS abandoned,
-            COUNT(*) FILTER (WHERE state = 'delivered'
-                             AND delivered_at > NOW() - INTERVAL '24 hours')::int AS delivered24h,
-            MIN(created_at) FILTER (WHERE state = 'pending') AS oldest_pending_at
-       FROM operational_notifications`
-  );
-  const r = res.rows[0] || {};
-  return {
-    pending: r.pending || 0,
-    failed: r.failed || 0,
-    abandoned: r.abandoned || 0,
-    delivered24h: r.delivered24h || 0,
-    oldestPendingAt: r.oldest_pending_at || null,
-  };
-}
-
 module.exports = {
   recordDiscard,
   summariseDiscards,
@@ -477,5 +457,6 @@ module.exports = {
   findNoticeByTelegramMessage,
   markNoticeAnswered,
   countUnansweredQuestions,
+  summariseControlQuestions,
   summariseNotifications,
 };
