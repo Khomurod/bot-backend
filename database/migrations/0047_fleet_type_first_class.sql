@@ -99,19 +99,33 @@ $$;
 -- is actually set. Everything else stays `unknown`, which is the honest answer
 -- and the one that never wins a match. No title is parsed here: a backfill that
 -- guessed would bake a guess into the column that decides who shares a truck.
+-- AND ONLY WHERE THE CHAIN AGREES WITH ITSELF. A person can hold two OPEN group
+-- associations at once — that is `identity.person_on_two_active_groups`, a
+-- condition production actually has — and their two profiles can disagree about
+-- the driver type. A plain `UPDATE ... FROM` matches both rows and Postgres
+-- picks one arbitrarily: a coin toss, silently, into the column that decides who
+-- may share a truck number. So the chains are aggregated first and only an
+-- unambiguous one is used; a disagreement stays `unknown` for a person to settle.
 UPDATE driver_units u
-   SET fleet_type = CASE dp.driver_type
-                      WHEN 'company_driver' THEN 'company'
-                      WHEN 'lease'          THEN 'lease'
-                      WHEN 'owner'          THEN 'owner_operator'
-                    END
-  FROM driver_person_groups pg
-  JOIN driver_profiles dp ON dp.group_id = pg.group_id
- WHERE u.person_id = pg.person_id
-   AND pg.ended_at IS NULL
+   SET fleet_type = agreed.fleet_type
+  FROM (
+    SELECT pg.person_id,
+           MIN(CASE dp.driver_type
+                 WHEN 'company_driver' THEN 'company'
+                 WHEN 'lease'          THEN 'lease'
+                 WHEN 'owner'          THEN 'owner_operator'
+               END) AS fleet_type,
+           COUNT(DISTINCT dp.driver_type) AS distinct_types
+      FROM driver_person_groups pg
+      JOIN driver_profiles dp ON dp.group_id = pg.group_id
+     WHERE pg.ended_at IS NULL
+       AND dp.driver_type IN ('owner', 'company_driver', 'lease')
+     GROUP BY pg.person_id
+  ) AS agreed
+ WHERE u.person_id = agreed.person_id
+   AND agreed.distinct_types = 1
    AND u.ended_at IS NULL
-   AND u.fleet_type = 'unknown'
-   AND dp.driver_type IN ('owner', 'company_driver', 'lease');
+   AND u.fleet_type = 'unknown';
 
 -- ── the index swap, proved rather than assumed ───────────────────────────────
 DO $$

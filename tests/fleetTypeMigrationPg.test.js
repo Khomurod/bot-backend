@@ -235,6 +235,79 @@ test('a recorded driver_type IS carried across, including the new lease', {
   );
 });
 
+test('a person whose two open chats DISAGREE is left unknown, not coin-tossed', {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  const h = await setupBefore47(t);
+
+  // One person, two OPEN associations — `identity.person_on_two_active_groups`,
+  // a condition production actually has — whose profiles disagree. A plain
+  // `UPDATE ... FROM` matches both and Postgres picks one arbitrarily: a coin
+  // toss, silently, into the column that decides who may share a truck number.
+  const p = await h.query(
+    `INSERT INTO driver_people (display_name, normalized_key) VALUES ('A ONE','aone') RETURNING id`
+  );
+  const personId = p.rows[0].id;
+  for (const [i, type] of ['company_driver', 'owner'].entries()) {
+    const g = await h.query(
+      `INSERT INTO groups (group_name, telegram_group_id, group_type, active)
+       VALUES ($1, $2, 'driver', TRUE) RETURNING id`,
+      [`CHAT ${i}`, -3100 - i]
+    );
+    await h.query(
+      `INSERT INTO driver_person_groups (person_id, group_id, association_source, confidence)
+       VALUES ($1, $2, 'backfill', 100)`, [personId, g.rows[0].id]
+    );
+    await h.query(
+      `INSERT INTO driver_profiles (group_id, first_name, driver_type) VALUES ($1, 'A', $2)`,
+      [g.rows[0].id, type]
+    );
+  }
+  await h.query(
+    `INSERT INTO driver_units (person_id, unit_number, source) VALUES ($1, '001', 'backfill')`,
+    [personId]
+  );
+
+  await h.query(MIGRATION_47);
+
+  const row = await h.query(`SELECT fleet_type FROM driver_units WHERE person_id = $1`, [personId]);
+  assert.equal(row.rows[0].fleet_type, 'unknown',
+    'a disagreement is a question for a person, not a coin toss');
+});
+
+test('a person whose two open chats AGREE is still backfilled', {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  const h = await setupBefore47(t);
+  const p = await h.query(
+    `INSERT INTO driver_people (display_name, normalized_key) VALUES ('B TWO','btwo') RETURNING id`
+  );
+  const personId = p.rows[0].id;
+  for (const i of [0, 1]) {
+    const g = await h.query(
+      `INSERT INTO groups (group_name, telegram_group_id, group_type, active)
+       VALUES ($1, $2, 'driver', TRUE) RETURNING id`, [`CHAT ${i}`, -3200 - i]
+    );
+    await h.query(
+      `INSERT INTO driver_person_groups (person_id, group_id, association_source, confidence)
+       VALUES ($1, $2, 'backfill', 100)`, [personId, g.rows[0].id]
+    );
+    await h.query(
+      `INSERT INTO driver_profiles (group_id, first_name, driver_type)
+       VALUES ($1, 'B', 'company_driver')`, [g.rows[0].id]
+    );
+  }
+  await h.query(
+    `INSERT INTO driver_units (person_id, unit_number, source) VALUES ($1, '002', 'backfill')`,
+    [personId]
+  );
+
+  await h.query(MIGRATION_47);
+
+  const row = await h.query(`SELECT fleet_type FROM driver_units WHERE person_id = $1`, [personId]);
+  assert.equal(row.rows[0].fleet_type, 'company', 'agreement is not ambiguity');
+});
+
 test('a collision leaves the old index in force and files a serious finding', {
   skip: skipWithoutPg(),
 }, async (t) => {

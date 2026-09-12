@@ -103,9 +103,17 @@ It fills `fleet_type` **only** from a `driver_type` that is actually set, throug
 the open person → group → profile chain. It parses no titles. Everything else
 stays `unknown`.
 
+It also requires the chain to **agree with itself**. A person can hold two open
+group associations at once — that is `identity.person_on_two_active_groups`, a
+condition production actually has — and their two profiles can disagree about
+the driver type. A plain `UPDATE ... FROM` matches both rows and Postgres picks
+one arbitrarily, so the chains are aggregated first and only an unambiguous one
+is used. A disagreement stays `unknown` for a person to settle.
+
 A backfill that guessed would bake a guess into the column that decides who is
 allowed to share a truck number — and it would look, forever after, like a
-recorded fact.
+recorded fact. A coin toss would be the same thing, without even the excuse of a
+rule behind it.
 
 ## Lookups
 
