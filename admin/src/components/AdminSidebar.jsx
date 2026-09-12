@@ -47,8 +47,9 @@ const NAV_SECTIONS = [
       { key: 'settings_integrations', icon: '🔌', label: 'Integrations' },
       { key: 'settings_board', icon: '🗂️', label: 'Dispatcher Board' },
       { key: 'settings_ai', icon: '🤖', label: 'AI & Autonomy' },
-      { key: 'auto_reactions', icon: '😀', label: 'Auto Reactions' },
-      { key: 'group_access', icon: '🔍', label: 'Bot Group Access' },
+      { key: 'settings_notifications', icon: '🔔', label: 'Notification Routing' },
+      { key: 'settings_reactions', icon: '😀', label: 'Auto Reactions' },
+      { key: 'settings_access', icon: '🔍', label: 'Bot Group Access' },
     ],
   },
 ];

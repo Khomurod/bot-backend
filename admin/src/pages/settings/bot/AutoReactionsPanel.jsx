@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { getBotUsers } from "../api";
+import { getBotUsers } from "../../../api";
 import {
   getAutoReactions,
   createAutoReaction,
   updateAutoReaction,
   deleteAutoReaction,
-} from "../autoReactionsApi";
+} from "../../../autoReactionsApi";
 
 function userLabel(u) {
   const name = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
@@ -18,7 +18,7 @@ function ruleTarget(rule) {
   return `ID ${rule.telegram_user_id}`;
 }
 
-export default function AutoReactionsPage() {
+export default function AutoReactionsPanel() {
   const [rules, setRules] = useState([]);
   const [allowedEmojis, setAllowedEmojis] = useState([]);
   const [users, setUsers] = useState([]);
@@ -149,14 +149,11 @@ export default function AutoReactionsPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <h2>😀 Auto Reactions</h2>
-        <p>
-          Pick a user — from the list of people the bot has seen, or by typing a Telegram username —
-          and a reaction. The bot then automatically adds that reaction to every message that user
-          posts in any group it is in.
-        </p>
-      </div>
+      <p style={{ color: "#94a3b8", marginTop: 0 }}>
+        Pick a user — from the list of people the bot has seen, or by typing a Telegram username —
+        and a reaction. The bot then automatically adds that reaction to every message that user
+        posts in any group it is in.
+      </p>
 
       {message && (
         <div className={`alert alert-${message.type === "error" ? "danger" : "success"}`} style={{ marginBottom: 16 }}>

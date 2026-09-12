@@ -40,8 +40,9 @@ export const PAGE_KEYS = Object.freeze([
   'settings_integrations',
   'settings_board',
   'settings_ai',
-  'auto_reactions',
-  'group_access',
+  'settings_notifications',
+  'settings_reactions',
+  'settings_access',
 ]);
 
 /**
@@ -75,6 +76,11 @@ export const LEGACY_PAGE_KEYS = Object.freeze({
   manager: 'communications',
   // Stage C3 — "Settings" alone no longer says which settings.
   settings: 'settings_integrations',
+  // Stage C3b — two top-level pages became tabs of Settings. ONE KEY EACH:
+  // pointing both at a single "bot settings" key resolved the link and then
+  // opened the wrong screen, which is worse than not resolving it.
+  auto_reactions: 'settings_reactions',
+  group_access: 'settings_access',
 });
 
 const KNOWN = new Set(PAGE_KEYS);
