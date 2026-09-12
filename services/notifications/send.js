@@ -34,6 +34,7 @@ const ICONS = Object.freeze({
   safety_escalation: '🛑',
   retention: '💬',
   load_lifecycle: '📦',
+  finance: '💵',
   ai_learning: '🧠',
 });
 

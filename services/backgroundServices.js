@@ -122,6 +122,10 @@ const {
   stopDispatchBoardPoller,
 } = require('./dispatchBoard/poller');
 const {
+  startFinanceDocumentReader,
+  stopFinanceDocumentReader,
+} = require('./finance/documentReader');
+const {
   startPolicyWatcher,
   stopPolicyWatcher,
 } = require('./ai/policy/policyService');
@@ -211,6 +215,11 @@ function startBackgroundServices({ telegram }) {
   // evidence rules. Does nothing at all until an administrator saves an
   // address and a token in Settings.
   startDispatchBoardPoller();
+  // Reads the attachments posted in the finance group, ONE AT A TIME. Stands
+  // down entirely — `blocked`, not `failed` — until the Finance Monitor is on
+  // and document capture with it. It needs the Telegram client to fetch a file,
+  // so it is started here rather than from the capture handler.
+  startFinanceDocumentReader({ telegram: telegram || null });
   // A saved driver profile keeps the person layer current (unit change,
   // Telegram id). Registered here so database/ never depends upward.
   setProfileSavedHook(onProfileSaved);
@@ -246,6 +255,7 @@ function stopBackgroundServices() {
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
   try { stopConsistencyService(); } catch (err) { console.error('[SHUTDOWN] stopConsistencyService failed:', err.message); }
   try { stopDispatchBoardPoller(); } catch (err) { console.error('[SHUTDOWN] stopDispatchBoardPoller failed:', err.message); }
+  try { stopFinanceDocumentReader(); } catch (err) { console.error('[SHUTDOWN] stopFinanceDocumentReader failed:', err.message); }
   try { stopPolicyWatcher(); } catch (err) { console.error('[SHUTDOWN] stopPolicyWatcher failed:', err.message); }
   try { stopModelMaintenance(); } catch (err) { console.error('[SHUTDOWN] stopModelMaintenance failed:', err.message); }
 }

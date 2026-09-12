@@ -28,7 +28,7 @@ error — and told nobody. 101 staff alerts were lost over several months.
 ## What exists now
 
 **One default chat, optional per-category overrides.** `lib/notifications/categories.js`
-is the catalogue: nine categories, each with a label, what lands there, a
+is the catalogue: ten categories, each with a label, what lands there, a
 severity, and — the field that decides whether an operator wants it in its own
 chat — whether a person normally has to do something about it.
 

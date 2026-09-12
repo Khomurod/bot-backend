@@ -19,8 +19,11 @@
  */
 const { parseMoneycodeMessage, STATUS } = require('../../lib/finance/moneycode');
 const { decideDuplicate, normalisePerson } = require('../../lib/finance/duplicates');
+const { getTelegramFileDescriptor } = require('../../lib/telegram/fileDescriptor');
 const { getFinanceSettings, isFinanceChat } = require('../../database/financeSettings');
 const financeMessages = require('../../database/financeMessages');
+const financeDocuments = require('../../database/financeDocuments');
+const { wakeFinanceDocumentReader } = require('./documentReader');
 
 /** Telegram sends seconds; the column is timestamptz. */
 function toDate(unixSeconds) {
@@ -105,6 +108,42 @@ async function recordCodeIfParsed(messageRefId, shaped, parsed, settings) {
 }
 
 /**
+ * Queue the attachment, if there is one and if documents are being captured.
+ *
+ * THE QUEUE IS WHERE THE READING HAPPENS, NOT HERE. This runs inside Telegram's
+ * message pipeline: downloading a file here would hold that pipeline open for
+ * as long as the download took, on every finance message, and a slow file would
+ * delay every driver's message behind it. A row and a poke is all this does.
+ *
+ * The poke is what makes delivery instant without a poll — see
+ * services/jobQueueScheduler.js for why that trade matters.
+ */
+async function queueDocumentIfAny(messageRefId, msg, shaped, settings) {
+  if (!settings.captureDocuments) return null;
+  const file = getTelegramFileDescriptor(msg);
+  if (!file) return null;
+
+  const { created } = await financeDocuments.enqueueDocument({
+    messageRefId,
+    chatId: shaped.chatId,
+    messageId: shaped.messageId,
+    kind: file.kind,
+    fileId: file.fileId,
+    fileUniqueId: file.fileUniqueId,
+    mimeType: file.mimeType,
+    fileName: file.filename,
+    fileSize: file.fileSize,
+    // The caption IS the message text for an attachment-only post, and is
+    // frequently the only place a recipient is named.
+    caption: shaped.text,
+    mediaGroupId: shaped.mediaGroupId,
+  });
+
+  if (created) wakeFinanceDocumentReader();
+  return created;
+}
+
+/**
  * Handle one message from the bot.
  *
  * @returns `{ handled, reason }` — `handled: false` with a reason whenever the
@@ -136,6 +175,9 @@ async function captureFinanceMessage(msg, { isEdit = false } = {}) {
       const id = await financeMessages.applyEdit(shaped.chatId, shaped.messageId, shaped.text, parsed);
       if (!id) return { handled: false, reason: 'edit of a message never captured' };
       await recordCodeIfParsed(id, shaped, parsed, settings);
+      // An edit can ADD an attachment, and the unique key makes a re-queue of
+      // the same file a no-op, so asking again costs nothing and misses less.
+      await queueDocumentIfAny(id, msg, shaped, settings);
       return { handled: true, reason: 'edited', status: parsed.status, id };
     }
 
@@ -143,6 +185,7 @@ async function captureFinanceMessage(msg, { isEdit = false } = {}) {
     if (!created) return { handled: true, reason: 'already captured', status: parsed.status, id };
 
     await recordCodeIfParsed(id, shaped, parsed, settings);
+    await queueDocumentIfAny(id, msg, shaped, settings);
     return { handled: true, reason: 'captured', status: parsed.status, id };
   } catch (err) {
     // Ids and statuses only — never the text.
@@ -154,4 +197,4 @@ async function captureFinanceMessage(msg, { isEdit = false } = {}) {
   }
 }
 
-module.exports = { captureFinanceMessage, shapeMessage };
+module.exports = { captureFinanceMessage, shapeMessage, queueDocumentIfAny };
