@@ -53,7 +53,7 @@ function renderMetaCompliancePage(title, bodyHtml) {
 
 function createHealthRoutes({
   db, config, countExhaustedInternalAlerts = null, countFailedManagerNotices = null,
-  summariseOperationalNotifications = null,
+  summariseOperationalNotifications = null, summariseFinanceDocuments = null,
   getOperationsHealth = null,
 }) {
   const router = express.Router();
@@ -107,24 +107,26 @@ function createHealthRoutes({
     if (queueHealthCache.queues && now - queueHealthCache.checkedAt < QUEUE_HEALTH_TTL_MS) {
       return queueHealthCache.queues;
     }
+    // EACH QUEUE ANSWERS FOR ITSELF. This used to return early when the FIRST
+    // counter was not injected, which collapsed the whole block to one key and
+    // made three other queues invisible for a reason that had nothing to do
+    // with them. Every branch below already reports its own absence.
     let homeTimeInternalAlerts = { available: false };
-    if (typeof countExhaustedInternalAlerts !== 'function') {
-      queueHealthCache = { checkedAt: now, queues: { homeTimeInternalAlerts } };
-      return queueHealthCache.queues;
-    }
-    try {
-      const { count, oldestAt } = await countExhaustedInternalAlerts();
-      homeTimeInternalAlerts = { available: true, exhausted: count, oldestAt };
-      if (count > 0) {
-        console.warn(
-          `[HEALTH] ${count} home-time internal alert(s) exhausted their attempts and were never `
-          + 'delivered. Check that the internal clarification group id is a chat the bot can reach.'
-        );
+    if (typeof countExhaustedInternalAlerts === 'function') {
+      try {
+        const { count, oldestAt } = await countExhaustedInternalAlerts();
+        homeTimeInternalAlerts = { available: true, exhausted: count, oldestAt };
+        if (count > 0) {
+          console.warn(
+            `[HEALTH] ${count} home-time internal alert(s) exhausted their attempts and were never `
+            + 'delivered. Check that the internal clarification group id is a chat the bot can reach.'
+          );
+        }
+      } catch (err) {
+        // A missing table or an unreachable database must not turn the health
+        // endpoint itself into an error.
+        homeTimeInternalAlerts = { available: false, error: err.message };
       }
-    } catch (err) {
-      // A missing table or an unreachable database must not turn the health
-      // endpoint itself into an error.
-      homeTimeInternalAlerts = { available: false, error: err.message };
     }
     // The manager-notice queue: home time now TELLS three managers three
     // things, so a queue nobody drains is the same silent failure the internal
@@ -162,7 +164,33 @@ function createHealthRoutes({
         operationalNotifications = { available: false, error: err.message };
       }
     }
-    const queues = { homeTimeInternalAlerts, homeTimeManagerNotices, operationalNotifications };
+    // The finance document queue. `needs_review` is not an error — it is work
+    // waiting for a person — but a number that only ever goes up is worth
+    // seeing, and `failed` means documents Wenze could not even fetch.
+    let financeDocuments = { available: false };
+    if (typeof summariseFinanceDocuments === 'function') {
+      try {
+        const s = await summariseFinanceDocuments();
+        financeDocuments = {
+          available: s.available,
+          pending: s.byStatus?.pending ?? 0,
+          needsReview: s.needsReview,
+          failed: s.failed,
+          read: s.byStatus?.read ?? 0,
+        };
+        if (s.failed > 0) {
+          console.warn(
+            `[HEALTH] ${s.failed} finance document(s) could not be fetched from Telegram after `
+            + 'every retry. They are recorded, not lost, but nothing will read them.'
+          );
+        }
+      } catch (err) {
+        financeDocuments = { available: false, error: err.message };
+      }
+    }
+    const queues = {
+      homeTimeInternalAlerts, homeTimeManagerNotices, operationalNotifications, financeDocuments,
+    };
     queueHealthCache = { checkedAt: now, queues };
     return queues;
   }

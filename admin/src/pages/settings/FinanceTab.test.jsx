@@ -18,6 +18,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import FinanceTab from "./FinanceTab";
 import * as api from "../../api";
 
+// BY LABEL, NOT BY ROLE. The page has three checkboxes now (capture, keep
+// attachments, let AI read them) and `getByRole("checkbox")` would find
+// whichever came first — which is how a test quietly starts asserting about a
+// different switch than the one it names.
+const captureBox = () => screen.getByLabelText(/Record the money codes/i);
+
 vi.mock("../../api", () => ({
   getFinanceStatus: vi.fn(),
   validateFinanceChat: vi.fn(),
@@ -39,7 +45,7 @@ beforeEach(() => {
 
 test("capture cannot be switched on until a group has been validated", async () => {
   render(<FinanceTab />);
-  const box = await screen.findByRole("checkbox");
+  const box = await screen.findByLabelText(/Record the money codes/i);
   expect(box).toBeDisabled();
   expect(screen.getByText(/Validate the group first/i)).toBeTruthy();
   expect(api.updateFinanceSettings).not.toHaveBeenCalled();
@@ -55,7 +61,7 @@ test("validating the chat in the form unlocks it, without a reload", async () =>
   // It proves the chat IN THE FORM, not the one already stored — that is what
   // lets a group be verified before it is committed to.
   await waitFor(() => expect(api.validateFinanceChat).toHaveBeenCalledWith("-100777"));
-  await waitFor(() => expect(screen.getByRole("checkbox")).not.toBeDisabled());
+  await waitFor(() => expect(captureBox()).not.toBeDisabled());
   expect(screen.getByText(/Wenze Finance/)).toBeTruthy();
 });
 
@@ -69,7 +75,7 @@ test("a chat that cannot be validated leaves the switch locked and says why", as
   fireEvent.click(screen.getByRole("button", { name: /Validate group/i }));
 
   await waitFor(() => expect(screen.getByText(/Did you mean -100777\?/)).toBeTruthy());
-  expect(screen.getByRole("checkbox")).toBeDisabled();
+  expect(captureBox()).toBeDisabled();
 });
 
 test("editing the chat id withdraws an earlier validation", async () => {
@@ -78,12 +84,12 @@ test("editing the chat id withdraws an earlier validation", async () => {
 
   fireEvent.change(await screen.findByLabelText(/Telegram chat ID/i), { target: { value: "-100777" } });
   fireEvent.click(screen.getByRole("button", { name: /Validate group/i }));
-  await waitFor(() => expect(screen.getByRole("checkbox")).not.toBeDisabled());
+  await waitFor(() => expect(captureBox()).not.toBeDisabled());
 
   // Typing a DIFFERENT chat after validating one must not carry the approval
   // over to it — that is how the wrong group gets captured.
   fireEvent.change(screen.getByLabelText(/Telegram chat ID/i), { target: { value: "-100888" } });
-  expect(screen.getByRole("checkbox")).toBeDisabled();
+  expect(captureBox()).toBeDisabled();
 });
 
 test("a stored validation is enough on its own", async () => {
@@ -92,7 +98,7 @@ test("a stored validation is enough on its own", async () => {
     settings: { ...OFF.settings, chatId: "-100777", chatValidatedAt: "2026-09-01T00:00:00Z" },
   });
   render(<FinanceTab />);
-  await waitFor(() => expect(screen.getByRole("checkbox")).not.toBeDisabled());
+  await waitFor(() => expect(captureBox()).not.toBeDisabled());
   expect(screen.getByText(/Validated /)).toBeTruthy();
 });
 

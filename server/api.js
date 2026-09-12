@@ -128,6 +128,11 @@ app.use(createHealthRoutes({
   // The general operational outbox: every notice a Phase 5 feature sends.
   summariseOperationalNotifications:
     require('../database/operationalNotifications').summariseNotifications,
+  // The finance document queue. Same reason as the three above, and the same
+  // lesson: a queue nobody drains fails silently, and payment evidence piling
+  // up unread is not something anybody would notice by looking.
+  summariseFinanceDocuments:
+    require('../database/financeDocuments').summariseDocuments,
   // Counts only: open findings, the last background correction pass, identity
   // coverage, home-stay integrity, model-listing freshness.
   getOperationsHealth: require('../services/operations/healthSummary').getOperationsHealth,

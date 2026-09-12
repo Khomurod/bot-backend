@@ -23,7 +23,8 @@ import { Banner } from "./fields";
 export default function FinanceTab() {
   const [settings, setSettings] = useState(null);
   const [capture, setCapture] = useState(null);
-  const [form, setForm] = useState({ chatId: "", duplicateWindowHours: 72 });
+  const [documents, setDocuments] = useState(null);
+  const [form, setForm] = useState({ chatId: "", duplicateWindowHours: 72, maxDocumentMb: 8 });
   const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -35,9 +36,11 @@ export default function FinanceTab() {
       const data = await api.getFinanceStatus();
       setSettings(data.settings);
       setCapture(data.capture);
+      setDocuments(data.documents ?? null);
       setForm({
         chatId: data.settings?.chatId || "",
         duplicateWindowHours: data.settings?.duplicateWindowHours ?? 72,
+        maxDocumentMb: data.settings?.maxDocumentMb ?? 8,
       });
     } catch (err) {
       setMessage({ type: "error", text: err.message });
@@ -163,6 +166,68 @@ export default function FinanceTab() {
             to look at. The same <em>code</em> twice is always flagged, whenever it happens.
           </div>
         </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <h3 style={{ marginTop: 0 }}>Attachments</h3>
+        <p style={{ color: "var(--text-muted)", marginTop: 0, fontSize: 13 }}>
+          Receipts and transfer screenshots are read <strong>one at a time</strong> in the
+          background, so a big file never slows the bot down. Anything Wenze cannot read with
+          certainty is marked for a person &mdash; it is never guessed at.
+        </p>
+        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            type="checkbox"
+            checked={Boolean(settings?.captureDocuments)}
+            disabled={busy || !settings?.enabled}
+            onChange={(e) => save({ captureDocuments: e.target.checked })}
+          />
+          <span>Keep the attachments posted in that group</span>
+        </label>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+          <input
+            type="checkbox"
+            checked={Boolean(settings?.aiReadingEnabled)}
+            disabled={busy || !settings?.captureDocuments}
+            onChange={(e) => save({ aiReadingEnabled: e.target.checked })}
+          />
+          <span>Let AI read what is printed on them</span>
+        </label>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
+          AI reports only what the document says. It never decides anything: no total, no
+          report figure and no repeat is ever taken from it.
+        </div>
+
+        <div className="form-group" style={{ marginTop: 14, maxWidth: 260 }}>
+          <label htmlFor="finance-max-mb">Largest file to fetch (MB)</label>
+          <input
+            id="finance-max-mb"
+            type="number"
+            className="form-input"
+            min={1}
+            max={20}
+            value={form.maxDocumentMb}
+            onChange={(e) => setForm((f) => ({ ...f, maxDocumentMb: e.target.value }))}
+            onBlur={() => save({ maxDocumentMb: Number(form.maxDocumentMb) })}
+            disabled={busy}
+          />
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+            Anything bigger is skipped without being downloaded at all.
+          </div>
+        </div>
+
+        {documents?.available && (
+          <div
+            className="stats-grid"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", marginTop: 14 }}
+          >
+            <Stat label="Attachments" value={documents.total} />
+            <Stat label="Read" value={documents.byStatus?.read ?? 0} />
+            <Stat label="Waiting" value={documents.byStatus?.pending ?? 0} />
+            <Stat label="Needs a person" value={documents.needsReview} />
+            <Stat label="Could not fetch" value={documents.failed} />
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
