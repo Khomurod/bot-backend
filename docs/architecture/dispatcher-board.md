@@ -137,18 +137,37 @@ pass that failed:
 > "We could not read the board" and "nobody is on the board" are opposite
 > facts, and only the second one may retire a row.
 
-Four failure paths return `{ error }` rather than throwing — the settings read,
-the fetch, the parse, the store — and each one leaves the snapshot exactly as
-it was. `tests/dispatchBoardPoller.test.js` asserts `markAbsent` was not called
-on every one of them.
+Every failure path returns `{ error }` rather than throwing — the settings read,
+the fetch, the parse, the store — and each one leaves the snapshot exactly as it
+was. `tests/dispatchBoardPoller.test.js` asserts it on every one of them.
 
-A **well-formed answer carrying zero rows** is treated the same way. `markAbsent([])`
-retires every row by design — that is what an empty board means — but an Apps
-Script that hits its own error or loses its sheet answers `{"rows": []}` with a
-200, and acting on that would retire the fleet's whole assignment history on one
-bad afternoon. A zero-row pass is reported and changes nothing; if the board
-really has emptied, its rows stay present with a `last_seen_at` that stops
-moving, which is visible and reversible. The opposite mistake is not.
+**What may retire a row is an answer with something IDENTIFIABLE in it**, which
+is not the same as an answer with rows in it. Three different answers reach an
+empty keep-list without the board having emptied:
+
+- `{"rows": []}` — an Apps Script that hit its own error or lost its sheet still
+  answers 200.
+- `{"rows": [{}, {}]}` — both identifying column names were renamed. The parser
+  keeps the rows and reports them, so the *count* is not zero, but every
+  `row_key` is null and nulls are filtered out of the keep-list. Counting rows
+  would have missed this.
+- Rows naming a truck and nobody. `driver_name_raw` is `NOT NULL`, so they
+  cannot be stored and cannot hold their place either — and before the guard,
+  one blank driver cell made every pass fail at the same position, so no later
+  row ever refreshed.
+
+So the keep-list is exactly what was **stored**, never what was read, and a pass
+with nothing storable in it is reported and changes nothing. If the board really
+has emptied, its rows stay present with a `last_seen_at` that stops moving,
+which is visible and reversible. The opposite mistake is not.
+
+**A pass is one transaction.** `applyBoardPass` opens a client, upserts every
+row and applies the absences inside `BEGIN`/`COMMIT`. Without it, `query`
+autocommits: a pass that wrote forty rows and failed on the forty-first left the
+snapshot half-new, reported the pass as failed, and stayed mixed until some later
+pass succeeded — indefinitely, if the bad row kept coming back. "A failed pass
+leaves the snapshot exactly as it was" has to be true of a pass that failed
+*halfway*, which is the only kind that matters.
 
 `enabled = FALSE` and "no address and token saved" return `{ blocked }`, which
 the run ledger renders as *waiting on somebody* rather than as a failure. The
@@ -166,6 +185,12 @@ Board itself does not keep.
 `last_changed_at` moves only when a MEANINGFUL column differs — not on every
 pass — so "this driver's assignment changed at 11:04" stays true.
 
+**Two lines that reduce to one key collapse into one stored row, and the row
+says so** (`key_collision`). Wenze does not invent a key to separate them: a
+made-up identity would not survive the sheet being sorted, so the same driver
+would appear to change identity every time somebody reordered the board. It
+reports that it cannot tell them apart, and a person fixes the board.
+
 ## What the board checks report, and what they never do
 
 `services/operations/checks/board.js` files six findings, and **every one of
@@ -180,6 +205,7 @@ a board finding is always a question for a person:
 | `board.unknown_status` | info | a status outside the board's own vocabulary |
 | `board.team_flag_mismatch` | warning | the team column and the written name disagree, so Wenze cannot tell how many humans the row is about |
 | `board.truck_on_multiple_rows` | warning | one truck, two rows, **within one fleet** |
+| `board.duplicate_row_key` | warning | two board lines reduce to one row, so one assignment is not in Wenze at all |
 | `board.row_vanished` | info | a driver left the board, for seven days only |
 
 `board.truck_on_multiple_rows` buckets on `fleetType|truck`, never on the bare

@@ -372,12 +372,14 @@ repository-wide working rules. The highest-consequence items:
   `lib/security/redactUrls.stripUrls` and `last_error` may never hold a URL.
 - **A failed board read never empties the snapshot.** "We could not read the
   board" and "nobody is on the board" are opposite facts, and only the second
-  may set `present = false`. Every failure path in
-  `services/dispatchBoard/poller.js` returns before `markAbsent`, and
-  `tests/dispatchBoardPoller.test.js` asserts it on each one. A board row is
-  never deleted either — a vanished row keeps its history, because the Board
-  itself keeps none. A well-formed answer carrying ZERO rows is reported and
-  changes nothing, for the same reason.
+  may set `present = false`. What may retire a row is an answer with something
+  IDENTIFIABLE in it, not an answer with rows in it: zero rows, rows whose keys
+  are all null (both identifying columns renamed), and rows naming a truck and
+  nobody all reach an empty keep-list without the board having emptied. The
+  keep-list is exactly what was STORED, never what was read. A pass is also ONE
+  transaction, because "a failed pass changes nothing" has to hold for a pass
+  that failed halfway. A board row is never deleted either — a vanished row
+  keeps its history, because the Board itself keeps none.
 - **A value from outside never reaches a typed column unchecked.** Postgres
   treats a string it cannot read as an error, not a null, so an external
   system's `TBD` aborts the statement and whatever pass was running behind it.

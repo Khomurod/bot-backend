@@ -43,7 +43,7 @@ function makeDeps(overrides = {}) {
     store: {
       upsertBoardRows: async () => {
         calls.upsert += 1;
-        return { inserted: 1, updated: 0, unchanged: 0 };
+        return { inserted: 1, updated: 0, unchanged: 0, skipped: 0 };
       },
       markAbsent: async () => { calls.absent += 1; return 0; },
       ...(overrides.store || {}),
@@ -61,6 +61,17 @@ function makeDeps(overrides = {}) {
   if (overrides.store?.markAbsent) {
     const inner = overrides.store.markAbsent;
     deps.store.markAbsent = async (...args) => { calls.absent += 1; return inner(...args); };
+  }
+  // The real `applyBoardPass` runs both inside ONE transaction. The stub
+  // composes the same two calls in the same order, so every assertion below
+  // about what was and was not called still means what it says — and the order
+  // is what makes "a store failure retires nobody" observable.
+  if (!overrides.store?.applyBoardPass) {
+    deps.store.applyBoardPass = async (rows, keepKeys) => {
+      const counts = await deps.store.upsertBoardRows(rows);
+      const absent = await deps.store.markAbsent(keepKeys);
+      return { ...counts, absent };
+    };
   }
   return { deps, calls };
 }
@@ -212,4 +223,79 @@ test('a well-formed answer carrying zero rows retires nobody', async () => {
     'markAbsent([]) retires the whole fleet — an empty answer must never reach it'
   );
   assert.strictEqual(calls.outcomes[0].ok, false);
+});
+
+// ── Codex review, #214 ───────────────────────────────────────────────────────
+
+test('a payload of empty objects retires nobody, even though it parsed', async () => {
+  // `{"rows":[{}]}` is what an Apps Script produces when both identifying
+  // column names change. The parser keeps the row and reports it, so `count`
+  // is 1 and the zero-row guard does not fire — but every key is null, and
+  // `markAbsent` filters nulls out, so the keep-list is empty and the whole
+  // fleet would be retired. The guard is about IDENTIFIABLE rows, not rows.
+  const { deps, calls } = makeDeps({
+    client: { fetchBoard: async () => ({ json: { rows: [{}, {}] } }) },
+  });
+  const summary = await runBoardPoll({ deps });
+  assert.match(summary.error, /none of which could be identified/i);
+  assert.strictEqual(calls.absent, 0, 'an unreadable answer must never retire a row');
+  assert.strictEqual(calls.upsert, 0);
+});
+
+test('a row with a truck and no driver is skipped, not written as a null name', async () => {
+  // `driver_name_raw` is NOT NULL. The tolerant parser keeps a row with a truck
+  // and a blank driver cell and keys it `001|?`, so handing it to the insert
+  // raises a constraint error — and because one spreadsheet cell caused it, the
+  // SAME pass fails every five minutes and no later row is ever refreshed.
+  let stored = null;
+  const { deps, calls } = makeDeps({
+    client: {
+      fetchBoard: async () => ({
+        json: {
+          rows: [
+            { driver: 'ALPHA ONE (COMPANY DRIVER)', truck: '001', status: 'HOME' },
+            { driver: '', truck: '002', status: 'READY' },
+          ],
+        },
+      }),
+    },
+    store: {
+      upsertBoardRows: async (rows) => {
+        stored = rows;
+        return { inserted: rows.length, updated: 0, unchanged: 0 };
+      },
+    },
+  });
+  const summary = await runBoardPoll({ deps });
+  assert.strictEqual(summary.error, undefined, summary.error);
+  assert.ok(stored, 'the good row must still be stored');
+  assert.strictEqual(stored.length, 1);
+  assert.strictEqual(stored[0].truckNorm, '001');
+  for (const row of stored) {
+    assert.ok(row.driverNameRaw, 'no row reaching the store may have a null driver name');
+  }
+  assert.strictEqual(summary.skipped, 1);
+  assert.strictEqual(calls.absent, 1);
+});
+
+test('the keep-list is exactly what was stored, never what was read', async () => {
+  let keep = null;
+  const { deps } = makeDeps({
+    client: {
+      fetchBoard: async () => ({
+        json: {
+          rows: [
+            { driver: 'ALPHA ONE', truck: '001' },
+            { driver: '', truck: '002' },
+            {},
+          ],
+        },
+      }),
+    },
+    store: { markAbsent: async (keys) => { keep = keys; return 0; } },
+  });
+  await runBoardPoll({ deps });
+  assert.strictEqual(keep.length, 1, 'only the one storable row may hold its place');
+  assert.ok(keep[0].startsWith('001|'), keep[0]);
+  assert.ok(keep.every(Boolean), 'one null key in the keep-list empties the whole list');
 });

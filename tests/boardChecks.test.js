@@ -225,3 +225,15 @@ test('the sweep runs the board checks', () => {
   const src = fs.readFileSync(require.resolve('../services/operations/consistencyService'), 'utf8');
   assert.match(src, /name:\s*'board',\s*keys:\s*board\.CHECK_KEYS/);
 });
+
+test('two board lines Wenze cannot tell apart are reported, and nothing is guessed', () => {
+  const { checkDuplicateRowKey } = require('../services/operations/checks/board');
+  const found = checkDuplicateRowKey({
+    boardRows: [row({ rowKey: 'a', keyCollision: true }), row({ rowKey: 'b' })],
+  });
+  assert.strictEqual(found.length, 1);
+  assert.strictEqual(found[0].checkKey, 'board.duplicate_row_key');
+  assert.strictEqual(found[0].severity, 'warning');
+  assert.strictEqual(found[0].proposedChange, null);
+  assert.match(found[0].evidence.consequence, /only one of the two lines/i);
+});

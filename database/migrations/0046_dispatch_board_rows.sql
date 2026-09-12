@@ -45,6 +45,11 @@ CREATE TABLE IF NOT EXISTS dispatch_board_rows (
   fleet_label_normalised BOOLEAN NOT NULL DEFAULT FALSE,
 
   is_team BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Two board lines reduced to this same row_key, so they collapsed into one
+  -- stored row and one assignment was lost. Recorded rather than worked
+  -- around: a key invented to tell them apart would not survive the sheet
+  -- being sorted, so the same driver would appear to change identity.
+  key_collision BOOLEAN NOT NULL DEFAULT FALSE,
   team_members TEXT[] NULL,
   team_flag_mismatch BOOLEAN NOT NULL DEFAULT FALSE,
 
@@ -92,5 +97,7 @@ COMMENT ON TABLE dispatch_board_rows IS
   'What the external Dispatcher Board said, as Wenze last read it. Rows are never deleted; a row that stops appearing goes present = FALSE.';
 COMMENT ON COLUMN dispatch_board_rows.row_key IS
   'Truck plus person, NOT the sheet position — a spreadsheet renumbers when somebody inserts a line.';
+COMMENT ON COLUMN dispatch_board_rows.key_collision IS
+  'Two board lines reduced to this key, so one of them is not in the snapshot. A person fixes the board; Wenze never invents an identity to separate them.';
 COMMENT ON COLUMN dispatch_board_rows.truck_digits IS
   'The weak comparison key. Generates candidates; may never justify a write.';

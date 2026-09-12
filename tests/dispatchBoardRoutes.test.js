@@ -251,3 +251,28 @@ test('the feed never contacts the board', async (t) => {
   await call(app, 'GET', '/api/settings/dispatch-board/feed');
   assert.equal(seen.fetches.length, 0, 'the snapshot is the answer; the board is not asked');
 });
+
+test('a database outage on the feed answers 503 with a machine-readable code', async (t) => {
+  const failing = new Error('connection terminated unexpectedly');
+  failing.code = 'ECONNREFUSED';
+  const { app, restore } = loadApp();
+  t.after(restore);
+  // Replace the stub the router already holds, so the failure comes from the
+  // same place a real outage would.
+  require.cache[ROWS_PATH].exports.summariseBoard = async () => { throw failing; };
+  const res = await call(app, 'GET', '/api/settings/dispatch-board/feed');
+  assert.equal(res.status, 503, 'an outage is not an ordinary server error');
+  assert.ok(res.json.code, 'the admin needs a code it can act on');
+  assert.match(res.json.code, /^DB_/);
+});
+
+test('a failure response never carries a board URL or its token', async (t) => {
+  const leaky = new Error(`GET ${BASE}?token=${TOKEN} failed`);
+  leaky.code = 'ECONNREFUSED';
+  const { app, restore } = loadApp();
+  t.after(restore);
+  require.cache[ROWS_PATH].exports.summariseBoard = async () => { throw leaky; };
+  const res = await call(app, 'GET', '/api/settings/dispatch-board/feed');
+  assert.ok(!res.text.includes(TOKEN), res.text);
+  assert.ok(!res.text.includes('script.example.com'), res.text);
+});

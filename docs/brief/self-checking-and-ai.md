@@ -36,11 +36,12 @@ feature it belongs to.
   a provider outage can never be mistaken for "the problem went away".
 - A **dismissal without a reason is refused by the database**, not the route.
 - **The Dispatcher Board checks report; they never propose.**
-  `checks/board.js` runs in the same sweep over the same snapshot and files six
+  `checks/board.js` runs in the same sweep over the same snapshot and files seven
   findings — an unreadable fleet label, a label read through a typo, a status
   outside the board's vocabulary, a team flag that disagrees with the written
-  name, one truck on two rows within one fleet, and a row that left the board in
-  the last seven days. **Every one is `tier: 'warning'` with
+  name, one truck on two rows within one fleet, two board lines that reduce to one
+  row (so one assignment is not in Wenze at all), and a row that left the board
+  in the last seven days. **Every one is `tier: 'warning'` with
   `proposedChange: null`**, because nothing in a spreadsheet read is evidence
   about which of two disagreeing records is right. Comparing the Board with
   Wenze is a later stage with its own rules; this module only reports on the

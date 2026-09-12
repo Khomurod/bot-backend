@@ -18,6 +18,7 @@
  * profile), and a read-only sweep must not write.
  */
 const defaultDb = require('../../../database/pool');
+const { getBoardRowsForSnapshot } = require('../../../database/dispatchBoard');
 
 /** Everything the checks need, read once. */
 async function loadSnapshot(db = defaultDb) {
@@ -123,12 +124,13 @@ async function loadLayerSnapshot(db) {
 }
 
 /**
- * The Dispatcher Board snapshot — every row, present and absent alike, because
- * "this row vanished from the board" is itself a finding.
+ * The Dispatcher Board snapshot.
  *
- * NAMES AND TRUCKS ONLY. No phone number leaves this query: a finding's
- * evidence is read by people who do not need one, and a board check has never
- * needed one to do its job.
+ * The query itself belongs to `database/dispatchBoard.js`, which owns that
+ * table; this passes the sweep's own `db` into it so every check still reads one
+ * database at one moment. Writing the SELECT again here would be a second copy
+ * of a column list that has to stay in step with the checks, and the two had
+ * already drifted once.
  *
  * A MISSING TABLE IS NOT AN OUTAGE, and is the only failure swallowed here.
  * Migrations run inside `initializeDatabase()` at boot, so the only way
@@ -140,30 +142,7 @@ async function loadLayerSnapshot(db) {
  */
 async function loadBoardSnapshot(db) {
   try {
-    const res = await db.query(
-      `SELECT row_key, driver_name_clean, fleet_type, fleet_label_raw,
-              fleet_label_normalised, is_team, team_flag_mismatch, truck_norm,
-              truck_digits, status, status_raw, present, person_id,
-              first_seen_at, last_seen_at
-         FROM dispatch_board_rows`
-    );
-    return res.rows.map((row) => ({
-      rowKey: row.row_key,
-      cleanName: row.driver_name_clean,
-      fleetType: row.fleet_type,
-      fleetLabelRaw: row.fleet_label_raw,
-      fleetLabelNormalised: row.fleet_label_normalised === true,
-      isTeam: row.is_team === true,
-      teamFlagMismatch: row.team_flag_mismatch === true,
-      truckNorm: row.truck_norm,
-      truckDigits: row.truck_digits,
-      status: row.status,
-      statusRaw: row.status_raw,
-      present: row.present === true,
-      personId: row.person_id,
-      firstSeenAt: row.first_seen_at,
-      lastSeenAt: row.last_seen_at,
-    }));
+    return await getBoardRowsForSnapshot(db);
   } catch (err) {
     if (err && err.code === '42P01') return [];
     throw err;

@@ -73,6 +73,7 @@ const CHECK_LABELS = {
   'load.phase_unclear': "Unclear what a load is actually doing",
   'operations.auto_apply_capped': 'A check wanted to change too much and stopped',
   'board.unknown_fleet_label': 'Dispatcher board fleet label Wenze cannot read',
+  'board.duplicate_row_key': 'Two dispatcher board lines Wenze cannot tell apart',
   'board.fleet_label_typo': 'Dispatcher board fleet label is misspelled',
   'board.unknown_status': 'Dispatcher board status outside the known list',
   'board.team_flag_mismatch': 'Dispatcher board unclear whether a row is a team',

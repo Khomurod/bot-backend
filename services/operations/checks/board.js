@@ -187,6 +187,42 @@ function checkTruckOnMultipleRows({ boardRows }) {
   return findings;
 }
 
+/**
+ * Two board lines that reduce to one row.
+ *
+ * `row_key` is the truck plus the person, so two lines naming the same driver on
+ * the same truck collapse into ONE stored row — and one assignment is simply not
+ * in the snapshot. Wenze does not invent a key to tell them apart: a made-up
+ * identity would not survive the sheet being sorted, and the same driver would
+ * appear to change identity every time somebody reordered the board. So it says
+ * it cannot tell them apart, and a person fixes the board.
+ *
+ * Warning, not info: something the board says is not in Wenze at all, and
+ * nothing else in the system can notice that.
+ */
+function checkDuplicateRowKey({ boardRows }) {
+  return presentRows(boardRows)
+    .filter((r) => r.keyCollision)
+    .map((r) => ({
+      checkKey: 'board.duplicate_row_key',
+      subjectType: 'board_row',
+      subjectId: r.rowKey,
+      title: `The board has two lines for ${nameOf(r)} on truck ${r.truckNorm || '?'}`,
+      severity: 'warning',
+      tier: 'warning',
+      confidence: 100,
+      evidence: {
+        rowKey: r.rowKey,
+        driver: r.cleanName,
+        truck: r.truckNorm,
+        consequence: 'only one of the two lines is in Wenze; the other is not stored',
+        note: 'Wenze will not invent a key to separate them — a made-up identity '
+          + 'would change whenever the sheet is sorted',
+      },
+      proposedChange: null,
+    }));
+}
+
 /** Nobody is measured against a row that left the board a month ago. */
 const VANISHED_WINDOW_DAYS = 7;
 
@@ -226,6 +262,7 @@ function checkRowVanished({ boardRows, now }) {
 
 const CHECKS = [
   checkUnknownFleetLabel,
+  checkDuplicateRowKey,
   checkFleetLabelTypo,
   checkUnknownStatus,
   checkTeamFlagMismatch,
@@ -235,6 +272,7 @@ const CHECKS = [
 
 const CHECK_KEYS = [
   'board.unknown_fleet_label',
+  'board.duplicate_row_key',
   'board.fleet_label_typo',
   'board.unknown_status',
   'board.team_flag_mismatch',
@@ -250,6 +288,7 @@ module.exports = {
   CHECK_KEYS,
   runBoardChecks,
   checkUnknownFleetLabel,
+  checkDuplicateRowKey,
   checkFleetLabelTypo,
   checkUnknownStatus,
   checkTeamFlagMismatch,
