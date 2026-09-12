@@ -148,3 +148,26 @@ test('the source is reported so a caller can tell a decision from a guess', () =
   assert.equal(decided.value, guessed.value);
   assert.notEqual(decided.source, guessed.source);
 });
+
+// ── the title has to be able to CREATE a lease driver ────────────────────────
+
+test('a LEASE group title is persisted as lease, not as owner', () => {
+  // `buildDefaultProfileFromGroup` reads `parsed.driver_type ||
+  // inferDriverTypeFromGroup(...)`, and `parsed.driver_type` is ALWAYS set — so
+  // the lease-aware fallback was never reached and a `(LEASE DRIVERS)` group was
+  // created as an `owner`. Once fleet type became authoritative, that stored
+  // `owner` recorded a lease driver's truck as an owner-operator one and
+  // invented conflicts with a real owner operator of the same number.
+  const { inferDriverType } = require('../lib/drivers/driverProfileParse');
+  assert.equal(inferDriverType('WENZE UNIT # 771 A DRIVER (LEASE DRIVERS)'), 'lease');
+  assert.equal(inferDriverType('WENZE UNIT # 771 A DRIVER (LEASE DRIVER)'), 'lease');
+});
+
+test('the permissive parser stays permissive for company, brackets or not', () => {
+  // The broadcast floor leans on this: requiring the strict parenthesised form
+  // would silently drop an unbracketed company group from every broadcast.
+  const { inferDriverType } = require('../lib/drivers/driverProfileParse');
+  assert.equal(inferDriverType('WENZE COMPANY DRIVERS 310 X'), 'company_driver');
+  assert.equal(inferDriverType('WENZE UNIT # 8 A (COMPANY DRIVERS)'), 'company_driver');
+  assert.equal(inferDriverType('WENZE UNIT # 310 JAKHONGIR'), 'owner');
+});

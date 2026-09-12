@@ -170,9 +170,9 @@ test('a truck change is recorded as a change of truck; a truck somebody else hol
   const pa = (await resolver.ensurePersonForGroup(a.group)).personId;
   const pb = (await resolver.ensurePersonForGroup(b.group)).personId;
 
-  // The decision names the whole truck now, not just its number: a seat, and a
-  // fleet the resolver could not determine (`unknown`, which never wins a
-  // match). The resolver becomes fleet-aware in A3b.
+  // The decision names the whole truck now, not just its number. Called
+  // DIRECTLY with no fleet, the honest answer is `unknown` — which never wins a
+  // match. The profile hook below is what supplies a real one.
   assert.deepEqual(await resolver.syncUnitForPerson(pa, '320'),
     { action: 'open', from: null, to: '320', seat: 1, fleetType: 'unknown' });
   assert.deepEqual(await resolver.syncUnitForPerson(pa, '322'),
@@ -317,4 +317,85 @@ test('the admin backfill populates the layer and stamps what already existed', {
   assert.equal(applied.stamped.home_time_requests, 1);
   assert.equal(applied.coverage.groupsWithoutPerson, 0);
   assert.equal(applied.coverage.unstamped.requests, 0);
+});
+
+// ─── the fleet reaches the assignment ────────────────────────────────────────
+
+test('the profile hook records the fleet the chat title claims', {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  const harness = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
+  const { resolver } = bind(harness);
+  // No driver_type on the profile: the title is the fallback, and it says LEASE
+  // — a fleet the old substring test could not see at all.
+  const { group, profile } = await seedGroup(harness, {
+    telegramId: -601, name: 'WENZE UNIT # 771 A DRIVER (LEASE DRIVERS)',
+    first: 'A', last: 'DRIVER', unit: '771',
+  });
+
+  await resolver.onProfileSaved(profile);
+
+  const row = await harness.query(
+    `SELECT u.fleet_type, u.seat, u.unit_number
+       FROM driver_units u
+       JOIN driver_person_groups pg ON pg.person_id = u.person_id AND pg.ended_at IS NULL
+      WHERE pg.group_id = $1 AND u.ended_at IS NULL`, [group.id]
+  );
+  assert.equal(row.rows[0].unit_number, '771');
+  assert.equal(row.rows[0].fleet_type, 'lease');
+  assert.equal(row.rows[0].seat, 1);
+});
+
+test('a stored driver_type beats the title when the two disagree', {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  const harness = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
+  const { resolver } = bind(harness);
+  const { group, profile } = await seedGroup(harness, {
+    telegramId: -602, name: 'WENZE UNIT # 772 B DRIVER (COMPANY DRIVERS)',
+    first: 'B', last: 'DRIVER', unit: '772',
+  });
+  // Somebody decided this driver is a lease driver, whatever the chat is called.
+  await harness.query(
+    `UPDATE driver_profiles SET driver_type = 'lease' WHERE group_id = $1`, [group.id]
+  );
+  const saved = (await harness.query(
+    'SELECT * FROM driver_profiles WHERE group_id = $1', [group.id]
+  )).rows[0];
+
+  await resolver.onProfileSaved(saved);
+
+  const row = await harness.query(
+    `SELECT u.fleet_type FROM driver_units u
+       JOIN driver_person_groups pg ON pg.person_id = u.person_id AND pg.ended_at IS NULL
+      WHERE pg.group_id = $1 AND u.ended_at IS NULL`, [group.id]
+  );
+  assert.equal(row.rows[0].fleet_type, 'lease', "a person's decision beats a chat name");
+  assert.ok(profile);
+});
+
+test('the same number in two fleets is two assignments, not a contest', {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  const harness = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
+  const { resolver } = bind(harness);
+  // Production carries ten numbers on more than one active group, 001 on four.
+  const a = await seedGroup(harness, {
+    telegramId: -603, name: 'WENZE UNIT # 001 A ONE (COMPANY DRIVERS)',
+    first: 'A', last: 'ONE', unit: '001',
+  });
+  const b = await seedGroup(harness, {
+    telegramId: -604, name: 'WENZE UNIT # 001 B TWO', first: 'B', last: 'TWO', unit: '001',
+  });
+
+  await resolver.onProfileSaved(a.profile);
+  const second = await resolver.onProfileSaved(b.profile);
+
+  assert.notEqual(second.unit.action, 'contested',
+    'Company 001 and Owner-Operator 001 are two trucks');
+  const rows = await harness.query(
+    `SELECT fleet_type FROM driver_units WHERE unit_number = '001' AND ended_at IS NULL
+      ORDER BY fleet_type`
+  );
+  assert.deepEqual(rows.rows.map((r) => r.fleet_type), ['company', 'owner_operator']);
 });

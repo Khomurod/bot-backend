@@ -5,6 +5,7 @@
  * database/driverProfiles.js and database/groupMembers.js.
  * Extracted verbatim from database/driverProfiles.js.
  */
+const { fleetTypeFromGroupName, toDriverType } = require('../lib/drivers/fleetType');
 const { parseGroupName } = require('../lib/drivers/driverGroupTitle');
 const {
   parseDriverFromGroupName,
@@ -19,8 +20,13 @@ function normalizeProfileStatus(status) {
   return status === 'inactive' ? 'inactive' : 'active';
 }
 
+/**
+ * Anything unrecognised becomes `owner`, which is the fleet's own default for an
+ * unlabelled driver — but `lease` is a real token now (migration 0047) and must
+ * survive, or an administrator's choice is silently rewritten on save.
+ */
 function normalizeProfileDriverType(driverType) {
-  return driverType === 'company_driver' ? 'company_driver' : 'owner';
+  return ['company_driver', 'lease'].includes(driverType) ? driverType : 'owner';
 }
 
 function normalizeProfileFieldSource(value) {
@@ -70,11 +76,18 @@ function mapDriverProfileRow(row) {
 }
 
 
+/**
+ * The fleet a group title claims, as a profile token.
+ *
+ * Reads through `lib/drivers/fleetType.js` so a title is interpreted the same
+ * way here, on the Dispatcher Board, and in every check. The substring test this
+ * replaced had no `lease` branch, so every lease driver in the fleet was created
+ * as an owner operator. A title nobody can place falls back to `owner`, which is
+ * what this function has always answered when it could not tell — the callers
+ * store it as a starting point an administrator can correct, not as a decision.
+ */
 function inferDriverTypeFromGroup(groupName) {
-  const parsed = parseGroupName(groupName || '');
-  const raw = `${parsed.type || ''} ${groupName || ''}`.toLowerCase();
-  if (raw.includes('company driver')) return 'company_driver';
-  return 'owner';
+  return toDriverType(fleetTypeFromGroupName(groupName || '')) || 'owner';
 }
 
 function buildDefaultProfileFromGroup(group) {

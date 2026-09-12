@@ -19,6 +19,7 @@
  * The other two are for a human: the same person on two active chats, and a
  * truck the profile claims that another person still holds.
  */
+const { resolveDriverType, FLEET_TYPES } = require('../../../lib/drivers/fleetType');
 
 function activeDriverGroups(groups) {
   return groups.filter((g) => g.group_type === 'driver' && g.active === true);
@@ -36,8 +37,38 @@ function unitsByPerson(units) {
   return new Map((units || []).map((u) => [u.person_id, u]));
 }
 
+/**
+ * Every open assignment of a unit NUMBER, keyed by the number.
+ *
+ * A LIST, not a single row. `new Map(...)` over a number kept whichever row came
+ * last and silently dropped the rest, which is fine only while a number is a
+ * truck — and it is not: Company 001, Owner-Operator 001 and Lease 001 are
+ * three. Which of these holders is actually in the way is decided per check,
+ * from the fleet each one carries.
+ */
 function unitsByNumber(units) {
-  return new Map((units || []).map((u) => [String(u.unit_number).trim(), u]));
+  const map = new Map();
+  for (const u of units || []) {
+    const key = String(u.unit_number).trim();
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(u);
+  }
+  return map;
+}
+
+/**
+ * The holders of `unit` that a claimant in `fleet` would actually collide with.
+ *
+ * Two known, different fleets are two different trucks. `unknown` on either side
+ * collides, because it cannot be used to prove they are different either.
+ */
+function holdersInWay(holders, fleet) {
+  const target = fleet || FLEET_TYPES.UNKNOWN;
+  return (holders || []).filter((h) => {
+    const held = h.fleet_type || FLEET_TYPES.UNKNOWN;
+    if (target === FLEET_TYPES.UNKNOWN || held === FLEET_TYPES.UNKNOWN) return true;
+    return target === held;
+  });
 }
 
 function label(group) {
@@ -115,8 +146,13 @@ function checkUnitContested({ groups, profiles, personGroups, units, people }) {
     const association = open.get(g.id);
     const unit = String(byGroup.get(g.id)?.unit_number || '').trim();
     if (!association || !unit) continue;
-    const holder = holders.get(unit);
-    if (!holder || holder.person_id === association.person_id) continue;
+    const fleet = resolveDriverType({
+      column: byGroup.get(g.id)?.driver_type, title: g.group_name,
+    }).fleetType;
+    const contenders = holdersInWay(holders.get(unit), fleet)
+      .filter((h) => h.person_id !== association.person_id);
+    const holder = contenders[0];
+    if (!holder) continue;
     findings.push({
       checkKey: 'identity.unit_contested',
       subjectType: 'group',
@@ -128,9 +164,11 @@ function checkUnitContested({ groups, profiles, personGroups, units, people }) {
         groupId: g.id,
         groupName: g.group_name,
         unitNumber: unit,
+        fleetType: fleet,
         groupPersonId: association.person_id,
         holderPersonId: holder.person_id,
         holderDisplayName: names.get(holder.person_id) || null,
+        holderFleetType: holder.fleet_type || FLEET_TYPES.UNKNOWN,
       },
     });
   }
@@ -163,8 +201,15 @@ function checkStaleUnitAssignment({ groups, profiles, personGroups, units }) {
     if ((activeChatsOf.get(association.person_id) || 0) > 1) continue;
     const recorded = current.get(association.person_id);
     if (recorded && String(recorded.unit_number).trim() === unit) continue;
-    const holder = holders.get(unit);
-    if (holder && holder.person_id !== association.person_id) continue; // contested — the check above
+    const staleFleet = resolveDriverType({
+      column: byGroup.get(g.id)?.driver_type, title: g.group_name,
+    }).fleetType;
+    // Only a holder in the SAME truck blocks the sync. One in another fleet is
+    // in another truck, and leaving the assignment stale because of them would
+    // be the bare-number mistake in a new place.
+    const blocking = holdersInWay(holders.get(unit), staleFleet)
+      .filter((h) => h.person_id !== association.person_id);
+    if (blocking.length) continue; // contested — the check above
     findings.push({
       checkKey: 'identity.stale_unit_assignment',
       subjectType: 'group',

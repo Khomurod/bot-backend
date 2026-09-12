@@ -126,6 +126,38 @@ evidence the decision is made from.
 `getOpenPersonForUnit` is deprecated for the reason this whole document exists:
 it returns whichever row Postgres handed back first.
 
+## Who reads the fleet now (A3b)
+
+| Place | What changed |
+|---|---|
+| `services/identity/personResolver.js` | `syncUnitForPerson` takes every holder of a number and a fleet; `onProfileSaved` resolves the fleet from the profile's column, falling back to the chat title |
+| `corrections/identityActions.js` `syncUnit` | locks and compares `fleet_type`, records it on the row it opens — a correction writing `unknown` would create a row that contests every same-numbered truck |
+| `checks/identity.js` `checkDuplicateUnits` | buckets by `fleet:unit`, and falls back to the bare number the moment ONE claimant is unplaceable |
+| `checks/identityLayer.js` | `unitsByNumber` returns a LIST (it silently kept only the last row before); `holdersInWay` decides who actually collides |
+| `services/duplicateUnitCheckService.js` | same bucketing for its legacy reports. Its Samsara link needed no change — the exclusivity rule already refuses to link a vehicle claimed by more than one group |
+| `services/driverStatusLookupService.js` | candidates carry `fleetType`, so a disambiguation list can say which truck each match is |
+| `services/broadcastTargetService.js` | see below — the one user-visible change |
+| admin | Lease Driver is selectable, labelled, and filterable; `driver_type` accepts `lease` through the API |
+
+## The broadcast rule, and why it is shaped oddly
+
+`isCompanyDriverGroup` looks redundant — it asks the strict parser *and* the old
+permissive test. That is deliberate, and the asymmetry is the reason.
+
+**A driver who quietly stops receiving company broadcasts produces no error and
+no complaint** until something important is missed. So the rule is built so that
+no *parsing* change can exclude a group the previous rule included:
+
+- a recorded `driver_type` **decides** — this is the one thing that can newly
+  exclude a group, and recording it is the point;
+- otherwise the title decides **by either reading**, because `lib/board/` is
+  strict (the Board always parenthesises its labels) while a Telegram title does
+  not have to. `COMPANY DRIVERS` with no brackets is a company driver's chat.
+
+`tests/broadcastCompanyDriverTarget.test.js` states that floor as a property, not
+a list: for every title the old rule reached, the new rule must reach it too
+unless somebody decided otherwise.
+
 ## Tests that guard this
 
 - `tests/fleetType.test.js` — every label form, the typo, the two vocabularies,
@@ -135,5 +167,12 @@ it returns whichever row Postgres handed back first.
   and a seat-2-only holder are contested.
 - `tests/fleetTypeMigrationPg.test.js` **(required)** — the index swap, run
   twice, Company 001 beside Owner-Operator 001, the seat rules against the real
-  index and CHECK, the backfill's refusal to guess, and **the blocked branch**:
-  seeded collisions leave the old index in force and file the finding.
+  index and CHECK, the backfill's refusal to guess or to coin-toss a
+  disagreeing chain, and **the blocked branch**: seeded collisions leave the old
+  index in force and file the finding.
+- `tests/personResolverPg.test.js` — the fleet reaching a real assignment, a
+  stored decision beating the title, and two fleets on one number coexisting.
+- `tests/identityActionsPg.test.js` — the correction records the fleet and is
+  not blocked by a holder in another one.
+- `tests/broadcastCompanyDriverTarget.test.js` — nobody the old rule reached is
+  dropped by a parsing change.

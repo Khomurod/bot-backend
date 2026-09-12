@@ -93,6 +93,29 @@ async function getDriverGroupsByActiveFilter(filter) {
   return res.rows;
 }
 
+/**
+ * Driver groups with the driver TYPE somebody recorded on their profile.
+ *
+ * A separate query rather than widening `getAllDriverGroups`, which the ETA
+ * scheduler shares and which has no use for a profile column. The join is LEFT:
+ * a group with no profile row still appears, with a null type, and the caller
+ * falls back to the title.
+ */
+async function getDriverGroupsWithDriverType(filter) {
+  const f = filter === 'all' || filter === 'inactive' ? filter : 'active';
+  let activeClause = '';
+  if (f === 'active') activeClause = ' AND g.active = TRUE';
+  else if (f === 'inactive') activeClause = ' AND g.active = FALSE';
+  const res = await query(
+    `SELECT g.*, dp.driver_type, dp.driver_type_source
+       FROM groups g
+       LEFT JOIN driver_profiles dp ON dp.group_id = g.id
+      WHERE g.group_type = 'driver'${activeClause}
+      ORDER BY g.id`
+  );
+  return res.rows;
+}
+
 /** Broadcast specific-driver picks: resolve IDs even when inactive. */
 async function getGroupsByIdsForAdmin(ids) {
   if (!ids || ids.length === 0) return [];
@@ -286,6 +309,7 @@ module.exports = {
   getDriverGroupsForStatusAi,
   getAllGroups,
   getDriverGroupsByActiveFilter,
+  getDriverGroupsWithDriverType,
   getGroupsByIdsForAdmin,
   getDriverGroupsByLanguagesAndActiveFilter,
   deactivateGroup,

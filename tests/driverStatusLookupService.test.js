@@ -70,13 +70,29 @@ test('searchDriverGroupsByNameInList returns empty for unknown driver', () => {
   assert.equal(matches.length, 0);
 });
 
-test('formatDriverPickLabel includes unit and driver name', () => {
+test('formatDriverPickLabel includes unit, driver name and fleet', () => {
+  // The fleet joined the label because this list only appears when there is more
+  // than one match, and two matches can be different trucks entirely.
   const c = buildDriverCandidate(mockGroups[0]);
-  assert.equal(formatDriverPickLabel(c), 'UNIT #2908 — TESFAMARIAM YOSIEF');
+  assert.equal(formatDriverPickLabel(c), 'UNIT #2908 — TESFAMARIAM YOSIEF (Company)');
 });
 
 test('scoreDriverNameMatch ranks exact match highest', () => {
   const c = buildDriverCandidate(mockGroups[0]);
   assert.equal(scoreDriverNameMatch('TESFAMARIAM YOSIEF', c), 100);
   assert.equal(scoreDriverNameMatch('Yosief', c), 70);
+});
+
+test('a disambiguation label says which fleet the truck is in', () => {
+  // The whole point of the list is that two matches are NOT the same truck.
+  const company = buildDriverCandidate({ id: 1, group_name: 'WENZE UNIT # 001 A ONE (COMPANY DRIVERS)' });
+  const owner = buildDriverCandidate({ id: 2, group_name: 'WENZE UNIT # 001 A ONE' });
+  assert.notEqual(formatDriverPickLabel(company), formatDriverPickLabel(owner));
+  assert.match(formatDriverPickLabel(company), /\(Company\)/);
+  assert.match(formatDriverPickLabel(owner), /\(Owner Operator\)/);
+});
+
+test('a fleet nobody can read adds nothing to the label', () => {
+  const unknown = buildDriverCandidate({ id: 3, group_name: 'WENZE UNIT # 001 A ONE (CONTRACTOR)' });
+  assert.equal(formatDriverPickLabel(unknown), 'UNIT #001 — A ONE');
 });

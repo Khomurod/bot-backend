@@ -75,11 +75,64 @@ test("unit '001' on four active groups is one serious finding, never arbitrated"
   const profiles = groups.map((g, i) => profile(g.id, `D${i}`, 'X', { unit_number: '001' }));
   const found = identity.checkDuplicateUnits({ groups, profiles });
 
-  assert.equal(found.length, 1, 'one finding about the unit, not four about the groups');
-  assert.equal(found[0].subjectId, '001');
+  // THREE of those four are the same truck. The fourth is labelled
+  // `(COMPANY DRIVER)`, and Company 001 is a different truck from
+  // Owner-Operator 001 — reporting it here is what taught operators to ignore
+  // this check. Every claimant is placeable, so the bucket is the fleet.
+  assert.equal(found.length, 1, 'one finding about the truck, not four about the groups');
+  assert.equal(found[0].subjectId, 'owner_operator:001');
   assert.equal(found[0].severity, 'serious', 'more than two claimants is a different problem');
   assert.equal(found[0].tier, 'warning', 'only a human knows which truck the driver is in');
-  assert.equal(found[0].evidence.groups.length, 4);
+  assert.equal(found[0].evidence.groups.length, 3);
+  assert.equal(found[0].evidence.fleetKnown, true);
+  assert.ok(!found[0].evidence.groups.some((g) => g.groupId === 13),
+    'the company driver is in a different truck and is not a claimant here');
+});
+
+test('one unreadable fleet label sends the whole number back to the bare bucket', () => {
+  // `unknown` never wins a match, and it must not be used to explain a
+  // collision away either: if we cannot place one claimant, we cannot say these
+  // are different trucks, so every claimant is reported together.
+  const groups = [
+    group(41, 'WENZE UNIT # 500 A (COMPANY DRIVER)'),
+    group(42, 'WENZE UNIT # 500 B (CONTRACTOR)'),
+  ];
+  const profiles = [
+    profile(41, 'A', 'X', { unit_number: '500' }),
+    profile(42, 'B', 'Y', { unit_number: '500' }),
+  ];
+  const found = identity.checkDuplicateUnits({ groups, profiles });
+  assert.equal(found.length, 1);
+  assert.equal(found[0].subjectId, '500', 'the bare number, because the fleet is not decidable');
+  assert.equal(found[0].evidence.fleetKnown, false);
+  assert.match(found[0].evidence.note, /cannot tell whether these are the same truck/);
+});
+
+test('the same number in two KNOWN fleets is not reported at all', () => {
+  const groups = [
+    group(51, 'WENZE UNIT # 600 A (COMPANY DRIVERS)'),
+    group(52, 'WENZE UNIT # 600 B'),
+  ];
+  const profiles = [
+    profile(51, 'A', 'X', { unit_number: '600' }),
+    profile(52, 'B', 'Y', { unit_number: '600' }),
+  ];
+  assert.deepEqual(identity.checkDuplicateUnits({ groups, profiles }), [],
+    'Company 600 and Owner-Operator 600 are two trucks');
+});
+
+test("a person's stored driver_type decides the bucket, not the chat name", () => {
+  const groups = [
+    group(61, 'WENZE UNIT # 700 A (COMPANY DRIVERS)'),
+    group(62, 'WENZE UNIT # 700 B (COMPANY DRIVERS)'),
+  ];
+  const profiles = [
+    profile(61, 'A', 'X', { unit_number: '700' }),
+    // Somebody decided this one is a lease driver whatever the chat is called.
+    profile(62, 'B', 'Y', { unit_number: '700', driver_type: 'lease' }),
+  ];
+  assert.deepEqual(identity.checkDuplicateUnits({ groups, profiles }), [],
+    'two different fleets once the decision is read');
 });
 
 test("'001', '01' and '1' are three different trucks, not a collision", () => {

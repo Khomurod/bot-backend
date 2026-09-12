@@ -31,6 +31,7 @@ const lookups = require('../../database/driverPeople/lookups');
 const { runPersonBackfill } = require('./personBackfillService');
 const { buildNormalizedDriverKey, buildDriverDisplayName } = require('../../lib/drivers/driverProfileParse');
 const { decidePersonForGroup, decideUnitSync } = require('../../lib/identity/personResolution');
+const { resolveDriverType, FLEET_TYPES } = require('../../lib/drivers/fleetType');
 
 /** A group is re-resolved at most this often from the message path. */
 const ENSURE_TTL_MS = 10 * 60 * 1000;
@@ -140,17 +141,26 @@ async function ensurePersonForGroup(group, { profile = null, force = false, clie
  * Record the truck a person is in now. Returns the pure decision plus what was
  * written, so a caller (and a test) can see a contested unit without a throw.
  */
-async function syncUnitForPerson(personId, unitNumber, { source = 'profile', samsaraVehicleId = null } = {}) {
+async function syncUnitForPerson(personId, unitNumber, {
+  source = 'profile', samsaraVehicleId = null, fleetType = null, isTeam = false,
+} = {}) {
   if (!personId) return { action: 'noop', reason: 'no_person' };
-  const [current, holder] = await Promise.all([
+  // EVERY holder of the number, not the first row Postgres returns. A number is
+  // not a truck: Company 001 and Owner-Operator 001 are two of them, and which
+  // of their holders is actually in the way is `decideUnitSync`'s decision, made
+  // from the fleet each holder carries.
+  const [current, holders] = await Promise.all([
     people.getOpenUnitForPerson(personId),
-    unitNumber ? people.getOpenPersonForUnit(String(unitNumber).trim()) : null,
+    unitNumber ? people.getOpenHoldersForUnit(String(unitNumber).trim()) : [],
   ]);
   const decision = decideUnitSync({
     personId,
     currentUnit: current?.unitNumber ?? null,
     targetUnit: unitNumber,
-    holderPersonId: holder?.personId ?? null,
+    currentFleetType: current?.fleetType ?? null,
+    targetFleetType: fleetType || FLEET_TYPES.UNKNOWN,
+    holders,
+    isTeam,
   });
   if (decision.action === 'noop' || decision.action === 'contested') {
     if (decision.action === 'contested') {
@@ -161,7 +171,12 @@ async function syncUnitForPerson(personId, unitNumber, { source = 'profile', sam
   await withTransaction(async (client) => {
     if (decision.action === 'switch') await people.closeUnitAssignment({ personId }, client);
     await people.openUnitAssignment({
-      personId, unitNumber: decision.to, samsaraVehicleId, source,
+      personId,
+      unitNumber: decision.to,
+      samsaraVehicleId,
+      source,
+      fleetType: decision.fleetType,
+      seat: decision.seat,
     }, client);
   });
   return decision;
@@ -216,8 +231,17 @@ async function onProfileSaved(profileRow) {
       });
     }
     const effectivePerson = reconciled?.movedTo || personId;
+    // The fleet comes from the profile's own column when somebody has set it,
+    // and from the chat title otherwise — `resolveDriverType` owns that order.
+    // An unreadable pair gives `unknown`, which is recorded honestly and never
+    // wins a match, rather than being defaulted to owner operator.
+    const fleet = resolveDriverType({
+      column: profileRow.driver_type, title: group.group_name,
+    });
     const unit = await syncUnitForPerson(effectivePerson, profileRow.unit_number, {
-      source: 'profile', samsaraVehicleId: group.samsara_vehicle_id || null,
+      source: 'profile',
+      samsaraVehicleId: group.samsara_vehicle_id || null,
+      fleetType: fleet.fleetType,
     });
     return { personId: effectivePerson, unit, reconciled };
   } catch (err) {

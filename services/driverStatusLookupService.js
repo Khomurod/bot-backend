@@ -1,3 +1,4 @@
+const { resolveDriverType } = require('../lib/drivers/fleetType');
 const {
   extractDriverNameFromGroupTitle,
   extractUnitFromGroupName,
@@ -32,9 +33,22 @@ function buildDriverCandidate(group) {
     telegramGroupId: group.telegram_group_id,
     driverName,
     unitNumber,
+    // Which fleet's truck this is. Two candidates can share a unit number and be
+    // different trucks entirely — Company 001 is not Owner-Operator 001 — so a
+    // list of matches that does not say which fleet each one is leaves the
+    // dispatcher to guess at exactly the moment the app has stopped guessing.
+    fleetType: resolveDriverType({ column: group.driver_type, title: groupName }).fleetType,
     driverTokens: tokenizePersonName(driverName),
     normalizedDriverName: normalizePersonName(driverName),
   };
+}
+
+/** A fleet label for a disambiguation list; null when there is nothing to say. */
+function fleetLabelFor(candidate) {
+  const labels = {
+    company: 'Company', lease: 'Lease', owner_operator: 'Owner Operator',
+  };
+  return labels[candidate?.fleetType] || null;
 }
 
 function scoreDriverNameMatch(query, candidate) {
@@ -95,13 +109,24 @@ async function searchDriverGroupsByName(query) {
   return searchDriverGroupsByNameInList(groups, query);
 }
 
+/**
+ * The line a dispatcher picks from.
+ *
+ * The fleet is on it because this label exists only when there is more than one
+ * match: two drivers can share a unit number and a similar name and be in
+ * entirely different trucks, and a list that says `UNIT #001 — A ONE` twice asks
+ * the dispatcher to guess at exactly the moment the application stopped
+ * guessing. Omitted when it says nothing (`unknown`).
+ */
 function formatDriverPickLabel(candidate) {
   const unit = candidate.unitNumber ? `UNIT #${candidate.unitNumber}` : 'UNIT ?';
   const name = candidate.driverName || candidate.groupName;
-  return `${unit} — ${name}`;
+  const fleet = fleetLabelFor(candidate);
+  return `${unit} — ${name}${fleet ? ` (${fleet})` : ''}`;
 }
 
 module.exports = {
+  fleetLabelFor,
   MIN_MATCH_SCORE,
   isTestHubGroup,
   buildDriverCandidate,

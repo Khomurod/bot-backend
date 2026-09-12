@@ -24,6 +24,7 @@
  *
  * `analyzeDuplicateUnits` is pure (no DB / network) and unit-tested.
  */
+const { resolveDriverType, FLEET_TYPES } = require('../lib/drivers/fleetType');
 const dup = require('../database/duplicateUnitReports');
 const { getEldConfig } = require('../database/eldSettings');
 const samsara = require('./samsaraLocationService');
@@ -63,16 +64,50 @@ function analyzeDuplicateUnits(rows, vehicles) {
   const reports = [];
 
   for (const [unit, groupRows] of byUnit) {
-    // 1) Same unit number on more than one active driver group.
-    if (groupRows.length > 1) {
+    // 1) Same unit number on more than one active driver group — WITHIN A FLEET.
+    //
+    // Company 001, Owner-Operator 001 and Lease 001 are three trucks, and
+    // reporting them together is what taught operators to skip this list. The
+    // fleet is only allowed to separate them when EVERY claimant is placeable:
+    // one `unknown` and we cannot say they are different, so the bare number is
+    // the honest bucket again.
+    //
+    // The Samsara vehicle link needs no equivalent change: the exclusivity rule
+    // further down already refuses to link a vehicle claimed by more than one
+    // group, whatever fleet they are in, so the dangerous case — one vehicle
+    // silently attached to the wrong driver — is closed by a stronger rule.
+    const fleets = groupRows.map((r) => resolveDriverType({
+      column: r.driver_type, title: r.group_name,
+    }).fleetType);
+    const placeable = !fleets.includes(FLEET_TYPES.UNKNOWN);
+    const clusters = new Map();
+    groupRows.forEach((row, i) => {
+      const key = placeable ? fleets[i] : '*';
+      if (!clusters.has(key)) clusters.set(key, []);
+      clusters.get(key).push(row);
+    });
+
+    // ONE STORED REPORT PER UNIT, however many fleets conflict inside it.
+    // `upsertDuplicateUnitReport` is keyed by `(unit_number, report_type)`, so
+    // emitting one report per fleet would have each cluster overwrite the last
+    // and leave an operator seeing only whichever fleet happened to be sorted
+    // last. The clusters are described together instead.
+    const conflicting = [...clusters.entries()].filter(([, rows]) => rows.length > 1);
+    if (conflicting.length) {
+      const described = conflicting.map(([fleet, cluster]) => {
+        const names = cluster.map((r) => r.group_name || `Group ${r.group_id}`);
+        return fleet === '*'
+          ? `${cluster.length} active driver groups: ${names.join(' | ')}`
+          : `${cluster.length} active ${fleet.replace('_', ' ')} driver groups: ${names.join(' | ')}`;
+      });
+      const all = conflicting.flatMap(([, cluster]) => cluster);
       reports.push({
         unitNumber: unit,
         reportType: 'duplicate_unit',
-        groupIds: groupRows.map((r) => r.group_id),
-        groupNames: groupRows.map((r) => r.group_name || `Group ${r.group_id}`),
+        groupIds: all.map((r) => r.group_id),
+        groupNames: all.map((r) => r.group_name || `Group ${r.group_id}`),
         groupDriverName: null,
-        detail: `Unit ${unit} is on ${groupRows.length} active driver groups: `
-          + `${groupRows.map((r) => r.group_name || `Group ${r.group_id}`).join(' | ')}.`,
+        detail: `Unit ${unit} is on ${described.join('; and on ')}.`,
         severity: 'warning',
       });
     }
