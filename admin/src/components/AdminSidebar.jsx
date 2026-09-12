@@ -17,8 +17,11 @@ const NAV_SECTIONS = [
     label: 'Communications',
     color: '#6366f1',
     items: [
-      { key: 'broadcast', icon: '📢', label: 'Send Message' },
-      { key: 'questions', icon: '📝', label: 'Surveys' },
+      // ONE entry, five tabs. Send Message and Surveys used to be here while
+      // Edit Message, Bot Messages and Scheduled Messages sat in the
+      // collapsible admin block below — the same job split across two parts of
+      // the nav. See pages/CommunicationsPage.jsx.
+      { key: 'communications', icon: '💬', label: 'Communications' },
     ],
   },
   {
@@ -39,9 +42,6 @@ const NAV_SECTIONS = [
 ];
 
 const ADMIN_ITEMS = [
-  { key: 'manager', icon: '🛠️', label: 'Edit Message' },
-  { key: 'bot_messages', icon: '📨', label: 'Bot Messages' },
-  { key: 'scheduled', icon: '📅', label: 'Scheduled Messages' },
   { key: 'settings', icon: '⚙️', label: 'Settings' },
 ];
 

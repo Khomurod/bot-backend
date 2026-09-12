@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo } from "react";
-import * as api from "../../api";
-import { useFormattingToolbar } from "../../components/Shared";
+import * as api from "../../../api";
+import { useFormattingToolbar } from "../../../components/Shared";
 import { translateErrorText, normalizeMediaItems } from "./composerHelpers";
 
 /**
@@ -17,7 +17,7 @@ import { translateErrorText, normalizeMediaItems } from "./composerHelpers";
  *
  * "Test" sends to the management group only and skips the audience check.
  *
- * Split out of admin/src/pages/BroadcastPage.jsx.
+ * Split out of admin/src/pages/communications/SendMessageTab.jsx.
  */
 export function useConfirmationBroadcast({ targeting, onSent }) {
   const [message, setMessage] = useState('');

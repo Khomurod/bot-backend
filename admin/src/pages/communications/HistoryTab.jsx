@@ -1,33 +1,15 @@
 import React, { useState, useEffect, useCallback } from "react";
-import * as api from "../api";
+import * as api from "../../api";
+import { absoluteTime, preview } from "./format";
 
 const PAGE_SIZE = 50;
-
-function formatSentAt(iso) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 function chatLabel(row) {
   if (row.chat_title) return row.chat_title;
   return `chat ${row.telegram_chat_id}`;
 }
 
-function preview(text) {
-  const t = String(text || "").replace(/\s+/g, " ").trim();
-  if (!t) return "(media message without text)";
-  return t.length > 160 ? `${t.slice(0, 157)}…` : t;
-}
-
-export default function BotMessagesPage() {
+export default function HistoryTab() {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -138,13 +120,10 @@ export default function BotMessagesPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <h2>📨 Bot Messages</h2>
-        <p>
-          Every message the bot has sent. Edit or delete any of them directly — even in groups
-          that don't expose message links.
-        </p>
-      </div>
+      <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 20 }}>
+        Every message the bot has sent. Edit or delete any of them directly — even in groups
+        that don't expose message links.
+      </p>
 
       {message && (
         <div className={`alert alert-${message.type}`}>
@@ -217,7 +196,7 @@ export default function BotMessagesPage() {
                 const isBusy = busyId === row.id;
                 return (
                   <tr key={row.id} style={isDeleted ? { opacity: 0.55 } : undefined}>
-                    <td style={{ whiteSpace: "nowrap", fontSize: 12 }}>{formatSentAt(row.sent_at)}</td>
+                    <td style={{ whiteSpace: "nowrap", fontSize: 12 }}>{absoluteTime(row.sent_at)}</td>
                     <td style={{ fontSize: 13 }}>
                       <div style={{ fontWeight: 600 }}>{chatLabel(row)}</div>
                       <div style={{ color: "var(--text-muted)", fontSize: 11 }}>{row.telegram_chat_id}</div>

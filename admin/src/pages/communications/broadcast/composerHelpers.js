@@ -1,4 +1,3 @@
-import { timeAgo } from "../../utils/formatTime";
 
 /**
  * Small pure helpers shared by both composers and both history lists.
@@ -11,7 +10,12 @@ import { timeAgo } from "../../utils/formatTime";
  * normalizeMediaItems strips the client-only fields off an upload descriptor so
  * the send payload carries exactly what the API accepts.
  *
- * Split out of admin/src/pages/BroadcastPage.jsx.
+ * formatDate and truncate used to live here too. They are now
+ * ../format.js — every Communications tab formats a timestamp and shortens a
+ * message body, and three near-copies of that had drifted apart.
+ *
+ * Split out of admin/src/pages/communications/SendMessageTab.jsx, now
+ * communications/SendMessageTab.jsx.
  */
 export function translateErrorText(err, fallbackPrefix) {
   const message = err?.message || 'Unknown error';
@@ -45,6 +49,3 @@ export const WEEKLY_DAY_OPTIONS = [
   { value: '6', label: 'Saturday' },
   { value: '7', label: 'Sunday' },
 ];
-
-export const formatDate = (d) => timeAgo(d);
-export const truncate = (s, n) => (s?.length > n ? s.substring(0, n) + '...' : s);

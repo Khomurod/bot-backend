@@ -10,7 +10,7 @@
  * available; DEFAULT_BROADCAST_PLACEHOLDER_KEYS is the fallback so a failed
  * placeholder fetch cannot make every token look invalid and block all sends.
  *
- * Split out of admin/src/pages/BroadcastPage.jsx.
+ * Split out of admin/src/pages/communications/SendMessageTab.jsx.
  */
 const TEMPLATE_TOKEN_PATTERN = /\{([a-z][a-z0-9_]*)\}/gi;
 export const DEFAULT_BROADCAST_PLACEHOLDER_KEYS = [

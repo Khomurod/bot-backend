@@ -7,7 +7,7 @@ import React from "react";
  * focus, so the chips do not need to know which of the six editors is active —
  * the page tracks that.
  *
- * Split out of admin/src/pages/BroadcastPage.jsx.
+ * Split out of admin/src/pages/communications/SendMessageTab.jsx.
  */
 export function PlaceholderChips({ placeholders, onInsert }) {
   if (!Array.isArray(placeholders) || placeholders.length === 0) return null;
