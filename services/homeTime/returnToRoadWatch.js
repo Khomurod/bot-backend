@@ -299,8 +299,21 @@ async function runReturnToRoadCheck({ now = Date.now(), deps = defaultDeps(), op
         + ' — Wenze cannot tell whether anybody went back on the road';
     }
 
-    // Everything this pass did NOT re-file is no longer true.
-    await deps.findings.resolveClearedFindings([CHECK_RETURNED, CHECK_UNCLEAR], keepIds);
+    // Everything this pass did NOT re-file is no longer true — but ONLY if the
+    // pass actually looked at everybody.
+    //
+    // `resolveClearedFindings` resolves every open finding for these check keys
+    // that is absent from `keepIds`, and a driver whose check threw contributed
+    // no id. Resolving on an incomplete list means the pass that failed to look
+    // at a driver is the pass that declares their finding stale — a driver who
+    // really is back on the road quietly stops being flagged.
+    //
+    // This arrived WITH the per-driver isolation above: before it, a throw
+    // abandoned the pass and this line was never reached. The fix and the bug
+    // were the same change.
+    if (summary.driverErrors === 0) {
+      await deps.findings.resolveClearedFindings([CHECK_RETURNED, CHECK_UNCLEAR], keepIds);
+    }
   } catch (err) {
     console.error('[HOME-TIME-RETURN] check failed:', err.message);
     summary.error = err.message;

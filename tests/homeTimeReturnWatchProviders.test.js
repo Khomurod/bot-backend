@@ -206,7 +206,9 @@ test('a driver that throws does not abandon the drivers after it', async () => {
   assert.equal(summary.driverErrors, 1);
   assert.equal(summary.checked, 2, 'the two healthy drivers were still checked');
   assert.equal(summary.error, undefined, 'a partial pass is not a failed pass');
-  assert.equal(calls.resolved.length, 1, 'cleared findings are still resolved');
+  // And it does NOT resolve — see the findings test below. A pass that could
+  // not look at everybody has no business deciding whose finding is stale.
+  assert.deepEqual(calls.resolved, []);
 });
 
 test('the failing driver’s kind is recorded, and never its message', async () => {
@@ -250,4 +252,34 @@ test('a code fault does not hide behind a provider outage', async () => {
 
   assert.equal(summary.blocked, undefined, 'the exception is the story, not the 429');
   assert.match(summary.error, /every one of the 1 driver\(s\)/);
+});
+
+// ── a driver that could not be checked still has its finding ─────────────────
+//
+// Isolating each driver introduced this: the pass now finishes, so it reaches
+// `resolveClearedFindings` — which resolves every open finding for both check
+// keys that is not in `keepIds`. A driver whose check threw contributed no id,
+// so its still-true finding was marked resolved by the very pass that failed to
+// look at it. Before the isolation the throw aborted the pass and the resolve
+// never ran, so the bug arrived with the fix.
+
+test('a pass with a failed driver does not resolve anybody else’s findings', async () => {
+  const second = { ...DRIVER, groupId: 4, roadHistoryId: 413 };
+  const { deps, calls } = harness({
+    drivers: [DRIVER, second],
+    failObservationFor: DRIVER.groupId,
+  });
+
+  await watcher.runReturnToRoadCheck({ now: NOW, deps });
+
+  assert.deepEqual(
+    calls.resolved, [],
+    'a pass that could not look at every driver must not decide their findings are stale'
+  );
+});
+
+test('a clean pass still resolves what is no longer true', async () => {
+  const { deps, calls } = harness({ drivers: [DRIVER] });
+  await watcher.runReturnToRoadCheck({ now: NOW, deps });
+  assert.equal(calls.resolved.length, 1);
 });

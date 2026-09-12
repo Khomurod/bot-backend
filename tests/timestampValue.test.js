@@ -62,3 +62,29 @@ test('this is NOT the display helper, and the contracts differ on purpose', () =
   assert.equal(toIso('TBD'), 'TBD');
   assert.equal(toTimestampValue('TBD'), null);
 });
+
+test('a calendar date that does not exist is refused, not rolled forward', () => {
+  // `Date.parse('2026-02-30')` SUCCEEDS and answers 2 March. Storing that is
+  // worse than storing nothing: it is a fabricated appointment time that reads
+  // as real, and every freshness and lifecycle calculation downstream believes
+  // it. The contract says null for anything unreadable, and a day that does not
+  // exist is unreadable.
+  for (const impossible of ['2026-02-30', '2026-04-31', '2025-02-29', '2026-06-31']) {
+    assert.equal(toTimestampValue(impossible), null, impossible);
+  }
+});
+
+test('a real leap day is still a real date', () => {
+  assert.equal(toTimestampValue('2028-02-29'), '2028-02-29T00:00:00.000Z');
+  assert.equal(toTimestampValue('2026-02-28'), '2026-02-28T00:00:00.000Z');
+  assert.equal(toTimestampValue('2026-12-31T23:59:59Z'), '2026-12-31T23:59:59.000Z');
+});
+
+test('a timestamp carrying an explicit offset is kept, not mistaken for a bad day', () => {
+  // The first version of the calendar check compared the parsed instant's UTC
+  // day against the day in the text. For `…T23:30:00-05:00` those differ by
+  // design, so a perfectly good timestamp was refused. Whether 30 February
+  // exists is not a question about timezones, so the check is arithmetic.
+  assert.equal(toTimestampValue('2026-09-11T23:30:00-05:00'), '2026-09-12T04:30:00.000Z');
+  assert.equal(toTimestampValue('2026-09-11T23:30:00+05:00'), '2026-09-11T18:30:00.000Z');
+});

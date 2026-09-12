@@ -137,8 +137,17 @@ async function recordObservation(groupId, {
             -- would turn one 60 mph reading into "movement confirmed twice"
             -- after two ticks — and two sightings is exactly what lets an
             -- automatic Home → Road change through.
+            -- AND A SIGHTING WITH NO TIME IS NOT A SIGHTING. The seen-at
+            -- parameter is null when the provider's timestamp could not be
+            -- read (see the parameter list below). NULL IS DISTINCT FROM a
+            -- stored value is TRUE, so without this guard every poll of the
+            -- SAME unreadable reading counted as another sighting while
+            -- last_seen_at kept its old value and never converged -- two
+            -- polls, and an automatic Home to Road change goes through on one
+            -- real sighting.
             moving_sightings = moving_sightings + CASE
-              WHEN $8 AND ($5::timestamptz IS DISTINCT FROM last_seen_at) THEN 1 ELSE 0 END,
+              WHEN $8 AND $5::timestamptz IS NOT NULL
+               AND ($5::timestamptz IS DISTINCT FROM last_seen_at) THEN 1 ELSE 0 END,
             load_identifier = COALESCE($11, load_identifier),
             load_status = COALESCE($12, load_status),
             load_first_seen_at = CASE

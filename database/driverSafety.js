@@ -46,6 +46,25 @@ async function recordSafetyEvent({
   driverName = null, behavior, severity = null, gForce = null, speedMph = null,
   postedSpeedMph = null, occurredAt, lat = null, lng = null,
 }) {
+  // WHEN THE EVENT HAS NO READABLE TIME, IT IS NOT RECORDED — deliberately,
+  // and this is the whole policy.
+  //
+  // `occurredAt` is Samsara's timestamp, not ours, and `occurred_at` is NOT
+  // NULL (migration 0033). Binding a null would swap one exception for another
+  // rather than making the writer resilient, and inventing a time — NOW(), the
+  // ingest time — would be worse than both: every window, every coaching
+  // decision and every duplicate check in this table is keyed on WHEN the event
+  // happened. A safety event at the wrong time is a coaching message to the
+  // wrong driver about the wrong afternoon.
+  //
+  // So it is refused, loudly enough to find in a log and quietly enough not to
+  // stop a poller. The caller already reads null as "not recorded".
+  const occurred = toTimestampValue(occurredAt);
+  if (!occurred) {
+    console.warn(`[SAFETY] event ${String(samsaraEventId)} has no readable occurred_at; not recorded`);
+    return null;
+  }
+
   const res = await query(
     `INSERT INTO driver_safety_events
        (samsara_event_id, person_id, group_id, vehicle_id, unit_number, driver_name,
@@ -55,9 +74,7 @@ async function recordSafetyEvent({
      RETURNING *`,
     [
       String(samsaraEventId), personId, groupId, vehicleId, unitNumber, driverName,
-      // `occurredAt` is Samsara's timestamp for the event, not ours.
-      String(behavior), severity, gForce, speedMph, postedSpeedMph,
-      toTimestampValue(occurredAt), lat, lng,
+      String(behavior), severity, gForce, speedMph, postedSpeedMph, occurred, lat, lng,
     ]
   );
   return mapEvent(res.rows[0]) || null;
