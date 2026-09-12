@@ -163,3 +163,75 @@ test('an empty context contradicts nothing rather than crashing', () => {
   assert.deepEqual(findContradictions(describeContext({}), { now: NOW }), []);
   assert.deepEqual(findContradictions(null, { now: NOW }), []);
 });
+
+// ─── the dispatcher board as a second opinion on where the driver is ─────────
+
+const ON_ROAD = { state: 'road', stateSince: '2026-09-01T00:00:00Z' };
+const AT_HOME = { state: 'home', stateSince: '2026-09-10T00:00:00Z' };
+
+test('board says home, Home Time says road — a contradiction naming both sides', () => {
+  const found = findContradictions(describeContext({
+    homeTime: ON_ROAD,
+    board: { says: 'home', status: 'HOME', statusRaw: 'HOME', truck: '322', lastSeenAt: '2026-09-12T10:00:00Z' },
+  }));
+  assert.deepEqual(found.map((c) => c.kind), ['board_home_while_road']);
+  assert.deepEqual(found[0].sides, ['board', 'home_time']);
+  assert.equal(found[0].evidence.truck, '322');
+  assert.match(found[0].summary, /dispatcher board/i);
+  assert.match(found[0].summary, /Home Time/);
+});
+
+test('Home Time says home, board says working — the mirror case', () => {
+  const found = findContradictions(describeContext({
+    homeTime: AT_HOME,
+    board: { says: 'working', status: 'ENROUTE', statusRaw: 'ENROUTE', truck: '322' },
+  }));
+  assert.deepEqual(found.map((c) => c.kind), ['wenze_home_while_board_working']);
+  assert.deepEqual(found[0].sides, ['home_time', 'board']);
+});
+
+test('A NEUTRAL BOARD STATUS CONTRADICTS NOTHING, in either direction', () => {
+  // REST and SHOP say nothing about where a driver is, and treating them as
+  // "not home therefore working" accuses a resting driver of a contradiction.
+  for (const homeTime of [ON_ROAD, AT_HOME]) {
+    const found = findContradictions(describeContext({
+      homeTime, board: { says: 'neutral', status: 'REST' },
+    }));
+    assert.deepEqual(found.filter((c) => c.kind.includes('board')), []);
+  }
+});
+
+test('an unknown board status contradicts nothing', () => {
+  const found = findContradictions(describeContext({
+    homeTime: ON_ROAD, board: { says: 'unknown', status: 'DETAINED' },
+  }));
+  assert.deepEqual(found.filter((c) => c.kind.includes('board')), []);
+});
+
+test('A BOARD NOBODY COULD READ IS NOT A SIDE', () => {
+  // `known: false` is the shape a stale or missing snapshot takes. "Nobody has
+  // looked" must never be quoted as evidence against Home Time.
+  const found = findContradictions(describeContext({ homeTime: ON_ROAD, board: null }));
+  assert.deepEqual(found.filter((c) => c.kind.includes('board')), []);
+});
+
+test('a board opinion with no home-time reading contradicts nothing', () => {
+  const found = findContradictions(describeContext({
+    homeTime: null, board: { says: 'home', status: 'HOME' },
+  }));
+  assert.deepEqual(found.filter((c) => c.kind.includes('board')), []);
+});
+
+test('agreement is silence', () => {
+  const agreeing = [
+    [ON_ROAD, { says: 'working', status: 'ENROUTE' }],
+    [AT_HOME, { says: 'home', status: 'HOME' }],
+  ];
+  for (const [homeTime, board] of agreeing) {
+    assert.deepEqual(findContradictions(describeContext({ homeTime, board })), []);
+  }
+});
+
+test('the board section is present and marked unknown when nothing was read', () => {
+  assert.deepEqual(describeContext({}).board, { known: false });
+});

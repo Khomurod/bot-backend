@@ -179,7 +179,25 @@ function checkUnitContested({ groups, profiles, personGroups, units, people }) {
  * The person's recorded truck is behind their profile, and nobody else holds
  * the profile's truck. The profile is the record; sync the layer to it.
  */
-function checkStaleUnitAssignment({ groups, profiles, personGroups, units }) {
+/**
+ * What the Dispatcher Board says about each person's truck today.
+ *
+ * Keyed by person, because the question asked below is "does the board agree
+ * with the truck the profile names for THIS driver" — not "who is in truck X",
+ * which is `unitsByNumber`'s job.
+ */
+function boardTruckByPerson(boardRows) {
+  const out = new Map();
+  for (const r of boardRows || []) {
+    if (!r || !r.present || r.personId == null || !r.truckNorm) continue;
+    // Newest presence wins; a person on two present rows is a team seat or a
+    // board problem, and either way the first is as good an answer as exists.
+    if (!out.has(r.personId)) out.set(r.personId, r);
+  }
+  return out;
+}
+
+function checkStaleUnitAssignment({ groups, profiles, personGroups, units, boardRows }) {
   const open = openByGroup(personGroups);
   const byGroup = profilesByGroup(profiles);
   const holders = unitsByNumber(units);
@@ -193,6 +211,7 @@ function checkStaleUnitAssignment({ groups, profiles, personGroups, units }) {
   for (const a of personGroups || []) {
     if (activeIds.has(a.group_id)) activeChatsOf.set(a.person_id, (activeChatsOf.get(a.person_id) || 0) + 1);
   }
+  const board = boardTruckByPerson(boardRows);
   const findings = [];
   for (const g of activeDriverGroups(groups)) {
     const association = open.get(g.id);
@@ -210,6 +229,47 @@ function checkStaleUnitAssignment({ groups, profiles, personGroups, units }) {
     const blocking = holdersInWay(holders.get(unit), staleFleet)
       .filter((h) => h.person_id !== association.person_id);
     if (blocking.length) continue; // contested — the check above
+
+    // ── what the board says about the same driver ─────────────────────────
+    //
+    // THE BOARD DISAGREEING IS A HOLD, NOT A VOTE. When the board names a
+    // different truck from the profile, two systems that both watch today's
+    // assignment disagree, and the profile is no longer enough on its own — so
+    // the automatic finding is SUPPRESSED for this group and a question is
+    // filed in its place. Letting the auto finding stand would have Wenze
+    // quietly sync to the profile while the board said something else; letting
+    // the board win would make a spreadsheet the authority on permanent
+    // identity, which it is not.
+    //
+    // A board that AGREES raises confidence: two independent sources, and the
+    // `sources` list the journal grades records both.
+    const boardRow = board.get(association.person_id);
+    const boardTruck = boardRow ? String(boardRow.truckNorm).trim() : null;
+    if (boardTruck && boardTruck !== unit) {
+      findings.push({
+        checkKey: 'board.truck_disagrees_with_profile',
+        subjectType: 'group',
+        subjectId: g.id,
+        title: `${label(g)}: the profile says unit ${unit}, the dispatcher board says ${boardTruck}`,
+        severity: 'warning',
+        tier: 'approval',
+        confidence: 100,
+        evidence: {
+          groupId: g.id,
+          personId: association.person_id,
+          profileUnit: unit,
+          boardTruck,
+          recordedUnit: recorded ? recorded.unit_number : null,
+          boardSeenAt: boardRow.lastSeenAt || null,
+        },
+        // NOTHING IS PROPOSED. Neither source is evidence about the other, and
+        // a person decides which is out of date.
+        proposedChange: null,
+      });
+      continue;
+    }
+
+    const corroborated = Boolean(boardTruck && boardTruck === unit);
     findings.push({
       checkKey: 'identity.stale_unit_assignment',
       subjectType: 'group',
@@ -217,12 +277,18 @@ function checkStaleUnitAssignment({ groups, profiles, personGroups, units }) {
       title: `${label(g)}: profile says unit ${unit}, the driver's record says ${recorded ? recorded.unit_number : 'no truck'}`,
       severity: 'info',
       tier: 'auto',
-      confidence: 90,
+      // 95 when the board says the same truck, 90 on the profile alone. Small
+      // on purpose: the board agreeing is corroboration, not proof, and a jump
+      // large enough to change what the journal permits would make a
+      // spreadsheet the thing that unlocked an automatic write.
+      confidence: corroborated ? 95 : 90,
       evidence: {
         groupId: g.id,
         personId: association.person_id,
         profileUnit: unit,
         recordedUnit: recorded ? recorded.unit_number : null,
+        boardAgrees: corroborated,
+        ...(corroborated ? { boardTruck } : {}),
       },
       proposedChange: {
         table: 'driver_units', personId: association.person_id, groupId: g.id,
@@ -245,6 +311,7 @@ const CHECK_KEYS = [
   'identity.person_on_two_active_groups',
   'identity.unit_contested',
   'identity.stale_unit_assignment',
+  'board.truck_disagrees_with_profile',
 ];
 
 function runIdentityLayerChecks(snapshot) {

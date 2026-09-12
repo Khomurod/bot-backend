@@ -85,6 +85,9 @@ const CHECK_LABELS = {
   'board.person_link_ambiguous': 'Dispatcher board row could be more than one driver',
   'board.person_unmatched': 'Dispatcher board row matches nobody in Wenze',
   'board.team_person_needs_split': 'Two team drivers stored as one person',
+  'board.truck_disagrees_with_profile': 'Dispatcher board and profile name different trucks',
+  'context.board_home_while_road': 'Board says home, Wenze says on the road',
+  'context.wenze_home_while_board_working': 'Wenze says home, board says working',
 };
 
 export function checkLabel(checkKey) {

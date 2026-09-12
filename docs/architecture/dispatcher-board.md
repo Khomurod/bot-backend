@@ -287,8 +287,66 @@ team whose two names resolve to one person is a composite `A / B` row stored
 years ago; splitting it is a judgement about two humans, so the decision is to
 link **neither** and say so. Linking one of them would silently pick a winner.
 
+## When the Board and Wenze disagree
+
+The Board is the authority on today's assignment and **still does not win here**.
+It is authoritative about which truck somebody is dispatched in, not about
+whether they are at home — that is Home Time's, built from what the driver said
+and what the truck did. So a disagreement is reported and neither side is
+corrected.
+
+### What a board status MEANS
+
+`lib/board/statusSemantics.js`, and it is the one place to change it:
+
+| | statuses | |
+|---|---|---|
+| **home** | `HOME`, `VACATION` | the driver is not working |
+| **working** | `DISPATCHED`, `ENROUTE` | the driver is on the road right now |
+| **neutral** | `READY`, `RESERVED`, `REST`, `SHOP` | **neither may be concluded** |
+
+**`neutral` is the important one.** A driver at REST is not at home and not
+driving; a truck in SHOP says nothing about where its driver is. The temptation
+is to fold those into "working" because they are not HOME — and that is exactly
+how a driver legitimately resting gets reported as contradicting their own
+home-time record. An unknown status is never a conclusion either.
+
+These defaults are the owner's to confirm. A wrong mapping here does not produce
+a wrong correction; it produces a false accusation that two systems disagree,
+which costs somebody an afternoon.
+
+### The two contradictions
+
+`context.board_home_while_road` and `context.wenze_home_while_board_working`,
+both **warning**, both proposing nothing. They are ordinary on a fleet where
+dispatch updates a spreadsheet and a driver texts a group — the two are minutes
+or hours apart by nature — so filing them as `serious` would put a routine lag
+beside "one person is in two trucks".
+
+**A stale board is not a side.** `readBoard` takes only a row still `present`
+whose snapshot is under two hours old; anything older reads as `unknown`. A
+poller that stopped must never be quoted as evidence against Home Time —
+`unknown` and `hold` are opposites here exactly as they are in the decision
+journal. The fleet-wide screen cuts at the same two hours, because a screen that
+offered rows the reader then refuses would cost six queries per driver per tick
+to produce nothing.
+
+### The Board as a second opinion on the truck
+
+`identity.stale_unit_assignment` proposes copying a profile's truck onto the
+person's record. The Board now weighs in:
+
+- **it agrees** → confidence 90 → 95. Small on purpose: corroboration is not
+  proof, and a jump large enough to change what the journal permits would make a
+  spreadsheet the thing that unlocked an automatic write.
+- **it disagrees** → the automatic finding is **suppressed** for that group and
+  `board.truck_disagrees_with_profile` (approval, proposes nothing) is filed in
+  its place. Letting the auto finding stand would have Wenze quietly sync to the
+  profile while the Board said something else; letting the Board win would make
+  a spreadsheet the authority on permanent identity, which it is not.
+
 ## What is not built yet
 
-The contradiction checks between the Board and Wenze — "the board says home and
-we think they are on the road" — which is a later stage with its own evidence
-rules.
+Nothing from Section 1 of the program. The Board's own presence is not yet
+compared against `groups.active` — that needs the owner's decision about whether
+leaving the board means leaving the company.

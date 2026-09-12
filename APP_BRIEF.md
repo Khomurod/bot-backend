@@ -376,7 +376,12 @@ repository-wide working rules. The highest-consequence items:
   suggestion a person approves; two facts that disagree is a question, never a
   tie-break. The apply re-derives the whole decision under lock and refuses
   unless it still names the same person. A team pair that resolves to one
-  person links neither.
+  person links neither. And when the two disagree about where a driver IS, that
+  is a warning with nothing proposed — a board status means `home`, `working` or
+  NEITHER (`lib/board/statusSemantics.js`), since a driver at REST or a truck in
+  SHOP contradicts nothing, and a board snapshot over two hours old reads as
+  `unknown` rather than as a side: a poller that stopped must never be quoted as
+  evidence against Home Time.
   Its token travels in a query string, so every message about it leaves through
   `lib/security/redactUrls.stripUrls` and `last_error` may never hold a URL.
 - **A truck is `(fleet_type, unit_number, seat)`, never a number.** Wenze runs
