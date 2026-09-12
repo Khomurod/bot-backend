@@ -67,16 +67,26 @@ const DEFAULTS = {
   videoRetrievalWindowAfterSeconds: 45,
 };
 
+/**
+ * The settings row, or a THROW.
+ *
+ * Deliberately not caught. A database that cannot be reached and a
+ * configuration nobody has entered are opposite facts, and swallowing the first
+ * turns it into the second. `APP_BRIEF.md` §9 states the rule — a failure is
+ * never rendered as empty data — and `database/dispatchBoardSettings.js` is the
+ * module that already reads this way.
+ *
+ * THIS USED TO CATCH EVERYTHING, on the stated grounds that "the table may not
+ * exist yet on a brand-new database before initializeDatabase ran". That case
+ * cannot occur: `initializeDatabase()` applies schema.sql and the migrations
+ * before the server listens or the bot starts, and no boot path reads these
+ * settings. So the catch was protecting against nothing, while costing the one
+ * distinction that matters during an outage — the key falls back to the environment and the admin screen reports a
+ * connection nobody removed as absent.
+ */
 async function getSettingsRow() {
-  try {
-    const res = await query('SELECT * FROM samsara_settings WHERE id = 1');
-    return res.rows[0] || null;
-  } catch (err) {
-    // The table may not exist yet on a database that has not run migration
-    // 0013. Behaving as "nothing configured" keeps the env fallback working.
-    console.warn('[SAMSARA SETTINGS] samsara_settings unavailable:', err.message);
-    return null;
-  }
+  const res = await query('SELECT * FROM samsara_settings WHERE id = 1');
+  return res.rows[0] || null;
 }
 
 function intOr(value, fallback) {

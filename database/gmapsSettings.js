@@ -24,14 +24,25 @@ function invalidateCache() {
 
 const safeDecrypt = createSafeDecrypt('[GMAPS SETTINGS]', 'a stored key');
 
+/**
+ * The settings row, or a THROW.
+ *
+ * Deliberately not caught. A database that cannot be reached and a
+ * configuration nobody has entered are opposite facts, and swallowing the first
+ * turns it into the second. `APP_BRIEF.md` §9 states the rule — a failure is
+ * never rendered as empty data — and `database/dispatchBoardSettings.js` is the
+ * module that already reads this way.
+ *
+ * THIS USED TO CATCH EVERYTHING, on the stated grounds that "the table may not
+ * exist yet on a brand-new database before initializeDatabase ran". That case
+ * cannot occur: `initializeDatabase()` applies schema.sql and the migrations
+ * before the server listens or the bot starts, and no boot path reads these
+ * settings. So the catch was protecting against nothing, while costing the one
+ * distinction that matters during an outage — route geometry and off-route warnings read as switched off.
+ */
 async function getSettingsRow() {
-  try {
-    const res = await query('SELECT * FROM gmaps_settings WHERE id = 1');
-    return res.rows[0] || null;
-  } catch (err) {
-    console.warn('[GMAPS SETTINGS] gmaps_settings unavailable:', err.message);
-    return null;
-  }
+  const res = await query('SELECT * FROM gmaps_settings WHERE id = 1');
+  return res.rows[0] || null;
 }
 
 function intOr(value, fallback) {
