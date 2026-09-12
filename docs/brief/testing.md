@@ -16,10 +16,10 @@ npm run build:schema:check                        # schema.sql is in sync with b
 
 - **The Node suite passes clean with no secrets and no database.** Verified
   baseline (2026-09-12, deps installed, **with** `TEST_DATABASE_URL` against a
-  local PostgreSQL 16): **4243 tests, 4243 pass, 0 fail, 0 skipped**, exit 0.
-  Split the way CI splits it: the 339 non-`*Pg` files with no application env at
-  all are **3691 pass / 0 skipped**, and the 66 `*Pg` files against a real
-  Postgres are **602 pass / 0 skipped**. The admin suite is **322 pass in 34
+  local PostgreSQL 16): **4369 tests, 4369 pass, 0 fail, 0 skipped**, exit 0.
+  Split the way CI splits it: the 344 non-`*Pg` files with no application env at
+  all are **3752 pass / 0 skipped**, and the 68 `*Pg` files against a real
+  Postgres are **617 pass / 0 skipped**. The admin suite is **328 pass in 35
   files**.
   Without a database the `*Pg` suites skip instead — a skip is not a pass, so
   CI provides a real Postgres and fails on any skip.
@@ -36,8 +36,7 @@ npm run build:schema:check                        # schema.sql is in sync with b
   (`python -m unittest discover -s leads-bot -p "test_*.py"`; they need
   `pip install -r leads-bot/requirements.txt` first — without it all four test
   modules fail to import on `fastapi`, which is an unprepared environment and
-  not a real failure), and the admin
-  panel **174** in 20 files (`npm test --prefix admin`). **So any failure is a real
+  not a real failure). **So any failure is a real
   failure** — there is no "expected failures" allowance. *(An older internal doc
   claimed ~19 expected failures in a bare environment; that is no longer true and
   must not be used to excuse one.)* If

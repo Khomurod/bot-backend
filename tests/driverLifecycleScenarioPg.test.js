@@ -59,7 +59,6 @@ function bind(harness) {
 
 const telegram = { sendMessage: async () => ({}) };
 const iso = (day) => `2026-08-${String(day).padStart(2, '0')}T12:00:00.000Z`;
-const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
 
 /** A chat appears and, as the admin would, its profile is filled in. */
 async function driverGroupAppears(harness, bound, { telegramId, name, first, last, unit }) {
@@ -74,7 +73,12 @@ async function driverGroupAppears(harness, bound, { telegramId, name, first, las
   await bound.profiles.upsertDriverProfileByGroupId({
     group_id: group.id, first_name: first, last_name: last, unit_number: unit, driver_type: 'company_driver', status: 'active',
   });
-  await settle();
+  // WAIT FOR THE HOOK, DO NOT SLEEP THROUGH IT. The profile-saved hook is
+  // detached on purpose — it must never slow the write it follows — so the
+  // only honest way to read what it wrote is to await the run itself. This was
+  // a 50ms setTimeout, which held on a quiet machine and failed on a CI runner
+  // busy enough to take three times as long as its twin on the same commit.
+  await bound.profiles.whenProfileHookSettled();
   return { group, placed };
 }
 
