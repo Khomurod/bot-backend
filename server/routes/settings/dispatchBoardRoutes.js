@@ -24,7 +24,7 @@ const express = require('express');
 const board = require('../../../database/dispatchBoardSettings');
 const { fetchBoard } = require('../../../services/dispatchBoard/client');
 const { parseBoardPayload, summariseBoardPayload } = require('../../../lib/board/parse');
-const { stripUrls } = require('../../../lib/security/redactUrls');
+const { stripUrls, splitCredentialsFromUrl } = require('../../../lib/security/redactUrls');
 
 function createDispatchBoardSettingsRouter({ authMiddleware }) {
   const router = express.Router();
@@ -68,8 +68,32 @@ function createDispatchBoardSettingsRouter({ authMiddleware }) {
   router.post('/dispatch-board/test', authMiddleware, async (req, res) => {
     try {
       const stored = await board.getBoardConfig();
-      const baseUrl = String(req.body?.baseUrl || '').trim() || stored.baseUrl;
-      const token = String(req.body?.token || '').trim() || stored.token;
+      // A credential pasted inside the candidate URL is separated the same way
+      // it would be on save, so testing "the link" works and never puts the
+      // token in a log line.
+      const candidate = splitCredentialsFromUrl(req.body?.baseUrl || '');
+      const candidateUrl = candidate.url;
+      const candidateToken = String(req.body?.token || '').trim() || candidate.token || '';
+
+      const baseUrl = candidateUrl || stored.baseUrl;
+      const token = candidateToken || stored.token;
+
+      // THE STORED TOKEN BELONGS TO THE STORED URL.
+      //
+      // Combining a candidate address with the saved credential hands the
+      // write-only token to whatever was typed — a typo, or an address chosen
+      // by somebody who can reach this form. A new address must bring its own
+      // token, which is also the honest thing to ask: a different board has a
+      // different credential.
+      const addressChanged = Boolean(candidateUrl) && candidateUrl !== stored.baseUrl;
+      if (addressChanged && !candidateToken) {
+        res.json({
+          connected: false,
+          message: 'Enter the token for that address before testing it. '
+            + 'The saved token belongs to the saved address and is not sent anywhere else.',
+        });
+        return;
+      }
 
       const { json } = await fetchBoard({ baseUrl, token });
       const parsed = parseBoardPayload(json);

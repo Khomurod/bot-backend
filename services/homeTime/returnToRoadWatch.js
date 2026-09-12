@@ -29,6 +29,7 @@ const { normalizeUnitNumber } = require('../samsaraLocationService');
 const { extractUnitFromGroupName } = require('../../lib/drivers/driverGroupTitle');
 const { withRunRecord } = require('../operations/runLedger');
 const { classifyErrorKind, describeErrorKind } = require('../../lib/operations/errorKind');
+const { toTimestampValue } = require('../../lib/database/timestampValue');
 
 const CHECK_RETURNED = 'home_time.returned_to_road';
 const CHECK_UNCLEAR = 'home_time.return_to_road_unclear';
@@ -77,7 +78,13 @@ function observationsFor(watch, current) {
   const list = [];
   if (watch?.last?.at && (!current || watch.last.at !== current.at)) list.push(watch.last);
   if (current) list.push(current);
-  return list;
+  // A SIGHTING WITH NO TIME IS NOT A SIGHTING, and this is the half that lives
+  // in memory. `summariseMovement` counts a moving observation by its SPEED
+  // alone, so an untimed reading of the same truck at the same speed was
+  // counted beside the real one — two moving observations, `sustained` reached,
+  // and an automatic Home → Road on a single real sighting. Guarding the SQL
+  // counter fixed the number in the table and not the number the score saw.
+  return list.filter((o) => o && o.at);
 }
 
 /**
@@ -343,7 +350,11 @@ async function checkOneDriver(driver, { fleets, byUnit, byDriver, nowIso, now, d
       lat: Number(loc.lat),
       lng: Number(loc.lng),
       speedMph: loc.speedMph == null ? null : Number(loc.speedMph),
-      at: loc.lastUpdated || nowIso,
+      // A provider that sends NO timestamp is taken to have been read now — we
+      // did just ask it. A provider that sends one we cannot READ is a
+      // different thing: it claims to know when, and we cannot trust the claim,
+      // so the sighting carries no time and is scored as none.
+      at: loc.lastUpdated ? toTimestampValue(loc.lastUpdated) : nowIso,
     }
     : null;
 

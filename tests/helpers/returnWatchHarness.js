@@ -34,13 +34,20 @@ function harness({
           throw new Error('invalid input syntax for type integer: "NaN"');
         }
         calls.observations.push({ groupId, ...patch });
+        // MIRRORS THE REAL STATEMENT, including its guards. A stub that counts
+        // a sighting the database would refuse to count proves nothing about
+        // production — and this one did: it hid the fix for an untimed reading
+        // being scored as movement, because the stub incremented anyway.
+        const isNewSighting = Boolean(
+          patch.moving && patch.seenAt && patch.seenAt !== stored?.last?.at
+        );
         stored = {
           ...(stored || { groupId }),
           anchor: stored?.anchor || (patch.anchorEligible && patch.lat != null
             ? { lat: patch.lat, lng: patch.lng, at: patch.seenAt } : null),
           last: patch.lat != null ? { lat: patch.lat, lng: patch.lng, speedMph: patch.speedMph, at: patch.seenAt } : stored?.last,
           maxMilesFromAnchor: Math.max(stored?.maxMilesFromAnchor || 0, patch.milesFromAnchor || 0),
-          movingSightings: (stored?.movingSightings || 0) + (patch.moving ? 1 : 0),
+          movingSightings: (stored?.movingSightings || 0) + (isNewSighting ? 1 : 0),
         };
         return stored;
       },

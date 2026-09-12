@@ -283,3 +283,51 @@ test('a clean pass still resolves what is no longer true', async () => {
   await watcher.runReturnToRoadCheck({ now: NOW, deps });
   assert.equal(calls.resolved.length, 1);
 });
+
+// ── an untimed sighting is not a second sighting, in memory either ───────────
+//
+// The SQL counter was guarded, and that was not enough. `checkOneDriver` builds
+// `current.at` from the provider's raw `lastUpdated`, so an unreadable string
+// still DIFFERS from the stored sighting's timestamp — `observationsFor`
+// returns both, `summariseMovement` counts two moving observations, and
+// `sustained` is reached. The automatic Home → Road goes through on one real
+// sighting without the persisted counter ever moving.
+
+function oneRealSightingThen(lastUpdated) {
+  return harness({
+    drivers: [DRIVER],
+    watchRow: {
+      groupId: DRIVER.groupId,
+      anchor: { lat: HOME.lat, lng: HOME.lng, at: at(60 * 20) },
+      last: { lat: FAR.lat, lng: FAR.lng, speedMph: 61, at: at(30) },
+      maxMilesFromAnchor: 70,
+      movingSightings: 1,
+    },
+    // The same truck, still moving, its timestamp as the provider sent it.
+    location: { lat: FAR.lat, lng: FAR.lng, speedMph: 61, lastUpdated },
+    order: { load: { loadIdentifier: 'L1', status: 'in_transit', pickupTime: at(240) } },
+  });
+}
+
+test('a sighting whose time cannot be read is not scored as movement', async () => {
+  const { deps, calls } = oneRealSightingThen('unknown');
+
+  await watcher.runReturnToRoadCheck({ now: NOW, deps });
+
+  const signals = calls.findings[0]?.evidence?.signals || [];
+  assert.ok(
+    !signals.includes('sustained_movement'),
+    `one real sighting and one unreadable one is not sustained movement: ${signals.join(', ')}`
+  );
+  // And the remembered counter did not move either.
+  assert.equal(calls.observations[0].seenAt, null);
+});
+
+test('two sightings that both have real times are sustained movement', async () => {
+  const { deps, calls } = oneRealSightingThen(at(5));
+
+  await watcher.runReturnToRoadCheck({ now: NOW, deps });
+
+  const signals = calls.findings[0]?.evidence?.signals || [];
+  assert.ok(signals.includes('sustained_movement'), signals.join(', '));
+});

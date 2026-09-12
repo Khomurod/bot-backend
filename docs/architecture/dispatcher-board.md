@@ -81,6 +81,17 @@ consequences, all enforced in code:
 3. **The token is write-only from the admin.** The read returns a masked
    last-4; `/test` proves a candidate from the request body so a connection can
    be verified before it is saved, and never echoes it.
+4. **A credential pasted inside the URL is taken out of it.** The Board's own
+   link carries `?token=…`, so "paste the link" means "paste the credential";
+   left as typed it would sit in plaintext in a column the admin read returns
+   verbatim. `lib/security/redactUrls.splitCredentialsFromUrl` strips it on
+   save, and a `token` found there is ADOPTED into the encrypted field — the
+   administrator plainly meant it as the credential. Any other
+   credential-shaped parameter is stripped and not adopted: we do not know what
+   it was for, and guessing is how a secret lands in the wrong slot.
+5. **The stored token belongs to the stored address.** Testing a NEW address
+   requires its own token. Combining a candidate URL with the saved credential
+   would hand the write-only token to whatever somebody typed into the form.
 
 ## The test endpoint answers with counts
 
@@ -90,6 +101,15 @@ recognise. Never rows. A settings screen has no business rendering driver
 names, phone numbers or trailer numbers to answer "did it connect, and does it
 look right", and the unknown-column names are how the real shape is learned
 without showing the data in it.
+
+## A failure is never rendered as "not configured"
+
+`getSettingsRow` does not catch. A database that cannot be reached and a
+configuration nobody has entered are opposite facts, and swallowing the first
+turns it into the second — the admin read answers 200 with "off and
+unconfigured", and the 30-second cache goes on saying so after the database has
+come back. `APP_BRIEF.md` §9 states the rule; the route turns the throw into a
+500 rather than a lie.
 
 ## The parser bends; it never guesses
 

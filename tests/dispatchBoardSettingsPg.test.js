@@ -134,3 +134,58 @@ test('a second row can never be inserted', { skip: skipWithoutPg() }, async (t) 
     /violates check constraint/i
   );
 });
+
+// ── a credential must never land in the plaintext URL column ─────────────────
+//
+// The Board's own links carry `?token=…`, so an administrator pasting "the
+// link" pastes the credential with it. Stored as typed, it sits in plaintext in
+// a column the settings GET returns verbatim — around the encrypted, masked
+// field built to hold exactly that value.
+
+test('a token pasted inside the URL is moved into the encrypted field', {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  const { h, board } = await setup(t);
+  const view = await board.updateBoardSettings({ baseUrl: `${BASE}?token=${TOKEN}` });
+
+  const row = await h.query('SELECT base_url, token_encrypted FROM dispatch_board_settings WHERE id = 1');
+  assert.ok(!row.rows[0].base_url.includes(TOKEN), `stored URL still carries it: ${row.rows[0].base_url}`);
+  assert.ok(!row.rows[0].base_url.includes('token='), row.rows[0].base_url);
+  assert.ok(!JSON.stringify(view).includes(TOKEN), 'and the admin view never shows it');
+
+  // It is not lost — it ended up where it belongs, and the connection works.
+  const cfg = await board.getBoardConfig();
+  assert.equal(cfg.token, TOKEN);
+  assert.equal(cfg.configured, true);
+});
+
+test('an explicit token wins over one hidden in the URL', { skip: skipWithoutPg() }, async (t) => {
+  const { board } = await setup(t);
+  await board.updateBoardSettings({ baseUrl: `${BASE}?token=stale-one`, token: TOKEN });
+  assert.equal((await board.getBoardConfig()).token, TOKEN);
+});
+
+test('other credential-shaped parameters are stripped, not adopted', {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  const { h, board } = await setup(t);
+  await board.updateBoardSettings({ baseUrl: `${BASE}?key=${TOKEN}&secret=${TOKEN}&sheet=today` });
+  const row = await h.query('SELECT base_url FROM dispatch_board_settings WHERE id = 1');
+  assert.ok(!row.rows[0].base_url.includes(TOKEN), row.rows[0].base_url);
+  assert.match(row.rows[0].base_url, /sheet=today/, 'an ordinary parameter survives');
+});
+
+test('a database failure is not reported as "not configured"', {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  const { h, board } = await setup(t);
+  await board.updateBoardSettings({ baseUrl: BASE, token: TOKEN });
+  board.invalidateCache();
+  await h.query('DROP TABLE dispatch_board_settings');
+
+  // An outage and an erased configuration are opposite facts. Answering 200
+  // with "off and unconfigured" — and caching it for 30 seconds — makes them
+  // the same on screen (APP_BRIEF §9: a failure is never rendered as empty
+  // data). The route turns this into a 500; it must not be swallowed here.
+  await assert.rejects(() => board.getBoardConfig(), /dispatch_board_settings|relation/i);
+});
