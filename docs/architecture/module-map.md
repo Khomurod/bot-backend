@@ -219,7 +219,7 @@ repository exceeds 500 lines (`npm run lint:filesize`, no baseline).
 | `server/routes/settingsRoutes.js` | `server/routes/settings/{eld,ringcentral,messageGroup,gmaps,samsara,safetyEvent,bolPod,bitrix,retiredLeftovers}Routes.js` |
 | `server/routes/homeTimeRoutes.js` | `server/routes/homeTime/{rowShaping,tracker,import,settings,groupAccess}Routes.js` — registration ORDER is load-bearing |
 | `server/routes/facebookConnectRoutes.js` | `server/routes/facebookConnect/{connectPages,internal,oauth,inspection}Routes.js` — one guard per file, three different auth models |
-| `server/services/dispatchParserService.js` | `server/services/dispatchParser/*.js` (9 modules) |
+| `server/services/dispatchParserService.js` | `server/services/dispatchParser/{constants,textExtraction}.js` — was 9 modules; the seven that read a rate confirmation with a model went with the Dispatch Center |
 | `services/dispatchPinnedContextService.js` | `services/pinnedContext/*.js` |
 | `services/liveLocationsService.js` | `services/liveLocations/*.js` |
 | `services/aiInsightsService.js` | `services/aiInsights/*.js` |

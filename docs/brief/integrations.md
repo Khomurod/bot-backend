@@ -13,7 +13,7 @@
 | **Meta / Facebook** | `META_*`, `WEBHOOK_VERIFY_TOKEN`, `FACEBOOK_TOKEN_ENCRYPTION_KEY` | lead capture, Page connect | events are persisted before processing, then retried |
 | **RingCentral** | `RC_*` env → shared pair in `ringcentral_settings`; **per-recruiter** creds live on the `recruiters` row — an OAuth refresh token (preferred) or its own JWT, plus an optional custom client pair (`resolveRecruiterRcAuth` picks: `oauth` > `jwt` > `none`) | lead auto-SMS **as the assigned recruiter**, two-way mirroring, recruiter call KPIs | per-recruiter send falls back to the shared number and says so; refresh tokens are renewed daily and a dead grant is flagged `rc_auth_error`; SMS-only fallback when an MMS filter rejects |
 | **Bitrix24 CRM** | **Entered in Settings → RingCentral → Bitrix24** and stored in `bitrix_settings` (single row, webhook encrypted); `BITRIX24_*` env vars are the fallback for anything never saved — the DB row wins once set. The field maps stay file/env-based in `config/`. **The assignee must be a NUMERIC user id** — a name there is ignored by Bitrix, so leads go to the webhook owner; the form refuses a name, the mapper warns once, and the card reports an env-supplied name as ignored | dual delivery of every Facebook lead, **and reading back who owns it** (`crm.lead.get` → `ASSIGNED_BY_ID`) to pick the SMS sender | best-effort; never blocks the Telegram post, and an unreadable assignee degrades to the shared sending number. A form answer with no Bitrix field is written into the lead's COMMENTS rather than dropped. `POST /api/settings/bitrix/diagnose` reports the whole chain; the webhook URL is a credential and is never returned, only its host |
-| **AI: Groq and Gemini** | `GROQ_API_KEY`, `GEMINI_API_KEY` | reports, insights, annotation, group-status classification, driver-profile parsing, dispatch-document parsing, fuel detection, home-time intent, translation | **the fallback is per-consumer, not global** — see below |
+| **AI: Groq and Gemini** | `GROQ_API_KEY`, `GEMINI_API_KEY` | reports, insights, annotation, group-status classification, driver-profile parsing, load extraction from a pinned document, fuel detection, home-time intent, translation | **the fallback is per-consumer, not global** — see below |
 | **Gmail App Password** | `GMAIL_USER`, `GMAIL_APP_PASSWORD` | raise OTP email | RingCentral SMS is the alternative channel |
 
 **There is no single AI stack — check the provider before you touch a consumer.**
@@ -23,13 +23,17 @@ and each feature picks its own:
 - **Groq-first, Gemini fallback** inside the consumer (e.g.
   `translationService.js`, `aiAnnotationService.js` — they catch the Groq error
   and retry on Gemini only if `GEMINI_API_KEY` is set).
-- **Two-way, order decided at runtime**: `server/services/dispatchParserService.js`
-  tries **Gemini first** when the extracted text is weak or came from PDF OCR
-  (`preferGeminiFirst`), otherwise Groq first — and falls back to a deterministic
-  parser if both providers fail.
 - **Groq only**: `aiAnalysisService.js`, `aiInsightsService.js`.
 - **Gemini only**: fuel-stop detection, the home-time services,
   `driverProfileAiParser.js`, `pinnedContext/aiExtraction.js`.
+
+There used to be a fourth shape — **two-way, order decided at runtime** —
+and it had exactly one consumer, which went with the Dispatch Center:
+`dispatchParserService.js` tried Gemini first when the extracted text was weak
+or came from PDF OCR, otherwise Groq first, with a deterministic parser beneath
+both. What survives of that file is `extractRateConRawTextFromFile` — text
+extraction only, no model call. See
+[`../architecture/retired-dispatch-center.md`](../architecture/retired-dispatch-center.md).
 
 So an AI call is **not** automatically resilient — do not assume a fallback
 exists, and do not delete a provider as "redundant". Consumers must degrade or
@@ -50,8 +54,9 @@ of unit numbers and document text is unaffected (`tests/aiImagePrep.test.js`).
 Two rules: it shrinks only the **transient copy sent outbound** — whatever
 persisted the original keeps it untouched as evidence — and it **fails open**,
 passing PDFs and undecodable buffers straight through so a model never simply
-receives nothing. Callers: `server/services/dispatchParser/aiRequests.js`,
-`homeTimeImportService`, `pinnedContext/aiExtraction`. Do not add a new
+receives nothing. Callers: `homeTimeImportService` and
+`pinnedContext/aiExtraction` — `dispatchParser/aiRequests.js` was the third and
+went with the Dispatch Center. Do not add a new
 `toString('base64')` image path that bypasses it.
 
 ### Configuration model
