@@ -87,19 +87,27 @@ function analyzeDuplicateUnits(rows, vehicles) {
       clusters.get(key).push(row);
     });
 
-    for (const [fleet, cluster] of clusters) {
-      if (cluster.length < 2) continue;
-      const names = cluster.map((r) => r.group_name || `Group ${r.group_id}`);
+    // ONE STORED REPORT PER UNIT, however many fleets conflict inside it.
+    // `upsertDuplicateUnitReport` is keyed by `(unit_number, report_type)`, so
+    // emitting one report per fleet would have each cluster overwrite the last
+    // and leave an operator seeing only whichever fleet happened to be sorted
+    // last. The clusters are described together instead.
+    const conflicting = [...clusters.entries()].filter(([, rows]) => rows.length > 1);
+    if (conflicting.length) {
+      const described = conflicting.map(([fleet, cluster]) => {
+        const names = cluster.map((r) => r.group_name || `Group ${r.group_id}`);
+        return fleet === '*'
+          ? `${cluster.length} active driver groups: ${names.join(' | ')}`
+          : `${cluster.length} active ${fleet.replace('_', ' ')} driver groups: ${names.join(' | ')}`;
+      });
+      const all = conflicting.flatMap(([, cluster]) => cluster);
       reports.push({
         unitNumber: unit,
         reportType: 'duplicate_unit',
-        groupIds: cluster.map((r) => r.group_id),
-        groupNames: names,
+        groupIds: all.map((r) => r.group_id),
+        groupNames: all.map((r) => r.group_name || `Group ${r.group_id}`),
         groupDriverName: null,
-        detail: fleet === '*'
-          ? `Unit ${unit} is on ${cluster.length} active driver groups: ${names.join(' | ')}.`
-          : `Unit ${unit} is on ${cluster.length} active ${fleet.replace('_', ' ')} `
-            + `driver groups: ${names.join(' | ')}.`,
+        detail: `Unit ${unit} is on ${described.join('; and on ')}.`,
         severity: 'warning',
       });
     }

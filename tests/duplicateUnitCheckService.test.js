@@ -101,3 +101,20 @@ test('one unplaceable claimant sends the number back to a single report', () => 
   assert.equal(reports.length, 1, 'unknown cannot prove they are different trucks either');
   assert.deepEqual(reports[0].groupIds, [1, 2]);
 });
+
+test('two fleets each with a conflict produce ONE report naming both', () => {
+  // `upsertDuplicateUnitReport` is keyed by (unit_number, report_type), so a
+  // report per fleet would have each cluster overwrite the last and leave an
+  // operator seeing only whichever fleet sorted last.
+  const rows = [
+    { group_id: 1, group_name: 'W UNIT # 001 A (COMPANY DRIVERS)', unit_number: '001', driver_type: null },
+    { group_id: 2, group_name: 'W UNIT # 001 B (COMPANY DRIVERS)', unit_number: '001', driver_type: null },
+    { group_id: 3, group_name: 'W UNIT # 001 C', unit_number: '001', driver_type: null },
+    { group_id: 4, group_name: 'W UNIT # 001 D', unit_number: '001', driver_type: null },
+  ];
+  const reports = analyzeDuplicateUnits(rows, null).filter((r) => r.reportType === 'duplicate_unit');
+  assert.equal(reports.length, 1, 'one row per unit, or the store loses one');
+  assert.deepEqual(reports[0].groupIds.sort((a, b) => a - b), [1, 2, 3, 4]);
+  assert.match(reports[0].detail, /company driver groups/);
+  assert.match(reports[0].detail, /owner operator driver groups/);
+});

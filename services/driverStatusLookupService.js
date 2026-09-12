@@ -109,10 +109,20 @@ async function searchDriverGroupsByName(query) {
   return searchDriverGroupsByNameInList(groups, query);
 }
 
+/**
+ * The line a dispatcher picks from.
+ *
+ * The fleet is on it because this label exists only when there is more than one
+ * match: two drivers can share a unit number and a similar name and be in
+ * entirely different trucks, and a list that says `UNIT #001 — A ONE` twice asks
+ * the dispatcher to guess at exactly the moment the application stopped
+ * guessing. Omitted when it says nothing (`unknown`).
+ */
 function formatDriverPickLabel(candidate) {
   const unit = candidate.unitNumber ? `UNIT #${candidate.unitNumber}` : 'UNIT ?';
   const name = candidate.driverName || candidate.groupName;
-  return `${unit} — ${name}`;
+  const fleet = fleetLabelFor(candidate);
+  return `${unit} — ${name}${fleet ? ` (${fleet})` : ''}`;
 }
 
 module.exports = {

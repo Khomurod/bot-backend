@@ -51,7 +51,10 @@ function candidateFromDirectoryRow(row) {
   if (!row.first_name && !row.last_name && !row.display_name) warnings.push('missing_name');
   if (!row.unit_number) warnings.push('missing_unit');
   if (row.inactive) warnings.push('inactive_group');
-  if (row.driver_type === 'owner') warnings.push('owner_operator');
+  // Anything that is not a company driver earns the caution, including a lease
+  // driver and a group nobody has classified — the warning is about "this is not
+  // a company driver", which is what the reader acts on.
+  if (row.driver_type !== 'company_driver') warnings.push('owner_operator');
   return {
     group_id: row.group_id,
     driver_profile_id: row.profile_id || null,
@@ -93,7 +96,10 @@ async function listAssignableDrivers({ companyOnly = true, includeInactive = fal
   const out = [];
   for (const row of rows) {
     if (row.group_type !== 'driver') continue;
-    if (companyOnly && row.driver_type === 'owner') continue;
+    // `!== 'company_driver'`, NOT `=== 'owner'`. The fleet has three types and a
+    // group whose type cannot be read answers null; both used to read as `owner`
+    // and were excluded by accident. "Company only" means company only.
+    if (companyOnly && row.driver_type !== 'company_driver') continue;
     if (!includeInactive && row.inactive) continue;
     const cand = candidateFromDirectoryRow(row);
     const current = (row.profile_id != null && byProfile.get(Number(row.profile_id)))
