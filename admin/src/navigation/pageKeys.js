@@ -40,8 +40,8 @@ export const PAGE_KEYS = Object.freeze([
   'settings_integrations',
   'settings_board',
   'settings_ai',
-  'auto_reactions',
-  'group_access',
+  'settings_notifications',
+  'settings_bot',
 ]);
 
 /**
@@ -75,6 +75,9 @@ export const LEGACY_PAGE_KEYS = Object.freeze({
   manager: 'communications',
   // Stage C3 — "Settings" alone no longer says which settings.
   settings: 'settings_integrations',
+  // Stage C3b — two top-level pages became panels of Settings -> Bot Settings.
+  auto_reactions: 'settings_bot',
+  group_access: 'settings_bot',
 });
 
 const KNOWN = new Set(PAGE_KEYS);

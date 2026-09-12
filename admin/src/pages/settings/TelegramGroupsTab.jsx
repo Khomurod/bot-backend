@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "../../api";
 import { Banner } from "./fields";
-import NotificationRoutingCard from "./notifications/NotificationRoutingCard";
-import ControlChannelCard from "./control/ControlChannelCard";
 
 // ───────────────────────────── Telegram Groups tab ───────────────────────────
 
@@ -168,16 +166,14 @@ export default function TelegramGroupsTab() {
       </div>
 
       {/*
-        The rows above are the ROUTINE message groups, each tied to one workflow
-        and configured years ago. Below is where everything Wenze NOTICES goes —
-        corrections it made, risks it found, problems it recovered from. Both are
-        destinations, so they belong on one screen rather than two; keeping them
-        in separate cards is what stops an operator changing the wrong one.
+        Notification routing and the control channel used to sit here, on the
+        argument that they are destinations too. They are Settings →
+        Notifications now: both reported through THIS tab's banner, which is at
+        the top, so saving a card at the bottom flashed "Saved." a screenful
+        away from it — and the control channel is a two-way channel that changes
+        operational state, not a message-category destination. What is left here
+        is what this tab is named for: the routine per-workflow group ids.
       */}
-      <div style={{ marginTop: 24 }}>
-        <NotificationRoutingCard flash={(type, text) => setMessage({ type, text })} />
-        <ControlChannelCard flash={(type, text) => setMessage({ type, text })} />
-      </div>
     </div>
   );
 }

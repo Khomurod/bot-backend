@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import * as api from "../api";
+import * as api from "../../../api";
 
 function timeAgo(iso) {
   if (!iso) return "never";
@@ -41,7 +41,7 @@ function roleLabel(status) {
   }
 }
 
-export default function GroupAccessPage() {
+export default function GroupAccessPanel() {
   const [groups, setGroups] = useState([]);
   const [summary, setSummary] = useState({});
   const [lastChecked, setLastChecked] = useState(null);
@@ -183,10 +183,10 @@ export default function GroupAccessPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <h2>🔍 Bot Group Access</h2>
-        <p>Shows which driver groups the bot can actually read. If the bot can't read a group, it can't track home time, loads, or anything else there.</p>
-      </div>
+      <p style={{ color: "#94a3b8", marginTop: 0 }}>
+        Shows which driver groups the bot can actually read. If the bot can't read a group, it
+        can't track home time, loads, or anything else there.
+      </p>
 
       {status && (
         <div className={`alert alert-${status.type}`} style={{ marginBottom: 16 }}>{status.text}</div>

@@ -19,10 +19,8 @@ const MileageBonusPage = lazy(() => import("./pages/MileageBonusPage"));
 const RaiseApprovalPage = lazy(() => import("./pages/RaiseApprovalPage"));
 const RaisePublicPage = lazy(() => import("./pages/RaisePublicPage"));
 const HomeTimePage = lazy(() => import("./pages/HomeTimePage"));
-const GroupAccessPage = lazy(() => import("./pages/GroupAccessPage"));
 const FuelMonitorPage = lazy(() => import("./pages/FuelMonitorPage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
-const AutoReactionsPage = lazy(() => import("./pages/AutoReactionsPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const RecruiterKpiPage = lazy(() => import("./pages/RecruiterKpiPage"));
 const RecruitersPublicPage = lazy(() => import("./pages/RecruitersPublicPage"));
@@ -123,14 +121,14 @@ const PAGE_COMPONENTS = {
   home_time: <HomeTimePage />,
   fuel_monitor: <FuelMonitorPage />,
   users: <UsersPage />,
-  auto_reactions: <AutoReactionsPage />,
-  group_access: <GroupAccessPage />,
   // Three sidebar entries, one Settings page. "Settings" alone did not say
   // which settings, so the bare key is retired into LEGACY_PAGE_KEYS and each
   // entry names the thing a person came looking for.
   settings_integrations: <SettingsPage />,
   settings_board: <SettingsPage initialTab="board" />,
   settings_ai: <SettingsPage initialTab="ai" />,
+  settings_notifications: <SettingsPage initialTab="notifications" />,
+  settings_bot: <SettingsPage initialTab="bot" />,
   recruiter_kpis: <RecruiterKpiPage />,
   live_locations: <LiveLocationsPage />,
   route_control: <RouteControlPage />,
