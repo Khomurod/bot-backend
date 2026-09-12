@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import * as api from "../../api";
 import {
-  isDriverActive, prepareDisplayProfiles, profileToDraft,
+  groupView, prepareDisplayProfiles, profileToDraft,
   normalizeManualUsername, isValidManualUsername, memberOptionLabel,
 } from "./driverProfileShaping";
 
@@ -194,11 +194,14 @@ export function useDriverProfiles() {
     );
   };
 
-  const tabCounts = useMemo(() => ({
-    all: allProfiles.length,
-    active: allProfiles.filter((p) => isDriverActive(p)).length,
-    inactive: allProfiles.filter((p) => !isDriverActive(p)).length,
-  }), [allProfiles]);
+  // COUNTED BY THE SAME FUNCTION THE TABS FILTER BY, so a count can never
+  // disagree with what opening that tab shows — which is how a "3" above an
+  // empty list happens.
+  const tabCounts = useMemo(() => {
+    const counts = { all: allProfiles.length, active: 0, inactive: 0, company: 0, review: 0 };
+    for (const p of allProfiles) counts[groupView(p)] += 1;
+    return counts;
+  }, [allProfiles]);
 
   return {
     allProfiles, draftsById, loading, message, savingProfileId, syncingAi,

@@ -1,5 +1,5 @@
 import React from "react";
-import { formatStatusSource, driverLabel, profileToDraft } from "./driverProfileShaping";
+import { formatStatusSource, driverLabel, profileToDraft, boardHint, needsReview } from "./driverProfileShaping";
 
 /**
  * The driver-profile table, including its loading and empty states.
@@ -111,8 +111,16 @@ export function DriverProfilesTable({
                 >
                   {name || "— set driver —"}
                 </button>
-                {(profile.needs_review === true || profile.duplicate_review_required === true) && (
+                {needsReview(profile) && (
                   <div style={{ fontSize: 11, color: "#f59e0b" }}>Needs review</div>
+                )}
+                {/*
+                  What the dispatcher board says, when it says anything. A board
+                  that is switched off renders nothing rather than a grey box
+                  beside every driver.
+                */}
+                {boardHint(profile) && (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{boardHint(profile)}</div>
                 )}
                 {profile.telegram_username ? (
                   <div style={{ fontSize: 11, color: "var(--text-muted)" }}>@{profile.telegram_username}</div>
