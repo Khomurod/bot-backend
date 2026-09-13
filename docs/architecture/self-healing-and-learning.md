@@ -143,6 +143,47 @@ alongside `failed` and `down`. Three rules follow from it:
 blocked worker and still names the setting it is waiting for. The distinction
 only matters where a component is reported as **working or not**.
 
+### The nine custom integrations could not say it either
+
+`blocked` was then hardcoded `false` for every CUSTOM integration — the nine
+that are not driven by the run ledger: recruiter logins, AI providers, the
+notification destination, retention's chat signals, after-hours recruiting, the
+Samsara pipeline and the rest. Those are precisely the ones most likely to be
+half-configured, and they were the only ones with no way to say so.
+
+The result was one component answering two different things in the same
+payload: `recruiting_after_hours` with nothing approved yet appeared in
+`workers.attention` as needing a person AND was counted among `systems.ok` as a
+working system. `samsara_safety_pipeline` was worse — the poller beats `blocked`
+when Samsara is switched off in the admin, `classifyRun` computed that verdict
+correctly, and `integration()` threw it away.
+
+Each of those now reports `blocked`. A cooldown is deliberately NOT one: all
+providers unreachable is a failure to reach, not a switch nobody flipped.
+
+### Configured is not the same as reachable
+
+Two features could be fully configured, report healthy, and be structurally
+incapable of doing anything — and nothing could tell you which:
+
+- **The safety pipeline.** The poller already wrote how many new events each
+  poll found into its heartbeat, and nothing read it. So a fortnight with no
+  incidents and a recorder that cannot write produced the same `events: 0`.
+  `/api/health → operations.safety.poller` now carries what the poller SAW and
+  whether its store believes it can WRITE. Seen above zero with recording not
+  ready is a recorder problem named outright; both zero is a quiet fleet.
+  On the poller's own side, `recordingStatus()` had been exported and tested
+  since the store was repaired and had never been called — the same shape as the
+  bug it was written to make visible.
+- **After-hours recruiting.** Every readiness check is a SETTING. None proves a
+  candidate's text can still arrive: inbound SMS depends on a RingCentral
+  webhook subscription created by the Python leads engine, which sheds filters
+  when a tenant refuses one and can lose the subscription outright. After that
+  the feature reads "ready" and answers nobody, forever. Every inbound message
+  already writes a mirror row, so the check now also asks whether one has
+  **ever** arrived — free to read, and the only honest evidence the path is
+  alive.
+
 ### What each component's health is read from
 
 | Component | Failing means |

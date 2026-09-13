@@ -41,6 +41,13 @@ const { MIN_CONFIDENCE, recordDecisionFor } = require('./decisionSeam');
 const DEFAULT_CAP = 50;
 
 /**
+ * The key a capped check files about ITSELF — named once, because it is both
+ * filed and resolved below and a second literal is a second thing to get wrong.
+ */
+const CAPPED_KEY = 'operations.auto_apply_capped';
+const CAPPED_KEY_LIST = [CAPPED_KEY];
+
+/**
  * A settings row's mode, tolerant of a row that predates migration 0044.
  *
  * The SQL already COALESCEs, but `loadCheckSettings` is injectable — several
@@ -303,9 +310,10 @@ async function runAutoCorrections({
 
   // A capped check files a finding ABOUT ITSELF, so the stall is visible rather
   // than silently doing nothing every sweep from now on.
+  const cappedIds = [];
   for (const c of capped) {
-    await store.upsertFinding({
-      checkKey: 'operations.auto_apply_capped',
+    const row = await store.upsertFinding({
+      checkKey: CAPPED_KEY,
       subjectType: 'check',
       subjectId: c.checkKey,
       title: `${c.checkKey} wanted to auto-apply ${c.wanted} corrections (cap ${c.cap}) — nothing was applied`,
@@ -313,7 +321,28 @@ async function runAutoCorrections({
       tier: 'warning',
       evidence: { checkKey: c.checkKey, wanted: c.wanted, cap: c.cap },
     });
+    if (row) cappedIds.push(row.id);
   }
+
+  // AND A CHECK THAT IS NO LONGER CAPPED STOPS SAYING SO.
+  //
+  // This was the ONE finding key in the repository nothing could resolve. Every
+  // other key is cleared by whatever files it — the sweep, the return-to-road
+  // watch, the load lifecycle watch, the contradiction pass, policy source
+  // discovery — and this one was filed here and cleared by nobody. So a cap the
+  // owner raised, or a backlog the owner worked down, left a `serious` finding
+  // open for the life of the deployment. A permanent alarm about a condition
+  // that has passed is worse than no alarm: it teaches people to ignore the
+  // list it sits in.
+  //
+  // The scoping is the same shape the sweep uses, and it is safe for the same
+  // reason: the loop above always walks EVERY `CHECK_TO_ACTION` key, never a
+  // subset, so `capped` is the complete answer for this pass and anything open
+  // under this key that is not in it is a stall that has ended.
+  //
+  // Optional-chained because a caller may inject a partial store; losing the
+  // resolve must never cost the corrections below it.
+  await store.resolveClearedFindings?.(CAPPED_KEY_LIST, cappedIds);
 
   // ── what a shadowed check would have done ────────────────────────────────
   //

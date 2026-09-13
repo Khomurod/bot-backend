@@ -67,6 +67,7 @@ function defaultDeps() {
     retention: require('../../database/retention'),
     recruitingHours: require('../../database/recruitingHours'),
     recruitingKnowledge: require('../../database/recruitingKnowledge'),
+    smsMirrors: require('../../database/facebookLeads/smsMirrors'),
     capabilityGate: require('../ai/capabilityGate'),
   };
   /* eslint-enable global-require */
@@ -141,8 +142,23 @@ async function workerObservations(deps, nowMs) {
   return out;
 }
 
-/** Shape an integration answer the same way a worker answer is shaped. */
-function integration(key, { ok, detail = null, state = null, reason = null }) {
+/**
+ * Shape an integration answer the same way a worker answer is shaped.
+ *
+ * `blocked` USED TO BE HARDCODED FALSE HERE, and that made a component answer
+ * two different things in one payload. A custom integration that is merely
+ * UNCONFIGURED — no recruiter has connected a login, no AI provider is enabled,
+ * nobody has finished the after-hours setup — was pushed with `ok: true` and a
+ * `needs_human_attention` state, so it appeared in the workers attention list
+ * and was counted as a WORKING SYSTEM at the same time. The nine custom
+ * integrations are exactly the ones most likely to be half-configured, and they
+ * were the only ones that could not say so.
+ *
+ * A blocked component is still `ok` — nothing is broken — but it is recorded as
+ * `blocked` rather than `ok`, so `systems` names it under `waiting` instead of
+ * counting it among the healthy.
+ */
+function integration(key, { ok, detail = null, state = null, reason = null, blocked = false }) {
   const entry = getServiceEntry(key);
   return {
     component: key,
@@ -150,7 +166,7 @@ function integration(key, { ok, detail = null, state = null, reason = null }) {
     group: 'integration',
     critical: entry?.critical === true,
     unknown: state === RUN_STATES.UNKNOWN,
-    blocked: false,
+    blocked: blocked === true,
     ok,
     state: state || (ok ? RUN_STATES.HEALTHY : RUN_STATES.FAILING),
     detail,
@@ -178,7 +194,7 @@ async function integrationObservations(deps, nowMs) {
     const broken = withCreds.filter((r) => r.rc_auth_error);
     if (withCreds.length === 0) {
       out.push(integration('recruiter_logins', {
-        ok: true, state: RUN_STATES.NEEDS_ATTENTION,
+        ok: true, state: RUN_STATES.NEEDS_ATTENTION, blocked: true,
         reason: 'no recruiter has connected a RingCentral login yet',
       }));
     } else if (broken.length >= withCreds.length) {
@@ -222,7 +238,7 @@ async function integrationObservations(deps, nowMs) {
     const enabled = (providers || []).filter((p) => p.enabled);
     if (enabled.length === 0) {
       out.push(integration('ai_providers', {
-        ok: true, state: RUN_STATES.NEEDS_ATTENTION,
+        ok: true, state: RUN_STATES.NEEDS_ATTENTION, blocked: true,
         reason: 'no AI provider is enabled — every AI feature is on its deterministic fallback',
       }));
     } else {
@@ -301,6 +317,9 @@ async function integrationObservations(deps, nowMs) {
       const n = discards?.total || 0;
       out.push(integration('notification_destination', {
         ok: true,
+        // Switched off, or never pointed anywhere: both are somebody's setting,
+        // not a system that broke.
+        blocked: true,
         state: RUN_STATES.NEEDS_ATTENTION,
         reason: config?.enabled === false
           ? `notifications are switched off${n ? ` — ${n} notices discarded so far` : ''}`
@@ -323,6 +342,9 @@ async function integrationObservations(deps, nowMs) {
     const chat = await deps.retention.chatSignalsAvailable();
     out.push(integration('retention_chat_signals', {
       ok: true,
+      // Whether to record driver messages is the owner's privacy decision, so
+      // "nobody is listening" is a setting rather than a fault.
+      blocked: !chat.available,
       state: chat.available ? RUN_STATES.HEALTHY : RUN_STATES.NEEDS_ATTENTION,
       reason: chat.available
         ? chat.reason
@@ -358,13 +380,37 @@ async function integrationObservations(deps, nowMs) {
       recruitersWithSms: (recruiters || []).filter((r) => deps.rc.recruiterCanSendSms(r)).length,
     });
 
+    // READY IS NOT THE SAME AS REACHABLE, and that gap is this feature's
+    // quietest failure. Every check above is a SETTING; none of them proves a
+    // candidate's text can still arrive. Inbound SMS reaches this application
+    // through a RingCentral webhook subscription created by the Python leads
+    // engine, which sheds filters when a tenant refuses one and can lose the
+    // subscription entirely — after which the feature reads "ready" and
+    // answers nobody, forever, with no screen able to say why.
+    //
+    // Every inbound message already writes a mirror row, so the last one is
+    // free to read and is the only honest evidence the path is alive.
+    // Optional-chained: a caller that has not wired this dep must lose the
+    // inbound EVIDENCE, never the readiness answer beside it.
+    const inbound = await Promise.resolve(deps.smsMirrors?.summariseInboundSms?.())
+      .catch(() => null);
+    const neverInbound = inbound?.available === true && !inbound.everAt;
+
     out.push(integration('recruiting_after_hours', {
       ok: true,
-      state: verdict.ready ? RUN_STATES.HEALTHY : RUN_STATES.NEEDS_ATTENTION,
+      // Every blocker this check can report is somebody's decision, never a
+      // fault — so an unready feature is `blocked`, not a failed system.
+      blocked: !verdict.ready || neverInbound,
+      state: (verdict.ready && !neverInbound)
+        ? RUN_STATES.HEALTHY : RUN_STATES.NEEDS_ATTENTION,
       // The blockers NAMED, and where to fix each. A count on its own sends
       // somebody hunting through six settings screens.
       reason: verdict.ready
-        ? verdict.summary
+        ? (neverInbound
+          ? 'Everything is configured, but no candidate SMS has ever reached this '
+            + 'application — so the RingCentral inbound subscription may not be live. '
+            + 'Check the leads engine log (Settings → RingCentral).'
+          : `${verdict.summary}${inbound?.lastAt ? ` Last candidate SMS ${inbound.lastAt}.` : ''}`)
         : `${verdict.summary} ${verdict.blockers.map((b) => `${b.what} (${b.where})`).join(' ')}`,
     }));
   } catch (_) {
@@ -383,6 +429,9 @@ async function integrationObservations(deps, nowMs) {
     });
     out.push(integration('samsara_safety_pipeline', {
       ok: !verdict.actionable,
+      // The poller beats `blocked` when Samsara is switched off in the admin.
+      // That verdict was being computed and then thrown away here.
+      blocked: verdict.blocked === true,
       state: verdict.state,
       detail: verdict.actionable ? verdict.reason : null,
       reason: verdict.reason,
