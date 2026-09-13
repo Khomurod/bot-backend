@@ -108,11 +108,49 @@ test('a table that is missing costs that one deletion, never the whole pass',
       ...deps,
       safety: { async pruneOldSafetyEvents() { throw new Error('relation does not exist'); } },
     };
-    const { deleted, errors } = await retention.runDataRetentionPass({ deps: broken });
+    const { deleted, errors, error } = await retention.runDataRetentionPass({ deps: broken });
     assert.equal(errors.length, 1);
     assert.match(errors[0], /^safetyEvents:/);
     assert.ok('notices' in deleted, 'and everything after it still ran');
+    assert.equal(error, undefined, 'one table is a table to look at, not a failed pass');
   });
+
+/**
+ * EVERY PRUNE FAILING IS THE DATABASE GROWING WITHOUT BOUND.
+ *
+ * `errors` is plural and `statusFromSummary` reads `error`, singular — and
+ * until this pass was wrapped in `withRunRecord` nothing read either: its
+ * failures reached `console.error` and stopped there. So every prune could fail
+ * for months with nothing on `/api/health` to say so, against the one mechanism
+ * that keeps these tables bounded.
+ */
+test('EVERY prune failing is a failed pass, not a quiet one',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { retention, deps } = await setup(t);
+    const boom = () => { throw new Error('permission denied'); };
+    const broken = {
+      ...deps,
+      query: async () => boom(),
+      safety: { async pruneOldSafetyEvents() { return boom(); } },
+      aiCallLog: { async pruneAiCallLog() { return boom(); } },
+    };
+    const { errors, error } = await retention.runDataRetentionPass({ deps: broken });
+    assert.ok(errors.length >= 6, 'every table tried and every one failed');
+    assert.match(error, /none of the \d+ table\(s\) could be pruned/,
+      '`error` singular is the field the ledger reads');
+  });
+
+/** And the prune is a catalogued worker, so its silence is noticed. */
+test('the prune is in the background-service catalogue', { skip: skipWithoutPg() }, async () => {
+  const { getServiceEntry } = require('../lib/operations/backgroundServiceCatalog');
+  const entry = getServiceEntry('data_retention');
+  assert.ok(entry, 'a pass with no catalogue entry can stop without anybody noticing');
+  const src = require('node:fs').readFileSync(
+    require.resolve('../services/schedulerService'), 'utf8'
+  );
+  assert.match(src, /withRunRecord\('data_retention'/,
+    'and the entry means nothing unless the pass actually records a run');
+});
 
 test('nothing old enough means a clean pass with zero deletions, not an error',
   { skip: skipWithoutPg() }, async (t) => {

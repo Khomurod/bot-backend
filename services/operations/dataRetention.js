@@ -143,6 +143,16 @@ async function runDataRetentionPass({ windows = {}, deps = defaultDeps() } = {})
     [String(w.serviceRunDays)]
   ));
 
+  // EVERY PRUNE FAILED is this pass not having run, and it must say so in
+  // `error` — singular, the field `statusFromSummary` reads. One table that
+  // could not be pruned is a table to look at; all of them is the database
+  // growing without bound while the ledger says the prune is healthy, which is
+  // the exact shape of problem this whole layer exists to remove.
+  const attempted = Object.keys(deleted).length + errors.length;
+  if (attempted && errors.length === attempted) {
+    return { deleted, errors, error: `none of the ${attempted} table(s) could be pruned` };
+  }
+
   return { deleted, errors };
 }
 

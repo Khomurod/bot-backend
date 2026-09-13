@@ -252,10 +252,19 @@ async function retentionTick() {
   // noticing, which is the failure the rest of this work exists to remove.
   // `pruneOldSafetyEvents` and `pruneAiCallLog` were both WRITTEN AND NEVER
   // CALLED until this line; several newer tables had no prune at all.
+  //
+  // AND IT IS RECORDED IN THE LEDGER LIKE EVERY OTHER PASS. It was not: its
+  // failures reached `console.error` and nothing else, so every prune could
+  // fail for months while `/api/health` showed nothing, no catalogued worker
+  // was missing, and the tables this is the only defence against grew without
+  // bound. A prune whose failure is invisible is not a prune.
   try {
     // eslint-disable-next-line global-require
     const { runDataRetentionPass } = require('./operations/dataRetention');
-    const { deleted, errors } = await runDataRetentionPass({});
+    // eslint-disable-next-line global-require
+    const { withRunRecord } = require('./operations/runLedger');
+    const { deleted, errors } = await withRunRecord('data_retention',
+      () => runDataRetentionPass({}));
     const total = Object.values(deleted).reduce((n, v) => n + (Number(v) || 0), 0);
     if (total > 0 || errors.length) {
       console.log(`[SCHEDULER] data retention: ${total} row(s) removed`
