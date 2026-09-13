@@ -32,16 +32,34 @@ const { withRunRecord } = require('./runLedger');
 const POLL_MS = 30 * 60 * 1000;
 const FIRST_TICK_DELAY_MS = 10 * 60 * 1000;
 
+/**
+ * COMPOSED FROM THE OBSERVER'S OWN DEFAULTS, never hand-listed beside them.
+ *
+ * This used to be a second, hand-written list of seven dependencies, and
+ * `healthObservations` had grown to eleven. `gatherAllObservations(deps)` uses
+ * what it is handed verbatim, so each check whose dependency was missing threw,
+ * its own catch turned that into `{ state: UNKNOWN, reason: 'could not read' }`,
+ * and `gatherObservations` then DELIBERATELY dropped it — "I could not check"
+ * must never start a failure count, which remains the right rule.
+ *
+ * So three components simply vanished from this watch: never written to
+ * `system_health_states`, never announced, never counted in `systems`.
+ * Permanently, and completely silently. One of them was
+ * `notification_destination` — the thing that DELIVERS every operational
+ * notice. Had it broken, the watch whose whole job is to announce that would
+ * have dropped it as unreadable and said nothing.
+ *
+ * Two lists that must agree is a bug waiting for the next dependency. There is
+ * one list now, and `tests/selfHealing.test.js` guards against it splitting
+ * again.
+ */
 function defaultDeps() {
   /* eslint-disable global-require */
   return {
+    ...require('./healthObservations').defaultDeps(),
+    // This watch's own two, which the observer neither has nor needs.
     store: require('../../database/systemHealth'),
     notify: require('../notifications/send').notify,
-    runs: require('../../database/backgroundRuns'),
-    rc: require('../../database/ringcentral'),
-    ai: require('../../database/aiProviders'),
-    notifications: require('../../database/operationalNotifications'),
-    fuelReadings: require('../../database/truckFuelReadings'),
   };
   /* eslint-enable global-require */
 }
@@ -134,16 +152,24 @@ async function considerComponent(observation, { nowIso, deps, options }) {
 /** One pass. Never throws; a component that cannot be read costs that one only. */
 async function runSelfHealingPass({ now = Date.now(), deps = defaultDeps(), options = {} } = {}) {
   const nowIso = new Date(now).toISOString();
-  const summary = { checked: 0, announced: [], errors: [], actionable: 0 };
+  // `unreadable` is not `errors`: a component nobody could check is dropped on
+  // purpose (see `gatherObservations`) and must never start a failure count.
+  // But dropping SILENTLY is what let six missing dependencies hide for the
+  // life of the feature, so the pass says how many it lost.
+  const summary = { checked: 0, announced: [], errors: [], actionable: 0, unreadable: 0 };
 
   // INJECTED, not the module-local binding. A test that replaced the export was
   // silently ignored here, which is part of how the defect below survived: the
   // one seam the failure needed could not be reached from a test.
-  const gather = deps.gather || gatherObservations;
+  //
+  // And RAW — the unknowns are dropped below rather than before this sees them,
+  // so the pass can say how many it lost. `gatherObservations` keeps its own
+  // filter for its other callers.
+  const gather = deps.gather || ((d) => observations_.gatherAllObservations(d));
 
-  let observations;
+  let raw;
   try {
-    observations = await gather(deps);
+    raw = await gather(deps);
   } catch (err) {
     // A PASS THAT OBSERVED NOTHING IS A FAILED PASS, NOT A CLEAN ONE.
     //
@@ -167,6 +193,15 @@ async function runSelfHealingPass({ now = Date.now(), deps = defaultDeps(), opti
       error: `could not read the health of any component: ${err.message}`,
     };
   }
+
+  // A component nobody could check is dropped on purpose — "I could not check"
+  // must never start a failure count, or three unreadable passes would announce
+  // an outage that was only ever a permission error on the health query. What
+  // is new is that the drop is COUNTED: six missing dependencies hid for the
+  // life of this feature behind a silent filter, and a number would have shown
+  // it on day one.
+  const observations = raw.filter((o) => !o.unknown);
+  summary.unreadable = raw.length - observations.length;
 
   for (const observation of observations) {
     summary.checked += 1;
