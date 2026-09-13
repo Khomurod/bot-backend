@@ -22,6 +22,7 @@ const express = require('express');
 const financeSettings = require('../../../database/financeSettings');
 const financeMessages = require('../../../database/financeMessages');
 const financeDocuments = require('../../../database/financeDocuments');
+const financeReports = require('../../../database/finance/reports');
 const { checkChatId } = require('../../../services/telegramChatIdCheck');
 // Required directly, not taken from deps: the settings router only passes
 // { authMiddleware, telegram }, so expecting it as a dep would arrive
@@ -50,15 +51,21 @@ function createFinanceSettingsRouter({ authMiddleware, telegram }) {
    * The document counts are counts too — how many are waiting, how many a
    * person still has to look at. Never a file name, never a caption, never
    * anything read out of one.
+   *
+   * The last few reports come back as their STATUS and their totals, never
+   * their body. "What did last week's report say" is a real question and it is
+   * answered on the Finance page, which has its own permission; a settings
+   * screen answers "did it go out".
    */
   router.get('/finance/status', authMiddleware, async (req, res) => {
     try {
-      const [settings, capture, documents] = await Promise.all([
+      const [settings, capture, documents, reports] = await Promise.all([
         financeSettings.getFinanceSettings(),
         financeMessages.summariseCapture(),
         financeDocuments.summariseDocuments(),
+        financeReports.listReports({ limit: 8 }),
       ]);
-      res.json({ settings, capture, documents });
+      res.json({ settings, capture, documents, reports });
     } catch (err) {
       sendFailure(res, err, { message: 'Failed to read the Finance Monitor status', logPrefix: '[SETTINGS API]' });
     }
@@ -108,6 +115,19 @@ function createFinanceSettingsRouter({ authMiddleware, telegram }) {
         patch.chatId = result.chatId;
         if (!patch.chatTitle && result.groupName) patch.chatTitle = result.groupName;
         patch.chatValidatedAt = new Date();
+      }
+
+      // The report's own chat is validated on exactly the same terms. It is a
+      // different room from the finance group often enough to matter — a
+      // payment summary going to accounting rather than to the people posting
+      // codes — and a dropped minus sign there fails just as silently.
+      if (patch.weeklyReportChatId !== undefined && patch.weeklyReportChatId !== null
+          && String(patch.weeklyReportChatId).trim() !== '') {
+        const result = await checkChatId(patch.weeklyReportChatId, { telegram, getGroupByTelegramId });
+        if (!result.ok) {
+          return res.status(400).json({ message: result.message, status: result.status });
+        }
+        patch.weeklyReportChatId = result.chatId;
       }
 
       const saved = await financeSettings.updateFinanceSettings(patch, req.admin?.id ?? null);

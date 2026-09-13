@@ -24,7 +24,10 @@ export default function FinanceTab() {
   const [settings, setSettings] = useState(null);
   const [capture, setCapture] = useState(null);
   const [documents, setDocuments] = useState(null);
-  const [form, setForm] = useState({ chatId: "", duplicateWindowHours: 72, maxDocumentMb: 8 });
+  const [reports, setReports] = useState([]);
+  const [form, setForm] = useState({
+    chatId: "", duplicateWindowHours: 72, maxDocumentMb: 8, weeklyReportChatId: "",
+  });
   const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -37,10 +40,12 @@ export default function FinanceTab() {
       setSettings(data.settings);
       setCapture(data.capture);
       setDocuments(data.documents ?? null);
+      setReports(Array.isArray(data.reports) ? data.reports : []);
       setForm({
         chatId: data.settings?.chatId || "",
         duplicateWindowHours: data.settings?.duplicateWindowHours ?? 72,
         maxDocumentMb: data.settings?.maxDocumentMb ?? 8,
+        weeklyReportChatId: data.settings?.weeklyReportChatId || "",
       });
     } catch (err) {
       setMessage({ type: "error", text: err.message });
@@ -231,6 +236,58 @@ export default function FinanceTab() {
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
+        <h3 style={{ marginTop: 0 }}>Weekly summary</h3>
+        <p style={{ color: "var(--text-muted)", marginTop: 0, fontSize: 13 }}>
+          Every Monday at 8am (Central), a short summary of the week that just ended:
+          how many codes, how much, anything posted twice, anything still needing a
+          person. <strong>Once per week and never twice</strong> &mdash; a restart cannot
+          make it send again.
+        </p>
+        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            type="checkbox"
+            checked={Boolean(settings?.weeklyReportEnabled)}
+            disabled={busy || !settings?.enabled}
+            onChange={(e) => save({ weeklyReportEnabled: e.target.checked })}
+          />
+          <span>Send the weekly summary</span>
+        </label>
+
+        <div className="form-group" style={{ marginTop: 14, maxWidth: 320 }}>
+          <label htmlFor="finance-report-chat">Send it to (optional)</label>
+          <input
+            id="finance-report-chat"
+            className="form-input"
+            placeholder="the finance group, unless you say otherwise"
+            value={form.weeklyReportChatId}
+            onChange={(e) => setForm((f) => ({ ...f, weeklyReportChatId: e.target.value }))}
+            onBlur={() => save({ weeklyReportChatId: form.weeklyReportChatId.trim() || null })}
+            disabled={busy}
+          />
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+            Leave it empty and the summary goes to the finance group itself.
+          </div>
+        </div>
+
+        {reports.length > 0 && (
+          <table className="data-table" style={{ marginTop: 14 }}>
+            <thead>
+              <tr><th>Week</th><th>Result</th><th>Codes</th></tr>
+            </thead>
+            <tbody>
+              {reports.map((r) => (
+                <tr key={r.id}>
+                  <td>{new Date(r.periodStart).toLocaleDateString()}</td>
+                  <td>{REPORT_STATUS[r.status] || r.status}</td>
+                  <td>{r.totals?.codeCount ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
         <h3 style={{ marginTop: 0 }}>What has been captured</h3>
         {!capture?.available ? (
           <div className="muted">Nothing has been captured yet.</div>
@@ -248,6 +305,18 @@ export default function FinanceTab() {
     </div>
   );
 }
+
+/**
+ * A status in words. `suppressed_backfill` is the one worth spelling out: it
+ * means the week began before Wenze was watching, so a total would have read
+ * "$0" when the truth is "we were not there".
+ */
+const REPORT_STATUS = {
+  sent: "Sent",
+  failed: "Could not send — will retry",
+  suppressed_backfill: "Not sent — we were not watching that week",
+  manual: "Sent by hand",
+};
 
 function Stat({ label, value }) {
   return (

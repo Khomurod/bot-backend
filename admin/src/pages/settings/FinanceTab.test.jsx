@@ -102,6 +102,33 @@ test("a stored validation is enough on its own", async () => {
   expect(screen.getByText(/Validated /)).toBeTruthy();
 });
 
+test("the weekly summary cannot be switched on before capture is", async () => {
+  render(<FinanceTab />);
+  const weekly = await screen.findByLabelText(/Send the weekly summary/i);
+  expect(weekly).toBeDisabled();
+  expect(api.updateFinanceSettings).not.toHaveBeenCalled();
+});
+
+test("the report history says WHY a week was not sent, in words", async () => {
+  api.getFinanceStatus.mockResolvedValue({
+    settings: {
+      ...OFF.settings, enabled: true, chatId: "-100777",
+      chatValidatedAt: "2026-09-01T00:00:00Z", weeklyReportEnabled: true,
+    },
+    capture: { available: true, byStatus: {}, total: 0, codes: 0, duplicates: 0 },
+    reports: [
+      { id: 2, periodStart: "2026-09-07T13:00:00Z", status: "sent", totals: { codeCount: 5 } },
+      { id: 1, periodStart: "2026-08-31T13:00:00Z", status: "suppressed_backfill", totals: null },
+    ],
+  });
+  render(<FinanceTab />);
+
+  // "Not sent" and "nothing happened that week" are opposite answers, and this
+  // screen is the only place a person can tell them apart.
+  expect(await screen.findByText(/we were not watching that week/i)).toBeTruthy();
+  expect(screen.getByText("Sent")).toBeTruthy();
+});
+
 test("the counts are shown separately, and nothing that was said is shown at all", async () => {
   api.getFinanceStatus.mockResolvedValue({
     settings: { ...OFF.settings, enabled: true, chatId: "-100777", chatValidatedAt: "2026-09-01T00:00:00Z" },
