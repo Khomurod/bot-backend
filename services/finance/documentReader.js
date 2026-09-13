@@ -200,12 +200,22 @@ async function askModel({ doc, buffer, text, path }) {
 /**
  * Tell somebody a document needs eyes.
  *
- * `subjectId` is the document's id, so the burst suppressor groups a batch of
- * unreadable scans rather than sending five identical notices. The notice
- * carries NO caption, NO file name and NOTHING extracted — a notification
- * lands in a group chat's permanent history, and this is payment data.
+ * ONE NOTICE PER BATCH, AND A NEW BATCH IS A NEW NOTICE. The subject is
+ * constant on purpose — five unreadable scans in one drain are one thing to
+ * look at, not five — but the DISCRIMINATOR is the batch's highest document id,
+ * because `notify` deduplicates on the whole key and a key built from constants
+ * alone would be said once in the life of the installation and never again.
+ * This repository has already lost 101 alerts to a queue that went quiet.
+ *
+ * A drain cannot re-review a document it has moved off `pending`, so the
+ * highest id identifies the event rather than merely the condition.
+ *
+ * The notice carries NO caption, NO file name and NOTHING extracted — a
+ * notification lands in a group chat's permanent history, and this is payment
+ * data.
  */
-async function announceReview(count) {
+async function announceReview(ids) {
+  const count = ids.length;
   if (count <= 0) return;
   await notify({
     category: 'finance',
@@ -216,6 +226,7 @@ async function announceReview(count) {
     action: 'Open Settings → Finance Monitor to see the counts.',
     subjectType: 'finance_documents',
     subjectId: 'needs_review',
+    discriminator: `batch-${Math.max(...ids.map((id) => Number(id) || 0))}`,
   }).catch(() => null);
 }
 
@@ -248,6 +259,7 @@ async function drainFinanceDocuments(deps = {}) {
     .catch(() => 0);
 
   const counts = { read: 0, needsReview: 0, failed: 0, skipped: 0 };
+  const reviewIds = [];
   for (let i = 0; i < MAX_PER_DRAIN; i += 1) {
     // eslint-disable-next-line no-await-in-loop
     const doc = await financeDocuments.claimNextDocument();
@@ -259,7 +271,7 @@ async function drainFinanceDocuments(deps = {}) {
       // eslint-disable-next-line no-await-in-loop
       const status = await readOne(doc, { settings, telegram, download, ai });
       if (status === policy.STATUS.READ) counts.read += 1;
-      else if (status === policy.STATUS.NEEDS_REVIEW) counts.needsReview += 1;
+      else if (status === policy.STATUS.NEEDS_REVIEW) { counts.needsReview += 1; reviewIds.push(doc.id); }
       else if (status === policy.STATUS.FAILED) counts.failed += 1;
       else counts.skipped += 1;
       log(`document ${doc.id} -> ${status}`);
@@ -278,7 +290,7 @@ async function drainFinanceDocuments(deps = {}) {
     }
   }
 
-  await announceReview(counts.needsReview);
+  await announceReview(reviewIds);
   return counts;
 }
 
