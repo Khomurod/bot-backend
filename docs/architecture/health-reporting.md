@@ -252,9 +252,9 @@ Guarded by `tests/selfHealing.test.js` — "a ledger nobody could read leaves ev
 worker saying so, not missing" and "a pass that could read nothing is a FAILED
 pass, not a quiet one", both confirmed failing against the previous commit.
 
-## Three passes that reported a clean run over nothing
+## Five passes that reported a clean run over nothing
 
-The same defect, found three times in one audit and fixed the same way each
+The same defect, found five times in one audit and fixed the same way each
 time. `statusFromSummary` reads **`error`, singular**; a summary carrying
 `errors`, plural, reaches nothing. So every pass that ended early with
 `{ ...summary, errors: [message] }` recorded itself in the ledger as **ok**.
@@ -264,8 +264,10 @@ time. `statusFromSummary` reads **`error`, singular**; a summary carrying
 | `self_healing` | read the health of any component |
 | `retention_watch` (critical) | read one row of the fleet |
 | `learning_pass` | read any of its six inputs |
+| `data_retention` | prune a single table (and it had no ledger row at all) |
+| `control_ask_pass` | read the per-check modes, so it asked only half the questions |
 
-The rule, now applied to all three: **the pass decides whether its errors amount
+The rule, now applied to all five: **the pass decides whether its errors amount
 to a failure and says so in `error`.** `statusFromSummary` stays deliberately
 dumb, so "one bad driver row among a hundred is not a failed pass" keeps
 holding, and each pass fails in the three shapes that actually mean it did not
@@ -279,8 +281,23 @@ run:
   "nothing to learn FROM". `summary.sourcesUnreadable` now carries the count
   whether or not it reaches six.
 
-`tests/selfHealing.test.js`, `tests/retentionWatch.test.js` and
-`tests/learningPass.test.js` each carry the regression, all confirmed failing
+Two more of the same shape, found in the same sweep and fixed the same way:
+
+- **`data_retention` had no run record at all.** The only defence against
+  unbounded growth in seven tables reported its failures to `console.error` and
+  nothing else — no catalogue entry, no ledger row, nothing on `/api/health`. It
+  is now a catalogued worker recorded through `withRunRecord`, and every prune
+  failing sets `error`.
+- **`control_ask_pass` read the per-check modes with `.catch(() => new Map())`.**
+  An empty map makes every auto-tier finding read as "not in suggest mode", so
+  the pass silently skipped all of them, asked only approval-tier questions, and
+  returned a summary identical to a healthy pass with nothing to ask. It now
+  carries an `error` naming what it could not read — degraded, which is exactly
+  the weight `classifyRun` gives one failed pass, and far more than silence.
+
+`tests/selfHealing.test.js`, `tests/retentionWatch.test.js`,
+`tests/learningPass.test.js`, `tests/dataRetentionPg.test.js` and
+`tests/controlAskPass.test.js` each carry the regression, all confirmed failing
 against the previous commit. One of them, in the retention watch, already had
 the right NAME — "a database failure is a reported error, not a crash and not a
 false all-clear" — and asserted the plural field that nothing reads.

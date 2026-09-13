@@ -181,7 +181,16 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
   const outstanding = await deps.notices.countUnansweredQuestions(settings.repeatAfterHours)
     .catch(() => Number.MAX_SAFE_INTEGER);
 
-  const checkSettings = await deps.loadCheckSettings().catch(() => new Map());
+  // A SETTINGS READ THAT FAILED CHANGES WHAT THIS PASS DECIDES, so it is not
+  // swallowed. With an empty map every auto-tier finding reads as "not in
+  // suggest mode" and is silently skipped — the pass asks only the
+  // approval-tier questions and reports a clean run, which is a feature quietly
+  // half-working rather than a feature saying it could not do its job.
+  let settingsUnreadable = null;
+  const checkSettings = await deps.loadCheckSettings().catch((err) => {
+    settingsUnreadable = err.message;
+    return new Map();
+  });
   // WHAT WENZE DECIDED NOT TO DO, and why. Keyed `check|subjectType|subjectId`.
   // Read once per pass rather than per finding: this is a hundred candidates
   // against one query.
@@ -309,7 +318,18 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
     else skipped.notSent += 1;
   }
 
-  return { asked, considered: candidates.length, skipped };
+  return {
+    asked,
+    considered: candidates.length,
+    skipped,
+    // Degraded, not failed: the questions it COULD ask were asked. One pass
+    // carrying an error reads `degraded` in `classifyRun`, which is exactly the
+    // weight this deserves — and far more than the silence it used to report.
+    ...(settingsUnreadable
+      ? { error: `the per-check modes could not be read (${settingsUnreadable}), `
+        + 'so only approval-tier findings were considered' }
+      : {}),
+  };
 }
 
 module.exports = {

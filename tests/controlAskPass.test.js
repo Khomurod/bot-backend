@@ -358,3 +358,30 @@ test('a decisions reader that fails costs the extra questions, not the pass', as
   assert.strictEqual(got.asked, 0, 'it went quiet rather than guessing');
   assert.strictEqual(got.skipped.notAskable, 1);
 });
+
+/**
+ * A SETTINGS READ THAT FAILED CHANGES WHAT THIS PASS DECIDES.
+ *
+ * The per-check mode map was read with `.catch(() => new Map())`. An empty map
+ * makes every auto-tier finding read as "not in suggest mode", so the pass
+ * silently skipped all of them, asked only the approval-tier questions, and
+ * returned a summary indistinguishable from a healthy pass with nothing to ask.
+ * A feature quietly half-working is the defect class; saying so is the fix.
+ */
+test('a mode map that could not be read is reported, not silently skipped past', async () => {
+  const deps = makeDeps({
+    loadCheckSettings: async () => { throw new Error('permission denied'); },
+  });
+  const got = await runAskPass({}, deps);
+
+  assert.strictEqual(got.asked, 0, 'the auto-tier finding cannot be judged, so it is not asked');
+  assert.match(got.error, /per-check modes could not be read/,
+    '`error` singular is the field the ledger reads — without it this is a clean run');
+  assert.match(got.error, /permission denied/, 'and it names what went wrong');
+});
+
+/** A readable map still returns no error, so the signal means something. */
+test('a pass that read its settings carries no error', async () => {
+  const got = await runAskPass({}, makeDeps());
+  assert.strictEqual(got.error, undefined);
+});
