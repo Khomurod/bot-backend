@@ -344,6 +344,72 @@ test('a check over its cap changes NOTHING and reports itself', { skip: skipWith
   assert.equal(selfReport[0].severity, 'serious');
 });
 
+/**
+ * THE ONE FINDING KEY NOTHING COULD RESOLVE.
+ *
+ * Every other check key in the repository is resolved by whatever files it —
+ * the sweep, the return-to-road watch, the load lifecycle watch, the
+ * contradiction pass, policy source discovery. `operations.auto_apply_capped`
+ * was filed here and resolved by nobody, so a cap the owner raised, or a
+ * backlog the owner worked down, left a `serious` finding open for the life of
+ * the deployment. A permanent alarm about a condition that has passed is worse
+ * than no alarm: it teaches people to ignore the list it sits in.
+ *
+ * The second half of this test is the one that matters. Resolving the key
+ * unconditionally would also pass the first half, and would silently clear a
+ * stall that is still happening.
+ */
+test('a check that is no longer capped stops reporting itself — and one still capped does not',
+  { skip: skipWithoutPg() }, async (t) => {
+    const harness = await harnessWith(t);
+    const { runAutoCorrections, store } = loadModules(harness);
+    const setCap = (n) => harness.query(
+      `INSERT INTO operational_check_settings (check_key, auto_apply_enabled, max_auto_per_run, mode)
+       VALUES ('home_time.closable_open_cycle', TRUE, $1, 'autopilot')
+       ON CONFLICT (check_key) DO UPDATE SET auto_apply_enabled = TRUE, mode = 'autopilot',
+         max_auto_per_run = $1`,
+      [n]
+    );
+    await setCap(2);
+    const groupId = await seedGroup(harness);
+    for (let i = 0; i < 3; i += 1) {
+      const cycleId = await seedOpenCycle(harness, groupId);
+      await store.upsertFinding({
+        checkKey: 'home_time.closable_open_cycle', subjectType: 'road_history', subjectId: cycleId,
+        title: `closable ${i}`, tier: 'auto',
+        proposedChange: { id: cycleId, returnToRoadAt: { to: '2026-08-31T00:00:00Z' }, homeDays: { to: 6 } },
+      });
+    }
+
+    await runAutoCorrections({ apply: true });
+    assert.equal(
+      (await store.listFindings({ checkKey: 'operations.auto_apply_capped' })).length, 1,
+      'the first capped pass files the self-report'
+    );
+
+    // Still capped. The self-report must survive — a stall that is still
+    // happening is not cleared by looking at it again.
+    await runAutoCorrections({ apply: true });
+    assert.equal(
+      (await store.listFindings({ checkKey: 'operations.auto_apply_capped' })).length, 1,
+      'a check STILL over its cap keeps its self-report open'
+    );
+
+    // The owner raises the cap. Nothing is capped any more, so the alarm goes.
+    await setCap(5);
+    const { summary, capped } = await runAutoCorrections({ apply: true });
+    assert.deepEqual(capped, [], 'nothing is capped once the cap covers the backlog');
+    // Eligible, not applied: these fixtures carry no `confidence`, and the
+    // spine holds an unscored finding by design (see the test below). What
+    // matters here is that all three reached the plan, so the check really is
+    // uncapped rather than quietly skipped for some other reason.
+    assert.equal(summary.eligible, 3, 'all three reached the plan');
+    assert.equal(
+      (await store.listFindings({ checkKey: 'operations.auto_apply_capped' })).length, 0,
+      'the self-report is resolved, not left open for the life of the deployment'
+    );
+  });
+
 test('A FINDING NOBODY SCORED IS HELD, NOT APPLIED — and it is not lost',
   { skip: skipWithoutPg() }, async (t) => {
     // `confidence` is nullable, so a finding can reach the batch with nothing

@@ -122,7 +122,13 @@ marks the stay closed.
   unblocks a batch is exactly its size (`planForCheck` refuses on `wanted > cap`)
   and the column is `CHECK (max_auto_per_run BETWEEN 1 AND 500)`, so a batch over
   500 says plainly that no cap can unblock it rather than printing an
-  instruction that leaves the operator capped anyway.
+  instruction that leaves the operator capped anyway. **A capped check files
+  `operations.auto_apply_capped` about itself, and clears it once it is no
+  longer capped** — this was the one finding key in the repository nothing
+  could resolve, so a cap the owner raised left a `serious` finding open for
+  the life of the deployment. Guarded by
+  `tests/operationalCorrectionsPg.test.js`, which also asserts that a check
+  STILL over its cap keeps the self-report open.
 - `operations:preview` is **dry unless `--apply`, and that includes `--sweep`** —
   a sweep files findings and resolves cleared ones, which is a write to the table
   the Needs Attention page reads. An `--apply` run **exits non-zero** when the cap
