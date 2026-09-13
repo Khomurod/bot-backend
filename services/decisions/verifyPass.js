@@ -17,8 +17,10 @@
  * this correction wrote still there? Anything broader would be a second
  * decision engine, disagreeing with the first at a different hour of the day.
  */
-const { compareWritten, shouldRollBack, OUTCOMES } = require('../../lib/decisions/verification');
+const { compareWritten, OUTCOMES } = require('../../lib/decisions/verification');
+const { classifyOrigin, assessRollback } = require('../../lib/decisions/rollbackSafety');
 const decisions = require('../../database/operationalDecisions');
+const { driverNamesMatch } = require('../../lib/drivers/driverGroupTitle');
 
 /**
  * How to re-read the subject of each action, and whether it may be undone
@@ -37,6 +39,7 @@ const decisions = require('../../database/operationalDecisions');
  */
 const SUBJECTS = Object.freeze({
   'home_time.close_cycle': {
+    impact: 'operational',
     autoRevert: false,
     table: 'driver_road_history',
     async read(client, subjectId) {
@@ -48,6 +51,7 @@ const SUBJECTS = Object.freeze({
     },
   },
   'identity.sync_profile_status': {
+    impact: 'employment',
     autoRevert: false,
     table: 'driver_profiles',
     async read(client, subjectId) {
@@ -77,6 +81,7 @@ const SUBJECTS = Object.freeze({
   // than the `not_checked` it replaced. The tests assert the overlap.
 
   'identity.ensure_person': {
+    impact: 'operational',
     autoRevert: false,
     table: 'driver_person_groups',
     async read(client, subjectId) {
@@ -90,6 +95,7 @@ const SUBJECTS = Object.freeze({
   },
 
   'identity.sync_unit': {
+    impact: 'operational',
     autoRevert: false,
     table: 'driver_units',
     async read(client, subjectId) {
@@ -106,6 +112,7 @@ const SUBJECTS = Object.freeze({
   },
 
   'identity.link_telegram': {
+    impact: 'operational',
     autoRevert: false,
     table: 'driver_person_telegram_identities',
     async read(client, subjectId) {
@@ -123,6 +130,7 @@ const SUBJECTS = Object.freeze({
   },
 
   'identity.set_group_type': {
+    impact: 'operational',
     autoRevert: false,
     table: 'groups',
     async read(client, subjectId) {
@@ -138,7 +146,26 @@ const SUBJECTS = Object.freeze({
   // one subject type in this table that is not numeric, and `Number(subjectId)`
   // on it would read NaN and find nothing.
   'board.link_person': {
-    autoRevert: false,
+    impact: 'operational',
+    // THE ONE ACTION WHERE AN AUTOMATIC UNDO IS PROVABLY SAFER THAN A NOTICE,
+    // and it earns that on four counts:
+    //
+    //   it costs nobody anything    the link is a pointer on a snapshot row of
+    //                               an external feed. Clearing it changes no
+    //                               employment, pay, home time or truck
+    //                               assignment, and the next sweep re-links from
+    //                               whatever the Board says now
+    //   the evidence is external    the Dispatcher Board is the authority on who
+    //                               is driving what, re-read by its own poller.
+    //                               A changed name on a row is the Board saying
+    //                               so, not a person arguing with us
+    //   it is exactly reversible    `revert` restores the previous person_id
+    //   leaving it wrong is worse   a Board row pointing at the wrong human
+    //                               feeds every screen that reads the Board
+    //
+    // Everything else in this registry stays `false`. See the note at the top:
+    // that is a decision, and this is the single case that has been argued.
+    autoRevert: true,
     table: 'dispatch_board_rows',
     async read(client, subjectId) {
       const res = await client.query(
@@ -148,9 +175,46 @@ const SUBJECTS = Object.freeze({
       );
       return res.rows[0] || null;
     },
+
+    /**
+     * Does the Board still show the person we linked?
+     *
+     * READ-ONLY, and narrow on purpose. It asks the one question the link was
+     * made on — do the names still agree — using the same matcher the linker
+     * used. It does not re-run the decision, re-rank candidates or form a new
+     * opinion; a general re-derivation here would be a second decision engine.
+     *
+     * MISSING EVIDENCE IS NEVER A ROLLBACK. A vanished row, an absent person or
+     * a blank name all answer `holds: true`, because "we cannot see the reason"
+     * and "the reason is gone" are different sentences and only the second one
+     * may undo anything.
+     */
+    async stillJustified(client, subjectId) {
+      const res = await client.query(
+        `SELECT b.driver_name_clean AS "boardName", b.present, p.display_name AS "personName"
+           FROM dispatch_board_rows b
+           LEFT JOIN driver_people p ON p.id = b.person_id
+          WHERE b.row_key = $1`,
+        [String(subjectId)]
+      );
+      const row = res.rows[0];
+      if (!row) return { holds: true, reason: 'the board row is gone, so there is nothing to judge' };
+      if (!row.personName || !row.boardName) {
+        return { holds: true, reason: 'no name to compare, so the link is left alone' };
+      }
+      if (driverNamesMatch(row.boardName, row.personName)) {
+        return { holds: true, reason: 'the board still names the person this row is linked to' };
+      }
+      return {
+        holds: false,
+        reason: `the Dispatcher Board now names "${row.boardName}" on this row, not `
+          + `"${row.personName}", so the link this made is no longer what the Board says`,
+      };
+    },
   },
 
   'home_time.mark_returned_to_road': {
+    impact: 'operational',
     autoRevert: false,
     table: 'driver_home_status',
     async read(client, subjectId) {
@@ -163,6 +227,7 @@ const SUBJECTS = Object.freeze({
   },
 
   'home_time.abandon_exhausted_alerts': {
+    impact: 'operational',
     autoRevert: false,
     table: 'home_time_requests',
     /**
@@ -285,7 +350,8 @@ async function verifyOne(decision, { client, deps }) {
 
   const correction = decision.correctionId
     ? (await client.query(
-      'SELECT id, new_values, subject_id, reverted_at FROM operational_corrections WHERE id = $1',
+      `SELECT id, new_values, subject_id, subject_type, action_key, applied_at, reverted_at
+         FROM operational_corrections WHERE id = $1`,
       [decision.correctionId]
     )).rows[0]
     : null;
@@ -307,18 +373,46 @@ async function verifyOne(decision, { client, deps }) {
   );
   const verdict = compareWritten({ wrote: correction.new_values, current });
 
-  const decisionToRoll = shouldRollBack({
-    verdict,
+  // WHO MOVED IT, from the trail the application already keeps. Only asked when
+  // something actually differs — the lookup is two indexed reads and there is
+  // no question to answer when every value is still in place.
+  const origin = verdict.outcome === OUTCOMES.CONTRADICTED
+    ? classifyOrigin(await readLaterChanges(client, correction))
+    : null;
+
+  // DID THE REASON SURVIVE. Declared per action and read-only: it re-asks the
+  // same evidence the action's own `apply` re-derives under lock before
+  // writing, rather than forming a second opinion here. An action that declares
+  // none claims only "the values are still there", which is all it can see.
+  let stillJustified = null;
+  if (verdict.outcome === OUTCOMES.CONFIRMED && typeof subject.stillJustified === 'function') {
+    try {
+      stillJustified = await subject.stillJustified(
+        client, correction.subject_id ?? decision.subjectId, correction
+      );
+    } catch (err) {
+      // An evidence read that threw is not evidence that the reason evaporated.
+      stillJustified = { holds: true, reason: `evidence could not be re-read: ${err.message}` };
+    }
+  }
+
+  const assessment = assessRollback({
+    comparison: verdict,
+    origin,
+    stillJustified,
     action: subject,
     alreadyReverted: Boolean(correction.reverted_at),
+    priorReverts: await countPriorReverts(client, decision, correction),
   });
 
   let rolledBack = false;
-  if (decisionToRoll.rollBack) {
+  if (assessment.rollBack) {
     await deps.corrections.revertCorrection({
       correctionId: correction.id,
       admin: null,
-      reason: `automatic: ${decisionToRoll.why}`,
+      // The evidence that changed its mind, in the audit row itself, so the
+      // reason is readable without reconstructing the pass that decided it.
+      reason: `automatic rollback: ${assessment.why}`,
     });
     rolledBack = true;
   }
@@ -326,9 +420,65 @@ async function verifyOne(decision, { client, deps }) {
   await deps.decisions.recordOutcome(
     decision.id,
     rolledBack ? OUTCOMES.REVERTED : verdict.outcome,
-    rolledBack ? `${verdict.detail}; undone automatically` : verdict.detail
+    // The six-state verdict travels in the detail, so a person reading the
+    // journal can tell "a human disagreed" from "we cannot tell who did this"
+    // from "the reason stopped being true" — three situations the four outcome
+    // words could not separate.
+    `[${assessment.verdict}] ${assessment.why}`
   );
-  return { bucket: BUCKET[verdict.outcome] || 'notChecked', rolledBack };
+  return { bucket: BUCKET[verdict.outcome] || 'notChecked', rolledBack, verdict: assessment.verdict };
+}
+
+/**
+ * Everything that touched this subject after we did.
+ *
+ * Both tables are read because they cover different doors: a correction applied
+ * by a person goes through `operational_corrections` with their initiator, and
+ * an edit made straight through an admin route lands in `admin_audit_log`.
+ * Neither covers every write path in this application, which is exactly why
+ * finding nothing means UNKNOWN rather than nobody.
+ */
+async function readLaterChanges(client, correction) {
+  const since = correction.applied_at;
+  if (!since) return { laterCorrections: [], laterAudits: [] };
+
+  const [corr, audit] = await Promise.all([
+    client.query(
+      `SELECT initiator FROM operational_corrections
+        WHERE subject_type = $1 AND subject_id = $2 AND id <> $3
+          AND applied_at > $4 AND reverted_at IS NULL
+        ORDER BY applied_at ASC LIMIT 20`,
+      [correction.subject_type, correction.subject_id, correction.id, since]
+    ),
+    client.query(
+      `SELECT admin_id FROM admin_audit_log
+        WHERE entity_type = $1 AND entity_id = $2 AND created_at > $3
+          AND admin_id IS NOT NULL
+        ORDER BY created_at ASC LIMIT 20`,
+      [correction.subject_type, String(correction.subject_id), since]
+    ),
+  ]);
+  return {
+    laterCorrections: corr.rows.map((r) => ({ initiator: r.initiator })),
+    laterAudits: audit.rows.map((r) => ({ adminId: r.admin_id })),
+  };
+}
+
+/**
+ * How many times this subject has already been put back by this same check.
+ *
+ * The oscillation guard. Without it a condition that keeps re-deriving one way
+ * and then the other would have Wenze writing and un-writing the same row for
+ * ever, each pass individually defensible.
+ */
+async function countPriorReverts(client, decision, correction) {
+  const res = await client.query(
+    `SELECT COUNT(*)::int AS n FROM operational_corrections
+      WHERE subject_type = $1 AND subject_id = $2 AND action_key = $3
+        AND reverted_at IS NOT NULL AND id <> $4`,
+    [correction.subject_type, correction.subject_id, decision.actionKey, correction.id]
+  );
+  return res.rows[0]?.n || 0;
 }
 
 module.exports = { runVerificationPass, verifyOne, SUBJECTS };

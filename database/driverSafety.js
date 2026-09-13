@@ -147,6 +147,36 @@ async function recordCoaching({
 }
 
 /** For /api/health and the fleet view: what kinds of events, and how many drivers. */
+/**
+ * How many safety events have been RECORDED since a given instant.
+ *
+ * THE HUB'S HALF OF THE RECONCILIATION. The Samsara poller is a separate service
+ * and reports how many events it has picked up since it booted; this counts the
+ * rows that actually landed in the same period. Fewer rows than events seen
+ * means events were delivered and not stored — the exact failure an empty table
+ * could never distinguish from a quiet fleet.
+ *
+ * `created_at` rather than `occurred_at` on purpose: the question is when the
+ * row was WRITTEN, not when the driver braked. A backfilled event has an old
+ * `occurred_at` and would not be counted by a window that used it.
+ */
+async function countRecordedSince(since) {
+  if (!since) return null;
+  const at = new Date(since);
+  if (!Number.isFinite(at.getTime())) return null;
+  try {
+    const res = await query(
+      'SELECT COUNT(*)::int AS n FROM driver_safety_events WHERE created_at >= $1',
+      [at.toISOString()]
+    );
+    return res.rows[0]?.n ?? 0;
+  } catch (_) {
+    // "We could not count" is not "nothing was recorded", and returning 0 here
+    // would manufacture a recorder problem out of a failed query.
+    return null;
+  }
+}
+
 async function summariseSafety({ windowDays = 14 } = {}) {
   const res = await query(
     `SELECT behavior, COUNT(*)::int AS n,
@@ -184,6 +214,7 @@ async function pruneOldSafetyEvents({ keepDays = 180 } = {}) {
 }
 
 module.exports = {
+  countRecordedSince,
   recordSafetyEvent,
   listDriversWithRecentEvents,
   listCoachingFor,

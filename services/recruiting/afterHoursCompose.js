@@ -55,15 +55,11 @@ function describeNextOpen(nextOpenIso, timezone) {
  * 21:00–08:00 is the normal shape of this setting, so the wrap-around case is
  * the main case rather than an edge one.
  */
-function inQuietHours({ quietStartLocal, quietEndLocal }, localTimeHHMM) {
-  const now = timeToMinutes(localTimeHHMM);
-  const start = timeToMinutes(quietStartLocal);
-  const end = timeToMinutes(quietEndLocal);
-  if (now === null || start === null || end === null) return false;
-  if (start === end) return false;
-  if (start < end) return now >= start && now < end;
-  return now >= start || now < end;
-}
+// RE-EXPORTED, not reimplemented. The rule moved to `lib/recruiting/quietHours.js`
+// because the reachability sweep needs it from the layer below the database, and
+// two copies of "when may Wenze not text" is exactly the drift this repository
+// keeps finding. Every existing caller and test keeps its import.
+const { inQuietHours } = require('../../lib/recruiting/quietHours');
 
 /**
  * What the model is given.

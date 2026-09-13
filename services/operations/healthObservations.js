@@ -378,6 +378,17 @@ async function integrationObservations(deps, nowMs) {
       capabilityEnabled,
       aiProviderEnabled: (providers || []).some((p) => p.enabled),
       recruitersWithSms: (recruiters || []).filter((r) => deps.rc.recruiterCanSendSms(r)).length,
+      // THE SETTINGS AS THEY INTERACT, not merely as they exist. A reply needs
+      // the office closed AND not quiet hours; a schedule whose two halves cover
+      // the week reported READY here with no moment any candidate could ever be
+      // answered in. `hoursConfigured` above cannot see that — it is a boolean
+      // about whether a row was saved.
+      schedule: hours ? {
+        timezone: hours.timezone,
+        windows: hours.windows,
+        quietStartLocal: hours.quietStartLocal,
+        quietEndLocal: hours.quietEndLocal,
+      } : null,
     });
 
     // READY IS NOT THE SAME AS REACHABLE, and that gap is this feature's
@@ -410,7 +421,16 @@ async function integrationObservations(deps, nowMs) {
           ? 'Everything is configured, but no candidate SMS has ever reached this '
             + 'application — so the RingCentral inbound subscription may not be live. '
             + 'Check the leads engine log (Settings → RingCentral).'
-          : `${verdict.summary}${inbound?.lastAt ? ` Last candidate SMS ${inbound.lastAt}.` : ''}`)
+          // READY, AND STILL WORTH A SENTENCE. A schedule can leave every
+          // weekday evening unreachable and still be "working" because the
+          // weekends are open. Nothing is broken, so this does not block — but
+          // a candidate texting at 22:00 on a Tuesday is never answered, and
+          // that is not something to find out from a complaint.
+          : `${verdict.summary}`
+            + `${verdict.unreachableDays?.length
+              ? ` No candidate can be answered on ${verdict.unreachableDays.join(', ')} `
+                + '— working hours and quiet hours meet on those days.' : ''}`
+            + `${inbound?.lastAt ? ` Last candidate SMS ${inbound.lastAt}.` : ''}`)
         : `${verdict.summary} ${verdict.blockers.map((b) => `${b.what} (${b.where})`).join(' ')}`,
     }));
   } catch (_) {

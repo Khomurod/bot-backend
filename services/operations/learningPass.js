@@ -37,6 +37,7 @@ function defaultDeps() {
     corrections: require('../../database/operationalCorrections'),
     conversations: require('../../database/recruitingConversations'),
     decisions: require('../../database/operationalDecisions'),
+    checkSettings: require('../../database/operationalCheckSettings'),
     store: require('../../database/operationalLearning'),
     knowledge: require('../../database/controlKnowledge'),
     notify: require('../notifications/send').notify,
@@ -51,7 +52,7 @@ function defaultDeps() {
  * narrower.
  */
 async function gatherSources(deps, { limit = 500 } = {}) {
-  const [corrections, conversations, decisions, memories] = await Promise.all([
+  const [corrections, conversations, decisions, memories, outcomes, settings] = await Promise.all([
     deps.corrections.listCorrections({ live: false, limit }).catch((err) => {
       console.warn('[LEARNING] could not read reverted corrections:', err.message);
       return [];
@@ -85,8 +86,33 @@ async function gatherSources(deps, { limit = 500 } = {}) {
         console.warn('[LEARNING] could not read remembered answers:', err.message);
         return [];
       }),
+    // THE CONFIDENCE EACH GRADED DECISION ACTED AT, which is the only variable
+    // a threshold proposal is about. Optional-chained like the source above it,
+    // for the same reason: a caller with a partial dependency map loses these
+    // suggestions, not the whole pass.
+    Promise.resolve(deps.decisions?.confidenceOutcomes?.({ sinceDays: 90 }))
+      .then((o) => o || { available: false, byCheck: {} })
+      .catch((err) => {
+        console.warn('[LEARNING] could not read decision confidences:', err.message);
+        return { available: false, byCheck: {} };
+      }),
+    // The floors already in force, so a proposal compares against what is
+    // actually configured rather than against the global default.
+    Promise.resolve(deps.checkSettings?.listCheckSettings?.())
+      .then((rows) => rows || [])
+      .catch(() => [])
   ]);
-  return { corrections, conversations, decisions, memories };
+  return {
+    corrections,
+    conversations,
+    decisions,
+    memories,
+    confidenceOutcomes: outcomes,
+    // Keyed for the pure module, which asks by check rather than scanning.
+    checkFloors: Object.fromEntries(
+      (settings || []).map((row) => [row.checkKey, row.minConfidence ?? null])
+    ),
+  };
 }
 
 /**

@@ -163,3 +163,35 @@ incapable of doing anything — and nothing could tell you which:
   already writes a mirror row, so the check now also asks whether one has
   **ever** arrived — free to read, and the only honest evidence the path is
   alive.
+
+## Reconciling what the poller saw with what was stored
+
+`operations.safety.poller` reported `seenLastPoll` — the last poll only, and
+almost always zero — beside `events`, a count of rows over fourteen days. Two
+numbers on different scales cannot disagree usefully, so **"events are arriving
+and not being stored" was invisible in aggregate**: the only way to notice was
+to already suspect it, which is not a health signal.
+
+The poller now reports a running total since it booted, and the instant it
+booted. The hub counts the rows written in that same period. One subtraction:
+
+| `seenSinceBoot` | `recordedSinceBoot` | verdict |
+|---|---|---|
+| 9 | 4 | `events_lost` — arriving and not being stored |
+| 3 | 3 | `reconciled` |
+| 0 | 0 | `reconciled` — the poller picked up nothing |
+| present | `null` | `cannot_determine` — the rows could not be counted |
+| absent | — | `cannot_determine` — an older poller reports no total |
+
+**A missing number is never a verdict.** An older poller, or a count that
+failed, both answer `cannot_determine` rather than `reconciled` — the same rule
+that governs every other state here.
+
+**`created_at`, not `occurred_at`.** The question is when the row was *written*.
+A backfilled event has an old `occurred_at`, and a window built on it would
+report the row missing and raise a recorder alarm about a row sitting right
+there — the precise inversion of the bug this closes.
+
+The counter is reset by a restart, which is exactly why the instant travels with
+the count rather than being assumed.
+

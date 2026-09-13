@@ -92,7 +92,20 @@ function sourcesFor(finding, now = Date.now()) {
  * re-derived it from "we are in the apply loop" would make them agree by
  * construction, which is how two things that should agree stop being checked.
  */
-function recordDecisionFor(item, { shadow, takeDecision: take = takeDecision }) {
+/**
+ * @param {object} item
+ * @param {object} opts
+ * @param {number|null} [opts.minConfidence]  the check's own floor, when it has
+ *   one. NULL inherits `MIN_CONFIDENCE` — the same convention every settings
+ *   column here uses, and the reason a check nobody has tuned behaves exactly
+ *   as it did before per-check floors existed.
+ *
+ *   A FLOOR NOTHING READS IS A SETTING THAT DOES NOT EXIST, which is the defect
+ *   class this repository keeps finding: an accepted learning proposal writes
+ *   `operational_check_settings.min_confidence`, and this is the one line that
+ *   turns that row into behaviour.
+ */
+function recordDecisionFor(item, { shadow, takeDecision: take = takeDecision, minConfidence = null }) {
   const { finding, action, payload, mode } = item;
   return take({
     checkKey: finding.checkKey,
@@ -101,7 +114,7 @@ function recordDecisionFor(item, { shadow, takeDecision: take = takeDecision }) 
     personId: finding.evidence?.personId ?? null,
     sources: sourcesFor(finding),
     confidence: finding.confidence,
-    minConfidence: MIN_CONFIDENCE,
+    minConfidence: minConfidence == null ? MIN_CONFIDENCE : Number(minConfidence),
     mode,
     shadow,
     evidence: {

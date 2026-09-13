@@ -307,3 +307,39 @@ one-way dependency flow now live in
 [§9a `docs/brief/code-structure.md`](code-structure.md) — moved out
 when this file passed the very cap it describes. `CLAUDE.md` states the same
 rules as working instructions.
+
+## Automatic rollback
+
+- **Only `operational`-impact actions may ever be undone automatically.** Every
+  verifiable action declares an impact class (`operational`, `employment`, `pay`,
+  `discipline`, `compliance`); an action with none declared is refused rather
+  than assumed harmless. Employment, pay, discipline and compliance are never
+  reverted without a person, whatever any flag says.
+- **A human override is never undone.** Software and a person taking turns
+  overwriting each other is a fight the software wins, because it never gets
+  bored.
+- **An unexplained change is never undone.** The audit trail does not cover every
+  write path, so finding nothing means *unknown origin*, not *nobody*.
+- **One put-back per subject, then a person.** Two is two systems arguing.
+- **Ambiguity ends at `requires_human_review`, never at an undo.**
+- Exactly one action is armed: `board.link_person`. See
+  [`decisions.md`](../architecture/decisions.md) for the argument.
+
+## Learning proposals
+
+- **Every action in the learning registry moves towards MORE caution.** There is
+  no `enable_auto_apply` and no `lower_confidence_floor`.
+- **A per-check confidence floor is CHECKed in the database to 70–95**, 70 being
+  the global floor. A value that would make a check less cautious cannot be
+  stored, by any path.
+- **A proposal that cannot safely be applied carries no action** and is recorded
+  `accepted_manual` — agreement noted, a person still has to do it.
+
+## After-hours recruiting readiness
+
+- **Readiness evaluates the effective window, not whether settings exist.** A
+  reply needs the office closed AND not quiet hours; a schedule whose two halves
+  cover the week is `blocked`, naming the conflict.
+- **The owner's intended schedule is never invented.** The conflict is surfaced;
+  which half is wrong is theirs to decide.
+

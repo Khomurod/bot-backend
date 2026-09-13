@@ -195,13 +195,24 @@ test('a suggestion that is not a setting names NO action, rather than pretending
     + 'learning company offers from the questions candidates asked');
 });
 
-test('the only action a lesson may ever name turns automation OFF', () => {
+/**
+ * EVERY ACTION A LESSON MAY NAME MOVES IN THE CAUTIOUS DIRECTION.
+ *
+ * This asserted a list of one for most of its life. The rule underneath it — a
+ * machine may never propose that it be trusted with MORE — is what actually
+ * matters, and both actions obey it: one switches automation off, the other
+ * raises the confidence a check needs before acting. There is deliberately no
+ * `enable_auto_apply` and no `lower_confidence_floor`.
+ */
+test('every action a lesson may name moves towards MORE caution', () => {
   // eslint-disable-next-line global-require
   const { listLearningActions } = require('../services/operations/learningActions');
-  assert.deepEqual(listLearningActions(), ['disable_auto_apply'],
-    'there is deliberately no enable_auto_apply — a machine proposing that it be '
-    + 'trusted with more is the one shape nobody should build, however many '
-    + 'confirmations sit in front of it');
+  assert.deepEqual(listLearningActions().sort(),
+    ['disable_auto_apply', 'raise_confidence_floor']);
+  for (const key of listLearningActions()) {
+    assert.ok(!/enable|grant|allow|turn_on|lower|reduce|weaken/.test(key),
+      `${key} would grant more autonomy, which is never a machine's to propose`);
+  }
 });
 
 test('the list is capped — a list nobody reads is no list', () => {
@@ -282,17 +293,19 @@ test('old grades fall out of the window like every other pattern here', () => {
   assert.deepEqual(findLessons({ decisions }, { now: NOW }), []);
 });
 
-test('IT NAMES THE REGISTRY\'S ONE ACTION — no new power is granted', () => {
+test('IT NAMES AN ACTION THAT ONLY SWITCHES OFF — no new power is granted', () => {
   const decisions = Array.from({ length: 10 }, (_, i) => graded({ subjectId: i }));
   const [lesson] = findLessons({ decisions }, { now: NOW });
   assert.deepEqual(lesson.applyAction, {
     action: 'disable_auto_apply',
     payload: { checkKeys: ['load_lifecycle.conflict'] },
   });
-  // The most this can do, once a person agrees, is turn something OFF.
+  // The most THIS lesson can do, once a person agrees, is turn something off —
+  // and the registry it draws from has nothing in it that grants more.
   // eslint-disable-next-line global-require
   const { listLearningActions } = require('../services/operations/learningActions');
-  assert.deepEqual(listLearningActions(), ['disable_auto_apply']);
+  assert.deepEqual(listLearningActions().sort(),
+    ['disable_auto_apply', 'raise_confidence_floor']);
 });
 
 test('THE THRESHOLD ADVICE IS WORDS, NOT AN ACTION', () => {

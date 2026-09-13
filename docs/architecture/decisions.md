@@ -332,3 +332,69 @@ model the background passes are measured by.
 
 (The admin panel's own Apply button still journals nothing. That is a real gap,
 recorded here rather than fixed in passing.)
+
+## Automatic rollback, and the five ways it refuses
+
+Post-action verification could reach exactly one contradiction — a value that no
+longer matches what the correction wrote — and could not tell **who** changed it,
+so it said `someone` and refused every time. The machinery was complete and
+unreachable: the only contradiction it could detect was the one it must never
+undo. `autoRevert` was false on every action as a consequence, and the header
+said so honestly.
+
+Two things were missing, and neither is a second decision engine.
+
+**Where the conflicting change came from.** `lib/decisions/rollbackSafety.js`
+reads the trail the application already keeps — `operational_corrections` records
+an initiator on every applied correction, `admin_audit_log` records who touched
+what. A person after us is a **human override** and is never undone: software and
+a person taking turns overwriting each other is a fight the software wins,
+because it never gets bored. Finding nothing at all is **unknown origin**, and is
+also never undone — the audit trail does not cover every write path in this
+application, so absence of evidence is genuinely absence of knowledge.
+
+**Whether the reason survived.** The case rollback is actually for is the
+opposite one: the values are intact, nobody has touched them, and the operational
+evidence that justified writing them is no longer true. Detecting that needs the
+action's OWN evidence derivation — the same one its `apply` re-runs under lock
+before writing — asked read-only. That is why `stillJustified` is declared per
+action rather than computed centrally.
+
+### Six verdicts, because four could not separate three situations
+
+| Verdict | What happens |
+|---|---|
+| `verified_correct` | the values hold and the evidence still supports them |
+| `contradicted_by_evidence` | the reason evaporated — the only path to an undo |
+| `human_override` | a person disagreed. Recorded, never reversed |
+| `unknown_origin` | something changed it and nothing says what. Never reversed |
+| `automatically_reverted` | put back, with the evidence in the audit row |
+| `requires_human_review` | everything ambiguous ends here, never at an undo |
+
+### What may never be undone automatically
+
+Every action **declares an impact class** — `operational`, `employment`, `pay`,
+`discipline` or `compliance` — and only `operational` is ever eligible. That is
+not a judgement left to whoever edits the registry next: a test asserts each
+action has declared one, an action with no class is refused rather than assumed
+harmless, and `autoRevert: true` on a non-operational action fails the build.
+`identity.sync_profile_status` writes employment status and is classed
+accordingly.
+
+Two more refusals sit on top: a correction already reverted once, and a subject
+whose oscillation budget is spent. One put-back is a correction; two is two
+systems arguing, and a person is asked instead.
+
+### The one action that is armed, and why
+
+`board.link_person` — and nothing else. It links a Dispatcher Board snapshot row
+to a person. Clearing that link changes no employment, pay, home time or truck
+assignment; the Board is an external authority re-read by its own poller, so a
+changed name on a row is the Board saying so rather than a person arguing; the
+revert restores the previous value exactly; and leaving it wrong feeds every
+screen that reads the Board. Its `stillJustified` asks the one question the link
+was made on — do the names still agree — using the same matcher the linker used.
+A vanished row, an absent person or a blank name all answer "holds", because *we
+cannot see the reason* and *the reason is gone* are different sentences and only
+the second may undo anything.
+

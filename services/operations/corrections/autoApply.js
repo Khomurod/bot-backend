@@ -41,6 +41,17 @@ const { MIN_CONFIDENCE, recordDecisionFor } = require('./decisionSeam');
 const DEFAULT_CAP = 50;
 
 /**
+ * The confidence floor this check has been tuned to, or null to inherit.
+ *
+ * Read from the settings the planner already loaded, so an accepted threshold
+ * proposal costs no extra query — the row is in hand either way.
+ */
+function floorFor(settings, item) {
+  const row = settings?.get?.(item?.finding?.checkKey);
+  return row?.minConfidence ?? null;
+}
+
+/**
  * The key a capped check files about ITSELF — named once, because it is both
  * filed and resolved below and a second literal is a second thing to get wrong.
  */
@@ -350,7 +361,9 @@ async function runAutoCorrections({
   // evidence — the journal enforces that, not this loop, so a caller cannot
   // forget it.
   for (const item of shadowPlan) {
-    await recordDecisionFor(item, { shadow: true, takeDecision: takeDecisionFn })
+    await recordDecisionFor(item, {
+      shadow: true, takeDecision: takeDecisionFn, minConfidence: floorFor(settings, item),
+    })
       .catch(() => null);
   }
 
@@ -368,7 +381,9 @@ async function runAutoCorrections({
     // re-derivation under FOR UPDATE — all still hold, and a database blip
     // silently turning off every automatic repair would be a worse failure
     // than an unrecorded one.
-    const decision = await recordDecisionFor(item, { shadow: false, takeDecision: takeDecisionFn })
+    const decision = await recordDecisionFor(item, {
+      shadow: false, takeDecision: takeDecisionFn, minConfidence: floorFor(settings, item),
+    })
       .catch((err) => {
         console.warn(`[CORRECTIONS] decision not recorded for finding ${item.finding.id}:`,
           err.message);

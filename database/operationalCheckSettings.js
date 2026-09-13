@@ -43,6 +43,12 @@ function mapSetting(row) {
     shadow: row.shadow === true,
     autoApplyEnabled: row.auto_apply_enabled,
     maxAutoPerRun: row.max_auto_per_run,
+    // NULL means "inherit the global floor" — the convention every settings
+    // column in this application uses, and the reason this migration changed no
+    // behaviour on the day it ran.
+    minConfidence: row.min_confidence == null ? null : Number(row.min_confidence),
+    minConfidenceSetBy: row.min_confidence_set_by ?? null,
+    minConfidenceSetAt: row.min_confidence_set_at ?? null,
     updatedBy: row.updated_by,
     updatedAt: row.updated_at,
   };
@@ -51,6 +57,7 @@ function mapSetting(row) {
 async function listCheckSettings(client = null) {
   const res = await runner(client)(
     `SELECT check_key, mode, shadow, auto_apply_enabled, max_auto_per_run,
+            min_confidence, min_confidence_set_by, min_confidence_set_at,
             updated_by, updated_at
        FROM operational_check_settings ORDER BY check_key`
   );
@@ -121,6 +128,42 @@ async function deleteCheckSettings(checkKey, client = null) {
   return res.rowCount > 0;
 }
 
+/**
+ * Set (or clear) the confidence a check needs before it acts on its own.
+ *
+ * ITS OWN FUNCTION rather than a field on `upsertCheckSettings`, because the
+ * two are written by different things for different reasons: the mode is an
+ * operator deciding how much they trust a check, and this is an accepted
+ * learning proposal moving one number with its evidence behind it. Folding it
+ * into the general upsert would mean every caller of that had to remember not
+ * to blank it.
+ *
+ * NULL clears it, and the check goes back to inheriting the global floor.
+ *
+ * THE RANGE IS THE DATABASE'S JOB. `operational_check_settings_min_confidence_range`
+ * refuses anything outside 70–95, so a floor that would make a check LESS
+ * cautious cannot be stored however it is reached. Nothing is clamped here on
+ * purpose: silently rounding a bad value into range would hide the bug that
+ * produced it.
+ */
+async function setMinConfidence(checkKey, minConfidence, { setBy = null } = {}, client = null) {
+  const value = minConfidence == null ? null : Math.round(Number(minConfidence));
+  const res = await runner(client)(
+    `INSERT INTO operational_check_settings (check_key, min_confidence, min_confidence_set_by,
+                                             min_confidence_set_at, updated_at)
+     VALUES ($1, $2, $3, CASE WHEN $2::smallint IS NULL THEN NULL ELSE NOW() END, NOW())
+     ON CONFLICT (check_key) DO UPDATE SET
+       min_confidence = EXCLUDED.min_confidence,
+       min_confidence_set_by = EXCLUDED.min_confidence_set_by,
+       min_confidence_set_at = EXCLUDED.min_confidence_set_at,
+       updated_at = NOW()
+     RETURNING *`,
+    [checkKey, value, setBy]
+  );
+  return mapSetting(res.rows[0]);
+}
+
 module.exports = {
   MODES, mapSetting, listCheckSettings, upsertCheckSettings, deleteCheckSettings,
+  setMinConfidence,
 };
