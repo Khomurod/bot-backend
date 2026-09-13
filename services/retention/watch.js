@@ -257,8 +257,22 @@ async function runRetentionPass({ now = Date.now(), deps = defaultDeps(), option
   try {
     drivers = await deps.inputs.gatherRetentionInputs(options);
   } catch (err) {
+    // A PASS THAT READ NOTHING IS A FAILED PASS, NOT A CLEAN ONE.
+    //
+    // `errors` is plural and `statusFromSummary` reads `error`, singular, so
+    // this early return recorded itself in the ledger as `ok`. The watch could
+    // be permanently unable to read the fleet — a dropped table, a permission
+    // change, a bad migration — and `retention_watch`, catalogued CRITICAL,
+    // would report healthy the whole time, with an empty retention table that
+    // looks exactly like a fleet nobody is worried about. That is the failure
+    // this file's own comment thirty lines below says it exists to remove.
+    //
+    // The rule is the self-healing pass's: the PASS decides whether its errors
+    // amount to a failure and says so in `error`, so `statusFromSummary` stays
+    // deliberately dumb and "one bad driver row among many is not a failed
+    // pass" keeps holding.
     console.warn('[RETENTION] could not read the fleet:', err.message);
-    return { ...summary, errors: [err.message] };
+    return { ...summary, errors: [err.message], error: `could not read the fleet: ${err.message}` };
   }
 
   const cohort = [];
@@ -274,6 +288,14 @@ async function runRetentionPass({ now = Date.now(), deps = defaultDeps(), option
     } catch (err) {
       summary.errors.push(`${driver.driverName}: ${err.message}`);
     }
+  }
+
+  // EVERY DRIVER FAILED — the same blindness wearing a different shape. One bad
+  // row among a hundred is noise and stays `ok`; a hundred out of a hundred is
+  // this pass not having run.
+  if (summary.checked && summary.errors.length === summary.checked) {
+    summary.error = `none of the ${summary.checked} driver(s) could be checked`;
+    return summary;
   }
 
   if (cohort.length) summary.summarised = await announceCohort(cohort, { nowIso, deps });

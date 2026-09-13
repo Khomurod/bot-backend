@@ -52,15 +52,25 @@ function defaultDeps() {
  * narrower.
  */
 async function gatherSources(deps, { limit = 500 } = {}) {
+  // WHICH SOURCES COULD NOT BE READ, counted rather than only logged.
+  //
+  // Every source below is caught on its own — a table that does not exist yet
+  // must cost that one input, not the pass. But the catches were SILENT to the
+  // caller, so a pass with all six sources unreadable returned `found: 0` and
+  // was recorded as `ok`: "there is nothing to learn" and "I could not read
+  // anything to learn from" were the same result, which is the ambiguity this
+  // whole layer exists to remove.
+  const unreadable = [];
+  const lost = (what) => (err) => {
+    console.warn(`[LEARNING] could not read ${what}:`, err.message);
+    unreadable.push(what);
+  };
+
   const [corrections, conversations, decisions, memories, outcomes, settings] = await Promise.all([
-    deps.corrections.listCorrections({ live: false, limit }).catch((err) => {
-      console.warn('[LEARNING] could not read reverted corrections:', err.message);
-      return [];
-    }),
-    deps.conversations.listConversations({ limit: 200 }).catch((err) => {
-      console.warn('[LEARNING] could not read recruiting conversations:', err.message);
-      return [];
-    }),
+    deps.corrections.listCorrections({ live: false, limit })
+      .catch((err) => { lost('reverted corrections')(err); return []; }),
+    deps.conversations.listConversations({ limit: 200 })
+      .catch((err) => { lost('recruiting conversations')(err); return []; }),
     // THE WORLD DISAGREEING, rather than a person. Reverts are somebody
     // objecting and refusals are somebody rejecting a draft; this is a check
     // that acted and whose action the verification pass later found did not
@@ -72,35 +82,26 @@ async function gatherSources(deps, { limit = 500 } = {}) {
     // input silently turned every such caller's learning off.
     Promise.resolve(deps.decisions?.listRecentDecisions?.({ verdict: 'act', limit: 300 }))
       .then((rows) => rows || [])
-      .catch((err) => {
-        console.warn('[LEARNING] could not read graded decisions:', err.message);
-        return [];
-      }),
+      .catch((err) => { lost('graded decisions')(err); return []; }),
     // THE OWNER SAYING WHAT THEY WANT, IN WORDS. The other three sources are
     // somebody objecting after the fact; this one is the closest thing to a
     // stated business rule the application ever receives. Same optional chain
     // and same reason: a partial dependency map loses this source only.
     Promise.resolve(deps.knowledge?.listMemories?.({ limit: 200 }))
       .then((rows) => rows || [])
-      .catch((err) => {
-        console.warn('[LEARNING] could not read remembered answers:', err.message);
-        return [];
-      }),
+      .catch((err) => { lost('remembered answers')(err); return []; }),
     // THE CONFIDENCE EACH GRADED DECISION ACTED AT, which is the only variable
     // a threshold proposal is about. Optional-chained like the source above it,
     // for the same reason: a caller with a partial dependency map loses these
     // suggestions, not the whole pass.
     Promise.resolve(deps.decisions?.confidenceOutcomes?.({ sinceDays: 90 }))
       .then((o) => o || { available: false, byCheck: {} })
-      .catch((err) => {
-        console.warn('[LEARNING] could not read decision confidences:', err.message);
-        return { available: false, byCheck: {} };
-      }),
+      .catch((err) => { lost('decision confidences')(err); return { available: false, byCheck: {} }; }),
     // The floors already in force, so a proposal compares against what is
     // actually configured rather than against the global default.
     Promise.resolve(deps.checkSettings?.listCheckSettings?.())
       .then((rows) => rows || [])
-      .catch(() => [])
+      .catch((err) => { lost('the confidence floors in force')(err); return []; }),
   ]);
   return {
     corrections,
@@ -112,8 +113,15 @@ async function gatherSources(deps, { limit = 500 } = {}) {
     checkFloors: Object.fromEntries(
       (settings || []).map((row) => [row.checkKey, row.minConfidence ?? null])
     ),
+    // Named, so the pass can say what it lost rather than reporting a clean
+    // run over inputs it never saw. SOURCE_COUNT below is what "all of them"
+    // is measured against.
+    unreadable,
   };
 }
+
+/** How many inputs `gatherSources` reads. All of them lost is a failed pass. */
+const SOURCE_COUNT = 6;
 
 /**
  * One pass.
@@ -131,7 +139,31 @@ async function runLearningPass({ now = Date.now(), deps = defaultDeps(), options
   try {
     sources = await gatherSources(deps, options);
   } catch (err) {
-    return { ...summary, errors: [err.message] };
+    // A PASS WITH NO INPUTS IS A FAILED PASS, NOT A CLEAN ONE.
+    //
+    // `errors` is plural and `statusFromSummary` reads `error`, singular, so
+    // this early return recorded itself as `ok`. The learning pass would then
+    // report healthy for ever while unable to read a single one of the four
+    // things it learns from — and "found nothing to learn" is its most common
+    // honest outcome, so the ledger could not tell the two apart.
+    return {
+      ...summary,
+      errors: [err.message],
+      error: `could not read anything to learn from: ${err.message}`,
+    };
+  }
+
+  // WHAT IT COULD NOT READ, on the summary rather than only in the log — and a
+  // pass that lost EVERY source is a failed pass, because "nothing to learn"
+  // and "nothing to learn FROM" produce the same empty result and only one of
+  // them is good news.
+  summary.sourcesUnreadable = sources.unreadable?.length || 0;
+  if (summary.sourcesUnreadable >= SOURCE_COUNT) {
+    return {
+      ...summary,
+      errors: sources.unreadable.slice(),
+      error: `none of the ${SOURCE_COUNT} sources could be read`,
+    };
   }
 
   const lessons = findLessons(sources, { ...options, now: nowIso });
@@ -181,6 +213,13 @@ async function runLearningPass({ now = Date.now(), deps = defaultDeps(), options
     } catch (err) {
       summary.errors.push(`${lesson.kind}:${lesson.subjectId}: ${err.message}`);
     }
+  }
+
+  // EVERY LESSON FAILED to record — the same blindness wearing a different
+  // shape. One failing among several is noise and stays `ok`; none of them
+  // landing is this pass not having run.
+  if (summary.found && summary.errors.length === summary.found) {
+    summary.error = `none of the ${summary.found} lesson(s) could be recorded`;
   }
 
   return summary;

@@ -251,3 +251,36 @@ this was not expressible at all.
 Guarded by `tests/selfHealing.test.js` — "a ledger nobody could read leaves every
 worker saying so, not missing" and "a pass that could read nothing is a FAILED
 pass, not a quiet one", both confirmed failing against the previous commit.
+
+## Three passes that reported a clean run over nothing
+
+The same defect, found three times in one audit and fixed the same way each
+time. `statusFromSummary` reads **`error`, singular**; a summary carrying
+`errors`, plural, reaches nothing. So every pass that ended early with
+`{ ...summary, errors: [message] }` recorded itself in the ledger as **ok**.
+
+| pass | what it could not do, while reporting healthy |
+|---|---|
+| `self_healing` | read the health of any component |
+| `retention_watch` (critical) | read one row of the fleet |
+| `learning_pass` | read any of its six inputs |
+
+The rule, now applied to all three: **the pass decides whether its errors amount
+to a failure and says so in `error`.** `statusFromSummary` stays deliberately
+dumb, so "one bad driver row among a hundred is not a failed pass" keeps
+holding, and each pass fails in the three shapes that actually mean it did not
+run:
+
+- its inputs could not be read at all;
+- every item it was handed failed;
+- (learning only) **every source was lost** — its six inputs are each caught
+  individually so a missing table costs one input rather than the pass, and
+  those catches were silent, so `found: 0` meant both "nothing to learn" and
+  "nothing to learn FROM". `summary.sourcesUnreadable` now carries the count
+  whether or not it reaches six.
+
+`tests/selfHealing.test.js`, `tests/retentionWatch.test.js` and
+`tests/learningPass.test.js` each carry the regression, all confirmed failing
+against the previous commit. One of them, in the retention watch, already had
+the right NAME — "a database failure is a reported error, not a crash and not a
+false all-clear" — and asserted the plural field that nothing reads.
