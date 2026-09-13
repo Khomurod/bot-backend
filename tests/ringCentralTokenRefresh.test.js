@@ -182,6 +182,57 @@ test('an unreachable database or settings row degrades to a reported no-op', asy
   } finally { cfgFail.restore(); }
 });
 
+/**
+ * "REPORTED" TO WHOM? The test above proved the no-op is reported into
+ * `summary.errors` — and nothing reads `errors`. `statusFromSummary`, which is
+ * what the run ledger grades every worker by, reads `error`, SINGULAR.
+ *
+ * So a job that could not reach the database, or could not read the
+ * RingCentral settings, recorded itself as a clean run. `recruiter_logins` is
+ * catalogued CRITICAL and its whole purpose is to keep refresh tokens alive
+ * inside RingCentral's 7-day window. A silent no-op here expires every
+ * recruiter's login a week later, on a Monday nobody was watching — which is
+ * the exact failure this job was written to prevent — while `/api/health` says
+ * the logins are fine the entire time.
+ *
+ * Same defect, same rule as the contradiction and self-healing passes: the JOB
+ * decides whether its errors amount to a failure and says so in `error`.
+ */
+test('A JOB THAT COULD NOT RUN IS NOT A CLEAN RUN', async () => {
+  // eslint-disable-next-line global-require
+  const { statusFromSummary } = require('../services/operations/runLedger');
+
+  const listFail = loadJob({ listError: new Error('connect ECONNREFUSED') });
+  try {
+    const summary = await listFail.job.refreshAllRecruiterTokens({ delayMs: 0 });
+    assert.equal(statusFromSummary(summary).status, 'error',
+      'unreachable database is a failed run, not a quiet one');
+    assert.match(summary.error, /could not list the recruiters/i);
+  } finally { listFail.restore(); }
+
+  // A SETTINGS READ THAT THREW IS NOT "NOBODY CONFIGURED IT". The old code
+  // caught the throw into a null and could no longer tell those apart, which
+  // turns an outage into a reassuring "nothing is set up yet".
+  const cfgFail = loadJob({ recruiters: [oauthRow(1, 'Jane')], cfgError: new Error('no settings') });
+  try {
+    const summary = await cfgFail.job.refreshAllRecruiterTokens({ delayMs: 0 });
+    assert.equal(statusFromSummary(summary).status, 'error');
+    assert.match(summary.error, /could not read the RingCentral settings/i);
+  } finally { cfgFail.restore(); }
+});
+
+/** And genuinely nothing to do stays a clean run — silence is correct there. */
+test('no recruiters with their own credentials is a clean run, not a failure', async () => {
+  // eslint-disable-next-line global-require
+  const { statusFromSummary } = require('../services/operations/runLedger');
+  const { job, restore } = loadJob({ recruiters: [] });
+  try {
+    const summary = await job.refreshAllRecruiterTokens({ delayMs: 0 });
+    assert.deepEqual(summary.errors, []);
+    assert.equal(statusFromSummary(summary).status, 'ok');
+  } finally { restore(); }
+});
+
 test('the job runs daily and stops cleanly', async () => {
   const { job, refreshed, restore } = loadJob({ recruiters: [oauthRow(1, 'Jane')] });
   try {

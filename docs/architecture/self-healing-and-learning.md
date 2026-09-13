@@ -161,6 +161,52 @@ correctly, and `integration()` threw it away.
 Each of those now reports `blocked`. A cooldown is deliberately NOT one: all
 providers unreachable is a failure to reach, not a switch nobody flipped.
 
+### The watchman could not report itself
+
+Found by watching a deploy fail to take effect. After the commit that taught the
+nine custom integrations to say `blocked`, none of them reached
+`systems.waiting` — across thirty-two minutes and at least one due pass — while
+`self_healing` reported healthy throughout.
+
+`runSelfHealingPass` returns **`errors`**, plural, a list. `statusFromSummary`,
+which is what the run ledger grades every worker by, reads **`error`**,
+singular. So a pass whose `gatherObservations` threw returned early having saved
+NOTHING, and the ledger wrote `status: 'ok'`.
+
+That is the worst-shaped failure in the application, because this is the watch
+that makes every OTHER component's failure visible. When it dies,
+`system_health_states` simply freezes at whatever it last held; every component
+keeps reporting the health it had at that moment; and `self_healing` —
+catalogued **critical** — reads healthy the whole time. Nothing anywhere says
+the picture has stopped moving.
+
+**The rule, already settled once for the contradiction pass: the PASS decides
+whether its errors amount to a failure and says so in `error`.**
+`statusFromSummary` stays deliberately dumb so that "one bad component among
+many is not a failed pass" keeps holding — a rule worth keeping, because a
+single unreadable driver or a single deadlock is noise, and treating it as an
+outage is how a health system gets switched off.
+
+Three workers had the same shape and now follow the same rule:
+
+| Worker | What a silent no-op cost | When it is a failure |
+|---|---|---|
+| `self_healing` | the whole health picture freezes, invisibly | gather threw, or no component could be recorded |
+| `recruiter_logins` (critical) | every recruiter's RingCentral login expires 7 days later, on a Monday nobody was watching — the exact failure the job exists to prevent | the recruiter list could not be read, or the settings read threw |
+| `ai_model_maintenance` | a retired model is never dropped, so the chain keeps pointing at models that no longer answer | no enabled provider could be verified |
+
+A fourth thing came out of the same reading. `recruiter_logins` read its
+settings with `.catch(() => null)`, which collapsed **a failed read** and **an
+empty settings row** into one answer — so a database outage reported as
+"RingCentral is not configured yet", the most reassuring possible description of
+an outage. Those are now separate: a throw is an `error`, an absent row is
+`blocked`.
+
+And the seam that hid it: `runSelfHealingPass` called its gatherer through the
+module-local binding, so a test replacing the export was silently ignored. The
+one seam the failure needed could not be reached from a test. It is injected
+now.
+
 ### Configured is not the same as reachable
 
 Two features could be fully configured, report healthy, and be structurally

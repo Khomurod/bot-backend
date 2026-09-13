@@ -181,6 +181,19 @@ async function runModelMaintenance({ initiator = 'refresh' } = {}, deps = defaul
     console.log(`[AI MODELS] ${summary.checked} provider(s) checked, ${summary.changed} chain(s) changed, `
       + `${summary.retired} model(s) retired, ${summary.errors} error(s).`);
   }
+
+  // EVERY PROVIDER FAILING IS A FAILED PASS, NOT A CLEAN ONE. `errors` is a
+  // count and the run ledger grades by `error`, singular, so a maintenance run
+  // where nothing could be verified recorded itself as a success — and this is
+  // the job that drops a retired model and promotes the next one, so a silent
+  // no-op leaves the chain pointing at models that no longer answer.
+  //
+  // One provider failing among several stays `ok`: that is the router's
+  // ordinary weather, and cooling it down is already somebody else's job.
+  if (summary.checked && summary.errors === summary.checked) {
+    summary.error = `none of the ${summary.checked} enabled provider(s) could be verified`;
+  }
+
   return summary;
 }
 
