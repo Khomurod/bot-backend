@@ -48,7 +48,11 @@ const DEFAULT_CAP = 50;
  */
 function floorFor(settings, item) {
   const row = settings?.get?.(item?.finding?.checkKey);
-  return row?.minConfidence ?? null;
+  // `min_confidence` — the raw column name. `loadCheckSettings` below returns
+  // the rows unmapped, so reading `minConfidence` here found `undefined` on
+  // every check and silently inherited the global floor for ever.
+  const value = row?.min_confidence ?? row?.minConfidence;
+  return value == null ? null : Number(value);
 }
 
 /**
@@ -83,7 +87,13 @@ async function loadCheckSettings(db = defaultDb) {
   // `auto_apply_enabled` because the row is read elsewhere and a field silently
   // dropped is its own kind of defect. `modeOf` decides which one wins.
   const res = await db.query(
-    `SELECT check_key, max_auto_per_run, shadow, auto_apply_enabled,
+    // `min_confidence` IS SELECTED HERE OR THE SETTING DOES NOT EXIST. This
+    // module keeps its own query rather than calling the data layer, so a
+    // column added there reaches this planner only when it is added here too —
+    // and an accepted threshold proposal that writes a row nothing reads is
+    // precisely the "visible in the UI, ignored by the runtime" defect this
+    // application keeps finding. It was written that way for one commit.
+    `SELECT check_key, max_auto_per_run, shadow, auto_apply_enabled, min_confidence,
             COALESCE(mode, CASE WHEN auto_apply_enabled THEN 'autopilot' ELSE 'suggest' END)
               AS mode
        FROM operational_check_settings`
