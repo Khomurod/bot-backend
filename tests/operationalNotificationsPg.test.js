@@ -404,3 +404,24 @@ test('the key table holds no body, no driver and no chat id',
       'anything more would be the backlog this design refuses to build, one '
       + 'table over — there must be nothing here that could be sent');
   });
+
+/**
+ * A COUNT WITHOUT A REASON IS A NUMBER NOBODY CAN ACT ON.
+ *
+ * "You switched this category off" and "there is nowhere to send it" are the
+ * same number and opposite problems: one is a decision somebody made, the other
+ * is a gap nobody has noticed. Production reported 243 discarded
+ * `load_lifecycle` notices and did not say which.
+ */
+test('the summary says WHY a category was discarded, not only how many',
+  { skip: skipWithoutPg() }, async (t) => {
+    const harness = await seed(t);
+    const { operationalNotifications: n } = load(harness);
+    await n.recordDiscard('load_lifecycle', 'disabled', 'load_lifecycle:load:1:a');
+    await n.recordDiscard('fuel', 'no_destination', 'fuel:truck:2:b');
+
+    const out = await n.summariseDiscards();
+    assert.equal(out.byReason.load_lifecycle, 'disabled');
+    assert.equal(out.byReason.fuel, 'no_destination');
+    assert.equal(out.total, 2);
+  });
