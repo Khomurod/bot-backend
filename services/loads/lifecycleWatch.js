@@ -142,16 +142,23 @@ function worthAsking(out, nowIso) {
 }
 
 /**
- * The one person recorded in a unit number, or nobody.
+ * The one person recorded in a unit number, or nobody — and WHICH KIND of
+ * nobody.
  *
- * Returns a `driver_units` row (whose `personId` is the human) only when the
- * number is unambiguous. Two holders means two fleets, or a handover nobody
- * closed — either way it is not this watch's to resolve.
+ * `person` is a `driver_units` row (whose `personId` is the human) only when
+ * the number is unambiguous. Two holders means two fleets, or a handover
+ * nobody closed; either way it is not this watch's to resolve.
+ *
+ * `known` is the half that matters for a load already carrying a person.
+ * "I read the holders and there is no single one" and "I could not read them"
+ * are different answers: the first is grounds to REMOVE a person already
+ * stamped on the load, the second is grounds to touch nothing. A read that
+ * errored must never wipe a correct attribution.
  */
 async function onlyHolderOf(deps, unit) {
   const holders = await deps.people.getOpenHoldersForUnit(String(unit)).catch(() => null);
-  if (!Array.isArray(holders)) return null;
-  return holders.length === 1 ? holders[0] : null;
+  if (!Array.isArray(holders)) return { person: null, known: false };
+  return { person: holders.length === 1 ? holders[0] : null, known: true };
 }
 
 /** One load, one verdict, one row written. */
@@ -178,7 +185,10 @@ async function checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }) {
   // otherwise. A load with no person is a load somebody can still read; a load
   // with the wrong person is a wrong answer nothing downstream can detect.
   // The contradiction itself is `identity.unit_open_twice`'s to report.
-  const person = unit ? await onlyHolderOf(deps, unit) : null;
+  const holder = unit
+    ? await onlyHolderOf(deps, unit)
+    // No unit at all is itself a certain answer: there is nobody to attach.
+    : { person: null, known: true };
   const position = positionFor(fleets, unit, group?.group_name || null, deps);
   const remembered = await deps.store.getLoadState(load.orderId);
 
@@ -196,7 +206,13 @@ async function checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }) {
     groupId: group?.id || null,
     // `personId`, NOT `id`: a driver_units ROW's `id` is the assignment, not
     // the human.
-    personId: person?.personId ?? null,
+    personId: holder.person?.personId ?? null,
+    // AND REMOVE ONE ALREADY THERE. The store's upsert keeps the stored person
+    // when it is handed null, which is right for a read that failed and wrong
+    // for a unit now known to be ambiguous: loads stamped by the old bare-unit
+    // lookup would keep a wrong human forever, in the column every later
+    // feature joins on. Only a read that SUCCEEDED may clear it.
+    clearPerson: holder.known && !holder.person,
     unitNumber: unit,
     phase: verdict.phase,
     confidence: verdict.confidence,

@@ -31,7 +31,12 @@ function harness({
       async pruneFinishedLoads() { calls.pruned += 1; return 0; },
     },
     groups: { async getDriverGroupsByActiveFilter() { return groups; } },
-    people: { async getOpenHoldersForUnit() { return holders; } },
+    people: {
+      async getOpenHoldersForUnit() {
+        if (holders instanceof Error) throw holders;
+        return holders;
+      },
+    },
     findings: {
       async upsertFinding(f) { calls.findings.push(f); return { id: calls.findings.length, ...f }; },
       async resolveClearedFindings(keys, keep) { calls.resolved.push({ keys, keep }); return 0; },
@@ -433,4 +438,58 @@ test('a missing notification dependency costs the notice, never the pass', async
 
   assert.equal(summary.checked, 2, 'both orders were still examined');
   assert.equal(calls.findings.length, 2, 'and both findings were still filed');
+});
+
+// ── removing a person who should never have been there ───────────────────────
+
+/**
+ * NOT WRITING A WRONG PERSON IS HALF THE FIX. The other half is taking one
+ * away.
+ *
+ * The store keeps the stored `person_id` when handed null — right for a pass
+ * that could not read something, and wrong here. Loads stamped by the old
+ * bare-unit lookup carry whichever holder Postgres returned first, and without
+ * this they would keep that human forever in the column every later feature
+ * joins on.
+ */
+test('a unit now known to have two holders CLEARS the person already stamped', async () => {
+  const { deps, calls } = harness({
+    orders: [ORDER], position: { ...SHIPPER, speedMph: 0, at: at(5) },
+    holders: [{ personId: 11, unitNumber: '310' }, { personId: 12, unitNumber: '310' }],
+    stored: { orderId: ORDER.id, phase: 'at_pickup', personId: 11, wasAtPickup: true, wasAtDelivery: false, phaseSince: at(-60) },
+  });
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+
+  assert.equal(calls.written[0].personId, null);
+  assert.equal(calls.written[0].clearPerson, true,
+    'two holders is an ANSWER — "nobody" — not a failure to answer');
+});
+
+/**
+ * And the mirror, which is why the flag exists at all: a read that FAILED must
+ * never wipe a correct attribution. "I could not check" and "there is nobody"
+ * are opposite answers.
+ */
+test('a holders read that FAILED leaves the stored person alone', async () => {
+  const { deps, calls } = harness({
+    orders: [ORDER], position: { ...SHIPPER, speedMph: 0, at: at(5) },
+    holders: new Error('the identity tables are unreachable'),
+    stored: { orderId: ORDER.id, phase: 'at_pickup', personId: 11, wasAtPickup: true, wasAtDelivery: false, phaseSince: at(-60) },
+  });
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+
+  assert.equal(calls.written[0].personId, null);
+  assert.equal(calls.written[0].clearPerson, false,
+    'a database outage must not erase a correct driver');
+});
+
+/** One holder still attaches, and does not ask for a clear. */
+test('one holder attaches the person and clears nothing', async () => {
+  const { deps, calls } = harness({
+    orders: [ORDER], position: { ...SHIPPER, speedMph: 0, at: at(5) },
+    holders: [{ personId: 11, unitNumber: '310' }],
+  });
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+  assert.equal(calls.written[0].personId, 11);
+  assert.equal(calls.written[0].clearPerson, false);
 });

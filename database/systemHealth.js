@@ -81,15 +81,25 @@ async function summariseHealthStates() {
   const res = await query(
     `SELECT COUNT(*) FILTER (WHERE status = 'ok')::int AS ok,
             COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
+            COUNT(*) FILTER (WHERE status = 'blocked')::int AS blocked,
             COUNT(*) FILTER (WHERE status IS NULL)::int AS unchecked,
             COUNT(*) FILTER (WHERE flapping_since IS NOT NULL)::int AS flapping,
-            ARRAY_REMOVE(ARRAY_AGG(component) FILTER (WHERE status = 'failed'), NULL) AS down
+            ARRAY_REMOVE(ARRAY_AGG(component) FILTER (WHERE status = 'failed'), NULL) AS down,
+            ARRAY_REMOVE(ARRAY_AGG(component) FILTER (WHERE status = 'blocked'), NULL)
+              AS waiting
        FROM system_health_states`
   );
   const row = res.rows[0] || {};
   return {
     ok: Number(row.ok || 0),
     failed: Number(row.failed || 0),
+    // SWITCHED OFF, COUNTED SEPARATELY, AND NEVER IN `down`. Production read
+    // `failed: 3, down: [the Dispatcher Board, the weekly finance report, the
+    // finance document reader]` for three features nobody had switched on —
+    // which is how a real outage gets lost among things that were never
+    // started. `waiting` names them; `down` is only what broke.
+    blocked: Number(row.blocked || 0),
+    waiting: row.waiting || [],
     unchecked: Number(row.unchecked || 0),
     flapping: Number(row.flapping || 0),
     down: row.down || [],
