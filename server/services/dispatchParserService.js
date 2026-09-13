@@ -12,14 +12,18 @@
  * commit to read it at. The reading path that survives is the one with a caller
  * outside the deleted page.
  *
- *   ./dispatchParser/constants.js        the size cap the inline reads share
- *   ./dispatchParser/textExtraction.js   PDF text layer, then OCR (both lazy)
+ * Its one remaining piece — getting text out of a file — moved OUT to
+ * ../../services/documents/pdfTextExtraction.js, because a services/finance
+ * worker needs it too and reaching up into server/ from there would invert the
+ * dependency direction. `./dispatchParser/constants.js` went with it: its OCR
+ * constants belong to that module, and its only other export had no importer
+ * left.
  */
 require('dotenv').config();
 
 const {
   extractTextFromPdf, extractTextFromImage,
-} = require('./dispatchParser/textExtraction');
+} = require('../../services/documents/pdfTextExtraction');
 
 async function extractRateConRawTextFromFile(file) {
   if (!file) {

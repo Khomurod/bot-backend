@@ -187,7 +187,16 @@ repository-wide working rules. The highest-consequence items:
     produces a money-code row; `ambiguous` means the parser refused to pick,
     which is an answer, not a failure. Capture cannot be switched on against a
     chat nobody validated, a repeat is recorded and never acted on, and message
-    text never reaches the application log. `tests/financeCapturePg.test.js`,
+    text never reaches the application log.
+    An attachment is queued, never fetched inside Telegram's message pipeline,
+    and read by a worker that holds exactly ONE document at a time — a memory
+    budget, not a preference, on a 512MB instance. `failed` ("could not fetch
+    it") retries on a ladder that stops; `needs_review` ("could not read it
+    well enough") never does, because a person is what it needs, and AI being
+    unavailable is always the second. What a model reads out of a document
+    fills that document's own row and feeds no total, no report figure and no
+    duplicate decision. `tests/financeCapturePg.test.js`,
+    `tests/financeDocumentsPg.test.js`, `tests/financeDocumentReader.test.js`,
     `tests/financeSettingsRoute.test.js`,
     `docs/architecture/finance-monitor.md`.
 

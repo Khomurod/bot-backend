@@ -154,8 +154,17 @@ instead.
 - **A repeat is recorded, never acted on.** The same *code* twice is a fact and
   is always flagged; the same *amount* to the same person inside a window is a
   suspicion and is flagged as one. Wenze cannot recall a money code.
+- **Attachments are read one at a time, in the background.** Receipts and
+  transfer screenshots are queued when they arrive and read by a worker that
+  holds exactly one at a time — a document sits whole in memory while it is
+  read, on a small instance. A PDF with real text is read as text; a scan goes
+  to AI vision. Anything Wenze cannot read with enough certainty is marked for a
+  person and says so, which is a different answer from "we could not fetch it":
+  the first never retries, the second does, on a ladder that stops.
 - The settings screen shows counts only. Rows get their own screen, behind its
   own permission, in a later stage.
+- AI is asked what is **printed** on a document, never for a judgement. No
+  total, no report figure and no repeat ever comes from a document reading.
 - Full rules: **[`docs/architecture/finance-monitor.md`](../architecture/finance-monitor.md)**.
 
 ### Driver home time

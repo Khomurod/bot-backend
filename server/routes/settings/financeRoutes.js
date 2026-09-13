@@ -21,6 +21,7 @@
 const express = require('express');
 const financeSettings = require('../../../database/financeSettings');
 const financeMessages = require('../../../database/financeMessages');
+const financeDocuments = require('../../../database/financeDocuments');
 const { checkChatId } = require('../../../services/telegramChatIdCheck');
 // Required directly, not taken from deps: the settings router only passes
 // { authMiddleware, telegram }, so expecting it as a dep would arrive
@@ -45,14 +46,19 @@ function createFinanceSettingsRouter({ authMiddleware, telegram }) {
    *
    * `available: false` means the table is not there yet, which is a different
    * answer from "nothing captured" and is reported as such.
+   *
+   * The document counts are counts too — how many are waiting, how many a
+   * person still has to look at. Never a file name, never a caption, never
+   * anything read out of one.
    */
   router.get('/finance/status', authMiddleware, async (req, res) => {
     try {
-      const [settings, capture] = await Promise.all([
+      const [settings, capture, documents] = await Promise.all([
         financeSettings.getFinanceSettings(),
         financeMessages.summariseCapture(),
+        financeDocuments.summariseDocuments(),
       ]);
-      res.json({ settings, capture });
+      res.json({ settings, capture, documents });
     } catch (err) {
       sendFailure(res, err, { message: 'Failed to read the Finance Monitor status', logPrefix: '[SETTINGS API]' });
     }

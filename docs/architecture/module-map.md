@@ -159,6 +159,10 @@ organization should converge toward.
 | Which group is read, and the rule that it cannot be read until validated | `database/financeSettings.js`, `server/routes/settings/financeRoutes.js`, admin `settings/FinanceTab.jsx` |
 | Storing what was said, and what was read out of it | `database/financeMessages.js`, tables `finance_settings`, `finance_messages`, `finance_moneycodes` (migration 0052) |
 | The capture decision, and the bot seam above it | `services/finance/captureService.js`, `bot/handlers/financeCaptureHandlers.js` (thin: no chat id, no parser, no query) |
+| Deciding what may be read, and what a reading means | `lib/finance/documentPolicy.js` (intake, read path, outcome, backoff), `lib/finance/documentPrompt.js` (the fenced prompt, the validator, the whitelist) — both pure |
+| Reading the attachments, one at a time | `services/finance/documentReader.js`, `services/finance/telegramFileDownload.js`, table `finance_documents` (migration 0053), worker key `finance_document_reader` |
+| Getting text out of a PDF or an image | `services/documents/pdfTextExtraction.js` — shared with the pinned rate-confirmation reader; `allowOcr: false` is how finance keeps tesseract.js off its path entirely |
+| The photo/document shapes of a Telegram message | `lib/telegram/fileDescriptor.js` — moved out of `services/pinnedContext/pinnedSource.js`, which re-exports it |
 
 Deliberately isolated: no foreign key out of the finance tables, no reader
 anywhere else, and nothing it stores feeds a decision. See
@@ -266,6 +270,7 @@ over `admin/src/pages/<area>/` holding data hooks and presentational sections:
 | `dispatch_eta_updates` / `fuel_stop_alerts` (`processing` claim + `FOR UPDATE SKIP LOCKED`) | Double-processing across instances |
 | `mileage_bonus_runs` | Double milestone runs |
 | `finance_messages` (`ON CONFLICT (chat_id, message_id) DO NOTHING`) and `finance_moneycodes` (`ON CONFLICT (message_ref_id, code_normalized)`) | A redelivered or replayed finance message becoming a second row, or a re-read double-counting a code |
+| `finance_documents` (UNIQUE `(chat_id, message_id, file_unique_id)`; claimed with `FOR UPDATE SKIP LOCKED` + attempts counted at claim) | The same attachment queued twice, two readers taking one document, and a crash loop retrying a poisoned row forever |
 
 ---
 
