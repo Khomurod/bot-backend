@@ -165,6 +165,11 @@ instead.
   own permission, in a later stage.
 - AI is asked what is **printed** on a document, never for a judgement. No
   total, no report figure and no repeat ever comes from a document reading.
+- **A weekly summary, every Monday morning**, covering the week that just ended:
+  how many codes, how much, anything posted twice, anything still needing a
+  person. Once per period and never twice — a restart cannot make it send
+  again. A week that began before the monitor was switched on is recorded as
+  such rather than reported as "$0 issued".
 - Full rules: **[`docs/architecture/finance-monitor.md`](../architecture/finance-monitor.md)**.
 
 ### Driver home time

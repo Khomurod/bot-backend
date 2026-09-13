@@ -160,6 +160,7 @@ organization should converge toward.
 | Storing what was said, and what was read out of it | `database/financeMessages.js`, tables `finance_settings`, `finance_messages`, `finance_moneycodes` (migration 0052) |
 | The capture decision, and the bot seam above it | `services/finance/captureService.js`, `bot/handlers/financeCaptureHandlers.js` (thin: no chat id, no parser, no query) |
 | Deciding what may be read, and what a reading means | `lib/finance/documentPolicy.js` (intake, read path, outcome, backoff), `lib/finance/documentPrompt.js` (the fenced prompt, the validator, the whitelist) — both pure |
+| The weekly summary: when it is due, what it says, and sending it once | `lib/finance/schedule.js` (Monday 08:00 America/Chicago, DST-correct), `lib/finance/weeklyReport.js` (the words; it adds nothing up), `database/finance/reports.js` (every figure COUNT/SUM in SQL), `services/finance/weeklyReportService.js`, table `finance_reports` (migration 0054), worker key `finance_weekly_report` |
 | Reading the attachments, one at a time | `services/finance/documentReader.js`, `services/finance/telegramFileDownload.js`, table `finance_documents` (migration 0053), worker key `finance_document_reader` |
 | Getting text out of a PDF or an image | `services/documents/pdfTextExtraction.js` — shared with the pinned rate-confirmation reader; `allowOcr: false` is how finance keeps tesseract.js off its path entirely |
 | The photo/document shapes of a Telegram message | `lib/telegram/fileDescriptor.js` — moved out of `services/pinnedContext/pinnedSource.js`, which re-exports it |
@@ -271,6 +272,7 @@ over `admin/src/pages/<area>/` holding data hooks and presentational sections:
 | `mileage_bonus_runs` | Double milestone runs |
 | `finance_messages` (`ON CONFLICT (chat_id, message_id) DO NOTHING`) and `finance_moneycodes` (`ON CONFLICT (message_ref_id, code_normalized)`) | A redelivered or replayed finance message becoming a second row, or a re-read double-counting a code |
 | `finance_documents` (UNIQUE `(chat_id, message_id, file_unique_id)`; claimed with `FOR UPDATE SKIP LOCKED` + attempts counted at claim) | The same attachment queued twice, two readers taking one document, and a crash loop retrying a poisoned row forever |
+| `service_runs('finance_weekly_report', 'weekly:<date>')` + the partial unique index on `finance_reports (period_start) WHERE status <> 'manual'` | The weekly money-code summary being sent twice — the redeploy-on-a-Monday case |
 
 ---
 
