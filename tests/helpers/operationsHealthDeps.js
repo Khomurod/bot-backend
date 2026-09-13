@@ -11,6 +11,7 @@
  * one block fail without touching the others.
  */
 function summaryDeps(overrides = {}) {
+  const over = overrides || {};
   return {
     consistency: {
       getConsistencyStatus: () => ({
@@ -47,6 +48,20 @@ function summaryDeps(overrides = {}) {
           windowDays: 14, events: 9, byBehavior: { harsh_braking: 6, speeding: 3 },
           driversWithEvents: 2, coachingSent: 1, coachingToDrivers: 1,
         };
+      },
+    },
+    // The Samsara poller's own heartbeat, which is what tells an empty safety
+    // table apart from a quiet fleet.
+    runs: {
+      async getRun(key) {
+        if (key !== 'samsara_safety_pipeline') return null;
+        return over.safetyPollerRun === undefined
+          ? {
+            lastStatus: 'ok',
+            lastFinishedAt: '2026-09-20T17:41:00.000Z',
+            lastSummary: { newEvents: 4 },
+          }
+          : over.safetyPollerRun;
       },
     },
     // Each block below is composed into the same summary, so each is faked in.

@@ -256,6 +256,13 @@ function recruitingDeps(over = {}) {
       async summariseKnowledge() { return { active: over.approved ?? 4 }; },
     },
     capabilityGate: { async isCapabilityEnabled() { return over.capability !== false; } },
+    smsMirrors: {
+      async summariseInboundSms() {
+        return over.inbound === undefined
+          ? { available: true, windowDays: 7, inWindow: 3, lastAt: '2026-09-12T22:00:00Z', everAt: '2026-09-12T22:00:00Z' }
+          : over.inbound;
+      },
+    },
     ...(over.deps || {}),
   };
 }
@@ -317,4 +324,78 @@ test('with messages recorded it is simply healthy', async () => {
   } };
   const all = await obs.gatherAllObservations(base, { now: NOW });
   assert.equal(find(all, 'retention_chat_signals').state, 'healthy');
+});
+
+// ── configured is not the same as reachable ─────────────────────────────────
+
+/**
+ * THE QUIETEST FAILURE THIS FEATURE HAS.
+ *
+ * Every readiness check is a SETTING. None of them proves a candidate's text
+ * can still arrive: inbound SMS depends on a RingCentral webhook subscription
+ * created by the Python leads engine, which sheds filters when a tenant refuses
+ * one and can lose the subscription outright. After that the feature reads
+ * "ready" and answers nobody, forever, and no screen can say why.
+ */
+test('fully configured but no candidate SMS has EVER arrived is not healthy', async () => {
+  const all = await obs.gatherAllObservations(
+    recruitingDeps({ inbound: { available: true, windowDays: 7, inWindow: 0, lastAt: null, everAt: null } }),
+    { now: NOW }
+  );
+  const r = find(all, 'recruiting_after_hours');
+  assert.equal(r.state, 'needs_human_attention');
+  assert.equal(r.blocked, true, 'a subscription nobody set up is configuration, not a fault');
+  assert.match(r.reason, /no candidate SMS has ever reached/i);
+});
+
+/** A quiet week with traffic in the past is still healthy. */
+test('a quiet week after real inbound traffic stays healthy', async () => {
+  const all = await obs.gatherAllObservations(
+    recruitingDeps({ inbound: { available: true, windowDays: 7, inWindow: 0, lastAt: null, everAt: '2026-08-01T10:00:00Z' } }),
+    { now: NOW }
+  );
+  assert.equal(find(all, 'recruiting_after_hours').state, 'healthy');
+});
+
+/** The evidence is optional; the readiness answer beside it is not. */
+test('losing the inbound read costs the evidence, never the readiness answer', async () => {
+  const d = recruitingDeps();
+  d.smsMirrors = { async summariseInboundSms() { throw new Error('table is gone'); } };
+  const all = await obs.gatherAllObservations(d, { now: NOW });
+  assert.equal(find(all, 'recruiting_after_hours').state, 'healthy');
+});
+
+// ── unconfigured is not a working system ────────────────────────────────────
+
+/**
+ * `blocked` WAS HARDCODED FALSE for all nine custom integrations, so a feature
+ * nobody had finished setting up appeared in the workers attention list AND was
+ * counted among the healthy systems — the same component answering two
+ * different things in one payload.
+ */
+test('an unconfigured custom integration is BLOCKED, not a healthy system', async () => {
+  const all = await obs.gatherAllObservations(
+    recruitingDeps({ approved: 0 }), { now: NOW }
+  );
+  const r = find(all, 'recruiting_after_hours');
+  assert.equal(r.state, 'needs_human_attention');
+  assert.equal(r.blocked, true);
+
+  const noProviders = await obs.gatherAllObservations(deps({ providers: [] }), { now: NOW });
+  assert.equal(find(noProviders, 'ai_providers').blocked, true,
+    'no provider enabled is a setting, not an outage');
+
+  const noRoute = await obs.gatherAllObservations(
+    deps({ routing: { enabled: true, defaultChatId: '', categoryChatIds: {} } }), { now: NOW }
+  );
+  assert.equal(find(noRoute, 'notification_destination').blocked, true);
+});
+
+/** A provider outage is still an outage, not a setting. */
+test('all providers in cooldown is FAILED, not blocked', async () => {
+  const cooled = [{ enabled: true, cooledUntil: '2099-01-01T00:00:00Z' }];
+  const all = await obs.gatherAllObservations(deps({ providers: cooled }), { now: NOW });
+  const r = find(all, 'ai_providers');
+  assert.equal(r.ok, false);
+  assert.equal(r.blocked, false, 'a cooldown is a failure to reach, not a switch nobody flipped');
 });

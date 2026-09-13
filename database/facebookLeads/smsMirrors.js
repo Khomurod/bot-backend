@@ -114,7 +114,43 @@ async function listSmsMirrorsByPhone(driverPhone, { limit = 30 } = {}) {
   return res.rows;
 }
 
+/**
+ * When a candidate last texted in, and how many have this week.
+ *
+ * THE ONLY EVIDENCE THAT THE INBOUND PATH IS ALIVE. Inbound SMS reaches this
+ * application through a RingCentral webhook subscription created by the Python
+ * leads engine; if that subscription is refused or lost, candidate messages
+ * simply stop arriving and every configuration check still reads "ready". The
+ * after-hours reply then answers nobody, for a reason no screen can show.
+ *
+ * Every inbound message already writes a row here with `source_type =
+ * 'inbound_rc'`, so this needs no new polling and no new table — it reads the
+ * telemetry the feature already produces.
+ */
+async function summariseInboundSms({ windowDays = 7 } = {}) {
+  const res = await query(
+    `SELECT COUNT(*)::int AS n, MAX(created_at) AS last_at
+       FROM facebook_lead_sms_mirrors
+      WHERE source_type = 'inbound_rc'
+        AND created_at > NOW() - ($1 || ' days')::interval`,
+    [String(windowDays)]
+  );
+  const ever = await query(
+    "SELECT MAX(created_at) AS last_at FROM facebook_lead_sms_mirrors WHERE source_type = 'inbound_rc'"
+  );
+  return {
+    available: true,
+    windowDays,
+    inWindow: res.rows[0]?.n || 0,
+    lastAt: res.rows[0]?.last_at || null,
+    // Distinguishes "quiet week" from "not one candidate message has EVER
+    // reached this application", which is a different problem entirely.
+    everAt: ever.rows[0]?.last_at || null,
+  };
+}
+
 module.exports = {
+  summariseInboundSms,
   insertFacebookLeadSmsMirror,
   getFacebookLeadSmsMirror,
   listSmsMirrorsByPhone,

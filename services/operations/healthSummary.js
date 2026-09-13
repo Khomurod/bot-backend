@@ -26,6 +26,7 @@ const defaultDeps = () => ({
   homeTimeHealth: require('./homeTimeHealth'),
   loads: require('../../database/loadLifecycle'),
   safety: require('../../database/driverSafety'),
+  runs: require('../../database/backgroundRuns'),
   fuelReadings: require('../../database/truckFuelReadings'),
   aiProviders: require('../../database/aiProviders'),
   systemHealth: require('../../database/systemHealth'),
@@ -160,12 +161,35 @@ function summariseWorkers(observations) {
   };
 }
 
+/**
+ * What the Samsara poller reported about itself, from its heartbeat row.
+ *
+ * Counts and a timestamp only — the heartbeat carries nothing else, by design,
+ * because this ends up on a public health endpoint. `seen` is how many new
+ * events the poller's LAST poll found, which is the number that tells an empty
+ * safety table apart from a quiet fleet.
+ */
+function pollerSeen(row) {
+  if (!row) return { available: false, reason: 'the Samsara poller has never reported' };
+  const summary = row.lastSummary || {};
+  return {
+    available: true,
+    status: row.lastStatus || null,
+    lastBeatAt: row.lastFinishedAt || null,
+    seenLastPoll: Number.isFinite(Number(summary.newEvents)) ? Number(summary.newEvents) : null,
+    // Whether the poller's own store believes it can write. `seenLastPoll`
+    // above zero with this false is a recorder problem named outright, rather
+    // than inferred from an empty table.
+    recordingReady: typeof summary.recordingReady === 'boolean' ? summary.recordingReady : null,
+  };
+}
+
 async function getOperationsHealth(deps = defaultDeps()) {
   try {
     const status = deps.consistency.getConsistencyStatus();
     const [
       findings, coverage, telegramIdentities, duplicates, indexPresent, providers, homeTimeLive,
-      loadPhases, safety, fuelReadings, systems, observed, learning, retention, notifyConfig,
+      loadPhases, safety, safetyPoller, fuelReadings, systems, observed, learning, retention, notifyConfig,
       discards, controlReplies, controlSettings, controlOperators, controlQuestions,
       controlKnowledge, engineeringRequests,
     ] = await Promise.all([
@@ -178,6 +202,9 @@ async function getOperationsHealth(deps = defaultDeps()) {
       deps.homeTimeHealth.getHomeTimeHealth(),
       deps.loads.summariseLoadPhases().catch(() => null),
       deps.safety.summariseSafety().catch(() => null),
+      // WHAT THE POLLER ITSELF SAW. See the safety block below: without this,
+      // an empty events table cannot be told apart from a quiet fleet.
+      Promise.resolve(deps.runs?.getRun?.('samsara_safety_pipeline')).catch(() => null),
       Promise.resolve(deps.fuelReadings?.summariseFuelReadings?.()).catch(() => null),
       deps.systemHealth.summariseHealthStates().catch(() => null),
       Promise.resolve(deps.observations?.gatherAllObservations?.()).catch(() => null),
@@ -223,7 +250,16 @@ async function getOperationsHealth(deps = defaultDeps()) {
       loads: loadPhases,
       // Safety as a PATTERN: how many events, of what kind, and how much
       // coaching actually reached a driver.
-      safety,
+      //
+      // AND WHAT THE POLLER SAW, which is the half that makes `events: 0`
+      // readable. The Samsara poller is a SEPARATE Render service sharing only
+      // this database; it already writes how many new events each poll found
+      // into its heartbeat, and nothing read it. So "the fleet had a quiet
+      // fortnight" and "events are arriving and not being stored" produced the
+      // same zero — which is exactly the ambiguity the heartbeat was added to
+      // remove, left half-finished. `seenByPoller` above zero with `events` at
+      // zero is a recorder problem; both at zero is a quiet fleet.
+      safety: safety ? { ...safety, poller: pollerSeen(safetyPoller) } : safety,
       // WHETHER SMART FUEL CAN ANSWER AT ALL. `comparable` is the number that
       // matters: abnormal-consumption needs two readings far enough apart, and
       // for the whole life of the feature that was ZERO because the watch
