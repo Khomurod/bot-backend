@@ -223,14 +223,49 @@ async function runHomeTimeExpirySweep(telegram, { nowIso } = {}) {
   return { enabled: true, ...result };
 }
 
+/**
+ * What the run ledger is told about one tick. PURE.
+ *
+ * THE SUMMARY USED TO BE DISCARDED. The `withRunRecord` callback awaited both
+ * sweeps and returned undefined, so `statusFromSummary` saw nothing and
+ * recorded `ok` — including when Home Time is switched off entirely, where the
+ * honest state is `blocked`. A feature nobody has enabled must not look
+ * identical to one chasing reminders every five minutes.
+ *
+ * It is a function rather than an inline object so the rule can be tested
+ * without driving the timer, which is the only reason `tick` itself is not
+ * exported.
+ */
+function reminderRunSummary(reminders, expiry) {
+  if (reminders?.enabled === false) {
+    return { blocked: 'Home Time is switched off in Settings' };
+  }
+  const due = reminders?.due ?? 0;
+  return {
+    due,
+    sent: reminders?.sent ?? 0,
+    expired: expiry?.expired ?? 0,
+    // Every due reminder failing to send is the pass not having run; one among
+    // several is a driver group to look at.
+    ...(due && reminders?.errors === due
+      ? { error: `none of the ${due} due reminder(s) could be sent` }
+      : {}),
+  };
+}
+
 async function tick() {
   if (tickRunning || !telegramClient) return;
   tickRunning = true;
   try {
-    await withRunRecord('home_time_reminders', async () => {
-      await runHomeTimeReminderCheck(telegramClient);
-      await runHomeTimeExpirySweep(telegramClient);
-    });
+    // THE SUMMARY IS RETURNED, not discarded. This arrow used to `await` both
+    // sweeps and return undefined, so `statusFromSummary` saw nothing and
+    // recorded `ok` — including when Home Time is switched off entirely, where
+    // the honest ledger state is `blocked`. A feature nobody has enabled must
+    // not look identical to one chasing reminders every five minutes.
+    await withRunRecord('home_time_reminders', async () => reminderRunSummary(
+      await runHomeTimeReminderCheck(telegramClient),
+      await runHomeTimeExpirySweep(telegramClient),
+    ));
     // Rides this service's cadence but is a SEPARATE responsibility: the two
     // sweeps above chase DRIVERS, this one chases STAFF. Required lazily so the
     // reminder tests can load this module without the alert outbox. Isolated in
@@ -282,6 +317,7 @@ module.exports = {
   buildReminderText,
   runHomeTimeReminderCheck,
   runHomeTimeExpirySweep,
+  reminderRunSummary,
   startHomeTimeReminderService,
   stopHomeTimeReminderService,
   tick,

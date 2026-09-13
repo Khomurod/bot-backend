@@ -147,7 +147,14 @@ async function postCompletedRoadLeg(telegram, historyRow, { allowanceWeeks } = {
 async function runRoadBonusCheck(telegram) {
   const settings = await ht.getHomeTimeSettings();
   if (!settings || !settings.enabled) {
-    return { enabled: false, legs: 0, notificationsSent: 0, errors: 0 };
+    // SWITCHED OFF IS NOT HEALTHY AND IT IS NOT BROKEN. `statusFromSummary`
+    // reads `blocked`; without it this returned a plain summary and the ledger
+    // recorded a clean run, so a Home Time feature nobody has enabled looked
+    // exactly like one posting bonuses every week.
+    return {
+      enabled: false, legs: 0, notificationsSent: 0, errors: 0,
+      blocked: 'Home Time is switched off, so there are no road legs to post',
+    };
   }
   const allowanceWeeks = Number(settings.road_allowance_weeks);
 
@@ -166,6 +173,13 @@ async function runRoadBonusCheck(telegram) {
   }
   return {
     enabled: true, legs: rows.length, notificationsSent, errors,
+    // EVERY LEG FAILING is the pass not having run. One failed post among ten
+    // is a leg to look at; ten out of ten is Telegram or the database refusing,
+    // and `errors` — plural, and a NUMBER here — reaches the ledger through
+    // nothing. `error`, singular, is the field it reads.
+    ...(rows.length && errors === rows.length
+      ? { error: `none of the ${rows.length} completed leg(s) could be posted` }
+      : {}),
   };
 }
 

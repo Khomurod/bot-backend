@@ -252,9 +252,9 @@ Guarded by `tests/selfHealing.test.js` — "a ledger nobody could read leaves ev
 worker saying so, not missing" and "a pass that could read nothing is a FAILED
 pass, not a quiet one", both confirmed failing against the previous commit.
 
-## Five passes that reported a clean run over nothing
+## Seven passes that reported a clean run over nothing
 
-The same defect, found five times in one audit and fixed the same way each
+The same defect, found seven times in one audit and fixed the same way each
 time. `statusFromSummary` reads **`error`, singular**; a summary carrying
 `errors`, plural, reaches nothing. So every pass that ended early with
 `{ ...summary, errors: [message] }` recorded itself in the ledger as **ok**.
@@ -266,8 +266,18 @@ time. `statusFromSummary` reads **`error`, singular**; a summary carrying
 | `learning_pass` | read any of its six inputs |
 | `data_retention` | prune a single table (and it had no ledger row at all) |
 | `control_ask_pass` | read the per-check modes, so it asked only half the questions |
+| `road_bonus_notifier` | post a single completed leg — and it reported `ok` while Home Time was switched OFF |
+| `home_time_reminders` | anything: its `withRunRecord` callback discarded both sweep summaries and returned `undefined` |
 
-The rule, now applied to all five: **the pass decides whether its errors amount
+The last two carry the other half of the same idea. **Switched off is not
+healthy and it is not broken**: `statusFromSummary` reads `blocked`, and a
+summary that never mentions it makes a feature nobody has enabled look exactly
+like one running every five minutes. A callback that returns `undefined` cannot
+mention it at all, which is why `home_time_reminders` now builds its summary in
+a pure `reminderRunSummary(reminders, expiry)` the tests can drive without the
+timer.
+
+The rule, now applied to all seven: **the pass decides whether its errors amount
 to a failure and says so in `error`.** `statusFromSummary` stays deliberately
 dumb, so "one bad driver row among a hundred is not a failed pass" keeps
 holding, and each pass fails in the three shapes that actually mean it did not
