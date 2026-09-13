@@ -1,0 +1,216 @@
+'use strict';
+
+/**
+ * The Finance page's API — the ONE place captured payment text leaves the
+ * database, and therefore the one that most needs its edges pinned.
+ *
+ *   EVERY ROUTE IS BEHIND THE ADMIN GATE, and an unauthenticated call must not
+ *   reach the database at all — not "returns 401 after querying".
+ *
+ *   NOTHING HERE WRITES A VALUE. The two actions re-run machinery that already
+ *   exists (re-read a message with the current parser, re-queue a document) and
+ *   neither takes an amount, a code or a status from the caller. A structural
+ *   test asserts the router contains no such write.
+ *
+ *   THE TELEGRAM LINK IS BUILT SERVER-SIDE from the stored ids. Accepting one
+ *   from the client would put an attacker-chosen URL on a payments screen.
+ */
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const http = require('node:http');
+const express = require('express');
+
+process.env.JWT_SECRET ||= 'test-secret';
+process.env.BOT_TOKEN ||= '000:testbot';
+process.env.DATABASE_URL ||= 'postgresql://localhost:5432/unused_in_this_test';
+
+const ROOT = path.resolve(__dirname, '..');
+const R = (rel) => path.resolve(ROOT, rel);
+function stub(rel, exports) {
+  const filename = require.resolve(R(rel));
+  require.cache[filename] = { id: filename, filename, loaded: true, exports };
+}
+
+let statements = [];
+let messages = [];
+let moneycodes = [];
+let documents = [];
+let reports = [];
+let reparsed = [];
+let requeued = [];
+let requeueResult = true;
+let reparseResult = { id: 1, before: 'ambiguous', after: 'parsed' };
+
+stub('database/db.js', { query: async (text) => { statements.push(text); return { rows: [] }; } });
+stub('database/financeMessages.js', {
+  listMessages: async (o) => { statements.push('listMessages'); return messages.filter((m) => !o.status || m.parseStatus === o.status); },
+  listMoneycodes: async () => { statements.push('listMoneycodes'); return moneycodes; },
+  reparseMessage: async (id) => { reparsed.push(id); return reparseResult; },
+});
+stub('database/financeDocuments.js', {
+  listDocuments: async () => { statements.push('listDocuments'); return documents; },
+  requeueDocument: async (id) => { requeued.push(id); return requeueResult; },
+});
+stub('database/finance/reports.js', {
+  listReports: async () => { statements.push('listReports'); return reports; },
+});
+stub('database/financeSettings.js', {
+  getFinanceSettings: async () => ({ enabled: true, chatId: '-100777' }),
+  invalidateCache: () => {},
+});
+
+const { createFinanceRouter, MAX_LIMIT } = require(R('server/routes/financeRoutes'));
+const { buildTelegramMessageUrl } = require(R('services/telegramUrl'));
+
+function makeServer({ auth = 'ok' } = {}) {
+  const app = express();
+  app.use(express.json());
+  const authMiddleware = auth === 'ok'
+    ? (req, res, next) => { req.admin = { id: 5, username: 'tester' }; next(); }
+    : (req, res) => res.status(401).json({ error: 'Unauthorized' });
+  app.use('/api/finance', createFinanceRouter({ authMiddleware, buildMessageUrl: buildTelegramMessageUrl }));
+  return http.createServer(app);
+}
+
+async function withServer(opts, fn) {
+  statements = []; reparsed = []; requeued = [];
+  const server = makeServer(opts);
+  await new Promise((r) => server.listen(0, r));
+  try {
+    await fn(`http://127.0.0.1:${server.address().port}/api/finance`);
+  } finally {
+    server.close();
+  }
+}
+
+test('EVERY route requires an administrator, and refuses before touching the database', async () => {
+  await withServer({ auth: 'deny' }, async (base) => {
+    for (const [method, url] of [
+      ['GET', `${base}/messages`],
+      ['GET', `${base}/moneycodes`],
+      ['GET', `${base}/documents`],
+      ['GET', `${base}/reports`],
+      ['POST', `${base}/messages/1/reparse`],
+      ['POST', `${base}/documents/1/retry`],
+    ]) {
+      const res = await fetch(url, { method });
+      assert.equal(res.status, 401, `${method} ${url}`);
+    }
+    assert.deepEqual(statements, [], 'an unauthenticated call must not reach the database');
+    assert.deepEqual(reparsed, []);
+    assert.deepEqual(requeued, []);
+  });
+});
+
+test('the messages come back WITH their text — this is the one place that happens', async () => {
+  messages = [{
+    id: 1, chatId: '-1001234567890', messageId: 55, senderName: 'A Poster',
+    text: 'money code 1111 2222 3333 for $500', parseStatus: 'parsed',
+  }];
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/messages`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.messages[0].text, 'money code 1111 2222 3333 for $500');
+  });
+});
+
+test('the Telegram link is BUILT here, never taken from the client', async () => {
+  messages = [
+    { id: 1, chatId: '-1001234567890', messageId: 55, text: 'a', parseStatus: 'parsed' },
+    // A chat Telegram has no link shape for: null, not a guess. A broken link
+    // on a payments screen is worse than none.
+    { id: 2, chatId: '-4477', messageId: 9, text: 'b', parseStatus: 'parsed' },
+  ];
+  await withServer({}, async (base) => {
+    const { messages: out } = await (await fetch(`${base}/messages`)).json();
+    assert.equal(out[0].telegramUrl, 'https://t.me/c/1234567890/55');
+    assert.equal(out[1].telegramUrl, null);
+  });
+
+  // And a URL offered by the caller is ignored outright.
+  await withServer({}, async (base) => {
+    const { messages: out } = await (await fetch(`${base}/messages?telegramUrl=https://evil.example`)).json();
+    assert.equal(out[0].telegramUrl, 'https://t.me/c/1234567890/55');
+  });
+});
+
+test('the status filter is what makes the unreadable pile workable', async () => {
+  messages = [
+    { id: 1, chatId: '-100', messageId: 1, text: 'a', parseStatus: 'parsed' },
+    { id: 2, chatId: '-100', messageId: 2, text: 'b', parseStatus: 'ambiguous' },
+  ];
+  await withServer({}, async (base) => {
+    const { messages: out } = await (await fetch(`${base}/messages?status=ambiguous`)).json();
+    assert.equal(out.length, 1);
+    assert.equal(out[0].id, 2);
+  });
+});
+
+test('a caller cannot ask for the whole table', async () => {
+  const captured = [];
+  const filename = require.resolve(R('database/financeMessages.js'));
+  const original = require.cache[filename].exports.listMessages;
+  require.cache[filename].exports.listMessages = async (o) => { captured.push(o.limit); return []; };
+  try {
+    await withServer({}, async (base) => {
+      await fetch(`${base}/messages?limit=99999`);
+      await fetch(`${base}/messages?limit=-4`);
+      await fetch(`${base}/messages?limit=banana`);
+      await fetch(`${base}/messages?limit=25`);
+    });
+    assert.deepEqual(captured, [MAX_LIMIT, 50, 50, 25]);
+  } finally {
+    require.cache[filename].exports.listMessages = original;
+  }
+});
+
+test('re-reading a message passes an id and nothing else', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/messages/7/reparse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // A caller trying to dictate the answer. The route takes the id only.
+      body: JSON.stringify({ parseStatus: 'parsed', amount: 999999, code: 'MINE' }),
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(reparsed, [7]);
+    const body = await res.json();
+    assert.equal(body.after, 'parsed');
+  });
+});
+
+test('re-reading something that is not there is a 404, not a silent success', async () => {
+  const filename = require.resolve(R('database/financeMessages.js'));
+  const original = require.cache[filename].exports.reparseMessage;
+  require.cache[filename].exports.reparseMessage = async () => null;
+  try {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/messages/999/reparse`, { method: 'POST' });
+      assert.equal(res.status, 404);
+    });
+  } finally {
+    require.cache[filename].exports.reparseMessage = original;
+  }
+});
+
+test('a document that cannot be re-queued says so rather than pretending', async () => {
+  requeueResult = false;
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/documents/3/retry`, { method: 'POST' });
+    assert.equal(res.status, 404);
+    assert.match((await res.json()).error, /already queued/);
+  });
+  requeueResult = true;
+});
+
+test('THE ROUTER WRITES NO BUSINESS VALUE — structurally', () => {
+  const source = require('node:fs').readFileSync(R('server/routes/financeRoutes.js'), 'utf8');
+  // It may read, and it may ask existing machinery to run again. It may not
+  // set an amount, a code, a status or a total from a request body.
+  for (const forbidden of ['UPDATE ', 'INSERT ', 'req.body']) {
+    assert.equal(source.includes(forbidden), false,
+      `the Finance page router started writing: ${forbidden}`);
+  }
+});

@@ -156,7 +156,83 @@ async function summariseCapture() {
   }
 }
 
+/**
+ * The captured messages, for the Finance page — THE ONE PLACE TEXT IS READ OUT.
+ *
+ * Everything else in this feature answers with counts. This does not, because a
+ * person reconciling money codes has to see the message, and the alternative is
+ * the scrolling this feature exists to replace. It is guarded by being reachable
+ * only through an admin-gated route.
+ */
+async function listMessages({ limit = 50, status = null } = {}) {
+  const { rows } = await query(
+    `SELECT id, chat_id AS "chatId", message_id AS "messageId",
+            sender_name AS "senderName", sender_username AS "senderUsername",
+            text, has_document AS "hasDocument", has_photo AS "hasPhoto",
+            message_date AS "messageDate", edit_date AS "editDate",
+            parse_status AS "parseStatus", parser_version AS "parserVersion", parse_json AS "parseJson"
+       FROM finance_messages
+      WHERE ($2::text IS NULL OR parse_status = $2)
+      ORDER BY message_date DESC NULLS LAST, id DESC
+      LIMIT $1`,
+    [limit, status],
+  );
+  return rows;
+}
+
+/** The money codes, newest first, optionally only the flagged repeats. */
+async function listMoneycodes({ limit = 50, duplicatesOnly = false } = {}) {
+  const { rows } = await query(
+    `SELECT c.id, c.message_ref_id AS "messageRefId", c.code, c.amount, c.currency,
+            c.issued_to AS "issuedTo", c.issued_at AS "issuedAt",
+            c.sender_name AS "senderName", c.duplicate_of_id AS "duplicateOfId",
+            c.duplicate_reason AS "duplicateReason", c.parser_version AS "parserVersion",
+            m.chat_id AS "chatId", m.message_id AS "messageId"
+       FROM finance_moneycodes c
+       JOIN finance_messages m ON m.id = c.message_ref_id
+      WHERE ($2::boolean IS NOT TRUE OR c.duplicate_of_id IS NOT NULL)
+      ORDER BY c.issued_at DESC NULLS LAST, c.id DESC
+      LIMIT $1`,
+    [limit, duplicatesOnly],
+  );
+  return rows.map((r) => ({ ...r, amount: r.amount === null ? null : Number(r.amount) }));
+}
+
+/**
+ * Re-read one stored message with the CURRENT parser.
+ *
+ * This is what makes "capture first, codify second" a workflow rather than a
+ * slogan: the text was kept verbatim precisely so a tightened parser could be
+ * run over it later. The text itself is NEVER touched — only the interpretation
+ * beside it — and the caller supplies nothing but an id.
+ *
+ * A code the re-read finds is recorded through the same ON CONFLICT path as a
+ * live capture, so re-reading twice cannot double-count.
+ *
+ * @returns `{ id, before, after }`, or null when there is no such message.
+ */
+async function reparseMessage(id, { parse } = {}) {
+  const parser = parse || require('../lib/finance/moneycode').parseMoneycodeMessage;
+  const existing = await query(
+    'SELECT id, text, parse_status FROM finance_messages WHERE id = $1', [id],
+  );
+  const row = existing.rows[0];
+  if (!row) return null;
+
+  const parsed = parser(row.text);
+  await query(
+    `UPDATE finance_messages
+        SET parse_status = $2, parser_version = $3, parse_json = $4
+      WHERE id = $1`,
+    [id, parsed.status, parsed.parserVersion, JSON.stringify(parsed)],
+  );
+  return { id: row.id, before: row.parse_status, after: parsed.status };
+}
+
 module.exports = {
+  listMessages,
+  listMoneycodes,
+  reparseMessage,
   captureMessage,
   applyEdit,
   recordMoneycode,
