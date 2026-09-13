@@ -58,9 +58,18 @@ async function getLoadState(orderId) {
  * departure those columns exist to make readable — not evidence the arrival was
  * imagined. `phase_since` moves only when the phase actually changes, so "how
  * long has it been at the receiver" stays answerable.
+ *
+ * EVERY OTHER FIELD IS `COALESCE`d, AND `person_id` NEEDED A WAY OUT OF THAT.
+ * Keeping the stored value when handed null is right for a pass that could not
+ * read something — but a caller that has established there is NO single holder
+ * of the unit is not failing to answer, it is answering "nobody", and without
+ * `clearPerson` a load stamped with the wrong human by an earlier bare-unit
+ * lookup would keep them forever in the column every later feature joins on.
+ * The flag is deliberately explicit: silence still means keep.
  */
 async function recordLoadObservation(orderId, {
-  loadIdentifier = null, groupId = null, personId = null, unitNumber = null,
+  loadIdentifier = null, groupId = null, personId = null, clearPerson = false,
+  unitNumber = null,
   phase, confidence = null, atPickup = false, atDelivery = false,
   lat = null, lng = null, speedMph = null, seenAt = null,
   milesToPickup = null, milesToDelivery = null,
@@ -81,7 +90,7 @@ async function recordLoadObservation(orderId, {
      ON CONFLICT (order_id) DO UPDATE SET
        load_identifier = COALESCE($2, load_lifecycle.load_identifier),
        group_id = COALESCE($3, load_lifecycle.group_id),
-       person_id = COALESCE($4, load_lifecycle.person_id),
+       person_id = CASE WHEN $20 THEN $4 ELSE COALESCE($4, load_lifecycle.person_id) END,
        unit_number = COALESCE($5, load_lifecycle.unit_number),
        phase = $6,
        phase_since = CASE
@@ -115,6 +124,7 @@ async function recordLoadObservation(orderId, {
       // Postgres cannot read is an ERROR rather than a null.
       lat, lng, speedMph, toTimestampValue(seenAt), milesToPickup, milesToDelivery, boardStatus,
       JSON.stringify(signals || []), JSON.stringify(conflicts || []), checkedAt,
+      clearPerson === true,
     ]
   );
   return mapRow(res.rows[0]);

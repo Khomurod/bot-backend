@@ -86,13 +86,48 @@ test('the summary separates "not checked" from "fine" — only one is reassuring
   assert.deepEqual(s.down, ['b'], 'and names what is down');
 });
 
-test('only the two known statuses are storable', async (t) => {
+test('only the three known statuses are storable', async (t) => {
   if (await skipWithoutPg(t)) return;
   const h = await seed(t);
   await assert.rejects(
     () => h.query("INSERT INTO system_health_states (component, status) VALUES ('x', 'wobbly')"),
     /status/,
   );
+  // Migration 0055 widened the CHECK. A component waiting on a setting is
+  // storable as itself rather than as a failure.
+  await h.query("INSERT INTO system_health_states (component, status) VALUES ('y', 'blocked')");
+});
+
+/**
+ * SWITCHED OFF IS COUNTED SEPARATELY AND IS NEVER IN `down`.
+ *
+ * Production read `failed: 3, down: [the Dispatcher Board, the weekly finance
+ * report, the finance document reader]` for three features nobody had switched
+ * on — which is exactly how a real outage gets lost among things that were
+ * never started.
+ */
+test('a feature nobody switched on is waiting, not down', async (t) => {
+  if (await skipWithoutPg(t)) return;
+  const h = await seed(t);
+  const { systemHealth } = loadHealth(h);
+
+  await systemHealth.saveHealthState({
+    component: 'ringcentral', status: 'failed', since: new Date().toISOString(),
+    consecutiveFailures: 5, consecutiveOk: 0, announcedStatus: 'failed',
+    lastError: 'boom', transitions: [], flappingSince: null,
+  });
+  await systemHealth.saveHealthState({
+    component: 'dispatch_board_poll', status: 'blocked', since: new Date().toISOString(),
+    consecutiveFailures: 0, consecutiveOk: 0, announcedStatus: null,
+    lastError: 'the Dispatcher Board is switched off in Settings',
+    transitions: [], flappingSince: null,
+  });
+
+  const s = await systemHealth.summariseHealthStates();
+  assert.equal(s.failed, 1);
+  assert.equal(s.blocked, 1);
+  assert.deepEqual(s.down, ['ringcentral'], 'only what BROKE is down');
+  assert.deepEqual(s.waiting, ['dispatch_board_poll'], 'and what is off is named as off');
 });
 
 // ── learning suggestions ────────────────────────────────────────────────────

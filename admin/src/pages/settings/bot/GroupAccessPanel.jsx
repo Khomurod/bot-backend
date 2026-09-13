@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import * as api from "../../../api";
+import { csvRows } from "../../../utils/csvSafe.js";
 
 function timeAgo(iso) {
   if (!iso) return "never";
@@ -113,10 +114,12 @@ export default function GroupAccessPanel() {
   }, {});
 
   const downloadNoAccessExcel = () => {
-    const csvCell = (v) => {
-      const s = String(v == null ? "" : v);
-      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
+    // THE SHARED, FORMULA-SAFE SERIALISER. The local one this replaced quoted
+    // per RFC 4180 and stopped there — it did not neutralise a leading =, +, -
+    // or @, which Excel reads as a FORMULA. `driver_name` comes out of a
+    // Telegram group title, which is chosen by anyone who can rename that
+    // group, so a renamed group was a live formula in the next export somebody
+    // opened. See admin/src/utils/csvSafe.js.
     const headers = ["Driver / Group", "Type", "Unit", "Bot role", "Reading status", "Last message seen", "Home state", "Active"];
     const rows = noAccessGroups.map((g) => [
       g.driver_name || "",
@@ -128,7 +131,7 @@ export default function GroupAccessPanel() {
       g.home_state === "road" ? "On the road" : g.home_state === "home" ? "Home" : "",
       g.inactive ? "no" : "yes",
     ]);
-    const csv = [headers, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
+    const csv = csvRows([headers, ...rows]);
     // BOM so Excel reads UTF-8 correctly.
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);

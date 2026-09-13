@@ -188,6 +188,22 @@ caller:
   `board_ahead_of_what_has_been_observed`, which keeps the confidence honest
   without making it somebody's question.
 
+**WHO the load belongs to is attached only when it is certain.** A load carries
+a unit NUMBER, and a number is not a truck: Company 310, Owner-Operator 310 and
+Lease 310 are three of them, and production carries ten numbers held in more
+than one active driver group. The watch attaches a person only when **exactly
+one** driver holds that number; `load_lifecycle.person_id` is the column every
+later feature joins on, and a load with no person is one somebody can still read
+while a load with the wrong person is a wrong answer nothing downstream can
+detect. The contradiction itself is `identity.unit_open_twice`'s to report.
+
+And it **removes** one already there when the number becomes ambiguous — the
+store's upsert keeps a stored value when handed null, so without an explicit
+clear, loads stamped by the earlier bare-unit lookup would keep the wrong human
+forever. Only a holders read that **succeeded** may clear it: "there is nobody"
+and "I could not check" are opposite answers, and a database outage must never
+erase a correct driver.
+
 A conflict never moves the phase. It files `load.phase_unclear` at the `warning`
 tier, which has **no registered action**, so "Wenze never guesses a load's
 status" is true by construction rather than by care.

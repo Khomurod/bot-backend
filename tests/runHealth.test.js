@@ -133,3 +133,18 @@ test('a worker with no expected interval is never called stale, because nothing 
   const v = at(row({ lastFinishedAt: minutesAgo(5000), expectedIntervalSeconds: null }));
   assert.notEqual(v.state, RUN_STATES.STALE);
 });
+
+/**
+ * "Waiting on a person" and "failing" both read as `needs_human_attention`, and
+ * only one of them is a fault. A caller reporting a component as WORKING OR NOT
+ * needs to tell them apart; `actionable` deliberately cannot.
+ */
+test('a blocked verdict says so, and a failing one does not', () => {
+  const off = at(row({ lastStatus: 'blocked', lastError: 'the Dispatcher Board is switched off' }));
+  assert.equal(off.blocked, true);
+  assert.equal(off.actionable, true, 'somebody still has to look at it');
+
+  const broken = at(row({ lastStatus: 'error', consecutiveFailures: 12, lastError: 'boom' }));
+  assert.equal(broken.state, RUN_STATES.NEEDS_ATTENTION, 'same state');
+  assert.equal(broken.blocked, false, 'but not the same cause');
+});

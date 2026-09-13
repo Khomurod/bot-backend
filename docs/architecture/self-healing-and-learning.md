@@ -113,6 +113,36 @@ Staleness is checked **before** the status, deliberately: a worker that failed
 once and then stopped ticking reads `error` forever, and the useful fact is that
 nothing has run since.
 
+### Switched off is not broken, and it took production to prove it
+
+`needs_human_attention` covers two things that are not alike: **blocked on
+configuration** and **failing past the point where recovery has had its chance**.
+`runHealth.js` said from the start that the first "is NOT broken, and painting
+it red is how a real outage gets lost among things that were never switched on."
+
+One layer up, that was being lost. `healthObservations` collapsed every
+actionable verdict into `ok: false`, `healthTransitions` wrote `failed`, and
+`/api/health` reported production as `systems: { failed: 3, down: [the
+Dispatcher Board, the weekly finance report, the finance document reader] }` —
+three features nobody had switched on yet. Each was also three passes from
+announcing itself to the operations chat as "not working / Needs a person;
+Wenze has not been able to recover from this one", which is untrue twice over:
+nothing is failing, and nothing is there to recover.
+
+So the verdict carries `blocked`, `system_health_states.status` has a third
+value (migration 0055), and the summary reports `blocked` and `waiting`
+alongside `failed` and `down`. Three rules follow from it:
+
+- **a blocked observation starts no failure count** and trips no flap window;
+- **it is never announced.** Nothing broke, so there is nothing to say;
+- **switching a failed component OFF is not a recovery.** The record of what
+  readers were last told is cleared silently, because "working again" about
+  something nobody switched back on would be a lie.
+
+`actionable` is deliberately unchanged, so the workers block still lists a
+blocked worker and still names the setting it is waiting for. The distinction
+only matters where a component is reported as **working or not**.
+
 ### What each component's health is read from
 
 | Component | Failing means |

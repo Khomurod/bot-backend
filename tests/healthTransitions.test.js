@@ -151,3 +151,66 @@ test('an unobserved component has a state that reads as unknown, not as healthy'
   assert.equal(fresh.status, null, 'null is not "ok" — nothing has been checked yet');
   assert.equal(fresh.announcedStatus, null);
 });
+
+// ── switched off is not broken ───────────────────────────────────────────────
+
+/**
+ * THE INTENT THIS MODULE WAS LOSING.
+ *
+ * `runHealth.js` has always said a worker waiting on configuration "is NOT
+ * broken, and painting it red is how a real outage gets lost among things that
+ * were never switched on." Production disagreed: `/api/health` read
+ * `systems: { failed: 3, down: [...] }` for three features nobody had switched
+ * on, and each was three passes away from announcing itself as "not working".
+ */
+test('a component waiting on a setting is BLOCKED, never failed, and never announced', () => {
+  let state = null;
+  const announced = [];
+  for (const mins of [0, 15, 30, 45, 60]) {
+    const out = observe(
+      state,
+      { ok: false, blocked: true, detail: 'the Dispatcher Board is switched off in Settings', component: 'dispatch_board_poll' },
+      { ...OPTS, now: at(mins) },
+    );
+    state = out.state;
+    if (out.announce) announced.push(out.announce);
+  }
+
+  assert.equal(state.status, 'blocked');
+  assert.equal(state.consecutiveFailures, 0, 'a switch nobody flipped starts no failure count');
+  assert.deepEqual(announced, [], 'and nothing is ever said about it');
+  assert.equal(state.lastError, 'the Dispatcher Board is switched off in Settings',
+    'the reason is kept, because the workers block still names it');
+});
+
+/**
+ * And switching a broken thing OFF is not a recovery. "Working again" about
+ * something nobody switched back on would be a lie, so the announcement record
+ * is cleared silently instead.
+ */
+test('switching a failed component off says nothing, and does not claim a recovery', () => {
+  let state = null;
+  const announced = [];
+  for (const mins of [0, 15, 30]) {
+    const out = observe(state, { ok: false, detail: 'boom', component: 'x' }, { ...OPTS, now: at(mins) });
+    state = out.state;
+    if (out.announce) announced.push(out.announce);
+  }
+  assert.equal(announced.length, 1, 'the real failure was announced');
+  assert.equal(announced[0].kind, 'broke');
+
+  const off = observe(state, { ok: false, blocked: true, detail: 'switched off', component: 'x' },
+    { ...OPTS, now: at(45) });
+  assert.equal(off.announce, null, 'turning it off is not a recovery');
+  assert.equal(off.state.status, 'blocked');
+  assert.equal(off.state.announcedStatus, null);
+});
+
+/** Coming back from blocked to working still announces nothing it never said. */
+test('a blocked component that starts working says nothing either', () => {
+  const blocked = observe(null, { ok: false, blocked: true, detail: 'off', component: 'x' },
+    { ...OPTS, now: at(0) });
+  const on = observe(blocked.state, { ok: true, component: 'x' }, { ...OPTS, now: at(15) });
+  assert.equal(on.announce, null, 'Wenze never said it broke, so it does not say it healed');
+  assert.equal(on.state.status, 'ok');
+});

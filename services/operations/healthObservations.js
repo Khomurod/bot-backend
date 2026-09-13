@@ -125,6 +125,11 @@ async function workerObservations(deps, nowMs) {
       // failure count. It is carried for the health endpoint and skipped by
       // the announcer.
       unknown: verdict.state === RUN_STATES.UNKNOWN,
+      // SWITCHED OFF IS NOT BROKEN. It still wants a person, so `actionable`
+      // stays true and the workers block still lists it — but a component
+      // waiting on a setting must never be counted as a failed system or
+      // announced as "not working".
+      blocked: verdict.blocked === true,
       ok: !verdict.actionable,
       state: verdict.state,
       detail: verdict.actionable ? verdict.reason : null,
@@ -145,6 +150,7 @@ function integration(key, { ok, detail = null, state = null, reason = null }) {
     group: 'integration',
     critical: entry?.critical === true,
     unknown: state === RUN_STATES.UNKNOWN,
+    blocked: false,
     ok,
     state: state || (ok ? RUN_STATES.HEALTHY : RUN_STATES.FAILING),
     detail,

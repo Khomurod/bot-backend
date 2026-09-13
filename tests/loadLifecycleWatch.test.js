@@ -18,7 +18,7 @@ const RECEIVER = { lat: 39.10, lng: -84.50 };
 
 function harness({
   orders = [], position = null, stored = null, groups = [{ id: 7, group_name: 'WENZE UNIT # 310 A DRIVER' }],
-  person = { personId: 11, unitNumber: '310' },
+  holders = [{ personId: 11, unitNumber: '310' }],
 } = {}) {
   const calls = { fleets: 0, orders: 0, findings: [], written: [], resolved: [], pruned: 0 , windows: [], notified: []};
   const deps = {
@@ -31,7 +31,12 @@ function harness({
       async pruneFinishedLoads() { calls.pruned += 1; return 0; },
     },
     groups: { async getDriverGroupsByActiveFilter() { return groups; } },
-    people: { async getOpenPersonForUnit() { return person; } },
+    people: {
+      async getOpenHoldersForUnit() {
+        if (holders instanceof Error) throw holders;
+        return holders;
+      },
+    },
     findings: {
       async upsertFinding(f) { calls.findings.push(f); return { id: calls.findings.length, ...f }; },
       async resolveClearedFindings(keys, keep) { calls.resolved.push({ keys, keep }); return 0; },
@@ -104,12 +109,53 @@ test('a truck at the shipper is recorded at pickup, with the arrival witnessed',
 test('the driver on a load is the PERSON, so a truck change does not orphan it', async () => {
   const { deps, calls } = harness({
     orders: [ORDER], position: { ...SHIPPER, speedMph: 0, at: at(5) },
-    person: { id: 999, personId: 11, unitNumber: '310' },
+    holders: [{ id: 999, personId: 11, unitNumber: '310' }],
   });
   await watcher.runLoadLifecycleCheck({ now: NOW, deps });
   assert.equal(calls.written[0].personId, 11,
     'the driver_units row id is the ASSIGNMENT, not the human');
   assert.equal(calls.written[0].groupId, 7);
+});
+
+test('A UNIT NUMBER HELD IN TWO FLEETS STAMPS NOBODY, rather than the wrong somebody', async () => {
+  // Company 310 and Owner-Operator 310 are two trucks, and production carries
+  // ten numbers held in more than one active driver group. A load carries no
+  // fleet, so the fleet cannot be supplied here — and `personId` is the column
+  // every later feature joins on. A load with no person is one somebody can
+  // still read; a load with the WRONG person is a wrong answer nothing
+  // downstream can detect.
+  const { deps, calls } = harness({
+    orders: [ORDER], position: { ...SHIPPER, speedMph: 0, at: at(5) },
+    holders: [
+      { id: 1, personId: 11, unitNumber: '310', fleetType: 'company' },
+      { id: 2, personId: 22, unitNumber: '310', fleetType: 'owner_operator' },
+    ],
+  });
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+  assert.equal(calls.written[0].personId, null,
+    'guessing between two people is worse than admitting the number is ambiguous');
+  // The load itself is still tracked — only the person is withheld.
+  assert.equal(calls.written[0].unitNumber, '310');
+  assert.equal(calls.written[0].groupId, 7);
+});
+
+test('a unit nobody holds stamps nobody, and does not throw', async () => {
+  const { deps, calls } = harness({
+    orders: [ORDER], position: { ...SHIPPER, speedMph: 0, at: at(5) },
+    holders: [],
+  });
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+  assert.equal(calls.written[0].personId, null);
+});
+
+test('a lookup that fails stamps nobody, and does not stop the load being tracked', async () => {
+  const { deps, calls } = harness({
+    orders: [ORDER], position: { ...SHIPPER, speedMph: 0, at: at(5) },
+  });
+  deps.people.getOpenHoldersForUnit = async () => { throw new Error('connection refused'); };
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+  assert.equal(calls.written[0].personId, null);
+  assert.equal(calls.written[0].unitNumber, '310');
 });
 
 test('a unit on two active groups takes the first, deterministically', async () => {
@@ -392,4 +438,58 @@ test('a missing notification dependency costs the notice, never the pass', async
 
   assert.equal(summary.checked, 2, 'both orders were still examined');
   assert.equal(calls.findings.length, 2, 'and both findings were still filed');
+});
+
+// ── removing a person who should never have been there ───────────────────────
+
+/**
+ * NOT WRITING A WRONG PERSON IS HALF THE FIX. The other half is taking one
+ * away.
+ *
+ * The store keeps the stored `person_id` when handed null — right for a pass
+ * that could not read something, and wrong here. Loads stamped by the old
+ * bare-unit lookup carry whichever holder Postgres returned first, and without
+ * this they would keep that human forever in the column every later feature
+ * joins on.
+ */
+test('a unit now known to have two holders CLEARS the person already stamped', async () => {
+  const { deps, calls } = harness({
+    orders: [ORDER], position: { ...SHIPPER, speedMph: 0, at: at(5) },
+    holders: [{ personId: 11, unitNumber: '310' }, { personId: 12, unitNumber: '310' }],
+    stored: { orderId: ORDER.id, phase: 'at_pickup', personId: 11, wasAtPickup: true, wasAtDelivery: false, phaseSince: at(-60) },
+  });
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+
+  assert.equal(calls.written[0].personId, null);
+  assert.equal(calls.written[0].clearPerson, true,
+    'two holders is an ANSWER — "nobody" — not a failure to answer');
+});
+
+/**
+ * And the mirror, which is why the flag exists at all: a read that FAILED must
+ * never wipe a correct attribution. "I could not check" and "there is nobody"
+ * are opposite answers.
+ */
+test('a holders read that FAILED leaves the stored person alone', async () => {
+  const { deps, calls } = harness({
+    orders: [ORDER], position: { ...SHIPPER, speedMph: 0, at: at(5) },
+    holders: new Error('the identity tables are unreachable'),
+    stored: { orderId: ORDER.id, phase: 'at_pickup', personId: 11, wasAtPickup: true, wasAtDelivery: false, phaseSince: at(-60) },
+  });
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+
+  assert.equal(calls.written[0].personId, null);
+  assert.equal(calls.written[0].clearPerson, false,
+    'a database outage must not erase a correct driver');
+});
+
+/** One holder still attaches, and does not ask for a clear. */
+test('one holder attaches the person and clears nothing', async () => {
+  const { deps, calls } = harness({
+    orders: [ORDER], position: { ...SHIPPER, speedMph: 0, at: at(5) },
+    holders: [{ personId: 11, unitNumber: '310' }],
+  });
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+  assert.equal(calls.written[0].personId, 11);
+  assert.equal(calls.written[0].clearPerson, false);
 });

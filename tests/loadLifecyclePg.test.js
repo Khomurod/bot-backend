@@ -153,3 +153,46 @@ test('the health summary counts by phase', { skip: skipWithoutPg() }, async (t) 
   assert.equal(s.byPhase.in_transit, 2);
   assert.equal(s.unclear, 1);
 });
+
+/**
+ * THE OTHER HALF OF THE BARE-UNIT FIX, AT THE LAYER THE BUG LIVED IN.
+ *
+ * Every field here is `COALESCE`d, so handing null keeps what is stored — right
+ * for a pass that could not read something. But a caller that has ESTABLISHED
+ * there is no single holder of the unit is answering "nobody", and loads
+ * stamped with the wrong human by the old bare-unit lookup would otherwise keep
+ * them forever in the column every later feature joins on.
+ */
+test('a null person is KEPT by default and REMOVED when the caller says to',
+  { skip: skipWithoutPg() }, async (t) => {
+    const harness = await seed(t);
+    const db = load(harness);
+    const { rows } = await harness.query(
+      "INSERT INTO driver_people (display_name, normalized_key) VALUES ('A Driver', 'adriver') RETURNING id"
+    );
+    const personId = rows[0].id;
+
+    await db.recordLoadObservation('ORD-9', {
+      groupId: 7, personId, unitNumber: '310', phase: 'at_pickup',
+    });
+
+    // A pass that could not read the holders. The driver must survive it.
+    const kept = await db.recordLoadObservation('ORD-9', {
+      groupId: 7, personId: null, unitNumber: '310', phase: 'in_transit',
+    });
+    assert.equal(kept.personId, personId, 'silence means keep');
+
+    // A pass that read them and found two. That is an answer.
+    const cleared = await db.recordLoadObservation('ORD-9', {
+      groupId: 7, personId: null, clearPerson: true, unitNumber: '310', phase: 'in_transit',
+    });
+    assert.equal(cleared.personId, null, 'a wrong driver has to be removable');
+
+    // And clearing is not a one-way door: a unit that becomes unambiguous again
+    // re-attaches, with the flag still set, because the flag says "trust my
+    // answer" rather than "erase".
+    const back = await db.recordLoadObservation('ORD-9', {
+      groupId: 7, personId, clearPerson: true, unitNumber: '310', phase: 'in_transit',
+    });
+    assert.equal(back.personId, personId);
+  });

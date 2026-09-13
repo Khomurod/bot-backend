@@ -1,29 +1,16 @@
+'use strict';
+
 /**
  * CSV serialization that is safe against spreadsheet formula injection (§10).
  *
- * A cell whose text begins with =, +, -, @ (or a leading tab / carriage return)
- * is interpreted as a formula by Excel / Google Sheets and can execute when the
- * file is opened. We neutralize those cells by prefixing a single quote, and we
- * quote any cell containing a comma, quote or newline per RFC 4180.
+ * THE IMPLEMENTATION MOVED to `admin/src/utils/csvSafe.js` and this re-exports
+ * it, because the only CSV this application produces is built in the BROWSER
+ * (Settings → Bot Group Access) and it was using an unsafe local copy. Two
+ * implementations of an injection guard is one implementation and one hole;
+ * `utils/birthdaySort.js` already established the direction for a helper both
+ * sides need.
+ *
+ * Kept at this path so `tests/checkImports.test.js`, which reads this file by
+ * name, and any future server-side export still find it.
  */
-'use strict';
-
-const FORMULA_LEAD = /^[=+\-@\t\r]/;
-
-/** One CSV cell: formula-neutralized, then RFC-4180 quoted when needed. */
-function csvCell(value) {
-  let s = typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value ?? '');
-  if (FORMULA_LEAD.test(s)) s = `'${s}`;
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-/** Rows (array of objects) → CSV text with a header row from the first row's keys. */
-function toCsv(rows) {
-  const keys = rows.length ? Object.keys(rows[0]) : [];
-  return [
-    keys.map(csvCell).join(','),
-    ...rows.map((r) => keys.map((k) => csvCell(r[k])).join(',')),
-  ].join('\n');
-}
-
-module.exports = { csvCell, toCsv, FORMULA_LEAD };
+module.exports = require('../../admin/src/utils/csvSafe.js');

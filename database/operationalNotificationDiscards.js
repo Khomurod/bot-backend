@@ -86,18 +86,25 @@ async function summariseDiscards() {
          FROM notification_discards ORDER BY discarded_count DESC`
     );
     const byCategory = {};
+    // AND WHY, which is the half a count cannot answer. "You switched this
+    // category off" and "there is nowhere to send it" are the same number and
+    // opposite problems — one is a decision, the other is a gap nobody has
+    // noticed — and the whole reason these rows exist is that a discarded
+    // notice used to be silence.
+    const byReason = {};
     let total = 0;
     let since = null;
     for (const row of res.rows) {
       const n = Number(row.discarded_count) || 0;
       byCategory[row.category] = n;
+      byReason[row.category] = row.reason || null;
       total += n;
       const at = row.first_discarded_at;
       if (at && (!since || new Date(at) < new Date(since))) since = at;
     }
-    return { available: true, total, byCategory, since };
+    return { available: true, total, byCategory, byReason, since };
   } catch (_) {
-    return { available: false, total: 0, byCategory: {}, since: null };
+    return { available: false, total: 0, byCategory: {}, byReason: {}, since: null };
   }
 }
 
