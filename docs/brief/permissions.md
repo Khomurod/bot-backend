@@ -118,6 +118,14 @@ gets an approval-tier correction past the schema's system-is-auto-only CHECK.
 permission.** A "no" is stored in `control_knowledge` and re-applied to the same
 condition by the sweep, attributed to the operator who gave it. A remembered
 "yes" is never re-applied: permission for Wenze to act by itself lives in
+**`/api/finance` is the one route family that returns captured payment text.**
+Everything else in the Finance Monitor — the settings API, the `/api/health`
+block, the weekly report — answers with counts on purpose. That router is
+behind the same admin gate as the settings API, refuses an unauthenticated call
+before touching the database, and writes no business value: its two actions
+re-run machinery that already exists and take no amount, code or status from
+the caller. See `docs/architecture/finance-monitor.md` §5a.
+
 `operational_check_settings.mode`, changed by an administrator on the Automation
 screen under `operations.corrections.apply`. Revoking a memory is an
 `admin.full_access` action on Settings → Answering Wenze in Telegram, audited as

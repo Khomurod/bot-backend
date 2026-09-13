@@ -292,6 +292,58 @@ is not. `tests/financeCapturePg.test.js` proves both against the real schema.
 
 ---
 
+## 5a. The Finance page — the one place the text is read out
+
+Everything else in this feature answers with **counts**: the settings screen,
+the `/api/health` block, the weekly report. `server/routes/financeRoutes.js`
+and `admin/src/pages/FinancePage.jsx` are the exception, and they are the
+exception on purpose — a person reconciling money codes has to see the message,
+and the alternative is the scrolling this whole feature exists to replace.
+
+So the surface is narrow and guarded:
+
+- **`authMiddleware` on every route**, and an unauthenticated call is refused
+  before it reaches the database — not "401 after querying".
+- **Nothing writes a business value.** The two actions re-run machinery that
+  already exists, and neither takes an amount, a code or a status from the
+  caller. A structural test asserts the router contains no `UPDATE`, no
+  `INSERT` and no `req.body` at all.
+- **The Telegram link is built server-side** from the stored chat and message
+  ids, never accepted from the client, and is `null` for a chat Telegram has no
+  link shape for. A broken link on a payments screen is worse than none.
+- **`file_id` never leaves the database**, and neither does a download URL —
+  that one carries the bot token.
+- A caller cannot ask for the whole table: the limit is clamped.
+
+### The two actions
+
+**Read it again** re-runs the *current* parser over the stored text. This is
+what makes "capture first, codify second" a workflow rather than a slogan — the
+text was kept verbatim precisely so a tightened parser could be run over it.
+`tests/financePagePg.test.js` proves the message is byte-identical afterwards
+by re-reading with a deliberately different parser.
+
+**Try again** puts a document back in the queue and **resets the attempt
+ladder**, because a person asking for a retry is new information the backoff
+does not have. It is offered only for `failed` and the two `skipped_*` states —
+never for `needs_review`, where running the same reader over the same bytes
+reaches the same place. That one is not a button that does nothing; it is no
+button at all.
+
+### Four tabs, four boundaries
+
+Each tab is lazy and sits inside its **own** `PageErrorBoundary`, keyed on the
+tab. One tab throwing must not blank the others or the tab bar itself: the
+point of the page is that somebody can get at the money codes, and a single
+shared boundary loses all four because one table hit a bad row. Removing the
+boundary fails that test.
+
+The Messages tab opens on **Unclear**, not on everything: the provisional
+parser is tightened from exactly that pile, and a list that opens on four
+thousand ordinary messages hides the twenty that matter.
+
+---
+
 ## 6. Payment text lives in exactly one place
 
 `finance_messages.text` is that place.
@@ -374,9 +426,9 @@ npm test --prefix admin                              # FinanceTab: the checkbox 
 - **What a document says is never counted.** The money code that counts is the
   one read deterministically out of the message text. A document reading is
   evidence beside it, in that document's own row, and nothing sums it.
-- **The read-only Finance page** is Stage D4 — the one place document text and
-  message text are meant to leave the database, behind their own permission.
-  Until then a report body is stored and readable only in the database itself.
+- **The report body is stored but has no screen yet.** The Finance page lists
+  what each week's summary concluded; reading the sent text back is a database
+  query. Nobody has asked for it on a screen.
 - **`finance_moneycodes.issued_to` is left NULL.** Who POSTED a code is recorded;
   who it was FOR is not something this parser can read, and a column filled with
   the sender's name under an "issued to" heading would be worse than an empty
