@@ -101,6 +101,11 @@ function usageReport({ budgetBytes }) {
     queries: snapshot.queries,
     rows: snapshot.rows,
     thresholds: meter.WARNING_THRESHOLDS,
+    // WHAT IS SPENDING IT. A percentage tells an operator to worry; a table
+    // name tells them where to look. Scoped to this process on purpose — the
+    // month survives a restart and the breakdown does not, and mixing the two
+    // would be a share of nothing in particular.
+    breakdown: meter.usageByLabel({ limit: 10 }),
   };
 }
 

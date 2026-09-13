@@ -59,7 +59,10 @@ async function query(text, params) {
   try {
     const result = await pool.query(text, params);
     try {
-      transferMeter.recordQuery(result);
+      // The TEXT is passed so the meter can name the table. It is used for
+      // nothing else, and the label it derives is an identifier or `other` —
+      // never a fragment of the statement, which would carry its literals.
+      transferMeter.recordQuery(result, text);
     } catch (meterError) {
       // Accounting is best-effort; the query already succeeded.
     }
