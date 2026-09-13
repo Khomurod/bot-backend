@@ -326,3 +326,60 @@ test('one component failing among several is still a pass that did its job', asy
   assert.equal(statusFromSummary(summary).status, 'ok',
     'it recorded the component it could');
 });
+
+// ── the components the watch could not see ─────────────────────────────────
+
+/**
+ * THE WATCH SUPPLIED SEVEN OF THE ELEVEN DEPENDENCIES ITS OWN OBSERVATIONS NEED.
+ *
+ * `gatherAllObservations(deps)` uses what it is handed, verbatim — it does not
+ * merge in its own defaults. `selfHealing.defaultDeps()` grew separately from
+ * `healthObservations.defaultDeps()` and drifted six keys behind it.
+ *
+ * The result is not a crash. Each affected check throws, its own `catch` turns
+ * that into `{ state: UNKNOWN, reason: 'could not read' }`, and
+ * `gatherObservations` then DELIBERATELY drops unknowns — "I could not check"
+ * must never start a failure count, which is the right rule. So the components
+ * simply vanished: never written to `system_health_states`, never announced,
+ * never counted in `systems`. Permanently, and completely silently.
+ *
+ * Confirmed against production: the health summary observes 40 components and
+ * the watch persists 37. The three it could not see include
+ * `notification_destination` — the thing that DELIVERS every operational
+ * notice. Had that broken, the watch whose job is to announce it would have
+ * dropped it as unreadable and said nothing at all.
+ *
+ * This test is the drift guard. The composition below makes it pass today; this
+ * makes it stay true when either list grows again.
+ */
+test('THE WATCH SUPPLIES EVERY DEPENDENCY ITS OWN OBSERVATIONS NEED', () => {
+  // eslint-disable-next-line global-require
+  const observations = require('../services/operations/healthObservations');
+  const needed = Object.keys(observations.defaultDeps());
+  const supplied = Object.keys(healing.defaultDeps());
+
+  const missing = needed.filter((k) => !supplied.includes(k));
+  assert.deepEqual(missing, [],
+    'a dependency the watch does not supply makes its component vanish, not fail');
+});
+
+/**
+ * And when one DOES come back unreadable, the pass says how many it dropped.
+ *
+ * Dropping is correct — see above — but dropping silently is what let six
+ * missing dependencies hide for the life of the feature. A count is the
+ * cheapest thing that would have shown it.
+ */
+test('a pass counts the components it had to drop, instead of dropping them silently', async () => {
+  const { deps } = harness();
+  deps.gather = async () => ([
+    { component: 'a', ok: true },
+    { component: 'b', ok: true, unknown: true },
+    { component: 'c', ok: true, unknown: true },
+  ]);
+
+  const summary = await healing.runSelfHealingPass({ now: NOW, deps });
+
+  assert.equal(summary.checked, 1, 'only the readable one was recorded');
+  assert.equal(summary.unreadable, 2, 'and it says so rather than quietly shrinking');
+});
