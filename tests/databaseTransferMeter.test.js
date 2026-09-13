@@ -273,3 +273,66 @@ test('the usage report carries the breakdown', () => {
   assert.equal(report.breakdown.tables[0].label, 'driver_people');
   assert.equal(report.breakdown.truncated, false);
 });
+
+// ── a keyword inside text is not SQL structure ──────────────────────────────
+
+/**
+ * THE CAPTURE SHAPE WAS NOT ENOUGH ON ITS OWN.
+ *
+ * `[A-Za-z_][A-Za-z0-9_$]*` guarantees the label LOOKS like an identifier and
+ * guarantees nothing about where it came from: `alice_smith` is a well-formed
+ * identifier and a person's name. A pattern is only SQL structure where SQL
+ * structure is allowed, and inside a comment or a string it is neither.
+ */
+test('A KEYWORD INSIDE A COMMENT OR A STRING NEVER BECOMES A LABEL', () => {
+  const cases = [
+    ['/* report from Alice_Smith */ SELECT * FROM groups', 'groups'],
+    ['-- fetch from Bob_Jones\nSELECT * FROM groups', 'groups'],
+    ["SELECT 'sent from John_Doe'", 'other'],
+    ["SELECT 'it''s from Mallory' FROM groups", 'groups'],
+    ["SELECT * FROM finance_messages WHERE t = 'a--b from Eve'", 'finance_messages'],
+    // Migrations wrap whole bodies in dollar quotes; the FROM inside one is
+    // not the statement's own.
+    ['DO $$ BEGIN SELECT 1 FROM secret_table; END $$; SELECT * FROM groups', 'groups'],
+  ];
+  for (const [sql, want] of cases) {
+    meter.reset();
+    meter.recordQuery(result(rows(1)), sql);
+    assert.equal(meter.usageByLabel().tables[0].label, want, sql);
+  }
+});
+
+/** Parameters are not dollar-quoted strings, and must survive. */
+test('a $1 placeholder is not a dollar-quoted literal', () => {
+  meter.recordQuery(result(rows(1)), 'SELECT * FROM groups WHERE id = $1 AND x = $2');
+  assert.equal(meter.usageByLabel().tables[0].label, 'groups');
+});
+
+/** A double-quoted name is an IDENTIFIER in PostgreSQL, so it is kept. */
+test('a quoted identifier is still a table', () => {
+  meter.recordQuery(result(rows(1)), 'SELECT * FROM "Groups"');
+  assert.equal(meter.usageByLabel().tables[0].label, 'groups');
+});
+
+/**
+ * Unterminated anything runs to the end of the statement, which is the safe
+ * direction: it can cost a label and it cannot leak one. The property under
+ * test is NOT which of the two answers comes back — a real table before the
+ * unterminated text is a perfectly good answer — it is that the text inside it
+ * is never one of them.
+ */
+test('an unterminated comment or string can cost a label, never leak one', () => {
+  for (const sql of [
+    "SELECT * FROM groups WHERE t = 'from Trudy",
+    '/* from Trudy SELECT * FROM groups',
+    '-- from Trudy',
+    'SELECT * FROM t WHERE x = $tag$ from Trudy',
+  ]) {
+    meter.reset();
+    meter.recordQuery(result(rows(1)), sql);
+    const label = meter.usageByLabel().tables[0].label;
+    assert.ok(['groups', 't', 'other'].includes(label),
+      `${sql} produced ${label}`);
+    assert.ok(!label.includes('trudy'), `the label leaked a name: ${label}`);
+  }
+});

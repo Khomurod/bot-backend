@@ -91,6 +91,15 @@ Three mechanisms now keep it in view and in check:
   out of the statement itself — one regular expression, run on every query, and
   it returns an **identifier or `other`, never a fragment of the SQL**, because
   SQL text carries literals and literals carry driver names and money codes.
+
+  The capture shape alone was not enough, and the first version proved it: a
+  pattern is only SQL structure where SQL structure is allowed, so
+  `/* report from Alice_Smith */ SELECT * FROM groups` labelled itself
+  `alice_smith` — a well-formed identifier and a person's name, on a
+  diagnostics endpoint. Comments and quoted literals are blanked out **before**
+  the match, in one left-to-right pass (stripping comments first mangles a
+  literal containing `--`). Double quotes are left alone, because in PostgreSQL
+  those delimit an identifier and that is the thing being looked for.
   The meter keeps per-table bytes, queries and rows, and `/api/system/
   database-usage` returns the ten biggest as `breakdown`.
 
