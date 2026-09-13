@@ -37,6 +37,7 @@ const { actionForCheck, CHECK_TO_ACTION } = require('./actions');
 const { applyCorrection, StaleCorrectionError } = require('./apply');
 const { takeDecision } = require('../../decisions/journal');
 const { MIN_CONFIDENCE, recordDecisionFor } = require('./decisionSeam');
+const { SETTINGS_COLUMNS } = require('../../../database/operationalCheckSettings');
 
 const DEFAULT_CAP = 50;
 
@@ -48,9 +49,11 @@ const DEFAULT_CAP = 50;
  */
 function floorFor(settings, item) {
   const row = settings?.get?.(item?.finding?.checkKey);
-  // `min_confidence` — the raw column name. `loadCheckSettings` below returns
-  // the rows unmapped, so reading `minConfidence` here found `undefined` on
-  // every check and silently inherited the global floor for ever.
+  // `min_confidence` — the RAW column name, because `loadCheckSettings` below
+  // returns the rows unmapped. Reading `minConfidence` here found `undefined`
+  // on every check and silently inherited the global floor for ever. Both
+  // spellings are accepted so a suite handing this module a mapped fake row is
+  // not answering a different question from production.
   const value = row?.min_confidence ?? row?.minConfidence;
   return value == null ? null : Number(value);
 }
@@ -81,22 +84,19 @@ function modeOf(setting) {
 async function loadCheckSettings(db = defaultDb) {
   // `mode` IS THE AUTHORITY, not `auto_apply_enabled`. The boolean is kept for
   // older readers and cannot be trusted to have been updated alongside; nothing
-  // that ACTS reads it. COALESCE covers a row written before migration 0044 by
-  // something that never learned about modes.
-  // BOTH are returned: `mode` because it is what this module acts on, and
-  // `auto_apply_enabled` because the row is read elsewhere and a field silently
-  // dropped is its own kind of defect. `modeOf` decides which one wins.
+  // that ACTS reads it. BOTH are returned: `mode` because it is what this module
+  // acts on, and `auto_apply_enabled` because the row is read elsewhere and a
+  // field silently dropped is its own kind of defect. `modeOf` decides which one
+  // wins, and it already resolves a row written before migration 0044 that has
+  // a NULL mode — so the SQL no longer COALESCEs, and there is ONE answer to
+  // "what mode is this check in" instead of one in SQL and one in JS.
+  //
+  // THE COLUMN LIST IS THE DATA LAYER'S, imported rather than retyped. This
+  // planner keeps its own query because it takes an injectable `db`, and for
+  // one commit that query did not name `min_confidence`: the setting was
+  // written, displayed, and read by nothing.
   const res = await db.query(
-    // `min_confidence` IS SELECTED HERE OR THE SETTING DOES NOT EXIST. This
-    // module keeps its own query rather than calling the data layer, so a
-    // column added there reaches this planner only when it is added here too —
-    // and an accepted threshold proposal that writes a row nothing reads is
-    // precisely the "visible in the UI, ignored by the runtime" defect this
-    // application keeps finding. It was written that way for one commit.
-    `SELECT check_key, max_auto_per_run, shadow, auto_apply_enabled, min_confidence,
-            COALESCE(mode, CASE WHEN auto_apply_enabled THEN 'autopilot' ELSE 'suggest' END)
-              AS mode
-       FROM operational_check_settings`
+    `SELECT ${SETTINGS_COLUMNS} FROM operational_check_settings`
   );
   return new Map(res.rows.map((r) => [r.check_key, r]));
 }

@@ -335,12 +335,25 @@ test('A PER-CHECK FLOOR REACHES THE JOURNAL, or it is not a setting', async () =
  * the failure is a missing field name in a string — nothing executes wrongly,
  * it just quietly returns undefined.
  */
+/**
+ * TWO COLUMN LISTS FOR ONE TABLE IS THE MECHANISM; ONE LIST IS THE FIX.
+ *
+ * The planner keeps its own query because it takes an injectable `db`, and for
+ * one commit that query did not name `min_confidence` — so the floor was
+ * written by the learning action, shown in the admin, and read by nothing. The
+ * list now lives in the data layer and both readers import it, which is what
+ * makes a column added there reach both or neither.
+ */
 test('the planner SELECTS the floor it claims to read', () => {
+  const { SETTINGS_COLUMNS } = require('../database/operationalCheckSettings');
+  assert.match(SETTINGS_COLUMNS, /min_confidence/,
+    'a column the planner does not select is a setting that cannot work');
+
   const src = require('node:fs').readFileSync(
     require.resolve('../services/operations/corrections/autoApply'), 'utf8'
   );
-  const query = src.slice(src.indexOf('FROM operational_check_settings') - 500,
-    src.indexOf('FROM operational_check_settings'));
-  assert.match(query, /min_confidence/,
-    'a column the planner does not select is a setting that cannot work');
+  const at = src.indexOf('FROM operational_check_settings');
+  assert.ok(at > 0, 'the planner still reads the settings table');
+  assert.match(src.slice(at - 200, at), /SETTINGS_COLUMNS/,
+    'the planner must use the data layer\'s list, not a second copy of it');
 });

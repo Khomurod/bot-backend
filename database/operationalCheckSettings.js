@@ -32,6 +32,22 @@ function runner(client) {
   return client ? client.query.bind(client) : query;
 }
 
+/**
+ * EVERY COLUMN A READER OF THIS TABLE NEEDS, NAMED ONCE.
+ *
+ * `services/operations/corrections/autoApply.js` keeps its own query — it is
+ * the planner and takes an injectable `db` — and for one commit that query did
+ * not name `min_confidence`. The column was written by the learning action,
+ * shown in the admin, and read by nothing: an accepted threshold proposal that
+ * changed no behaviour, which is exactly the "visible in the UI, ignored by the
+ * runtime" defect this application keeps finding. Two column lists for one
+ * table is the mechanism; one shared list is the fix, so a column added here
+ * reaches both readers or neither.
+ */
+const SETTINGS_COLUMNS = `check_key, mode, shadow, auto_apply_enabled, max_auto_per_run,
+            min_confidence, min_confidence_set_by, min_confidence_set_at,
+            updated_by, updated_at`;
+
 function mapSetting(row) {
   if (!row) return null;
   return {
@@ -56,9 +72,7 @@ function mapSetting(row) {
 
 async function listCheckSettings(client = null) {
   const res = await runner(client)(
-    `SELECT check_key, mode, shadow, auto_apply_enabled, max_auto_per_run,
-            min_confidence, min_confidence_set_by, min_confidence_set_at,
-            updated_by, updated_at
+    `SELECT ${SETTINGS_COLUMNS}
        FROM operational_check_settings ORDER BY check_key`
   );
   return res.rows.map(mapSetting);
@@ -164,6 +178,6 @@ async function setMinConfidence(checkKey, minConfidence, { setBy = null } = {}, 
 }
 
 module.exports = {
-  MODES, mapSetting, listCheckSettings, upsertCheckSettings, deleteCheckSettings,
-  setMinConfidence,
+  MODES, SETTINGS_COLUMNS, mapSetting, listCheckSettings, upsertCheckSettings,
+  deleteCheckSettings, setMinConfidence,
 };
