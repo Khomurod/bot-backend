@@ -170,7 +170,15 @@ instead.
   person. Once per period and never twice — a restart cannot make it send
   again. A week that began before the monitor was switched on is recorded as
   such rather than reported as "$0 issued".
-- Full rules: **[`docs/architecture/finance-monitor.md`](../architecture/finance-monitor.md)**.
+- **A Finance Monitor page** under Operations shows the money codes, the
+  attachments, the messages and the weekly summaries. It is **the one screen
+  that shows what was said** — everything else in the feature answers with
+  counts — and it changes nothing: its buttons re-read a stored message with
+  the current parser, put a document Wenze could not fetch back in the queue,
+  preview what the weekly summary would say, and send that summary now. A
+  summary sent by hand is recorded as such and never stands in for Monday's.
+- Full rules: **[`docs/architecture/finance-monitor.md`](../architecture/finance-monitor.md)**,
+  and **[`finance-monitor-page.md`](../architecture/finance-monitor-page.md)** for the page.
 
 ### Driver home time
 

@@ -39,6 +39,8 @@ let sends;               // telegram sendMessage calls
 let sendError = null;
 let totals;
 let totalsError = null;
+/** Set to make writing the row fail AFTER Telegram has accepted the message. */
+let recordError = null;
 let notices;
 
 stub('database/db.js', {
@@ -66,7 +68,11 @@ stub('database/finance/reports.js', {
     if (totalsError) throw totalsError;
     return totals;
   },
-  recordReport: async (fields) => { recorded.push(fields); return { id: recorded.length, created: true }; },
+  recordReport: async (fields) => {
+    if (recordError) throw recordError;
+    recorded.push(fields);
+    return { id: recorded.length, created: true };
+  },
   findReportForPeriod: async () => null,
   listReports: async () => [],
 });
@@ -92,7 +98,7 @@ const telegram = {
 
 function reset(over = {}) {
   claims = new Set(); unclaimed = []; recorded = []; sends = []; notices = [];
-  sendError = null; totalsError = null; settingsError = null;
+  sendError = null; totalsError = null; settingsError = null; recordError = null;
   totals = { codeCount: 3, amountTotal: 900, messageCount: 20 };
   settings = {
     enabled: true, chatId: '-100finance', weeklyReportEnabled: true,
@@ -236,4 +242,86 @@ test('the tick never throws, and always reports when it is next due', async () =
   assert.equal(out.retry, false);
   assert.ok(out.dueAtMs > new Date(WEDNESDAY).getTime());
   assert.equal(new Date(out.dueAtMs).toISOString(), schedule.nextScheduledRun(WEDNESDAY).toISOString());
+});
+
+// ── "send now": a person's deliberate act ─────────────────────────────────
+
+/**
+ * THE CLAIM IS NOT TOUCHED, AND MONDAY STILL GOES OUT.
+ *
+ * The once-a-period rule exists to stop a restart re-sending the scheduled
+ * report. It is not there to argue with somebody who pressed a button — and if
+ * a manual send consumed the claim, the week's real report would silently never
+ * arrive. The row is `manual`, which the partial unique index excludes, so it
+ * can neither collide with the scheduled row nor stand in for it.
+ */
+test('send now records a MANUAL row and leaves the scheduled report to happen', async () => {
+  reset();
+  const out = await service.sendReportNow(at(WEDNESDAY));
+
+  assert.equal(out.sent, true);
+  assert.equal(sends.length, 1);
+  assert.equal(recorded[0].status, 'manual');
+  assert.equal(claims.size, 0, 'a manual send must not consume the week');
+
+  // And the scheduled report for the same week still goes out afterwards.
+  const scheduled = await service.runWeeklyReport(at(WEDNESDAY));
+  assert.equal(scheduled.sent, 1);
+  assert.equal(recorded[1].status, 'sent');
+});
+
+/**
+ * The switches are not consulted: only the two things that make sending
+ * impossible can refuse, and each says which.
+ */
+test('send now refuses with a reason when there is nowhere to send', async () => {
+  reset({ chatId: null, weeklyReportChatId: null });
+  const out = await service.sendReportNow(at(WEDNESDAY));
+  assert.equal(out.sent, false);
+  assert.match(out.reason, /No chat is set/);
+  assert.equal(sends.length, 0);
+  assert.equal(recorded.length, 0, 'a refusal is not a row');
+
+  reset();
+  const noBot = await service.sendReportNow({ now: () => new Date(WEDNESDAY) });
+  assert.equal(noBot.sent, false);
+  assert.match(noBot.reason, /Telegram/);
+});
+
+/** A switched-off schedule does not block a person asking for the figures now. */
+test('send now works even when the weekly schedule is switched off', async () => {
+  reset({ weeklyReportEnabled: false });
+  const out = await service.sendReportNow(at(WEDNESDAY));
+  assert.equal(out.sent, true);
+  assert.equal(sends.length, 1);
+});
+
+/** A preview reaches no chat and writes no row. */
+test('the preview sends nothing and records nothing', async () => {
+  reset();
+  const out = await service.previewReport(at(WEDNESDAY));
+  assert.ok(out.body.includes('3 codes'));
+  assert.deepEqual(out.totals, totals);
+  assert.equal(sends.length, 0);
+  assert.equal(recorded.length, 0);
+});
+
+/**
+ * THE SEND CANNOT BE UNDONE, SO IT IS NEVER REPORTED AS A FAILURE.
+ *
+ * A manual send carries no claim and no request key. If Telegram accepted the
+ * message and only the row failed, calling that "could not send" would put a
+ * Try again in front of somebody for a summary already in the chat — and they
+ * would send it twice. Failing to write it down is a different, lesser problem,
+ * and it is reported as itself.
+ */
+test('a send that could not be RECORDED is still a send', async () => {
+  reset();
+  recordError = new Error('the reports table is unreachable');
+
+  const out = await service.sendReportNow(at(WEDNESDAY));
+
+  assert.equal(out.sent, true, 'the message IS in the chat');
+  assert.equal(out.recorded, false, 'and the screen is told the history is missing it');
+  assert.equal(sends.length, 1);
 });

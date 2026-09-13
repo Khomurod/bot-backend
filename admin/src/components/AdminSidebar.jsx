@@ -11,6 +11,7 @@ const NAV_SECTIONS = [
       { key: 'fuel_monitor', icon: '⛽', label: 'Fuel Monitor' },
       { key: 'home_time', icon: '🏠', label: 'Driver Home Time' },
       { key: 'system_health', icon: '🩺', label: 'System & AI Health' },
+      { key: 'finance', icon: '💵', label: 'Finance Monitor' },
     ],
   },
   {
@@ -47,7 +48,7 @@ const NAV_SECTIONS = [
       { key: 'settings_integrations', icon: '🔌', label: 'Integrations' },
       { key: 'settings_board', icon: '🗂️', label: 'Dispatcher Board' },
       { key: 'settings_ai', icon: '🤖', label: 'AI & Autonomy' },
-      { key: 'settings_finance', icon: '💵', label: 'Finance Monitor' },
+      { key: 'settings_finance', icon: '💵', label: 'Finance Monitor setup' },
       { key: 'settings_notifications', icon: '🔔', label: 'Notification Routing' },
       { key: 'settings_reactions', icon: '😀', label: 'Auto Reactions' },
       { key: 'settings_access', icon: '🔍', label: 'Bot Group Access' },

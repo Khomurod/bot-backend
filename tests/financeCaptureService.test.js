@@ -24,7 +24,7 @@ const SERVICE = path.resolve(__dirname, '../services/finance/captureService.js')
 function load({ onWatch = true, settings = {}, messages = {}, settingsThrows = null } = {}) {
   for (const p of [SETTINGS, MESSAGES, SERVICE]) delete require.cache[p];
 
-  const calls = { captured: [], codes: [], edits: [], candidates: [] };
+  const calls = { captured: [], codes: [], edits: [], candidates: [], refreshed: [], reparsed: [] };
 
   require.cache[SETTINGS] = {
     exports: {
@@ -49,7 +49,15 @@ function load({ onWatch = true, settings = {}, messages = {}, settingsThrows = n
       },
       recordMoneycode: async (refId, fields) => {
         calls.codes.push({ refId, fields });
-        return 10;
+        return messages.recordMoneycode ? messages.recordMoneycode(refId, fields) : 10;
+      },
+      updateMoneycodeInterpretation: async (refId, codeNormalized, fields) => {
+        calls.refreshed.push({ refId, codeNormalized, fields });
+        return 11;
+      },
+      reparseMessage: async (id) => {
+        calls.reparsed.push(id);
+        return messages.reparseMessage ? messages.reparseMessage(id) : null;
       },
       findDuplicateCandidates: async (q) => {
         calls.candidates.push(q);
@@ -218,4 +226,91 @@ test('shapeMessage turns Telegram seconds into a real date, and nothing into nul
   assert.equal(service.shapeMessage(msg()).messageDate.toISOString(), '2026-09-12T10:00:00.000Z');
   assert.equal(service.shapeMessage(msg({ date: undefined })).messageDate, null);
   assert.equal(service.shapeMessage(msg({ date: 0 })).messageDate, null);
+});
+
+// ── re-reading a stored message ───────────────────────────────────────────
+
+/**
+ * THE WHOLE POINT OF KEEPING THE TEXT.
+ *
+ * A re-read that only updated `parse_status` moved the message off the unclear
+ * pile, told the operator it had worked, and left the Money codes tab and every
+ * weekly total still missing the code it had just recognised. The code has to
+ * land, through the same duplicate decision a live capture uses.
+ */
+test('a re-read that finds a code RECORDS it', async () => {
+  const { service, calls } = load({
+    messages: {
+      reparseMessage: () => ({
+        id: 42, before: 'unparsed', after: 'parsed',
+        parsed: {
+          status: 'parsed', code: '1234567890', codeNormalized: '1234567890',
+          amount: 500, currency: 'USD', parserVersion: 1,
+        },
+        senderUserId: 777, senderName: 'Ivan P',
+        messageDate: new Date('2026-09-12T10:00:00Z'),
+      }),
+    },
+  });
+
+  const out = await service.reparseCapturedMessage(42);
+
+  assert.equal(out.after, 'parsed');
+  assert.equal(out.codeRecorded, true);
+  assert.equal(calls.codes.length, 1, 'the code must reach finance_moneycodes');
+  assert.equal(calls.codes[0].refId, 42);
+  assert.equal(calls.codes[0].fields.codeNormalized, '1234567890');
+  assert.equal(calls.codes[0].fields.senderName, 'Ivan P', 'the stored sender, not a blank');
+  assert.equal(calls.candidates.length, 1, 'and through the duplicate decision');
+});
+
+/** A re-read that still cannot read it writes no code, and says so. */
+test('a re-read that is still unclear records nothing', async () => {
+  const { service, calls } = load({
+    messages: {
+      reparseMessage: () => ({
+        id: 42, before: 'unparsed', after: 'ambiguous',
+        parsed: { status: 'ambiguous' }, senderUserId: null, senderName: null, messageDate: null,
+      }),
+    },
+  });
+
+  const out = await service.reparseCapturedMessage(42);
+  assert.equal(out.codeRecorded, false);
+  assert.deepEqual(calls.codes, []);
+});
+
+/**
+ * A tightened parser reaching a DIFFERENT amount for a code already recorded
+ * must not leave the old one beside the corrected reading.
+ */
+test('a re-read that reinterprets an existing code refreshes it', async () => {
+  const { service, calls } = load({
+    messages: {
+      // The row is already there, so the idempotent insert is a no-op.
+      recordMoneycode: () => null,
+      reparseMessage: () => ({
+        id: 42, before: 'parsed', after: 'parsed',
+        parsed: {
+          status: 'parsed', code: '1234567890', codeNormalized: '1234567890',
+          amount: 750, currency: 'USD', parserVersion: 2,
+        },
+        senderUserId: 777, senderName: 'Ivan P',
+        messageDate: new Date('2026-09-12T10:00:00Z'),
+      }),
+    },
+  });
+
+  const out = await service.reparseCapturedMessage(42);
+
+  assert.equal(out.codeRecorded, true);
+  assert.equal(calls.refreshed.length, 1, 'the stored amount must follow the fresher reading');
+  assert.equal(calls.refreshed[0].fields.amount, 750);
+  assert.equal(calls.refreshed[0].fields.parserVersion, 2);
+});
+
+/** No such message is null, not a pretend success. */
+test('re-reading a message that is not there returns null', async () => {
+  const { service } = load({ messages: { reparseMessage: () => null } });
+  assert.equal(await service.reparseCapturedMessage(9999), null);
 });

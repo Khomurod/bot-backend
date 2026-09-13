@@ -158,6 +158,75 @@ async function runWeeklyReport(deps = {}) {
   }
 }
 
+/**
+ * What the report WOULD say, without sending it or recording anything.
+ *
+ * Deliberately ungated: a preview neither reaches a chat nor writes a row, so
+ * refusing one because the schedule is switched off would only hide the figures
+ * from the person deciding whether to switch it on.
+ */
+async function previewReport(deps = {}) {
+  const now = deps.now ? deps.now() : new Date();
+  const scheduledFor = schedule.mostRecentScheduledRun(now);
+  const { periodStart, periodEnd } = schedule.periodFor(scheduledFor);
+  const built = await buildReport({ periodStart, periodEnd });
+  return { periodStart, periodEnd, totals: built.totals, body: built.body };
+}
+
+/**
+ * Send the most recent period's report NOW, because a person asked.
+ *
+ * IT NEVER TOUCHES THE CLAIM, AND IT IS RECORDED AS `manual`. The once-a-period
+ * rule exists to stop a restart re-sending the scheduled report; it is not
+ * there to argue with somebody who deliberately pressed a button. Recording it
+ * as `manual` is what keeps the two apart — the partial unique index covers
+ * `status <> 'manual'`, so a manual send can neither collide with the scheduled
+ * row nor stand in for it, and Monday morning still goes out.
+ *
+ * The switches are not consulted for the same reason. The only two things that
+ * can refuse are the two that make sending impossible: no chat, or no Telegram.
+ */
+async function sendReportNow(deps = {}) {
+  const telegram = deps.telegram ?? null;
+  const now = deps.now ? deps.now() : new Date();
+
+  const settings = await getFinanceSettings();
+  const chatId = destinationFor(settings);
+  if (!chatId) return { sent: false, reason: 'No chat is set for the finance report.' };
+  if (!telegram) return { sent: false, reason: 'The bot is not connected to Telegram right now.' };
+
+  const scheduledFor = schedule.mostRecentScheduledRun(now);
+  const { periodStart, periodEnd } = schedule.periodFor(scheduledFor);
+  const built = await buildReport({ periodStart, periodEnd });
+
+  const sent = await safeSend(() => telegram.sendMessage(chatId, built.body, {
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+  }));
+
+  // THE SEND ALREADY HAPPENED, AND IT CANNOT BE UNDONE. A manual send carries
+  // no claim and no request key, so a failure reported here would put a Try
+  // again in front of somebody for a message that is already in the chat, and
+  // they would send it twice. Failing to WRITE IT DOWN is a different and
+  // lesser problem than failing to send, and it is reported as itself.
+  let recorded = true;
+  try {
+    await reports.recordReport({
+      periodStart, periodEnd, scheduledFor, status: 'manual', chatId,
+      telegramMessageId: sent?.message_id ?? null,
+      totals: built.totals, body: built.body, sentAt: new Date(),
+    });
+  } catch (err) {
+    recorded = false;
+    log(`the manual report was SENT but could not be recorded: ${err.message}`);
+  }
+  log(`sent a manual report for ${schedule.runKeyFor(periodStart)}`);
+  return {
+    sent: true, recorded, periodStart, periodEnd,
+    telegramMessageId: sent?.message_id ?? null,
+  };
+}
+
 /** One tick, wrapped so /api/health can say whether it ran. Never throws. */
 async function tick(deps = {}) {
   let summary;
@@ -196,6 +265,8 @@ module.exports = {
   SERVICE_NAME,
   runWeeklyReport,
   buildReport,
+  previewReport,
+  sendReportNow,
   destinationFor,
   tick,
   startFinanceWeeklyReport,

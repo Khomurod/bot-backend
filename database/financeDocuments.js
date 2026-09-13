@@ -67,17 +67,28 @@ async function enqueueDocument(fields) {
  *
  * @returns {Promise<object|null>} the claimed row, or null when nothing is due
  */
-async function claimNextDocument({ now = new Date() } = {}) {
+async function claimNextDocument({ now = null } = {}) {
+  // THE DATABASE'S CLOCK DECIDES WHAT IS DUE, not this process's.
+  //
+  // `next_attempt_at` is written by the database (`DEFAULT NOW()` on insert,
+  // `NOW()` on a requeue), so comparing it against a `new Date()` from here
+  // compares two clocks. They differ — the application and PostgreSQL are
+  // different machines — and when the database's is the later one a row that
+  // was JUST made due reads as not due yet. Found by a test that requeued a
+  // document and then could not claim it.
+  //
+  // `now` stays an explicit parameter because a test needs to ask "what is due
+  // an hour from now"; it simply is not the default any more.
   const { rows } = await query(
     `UPDATE finance_documents
         SET status = 'processing',
             attempt_count = attempt_count + 1,
-            processing_started_at = $1,
+            processing_started_at = COALESCE($1::timestamptz, NOW()),
             updated_at = NOW()
       WHERE id = (
         SELECT id FROM finance_documents
          WHERE status IN ('pending', 'failed')
-           AND next_attempt_at <= $1
+           AND next_attempt_at <= COALESCE($1::timestamptz, NOW())
          ORDER BY next_attempt_at, id
          FOR UPDATE SKIP LOCKED
          LIMIT 1
@@ -213,7 +224,58 @@ async function summariseDocuments() {
   }
 }
 
+/**
+ * The documents, for the Finance page. Metadata and what was read — never the
+ * file, which is not stored, and never a download URL, which would carry the
+ * bot token.
+ */
+async function listDocuments({ limit = 50, status = null } = {}) {
+  const { rows } = await query(
+    `SELECT d.id, d.message_ref_id AS "messageRefId", d.chat_id AS "chatId",
+            d.message_id AS "messageId", d.kind, d.mime_type AS "mimeType",
+            d.file_name AS "fileName", d.file_size AS "fileSize", d.caption,
+            d.status, d.attempt_count AS "attemptCount", d.last_error AS "lastError",
+            d.read_method AS "readMethod", d.text_chars AS "textChars",
+            d.extracted, d.review_reason AS "reviewReason",
+            d.ai_provider AS "aiProvider", d.ai_model AS "aiModel",
+            d.created_at AS "createdAt", d.updated_at AS "updatedAt"
+       FROM finance_documents d
+      WHERE ($2::text IS NULL OR d.status = $2)
+      ORDER BY d.created_at DESC, d.id DESC
+      LIMIT $1`,
+    [limit, status],
+  );
+  return rows.map((r) => ({ ...r, fileSize: r.fileSize === null ? null : Number(r.fileSize) }));
+}
+
+/**
+ * Put a document back in the queue, now.
+ *
+ * For a `failed` one — a document Wenze could not FETCH — after whatever
+ * stopped it has been dealt with. THE ATTEMPT LADDER IS RESET, because a person
+ * asking for a retry is new information the backoff does not have; leaving the
+ * count where it was would let one click exhaust it.
+ *
+ * `needs_review` is deliberately NOT retryable here: it means the bytes were
+ * read and could not be understood, and running the same reader over the same
+ * bytes will reach the same place. That one needs a person, which is what the
+ * status says.
+ */
+async function requeueDocument(id) {
+  const { rows } = await query(
+    `UPDATE finance_documents
+        SET status = 'pending', attempt_count = 0, next_attempt_at = NOW(),
+            last_error = NULL, processing_started_at = NULL, updated_at = NOW()
+      WHERE id = $1 AND status IN ('failed', 'skipped_too_large', 'skipped_unsupported')
+      RETURNING id`,
+    [id],
+  );
+  return Boolean(rows[0]);
+}
+
 module.exports = {
+  listDocuments,
+  requeueDocument,
   enqueueDocument,
   claimNextDocument,
   finishDocument,

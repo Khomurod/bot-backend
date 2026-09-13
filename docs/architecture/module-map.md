@@ -165,9 +165,13 @@ organization should converge toward.
 | Getting text out of a PDF or an image | `services/documents/pdfTextExtraction.js` — shared with the pinned rate-confirmation reader; `allowOcr: false` is how finance keeps tesseract.js off its path entirely |
 | The photo/document shapes of a Telegram message | `lib/telegram/fileDescriptor.js` — moved out of `services/pinnedContext/pinnedSource.js`, which re-exports it |
 
+| The one screen that shows the text | `server/routes/financeRoutes.js` (mounted `/api/finance`), `admin/src/pages/FinancePage.jsx` + `pages/finance/*`, `admin/src/api/financePage.js` |
+
 Deliberately isolated: no foreign key out of the finance tables, no reader
 anywhere else, and nothing it stores feeds a decision. See
-[`finance-monitor.md`](finance-monitor.md).
+[`finance-monitor.md`](finance-monitor.md), and
+[`finance-monitor-page.md`](finance-monitor-page.md) for the one screen that
+reads the text out.
 
 ### 6. AI / Insights Module
 

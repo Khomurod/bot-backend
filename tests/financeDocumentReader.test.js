@@ -289,3 +289,33 @@ test('nothing is announced when everything was read', async () => {
   await reader.drainFinanceDocuments({ telegram: {}, download, ai: okAi });
   assert.equal(notices.length, 0);
 });
+
+/**
+ * THE SECOND BATCH MUST STILL BE ANNOUNCED.
+ *
+ * `notify` deduplicates on `category:subjectType:subjectId:discriminator`, and
+ * a notice built from constants alone is said ONCE in the life of the
+ * installation. A week of unreadable scans would then arrive as silence — the
+ * exact failure this repository lost 101 staff alerts to. The batch's highest
+ * document id is the discriminator, because a drain cannot re-review a document
+ * it has already moved off `pending`.
+ */
+test('a later batch of unreadable documents is announced again, not swallowed', async () => {
+  reset();
+  const unavailable = async () => ({ extracted: null, unavailable: true, provider: null, model: null });
+
+  queue = [doc({ id: 11 })];
+  pdfText = 'x'.repeat(policy.STRONG_TEXT_CHARS);
+  await reader.drainFinanceDocuments({ telegram: {}, download, ai: unavailable });
+
+  queue = [doc({ id: 12 })];
+  pdfText = 'x'.repeat(policy.STRONG_TEXT_CHARS);
+  await reader.drainFinanceDocuments({ telegram: {}, download, ai: unavailable });
+
+  assert.equal(notices.length, 2, 'both batches should have produced a notice');
+  assert.notEqual(
+    notices[0].discriminator,
+    notices[1].discriminator,
+    'two different batches must not share one notice key',
+  );
+});

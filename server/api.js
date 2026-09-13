@@ -206,7 +206,17 @@ const { createAutoReactionsRouter } = require('./routes/autoReactionsRoutes');
 app.use('/api/auto-reactions', createAutoReactionsRouter({ authMiddleware: legacyAuthMiddleware }));
 
 const { createSettingsRouter } = require('./routes/settingsRoutes');
+const { createFinanceRouter } = require('./routes/financeRoutes');
 app.use('/api/settings', createSettingsRouter({ authMiddleware: legacyAuthMiddleware, telegram: bot.telegram }));
+// The Finance page. THE ONE PLACE captured payment text leaves the database,
+// and narrow on purpose: reads plus three actions that re-run machinery which
+// already exists. The Telegram deep link is built here from the stored ids and
+// is never accepted from the client.
+app.use('/api/finance', createFinanceRouter({
+  authMiddleware: legacyAuthMiddleware,
+  telegram: bot.telegram,
+  buildMessageUrl: require('../services/telegramUrl').buildTelegramMessageUrl,
+}));
 
 const { createRouteControlRouter } = require('./routes/routeControlRoutes');
 const { getRouteMediaEditClient } = require('../services/telegramAgent');

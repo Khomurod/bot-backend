@@ -214,6 +214,15 @@ not one per document. It carries counts and nothing else: no file name, no
 caption, nothing extracted. A notification lands in a group chat's permanent
 history.
 
+**Its discriminator is the batch's highest document id**, and that is
+load-bearing rather than decorative. `notify` deduplicates on the whole notice
+key, so the first version of this notice — built from constants alone — would
+have been said exactly once in the life of the installation and every later
+batch of unreadable scans would have arrived as silence. That is the failure
+this repository lost 101 staff alerts to, reached from the opposite direction.
+A drain cannot re-review a document it has already moved off `pending`, so the
+highest id identifies the **event** and not merely the condition.
+
 ---
 
 ## 4b. The weekly summary — once a period, or not at all
@@ -289,6 +298,15 @@ Telegram redelivers, and a restart replays. `captureMessage` inserts with
 
 A check-then-insert would be a race two handlers could both win. A unique index
 is not. `tests/financeCapturePg.test.js` proves both against the real schema.
+
+---
+
+## 5a. The Finance page — the one place the text is read out
+
+The router and the screen have their own document:
+**[`finance-monitor-page.md`](finance-monitor-page.md)** — the guards on
+`/api/finance`, the three actions and the rules each carries, and why the error
+boundary sits below the tab bar.
 
 ---
 
@@ -374,9 +392,9 @@ npm test --prefix admin                              # FinanceTab: the checkbox 
 - **What a document says is never counted.** The money code that counts is the
   one read deterministically out of the message text. A document reading is
   evidence beside it, in that document's own row, and nothing sums it.
-- **The read-only Finance page** is Stage D4 — the one place document text and
-  message text are meant to leave the database, behind their own permission.
-  Until then a report body is stored and readable only in the database itself.
+- **The report body is stored but has no screen yet.** The Finance page lists
+  what each week's summary concluded; reading the sent text back is a database
+  query. Nobody has asked for it on a screen.
 - **`finance_moneycodes.issued_to` is left NULL.** Who POSTED a code is recorded;
   who it was FOR is not something this parser can read, and a column filled with
   the sender's name under an "issued to" heading would be worse than an empty
