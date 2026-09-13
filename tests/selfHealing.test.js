@@ -249,3 +249,80 @@ test('a component nobody could read is dropped before it can start a failure cou
     '"I could not check" is not "it is broken" — three unreadable passes would '
     + 'otherwise announce an outage that was only ever a failing health query');
 });
+
+// ── the watchman that could not report itself ───────────────────────────────
+
+/**
+ * A PASS THAT OBSERVED NOTHING IS A FAILED PASS, NOT A CLEAN ONE.
+ *
+ * This is the same defect the contradiction pass had, in the one place it
+ * matters most. `runSelfHealingPass` returns `errors` — plural, a list —
+ * and `statusFromSummary` reads `error`, singular, and knows nothing about it.
+ * So when `gatherObservations` throws, the pass returns early having saved
+ * NOTHING, and the ledger records `status: 'ok'`.
+ *
+ * The consequence is the worst-shaped failure in the application. This is the
+ * watch that makes every OTHER component's failure visible; when it dies,
+ * `system_health_states` simply freezes at whatever it last held, every
+ * component keeps reporting the health it had at that moment, and
+ * `self_healing` — catalogued CRITICAL — reads healthy the whole time. Nothing
+ * anywhere says the health picture stopped moving.
+ *
+ * Found in production: after 041aa8b deployed, the components it newly marked
+ * `blocked` never moved into `systems.waiting` across 32 minutes and at least
+ * one due pass, while `self_healing` read healthy throughout.
+ *
+ * The rule is the one already settled for the contradiction pass: the PASS
+ * decides whether its errors amount to a failure and says so in `error`;
+ * `statusFromSummary` stays deliberately dumb, so "one bad component among
+ * many is not a failed pass" keeps holding.
+ */
+test('A PASS THAT OBSERVED NOTHING IS A FAILED PASS, NOT A CLEAN ONE', async () => {
+  // eslint-disable-next-line global-require
+  const { statusFromSummary } = require('../services/operations/runLedger');
+  const { deps } = harness();
+  deps.store.getHealthState = async () => null;
+  deps.gather = async () => { throw new Error('relation does not exist'); };
+
+  const summary = await healing.runSelfHealingPass({ now: NOW, deps });
+
+  assert.equal(summary.checked, 0, 'it recorded nothing');
+  assert.equal(statusFromSummary(summary).status, 'error',
+    'the watch that watches everything else must be loud when it cannot run');
+  assert.match(summary.error, /could not read the health of any component/);
+});
+
+test('and a pass where EVERY component failed to record is a failed pass too', async () => {
+  // eslint-disable-next-line global-require
+  const { statusFromSummary } = require('../services/operations/runLedger');
+  const { deps } = harness();
+  deps.store.saveHealthState = async () => { throw new Error('read-only transaction'); };
+  deps.gather = async () => ([{ component: 'a', ok: true }, { component: 'b', ok: true }]);
+
+  const summary = await healing.runSelfHealingPass({ now: NOW, deps });
+
+  assert.equal(summary.errors.length, 2);
+  assert.equal(statusFromSummary(summary).status, 'error');
+  assert.match(summary.error, /none of the 2 component\(s\)/);
+});
+
+/** But one unreadable component among many is noise, not an outage. */
+test('one component failing among several is still a pass that did its job', async () => {
+  // eslint-disable-next-line global-require
+  const { statusFromSummary } = require('../services/operations/runLedger');
+  const { deps } = harness();
+  let n = 0;
+  const realSave = deps.store.saveHealthState;
+  deps.store.saveHealthState = async (state) => {
+    n += 1;
+    if (n === 1) throw new Error('deadlock detected');
+    return realSave(state);
+  };
+  deps.gather = async () => ([{ component: 'a', ok: true }, { component: 'b', ok: true }]);
+
+  const summary = await healing.runSelfHealingPass({ now: NOW, deps });
+
+  assert.equal(summary.errors.length, 1);
+  assert.equal(statusFromSummary(summary).status, 'ok',
+    'it recorded the component it could');
+});

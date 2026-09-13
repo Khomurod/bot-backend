@@ -258,3 +258,54 @@ test('a router refusal carries the model, and a burst collapses into one verific
   await new Promise((r) => setImmediate(r));
   assert.deepEqual(verified, [['groq', ['m1', 'm2']]]);
 });
+
+// ── a maintenance run that maintained nothing ──────────────────────────────
+
+/**
+ * EVERY PROVIDER FAILING IS A FAILED PASS, NOT A CLEAN ONE.
+ *
+ * `errors` here is a count, and the run ledger grades every worker by
+ * `error` — singular. So a maintenance run in which nothing could be verified
+ * recorded itself as a successful run. This is the job that notices a model has
+ * been retired, drops it from the chain and promotes the next one; a silent
+ * no-op leaves the chain pointing at models that no longer answer, and
+ * `ai_model_maintenance` reads healthy while it happens.
+ *
+ * The rule is the one the contradiction pass, the self-healing watch and the
+ * recruiter-token refresh all follow: the PASS decides whether its errors
+ * amount to a failure and says so in `error`.
+ */
+test('A MAINTENANCE RUN THAT VERIFIED NOTHING IS A FAILED RUN', async () => {
+  // eslint-disable-next-line global-require
+  const { statusFromSummary } = require('../services/operations/runLedger');
+  const d = deps({
+    refreshResults: {
+      groq: { ok: false, providerKey: 'groq', error: 'connect ETIMEDOUT' },
+      gemini: { ok: false, providerKey: 'gemini', error: 'connect ETIMEDOUT' },
+    },
+  });
+
+  const summary = await runModelMaintenance({}, d);
+
+  assert.equal(summary.checked, 2);
+  assert.equal(summary.errors, 2);
+  assert.equal(statusFromSummary(summary).status, 'error',
+    'nothing was verified, so nothing was maintained');
+  assert.match(summary.error, /none of the 2 enabled provider\(s\)/);
+});
+
+/** One provider failing is the router's ordinary weather, not an outage. */
+test('one provider failing among several is still a run that did its job', async () => {
+  // eslint-disable-next-line global-require
+  const { statusFromSummary } = require('../services/operations/runLedger');
+  const d = deps({
+    refreshResults: { groq: { ok: false, providerKey: 'groq', error: 'connect ETIMEDOUT' } },
+  });
+
+  const summary = await runModelMaintenance({}, d);
+
+  assert.equal(summary.errors, 1);
+  assert.equal(summary.checked, 2);
+  assert.equal(statusFromSummary(summary).status, 'ok',
+    'it verified the provider it could reach');
+});

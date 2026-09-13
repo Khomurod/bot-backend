@@ -59,17 +59,43 @@ async function refreshAllRecruiterTokens({ delayMs = PER_RECRUITER_DELAY_MS } = 
     needsLogin: [], errors: [],
   };
 
+  // `errors` IS PLURAL AND NOTHING READS IT. `statusFromSummary` — which is
+  // what the run ledger grades every worker by — reads `error`, singular. So
+  // both early returns below recorded themselves as clean runs, and
+  // `recruiter_logins` is catalogued CRITICAL: its whole purpose is keeping
+  // refresh tokens alive inside RingCentral's 7-day window. A silent no-op here
+  // expires every recruiter's login a week later, on a Monday nobody was
+  // watching — the exact failure this job exists to prevent — while
+  // `/api/health` reports the logins fine throughout.
+  //
+  // Same rule as the contradiction and self-healing passes: the JOB decides
+  // whether its errors amount to a failure and says so in `error`.
   let recruiters = [];
   try {
     recruiters = await rc.listRecruitersWithOwnCredentials();
   } catch (err) {
     summary.errors.push(`Could not list recruiters: ${err.message}`);
+    summary.error = `could not list the recruiters to refresh: ${err.message}`;
     return summary;
   }
 
-  const cfg = await rc.getRcConfig().catch(() => null);
+  // A SETTINGS READ THAT THREW IS NOT "NOBODY CONFIGURED IT". This was
+  // `.catch(() => null)`, which collapsed a failed read and an empty settings
+  // row into one answer — so a database outage read as "nothing is set up yet",
+  // the most reassuring possible description of an outage.
+  let cfg = null;
+  try {
+    cfg = await rc.getRcConfig();
+  } catch (err) {
+    summary.errors.push(`RingCentral settings unavailable: ${err.message}`);
+    summary.error = `could not read the RingCentral settings: ${err.message}`;
+    return summary;
+  }
   if (!cfg) {
+    // Genuinely not configured. Somebody's setting, not a fault — and
+    // `healthObservations` already names it on the integration side.
     summary.errors.push('RingCentral settings unavailable.');
+    summary.blocked = 'RingCentral is not configured yet';
     return summary;
   }
 

@@ -136,11 +136,36 @@ async function runSelfHealingPass({ now = Date.now(), deps = defaultDeps(), opti
   const nowIso = new Date(now).toISOString();
   const summary = { checked: 0, announced: [], errors: [], actionable: 0 };
 
+  // INJECTED, not the module-local binding. A test that replaced the export was
+  // silently ignored here, which is part of how the defect below survived: the
+  // one seam the failure needed could not be reached from a test.
+  const gather = deps.gather || gatherObservations;
+
   let observations;
   try {
-    observations = await gatherObservations(deps);
+    observations = await gather(deps);
   } catch (err) {
-    return { ...summary, errors: [err.message] };
+    // A PASS THAT OBSERVED NOTHING IS A FAILED PASS, NOT A CLEAN ONE.
+    //
+    // `errors` is plural and `statusFromSummary` reads `error`, singular, so
+    // this early return was recorded in the ledger as `ok` — and this is the
+    // worst place in the application for that. This watch is what makes every
+    // OTHER component's failure visible; when it dies, `system_health_states`
+    // freezes at whatever it last held, every component keeps reporting the
+    // health it had at that moment, and `self_healing` — catalogued CRITICAL —
+    // reads healthy the whole time. Nothing anywhere says the picture stopped
+    // moving. Found in production, where components a deploy had newly marked
+    // `blocked` never reached `systems.waiting`.
+    //
+    // The rule is the contradiction pass's: the PASS decides whether its errors
+    // amount to a failure and says so in `error`, so `statusFromSummary` stays
+    // deliberately dumb and "one bad component among many is not a failed pass"
+    // keeps holding.
+    return {
+      ...summary,
+      errors: [err.message],
+      error: `could not read the health of any component: ${err.message}`,
+    };
   }
 
   for (const observation of observations) {
@@ -153,6 +178,13 @@ async function runSelfHealingPass({ now = Date.now(), deps = defaultDeps(), opti
     } catch (err) {
       summary.errors.push(`${observation.component}: ${err.message}`);
     }
+  }
+
+  // EVERY component it was handed failed to record — the same failure as above
+  // wearing a different shape, and just as invisible. One failing among several
+  // is noise and stays `ok`; none of them recording is this pass not having run.
+  if (observations.length && summary.errors.length === observations.length) {
+    summary.error = `none of the ${observations.length} component(s) could be recorded`;
   }
 
   return summary;
