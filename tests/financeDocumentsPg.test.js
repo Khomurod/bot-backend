@@ -57,23 +57,88 @@ test('the same file is queued once, however many times it is delivered', { skip:
   assert.equal(rows[0].n, 1);
 });
 
-test('two claimers cannot take the same row, and one cannot take two',
+test('two concurrent claimers never take the same row', { skip: skipWithoutPg() }, async (t) => {
+  const { financeDocuments, messageRefId } = await setup(t);
+  await financeDocuments.enqueueDocument(docFields(messageRefId, { fileUniqueId: 'u1', messageId: 1 }));
+  await financeDocuments.enqueueDocument(docFields(messageRefId, { fileUniqueId: 'u2', messageId: 2 }));
+
+  // Genuinely concurrent: two claims in flight at once against one database.
+  const [a, b] = await Promise.all([
+    financeDocuments.claimNextDocument(),
+    financeDocuments.claimNextDocument(),
+  ]);
+
+  // THE GUARANTEE IS "NEVER THE SAME ROW", NOT "ALWAYS BOTH ROWS", and the
+  // difference is worth writing down because the first version of this test
+  // asserted the second and failed on CI. `FOR UPDATE SKIP LOCKED` with
+  // `LIMIT 1` applies the limit to the row the PLAN picked: when both
+  // claimers pick the same row and one wins it, the loser skips it and can
+  // come back with NOTHING rather than moving on to the other row. That is
+  // correct behaviour and costs nothing — the drain loops, so the second
+  // document is taken on the next pass.
+  const taken = [a, b].filter(Boolean);
+  assert.ok(taken.length >= 1, 'at least one claimer must make progress');
+  if (taken.length === 2) {
+    assert.notEqual(a.id, b.id, 'two workers reading one document is the bug SKIP LOCKED prevents');
+  }
+
+  // Whatever happened above, exactly two documents exist and each is claimed
+  // at most once — so a further claim finds the remainder and then nothing.
+  const remaining = [];
+  for (;;) {
+    // eslint-disable-next-line no-await-in-loop
+    const next = await financeDocuments.claimNextDocument();
+    if (!next) break;
+    remaining.push(next.id);
+  }
+  const all = [...taken.map((d) => d.id), ...remaining].map(String);
+  assert.equal(all.length, 2, 'every document is claimed exactly once');
+  assert.equal(new Set(all).size, 2);
+});
+
+test('A CLAIM IN FLIGHT IS SKIPPED, NOT WAITED ON — the SKIP LOCKED guarantee',
   { skip: skipWithoutPg() }, async (t) => {
-    const { financeDocuments, messageRefId } = await setup(t);
+    const { h, financeDocuments, messageRefId } = await setup(t);
     await financeDocuments.enqueueDocument(docFields(messageRefId, { fileUniqueId: 'u1', messageId: 1 }));
     await financeDocuments.enqueueDocument(docFields(messageRefId, { fileUniqueId: 'u2', messageId: 2 }));
 
-    // Genuinely concurrent: two claims in flight at once against one database.
-    const [a, b] = await Promise.all([
-      financeDocuments.claimNextDocument(),
-      financeDocuments.claimNextDocument(),
-    ]);
+    // A DETERMINISTIC RACE, because the two-in-flight version is not one: the
+    // claims usually serialise and the bug hides. Here a transaction is held
+    // OPEN with a row locked, so the second claimer meets the lock every time.
+    const holder = await h.connect();
+    let held;
+    try {
+      await holder.query('BEGIN');
+      const locked = await holder.query(
+        `SELECT id FROM finance_documents
+          WHERE status IN ('pending','failed')
+          ORDER BY next_attempt_at, id
+          FOR UPDATE SKIP LOCKED LIMIT 1`,
+      );
+      held = locked.rows[0].id;
 
-    assert.ok(a && b, 'both claimers should have found work');
-    assert.notEqual(a.id, b.id, 'SKIP LOCKED is what stops two workers reading one document');
+      // Without SKIP LOCKED this call BLOCKS on the open transaction and the
+      // timeout below fires. With it, the claimer walks past and gets on with
+      // the other document — which is the whole reason the clause is there.
+      const claimed = await Promise.race([
+        financeDocuments.claimNextDocument(),
+        new Promise((_, reject) => {
+          const t2 = setTimeout(() => reject(new Error('the claim blocked on a locked row')), 4000);
+          t2.unref?.();
+        }),
+      ]);
 
-    // And nothing is left claimable.
-    assert.equal(await financeDocuments.claimNextDocument(), null);
+      assert.ok(claimed, 'the other document was free and should have been taken');
+      assert.notEqual(String(claimed.id), String(held),
+        'two workers reading one document is exactly what this prevents');
+    } finally {
+      await holder.query('ROLLBACK').catch(() => {});
+      holder.release();
+    }
+
+    // Once the holder lets go, the row it was sitting on is claimable again.
+    const rest = await financeDocuments.claimNextDocument();
+    assert.equal(String(rest.id), String(held));
   });
 
 test('an attempt is counted when the row is TAKEN, not when it fails',
