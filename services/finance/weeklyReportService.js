@@ -203,13 +203,28 @@ async function sendReportNow(deps = {}) {
     parse_mode: 'HTML',
     disable_web_page_preview: true,
   }));
-  await reports.recordReport({
-    periodStart, periodEnd, scheduledFor, status: 'manual', chatId,
-    telegramMessageId: sent?.message_id ?? null,
-    totals: built.totals, body: built.body, sentAt: new Date(),
-  });
+
+  // THE SEND ALREADY HAPPENED, AND IT CANNOT BE UNDONE. A manual send carries
+  // no claim and no request key, so a failure reported here would put a Try
+  // again in front of somebody for a message that is already in the chat, and
+  // they would send it twice. Failing to WRITE IT DOWN is a different and
+  // lesser problem than failing to send, and it is reported as itself.
+  let recorded = true;
+  try {
+    await reports.recordReport({
+      periodStart, periodEnd, scheduledFor, status: 'manual', chatId,
+      telegramMessageId: sent?.message_id ?? null,
+      totals: built.totals, body: built.body, sentAt: new Date(),
+    });
+  } catch (err) {
+    recorded = false;
+    log(`the manual report was SENT but could not be recorded: ${err.message}`);
+  }
   log(`sent a manual report for ${schedule.runKeyFor(periodStart)}`);
-  return { sent: true, periodStart, periodEnd, telegramMessageId: sent?.message_id ?? null };
+  return {
+    sent: true, recorded, periodStart, periodEnd,
+    telegramMessageId: sent?.message_id ?? null,
+  };
 }
 
 /** One tick, wrapped so /api/health can say whether it ran. Never throws. */

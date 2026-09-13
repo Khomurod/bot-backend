@@ -62,7 +62,12 @@ export default function ReportsTab() {
       const out = await api.sendFinanceReportNow();
       // A refusal is an ANSWER, not a failure: it names what is missing.
       if (!out.sent) setError(out.error || "It could not be sent.");
-      else { setNote("Sent. It is listed below as sent by hand."); setError(null); await load(); }
+      else if (out.recorded === false) {
+        // It IS in the chat. Saying otherwise would invite a second send.
+        setNote("Sent — but it could not be written to the history below. Do not send it again.");
+        setError(null);
+        await load();
+      } else { setNote("Sent. It is listed below as sent by hand."); setError(null); await load(); }
     } catch (e) {
       setError(e.message);
     } finally {

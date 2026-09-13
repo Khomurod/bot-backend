@@ -27,6 +27,8 @@ const financeMessages = require('../../database/financeMessages');
 const financeDocuments = require('../../database/financeDocuments');
 const financeReports = require('../../database/finance/reports');
 const weeklyReport = require('../../services/finance/weeklyReportService');
+const captureService = require('../../services/finance/captureService');
+const { wakeFinanceDocumentReader } = require('../../services/finance/documentReader');
 const { sendFailure } = require('../middleware/failureResponse');
 
 const DEFAULT_LIMIT = 50;
@@ -136,10 +138,15 @@ function createFinanceRouter({ authMiddleware, telegram = null, buildMessageUrl 
    * than a slogan: the text was kept verbatim precisely so a tightened parser
    * could be run over it. Nothing is supplied by the caller — the message id is
    * the whole request, and the parser decides.
+   *
+   * IT GOES THROUGH THE CAPTURE SERVICE, NOT STRAIGHT TO THE TABLE. A code the
+   * re-read recognises has to be recorded through the same duplicate decision a
+   * live capture uses, or the message leaves the unclear pile while the Money
+   * codes tab and every weekly total stay exactly as wrong as before.
    */
   router.post('/messages/:id/reparse', authMiddleware, async (req, res) => {
     try {
-      const out = await financeMessages.reparseMessage(Number(req.params.id));
+      const out = await captureService.reparseCapturedMessage(Number(req.params.id));
       if (!out) return res.status(404).json({ error: 'No such captured message.' });
       return res.json(out);
     } catch (err) {
@@ -153,11 +160,17 @@ function createFinanceRouter({ authMiddleware, telegram = null, buildMessageUrl 
    * For the `failed` ones — the ones Wenze could not FETCH — after whatever
    * stopped it has been dealt with. It resets the attempt ladder, because a
    * person asking for a retry is new information the backoff does not have.
+   *
+   * AND IT POKES THE READER, exactly as capture does. After an empty drain the
+   * queue scheduler holds no retry timer — only the 15-minute idle sweep — so
+   * without the poke a row made due right now sits untouched for a quarter of
+   * an hour while the screen says it will be read within a few minutes.
    */
   router.post('/documents/:id/retry', authMiddleware, async (req, res) => {
     try {
       const requeued = await financeDocuments.requeueDocument(Number(req.params.id));
       if (!requeued) return res.status(404).json({ error: 'No such document, or it is already queued.' });
+      wakeFinanceDocumentReader();
       return res.json({ requeued: true });
     } catch (err) {
       return fail(res, err, 'Failed to queue that document again');

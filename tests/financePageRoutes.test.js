@@ -52,6 +52,13 @@ stub('database/financeDocuments.js', {
   listDocuments: async () => { statements.push('listDocuments'); return documents; },
   requeueDocument: async (id) => { requeued.push(id); return requeueResult; },
 });
+let pokes = 0;
+stub('services/finance/documentReader.js', {
+  wakeFinanceDocumentReader: () => { pokes += 1; },
+});
+stub('services/finance/captureService.js', {
+  reparseCapturedMessage: async (id) => { reparsed.push(id); return reparseResult; },
+});
 stub('database/finance/reports.js', {
   listReports: async () => { statements.push('listReports'); return reports; },
 });
@@ -80,7 +87,7 @@ function makeServer({ auth = 'ok' } = {}) {
 }
 
 async function withServer(opts, fn) {
-  statements = []; reparsed = []; requeued = []; sentNow = [];
+  statements = []; reparsed = []; requeued = []; sentNow = []; pokes = 0;
   const server = makeServer(opts);
   await new Promise((r) => server.listen(0, r));
   try {
@@ -109,6 +116,7 @@ test('EVERY route requires an administrator, and refuses before touching the dat
     assert.deepEqual(reparsed, []);
     assert.deepEqual(requeued, []);
     assert.deepEqual(sentNow, [], 'an unauthenticated call must not send anything to Telegram');
+    assert.equal(pokes, 0);
   });
 });
 
@@ -191,16 +199,16 @@ test('re-reading a message passes an id and nothing else', async () => {
 });
 
 test('re-reading something that is not there is a 404, not a silent success', async () => {
-  const filename = require.resolve(R('database/financeMessages.js'));
-  const original = require.cache[filename].exports.reparseMessage;
-  require.cache[filename].exports.reparseMessage = async () => null;
+  const filename = require.resolve(R('services/finance/captureService.js'));
+  const original = require.cache[filename].exports.reparseCapturedMessage;
+  require.cache[filename].exports.reparseCapturedMessage = async () => null;
   try {
     await withServer({}, async (base) => {
       const res = await fetch(`${base}/messages/999/reparse`, { method: 'POST' });
       assert.equal(res.status, 404);
     });
   } finally {
-    require.cache[filename].exports.reparseMessage = original;
+    require.cache[filename].exports.reparseCapturedMessage = original;
   }
 });
 
@@ -278,4 +286,43 @@ test('a refusal to send is a 400 carrying the reason', async () => {
     assert.match((await res.json()).error, /No chat is set/);
   });
   sendNowResult = { sent: true, periodStart: '2026-09-01', telegramMessageId: 77 };
+});
+
+/**
+ * THE POKE IS WHAT MAKES "within a few minutes" TRUE.
+ *
+ * After an empty drain the queue scheduler holds no retry timer — only the
+ * 15-minute idle sweep — so a row made due right now would sit untouched for a
+ * quarter of an hour while the screen promised otherwise.
+ */
+test('a retry wakes the reader, exactly as capture does', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/documents/3/retry`, { method: 'POST' });
+    assert.equal(res.status, 200);
+    assert.deepEqual(requeued, [3]);
+    assert.equal(pokes, 1, 'the reader must be poked after a successful requeue');
+  });
+});
+
+/** A requeue that changed nothing must not poke a worker for no reason. */
+test('a retry that changed nothing does not wake the reader', async () => {
+  requeueResult = false;
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/documents/3/retry`, { method: 'POST' });
+    assert.equal(res.status, 404);
+    assert.equal(pokes, 0);
+  });
+  requeueResult = true;
+});
+
+/**
+ * The route goes through the CAPTURE SERVICE, not the table. A re-read that
+ * reached the database directly moved the message off the unclear pile and left
+ * the money code behind.
+ */
+test('a re-read goes through the service that records the code', async () => {
+  const source = require('node:fs').readFileSync(R('server/routes/financeRoutes.js'), 'utf8');
+  assert.ok(source.includes('captureService.reparseCapturedMessage'),
+    'the route must not call financeMessages.reparseMessage directly');
+  assert.equal(source.includes('financeMessages.reparseMessage'), false);
 });

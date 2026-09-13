@@ -87,7 +87,7 @@ async function recordCodeIfParsed(messageRefId, shaped, parsed, settings) {
     { windowHours: settings.duplicateWindowHours },
   );
 
-  return financeMessages.recordMoneycode(messageRefId, {
+  const written = await financeMessages.recordMoneycode(messageRefId, {
     code: parsed.code,
     codeNormalized: parsed.codeNormalized,
     amount: parsed.amount,
@@ -105,6 +105,54 @@ async function recordCodeIfParsed(messageRefId, shaped, parsed, settings) {
     duplicateOfId: duplicate?.duplicateOfId ?? null,
     duplicateReason: duplicate?.reason ?? null,
   });
+  if (written) return written;
+
+  // The row was already there. That happens on an edit and on a re-read, and
+  // in both cases THIS parse is the fresher reading of the same text — so the
+  // amount beside it is brought into line rather than left to disagree with
+  // the message it came from.
+  return financeMessages.updateMoneycodeInterpretation(messageRefId, parsed.codeNormalized, {
+    code: parsed.code,
+    amount: parsed.amount,
+    currency: parsed.currency,
+    parserVersion: parsed.parserVersion,
+    confidence: null,
+    duplicateOfId: duplicate?.duplicateOfId ?? null,
+    duplicateReason: duplicate?.reason ?? null,
+  });
+}
+
+/**
+ * Re-read one captured message with the CURRENT parser, AND persist what it
+ * found.
+ *
+ * The database call updates the interpretation; this is where the money code
+ * lands, through the same duplicate decision a live capture uses. Without this
+ * step a re-read moved a message off the "unclear" pile, told the operator it
+ * had succeeded, and left the Money codes tab and every weekly total still
+ * missing the code it had just recognised.
+ *
+ * Recording is best-effort ON PURPOSE: the re-read itself succeeded, and
+ * reporting it as a failure would invite a retry of something already done.
+ * The outcome says whether the code landed, so the screen can be honest.
+ */
+async function reparseCapturedMessage(id) {
+  const out = await financeMessages.reparseMessage(id);
+  if (!out) return null;
+  if (out.after !== STATUS.PARSED) return { id: out.id, before: out.before, after: out.after, codeRecorded: false };
+
+  try {
+    const settings = await getFinanceSettings();
+    const codeId = await recordCodeIfParsed(out.id, {
+      senderUserId: out.senderUserId,
+      senderName: out.senderName,
+      messageDate: out.messageDate,
+    }, out.parsed, settings);
+    return { id: out.id, before: out.before, after: out.after, codeRecorded: Boolean(codeId) };
+  } catch (err) {
+    console.error(`[FINANCE CAPTURE] re-read ${out.id} could not record its code:`, err.message);
+    return { id: out.id, before: out.before, after: out.after, codeRecorded: false };
+  }
 }
 
 /**
@@ -197,4 +245,6 @@ async function captureFinanceMessage(msg, { isEdit = false } = {}) {
   }
 }
 
-module.exports = { captureFinanceMessage, shapeMessage, queueDocumentIfAny };
+module.exports = {
+  captureFinanceMessage, shapeMessage, queueDocumentIfAny, reparseCapturedMessage,
+};

@@ -169,7 +169,9 @@ organization should converge toward.
 
 Deliberately isolated: no foreign key out of the finance tables, no reader
 anywhere else, and nothing it stores feeds a decision. See
-[`finance-monitor.md`](finance-monitor.md).
+[`finance-monitor.md`](finance-monitor.md), and
+[`finance-monitor-page.md`](finance-monitor-page.md) for the one screen that
+reads the text out.
 
 ### 6. AI / Insights Module
 

@@ -39,6 +39,8 @@ let sends;               // telegram sendMessage calls
 let sendError = null;
 let totals;
 let totalsError = null;
+/** Set to make writing the row fail AFTER Telegram has accepted the message. */
+let recordError = null;
 let notices;
 
 stub('database/db.js', {
@@ -66,7 +68,11 @@ stub('database/finance/reports.js', {
     if (totalsError) throw totalsError;
     return totals;
   },
-  recordReport: async (fields) => { recorded.push(fields); return { id: recorded.length, created: true }; },
+  recordReport: async (fields) => {
+    if (recordError) throw recordError;
+    recorded.push(fields);
+    return { id: recorded.length, created: true };
+  },
   findReportForPeriod: async () => null,
   listReports: async () => [],
 });
@@ -92,7 +98,7 @@ const telegram = {
 
 function reset(over = {}) {
   claims = new Set(); unclaimed = []; recorded = []; sends = []; notices = [];
-  sendError = null; totalsError = null; settingsError = null;
+  sendError = null; totalsError = null; settingsError = null; recordError = null;
   totals = { codeCount: 3, amountTotal: 900, messageCount: 20 };
   settings = {
     enabled: true, chatId: '-100finance', weeklyReportEnabled: true,
@@ -298,4 +304,24 @@ test('the preview sends nothing and records nothing', async () => {
   assert.deepEqual(out.totals, totals);
   assert.equal(sends.length, 0);
   assert.equal(recorded.length, 0);
+});
+
+/**
+ * THE SEND CANNOT BE UNDONE, SO IT IS NEVER REPORTED AS A FAILURE.
+ *
+ * A manual send carries no claim and no request key. If Telegram accepted the
+ * message and only the row failed, calling that "could not send" would put a
+ * Try again in front of somebody for a summary already in the chat — and they
+ * would send it twice. Failing to write it down is a different, lesser problem,
+ * and it is reported as itself.
+ */
+test('a send that could not be RECORDED is still a send', async () => {
+  reset();
+  recordError = new Error('the reports table is unreachable');
+
+  const out = await service.sendReportNow(at(WEDNESDAY));
+
+  assert.equal(out.sent, true, 'the message IS in the chat');
+  assert.equal(out.recorded, false, 'and the screen is told the history is missing it');
+  assert.equal(sends.length, 1);
 });

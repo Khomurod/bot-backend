@@ -126,7 +126,7 @@ before touching the database, and writes no business value: its three actions
 re-run machinery that already exists — re-read a message with the current
 parser, queue an attachment again, send the weekly summary now — and take no
 amount, code or status from the caller. A manual send is recorded as `manual`,
-which the partial unique index excludes, so it never stands in for Monday's. See `docs/architecture/finance-monitor.md` §5a.
+which the partial unique index excludes, so it never stands in for Monday's. See `docs/architecture/finance-monitor-page.md`.
 
 `operational_check_settings.mode`, changed by an administrator on the Automation
 screen under `operations.corrections.apply`. Revoking a memory is an

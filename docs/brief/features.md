@@ -177,7 +177,8 @@ instead.
   the current parser, put a document Wenze could not fetch back in the queue,
   preview what the weekly summary would say, and send that summary now. A
   summary sent by hand is recorded as such and never stands in for Monday's.
-- Full rules: **[`docs/architecture/finance-monitor.md`](../architecture/finance-monitor.md)**.
+- Full rules: **[`docs/architecture/finance-monitor.md`](../architecture/finance-monitor.md)**,
+  and **[`finance-monitor-page.md`](../architecture/finance-monitor-page.md)** for the page.
 
 ### Driver home time
 

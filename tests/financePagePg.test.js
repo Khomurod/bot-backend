@@ -89,7 +89,14 @@ test('RE-READING CHANGES THE INTERPRETATION AND NEVER THE TEXT',
     });
 
     const out = await m.financeMessages.reparseMessage(id, { parse: tightened });
-    assert.deepEqual(out, { id, before: 'unparsed', after: 'parsed' });
+    assert.equal(out.id, id);
+    assert.equal(out.before, 'unparsed');
+    assert.equal(out.after, 'parsed');
+    // The caller needs these to record the code it just found, through the
+    // same duplicate decision a live capture uses.
+    assert.equal(out.senderName, 'A Poster');
+    assert.equal(out.messageDate.toISOString(), '2026-09-01T12:00:00.000Z');
+    assert.equal(out.parsed.codeNormalized, '1234');
 
     const { rows } = await m.h.pool.query(
       'SELECT text, parse_status, parser_version, parse_json FROM finance_messages WHERE id = $1',
@@ -192,4 +199,55 @@ test('the document list carries what was read, and never a file or a URL',
     const flat = JSON.stringify(list);
     assert.ok(!flat.includes('secret-file-id'));
     assert.ok(!flat.includes('api.telegram.org'));
+  });
+
+/**
+ * A tightened parser can legitimately reach a different amount for a code that
+ * is already recorded. `recordMoneycode` stays strictly "record it if it is not
+ * there" — that idempotency is what makes a redelivery harmless — so the
+ * refresh is its own call, and it must not touch the event's own facts.
+ */
+test('an already-recorded code follows the fresher reading, keeping who and when',
+  { skip: skipWithoutPg() }, async (t) => {
+    const m = await setup(t);
+    const { id } = await seed(m, { status: 'parsed' });
+    const issuedAt = new Date('2026-09-01T12:00:00Z');
+    const codeId = await m.financeMessages.recordMoneycode(id, {
+      code: '1234', codeNormalized: '1234', amount: 500, currency: 'USD',
+      senderUserId: 777, senderName: 'A Poster', issuedAt, parserVersion: 1,
+    });
+    assert.ok(codeId);
+
+    const again = await m.financeMessages.updateMoneycodeInterpretation(id, '1234', {
+      code: '1234', amount: 750, currency: 'USD', parserVersion: 2,
+      duplicateOfId: null, duplicateReason: null,
+    });
+    assert.equal(again, codeId, 'the same row, not a second one');
+
+    const { rows } = await m.h.pool.query(
+      `SELECT amount, parser_version, sender_name, issued_at,
+              (SELECT COUNT(*)::int FROM finance_moneycodes) AS n
+         FROM finance_moneycodes WHERE id = $1`,
+      [codeId],
+    );
+    assert.equal(Number(rows[0].amount), 750);
+    assert.equal(rows[0].parser_version, 2);
+    assert.equal(rows[0].n, 1, 'a refresh is never a second row');
+    assert.equal(rows[0].sender_name, 'A Poster', 'who posted it is the EVENT, not the reading');
+    assert.equal(rows[0].issued_at.toISOString(), issuedAt.toISOString());
+  });
+
+/** A refresh of a code that is not there changes nothing and says so. */
+test('refreshing a code that was never recorded returns null',
+  { skip: skipWithoutPg() }, async (t) => {
+    const m = await setup(t);
+    const { id } = await seed(m, { status: 'parsed' });
+    assert.equal(
+      await m.financeMessages.updateMoneycodeInterpretation(id, 'nosuchcode', {
+        code: 'nosuchcode', amount: 1, currency: 'USD', parserVersion: 1,
+      }),
+      null,
+    );
+    const { rows } = await m.h.pool.query('SELECT COUNT(*)::int AS n FROM finance_moneycodes');
+    assert.equal(rows[0].n, 0);
   });

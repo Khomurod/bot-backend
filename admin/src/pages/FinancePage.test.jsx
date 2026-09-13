@@ -204,3 +204,17 @@ test("a refusal to send names what is missing", async () => {
 
   expect(await screen.findByText(/No chat is set/i)).toBeTruthy();
 });
+
+/**
+ * The message IS in the chat. Calling it a failure would invite a second send,
+ * and a manual send has no claim to stop one.
+ */
+test("a send whose HISTORY row failed is still reported as sent", async () => {
+  api.sendFinanceReportNow.mockResolvedValue({ sent: true, recorded: false, periodStart: "2026-08-31T13:00:00Z" });
+  render(<FinancePage />);
+  fireEvent.click(screen.getByRole("button", { name: /Weekly summaries/i }));
+  fireEvent.click(await screen.findByRole("button", { name: /Send it now/i }));
+  fireEvent.click(screen.getByRole("button", { name: /Yes — send it/i }));
+
+  expect(await screen.findByText(/Do not send it again/i)).toBeTruthy();
+});

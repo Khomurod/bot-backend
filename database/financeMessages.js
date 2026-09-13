@@ -206,15 +206,24 @@ async function listMoneycodes({ limit = 50, duplicatesOnly = false } = {}) {
  * run over it later. The text itself is NEVER touched — only the interpretation
  * beside it — and the caller supplies nothing but an id.
  *
- * A code the re-read finds is recorded through the same ON CONFLICT path as a
- * live capture, so re-reading twice cannot double-count.
+ * IT UPDATES THE INTERPRETATION AND NOTHING ELSE. Persisting a code the
+ * re-read found is the CALLER's job, because deciding whether a code is a
+ * duplicate needs the settings window and this layer depends on nothing above
+ * it. `services/finance/captureService.reparseCapturedMessage` is that caller,
+ * and the route calls it rather than this — a re-read that quietly left the
+ * money-code table behind is exactly what this returns enough detail to avoid.
  *
- * @returns `{ id, before, after }`, or null when there is no such message.
+ * @returns `{ id, before, after, parsed, senderName, senderUserId, messageDate }`,
+ *   or null when there is no such message.
  */
 async function reparseMessage(id, { parse } = {}) {
   const parser = parse || require('../lib/finance/moneycode').parseMoneycodeMessage;
   const existing = await query(
-    'SELECT id, text, parse_status FROM finance_messages WHERE id = $1', [id],
+    `SELECT id, text, parse_status,
+            sender_user_id AS "senderUserId", sender_name AS "senderName",
+            message_date AS "messageDate"
+       FROM finance_messages WHERE id = $1`,
+    [id],
   );
   const row = existing.rows[0];
   if (!row) return null;
@@ -226,7 +235,46 @@ async function reparseMessage(id, { parse } = {}) {
       WHERE id = $1`,
     [id, parsed.status, parsed.parserVersion, JSON.stringify(parsed)],
   );
-  return { id: row.id, before: row.parse_status, after: parsed.status };
+  return {
+    id: row.id,
+    before: row.parse_status,
+    after: parsed.status,
+    parsed,
+    senderUserId: row.senderUserId,
+    senderName: row.senderName,
+    messageDate: row.messageDate,
+  };
+}
+
+/**
+ * Bring an ALREADY-recorded code into line with a fresher reading of the same
+ * message.
+ *
+ * `recordMoneycode` stays strictly "record it if it is not there" — a repeat
+ * returns null, and a test pins that, because idempotent recording is what
+ * makes a redelivery harmless. But a tightened parser re-reading the same text
+ * can legitimately reach a different amount, and leaving the old one beside a
+ * corrected parse would make the Money codes tab disagree with the message it
+ * came from. So the refresh is its own explicit call.
+ *
+ * THE TEXT IS NEVER TOUCHED, and neither is `issued_at` or the sender: those
+ * describe the event, not the reading of it.
+ */
+async function updateMoneycodeInterpretation(messageRefId, codeNormalized, fields) {
+  const { rows } = await query(
+    `UPDATE finance_moneycodes
+        SET code = $3, amount = $4, currency = $5, parser_version = $6,
+            confidence = $7, duplicate_of_id = $8, duplicate_reason = $9
+      WHERE message_ref_id = $1 AND code_normalized = $2
+      RETURNING id`,
+    [
+      messageRefId, codeNormalized, fields.code,
+      fields.amount ?? null, fields.currency || 'USD', fields.parserVersion,
+      fields.confidence ?? null, fields.duplicateOfId ?? null,
+      fields.duplicateReason ?? null,
+    ],
+  );
+  return rows[0]?.id ?? null;
 }
 
 module.exports = {
@@ -236,6 +284,7 @@ module.exports = {
   captureMessage,
   applyEdit,
   recordMoneycode,
+  updateMoneycodeInterpretation,
   findDuplicateCandidates,
   summariseCapture,
 };
