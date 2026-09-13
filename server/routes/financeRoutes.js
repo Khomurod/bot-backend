@@ -26,7 +26,7 @@ const express = require('express');
 const financeMessages = require('../../database/financeMessages');
 const financeDocuments = require('../../database/financeDocuments');
 const financeReports = require('../../database/finance/reports');
-const { getFinanceSettings } = require('../../database/financeSettings');
+const weeklyReport = require('../../services/finance/weeklyReportService');
 const { sendFailure } = require('../middleware/failureResponse');
 
 const DEFAULT_LIMIT = 50;
@@ -95,6 +95,37 @@ function createFinanceRouter({ authMiddleware, telegram = null, buildMessageUrl 
       res.json({ reports: await financeReports.listReports({ limit: limitFrom(req.query) }) });
     } catch (err) {
       fail(res, err, 'Failed to read the finance reports');
+    }
+  });
+
+  /**
+   * What Monday's report would say, for the period that has just ended.
+   *
+   * It sends nothing and records nothing, which is the point: somebody deciding
+   * whether to switch the weekly summary on can read the figures first.
+   */
+  router.get('/reports/preview', authMiddleware, async (req, res) => {
+    try {
+      res.json(await weeklyReport.previewReport());
+    } catch (err) {
+      fail(res, err, 'Failed to build the report preview');
+    }
+  });
+
+  /**
+   * Send that report now, because a person asked.
+   *
+   * Recorded as `manual`, so it neither collides with the scheduled row nor
+   * stands in for it — Monday morning still goes out. A refusal here is a real
+   * answer ("no chat is set"), so it is a 400 with the reason rather than a 500.
+   */
+  router.post('/reports/send-now', authMiddleware, async (req, res) => {
+    try {
+      const out = await weeklyReport.sendReportNow({ telegram });
+      if (!out.sent) return res.status(400).json({ error: out.reason });
+      return res.json(out);
+    } catch (err) {
+      return fail(res, err, 'Failed to send the report');
     }
   });
 

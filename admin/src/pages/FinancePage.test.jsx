@@ -24,6 +24,8 @@ vi.mock("../api", () => ({
   listFinanceReports: vi.fn(),
   reparseFinanceMessage: vi.fn(),
   retryFinanceDocument: vi.fn(),
+  previewFinanceReport: vi.fn(),
+  sendFinanceReportNow: vi.fn(),
 }));
 
 beforeEach(() => {
@@ -32,6 +34,11 @@ beforeEach(() => {
   api.listFinanceMessages.mockResolvedValue({ messages: [] });
   api.listFinanceDocuments.mockResolvedValue({ documents: [] });
   api.listFinanceReports.mockResolvedValue({ reports: [] });
+  api.previewFinanceReport.mockResolvedValue({
+    periodStart: "2026-08-31T13:00:00Z", periodEnd: "2026-09-07T13:00:00Z",
+    totals: { codeCount: 2, amountTotal: 400 }, body: "<b>Money codes</b>\n2 codes",
+  });
+  api.sendFinanceReportNow.mockResolvedValue({ sent: true, periodStart: "2026-08-31T13:00:00Z" });
 });
 
 test("it opens on the money codes", async () => {
@@ -145,4 +152,55 @@ test("ONE TAB THROWING DURING RENDER DOES NOT TAKE THE PAGE", async () => {
   // And switching away recovers, because the boundary is keyed on the tab.
   fireEvent.click(screen.getByRole("button", { name: /Money codes/i }));
   await waitFor(() => expect(screen.getByText(/Nothing here yet/i)).toBeTruthy());
+});
+
+// ── preview and send now ──────────────────────────────────────────────────
+
+test("a preview reaches no chat", async () => {
+  render(<FinancePage />);
+  fireEvent.click(screen.getByRole("button", { name: /Weekly summaries/i }));
+  fireEvent.click(await screen.findByRole("button", { name: /Preview/i }));
+
+  await waitFor(() => expect(api.previewFinanceReport).toHaveBeenCalled());
+  expect(api.sendFinanceReportNow).not.toHaveBeenCalled();
+});
+
+/**
+ * The markup is SHOWN, not rendered. The body is built from what people typed
+ * in the finance group, and a page that interpreted it would be trusting the
+ * far side of an API to have escaped it.
+ */
+test("the preview body is displayed as text, never as markup", async () => {
+  api.previewFinanceReport.mockResolvedValue({
+    periodStart: "2026-08-31T13:00:00Z", periodEnd: "2026-09-07T13:00:00Z",
+    totals: {}, body: "<b>Money codes</b>",
+  });
+  const { container } = render(<FinancePage />);
+  fireEvent.click(screen.getByRole("button", { name: /Weekly summaries/i }));
+  fireEvent.click(await screen.findByRole("button", { name: /Preview/i }));
+
+  expect(await screen.findByText("<b>Money codes</b>")).toBeTruthy();
+  expect(container.querySelector("pre b")).toBeNull();
+});
+
+/** One click does not put a message in front of people. */
+test("SENDING ASKS FIRST", async () => {
+  render(<FinancePage />);
+  fireEvent.click(screen.getByRole("button", { name: /Weekly summaries/i }));
+  fireEvent.click(await screen.findByRole("button", { name: /Send it now/i }));
+
+  expect(api.sendFinanceReportNow).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: /Yes — send it/i }));
+  await waitFor(() => expect(api.sendFinanceReportNow).toHaveBeenCalled());
+});
+
+/** "No chat is set" is shown as the reason, not as a generic failure. */
+test("a refusal to send names what is missing", async () => {
+  api.sendFinanceReportNow.mockResolvedValue({ sent: false, error: "No chat is set for the finance report." });
+  render(<FinancePage />);
+  fireEvent.click(screen.getByRole("button", { name: /Weekly summaries/i }));
+  fireEvent.click(await screen.findByRole("button", { name: /Send it now/i }));
+  fireEvent.click(screen.getByRole("button", { name: /Yes — send it/i }));
+
+  expect(await screen.findByText(/No chat is set/i)).toBeTruthy();
 });

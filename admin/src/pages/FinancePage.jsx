@@ -4,16 +4,20 @@ import PageErrorBoundary from "../components/PageErrorBoundary";
 /**
  * Finance Monitor — the read-only screen over what the finance group posted.
  *
- * FOUR TABS, LAZY, AND EACH INSIDE ITS OWN ERROR BOUNDARY. One tab throwing
+ * FOUR TABS, LAZY, AND THE BOUNDARY IS BELOW THE TAB BAR. One tab throwing
  * must not blank the others or the tab bar itself: the whole point of the page
  * is that somebody can get at the money codes, and losing all four because one
- * table hit a bad row is the failure mode a single shared boundary produces.
- * `resetKey` is the tab, so switching away recovers.
+ * table hit a bad row is the failure mode a boundary wrapped around the WHOLE
+ * page produces. Only the active tab is mounted, so one boundary is enough —
+ * and `resetKey` is the tab, so switching away clears the error rather than
+ * leaving the page stuck on it.
  *
  * The settings — which group, whether attachments are read, when the summary
  * goes out — live in Settings → Finance Monitor. This page is what was
  * captured, and nothing here changes a money code, an amount or a status by
- * hand. Its two actions re-run machinery that already exists.
+ * hand. Its actions re-run machinery that already exists: re-read a message
+ * with the current parser, queue an attachment again, or send the weekly
+ * summary now.
  */
 
 const TABS = [

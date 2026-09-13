@@ -122,9 +122,11 @@ condition by the sweep, attributed to the operator who gave it. A remembered
 Everything else in the Finance Monitor — the settings API, the `/api/health`
 block, the weekly report — answers with counts on purpose. That router is
 behind the same admin gate as the settings API, refuses an unauthenticated call
-before touching the database, and writes no business value: its two actions
-re-run machinery that already exists and take no amount, code or status from
-the caller. See `docs/architecture/finance-monitor.md` §5a.
+before touching the database, and writes no business value: its three actions
+re-run machinery that already exists — re-read a message with the current
+parser, queue an attachment again, send the weekly summary now — and take no
+amount, code or status from the caller. A manual send is recorded as `manual`,
+which the partial unique index excludes, so it never stands in for Monday's. See `docs/architecture/finance-monitor.md` §5a.
 
 `operational_check_settings.mode`, changed by an administrator on the Automation
 screen under `operations.corrections.apply`. Revoking a memory is an

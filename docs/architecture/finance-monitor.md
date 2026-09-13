@@ -214,6 +214,15 @@ not one per document. It carries counts and nothing else: no file name, no
 caption, nothing extracted. A notification lands in a group chat's permanent
 history.
 
+**Its discriminator is the batch's highest document id**, and that is
+load-bearing rather than decorative. `notify` deduplicates on the whole notice
+key, so the first version of this notice — built from constants alone — would
+have been said exactly once in the life of the installation and every later
+batch of unreadable scans would have arrived as silence. That is the failure
+this repository lost 101 staff alerts to, reached from the opposite direction.
+A drain cannot re-review a document it has already moved off `pending`, so the
+highest id identifies the **event** and not merely the condition.
+
 ---
 
 ## 4b. The weekly summary — once a period, or not at all
@@ -304,8 +313,8 @@ So the surface is narrow and guarded:
 
 - **`authMiddleware` on every route**, and an unauthenticated call is refused
   before it reaches the database — not "401 after querying".
-- **Nothing writes a business value.** The two actions re-run machinery that
-  already exists, and neither takes an amount, a code or a status from the
+- **Nothing writes a business value.** The three actions re-run machinery that
+  already exists, and none takes an amount, a code or a status from the
   caller. A structural test asserts the router contains no `UPDATE`, no
   `INSERT` and no `req.body` at all.
 - **The Telegram link is built server-side** from the stored chat and message
@@ -315,7 +324,7 @@ So the surface is narrow and guarded:
   that one carries the bot token.
 - A caller cannot ask for the whole table: the limit is clamped.
 
-### The two actions
+### The three actions
 
 **Read it again** re-runs the *current* parser over the stored text. This is
 what makes "capture first, codify second" a workflow rather than a slogan — the
@@ -330,13 +339,35 @@ never for `needs_review`, where running the same reader over the same bytes
 reaches the same place. That one is not a button that does nothing; it is no
 button at all.
 
-### Four tabs, four boundaries
+**Send the weekly summary now** is a person's deliberate act, and two rules keep
+it from quietly replacing the scheduled report:
 
-Each tab is lazy and sits inside its **own** `PageErrorBoundary`, keyed on the
-tab. One tab throwing must not blank the others or the tab bar itself: the
-point of the page is that somebody can get at the money codes, and a single
-shared boundary loses all four because one table hit a bad row. Removing the
-boundary fails that test.
+- **it never touches the claim**, and the row it writes is `manual`. The
+  once-a-period rule exists to stop a restart re-sending Monday's report; it is
+  not there to argue with somebody who pressed a button. The partial unique
+  index covers `status <> 'manual'`, so a manual send can neither collide with
+  the scheduled row nor stand in for it, and Monday still goes out.
+  `tests/financeWeeklyReportService.test.js` sends by hand and then runs the
+  scheduled tick for the same week, and asserts both went.
+- **the switches are not consulted.** Only the two things that make sending
+  impossible can refuse — no chat, or no Telegram — and each says which, as a
+  400 carrying the reason rather than a 500 that sends somebody to the logs.
+
+**Preview** is the same composition with the send removed: no chat, no row. It
+is what answers "is this worth switching on" without switching it on. The screen
+shows the composed body **as text, never as markup** — the body is built from
+what people typed in the finance group, and the composer escapes every dynamic
+part, but a page that rendered it would be trusting that escaping from the far
+side of an API.
+
+### Four tabs, one boundary below the tab bar
+
+Each tab is lazy, and the `PageErrorBoundary` sits **below** the tab bar, keyed
+on the tab. Only the active tab is mounted, so one boundary is enough — and
+because the bar is outside it, one tab throwing cannot blank the others: the
+point of the page is that somebody can get at the money codes, and a boundary
+wrapped around the WHOLE page loses all four because one table hit a bad row.
+Removing the boundary fails that test.
 
 The Messages tab opens on **Unclear**, not on everything: the provisional
 parser is tightened from exactly that pile, and a list that opens on four

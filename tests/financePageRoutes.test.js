@@ -59,6 +59,12 @@ stub('database/financeSettings.js', {
   getFinanceSettings: async () => ({ enabled: true, chatId: '-100777' }),
   invalidateCache: () => {},
 });
+let sentNow = [];
+let sendNowResult = { sent: true, periodStart: '2026-09-01', telegramMessageId: 77 };
+stub('services/finance/weeklyReportService.js', {
+  previewReport: async () => { statements.push('previewReport'); return { periodStart: '2026-09-01', periodEnd: '2026-09-07', totals: { issued: 3 }, body: '<b>x</b>' }; },
+  sendReportNow: async (deps) => { sentNow.push(deps); return sendNowResult; },
+});
 
 const { createFinanceRouter, MAX_LIMIT } = require(R('server/routes/financeRoutes'));
 const { buildTelegramMessageUrl } = require(R('services/telegramUrl'));
@@ -74,7 +80,7 @@ function makeServer({ auth = 'ok' } = {}) {
 }
 
 async function withServer(opts, fn) {
-  statements = []; reparsed = []; requeued = [];
+  statements = []; reparsed = []; requeued = []; sentNow = [];
   const server = makeServer(opts);
   await new Promise((r) => server.listen(0, r));
   try {
@@ -93,6 +99,8 @@ test('EVERY route requires an administrator, and refuses before touching the dat
       ['GET', `${base}/reports`],
       ['POST', `${base}/messages/1/reparse`],
       ['POST', `${base}/documents/1/retry`],
+      ['GET', `${base}/reports/preview`],
+      ['POST', `${base}/reports/send-now`],
     ]) {
       const res = await fetch(url, { method });
       assert.equal(res.status, 401, `${method} ${url}`);
@@ -100,6 +108,7 @@ test('EVERY route requires an administrator, and refuses before touching the dat
     assert.deepEqual(statements, [], 'an unauthenticated call must not reach the database');
     assert.deepEqual(reparsed, []);
     assert.deepEqual(requeued, []);
+    assert.deepEqual(sentNow, [], 'an unauthenticated call must not send anything to Telegram');
   });
 });
 
@@ -213,4 +222,60 @@ test('THE ROUTER WRITES NO BUSINESS VALUE — structurally', () => {
     assert.equal(source.includes(forbidden), false,
       `the Finance page router started writing: ${forbidden}`);
   }
+});
+
+test('the preview shows the figures and sends nothing', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/reports/preview`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.deepEqual(body.totals, { issued: 3 });
+    assert.equal(body.body, '<b>x</b>');
+    assert.deepEqual(sentNow, [], 'a preview must not reach a chat');
+  });
+});
+
+/**
+ * The Telegram client is the router's, not the caller's. A "send now" that
+ * accepted a chat id from the request body would turn a payments summary into
+ * an open relay.
+ */
+test('send now hands the service the SERVER\'s Telegram client', async () => {
+  const telegram = { sendMessage: async () => ({ message_id: 1 }) };
+  const app = express();
+  app.use(express.json());
+  app.use('/api/finance', createFinanceRouter({
+    authMiddleware: (req, res, next) => { req.admin = { id: 5 }; next(); },
+    telegram,
+  }));
+  const server = http.createServer(app);
+  await new Promise((r) => server.listen(0, r));
+  try {
+    sentNow = [];
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/finance/reports/send-now`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chatId: '-100EVIL' }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(sentNow.length, 1);
+    assert.equal(sentNow[0].telegram, telegram);
+    assert.equal(sentNow[0].chatId, undefined, 'nothing from the body may reach the send');
+  } finally {
+    server.close();
+  }
+});
+
+/**
+ * "No chat is set" is an ANSWER, not a crash. A 500 would send the person to
+ * the logs for something the screen can simply say.
+ */
+test('a refusal to send is a 400 carrying the reason', async () => {
+  sendNowResult = { sent: false, reason: 'No chat is set for the finance report.' };
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/reports/send-now`, { method: 'POST' });
+    assert.equal(res.status, 400);
+    assert.match((await res.json()).error, /No chat is set/);
+  });
+  sendNowResult = { sent: true, periodStart: '2026-09-01', telegramMessageId: 77 };
 });

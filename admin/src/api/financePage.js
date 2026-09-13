@@ -37,3 +37,21 @@ export const reparseFinanceMessage = (id) => post(`/messages/${id}/reparse`);
 
 /** Put a document Wenze could not FETCH back in the queue. */
 export const retryFinanceDocument = (id) => post(`/documents/${id}/retry`);
+
+/** What Monday's summary WOULD say. Sends nothing, records nothing. */
+export const previewFinanceReport = () => get('/reports/preview');
+
+/**
+ * Send that summary now.
+ *
+ * A 400 here is a real answer — "no chat is set" — so it comes back rather than
+ * throwing, and the screen shows the reason instead of a generic failure.
+ */
+export async function sendFinanceReportNow() {
+  const res = await fetch(`${API_BASE}/finance/reports/send-now`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (res.status === 400) return { sent: false, ...(await res.json()) };
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

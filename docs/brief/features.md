@@ -173,9 +173,10 @@ instead.
 - **A Finance Monitor page** under Operations shows the money codes, the
   attachments, the messages and the weekly summaries. It is **the one screen
   that shows what was said** — everything else in the feature answers with
-  counts — and it changes nothing: its two buttons re-read a stored message
-  with the current parser, and put a document Wenze could not fetch back in
-  the queue.
+  counts — and it changes nothing: its buttons re-read a stored message with
+  the current parser, put a document Wenze could not fetch back in the queue,
+  preview what the weekly summary would say, and send that summary now. A
+  summary sent by hand is recorded as such and never stands in for Monday's.
 - Full rules: **[`docs/architecture/finance-monitor.md`](../architecture/finance-monitor.md)**.
 
 ### Driver home time
