@@ -37,6 +37,7 @@ export const PAGE_KEYS = Object.freeze([
   'recruiter_kpis',
   // Settings
   'users',
+  'finance',
   'settings_integrations',
   'settings_board',
   'settings_ai',

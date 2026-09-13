@@ -15,6 +15,7 @@ const CommunicationsPage = lazy(() => import("./pages/CommunicationsPage"));
 const CompanyBirthdaysPage = lazy(() => import("./pages/CompanyBirthdaysPage"));
 const FacebookLeadsPage = lazy(() => import("./pages/FacebookLeadsPage"));
 const LeadsPage = lazy(() => import("./pages/LeadsPage"));
+const FinancePage = lazy(() => import("./pages/FinancePage"));
 const MileageBonusPage = lazy(() => import("./pages/MileageBonusPage"));
 const RaiseApprovalPage = lazy(() => import("./pages/RaiseApprovalPage"));
 const RaisePublicPage = lazy(() => import("./pages/RaisePublicPage"));
@@ -127,6 +128,7 @@ const PAGE_COMPONENTS = {
   settings_integrations: <SettingsPage />,
   settings_board: <SettingsPage initialTab="board" />,
   settings_ai: <SettingsPage initialTab="ai" />,
+  finance: <FinancePage />,
   settings_finance: <SettingsPage initialTab="finance" />,
   settings_notifications: <SettingsPage initialTab="notifications" />,
   settings_reactions: <SettingsPage initialTab="reactions" />,
