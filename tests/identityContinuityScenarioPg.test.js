@@ -147,7 +147,12 @@ test('ONE OPEN ASSIGNMENT PER TRUCK — the schema refuses two drivers on 123 at
       }),
       /duplicate key|unique/i
     );
-    assert.equal((await driverPeople.getOpenPersonForUnit('123')).personId, john.id);
+    // One holder, and it is still John. `getOpenHoldersForUnit` replaced the
+    // singular lookup, which returned whichever row Postgres handed back first
+    // and is why a unit number was never a safe key on its own.
+    const holders = await driverPeople.getOpenHoldersForUnit('123');
+    assert.equal(holders.length, 1);
+    assert.equal(holders[0].personId, john.id);
   });
 
 test('a truck two people could claim is reported as UNKNOWN, never guessed',

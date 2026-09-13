@@ -141,6 +141,19 @@ function worthAsking(out, nowIso) {
   return (Date.parse(nowIso) - since) >= STUCK_HOURS * 3600 * 1000;
 }
 
+/**
+ * The one person recorded in a unit number, or nobody.
+ *
+ * Returns a `driver_units` row (whose `personId` is the human) only when the
+ * number is unambiguous. Two holders means two fleets, or a handover nobody
+ * closed — either way it is not this watch's to resolve.
+ */
+async function onlyHolderOf(deps, unit) {
+  const holders = await deps.people.getOpenHoldersForUnit(String(unit)).catch(() => null);
+  if (!Array.isArray(holders)) return null;
+  return holders.length === 1 ? holders[0] : null;
+}
+
 /** One load, one verdict, one row written. */
 async function checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }) {
   const load = deps.loads.extractLoadFromOrder(order);
@@ -149,10 +162,23 @@ async function checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }) {
   const unit = load.unitNumber || null;
   const group = unit ? groupsByUnit.get(String(unit)) : null;
   // The PERSON, not the chat. A driver who changes truck or group keeps their
-  // identity, and this is the column every later feature joins on.
-  const person = unit
-    ? await deps.people.getOpenPersonForUnit(String(unit)).catch(() => null)
-    : null;
+  // identity, and this is the column every later feature joins on — which is
+  // exactly why it must be right or absent, never a guess.
+  //
+  // A UNIT NUMBER IS NOT A TRUCK. Company 001, Owner-Operator 001 and Lease 001
+  // are three of them, and production carries ten numbers held in more than one
+  // active driver group. This used `getOpenPersonForUnit`, which is
+  // @deprecated precisely because it returns whichever row Postgres handed back
+  // first — so a load could be stamped with the wrong human, silently, in the
+  // column everything downstream joins on.
+  //
+  // A load carries no fleet, so the fleet cannot be supplied here. The honest
+  // answer is therefore the same one `getOpenPeopleForUnits` already gives:
+  // attach a person when EXACTLY ONE holds the number, and leave it null
+  // otherwise. A load with no person is a load somebody can still read; a load
+  // with the wrong person is a wrong answer nothing downstream can detect.
+  // The contradiction itself is `identity.unit_open_twice`'s to report.
+  const person = unit ? await onlyHolderOf(deps, unit) : null;
   const position = positionFor(fleets, unit, group?.group_name || null, deps);
   const remembered = await deps.store.getLoadState(load.orderId);
 
@@ -168,8 +194,8 @@ async function checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }) {
   const state = await deps.store.recordLoadObservation(load.orderId, {
     loadIdentifier: load.loadIdentifier,
     groupId: group?.id || null,
-    // `personId`, NOT `id`: getOpenPersonForUnit returns a driver_units ROW,
-    // whose `id` is the assignment, not the human.
+    // `personId`, NOT `id`: a driver_units ROW's `id` is the assignment, not
+    // the human.
     personId: person?.personId ?? null,
     unitNumber: unit,
     phase: verdict.phase,

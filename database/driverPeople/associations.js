@@ -151,20 +151,6 @@ async function getOpenUnitForPerson(personId) {
 }
 
 /**
- * @deprecated A unit NUMBER is not a truck — Company 001, Owner-Operator 001 and
- * Lease 001 are three of them, and this returns whichever row Postgres happened
- * to hand back first. Kept because callers that are not yet fleet-aware still
- * use it; every one of them should move to `getOpenHoldersForUnit`.
- */
-async function getOpenPersonForUnit(unitNumber) {
-  const res = await query(
-    'SELECT * FROM driver_units WHERE unit_number = $1 AND ended_at IS NULL',
-    [unitNumber]
-  );
-  return mapUnit(res.rows[0]);
-}
-
-/**
  * Everybody currently recorded in a unit NUMBER — a list, because a number is
  * not a truck.
  *
@@ -191,7 +177,7 @@ async function getOpenHoldersForUnit(unitNumber) {
 }
 
 /**
- * Many units at once — the same answer as `getOpenPersonForUnit`, batched.
+ * Many units at once — one person per unit, batched.
  *
  * The fuel watch asked it once per truck inside a loop over the whole fleet:
  * about 110 round trips every twenty minutes to answer one question that a
@@ -242,7 +228,6 @@ module.exports = {
   openUnitAssignment,
   closeUnitAssignment,
   getOpenUnitForPerson,
-  getOpenPersonForUnit,
   getOpenHoldersForUnit,
   getOpenPeopleForUnits,
   listUnitsForPerson,
