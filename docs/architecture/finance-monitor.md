@@ -216,6 +216,71 @@ history.
 
 ---
 
+## 4b. The weekly summary — once a period, or not at all
+
+Monday 08:00 America/Chicago, covering **the week that ended**: a report sent on
+Monday morning about the calendar week it is in would be almost entirely empty,
+every week, forever.
+
+**THE CLAIM COMES FIRST, BEFORE ANY WORK.** A redeploy on a Monday morning
+restarts every timer in this application, and a weekly job whose only guard is
+*"have I run since I started?"* sends again — to a room of people who will
+reasonably read the second one as meaning something. `claimServiceRun` makes the
+race a database race, which has exactly one winner.
+
+**AND THE CLAIM IS RELEASED IF THE SEND FAILS.** A claim held after a failure is
+a report that never arrives and never retries, because the job believes forever
+that it handled that week. This application has lost birthday wishes to exactly
+that. `tests/financeWeeklyReportService.test.js` proves both halves by removal:
+dropping the claim fails two tests, dropping the release fails another.
+
+**ONE WEEK PER TICK, NEVER A LOOP OVER MISSED WEEKS.** If the application was
+down for a month, a loop would fire four reports in four seconds. Older weeks
+are on the Finance page, which is where somebody looking for them would look.
+
+### Backfill is a refusal, and it is recorded
+
+If the monitor was switched on partway through a period, a total drawn from it
+reads *"$0 issued"* when the truth is *"we were not watching"*. The row says
+`suppressed_backfill` and the claim is **kept** — that period is handled; it
+simply has no honest report. A row rather than no row, because **no row looks
+identical to a job that never ran**. The 72-hour grace means a monitor switched
+on a few hours into a period has still seen essentially all of it.
+
+`enabled_at` is stamped the first time the monitor is switched on and never
+moved afterwards. That single column is what makes the distinction possible.
+
+### DST, which is where a weekly schedule goes wrong
+
+`+ 7 × 24h` silently moves the send to 07:00 or 09:00 on the two Mondays a year
+the clocks change — a defect nobody reports and nobody notices. `lib/finance/schedule.js`
+does the arithmetic in the zone, so the local hour holds and the *week* is 167,
+168 or 169 hours as the case may be. Both boundaries are asserted in local time
+in `tests/financeSchedule.test.js`, because local time is the only frame in
+which the rule is even stated.
+
+### The report adds nothing up
+
+Every figure comes in already counted, by SQL, in `database/finance/reports.js`.
+A composer doing its own arithmetic would be a second place a total could be
+wrong, and the two would disagree quietly — so `composeWeeklyFinanceReport` is
+fed deliberate nonsense in its test and asserted to print the nonsense.
+
+**Nothing a model read off a document is ever summed into a report.** The
+totals are `COUNT`/`SUM` over `finance_messages` and `finance_moneycodes`.
+
+The two repeat signals stay in separate sentences with different wording,
+because *"one code posted twice"* and *"paid twice"* are not the same claim and
+Wenze is in no position to make the second. A code whose amount nobody could
+read is counted and **excluded from the total, and the report says so** — a sum
+that quietly omits rows is worse than one that admits it is incomplete.
+
+The body is stored on the row. *"What did last week's report actually say"* is a
+question people ask after a disagreement, and recomputing it from today's data
+answers a different question.
+
+---
+
 ## 5. Idempotency belongs to the database
 
 Telegram redelivers, and a restart replays. `captureMessage` inserts with
@@ -267,9 +332,12 @@ things.
 |---|---|
 | Pure | `lib/finance/moneycode.js` — `parseMoneycodeMessage`, `PARSER_VERSION`, `STATUS` |
 | Pure | `lib/finance/duplicates.js` — `decideDuplicate`, `REASON`, `normalisePerson` |
-| Schema | `database/migrations/0052_finance_monitor_capture.sql` |
-| Store | `database/financeSettings.js`, `database/financeMessages.js` |
-| Service | `services/finance/captureService.js` |
+| Pure | `lib/finance/documentPolicy.js`, `lib/finance/documentPrompt.js` |
+| Pure | `lib/finance/schedule.js` — when the report is due and which week it covers |
+| Pure | `lib/finance/weeklyReport.js` — the report's words; it adds nothing up |
+| Schema | `database/migrations/0052_finance_monitor_capture.sql`, `0053_finance_documents.sql`, `0054_finance_reports.sql` |
+| Store | `database/financeSettings.js`, `database/financeMessages.js`, `database/financeDocuments.js`, `database/finance/reports.js` |
+| Service | `services/finance/captureService.js`, `services/finance/documentReader.js`, `services/finance/telegramFileDownload.js`, `services/finance/weeklyReportService.js` |
 | Bot | `bot/handlers/financeCaptureHandlers.js` |
 | API | `server/routes/settings/financeRoutes.js` (mounted at `/api/settings`) |
 | Admin | `admin/src/pages/settings/FinanceTab.jsx`, `admin/src/api/finance.js` |
@@ -286,7 +354,14 @@ node --test tests/financeDuplicates.test.js          # fact vs suspicion, and th
 node --test tests/financeCaptureService.test.js      # the gate, and what it never throws
 node --test tests/financeCaptureHandler.test.js      # observer, position, cannot kill the bot
 node --test tests/financeSettingsRoute.test.js       # the enable guard, counts only
-TEST_DATABASE_URL=… node --test tests/financeSettingsPg.test.js tests/financeCapturePg.test.js
+node --test tests/financeDocumentPolicy.test.js      # what may be read, and what a reading means
+node --test tests/financeDocumentPrompt.test.js      # the fence, the validator, the whitelist
+node --test tests/financeDocumentReader.test.js      # one at a time; unavailable is not failed
+node --test tests/financeDocumentDownload.test.js    # no error ever carries the bot token
+node --test tests/financeSchedule.test.js            # Monday 08:00 local, across both DST edges
+node --test tests/financeWeeklyReport.test.js        # it prints what it was handed
+node --test tests/financeWeeklyReportService.test.js # once a period, and a failure retries
+TEST_DATABASE_URL=… node --test tests/finance*Pg.test.js  # settings, capture, documents, reports
 npm test --prefix admin                              # FinanceTab: the checkbox is the guard
 ```
 
@@ -299,11 +374,9 @@ npm test --prefix admin                              # FinanceTab: the checkbox 
 - **What a document says is never counted.** The money code that counts is the
   one read deterministically out of the message text. A document reading is
   evidence beside it, in that document's own row, and nothing sums it.
-- **The weekly report** (`weekly_report_enabled`, `weekly_report_chat_id`,
-  `enabled_at`) is Stage D3. `enabled_at` is stamped on the first enable and
-  never moved, because the report has to tell *"no money codes that week"* from
-  *"we were not watching that week"* — opposite answers that would otherwise look
-  identical.
+- **The read-only Finance page** is Stage D4 — the one place document text and
+  message text are meant to leave the database, behind their own permission.
+  Until then a report body is stored and readable only in the database itself.
 - **`finance_moneycodes.issued_to` is left NULL.** Who POSTED a code is recorded;
   who it was FOR is not something this parser can read, and a column filled with
   the sender's name under an "issued to" heading would be worse than an empty

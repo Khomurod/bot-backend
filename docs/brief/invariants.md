@@ -195,9 +195,15 @@ repository-wide working rules. The highest-consequence items:
     well enough") never does, because a person is what it needs, and AI being
     unavailable is always the second. What a model reads out of a document
     fills that document's own row and feeds no total, no report figure and no
-    duplicate decision. `tests/financeCapturePg.test.js`,
+    duplicate decision. The weekly summary is sent ONCE per period: the claim is
+    taken before any work and released if the send fails, so a redeploy cannot
+    repeat it and a failure cannot lose it. A period that began before the
+    monitor was switched on is recorded, never reported — "$0 issued" for a week
+    nobody was watching is the one wrong answer.
+    `tests/financeCapturePg.test.js`,
     `tests/financeDocumentsPg.test.js`, `tests/financeDocumentReader.test.js`,
     `tests/financeSettingsRoute.test.js`,
+    `tests/financeWeeklyReportService.test.js`, `tests/financeSchedule.test.js`,
     `docs/architecture/finance-monitor.md`.
 
 - **A truck number alone is not globally unique, and nobody is merged on one.**

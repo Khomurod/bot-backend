@@ -247,6 +247,13 @@
       "sourceOfTruth": "Telegram, by `file_unique_id` \u2014 `file_id` is per-bot and reissuable, which is why the uniqueness key uses the other one.",
       "danger": "PAYMENT DATA. `failed` (could not FETCH it, retries on a ladder) and `needs_review` (could not READ it well enough, never retries \u2014 a person is what it needs) are different answers and must never be merged; AI being unavailable is `needs_review`. NO COLUMN HOLDS THE FILE OR ITS URL: Telegram\u0027s download link embeds the bot token, so there is deliberately nowhere here it could go."
     },
+    "finance_reports": {
+      "purpose": "One weekly money-code summary per period, and the record that the period was handled. `totals` is SQL-derived, always \u2014 nothing a model read off a document is ever summed into a report. `body` is the text that was actually SENT, kept because \"what did last week\u0027s report say\" is a question people ask after a disagreement and recomputing it from today\u0027s data answers a different one.",
+      "status": "active",
+      "service": "bot (services/finance/weeklyReportService.js), admin (Settings \u2192 Finance Monitor)",
+      "sourceOfTruth": "This table, for what was reported. The figures themselves are always re-countable from finance_messages and finance_moneycodes.",
+      "danger": "PAYMENT DATA in `body` and `totals`. The uniqueness is a PARTIAL index (`WHERE status <> \u0027manual\u0027`): an AUTOMATIC report happens to a period exactly once whatever restarts in between, while a manual send is a person\u0027s deliberate act and may happen twice. `suppressed_backfill` is a STATUS, not an absence \u2014 no row would look identical to a job that never ran, and \"$0 issued\" for a week nobody was watching is the one wrong answer."
+    },
     "finance_moneycodes": {
       "purpose": "What the parser read out of a message with certainty \u2014 one row per code, only ever from a `parsed` message. `duplicate_of_id` + `duplicate_reason` record a repeat; `same_code` is a fact (a code is what gets spent) while `same_amount_recipient_window` is a suspicion (two $500 advances to one driver in a day is sometimes exactly right), and paired CHECKs keep the claim from being written half-formed.",
       "status": "active",
