@@ -34,6 +34,12 @@ import useVisibleInterval from "../utils/useVisibleInterval";
  * shape change on the other side. `usable()` is why that is now a silent
  * no-render instead. A banner is not worth an error of its own, and it is
  * certainly not worth the panel.
+ *
+ * AND IT NAMES WHAT IS SPENDING IT. "You are at 90%" is an alarm with nothing
+ * in it to act on; "90%, and 61% of that is reading group_messages" is the same
+ * alarm and a place to start. The breakdown is read defensively for the same
+ * reason as everything else here — an older server sends no `breakdown`, and
+ * the banner must still show.
  */
 const REFRESH_MS = 15 * 60 * 1000;
 
@@ -84,6 +90,12 @@ export default function DatabaseUsageBanner() {
   if (dismissedAt === usage.level) return null;
 
   const style = LEVEL_STYLE[usage.level] || LEVEL_STYLE.warning;
+  // Defensive on purpose: a server that predates the breakdown sends none, and
+  // a banner that vanished because of a missing diagnostic would be worse than
+  // one without it.
+  const tables = Array.isArray(usage.breakdown?.tables)
+    ? usage.breakdown.tables.filter((t) => t && typeof t.label === "string").slice(0, 3)
+    : [];
 
   return (
     <div
@@ -100,9 +112,23 @@ export default function DatabaseUsageBanner() {
             start failing — so it is worth closing dashboards nobody is watching and avoiding bulk exports
             until the month resets.
           </div>
+          {tables.length > 0 && (
+            <div style={{ fontSize: 13, marginTop: 6 }}>
+              Reading most since this server started:{" "}
+              {tables.map((t, i) => (
+                <span key={t.label}>
+                  {i > 0 ? ", " : ""}
+                  <strong>{t.label}</strong>
+                  {Number.isFinite(Number(t.share)) ? ` (${Math.round(Number(t.share) * 100)}%)` : ""}
+                </span>
+              ))}
+              .
+            </div>
+          )}
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
             This is an estimate measured by this app, not a bill. Check the database provider's dashboard
-            for the official figure.
+            for the official figure. The table list covers only what this server has read since it last
+            restarted, so it shows the shape of the spending rather than the month's total.
           </div>
         </div>
         <button className="btn btn-ghost btn-sm" onClick={() => setDismissedAt(usage.level)}>

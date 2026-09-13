@@ -166,3 +166,44 @@ describe("when the answer is not the shape this renders", () => {
     expect(await screen.findByRole("status")).toBeTruthy();
   });
 });
+
+// ── what is spending it ─────────────────────────────────────────────────────
+
+/**
+ * "You are at 90%" is an alarm with nothing in it to act on. The table name is
+ * the part somebody can do something about.
+ */
+test("it names the tables reading the most", async () => {
+  spy.mockResolvedValue(usage({
+    breakdown: {
+      attributedBytes: 1000,
+      tables: [
+        { label: "group_messages", bytes: 610, share: 0.61 },
+        { label: "driver_people", bytes: 200, share: 0.2 },
+      ],
+      truncated: false,
+    },
+  }));
+  render(<DatabaseUsageBanner />);
+  expect(await screen.findByText("group_messages")).toBeTruthy();
+  expect(screen.getByText(/61%/)).toBeTruthy();
+});
+
+/**
+ * THE BANNER IS THE ONE COMPONENT OUTSIDE AN ERROR BOUNDARY, so a malformed
+ * breakdown must cost the breakdown and never the warning.
+ */
+test("a malformed breakdown costs the list, not the banner", async () => {
+  spy.mockResolvedValue(usage({ breakdown: { tables: "not an array at all" } }));
+  render(<DatabaseUsageBanner />);
+  expect(await screen.findByText(/90%/)).toBeTruthy();
+  expect(screen.queryByText(/Reading most/i)).toBeNull();
+});
+
+/** An older server sends no breakdown at all, and the warning still shows. */
+test("a server with no breakdown still warns", async () => {
+  spy.mockResolvedValue(usage());
+  render(<DatabaseUsageBanner />);
+  expect(await screen.findByText(/90%/)).toBeTruthy();
+  expect(screen.queryByText(/Reading most/i)).toBeNull();
+});

@@ -185,3 +185,91 @@ test('nested JSONB is measured, not ignored', () => {
   const deep = meter.estimateValueBytes({ a: 'x', payload: { items: ['aaaaaaaaaa', 'bbbbbbbbbb'] } });
   assert.ok(deep > shallow);
 });
+
+// ── what is spending it ─────────────────────────────────────────────────────
+
+/**
+ * A PERCENTAGE TELLS SOMEBODY TO WORRY; A TABLE NAME TELLS THEM WHERE TO LOOK.
+ *
+ * The meter answered "78% of the allowance" and stopped there, which is the
+ * right alarm and the wrong amount of information — there is nothing in it to
+ * act on. The breakdown is the half that makes it actionable.
+ */
+test('bytes are attributed to the table the query named', () => {
+  meter.recordQuery(result(rows(10)), 'SELECT * FROM group_messages WHERE id = $1');
+  meter.recordQuery(result(rows(1)), 'SELECT * FROM groups');
+  meter.recordQuery(result(rows(5)), 'select a from public.group_messages m');
+
+  const out = meter.usageByLabel();
+  assert.equal(out.tables[0].label, 'group_messages', 'the biggest reader comes first');
+  assert.equal(out.tables[0].queries, 2, 'and a schema qualifier is not a second table');
+  assert.equal(out.tables[0].rows, 15);
+  assert.ok(out.tables.some((t) => t.label === 'groups'));
+});
+
+/** A statement naming no table is counted, not dropped. */
+test('a query with no table still lands somewhere', () => {
+  meter.recordQuery(result(rows(1)), 'BEGIN');
+  meter.recordQuery(result([]), 'SELECT 1');
+  const out = meter.usageByLabel();
+  assert.equal(out.tables.length, 1);
+  assert.equal(out.tables[0].label, 'other');
+  assert.equal(out.tables[0].queries, 2);
+});
+
+/**
+ * THE PARTS MUST SUM TO THE WHOLE. A breakdown that quietly loses bytes would
+ * send somebody hunting for a table that is not the problem.
+ */
+test('every counted byte is attributed to something', () => {
+  for (let i = 0; i < 30; i += 1) {
+    meter.recordQuery(result(rows(3)), `SELECT * FROM t${i} WHERE x = $1`);
+  }
+  const out = meter.usageByLabel({ limit: 1000 });
+  assert.equal(out.attributedBytes, meter.snapshot().bytes);
+});
+
+/**
+ * A DIAGNOSTIC THAT GROWS WITHOUT LIMIT IS A MEMORY LEAK WEARING A CHART.
+ * Past the cap the answer gets coarser; it never gets wrong.
+ */
+test('the label set is bounded, and the overflow still sums', () => {
+  for (let i = 0; i < 300; i += 1) {
+    meter.recordQuery(result(rows(1)), `SELECT * FROM table_${i}`);
+  }
+  const out = meter.usageByLabel({ limit: 1000 });
+  assert.ok(out.tables.length <= 81, `expected the cap to hold, saw ${out.tables.length}`);
+  assert.equal(out.attributedBytes, meter.snapshot().bytes,
+    'the overflow bucket keeps the parts summing to the whole');
+  assert.ok(out.tables.some((t) => t.label === 'other'));
+});
+
+/** The SQL is read for a table name and nothing else. */
+test('NO FRAGMENT OF THE QUERY EVER BECOMES A LABEL', () => {
+  meter.recordQuery(
+    result(rows(1)),
+    "SELECT * FROM finance_messages WHERE text = 'money code 1234 5678 for $500'",
+  );
+  const labels = meter.usageByLabel().tables.map((t) => t.label);
+  assert.deepEqual(labels, ['finance_messages']);
+  for (const leak of ['money', '1234', '500', 'text', 'WHERE']) {
+    assert.ok(!labels.join(' ').includes(leak), `the label leaked "${leak}"`);
+  }
+});
+
+/** The breakdown describes THIS process; a restart resets it, not the month. */
+test('the breakdown is scoped to the process and says since when', () => {
+  meter.recordQuery(result(rows(2)), 'SELECT * FROM groups');
+  const before = meter.usageByLabel();
+  assert.ok(Date.parse(before.since) > 0);
+  meter.reset();
+  assert.deepEqual(meter.usageByLabel().tables, []);
+});
+
+/** And it reaches the endpoint the admin reads. */
+test('the usage report carries the breakdown', () => {
+  meter.recordQuery(result(rows(4)), 'SELECT * FROM driver_people');
+  const report = usageReport({ budgetBytes: 5 * GB });
+  assert.equal(report.breakdown.tables[0].label, 'driver_people');
+  assert.equal(report.breakdown.truncated, false);
+});

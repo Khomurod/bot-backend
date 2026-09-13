@@ -21,7 +21,10 @@
  * NO I/O HERE. This module holds the accumulator and the threshold state only,
  * so the database boundary (database/pool.js) can call it on every query
  * without a circular dependency. database/transferUsage.js owns persistence.
+ * Its one import is a pure `lib/` helper, which is the layer BELOW this one.
  */
+
+const { labelForQuery } = require('../lib/database/queryLabel');
 
 /** Warn at these fractions of the budget, once each per month. */
 const WARNING_THRESHOLDS = [0.8, 0.9, 0.95];
@@ -34,6 +37,19 @@ const EMA_ALPHA = 0.2;
 
 /** Rows bigger than this are not walked twice — the sample is truncated. */
 const MAX_SAMPLE_ROWS = 200;
+
+/**
+ * How many tables are named before the rest become one `other` row.
+ *
+ * A DIAGNOSTIC THAT GROWS WITHOUT LIMIT IS A MEMORY LEAK WEARING A CHART. The
+ * labels can only come from this repository's own SQL, so the set is finite —
+ * but "finite" and "bounded" are different promises, and this module runs on
+ * every query for the life of the process. Whatever is already named keeps
+ * accumulating; anything new past the cap joins `other`, so the parts still
+ * sum to the total and the answer degrades into a coarser one rather than a
+ * wrong one.
+ */
+const MAX_LABELS = Number.parseInt(process.env.DB_TRANSFER_MAX_LABELS || '80', 10);
 
 const state = {
   monthKey: currentMonthKey(),
@@ -49,6 +65,17 @@ const state = {
   bytesPerRow: 400,
   queriesSinceSample: 0,
   notifiedThresholds: [],
+  /**
+   * Per-table totals for THIS PROCESS, `label -> {bytes, queries, rows}`.
+   *
+   * Deliberately NOT persisted and deliberately not part of the month's
+   * running total. The monthly figure has to survive a restart, which is why
+   * it is written to a table; attribution answers "what is spending it right
+   * now", and a share carried across a deploy would describe a process that no
+   * longer exists. Restarting resets the breakdown and never the total.
+   */
+  byLabel: new Map(),
+  labelsSince: Date.now(),
 };
 
 /** UTC month, matching how a provider bills — `2026-09`. */
@@ -129,11 +156,53 @@ function rollMonthIfNeeded(now = new Date()) {
 }
 
 /**
+ * Attribute one query's bytes to the table it named.
+ *
+ * Never throws and never grows past `MAX_LABELS`: a table already being
+ * counted keeps its own row, and anything new past the cap lands in `other`,
+ * so the parts always sum to the whole.
+ */
+function attribute(label, bytes, rowCount) {
+  const key = state.byLabel.has(label) || state.byLabel.size < MAX_LABELS ? label : 'other';
+  const entry = state.byLabel.get(key) || { bytes: 0, queries: 0, rows: 0 };
+  entry.bytes += bytes;
+  entry.queries += 1;
+  entry.rows += rowCount;
+  state.byLabel.set(key, entry);
+}
+
+/**
+ * The breakdown, biggest first.
+ *
+ * `share` is of the process's attributed bytes, NOT of the month: the month
+ * survives restarts and this does not, and a percentage mixing the two would
+ * be a number that means nothing on either scale.
+ */
+function usageByLabel({ limit = 10 } = {}) {
+  const rows = [...state.byLabel.entries()]
+    .map(([label, v]) => ({ label, ...v }))
+    .sort((a, b) => b.bytes - a.bytes);
+  const attributed = rows.reduce((sum, r) => sum + r.bytes, 0);
+  return {
+    since: new Date(state.labelsSince).toISOString(),
+    attributedBytes: attributed,
+    tables: rows.slice(0, limit).map((r) => ({
+      ...r,
+      share: attributed > 0 ? Math.round((r.bytes / attributed) * 1000) / 1000 : 0,
+    })),
+    // Named so a reader can tell "these ARE all of them" from "these are the
+    // ten biggest of ninety", which changes what the shares mean.
+    truncated: rows.length > limit,
+  };
+}
+
+/**
  * Record one completed query.
  *
  * @param {{rows?: Array, rowCount?: number}} result a pg result (or a shape like one)
+ * @param {string} [text] the SQL, used ONLY to name the table it touched
  */
-function recordQuery(result) {
+function recordQuery(result, text) {
   rollMonthIfNeeded();
   const rows = Array.isArray(result?.rows) ? result.rows : [];
   const rowCount = Number.isFinite(result?.rowCount) ? result.rowCount : rows.length;
@@ -160,6 +229,14 @@ function recordQuery(result) {
   state.pendingBytes += bytes;
   state.pendingQueries += 1;
   state.pendingRows += rowCount;
+
+  // Attribution is additive and best-effort: it must never be able to change
+  // the total above, which is the number the warnings fire on.
+  try {
+    attribute(labelForQuery(text), bytes, rowCount);
+  } catch (_) {
+    // A breakdown is a nicety; the meter is not.
+  }
   return bytes;
 }
 
@@ -234,6 +311,8 @@ function reset(now = new Date()) {
   state.bytesPerRow = 400;
   state.queriesSinceSample = 0;
   state.notifiedThresholds = [];
+  state.byLabel = new Map();
+  state.labelsSince = now instanceof Date ? now.getTime() : Date.now();
 }
 
 module.exports = {
@@ -243,6 +322,7 @@ module.exports = {
   currentMonthKey,
   rollMonthIfNeeded,
   recordQuery,
+  usageByLabel,
   consumePending,
   recordPending,
   adoptPersisted,
