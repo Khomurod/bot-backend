@@ -195,3 +195,59 @@ there — the precise inversion of the bug this closes.
 The counter is reset by a restart, which is exactly why the instant travels with
 the count rather than being assumed.
 
+
+## Where it lives
+
+`services/operations/healthObservations.js` passed the 500-line cap and split
+along the seam it already had:
+
+| module | answers |
+|---|---|
+| `observations/shape.js` | the SHAPE every observation takes, `CUSTOM_INTEGRATIONS`, and the staleness constants |
+| `observations/integrations.js` | the nine hand-written integration checks |
+| `healthObservations.js` | `defaultDeps`, the ledger-driven worker half, and `gatherAllObservations` |
+
+`CUSTOM_INTEGRATIONS` is now exported and `tests/backgroundServiceCatalog.test.js`
+requires it instead of slicing it out of the source between two landmark
+strings. That regex was reading `healthObservations.js`; the moment the constant
+moved it matched nothing and the test reported eight observed integrations as
+unobserved. A list that is exported should be asked for, not parsed.
+
+## A watch that cannot see must say so
+
+`workerObservations` reads the `background_service_runs` ledger and answers for
+every catalogued worker. It used to catch its own failed read and return `[]`.
+
+That is the one answer it must never give, because an empty list and "there is
+nothing to watch" are the same value. Every catalogued worker simply vanished:
+`/api/health` showed a `workers` block thirty rows shorter with nothing wrong in
+any of them, the Systems tab showed the same, and the self-healing pass recorded
+a clean run. That pass counts what it DROPPED precisely so a blind spot cannot
+hide — but a worker that produced no observation was never dropped, it was never
+there, so the counter stayed at zero.
+
+Both halves of `gatherAllObservations` now answer `cannot_determine` for
+everything they cover when they fail wholesale:
+
+| what failed | answer |
+|---|---|
+| the run ledger read | one observation per catalogued worker, `cannot_determine`, `unknown: true`, reason naming the ledger |
+| the integration half | one observation per custom integration, same shape |
+
+`unknown: true` keeps the old rule intact — **"I could not check" never starts a
+failure count**, so the announcer still skips these and three unreadable passes
+cannot announce an outage that was only ever a permission error on a health
+query. What changed is that the picture stays the same size, and the pass can
+count what it lost.
+
+**And a pass that could read NOTHING is a failed pass.** Dropping unknowns is
+right for one component; when every component is unknown there is nothing a
+person could act on and the watch is blind — the one failure that hides every
+other. `runSelfHealingPass` sets `summary.error` in that case, which is the field
+`statusFromSummary` reads, so the ledger records the run as failed rather than
+as ok. Until the gatherer stopped answering a failed read with an empty list,
+this was not expressible at all.
+
+Guarded by `tests/selfHealing.test.js` — "a ledger nobody could read leaves every
+worker saying so, not missing" and "a pass that could read nothing is a FAILED
+pass, not a quiet one", both confirmed failing against the previous commit.
