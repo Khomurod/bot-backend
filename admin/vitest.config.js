@@ -7,7 +7,11 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
-    include: ["src/**/*.test.jsx"],
+    // BOTH EXTENSIONS. A `.test.js` under src/ matched nothing and was
+    // silently not run — a test that cannot fail is worse than no test,
+    // because it reads as coverage. Nothing was hidden when this was
+    // widened; the point is that nothing can be.
+    include: ["src/**/*.test.{js,jsx}"],
     setupFiles: ["./vitest.setup.js"],
     globals: true,
   },

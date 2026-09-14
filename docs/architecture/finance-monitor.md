@@ -290,6 +290,57 @@ answers a different question.
 
 ---
 
+## 4c. Two chats, two different rules
+
+The Finance Monitor addresses two chats and they are **not** the same kind of
+thing. Treating them alike is what broke this screen in production.
+
+| | `chat_id` — the capture group | `weekly_report_chat_id` — where the summary goes |
+|---|---|---|
+| What it is | a room whose every message is stored **verbatim** | a report somebody reads |
+| A private chat? | **never** | **allowed** |
+| Validated by | `checkChatId(...)` | `checkChatId(..., { allowPrivate: true })` |
+
+A weekly money-code summary in one administrator's direct messages is a
+reasonable thing for a small operation to want — notification routing and the
+AI policy watcher had already made that call, for that reason. This field was
+the odd one out, so a user id was refused on every save, and because the field
+saves on blur it was refused on every blur.
+
+The capture group stays group-only and that is not a detail: pointing "store
+every message here, verbatim" at a person's DMs is not a configuration anybody
+should be able to reach through a settings form.
+
+**The sign-flip check still runs first.** `allowPrivate` is only consulted after
+the dropped-minus branch inside `checkChatId`, and that ordering is load-bearing
+— a positive id resolves to a private chat perfectly well, so probing Telegram
+first would *accept* the very typo the check exists to catch. Opting into
+private destinations must never reopen it, and
+`tests/financeSettingsRoute.test.js` asserts it does not.
+
+## 4d. A verdict is 200; an error is 4xx; an error says `error`
+
+Two shape rules, both learned the hard way on this screen.
+
+**`POST /finance/validate-chat` answers 200 even when the answer is no.** The
+request succeeded; the verdict was negative. It used to answer 400, which made
+the admin's HTTP layer throw — so the tab's own rendering of `ok: false`,
+including the one-click *"did you mean -5142950669?"* that makes the sign-flip
+check useful, was unreachable code. `bol-pod/validate-group` had it right all
+along.
+
+**A real 4xx answers `{ error }`, never `{ message }`.** `admin/src/api/http.js`
+reads `errData.error`; this file was the only settings module answering with
+`message`, in three places. So a 400 that had gone to the trouble of saying
+*"this is a 'private' chat, not a group. Use a group, supergroup or channel the
+bot belongs to."* reached the admin, lost its text, and rendered as
+**`HTTP Error: 400`** — a screen failing repeatedly with no way to tell why.
+
+Both halves are guarded: the routes now use `error` (and a structural test
+refuses a 400 body in this file without it), and the admin funnel accepts
+`message` as a fallback so the next author who reaches for the other word is not
+silently swallowed either.
+
 ## 5. Idempotency belongs to the database
 
 Telegram redelivers, and a restart replays. `captureMessage` inserts with

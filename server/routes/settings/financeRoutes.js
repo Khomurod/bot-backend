@@ -80,9 +80,19 @@ function createFinanceSettingsRouter({ authMiddleware, telegram }) {
    */
   router.post('/finance/validate-chat', authMiddleware, async (req, res) => {
     try {
+      // THE CAPTURE GROUP IS A GROUP. No `allowPrivate` here, deliberately:
+      // this is the chat whose every message is stored verbatim, and one
+      // person's direct messages is not a thing to point that at.
       const result = await checkChatId(req.body?.chatId, { telegram, getGroupByTelegramId });
       if (!result.ok) {
-        return res.status(400).json({
+        // A VERDICT IS 200, NOT 400 — the house shape, and the same one
+        // `bol-pod/validate-group` uses. The request succeeded; the answer was
+        // no. Returning 400 made the admin client THROW, so the tab's own
+        // rendering of the verdict — including "did you mean -5142950669?",
+        // the one-click fix for the dropped minus sign this whole check exists
+        // to catch — was unreachable code, and the screen showed a bare
+        // "HTTP Error: 400" instead.
+        return res.json({
           ok: false,
           status: result.status,
           message: result.message,
@@ -110,7 +120,17 @@ function createFinanceSettingsRouter({ authMiddleware, telegram }) {
       if (patch.chatId !== undefined && patch.chatId !== null && String(patch.chatId).trim() !== '') {
         const result = await checkChatId(patch.chatId, { telegram, getGroupByTelegramId });
         if (!result.ok) {
-          return res.status(400).json({ message: result.message, status: result.status });
+          // `error`, not `message`. Every other settings route answers a 400
+          // this way and the admin client reads exactly that key, so the three
+          // `message`-shaped bodies in this file were discarded on arrival and
+          // rendered as the status code alone. `field` and `suggestion` ride
+          // along because the client already knows how to use them.
+          return res.status(400).json({
+            error: result.message,
+            status: result.status,
+            field: 'chatId',
+            suggestion: result.suggestion ?? null,
+          });
         }
         patch.chatId = result.chatId;
         if (!patch.chatTitle && result.groupName) patch.chatTitle = result.groupName;
@@ -123,9 +143,28 @@ function createFinanceSettingsRouter({ authMiddleware, telegram }) {
       // codes — and a dropped minus sign there fails just as silently.
       if (patch.weeklyReportChatId !== undefined && patch.weeklyReportChatId !== null
           && String(patch.weeklyReportChatId).trim() !== '') {
-        const result = await checkChatId(patch.weeklyReportChatId, { telegram, getGroupByTelegramId });
+        // `allowPrivate` IS ON HERE AND NOWHERE ELSE IN THIS FILE, and the
+        // asymmetry is the point. The capture group is a room whose traffic is
+        // recorded; the weekly summary is a report somebody READS, and a small
+        // operation may well want it in one administrator's direct messages
+        // rather than a room. Notification routing and the AI policy watcher
+        // made the same call for the same reason; this field was the odd one
+        // out, and a user id here was refused with a 400 the screen could not
+        // explain.
+        //
+        // The sign-flip check still runs FIRST inside `checkChatId`, so a
+        // dropped minus sign cannot hide behind a user id that happens to
+        // resolve — which is the whole reason that ordering exists.
+        const result = await checkChatId(patch.weeklyReportChatId, {
+          telegram, getGroupByTelegramId, allowPrivate: true,
+        });
         if (!result.ok) {
-          return res.status(400).json({ message: result.message, status: result.status });
+          return res.status(400).json({
+            error: result.message,
+            status: result.status,
+            field: 'weeklyReportChatId',
+            suggestion: result.suggestion ?? null,
+          });
         }
         patch.weeklyReportChatId = result.chatId;
       }
@@ -133,7 +172,7 @@ function createFinanceSettingsRouter({ authMiddleware, telegram }) {
       const saved = await financeSettings.updateFinanceSettings(patch, req.admin?.id ?? null);
       return res.json(saved);
     } catch (err) {
-      if (err?.statusCode === 400) return res.status(400).json({ message: err.message });
+      if (err?.statusCode === 400) return res.status(400).json({ error: err.message });
       return sendFailure(res, err, { message: 'Failed to save the Finance Monitor settings', logPrefix: '[SETTINGS API]' });
     }
   });
