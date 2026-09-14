@@ -190,14 +190,20 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
     check uses Samsara only. So fixing the fallback chain in the resolver leaves
     the map unchanged — check both when you touch provider behavior.
 - **The finance tables stand apart from everything else, on purpose.**
-  `finance_settings` / `finance_messages` / `finance_moneycodes` have no foreign
+  `finance_settings` / `finance_messages` / `finance_moneycodes` /
+  `finance_moneycode_events` have no foreign
   key to `groups`, to `driver_people` or to anything else: the finance group is
   identified by its raw Telegram `chat_id`, and a money code is tied to the
   message it came out of and to nothing further. Nothing in the driver, payroll
   or home-time chain reads them, and nothing they hold feeds a decision — a
   duplicate is recorded and never acted on. `finance_messages.text` is the
   record and is never overwritten by the parse beside it, so a tightened parser
-  can re-read exactly the rows the provisional one produced
+  can re-read exactly the rows the provisional one produced. A money code
+  carries a lifecycle beside its digits — `status`, `voided_at`,
+  `void_message_ref_id`, `void_evidence`, `replaced_by_id`, `review_reason`
+  (migration 0057) — and **nothing in it is ever deleted**: a void adds state,
+  and `finance_moneycode_events` is the append-only trail of how each state was
+  reached, including whether a model contributed
   (`docs/architecture/finance-monitor.md`).
 - **Optimistic locking on roles**: `roles.version` means a custom-role edit
   that sends a stale version gets HTTP 409, never a silent overwrite.

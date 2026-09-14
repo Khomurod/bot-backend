@@ -136,15 +136,20 @@ test("the counts are shown separately, and nothing that was said is shown at all
       available: true,
       byStatus: { parsed: 4, ambiguous: 2, unparsed: 3, not_moneycode: 11 },
       total: 20, codes: 4, duplicates: 1,
+      active: 2, voided: 1, replaced: 0, duplicatePostings: 1, needsReview: 1,
     },
   });
   const { container } = render(<FinanceTab />);
   await screen.findByText("20");
 
   // Unclear and unreadable are their own numbers, not one "failed" total: they
-  // are the input for tightening a parser that has never seen a real message.
+  // are the input for tightening a parser against real messages.
+  //
+  // ISSUED, ACTIVE AND VOIDED ARE ALSO THREE NUMBERS. A voided code was still
+  // issued and keeps its row, so one figure could only ever overstate what is
+  // outstanding or erase what happened.
   for (const [label, value] of [["Read cleanly", "4"], ["Unclear", "2"], ["Could not read", "3"],
-    ["Money codes", "4"], ["Flagged as repeats", "1"]]) {
+    ["Codes issued", "4"], ["Active", "2"], ["Voided", "1"], ["Posted again", "1"]]) {
     const stat = screen.getByText(label).closest(".stat-card");
     expect(stat.textContent).toContain(value);
   }

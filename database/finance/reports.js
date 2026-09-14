@@ -30,8 +30,35 @@ const UNDEFINED_TABLE = '42P01';
  */
 async function summariseFinancePeriod({ periodStart, periodEnd }) {
   const codes = await query(
+    // ISSUED, ACTIVE AND VOIDED ARE THREE DIFFERENT NUMBERS, and the weekly
+    // report was only able to say the first. A voided code still happened — it
+    // stays counted under `codeCount` and keeps its own line — but the money it
+    // represents is not money the company is out, so `activeAmount` excludes it
+    // and is the figure the summary leads with. Overstating a total is how a
+    // report stops being trusted; erasing the row is how history stops being
+    // auditable, so this does neither.
+    //
+    // A duplicate POSTING is excluded from the active total for the same
+    // reason and a different one: the same code posted twice is one debt, and
+    // adding it twice would claim the company paid twice.
     `SELECT COUNT(*)::int                                          AS "codeCount",
             COALESCE(SUM(amount), 0)                               AS "amountTotal",
+            COUNT(*) FILTER (WHERE status = 'active')::int          AS "activeCount",
+            COALESCE(SUM(amount) FILTER (WHERE status = 'active'), 0)
+                                                                   AS "activeAmount",
+            COUNT(*) FILTER (WHERE status = 'voided')::int          AS "voidedCount",
+            COALESCE(SUM(amount) FILTER (WHERE status = 'voided'), 0)
+                                                                   AS "voidedAmount",
+            -- SUPERSEDED, not "in the replaced state". A code that was voided
+            -- and then re-issued keeps voided as its status, because that is
+            -- the stronger statement about the money — so counting the state
+            -- here would report zero replacements for the commonest case there
+            -- is. The two lines overlap by design; they are separate facts, not
+            -- a partition of the total.
+            COUNT(*) FILTER (WHERE replaced_by_id IS NOT NULL)::int AS "replacedCount",
+            COUNT(*) FILTER (WHERE status = 'needs_review')::int    AS "codesNeedingReview",
+            COUNT(*) FILTER (WHERE status = 'duplicate_posting')::int
+                                                                   AS "duplicatePostings",
             COUNT(*) FILTER (WHERE amount IS NULL)::int             AS "codesWithoutAmount",
             COUNT(*) FILTER (WHERE duplicate_reason = 'same_code')::int
                                                                    AS "duplicateSameCode",
@@ -44,8 +71,10 @@ async function summariseFinancePeriod({ periodStart, periodEnd }) {
 
   const messages = await query(
     `SELECT COUNT(*)::int AS "messageCount",
-            COUNT(*) FILTER (WHERE parse_status IN ('ambiguous', 'unparsed'))::int
-              AS "messagesNeedingAttention"
+            COUNT(*) FILTER (WHERE parse_status IN ('ambiguous', 'unparsed', 'needs_review'))::int
+              AS "messagesNeedingAttention",
+            COUNT(*) FILTER (WHERE parse_status = 'void_action')::int  AS "voidMessages",
+            COUNT(*) FILTER (WHERE parse_status = 'void_request')::int AS "voidRequests"
        FROM finance_messages
       WHERE message_date >= $1 AND message_date < $2`,
     [periodStart, periodEnd],

@@ -27,6 +27,14 @@ export const listFinanceMessages = (status) =>
 export const listFinanceMoneycodes = (duplicatesOnly) =>
   get(`/moneycodes${duplicatesOnly ? '?duplicates=true' : ''}`);
 
+/**
+ * How one code reached its current state — append-only, newest first.
+ *
+ * The state on the row is an assertion; this is the evidence behind it, which
+ * is what somebody reconciling money six weeks later actually needs.
+ */
+export const listFinanceMoneycodeEvents = (id) => get(`/moneycodes/${id}/events`);
+
 export const listFinanceDocuments = (status) =>
   get(`/documents${status ? `?status=${encodeURIComponent(status)}` : ''}`);
 

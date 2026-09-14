@@ -294,11 +294,21 @@ export default function FinanceTab() {
         ) : (
           <div className="stats-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
             <Stat label="Messages" value={capture.total} />
-            <Stat label="Money codes" value={capture.codes} />
-            <Stat label="Flagged as repeats" value={capture.duplicates} />
+            {/* ISSUED AND ACTIVE ARE DIFFERENT NUMBERS. A voided code was still
+                issued and keeps its row; showing only one figure would either
+                overstate what is outstanding or erase what happened. */}
+            <Stat label="Codes issued" value={capture.codes} />
+            <Stat label="Active" value={capture.active ?? 0} />
+            <Stat label="Voided" value={capture.voided ?? 0} />
+            {(capture.replaced ?? 0) > 0 ? <Stat label="Replaced" value={capture.replaced} /> : null}
+            <Stat label="Posted again" value={capture.duplicatePostings ?? 0} />
             <Stat label="Read cleanly" value={capture.byStatus?.parsed ?? 0} />
             <Stat label="Unclear" value={capture.byStatus?.ambiguous ?? 0} />
             <Stat label="Could not read" value={capture.byStatus?.unparsed ?? 0} />
+            <Stat
+              label="Needs a person"
+              value={(capture.byStatus?.needs_review ?? 0) + (capture.needsReview ?? 0)}
+            />
           </div>
         )}
       </div>

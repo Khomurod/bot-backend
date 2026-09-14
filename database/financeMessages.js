@@ -32,8 +32,8 @@ async function captureMessage(message, parsed) {
     `INSERT INTO finance_messages (
        chat_id, message_id, sender_user_id, sender_username, sender_name,
        text, has_document, has_photo, media_group_id, message_date, edit_date,
-       parse_status, parser_version, parse_json
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       parse_status, parser_version, parse_json, reply_to_message_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      ON CONFLICT (chat_id, message_id) DO NOTHING
      RETURNING id`,
     [
@@ -42,6 +42,10 @@ async function captureMessage(message, parsed) {
       message.text ?? null, Boolean(message.hasDocument), Boolean(message.hasPhoto),
       message.mediaGroupId ?? null, message.messageDate ?? null, message.editDate ?? null,
       parsed.status, parsed.parserVersion, JSON.stringify(parsed),
+      // WHICH MESSAGE THIS ANSWERS. The strongest evidence there is for a bare
+      // "voided" meaning one particular code, and it was never captured — so
+      // the association had nothing to work from and could only have guessed.
+      message.replyToMessageId ?? null,
     ],
   );
 
@@ -85,8 +89,9 @@ async function recordMoneycode(messageRefId, fields) {
     `INSERT INTO finance_moneycodes (
        message_ref_id, code, code_normalized, amount, currency,
        issued_to, issued_to_normalized, sender_user_id, sender_name,
-       issued_at, parser_version, confidence, duplicate_of_id, duplicate_reason
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       issued_at, parser_version, confidence, duplicate_of_id, duplicate_reason,
+       report_reference, notes, status
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      ON CONFLICT (message_ref_id, code_normalized) DO NOTHING
      RETURNING id`,
     [
@@ -96,6 +101,12 @@ async function recordMoneycode(messageRefId, fields) {
       fields.senderUserId ?? null, fields.senderName ?? null,
       fields.issuedAt ?? null, fields.parserVersion, fields.confidence ?? null,
       fields.duplicateOfId ?? null, fields.duplicateReason ?? null,
+      // The parser reads these now. They were columns nothing filled.
+      fields.reportReference ?? null, fields.notes ?? null,
+      // THE SAME CODE POSTED AGAIN IS A POSTING, NOT A SECOND ISSUE. It is
+      // recorded so the repeat is visible, and kept out of the active total so
+      // it can never read as the company paying twice.
+      fields.duplicateReason === 'same_code' ? 'duplicate_posting' : (fields.status || 'active'),
     ],
   );
   return rows[0]?.id ?? null;
@@ -136,21 +147,43 @@ async function summariseCapture() {
         GROUP BY parse_status`,
     );
     const byStatus = Object.fromEntries(rows.map((r) => [r.status, r.count]));
+    // ISSUED IS NOT THE SAME NUMBER AS ACTIVE. A voided code was still issued
+    // and keeps its row; counting it among the live ones would overstate what
+    // is outstanding on every screen that reads this.
     const codes = await query(
       `SELECT COUNT(*)::int AS total,
-              COUNT(duplicate_of_id)::int AS duplicates
+              COUNT(duplicate_of_id)::int AS duplicates,
+              COUNT(*) FILTER (WHERE status = 'active')::int AS active,
+              COUNT(*) FILTER (WHERE status = 'voided')::int AS voided,
+              COUNT(*) FILTER (WHERE replaced_by_id IS NOT NULL)::int AS replaced,
+              COUNT(*) FILTER (WHERE status = 'needs_review')::int AS "needsReview",
+              COUNT(*) FILTER (WHERE status = 'duplicate_posting')::int AS "duplicatePostings",
+              COALESCE(SUM(amount) FILTER (WHERE status = 'active'), 0) AS "activeAmount",
+              COALESCE(SUM(amount) FILTER (WHERE status = 'voided'), 0) AS "voidedAmount"
          FROM finance_moneycodes`,
     );
+    const c = codes.rows[0] || {};
     return {
       available: true,
       byStatus,
       total: rows.reduce((sum, r) => sum + r.count, 0),
-      codes: codes.rows[0]?.total ?? 0,
-      duplicates: codes.rows[0]?.duplicates ?? 0,
+      codes: c.total ?? 0,
+      duplicates: c.duplicates ?? 0,
+      active: c.active ?? 0,
+      voided: c.voided ?? 0,
+      replaced: c.replaced ?? 0,
+      needsReview: c.needsReview ?? 0,
+      duplicatePostings: c.duplicatePostings ?? 0,
+      activeAmount: Number(c.activeAmount ?? 0),
+      voidedAmount: Number(c.voidedAmount ?? 0),
     };
   } catch (err) {
     if (err && err.code === UNDEFINED_TABLE) {
-      return { available: false, byStatus: {}, total: 0, codes: 0, duplicates: 0 };
+      return {
+        available: false, byStatus: {}, total: 0, codes: 0, duplicates: 0,
+        active: 0, voided: 0, replaced: 0, needsReview: 0, duplicatePostings: 0,
+        activeAmount: 0, voidedAmount: 0,
+      };
     }
     throw err;
   }
@@ -187,6 +220,12 @@ async function listMoneycodes({ limit = 50, duplicatesOnly = false } = {}) {
             c.issued_to AS "issuedTo", c.issued_at AS "issuedAt",
             c.sender_name AS "senderName", c.duplicate_of_id AS "duplicateOfId",
             c.duplicate_reason AS "duplicateReason", c.parser_version AS "parserVersion",
+            c.report_reference AS "reportReference", c.notes,
+            -- The lifecycle, so the screen can show a voided code as voided
+            -- rather than silently dropping it out of the list.
+            c.status, c.voided_at AS "voidedAt", c.void_confidence AS "voidConfidence",
+            c.void_evidence AS "voidEvidence", c.replaced_by_id AS "replacedById",
+            c.review_reason AS "reviewReason",
             m.chat_id AS "chatId", m.message_id AS "messageId"
        FROM finance_moneycodes c
        JOIN finance_messages m ON m.id = c.message_ref_id
@@ -219,7 +258,8 @@ async function listMoneycodes({ limit = 50, duplicatesOnly = false } = {}) {
 async function reparseMessage(id, { parse } = {}) {
   const parser = parse || require('../lib/finance/moneycode').parseMoneycodeMessage;
   const existing = await query(
-    `SELECT id, text, parse_status,
+    `SELECT id, text, parse_status, chat_id AS "chatId", message_id AS "messageId",
+            reply_to_message_id AS "replyToMessageId",
             sender_user_id AS "senderUserId", sender_name AS "senderName",
             message_date AS "messageDate"
        FROM finance_messages WHERE id = $1`,
@@ -235,11 +275,19 @@ async function reparseMessage(id, { parse } = {}) {
       WHERE id = $1`,
     [id, parsed.status, parsed.parserVersion, JSON.stringify(parsed)],
   );
+  // THE CONTEXT COLUMNS COME BACK TOO. A re-read that newly recognises "voided"
+  // has to be able to find the code that was voided, and the only things that
+  // say which one are the chat, the text and the message this one replied to.
+  // Without them the re-read could change a status and nothing else.
   return {
     id: row.id,
     before: row.parse_status,
     after: parsed.status,
     parsed,
+    chatId: row.chatId,
+    messageId: row.messageId,
+    replyToMessageId: row.replyToMessageId,
+    text: row.text,
     senderUserId: row.senderUserId,
     senderName: row.senderName,
     messageDate: row.messageDate,
@@ -264,7 +312,18 @@ async function updateMoneycodeInterpretation(messageRefId, codeNormalized, field
   const { rows } = await query(
     `UPDATE finance_moneycodes
         SET code = $3, amount = $4, currency = $5, parser_version = $6,
-            confidence = $7, duplicate_of_id = $8, duplicate_reason = $9
+            confidence = $7, duplicate_of_id = $8, duplicate_reason = $9,
+            report_reference = $10, notes = $11,
+            -- A LIFECYCLE STATE IS NOT A READING AND IS NOT REFRESHED HERE.
+            -- Re-reading the text of a code somebody voided must never bring it
+            -- back to life, so the state moves only for a row still sitting at
+            -- the default, and only to record a repeat posting.
+            status = CASE
+              WHEN finance_moneycodes.status IN ('voided', 'replaced', 'needs_review')
+                THEN finance_moneycodes.status
+              WHEN $9 = 'same_code' THEN 'duplicate_posting'
+              ELSE finance_moneycodes.status
+            END
       WHERE message_ref_id = $1 AND code_normalized = $2
       RETURNING id`,
     [
@@ -272,12 +331,114 @@ async function updateMoneycodeInterpretation(messageRefId, codeNormalized, field
       fields.amount ?? null, fields.currency || 'USD', fields.parserVersion,
       fields.confidence ?? null, fields.duplicateOfId ?? null,
       fields.duplicateReason ?? null,
+      fields.reportReference ?? null, fields.notes ?? null,
     ],
   );
   return rows[0]?.id ?? null;
 }
 
+/**
+ * Messages an older parser read, oldest first.
+ *
+ * THE BACKLOG A VERSION BUMP CREATES. Every stored row carries the version that
+ * read it, so "which of these has the current parser never seen" is a plain
+ * question rather than a guess — and answering it is what stops a table holding
+ * a silent mix of two vocabularies. Bounded by the caller; the reparse pass
+ * takes a few at a time rather than rewriting a payments table in one sweep.
+ */
+async function listStaleParserMessages({ version, limit = 50 } = {}) {
+  try {
+    const { rows } = await query(
+      `SELECT id FROM finance_messages
+        WHERE parser_version < $1
+        ORDER BY id ASC
+        LIMIT $2`,
+      [Number(version), Math.max(1, Math.min(500, Number(limit) || 50))],
+    );
+    return rows.map((r) => r.id);
+  } catch (err) {
+    if (err.code === UNDEFINED_TABLE) return [];
+    throw err;
+  }
+}
+
+/** How many are still behind — so a pass can say whether it finished. */
+async function countStaleParserMessages(version) {
+  try {
+    const { rows } = await query(
+      'SELECT COUNT(*)::int AS n FROM finance_messages WHERE parser_version < $1',
+      [Number(version)],
+    );
+    return rows[0]?.n ?? 0;
+  } catch (err) {
+    if (err.code === UNDEFINED_TABLE) return null;
+    throw err;
+  }
+}
+
+/**
+ * Move a message's status without touching its text or its parse.
+ *
+ * The one caller is the void resolver: a "voided" whose target could not be
+ * settled is a message that needs a person, and that has to be visible on the
+ * screen that lists them. `parse_json` keeps the parser's own reading and gains
+ * the resolution beside it, so the two are never confused for each other.
+ */
+async function setMessageStatus(id, status, resolution = null) {
+  const { rows } = await query(
+    `UPDATE finance_messages
+        SET parse_status = $2,
+            parse_json = CASE
+              WHEN $3::jsonb IS NULL THEN parse_json
+              ELSE COALESCE(parse_json, '{}'::jsonb) || jsonb_build_object('resolution', $3::jsonb)
+            END
+      WHERE id = $1
+      RETURNING id`,
+    [id, status, resolution === null || resolution === undefined ? null : JSON.stringify(resolution)],
+  );
+  return rows[0]?.id ?? null;
+}
+
+/**
+ * Messages the rules could not settle and no model has been offered yet.
+ *
+ * ONE ATTEMPT EACH. Without the marker this query returns the same unreadable
+ * handful every pass, for ever — a standing cost that buys nothing after the
+ * first answer.
+ */
+async function listMessagesAwaitingAiReading({ limit = 10 } = {}) {
+  try {
+    const { rows } = await query(
+      `SELECT id, text, parse_status AS "parseStatus"
+         FROM finance_messages
+        WHERE ai_read_at IS NULL
+          AND parse_status IN ('unparsed', 'ambiguous')
+        ORDER BY id ASC
+        LIMIT $1`,
+      [Math.max(1, Math.min(50, Number(limit) || 10))],
+    );
+    return rows;
+  } catch (err) {
+    if (err.code === UNDEFINED_TABLE) return [];
+    throw err;
+  }
+}
+
+/** Stamped only when a model ANSWERED — an outage must not burn the attempt. */
+async function markAiRead(id) {
+  const { rows } = await query(
+    'UPDATE finance_messages SET ai_read_at = NOW() WHERE id = $1 RETURNING id',
+    [id],
+  );
+  return rows[0]?.id ?? null;
+}
+
 module.exports = {
+  listMessagesAwaitingAiReading,
+  markAiRead,
+  setMessageStatus,
+  listStaleParserMessages,
+  countStaleParserMessages,
   listMessages,
   listMoneycodes,
   reparseMessage,

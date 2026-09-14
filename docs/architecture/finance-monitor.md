@@ -341,6 +341,21 @@ refuses a 400 body in this file without it), and the admin funnel accepts
 `message` as a fallback so the next author who reaches for the other word is not
 silently swallowed either.
 
+## 4e–4h. Reading the message, and the life of a code
+
+How a real EFS message is read, how a money code is voided or replaced, what a
+model may and may not contribute, and how a parser change re-reads what it
+already captured, all live in
+[`finance-moneycode-reading.md`](finance-moneycode-reading.md) — split out when
+this file passed the 500-line cap.
+
+The three rules worth carrying in your head without opening it:
+
+- **The parser reads LABELS.** `Report Reference` is never a candidate code.
+- **Fuzzy on the label, exact on the value.** No digit is ever repaired.
+- **A request to void is not a void**, and two hard signals disagreeing about
+  which code to void always goes to a person.
+
 ## 5. Idempotency belongs to the database
 
 Telegram redelivers, and a restart replays. `captureMessage` inserts with

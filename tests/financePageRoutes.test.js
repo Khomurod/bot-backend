@@ -59,6 +59,11 @@ stub('services/finance/documentReader.js', {
 stub('services/finance/captureService.js', {
   reparseCapturedMessage: async (id) => { reparsed.push(id); return reparseResult; },
 });
+let events = [];
+let eventsAsked = [];
+stub('database/financeMoneycodeLifecycle.js', {
+  listEvents: async (id) => { statements.push('listEvents'); eventsAsked.push(id); return events; },
+});
 stub('database/finance/reports.js', {
   listReports: async () => { statements.push('listReports'); return reports; },
 });
@@ -87,7 +92,7 @@ function makeServer({ auth = 'ok' } = {}) {
 }
 
 async function withServer(opts, fn) {
-  statements = []; reparsed = []; requeued = []; sentNow = []; pokes = 0;
+  statements = []; reparsed = []; requeued = []; sentNow = []; pokes = 0; eventsAsked = [];
   const server = makeServer(opts);
   await new Promise((r) => server.listen(0, r));
   try {
@@ -102,6 +107,7 @@ test('EVERY route requires an administrator, and refuses before touching the dat
     for (const [method, url] of [
       ['GET', `${base}/messages`],
       ['GET', `${base}/moneycodes`],
+      ['GET', `${base}/moneycodes/1/events`],
       ['GET', `${base}/documents`],
       ['GET', `${base}/reports`],
       ['POST', `${base}/messages/1/reparse`],
@@ -325,4 +331,37 @@ test('a re-read goes through the service that records the code', async () => {
   assert.ok(source.includes('captureService.reparseCapturedMessage'),
     'the route must not call financeMessages.reparseMessage directly');
   assert.equal(source.includes('financeMessages.reparseMessage'), false);
+});
+
+/**
+ * The row says what is true; the events say how it got there. This route is the
+ * only way that trail reaches a person, and it is read-only — the structural
+ * test above already asserts the router writes no business value.
+ */
+test('the history behind a code comes back, newest first, as the store gave it', async () => {
+  events = [
+    { id: 3, event: 'voided', decidedBy: 'deterministic', confidence: 95, note: null },
+    { id: 2, event: 'needs_review', decidedBy: 'ai', confidence: null, note: 'a model read it' },
+  ];
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/moneycodes/7/events`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.events.length, 2);
+    assert.equal(body.events[0].event, 'voided');
+    assert.equal(body.events[1].decidedBy, 'ai',
+      'a reading a model contributed to is never indistinguishable from a rule');
+    assert.deepEqual(eventsAsked, [7]);
+  });
+});
+
+test('a money-code id that is not one is refused before the database', async () => {
+  await withServer({}, async (base) => {
+    for (const bad of ['abc', '0', '-1']) {
+      const res = await fetch(`${base}/moneycodes/${bad}/events`);
+      assert.equal(res.status, 400, bad);
+    }
+    assert.deepEqual(eventsAsked, []);
+    assert.deepEqual(statements, []);
+  });
 });

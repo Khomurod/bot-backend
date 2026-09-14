@@ -19,12 +19,42 @@ const path = require('node:path');
 const SETTINGS = path.resolve(__dirname, '../database/financeSettings.js');
 const MESSAGES = path.resolve(__dirname, '../database/financeMessages.js');
 const SERVICE = path.resolve(__dirname, '../services/finance/captureService.js');
+const LIFECYCLE = path.resolve(__dirname, '../database/financeMoneycodeLifecycle.js');
+const VOID_SERVICE = path.resolve(__dirname, '../services/finance/voidService.js');
+const REPLACE_SERVICE = path.resolve(__dirname, '../services/finance/replacementService.js');
 
 /** Load the service with the two data modules replaced. */
-function load({ onWatch = true, settings = {}, messages = {}, settingsThrows = null } = {}) {
-  for (const p of [SETTINGS, MESSAGES, SERVICE]) delete require.cache[p];
+function load({ onWatch = true, settings = {}, messages = {}, lifecycle = {}, settingsThrows = null } = {}) {
+  // The two lifecycle services bind their data modules at load, so they have to
+  // be evicted alongside them or they keep the previous test's stubs.
+  for (const p of [SETTINGS, MESSAGES, LIFECYCLE, VOID_SERVICE, REPLACE_SERVICE, SERVICE]) {
+    delete require.cache[p];
+  }
 
-  const calls = { captured: [], codes: [], edits: [], candidates: [], refreshed: [], reparsed: [] };
+  const calls = {
+    captured: [], codes: [], edits: [], candidates: [], refreshed: [], reparsed: [],
+    statuses: [], voided: [], replaced: [], scope: [],
+  };
+
+  require.cache[LIFECYCLE] = {
+    exports: {
+      CODE_STATUS: { ACTIVE: 'active', VOIDED: 'voided' },
+      findCodeByMessage: async (chatId, messageId) => (
+        lifecycle.findCodeByMessage ? lifecycle.findCodeByMessage(chatId, messageId) : null
+      ),
+      findCodeByDigits: async (d) => (lifecycle.findCodeByDigits ? lifecycle.findCodeByDigits(d) : null),
+      recentCodesInScope: async (q) => {
+        calls.scope.push(q);
+        return lifecycle.recentCodesInScope ? lifecycle.recentCodesInScope(q) : [];
+      },
+      voidCode: async (id, opts) => { calls.voided.push({ id, opts }); return { changed: true }; },
+      markReplaced: async (id, byId, opts) => {
+        calls.replaced.push({ id, byId, opts });
+        return { changed: true };
+      },
+      markNeedsReview: async () => ({ changed: true }),
+    },
+  };
 
   require.cache[SETTINGS] = {
     exports: {
@@ -62,6 +92,10 @@ function load({ onWatch = true, settings = {}, messages = {}, settingsThrows = n
       findDuplicateCandidates: async (q) => {
         calls.candidates.push(q);
         return messages.findDuplicateCandidates ? messages.findDuplicateCandidates(q) : [];
+      },
+      setMessageStatus: async (id, status, detail) => {
+        calls.statuses.push({ id, status, detail });
+        return true;
       },
     },
   };
@@ -313,4 +347,120 @@ test('a re-read that reinterprets an existing code refreshes it', async () => {
 test('re-reading a message that is not there returns null', async () => {
   const { service } = load({ messages: { reparseMessage: () => null } });
   assert.equal(await service.reparseCapturedMessage(9999), null);
+});
+
+/**
+ * THE GAP THIS CLOSES. Version 1 had never heard of "void", so every void in
+ * production reads `not_moneycode` today. A re-read that changed the status and
+ * stopped there would leave codes the group itself declared dead sitting in the
+ * active total.
+ */
+test('a re-read that newly recognises a void ACTS on it', async () => {
+  const { service, calls } = load({
+    messages: {
+      reparseMessage: () => ({
+        id: 42, before: 'not_moneycode', after: 'void_action',
+        parsed: {
+          status: 'void_action',
+          void: { kind: 'completed', codes: [], phrase: 'voided', reason: 'reported as done' },
+        },
+        chatId: '-1001', messageId: 91, replyToMessageId: 90, text: 'voided',
+        senderUserId: 777, senderName: 'Ivan P',
+        messageDate: new Date('2026-09-12T10:00:00Z'),
+      }),
+    },
+    lifecycle: {
+      findCodeByMessage: async () => ({ id: 7, codeNormalized: '1234567890', status: 'active' }),
+    },
+  });
+
+  const out = await service.reparseCapturedMessage(42);
+
+  assert.equal(out.after, 'void_action');
+  assert.equal(out.voidApplied, true);
+  assert.equal(calls.voided.length, 1, 'the code the reply points at is voided');
+  assert.equal(calls.voided[0].id, 7);
+  assert.deepEqual(calls.codes, [], 'and a void issues nothing');
+});
+
+/** A re-read must not resolve a void it cannot see the context of. */
+test('a re-read of a void with nothing to point at leaves it for a person', async () => {
+  const { service, calls } = load({
+    messages: {
+      reparseMessage: () => ({
+        id: 43, before: 'not_moneycode', after: 'void_action',
+        parsed: {
+          status: 'void_action',
+          void: { kind: 'completed', codes: [], phrase: 'voided', reason: 'reported as done' },
+        },
+        chatId: '-1001', messageId: 92, replyToMessageId: null, text: 'voided',
+        senderUserId: 777, senderName: 'Ivan P', messageDate: new Date('2026-09-12T10:00:00Z'),
+      }),
+    },
+    lifecycle: { recentCodesInScope: async () => [] },
+  });
+
+  const out = await service.reparseCapturedMessage(43);
+
+  assert.equal(out.voidApplied, false);
+  assert.deepEqual(calls.voided, [], 'nothing is guessed at');
+  assert.equal(calls.statuses.length, 1, 'the MESSAGE is what needs a person');
+  assert.equal(calls.statuses[0].status, 'needs_review');
+});
+
+/**
+ * A replacement is a relationship between two payments, so the evidence bar is
+ * higher than a void's: named or replied-to, never "the only code around".
+ */
+test('a captured replacement links the code it names, and only that one', async () => {
+  const { service, calls } = load({
+    lifecycle: {
+      recentCodesInScope: async () => [
+        { id: 7, codeNormalized: '1234567890', status: 'voided' },
+        { id: 8, codeNormalized: '5555555555', status: 'active' },
+      ],
+    },
+  });
+
+  // Multi-line, as the real format is: the label owns its own line, which is
+  // what lets the parser tell the new code from the one being replaced.
+  await service.captureFinanceMessage(msg({
+    text: 'Replacement for 1234567890\nMoney code: 9876543210\nAmount: 500.00',
+  }));
+
+  assert.equal(calls.replaced.length, 1);
+  assert.equal(calls.replaced[0].id, 7, 'the named code, not the other one in scope');
+  assert.equal(calls.replaced[0].byId, 10, 'pointed at the code this message issued');
+  assert.equal(calls.replaced[0].opts.decidedBy, 'deterministic');
+});
+
+test('an ordinary new code replaces nothing, however recent the last one is', async () => {
+  const { service, calls } = load({
+    lifecycle: {
+      recentCodesInScope: async () => [{ id: 7, codeNormalized: '1234567890', status: 'voided' }],
+    },
+  });
+
+  await service.captureFinanceMessage(msg({ text: 'Money code: 9876543210\nAmount: 500.00' }));
+
+  assert.equal(calls.codes.length, 1, 'it is still recorded as an issue');
+  assert.deepEqual(calls.replaced, [],
+    'a code issued after a void is not automatically its replacement');
+});
+
+test('a replacement nothing identifies leaves the message for a person, code intact', async () => {
+  const { service, calls } = load({
+    lifecycle: {
+      recentCodesInScope: async () => [{ id: 7, codeNormalized: '1234567890', status: 'voided' }],
+    },
+  });
+
+  await service.captureFinanceMessage(msg({
+    text: 'replacement issued\nMoney code: 9876543210\nAmount: 500.00',
+  }));
+
+  assert.equal(calls.codes.length, 1, 'the money is real either way');
+  assert.deepEqual(calls.replaced, []);
+  assert.equal(calls.statuses.length, 1);
+  assert.equal(calls.statuses[0].detail.kind, 'replacement_target_unresolved');
 });

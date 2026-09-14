@@ -56,6 +56,12 @@ Two rules inside it:
 - **Recording is best-effort.** The re-read itself succeeded; reporting it as a
   failure would invite a retry of something already done. The result says
   whether the code landed, so the screen can be honest.
+- **A re-read that reaches a VOID resolves it**, through the same `voidService`
+  a live message uses, and one that reaches a code goes through replacement
+  detection as well. Stopping at the status would leave a code the group itself
+  declared dead sitting in the active total — the same silence the button
+  exists to end, one step further along. The re-read hands back the stored
+  chat, reply id and text for exactly that reason.
 
 **Try again** puts a document back in the queue, **resets the attempt ladder**
 — because a person asking for a retry is new information the backoff does not
@@ -108,3 +114,17 @@ Removing the boundary fails that test.
 The Messages tab opens on **Unclear**, not on everything: the provisional
 parser is tightened from exactly that pile, and a list that opens on four
 thousand ordinary messages hides the twenty that matter.
+
+## The history behind one code
+
+The Money codes tab lists a voided code **struck through and still there**, with
+what the void was based on in words, and a **History** button beside it that
+reads `GET /api/finance/moneycodes/:id/events`. Hiding a voided code would make
+the list disagree with the totals, and "where did that code go" is a question
+this screen exists to answer.
+
+The row says what is true; the events say how it got there — which message did
+it, whether a rule or a model read that message, and how sure it was. The
+request is made only when somebody asks for it, so the list itself stays one
+query. There is no route that writes an event: the table is append-only and the
+only writers are the lifecycle functions.
