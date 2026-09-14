@@ -343,3 +343,29 @@ rules as working instructions.
 - **The owner's intended schedule is never invented.** The conflict is surfaced;
   which half is wrong is theirs to decide.
 
+
+## What a background pass tells the run ledger
+
+- **The PASS decides whether its errors amount to a failure, and says so in
+  `error` — singular.** `statusFromSummary` reads that one field and nothing
+  else. `errors`, plural, is the per-item list a reader wants and the ledger
+  never sees; a pass that ends early with only the plural field records itself
+  as **ok**. Seven passes did exactly that, one of them the self-healing watch
+  that makes every other failure visible.
+- **A pass that could not read its inputs, or whose every item failed, has not
+  run.** One bad driver row among a hundred is a row to look at; a hundred out
+  of a hundred is a failure. Both shapes set `error`.
+- **Switched off is `blocked`, never healthy and never failed.** A feature
+  nobody has enabled must not look identical to one running every five minutes,
+  and painting it red is how a real outage gets lost among things that were
+  never switched on.
+- **An answer that could not be read is `cannot_determine`, never an empty
+  list.** A gatherer that swallows its own failure deletes what it was watching
+  from the picture, and a caller counting what it could not read cannot count
+  something it was never handed. `unknown: true` keeps the older rule intact:
+  "I could not check" never starts a failure count.
+- **A pass with no ledger row is unobservable.** `data_retention` — the only
+  defence against unbounded growth in seven tables — reported its failures to
+  `console.error` and nowhere else for the life of the feature.
+
+See [`health-reporting.md`](../architecture/health-reporting.md).
