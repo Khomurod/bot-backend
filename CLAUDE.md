@@ -254,6 +254,7 @@ that area**, and run the tests it names.
 | What Wenze may tell a candidate, and how a person teaches it | [`docs/architecture/recruiting-knowledge.md`](docs/architecture/recruiting-knowledge.md) |
 | Answering a candidate outside working hours, the reply guard, the SMS transcript | [`docs/architecture/recruiting-after-hours.md`](docs/architecture/recruiting-after-hours.md) |
 | The Finance Monitor: which group is read, why the captured text is never overwritten, and why a duplicate is recorded and never acted on | [`docs/architecture/finance-monitor.md`](docs/architecture/finance-monitor.md) and, for the page that reads the text out, [`docs/architecture/finance-monitor-page.md`](docs/architecture/finance-monitor-page.md) |
+| How a money-code message is READ, why a label beats a number scanner, when a void is a void, and what AI may never supply | [`docs/architecture/finance-moneycode-reading.md`](docs/architecture/finance-moneycode-reading.md) |
 | Retention signals, what may never be scored about a driver, the notice rules | [`docs/architecture/driver-retention.md`](docs/architecture/driver-retention.md) |
 | When a recovery is worth announcing, and why a suggestion can never apply itself | [`docs/architecture/self-healing-and-learning.md`](docs/architecture/self-healing-and-learning.md) |
 | Whether the health being reported is TRUE: switched off vs broken, a watch that supplies its own dependencies, a pass that observed nothing | [`docs/architecture/health-reporting.md`](docs/architecture/health-reporting.md) |

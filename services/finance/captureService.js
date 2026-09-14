@@ -24,6 +24,8 @@ const { getFinanceSettings, isFinanceChat } = require('../../database/financeSet
 const financeMessages = require('../../database/financeMessages');
 const financeDocuments = require('../../database/financeDocuments');
 const { wakeFinanceDocumentReader } = require('./documentReader');
+const { applyVoidFromMessage } = require('./voidService');
+const { applyReplacementFromMessage } = require('./replacementService');
 
 /** Telegram sends seconds; the column is timestamptz. */
 function toDate(unixSeconds) {
@@ -53,6 +55,10 @@ function shapeMessage(msg) {
     hasDocument: Boolean(msg?.document),
     hasPhoto: Array.isArray(msg?.photo) && msg.photo.length > 0,
     mediaGroupId: msg?.media_group_id ?? null,
+    // WHICH MESSAGE THIS ANSWERS. A bare "voided" means one particular code
+    // only because of what it replies to, and without this the association had
+    // nothing to work from.
+    replyToMessageId: msg?.reply_to_message?.message_id ?? null,
     messageDate: toDate(msg?.date),
     editDate: toDate(msg?.edit_date),
   };
@@ -74,13 +80,19 @@ async function recordCodeIfParsed(messageRefId, shaped, parsed, settings) {
     codeNormalized: parsed.codeNormalized,
     amount: parsed.amount,
     since,
+    // A re-read must not find the row this very message already produced.
+    excludeMessageRefId: messageRefId,
   });
 
   const duplicate = decideDuplicate(
     {
       codeNormalized: parsed.codeNormalized,
       amount: parsed.amount,
-      issuedToNormalized: normalisePerson(shaped.senderName),
+      // The RECIPIENT, for the same-amount-to-the-same-person suspicion. It
+      // used to be the sender's name, which meant the check compared the wrong
+      // two people and — because nothing was ever stored in the column it
+      // reads — could never match at all.
+      issuedToNormalized: parsed.issuedTo ? normalisePerson(parsed.issuedTo) : null,
       issuedAt,
     },
     candidates,
@@ -92,11 +104,14 @@ async function recordCodeIfParsed(messageRefId, shaped, parsed, settings) {
     codeNormalized: parsed.codeNormalized,
     amount: parsed.amount,
     currency: parsed.currency,
-    // Who POSTED it. Who it was for is not something the parser can read yet,
-    // and a column filled with the sender's name under a "issued to" heading
-    // would be worse than an empty one.
-    issuedTo: null,
-    issuedToNormalized: null,
+    // THE PARSER READS THESE NOW — columns that version 1 could never fill,
+    // because it could not tell a recipient from a note. The recipient is the
+    // one the message NAMES, never the sender, who is only the person who
+    // posted it; `senderName` below is that person and stays separate.
+    issuedTo: parsed.issuedTo ?? null,
+    issuedToNormalized: parsed.issuedTo ? normalisePerson(parsed.issuedTo) : null,
+    reportReference: parsed.reportReference ?? null,
+    notes: parsed.notes ?? null,
     senderUserId: shaped.senderUserId,
     senderName: shaped.senderName,
     issuedAt,
@@ -119,7 +134,46 @@ async function recordCodeIfParsed(messageRefId, shaped, parsed, settings) {
     confidence: null,
     duplicateOfId: duplicate?.duplicateOfId ?? null,
     duplicateReason: duplicate?.reason ?? null,
+    reportReference: parsed.reportReference ?? null,
+    notes: parsed.notes ?? null,
   });
+}
+
+/**
+ * A money-code message issues; a void message settles one that already exists.
+ *
+ * Kept beside the issue path rather than inside it because they are different
+ * events with different failure modes — and because a void that cannot be
+ * resolved must leave the MESSAGE needing a person, not invent a code to attach
+ * the doubt to.
+ */
+async function handleVoidIfAny(messageRefId, shaped, parsed) {
+  if (parsed.status !== STATUS.VOID_ACTION && parsed.status !== STATUS.VOID_REQUEST) return null;
+  try {
+    return await applyVoidFromMessage(messageRefId, shaped, parsed);
+  } catch (err) {
+    // A void that could not be resolved must never cost the capture. Ids only.
+    console.error(`[FINANCE CAPTURE] void on message ${messageRefId} could not be resolved:`, err.message);
+    return null;
+  }
+}
+
+/**
+ * A code that was issued to take another one's place.
+ *
+ * Runs AFTER the new code is stored, and takes its row id: the issue stands on
+ * its own, and only the relationship is in question. A replacement that cannot
+ * be proved leaves the message for a person and the new code fully recorded —
+ * which is the right way round, because the money is real either way.
+ */
+async function handleReplacementIfAny(messageRefId, shaped, parsed, newCodeId) {
+  if (!newCodeId || parsed.status !== STATUS.PARSED) return null;
+  try {
+    return await applyReplacementFromMessage(messageRefId, shaped, parsed, newCodeId);
+  } catch (err) {
+    console.error(`[FINANCE CAPTURE] replacement on message ${messageRefId} could not be resolved:`, err.message);
+    return null;
+  }
 }
 
 /**
@@ -139,15 +193,38 @@ async function recordCodeIfParsed(messageRefId, shaped, parsed, settings) {
 async function reparseCapturedMessage(id) {
   const out = await financeMessages.reparseMessage(id);
   if (!out) return null;
+
+  // The stored message, in the same shape a live one arrives in — so a re-read
+  // reaches the same code of conduct as a capture rather than a reduced one.
+  const shaped = {
+    chatId: out.chatId,
+    messageId: out.messageId,
+    replyToMessageId: out.replyToMessageId,
+    text: out.text,
+    senderUserId: out.senderUserId,
+    senderName: out.senderName,
+    messageDate: out.messageDate,
+  };
+
+  // A RE-READ THAT NEWLY RECOGNISES A VOID HAS TO ACT ON IT. Version 1 had
+  // never heard of the word, so every void in the table reads `not_moneycode`
+  // today. Re-reading them and stopping at the status would leave codes their
+  // own chat had already declared dead sitting in the active total — the same
+  // silence this whole pass exists to end, one step further along.
+  if (out.after === STATUS.VOID_ACTION || out.after === STATUS.VOID_REQUEST) {
+    const voided = await handleVoidIfAny(out.id, shaped, out.parsed);
+    return {
+      id: out.id, before: out.before, after: out.after, codeRecorded: false,
+      voidApplied: Boolean(voided?.applied),
+    };
+  }
+
   if (out.after !== STATUS.PARSED) return { id: out.id, before: out.before, after: out.after, codeRecorded: false };
 
   try {
     const settings = await getFinanceSettings();
-    const codeId = await recordCodeIfParsed(out.id, {
-      senderUserId: out.senderUserId,
-      senderName: out.senderName,
-      messageDate: out.messageDate,
-    }, out.parsed, settings);
+    const codeId = await recordCodeIfParsed(out.id, shaped, out.parsed, settings);
+    await handleReplacementIfAny(out.id, shaped, out.parsed, codeId);
     return { id: out.id, before: out.before, after: out.after, codeRecorded: Boolean(codeId) };
   } catch (err) {
     console.error(`[FINANCE CAPTURE] re-read ${out.id} could not record its code:`, err.message);
@@ -222,7 +299,9 @@ async function captureFinanceMessage(msg, { isEdit = false } = {}) {
     if (isEdit) {
       const id = await financeMessages.applyEdit(shaped.chatId, shaped.messageId, shaped.text, parsed);
       if (!id) return { handled: false, reason: 'edit of a message never captured' };
-      await recordCodeIfParsed(id, shaped, parsed, settings);
+      const editedCodeId = await recordCodeIfParsed(id, shaped, parsed, settings);
+      await handleVoidIfAny(id, shaped, parsed);
+      await handleReplacementIfAny(id, shaped, parsed, editedCodeId);
       // An edit can ADD an attachment, and the unique key makes a re-queue of
       // the same file a no-op, so asking again costs nothing and misses less.
       await queueDocumentIfAny(id, msg, shaped, settings);
@@ -232,7 +311,9 @@ async function captureFinanceMessage(msg, { isEdit = false } = {}) {
     const { id, created } = await financeMessages.captureMessage(shaped, parsed);
     if (!created) return { handled: true, reason: 'already captured', status: parsed.status, id };
 
-    await recordCodeIfParsed(id, shaped, parsed, settings);
+    const codeId = await recordCodeIfParsed(id, shaped, parsed, settings);
+    await handleVoidIfAny(id, shaped, parsed);
+    await handleReplacementIfAny(id, shaped, parsed, codeId);
     await queueDocumentIfAny(id, msg, shaped, settings);
     return { handled: true, reason: 'captured', status: parsed.status, id };
   } catch (err) {
@@ -247,4 +328,5 @@ async function captureFinanceMessage(msg, { isEdit = false } = {}) {
 
 module.exports = {
   captureFinanceMessage, shapeMessage, queueDocumentIfAny, reparseCapturedMessage,
+  handleVoidIfAny, handleReplacementIfAny,
 };

@@ -32,6 +32,16 @@ export const PARSE_STATUS = {
   ambiguous: "Unclear — more than one candidate",
   unparsed: "Could not read a code",
   not_moneycode: "Not about money",
+  // A void that was REPORTED, and one that was only asked for. They are
+  // different events and the second one changed no money.
+  void_action: "Reported a void",
+  void_request: "Asked for a void",
+  // THE PILE THAT MATTERS MOST, and the one that was invisible: a message
+  // Wenze deliberately did not act on — a void it could not match to a code, a
+  // message that both voids and issues — where money stays unrecorded until a
+  // person settles it. Without its own filter it was findable only by reading
+  // the whole captured history, so the amount could go missing indefinitely.
+  needs_review: "Needs a person",
 };
 
 /**

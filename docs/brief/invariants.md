@@ -389,3 +389,55 @@ See [`health-reporting.md`](../architecture/health-reporting.md).
   private destination never reopens the dropped-minus hole.
 
 See [`finance-monitor.md`](../architecture/finance-monitor.md) §4c–4d.
+
+## Reading money out of a chat message
+
+- **The parser reads LABELS, not numbers.** The word in front of a number is
+  what tells a person which number it is. `Report Reference` is never a
+  candidate money code — two long numbers in one message is not two codes.
+- **Fuzzy on the label, exact on the value.** A label may be misspelled, spaced
+  oddly or missing its colon; a digit is copied verbatim or not taken. Only the
+  grouping a sender used is removed, which changes no digit. Labels under five
+  characters must match exactly, or ordinary words become labels.
+- **A request to void is not a void.** "please void this", "should we void
+  this?" and "working on it" change no money. Only a reported completed action
+  does, and only when its target is identifiable.
+- **Two hard signals disagreeing always goes to a person** — a message naming
+  one code while replying to another is the most dangerous case in the feature.
+  So does a bare "voided" with more than one candidate.
+- **Nothing is deleted.** A voided code keeps its digits, amount, original
+  message and issue time; the void adds a state, a time and the evidence.
+  `finance_moneycode_events` records every transition.
+- **Voided money leaves the ACTIVE total and stays in the report.** Overstating
+  what is outstanding is how a report stops being trusted; erasing the row is
+  how history stops being auditable.
+- **A code waiting on a person is still money that went out.** `needs_review`
+  is an unsettled void, not a void — it stays in the active total and is counted
+  separately as needing attention. Leaving it out hides real outstanding money
+  at the moment somebody needs to see it.
+- **A duplicate POSTING is not a duplicate PAYMENT.** The system may say a code
+  was posted twice. It may not say anybody was paid twice.
+- **A message doing two things is never read as one.** "Voided — replacement
+  below:" with a labelled code goes to a person: reading it as only a void
+  settled the status and dropped the new code in silence, so the money in it
+  would never have appeared anywhere.
+- **A time window bounds GUESSING, never reading.** Digits somebody wrote out
+  name one specific payment and are looked up over all of history; the window
+  only limits what a bare "voided" may be guessed to mean. And a labelled
+  reference is never a candidate code in a void or a replacement either — the
+  same rule as the parser's, in one shared place.
+- **A replacement needs MORE evidence than a void, never less.** A code issued
+  after a void is not automatically its replacement — that is a busy afternoon,
+  not a relationship. The message must say so AND name or reply to the code it
+  replaces; there is no "the only code in scope" fallback, which the void ladder
+  does have.
+- **AI reads meaning, never numbers.** Every digit a model returns is looked for
+  in the captured text and dropped if absent — a substring of a real code is a
+  different number and is refused. With no provider at all the feature behaves
+  as it does with one. A model's reading may hand a code to a person; it may
+  never void one or record a replacement.
+- **A re-read acts on what it newly understands.** A tightened parser that
+  changed a status and stopped there would leave codes the group itself declared
+  dead sitting in the active total.
+
+See [`finance-moneycode-reading.md`](../architecture/finance-moneycode-reading.md).

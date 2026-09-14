@@ -147,13 +147,35 @@ instead.
   whether it can see that chat and whether it is a group. The rule is enforced
   in the store, in the route and in the screen.
 - **The message is captured verbatim** and the parse sits beside it, never over
-  it. The parser has never seen a real message, so `parse_status` is one of
-  `parsed` / `ambiguous` / `unparsed` / `not_moneycode` and only `parsed`
-  produces a money-code row. Inventing one from a message nobody could read is
-  the guess this feature refuses.
+  it. Only `parsed` produces a money-code row; `ambiguous`, `unparsed` and
+  `needs_review` keep the message and say why. Inventing a code from a message
+  nobody could read is the guess this feature refuses.
+- **The parser reads LABELS, not numbers.** The word in front of a number is
+  what tells a person which number it is — so `Report Reference` is never
+  mistaken for a second money code, and `Amount: 480.00` is an amount without a
+  dollar sign. A label may be misspelled or spaced oddly; **a digit is copied
+  exactly or not taken at all**.
+- **A money code has a life after it is issued** — active, voided, replaced,
+  needing a person, or posted again — and **nothing is ever deleted**. A void
+  adds a state, a time, the message that caused it and the evidence; the digits,
+  the amount and the original message stay exactly as they were.
+- **A request to void is not a void.** "please void this", "should we void
+  this?" and "working on it" change no money. Only a reported completed action
+  does, and only when the message names the code or replies to the one that
+  issued it. Two candidates, or two signals disagreeing, goes to a person.
+- **Voided money leaves the active total and stays in the history.** A
+  replacement needs more evidence than a void, not less: a code issued after a
+  void is not automatically its replacement.
+- **A parser improvement goes back over what was already captured.** A version
+  bump would otherwise leave a silent mix of two vocabularies in the table —
+  real money in rows an older parser misread and nothing would ever look at
+  again — so a background pass re-reads them, safely and repeatedly.
 - **A repeat is recorded, never acted on.** The same *code* twice is a fact and
   is always flagged; the same *amount* to the same person inside a window is a
-  suspicion and is flagged as one. Wenze cannot recall a money code.
+  suspicion and is flagged as one. Wenze cannot recall a money code. A repeat is
+  kept out of the active total and described as **the code being POSTED twice —
+  never as anybody being paid twice**, which is a claim nothing here has the
+  evidence to make.
 - **Attachments are read one at a time, in the background.** Receipts and
   transfer screenshots are queued when they arrive and read by a worker that
   holds exactly one at a time — a document sits whole in memory while it is
@@ -165,6 +187,12 @@ instead.
   own permission, in a later stage.
 - AI is asked what is **printed** on a document, never for a judgement. No
   total, no report figure and no repeat ever comes from a document reading.
+- **AI reads meaning, never numbers.** A message the rules could not settle may
+  be offered to a model, once, for what KIND of message it is. Every digit it
+  returns is looked for in the captured text and dropped if it is not there —
+  even a substring of a real code, because that is a different number. It can
+  hand a code to a person; it can never void one. With no provider at all the
+  Finance Monitor works exactly as it does with one.
 - **A weekly summary, every Monday morning**, covering the week that just ended:
   how many codes, how much, anything posted twice, anything still needing a
   person. Once per period and never twice — a restart cannot make it send
@@ -178,6 +206,8 @@ instead.
   preview what the weekly summary would say, and send that summary now. A
   summary sent by hand is recorded as such and never stands in for Monday's.
 - Full rules: **[`docs/architecture/finance-monitor.md`](../architecture/finance-monitor.md)**,
+  **[`finance-moneycode-reading.md`](../architecture/finance-moneycode-reading.md)**
+  for how a message is read and what happens to a code afterwards,
   and **[`finance-monitor-page.md`](../architecture/finance-monitor-page.md)** for the page.
 
 ### Driver home time

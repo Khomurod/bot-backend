@@ -155,7 +155,13 @@ organization should converge toward.
 
 | Concern | Current files |
 |---|---|
-| Reading a money code out of a message, and deciding whether it repeats one | `lib/finance/moneycode.js` (`PARSER_VERSION`, `STATUS`), `lib/finance/duplicates.js` (`REASON`, `decideDuplicate`) — both pure |
+| Reading a money code out of a message, and deciding whether it repeats one | `lib/finance/moneycode.js` (a façade over `moneycode/{labels,fields,values,parse}.js` — `PARSER_VERSION`, `STATUS`), `lib/finance/duplicates.js` (`REASON`, `decideDuplicate`) — all pure |
+| Whether a sentence REPORTS something or asks for it | `lib/finance/phrasing.js` (`classifyModality`) — pure, shared so "please void" and "please replace" cannot drift apart |
+| Was a code voided, and which one | `lib/finance/void/intent.js` (`classifyVoidLanguage`), `lib/finance/void/target.js` (`decideVoidTarget`) — pure; `services/finance/voidService.js` applies it |
+| Did one code replace another | `lib/finance/replacement.js` (pure; a higher evidence bar than a void — no "only code in scope" rung), `services/finance/replacementService.js` |
+| The state a code is in now, and how it got there | `database/financeMoneycodeLifecycle.js`, tables `finance_moneycodes.status`/`voided_*`/`replaced_by_id` and `finance_moneycode_events` (migration 0057) |
+| Offering an unclear message to a model, and refusing what it invents | `lib/finance/aiReading.js` (pure verification against the captured text), `services/finance/aiInterpret.js`, capability `finance_message_reading` |
+| Re-reading the backlog an older parser left | `services/finance/reparsePass.js`, worker key `finance_reparse` |
 | Which group is read, and the rule that it cannot be read until validated | `database/financeSettings.js`, `server/routes/settings/financeRoutes.js`, admin `settings/FinanceTab.jsx` |
 | Storing what was said, and what was read out of it | `database/financeMessages.js`, tables `finance_settings`, `finance_messages`, `finance_moneycodes` (migration 0052) |
 | The capture decision, and the bot seam above it | `services/finance/captureService.js`, `bot/handlers/financeCaptureHandlers.js` (thin: no chat id, no parser, no query) |

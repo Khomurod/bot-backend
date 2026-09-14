@@ -20,6 +20,7 @@ import * as api from "../api";
 vi.mock("../api", () => ({
   listFinanceMessages: vi.fn(),
   listFinanceMoneycodes: vi.fn(),
+  listFinanceMoneycodeEvents: vi.fn(),
   listFinanceDocuments: vi.fn(),
   listFinanceReports: vi.fn(),
   reparseFinanceMessage: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock("../api", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   api.listFinanceMoneycodes.mockResolvedValue({ moneycodes: [] });
+  api.listFinanceMoneycodeEvents.mockResolvedValue({ events: [] });
   api.listFinanceMessages.mockResolvedValue({ messages: [] });
   api.listFinanceDocuments.mockResolvedValue({ documents: [] });
   api.listFinanceReports.mockResolvedValue({ reports: [] });
@@ -217,4 +219,50 @@ test("a send whose HISTORY row failed is still reported as sent", async () => {
   fireEvent.click(screen.getByRole("button", { name: /Yes — send it/i }));
 
   expect(await screen.findByText(/Do not send it again/i)).toBeTruthy();
+});
+
+/**
+ * A state with no trail behind it is an assertion a person has to take on
+ * faith. The history is fetched only when it is asked for — the list itself
+ * stays one request.
+ */
+test("the history behind a code is there, and says whether a model was involved", async () => {
+  api.listFinanceMoneycodes.mockResolvedValue({
+    moneycodes: [{
+      id: 7, code: "1491583146", amount: 480, currency: "USD", senderName: "A Poster",
+      issuedAt: "2026-09-10T12:00:00Z", status: "voided", voidedAt: "2026-09-10T12:30:00Z",
+      voidEvidence: { kind: "replied_to" },
+    }],
+  });
+  api.listFinanceMoneycodeEvents.mockResolvedValue({
+    events: [{
+      id: 3, event: "voided", decidedBy: "ai", confidence: 88,
+      note: "a model read a message as voiding this code",
+      createdAt: "2026-09-10T12:30:00Z",
+    }],
+  });
+
+  render(<FinancePage />);
+  await waitFor(() => expect(screen.getByText("Voided")).toBeTruthy());
+  expect(api.listFinanceMoneycodeEvents).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByText("History"));
+
+  await waitFor(() => expect(api.listFinanceMoneycodeEvents).toHaveBeenCalledWith(7));
+  expect(await screen.findByText(/a model's help/)).toBeTruthy();
+});
+
+test("a code nothing has happened to says so rather than showing an empty list", async () => {
+  api.listFinanceMoneycodes.mockResolvedValue({
+    moneycodes: [{
+      id: 8, code: "1491583146", amount: 480, currency: "USD",
+      issuedAt: "2026-09-10T12:00:00Z", status: "active",
+    }],
+  });
+
+  render(<FinancePage />);
+  await waitFor(() => expect(screen.getByText("History")).toBeTruthy());
+  fireEvent.click(screen.getByText("History"));
+
+  expect(await screen.findByText(/Nothing has changed since it was issued/)).toBeTruthy();
 });

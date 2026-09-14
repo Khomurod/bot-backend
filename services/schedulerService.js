@@ -274,6 +274,26 @@ async function retentionTick() {
     console.error('[SCHEDULER] Data retention error:', err.message);
   }
 
+  // RE-READING WHAT AN OLDER PARSER MISUNDERSTOOD. Rides this tick — which
+  // fires at boot and then hourly — for the same reason as the two above: a
+  // second timer is a second thing that can stop without anybody noticing. A
+  // version bump leaves captured messages the current parser has never seen,
+  // and firing at boot is exactly when that backlog appears.
+  try {
+    // eslint-disable-next-line global-require
+    const { runFinanceReparsePass } = require('./finance/reparsePass');
+    // eslint-disable-next-line global-require
+    const { withRunRecord } = require('./operations/runLedger');
+    const out = await withRunRecord('finance_reparse', () => runFinanceReparsePass({}));
+    if (out.reread) {
+      console.log(`[SCHEDULER] finance re-read: ${out.reread} message(s), `
+        + `${out.changed} changed status, ${out.codesRecorded} code(s) recorded, `
+        + `${out.remaining} still behind`);
+    }
+  } catch (err) {
+    console.error('[SCHEDULER] Finance re-read error:', err.message);
+  }
+
   // GOING BACK TO SEE WHETHER WHAT WE DID HELD. Rides this timer for the same
   // reason as the line above — a second timer is a second thing that can stop
   // without anybody noticing.

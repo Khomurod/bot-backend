@@ -234,7 +234,7 @@
       "danger": "`enabled = TRUE` starts storing every message in that group verbatim. It cannot be set without `chat_validated_at`, and that rule is enforced in database/financeSettings.js as well as in the route and on the admin screen \u2014 capturing payment messages from a chat nobody confirmed is the mistake this feature must not make."
     },
     "finance_messages": {
-      "purpose": "Every message the finance group posted, captured verbatim. `text` IS the record; `parse_status` / `parse_json` / `parser_version` sit BESIDE it, never instead of it, so a tightened parser can re-read exactly the rows the provisional one produced. `parse_status` has four values and `ambiguous` is one of them on purpose \u2014 a parser refusing to pick is an answer, not a failure.",
+      "purpose": "Every message the finance group posted, captured verbatim. `text` IS the record; `parse_status` / `parse_json` / `parser_version` sit BESIDE it, never instead of it, so a tightened parser can re-read exactly the rows the provisional one produced. `reply_to_message_id` is captured because it is the strongest evidence for \"voided\" meaning THIS code, and `ai_read_at` marks the ONE model attempt a message ever gets. `parse_status` has seven values and `ambiguous` is one of them on purpose \u2014 a parser refusing to pick is an answer, not a failure.",
       "status": "active",
       "service": "bot (capture handler)",
       "sourceOfTruth": "The Telegram group, as of `captured_at`. An edit updates `text` and the parse; `captured_at` records when Wenze first saw it and is never moved.",
@@ -255,11 +255,18 @@
       "danger": "PAYMENT DATA in `body` and `totals`. The uniqueness is a PARTIAL index (`WHERE status <> \u0027manual\u0027`): an AUTOMATIC report happens to a period exactly once whatever restarts in between, while a manual send is a person\u0027s deliberate act and may happen twice. `suppressed_backfill` is a STATUS, not an absence \u2014 no row would look identical to a job that never ran, and \"$0 issued\" for a week nobody was watching is the one wrong answer."
     },
     "finance_moneycodes": {
-      "purpose": "What the parser read out of a message with certainty \u2014 one row per code, only ever from a `parsed` message. `duplicate_of_id` + `duplicate_reason` record a repeat; `same_code` is a fact (a code is what gets spent) while `same_amount_recipient_window` is a suspicion (two $500 advances to one driver in a day is sometimes exactly right), and paired CHECKs keep the claim from being written half-formed.",
+      "purpose": "What the parser read out of a message with certainty \u2014 one row per code, only ever from a `parsed` message. `duplicate_of_id` + `duplicate_reason` record a repeat; `same_code` is a fact (a code is what gets spent) while `same_amount_recipient_window` is a suspicion (two $500 advances to one driver in a day is sometimes exactly right), and paired CHECKs keep the claim from being written half-formed. A code also has a LIFE: `status` (active | voided | replaced | needs_review | duplicate_posting), `voided_at`, `void_message_ref_id`, `void_evidence`, `void_confidence`, `replaced_by_id` and `review_reason`. NOTHING IS EVER DELETED \u2014 a void ADDS state, and the digits, amount, original message and issue time stay exactly as they were. A voided code later replaced KEEPS status `voided`, because that is the stronger statement about the money; the relationship still lands in `replaced_by_id`.",
       "status": "active",
       "service": "bot (capture service)",
       "sourceOfTruth": "finance_messages.text, re-readable at any later parser version.",
       "danger": "PAYMENT DATA: money codes and amounts. A duplicate is RECORDED, never acted on \u2014 Wenze does not issue money codes and cannot recall one."
+    },
+    "finance_moneycode_events": {
+      "purpose": "Append-only trail of how each money code reached its current state. The row in `finance_moneycodes` says WHAT is true; this says WHY \u2014 which finance message justified it, and whether the rules reached it alone (`decided_by = deterministic`), a model contributed (`ai`), or a person recorded it (`admin`). A state with no event behind it is a state nobody can explain.",
+      "status": "active",
+      "service": "bot (database/financeMoneycodeLifecycle.js), admin (Operations \u2192 Finance Monitor \u2192 Money codes \u2192 History)",
+      "sourceOfTruth": "This table. No route writes an event by hand; the admin reads them through GET /api/finance/moneycodes/:id/events.",
+      "danger": "PAYMENT AUDIT DATA. Never delete a row \u2014 the trail is the evidence behind every voided or replaced code, and a void whose reason cannot be shown is a void nobody can defend."
     },
     "driver_person_telegram_identities": {
       "purpose": "Which Telegram account belongs to which PERSON, over time. `driver_profiles.telegram_user_id` answers the same question about a CHAT and is lost when the chat is recreated; this survives it. Backfilled from that column at confidence 100, because a value typed in by an administrator is the strongest evidence in the system.",

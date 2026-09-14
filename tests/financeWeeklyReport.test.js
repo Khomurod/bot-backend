@@ -124,3 +124,70 @@ test('the heading names the week the report is about', () => {
   const body = composeWeeklyFinanceReport(FULL, PERIOD);
   assert.match(body, /31 August – 6 September 2026/);
 });
+
+// ── voided money is reported, and is not active money ──────────────────────
+
+/**
+ * THE NUMBER A READER ACTS ON IS WHAT IS STILL LIVE.
+ *
+ * A voided code happened: it keeps its row, its digits and its own line in the
+ * summary. What it must not do is sit inside the headline total, because that
+ * total is read as "what the company is out this week" — and a report that
+ * overstates it is a report that stops being trusted. Erasing the row instead
+ * would fix the total and destroy the history, so this does neither.
+ */
+test('the headline is the ACTIVE total, and the voided amount is stated separately', () => {
+  const body = composeWeeklyFinanceReport({
+    codeCount: 5, amountTotal: 2400,
+    activeCount: 3, activeAmount: 1440,
+    voidedCount: 2, voidedAmount: 960,
+  }, { periodStart: '2026-09-08T00:00:00Z', periodEnd: '2026-09-15T00:00:00Z' });
+
+  assert.match(body, /5 codes issued/);
+  assert.match(body, /1,440\.00<\/b> still active/, 'the live figure leads');
+  assert.match(body, /2 codes were voided/);
+  assert.match(body, /960\.00/, 'and the voided money is still reported');
+  assert.doesNotMatch(body, /2,400\.00<\/b> still active/,
+    'the total that includes voided money is never presented as what is outstanding');
+});
+
+test('a duplicate POSTING is never reported as a second payment', () => {
+  const body = composeWeeklyFinanceReport({
+    codeCount: 2, amountTotal: 960, activeCount: 1, activeAmount: 480,
+    voidedCount: 0, voidedAmount: 0, duplicatePostings: 1,
+  }, { periodStart: '2026-09-08T00:00:00Z', periodEnd: '2026-09-15T00:00:00Z' });
+
+  assert.match(body, /POSTED twice/, 'the claim is about the posting, not the payment');
+  // The denial is the assertion. A blunt "must not contain the words paid
+  // twice" fails on the sentence that exists precisely to rule it out, which
+  // would have tested the characters rather than the claim.
+  assert.match(body, /not that anybody was paid twice/i,
+    'the one thing this must never let a reader conclude is said out loud');
+  assert.match(body, /480\.00<\/b> still active/, 'and the repeat is not added to the total');
+});
+
+test('a replaced code is named, so a reader is not left wondering where it went', () => {
+  const body = composeWeeklyFinanceReport({
+    codeCount: 2, amountTotal: 960, activeCount: 1, activeAmount: 480, replacedCount: 1,
+  }, { periodStart: '2026-09-08T00:00:00Z', periodEnd: '2026-09-15T00:00:00Z' });
+  assert.match(body, /1 code was replaced by another/);
+});
+
+test('codes needing a person are counted with the messages that need one', () => {
+  const body = composeWeeklyFinanceReport({
+    codeCount: 1, amountTotal: 480, activeCount: 1, activeAmount: 480,
+    messagesNeedingAttention: 2, codesNeedingReview: 1,
+  }, { periodStart: '2026-09-08T00:00:00Z', periodEnd: '2026-09-15T00:00:00Z' });
+  assert.match(body, /Needs a person/);
+  assert.match(body, /3 messages/, 'a void nobody could match is work too');
+});
+
+/** An older totals shape must not produce a blank or a wrong headline. */
+test('totals from before the lifecycle existed still render', () => {
+  const body = composeWeeklyFinanceReport(
+    { codeCount: 2, amountTotal: 960, codesWithoutAmount: 0 },
+    { periodStart: '2026-09-08T00:00:00Z', periodEnd: '2026-09-15T00:00:00Z' },
+  );
+  assert.match(body, /2 codes issued/);
+  assert.match(body, /960\.00/);
+});

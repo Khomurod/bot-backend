@@ -26,6 +26,7 @@ const express = require('express');
 const financeMessages = require('../../database/financeMessages');
 const financeDocuments = require('../../database/financeDocuments');
 const financeReports = require('../../database/finance/reports');
+const moneycodeLifecycle = require('../../database/financeMoneycodeLifecycle');
 const weeklyReport = require('../../services/finance/weeklyReportService');
 const captureService = require('../../services/finance/captureService');
 const { wakeFinanceDocumentReader } = require('../../services/finance/documentReader');
@@ -63,6 +64,27 @@ function createFinanceRouter({ authMiddleware, telegram = null, buildMessageUrl 
       res.json({ messages: rows.map((r) => withLink(r, buildMessageUrl)) });
     } catch (err) {
       fail(res, err, 'Failed to read the captured finance messages');
+    }
+  });
+
+  /**
+   * How one code got to the state it is in.
+   *
+   * THE ROW SAYS WHAT IS TRUE; THIS SAYS WHY. "Voided" on a screen with no
+   * trail behind it is an assertion a person has to take on faith, and the
+   * question an auditor actually asks — which message did this, was it a rule
+   * or a model, how sure was it — is answerable only from the events. Read-only
+   * and append-only: there is no route that writes one by hand.
+   */
+  router.get('/moneycodes/:id/events', authMiddleware, async (req, res) => {
+    const id = Number.parseInt(String(req.params.id), 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: 'That is not a money-code id.' });
+    }
+    try {
+      return res.json({ events: await moneycodeLifecycle.listEvents(id) });
+    } catch (err) {
+      return fail(res, err, 'Failed to read this code\u2019s history');
     }
   });
 
