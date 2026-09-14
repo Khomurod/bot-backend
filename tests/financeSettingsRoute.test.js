@@ -135,7 +135,9 @@ test('it refuses to switch on without a validated chat', async () => {
   await withServer({}, async (base) => {
     const res = await fetch(`${base}/finance`, { method: 'PUT', headers: J, body: JSON.stringify({ enabled: true }) });
     assert.equal(res.status, 400);
-    assert.match((await res.json()).message, /Validate the finance group/);
+    // `error`, the key the admin client actually reads. It was `message`, so
+    // this refusal reached the screen as a bare "HTTP Error: 400".
+    assert.match((await res.json()).error, /Validate the finance group/);
     assert.equal(statements.some((s) => /UPDATE finance_settings/.test(s)), false,
       'a refused enable must not have written anything');
   });
@@ -154,19 +156,27 @@ test('validate-chat proves a candidate from the body and catches a dropped minus
 
     // The failure that started all of this: 5052301861 saved cleanly and then
     // failed forever, because the real chat was -5052301861.
+    // A VERDICT IS 200. The request succeeded; the answer was no. This used to
+    // be a 400, which made the admin client throw — so the tab's rendering of
+    // `out.ok === false`, including the one-click "did you mean -100777?", was
+    // unreachable and the screen showed the status code instead.
     const flipped = await fetch(`${base}/finance/validate-chat`, {
       method: 'POST', headers: J, body: JSON.stringify({ chatId: '100777' }),
     });
-    assert.equal(flipped.status, 400);
+    assert.equal(flipped.status, 200, 'a negative verdict is still a successful request');
     const flippedBody = await flipped.json();
+    assert.equal(flippedBody.ok, false);
     assert.equal(flippedBody.status, 'sign_flipped');
     assert.equal(flippedBody.suggestion, '-100777');
+    assert.match(flippedBody.message, /Did you mean -100777/);
 
     const unreachable = await fetch(`${base}/finance/validate-chat`, {
       method: 'POST', headers: J, body: JSON.stringify({ chatId: '-100404' }),
     });
-    assert.equal(unreachable.status, 400);
-    assert.equal((await unreachable.json()).status, 'unreachable');
+    assert.equal(unreachable.status, 200);
+    const unreachableBody = await unreachable.json();
+    assert.equal(unreachableBody.ok, false);
+    assert.equal(unreachableBody.status, 'unreachable');
   });
   knownGroups = new Map();
 });
@@ -210,4 +220,92 @@ test('the status endpoint reports counts and nothing that was said', async () =>
       assert.equal(flat.includes(forbidden), false, `the status response leaked "${forbidden}"`);
     }
   });
+});
+
+// ── the two chats are not the same kind of thing ───────────────────────────
+
+/**
+ * THE CAPTURE GROUP IS A ROOM; THE WEEKLY SUMMARY IS A REPORT SOMEBODY READS.
+ *
+ * Found in production: saving `5142950669` as the report destination failed
+ * with a 400 on every attempt — the field saves on blur, so it failed on every
+ * blur — and the screen could only say "HTTP Error: 400".
+ *
+ * A positive id is a user id, and `checkChatId` refuses a private chat unless
+ * the caller opts in. Notification routing and the AI policy watcher both opt
+ * in, for the stated reason that a small operation may want these in one
+ * administrator's direct messages. A weekly money-code summary is the same kind
+ * of thing and this field was the odd one out.
+ *
+ * The capture group is NOT: every message in it is stored verbatim, and one
+ * person's direct messages is not something to point that at.
+ */
+test('the weekly report may go to one person; the capture group may not', async () => {
+  const withPrivate = {
+    getChat: async (id) => (String(id).startsWith('-')
+      ? { type: 'supergroup', title: 'Wenze Finance' }
+      : { type: 'private', first_name: 'Wenze', last_name: 'Owner' }),
+  };
+  settingsRow = { ...settingsRow, chat_id: '-100777', chat_validated_at: '2026-09-01T00:00:00Z' };
+
+  await withServer({ telegram: withPrivate }, async (base) => {
+    const report = await fetch(`${base}/finance`, {
+      method: 'PUT', headers: J, body: JSON.stringify({ weeklyReportChatId: '5142950669' }),
+    });
+    assert.equal(report.status, 200, 'a person is a valid destination for a report');
+    assert.equal((await report.json()).weeklyReportChatId, '5142950669');
+
+    const capture = await fetch(`${base}/finance`, {
+      method: 'PUT', headers: J, body: JSON.stringify({ chatId: '5142950669' }),
+    });
+    assert.equal(capture.status, 400, 'the room whose traffic is recorded must be a room');
+    const body = await capture.json();
+    assert.match(body.error, /not a group/);
+    assert.equal(body.field, 'chatId', 'and it names which field, so the screen can point at it');
+  });
+});
+
+/**
+ * THE SIGN-FLIP CHECK STILL RUNS FIRST.
+ *
+ * `allowPrivate` is only reached after the dropped-minus branch, and that
+ * ordering is load-bearing: a positive id resolves to a private chat perfectly
+ * well, so probing first would ACCEPT the typo that this whole check was
+ * written to catch. Opting into private destinations must not reopen it.
+ */
+test('a dropped minus sign is still caught on the report chat, private or not', async () => {
+  knownGroups = new Map([['-100777', { group_name: 'Wenze Finance' }]]);
+  const withPrivate = {
+    getChat: async () => ({ type: 'private', first_name: 'Wenze' }),
+  };
+  await withServer({ telegram: withPrivate }, async (base) => {
+    const res = await fetch(`${base}/finance`, {
+      method: 'PUT', headers: J, body: JSON.stringify({ weeklyReportChatId: '100777' }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.status, 'sign_flipped');
+    assert.equal(body.suggestion, '-100777');
+    assert.equal(body.field, 'weeklyReportChatId');
+    assert.equal(statements.some((s) => /UPDATE finance_settings/.test(s)), false);
+  });
+  knownGroups = new Map();
+});
+
+/**
+ * EVERY 400 THIS FILE CAN PRODUCE CARRIES `error`.
+ *
+ * Structural rather than a spot-check: `message` is the key the admin client
+ * does NOT read, and three bodies here used it. One more added later would be
+ * invisible on the screen in exactly the same way.
+ */
+test('no 400 from the finance settings routes answers with `message` alone', async () => {
+  const src = require('node:fs').readFileSync(
+    require.resolve(R('server/routes/settings/financeRoutes')), 'utf8'
+  );
+  const badBodies = [...src.matchAll(/res\.status\(400\)\.json\(\{([\s\S]{0,120}?)\}\)/g)]
+    .map((m) => m[1])
+    .filter((body) => !/\berror:/.test(body));
+  assert.deepEqual(badBodies, [],
+    'a 400 body without `error` is an explanation the admin renders as the status code');
 });

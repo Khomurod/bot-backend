@@ -27,7 +27,15 @@ export async function handleApiError(res) {
     const contentType = res.headers.get("content-type");
     if (contentType && contentType.includes("application/json")) {
       const errData = await res.json();
-      const base = errData.error || errorMessage;
+      // `error` IS THE HOUSE SHAPE, AND `message` IS ACCEPTED ANYWAY. Reading
+      // only `error` meant a route that answered `{ message }` had its
+      // explanation discarded here and rendered as the bare status line — which
+      // is exactly what the Finance settings screen did: the server said "this
+      // is a 'private' chat, not a group", and the admin showed "HTTP Error:
+      // 400". Those routes now use `error` like every other one, and this
+      // fallback means the next author who reaches for the other word is not
+      // silently swallowed too.
+      const base = errData.error || errData.message || errorMessage;
       code = errData.code || null;
       detail = errData.detail || null;
       // A server that names the offending field, or offers a corrected value,

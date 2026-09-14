@@ -369,3 +369,23 @@ rules as working instructions.
   `console.error` and nowhere else for the life of the feature.
 
 See [`health-reporting.md`](../architecture/health-reporting.md).
+
+## What a failing screen is allowed to say
+
+- **An error body says `error`.** `admin/src/api/http.js` reads that key; a
+  route answering `{ message }` has its explanation discarded and renders as the
+  bare status line. The Finance settings routes did exactly that in three
+  places, so a 400 that named the problem precisely reached the admin as
+  `HTTP Error: 400`. The funnel now also accepts `message`, so the next author
+  who reaches for the other word is not silently swallowed.
+- **A verdict is 200; an error is 4xx.** A validation endpoint that says "no"
+  answered a question successfully. Returning 4xx makes the client throw, which
+  skips whatever the screen had written to render the verdict — on the Finance
+  tab that included the one-click fix for a dropped minus sign, unreachable for
+  the life of the feature.
+- **A chat that RECORDS and a chat that RECEIVES are validated differently.** A
+  room whose traffic is stored verbatim must be a group; a report somebody reads
+  may go to one person. The sign-flip check runs before either, so allowing a
+  private destination never reopens the dropped-minus hole.
+
+See [`finance-monitor.md`](../architecture/finance-monitor.md) §4c–4d.
