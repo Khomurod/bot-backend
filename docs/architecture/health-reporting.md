@@ -163,3 +163,151 @@ incapable of doing anything — and nothing could tell you which:
   already writes a mirror row, so the check now also asks whether one has
   **ever** arrived — free to read, and the only honest evidence the path is
   alive.
+
+## Reconciling what the poller saw with what was stored
+
+`operations.safety.poller` reported `seenLastPoll` — the last poll only, and
+almost always zero — beside `events`, a count of rows over fourteen days. Two
+numbers on different scales cannot disagree usefully, so **"events are arriving
+and not being stored" was invisible in aggregate**: the only way to notice was
+to already suspect it, which is not a health signal.
+
+The poller now reports a running total since it booted, and the instant it
+booted. The hub counts the rows written in that same period. One subtraction:
+
+| `seenSinceBoot` | `recordedSinceBoot` | verdict |
+|---|---|---|
+| 9 | 4 | `events_lost` — arriving and not being stored |
+| 3 | 3 | `reconciled` |
+| 0 | 0 | `reconciled` — the poller picked up nothing |
+| present | `null` | `cannot_determine` — the rows could not be counted |
+| absent | — | `cannot_determine` — an older poller reports no total |
+
+**A missing number is never a verdict.** An older poller, or a count that
+failed, both answer `cannot_determine` rather than `reconciled` — the same rule
+that governs every other state here.
+
+**`created_at`, not `occurred_at`.** The question is when the row was *written*.
+A backfilled event has an old `occurred_at`, and a window built on it would
+report the row missing and raise a recorder alarm about a row sitting right
+there — the precise inversion of the bug this closes.
+
+The counter is reset by a restart, which is exactly why the instant travels with
+the count rather than being assumed.
+
+
+## Where it lives
+
+`services/operations/healthObservations.js` passed the 500-line cap and split
+along the seam it already had:
+
+| module | answers |
+|---|---|
+| `observations/shape.js` | the SHAPE every observation takes, `CUSTOM_INTEGRATIONS`, and the staleness constants |
+| `observations/integrations.js` | the nine hand-written integration checks |
+| `healthObservations.js` | `defaultDeps`, the ledger-driven worker half, and `gatherAllObservations` |
+
+`CUSTOM_INTEGRATIONS` is now exported and `tests/backgroundServiceCatalog.test.js`
+requires it instead of slicing it out of the source between two landmark
+strings. That regex was reading `healthObservations.js`; the moment the constant
+moved it matched nothing and the test reported eight observed integrations as
+unobserved. A list that is exported should be asked for, not parsed.
+
+## A watch that cannot see must say so
+
+`workerObservations` reads the `background_service_runs` ledger and answers for
+every catalogued worker. It used to catch its own failed read and return `[]`.
+
+That is the one answer it must never give, because an empty list and "there is
+nothing to watch" are the same value. Every catalogued worker simply vanished:
+`/api/health` showed a `workers` block thirty rows shorter with nothing wrong in
+any of them, the Systems tab showed the same, and the self-healing pass recorded
+a clean run. That pass counts what it DROPPED precisely so a blind spot cannot
+hide — but a worker that produced no observation was never dropped, it was never
+there, so the counter stayed at zero.
+
+Both halves of `gatherAllObservations` now answer `cannot_determine` for
+everything they cover when they fail wholesale:
+
+| what failed | answer |
+|---|---|
+| the run ledger read | one observation per catalogued worker, `cannot_determine`, `unknown: true`, reason naming the ledger |
+| the integration half | one observation per custom integration, same shape |
+
+`unknown: true` keeps the old rule intact — **"I could not check" never starts a
+failure count**, so the announcer still skips these and three unreadable passes
+cannot announce an outage that was only ever a permission error on a health
+query. What changed is that the picture stays the same size, and the pass can
+count what it lost.
+
+**And a pass that could read NOTHING is a failed pass.** Dropping unknowns is
+right for one component; when every component is unknown there is nothing a
+person could act on and the watch is blind — the one failure that hides every
+other. `runSelfHealingPass` sets `summary.error` in that case, which is the field
+`statusFromSummary` reads, so the ledger records the run as failed rather than
+as ok. Until the gatherer stopped answering a failed read with an empty list,
+this was not expressible at all.
+
+Guarded by `tests/selfHealing.test.js` — "a ledger nobody could read leaves every
+worker saying so, not missing" and "a pass that could read nothing is a FAILED
+pass, not a quiet one", both confirmed failing against the previous commit.
+
+## Seven passes that reported a clean run over nothing
+
+The same defect, found seven times in one audit and fixed the same way each
+time. `statusFromSummary` reads **`error`, singular**; a summary carrying
+`errors`, plural, reaches nothing. So every pass that ended early with
+`{ ...summary, errors: [message] }` recorded itself in the ledger as **ok**.
+
+| pass | what it could not do, while reporting healthy |
+|---|---|
+| `self_healing` | read the health of any component |
+| `retention_watch` (critical) | read one row of the fleet |
+| `learning_pass` | read any of its six inputs |
+| `data_retention` | prune a single table (and it had no ledger row at all) |
+| `control_ask_pass` | read the per-check modes, so it asked only half the questions |
+| `road_bonus_notifier` | post a single completed leg — and it reported `ok` while Home Time was switched OFF |
+| `home_time_reminders` | anything: its `withRunRecord` callback discarded both sweep summaries and returned `undefined` |
+
+The last two carry the other half of the same idea. **Switched off is not
+healthy and it is not broken**: `statusFromSummary` reads `blocked`, and a
+summary that never mentions it makes a feature nobody has enabled look exactly
+like one running every five minutes. A callback that returns `undefined` cannot
+mention it at all, which is why `home_time_reminders` now builds its summary in
+a pure `reminderRunSummary(reminders, expiry)` the tests can drive without the
+timer.
+
+The rule, now applied to all seven: **the pass decides whether its errors amount
+to a failure and says so in `error`.** `statusFromSummary` stays deliberately
+dumb, so "one bad driver row among a hundred is not a failed pass" keeps
+holding, and each pass fails in the three shapes that actually mean it did not
+run:
+
+- its inputs could not be read at all;
+- every item it was handed failed;
+- (learning only) **every source was lost** — its six inputs are each caught
+  individually so a missing table costs one input rather than the pass, and
+  those catches were silent, so `found: 0` meant both "nothing to learn" and
+  "nothing to learn FROM". `summary.sourcesUnreadable` now carries the count
+  whether or not it reaches six.
+
+Two more of the same shape, found in the same sweep and fixed the same way:
+
+- **`data_retention` had no run record at all.** The only defence against
+  unbounded growth in seven tables reported its failures to `console.error` and
+  nothing else — no catalogue entry, no ledger row, nothing on `/api/health`. It
+  is now a catalogued worker recorded through `withRunRecord`, and every prune
+  failing sets `error`.
+- **`control_ask_pass` read the per-check modes with `.catch(() => new Map())`.**
+  An empty map makes every auto-tier finding read as "not in suggest mode", so
+  the pass silently skipped all of them, asked only approval-tier questions, and
+  returned a summary identical to a healthy pass with nothing to ask. It now
+  carries an `error` naming what it could not read — degraded, which is exactly
+  the weight `classifyRun` gives one failed pass, and far more than silence.
+
+`tests/selfHealing.test.js`, `tests/retentionWatch.test.js`,
+`tests/learningPass.test.js`, `tests/dataRetentionPg.test.js` and
+`tests/controlAskPass.test.js` each carry the regression, all confirmed failing
+against the previous commit. One of them, in the retention watch, already had
+the right NAME — "a database failure is a reported error, not a crash and not a
+false all-clear" — and asserted the plural field that nothing reads.

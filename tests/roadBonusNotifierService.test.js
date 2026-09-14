@@ -180,3 +180,47 @@ test('disabled home-time settings short-circuit the whole pass', async () => {
   assert.equal(res.enabled, false);
   assert.equal(sends.length, 0);
 });
+
+// ── what the run ledger is told ────────────────────────────────────────────
+
+/**
+ * SWITCHED OFF IS NOT HEALTHY AND IT IS NOT BROKEN.
+ *
+ * `statusFromSummary` reads `blocked`. Without it this pass returned a plain
+ * summary with `enabled: false` and the ledger recorded a clean run, so a Home
+ * Time feature nobody has switched on looked exactly like one posting bonuses
+ * every week — the "configured versus working" conflation this whole layer
+ * exists to remove.
+ */
+test('Home Time switched off is BLOCKED in the ledger, not a healthy pass', async () => {
+  const { service, telegram } = loadService({ settings: { enabled: false }, rows: [] });
+  const res = await service.runRoadBonusCheck(telegram);
+  assert.equal(res.enabled, false);
+  assert.match(res.blocked, /switched off/);
+});
+
+/** And every leg failing is the pass not having run. */
+test('every leg failing to post is a FAILED pass, not a quiet one', async () => {
+  const { service, sends } = loadService({ settings: SETTINGS, rows: [legRow(), legRow({ id: 2 })] });
+  const telegram = { async sendMessage() { throw new Error('chat not found'); } };
+  const res = await service.runRoadBonusCheck(telegram);
+  assert.equal(sends.length, 0);
+  assert.equal(res.errors, 2);
+  assert.match(res.error, /none of the 2 completed leg\(s\) could be posted/,
+    '`error` singular is the field the ledger reads; `errors` is a number nothing sees');
+});
+
+/** One failure among two is a leg to look at, not a failed pass. */
+test('one leg failing among two leaves the pass healthy', async () => {
+  const { service } = loadService({ settings: SETTINGS, rows: [legRow(), legRow({ id: 2 })] });
+  let first = true;
+  const telegram = {
+    async sendMessage() {
+      if (first) { first = false; throw new Error('chat not found'); }
+      return { message_id: 1 };
+    },
+  };
+  const res = await service.runRoadBonusCheck(telegram);
+  assert.equal(res.errors, 1);
+  assert.equal(res.error, undefined);
+});

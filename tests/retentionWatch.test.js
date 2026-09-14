@@ -175,11 +175,36 @@ test('an acknowledged driver goes quiet until it gets worse than what was acknow
     'an acknowledgement must not buy silence for a situation that is deteriorating');
 });
 
+/**
+ * THIS TEST'S NAME WAS RIGHT AND ITS ASSERTION WAS NOT.
+ *
+ * It checked `errors`, plural — which nothing reads. `statusFromSummary` reads
+ * `error`, singular, so a pass that could not read one row of the fleet was
+ * recorded in the ledger as `ok`, and `retention_watch` — catalogued CRITICAL —
+ * reported healthy while entirely blind. An empty retention table looks exactly
+ * like a fleet nobody is worried about, which is the ambiguity this whole watch
+ * exists to remove.
+ */
 test('a database failure is a reported error, not a crash and not a false all-clear', async () => {
   const { deps, calls } = harness({ gatherThrows: true });
   const summary = await watch.runRetentionPass({ now: NOW, deps });
   assert.equal(summary.checked, 0);
   assert.equal(summary.errors.length, 1);
+  assert.match(summary.error, /could not read the fleet/,
+    '`error` singular is the field the ledger reads; `errors` plural reaches nothing');
+  assert.deepEqual(calls.notified, []);
+});
+
+/** Every driver failing is the same blindness in a different shape. */
+test('a pass where EVERY driver failed is a failed pass, not a quiet one', async () => {
+  const { deps, calls } = harness({
+    drivers: [AT_RISK, { ...AT_RISK, personId: 12, driverName: 'Other' }],
+  });
+  deps.store.recordAssessment = async () => { throw new Error('write failed'); };
+  const summary = await watch.runRetentionPass({ now: NOW, deps });
+  assert.equal(summary.checked, 2);
+  assert.equal(summary.errors.length, 2);
+  assert.match(summary.error, /none of the 2 driver\(s\) could be checked/);
   assert.deepEqual(calls.notified, []);
 });
 

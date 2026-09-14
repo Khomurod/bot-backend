@@ -80,3 +80,84 @@ test('nothing seen and the store ready is a quiet fleet', async () => {
   assert.equal(s.safety.poller.seenLastPoll, 0);
   assert.equal(s.safety.poller.recordingReady, true);
 });
+
+// ── reconciling what the poller saw with what was stored ───────────────────
+
+/**
+ * TWO NUMBERS ON DIFFERENT SCALES CANNOT DISAGREE USEFULLY.
+ *
+ * `seenLastPoll` is the last poll only and is almost always zero; `events`
+ * beside it counts fourteen days of rows. So "the poller picked up events and
+ * none of them were stored" was invisible in aggregate — the only way to notice
+ * was to already suspect it, which is not a health signal.
+ *
+ * The poller now reports a running total since it booted, and the instant it
+ * booted; the hub counts the rows written in that same period. One subtraction.
+ */
+test('events seen and not stored is named outright', async () => {
+  const s = await getOperationsHealth(summaryDeps({
+    safetyPollerRun: {
+      lastStatus: 'ok',
+      lastFinishedAt: '2026-09-20T17:41:00.000Z',
+      lastSummary: { newEvents: 0, eventsSeenTotal: 9, seenSince: '2026-09-20T10:00:00.000Z' },
+    },
+    safetyRecordedSince: 4,
+  }));
+
+  const r = s.safety.poller;
+  assert.equal(r.seenSinceBoot, 9);
+  assert.equal(r.recordedSinceBoot, 4);
+  assert.equal(r.reconciliation.state, 'events_lost');
+  assert.match(r.reconciliation.reason, /arriving and not being stored/);
+});
+
+test('matching counts reconcile', async () => {
+  const s = await getOperationsHealth(summaryDeps({
+    safetyPollerRun: {
+      lastStatus: 'ok',
+      lastFinishedAt: '2026-09-20T17:41:00.000Z',
+      lastSummary: { newEvents: 0, eventsSeenTotal: 3, seenSince: '2026-09-20T10:00:00.000Z' },
+    },
+    safetyRecordedSince: 3,
+  }));
+  assert.equal(s.safety.poller.reconciliation.state, 'reconciled');
+});
+
+/** A quiet fleet reconciles at zero, which is a different sentence from a fault. */
+test('nothing seen and nothing stored reconciles', async () => {
+  const s = await getOperationsHealth(summaryDeps({
+    safetyPollerRun: {
+      lastStatus: 'ok',
+      lastFinishedAt: '2026-09-20T17:41:00.000Z',
+      lastSummary: { newEvents: 0, eventsSeenTotal: 0, seenSince: '2026-09-20T10:00:00.000Z' },
+    },
+    safetyRecordedSince: 0,
+  }));
+  const r = s.safety.poller;
+  assert.equal(r.reconciliation.state, 'reconciled');
+  assert.match(r.reconciliation.reason, /picked up nothing/);
+});
+
+/** A missing number is never a verdict — in either direction. */
+test('an older poller with no running total CANNOT DETERMINE, rather than passing', async () => {
+  const s = await getOperationsHealth(summaryDeps({
+    safetyPollerRun: {
+      lastStatus: 'ok', lastFinishedAt: '2026-09-20T17:41:00.000Z',
+      lastSummary: { newEvents: 0 },
+    },
+  }));
+  assert.equal(s.safety.poller.reconciliation.state, 'cannot_determine');
+});
+
+test('a row count that could not be read CANNOT DETERMINE, not "events lost"', async () => {
+  const s = await getOperationsHealth(summaryDeps({
+    safetyPollerRun: {
+      lastStatus: 'ok', lastFinishedAt: '2026-09-20T17:41:00.000Z',
+      lastSummary: { newEvents: 0, eventsSeenTotal: 5, seenSince: '2026-09-20T10:00:00.000Z' },
+    },
+    safetyRecordedSince: null,
+  }));
+  const r = s.safety.poller;
+  assert.equal(r.reconciliation.state, 'cannot_determine');
+  assert.match(r.reconciliation.reason, /could not be counted/);
+});

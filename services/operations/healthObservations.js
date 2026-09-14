@@ -26,34 +26,19 @@
  * `cannot_determine` rather than as healthy OR as failed. "I could not check"
  * is not "it is fine" — that conflation is the failure this file exists to
  * remove, and reintroducing it here would be the whole exercise wasted.
- */
-const { CATALOG, getServiceEntry } = require('../../lib/operations/backgroundServiceCatalog');
-const { classifyRun, RUN_STATES } = require('../../lib/operations/runHealth');
-const { afterHoursReadiness } = require('../../lib/recruiting/readiness');
-
-/**
- * Integrations answered by `integrationObservations` from richer evidence than
- * "did a timer fire". Everything else in the catalogue — including integrations
- * — is answered from the run ledger.
  *
- * KEEPING THIS LIST HONEST IS THE POINT. It used to be the whole
- * `group === 'integration'` predicate, which silently dropped every integration
- * without a hand-written branch. `tests/backgroundServiceCatalog.test.js`
- * asserts every entry is observable one way or the other.
+ * WHERE THE REST OF IT LIVES. This file passed the 500-line cap and split along
+ * the seam it already had: `observations/shape.js` holds the shape every
+ * observation takes and the constants that decide it, `observations/integrations.js`
+ * the nine hand-written integration checks. What is left here is the half that
+ * reads the run ledger, and the gatherer that puts both together.
  */
-const CUSTOM_INTEGRATIONS = new Set([
-  'recruiter_logins', 'ai_providers', 'eld_location_freshness', 'telegram_delivery',
-  'notifications', 'notification_destination', 'samsara_safety_pipeline',
-  'recruiting_after_hours', 'retention_chat_signals',
-]);
-
-/** When this process started, so a first pass that is not due yet is not "stopped". */
-const BOOTED_AT = Date.now();
-
-/** How stale a fleet position may be before the ELD feed is not answering. */
-const ELD_STALE_MINUTES = 180;
-/** A notice sitting undelivered this long means Telegram is not taking them. */
-const NOTICE_STUCK_MINUTES = 90;
+const { CATALOG } = require('../../lib/operations/backgroundServiceCatalog');
+const { classifyRun, RUN_STATES } = require('../../lib/operations/runHealth');
+const {
+  CUSTOM_INTEGRATIONS, BOOTED_AT, ELD_STALE_MINUTES, NOTICE_STUCK_MINUTES, integration,
+} = require('./observations/shape');
+const { integrationObservations } = require('./observations/integrations');
 
 function defaultDeps() {
   /* eslint-disable global-require */
@@ -73,10 +58,40 @@ function defaultDeps() {
   /* eslint-enable global-require */
 }
 
-function minutesSince(value, nowMs) {
-  const t = value ? new Date(value).getTime() : NaN;
-  if (!Number.isFinite(t)) return null;
-  return (nowMs - t) / 60000;
+/**
+ * Every catalogued worker, saying "I could not be read".
+ *
+ * A LEDGER READ THAT FAILED USED TO ANSWER WITH AN EMPTY LIST, and that is the
+ * one answer it must never give. Every catalogued worker simply VANISHED:
+ * `/api/health` showed a `workers` block with thirty fewer rows and nothing
+ * wrong in any of them, the Systems tab showed the same, and the self-healing
+ * pass recorded a clean run — it counts what it DROPPED for exactly this
+ * reason, but a worker that produced no observation at all was never dropped,
+ * it was never there.
+ *
+ * `cannot_determine` with `unknown: true` is the honest answer and it costs
+ * nothing: the announcer skips unknowns, so no failure count starts for a
+ * component nobody could check — the rule this file has always held — while the
+ * pass's `unreadable` counter and the health endpoint both see the full list
+ * and can say how much of the picture is missing.
+ */
+function unreadableWorkers(reason) {
+  return CATALOG
+    .filter((entry) => !(entry.group === 'integration' && CUSTOM_INTEGRATIONS.has(entry.key)))
+    .map((entry) => ({
+      component: entry.key,
+      label: entry.label,
+      group: entry.group,
+      critical: entry.critical === true,
+      unknown: true,
+      blocked: false,
+      ok: true,
+      state: RUN_STATES.UNKNOWN,
+      detail: null,
+      reason: `the run ledger could not be read (${reason})`,
+      lastRunAt: null,
+      consecutiveFailures: 0,
+    }));
 }
 
 /**
@@ -94,8 +109,8 @@ async function workerObservations(deps, nowMs) {
   let byKey;
   try {
     byKey = await deps.runs.getRunMap();
-  } catch (_) {
-    return [];
+  } catch (err) {
+    return unreadableWorkers(err.message);
   }
 
   const out = [];
@@ -142,312 +157,24 @@ async function workerObservations(deps, nowMs) {
   return out;
 }
 
-/**
- * Shape an integration answer the same way a worker answer is shaped.
- *
- * `blocked` USED TO BE HARDCODED FALSE HERE, and that made a component answer
- * two different things in one payload. A custom integration that is merely
- * UNCONFIGURED — no recruiter has connected a login, no AI provider is enabled,
- * nobody has finished the after-hours setup — was pushed with `ok: true` and a
- * `needs_human_attention` state, so it appeared in the workers attention list
- * and was counted as a WORKING SYSTEM at the same time. The nine custom
- * integrations are exactly the ones most likely to be half-configured, and they
- * were the only ones that could not say so.
- *
- * A blocked component is still `ok` — nothing is broken — but it is recorded as
- * `blocked` rather than `ok`, so `systems` names it under `waiting` instead of
- * counting it among the healthy.
- */
-function integration(key, { ok, detail = null, state = null, reason = null, blocked = false }) {
-  const entry = getServiceEntry(key);
-  return {
-    component: key,
-    label: entry?.label || key,
-    group: 'integration',
-    critical: entry?.critical === true,
-    unknown: state === RUN_STATES.UNKNOWN,
-    blocked: blocked === true,
-    ok,
-    state: state || (ok ? RUN_STATES.HEALTHY : RUN_STATES.FAILING),
-    detail,
-    reason: reason || detail,
-    lastRunAt: null,
-    consecutiveFailures: 0,
-  };
-}
 
 /**
- * The integrations, each from evidence the application already stores.
+ * Everything, workers and integrations together. Never throws.
  *
- * Every one is wrapped on its own, so a table that does not exist yet costs
- * that single answer rather than the whole pass.
+ * A half that fails wholesale answers `cannot_determine` for everything it
+ * covers rather than `[]`. The difference is not cosmetic: an empty list is
+ * indistinguishable from "there is nothing to watch", and a caller counting
+ * what it could not read cannot count something that was never handed to it.
  */
-async function integrationObservations(deps, nowMs) {
-  const out = [];
-
-  // Recruiter logins. A refresh token expires in 7 days and the daily job
-  // rotates it; `rc_auth_error` is what the panel renders as "needs to connect
-  // again". ALL of them broken is an outage; one is a person's problem.
-  try {
-    const recruiters = await deps.rc.listRecruiters();
-    const withCreds = (recruiters || []).filter((r) => deps.rc.recruiterCanSendSms(r));
-    const broken = withCreds.filter((r) => r.rc_auth_error);
-    if (withCreds.length === 0) {
-      out.push(integration('recruiter_logins', {
-        ok: true, state: RUN_STATES.NEEDS_ATTENTION, blocked: true,
-        reason: 'no recruiter has connected a RingCentral login yet',
-      }));
-    } else if (broken.length >= withCreds.length) {
-      out.push(integration('recruiter_logins', {
-        ok: false,
-        detail: `all ${withCreds.length} recruiter logins need reconnecting`,
-      }));
-    } else {
-      // Credentials look fine — but the DAILY REFRESH is what keeps them that
-      // way, and a refresh job that stopped shows no symptom here until a token
-      // expires seven days later. So the ledger's verdict on that job is folded
-      // in rather than reported separately: "the logins work" and "nothing is
-      // renewing them" must not be two green rows.
-      // Optional-chained: a caller with no ledger loses the REFRESH half of
-      // this answer, not the credential half. Letting it throw would drop the
-      // whole observation into "could not read" and hide a real outage behind a
-      // missing dependency.
-      const row = await Promise.resolve(deps.runs?.getRun?.('recruiter_logins')).catch(() => null);
-      const refresh = classifyRun(row, {
-        now: nowMs, expectedIntervalSeconds: getServiceEntry('recruiter_logins')?.expectedIntervalSeconds,
-      });
-      out.push(integration('recruiter_logins', {
-        ok: !refresh.actionable,
-        state: refresh.actionable ? refresh.state : RUN_STATES.HEALTHY,
-        detail: refresh.actionable
-          ? `the daily token refresh ${refresh.reason}`
-          : (broken.length ? `${broken.length} of ${withCreds.length} need reconnecting` : null),
-        reason: broken.length
-          ? `${broken.length} of ${withCreds.length} recruiter logins need reconnecting`
-          : refresh.reason,
-      }));
-    }
-  } catch (_) {
-    out.push(integration('recruiter_logins', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
-  }
-
-  // AI. Every enabled provider in cooldown at once is an outage; one is the
-  // router doing its job.
-  try {
-    const providers = await deps.ai.getProvidersForRouter();
-    const enabled = (providers || []).filter((p) => p.enabled);
-    if (enabled.length === 0) {
-      out.push(integration('ai_providers', {
-        ok: true, state: RUN_STATES.NEEDS_ATTENTION, blocked: true,
-        reason: 'no AI provider is enabled — every AI feature is on its deterministic fallback',
-      }));
-    } else {
-      const cooled = enabled.filter((p) => p.cooledUntil && new Date(p.cooledUntil) > new Date());
-      out.push(integration('ai_providers', {
-        ok: cooled.length < enabled.length,
-        detail: cooled.length === enabled.length ? `all ${enabled.length} providers are in cooldown` : null,
-      }));
-    }
-  } catch (_) {
-    out.push(integration('ai_providers', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
-  }
-
-  // THE ELD FEED, answered by the fuel watch's own readings. Every pass writes
-  // one row per truck it could locate, so the age of the newest row is the age
-  // of the fleet's freshest position — and a feed that stopped answering shows
-  // up here rather than as silence from four separate features.
-  try {
-    const fuel = await deps.fuelReadings.summariseFuelReadings();
-    const age = minutesSince(fuel?.newestReading, nowMs);
-    if (!fuel || fuel.trucks === 0 || age === null) {
-      out.push(integration('eld_location_freshness', {
-        ok: true, state: RUN_STATES.UNKNOWN,
-        reason: 'no position has been recorded yet',
-      }));
-    } else {
-      out.push(integration('eld_location_freshness', {
-        ok: age <= ELD_STALE_MINUTES,
-        detail: age > ELD_STALE_MINUTES
-          ? `the newest truck position is ${Math.round(age / 60)} hours old`
-          : null,
-      }));
-    }
-  } catch (_) {
-    out.push(integration('eld_location_freshness', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
-  }
-
-  // TELEGRAM, answered by the outbox. A notice that has been pending for an
-  // hour and a half is not a slow queue, it is a queue nothing is taking from —
-  // which is the exact failure that lost 101 staff alerts, seen from the one
-  // place that can see it.
-  try {
-    const n = await deps.notifications.summariseNotifications();
-    const stuck = minutesSince(n?.oldestPendingAt, nowMs);
-    out.push(integration('telegram_delivery', {
-      ok: !(stuck !== null && stuck > NOTICE_STUCK_MINUTES),
-      detail: stuck !== null && stuck > NOTICE_STUCK_MINUTES
-        ? `a notice has been waiting ${Math.round(stuck / 60)} hours to be delivered`
-        : null,
-    }));
-    out.push(integration('notifications', {
-      ok: Number(n?.abandoned || 0) === 0,
-      detail: n?.abandoned ? `${n.abandoned} notices gave up undelivered` : null,
-    }));
-  } catch (_) {
-    out.push(integration('telegram_delivery', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
-    out.push(integration('notifications', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
-  }
-
-  // WHERE ANYTHING GOES AT ALL. With no destination configured every notice is
-  // discarded at the door — correctly, because enqueuing them would flood a
-  // staff chat with months of stale alerts the day somebody finally sets one.
-  // The cost of that decision is what was invisible: features running, working,
-  // and silent. The DISCARD COUNT makes it a number rather than a grey note.
-  try {
-    const config = await deps.notificationSettings.getNotificationSettings();
-    const overrides = Object.values(config?.categoryChatIds || {})
-      .filter((v) => String(v || '').trim()).length;
-    const hasDefault = Boolean(String(config?.defaultChatId || '').trim());
-    const reachable = config?.enabled !== false && (hasDefault || overrides > 0);
-
-    if (reachable) {
-      out.push(integration('notification_destination', { ok: true, reason: 'a destination is set' }));
-    } else {
-      const discards = await deps.notifications.summariseDiscards().catch(() => null);
-      const n = discards?.total || 0;
-      out.push(integration('notification_destination', {
-        ok: true,
-        // Switched off, or never pointed anywhere: both are somebody's setting,
-        // not a system that broke.
-        blocked: true,
-        state: RUN_STATES.NEEDS_ATTENTION,
-        reason: config?.enabled === false
-          ? `notifications are switched off${n ? ` — ${n} notices discarded so far` : ''}`
-          : 'no Telegram group is configured, so every alert is discarded'
-            + `${n ? ` — ${n} so far` : ''}. Set one in Settings → Notifications.`,
-      }));
-    }
-  } catch (_) {
-    out.push(integration('notification_destination', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
-  }
-
-  // CAN RETENTION HEAR THE DRIVERS AT ALL? Four of its signals — complaints,
-  // quit signals, sentiment, gone-quiet — read `chat_logs`, and that table's
-  // only writer has no caller because the bot deliberately stopped persisting
-  // every group message. So they come back as reassuring ZEROS from a source
-  // that is not listening, which is the worst answer a retention check can
-  // give. Whether to record driver messages is the owner's privacy decision;
-  // saying out loud that nobody is listening is not.
-  try {
-    const chat = await deps.retention.chatSignalsAvailable();
-    out.push(integration('retention_chat_signals', {
-      ok: true,
-      // Whether to record driver messages is the owner's privacy decision, so
-      // "nobody is listening" is a setting rather than a fault.
-      blocked: !chat.available,
-      state: chat.available ? RUN_STATES.HEALTHY : RUN_STATES.NEEDS_ATTENTION,
-      reason: chat.available
-        ? chat.reason
-        : `${chat.reason}. The other retention signals — weeks on the road, unanswered `
-          + 'home requests, unpaid bonuses — are unaffected.',
-    }));
-  } catch (_) {
-    out.push(integration('retention_chat_signals', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
-  }
-
-  // ANSWERING A CANDIDATE AFTER HOURS. Five independent preconditions, every
-  // one of them somebody's decision rather than a fault — and missing any of
-  // them makes the feature silently inert: a candidate texts at 9pm on a Friday
-  // and hears nothing until Monday, which is what it was built to prevent.
-  // `afterHoursReply` names its exits, which is right for a log and wrong for a
-  // screen: by the time it has a reason there is already a candidate waiting.
-  try {
-    const [hours, knowledge, recruiters, providers] = await Promise.all([
-      deps.recruitingHours.getRecruitingHours().catch(() => null),
-      deps.recruitingKnowledge.summariseKnowledge().catch(() => null),
-      deps.rc.listRecruiters().catch(() => []),
-      deps.ai.getProvidersForRouter().catch(() => []),
-    ]);
-    const capabilityEnabled = await deps.capabilityGate
-      .isCapabilityEnabled('recruiting_after_hours_reply').catch(() => false);
-
-    const verdict = afterHoursReadiness({
-      afterHoursEnabled: hours?.aiAfterHoursEnabled === true,
-      hoursConfigured: Array.isArray(hours?.windows) && hours.windows.length > 0,
-      approvedStatements: knowledge?.active || 0,
-      capabilityEnabled,
-      aiProviderEnabled: (providers || []).some((p) => p.enabled),
-      recruitersWithSms: (recruiters || []).filter((r) => deps.rc.recruiterCanSendSms(r)).length,
-    });
-
-    // READY IS NOT THE SAME AS REACHABLE, and that gap is this feature's
-    // quietest failure. Every check above is a SETTING; none of them proves a
-    // candidate's text can still arrive. Inbound SMS reaches this application
-    // through a RingCentral webhook subscription created by the Python leads
-    // engine, which sheds filters when a tenant refuses one and can lose the
-    // subscription entirely — after which the feature reads "ready" and
-    // answers nobody, forever, with no screen able to say why.
-    //
-    // Every inbound message already writes a mirror row, so the last one is
-    // free to read and is the only honest evidence the path is alive.
-    // Optional-chained: a caller that has not wired this dep must lose the
-    // inbound EVIDENCE, never the readiness answer beside it.
-    const inbound = await Promise.resolve(deps.smsMirrors?.summariseInboundSms?.())
-      .catch(() => null);
-    const neverInbound = inbound?.available === true && !inbound.everAt;
-
-    out.push(integration('recruiting_after_hours', {
-      ok: true,
-      // Every blocker this check can report is somebody's decision, never a
-      // fault — so an unready feature is `blocked`, not a failed system.
-      blocked: !verdict.ready || neverInbound,
-      state: (verdict.ready && !neverInbound)
-        ? RUN_STATES.HEALTHY : RUN_STATES.NEEDS_ATTENTION,
-      // The blockers NAMED, and where to fix each. A count on its own sends
-      // somebody hunting through six settings screens.
-      reason: verdict.ready
-        ? (neverInbound
-          ? 'Everything is configured, but no candidate SMS has ever reached this '
-            + 'application — so the RingCentral inbound subscription may not be live. '
-            + 'Check the leads engine log (Settings → RingCentral).'
-          : `${verdict.summary}${inbound?.lastAt ? ` Last candidate SMS ${inbound.lastAt}.` : ''}`)
-        : `${verdict.summary} ${verdict.blockers.map((b) => `${b.what} (${b.where})`).join(' ')}`,
-    }));
-  } catch (_) {
-    out.push(integration('recruiting_after_hours', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
-  }
-
-  // THE SAMSARA POLLER, which is a SEPARATE RENDER SERVICE and shares only this
-  // database. It writes its own heartbeat into the same ledger, so a poller
-  // that stopped is visible from here — and until this existed, the only
-  // evidence was an empty safety table, which a quiet fleet also produces.
-  try {
-    const row = await deps.runs.getRun('samsara_safety_pipeline');
-    const entry = getServiceEntry('samsara_safety_pipeline');
-    const verdict = classifyRun(row, {
-      now: nowMs, expectedIntervalSeconds: entry.expectedIntervalSeconds,
-    });
-    out.push(integration('samsara_safety_pipeline', {
-      ok: !verdict.actionable,
-      // The poller beats `blocked` when Samsara is switched off in the admin.
-      // That verdict was being computed and then thrown away here.
-      blocked: verdict.blocked === true,
-      state: verdict.state,
-      detail: verdict.actionable ? verdict.reason : null,
-      reason: verdict.reason,
-    }));
-  } catch (_) {
-    out.push(integration('samsara_safety_pipeline', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
-  }
-
-  return out;
-}
-
-/** Everything, workers and integrations together. Never throws. */
 async function gatherAllObservations(deps = defaultDeps(), { now = Date.now() } = {}) {
   const [workers, integrations] = await Promise.all([
-    workerObservations(deps, now).catch(() => []),
-    integrationObservations(deps, now).catch(() => []),
+    workerObservations(deps, now).catch((err) => unreadableWorkers(err.message)),
+    integrationObservations(deps, now).catch((err) => [...CUSTOM_INTEGRATIONS].map(
+      (key) => integration(key, {
+        ok: true, state: RUN_STATES.UNKNOWN,
+        reason: `could not be read (${err.message})`,
+      }),
+    )),
   ]);
   return [...workers, ...integrations];
 }

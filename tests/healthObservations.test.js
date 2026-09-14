@@ -249,7 +249,20 @@ function recruitingDeps(over = {}) {
     ...base,
     recruitingHours: {
       async getRecruitingHours() {
-        return { aiAfterHoursEnabled: true, windows: [{ day: 1 }], ...(over.hours || {}) };
+        // A REAL window, not a placeholder. `{ day: 1 }` carries no start or end,
+        // so it normalises away to nothing — which the readiness check now
+        // correctly reads as "no working hours", because a schedule of
+        // unreadable rows leaves the office never closed and the after-hours
+        // reply with no turn to take. These tests are about the OTHER
+        // preconditions, so the schedule here has to be one that works.
+        return {
+          aiAfterHoursEnabled: true,
+          timezone: 'America/Chicago',
+          windows: [{ days: [1, 2, 3, 4, 5], start: '08:00', end: '17:00' }],
+          quietStartLocal: '21:00',
+          quietEndLocal: '08:00',
+          ...(over.hours || {}),
+        };
       },
     },
     recruitingKnowledge: {
@@ -398,4 +411,43 @@ test('all providers in cooldown is FAILED, not blocked', async () => {
   const r = find(all, 'ai_providers');
   assert.equal(r.ok, false);
   assert.equal(r.blocked, false, 'a cooldown is a failure to reach, not a switch nobody flipped');
+});
+
+/**
+ * THE PRODUCTION DEFECT THIS ENDS. `/api/health` reported
+ * `recruiting_after_hours` healthy while the configured schedule left no moment
+ * in which any candidate could ever be answered — because readiness asked
+ * whether a working-hours row EXISTED, and a reply needs the office closed AND
+ * not quiet hours at the same time. Neither half is visible from a boolean.
+ */
+test('A SCHEDULE NOBODY CAN BE REACHED IN IS BLOCKED, and the reason names it', async () => {
+  const out = await obs.gatherAllObservations(recruitingDeps({
+    hours: {
+      windows: [{ days: [1, 2, 3, 4, 5, 6, 7], start: '08:00', end: '21:00' }],
+      quietStartLocal: '21:00',
+      quietEndLocal: '08:00',
+    },
+  }));
+  const row = out.find((o) => o.component === 'recruiting_after_hours');
+
+  assert.equal(row.blocked, true, "an impossible schedule is somebody's setting, not a fault");
+  assert.equal(row.state, 'needs_human_attention');
+  assert.match(row.reason, /no moment in the week/i);
+  assert.match(row.reason, /Working hours/, 'and where to fix it');
+});
+
+/** Reachable overall, dead on weekdays: reported, and deliberately NOT blocked. */
+test('days nobody can be answered on are named without blocking the feature', async () => {
+  const out = await obs.gatherAllObservations(recruitingDeps({
+    hours: {
+      windows: [{ days: [1, 2, 3, 4, 5], start: '08:00', end: '21:00' }],
+      quietStartLocal: '21:00',
+      quietEndLocal: '08:00',
+    },
+  }));
+  const row = out.find((o) => o.component === 'recruiting_after_hours');
+
+  assert.equal(row.blocked, false, 'the weekends work, so the feature is not broken');
+  assert.equal(row.state, 'healthy');
+  assert.match(row.reason, /No candidate can be answered on Mon, Tue, Wed, Thu, Fri/);
 });

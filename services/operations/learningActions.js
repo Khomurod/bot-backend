@@ -42,6 +42,23 @@ const ACTIONS = Object.freeze({
    * build, however many confirmations sit in front of it.
    */
   DISABLE_AUTO_APPLY: 'disable_auto_apply',
+
+  /**
+   * Raise the confidence a check needs before it acts on its own.
+   *
+   * CONSERVATIVE BY CONSTRUCTION, in the same way and for the same reason as
+   * the action above: `operational_check_settings.min_confidence` is CHECKed in
+   * the database to 70–95, and 70 is the global floor. So this can only ever
+   * make a check more cautious. A value that would grant more autonomy cannot
+   * be stored — not by this action, not by a route, not by a later refactor
+   * that forgets why.
+   *
+   * There is deliberately no `lower_confidence_floor`. A check that looks too
+   * strict is worth saying out loud and the learning pass says it, with no
+   * action attached: loosening a safety margin is a person's decision, taken in
+   * the settings screen, with their name on it.
+   */
+  RAISE_CONFIDENCE_FLOOR: 'raise_confidence_floor',
 });
 
 const REGISTRY = {
@@ -113,6 +130,78 @@ const REGISTRY = {
         restored += 1;
       }
       return { restored };
+    },
+  },
+
+  [ACTIONS.RAISE_CONFIDENCE_FLOOR]: {
+    key: ACTIONS.RAISE_CONFIDENCE_FLOOR,
+
+    describe(payload) {
+      const { checkKey, suggestedFloor, currentFloor } = payload || {};
+      return `${checkKey} will need confidence ${suggestedFloor} before it acts on its own, `
+        + `up from ${currentFloor}. Below that it will file the finding and wait for a person `
+        + 'instead of repairing.';
+    },
+
+    /**
+     * @returns {Promise<{before: object, after: object, changed: number}>}
+     */
+    async apply(payload, deps) {
+      const checkKey = String(payload?.checkKey || '');
+      const suggested = Number(payload?.suggestedFloor);
+      if (!checkKey) throw new Error('The suggestion names no check to change.');
+      if (!Number.isInteger(suggested)) throw new Error('The suggestion names no threshold.');
+
+      // BELT AND BRACES WITH THE DATABASE CHECK. The constraint is the real
+      // guarantee; this is here so the refusal has a sentence in it rather than
+      // a constraint-violation error, and so the rule is visible where the
+      // action is read.
+      if (suggested < 70 || suggested > 95) {
+        throw new Error(`A confidence floor of ${suggested} is outside the 70–95 a check may `
+          + 'be tuned to. Wenze only ever proposes MORE caution.');
+      }
+
+      const existing = await deps.checkSettings.listCheckSettings(deps.client || null);
+      const prior = existing.find((sx) => sx.checkKey === checkKey) || null;
+
+      // Never a step DOWN, even if the evidence changed since the suggestion
+      // was raised and somebody has tightened the floor further in the meantime.
+      if (prior?.minConfidence != null && Number(prior.minConfidence) >= suggested) {
+        return {
+          before: { present: true, checkKey, minConfidence: prior.minConfidence },
+          after: { minConfidence: prior.minConfidence },
+          changed: 0,
+          note: `already at ${prior.minConfidence}, which is at least as cautious`,
+        };
+      }
+
+      // `checkKey` travels IN the before-image, because revert receives only
+      // that object and would otherwise have nothing to name.
+      const before = prior
+        ? { present: true, checkKey, minConfidence: prior.minConfidence ?? null }
+        : { present: false, checkKey };
+
+      await deps.checkSettings.setMinConfidence(checkKey, suggested, {
+        setBy: deps.actor || 'an administrator',
+      }, deps.client || null);
+
+      return { before, after: { checkKey, minConfidence: suggested }, changed: 1 };
+    },
+
+    /** Put back exactly what was there — including "nothing", which inherits the global floor. */
+    async revert(before, deps) {
+      const checkKey = String(before?.checkKey || '');
+      if (!checkKey) return { restored: 0 };
+      await deps.checkSettings.setMinConfidence(
+        checkKey,
+        // `present: false` means there was no row, so the floor goes back to
+        // NULL and the check inherits the global one again — restoring a
+        // default it never had would be inventing a setting.
+        before.present ? (before.minConfidence ?? null) : null,
+        { setBy: deps.actor || 'an administrator' },
+        deps.client || null
+      );
+      return { restored: 1 };
     },
   },
 };

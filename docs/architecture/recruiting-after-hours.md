@@ -216,3 +216,45 @@ npm test --prefix admin -- --run WorkingHoursCard   # 9
 Confirmed failing-first against the code they guard: the two overnight-window
 tests (naive span-then-weekday), eight guard tests (enforcement removed), and
 three orchestrator tests (the knowledge gate and the guard call removed).
+
+## Configured is not reachable
+
+Readiness asked `hoursConfigured` — a boolean meaning *a working-hours row
+exists* — and never looked at quiet hours at all. But a reply needs two things
+true at the same moment: **the office is closed AND it is not quiet hours.** So
+the usable window is `24h − working hours − quiet hours`, and nothing checked
+what those two settings meant together.
+
+A schedule whose two halves cover the week therefore passed every check and
+reported READY, with `/api/health` saying OK, while no candidate could ever be
+answered. `lib/recruiting/reachability.js` now sweeps the week a minute at a time
+and asks the SAME functions the live path asks — `coversAt` for the schedule,
+`quietCoversAt` for the quiet period. A cleverer interval algebra would be a
+second implementation of the overnight-window rule, which is the drift this
+repository keeps paying for.
+
+**Two facts, deliberately kept apart:**
+
+- **Nothing reachable all week** — the feature cannot work. That is a blocker,
+  and health reports `blocked` naming the conflict.
+- **Days with no window** — works at weekends, never on a Tuesday night. The
+  feature *does* work, and a candidate texting on the wrong evening is still
+  never answered. Reported in the reason text, and deliberately **not** a
+  blocker.
+
+Conflating those two is easy and wrong: "Mon–Fri 08:00–21:00 with quiet hours
+from 21:00" leaves every weekday empty and both weekend days open. That is a real
+problem and not a broken feature.
+
+**No working hours at all is also unreachable**, and getting this backwards is
+how a second implementation of a rule starts. `evaluateHours` returns OPEN for an
+unconfigured schedule on purpose, so the after-hours turn never arrives. The
+first draft of the sweep read "no window covers this minute" as "the office is
+shut" and scored an empty schedule at 5 460 reachable minutes a week — a
+confident, precise, completely wrong number.
+
+**The owner's intended schedule is never invented.** A zero-window answer names
+both halves of the conflict and where to fix it; which half is wrong is the
+owner's decision, and guessing it would quietly change when Wenze speaks to
+strangers on the company's behalf.
+

@@ -21,7 +21,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { runAutoCorrections } = require('../services/operations/corrections/autoApply');
-const { sourcesFor, MIN_CONFIDENCE } = require('../services/operations/corrections/decisionSeam');
+const { sourcesFor, MIN_CONFIDENCE, recordDecisionFor } = require('../services/operations/corrections/decisionSeam');
 
 const NOW = Date.now();
 const minutesAgo = (m) => new Date(NOW - m * 60000).toISOString();
@@ -293,3 +293,67 @@ test('A SHADOWED CHECK OVER ITS CAP IS CAPPED, exactly as the real run would be'
       'and nothing is journalled as "would have done" when the real run would refuse');
     assert.ok(db);
   });
+
+// ── the floor has to reach the decision ────────────────────────────────────
+
+/**
+ * A SETTING NOTHING READS IS A SETTING THAT DOES NOT EXIST.
+ *
+ * An accepted threshold proposal writes `operational_check_settings.min_confidence`.
+ * That row is worth nothing until the planner selects the column, passes it
+ * here, and the journal decides against it — and every one of those four links
+ * is somewhere different.
+ *
+ * It was broken for one commit: `autoApply` keeps its OWN settings query rather
+ * than calling the data layer, so adding the column there reached the planner
+ * not at all, and `floorFor` read a camelCase key off a row returned unmapped.
+ * Both failures are silent — the floor simply inherits the global one for ever,
+ * the admin shows the number, and nothing behaves differently. That is the
+ * "visible in the UI, ignored by the runtime" defect this application keeps
+ * finding, introduced while fixing another one.
+ */
+test('A PER-CHECK FLOOR REACHES THE JOURNAL, or it is not a setting', async () => {
+  const seen = [];
+  const take = async (ask) => { seen.push(ask); return { verdict: 'act', confidence: ask.confidence }; };
+  const item = {
+    finding: { checkKey: 'identity.sync_unit', subjectType: 'group', subjectId: '5', confidence: 80, evidence: {} },
+    action: { key: 'identity.sync_unit', describe: () => 'x' },
+    payload: {},
+    mode: 'autopilot',
+  };
+
+  await recordDecisionFor(item, { shadow: false, takeDecision: take, minConfidence: 88 });
+  assert.equal(seen[0].minConfidence, 88, 'the check-specific floor, not the global one');
+
+  await recordDecisionFor(item, { shadow: false, takeDecision: take });
+  assert.equal(seen[1].minConfidence, MIN_CONFIDENCE,
+    'and NULL still inherits, so a check nobody has tuned is unchanged');
+});
+
+/**
+ * The planner's own query must select the column. This reads the source because
+ * the failure is a missing field name in a string — nothing executes wrongly,
+ * it just quietly returns undefined.
+ */
+/**
+ * TWO COLUMN LISTS FOR ONE TABLE IS THE MECHANISM; ONE LIST IS THE FIX.
+ *
+ * The planner keeps its own query because it takes an injectable `db`, and for
+ * one commit that query did not name `min_confidence` — so the floor was
+ * written by the learning action, shown in the admin, and read by nothing. The
+ * list now lives in the data layer and both readers import it, which is what
+ * makes a column added there reach both or neither.
+ */
+test('the planner SELECTS the floor it claims to read', () => {
+  const { SETTINGS_COLUMNS } = require('../database/operationalCheckSettings');
+  assert.match(SETTINGS_COLUMNS, /min_confidence/,
+    'a column the planner does not select is a setting that cannot work');
+
+  const src = require('node:fs').readFileSync(
+    require.resolve('../services/operations/corrections/autoApply'), 'utf8'
+  );
+  const at = src.indexOf('FROM operational_check_settings');
+  assert.ok(at > 0, 'the planner still reads the settings table');
+  assert.match(src.slice(at - 200, at), /SETTINGS_COLUMNS/,
+    'the planner must use the data layer\'s list, not a second copy of it');
+});

@@ -203,6 +203,17 @@ async function runSelfHealingPass({ now = Date.now(), deps = defaultDeps(), opti
   const observations = raw.filter((o) => !o.unknown);
   summary.unreadable = raw.length - observations.length;
 
+  // NOT ONE COMPONENT COULD BE READ. Dropping unknowns is right — "I could not
+  // check" must never start a failure count for a component — but when EVERY
+  // component is unknown there is nothing left that a person could act on, and
+  // the pass has not run in any sense that matters. Until the gatherer stopped
+  // answering a failed read with an empty list this was not even expressible:
+  // the watch went blind and recorded `ok`, which is the one failure that hides
+  // every other.
+  if (raw.length && observations.length === 0) {
+    summary.error = `none of the ${raw.length} component(s) could be read`;
+  }
+
   for (const observation of observations) {
     summary.checked += 1;
     if (observation.ok === false) summary.actionable += 1;

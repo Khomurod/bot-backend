@@ -307,3 +307,65 @@ one-way dependency flow now live in
 [§9a `docs/brief/code-structure.md`](code-structure.md) — moved out
 when this file passed the very cap it describes. `CLAUDE.md` states the same
 rules as working instructions.
+
+## Automatic rollback
+
+- **Only `operational`-impact actions may ever be undone automatically.** Every
+  verifiable action declares an impact class (`operational`, `employment`, `pay`,
+  `discipline`, `compliance`); an action with none declared is refused rather
+  than assumed harmless. Employment, pay, discipline and compliance are never
+  reverted without a person, whatever any flag says.
+- **A human override is never undone.** Software and a person taking turns
+  overwriting each other is a fight the software wins, because it never gets
+  bored.
+- **An unexplained change is never undone.** The audit trail does not cover every
+  write path, so finding nothing means *unknown origin*, not *nobody*.
+- **One put-back per subject, then a person.** Two is two systems arguing.
+- **Ambiguity ends at `requires_human_review`, never at an undo.**
+- Exactly one action is armed: `board.link_person`. See
+  [`decisions.md`](../architecture/decisions.md) for the argument.
+
+## Learning proposals
+
+- **Every action in the learning registry moves towards MORE caution.** There is
+  no `enable_auto_apply` and no `lower_confidence_floor`.
+- **A per-check confidence floor is CHECKed in the database to 70–95**, 70 being
+  the global floor. A value that would make a check less cautious cannot be
+  stored, by any path.
+- **A proposal that cannot safely be applied carries no action** and is recorded
+  `accepted_manual` — agreement noted, a person still has to do it.
+
+## After-hours recruiting readiness
+
+- **Readiness evaluates the effective window, not whether settings exist.** A
+  reply needs the office closed AND not quiet hours; a schedule whose two halves
+  cover the week is `blocked`, naming the conflict.
+- **The owner's intended schedule is never invented.** The conflict is surfaced;
+  which half is wrong is theirs to decide.
+
+
+## What a background pass tells the run ledger
+
+- **The PASS decides whether its errors amount to a failure, and says so in
+  `error` — singular.** `statusFromSummary` reads that one field and nothing
+  else. `errors`, plural, is the per-item list a reader wants and the ledger
+  never sees; a pass that ends early with only the plural field records itself
+  as **ok**. Seven passes did exactly that, one of them the self-healing watch
+  that makes every other failure visible.
+- **A pass that could not read its inputs, or whose every item failed, has not
+  run.** One bad driver row among a hundred is a row to look at; a hundred out
+  of a hundred is a failure. Both shapes set `error`.
+- **Switched off is `blocked`, never healthy and never failed.** A feature
+  nobody has enabled must not look identical to one running every five minutes,
+  and painting it red is how a real outage gets lost among things that were
+  never switched on.
+- **An answer that could not be read is `cannot_determine`, never an empty
+  list.** A gatherer that swallows its own failure deletes what it was watching
+  from the picture, and a caller counting what it could not read cannot count
+  something it was never handed. `unknown: true` keeps the older rule intact:
+  "I could not check" never starts a failure count.
+- **A pass with no ledger row is unobservable.** `data_retention` — the only
+  defence against unbounded growth in seven tables — reported its failures to
+  `console.error` and nowhere else for the life of the feature.
+
+See [`health-reporting.md`](../architecture/health-reporting.md).

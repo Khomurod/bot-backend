@@ -154,6 +154,31 @@ test('both sources failing is a quiet pass, not a crash and not a false all-clea
   const summary = await pass.runLearningPass({ now: NOW, deps });
   assert.equal(summary.found, 0);
   assert.deepEqual(calls.notified, []);
+  assert.equal(summary.sourcesUnreadable, 2,
+    'two lost out of six is a partial pass, and it says so rather than only logging it');
+  assert.equal(summary.error, undefined, 'but not a failed one — four sources still answered');
+});
+
+/**
+ * NOTHING TO LEARN AND NOTHING TO LEARN FROM ARE DIFFERENT ANSWERS.
+ *
+ * Every source is caught on its own so a missing table costs one input rather
+ * than the pass — right, and it was SILENT. A pass with all six sources
+ * unreadable returned `found: 0` and `statusFromSummary` recorded it as `ok`,
+ * which is the same row a healthy pass over a quiet fortnight writes.
+ */
+test('a pass that lost EVERY source is a failed pass, not an empty one', async () => {
+  const boom = () => { throw new Error('permission denied'); };
+  const { deps, calls } = harness({ correctionsThrow: true, conversationsThrow: true });
+  deps.decisions = { async listRecentDecisions() { return boom(); }, async confidenceOutcomes() { return boom(); } };
+  deps.knowledge = { async listMemories() { return boom(); } };
+  deps.checkSettings = { async listCheckSettings() { return boom(); } };
+
+  const summary = await pass.runLearningPass({ now: NOW, deps });
+  assert.equal(summary.sourcesUnreadable, 6);
+  assert.match(summary.error, /none of the 6 sources could be read/,
+    '`error` singular is the field the ledger reads');
+  assert.deepEqual(calls.notified, []);
 });
 
 test('a failure storing one suggestion costs that one only', async () => {

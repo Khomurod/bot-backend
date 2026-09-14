@@ -383,3 +383,65 @@ test('a pass counts the components it had to drop, instead of dropping them sile
   assert.equal(summary.checked, 1, 'only the readable one was recorded');
   assert.equal(summary.unreadable, 2, 'and it says so rather than quietly shrinking');
 });
+
+// ── a watch that cannot see must say so ────────────────────────────────────
+
+/**
+ * AN UNREADABLE LEDGER USED TO DELETE EVERY WORKER FROM THE PICTURE.
+ *
+ * `workerObservations` caught its own failed read and answered `[]`, so all
+ * thirty-odd catalogued workers vanished: `/api/health` showed a shorter
+ * `workers` block with nothing wrong in it, the Systems tab showed the same,
+ * and this pass recorded a clean run. It counts what it DROPPED precisely so a
+ * blind spot cannot hide — but a worker that produced no observation at all was
+ * never dropped, it was never there.
+ *
+ * `cannot_determine` is the honest answer and it costs nothing: the announcer
+ * still skips unknowns, so no failure count starts for a component nobody could
+ * check.
+ */
+test('a ledger nobody could read leaves every worker saying so, not missing', async () => {
+  const observations = require('../services/operations/healthObservations');
+  const raw = await observations.gatherAllObservations({
+    runs: { async getRunMap() { throw new Error('no such table'); } },
+    rc: { async listRecruiters() { return []; }, recruiterCanSendSms: () => false },
+    ai: { async getProvidersForRouter() { return []; } },
+    notifications: { async summariseNotifications() { return { abandoned: 0 }; } },
+  });
+
+  const workers = raw.filter((o) => o.group !== 'integration' || !o.reason?.includes('could not be read'));
+  assert.ok(workers.length > 10, 'the workers are still listed, not deleted');
+  const ledgerBlind = raw.filter((o) => o.state === 'cannot_determine');
+  assert.ok(ledgerBlind.length > 10);
+  assert.ok(ledgerBlind.every((o) => o.unknown === true),
+    'unknown, so nothing here can start a failure count');
+  assert.match(ledgerBlind[0].reason, /run ledger could not be read/);
+});
+
+/**
+ * NOT ONE COMPONENT COULD BE READ IS NOT A CLEAN PASS.
+ *
+ * Dropping unknowns is right for a single component. When EVERY component is
+ * unknown there is nothing a person could act on and the watch is blind, which
+ * is the one failure that hides every other — and until the gatherer stopped
+ * answering a failed read with an empty list, the pass could not even tell.
+ */
+test('a pass that could read nothing is a FAILED pass, not a quiet one', async () => {
+  const h = harness();
+  const summary = await healing.runSelfHealingPass({
+    now: NOW,
+    deps: {
+      ...h.deps,
+      runs: { async getRunMap() { throw new Error('permission denied'); } },
+      rc: { async listRecruiters() { throw new Error('permission denied'); } },
+      ai: { async getProvidersForRouter() { throw new Error('permission denied'); } },
+      notifications: { async summariseNotifications() { throw new Error('permission denied'); } },
+      fuelReadings: { async summariseFuelReadings() { throw new Error('permission denied'); } },
+    },
+  });
+
+  assert.equal(summary.checked, 0);
+  assert.ok(summary.unreadable > 10, 'and it says how much of the picture it lost');
+  assert.match(summary.error, /none of the \d+ component\(s\) could be read/,
+    'statusFromSummary reads `error`; without it the ledger records this as ok');
+});

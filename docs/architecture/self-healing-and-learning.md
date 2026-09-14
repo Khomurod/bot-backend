@@ -307,6 +307,57 @@ the registry has no `enable_auto_apply` to reach for anyway. The owner turns
 autopilot on from the Automation screen, where the permission is visible and
 revocable.
 
+## Threshold proposals: a number to agree to, not a paragraph
+
+The learning pass could already say a check kept being wrong, and its advice
+about the confidence floor was prose: *"what that number should be is a
+judgement about how much caution you want."* True, and useless — an
+administrator cannot agree with a paragraph, nothing became a setting, and the
+same advice reappeared every week.
+
+**The number is now derived, not chosen.** Every decision carries the confidence
+it acted at, and verification later recorded whether it held. So the question has
+an answer in the data: the LOWEST floor at which this check's own record is
+acceptable. `lib/operations/thresholdProposal.js` sweeps the observed confidence
+values and takes the smallest one whose confirm rate clears the target. That is a
+measurement of the check's behaviour, not an opinion about the business.
+
+An administrator sees four lines:
+
+```
+Current confidence threshold: 70 (inherited default)
+Suggested threshold: 88
+Evidence: of 14 graded decisions, 64% held up at the current floor and
+          88% held up at or above 88.
+Expected effect: Of the 14 decisions this check acted on, 6 would have been
+                 held for a person instead.
+```
+
+### It can only ever propose MORE caution
+
+`operational_check_settings.min_confidence` is **CHECKed in the database to
+70–95**, and 70 is the global floor. A value that would make a check less
+cautious cannot be stored — not by the learning pass, not by a route, not by a
+later refactor that forgets why. The guarantee is a constraint, not a code path
+somebody could walk past. 95 rather than 100 at the top, because a floor of 100
+stops the check acting at all: a switch-off wearing the clothes of a threshold,
+and `disable_auto_apply` is the honest action for that.
+
+A check that looks too **strict** is still reported — and carries **no action**.
+Loosening a safety margin on the strength of the machine's own report card is the
+one shape nobody should build, so accepting it records agreement and the screen
+says, in those words, that a person still has to make the change
+(`accepted_manual`). There is no `lower_confidence_floor` and no
+`enable_auto_apply`.
+
+### And the floor has to reach the runtime
+
+An accepted proposal writes a row; `services/operations/corrections/decisionSeam.js`
+reads it, falling back to the global floor when it is NULL. A setting nothing
+reads is a setting that does not exist, which is the defect class this repository
+keeps finding — so that read is the point of the whole feature, not a detail of
+it.
+
 ## Part 3 — asking about what it decided NOT to do
 
 A check the owner has permitted to act can still decide `hold` or `unknown`. It

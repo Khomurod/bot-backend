@@ -169,14 +169,54 @@ function summariseWorkers(observations) {
  * events the poller's LAST poll found, which is the number that tells an empty
  * safety table apart from a quiet fleet.
  */
-function pollerSeen(row) {
+/**
+ * Do the two counts agree?
+ *
+ * NULL EVERYWHERE IT CANNOT TELL, and never a verdict from a missing number.
+ * An older poller reports no total; a failed count returns null; either way the
+ * honest answer is "cannot determine", not "reconciled".
+ */
+function reconcile(seen, recorded) {
+  if (seen == null) return { state: 'cannot_determine', reason: 'the poller reports no running total yet' };
+  if (recorded == null) return { state: 'cannot_determine', reason: 'the recorded rows could not be counted' };
+  if (seen === 0 && recorded === 0) {
+    return { state: 'reconciled', reason: 'the poller has picked up nothing, and nothing was recorded' };
+  }
+  if (recorded >= seen) {
+    return { state: 'reconciled', reason: `${seen} event(s) picked up, ${recorded} row(s) recorded` };
+  }
+  return {
+    state: 'events_lost',
+    reason: `the poller picked up ${seen} event(s) since it booted and only ${recorded} `
+      + 'row(s) were recorded — events are arriving and not being stored',
+  };
+}
+
+function pollerSeen(row, recordedSince = null) {
   if (!row) return { available: false, reason: 'the Samsara poller has never reported' };
   const summary = row.lastSummary || {};
+  const seenTotal = Number.isFinite(Number(summary.eventsSeenTotal))
+    ? Number(summary.eventsSeenTotal) : null;
   return {
     available: true,
     status: row.lastStatus || null,
     lastBeatAt: row.lastFinishedAt || null,
     seenLastPoll: Number.isFinite(Number(summary.newEvents)) ? Number(summary.newEvents) : null,
+    // ── the reconciliation ────────────────────────────────────────────────
+    //
+    // `seenLastPoll` is the last poll only and is almost always zero, while
+    // `events` beside it counts fourteen days of rows. Two numbers on different
+    // scales cannot disagree usefully, so "the poller picked up events and none
+    // were stored" was invisible in aggregate — the only way to notice was to
+    // already suspect it.
+    //
+    // The poller now reports a running total since it booted, and the instant
+    // it booted. This counts the rows written in that same period. One
+    // subtraction, and the answer is a fact rather than an inference.
+    seenSinceBoot: seenTotal,
+    pollerBootedAt: summary.seenSince || null,
+    recordedSinceBoot: recordedSince,
+    reconciliation: reconcile(seenTotal, recordedSince),
     // Whether the poller's own store believes it can write. `seenLastPoll`
     // above zero with this false is a recorder problem named outright, rather
     // than inferred from an empty table.
@@ -219,6 +259,16 @@ async function getOperationsHealth(deps = defaultDeps()) {
       Promise.resolve(deps.controlKnowledge?.summariseKnowledge?.()).catch(() => null),
       Promise.resolve(deps.engineering?.summariseRequests?.()).catch(() => null),
     ]);
+
+    // SEQUENTIAL BECAUSE IT DEPENDS ON THE ANSWER ABOVE: the window to count
+    // rows over is the instant the poller booted, which only arrives with its
+    // heartbeat. One extra indexed COUNT, and only when the poller has actually
+    // reported a running total — an older poller costs nothing.
+    const pollerBootedAt = safetyPoller?.lastSummary?.seenSince || null;
+    const safetyRecorded = pollerBootedAt
+      ? await Promise.resolve(deps.safety?.countRecordedSince?.(pollerBootedAt)).catch(() => null)
+      : null;
+
     return {
       available: true,
       sweep: {
@@ -259,7 +309,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
       // same zero — which is exactly the ambiguity the heartbeat was added to
       // remove, left half-finished. `seenByPoller` above zero with `events` at
       // zero is a recorder problem; both at zero is a quiet fleet.
-      safety: safety ? { ...safety, poller: pollerSeen(safetyPoller) } : safety,
+      safety: safety ? { ...safety, poller: pollerSeen(safetyPoller, safetyRecorded) } : safety,
       // WHETHER SMART FUEL CAN ANSWER AT ALL. `comparable` is the number that
       // matters: abnormal-consumption needs two readings far enough apart, and
       // for the whole life of the feature that was ZERO because the watch

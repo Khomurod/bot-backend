@@ -49,6 +49,13 @@ function summaryDeps(overrides = {}) {
           driversWithEvents: 2, coachingSent: 1, coachingToDrivers: 1,
         };
       },
+      // The hub's half of the poller reconciliation. `undefined` means the test
+      // said nothing about it, which must read as "could not count" rather than
+      // as zero — a fabricated zero would manufacture a recorder problem out of
+      // a test that simply was not about this.
+      async countRecordedSince() {
+        return over.safetyRecordedSince === undefined ? null : over.safetyRecordedSince;
+      },
     },
     // The Samsara poller's own heartbeat, which is what tells an empty safety
     // table apart from a quiet fleet.

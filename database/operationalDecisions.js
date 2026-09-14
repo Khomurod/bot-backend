@@ -302,6 +302,49 @@ async function sourceAgreement({ sinceDays = 90 } = {}) {
 }
 
 /** Old decisions nobody will read. Never touches one still awaiting its outcome. */
+/**
+ * Every graded decision's confidence and how it turned out, per check.
+ *
+ * THE ONE READ A THRESHOLD PROPOSAL NEEDS. `summariseDecisions` counts outcomes
+ * and `sourceAgreement` counts sources; neither keeps the confidence the
+ * decision acted at, which is the whole variable a floor is about.
+ *
+ * ONLY OUTCOMES THAT ARE A JUDGEMENT, for the same reason `sourceAgreement`
+ * excludes them: `not_checked` means nothing knows how to verify that action
+ * and `expired` means the subject is gone. Counting either as "did not hold"
+ * would make a check look unreliable because nobody wrote its verifier, and a
+ * proposal built on that would raise a floor to fix a gap somewhere else.
+ *
+ * Bounded by `limit` and a window, so this cannot grow into a full scan of the
+ * journal as the table fills.
+ */
+async function confidenceOutcomes({ sinceDays = 90, limit = 2000 } = {}) {
+  try {
+    const res = await query(
+      `SELECT check_key, confidence, outcome
+         FROM operational_decisions
+        WHERE outcome IN ('confirmed', 'contradicted', 'reverted')
+          AND confidence IS NOT NULL
+          AND last_decided_at > NOW() - ($1 || ' days')::interval
+        ORDER BY last_decided_at DESC
+        LIMIT $2`,
+      [String(Math.max(1, sinceDays)), Math.max(1, limit)]
+    );
+    const byCheck = {};
+    for (const row of res.rows) {
+      (byCheck[row.check_key] ||= []).push({
+        confidence: Number(row.confidence),
+        outcome: row.outcome,
+      });
+    }
+    return { available: true, byCheck };
+  } catch (_) {
+    // A missing column or an unreachable database is "we cannot tell", which
+    // must produce no proposal rather than a proposal from no data.
+    return { available: false, byCheck: {} };
+  }
+}
+
 async function pruneDecisions({ olderThanDays = 90 } = {}) {
   try {
     const res = await query(
@@ -325,6 +368,7 @@ module.exports = {
   listUnverifiedActions,
   listRecentDecisions,
   summariseDecisions,
+  confidenceOutcomes,
   sourceAgreement,
   pruneDecisions,
 };

@@ -220,3 +220,44 @@ test('the overall tracking switch still short-circuits before anything else', as
   assert.equal(sends.length, 0);
   assert.deepEqual(cancels, []);
 });
+
+// ── what the run ledger is told ────────────────────────────────────────────
+
+/**
+ * THE SUMMARY USED TO BE DISCARDED.
+ *
+ * The `withRunRecord` callback awaited both sweeps and returned undefined, so
+ * `statusFromSummary` saw nothing and recorded `ok` — including when Home Time
+ * is switched off entirely. A feature nobody has enabled must not look
+ * identical to one chasing reminders every five minutes: the first is
+ * `blocked`, the second is `healthy`, and telling them apart is the whole point
+ * of the state vocabulary.
+ */
+test('Home Time switched off is BLOCKED in the ledger, not a healthy pass', () => {
+  const { reminderRunSummary } = require('../services/homeTimeReminderService');
+  const out = reminderRunSummary({ enabled: false, due: 0, sent: 0, errors: 0 }, null);
+  assert.match(out.blocked, /switched off/);
+  assert.equal(out.error, undefined, 'switched off is not broken');
+});
+
+test('a normal tick reports what it did and carries no error', () => {
+  const { reminderRunSummary } = require('../services/homeTimeReminderService');
+  const out = reminderRunSummary(
+    { enabled: true, due: 3, sent: 3, errors: 0 }, { enabled: true, expired: 1 }
+  );
+  assert.deepEqual(out, { due: 3, sent: 3, expired: 1 });
+});
+
+test('every due reminder failing to send is a FAILED pass', () => {
+  const { reminderRunSummary } = require('../services/homeTimeReminderService');
+  const out = reminderRunSummary({ enabled: true, due: 2, sent: 0, errors: 2 }, null);
+  assert.match(out.error, /none of the 2 due reminder\(s\) could be sent/,
+    '`error` singular is the field the ledger reads');
+});
+
+test('one failure among three leaves the pass healthy', () => {
+  const { reminderRunSummary } = require('../services/homeTimeReminderService');
+  const out = reminderRunSummary({ enabled: true, due: 3, sent: 2, errors: 1 }, null);
+  assert.equal(out.error, undefined);
+  assert.equal(out.sent, 2);
+});

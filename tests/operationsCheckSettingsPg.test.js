@@ -176,3 +176,73 @@ test('a granted check is what the auto-apply batch then reads', { skip: skipWith
     + 'same row too — granting through the older boolean still arms it');
   assert.equal(row.max_auto_per_run, 7);
 });
+
+// ── the per-check confidence floor ─────────────────────────────────────────
+
+/**
+ * THE RANGE IS THE SAFETY PROPERTY, AND THE DATABASE ENFORCES IT.
+ *
+ * An accepted learning proposal writes this column. The global floor is 70, and
+ * the CHECK refuses anything below it — so a value that would make a check LESS
+ * cautious cannot be stored, however it is reached: not by the learning pass,
+ * not by a route, not by a later refactor that forgets why. A guard in
+ * JavaScript would have been a guard one careless caller could walk past.
+ *
+ * 95 rather than 100 at the top, because a floor of 100 stops the check acting
+ * at all — a switch-off wearing the clothes of a threshold, and there is already
+ * an honest action for that.
+ */
+test('a confidence floor may only ever be set to MORE caution', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { operationalCheckSettings: store } = harness.loadDataLayer(['operationalCheckSettings']);
+
+  const saved = await store.setMinConfidence('identity.sync_unit', 85, { setBy: 'admin:3' });
+  assert.equal(saved.minConfidence, 85);
+  assert.equal(saved.minConfidenceSetBy, 'admin:3');
+  assert.ok(saved.minConfidenceSetAt, 'when it moved is recorded on the row');
+
+  for (const refused of [0, 50, 69, 96, 100]) {
+    await assert.rejects(
+      () => store.setMinConfidence('identity.sync_unit', refused),
+      /min_confidence_range|violates check constraint/,
+      `${refused} must be refused by the database, not merely by code`
+    );
+  }
+});
+
+test('clearing the floor returns the check to the global one', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { operationalCheckSettings: store } = harness.loadDataLayer(['operationalCheckSettings']);
+
+  await store.setMinConfidence('identity.sync_unit', 90, { setBy: 'admin:3' });
+  const cleared = await store.setMinConfidence('identity.sync_unit', null, { setBy: 'admin:3' });
+
+  assert.equal(cleared.minConfidence, null, 'NULL inherits, exactly as every other setting does');
+  assert.equal(cleared.minConfidenceSetAt, null);
+});
+
+/** The floor has to reach the reader, or it is a setting that does not exist. */
+test('the floor is returned by the listing the planner reads', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { operationalCheckSettings: store } = harness.loadDataLayer(['operationalCheckSettings']);
+
+  await store.setMinConfidence('home_time.closable_open_cycle', 88, { setBy: 'admin:9' });
+  const rows = await store.listCheckSettings();
+  const row = rows.find((r) => r.checkKey === 'home_time.closable_open_cycle');
+
+  assert.equal(row.minConfidence, 88);
+});
+
+/** Applying the migration twice must be a no-op — every migration here runs at boot. */
+test('the confidence-floor migration is idempotent', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const sql = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'database', 'migrations',
+      '0056_confidence_floor_per_check.sql'), 'utf8'
+  );
+  await harness.query(sql);
+  await harness.query(sql);
+  const { operationalCheckSettings: store } = harness.loadDataLayer(['operationalCheckSettings']);
+  const saved = await store.setMinConfidence('x', 75, { setBy: 'admin:1' });
+  assert.equal(saved.minConfidence, 75, 'and the column still behaves after two applications');
+});
